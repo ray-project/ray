@@ -20,7 +20,6 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "ray/common/status.h"
-#include "ray/util/filesystem.h"
 
 namespace plasma {
 

@@ -1,22 +1,42 @@
-import ray
-from ray import serve
-import pytest
-from ray.llm._internal.serve.configs.constants import RAYLLM_VLLM_ENGINE_CLS_ENV
-from ray.llm._internal.serve.configs.server_models import (
-    LLMConfig,
-    ModelLoadingConfig,
-)
-from ray.llm._internal.serve.configs.server_models import (
-    LLMServingArgs,
-)
-import yaml
-from typing import Dict
+import contextlib
 import pathlib
 import tempfile
-import contextlib
-from ray.llm._internal.serve.builders.application_builders import build_openai_app
-import openai
 import time
+from typing import Dict
+from unittest.mock import patch
+
+import openai
+import pytest
+import yaml
+
+import ray
+from ray import serve
+from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import (
+    VLLMEngineConfig,
+)
+from ray.serve.llm import (
+    LLMConfig,
+    LLMServer,
+    LLMServingArgs,
+    ModelLoadingConfig,
+    build_openai_app,
+)
+
+
+@pytest.fixture
+def disable_placement_bundles():
+    """
+    Fixture to disable placement bundles for tests that don't need GPU hardware.
+
+    Use this fixture in tests that would otherwise require GPU hardware but
+    don't actually need to test placement bundle logic.
+    """
+    with patch.object(
+        VLLMEngineConfig,
+        "placement_bundles",
+        new_callable=lambda: property(lambda self: []),
+    ):
+        yield
 
 
 @pytest.fixture
@@ -31,24 +51,14 @@ def shutdown_ray_and_serve():
 
 
 @pytest.fixture
-def use_mock_vllm_engine(monkeypatch):
-    monkeypatch.setenv(
-        RAYLLM_VLLM_ENGINE_CLS_ENV,
-        "ray.llm.tests.serve.deployments.mock_vllm_engine.MockVLLMEngine",
-    )
-    yield
-
-
-@pytest.fixture
-def llm_config(model_pixtral_12b):
+def llm_config(model_pixtral_12b, disable_placement_bundles):
     yield LLMConfig(
         model_loading_config=ModelLoadingConfig(
             model_id=model_pixtral_12b,
         ),
         accelerator_type="L4",
-        deployment_config=dict(
-            ray_actor_options={"resources": {"mock_resource": 0}},
-        ),
+        runtime_env={},
+        log_engine_metrics=False,
     )
 
 
@@ -101,30 +111,30 @@ def get_rayllm_testing_model(
 
 
 @pytest.fixture
-def testing_model(shutdown_ray_and_serve, use_mock_vllm_engine, model_pixtral_12b):
+def testing_model(shutdown_ray_and_serve, disable_placement_bundles):
     test_model_path = get_test_model_path("mock_vllm_model.yaml")
-
-    with open(test_model_path, "r") as f:
-        loaded_llm_config = yaml.safe_load(f)
-
-    loaded_llm_config["model_loading_config"]["model_source"] = model_pixtral_12b
-    test_model_path = write_yaml_file(loaded_llm_config)
 
     with get_rayllm_testing_model(test_model_path) as (client, model_id):
         yield client, model_id
 
 
 @pytest.fixture
-def testing_model_no_accelerator(
-    shutdown_ray_and_serve, use_mock_vllm_engine, model_pixtral_12b
-):
+def testing_model_no_accelerator(shutdown_ray_and_serve, disable_placement_bundles):
     test_model_path = get_test_model_path("mock_vllm_model_no_accelerator.yaml")
-
-    with open(test_model_path, "r") as f:
-        loaded_llm_config = yaml.safe_load(f)
-
-    loaded_llm_config["model_loading_config"]["model_source"] = model_pixtral_12b
-    test_model_path = write_yaml_file(loaded_llm_config)
 
     with get_rayllm_testing_model(test_model_path) as (client, model_id):
         yield client, model_id
+
+
+@pytest.fixture
+def create_server():
+    """Asynchronously create an LLMServer instance."""
+
+    async def creator(*args, **kwargs):
+        # _ = LLMServer(...) will raise TypeError("__init__() should return None")
+        # so we do __new__ then __init__
+        server = LLMServer.__new__(LLMServer)
+        await server.__init__(*args, **kwargs)
+        return server
+
+    return creator

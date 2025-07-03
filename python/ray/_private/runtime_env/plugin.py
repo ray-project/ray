@@ -1,20 +1,20 @@
+import json
 import logging
 import os
-import json
 from abc import ABC
-from typing import List, Dict, Optional, Any, Type
+from typing import Any, Dict, List, Optional, Type
 
 from ray._common.utils import import_attr
+from ray._private.runtime_env.constants import (
+    RAY_RUNTIME_ENV_CLASS_FIELD_NAME,
+    RAY_RUNTIME_ENV_PLUGIN_DEFAULT_PRIORITY,
+    RAY_RUNTIME_ENV_PLUGIN_MAX_PRIORITY,
+    RAY_RUNTIME_ENV_PLUGIN_MIN_PRIORITY,
+    RAY_RUNTIME_ENV_PLUGINS_ENV_VAR,
+    RAY_RUNTIME_ENV_PRIORITY_FIELD_NAME,
+)
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.uri_cache import URICache
-from ray._private.runtime_env.constants import (
-    RAY_RUNTIME_ENV_PLUGINS_ENV_VAR,
-    RAY_RUNTIME_ENV_PLUGIN_DEFAULT_PRIORITY,
-    RAY_RUNTIME_ENV_CLASS_FIELD_NAME,
-    RAY_RUNTIME_ENV_PRIORITY_FIELD_NAME,
-    RAY_RUNTIME_ENV_PLUGIN_MIN_PRIORITY,
-    RAY_RUNTIME_ENV_PLUGIN_MAX_PRIORITY,
-)
 from ray.util.annotations import DeveloperAPI
 
 default_logger = logging.getLogger(__name__)
@@ -34,10 +34,10 @@ class RuntimeEnvPlugin(ABC):
         The method is invoked upon installation of runtime env.
 
         Args:
-            runtime_env_dict: the user-supplied runtime environment dict.
+            runtime_env_dict: The user-supplied runtime environment dict.
 
         Raises:
-            ValueError: if the validation fails.
+            ValueError: If the validation fails.
         """
         pass
 
@@ -59,13 +59,13 @@ class RuntimeEnvPlugin(ABC):
         Args:
             uri: A URI uniquely describing this resource.
             runtime_env: The RuntimeEnv object.
-            context: auxiliary information supplied by Ray.
+            context: Auxiliary information supplied by Ray.
             logger: A logger to log messages during the context modification.
 
         Returns:
-            the disk space taken up by this plugin installation for this
-            environment. e.g. for working_dir, this downloads the files to the
-            local node.
+            float: The disk space taken up by this plugin installation for this
+                environment. e.g. for working_dir, this downloads the files to the
+                local node.
         """
         return 0
 
@@ -78,7 +78,7 @@ class RuntimeEnvPlugin(ABC):
     ) -> None:
         """Modify context to change worker startup behavior.
 
-        For example, you can use this to preprend "cd <dir>" command to worker
+        For example, you can use this to prepend "cd <dir>" command to worker
         startup, or add new environment variables.
 
         Args:
@@ -90,13 +90,14 @@ class RuntimeEnvPlugin(ABC):
         return
 
     def delete_uri(self, uri: str, logger: logging.Logger) -> float:
-        """Delete the the runtime environment given uri.
+        """Delete the runtime environment given uri.
 
         Args:
-            uri: a URI uniquely describing this resource.
+            uri: A URI uniquely describing this resource.
+            logger: The logger used to log messages during the deletion.
 
         Returns:
-            the amount of space reclaimed by the deletion.
+            float: The amount of space reclaimed by the deletion.
         """
         return 0
 

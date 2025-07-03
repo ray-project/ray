@@ -1,4 +1,5 @@
 from ray.data._internal.datasource.sql_datasource import Connection
+from ray.data._internal.savemode import SaveMode
 from ray.data.datasource.datasink import (
     Datasink,
     DummyOutputDatasink,
@@ -64,4 +65,5 @@ __all__ = [
     "_S3FileSystemWrapper",
     "WriteResult",
     "WriteReturnType",
+    "SaveMode",
 ]

@@ -66,6 +66,14 @@ examples:
       - natural language processing
     link: tutorials/batch
     related_technology: integrations
+  - title: Serve DeepSeek
+    skill_level: beginner
+    use_cases:
+      - generative ai
+      - large language models
+      - natural language processing
+    link: tutorials/serve-deepseek
+    related_technology: llm applications
   - title: Serve a Chatbot with Request and Response Streaming
     skill_level: intermediate
     use_cases:

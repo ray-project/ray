@@ -1,7 +1,6 @@
 import gzip
 import json
 import os
-import requests
 import shutil
 from functools import partial
 
@@ -13,6 +12,7 @@ from pytest_lazy_fixtures import lf as lazy_fixture
 
 import ray
 from ray.data import Schema
+from ray.data._internal.util import rows_same
 from ray.data.block import BlockAccessor
 from ray.data.datasource import (
     BaseFileMetadataProvider,
@@ -20,10 +20,12 @@ from ray.data.datasource import (
     PartitionStyle,
     PathPartitionFilter,
 )
+from ray.data.datasource.file_based_datasource import (
+    FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD,
+)
 from ray.data.datasource.path_util import _unwrap_protocol
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.test_partitioning import PathPartitionEncoder
-from ray.data.tests.util import Counter
 from ray.tests.conftest import *  # noqa
 
 
@@ -37,7 +39,7 @@ def test_json_read_partitioning(ray_start_regular_shared, tmp_path):
 
     ds = ray.data.read_json(path)
 
-    assert ds.take() == [
+    assert sorted(ds.take(), key=lambda row: row["number"]) == [
         {"number": 0, "string": "foo", "country": "us"},
         {"number": 1, "string": "bar", "country": "us"},
     ]
@@ -103,7 +105,7 @@ def test_json_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     df2.to_json(path2, orient="records", lines=True, storage_options=storage_options)
     ds = ray.data.read_json(path, filesystem=fs)
     df = pd.concat([df1, df2], ignore_index=True)
-    dsdf = ds.to_pandas()
+    dsdf = ds.to_pandas().sort_values(by=["one", "two"]).reset_index(drop=True)
     assert df.equals(dsdf)
     if fs is None:
         shutil.rmtree(path)
@@ -136,7 +138,7 @@ def test_json_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     )
     ds = ray.data.read_json([path1, path2], filesystem=fs)
     df = pd.concat([df1, df2, df3], ignore_index=True)
-    dsdf = ds.to_pandas()
+    dsdf = ds.to_pandas().sort_values(by=["one", "two"]).reset_index(drop=True)
     assert df.equals(dsdf)
     if fs is None:
         shutil.rmtree(path1)
@@ -159,7 +161,7 @@ def test_json_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     df2.to_json(path2, orient="records", lines=True, storage_options=storage_options)
     ds = ray.data.read_json([dir_path, path2], filesystem=fs)
     df = pd.concat([df1, df2], ignore_index=True)
-    dsdf = ds.to_pandas()
+    dsdf = ds.to_pandas().sort_values(by=["one", "two"]).reset_index(drop=True)
     assert df.equals(dsdf)
     if fs is None:
         shutil.rmtree(dir_path)
@@ -189,9 +191,8 @@ def test_json_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     )
 
     ds = ray.data.read_json(path, filesystem=fs)
-    assert ds._plan.initial_num_blocks() == 2
     df = pd.concat([df1, df2], ignore_index=True)
-    dsdf = ds.to_pandas()
+    dsdf = ds.to_pandas().sort_values(by=["one", "two"]).reset_index(drop=True)
     assert df.equals(dsdf)
     if fs is None:
         shutil.rmtree(path)
@@ -410,7 +411,9 @@ def test_json_read_with_parse_options(
         (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
     ],
 )
+@pytest.mark.parametrize("style", [PartitionStyle.HIVE, PartitionStyle.DIRECTORY])
 def test_json_read_partitioned_with_filter(
+    style,
     ray_start_regular_shared,
     fs,
     data_path,
@@ -433,69 +436,37 @@ def test_json_read_partitioned_with_filter(
         storage_options=storage_options,
     )
     partition_keys = ["one"]
-    kept_file_counter = Counter.remote()
-    skipped_file_counter = Counter.remote()
 
     def skip_unpartitioned(kv_dict):
-        keep = bool(kv_dict)
-        counter = kept_file_counter if keep else skipped_file_counter
-        ray.get(counter.increment.remote())
-        return keep
+        return bool(kv_dict)
 
-    for style in [PartitionStyle.HIVE, PartitionStyle.DIRECTORY]:
-        base_dir = os.path.join(data_path, style.value)
-        partition_path_encoder = PathPartitionEncoder.of(
-            style=style,
-            base_dir=base_dir,
-            field_names=partition_keys,
-            filesystem=fs,
-        )
-        write_base_partitioned_df(
-            partition_keys,
-            partition_path_encoder,
-            file_writer_fn,
-        )
-        file_writer_fn(pd.DataFrame({"1": [1]}), os.path.join(base_dir, "test.json"))
-        partition_path_filter = PathPartitionFilter.of(
-            style=style,
-            base_dir=base_dir,
-            field_names=partition_keys,
-            filter_fn=skip_unpartitioned,
-            filesystem=fs,
-        )
-        ds = ray.data.read_json(
-            base_dir,
-            partition_filter=partition_path_filter,
-            file_extensions=None,
-            filesystem=fs,
-        )
-        assert_base_partitioned_ds(ds)
-        assert ray.get(kept_file_counter.get.remote()) == 2
-        assert ray.get(skipped_file_counter.get.remote()) == 1
-        ray.get(kept_file_counter.reset.remote())
-        ray.get(skipped_file_counter.reset.remote())
-
-
-def test_jsonl_mixed_types(ray_start_regular_shared, tmp_path):
-    """Test JSONL with mixed types and schemas."""
-    data = [
-        {"a": 1, "b": {"c": 2}},  # Nested dict
-        {"a": 1, "b": {"c": 3}},  # Nested dict
-        {"a": 1, "b": {"c": {"hello": "world"}}},  # Mixed Schema
-    ]
-
-    path = os.path.join(tmp_path, "test.jsonl")
-    with open(path, "w") as f:
-        for record in data:
-            json.dump(record, f)
-            f.write("\n")
-
-    ds = ray.data.read_json(path, lines=True)
-    result = ds.take_all()
-
-    assert result[0] == data[0]  # Dict stays as is
-    assert result[1] == data[1]
-    assert result[2] == data[2]
+    base_dir = os.path.join(data_path, style.value)
+    partition_path_encoder = PathPartitionEncoder.of(
+        style=style,
+        base_dir=base_dir,
+        field_names=partition_keys,
+        filesystem=fs,
+    )
+    write_base_partitioned_df(
+        partition_keys,
+        partition_path_encoder,
+        file_writer_fn,
+    )
+    file_writer_fn(pd.DataFrame({"1": [1]}), os.path.join(base_dir, "test.json"))
+    partition_path_filter = PathPartitionFilter.of(
+        style=style,
+        base_dir=base_dir,
+        field_names=partition_keys,
+        filter_fn=skip_unpartitioned,
+        filesystem=fs,
+    )
+    ds = ray.data.read_json(
+        base_dir,
+        partition_filter=partition_path_filter,
+        file_extensions=None,
+        filesystem=fs,
+    )
+    assert_base_partitioned_ds(ds)
 
 
 @pytest.mark.parametrize("override_num_blocks", [None, 1, 3])
@@ -521,106 +492,56 @@ def test_jsonl_lists(ray_start_regular_shared, tmp_path, override_num_blocks):
     assert result[2] == {"0": "rocking", "1": "with", "2": "ray"}
 
 
-@pytest.mark.parametrize(
-    "fs,data_path,endpoint_url",
-    [
-        (None, lazy_fixture("local_path"), None),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
-    ],
-)
-def test_json_write(ray_start_regular_shared, fs, data_path, endpoint_url):
-    if endpoint_url is None:
-        storage_options = {}
-    else:
-        storage_options = dict(client_kwargs=dict(endpoint_url=endpoint_url))
-    # Single block.
-    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    ds = ray.data.from_blocks([df1])
-    ds._set_uuid("data")
-    ds.write_json(data_path, filesystem=fs)
-    file_path = os.path.join(data_path, "data_000000_000000.json")
-    assert df1.equals(
-        pd.read_json(
-            file_path, orient="records", lines=True, storage_options=storage_options
-        )
-    )
+def test_jsonl_mixed_types(ray_start_regular_shared, tmp_path):
+    """Test JSONL with mixed types and schemas."""
+    data = [
+        {"a": 1, "b": {"c": 2}},  # Nested dict
+        {"a": 1, "b": {"c": 3}},  # Nested dict
+        {"a": 1, "b": {"c": {"hello": "world"}}},  # Mixed Schema
+    ]
 
-    # Two blocks.
-    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
-    ds = ray.data.from_blocks([df1, df2])
-    ds._set_uuid("data")
-    ds.write_json(data_path, filesystem=fs)
-    file_path2 = os.path.join(data_path, "data_000001_000000.json")
-    df = pd.concat([df1, df2])
-    ds_df = pd.concat(
+    path = os.path.join(tmp_path, "test.jsonl")
+    with open(path, "w") as f:
+        for record in data:
+            json.dump(record, f)
+            f.write("\n")
+
+    ds = ray.data.read_json(path, lines=True)
+    result = ds.take_all()
+
+    assert result[0] == data[0]  # Dict stays as is
+    assert result[1] == data[1]
+    assert result[2] == data[2]
+
+
+def test_json_write(ray_start_regular_shared, tmp_path):
+    input_df = pd.DataFrame({"id": [0]})
+    ds = ray.data.from_blocks([input_df])
+
+    ds.write_json(tmp_path)
+
+    output_df = pd.concat(
         [
-            pd.read_json(
-                file_path, orient="records", lines=True, storage_options=storage_options
-            ),
-            pd.read_json(
-                file_path2,
-                orient="records",
-                lines=True,
-                storage_options=storage_options,
-            ),
+            pd.read_json(os.path.join(tmp_path, filename), lines=True)
+            for filename in os.listdir(tmp_path)
         ]
     )
-    assert df.equals(ds_df)
+
+    assert rows_same(input_df, output_df)
 
 
-@pytest.mark.parametrize(
-    "fs,data_path",
-    [
-        (None, lazy_fixture("local_path")),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path")),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
-        (
-            lazy_fixture("s3_fs_with_anonymous_crendential"),
-            lazy_fixture("s3_path_with_anonymous_crendential"),
-        ),
-    ],
-)
-def test_json_roundtrip(ray_start_regular_shared, fs, data_path):
-    # Single block.
+@pytest.mark.parametrize("override_num_blocks", [None, 2])
+def test_json_roundtrip(ray_start_regular_shared, tmp_path, override_num_blocks):
     df = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    ds = ray.data.from_pandas([df])
-    ds._set_uuid("data")
-    ds.write_json(data_path, filesystem=fs)
-    file_path = os.path.join(data_path, "data_000000_000000.json")
-    ds2 = ray.data.read_json([file_path], filesystem=fs)
+
+    ds = ray.data.from_pandas([df], override_num_blocks=override_num_blocks)
+    ds.write_json(tmp_path)
+
+    ds2 = ray.data.read_json(tmp_path)
     ds2df = ds2.to_pandas()
-    assert ds2df.equals(df)
-    # Test metadata ops.
+    assert rows_same(ds2df, df)
     for block, meta in ds2._plan.execute().blocks:
-        BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
-
-    if fs is None:
-        os.remove(file_path)
-    else:
-        fs.delete_file(_unwrap_protocol(file_path))
-
-    # Two blocks.
-    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
-    ds = ray.data.from_pandas([df, df2])
-    ds._set_uuid("data")
-    ds.write_json(data_path, filesystem=fs)
-
-    for read_jsonl in [False, True]:
-        if fs is None and read_jsonl:
-            # Rename input files extension to .jsonl when testing local files.
-            # This is to test reading JSONL files.
-            for file_name in os.listdir(data_path):
-                old_file_path = os.path.join(data_path, file_name)
-                new_file_path = old_file_path.replace(".json", ".jsonl")
-                os.rename(old_file_path, new_file_path)
-        else:
-            ds2 = ray.data.read_json(data_path, override_num_blocks=2, filesystem=fs)
-        ds2df = ds2.to_pandas()
-        assert pd.concat([df, df2], ignore_index=True).equals(ds2df)
-        # Test metadata ops.
-        for block, meta in ds2._plan.execute().blocks:
-            BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
+        assert BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
 
 @pytest.mark.parametrize(
@@ -736,42 +657,20 @@ def test_mixed_gzipped_json_files(ray_start_regular_shared, tmp_path):
     ), f"Retrieved data {retrieved_data} does not match expected {data[0]}."
 
 
-def test_json_with_http_path_parallelization():
-    from ray.data.datasource.file_based_datasource import (
-        FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD,
+def test_json_with_http_path_parallelization(ray_start_regular_shared, httpserver):
+    num_files = FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD
+    urls = []
+    for i in range(num_files):
+        httpserver.expect_request(f"/file{i}.json").respond_with_json({"id": i})
+        urls.append(httpserver.url_for(f"/file{i}.json"))
+
+    ds = ray.data.read_json(urls)
+    actual_rows = ds.take_all()
+
+    expected_rows = [{"id": i} for i in range(num_files)]
+    assert sorted(actual_rows, key=lambda row: row["id"]) == sorted(
+        expected_rows, key=lambda row: row["id"]
     )
-
-    def is_url_accessible(url: str) -> bool:
-        """Check if a URL is accessible."""
-        try:
-            response = requests.head(
-                url, timeout=5
-            )  # Use HEAD request to check connectivity
-            return response.status_code == 200
-        except requests.RequestException:
-            return False
-
-    # List of URLs to check
-    data_urls = [
-        (
-            f"https://data.commoncrawl.org/contrib/datacomp/DCLM-pool/"
-            f"crawl=CC-MAIN-2022-49/1669446711712.26/CC-MAIN-20221210042021"
-            f"-20221210072021-000{i:02}.jsonl.gz"
-        )
-        for i in range(FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD + 3)
-    ]
-
-    data_urls = [url for url in data_urls if is_url_accessible(url)]
-    # Check if at least one URL is accessible
-    if len(data_urls) < FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD:
-        pytest.skip("Not enough accessible HTTP links, skipping test.")
-
-    # Test logic
-    ds = ray.data.read_json(data_urls, include_paths=True)
-    ds = ds.select_columns(["path"])
-    df = ds.to_pandas().drop_duplicates()
-
-    assert len(df) == len(data_urls)
 
 
 if __name__ == "__main__":

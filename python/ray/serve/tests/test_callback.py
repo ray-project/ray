@@ -3,17 +3,18 @@ import logging
 import os
 import sys
 
+import httpx
 import pytest
-import requests
 import starlette
 from starlette.middleware import Middleware
 
 import ray
 from ray import serve
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import wait_for_condition
 from ray.exceptions import RayActorError
-from ray.serve.config import HTTPOptions
+from ray.serve._private.test_utils import get_application_url
 from ray.serve._private.utils import call_function_from_import_path
+from ray.serve.config import HTTPOptions
 from ray.serve.context import _get_global_client
 from ray.serve.schema import LoggingConfig, ProxyStatus, ServeInstanceDetails
 
@@ -124,6 +125,12 @@ def test_call_function_from_import_path():
 )
 def test_callback(ray_instance, capsys):
     """Test callback function works in http proxy and controller"""
+    serve.start(
+        http_options=HTTPOptions(
+            host="0.0.0.0",
+            request_timeout_s=500,
+        ),
+    )
 
     @serve.deployment
     class Model:
@@ -135,7 +142,9 @@ def test_callback(ray_instance, capsys):
             return "Not found custom headers"
 
     serve.run(Model.bind())
-    resp = requests.get("http://localhost:8000/")
+    url = get_application_url()
+    resp = httpx.get(url)
+
     assert resp.text == "custom_header_value"
 
     captured = capsys.readouterr()
@@ -169,7 +178,8 @@ def test_callback_fail(ray_instance):
     with pytest.raises(RayActorError, match="this is from raise_error_callback"):
         ray.get(handle.ready.remote())
 
-    actor_def = ray.serve._private.controller.ServeController
+    serve_controller = ray.serve._private.controller.ServeController
+    actor_def = ray.actor._make_actor(serve_controller, {})
     handle = actor_def.remote(
         http_options=HTTPOptions(),
         global_logging_config=LoggingConfig(),

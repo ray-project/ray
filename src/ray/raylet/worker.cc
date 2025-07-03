@@ -50,8 +50,7 @@ Worker::Worker(const JobID &job_id,
       bundle_id_(std::make_pair(PlacementGroupID::Nil(), -1)),
       dead_(false),
       blocked_(false),
-      client_call_manager_(client_call_manager),
-      is_detached_actor_(false) {}
+      client_call_manager_(client_call_manager) {}
 
 rpc::WorkerType Worker::GetWorkerType() const { return worker_type_; }
 
@@ -169,22 +168,22 @@ const std::string Worker::GetTaskOrActorIdAsDebugString() const {
   return id_ss.str();
 }
 
-void Worker::MarkDetachedActor() { is_detached_actor_ = true; }
-
-bool Worker::IsDetachedActor() const { return is_detached_actor_; }
+bool Worker::IsDetachedActor() const {
+  return assigned_task_.GetTaskSpecification().IsDetachedActor();
+}
 
 const std::shared_ptr<ClientConnection> Worker::Connection() const { return connection_; }
 
 void Worker::SetOwnerAddress(const rpc::Address &address) { owner_address_ = address; }
 const rpc::Address &Worker::GetOwnerAddress() const { return owner_address_; }
 
-void Worker::DirectActorCallArgWaitComplete(int64_t tag) {
+void Worker::ActorCallArgWaitComplete(int64_t tag) {
   RAY_CHECK(port_ > 0);
-  rpc::DirectActorCallArgWaitCompleteRequest request;
+  rpc::ActorCallArgWaitCompleteRequest request;
   request.set_tag(tag);
   request.set_intended_worker_id(worker_id_.Binary());
-  rpc_client_->DirectActorCallArgWaitComplete(
-      request, [](Status status, const rpc::DirectActorCallArgWaitCompleteReply &reply) {
+  rpc_client_->ActorCallArgWaitComplete(
+      request, [](Status status, const rpc::ActorCallArgWaitCompleteReply &reply) {
         if (!status.ok()) {
           RAY_LOG(ERROR) << "Failed to send wait complete: " << status.ToString();
         }

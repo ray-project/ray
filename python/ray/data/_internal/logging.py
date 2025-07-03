@@ -1,7 +1,7 @@
 import logging
 import logging.config
 import os
-from typing import Optional, List
+from typing import List, Optional
 
 import yaml
 
@@ -212,9 +212,14 @@ def reset_logging() -> None:
 
     Used for testing.
     """
+    global _DATASET_LOGGER_HANDLER
+    global _ACTIVE_DATASET
     logger = logging.getLogger("ray.data")
     logger.handlers.clear()
     logger.setLevel(logging.NOTSET)
+
+    _DATASET_LOGGER_HANDLER = {}
+    _ACTIVE_DATASET = None
 
 
 def get_log_directory() -> Optional[str]:
@@ -253,7 +258,24 @@ def _create_dataset_log_handler(dataset_id: str) -> SessionFileHandler:
     return handler
 
 
-def register_dataset_logger(dataset_id: str) -> None:
+def update_dataset_logger_for_worker(dataset_id: Optional[str]) -> None:
+    """Create a log handler for a dataset with the given ID. Switch the dataset logger
+    for the worker to this dataset logger. Note that only the driver keeps track of the
+    active dataset. The worker will just use the handler that the driver tells it to use.
+
+    Args:
+        dataset_id: The ID of the dataset.
+    """
+    if not dataset_id:
+        return
+    configure_logging()
+    log_handler = _create_dataset_log_handler(dataset_id)
+    loggers = [logging.getLogger(name) for name in _get_logger_names()]
+    for logger in loggers:
+        logger.addHandler(log_handler)
+
+
+def register_dataset_logger(dataset_id: str) -> Optional[int]:
     """Create a log handler for a dataset with the given ID. Activate the handler if
     this is the only active dataset. Otherwise, print a warning to that handler and
     keep it inactive until it becomes the only active dataset.
@@ -285,8 +307,10 @@ def register_dataset_logger(dataset_id: str) -> None:
         )
     local_logger.removeHandler(log_handler)
 
+    return _ACTIVE_DATASET
 
-def unregister_dataset_logger(dataset_id: str) -> None:
+
+def unregister_dataset_logger(dataset_id: str) -> Optional[int]:
     """Remove the logger for a dataset with the given ID.
 
     Args:
@@ -308,3 +332,5 @@ def unregister_dataset_logger(dataset_id: str) -> None:
         for logger in loggers:
             logger.removeHandler(log_handler)
         log_handler.close()
+
+    return _ACTIVE_DATASET

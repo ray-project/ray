@@ -458,11 +458,11 @@ ray_cc_library(
     srcs = ["experimental_mutable_object_manager.cc"],
     hdrs = ["experimental_mutable_object_manager.h"],
     deps = [
-        "//:object_manager_common",
         "//src/ray/common:ray_config",
         "//src/ray/common:ray_object",
         "//src/ray/common:status",
         "//src/ray/common:task_common",
+        "//src/ray/object_manager:object_manager_common",
         "//src/ray/object_manager/plasma:plasma_client",
         "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/strings",
@@ -576,5 +576,6 @@ ray_cc_library(
     deps = [
         "//src/ray/util:logging",
         "@boost//:asio",
+        "@boost//:thread",
     ],
 )

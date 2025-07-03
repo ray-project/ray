@@ -9,6 +9,7 @@ aws-eks-gpu-cluster
 gcp-gke-gpu-cluster
 gcp-gke-tpu-cluster
 azure-aks-gpu-cluster
+ack-gpu-cluster
 ```
 
 Most KubeRay documentation examples only require a local Kubernetes cluster such as [Kind](https://kind.sigs.k8s.io/).
@@ -29,3 +30,6 @@ We collect a few helpful links for users who are getting started with a managed 
 (aks-setup)=
 # Set up an AKS cluster (Microsoft Azure)
 - {ref}`kuberay-aks-gpu-cluster-setup`
+
+# Set up an ACK cluster (Alibaba Cloud)
+- {ref}`kuberay-ack-gpu-cluster-setup`

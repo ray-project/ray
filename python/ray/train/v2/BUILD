@@ -86,6 +86,22 @@ py_test(
 )
 
 py_test(
+    name = "test_env_callbacks",
+    size = "small",
+    srcs = ["tests/test_env_callbacks.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    tags = [
+        "exclusive",
+        "team:ml",
+        "train_v2",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_failure_policy",
     size = "small",
     srcs = ["tests/test_failure_policy.py"],
@@ -217,6 +233,22 @@ py_test(
     name = "test_scheduling",
     size = "medium",
     srcs = ["tests/test_scheduling.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    tags = [
+        "exclusive",
+        "team:ml",
+        "train_v2",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_serialization",
+    size = "small",
+    srcs = ["tests/test_serialization.py"],
     env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",

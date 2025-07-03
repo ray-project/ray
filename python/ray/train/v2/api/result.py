@@ -10,7 +10,6 @@ from ray.air.result import Result as ResultV1
 from ray.train.v2.api.exceptions import TrainingFailedError
 from ray.util.annotations import Deprecated, PublicAPI
 
-
 logger = logging.getLogger(__name__)
 
 

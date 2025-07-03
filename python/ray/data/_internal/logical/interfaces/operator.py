@@ -1,4 +1,4 @@
-from typing import Iterator, List, Callable
+from typing import Callable, Iterator, List
 
 
 class Operator:

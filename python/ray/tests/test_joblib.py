@@ -1,11 +1,11 @@
-import joblib
 import sys
 import time
 import os
-import pytest
 from unittest import mock
 
+import joblib
 import pickle
+import pytest
 import numpy as np
 
 from sklearn.datasets import load_digits, load_iris
@@ -21,8 +21,10 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.neural_network import MLPClassifier
 from sklearn.model_selection import cross_val_score
 
-from ray.util.joblib import register_ray
 import ray
+from ray.util.joblib import register_ray
+from ray.util.joblib.ray_backend import RayBackend
+from ray._common.test_utils import wait_for_condition
 
 
 def test_register_ray():
@@ -33,7 +35,6 @@ def test_register_ray():
 
 def test_ray_backend(shutdown_only):
     register_ray()
-    from ray.util.joblib.ray_backend import RayBackend
 
     with joblib.parallel_backend("ray"):
         assert type(joblib.parallel.get_active_backend()[0]) is RayBackend
@@ -192,10 +193,51 @@ def test_ray_remote_args(shutdown_only):
         joblib.Parallel()(joblib.delayed(check_resource)() for i in range(8))
 
 
-if __name__ == "__main__":
-    import pytest
+def test_task_to_actor_assignment(shutdown_only):
+    ray.init(num_cpus=4)
 
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    @ray.remote(num_cpus=0)
+    class Counter:
+        def __init__(self):
+            self._c = 0
+
+        def inc(self):
+            self._c += 1
+
+        def get(self) -> int:
+            return self._c
+
+    counter = Counter.remote()
+
+    def worker_func(worker_id):
+        launch_time = time.time()
+
+        # Wait for all 4 workers to have started.
+        ray.get(counter.inc.remote())
+        wait_for_condition(lambda: ray.get(counter.get.remote()) == 4)
+
+        return worker_id, launch_time
+
+    output = []
+    num_workers = 4
+    register_ray()
+    with joblib.parallel_backend("ray", n_jobs=-1):
+        output = joblib.Parallel()(
+            joblib.delayed(worker_func)(worker_id) for worker_id in range(num_workers)
+        )
+
+    worker_ids = set()
+    launch_times = []
+    for worker_id, launch_time in output:
+        worker_ids.add(worker_id)
+        launch_times.append(launch_time)
+
+    assert len(worker_ids) == num_workers
+
+    for i in range(num_workers):
+        for j in range(i + 1, num_workers):
+            assert abs(launch_times[i] - launch_times[j]) < 1
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-sv", __file__]))

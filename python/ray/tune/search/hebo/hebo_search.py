@@ -420,7 +420,6 @@ class HEBOSearch(Searcher):
                         "type": "pow",
                         "lb": domain.lower,
                         "ub": domain.upper,
-                        "base": sampler.base,
                     }
                 elif isinstance(sampler, Uniform):
                     return {
@@ -437,7 +436,6 @@ class HEBOSearch(Searcher):
                         "type": "pow_int",
                         "lb": domain.lower,
                         "ub": domain.upper - 1,  # Upper bound exclusive
-                        "base": sampler.base,
                     }
                 elif isinstance(sampler, Uniform):
                     return {

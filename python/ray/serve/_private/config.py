@@ -6,34 +6,40 @@ from google.protobuf.descriptor import FieldDescriptor
 from google.protobuf.message import Message
 
 from ray import cloudpickle
-from ray._private import ray_option_utils
-from ray._private.pydantic_compat import (
+from ray._common.pydantic_compat import (
     BaseModel,
     Field,
     NonNegativeFloat,
     NonNegativeInt,
     PositiveFloat,
     PositiveInt,
+    root_validator,
     validator,
 )
+from ray._common.utils import import_attr, resources_from_ray_options
+from ray._private import ray_option_utils
 from ray._private.serialization import pickle_dumps
-from ray._private.utils import resources_from_ray_options
 from ray.serve._private.constants import (
     DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S,
     DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S,
     DEFAULT_HEALTH_CHECK_PERIOD_S,
     DEFAULT_HEALTH_CHECK_TIMEOUT_S,
     DEFAULT_MAX_ONGOING_REQUESTS,
+    DEFAULT_REQUEST_ROUTER_PATH,
+    DEFAULT_REQUEST_ROUTING_STATS_PERIOD_S,
+    DEFAULT_REQUEST_ROUTING_STATS_TIMEOUT_S,
     MAX_REPLICAS_PER_NODE_MAX_VALUE,
 )
 from ray.serve._private.utils import DEFAULT, DeploymentOptionUpdateType
 from ray.serve.config import AutoscalingConfig
-from ray.serve.generated.serve_pb2 import AutoscalingConfig as AutoscalingConfigProto
-from ray.serve.generated.serve_pb2 import DeploymentConfig as DeploymentConfigProto
-from ray.serve.generated.serve_pb2 import DeploymentLanguage
-from ray.serve.generated.serve_pb2 import EncodingType as EncodingTypeProto
-from ray.serve.generated.serve_pb2 import LoggingConfig as LoggingConfigProto
-from ray.serve.generated.serve_pb2 import ReplicaConfig as ReplicaConfigProto
+from ray.serve.generated.serve_pb2 import (
+    AutoscalingConfig as AutoscalingConfigProto,
+    DeploymentConfig as DeploymentConfigProto,
+    DeploymentLanguage,
+    EncodingType as EncodingTypeProto,
+    LoggingConfig as LoggingConfigProto,
+    ReplicaConfig as ReplicaConfigProto,
+)
 from ray.util.placement_group import validate_placement_group
 
 
@@ -115,6 +121,10 @@ class DeploymentConfig(BaseModel):
         health_check_timeout_s: Timeout that the controller waits for a
             response from the replica's health check before marking it
             unhealthy.
+        request_routing_stats_period_s: Frequency at which the controller
+            record request routing stats.
+        request_routing_stats_timeout_s: Timeout that the controller waits
+            for a response from the replica's record routing stats call.
         autoscaling_config: Autoscaling configuration.
         logging_config: Configuration for deployment logs.
         user_configured_option_names: The names of options manually
@@ -153,6 +163,14 @@ class DeploymentConfig(BaseModel):
         default=DEFAULT_HEALTH_CHECK_TIMEOUT_S,
         update_type=DeploymentOptionUpdateType.NeedsReconfigure,
     )
+    request_routing_stats_period_s: PositiveFloat = Field(
+        default=DEFAULT_REQUEST_ROUTING_STATS_PERIOD_S,
+        update_type=DeploymentOptionUpdateType.NeedsReconfigure,
+    )
+    request_routing_stats_timeout_s: PositiveFloat = Field(
+        default=DEFAULT_REQUEST_ROUTING_STATS_TIMEOUT_S,
+        update_type=DeploymentOptionUpdateType.NeedsReconfigure,
+    )
 
     autoscaling_config: Optional[AutoscalingConfig] = Field(
         default=None, update_type=DeploymentOptionUpdateType.NeedsActorReconfigure
@@ -163,7 +181,7 @@ class DeploymentConfig(BaseModel):
     is_cross_language: bool = False
 
     # This flag is used to let controller know which language does
-    # the deploymnent use.
+    # the deployment use.
     deployment_language: Any = DeploymentLanguage.PYTHON
 
     version: Optional[str] = Field(
@@ -178,6 +196,14 @@ class DeploymentConfig(BaseModel):
 
     # Contains the names of deployment options manually set by the user
     user_configured_option_names: Set[str] = set()
+
+    # Cloudpickled request router class.
+    serialized_request_router_cls: bytes = Field(default=b"")
+
+    # Custom request router config. Defaults to the power of two request router.
+    request_router_class: Union[str, Callable] = Field(
+        default=DEFAULT_REQUEST_ROUTER_PATH
+    )
 
     class Config:
         validate_assignment = True
@@ -221,6 +247,33 @@ class DeploymentConfig(BaseModel):
             )
 
         return v
+
+    @root_validator
+    def import_and_serialize_request_router_cls(cls, values) -> Dict[str, Any]:
+        """Import and serialize request router class with cloudpickle.
+
+        Import the request router if it's passed in as a string import path.
+        Then cloudpickle the request router and set to
+        `serialized_request_router_cls`.
+        """
+        request_router_class = values.get("request_router_class")
+        if isinstance(request_router_class, Callable):
+            request_router_class = (
+                f"{request_router_class.__module__}.{request_router_class.__name__}"
+            )
+
+        request_router_path = request_router_class or DEFAULT_REQUEST_ROUTER_PATH
+        request_router_class = import_attr(request_router_path)
+
+        values["serialized_request_router_cls"] = cloudpickle.dumps(
+            request_router_class
+        )
+        values["request_router_class"] = request_router_path
+        return values
+
+    def get_request_router_class(self) -> Callable:
+        """Deserialize request router from cloudpickled bytes."""
+        return cloudpickle.loads(self.serialized_request_router_cls)
 
     def needs_pickle(self):
         return _needs_pickle(self.deployment_language, self.is_cross_language)

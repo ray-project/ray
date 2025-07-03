@@ -1,23 +1,19 @@
 import json
 import logging
+import sys
 from collections import defaultdict
 from typing import Dict, Optional
 
-from ray._private.protobuf_compat import message_to_dict
-
 import ray
+from ray._common.utils import binary_to_hex, decode, hex_to_binary
 from ray._private.client_mode_hook import client_mode_hook
-from ray._private.resource_spec import NODE_ID_PREFIX, HEAD_NODE_RESOURCE_NAME
+from ray._private.protobuf_compat import message_to_dict
+from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME, NODE_ID_PREFIX
 from ray._private.utils import (
-    binary_to_hex,
-    decode,
-    hex_to_binary,
     validate_actor_state_name,
 )
 from ray._raylet import GlobalStateAccessor
-from ray.core.generated import common_pb2
-from ray.core.generated import gcs_pb2
-from ray.core.generated import autoscaler_pb2
+from ray.core.generated import autoscaler_pb2, common_pb2, gcs_pb2
 from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
@@ -766,7 +762,7 @@ class GlobalState:
             for resource_id, capacity in message.resources_available.items():
                 dynamic_resources[resource_id] = capacity
             # Update available resources for this node.
-            node_id = ray._private.utils.binary_to_hex(message.node_id)
+            node_id = ray._common.utils.binary_to_hex(message.node_id)
             available_resources_by_id[node_id] = dynamic_resources
 
         return available_resources_by_id
@@ -784,7 +780,7 @@ class GlobalState:
             for resource_id, capacity in message.resources_total.items():
                 node_resources[resource_id] = capacity
             # Update total resources for this node.
-            node_id = ray._private.utils.binary_to_hex(message.node_id)
+            node_id = ray._common.utils.binary_to_hex(message.node_id)
             total_resources_by_node[node_id] = node_resources
 
         return total_resources_by_node
@@ -851,6 +847,31 @@ class GlobalState:
         if serialized_cluster_config:
             return autoscaler_pb2.ClusterConfig.FromString(serialized_cluster_config)
         return None
+
+    def get_max_resources_from_cluster_config(self) -> Optional[int]:
+        config = self.get_cluster_config()
+        if config is None:
+            return None
+
+        def calculate_max_resource_from_cluster_config(key: str) -> Optional[int]:
+            max_value = 0
+            for node_group_config in config.node_group_configs:
+                num_cpus = node_group_config.resources.get(key, default=0)
+                num_nodes = node_group_config.max_count
+                if num_nodes == 0 or num_cpus == 0:
+                    continue
+                if num_nodes == -1 or num_cpus == -1:
+                    return sys.maxsize
+                max_value += num_nodes * num_cpus
+            if max_value == 0:
+                return None
+            max_value_limit = config.max_resources.get(key, default=sys.maxsize)
+            return min(max_value, max_value_limit)
+
+        return {
+            key: calculate_max_resource_from_cluster_config(key)
+            for key in ["CPU", "GPU", "TPU"]
+        }
 
 
 state = GlobalState()

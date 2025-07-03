@@ -34,10 +34,7 @@ py_test_module_list(
 py_test_module_list(
     size = "small",
     files = [
-        "test_actor_replica_wrapper.py",
         "test_advanced.py",
-        "test_backpressure.py",
-        "test_batching.py",
         "test_cluster_node_info_cache.py",
         "test_constructor_failure.py",
         "test_controller.py",
@@ -66,6 +63,9 @@ py_test_module_list(
 py_test_module_list(
     size = "medium",
     files = [
+        "test_actor_replica_wrapper.py",
+        "test_backpressure.py",
+        "test_batching.py",
         "test_callback.py",
         "test_cluster.py",
         "test_controller_recovery.py",
@@ -83,6 +83,7 @@ py_test_module_list(
         "test_multiplex.py",
         "test_proxy_response_generator.py",
         "test_ray_client.py",
+        "test_record_routing_stats.py",
         "test_replica_placement_group.py",
         "test_request_timeout.py",
         "test_streaming_response.py",

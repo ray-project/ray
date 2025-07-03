@@ -5,7 +5,6 @@ from libcpp.vector cimport vector as c_vector
 from ray.includes.common cimport (
     CObjectLocation,
     CGcsClientOptions,
-    CPythonGcsPublisher,
     CPythonGcsSubscriber,
     kWorkerSetupHookKeyName,
     kResourceUnitScaling,
@@ -14,6 +13,7 @@ from ray.includes.common cimport (
     kGcsAutoscalerStateNamespace,
     kGcsAutoscalerV2EnabledKey,
     kGcsAutoscalerClusterConfigKey,
+    kGcsPidKey,
 )
 
 from ray.exceptions import (
@@ -127,3 +127,4 @@ STREAMING_GENERATOR_RETURN = kStreamingGeneratorReturn
 GCS_AUTOSCALER_STATE_NAMESPACE = kGcsAutoscalerStateNamespace.decode()
 GCS_AUTOSCALER_V2_ENABLED_KEY = kGcsAutoscalerV2EnabledKey.decode()
 GCS_AUTOSCALER_CLUSTER_CONFIG_KEY = kGcsAutoscalerClusterConfigKey.decode()
+GCS_PID_KEY = kGcsPidKey.decode()

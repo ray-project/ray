@@ -279,15 +279,9 @@ class _DeploymentResponseBase:
         if self._replica_result is None:
             # Use `asyncio.wrap_future` so `self._replica_result_future` can be awaited
             # safely from any asyncio loop.
-            try:
-                self._replica_result = await asyncio.wrap_future(
-                    self._replica_result_future
-                )
-            except asyncio.CancelledError:
-                if self._cancelled:
-                    raise RequestCancelledError(self.request_id) from None
-                else:
-                    raise asyncio.CancelledError from None
+            self._replica_result = await asyncio.wrap_future(
+                self._replica_result_future
+            )
 
         return self._replica_result
 
@@ -315,11 +309,16 @@ class _DeploymentResponseBase:
             return
 
         self._cancelled = True
-        if not self._replica_result_future.done():
-            self._replica_result_future.cancel()
-        elif self._replica_result_future.exception() is None:
+        self._replica_result_future.cancel()
+        try:
+            # try to fetch the results synchronously. if it succeeds,
+            # we will explicitly cancel the replica result. if it fails,
+            # the request is already cancelled and we can return early.
             self._fetch_future_result_sync()
-            self._replica_result.cancel()
+        except RequestCancelledError:
+            # request is already cancelled nothing to do here
+            return
+        self._replica_result.cancel()
 
     @DeveloperAPI
     def cancelled(self) -> bool:
@@ -403,9 +402,15 @@ class DeploymentResponse(_DeploymentResponseBase):
 
     def __await__(self):
         """Yields the final result of the deployment handle call."""
-        replica_result = yield from self._fetch_future_result_async().__await__()
-        result = yield from replica_result.get_async().__await__()
-        return result
+        try:
+            replica_result = yield from self._fetch_future_result_async().__await__()
+            result = yield from replica_result.get_async().__await__()
+            return result
+        except asyncio.CancelledError:
+            if self._cancelled:
+                raise RequestCancelledError(self.request_id) from None
+            else:
+                raise asyncio.CancelledError from None
 
     def __reduce__(self):
         raise RayServeException(
@@ -566,8 +571,14 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
         return self
 
     async def __anext__(self) -> Any:
-        replica_result = await self._fetch_future_result_async()
-        return await replica_result.__anext__()
+        try:
+            replica_result = await self._fetch_future_result_async()
+            return await replica_result.__anext__()
+        except asyncio.CancelledError:
+            if self._cancelled:
+                raise RequestCancelledError(self.request_id) from None
+            else:
+                raise asyncio.CancelledError from None
 
     def __iter__(self) -> Iterator[Any]:
         return self
@@ -653,7 +664,7 @@ class DeploymentHandle(_DeploymentHandleBase):
                 self._downstream_handle = handle
 
             async def __call__(self, name: str) -> str:
-                response = self._handle.say_hi.remote(name)
+                response = self._downstream_handle.say_hi.remote(name)
                 return await response
 
         app = Ingress.bind(Downstream.bind())
