@@ -368,14 +368,21 @@ def test_concurrency(shutdown_only):
         ds.map(UDFClass).take_all()
 
 
-def test_flat_map_generator(ray_start_regular_shared):
+@pytest.mark.parametrize("udf_kind", ["gen", "func"])
+def test_flat_map(ray_start_regular_shared, udf_kind):
     ds = ray.data.range(3)
 
-    def map_generator(item: dict) -> Iterator[int]:
-        for _ in range(2):
-            yield {"id": item["id"] + 1}
+    if udf_kind == "gen":
+        def _udf(item: dict) -> Iterator[int]:
+            for _ in range(2):
+                yield {"id": item["id"] + 1}
+    elif udf_kind == "func":
+        def _udf(item: dict) -> dict:
+            return [{"id": item["id"] + 1} for _ in range(2)]
+    else:
+        pytest.fail(f"Invalid udf_kind: {udf_kind}")
 
-    assert sorted(extract_values("id", ds.flat_map(map_generator).take())) == [
+    assert sorted(extract_values("id", ds.flat_map(_udf).take())) == [
         1,
         1,
         2,
