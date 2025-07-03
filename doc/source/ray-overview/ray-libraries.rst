@@ -91,10 +91,10 @@ more information.
             .. image:: https://img.shields.io/github/stars/daft/daft?style=social)]
                 :target: https://github.com/Eventual-Inc/Daft
 
-            Daft is a data engine that supports SQL and Python DataFrames for data processing and analytics natively on your Ray clusters.
+            Daft is a high-performance distributed query engine that provides simple and reliable data processing for any modality. Daft's native integration with Ray enables you to run distributed workloads at scale across a cluster of machines. 
 
         +++
-        .. button-link:: https://www.getdaft.io
+        .. button-link:: https://www.daft.ai
             :color: primary
             :outline:
             :expand:
