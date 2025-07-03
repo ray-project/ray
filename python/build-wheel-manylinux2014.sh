@@ -2,13 +2,11 @@
 
 set -exuo pipefail
 
-SETUP_BUILD_USER=${SETUP_BUILD_USER:-false}
+# Host user UID/GID
+HOST_UID=${HOST_UID:-$(id -u)}
+HOST_GID=${HOST_GID:-$(id -g)}
 
-if [ "$SETUP_BUILD_USER" != "false" ]; then
-
-  # Host user UID/GID
-  HOST_UID=$(id -u)
-  HOST_GID=$(id -g)
+if [ "$EUID" -eq 0 ]; then
 
   # Install sudo
   yum -y install sudo
@@ -19,6 +17,9 @@ if [ "$SETUP_BUILD_USER" != "false" ]; then
 
   # Give sudo access
   echo "builduser ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+
+  echo "Switching to builduser with args: $@"
+  exec sudo -u builduser bash "$0" "$@"
 
   exit 0
 
