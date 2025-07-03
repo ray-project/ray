@@ -170,9 +170,14 @@ def _initialize_env_callbacks() -> List[Callback]:
             module_path, class_name = callback_path.rsplit(".", 1)
             module = importlib.import_module(module_path)
             callback_cls = getattr(module, class_name)
+            if not issubclass(callback_cls, Callback):
+                raise ValueError(
+                    f"Callback class '{callback_path}' must be a subclass of "
+                    f"Callback, got {type(callback_cls).__name__}"
+                )
             callback = callback_cls()
             callbacks.append(callback)
         except (ImportError, AttributeError, ValueError) as e:
-            raise ValueError(f"Failed to import callback from '{callback_path}': {e}")
+            raise ValueError(f"Failed to import callback from '{callback_path}'") from e
 
     return callbacks

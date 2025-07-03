@@ -3,71 +3,100 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from ray.tune.utils.callback import _initialize_env_callbacks
+from ray.tune.constants import RAY_TUNE_CALLBACKS_ENV_VAR
+from ray.tune.utils.callback import Callback, _initialize_env_callbacks
 
 
-def _create_mock_callback_setup():
-    """Helper to create mock callback setup."""
-    mock_callback = MagicMock()
-    mock_module = MagicMock()
-    mock_module.MockCallback = MagicMock(return_value=mock_callback)
-    return mock_callback, mock_module
+class MockCallback(Callback):
+    pass
 
 
+@pytest.mark.parametrize(
+    "env_value,expected_callback_count",
+    [
+        ("my.module.Callback1", 1),
+        ("module1.Callback1,module2.Callback2", 2),
+        ("", 0),
+        ("   ", 0),
+        ("module.Callback1, ,module.Callback2", 2),
+    ],
+)
 @patch("importlib.import_module")
-@patch.dict(os.environ, {"RAY_TUNE_CALLBACKS": "my.module.TestCallback"})
-def test_env_callbacks_loaded(mock_import):
-    """Test loading execution callbacks from environment variable."""
-    mock_callback, mock_module = _create_mock_callback_setup()
-    mock_module.TestCallback = MagicMock(return_value=mock_callback)
-    mock_import.return_value = mock_module
+def test_env_callbacks_loading(mock_import, env_value, expected_callback_count):
+    """Test loading execution callbacks from environment variable with various inputs."""
+    if env_value:
+        with patch.dict(os.environ, {RAY_TUNE_CALLBACKS_ENV_VAR: env_value}):
+            mock_module = MagicMock()
+            mock_module.Callback1 = MockCallback
+            mock_module.Callback2 = MockCallback
+            mock_import.return_value = mock_module
 
-    callbacks = _initialize_env_callbacks()
+            callbacks = _initialize_env_callbacks()
 
-    mock_import.assert_called_once_with("my.module")
-    assert len([c for c in callbacks if c is mock_callback]) == 1
+            assert len(callbacks) == expected_callback_count
+            for callback in callbacks:
+                assert isinstance(callback, MockCallback)
+    else:
+        with patch.dict(
+            os.environ, {RAY_TUNE_CALLBACKS_ENV_VAR: env_value}, clear=True
+        ):
+            callbacks = _initialize_env_callbacks()
+            assert len(callbacks) == 0
 
 
+@pytest.mark.parametrize(
+    "env_value,original_error_type",
+    [
+        ("invalid_module", ValueError),
+        ("module.Class", ValueError),
+        ("module.NonExistentClass", AttributeError),
+    ],
+)
 @patch("importlib.import_module")
-@patch.dict(os.environ, {"RAY_TUNE_CALLBACKS": "module1.Callback1,module2.Callback2"})
-def test_multiple_env_callbacks(mock_import):
-    """Test loading multiple callbacks from environment variable."""
-    mock_callback1, mock_module1 = _create_mock_callback_setup()
-    mock_callback2, mock_module2 = _create_mock_callback_setup()
-    mock_module1.Callback1 = MagicMock(return_value=mock_callback1)
-    mock_module2.Callback2 = MagicMock(return_value=mock_callback2)
+def test_callback_loading_errors(mock_import, env_value, original_error_type):
+    """Test handling of various error conditions when loading callbacks."""
+    with patch.dict(os.environ, {RAY_TUNE_CALLBACKS_ENV_VAR: env_value}):
+        if "invalid_module" in env_value:
+            pass
+        elif "NonExistentClass" in env_value:
+            mock_module = MagicMock()
+            del mock_module.NonExistentClass
+            mock_import.return_value = mock_module
+        else:
+            mock_module = MagicMock()
 
-    def side_effect(name):
-        return {"module1": mock_module1, "module2": mock_module2}[name]
+            class RegularClass:
+                pass
 
-    mock_import.side_effect = side_effect
+            mock_module.Class = RegularClass
+            mock_import.return_value = mock_module
 
-    callbacks = _initialize_env_callbacks()
+        with pytest.raises(
+            ValueError, match=f"Failed to import callback from '{env_value}'"
+        ) as exc_info:
+            _initialize_env_callbacks()
 
-    assert len([c for c in callbacks if c is mock_callback1]) == 1
-    assert len([c for c in callbacks if c is mock_callback2]) == 1
-
-
-@patch.dict(os.environ, {"RAY_TUNE_CALLBACKS": "invalid_module"})
-def test_invalid_callback_path():
-    """Test handling of invalid callback paths in environment variable."""
-    with pytest.raises(ValueError):
-        _initialize_env_callbacks()
+        assert isinstance(exc_info.value.__cause__, original_error_type)
 
 
-@patch("importlib.import_module")
-@patch.dict(os.environ, {"RAY_TUNE_CALLBACKS": "nonexistent.module.TestCallback"})
-def test_import_error_handling(mock_import):
+def test_import_error_handling():
     """Test handling of import errors when loading callbacks."""
-    mock_import.side_effect = ImportError("No module named 'nonexistent'")
-    with pytest.raises(ValueError):
-        _initialize_env_callbacks()
+    with patch.dict(
+        os.environ, {RAY_TUNE_CALLBACKS_ENV_VAR: "nonexistent.module.TestCallback"}
+    ):
+        with pytest.raises(
+            ValueError,
+            match="Failed to import callback from 'nonexistent.module.TestCallback'",
+        ) as exc_info:
+            _initialize_env_callbacks()
+
+        assert isinstance(exc_info.value.__cause__, ImportError)
 
 
 def test_no_env_variable():
     """Test that no callbacks are loaded when environment variable is not set."""
-    if "RAY_TUNE_CALLBACKS" in os.environ:
-        del os.environ["RAY_TUNE_CALLBACKS"]
+    if RAY_TUNE_CALLBACKS_ENV_VAR in os.environ:
+        del os.environ[RAY_TUNE_CALLBACKS_ENV_VAR]
 
     callbacks = _initialize_env_callbacks()
     assert len(callbacks) == 0
