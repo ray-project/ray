@@ -536,8 +536,8 @@ class RequestRouter(ABC):
 
     def initialize_state(self, **kwargs):
         """
-        Initialize the state of the request router. Called by framework with the
-        contents of RequestRouter.request_router_kwargs
+        Initialize the state of the request router. Called by the Ray Serve framework with the
+        contents of `RequestRouter.request_router_kwargs`.
         """
         pass
 

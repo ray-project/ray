@@ -8,7 +8,7 @@ public class RouterConfig implements Serializable {
   private Double requestRoutingStatsPeriodS = Constants.DEFAULT_REQUEST_ROUTING_STATS_PERIOD_S;
 
   /**
-   * Timeout that the controller will wait for a response from the replica's request routing stats
+   * Timeout that the controller waits for a response from the replica's request routing stats
    * before retrying.
    */
   private Double requestRoutingStatsTimeoutS = Constants.DEFAULT_REQUEST_ROUTING_STATS_TIMEOUT_S;
