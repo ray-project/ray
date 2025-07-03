@@ -24,7 +24,7 @@ The following example uses the :class:`vLLMEngineProcessorConfig <ray.data.llm.v
 
 To run this example, install vLLM, which is a popular and optimized LLM inference engine.
 
-.. testcode::
+.. code-block:: bash
 
     # Later versions *should* work but are not tested yet.
     pip install -U vllm==0.7.2
