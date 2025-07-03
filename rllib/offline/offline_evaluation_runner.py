@@ -100,32 +100,10 @@ class OfflineEvaluationRunner(Runner, Checkpointable):
 
     def _create_batch_iterator(self, **kwargs) -> Iterable:
 
-        # Define the collate function that converts the flattened dictionary
-        # to a `MultiAgentBatch` with Tensors.
-        def _collate_fn(_batch: Dict[str, numpy.ndarray]) -> MultiAgentBatch:
-            _batch = unflatten_dict(_batch)
-            _batch = MultiAgentBatch(
-                {
-                    module_id: SampleBatch(module_data)
-                    for module_id, module_data in _batch.items()
-                },
-                env_steps=sum(
-                    len(next(iter(module_data.values())))
-                    for module_data in _batch.values()
-                ),
-            )
-            _batch = self._convert_batch_type(_batch, to_device=False)
-            return _batch
-
-        # Define the finalize function that makes the host-to-device transfer.
-        def _finalize_fn(batch: MultiAgentBatch) -> MultiAgentBatch:
-            return self._convert_batch_type(batch, to_device=True, use_stream=True)
-
         # Return a minibatch iterator.
         return MiniBatchRayDataIterator(
             iterator=self._dataset_iterator,
-            collate_fn=_collate_fn,
-            finalize_fn=_finalize_fn,
+            device=self._device,
             minibatch_size=self.config.offline_eval_batch_size_per_runner,
             num_iters=self.config.dataset_num_iters_per_eval_runner,
             **kwargs,
