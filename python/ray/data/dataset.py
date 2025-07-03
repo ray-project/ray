@@ -134,6 +134,7 @@ if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces import Executor, NodeIdStr
     from ray.data.grouped_data import GroupedData
 
+from ray.data.expressions import AliasExpr, Expr, eval_expr
 
 logger = logging.getLogger(__name__)
 
@@ -154,6 +155,7 @@ CD_API_GROUP = "Consuming Data"
 IOC_API_GROUP = "I/O and Conversion"
 IM_API_GROUP = "Inspecting Metadata"
 E_API_GROUP = "Execution"
+EXPRESSION_API_GROUP = "Expressions"
 
 
 @PublicAPI
@@ -775,6 +777,87 @@ class Dataset:
         )
         logical_plan = LogicalPlan(map_batches_op, self.context)
         return Dataset(plan, logical_plan)
+
+    @PublicAPI(api_group=EXPRESSION_API_GROUP)
+    def with_column(
+        self,
+        *exprs: Expr,
+        batch_format: Optional[str] = "pandas",
+        compute: Optional[str] = None,
+        concurrency: Optional[int] = None,
+        **ray_remote_args,
+    ) -> "Dataset":
+        """
+        Add a new column to the dataset.
+
+        Examples:
+
+            >>> import ray
+            >>> ds = ray.data.range(100)
+            >>> ds.with_column((col("id") * 2).alias("new_id")).schema()
+            Column  Type
+            ------  ----
+            id      int64
+            new_id  int64
+        Args:
+            exprs: The expressions to evaluate to produce the new column values.
+            batch_format: If ``"numpy"``, batches are
+                ``Dict[str, numpy.ndarray]``. If ``"pandas"``, batches are
+                ``pandas.DataFrame``. If ``"pyarrow"``, batches are
+                ``pyarrow.Table``.
+
+        Returns:
+            A new dataset with the added column.
+        """
+        if not exprs:
+            raise ValueError("at least one expression is required")
+
+        accepted_batch_formats = ["pandas", "pyarrow", "numpy"]
+        if batch_format not in accepted_batch_formats:
+            raise ValueError(
+                f"batch_format argument must be on of {accepted_batch_formats}, "
+                f"got: {batch_format}"
+            )
+
+        projections = {}
+        for expr in exprs:
+            if not isinstance(expr, Expr):
+                raise TypeError(f"Expected Expr, got: {type(expr)}")
+            if isinstance(expr, AliasExpr):
+                projections[expr.name] = expr.expr
+            else:
+                raise ValueError("Each expression must be `.alias(<output_name>)`-ed.")
+
+        def _project(batch):
+            if isinstance(batch, dict):
+                for name, ex in projections.items():
+                    batch[name] = eval_expr(ex, batch)
+                return batch
+
+            import pandas as pd
+
+            if isinstance(batch, pd.DataFrame):
+                for name, ex in projections.items():
+                    batch[name] = eval_expr(ex, batch)
+                return batch
+
+            import pyarrow as pa
+
+            if isinstance(batch, pa.Table):
+                tbl = batch
+                for name, ex in projections.items():
+                    arr = eval_expr(ex, batch)
+                    tbl = tbl.append_column(name, arr)
+                return tbl
+
+        return self.map_batches(
+            _project,
+            batch_format=batch_format,
+            compute=compute,
+            concurrency=concurrency,
+            zero_copy_batch=False,
+            **ray_remote_args,
+        )
 
     @PublicAPI(api_group=BT_API_GROUP)
     def add_column(
