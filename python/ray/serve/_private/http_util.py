@@ -718,6 +718,11 @@ async def start_asgi_http_server(
             f"Failed to bind to address '{http_options.host}:{http_options.port}'."
         ) from e
 
+    # Even though we set log_level=None, uvicorn adds MessageLoggerMiddleware
+    # if log level for uvicorn.error is not set. And MessageLoggerMiddleware
+    # of no use to us.
+    logging.getLogger("uvicorn.error").level = logging.CRITICAL
+
     # NOTE: We have to use lower level uvicorn Config and Server
     # class because we want to run the server as a coroutine. The only
     # alternative is to call uvicorn.run which is blocking.
