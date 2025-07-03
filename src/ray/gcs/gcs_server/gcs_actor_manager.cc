@@ -404,11 +404,14 @@ void GcsActorManager::HandleRegisterActor(rpc::RegisterActorRequest request,
 
   RAY_LOG(INFO).WithField(actor_id.JobId()).WithField(actor_id) << "Registering actor";
   Status status = RegisterActor(
-      request,
-      [reply, send_reply_callback, actor_id](const std::shared_ptr<gcs::GcsActor> &actor,
-                                             const Status &status) {
-        RAY_LOG(INFO) << "Registered actor, job id = " << actor_id.JobId()
-                      << ", actor id = " << actor_id;
+      request, [reply, send_reply_callback, actor_id](const Status &status) {
+        if (status.ok()) {
+          RAY_LOG(INFO).WithField(actor_id.JobId()).WithField(actor_id)
+              << "Registered actor";
+        } else {
+          RAY_LOG(WARNING).WithField(actor_id.JobId()).WithField(actor_id)
+              << "Failed to register actor: " << status.ToString();
+        }
         GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
       });
   if (!status.ok()) {
@@ -750,11 +753,8 @@ void GcsActorManager::HandleKillActorViaGcs(rpc::KillActorViaGcsRequest request,
 }
 
 Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &request,
-                                      RegisterActorCallback register_callback) {
+                                      std::function<void(Status)> register_callback) {
   RAY_CHECK(thread_checker_.IsOnSameThread());
-  // NOTE: After the abnormal recovery of the network between GCS client and GCS server or
-  // the GCS server is restarted, it is required to continue to register actor
-  // successfully.
   RAY_CHECK(register_callback);
   const auto &actor_creation_task_spec = request.task_spec().actor_creation_task_spec();
   auto actor_id = ActorID::FromBinary(actor_creation_task_spec.actor_id());
@@ -772,7 +772,7 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
       // 2. The GCS server flushes the actor to the storage and restarts before replying
       // to the GCS client.
       // 3. The GCS client resends the `RegisterActor` request to the GCS server.
-      register_callback(iter->second, Status::OK());
+      register_callback(Status::OK());
     }
     return Status::OK();
   }
@@ -814,7 +814,7 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
     }
   }
 
-  actor_to_register_callbacks_[actor_id].emplace_back(register_callback);
+  actor_to_register_callbacks_[actor_id].push_back(std::move(register_callback));
   registered_actors_.emplace(actor->GetActorID(), actor);
   function_manager_.AddJobReference(actor_id.JobId());
 
@@ -837,29 +837,32 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
   RAY_CHECK_OK(gcs_table_storage_->ActorTaskSpecTable().Put(
       actor_id,
       request.task_spec(),
-      {[this, actor, register_callback](Status status) {
+      {[this, actor](Status status) {
          RAY_CHECK_OK(gcs_table_storage_->ActorTable().Put(
              actor->GetActorID(),
              *actor->GetMutableActorTableData(),
-             {[this, actor, register_callback](Status status) {
+             {[this, actor](Status status) {
                 RAY_CHECK(thread_checker_.IsOnSameThread());
                 // The backend storage is supposed to be reliable, so the status must be
                 // ok.
                 RAY_CHECK_OK(status);
                 actor->WriteActorExportEvent();
                 auto registered_actor_it = registered_actors_.find(actor->GetActorID());
-                auto reply_status = Status::OK();
+                auto callback_iter =
+                    actor_to_register_callbacks_.find(actor->GetActorID());
+                RAY_CHECK(callback_iter != actor_to_register_callbacks_.end());
                 if (registered_actor_it == registered_actors_.end()) {
                   // NOTE(sang): This logic assumes that the ordering of backend call is
                   // guaranteed. It is currently true because we use a single TCP socket
                   // to call the default Redis backend. If ordering is not guaranteed, we
                   // should overwrite the actor state to DEAD to avoid race condition.
                   RAY_LOG(INFO).WithField(actor->GetActorID())
-                      << "Actor is killed before dependency is prepared.";
-                  RAY_CHECK(actor_to_register_callbacks_.find(actor->GetActorID()) ==
-                            actor_to_register_callbacks_.end());
-                  register_callback(
-                      actor, Status::SchedulingCancelled("Actor creation cancelled."));
+                      << "Actor was killed before it was persisted in GCS Table Storage. "
+                         "Owning worker should not try to create this actor";
+
+                  for (auto &callback : callback_iter->second) {
+                    callback(Status::SchedulingCancelled("Actor creation cancelled."));
+                  }
                   return;
                 }
 
@@ -869,14 +872,10 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
                 // (duplicated requests are included) and remove all of them from
                 // actor_to_register_callbacks_.
                 // Reply to the owner to indicate that the actor has been registered.
-                auto iter = actor_to_register_callbacks_.find(actor->GetActorID());
-                RAY_CHECK(iter != actor_to_register_callbacks_.end() &&
-                          !iter->second.empty());
-                auto callbacks = std::move(iter->second);
-                actor_to_register_callbacks_.erase(iter);
-                for (auto &callback : callbacks) {
-                  callback(actor, Status::OK());
+                for (auto &callback : callback_iter->second) {
+                  callback(Status::OK());
                 }
+                actor_to_register_callbacks_.erase(callback_iter);
               },
               io_context_}));
        },
@@ -1071,7 +1070,6 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
                                    std::function<void()> done_callback) {
   RAY_CHECK(thread_checker_.IsOnSameThread());
   RAY_LOG(INFO).WithField(actor_id.JobId()).WithField(actor_id) << "Destroying actor";
-  actor_to_register_callbacks_.erase(actor_id);
   actor_to_restart_for_lineage_reconstruction_callbacks_.erase(actor_id);
   auto it = registered_actors_.find(actor_id);
   if (it == registered_actors_.end()) {
@@ -1722,12 +1720,6 @@ const absl::flat_hash_map<NodeID, absl::flat_hash_map<WorkerID, ActorID>>
 const absl::flat_hash_map<ActorID, std::shared_ptr<GcsActor>>
     &GcsActorManager::GetRegisteredActors() const {
   return registered_actors_;
-}
-
-const absl::flat_hash_map<ActorID, std::vector<RegisterActorCallback>>
-    &GcsActorManager::GetActorRegisterCallbacks() const {
-  RAY_CHECK(thread_checker_.IsOnSameThread());
-  return actor_to_register_callbacks_;
 }
 
 void GcsActorManager::RemoveUnresolvedActor(const std::shared_ptr<GcsActor> &actor) {
