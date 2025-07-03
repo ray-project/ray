@@ -15,16 +15,20 @@ class HudiDatasource(Datasource):
     def __init__(
         self,
         table_uri: str,
+        mode: str,
+        hudi_options: Optional[Dict[str, str]] = None,
         storage_options: Optional[Dict[str, str]] = None,
     ):
         _check_import(self, module="hudi", package="hudi-python")
 
         self._table_uri = table_uri
-        self._storage_options = storage_options
+        self._mode = mode
+        self._hudi_options = hudi_options or {}
+        self._storage_options = storage_options or {}
 
     def get_read_tasks(self, parallelism: int) -> List["ReadTask"]:
         import pyarrow
-        from hudi import HudiTable
+        from hudi import HudiTableBuilder
 
         def _perform_read(
             table_uri: str,
@@ -38,7 +42,13 @@ class HudiDatasource(Datasource):
                 batch = file_group_reader.read_file_slice_by_base_file_path(p)
                 yield pyarrow.Table.from_batches([batch])
 
-        hudi_table = HudiTable(self._table_uri, self._storage_options)
+        hudi_table = (
+            HudiTableBuilder.from_base_uri(self._table_uri)
+            .with_hudi_options(self._hudi_options)
+            .with_storage_options(self._storage_options)
+            .with_hudi_option("hoodie.read.use.read_optimized.mode", "true")
+            .build()
+        )
 
         reader_options = {
             **hudi_table.storage_options(),
@@ -47,7 +57,26 @@ class HudiDatasource(Datasource):
 
         schema = hudi_table.get_schema()
         read_tasks = []
-        for file_slices_split in hudi_table.get_file_slices_splits(parallelism):
+        if self._mode == "snapshot":
+            file_slices_splits = hudi_table.get_file_slices_splits(parallelism)
+        elif self._mode == "incremental":
+            start_ts = self._hudi_options.get("hoodie.read.file_group.start_timestamp")
+            end_ts = self._hudi_options.get("hoodie.read.file_group.end_timestamp")
+            # TODO(xushiyan): add table API to return splits of file slices
+            def _split_into_chunks(data, num_chunks):
+                chunk_size = max(1, len(data) // num_chunks)
+                return [
+                    data[i : i + chunk_size] for i in range(0, len(data), chunk_size)
+                ]
+
+            file_slices = hudi_table.get_file_slices_between(start_ts, end_ts)
+            file_slices_splits = _split_into_chunks(file_slices, parallelism)
+        else:
+            raise ValueError(
+                f"Unsupported mode: {self._mode}. Supported modes are 'snapshot' and 'incremental'."
+            )
+
+        for file_slices_split in file_slices_splits:
             num_rows = 0
             relative_paths = []
             input_files = []
