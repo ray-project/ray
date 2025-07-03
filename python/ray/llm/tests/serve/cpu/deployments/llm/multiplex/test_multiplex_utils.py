@@ -3,9 +3,7 @@ from unittest.mock import Mock, call, patch
 
 import pytest
 
-from ray.llm._internal.serve.deployments.llm.multiplex.utils import (
-    retry_with_exponential_backoff,
-)
+from ray.llm._internal.common.utils.lora_utils import retry_with_exponential_backoff
 
 
 def test_retry_success_first_try():
