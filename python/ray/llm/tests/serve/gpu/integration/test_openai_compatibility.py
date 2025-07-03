@@ -85,7 +85,6 @@ class TestOpenAICompatibility:
             frequency_penalty=0.02,
             max_tokens=5
         ):
-            print(chat_completion)
             if i == 0:
                 assert chat_completion
                 assert chat_completion.id
