@@ -46,7 +46,7 @@ from ray.serve._private.utils import (
     generate_request_id,
     serve_encoders,
 )
-from ray.serve.config import HTTPOptions
+from ray.serve.config import HTTPOptions, gRPCOptions
 from ray.serve.exceptions import (
     BackPressureError,
     DeploymentUnavailableError,
@@ -797,6 +797,16 @@ def send_http_response_on_exception(
         status.message,
         status_code=status.code,
     )
+
+
+def set_proxy_default_grpc_options(grpc_options) -> gRPCOptions:
+    grpc_options = deepcopy(grpc_options) or gRPCOptions()
+
+    grpc_options.request_timeout_s = (
+        grpc_options.request_timeout_s or RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S
+    )
+
+    return grpc_options
 
 
 def configure_http_options_with_defaults(http_options: HTTPOptions) -> HTTPOptions:
