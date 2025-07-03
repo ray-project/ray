@@ -352,9 +352,8 @@ Status ActorInfoAccessor::SyncRegisterActor(const ray::TaskSpecification &task_s
   auto status = client_impl_->GetGcsRpcClient().SyncRegisterActor(
       request, &reply, GetGcsTimeoutMs());
   // If gRPC status is ok return the GCS status, otherwise return the gRPC status.
-  return status.ok()
-             ? Status::OK()
-             : Status(StatusCode(reply.status().code()), reply.status().message());
+  return status.ok() ? Status(StatusCode(reply.status().code()), reply.status().message())
+                     : status;
 }
 
 Status ActorInfoAccessor::AsyncKillActor(const ActorID &actor_id,
