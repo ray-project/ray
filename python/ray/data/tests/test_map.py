@@ -1746,22 +1746,29 @@ def test_nonserializable_map_batches(shutdown_only):
         x.map_batches(lambda _: lock).take(1)
 
 
-def test_map_batches_async_generator(shutdown_only):
+@pytest.mark.parametrize("udf_kind", ["coroutine", "async_gen"])
+def test_async_map_batches(shutdown_only, udf_kind):
     ray.shutdown()
     ray.init(num_cpus=10)
-
-    async def sleep_and_yield(i):
-        await asyncio.sleep(i % 5)
-        return {"input": [i], "output": [2**i]}
 
     class AsyncActor:
         def __init__(self):
             pass
 
-        async def __call__(self, batch):
-            tasks = [asyncio.create_task(sleep_and_yield(i)) for i in batch["id"]]
-            for task in tasks:
-                yield await task
+        if udf_kind == "async_gen":
+            async def __call__(self, batch):
+                for i in batch["id"]:
+                    await asyncio.sleep((i % 5) / 100)
+                    yield {"input": [i], "output": [2**i]}
+        elif udf_kind == "coroutine":
+            async def __call__(self, batch):
+                    await asyncio.sleep(random.randint(0, 5) / 100)
+                    return {
+                        "input": [i for i in batch["id"]],
+                        "output": [2**i for i in batch["id"]],
+                    }
+        else:
+            pytest.fail(f"Unknown udf_kind: {udf_kind}")
 
     n = 10
     ds = ray.data.range(n, override_num_blocks=2)
