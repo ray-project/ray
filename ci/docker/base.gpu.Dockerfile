@@ -1,4 +1,5 @@
-FROM nvidia/cuda:12.1.1-cudnn8-devel-ubuntu20.04
+ARG BASE_IMAGE=nvidia/cuda:12.1.1-cudnn8-devel-ubuntu20.04
+FROM $BASE_IMAGE
 
 ARG REMOTE_CACHE_URL
 ARG BUILDKITE_PULL_REQUEST
@@ -47,7 +48,7 @@ RUN (echo "build --remote_cache=${REMOTE_CACHE_URL}" >> /root/.bazelrc); \
     (if [ "${BUILDKITE_PULL_REQUEST}" != "false" ]; then (echo "build --remote_upload_local_results=false" >> /root/.bazelrc); fi); \
     cat /root/.bazelrc
 
-# Install some dependencies (miniconda, pip dependencies, etc)
+# Install some dependencies (miniforge, pip dependencies, etc)
 RUN mkdir /ray
 WORKDIR /ray
 

@@ -43,12 +43,13 @@ class XGBoostModel:
         return await self.predict_batch(input_data)
 
 
-def main():
-    xgboost_model = XGBoostModel.bind(load_model_and_preprocessor)
-    _handle: DeploymentHandle = serve.run(
-        xgboost_model, name="xgboost-breast-cancer-classifier"
-    )
+xgboost_model = XGBoostModel.bind(load_model_and_preprocessor)
+_handle: DeploymentHandle = serve.run(
+    xgboost_model, name="xgboost-breast-cancer-classifier"
+)
 
+
+def main():
     sample_input = {
         "mean radius": 14.9,
         "mean texture": 22.53,

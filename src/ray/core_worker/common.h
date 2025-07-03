@@ -221,13 +221,16 @@ struct PlacementGroupCreationOptions {
       std::vector<std::unordered_map<std::string, double>> bundles,
       bool is_detached_p,
       double max_cpu_fraction_per_node,
-      NodeID soft_target_node_id = NodeID::Nil())
+      NodeID soft_target_node_id = NodeID::Nil(),
+      std::vector<std::unordered_map<std::string, std::string>> bundle_label_selector =
+          {})
       : name(std::move(name)),
         strategy(strategy),
         bundles(std::move(bundles)),
         is_detached(is_detached_p),
         max_cpu_fraction_per_node(max_cpu_fraction_per_node),
-        soft_target_node_id(soft_target_node_id) {
+        soft_target_node_id(soft_target_node_id),
+        bundle_label_selector(std::move(bundle_label_selector)) {
     RAY_CHECK(soft_target_node_id.IsNil() || strategy == PlacementStrategy::STRICT_PACK)
         << "soft_target_node_id only works with STRICT_PACK now";
   }
@@ -248,6 +251,8 @@ struct PlacementGroupCreationOptions {
   /// Nil means there is no target node.
   /// This only applies to STRICT_PACK pg.
   const NodeID soft_target_node_id;
+  /// The label selectors to apply per-bundle in this placement group.
+  const std::vector<std::unordered_map<std::string, std::string>> bundle_label_selector;
 };
 
 class ObjectLocation {

@@ -12,6 +12,7 @@ from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from ray.util.placement_group import (
     validate_placement_group,
     _validate_bundles,
+    _validate_bundle_label_selector,
     VALID_PLACEMENT_GROUP_STRATEGIES,
 )
 
@@ -702,6 +703,37 @@ class TestPlacementGroupValidation:
         # Bundles with resources that all have 0 values should raise an exception.
         with pytest.raises(ValueError, match="only 0 values"):
             _validate_bundles([{"CPU": 0, "GPU": 0}])
+
+    def test_bundle_label_selector_validation(self):
+        """Test _validate_bundle_label_selector()."""
+
+        # Valid label selector list should not raise an exception.
+        valid_label_selectors = [
+            {"ray.io/market_type": "spot"},
+            {"ray.io/accelerator-type": "A100"},
+        ]
+        _validate_bundle_label_selector(valid_label_selectors)
+
+        # Non-list input should raise an exception.
+        with pytest.raises(ValueError, match="must be a list"):
+            _validate_bundle_label_selector("not a list")
+
+        # Empty list should not raise (interpreted as no-op).
+        _validate_bundle_label_selector([])
+
+        # List with non-dictionary elements should raise an exception.
+        with pytest.raises(ValueError, match="must be a list of string dictionary"):
+            _validate_bundle_label_selector(["not a dict", {"valid": "label"}])
+
+        # Dictionary with non-string keys or values should raise an exception.
+        with pytest.raises(ValueError, match="must be a list of string dictionary"):
+            _validate_bundle_label_selector([{1: "value"}, {"key": "val"}])
+        with pytest.raises(ValueError, match="must be a list of string dictionary"):
+            _validate_bundle_label_selector([{"key": 123}, {"valid": "label"}])
+
+        # Invalid label key or value syntax (delegated to validate_label_selector).
+        with pytest.raises(ValueError, match="Invalid label selector provided"):
+            _validate_bundle_label_selector([{"INVALID key!": "value"}])
 
 
 if __name__ == "__main__":

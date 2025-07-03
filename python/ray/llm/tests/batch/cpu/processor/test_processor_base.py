@@ -1,13 +1,15 @@
 import sys
 from typing import Any, AsyncIterator, Dict, List, Type
 
+import pydantic
 import pytest
 
 import ray
+from ray.llm._internal.batch.processor import vLLMEngineProcessorConfig
 from ray.llm._internal.batch.processor.base import (
     Processor,
-    ProcessorConfig,
     ProcessorBuilder,
+    ProcessorConfig,
 )
 from ray.llm._internal.batch.stages.base import StatefulStage, StatefulStageUDF
 
@@ -184,6 +186,20 @@ def test_builder():
     assert (
         processor.get_stage_by_name("DummyStage").map_batches_kwargs["concurrency"] == 2
     )
+
+
+class TestProcessorConfig:
+    def test_valid_concurrency(self):
+
+        with pytest.raises(pydantic.ValidationError, match="should be a valid integer"):
+            config = vLLMEngineProcessorConfig(
+                model_source="unsloth/Llama-3.2-1B-Instruct",
+                concurrency=(1, 2),
+            )
+        config = vLLMEngineProcessorConfig(
+            model_source="unsloth/Llama-3.2-1B-Instruct",
+        )
+        assert config.concurrency == 1
 
 
 if __name__ == "__main__":

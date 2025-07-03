@@ -371,7 +371,7 @@ For visualization, Ray ships with a Serve LLM-specific dashboard, which is autom
 
 Engine Metrics
 ---------------------
-All engine metrics, including vLLM, are available through the Ray metrics export endpoint and are queryable using Prometheus. See `vLLM metrics <https://docs.vllm.ai/en/stable/serving/metrics.html>`_ for a complete list. These are also visualized by the Serve LLM Grafana dashboard. Dashboard panels include: time per output token (TPOT), time to first token (TTFT), and GPU cache utilization.
+All engine metrics, including vLLM, are available through the Ray metrics export endpoint and are queryable using Prometheus. See `vLLM metrics <https://docs.vllm.ai/en/stable/usage/metrics.html>`_ for a complete list. These are also visualized by the Serve LLM Grafana dashboard. Dashboard panels include: time per output token (TPOT), time to first token (TTFT), and GPU cache utilization.
 
 Engine metric logging is off by default, and must be manually enabled. In addition, you must enable the vLLM V1 engine to use engine metrics. To enable engine-level metric logging, set `log_engine_metrics: True` when configuring the LLM deployment. For example:
 
@@ -463,6 +463,7 @@ This allows the weights to be loaded on each replica on-the-fly and be cached vi
                 ),
                 engine_kwargs=dict(
                     enable_lora=True,
+                    max_loras=16, # Need to set this to the same value as `max_num_adapters_per_replica`.
                 ),
                 deployment_config=dict(
                     autoscaling_config=dict(
@@ -905,6 +906,20 @@ An example config is shown below:
       import_path: ray.serve.llm:build_openai_app
       name: llm_app
       route_prefix: "/"
+
+
+There are some differences between `vllm serve` cli and Ray Serve LLM endpoint behavior. How do I work around that?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+We have opened an issue to track and fix this: https://github.com/ray-project/ray/issues/53533. Please add comments to this issue thread if you are facing problems that fall under this category. We have identified the following example issues so far: 
+
+- Tool calling is not supported in the same way it is supported in `vllm serve` CLI. This is due to the extra logical pieces of code that map CLI args to extra layers in the API server critical path. 
+
+- vLLM has a different critical path for dealing with the tokenizer of Mistral models. This logic has not been copied over to Ray Serve LLM, because we want to find a more maintainable solution.
+
+- Some sampling parameters, like `max_completion_tokens`, are supported differently in Ray Serve LLM and `vllm serve` CLI.
+
+
 
 Usage Data Collection
 --------------------------
