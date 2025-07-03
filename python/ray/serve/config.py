@@ -36,12 +36,40 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 @PublicAPI(stability="stable")
 class RouterConfig(BaseModel):
-    """Config for Serve router.
+    """Config for the Serve request router.
 
-    Args:
-        request_router_class: The import path of the request router if user passed a string. Is the
-            concatenation of the request router module and the request router name
-            if user passed a callable.
+    This class configures how Ray Serve routes requests to deployment replicas. The router is
+    responsible for selecting which replica should handle each incoming request based on the
+    configured routing policy. You can customize the routing behavior by specifying a custom
+    request router class and providing configuration parameters.
+
+    The router also manages periodic health checks and scheduling statistics collection from
+    replicas to make informed routing decisions.
+
+    Example:
+        ```python
+        from ray.serve.config import RouterConfig, DeploymentConfig
+        from ray import serve
+
+        # Use default router with custom stats collection interval
+        router_config = RouterConfig(
+            request_routing_stats_period_s=5.0,
+            request_routing_stats_timeout_s=15.0
+        )
+
+        # Use custom router class
+        router_config = RouterConfig(
+            request_router_class="ray.serve._private.request_router.prefix_aware_router.PrefixAwarePow2ReplicaRouter",
+            request_router_kwargs={"imbalanced_threshold": 20}
+        )
+        deployment_config = DeploymentConfig(
+            router_config=router_config
+        )
+        deployment = serve.deploy(
+            "my_deployment",
+            deployment_config=deployment_config
+        )
+        ```
     """
 
     serialized_request_router_cls: bytes = Field(
