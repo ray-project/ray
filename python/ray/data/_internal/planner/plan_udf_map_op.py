@@ -181,9 +181,7 @@ def plan_filter_op(
             except Exception as e:
                 _handle_debugger_exception(e, block)
 
-        transform_fn = _generate_transform_fn_for_map_batches(
-            data_context, filter_batch_fn
-        )
+        transform_fn = _generate_transform_fn_for_map_batches(filter_batch_fn)
         map_transformer = _create_map_transformer_for_map_batches_op(
             transform_fn,
             batch_size=None,
@@ -225,9 +223,7 @@ def plan_udf_map_op(
     fn, init_fn = _wrap_debugger_breakpoint_fn(op)
 
     if isinstance(op, MapBatches):
-        transform_fn = _generate_transform_fn_for_map_batches(
-            data_context, fn, ray_remote_args=op._ray_remote_args
-        )
+        transform_fn = _generate_transform_fn_for_map_batches(fn, ray_remote_args=op._ray_remote_args)
         map_transformer = _create_map_transformer_for_map_batches_op(
             transform_fn,
             op._batch_size,
@@ -237,9 +233,9 @@ def plan_udf_map_op(
         )
     else:
         if isinstance(op, MapRows):
-            transform_fn = _generate_transform_fn_for_map_rows(data_context, fn)
+            transform_fn = _generate_transform_fn_for_map_rows(fn)
         elif isinstance(op, FlatMap):
-            transform_fn = _generate_transform_fn_for_flat_map(data_context, fn)
+            transform_fn = _generate_transform_fn_for_flat_map(fn)
         else:
             raise ValueError(f"Found unknown logical operator during planning: {op}")
 
@@ -304,7 +300,7 @@ def _wrap_debugger_breakpoint_fn(op: AbstractUDFMap):
                 except Exception as e:
                     _handle_debugger_exception(e, item)
 
-        if inspect.isasyncgenfunction(udf.__call__):
+        elif inspect.isasyncgenfunction(udf.__call__):
 
             async def _debugger_breakpoint_wrapped_fn(item: Any) -> Any:
                 assert ray.data._map_actor_context is not None
@@ -323,6 +319,7 @@ def _wrap_debugger_breakpoint_fn(op: AbstractUDFMap):
                     _handle_debugger_exception(e, item)
 
         else:
+            assert isinstance(udf.__call__, Callable), f"Expected Callable, got {udf.__call__} ({type(udf.__call__)})"
 
             def _debugger_breakpoint_wrapped_fn(item: Any) -> Any:
                 assert ray.data._map_actor_context is not None
@@ -410,16 +407,18 @@ def _validate_batch_output(batch: Block) -> None:
 
 
 def _generate_transform_fn_for_map_batches(
-    ctx: DataContext,
     fn: UserDefinedFunction,
     *,
     ray_remote_args: Optional[Dict[str, Any]] = None,
 ) -> MapTransformCallable[DataBatch, DataBatch]:
+    print(f">>> [DBG] _generate_transform_fn_for_map_batches: {fn=}, {_is_async_udf(fn)=}, {inspect.isasyncgenfunction(fn)=}")
+
     if _is_async_udf(fn):
         max_concurrency = (ray_remote_args or {}).get("max_concurrency")
 
+        print(f">>> [DBG] _generate_transform_fn_for_map_batches: {fn=}")
+
         transform_fn = _generate_transform_fn_for_async_map(
-            ctx,
             fn,
             _validate_batch_output,
             max_concurrency=max_concurrency or DEFAULT_ASYNC_BATCH_UDF_MAX_CONCURRENCY,
@@ -486,13 +485,11 @@ def _validate_row_output(item):
 
 
 def _generate_transform_fn_for_map_rows(
-    ctx: DataContext,
     fn: UserDefinedFunction,
 ) -> MapTransformCallable[Row, Row]:
 
     if _is_async_udf(fn):
         transform_fn = _generate_transform_fn_for_async_map(
-            ctx,
             fn,
             _validate_row_output,
             # NOTE: UDF concurrency is limited
@@ -511,13 +508,11 @@ def _generate_transform_fn_for_map_rows(
 
 
 def _generate_transform_fn_for_flat_map(
-    ctx: DataContext,
     fn: UserDefinedFunction,
 ) -> MapTransformCallable[Row, Iterable[Row]]:
     if _is_async_udf(fn):
         # UDF is a callable class with async generator `__call__` method.
         transform_fn = _generate_transform_fn_for_async_map(
-            ctx,
             fn,
             _validate_row_output,
             max_concurrency=DEFAULT_ASYNC_ROW_UDF_MAX_CONCURRENCY,
