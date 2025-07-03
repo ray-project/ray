@@ -23,7 +23,7 @@ from ray.data.tests.mock_server import *  # noqa
 
 # Trigger pytest hook to automatically zip test cluster logs to archive dir on failure
 from ray.tests.conftest import *  # noqa
-from ray.tests.conftest import _ray_start  # noqa,
+from ray.tests.conftest import _ray_start
 from ray.util.debug import reset_log_once
 
 

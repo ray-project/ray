@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-import asyncio
 import logging
 import os
+import threading
 from threading import RLock
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -96,7 +96,8 @@ class PrefixTree:
 
         # LRU tracking - root is always the head, tail is the least recently used.
         self.tenant_to_lru_tail: Dict[str, Optional[Node]] = {}
-        self._eviction_task: Optional[asyncio.Task] = None
+        self._eviction_thread: Optional[threading.Thread] = None
+        self._eviction_stop_event: threading.Event = threading.Event()
 
     @staticmethod
     def _shared_prefix_count(a: str, b: str) -> int:
@@ -139,9 +140,7 @@ class PrefixTree:
         """
         with self.lock:
             if tenant not in self.tenant_to_char_count:
-                logger.debug(
-                    f"[_insert_node_into_linked_list] Tenant '{tenant}' does not exist. No action taken."
-                )
+                logger.debug(f"Tenant '{tenant}' does not exist. No action taken.")
                 return
 
             # Skip if node is the root
@@ -166,9 +165,7 @@ class PrefixTree:
         """
         with self.lock:
             if tenant not in self.tenant_to_char_count:
-                logger.debug(
-                    f"[_remove_node_from_linked_list] Tenant '{tenant}' does not exist. No action taken."
-                )
+                logger.debug(f"Tenant '{tenant}' does not exist. No action taken.")
                 return
 
             # Skip if node is the root
@@ -206,13 +203,11 @@ class PrefixTree:
         """
         with self.lock:
             if tenant not in self.tenant_to_char_count:
-                logger.debug(
-                    f"[_remove_tenant_single_node] Tenant '{tenant}' does not exist. No action taken."
-                )
+                logger.debug(f"Tenant '{tenant}' does not exist. No action taken.")
                 return 0
             if tenant not in node.tenant_to_last_access_time:
                 logger.debug(
-                    f"[_remove_tenant_single_node] Tenant '{tenant}' does not have node '{node.text}'. No action taken."
+                    f"Tenant '{tenant}' does not have node '{node.text}'. No action taken."
                 )
                 return 0
 
@@ -244,9 +239,7 @@ class PrefixTree:
         with self.lock:
             for tenant in tenants:
                 if tenant in self.tenant_to_char_count:
-                    logger.debug(
-                        f"[_add_tenants] Tenant '{tenant}' already exists. Skipping."
-                    )
+                    logger.debug(f"Tenant '{tenant}' already exists. Skipping.")
                     continue
 
                 self.tenant_to_char_count[tenant] = 0
@@ -283,7 +276,7 @@ class PrefixTree:
         with self.lock:
             if tenant not in self.tenant_to_char_count:
                 logger.debug(
-                    f"[_insert] Tenant '{tenant}' does not exist. Use add_tenants() first."
+                    f"Tenant '{tenant}' does not exist. Use add_tenants() first."
                 )
                 return
 
@@ -468,9 +461,7 @@ class PrefixTree:
         with self.lock:
             for tenant in tenants:
                 if tenant not in self.tenant_to_char_count:
-                    logger.debug(
-                        f"[_remove_tenants] Tenant '{tenant}' does not exist. Skipping."
-                    )
+                    logger.debug(f"Tenant '{tenant}' does not exist. Skipping.")
                     chars_removed[tenant] = 0
                     continue
 
@@ -513,13 +504,13 @@ class PrefixTree:
         with self.lock:
             if tenant not in self.tenant_to_char_count:
                 logger.debug(
-                    f"[_evict_tenant_by_lru] Cannot evict tenant '{tenant}': tenant does not exist. No action taken."
+                    f"Cannot evict tenant '{tenant}': tenant does not exist. No action taken."
                 )
                 return 0
 
             if self.tenant_to_char_count[tenant] < min_remove_size:
                 logger.debug(
-                    f"[_evict_tenant_by_lru] Cannot evict {min_remove_size} characters from tenant '{tenant}', which has only "
+                    f"Cannot evict {min_remove_size} characters from tenant '{tenant}', which has only "
                     f"{self.tenant_to_char_count[tenant]} characters. Will remove all available characters."
                 )
                 min_remove_size = self.tenant_to_char_count[tenant]
@@ -573,8 +564,9 @@ class PrefixTree:
     def start_eviction_loop(
         self, eviction_threshold: int, eviction_target: int, interval_secs: float
     ) -> bool:
-        """Start a single eviction loop within the actor itself
-        Parameters:
+        """Start a single eviction loop within the actor itself.
+
+        Args:
             eviction_threshold: Minimum number of characters a tenant must have to be evicted
             eviction_target: The maximum number of characters a tenant should have after eviction
             interval_secs: Number of seconds between eviction checks
@@ -582,23 +574,26 @@ class PrefixTree:
         Returns:
             True if the loop was started, False if it was already running
         """
+        self._eviction_stop_event.clear()
         with self.lock:
-            if self._eviction_task is None:
-                self._eviction_task = asyncio.create_task(
-                    self._run_eviction_loop(
-                        eviction_threshold, eviction_target, interval_secs
-                    )
+            if self._eviction_thread is None:
+                self._eviction_thread = threading.Thread(
+                    target=self._run_eviction_loop,
+                    args=(eviction_threshold, eviction_target, interval_secs),
+                    daemon=True,
                 )
+                self._eviction_thread.start()
                 return True
             else:
-                logger.debug("[_start_eviction_loop] Eviction loop already running")
+                logger.debug("Eviction loop already running")
                 return False
 
-    async def _run_eviction_loop(
-        self, eviction_threshold, eviction_target, interval_secs
-    ):
-        while True:
-            await asyncio.sleep(interval_secs)
+    def _run_eviction_loop(self, eviction_threshold, eviction_target, interval_secs):
+        while not self._eviction_stop_event.is_set():
+            if self._eviction_stop_event.wait(interval_secs):
+                # Stop event was set, exit loop asap
+                break
+
             with self.lock:
                 for tenant, char_count in self.tenant_to_char_count.items():
                     if char_count > eviction_threshold:
@@ -606,11 +601,10 @@ class PrefixTree:
                         self.evict_tenant_by_lru(tenant, excess)
 
     def stop_eviction_loop(self):
-        with self.lock:
-            if self._eviction_task:
-                self._eviction_task.cancel()
-                # self._eviction_task.close()
-                self._eviction_task = None
+        self._eviction_stop_event.set()
+        if self._eviction_thread:
+            self._eviction_thread.join()
+            self._eviction_thread = None
 
 
 @ray.remote
