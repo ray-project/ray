@@ -76,6 +76,24 @@ class PrefixAwarePow2ReplicaRouter(LocalityMixin, MultiplexMixin, RequestRouter)
         eviction_target_chars: Optional[int] = 360_000,
         eviction_interval_secs: Optional[int] = 10,
     ):
+        """Initialize the prefix-aware routing state and configuration.
+
+        Args:
+            imbalanced_threshold: Threshold for queue length difference to consider
+                load balanced. When the difference between replica queue lengths is
+                less than this value, prefix-aware routing is used.
+            match_rate_threshold: Minimum prefix match rate (0.0-1.0) required to
+                use prefix-aware routing. If match rate is below this threshold,
+                falls back to smallest tenant selection.
+            do_eviction: Whether to enable automatic eviction of old prefix tree
+                entries to manage memory usage.
+            eviction_threshold_chars: Maximum number of characters in the prefix
+                tree before eviction is triggered.
+            eviction_target_chars: Target number of characters to reduce the
+                prefix tree to during eviction.
+            eviction_interval_secs: Interval in seconds between eviction checks
+                when eviction is enabled.
+        """
         # === Prefix-aware routing logic hyperparameters ===
         self._imbalanced_threshold = imbalanced_threshold
         self._match_rate_threshold = match_rate_threshold

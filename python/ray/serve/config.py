@@ -60,7 +60,7 @@ class RequestRouterConfig(BaseModel):
 
             # Use custom router class
             router_config = RequestRouterConfig(
-                request_router_class="ray.serve._private.request_router.prefix_aware_router.PrefixAwarePow2ReplicaRouter",
+                request_router_class="ray.llm._internal.serve.request_router.prefix_aware.prefix_aware_router.PrefixAwarePow2ReplicaRouter",
                 request_router_kwargs={"imbalanced_threshold": 20}
             )
             deployment_config = DeploymentConfig(
