@@ -194,6 +194,7 @@ class DataParallelTrainer:
                 scheduling_strategy=NodeAffinitySchedulingStrategy(
                     node_id=ray.get_runtime_context().get_node_id(), soft=False
                 ),
+                # TODO: pass args to controller instead.
                 runtime_env={"env_vars": get_env_vars_to_propagate()},
             )(TrainController)
 
