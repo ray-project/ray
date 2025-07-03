@@ -426,6 +426,35 @@ TEST_F(TaskManagerTest, TestTaskKill) {
   ASSERT_EQ(stored_error, error);
 }
 
+TEST_F(TaskManagerTest, TestResubmitCanceledTask) {
+  // Set up a pending task.
+  rpc::Address caller_address;
+  auto spec = CreateTaskHelper(1, {});
+  int num_retries = 3;
+  manager_.AddPendingTask(caller_address, spec, "", num_retries);
+  ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
+
+  // Complete the task, but still pin it in the submissible tasks map.
+  auto return_id = spec.ReturnId(0);
+  rpc::PushTaskReply reply;
+  auto return_object = reply.add_return_objects();
+  return_object->set_object_id(return_id.Binary());
+  return_object->set_in_plasma(true);
+  manager_.CompletePendingTask(spec.TaskId(), reply, rpc::Address(), false);
+  ASSERT_TRUE(manager_.IsTaskSubmissible(spec.TaskId()));
+  ASSERT_FALSE(manager_.IsTaskPending(spec.TaskId()));
+
+  // Check that resubmitting a canceled task does not crash and returns
+  // FAILED_TASK_CANCELED.
+  manager_.MarkTaskCanceled(spec.TaskId());
+  std::vector<ObjectID> task_deps;
+  ASSERT_EQ(manager_.ResubmitTask(spec.TaskId(), &task_deps),
+            rpc::ErrorType::TASK_CANCELLED);
+
+  // Final cleanup.
+  reference_counter_->RemoveLocalReference(return_id, nullptr);
+}
+
 TEST_F(TaskManagerTest, TestTaskOomKillNoOomRetryFailsImmediately) {
   RayConfig::instance().initialize(R"({"task_oom_retries": 0})");
 

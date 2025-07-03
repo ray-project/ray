@@ -3857,14 +3857,31 @@ py_test(
 )
 
 py_test(
-    name = "examples/connectors/multi_agent_with_different_observation_spaces",
+    name = "examples/connectors/multi_agent_observation_preprocessor",
     size = "medium",
-    srcs = ["examples/connectors/multi_agent_with_different_observation_spaces.py"],
+    srcs = ["examples/connectors/multi_agent_observation_preprocessor.py"],
     args = [
         "--enable-new-api-stack",
         "--num-agents=2",
+        "--algo=PPO",
     ],
-    main = "examples/connectors/multi_agent_with_different_observation_spaces.py",
+    main = "examples/connectors/multi_agent_observation_preprocessor.py",
+    tags = [
+        "examples",
+        "exclusive",
+        "team:rllib",
+    ],
+)
+
+py_test(
+    name = "examples/connectors/single_agent_observation_preprocessor",
+    size = "medium",
+    srcs = ["examples/connectors/single_agent_observation_preprocessor.py"],
+    args = [
+        "--enable-new-api-stack",
+        "--algo=PPO",
+    ],
+    main = "examples/connectors/single_agent_observation_preprocessor.py",
     tags = [
         "examples",
         "exclusive",

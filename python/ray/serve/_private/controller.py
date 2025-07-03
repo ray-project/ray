@@ -1149,8 +1149,8 @@ class ServeController:
         """Get the logging configuration (for testing purposes)."""
         log_file_path = None
         for handler in logger.handlers:
-            if isinstance(handler, logging.handlers.RotatingFileHandler):
-                log_file_path = handler.baseFilename
+            if isinstance(handler, logging.handlers.MemoryHandler):
+                log_file_path = handler.target.baseFilename
         return self.global_logging_config, log_file_path
 
     def _get_target_capacity_direction(self) -> Optional[TargetCapacityDirection]:
