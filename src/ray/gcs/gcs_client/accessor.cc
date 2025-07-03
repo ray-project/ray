@@ -335,7 +335,10 @@ Status ActorInfoAccessor::AsyncRegisterActor(const ray::TaskSpecification &task_
   client_impl_->GetGcsRpcClient().RegisterActor(
       request,
       [callback](const Status &status, rpc::RegisterActorReply &&reply) {
-        callback(status);
+        // If gRPC status is ok return the GCS status, otherwise return the gRPC status.
+        callback(status.ok()
+                     ? Status(StatusCode(reply.status().code()), reply.status().message())
+                     : status);
       },
       timeout_ms);
   return Status::OK();
@@ -348,7 +351,10 @@ Status ActorInfoAccessor::SyncRegisterActor(const ray::TaskSpecification &task_s
   request.mutable_task_spec()->CopyFrom(task_spec.GetMessage());
   auto status = client_impl_->GetGcsRpcClient().SyncRegisterActor(
       request, &reply, GetGcsTimeoutMs());
-  return status;
+  // If gRPC status is ok return the GCS status, otherwise return the gRPC status.
+  return status.ok()
+             ? Status::OK()
+             : Status(StatusCode(reply.status().code()), reply.status().message());
 }
 
 Status ActorInfoAccessor::AsyncKillActor(const ActorID &actor_id,

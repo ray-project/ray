@@ -1617,6 +1617,32 @@ TEST_F(GcsActorManagerTest, TestDestroyActorWhenActorIsCreating) {
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::DEAD);
 }
 
+TEST_F(GcsActorManagerTest, TestDestroyWhileRegistering) {
+  // Register comes in -> Kill comes in -> Run all kv operations and callbacks
+  auto register_request = Mocker::GenRegisterActorRequest(
+      JobID::FromInt(1), /*max_restarts=*/0, /*detached=*/false, "", "test");
+  rpc::RegisterActorReply register_reply;
+  gcs_actor_manager_->HandleRegisterActor(
+      register_request, &register_reply, [](auto, auto, auto) {});
+  rpc::KillActorViaGcsRequest kill_request;
+  kill_request.set_actor_id(
+      register_request.task_spec().actor_creation_task_spec().actor_id());
+  kill_request.set_force_kill(false);
+  kill_request.set_no_restart(true);
+  rpc::KillActorViaGcsReply kill_reply;
+  gcs_actor_manager_->HandleKillActorViaGcs(
+      kill_request, &kill_reply, [](auto, auto, auto) {});
+  // Run all kv operations and callbacks
+  for (int i = 0; i < 5; i++) {
+    io_service_.run_one();
+  }
+  ASSERT_EQ(register_reply.status().code(),
+            static_cast<int>(StatusCode::SchedulingCancelled));
+  ASSERT_EQ(kill_reply.status().code(), static_cast<int>(StatusCode::OK));
+  ASSERT_EQ(worker_client_->killed_actors_.size(), 0);
+  ASSERT_TRUE(gcs_actor_manager_->GetRegisteredActors().empty());
+}
+
 }  // namespace gcs
 
 }  // namespace ray

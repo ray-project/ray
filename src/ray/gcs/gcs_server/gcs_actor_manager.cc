@@ -405,8 +405,13 @@ void GcsActorManager::HandleRegisterActor(rpc::RegisterActorRequest request,
   RAY_LOG(INFO).WithField(actor_id.JobId()).WithField(actor_id) << "Registering actor";
   Status status = RegisterActor(
       request, [reply, send_reply_callback, actor_id](const Status &status) {
-        RAY_LOG(INFO) << "Registered actor, job id = " << actor_id.JobId()
-                      << ", actor id = " << actor_id;
+        if (status.ok()) {
+          RAY_LOG(INFO).WithField(actor_id.JobId()).WithField(actor_id)
+              << "Registered actor";
+        } else {
+          RAY_LOG(WARNING).WithField(actor_id.JobId()).WithField(actor_id)
+              << "Failed to register actor: " << status.ToString();
+        }
         GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
       });
   if (!status.ok()) {
