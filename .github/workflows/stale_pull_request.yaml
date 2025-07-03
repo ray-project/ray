@@ -69,7 +69,7 @@ jobs:
           # Remove stale label from PRs on update (default is true)
           remove-pr-stale-when-updated: true
 
-          #Add bounced label. Whenever a PR is marked as 'bounced' it will not be marked stale again.
+          # Add bounced label. Whenever a PR is marked as 'bounced' it will not be marked stale again.
           labels-to-add-when-unstale: bounced
 
           ascending: true
