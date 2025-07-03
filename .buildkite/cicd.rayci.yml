@@ -15,7 +15,7 @@ steps:
       - forge
     tags: tools
   - label: ":coral: reef: raydepsets tests"
-    key: reef-tests
+    key: raydepsets-tests
     commands:
       - bazel run //ci/ray_ci:test_in_docker --
           //ci/raydepsets/... ci
