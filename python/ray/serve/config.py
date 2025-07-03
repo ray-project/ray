@@ -47,29 +47,29 @@ class RouterConfig(BaseModel):
     replicas to make informed routing decisions.
 
     Example:
-        ```python
-        from ray.serve.config import RouterConfig, DeploymentConfig
-        from ray import serve
+        .. code-block:: python
 
-        # Use default router with custom stats collection interval
-        router_config = RouterConfig(
-            request_routing_stats_period_s=5.0,
-            request_routing_stats_timeout_s=15.0
-        )
+            from ray.serve.config import RouterConfig, DeploymentConfig
+            from ray import serve
 
-        # Use custom router class
-        router_config = RouterConfig(
-            request_router_class="ray.serve._private.request_router.prefix_aware_router.PrefixAwarePow2ReplicaRouter",
-            request_router_kwargs={"imbalanced_threshold": 20}
-        )
-        deployment_config = DeploymentConfig(
-            router_config=router_config
-        )
-        deployment = serve.deploy(
-            "my_deployment",
-            deployment_config=deployment_config
-        )
-        ```
+            # Use default router with custom stats collection interval
+            router_config = RouterConfig(
+                request_routing_stats_period_s=5.0,
+                request_routing_stats_timeout_s=15.0
+            )
+
+            # Use custom router class
+            router_config = RouterConfig(
+                request_router_class="ray.serve._private.request_router.prefix_aware_router.PrefixAwarePow2ReplicaRouter",
+                request_router_kwargs={"imbalanced_threshold": 20}
+            )
+            deployment_config = DeploymentConfig(
+                router_config=router_config
+            )
+            deployment = serve.deploy(
+                "my_deployment",
+                deployment_config=deployment_config
+            )
     """
 
     serialized_request_router_cls: bytes = Field(
