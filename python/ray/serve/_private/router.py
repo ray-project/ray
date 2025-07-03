@@ -487,6 +487,7 @@ class AsyncioRouter:
         setting `self._request_router_initialized` to signal that the request
         router is initialized.
         """
+        print(f"[debug]request_router_class: {self._request_router_class}")
         if not self._request_router and self._request_router_class:
             request_router = self._request_router_class(
                 deployment_id=self.deployment_id,

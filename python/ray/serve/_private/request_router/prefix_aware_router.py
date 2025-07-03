@@ -10,6 +10,9 @@ import ray
 from ray.llm._internal.serve.request_router.prefix_aware.prefix_tree import (
     PrefixTreeActor,
 )
+from ray.llm._internal.serve.request_router.prefix_aware.token_prefix_tree import (
+    TokenPrefixTreeActor,
+)
 from ray.serve._private.common import ReplicaID
 from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
@@ -51,6 +54,8 @@ class PrefixAwarePow2ReplicaRouter(LocalityMixin, MultiplexMixin, RequestRouter)
     This approach improves performance by routing related requests to the same replicas,
     increasing cache locality and reducing overhead for language model inference.
     """
+
+    _default_tree_actor = PrefixTreeActor
 
     def __init__(
         self,
@@ -331,3 +336,10 @@ class PrefixAwarePow2ReplicaRouter(LocalityMixin, MultiplexMixin, RequestRouter)
                         input_text, replica_id.to_full_id_str(), time.time()
                     )
                 )
+
+
+class TokenAwarePow2ReplicaRouter(PrefixAwarePow2ReplicaRouter):
+    _default_tree_actor = TokenPrefixTreeActor
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
