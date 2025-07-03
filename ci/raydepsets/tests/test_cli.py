@@ -6,4 +6,4 @@ def test_cli():
 
 
 if __name__ == "__main__":
-    pytest.main()
+    sys.exit(pytest.main(["-v", __file__]))

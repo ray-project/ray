@@ -5,7 +5,6 @@ py_library(
     srcs = [
         "cli.py",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         ci_require("click"),
     ],
@@ -15,7 +14,6 @@ py_binary(
     name = "raydepsets",
     srcs = ["raydepsets.py"],
     deps = [":raydepsets_lib"],
-    visibility = ["//visibility:public"],
     exec_compatible_with = ["//:hermetic_python"],
 )
 
@@ -27,4 +25,5 @@ py_test(
         ci_require("pytest"),
         ":raydepsets_lib",
     ],
+    tags = ["team:ci"],
 )
