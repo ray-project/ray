@@ -405,7 +405,7 @@ class DeploymentSchema(BaseModel, allow_population_by_field_name=True):
         default=DEFAULT.VALUE,
         description="Logging config for configuring serve deployment logs.",
     )
-    router_config: Union[Dict, RequestRouterConfig] = Field(
+    request_router_config: Union[Dict, RequestRouterConfig] = Field(
         default=DEFAULT.VALUE,
         description="Config for the request router used for this deployment.",
     )
@@ -487,7 +487,7 @@ def _deployment_info_to_schema(name: str, info: DeploymentInfo) -> DeploymentSch
         health_check_period_s=info.deployment_config.health_check_period_s,
         health_check_timeout_s=info.deployment_config.health_check_timeout_s,
         ray_actor_options=info.replica_config.ray_actor_options,
-        router_config=info.deployment_config.router_config,
+        request_router_config=info.deployment_config.request_router_config,
     )
 
     if info.deployment_config.autoscaling_config is not None:
@@ -1191,9 +1191,9 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
         for app_name, application in values["applications"].items():
             for deployment_name, deployment in application["deployments"].items():
                 if "deployment_config" in deployment:
-                    # Remove internal fields from router_config if it exists
-                    if "router_config" in deployment["deployment_config"]:
-                        deployment["deployment_config"]["router_config"].pop(
+                    # Remove internal fields from request_router_config if it exists
+                    if "request_router_config" in deployment["deployment_config"]:
+                        deployment["deployment_config"]["request_router_config"].pop(
                             "_serialized_request_router_cls", None
                         )
                     if "autoscaling_config" in deployment["deployment_config"]:

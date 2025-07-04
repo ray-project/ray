@@ -188,8 +188,10 @@ class DeploymentVersion:
 
         # Can't serialize bytes. The request router class is already
         # included in the serialized config as request_router_class.
-        if "router_config" in reconfigure_dict:
-            del reconfigure_dict["router_config"]["_serialized_request_router_cls"]
+        if "request_router_config" in reconfigure_dict:
+            reconfigure_dict["request_router_config"].pop(
+                "_serialized_request_router_cls", None
+            )
 
         if (
             isinstance(self.deployment_config.user_config, bytes)

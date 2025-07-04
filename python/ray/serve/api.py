@@ -334,7 +334,9 @@ def deployment(
     health_check_period_s: Default[float] = DEFAULT.VALUE,
     health_check_timeout_s: Default[float] = DEFAULT.VALUE,
     logging_config: Default[Union[Dict, LoggingConfig, None]] = DEFAULT.VALUE,
-    router_config: Default[Union[Dict, RequestRouterConfig, None]] = DEFAULT.VALUE,
+    request_router_config: Default[
+        Union[Dict, RequestRouterConfig, None]
+    ] = DEFAULT.VALUE,
 ) -> Callable[[Callable], Deployment]:
     """Decorator that converts a Python class to a `Deployment`.
 
@@ -399,7 +401,7 @@ def deployment(
             check method to return before considering it as failed. Defaults to 30s.
         logging_config: Logging config options for the deployment. If provided,
             the config will be used to set up the Serve logger on the deployment.
-        router_config: Config for the request router used for this deployment.
+        request_router_config: Config for the request router used for this deployment.
     Returns:
         `Deployment`
     """
@@ -464,7 +466,7 @@ def deployment(
         health_check_period_s=health_check_period_s,
         health_check_timeout_s=health_check_timeout_s,
         logging_config=logging_config,
-        router_config=router_config,
+        request_router_config=request_router_config,
     )
     deployment_config.user_configured_option_names = set(user_configured_option_names)
 

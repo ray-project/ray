@@ -13,7 +13,6 @@ from ray._common.pydantic_compat import (
     PositiveFloat,
     PositiveInt,
     PrivateAttr,
-    root_validator,
     validator,
 )
 from ray._common.utils import import_attr
@@ -53,18 +52,18 @@ class RequestRouterConfig(BaseModel):
             from ray import serve
 
             # Use default router with custom stats collection interval
-            router_config = RequestRouterConfig(
+            request_router_config = RequestRouterConfig(
                 request_routing_stats_period_s=5.0,
                 request_routing_stats_timeout_s=15.0
             )
 
             # Use custom router class
-            router_config = RequestRouterConfig(
+            request_router_config = RequestRouterConfig(
                 request_router_class="ray.llm._internal.serve.request_router.prefix_aware.prefix_aware_router.PrefixAwarePow2ReplicaRouter",
                 request_router_kwargs={"imbalanced_threshold": 20}
             )
             deployment_config = DeploymentConfig(
-                router_config=router_config
+                request_router_config=request_router_config
             )
             deployment = serve.deploy(
                 "my_deployment",
@@ -123,15 +122,26 @@ class RequestRouterConfig(BaseModel):
 
         return v
 
-    @root_validator
-    def import_and_serialize_request_router_cls(cls, values) -> Dict[str, Any]:
+    def __init__(self, **kwargs: dict[str, Any]):
+        """Initialize RequestRouterConfig with the given parameters.
+
+        Needed to serialize the request router class since validators are not called
+        for attributes that begin with an underscore.
+
+        Args:
+            **kwargs: Keyword arguments to pass to BaseModel.
+        """
+        super().__init__(**kwargs)
+        self._serialize_request_router_cls()
+
+    def _serialize_request_router_cls(self) -> None:
         """Import and serialize request router class with cloudpickle.
 
         Import the request router if you pass it in as a string import path.
         Then cloudpickle the request router and set to
         `_serialized_request_router_cls`.
         """
-        request_router_class = values.get("request_router_class")
+        request_router_class = self.request_router_class
         if isinstance(request_router_class, Callable):
             request_router_class = (
                 f"{request_router_class.__module__}.{request_router_class.__name__}"
@@ -140,11 +150,9 @@ class RequestRouterConfig(BaseModel):
         request_router_path = request_router_class or DEFAULT_REQUEST_ROUTER_PATH
         request_router_class = import_attr(request_router_path)
 
-        values["_serialized_request_router_cls"] = cloudpickle.dumps(
-            request_router_class
-        )
-        values["request_router_class"] = request_router_path
-        return values
+        self._serialized_request_router_cls = cloudpickle.dumps(request_router_class)
+        # Update the request_router_class field to be the string path
+        self.request_router_class = request_router_path
 
     def get_request_router_class(self) -> Callable:
         """Deserialize the request router from cloudpickled bytes."""

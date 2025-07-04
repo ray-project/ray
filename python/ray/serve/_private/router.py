@@ -543,10 +543,10 @@ class AsyncioRouter:
 
     def update_deployment_config(self, deployment_config: DeploymentConfig):
         self._request_router_class = (
-            deployment_config.router_config.get_request_router_class()
+            deployment_config.request_router_config.get_request_router_class()
         )
         self._request_router_kwargs = (
-            deployment_config.router_config.request_router_kwargs
+            deployment_config.request_router_config.request_router_kwargs
         )
         self._metrics_manager.update_deployment_config(
             deployment_config,

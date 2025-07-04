@@ -122,7 +122,7 @@ class DeploymentConfig(BaseModel):
         logging_config: Configuration for deployment logs.
         user_configured_option_names: The names of options manually
             configured by the user.
-        router_config: Configuration for deployment request router.
+        request_router_config: Configuration for deployment request router.
     """
 
     num_replicas: Optional[NonNegativeInt] = Field(
@@ -162,7 +162,7 @@ class DeploymentConfig(BaseModel):
         default=None, update_type=DeploymentOptionUpdateType.NeedsActorReconfigure
     )
 
-    router_config: RequestRouterConfig = Field(
+    request_router_config: RequestRouterConfig = Field(
         default=RequestRouterConfig(),
         update_type=DeploymentOptionUpdateType.NeedsActorReconfigure,
     )
@@ -243,22 +243,24 @@ class DeploymentConfig(BaseModel):
             data["autoscaling_config"] = AutoscalingConfigProto(
                 **data["autoscaling_config"]
             )
-        if data.get("router_config"):
-            router_kwargs = data["router_config"].get("request_router_kwargs")
+        if data.get("request_router_config"):
+            router_kwargs = data["request_router_config"].get("request_router_kwargs")
             if router_kwargs is not None:
                 if not router_kwargs:
-                    data["router_config"]["request_router_kwargs"] = b""
+                    data["request_router_config"]["request_router_kwargs"] = b""
                 elif self.needs_pickle():
                     # Protobuf requires bytes, so we need to pickle
-                    data["router_config"]["request_router_kwargs"] = cloudpickle.dumps(
-                        router_kwargs
-                    )
+                    data["request_router_config"][
+                        "request_router_kwargs"
+                    ] = cloudpickle.dumps(router_kwargs)
                 else:
                     raise ValueError(
                         "Non-empty request_router_kwargs not supported"
                         f"for cross-language deployments. Got: {router_kwargs}"
                     )
-            data["router_config"] = RequestRouterConfigProto(**data["router_config"])
+            data["request_router_config"] = RequestRouterConfigProto(
+                **data["request_router_config"]
+            )
         if data.get("logging_config"):
             if "encoding" in data["logging_config"]:
                 data["logging_config"]["encoding"] = EncodingTypeProto.Value(
@@ -293,22 +295,28 @@ class DeploymentConfig(BaseModel):
                     data["user_config"] = proto.user_config
             else:
                 data["user_config"] = None
-        if "router_config" in data:
-            if "request_router_kwargs" in data["router_config"]:
-                request_router_kwargs = data["router_config"]["request_router_kwargs"]
+        if "request_router_config" in data:
+            if "request_router_kwargs" in data["request_router_config"]:
+                request_router_kwargs = data["request_router_config"][
+                    "request_router_kwargs"
+                ]
                 if request_router_kwargs != b"":
                     if needs_pickle:
-                        data["router_config"][
+                        data["request_router_config"][
                             "request_router_kwargs"
-                        ] = cloudpickle.loads(proto.router_config.request_router_kwargs)
+                        ] = cloudpickle.loads(
+                            proto.request_router_config.request_router_kwargs
+                        )
                     else:
-                        data["router_config"][
+                        data["request_router_config"][
                             "request_router_kwargs"
-                        ] = proto.router_config.request_router_kwargs
+                        ] = proto.request_router_config.request_router_kwargs
                 else:
-                    data["router_config"]["request_router_kwargs"] = {}
+                    data["request_router_config"]["request_router_kwargs"] = {}
 
-            data["router_config"] = RequestRouterConfig(**data["router_config"])
+            data["request_router_config"] = RequestRouterConfig(
+                **data["request_router_config"]
+            )
         if "autoscaling_config" in data:
             if not data["autoscaling_config"].get("upscale_smoothing_factor"):
                 data["autoscaling_config"]["upscale_smoothing_factor"] = None
