@@ -562,7 +562,17 @@ class ASGIAppReplicaWrapper:
 
         # Use uvicorn's lifespan handling code to properly deal with
         # startup and shutdown event.
-        self._serve_asgi_lifespan = LifespanOn(Config(self._asgi_app, lifespan="on"))
+        # If log_config is not None, uvicorn will use the default logger.
+        # and that interferes with our logging setup.
+        self._serve_asgi_lifespan = LifespanOn(
+            Config(
+                self._asgi_app,
+                lifespan="on",
+                log_level=None,
+                log_config=None,
+                access_log=False,
+            )
+        )
 
         # Replace uvicorn logger with our own.
         self._serve_asgi_lifespan.logger = logger
@@ -708,6 +718,11 @@ async def start_asgi_http_server(
             f"Failed to bind to address '{http_options.host}:{http_options.port}'."
         ) from e
 
+    # Even though we set log_level=None, uvicorn adds MessageLoggerMiddleware
+    # if log level for uvicorn.error is not set. And MessageLoggerMiddleware
+    # has no use to us.
+    logging.getLogger("uvicorn.error").level = logging.CRITICAL
+
     # NOTE: We have to use lower level uvicorn Config and Server
     # class because we want to run the server as a coroutine. The only
     # alternative is to call uvicorn.run which is blocking.
@@ -722,7 +737,8 @@ async def start_asgi_http_server(
             loop=event_loop,
             lifespan="off",
             access_log=False,
-            log_level="warning",
+            log_level=None,
+            log_config=None,
         )
     )
 
@@ -793,11 +809,18 @@ def configure_http_options_with_defaults(http_options: HTTPOptions) -> HTTPOptio
         http_options.keep_alive_timeout_s = RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S
 
     # TODO: Deprecate SERVE_REQUEST_PROCESSING_TIMEOUT_S env var
-    http_options.request_timeout_s = (
-        http_options.request_timeout_s or RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S
-    )
+    if http_options.request_timeout_s or RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S:
+        http_options.request_timeout_s = (
+            http_options.request_timeout_s or RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S
+        )
 
     http_options.middlewares = http_options.middlewares or []
+
+    return http_options
+
+
+def configure_http_middlewares(http_options: HTTPOptions) -> HTTPOptions:
+    http_options = deepcopy(http_options)
 
     # Add environment variable middleware
     if RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH:
