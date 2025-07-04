@@ -171,9 +171,7 @@ def test_shuffle(shutdown_only, restore_data_context, shuffle_op):
         2 if fusion_supported else 4
     )
 
-    print(
-        f">>> Asserting {num_intermediate_blocks} blocks are in plasma"
-    )
+    print(f">>> Asserting {num_intermediate_blocks} blocks are in plasma")
 
     last_snapshot = assert_blocks_expected_in_plasma(
         last_snapshot,
