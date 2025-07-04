@@ -1,5 +1,4 @@
 from typing import Any, Dict, List, Union, Tuple, Optional, TYPE_CHECKING
-import math
 
 if TYPE_CHECKING:
     import torch
@@ -212,21 +211,25 @@ class _CollectiveOperation:
                 recv_buf = torch.empty_like(t)
                 communicator.allreduce(t, recv_buf, self._op.reduceOp)
             else:
+                if not all(t.dtype == send_buf[0].dtype for t in send_buf):
+                    raise ValueError(
+                        "Expected all input tensors to have the same dtype, "
+                        f"but got {[t.dtype for t in send_buf]}"
+                    )
 
-                def unflatten_from(flat_buf, shapes):
+                def unflatten_from(flat_buf, bufs):
                     views = []
                     offset = 0
-                    for shape in shapes:
-                        numel = math.prod(shape)
-                        t = flat_buf[offset : offset + numel].view(shape)
+                    for t in bufs:
+                        numel = t.numel()
+                        t = flat_buf[offset : offset + numel].view(t.shape)
                         views.append(t)
                         offset += numel
                     return tuple(views)
 
-                shapes = tuple(t.shape for t in send_buf)
                 flat_buf = torch.nn.utils.parameters_to_vector(send_buf)
                 communicator.allreduce(flat_buf, flat_buf, self._op.reduceOp)
-                recv_buf = unflatten_from(flat_buf, shapes)
+                recv_buf = unflatten_from(flat_buf, send_buf)
         elif isinstance(self._op, ReduceScatterOp):
             assert len(send_buf) == 1
             t = send_buf[0]

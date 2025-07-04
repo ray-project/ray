@@ -168,12 +168,17 @@ class CPUTorchTensorWorker:
     def __init__(self):
         self.device = "cpu"
 
-    def return_tensor(self, size: int) -> torch.Tensor:
-        return torch.ones(size, device=self.device)
+    def return_tensor(
+        self, size: int, dtype: Optional[torch.dtype] = None
+    ) -> torch.Tensor:
+        return torch.ones(size, dtype=dtype, device=self.device)
 
     def recv(self, tensor: torch.Tensor) -> Tuple[int, int]:
         assert tensor.device == self.device
         return tensor.shape, tensor[0]
+
+    def recv_tensors(self, *tensors) -> Tuple[torch.Tensor, ...]:
+        return tuple(tensors)
 
 
 def mock_do_init_nccl_group(

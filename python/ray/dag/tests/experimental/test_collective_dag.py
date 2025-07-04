@@ -201,6 +201,40 @@ def test_all_reduce_bind_list_of_nodes_different_actors(ray_start_regular):
             collective.allreduce.bind([computes_0, computes_1], transport=nccl_group)
 
 
+@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
+def test_all_reduce_bind_list_of_nodes_different_dtypes(ray_start_regular):
+    """
+    Test an error is thrown when an all-reduce binds to a list of nodes
+    that execute with tensors of different dtypes.
+    """
+    actor_cls = CPUTorchTensorWorker.options()
+
+    num_workers = 3
+    workers = [actor_cls.remote() for _ in range(num_workers)]
+
+    comm = MockCommunicator(num_workers, workers)
+    with InputNode() as inp:
+        computes_0 = [worker.return_tensor.bind(inp[0], inp[1]) for worker in workers]
+        computes_1 = [worker.return_tensor.bind(inp[0], inp[2]) for worker in workers]
+        collectives = collective.allreduce.bind(
+            [computes_0, computes_1], transport=comm
+        )
+        recvs = [
+            worker.recv_tensors.bind(*collective)
+            for worker, collective in zip(workers, collectives)
+        ]
+        dag = MultiOutputNode(recvs)
+
+    compiled_dag = dag.experimental_compile()
+    with pytest.raises(
+        ValueError,
+        match="Expected all input tensors to have the same dtype",
+    ):
+        import torch
+
+        ray.get(compiled_dag.execute(1, torch.float16, torch.float32))
+
+
 @pytest.mark.parametrize(
     "ray_start_regular", [{"num_cpus": 4, "num_gpus": 4}], indirect=True
 )
