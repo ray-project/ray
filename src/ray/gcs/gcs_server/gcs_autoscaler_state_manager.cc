@@ -445,9 +445,7 @@ void GcsAutoscalerStateManager::HandleDrainNode(
     return;
   }
 
-  if (RayConfig::instance().enable_reap_actor_death()) {
-    gcs_actor_manager_.SetPreemptedAndPublish(node_id);
-  }
+  gcs_actor_manager_.SetPreemptedAndPublish(node_id);
 
   auto node = std::move(maybe_node.value());
   rpc::Address raylet_address;
