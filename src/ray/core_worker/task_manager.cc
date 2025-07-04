@@ -1041,6 +1041,9 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
   int32_t num_retries_left = 0;
   int32_t num_oom_retries_left = 0;
   bool task_failed_due_to_oom = error_info.error_type() == rpc::ErrorType::OUT_OF_MEMORY;
+  // DO NOT MERGE: This is a hack to test that the test failed without the fix and
+  // passes with the fix. Remove this before merging.
+  std::this_thread::sleep_for(std::chrono::seconds(2));
   {
     absl::MutexLock lock(&mu_);
     auto it = submissible_tasks_.find(task_id);
