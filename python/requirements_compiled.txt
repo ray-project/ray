@@ -467,8 +467,6 @@ etils==1.5.2 ; python_version < "3.12"
     #   array-record
     #   mujoco
     #   tensorflow-datasets
-evaluate==0.4.3
-    # via -r python/requirements/ml/train-test-requirements.txt
 everett==3.1.0
     # via comet-ml
 execnet==2.1.1
