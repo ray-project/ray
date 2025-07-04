@@ -122,7 +122,7 @@ def plan_project_op(
                 )
             return block
         except Exception as e:
-            _handle_debugger_exception(e, block)
+            _try_wrap_udf_exception(e, block)
 
     compute = get_compute(op._compute)
     transform_fn = _generate_transform_fn_for_map_block(fn)
@@ -179,7 +179,7 @@ def plan_filter_op(
             try:
                 return block.filter(expression)
             except Exception as e:
-                _handle_debugger_exception(e, block)
+                _try_wrap_udf_exception(e, block)
 
         transform_fn = _generate_transform_fn_for_map_batches(filter_batch_fn)
         map_transformer = _create_map_transformer_for_map_batches_op(
@@ -189,7 +189,7 @@ def plan_filter_op(
             zero_copy_batch=True,
         )
     else:
-        filter_fn, init_fn = _wrap_debugger_breakpoint_fn(op)
+        filter_fn, init_fn = _get_udf(op)
         transform_fn = _generate_transform_fn_for_filter(filter_fn)
         map_transformer = _create_map_transformer_for_row_based_map_op(
             transform_fn, init_fn
@@ -220,7 +220,7 @@ def plan_udf_map_op(
     input_physical_dag = physical_children[0]
 
     compute = get_compute(op._compute)
-    fn, init_fn = _wrap_debugger_breakpoint_fn(op)
+    fn, init_fn = _get_udf(op)
 
     if isinstance(op, MapBatches):
         transform_fn = _generate_transform_fn_for_map_batches(fn)
@@ -256,7 +256,7 @@ def plan_udf_map_op(
     )
 
 
-def _wrap_debugger_breakpoint_fn(op: AbstractUDFMap):
+def _get_udf(op: AbstractUDFMap):
     # Note, it's important to define these standalone variables.
     # So the parsed functions won't need to capture the entire operator, which may not
     # be serializable.
@@ -288,7 +288,7 @@ def _wrap_debugger_breakpoint_fn(op: AbstractUDFMap):
 
         if inspect.iscoroutinefunction(udf.__call__):
 
-            async def _debugger_breakpoint_wrapped_fn(item: Any) -> Any:
+            async def _wrapped_udf_map_fn(item: Any) -> Any:
                 assert ray.data._map_actor_context is not None
                 assert ray.data._map_actor_context.is_async
 
@@ -299,11 +299,11 @@ def _wrap_debugger_breakpoint_fn(op: AbstractUDFMap):
                         **fn_kwargs,
                     )
                 except Exception as e:
-                    _handle_debugger_exception(e, item)
+                    _try_wrap_udf_exception(e, item)
 
         elif inspect.isasyncgenfunction(udf.__call__):
 
-            async def _debugger_breakpoint_wrapped_fn(item: Any) -> Any:
+            async def _wrapped_udf_map_fn(item: Any) -> Any:
                 assert ray.data._map_actor_context is not None
                 assert ray.data._map_actor_context.is_async
 
@@ -317,14 +317,14 @@ def _wrap_debugger_breakpoint_fn(op: AbstractUDFMap):
                     async for res in gen:
                         yield res
                 except Exception as e:
-                    _handle_debugger_exception(e, item)
+                    _try_wrap_udf_exception(e, item)
 
         else:
             assert isinstance(
                 udf.__call__, Callable
             ), f"Expected Callable, got {udf.__call__} ({type(udf.__call__)})"
 
-            def _debugger_breakpoint_wrapped_fn(item: Any) -> Any:
+            def _wrapped_udf_map_fn(item: Any) -> Any:
                 assert ray.data._map_actor_context is not None
                 assert not ray.data._map_actor_context.is_async
                 try:
@@ -334,23 +334,23 @@ def _wrap_debugger_breakpoint_fn(op: AbstractUDFMap):
                         **fn_kwargs,
                     )
                 except Exception as e:
-                    _handle_debugger_exception(e, item)
+                    _try_wrap_udf_exception(e, item)
 
     else:
 
-        def _debugger_breakpoint_wrapped_fn(item: Any) -> Any:
+        def _wrapped_udf_map_fn(item: Any) -> Any:
             try:
                 return udf(item, *fn_args, **fn_kwargs)
             except Exception as e:
-                _handle_debugger_exception(e, item)
+                _try_wrap_udf_exception(e, item)
 
         def init_fn():
             pass
 
-    return _debugger_breakpoint_wrapped_fn, init_fn
+    return _wrapped_udf_map_fn, init_fn
 
 
-def _handle_debugger_exception(e: Exception, item: Any = None):
+def _try_wrap_udf_exception(e: Exception, item: Any = None):
     """If the Ray Debugger is enabled, keep the full stack trace unmodified
     so that the debugger can stop at the initial unhandled exception.
     Otherwise, clear the stack trace to omit noisy internal code path."""
