@@ -91,6 +91,27 @@ message LoggingConfig {
 
 //[End] Logging Config
 
+//[Begin] ROUTING CONFIG
+message RequestRouterConfig {
+  // Cloudpickled request router definition.
+  bytes _serialized_request_router_cls = 1;
+
+  // The import path of the request router if user passed a string. It's the
+  // concatenation of the request router module and the request router name
+  // if user passed a callable.
+  string request_router_class = 2;
+
+  // Frequency at which the controller records routing stats for a replica.
+  double request_routing_stats_period_s = 3;
+
+  // Timeout after which a replica started a record routing stats without a response.
+  double request_routing_stats_timeout_s = 4;
+
+  // kwargs which Ray Serve passes to the router class' initialize_state method.
+  bytes request_router_kwargs = 5;
+}
+//[End] ROUTING CONFIG
+
 // Configuration options for a deployment, to be set by the user.
 message DeploymentConfig {
   // The number of processes to start up that will handle requests to this deployment.
@@ -135,19 +156,8 @@ message DeploymentConfig {
 
   LoggingConfig logging_config = 14;
 
-  // Cloudpickled request router definition.
-  bytes serialized_request_router_cls = 15;
-
-  // The import path of the request router if user passed a string. Will be the
-  // concatenation of the request router module and the request router name
-  // if user passed a callable.
-  string request_router_class = 16;
-
-  // Frequency at which the controller records routing stats for a replica.
-  double request_routing_stats_period_s = 17;
-
-  // Timeout after which a replica started a record routing stats without a response.
-  double request_routing_stats_timeout_s = 18;
+  // The deployment's routing configuration.
+  RequestRouterConfig request_router_config = 19;
 }
 
 // Deployment language.
