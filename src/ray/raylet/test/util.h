@@ -87,7 +87,7 @@ class MockWorker : public WorkerInterface {
     RAY_CHECK(false) << "Method unused";
     return false;
   }
-  void Kill(instrumented_io_context &io_service, bool force) override {
+  void KillAsync(instrumented_io_context &io_service, bool force) override {
     killed_.store(true);
   }
   bool IsKilled() const { return killed_.load(); }

@@ -46,7 +46,7 @@ class WorkerInterface {
   virtual rpc::WorkerType GetWorkerType() const = 0;
   virtual void MarkDead() = 0;
   virtual bool IsDead() const = 0;
-  virtual void Kill(instrumented_io_context &io_service, bool force = false) = 0;
+  virtual void KillAsync(instrumented_io_context &io_service, bool force = false) = 0;
   virtual void MarkBlocked() = 0;
   virtual void MarkUnblocked() = 0;
   virtual bool IsBlocked() const = 0;
@@ -155,11 +155,12 @@ class Worker : public std::enable_shared_from_this<Worker>, public WorkerInterfa
   rpc::WorkerType GetWorkerType() const;
   void MarkDead();
   bool IsDead() const;
-  /// Kill the worker. This is idempotent, that is, no effect starting from the second
-  /// call. \param io_service for scheduling the graceful period timer. \param force true
-  /// to kill immediately, false to give time for the worker to clean up and exit
-  /// gracefully. \return Void.
-  void Kill(instrumented_io_context &io_service, bool force = false);
+  /// Kill the worker process. This is idempotent.
+  /// \param io_service for scheduling the graceful period timer.
+  /// \param force true to kill immediately, false to give time for the worker to clean up
+  /// and exit gracefully.
+  /// \return Void.
+  void KillAsync(instrumented_io_context &io_service, bool force = false);
   void MarkBlocked();
   void MarkUnblocked();
   bool IsBlocked() const;
@@ -304,7 +305,7 @@ class Worker : public std::enable_shared_from_this<Worker>, public WorkerInterfa
   /// Whether the worker is dead.
   bool dead_;
   /// Whether the worker is killed by the Kill method.
-  bool killed_;
+  std::atomic<bool> killing_;
   /// Whether the worker is blocked. Workers become blocked in a `ray.get`, if
   /// they require a data dependency while executing a task.
   bool blocked_;

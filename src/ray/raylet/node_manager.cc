@@ -392,7 +392,7 @@ void NodeManager::DestroyWorker(std::shared_ptr<WorkerInterface> worker,
   DisconnectClient(
       worker->Connection(), /*graceful=*/false, disconnect_type, disconnect_detail);
   worker->MarkDead();
-  worker->Kill(io_service_, force);
+  worker->KillAsync(io_service_, force);
   if (disconnect_type == rpc::WorkerExitType::SYSTEM_ERROR) {
     number_workers_killed_++;
   } else if (disconnect_type == rpc::WorkerExitType::NODE_OUT_OF_MEMORY) {
@@ -436,7 +436,7 @@ void NodeManager::HandleJobFinished(const JobID &job_id, const JobTableData &job
                   << "Failed to send exit request to worker "
                   << ": " << status.ToString() << ". Killing it using SIGKILL instead.";
               // Just kill-9 as a last resort.
-              worker->Kill(io_service_, /* force */ true);
+              worker->KillAsync(io_service_, /* force */ true);
             }
           });
     }
@@ -844,7 +844,7 @@ void NodeManager::NodeRemoved(const NodeID &node_id) {
     // worker.
     RAY_LOG(INFO).WithField(worker->WorkerId()).WithField(owner_node_id)
         << "The leased worker is killed because the owner node died.";
-    worker->Kill(io_service_);
+    worker->KillAsync(io_service_);
   }
 
   // Below, when we remove node_id from all of these data structures, we could
@@ -887,7 +887,7 @@ void NodeManager::HandleUnexpectedWorkerFailure(const WorkerID &worker_id) {
     RAY_LOG(INFO) << "The leased worker " << worker->WorkerId()
                   << " is killed because the owner process " << owner_worker_id
                   << " died.";
-    worker->Kill(io_service_);
+    worker->KillAsync(io_service_);
   }
 }
 
