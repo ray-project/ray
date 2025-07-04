@@ -322,6 +322,11 @@ bool ReferenceCounter::AddOwnedObjectInternal(
   if (object_id_refs_.count(object_id) != 0) {
     return false;
   }
+  // To lazily subscribe to node changes once there's at least one object this worker
+  // owns.
+  RAY_CHECK(subscribe_to_node_changes_);
+  subscribe_to_node_changes_();
+
   if (ObjectID::IsActorID(object_id)) {
     num_actors_owned_by_us_++;
   } else {
@@ -1716,6 +1721,11 @@ std::optional<rpc::TensorTransport> ReferenceCounter::GetTensorTransport(
     return absl::nullopt;
   }
   return it->second.tensor_transport;
+}
+
+void ReferenceCounter::RegisterNodeSubscriber(
+    std::function<void()> subscribe_to_node_changes) {
+  subscribe_to_node_changes_ = std::move(subscribe_to_node_changes);
 }
 
 }  // namespace core

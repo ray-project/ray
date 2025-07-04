@@ -498,7 +498,8 @@ TEST(NormalTaskSubmitterTest, TestLocalityAwareSubmitOneTask) {
       actor_creator,
       JobID::Nil(),
       kOneRateLimiter,
-      [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; });
+      [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; },
+      []() {});
 
   TaskSpecification task = BuildEmptyTaskSpec();
 
@@ -553,7 +554,8 @@ TEST(NormalTaskSubmitterTest, TestSubmitOneTask) {
       actor_creator,
       JobID::Nil(),
       kOneRateLimiter,
-      [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; });
+      [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; },
+      []() {});
 
   TaskSpecification task = BuildEmptyTaskSpec();
 
@@ -607,7 +609,8 @@ TEST(NormalTaskSubmitterTest, TestRetryTaskApplicationLevelError) {
       actor_creator,
       JobID::Nil(),
       kOneRateLimiter,
-      [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; });
+      [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; },
+      []() {});
   TaskSpecification task = BuildEmptyTaskSpec();
   task.GetMutableMessage().set_retry_exceptions(true);
 
@@ -666,7 +669,8 @@ TEST(NormalTaskSubmitterTest, TestHandleTaskFailure) {
       actor_creator,
       JobID::Nil(),
       kOneRateLimiter,
-      [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; });
+      [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; },
+      []() {});
   TaskSpecification task = BuildEmptyTaskSpec();
 
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
@@ -712,7 +716,8 @@ TEST(NormalTaskSubmitterTest, TestHandleUnschedulableTask) {
       actor_creator,
       JobID::Nil(),
       kTwoRateLimiter,
-      [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; });
+      [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; },
+      []() {});
 
   TaskSpecification task1 = BuildEmptyTaskSpec();
   TaskSpecification task2 = BuildEmptyTaskSpec();
@@ -785,7 +790,8 @@ TEST(NormalTaskSubmitterTest, TestHandleRuntimeEnvSetupFailed) {
       actor_creator,
       JobID::Nil(),
       kTwoRateLimiter,
-      [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; });
+      [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; },
+      []() {});
 
   TaskSpecification task1 = BuildEmptyTaskSpec();
   TaskSpecification task2 = BuildEmptyTaskSpec();
@@ -857,7 +863,8 @@ TEST(NormalTaskSubmitterTest, TestWorkerHandleLocalRayletDied) {
       actor_creator,
       JobID::Nil(),
       kTwoRateLimiter,
-      [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; });
+      [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; },
+      []() {});
 
   TaskSpecification task1 = BuildEmptyTaskSpec();
   ASSERT_TRUE(submitter.SubmitTask(task1).ok());
@@ -889,7 +896,8 @@ TEST(NormalTaskSubmitterTest, TestDriverHandleLocalRayletDied) {
       actor_creator,
       JobID::Nil(),
       kTwoRateLimiter,
-      [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; });
+      [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; },
+      []() {});
 
   TaskSpecification task1 = BuildEmptyTaskSpec();
   TaskSpecification task2 = BuildEmptyTaskSpec();
@@ -949,7 +957,8 @@ TEST(NormalTaskSubmitterTest, TestConcurrentWorkerLeases) {
       actor_creator,
       JobID::Nil(),
       rateLimiter,
-      [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; });
+      [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; },
+      []() {});
 
   std::vector<TaskSpecification> tasks;
   for (int i = 0; i < 2 * concurrency; i++) {
@@ -1030,7 +1039,8 @@ TEST(NormalTaskSubmitterTest, TestConcurrentWorkerLeasesDynamic) {
       actor_creator,
       JobID::Nil(),
       rateLimiter,
-      [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; });
+      [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; },
+      []() {});
 
   std::vector<TaskSpecification> tasks;
   for (int i = 0; i < 2 * concurrency; i++) {
@@ -1140,7 +1150,8 @@ TEST(NormalTaskSubmitterTest, TestConcurrentWorkerLeasesDynamicWithSpillback) {
       actor_creator,
       JobID::Nil(),
       rateLimiter,
-      [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; });
+      [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; },
+      []() {});
 
   std::vector<TaskSpecification> tasks;
   for (int i = 0; i < 2 * concurrency; i++) {
@@ -1247,7 +1258,8 @@ TEST(NormalTaskSubmitterTest, TestSubmitMultipleTasks) {
       actor_creator,
       JobID::Nil(),
       kOneRateLimiter,
-      [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; });
+      [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; },
+      []() {});
 
   TaskSpecification task1 = BuildEmptyTaskSpec();
   TaskSpecification task2 = BuildEmptyTaskSpec();
@@ -1322,7 +1334,8 @@ TEST(NormalTaskSubmitterTest, TestReuseWorkerLease) {
       actor_creator,
       JobID::Nil(),
       kOneRateLimiter,
-      [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; });
+      [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; },
+      []() {});
 
   TaskSpecification task1 = BuildEmptyTaskSpec();
   TaskSpecification task2 = BuildEmptyTaskSpec();
@@ -1397,7 +1410,8 @@ TEST(NormalTaskSubmitterTest, TestRetryLeaseCancellation) {
       actor_creator,
       JobID::Nil(),
       kOneRateLimiter,
-      [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; });
+      [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; },
+      []() {});
   TaskSpecification task1 = BuildEmptyTaskSpec();
   TaskSpecification task2 = BuildEmptyTaskSpec();
   TaskSpecification task3 = BuildEmptyTaskSpec();
@@ -1467,7 +1481,8 @@ TEST(NormalTaskSubmitterTest, TestConcurrentCancellationAndSubmission) {
       actor_creator,
       JobID::Nil(),
       kOneRateLimiter,
-      [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; });
+      [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; },
+      []() {});
   TaskSpecification task1 = BuildEmptyTaskSpec();
   TaskSpecification task2 = BuildEmptyTaskSpec();
   TaskSpecification task3 = BuildEmptyTaskSpec();
@@ -1534,7 +1549,8 @@ TEST(NormalTaskSubmitterTest, TestWorkerNotReusedOnError) {
       actor_creator,
       JobID::Nil(),
       kOneRateLimiter,
-      [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; });
+      [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; },
+      []() {});
   TaskSpecification task1 = BuildEmptyTaskSpec();
   TaskSpecification task2 = BuildEmptyTaskSpec();
 
@@ -1592,7 +1608,8 @@ TEST(NormalTaskSubmitterTest, TestWorkerNotReturnedOnExit) {
       actor_creator,
       JobID::Nil(),
       kOneRateLimiter,
-      [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; });
+      [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; },
+      []() {});
   TaskSpecification task1 = BuildEmptyTaskSpec();
 
   ASSERT_TRUE(submitter.SubmitTask(task1).ok());
@@ -1651,7 +1668,8 @@ TEST(NormalTaskSubmitterTest, TestSpillback) {
       actor_creator,
       JobID::Nil(),
       kOneRateLimiter,
-      [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; });
+      [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; },
+      []() {});
   TaskSpecification task = BuildEmptyTaskSpec();
 
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
@@ -1728,7 +1746,8 @@ TEST(NormalTaskSubmitterTest, TestSpillbackRoundTrip) {
       actor_creator,
       JobID::Nil(),
       kOneRateLimiter,
-      [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; });
+      [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; },
+      []() {});
   TaskSpecification task = BuildEmptyTaskSpec();
 
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
@@ -1808,7 +1827,8 @@ void TestSchedulingKey(const std::shared_ptr<CoreWorkerMemoryStore> store,
       actor_creator,
       JobID::Nil(),
       kOneRateLimiter,
-      [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; });
+      [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; },
+      []() {});
 
   ASSERT_TRUE(submitter.SubmitTask(same1).ok());
   ASSERT_TRUE(submitter.SubmitTask(same2).ok());
@@ -1968,7 +1988,8 @@ TEST(NormalTaskSubmitterTest, TestBacklogReport) {
       actor_creator,
       JobID::Nil(),
       kOneRateLimiter,
-      [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; });
+      [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; },
+      []() {});
 
   TaskSpecification task1 = BuildEmptyTaskSpec();
 
@@ -2047,7 +2068,8 @@ TEST(NormalTaskSubmitterTest, TestWorkerLeaseTimeout) {
       actor_creator,
       JobID::Nil(),
       kOneRateLimiter,
-      [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; });
+      [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; },
+      []() {});
   TaskSpecification task1 = BuildEmptyTaskSpec();
   TaskSpecification task2 = BuildEmptyTaskSpec();
   TaskSpecification task3 = BuildEmptyTaskSpec();
@@ -2116,7 +2138,8 @@ TEST(NormalTaskSubmitterTest, TestKillExecutingTask) {
       actor_creator,
       JobID::Nil(),
       kOneRateLimiter,
-      [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; });
+      [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; },
+      []() {});
   TaskSpecification task = BuildEmptyTaskSpec();
 
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
@@ -2178,7 +2201,8 @@ TEST(NormalTaskSubmitterTest, TestKillPendingTask) {
       actor_creator,
       JobID::Nil(),
       kOneRateLimiter,
-      [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; });
+      [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; },
+      []() {});
   TaskSpecification task = BuildEmptyTaskSpec();
 
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
@@ -2225,7 +2249,8 @@ TEST(NormalTaskSubmitterTest, TestKillResolvingTask) {
       actor_creator,
       JobID::Nil(),
       kOneRateLimiter,
-      [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; });
+      [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; },
+      []() {});
   TaskSpecification task = BuildEmptyTaskSpec();
   ObjectID obj1 = ObjectID::FromRandom();
   task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj1.Binary());

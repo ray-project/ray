@@ -93,6 +93,7 @@ class NormalTaskSubmitter {
       const JobID &job_id,
       std::shared_ptr<LeaseRequestRateLimiter> lease_request_rate_limiter,
       const TensorTransportGetter &tensor_transport_getter,
+      std::function<void()> subscribe_to_node_changes,
       std::optional<boost::asio::steady_timer> cancel_timer = absl::nullopt)
       : rpc_address_(std::move(rpc_address)),
         local_lease_client_(std::move(lease_client)),
@@ -105,6 +106,7 @@ class NormalTaskSubmitter {
         worker_type_(worker_type),
         core_worker_client_pool_(std::move(core_worker_client_pool)),
         job_id_(job_id),
+        subscribe_to_node_changes_(std::move(subscribe_to_node_changes)),
         lease_request_rate_limiter_(std::move(lease_request_rate_limiter)),
         cancel_retry_timer_(std::move(cancel_timer)) {}
 
@@ -153,6 +155,9 @@ class NormalTaskSubmitter {
   /// Since each worker only reports to its local rayet
   /// we avoid double counting backlogs in autoscaler.
   void ReportWorkerBacklog();
+
+  // To register the lazy subscribe function (should always be called before use)
+  void RegisterNodeSubscriber(std::function<void()> subscribe_to_node_changes);
 
  private:
   /// Schedule more work onto an idle worker or return it back to the raylet if
@@ -287,6 +292,9 @@ class NormalTaskSubmitter {
 
   /// The ID of the job.
   const JobID job_id_;
+
+  // To lazily subscribe to node changes.
+  std::function<void()> subscribe_to_node_changes_;
 
   /// A LeaseEntry struct is used to condense the metadata about a single executor:
   /// (1) The lease client through which the worker should be returned
