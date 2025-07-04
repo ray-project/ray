@@ -1699,6 +1699,20 @@ def test_write_partition_cols_with_min_rows_per_file(
     assert ds_read.count() == 40
     assert set(ds_read.schema().names) == {"partition_col", "data"}
 
+    # ------------------------------------------------------------------
+    # Verify that the data written and read back are identical
+    # ------------------------------------------------------------------
+    expected_df = df.sort_values("data").reset_index(drop=True)
+    actual_df = ds_read.to_pandas().sort_values("data").reset_index(drop=True)
+
+    # Parquet partition values are read back as strings; cast both sides.
+    actual_df["partition_col"] = actual_df["partition_col"].astype(str)
+    expected_df["partition_col"] = expected_df["partition_col"].astype(str)
+
+    # Align column order and compare.
+    actual_df = actual_df[expected_df.columns]
+    pd.testing.assert_frame_equal(actual_df, expected_df, check_dtype=False)
+
 
 @pytest.mark.parametrize("max_rows_per_file", [5, 10, 25])
 def test_write_max_rows_per_file(tmp_path, ray_start_regular_shared, max_rows_per_file):
@@ -1724,6 +1738,19 @@ def test_write_max_rows_per_file(tmp_path, ray_start_regular_shared, max_rows_pe
         assert (
             size <= max_rows_per_file
         ), f"File size {size} exceeds max_rows_per_file {max_rows_per_file}"
+
+    # ------------------------------------------------------------------
+    # Verify the parquet round-trip: written data == read-back data
+    # ------------------------------------------------------------------
+    ds_reloaded = ray.data.read_parquet(tmp_path)
+    assert ds_reloaded.count() == 100
+
+    expected_df = (
+        pd.DataFrame({"id": list(range(100))}).sort_values("id").reset_index(drop=True)
+    )
+    actual_df = ds_reloaded.to_pandas().sort_values("id").reset_index(drop=True)
+
+    pd.testing.assert_frame_equal(actual_df, expected_df, check_dtype=False)
 
 
 @pytest.mark.parametrize(
@@ -1761,6 +1788,19 @@ def test_write_min_max_rows_per_file(
         assert (
             size <= max_rows_per_file
         ), f"File size {size} not less than {max_rows_per_file}"
+
+    # ------------------------------------------------------------------
+    # Verify the parquet round-trip: written data == read-back data
+    # ------------------------------------------------------------------
+    ds_reloaded = ray.data.read_parquet(tmp_path)
+    assert ds_reloaded.count() == 100
+
+    expected_df = (
+        pd.DataFrame({"id": list(range(100))}).sort_values("id").reset_index(drop=True)
+    )
+    actual_df = ds_reloaded.to_pandas().sort_values("id").reset_index(drop=True)
+
+    pd.testing.assert_frame_equal(actual_df, expected_df, check_dtype=False)
 
 
 def test_write_max_rows_per_file_validation(tmp_path, ray_start_regular_shared):
@@ -1836,6 +1876,27 @@ def test_write_partition_cols_with_max_rows_per_file(
         assert (
             size <= max_rows_per_file
         ), f"File size {size} exceeds max_rows_per_file {max_rows_per_file}"
+
+    # ------------------------------------------------------------------
+    # Verify the parquet round-trip: data read back must equal original
+    # ------------------------------------------------------------------
+    ds_reloaded = ray.data.read_parquet(tmp_path)
+    assert ds_reloaded.count() == 30
+
+    expected_rows = [
+        {"id": i, "partition": i % 3, "value": f"value_{i}"} for i in range(30)
+    ]
+    expected_df = pd.DataFrame(expected_rows).sort_values("id").reset_index(drop=True)
+    actual_df = ds_reloaded.to_pandas().sort_values("id").reset_index(drop=True)
+
+    # Align column order for a strict equality check.
+    actual_df = actual_df[expected_df.columns]
+    # Parquet partition values are read back as strings; make both sides `str`
+    # so the value-level comparison succeeds (dtype may still differ).
+    actual_df["partition"] = actual_df["partition"].astype(str)
+    expected_df["partition"] = expected_df["partition"].astype(str)
+
+    pd.testing.assert_frame_equal(actual_df, expected_df, check_dtype=False)
 
 
 @dataclass
