@@ -528,7 +528,8 @@ def build(build_python, build_java, build_cpp):
         )
         raise OSError(msg)
 
-    bazel_env = dict(os.environ, PYTHON3_BIN_PATH=sys.executable)
+    bazel_env = dict(os.environ)
+    bazel_env["PYTHON3_BIN_PATH"] = sys.executable
 
     if is_native_windows_or_msys():
         SHELL = bazel_env.get("SHELL")
