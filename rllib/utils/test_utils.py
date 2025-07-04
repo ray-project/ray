@@ -1351,7 +1351,9 @@ def run_rllib_example_script_experiment(
     if results.errors:
         # Might cause an IndexError if the tuple is not long enough; in that case, use repr(e).
         errors = [
-            e.args[0].args[2] if e.args and hasattr(e.args[0], "args") and len(e.args[0].args) > 2 else repr(e)
+            e.args[0].args[2]
+            if e.args and hasattr(e.args[0], "args") and len(e.args[0].args) > 2
+            else repr(e)
             for e in results.errors
         ]
         raise RuntimeError(
