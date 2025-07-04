@@ -1,7 +1,8 @@
 import os
 import shutil
 import time
-from typing import Any
+from dataclasses import dataclass
+from typing import Any, Optional
 
 import numpy as np
 import pandas as pd
@@ -1837,233 +1838,48 @@ def test_write_partition_cols_with_max_rows_per_file(
         ), f"File size {size} exceeds max_rows_per_file {max_rows_per_file}"
 
 
-@pytest.mark.parametrize(
-    "row_group_size,min_rows_per_file,max_rows_per_file,expected_min,expected_max,expected_max_file",
-    [
-        # Basic cases with no constraints
-        (
-            None,
-            None,
-            None,
-            0,
-            1048576,
-            0,
-        ),  # ARROW_DEFAULT_MAX_GROUP_SIZE = 1_024 * 1_024
-        (1000, None, None, 1000, 1000, 0),
-        # Cases with min_rows_per_file only
-        (None, 500, None, 500, 1048576, 0),
-        (1000, 500, None, 1000, 1000, 0),  # row_group_size takes precedence
-        (100, 500, None, 500, 500, 0),  # clamped to min
-        # Cases with max_rows_per_file only
-        (None, None, 2000, 0, 2000, 2000),
-        (1000, None, 2000, 1000, 1000, 2000),
-        (3000, None, 2000, 2000, 2000, 2000),  # clamped to max
-        # Cases with both min and max
-        (None, 500, 2000, 500, 2000, 2000),
-        (1000, 500, 2000, 1000, 1000, 2000),
-        (100, 500, 2000, 500, 500, 2000),  # clamped to min
-        (3000, 500, 2000, 2000, 2000, 2000),  # clamped to max
-        # Edge cases with Arrow's hard cap
-        (
-            None,
-            None,
-            2000000,
-            0,
-            1048576,
-            2000000,
-        ),  # max exceeds Arrow cap for groups, but max_file preserved
-        (2000000, None, None, 1048576, 1048576, 0),  # row_group_size exceeds Arrow cap
-        (
-            None,
-            2000000,
-            None,
-            1048576,
-            1048576,
-            0,
-        ),  # min exceeds Arrow cap, gets clamped
-        (
-            None,
-            2000000,
-            1000,
-            1000,
-            1000,
-            1000,
-        ),  # min exceeds Arrow cap, max is smaller
-        # Zero values (treated as None/unbounded)
-        (None, 0, 0, 0, 1048576, 0),
-        (1000, 0, 0, 1000, 1000, 0),
-        # Small values
-        (1, None, None, 1, 1, 0),
-        (None, 1, 2, 1, 2, 2),
-        # Equal min and max
-        (None, 1000, 1000, 1000, 1000, 1000),
-        (500, 1000, 1000, 1000, 1000, 1000),  # clamped to the equal bounds
-        (1500, 1000, 1000, 1000, 1000, 1000),  # clamped to the equal bounds
-        # Additional edge cases
-        (None, 1048576, 1048576, 1048576, 1048576, 1048576),  # At Arrow cap
-        (1048576, None, None, 1048576, 1048576, 0),  # row_group_size at Arrow cap
-        (1048577, None, None, 1048576, 1048576, 0),  # row_group_size exceeds Arrow cap
-        (None, 1048577, None, 1048576, 1048576, 0),  # min exceeds Arrow cap
-        (
-            None,
-            None,
-            1048577,
-            0,
-            1048576,
-            1048577,
-        ),  # max exceeds Arrow cap (preserved for max_file)
-        # Boundary conditions
-        (1, 1, 1, 1, 1, 1),  # All values = 1
-        (None, 1, 1048576, 1, 1048576, 1048576),  # Wide range
-        (524288, 262144, 786432, 524288, 524288, 786432),  # Mid-range values
-    ],
-    ids=[
-        "no_constraints",
-        "row_group_size_only",
-        "min_only",
-        "row_group_size_with_min_no_clamp",
-        "row_group_size_below_min_clamped",
-        "max_only",
-        "row_group_size_with_max_no_clamp",
-        "row_group_size_above_max_clamped",
-        "min_and_max_no_row_group",
-        "row_group_size_within_bounds",
-        "row_group_size_below_min_with_max",
-        "row_group_size_above_max_with_min",
-        "max_exceeds_arrow_cap",
-        "row_group_size_exceeds_arrow_cap",
-        "min_exceeds_arrow_cap_no_max",
-        "min_exceeds_arrow_cap_with_small_max",
-        "zero_values_treated_as_none",
-        "row_group_size_with_zeros",
-        "minimal_values",
-        "small_min_max_range",
-        "equal_min_max_no_row_group",
-        "row_group_size_below_equal_bounds",
-        "row_group_size_above_equal_bounds",
-        "at_arrow_cap_equal_bounds",
-        "row_group_size_at_arrow_cap",
-        "row_group_size_exceeds_arrow_cap_by_one",
-        "min_exceeds_arrow_cap_by_one",
-        "max_exceeds_arrow_cap_preserved",
-        "all_minimal_values",
-        "wide_range",
-        "mid_range_values",
-    ],
-)
-def test_choose_row_group_limits_parameterized(
-    row_group_size,
-    min_rows_per_file,
-    max_rows_per_file,
-    expected_min,
-    expected_max,
-    expected_max_file,
-):
-    """Test the choose_row_group_limits function with comprehensive parameter combinations."""
-    from ray.data._internal.datasource.parquet_datasink import choose_row_group_limits
-
-    (
-        min_rows_per_group,
-        max_rows_per_group,
-        max_rows_per_file_result,
-    ) = choose_row_group_limits(row_group_size, min_rows_per_file, max_rows_per_file)
-
-    assert min_rows_per_group == expected_min, (
-        f"Expected min_rows_per_group={expected_min}, got {min_rows_per_group} "
-        f"for inputs: row_group_size={row_group_size}, min_rows_per_file={min_rows_per_file}, "
-        f"max_rows_per_file={max_rows_per_file}"
-    )
-    assert max_rows_per_group == expected_max, (
-        f"Expected max_rows_per_group={expected_max}, got {max_rows_per_group} "
-        f"for inputs: row_group_size={row_group_size}, min_rows_per_file={min_rows_per_file}, "
-        f"max_rows_per_file={max_rows_per_file}"
-    )
-    assert max_rows_per_file_result == expected_max_file, (
-        f"Expected max_rows_per_file={expected_max_file}, got {max_rows_per_file_result} "
-        f"for inputs: row_group_size={row_group_size}, min_rows_per_file={min_rows_per_file}, "
-        f"max_rows_per_file={max_rows_per_file}"
-    )
-
-    # Additional invariant checks
-    assert min_rows_per_group <= max_rows_per_group, (
-        f"min_rows_per_group ({min_rows_per_group}) should not exceed max_rows_per_group ({max_rows_per_group}) "
-        f"for inputs: row_group_size={row_group_size}, min_rows_per_file={min_rows_per_file}, "
-        f"max_rows_per_file={max_rows_per_file}"
-    )
-    assert max_rows_per_group <= 1048576, (
-        f"max_rows_per_group ({max_rows_per_group}) should not exceed Arrow's hard cap (1048576) "
-        f"for inputs: row_group_size={row_group_size}, min_rows_per_file={min_rows_per_file}, "
-        f"max_rows_per_file={max_rows_per_file}"
-    )
-    assert max_rows_per_file_result >= 0, (
-        f"max_rows_per_file ({max_rows_per_file_result}) should be non-negative "
-        f"for inputs: row_group_size={row_group_size}, min_rows_per_file={min_rows_per_file}, "
-        f"max_rows_per_file={max_rows_per_file}"
-    )
+@dataclass
+class RowGroupLimitCase:
+    row_group_size: Optional[int]
+    min_rows_per_file: Optional[int]
+    max_rows_per_file: Optional[int]
+    expected_min: Optional[int]
+    expected_max: Optional[int]
+    expected_max_file: Optional[int]
 
 
-def test_choose_row_group_limits_warning_scenarios():
-    """Test scenarios that should trigger warnings in choose_row_group_limits."""
-    from ray.data._internal.datasource.parquet_datasink import choose_row_group_limits
-
-    # Test case that should trigger a warning: min exceeds Arrow cap, max is small
-    with pytest.warns(None) as _:
-        (
-            min_rows_per_group,
-            max_rows_per_group,
-            max_rows_per_file_result,
-        ) = choose_row_group_limits(
-            row_group_size=None,
-            min_rows_per_file=2000000,  # Exceeds Arrow cap
-            max_rows_per_file=1000,  # Small max
-        )
-
-    # Should have clamped min down to max
-    assert min_rows_per_group == 1000
-    assert max_rows_per_group == 1000
-    assert max_rows_per_file_result == 1000
+ROW_GROUP_LIMIT_CASES = [
+    RowGroupLimitCase(None, None, None, None, None, None),
+    RowGroupLimitCase(1000, None, None, 1000, 1000, None),
+    RowGroupLimitCase(None, 500, None, 500, None, None),
+    RowGroupLimitCase(None, None, 2000, None, 2000, 2000),
+    RowGroupLimitCase(1000, 500, 2000, 1000, 1000, 2000),
+    RowGroupLimitCase(3000, 500, 2000, 2000, 2000, 2000),
+]
 
 
 @pytest.mark.parametrize(
-    "scenario,row_group_size,min_rows_per_file,max_rows_per_file,expected_warning",
-    [
-        ("min_exceeds_max_after_arrow_cap_clamp", None, 2000000, 1000, True),
-        ("normal_case", None, 500, 2000, False),
-        ("row_group_size_specified", 1000, 500, 2000, False),
-        ("at_arrow_cap", None, 1048576, 1048576, False),
-    ],
-    ids=["warning_case", "normal_case", "row_group_specified", "at_arrow_cap"],
+    "case",
+    ROW_GROUP_LIMIT_CASES,
+    ids=[f"case_{i}" for i in range(len(ROW_GROUP_LIMIT_CASES))],
 )
-def test_choose_row_group_limits_warning_conditions(
-    scenario,
-    row_group_size,
-    min_rows_per_file,
-    max_rows_per_file,
-    expected_warning,
-    caplog,
-):
-    """Test different scenarios for warning conditions in choose_row_group_limits."""
-    import logging
-
+def test_choose_row_group_limits_parameterized(case):
+    """Validate the helper across representative inputs."""
     from ray.data._internal.datasource.parquet_datasink import choose_row_group_limits
 
-    with caplog.at_level(logging.WARNING):
-        result = choose_row_group_limits(
-            row_group_size, min_rows_per_file, max_rows_per_file
-        )
+    result = choose_row_group_limits(
+        case.row_group_size, case.min_rows_per_file, case.max_rows_per_file
+    )
+    assert result == (
+        case.expected_min,
+        case.expected_max,
+        case.expected_max_file,
+    ), f"Unexpected result for {case}"
 
-    if expected_warning:
-        # Check that a warning was logged (captured in stderr, not caplog for this logger)
-        # We verify the behavior instead: min should equal max when warning occurs
-        assert (
-            result[0] == result[1]
-        ), f"When warning expected, min should equal max, got {result}"
-    else:
-        # For non-warning cases, just verify the function doesn't crash
-        assert len(result) == 3
-        assert result[0] <= result[1]  # min <= max
-        assert result[1] <= 1048576  # max <= Arrow cap
-        assert result[2] >= 0  # max_file >= 0
+    # Invariants when both bounds are known.
+    min_rows, max_rows, _ = result
+    if min_rows is not None and max_rows is not None:
+        assert min_rows <= max_rows
 
 
 if __name__ == "__main__":

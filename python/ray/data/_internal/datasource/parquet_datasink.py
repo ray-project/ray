@@ -16,7 +16,6 @@ if TYPE_CHECKING:
 
 WRITE_FILE_MAX_ATTEMPTS = 10
 WRITE_FILE_RETRY_MAX_BACKOFF_SECONDS = 32
-ARROW_DEFAULT_MAX_GROUP_SIZE = 1_024 * 1_024
 
 # Map Ray Data's SaveMode to pyarrow's existing_data_behavior property which is exposed via the
 # `pyarrow.dataset.write_dataset` function.
@@ -41,7 +40,7 @@ def choose_row_group_limits(
     row_group_size: Optional[int],
     min_rows_per_file: Optional[int],
     max_rows_per_file: Optional[int],
-) -> tuple[int, int, int]:
+) -> tuple[Optional[int], Optional[int], Optional[int]]:
     """
     Configure `min_rows_per_group`, `max_rows_per_group`, `max_rows_per_file` parameters of Pyarrow's `write_dataset` API based on Ray Data's configuration
 
@@ -50,53 +49,34 @@ def choose_row_group_limits(
     (min_rows_per_group, max_rows_per_group, max_rows_per_file)
     """
 
-    ### From Pyarrow docs:
-    # max_rows_per_file : int, default 0
-    # Maximum number of rows per file. If greater than 0 then this will
-    # limit how many rows are placed in any single file. Otherwise there
-    # will be no limit and one file will be created in each output
-    # directory unless files need to be closed to respect max_open_files
-    max_rows_per_file = max_rows_per_file or 0
+    if (
+        row_group_size is None
+        and min_rows_per_file is None
+        and max_rows_per_file is None
+    ):
+        return None, None, None
 
-    lower = min_rows_per_file or 0
-    # the upper limit must be a positive number/non-zero
-    upper = min(
-        max_rows_per_file or ARROW_DEFAULT_MAX_GROUP_SIZE, ARROW_DEFAULT_MAX_GROUP_SIZE
-    )
-
-    if row_group_size is None:
+    elif row_group_size is None:
         # No explicit row group size provided. We are defaulting to
         # either the caller's min_rows_per_file or max_rows_per_file limits
         # or Arrow's defaults
-        min_row_group_size, max_row_group_size = lower, upper
+        return min_rows_per_file, max_rows_per_file, max_rows_per_file
+
+    elif row_group_size is not None and (
+        min_rows_per_file is None or max_rows_per_file is None
+    ):
+        return row_group_size, row_group_size, max_rows_per_file
+
     else:
-        if row_group_size > upper:
-            logger.warning(
-                "Requested row_group_size (%d) is larger than the maximum allowed "
-                "by the caller's min_rows_per_file and max_rows_per_file limits. "
-                "Clamping to %d.",
-                row_group_size,
-                upper,
-            )
         # Clamp the requested `row_group_size` so that it is
         # * no smaller than `min_rows_per_file` (`lower`)
         # * no larger than `max_rows_per_file` (or Arrow's default cap) (`upper`)
         # This keeps each row-group within the per-file limits while staying
         # as close as possible to the requested size.
-        clamped_group_size = max(lower, min(row_group_size, upper))
-        min_row_group_size = max_row_group_size = clamped_group_size
-
-    # Never let the lower bound exceed the upper
-    if min_row_group_size > max_row_group_size:
-        logger.warning(
-            "min_rows_per_group (%d) is greater than max_rows_per_group (%d). "
-            "This will result in a single row group per file.",
-            min_row_group_size,
-            max_row_group_size,
+        clamped_group_size = max(
+            min_rows_per_file, min(row_group_size, max_rows_per_file)
         )
-        min_row_group_size = max_row_group_size
-
-    return min_row_group_size, max_row_group_size, max_rows_per_file
+        return clamped_group_size, clamped_group_size, max_rows_per_file
 
 
 class ParquetDatasink(_FileDatasink):
@@ -263,10 +243,6 @@ class ParquetDatasink(_FileDatasink):
         existing_data_behavior = EXISTING_DATA_BEHAVIOR_MAP.get(
             self.mode, "overwrite_or_ignore"
         )
-
-        # Set default row group size if not provided. Defaults are set by pyarrow.
-        min_rows_per_group = row_group_size if row_group_size else 0
-        max_rows_per_group = row_group_size if row_group_size else 1024 * 1024
 
         (
             min_rows_per_group,
