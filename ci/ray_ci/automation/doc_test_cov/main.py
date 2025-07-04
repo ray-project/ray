@@ -128,7 +128,6 @@ def main():
     test_results.calculate_test_coverage()
     print("done calculating test coverage")
 
-    print(f"len(test_results.targets): {len(test_results.targets)}")
     test_results.save_test_results()
     print("done saving test results")
 
