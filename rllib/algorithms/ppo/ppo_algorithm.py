@@ -3,14 +3,14 @@ from typing import Any, Dict, Optional
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.rl_algorithm import RLAlgorithm
-from ray.rllib.algorithms.rl_algorithm_mixins.learner_mixin import LearnerConcreteMixin
-from ray.rllib.algorithms.rl_algorithm_mixins.online_mixin import (
-    SyncEnvRunnerConcreteMixin,
+from ray.rllib.algorithms.rl_algorithm_apis.learner_api import SimpleLearnerGroupAPI
+from ray.rllib.algorithms.rl_algorithm_apis.online_sampling_api import (
+    SyncOnlineSamplingAPI,
 )
 from ray.rllib.core.learner.training_data import TrainingData
 
 
-class PPOAlgorithm(SyncEnvRunnerConcreteMixin, LearnerConcreteMixin, RLAlgorithm):
+class PPOAlgorithm(SyncOnlineSamplingAPI, SimpleLearnerGroupAPI, RLAlgorithm):
     """Defines the PPO algorithm.
 
     Note, this algorithm includes mixins for policy rollout,

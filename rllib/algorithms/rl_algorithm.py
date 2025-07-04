@@ -23,7 +23,7 @@ class RLAlgorithm(Trainable):
         self,
         config: AlgorithmConfig,
         logger_creator: Optional[Callable[[], Logger]] = None,
-        **kwargs
+        **kwargs,
     ):
         # Initialize the super class.
         super().__init__(config=config, logger_creator=logger_creator, **kwargs)
@@ -31,7 +31,7 @@ class RLAlgorithm(Trainable):
 
     def _setup(self, config: AlgorithmConfig):
         """Sets up all components of this `RLAlgorithm`."""
-        print("Setup RLAlgorithm ... ")
+        print(f"Setup RLAlgorithm ... ")
         super()._setup(config=config)
 
     def training_step(self) -> None:
