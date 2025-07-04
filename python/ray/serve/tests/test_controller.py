@@ -185,7 +185,7 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy):
                                 "ray_actor_options": {
                                     "num_cpus": 1.0,
                                 },
-                                "router_config": {
+                                "request_router_config": {
                                     "request_router_class": "ray.serve._private.request_router:PowerOfTwoChoicesRequestRouter",
                                     "request_router_kwargs": {},
                                     "request_routing_stats_period_s": 10.0,

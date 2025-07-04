@@ -13,7 +13,7 @@ from ray.serve.handle import DeploymentHandle
 
 
 @serve.deployment(
-    router_config=RequestRouterConfig(
+    request_router_config=RequestRouterConfig(
         request_routing_stats_period_s=0.1, request_routing_stats_timeout_s=0.1
     )
 )

@@ -237,7 +237,9 @@ class Deployment:
         health_check_period_s: Default[float] = DEFAULT.VALUE,
         health_check_timeout_s: Default[float] = DEFAULT.VALUE,
         logging_config: Default[Union[Dict, LoggingConfig, None]] = DEFAULT.VALUE,
-        router_config: Default[Union[Dict, RequestRouterConfig, None]] = DEFAULT.VALUE,
+        request_router_config: Default[
+            Union[Dict, RequestRouterConfig, None]
+        ] = DEFAULT.VALUE,
         _init_args: Default[Tuple[Any]] = DEFAULT.VALUE,
         _init_kwargs: Default[Dict[Any, Any]] = DEFAULT.VALUE,
         _internal: bool = False,
@@ -349,8 +351,8 @@ class Deployment:
         if autoscaling_config is not DEFAULT.VALUE:
             new_deployment_config.autoscaling_config = autoscaling_config
 
-        if router_config is not DEFAULT.VALUE:
-            new_deployment_config.router_config = router_config
+        if request_router_config is not DEFAULT.VALUE:
+            new_deployment_config.request_router_config = request_router_config
 
         if graceful_shutdown_wait_loop_s is not DEFAULT.VALUE:
             new_deployment_config.graceful_shutdown_wait_loop_s = (
@@ -441,7 +443,7 @@ def deployment_to_schema(d: Deployment) -> DeploymentSchema:
         "placement_group_bundles": d._replica_config.placement_group_bundles,
         "max_replicas_per_node": d._replica_config.max_replicas_per_node,
         "logging_config": d._deployment_config.logging_config,
-        "router_config": d._deployment_config.router_config,
+        "request_router_config": d._deployment_config.request_router_config,
     }
 
     # Let non-user-configured options be set to defaults. If the schema
@@ -502,7 +504,7 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
         health_check_period_s=s.health_check_period_s,
         health_check_timeout_s=s.health_check_timeout_s,
         logging_config=s.logging_config,
-        router_config=s.router_config,
+        request_router_config=s.request_router_config,
     )
     deployment_config.user_configured_option_names = (
         s._get_user_configured_option_names()

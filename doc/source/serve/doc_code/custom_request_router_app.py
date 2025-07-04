@@ -11,7 +11,7 @@ from ray.serve.config import RequestRouterConfig
 
 
 @serve.deployment(
-    router_config=RequestRouterConfig(
+    request_router_config=RequestRouterConfig(
         request_router_class="custom_request_router:UniformRequestRouter",
     ),
     num_replicas=10,
@@ -41,7 +41,7 @@ def _time_ms() -> int:
 
 
 @serve.deployment(
-    router_config=RequestRouterConfig(
+    request_router_config=RequestRouterConfig(
         request_router_class="custom_request_router:ThroughputAwareRequestRouter",
         request_routing_stats_period_s=1,
         request_routing_stats_timeout_s=1,

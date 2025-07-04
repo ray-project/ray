@@ -87,7 +87,7 @@ class FakeRequestRouter(RequestRouter):
 
 
 @serve.deployment(
-    router_config=RequestRouterConfig(request_router_class=FakeRequestRouter)
+    request_router_config=RequestRouterConfig(request_router_class=FakeRequestRouter)
 )
 class AppWithCustomRequestRouter:
     def __call__(self) -> str:
@@ -1120,7 +1120,7 @@ def test_deploy_app_with_custom_request_router(serve_instance):
 
 
 @serve.deployment(
-    router_config=RequestRouterConfig(
+    request_router_config=RequestRouterConfig(
         request_router_class="ray.serve.tests.test_api.FakeRequestRouter",
         request_router_kwargs=dict(test_parameter=4848),
     )
