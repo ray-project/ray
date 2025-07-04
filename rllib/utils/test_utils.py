@@ -1355,7 +1355,7 @@ def run_rllib_example_script_experiment(
             for e in results.errors
         ]
         raise RuntimeError(
-            f"Running the example script resulted in one or more errors! {errors}"
+            f"Running the example script resulted in one or more errors! {errors!r}"
         )
 
     # If run as a test, check whether we reached the specified success criteria.
