@@ -1349,7 +1349,7 @@ def run_rllib_example_script_experiment(
     # the CI tests w/o us knowing that they are broken (b/c some examples do not have
     # a --as-test flag and/or any passing criteria).
     if results.errors:
-        # Might cause a Index error if Tuple is not long enough in that case use str(e)
+        # Might cause an IndexError if the tuple is not long enough; in that case, use repr(e).
         errors = [
             e.args[0].args[2] if e.args and len(e.args[0]) > 2 else repr(e)
             for e in results.errors
