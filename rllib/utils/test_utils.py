@@ -1351,11 +1351,11 @@ def run_rllib_example_script_experiment(
     if results.errors:
         # Might cause a Index error if Tuple is not long enough in that case use str(e)
         errors = [
-            e.args[0].args[2] if e.args and len(e.args[0]) > 2 else str(e)
+            e.args[0].args[2] if e.args and len(e.args[0]) > 2 else repr(e)
             for e in results.errors
         ]
         raise RuntimeError(
-            f"Running the example script resulted in one or more errors! {errors!r}"
+            f"Running the example script resulted in one or more errors! {errors}"
         )
 
     # If run as a test, check whether we reached the specified success criteria.
