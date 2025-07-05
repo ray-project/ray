@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 #!/usr/bin/env python3
 
 import click
@@ -137,3 +138,13 @@ def compile(
 
 if __name__ == "__main__":
     cli()
+=======
+import click
+
+
+@click.group(name="depsets")
+@click.pass_context
+def cli(ctx):
+    """Manage Python dependency sets."""
+    pass
+>>>>>>> raydepsets scaffolding (package management tool)  (#54265)
