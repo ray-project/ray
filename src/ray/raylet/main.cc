@@ -676,9 +676,8 @@ int main(int argc, char *argv[]) {
             ray::scheduling::NodeID(raylet_node_id.Binary()),
             node_manager_config.resource_config.GetResourceMap(),
             /*is_node_available_fn*/
-            [&](ray::scheduling::NodeID node_id) {
-              return gcs_client->Nodes().Get(NodeID::FromBinary(node_id.Binary())) !=
-                     nullptr;
+            [&](ray::scheduling::NodeID id) {
+              return gcs_client->Nodes().Get(NodeID::FromBinary(id.Binary())) != nullptr;
             },
             /*get_used_object_store_memory*/
             [&]() {
@@ -701,8 +700,8 @@ int main(int argc, char *argv[]) {
             /*labels*/
             node_manager_config.labels);
 
-        auto get_node_info_func = [&](const NodeID &node_id) {
-          return gcs_client->Nodes().Get(node_id);
+        auto get_node_info_func = [&](const NodeID &id) {
+          return gcs_client->Nodes().Get(id);
         };
         auto announce_infeasible_task = [](const ray::RayTask &task) {
           /// Publish the infeasible task error to GCS so that drivers can subscribe to it
@@ -773,18 +772,16 @@ int main(int argc, char *argv[]) {
                                                               announce_infeasible_task,
                                                               *local_task_manager);
 
-        auto raylet_client_factory =
-            [&](const NodeID &node_id, ray::rpc::ClientCallManager &client_call_manager) {
-              const ray::rpc::GcsNodeInfo *node_info = gcs_client->Nodes().Get(node_id);
-              RAY_CHECK(node_info) << "No GCS info for node " << node_id;
-              std::shared_ptr<ray::rpc::NodeManagerWorkerClient> raylet_client =
-                  ray::rpc::NodeManagerWorkerClient::make(
-                      node_info->node_manager_address(),
-                      node_info->node_manager_port(),
-                      client_call_manager);
-              return std::make_shared<ray::raylet::RayletClient>(
-                  std::move(raylet_client));
-            };
+        auto raylet_client_factory = [&](const NodeID &id,
+                                         ray::rpc::ClientCallManager &cc_manager) {
+          const ray::rpc::GcsNodeInfo *node_info = gcs_client->Nodes().Get(id);
+          RAY_CHECK(node_info) << "No GCS info for node " << id;
+          std::shared_ptr<ray::rpc::NodeManagerWorkerClient> raylet_client =
+              ray::rpc::NodeManagerWorkerClient::make(node_info->node_manager_address(),
+                                                      node_info->node_manager_port(),
+                                                      cc_manager);
+          return std::make_shared<ray::raylet::RayletClient>(std::move(raylet_client));
+        };
 
         plasma_client = std::make_unique<plasma::PlasmaClient>();
         node_manager = std::make_unique<ray::raylet::NodeManager>(

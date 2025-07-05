@@ -91,9 +91,7 @@ void ActorTaskSubmitter::AddActorQueueIfNotExists(const ActorID &actor_id,
 
 Status ActorTaskSubmitter::SubmitActorCreationTask(TaskSpecification task_spec) {
   RAY_CHECK(task_spec.IsActorCreationTask());
-  const auto actor_id = task_spec.ActorCreationId();
-  const auto task_id = task_spec.TaskId();
-  RAY_LOG(DEBUG).WithField(actor_id).WithField(task_id)
+  RAY_LOG(DEBUG).WithField(task_spec.ActorCreationId()).WithField(task_spec.TaskId())
       << "Submitting actor creation task";
   resolver_.ResolveDependencies(task_spec, [this, task_spec](Status status) mutable {
     // NOTE: task_spec here is capture copied (from a stack variable) and also
@@ -118,16 +116,16 @@ Status ActorTaskSubmitter::SubmitActorCreationTask(TaskSpecification task_spec) 
     RAY_LOG(DEBUG).WithField(actor_id).WithField(task_id) << "Creating actor via GCS";
     RAY_CHECK_OK(actor_creator_.AsyncCreateActor(
         task_spec,
-        [this, actor_id, task_id](Status status, const rpc::CreateActorReply &reply) {
-          if (status.ok() || status.IsCreationTaskError()) {
+        [this, actor_id, task_id](Status _status, const rpc::CreateActorReply &reply) {
+          if (_status.ok() || _status.IsCreationTaskError()) {
             rpc::PushTaskReply push_task_reply;
             push_task_reply.mutable_borrowed_refs()->CopyFrom(reply.borrowed_refs());
-            if (status.IsCreationTaskError()) {
+            if (_status.IsCreationTaskError()) {
               RAY_LOG(INFO).WithField(actor_id).WithField(task_id)
                   << "Actor creation failed and we will not be retrying the "
                      "creation task";
               // Update the task execution error to be CreationTaskError.
-              push_task_reply.set_task_execution_error(status.ToString());
+              push_task_reply.set_task_execution_error(_status.ToString());
             } else {
               RAY_LOG(DEBUG).WithField(actor_id).WithField(task_id) << "Created actor";
             }
@@ -137,11 +135,11 @@ Status ActorTaskSubmitter::SubmitActorCreationTask(TaskSpecification task_spec) 
                 task_id,
                 push_task_reply,
                 reply.actor_address(),
-                /*is_application_error=*/status.IsCreationTaskError());
+                /*is_application_error=*/_status.IsCreationTaskError());
           } else {
             // Either fails the rpc call or actor scheduling cancelled.
             rpc::RayErrorInfo ray_error_info;
-            if (status.IsSchedulingCancelled()) {
+            if (_status.IsSchedulingCancelled()) {
               RAY_LOG(DEBUG).WithField(actor_id).WithField(task_id)
                   << "Actor creation cancelled";
               task_manager_.MarkTaskCanceled(task_id);
@@ -150,7 +148,7 @@ Status ActorTaskSubmitter::SubmitActorCreationTask(TaskSpecification task_spec) 
               }
             } else {
               RAY_LOG(INFO).WithField(actor_id).WithField(task_id)
-                  << "Failed to create actor with status: " << status;
+                  << "Failed to create actor with status: " << _status;
             }
             // Actor creation task retry happens in GCS
             // and transient rpc errors are retried in gcs client
@@ -158,7 +156,7 @@ Status ActorTaskSubmitter::SubmitActorCreationTask(TaskSpecification task_spec) 
             RAY_UNUSED(task_manager_.FailPendingTask(
                 task_id,
                 rpc::ErrorType::ACTOR_CREATION_FAILED,
-                &status,
+                &_status,
                 ray_error_info.has_actor_died_error() ? &ray_error_info : nullptr));
           }
         }));
@@ -197,11 +195,9 @@ Status ActorTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
 
   if (task_queued) {
     io_service_.post(
-        [task_spec, send_pos, this]() mutable {
+        [task_spec, task_id, actor_id, send_pos, this]() mutable {
           // We must release the lock before resolving the task dependencies since
           // the callback may get called in the same call stack.
-          auto actor_id = task_spec.ActorId();
-          auto task_id = task_spec.TaskId();
           resolver_.ResolveDependencies(
               task_spec, [this, send_pos, actor_id, task_id](Status status) {
                 task_manager_.MarkDependenciesResolved(task_id);
@@ -603,22 +599,22 @@ void ActorTaskSubmitter::PushActorTask(ClientQueue &queue,
   queue.inflight_task_callbacks.emplace(task_attempt, std::move(reply_callback));
   rpc::ClientCallback<rpc::PushTaskReply> wrapped_callback =
       [this, task_attempt, actor_id](const Status &status, rpc::PushTaskReply &&reply) {
-        rpc::ClientCallback<rpc::PushTaskReply> reply_callback;
+        rpc::ClientCallback<rpc::PushTaskReply> _reply_callback;
         {
           absl::MutexLock lock(&mu_);
           auto it = client_queues_.find(actor_id);
           RAY_CHECK(it != client_queues_.end());
-          auto &queue = it->second;
-          auto callback_it = queue.inflight_task_callbacks.find(task_attempt);
-          if (callback_it == queue.inflight_task_callbacks.end()) {
+          auto &_queue = it->second;
+          auto callback_it = _queue.inflight_task_callbacks.find(task_attempt);
+          if (callback_it == _queue.inflight_task_callbacks.end()) {
             RAY_LOG(DEBUG).WithField(task_attempt.first)
                 << "The task has already been marked as failed. Ignore the reply.";
             return;
           }
-          reply_callback = std::move(callback_it->second);
-          queue.inflight_task_callbacks.erase(callback_it);
+          _reply_callback = std::move(callback_it->second);
+          _queue.inflight_task_callbacks.erase(callback_it);
         }
-        reply_callback(status, std::move(reply));
+        _reply_callback(status, std::move(reply));
       };
 
   task_manager_.MarkTaskWaitingForExecution(task_id,
