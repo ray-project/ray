@@ -117,12 +117,9 @@ ObjectManager::ObjectManager(
       restore_spilled_object_(restore_spilled_object),
       get_spilled_object_url_(std::move(get_spilled_object_url)),
       pull_retry_timer_(*main_service_,
-                        boost::posix_time::milliseconds(config.timer_freq_ms)) {
+                        boost::posix_time::milliseconds(config.timer_freq_ms)),
+      push_manager_(std::make_unique<PushManager>(config_.max_bytes_in_flight)) {
   RAY_CHECK_GT(config_.rpc_service_threads_number, 0);
-
-  push_manager_.reset(new PushManager(/* max_chunks_in_flight= */ std::max(
-      static_cast<int64_t>(1L),
-      static_cast<int64_t>(config_.max_bytes_in_flight / config_.object_chunk_size))));
 
   pull_retry_timer_.async_wait([this](const boost::system::error_code &e) { Tick(e); });
 
@@ -494,7 +491,11 @@ void ObjectManager::PushObjectInternal(const ObjectID &object_id,
 
   auto push_id = UniqueID::FromRandom();
   push_manager_->StartPush(
-      node_id, object_id, chunk_reader->GetNumChunks(), [=](int64_t chunk_id) {
+      node_id,
+      object_id,
+      chunk_reader->GetNumChunks(),
+      chunk_reader->ChunkSize(),
+      [=](int64_t chunk_id) {
         rpc_service_.post(
             [=]() {
               // Post to the multithreaded RPC event loop so that data is copied

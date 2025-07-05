@@ -41,6 +41,8 @@ class ChunkObjectReader {
 
   const IObjectReader &GetObject() const { return *object_; }
 
+  uint64_t ChunkSize() const { return chunk_size_; }
+
  private:
   const std::shared_ptr<IObjectReader> object_;
   const uint64_t chunk_size_;
