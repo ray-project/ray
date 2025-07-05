@@ -14,10 +14,12 @@
 
 #include "ray/rpc/retryable_grpc_client.h"
 
+#include <chrono>
 #include <memory>
 #include <utility>
 
 namespace ray::rpc {
+
 RetryableGrpcClient::~RetryableGrpcClient() {
   timer_.cancel();
 
@@ -26,8 +28,8 @@ RetryableGrpcClient::~RetryableGrpcClient() {
     auto iter = pending_requests_.begin();
     // Make sure the callback is executed in the io context thread.
     io_context_.post(
-        [request = std::move(iter->second)]() {
-          request->Fail(Status::Disconnected("GRPC client is shut down."));
+        [request = std::move(iter->second)]() mutable {
+          request.Fail(Status::Disconnected("GRPC client is shut down."));
         },
         "~RetryableGrpcClient");
     pending_requests_.erase(iter);
@@ -55,10 +57,11 @@ void RetryableGrpcClient::CheckChannelStatus(bool reset_timer) {
     if (iter->first > now) {
       break;
     }
-    iter->second->Fail(ray::Status::TimedOut(absl::StrFormat(
+    auto &retryable_request = iter->second;
+    retryable_request.Fail(ray::Status::TimedOut(absl::StrFormat(
         "Timed out while waiting for %s to become available.", server_name_)));
-    RAY_CHECK_GE(pending_requests_bytes_, iter->second->GetRequestBytes());
-    pending_requests_bytes_ -= iter->second->GetRequestBytes();
+    RAY_CHECK_GE(pending_requests_bytes_, retryable_request.GetRequestBytes());
+    pending_requests_bytes_ -= retryable_request.GetRequestBytes();
     pending_requests_.erase(iter);
   }
 
@@ -103,7 +106,7 @@ void RetryableGrpcClient::CheckChannelStatus(bool reset_timer) {
     server_unavailable_timeout_time_ = std::nullopt;
     // Retry the ones queued.
     while (!pending_requests_.empty()) {
-      pending_requests_.begin()->second->CallMethod();
+      std::move(pending_requests_.begin()->second).CallMethod();
       pending_requests_.erase(pending_requests_.begin());
     }
     pending_requests_bytes_ = 0;
@@ -115,11 +118,11 @@ void RetryableGrpcClient::CheckChannelStatus(bool reset_timer) {
   }
 }
 
-void RetryableGrpcClient::Retry(std::shared_ptr<RetryableGrpcRequest> request) {
+void RetryableGrpcClient::Retry(RetryableGrpcRequest request) {
   // In case of transient network error, we queue the request and these requests
   // will be executed once network is recovered.
   const auto now = absl::Now();
-  const auto request_bytes = request->GetRequestBytes();
+  const auto request_bytes = request.GetRequestBytes();
   auto self = shared_from_this();
   if (pending_requests_bytes_ + request_bytes > max_pending_requests_bytes_) {
     RAY_LOG(WARNING) << "Pending queue for failed request has reached the "
@@ -145,14 +148,14 @@ void RetryableGrpcClient::Retry(std::shared_ptr<RetryableGrpcRequest> request) {
 
       CheckChannelStatus(false);
     }
-    request->CallMethod();
+    std::move(request).CallMethod();
     return;
   }
 
   pending_requests_bytes_ += request_bytes;
-  const auto timeout = request->GetTimeoutMs() == -1
+  const auto timeout = request.GetTimeoutMs() == -1
                            ? absl::InfiniteFuture()
-                           : now + absl::Milliseconds(request->GetTimeoutMs());
+                           : now + absl::Milliseconds(request.GetTimeoutMs());
   pending_requests_.emplace(timeout, std::move(request));
   if (!server_unavailable_timeout_time_.has_value()) {
     // First request to retry.

@@ -297,7 +297,7 @@ TEST_F(GcsClientReconnectionTest, QueueingAndBlocking) {
 {
   "gcs_rpc_server_reconnect_timeout_s": 60,
   "gcs_storage": "redis",
-  "gcs_grpc_max_request_queued_max_bytes": 10
+  "grpc_max_request_queued_max_bytes": 10
 }
   )");
   StartGCS();
@@ -357,7 +357,7 @@ TEST_F(GcsClientReconnectionTest, Timeout) {
 {
   "gcs_rpc_server_reconnect_timeout_s": 60,
   "gcs_storage": "redis",
-  "gcs_grpc_max_request_queued_max_bytes": 10,
+  "grpc_max_request_queued_max_bytes": 10,
   "gcs_server_request_timeout_seconds": 10
 }
   )");
