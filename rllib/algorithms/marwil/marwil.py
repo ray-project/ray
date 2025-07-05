@@ -2,7 +2,6 @@ from typing import Callable, Optional, Type, Union
 
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
-from ray.rllib.connectors.common import TensorToNumpy
 from ray.rllib.connectors.learner import (
     AddObservationsFromEpisodesToBatch,
     AddOneTsToEpisodesAndTruncate,
@@ -375,16 +374,6 @@ class MARWILConfig(AlgorithmConfig):
             GeneralAdvantageEstimation(gamma=self.gamma, lambda_=self.lambda_)
         )
 
-        # If training on GPU, convert batches to `numpy` arrays to load them
-        # on GPU in the `Learner`.
-        # In case we run multiple updates per RLlib training step in the `Learner` or
-        # when training on GPU conversion to tensors is managed in batch prefetching.
-        if self.num_gpus_per_learner > 0 or (
-            self.dataset_num_iters_per_learner
-            and self.dataset_num_iters_per_learner > 1
-        ):
-            pipeline.insert_after(GeneralAdvantageEstimation, TensorToNumpy())
-
         return pipeline
 
     @override(AlgorithmConfig)
@@ -481,22 +470,41 @@ class MARWIL(Algorithm):
                 # multiple times per RLlib iteration.
                 return_iterator=return_iterator,
             )
+            # TODO (simon): Return TrainingData in sample.
             if return_iterator:
                 training_data = TrainingData(data_iterators=batch_or_iterator)
             else:
                 training_data = TrainingData(batch=batch_or_iterator)
 
-        with self.metrics.log_time((TIMERS, LEARNER_UPDATE_TIMER)):
+        #with self.metrics.log_time((TIMERS, LEARNER_UPDATE_TIMER)):
             # Updating the policy.
-            learner_results = self.learner_group.update(
-                training_data=training_data,
-                minibatch_size=self.config.train_batch_size_per_learner,
-                num_iters=self.config.dataset_num_iters_per_learner,
-                **self.offline_data.iter_batches_kwargs,
-            )
-
-            # Log training results.
-            self.metrics.aggregate(learner_results, key=LEARNER_RESULTS)
+        import time
+        start = time.perf_counter()
+        learner_results = self.learner_group.update(
+            training_data=training_data,
+            minibatch_size=self.config.train_batch_size_per_learner,
+            num_iters=self.config.dataset_num_iters_per_learner,
+            **self.offline_data.iter_batches_kwargs,                
+        )
+        stop = time.perf_counter()
+        print(f"====> Time for learner_group.update: {stop - start}")
+        self.metrics.log_value(
+            "learner_group.update",
+            stop - start,
+            reduce="mean",
+            clear_on_reduce=True
+        )
+        # Log training results.
+        start= time.perf_counter()
+        self.metrics.aggregate(learner_results, key=LEARNER_RESULTS)
+        stop = time.perf_counter()
+        self.metrics.log_value(
+            "metrics.aggregate",
+            stop - start,
+            reduce="mean",
+            clear_on_reduce=True
+        )
+        print(f"====> Time for metrics aggregate: {stop - start}")
 
     @OldAPIStack
     def _training_step_old_api_stack(self) -> ResultDict:
