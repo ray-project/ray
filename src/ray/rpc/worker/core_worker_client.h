@@ -189,6 +189,9 @@ class CoreWorkerClientInterface : public pubsub::SubscriberClientInterface {
       const RayletNotifyGCSRestartRequest &request,
       const ClientCallback<RayletNotifyGCSRestartReply> &callback) {}
 
+  virtual void FreeActorObject(const FreeActorObjectRequest &request,
+                               const ClientCallback<FreeActorObjectReply> &callback) {}
+
   virtual ~CoreWorkerClientInterface() = default;
 };
 
@@ -338,6 +341,12 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
 
   VOID_RPC_CLIENT_METHOD(CoreWorkerService,
                          AssignObjectOwner,
+                         grpc_client_,
+                         /*method_timeout_ms*/ -1,
+                         override)
+
+  VOID_RPC_CLIENT_METHOD(CoreWorkerService,
+                         FreeActorObject,
                          grpc_client_,
                          /*method_timeout_ms*/ -1,
                          override)
