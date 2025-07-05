@@ -130,7 +130,7 @@ def test_all_to_all_operator():
     )
 
     # Initialize progress bar.
-    num_bars = op.initialize_sub_progress_bars(0)
+    num_bars = op.start_sub_progress_bars(0)
     assert num_bars == 2, num_bars
 
     # Feed data.
