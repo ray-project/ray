@@ -91,9 +91,7 @@ void ActorTaskSubmitter::AddActorQueueIfNotExists(const ActorID &actor_id,
 
 Status ActorTaskSubmitter::SubmitActorCreationTask(TaskSpecification task_spec) {
   RAY_CHECK(task_spec.IsActorCreationTask());
-  const auto actor_id = task_spec.ActorCreationId();
-  const auto task_id = task_spec.TaskId();
-  RAY_LOG(DEBUG).WithField(actor_id).WithField(task_id)
+  RAY_LOG(DEBUG).WithField(task_spec.ActorCreationId()).WithField(task_spec.TaskId())
       << "Submitting actor creation task";
   resolver_.ResolveDependencies(task_spec, [this, task_spec](Status status) mutable {
     // NOTE: task_spec here is capture copied (from a stack variable) and also
