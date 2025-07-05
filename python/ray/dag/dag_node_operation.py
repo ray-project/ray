@@ -89,7 +89,7 @@ class _DAGOperationGraphNode:
         operation: _DAGNodeOperation,
         task_idx: int,
         actor_handle: "ray.actor.ActorHandle",
-        requires_nccl: bool,
+        requires_accelerator: bool,
     ):
         """
         _DAGOperationGraphNode represents a node in the DAG operation graph.
@@ -102,12 +102,12 @@ class _DAGOperationGraphNode:
             task_idx: A unique index which can be used to index into
                 `CompiledDAG.idx_to_task` to get the corresponding task.
             actor_handle: The actor handle to which this operation belongs.
-            requires_nccl: Whether this operation requires NCCL.
+            requires_accelerator: Whether this operation requires accelerator.
         """
         self.operation = operation
         self.task_idx = task_idx
         self.actor_handle = actor_handle
-        self.requires_nccl = requires_nccl
+        self.requires_accelerator = requires_accelerator
         # The in_edges and out_edges are dicts of tuples to strings.
         # Each tuple (the key) contains an integer `task_idx`, which can be
         # used to index into `idx_to_task` to get the corresponding task,
@@ -117,13 +117,13 @@ class _DAGOperationGraphNode:
         # the edge is a control dependency.
         self.in_edges: Dict[Tuple[int, _DAGNodeOperationType], Tuple[str, bool]] = {}
         self.out_edges: Dict[Tuple[int, _DAGNodeOperationType], Tuple[str, bool]] = {}
-        # The synchronous nodes are all the nodes that belong to the same NCCL
+        # The synchronous nodes are all the nodes that belong to the same accelerator
         # operation. Each node is represented by a tuple of its task idx and type.
         self.sync_idxs: Set[Tuple[int, _DAGNodeOperationType]] = set()
         # The pending synchronous nodes are the nodes that are pending to be executed,
         # i.e., their in-degrees are zero. When a synchronous node is pending, it
         # will be added to the pending synchronous nodes of all the nodes in the
-        # NCCL operation.
+        # accelerator operation.
         self.pending_sync_idxs: Set[Tuple[int, _DAGNodeOperationType]] = set()
 
     def __repr__(self):
@@ -132,7 +132,7 @@ class _DAGOperationGraphNode:
             f"operation: {self.operation}, "
             f"task_idx: {self.task_idx}, "
             f"actor_id: {self.actor_handle._ray_actor_id}, "
-            f"requires_nccl: {self.requires_nccl})"
+            f"requires_accelerator: {self.requires_accelerator})"
         )
 
     def __lt__(self, other: "_DAGOperationGraphNode"):
@@ -141,14 +141,15 @@ class _DAGOperationGraphNode:
         `_select_next_nodes`. The priority queue is a min-heap, so the node with
         higher priority is considered "less than" the other node.
         """
-        if self.is_nccl_op != other.is_nccl_op:
-            # When one node is a NCCL operation and the other is not, prioritize
-            # the NCCL operation.
-            return self.is_nccl_op
+        if self.is_accelerator_op != other.is_accelerator_op:
+            # When one node is an accelerator operation and the other is not,
+            # prioritize the accelerator operation.
+            return self.is_accelerator_op
         else:
-            # When either both nodes are NCCL operations or both nodes are not NCCL
-            # operations, prioritize the earlier task within the same actor and load
-            # balance tasks across actors. The tie is broken by the `task_idx`.
+            # When either both nodes are accelerator operations or both nodes
+            # are not accelerator operations, prioritize the earlier task within
+            # the same actor and load balance tasks across actors. The tie is
+            # broken by the `task_idx`.
             return (self.operation.exec_task_idx, self.task_idx) < (
                 other.operation.exec_task_idx,
                 other.task_idx,
@@ -178,9 +179,10 @@ class _DAGOperationGraphNode:
     @property
     def is_ready(self) -> bool:
         """
-        If a node is not a NCCL operation, it is ready when it has a zero in-degree.
-        If it is a NCCL operation, it is ready when all the nodes in the operation
-        have zero in-degrees.
+        If a node is not an accelerator operation, it is ready when it has a zero
+        in-degree.
+        If it is an accelerator operation, it is ready when all the nodes in the
+        operation have zero in-degrees.
         """
         return self.in_degree == 0 and (
             len(self.pending_sync_idxs) == len(self.sync_idxs)
@@ -191,31 +193,42 @@ class _DAGOperationGraphNode:
         return self.operation.type == _DAGNodeOperationType.READ
 
     @property
-    def is_nccl_read(self) -> bool:
+    def is_accelerator_read(self) -> bool:
         """
-        A node is a NCCL read if it is a read node and requires NCCL.
-        """
-        return self.operation.type == _DAGNodeOperationType.READ and self.requires_nccl
-
-    @property
-    def is_nccl_compute(self) -> bool:
-        """
-        A node is a NCCL compute if it is a compute node and requires NCCL.
+        A node is an accelerator read if it is a read node and requires accelerator.
         """
         return (
-            self.operation.type == _DAGNodeOperationType.COMPUTE and self.requires_nccl
+            self.operation.type == _DAGNodeOperationType.READ
+            and self.requires_accelerator
         )
 
     @property
-    def is_nccl_write(self) -> bool:
+    def is_accelerator_compute(self) -> bool:
         """
-        A node is a NCCL write if it is a write node and requires NCCL.
+        A node is an accelerator compute if it is a compute node and requires accelerator.
         """
-        return self.operation.type == _DAGNodeOperationType.WRITE and self.requires_nccl
+        return (
+            self.operation.type == _DAGNodeOperationType.COMPUTE
+            and self.requires_accelerator
+        )
 
     @property
-    def is_nccl_op(self) -> bool:
-        return self.is_nccl_read or self.is_nccl_compute or self.is_nccl_write
+    def is_accelerator_write(self) -> bool:
+        """
+        A node is an accelerator write if it is a write node and requires accelerator.
+        """
+        return (
+            self.operation.type == _DAGNodeOperationType.WRITE
+            and self.requires_accelerator
+        )
+
+    @property
+    def is_accelerator_op(self) -> bool:
+        return (
+            self.is_accelerator_read
+            or self.is_accelerator_compute
+            or self.is_accelerator_write
+        )
 
     def viz_str(self):
         """
@@ -273,25 +286,27 @@ def _push_candidate_node_if_ready(
 ) -> None:
     """
     Push the node with a zero in-degree to the candidates if its operation is ready.
-    If it has synchronous nodes, its NCCL operation is not ready until all the nodes
-    are pending, then all the nodes will be pushed to the candidates.
+    If it has synchronous nodes, its accelerator operation is not ready until all
+    the nodes are pending, then all the nodes will be pushed to the candidates.
     """
     assert node.in_degree == 0, "Expected to have a zero in-degree"
-    # For the NCCL write node, update the in-degrees of the downstream NCCL read nodes
-    # and update them as pending. This is necessary because the data dependency edges
-    # between NCCL write and read nodes are only updated here. The NCCL P2P operation
-    # becomes ready after both the write and read nodes are marked as pending.
-    if node.is_nccl_write:
+    # For the accelerator write node, update the in-degrees of the downstream
+    # accelerator read nodes and update them as pending. This is necessary because
+    # the data dependency edges between accelerator write and read nodes are only
+    # updated here. The accelerator P2P operation becomes ready after both the write
+    # and read nodes are marked as pending.
+    if node.is_accelerator_write:
         for task_idx, op_type in node.out_edges:
             read_node = graph[task_idx][op_type]
             read_node.in_edges.pop((node.task_idx, node.operation.type))
-            assert read_node.is_nccl_read and len(read_node.in_edges) == 0
+            assert read_node.is_accelerator_read and len(read_node.in_edges) == 0
             _update_pending_sync_idxs(graph, read_node)
-    # For the NCCL operation node, update it as pending.
+    # For the accelerator operation node, update it as pending.
     if len(node.sync_idxs) != 0:
         _update_pending_sync_idxs(graph, node)
-    # The NCCL operation is ready when all the nodes have zero in-degrees. When the last
-    # node in the operation is updated as pending, push all the nodes to the candidates.
+    # The accelerator operation is ready when all the nodes have zero in-degrees.
+    # When the last node in the operation is updated as pending, push all the nodes
+    # to the candidates.
     if node.is_ready:
         if len(node.sync_idxs) == 0:
             heapq.heappush(
@@ -320,18 +335,18 @@ def _select_next_nodes(
     For the implementation details, we maintain a priority queue for each actor,
     where the head of the priority queue is the node with the smallest `exec_task_idx`.
     When a node has a zero in-degree, it is added to the corresponding actor's
-    priority queue. For a node other than a NCCL collective node, it is ready to be
-    executed if it has a zero in-degree. For a NCCL collective node, it is ready to
+    priority queue. For a node other than an accelerator collective node, it is ready to be
+    executed if it has a zero in-degree. For an accelerator collective node, it is ready to
     be executed when all the nodes in its collective operation have zero in-degrees.
 
-    If a node is a NCCL collective node, it updates the `ready_collective_nodes` of
+    If a node is an accelerator collective node, it updates the `ready_collective_nodes` of
     all the nodes in its collective operation. Unless all the nodes in its collective
     group have zero in-degrees, this node is removed from the candidate list.
-    Eventually, exactly one NCCL collective node from its collective operation is
+    Eventually, exactly one accelerator collective node from its collective operation is
     selected from the candidate list.
 
-    If the selected node is a NCCL write node, select all the downstream NCCL
-    read nodes. If the selected node is a NCCL collective node, select all the NCCL
+    If the selected node is an accelerator write node, select all the downstream accelerator
+    read nodes. If the selected node is an accelerator collective node, select all the accelerator
     compute nodes in its collective operation.
 
     Args:
@@ -357,7 +372,7 @@ def _select_next_nodes(
         return None
     next_nodes = [top_priority_node]
 
-    # Select all the synchronous nodes in the NCCL operation.
+    # Select all the synchronous nodes in the accelerator operation.
     if len(top_priority_node.sync_idxs) != 0:
         for task_idx, op_type in top_priority_node.sync_idxs:
             node = graph[task_idx][op_type]
@@ -373,7 +388,7 @@ def _select_next_nodes(
     # Remove the selected nodes from the candidates.
     for node in next_nodes:
         candidates = actor_to_candidates[node.actor_handle._actor_id]
-        #  The NCCL read nodes are not added to the candidates.
+        #  The accelerator read nodes are not added to the candidates.
         if node in candidates:
             candidates.remove(node)
             heapq.heapify(candidates)
@@ -449,7 +464,7 @@ def _build_dag_node_operation_graph(
     from ray.dag.collective_node import _CollectiveOperation
 
     # Add an edge from WRITE of the writer task to READ of the reader task.
-    # Set synchronous nodes for NCCL P2P operations.
+    # Set synchronous nodes for accelerator P2P operations.
     for task_idx, task in idx_to_task.items():
         if not (
             isinstance(task.dag_node, ClassMethodNode)
@@ -482,9 +497,9 @@ def _build_dag_node_operation_graph(
                         _add_edge(
                             write_node,
                             read_node,
-                            "nccl" if write_node.requires_nccl else "shm",
+                            "accelerator" if write_node.requires_accelerator else "shm",
                         )
-                        if write_node.requires_nccl:
+                        if write_node.requires_accelerator:
                             idxs = {
                                 (task_idx, _DAGNodeOperationType.WRITE),
                                 (consumer_idx, _DAGNodeOperationType.READ),
@@ -496,9 +511,9 @@ def _build_dag_node_operation_graph(
             _add_edge(
                 write_node,
                 read_node,
-                "nccl" if write_node.requires_nccl else "shm",
+                "accelerator" if write_node.requires_accelerator else "shm",
             )
-            if write_node.requires_nccl:
+            if write_node.requires_accelerator:
                 idxs = {
                     (task_idx, _DAGNodeOperationType.WRITE),
                     (downstream_task_idx, _DAGNodeOperationType.READ),
@@ -506,7 +521,7 @@ def _build_dag_node_operation_graph(
                 for node in [write_node, read_node]:
                     node.sync_idxs.update(idxs)
 
-    # Set synchronous nodes for NCCL collective operations.
+    # Set synchronous nodes for accelerator collective operations.
     collective_op_to_idxs: Dict[
         _CollectiveOperation, Set[Tuple[int, _DAGNodeOperationType]]
     ] = defaultdict(set)
@@ -582,7 +597,7 @@ def _visualize_execution_schedule(
         Edges:
             black color (without label): data dependency
             black color (annotated with "shm"): shared memory channel
-            blue color (annotated with "nccl): NCCL channel
+            blue color (annotated with "accelerator): accelerator channel
             dashed edge: control dependency between compute operations
 
     Args:
@@ -638,7 +653,7 @@ def _visualize_execution_schedule(
                 out_task_idx, out_op_type = out_edge
                 out_node = graph[out_task_idx][out_op_type]
                 out_node_viz_id = node_to_viz_id[out_node]
-                color = "blue" if label == "nccl" else "black"
+                color = "blue" if label == "accelerator" else "black"
                 style = "dashed" if control_dependency else "solid"
                 dot.edge(
                     node_viz_id, out_node_viz_id, label=label, color=color, style=style
@@ -668,7 +683,7 @@ def _visualize_execution_schedule(
             '<TR><TD ALIGN="LEFT"><B>Edges:</B></TD></TR>'
             '<TR><TD ALIGN="LEFT">black color (without label): data dependency</TD></TR>'  # noqa
             '<TR><TD ALIGN="LEFT">black color (annotated with "shm"): shared memory channel</TD></TR>'  # noqa
-            '<TR><TD ALIGN="LEFT"><FONT COLOR="blue">blue color</FONT> (annotated with "nccl): NCCL channel</TD></TR>'  # noqa
+            '<TR><TD ALIGN="LEFT"><FONT COLOR="blue">blue color</FONT> (annotated with "accelerator): accelerator channel</TD></TR>'  # noqa
             '<TR><TD ALIGN="LEFT">dashed edge: control dependency between compute operations</TD></TR>'  # noqa
             "</TABLE>>"
         )
@@ -729,10 +744,10 @@ def _generate_actor_to_execution_schedule(
     # Use topological sort algorithm to generate the execution schedule.
     while True:
         # Select a list of nodes to be executed. There are three cases:
-        # 1. If a selected node is not a NCCL operation, only itself is returned.
-        # 2. If a selected node is a NCCL write operation, the corresponding NCCL
+        # 1. If a selected node is not an accelerator operation, only itself is returned.
+        # 2. If a selected node is an accelerator write operation, the corresponding accelerator
         #    read operations are also returned.
-        # 3. If a selected node is a NCCL collective operation, all the nodes in
+        # 3. If a selected node is an accelerator collective operation, all the nodes in
         #    its collective operation are returned.
         nodes = _select_next_nodes(actor_to_candidates, graph)
         if nodes is None:
@@ -748,7 +763,7 @@ def _generate_actor_to_execution_schedule(
                 out_node = graph[out_node_task_idx][out_node_type]
                 if out_node in visited_nodes:
                     # If the downstream node is already visited, it has been added
-                    # to the execution schedule. They are the NCCL read nodes in
+                    # to the execution schedule. They are the accelerator read nodes in
                     # case 2.
                     continue
                 out_node.in_edges.pop((node.task_idx, node.operation.type))
@@ -769,8 +784,8 @@ def _generate_overlapped_execution_schedule(
     computation and communication.
 
     Currently, the algorithm generates a new schedule for each actor as follows:
-    For each NCCL read operation (i.e., recv), scan backwards to find the nearest
-    compute node to swap with so that the NCCL read operation can be overlapped
+    For each accelerator read operation (i.e., recv), scan backwards to find the nearest
+    compute node to swap with so that the accelerator read operation can be overlapped
     with computation.
 
     Collective operations are not yet supported.
@@ -792,30 +807,30 @@ def _generate_overlapped_execution_schedule(
         for i in range(len(overlapped_schedule)):
             if (
                 overlapped_schedule[i].operation.type == _DAGNodeOperationType.READ
-                and overlapped_schedule[i].requires_nccl
+                and overlapped_schedule[i].requires_accelerator
             ):
-                # For each NCCL read operation (i.e., recv), scan backwards
+                # For each accelerator read operation (i.e., recv), scan backwards
                 # to find the nearest compute node to swap with so that
-                # the NCCL read operation can be overlapped with computation.
+                # the accelerator read operation can be overlapped with computation.
                 for j in range(i - 1, -1, -1):
                     if (
                         overlapped_schedule[j].operation.type
                         == _DAGNodeOperationType.COMPUTE
                     ):
                         # Found a desired compute operation, make the swap
-                        nccl_read_op = overlapped_schedule[i]
+                        accelerator_read_op = overlapped_schedule[i]
                         prev_ops = overlapped_schedule[j:i]
                         overlapped_schedule[j + 1 : i + 1] = prev_ops
-                        overlapped_schedule[j] = nccl_read_op
+                        overlapped_schedule[j] = accelerator_read_op
                         break
                     if (
                         overlapped_schedule[j].operation.type
                         == _DAGNodeOperationType.READ
                         or overlapped_schedule[j].operation.type
                         == _DAGNodeOperationType.WRITE
-                    ) and overlapped_schedule[j].requires_nccl:
-                        # Found a NCCL read/write operation, skip the overlap
-                        # optimization to keep relative order of NCCL operations
+                    ) and overlapped_schedule[j].requires_accelerator:
+                        # Found an accelerator read/write operation, skip the overlap
+                        # optimization to keep relative order of accelerator operations
                         break
     return actor_to_overlapped_schedule
 
