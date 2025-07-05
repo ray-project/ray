@@ -10,6 +10,7 @@ import warnings
 import sys
 import os
 import tempfile
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -20,6 +21,10 @@ from ray._common.utils import (
     try_to_create_directory,
     load_class,
     get_system_memory,
+)
+from ray._common.test_utils import (
+    TelemetryCallsite,
+    check_library_usage_telemetry,
 )
 
 # Optional imports for testing
@@ -253,6 +258,258 @@ class TestGetSystemMemory:
             memory_limit_filename_v2="__also_does_not_exist__",
         )
         assert memory == psutil_memory, "Should use psutil when no cgroup files exist"
+
+
+class TestCheckLibraryUsageTelemetry:
+    """Tests for the check_library_usage_telemetry function."""
+
+    def setup_method(self):
+        """Set up test fixtures for each test method."""
+        self.mock_gcs_client = Mock()
+        self.mock_usage_lib = Mock()
+
+        # Mock the telemetry functions
+        self.get_library_usages_patch = patch(
+            "ray._common.test_utils._get_library_usages", return_value=set()
+        )
+        self.get_extra_usage_tags_patch = patch(
+            "ray._common.test_utils._get_extra_usage_tags", return_value={}
+        )
+
+        self.mock_get_library_usages = self.get_library_usages_patch.start()
+        self.mock_get_extra_usage_tags = self.get_extra_usage_tags_patch.start()
+
+    def teardown_method(self):
+        """Clean up after each test method."""
+        self.get_library_usages_patch.stop()
+        self.get_extra_usage_tags_patch.stop()
+
+    def test_check_library_usage_telemetry_driver_callsite(self):
+        """Test telemetry checking with DRIVER callsite."""
+        mock_use_lib_fn = Mock()
+
+        # Set up expected returns
+        self.mock_get_library_usages.side_effect = [
+            set(),  # Initial empty check
+            {"test_library"},  # After use_lib_fn is called
+        ]
+
+        # Expected library usages
+        expected_library_usages = [{"test_library"}]
+
+        check_library_usage_telemetry(
+            use_lib_fn=mock_use_lib_fn,
+            callsite=TelemetryCallsite.DRIVER,
+            expected_library_usages=expected_library_usages,
+        )
+
+        mock_use_lib_fn.assert_called_once()
+
+    @patch("ray._common.test_utils.ray")
+    def test_check_library_usage_telemetry_actor_callsite(self, mock_ray):
+        """Test telemetry checking with ACTOR callsite."""
+        mock_use_lib_fn = Mock()
+
+        # Set up mock ray functions
+        # Create a mock actor class that returns a mock actor instance
+        mock_actor_class = Mock()
+        mock_actor_instance = Mock()
+        mock_ready_ref = Mock()
+
+        # Set up the chain: ray.remote -> actor_class -> actor_instance
+        mock_ray.remote.return_value = mock_actor_class
+        mock_actor_class.remote.return_value = mock_actor_instance
+
+        # Set up the __ray_ready__ method chain
+        mock_actor_instance.__ray_ready__ = Mock()
+        mock_actor_instance.__ray_ready__.remote.return_value = mock_ready_ref
+
+        # ray.get should return True (actor is ready)
+        mock_ray.get.return_value = True
+
+        # Set up expected returns
+        self.mock_get_library_usages.side_effect = [
+            set(),  # Initial empty check
+            {"test_library"},  # After use_lib_fn is called
+        ]
+
+        expected_library_usages = [{"test_library"}]
+
+        check_library_usage_telemetry(
+            use_lib_fn=mock_use_lib_fn,
+            callsite=TelemetryCallsite.ACTOR,
+            expected_library_usages=expected_library_usages,
+        )
+
+        mock_ray.remote.assert_called_once()
+        mock_ray.get.assert_called_once()
+
+    @patch("ray._common.test_utils.ray")
+    def test_check_library_usage_telemetry_task_callsite(self, mock_ray):
+        """Test telemetry checking with TASK callsite."""
+        mock_use_lib_fn = Mock()
+
+        # Set up mock ray functions
+        mock_task_ref = Mock()
+        mock_ray.remote.return_value = mock_task_ref
+        mock_ray.get.return_value = None
+
+        # Set up expected returns
+        self.mock_get_library_usages.side_effect = [
+            set(),  # Initial empty check
+            {"test_library"},  # After use_lib_fn is called
+        ]
+
+        expected_library_usages = [{"test_library"}]
+
+        check_library_usage_telemetry(
+            use_lib_fn=mock_use_lib_fn,
+            callsite=TelemetryCallsite.TASK,
+            expected_library_usages=expected_library_usages,
+        )
+
+        mock_ray.remote.assert_called_once()
+        mock_ray.get.assert_called_once()
+
+    def test_check_library_usage_telemetry_with_extra_tags(self):
+        """Test telemetry checking with extra usage tags."""
+        mock_use_lib_fn = Mock()
+
+        # Set up expected returns
+        self.mock_get_library_usages.side_effect = [
+            set(),  # Initial empty check
+            {"test_library"},  # After use_lib_fn is called
+        ]
+        self.mock_get_extra_usage_tags.return_value = {"test_tag": "test_value"}
+
+        expected_library_usages = [{"test_library"}]
+        expected_extra_usage_tags = {"test_tag": "test_value"}
+
+        check_library_usage_telemetry(
+            use_lib_fn=mock_use_lib_fn,
+            callsite=TelemetryCallsite.DRIVER,
+            expected_library_usages=expected_library_usages,
+            expected_extra_usage_tags=expected_extra_usage_tags,
+        )
+
+    def test_check_library_usage_telemetry_assertion_error_extra_tags(self):
+        """Test that assertion error is raised for incorrect extra tags."""
+        mock_use_lib_fn = Mock()
+
+        # Set up expected returns
+        self.mock_get_library_usages.side_effect = [
+            set(),  # Initial empty check
+            {"test_library"},  # After use_lib_fn is called
+        ]
+        self.mock_get_extra_usage_tags.return_value = {"test_tag": "unexpected_value"}
+
+        expected_library_usages = [{"test_library"}]
+        expected_extra_usage_tags = {"test_tag": "expected_value"}
+
+        with pytest.raises(AssertionError):
+            check_library_usage_telemetry(
+                use_lib_fn=mock_use_lib_fn,
+                callsite=TelemetryCallsite.DRIVER,
+                expected_library_usages=expected_library_usages,
+                expected_extra_usage_tags=expected_extra_usage_tags,
+            )
+
+    def test_check_library_usage_telemetry_assertion_error_library_usage(self):
+        """Test that assertion error is raised for incorrect library usage."""
+        mock_use_lib_fn = Mock()
+
+        # Set up expected returns
+        self.mock_get_library_usages.side_effect = [
+            set(),  # Initial empty check
+            {"unexpected_library"},  # After use_lib_fn is called
+        ]
+
+        expected_library_usages = [{"expected_library"}]
+
+        with pytest.raises(AssertionError):
+            check_library_usage_telemetry(
+                use_lib_fn=mock_use_lib_fn,
+                callsite=TelemetryCallsite.DRIVER,
+                expected_library_usages=expected_library_usages,
+            )
+
+    def test_check_library_usage_telemetry_empty_expected_usages(self):
+        """Test telemetry checking with empty expected library usages."""
+        mock_use_lib_fn = Mock()
+
+        # Set up expected returns
+        self.mock_get_library_usages.side_effect = [
+            set(),  # Initial empty check
+            set(),  # After use_lib_fn is called (still empty)
+        ]
+
+        expected_library_usages = [set()]  # Expect empty set
+
+        check_library_usage_telemetry(
+            use_lib_fn=mock_use_lib_fn,
+            callsite=TelemetryCallsite.DRIVER,
+            expected_library_usages=expected_library_usages,
+        )
+
+    def test_check_library_usage_telemetry_initial_usage_not_empty(self):
+        """Test that assertion error is raised if initial library usage is not empty."""
+        mock_use_lib_fn = Mock()
+
+        # Set up initial non-empty library usage
+        self.mock_get_library_usages.return_value = {"existing_library"}
+
+        expected_library_usages = [{"test_library"}]
+
+        # Should raise AssertionError due to non-empty initial usage
+        with pytest.raises(AssertionError):
+            check_library_usage_telemetry(
+                use_lib_fn=mock_use_lib_fn,
+                callsite=TelemetryCallsite.DRIVER,
+                expected_library_usages=expected_library_usages,
+            )
+
+    def test_check_library_usage_telemetry_multiple_expected_usages(self):
+        """Test telemetry checking with multiple expected library usages."""
+        mock_use_lib_fn = Mock()
+
+        # Set up expected returns
+        self.mock_get_library_usages.side_effect = [
+            set(),  # Initial empty check
+            {"test_library"},  # After use_lib_fn is called
+        ]
+
+        # Multiple expected usage patterns
+        expected_library_usages = [
+            {"test_library"},
+            {"test_library", "another_library"},
+        ]
+
+        # Should not raise an exception since the actual usage matches one of the expected patterns
+        check_library_usage_telemetry(
+            use_lib_fn=mock_use_lib_fn,
+            callsite=TelemetryCallsite.DRIVER,
+            expected_library_usages=expected_library_usages,
+        )
+
+    def test_check_library_usage_telemetry_invalid_callsite(self):
+        """Test that assertion error is raised for invalid callsite."""
+        mock_use_lib_fn = Mock()
+
+        # Set up expected returns
+        self.mock_get_library_usages.side_effect = [
+            set(),  # Initial empty check
+            {"test_library"},  # After use_lib_fn is called
+        ]
+
+        expected_library_usages = [{"test_library"}]
+
+        # Use an invalid callsite value by bypassing type checking
+        with pytest.raises(AssertionError, match="Unrecognized callsite"):
+            check_library_usage_telemetry(
+                use_lib_fn=mock_use_lib_fn,
+                callsite="invalid_callsite",  # type: ignore
+                expected_library_usages=expected_library_usages,
+            )
 
 
 if __name__ == "__main__":
