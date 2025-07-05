@@ -901,20 +901,6 @@ py_test(
 )
 
 py_test(
-    name = "test_mars",
-    size = "medium",
-    srcs = ["tests/test_mars.py"],
-    tags = [
-        "exclusive",
-        "team:data",
-    ],
-    deps = [
-        ":conftest",
-        "//:ray_lib",
-    ],
-)
-
-py_test(
     name = "test_metadata_provider",
     size = "small",
     srcs = ["tests/test_metadata_provider.py"],
