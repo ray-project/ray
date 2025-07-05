@@ -388,6 +388,7 @@ def run_release_test(
     no_terminate: bool = False,
     test_definition_root: Optional[str] = None,
     log_streaming_limit: int = LAST_LOGS_LENGTH,
+    image: Optional[str] = None,
 ) -> Result:
     if test.is_kuberay():
         return run_release_test_kuberay(
@@ -407,6 +408,7 @@ def run_release_test(
         no_terminate=no_terminate,
         test_definition_root=test_definition_root,
         log_streaming_limit=log_streaming_limit,
+        image=image,
     )
 
 
