@@ -58,7 +58,7 @@ namespace ray {
 // %L is loglevel, %P is process id, %t for thread id.
 constexpr char kLogFormatTextPattern[] = "[%Y-%m-%d %H:%M:%S,%e %L %P %t] %v";
 constexpr char kLogFormatJsonPattern[] =
-    "{\"asctime\":\"%Y-%m-%d %H:%M:%S,%e\",\"levelname\":\"%L\"%v}";
+    R"({"asctime":"%Y-%m-%d %H:%M:%S,%e","levelname":"%L"%v})";
 
 RayLogLevel RayLog::severity_threshold_ = RayLogLevel::INFO;
 std::string RayLog::app_name_ = "";        // NOLINT
@@ -77,9 +77,10 @@ std::ostream &operator<<(std::ostream &os, const StackTrace &stack_trace) {
 
 #ifndef _WIN32
   const int num_frames = backtrace(frames, MAX_NUM_FRAMES);
-  char **frame_symbols = backtrace_symbols(frames, num_frames);
+  std::unique_ptr<char *, decltype(&free)> frame_symbols(
+      backtrace_symbols(frames, num_frames), &free);
   for (int i = 0; i < num_frames; ++i) {
-    os << frame_symbols[i];
+    os << frame_symbols.get()[i];
 
     if (absl::Symbolize(frames[i], buf, sizeof(buf))) {
       os << " " << buf;
@@ -87,7 +88,6 @@ std::ostream &operator<<(std::ostream &os, const StackTrace &stack_trace) {
 
     os << "\n";
   }
-  free(frame_symbols);
 #else
   const int num_frames = absl::GetStackTrace(frames, MAX_NUM_FRAMES, 0);
   for (int i = 0; i < num_frames; ++i) {
@@ -603,7 +603,7 @@ RayLog::~RayLog() {
   // NOTE(lingxuan.zlx): See more fmt by visiting https://github.com/fmtlib/fmt.
   if (log_format_json_) {
     logger->log(GetMappedSeverity(severity_),
-                /*fmt*/ ",\"{}\":\"{}\"{}",
+                /*fmt*/ R"(,"{}":"{}"{})",
                 kLogKeyMessage,
                 json_escape_string(msg_osstream_.str()),
                 context_osstream_.str());
