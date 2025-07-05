@@ -1,0 +1,32 @@
+load("@py_deps_buildkite//:requirements.bzl", ci_require = "requirement")
+
+py_library(
+    name = "raydepsets_lib",
+    srcs = [
+        "cli.py",
+    ],
+    deps = [
+        ci_require("click"),
+    ],
+)
+
+py_binary(
+    name = "raydepsets",
+    srcs = ["raydepsets.py"],
+    deps = [":raydepsets_lib"],
+    exec_compatible_with = ["//:hermetic_python"],
+)
+
+py_test(
+    name = "test_cli",
+    srcs = ["tests/test_cli.py"],
+    exec_compatible_with = ["//:hermetic_python"],
+    deps = [
+        ci_require("pytest"),
+        ":raydepsets_lib",
+    ],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+)
