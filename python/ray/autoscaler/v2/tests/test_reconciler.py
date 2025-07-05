@@ -18,10 +18,12 @@ from ray.autoscaler.v2.instance_manager.node_provider import (  # noqa
     LaunchNodeError,
     TerminateNodeError,
 )
-from ray.autoscaler.v2.instance_manager.ray_installer import RayInstallError
 from ray.autoscaler.v2.instance_manager.reconciler import Reconciler, logger
 from ray.autoscaler.v2.instance_manager.storage import InMemoryStorage
 from ray.autoscaler.v2.instance_manager.subscribers.ray_stopper import RayStopError
+from ray.autoscaler.v2.instance_manager.subscribers.threaded_ray_installer import (
+    RayInstallError,
+)
 from ray.autoscaler.v2.scheduler import IResourceScheduler, SchedulingReply
 from ray.autoscaler.v2.tests.util import MockSubscriber, create_instance
 from ray.core.generated.autoscaler_pb2 import (
