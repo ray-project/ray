@@ -49,7 +49,8 @@ void PushManager::StartPush(const NodeID &dest_id,
   ScheduleRemainingPushes();
 }
 
-void PushManager::OnChunkComplete() {
+void PushManager::OnChunkComplete(int64_t push_max_chunk_size) {
+  bytes_in_flight_ -= push_max_chunk_size;
   chunks_remaining_ -= 1;
   ScheduleRemainingPushes();
 }

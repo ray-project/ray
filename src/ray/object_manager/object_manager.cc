@@ -490,11 +490,12 @@ void ObjectManager::PushObjectInternal(const ObjectID &object_id,
       << ", total data size: " << chunk_reader->GetObject().GetObjectSize();
 
   auto push_id = UniqueID::FromRandom();
+  uint64_t push_max_chunk_size = chunk_reader->ChunkSize();
   push_manager_->StartPush(
       node_id,
       object_id,
       chunk_reader->GetNumChunks(),
-      chunk_reader->ChunkSize(),
+      push_max_chunk_size,
       [=](int64_t chunk_id) {
         rpc_service_.post(
             [=]() {
@@ -509,8 +510,11 @@ void ObjectManager::PushObjectInternal(const ObjectID &object_id,
                   [=](const Status &status) {
                     // Post back to the main event loop because the
                     // PushManager is not thread-safe.
-                    main_service_->post([this]() { push_manager_->OnChunkComplete(); },
-                                        "ObjectManager.Push");
+                    main_service_->post(
+                        [this, push_max_chunk_size]() {
+                          push_manager_->OnChunkComplete(push_max_chunk_size);
+                        },
+                        "ObjectManager.Push");
                   },
                   chunk_reader,
                   from_disk);

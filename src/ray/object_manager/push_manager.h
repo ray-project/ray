@@ -54,7 +54,7 @@ class PushManager {
 
   /// Called every time a chunk completes to trigger additional sends.
   /// TODO(ekl) maybe we should cancel the entire push on error.
-  void OnChunkComplete();
+  void OnChunkComplete(int64_t push_max_chunk_size);
 
   /// Cancel all pushes that have not yet been sent to the removed node.
   void HandleNodeRemoved(const NodeID &node_id);
