@@ -10,6 +10,7 @@ import pyarrow as pa
 import pytest
 
 import ray
+from ray.data._internal.batcher import create_batcher
 from ray.data._internal.block_batching.interfaces import Batch
 from ray.data._internal.block_batching.util import (
     _calculate_ref_hits,
@@ -44,7 +45,11 @@ def test_blocks_to_batches(block_size, drop_last):
 
     batch_size = 3
     batch_iter = list(
-        blocks_to_batches(block_iter, batch_size=batch_size, drop_last=drop_last)
+        blocks_to_batches(
+            block_iter,
+            batcher=create_batcher(batch_size=batch_size),
+            drop_last=drop_last,
+        )
     )
 
     if drop_last:
