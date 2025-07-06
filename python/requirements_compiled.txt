@@ -52,7 +52,6 @@ aiohttp==3.11.16
     #   -r python/requirements/test-requirements.txt
     #   aiobotocore
     #   aiohttp-cors
-    #   datasets
     #   delta-sharing
     #   fsspec
     #   google-auth
@@ -380,6 +379,11 @@ dask==2023.6.1 ; python_version < "3.12"
     #   distributed
 databricks-sdk==0.52.0
     # via mlflow-skinny
+datasets==3.6.0
+    # via
+    #   -r python/requirements/ml/data-test-requirements.txt
+    #   -r python/requirements/ml/train-requirements.txt
+    #   evaluate
 debugpy==1.8.0
     # via ipykernel
 decorator==5.1.1
@@ -467,6 +471,8 @@ etils==1.5.2 ; python_version < "3.12"
     #   array-record
     #   mujoco
     #   tensorflow-datasets
+evaluate==0.4.3
+    # via -r python/requirements/ml/train-test-requirements.txt
 everett==3.1.0
     # via comet-ml
 execnet==2.1.1
@@ -1238,7 +1244,6 @@ numpy==1.26.4
     #   patsy
     #   pettingzoo
     #   prophet
-    #   pyarrow
     #   pylance
     #   pymars
     #   pyro-ppl
@@ -1565,10 +1570,22 @@ py-spy==0.4.0 ; python_version < "3.12"
     # via -r python/requirements.txt
 py4j==0.10.9.7
     # via pyspark
-pyarrow-hotfix==0.7
+pyarrow==19.0.1
     # via
+    #   -r python/requirements.txt
+    #   dask
     #   datasets
+    #   delta-sharing
+    #   deltalake
+    #   feather-format
+    #   getdaft
     #   hudi
+    #   mlflow
+    #   pylance
+    #   raydp
+    #   triad
+pyarrow-hotfix==0.7
+    # via hudi
 pyasn1==0.5.1
     # via
     #   oauth2client
@@ -2272,6 +2289,32 @@ tornado==6.1 ; python_version < "3.12"
     #   notebook
     #   pymars
     #   terminado
+tqdm==4.67.1
+    # via
+    #   -r python/requirements/cloud-requirements.txt
+    #   -r python/requirements/test-requirements.txt
+    #   aim
+    #   cmdstanpy
+    #   datasets
+    #   deepspeed
+    #   dm-control
+    #   etils
+    #   evaluate
+    #   getdaft
+    #   huggingface-hub
+    #   hyperopt
+    #   mosaicml
+    #   moviepy
+    #   optuna
+    #   prophet
+    #   pymars
+    #   pyro-ppl
+    #   pytorch-lightning
+    #   statsforecast
+    #   tensorflow-datasets
+    #   torch-geometric
+    #   torchtext
+    #   transformers
 traitlets==5.14.3
     # via
     #   comm
