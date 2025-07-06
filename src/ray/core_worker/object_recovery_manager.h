@@ -48,11 +48,11 @@ class ObjectRecoveryManager {
       std::shared_ptr<PinObjectsInterface> local_object_pinning_client,
       std::function<Status(const ObjectID &object_id,
                            const ObjectLookupCallback &callback)> object_lookup,
-      TaskResubmissionInterface &task_resubmitter,
+      TaskManagerInterface &task_manager,
       ReferenceCounter &reference_counter,
       CoreWorkerMemoryStore &in_memory_store,
       ObjectRecoveryFailureCallback recovery_failure_callback)
-      : task_resubmitter_(task_resubmitter),
+      : task_manager_(task_manager),
         reference_counter_(reference_counter),
         rpc_address_(std::move(rpc_address)),
         client_factory_(std::move(client_factory)),
@@ -112,7 +112,7 @@ class ObjectRecoveryManager {
   void ReconstructObject(const ObjectID &object_id);
 
   /// Used to resubmit tasks.
-  TaskResubmissionInterface &task_resubmitter_;
+  TaskManagerInterface &task_manager_;
 
   /// Used to check whether we own an object.
   ReferenceCounter &reference_counter_;
