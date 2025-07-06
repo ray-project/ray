@@ -9,7 +9,6 @@ import uuid
 from enum import Enum
 from functools import partial
 from typing import Any, AsyncIterator, Dict, List, Optional, Tuple, Type
-
 import numpy as np
 from pydantic import BaseModel, Field, root_validator
 
@@ -568,7 +567,7 @@ class vLLMEngineStageUDF(StatefulStageUDF):
         # Log engine stats after each batch is done conditioned on the flag 
         # passed to the engine.
         if not self.engine_kwargs.get("disable_log_stats", False):
-            await self.llm.engine.do_log_stats()
+            await self.llm.engine.do_log_stats()        
 
     def __del__(self):
         if hasattr(self, "llm"):
@@ -652,9 +651,10 @@ class vLLMEngineStage(StatefulStage):
         pp_size = engine_kwargs.get("pipeline_parallel_size", 1)
         num_bundles_per_replica = tp_size * pp_size
 
-        # Use the MP backend by default.
-        engine_kwargs.setdefault("distributed_executor_backend", "mp")
-        executor_backend = engine_kwargs.get("distributed_executor_backend")
+        # Use the Ray backend by default.
+        executor_backend = engine_kwargs.get("distributed_executor_backend", "ray")
+        if executor_backend and executor_backend != "ray":
+            raise ValueError("Distributed executor backend must be ray when using Ray Data, but got %s" % executor_backend)
 
         # When Ray is used in the vLLM engine, we set num_devices to 0 so that
         # Ray Data won't reserve GPUs in advance. Instead, we specify scheduling
