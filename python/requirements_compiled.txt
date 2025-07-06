@@ -1565,20 +1565,6 @@ py-spy==0.4.0 ; python_version < "3.12"
     # via -r python/requirements.txt
 py4j==0.10.9.7
     # via pyspark
-pyarrow==14.0.2
-    # via
-    #   -r python/requirements.txt
-    #   dask
-    #   datasets
-    #   delta-sharing
-    #   deltalake
-    #   feather-format
-    #   getdaft
-    #   hudi
-    #   mlflow
-    #   pylance
-    #   raydp
-    #   triad
 pyarrow-hotfix==0.7
     # via
     #   datasets
@@ -2286,32 +2272,6 @@ tornado==6.1 ; python_version < "3.12"
     #   notebook
     #   pymars
     #   terminado
-tqdm==4.64.1
-    # via
-    #   -r python/requirements/cloud-requirements.txt
-    #   -r python/requirements/test-requirements.txt
-    #   aim
-    #   cmdstanpy
-    #   datasets
-    #   deepspeed
-    #   dm-control
-    #   etils
-    #   evaluate
-    #   getdaft
-    #   huggingface-hub
-    #   hyperopt
-    #   mosaicml
-    #   moviepy
-    #   optuna
-    #   prophet
-    #   pymars
-    #   pyro-ppl
-    #   pytorch-lightning
-    #   statsforecast
-    #   tensorflow-datasets
-    #   torch-geometric
-    #   torchtext
-    #   transformers
 traitlets==5.14.3
     # via
     #   comm
