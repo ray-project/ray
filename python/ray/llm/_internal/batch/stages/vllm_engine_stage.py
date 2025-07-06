@@ -566,6 +566,10 @@ class vLLMEngineStageUDF(StatefulStageUDF):
             len(batch),
             time_taken,
         )
+        # Log engine stats after each batch is done conditioned on the flag 
+        # passed to the engine.
+        if not self.engine_kwargs.get("disable_log_stats", False):
+            await self.llm.engine.do_log_stats()
 
     def __del__(self):
         if hasattr(self, "llm"):
