@@ -326,6 +326,9 @@ std::optional<rpc::ErrorType> TaskManager::ResubmitTask(
       return rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_MAX_ATTEMPTS_EXCEEDED;
     }
     auto &task_entry = it->second;
+    if (task_entry.is_canceled) {
+      return rpc::ErrorType::TASK_CANCELLED;
+    }
 
     if (task_entry.spec.IsStreamingGenerator() &&
         task_entry.GetStatus() == rpc::TaskStatus::SUBMITTED_TO_WORKER) {
@@ -358,6 +361,9 @@ std::optional<rpc::ErrorType> TaskManager::ResubmitTask(
 
   UpdateReferencesForResubmit(spec, task_deps);
 
+  // TODO(can-anyscale): There is a race condition here where a task can still be
+  // retried after its retry count has reached zero. Additional information in github
+  // issue #54260.
   RAY_LOG(INFO) << "Resubmitting task that produced lost plasma object, attempt #"
                 << spec.AttemptNumber() << ": " << spec.DebugString();
   retry_task_callback_(spec, /*object_recovery*/ true, /*delay_ms*/ 0);
@@ -542,7 +548,12 @@ bool TaskManager::HandleTaskReturn(const ObjectID &object_id,
           return_object.metadata().size());
     }
 
-    RayObject object(data_buffer, metadata_buffer, nested_refs);
+    auto tensor_transport = reference_counter_.GetTensorTransport(object_id);
+    RayObject object(data_buffer,
+                     metadata_buffer,
+                     nested_refs,
+                     /*copy_data=*/false,
+                     tensor_transport.value_or(rpc::TensorTransport::OBJECT_STORE));
     if (store_in_plasma) {
       put_in_local_plasma_callback_(object, object_id);
     } else {
@@ -1339,13 +1350,14 @@ int64_t TaskManager::RemoveLineageReference(const ObjectID &object_id,
   return total_lineage_footprint_bytes_ - total_lineage_footprint_bytes_prev;
 }
 
-bool TaskManager::MarkTaskCanceled(const TaskID &task_id) {
+void TaskManager::MarkTaskCanceled(const TaskID &task_id) {
+  // Mark the task for cancelation. This will prevent the task from being retried.
   ObjectID generator_id = TaskGeneratorId(task_id);
   if (!generator_id.IsNil()) {
-    // Pass -1 because the task has been cancelled, so we should just end the
+    // Pass -1 because the task has been canceled, so we should just end the
     // stream at the caller's current index. This is needed because we may
     // receive generator reports out of order. If the task reports a later
-    // index then exits because it was cancelled, we will hang waiting for the
+    // index then exits because it was canceled, we will hang waiting for the
     // intermediate indices.
     MarkEndOfStream(generator_id, /*end_of_stream_index=*/-1);
   }
@@ -1355,8 +1367,8 @@ bool TaskManager::MarkTaskCanceled(const TaskID &task_id) {
   if (it != submissible_tasks_.end()) {
     it->second.num_retries_left = 0;
     it->second.num_oom_retries_left = 0;
+    it->second.is_canceled = true;
   }
-  return it != submissible_tasks_.end();
 }
 
 absl::flat_hash_set<ObjectID> TaskManager::GetTaskReturnObjectsToStoreInPlasma(
