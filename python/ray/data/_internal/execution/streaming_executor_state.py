@@ -463,7 +463,7 @@ def process_completed_tasks(
                     max_bytes_to_read = min(max_bytes_to_read, policy_limit)
 
         # If no policy provides a limit, there's no limit
-        op._in_task_output_backpressure = max_bytes_to_read == 0
+        op.notify_in_task_output_backpressure(max_bytes_to_read == 0)
         if max_bytes_to_read is not None:
             max_bytes_to_read_per_op[state] = max_bytes_to_read
 
