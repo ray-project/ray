@@ -195,7 +195,7 @@ def test_actor_fail_during_constructor_restart(ray_start_cluster_head):
 
 def test_actor_restart_multiple_callers(ray_start_cluster):
     cluster = ray_start_cluster
-    head_node = cluster.add_node(num_cpus=4)
+    _ = cluster.add_node(num_cpus=4)
     ray.init(address=cluster.address)
 
     _ = cluster.add_node(num_cpus=4)
