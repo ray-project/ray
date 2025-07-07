@@ -716,7 +716,8 @@ def _generate_transform_fn_for_async_map(
             finally:
                 output_queue.put(sentinel)
 
-        reordering_task = asyncio.create_task(_reorder())
+        # NOTE: Reordering is an async process
+        asyncio.create_task(_reorder())
 
         cur_task_map: Dict[asyncio.Task, int] = dict()
         consumed = False
