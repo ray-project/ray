@@ -1433,12 +1433,6 @@ python/ray/exceptions.py
     DOC107: Method `ObjectLostError.__init__`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
     DOC103: Method `ObjectLostError.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [call_site: , owner_address: ].
 --------------------
-python/ray/experimental/array/distributed/linalg.py
-    DOC106: Function `tsqr`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
-    DOC107: Function `tsqr`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
-    DOC106: Function `modified_lu`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
-    DOC107: Function `modified_lu`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
---------------------
 python/ray/experimental/channel/auto_transport_type.py
     DOC001: Method `__init__` Potential formatting errors in docstring. Error message: No specification for "Args": ""
     DOC001: Function/method `__init__`: Potential formatting errors in docstring. Error message: No specification for "Args": "" (Note: DOC001 could trigger other unrelated violations under this function/method too. Please fix the docstring formatting first.)
@@ -1841,10 +1835,6 @@ python/ray/serve/tests/test_callback.py
     DOC107: Function `ray_instance`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
     DOC402: Function `ray_instance` has "yield" statements, but the docstring does not have a "Yields" section
     DOC404: Function `ray_instance` yield type(s) in docstring not consistent with the return annotation. Return annotation exists, but docstring "yields" section does not exist or has 0 type(s).
---------------------
-python/ray/serve/tests/test_metrics.py
-    DOC106: Method `TestRequestContextMetrics._generate_metrics_summary`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
-    DOC107: Method `TestRequestContextMetrics._generate_metrics_summary`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
 --------------------
 python/ray/serve/tests/test_target_capacity.py
     DOC107: Method `TestTargetCapacityUpdateAndServeStatus.check_num_replicas`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints

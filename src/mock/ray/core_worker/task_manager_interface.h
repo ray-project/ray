@@ -14,11 +14,20 @@
 
 #pragma once
 #include "gmock/gmock.h"
+#include "ray/core_worker/task_manager_interface.h"
+
 namespace ray {
 namespace core {
 
-class MockTaskFinisherInterface : public TaskFinisherInterface {
+class MockTaskManagerInterface : public TaskManagerInterface {
  public:
+  MOCK_METHOD(std::vector<rpc::ObjectReference>,
+              AddPendingTask,
+              (const rpc::Address &caller_address,
+               const TaskSpecification &spec,
+               const std::string &call_site,
+               int max_retries),
+              (override));
   MOCK_METHOD(void,
               CompletePendingTask,
               (const TaskID &task_id,
@@ -42,12 +51,16 @@ class MockTaskFinisherInterface : public TaskFinisherInterface {
                bool mark_task_object_failed,
                bool fail_immediately),
               (override));
+  MOCK_METHOD(std::optional<rpc::ErrorType>,
+              ResubmitTask,
+              (const TaskID &task_id, std::vector<ObjectID> *task_deps),
+              (override));
   MOCK_METHOD(void,
               OnTaskDependenciesInlined,
               (const std::vector<ObjectID> &inlined_dependency_ids,
                const std::vector<ObjectID> &contained_ids),
               (override));
-  MOCK_METHOD(bool, MarkTaskCanceled, (const TaskID &task_id), (override));
+  MOCK_METHOD(void, MarkTaskCanceled, (const TaskID &task_id), (override));
   MOCK_METHOD(std::optional<TaskSpecification>,
               GetTaskSpec,
               (const TaskID &task_id),
@@ -62,6 +75,7 @@ class MockTaskFinisherInterface : public TaskFinisherInterface {
               (const TaskID &task_id, const NodeID &node_id, const WorkerID &worker_id),
               (override));
   MOCK_METHOD(bool, IsTaskPending, (const TaskID &task_id), (const, override));
+  MOCK_METHOD(void, MarkGeneratorFailedAndResubmit, (const TaskID &task_id), (override));
 };
 
 }  // namespace core
