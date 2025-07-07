@@ -49,6 +49,9 @@ class BackpressurePolicy(ABC):
         This is used for output backpressure to limit how much data an operator
         can read from its running tasks.
 
+        Note, if multiple backpressure policies return non-None values for an operator,
+        the minimum of those values will be used as the limit.
+
         Args:
             op: The operator to get the limit for.
 
