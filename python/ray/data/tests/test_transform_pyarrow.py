@@ -1527,7 +1527,7 @@ def test_mixed_tensor_types_variable_shaped():
     np.testing.assert_array_equal(result_tensors[3], np.zeros((2, 1), dtype=np.float32))
 
 
-def test_mixed_tensor_types_in_struct_fixed():
+def test_mixed_tensor_types_in_struct():
     """Test that the fix works for mixed tensor types in structs."""
     import numpy as np
     import pyarrow as pa
@@ -1582,6 +1582,315 @@ def test_mixed_tensor_types_in_struct_fixed():
     # Last two should be from the variable-shaped tensor struct
     assert struct_data[2]["value"] == 3
     assert struct_data[3]["value"] == 4
+
+
+def test_nested_struct_with_mixed_tensor_types():
+    """Test nested structs with mixed tensor types at different levels."""
+    import numpy as np
+    import pyarrow as pa
+
+    from ray.data.extensions import ArrowTensorArray, ArrowVariableShapedTensorArray
+
+    # Block 1: Nested struct with fixed-shape tensors
+    tensor_data1 = np.ones((2, 2), dtype=np.float32)
+    tensor_array1 = ArrowTensorArray.from_numpy(tensor_data1)
+
+    # Inner struct with fixed-shape tensor
+    inner_struct1 = pa.StructArray.from_arrays(
+        [tensor_array1, pa.array([10, 20], type=pa.int64())],
+        names=["inner_tensor", "inner_value"],
+    )
+
+    # Outer struct with nested struct and fixed-shape tensor
+    outer_tensor1 = ArrowTensorArray.from_numpy(np.zeros((2, 1), dtype=np.float32))
+    outer_struct1 = pa.StructArray.from_arrays(
+        [inner_struct1, outer_tensor1, pa.array([1, 2], type=pa.int64())],
+        names=["nested", "outer_tensor", "outer_value"],
+    )
+
+    t1 = pa.table({"id": [1, 2], "complex_struct": outer_struct1})
+
+    # Block 2: Nested struct with variable-shaped tensors
+    tensor_data2 = np.array(
+        [
+            np.ones((3, 3), dtype=np.float32),
+            np.zeros((1, 4), dtype=np.float32),
+        ],
+        dtype=object,
+    )
+    tensor_array2 = ArrowVariableShapedTensorArray.from_numpy(tensor_data2)
+
+    # Inner struct with variable-shaped tensor
+    inner_struct2 = pa.StructArray.from_arrays(
+        [tensor_array2, pa.array([30, 40], type=pa.int64())],
+        names=["inner_tensor", "inner_value"],
+    )
+
+    # Outer struct with nested struct and variable-shaped tensor
+    outer_tensor2 = ArrowVariableShapedTensorArray.from_numpy(
+        np.array(
+            [np.ones((2, 2), dtype=np.float32), np.zeros((1, 3), dtype=np.float32)],
+            dtype=object,
+        )
+    )
+    outer_struct2 = pa.StructArray.from_arrays(
+        [inner_struct2, outer_tensor2, pa.array([3, 4], type=pa.int64())],
+        names=["nested", "outer_tensor", "outer_value"],
+    )
+
+    t2 = pa.table({"id": [3, 4], "complex_struct": outer_struct2})
+
+    # This should work with our fix
+    t3 = concat([t1, t2])
+    assert isinstance(t3, pa.Table)
+    assert len(t3) == 4
+
+    # Verify the result has the expected structure
+    assert "id" in t3.column_names
+    assert "complex_struct" in t3.column_names
+
+    # Verify nested struct field contains both types of tensors
+    struct_data = t3.column("complex_struct").to_pylist()
+    assert len(struct_data) == 4
+
+    # Check that nested structures are preserved
+    assert "nested" in struct_data[0]
+    assert "outer_tensor" in struct_data[0]
+    assert "outer_value" in struct_data[0]
+    assert "inner_tensor" in struct_data[0]["nested"]
+    assert "inner_value" in struct_data[0]["nested"]
+
+
+def test_multiple_tensor_fields_in_struct():
+    """Test structs with multiple tensor fields of different types."""
+    import numpy as np
+    import pyarrow as pa
+
+    from ray.data.extensions import ArrowTensorArray, ArrowVariableShapedTensorArray
+
+    # Block 1: Struct with multiple fixed-shape tensors
+    tensor1_data = np.ones((2, 2), dtype=np.float32)
+    tensor1_array = ArrowTensorArray.from_numpy(tensor1_data)
+
+    tensor2_data = np.zeros((2, 3), dtype=np.int32)
+    tensor2_array = ArrowTensorArray.from_numpy(tensor2_data)
+
+    struct_array1 = pa.StructArray.from_arrays(
+        [tensor1_array, tensor2_array, pa.array([1, 2], type=pa.int64())],
+        names=["tensor1", "tensor2", "value"],
+    )
+
+    t1 = pa.table({"id": [1, 2], "multi_tensor_struct": struct_array1})
+
+    # Block 2: Struct with multiple variable-shaped tensors
+    tensor1_data2 = np.array(
+        [
+            np.ones((3, 3), dtype=np.float32),
+            np.zeros((1, 4), dtype=np.float32),
+        ],
+        dtype=object,
+    )
+    tensor1_array2 = ArrowVariableShapedTensorArray.from_numpy(tensor1_data2)
+
+    tensor2_data2 = np.array(
+        [
+            np.ones((2, 2), dtype=np.int32),
+            np.zeros((3, 1), dtype=np.int32),
+        ],
+        dtype=object,
+    )
+    tensor2_array2 = ArrowVariableShapedTensorArray.from_numpy(tensor2_data2)
+
+    struct_array2 = pa.StructArray.from_arrays(
+        [tensor1_array2, tensor2_array2, pa.array([3, 4], type=pa.int64())],
+        names=["tensor1", "tensor2", "value"],
+    )
+
+    t2 = pa.table({"id": [3, 4], "multi_tensor_struct": struct_array2})
+
+    # This should work with our fix
+    t3 = concat([t1, t2])
+    assert isinstance(t3, pa.Table)
+    assert len(t3) == 4
+
+    # Verify the result has the expected structure
+    assert "id" in t3.column_names
+    assert "multi_tensor_struct" in t3.column_names
+
+    # Verify struct field contains both types of tensors
+    struct_data = t3.column("multi_tensor_struct").to_pylist()
+    assert len(struct_data) == 4
+
+    # Check that all tensor fields are present
+    for row in struct_data:
+        assert "tensor1" in row
+        assert "tensor2" in row
+        assert "value" in row
+
+
+def test_struct_with_mixed_tensor_dtypes():
+    """Test structs with tensors of different data types."""
+    import numpy as np
+    import pyarrow as pa
+
+    from ray.data.extensions import ArrowTensorArray, ArrowVariableShapedTensorArray
+
+    # Block 1: Struct with float32 fixed-shape tensor
+    tensor_data1 = np.ones((2, 2), dtype=np.float32)
+    tensor_array1 = ArrowTensorArray.from_numpy(tensor_data1)
+    value_array1 = pa.array([1, 2], type=pa.int64())
+
+    struct_array1 = pa.StructArray.from_arrays(
+        [tensor_array1, value_array1], names=["tensor", "value"]
+    )
+
+    t1 = pa.table({"id": [1, 2], "struct": struct_array1})
+
+    # Block 2: Struct with float32 variable-shaped tensor (same dtype)
+    tensor_data2 = np.array(
+        [
+            np.ones((3, 3), dtype=np.float32),
+            np.zeros((1, 4), dtype=np.float32),
+        ],
+        dtype=object,
+    )
+    tensor_array2 = ArrowVariableShapedTensorArray.from_numpy(tensor_data2)
+    value_array2 = pa.array([3, 4], type=pa.int64())
+
+    struct_array2 = pa.StructArray.from_arrays(
+        [tensor_array2, value_array2], names=["tensor", "value"]
+    )
+
+    t2 = pa.table({"id": [3, 4], "struct": struct_array2})
+
+    # This should work with our fix
+    t3 = concat([t1, t2])
+    assert isinstance(t3, pa.Table)
+    assert len(t3) == 4
+
+    # Verify the result has the expected structure
+    assert "id" in t3.column_names
+    assert "struct" in t3.column_names
+
+    # Verify struct field contains both types of tensors
+    struct_data = t3.column("struct").to_pylist()
+    assert len(struct_data) == 4
+
+    # Check that tensors have correct dtypes (both should be float32)
+    assert struct_data[0]["tensor"].dtype == np.float32
+    assert struct_data[2]["tensor"].dtype == np.float32
+
+
+def test_struct_with_incompatible_tensor_dtypes_fails():
+    """Test that concatenating structs with incompatible tensor dtypes fails gracefully."""
+    import numpy as np
+    import pyarrow as pa
+    import pytest
+
+    from ray.air.util.tensor_extensions.arrow import ArrowConversionError
+    from ray.data.extensions import ArrowTensorArray, ArrowVariableShapedTensorArray
+
+    # Block 1: Struct with float32 fixed-shape tensor
+    tensor_data1 = np.ones((2, 2), dtype=np.float32)
+    tensor_array1 = ArrowTensorArray.from_numpy(tensor_data1)
+    value_array1 = pa.array([1, 2], type=pa.int64())
+
+    struct_array1 = pa.StructArray.from_arrays(
+        [tensor_array1, value_array1], names=["tensor", "value"]
+    )
+
+    t1 = pa.table({"id": [1, 2], "struct": struct_array1})
+
+    # Block 2: Struct with int64 variable-shaped tensor (different dtype)
+    tensor_data2 = np.array(
+        [
+            np.ones((3, 3), dtype=np.int64),
+            np.zeros((1, 4), dtype=np.int64),
+        ],
+        dtype=object,
+    )
+    tensor_array2 = ArrowVariableShapedTensorArray.from_numpy(tensor_data2)
+    value_array2 = pa.array([3, 4], type=pa.int64())
+
+    struct_array2 = pa.StructArray.from_arrays(
+        [tensor_array2, value_array2], names=["tensor", "value"]
+    )
+
+    t2 = pa.table({"id": [3, 4], "struct": struct_array2})
+
+    # This should fail because of incompatible tensor dtypes
+    with pytest.raises(ArrowConversionError):
+        concat([t1, t2])
+
+
+def test_struct_with_additional_fields():
+    """Test structs where some blocks have additional fields."""
+    import numpy as np
+    import pyarrow as pa
+
+    from ray.data.extensions import ArrowTensorArray, ArrowVariableShapedTensorArray
+
+    # Block 1: Struct with tensor field and basic fields
+    tensor_data1 = np.ones((2, 2), dtype=np.float32)
+    tensor_array1 = ArrowTensorArray.from_numpy(tensor_data1)
+    value_array1 = pa.array([1, 2], type=pa.int64())
+
+    struct_array1 = pa.StructArray.from_arrays(
+        [tensor_array1, value_array1], names=["tensor", "value"]
+    )
+
+    t1 = pa.table({"id": [1, 2], "struct": struct_array1})
+
+    # Block 2: Struct with tensor field and additional fields
+    tensor_data2 = np.array(
+        [
+            np.ones((3, 3), dtype=np.float32),
+            np.zeros((1, 4), dtype=np.float32),
+        ],
+        dtype=object,
+    )
+    tensor_array2 = ArrowVariableShapedTensorArray.from_numpy(tensor_data2)
+    value_array2 = pa.array([3, 4], type=pa.int64())
+    extra_array2 = pa.array(["a", "b"], type=pa.string())
+
+    struct_array2 = pa.StructArray.from_arrays(
+        [tensor_array2, value_array2, extra_array2], names=["tensor", "value", "extra"]
+    )
+
+    t2 = pa.table({"id": [3, 4], "struct": struct_array2})
+
+    # This should work with our fix
+    t3 = concat([t1, t2])
+    assert isinstance(t3, pa.Table)
+    assert len(t3) == 4
+
+    # Verify the result has the expected structure
+    assert "id" in t3.column_names
+    assert "struct" in t3.column_names
+
+    # Verify struct field contains both types of tensors
+    struct_data = t3.column("struct").to_pylist()
+    assert len(struct_data) == 4
+
+    # First two should have tensor field and extra field filled with None
+    assert "tensor" in struct_data[0]
+    assert "tensor" in struct_data[1]
+    assert "value" in struct_data[0]
+    assert "value" in struct_data[1]
+    assert "extra" in struct_data[0]
+    assert "extra" in struct_data[1]
+    assert struct_data[0]["extra"] is None
+    assert struct_data[1]["extra"] is None
+
+    # Last two should have tensor field and extra field
+    assert "tensor" in struct_data[2]
+    assert "tensor" in struct_data[3]
+    assert "value" in struct_data[2]
+    assert "value" in struct_data[3]
+    assert "extra" in struct_data[2]
+    assert "extra" in struct_data[3]
+    assert struct_data[2]["extra"] == "a"
+    assert struct_data[3]["extra"] == "b"
 
 
 if __name__ == "__main__":

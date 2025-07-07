@@ -1,5 +1,5 @@
 import logging
-from typing import TYPE_CHECKING, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Type, Union
 
 import numpy as np
 from packaging.version import parse as parse_version
@@ -362,6 +362,15 @@ def _backfill_missing_fields(
     unified_struct_type: "pyarrow.StructType",
     block_length: int,
 ) -> "pyarrow.StructArray":
+    """
+    Align a struct column's fields to match the unified schema's struct type.
+    Args:
+        column: The column data to align.
+        unified_struct_type: The unified struct type to align to.
+        block_length: The number of rows in the block.
+    Returns:
+        pa.StructArray: The aligned struct array.
+    """
     import pyarrow as pa
 
     from ray.air.util.tensor_extensions.arrow import (
@@ -373,7 +382,7 @@ def _backfill_missing_fields(
     if isinstance(column, pa.ChunkedArray):
         column = pa.concat_arrays(column.chunks)
 
-    # Extract current struct fields
+    # Extract the current struct field names and their corresponding data
     current_fields = {
         field.name: column.field(i) for i, field in enumerate(column.type)
     }
@@ -383,7 +392,7 @@ def _backfill_missing_fields(
         unified_field_names
     ), f"Fields {set(current_fields.keys())} not subset of unified struct fields {unified_field_names}"
 
-    # Early exit if already matching schema
+    # Early exit if no fields are missing in the schema
     if column.type == unified_struct_type:
         return column
 
@@ -391,6 +400,8 @@ def _backfill_missing_fields(
     fixed_shape_tensor_types = get_arrow_extension_fixed_shape_tensor_types()
 
     aligned_fields = []
+
+    # Iterate over the fields in the unified struct type schema
     for field in unified_struct_type:
         field_name = field.name
         field_type = field.type
@@ -398,8 +409,8 @@ def _backfill_missing_fields(
         if field_name in current_fields:
             current_array = current_fields[field_name]
 
-            # Recursively handle nested struct fields
             if pa.types.is_struct(field_type):
+                # Recursively handle nested struct fields
                 current_array = _backfill_missing_fields(
                     column=current_array,
                     unified_struct_type=field_type,
@@ -417,7 +428,6 @@ def _backfill_missing_fields(
                     and not isinstance(field_type, fixed_shape_tensor_types)
                 ):
                     current_array = current_array.to_variable_shaped_tensor_array()
-                # Otherwise keep current_array as is (do not cast storage)
 
             # For other mismatches, try safe cast or fallback
             elif current_array.type != field_type:
@@ -430,11 +440,14 @@ def _backfill_missing_fields(
             aligned_fields.append(current_array)
 
         else:
-            # Field missing, fill with nulls
+            # If the field is missing, fill with nulls
             aligned_fields.append(pa.nulls(block_length, type=field_type))
 
-    # Rebuild struct with aligned fields and unified struct type
-    return pa.StructArray.from_arrays(aligned_fields, fields=unified_struct_type)
+    # Reconstruct the struct column with aligned fields
+    return pa.StructArray.from_arrays(
+        aligned_fields,
+        fields=unified_struct_type,
+    )
 
 
 def _align_struct_fields(
@@ -524,8 +537,20 @@ def shuffle(block: "pyarrow.Table", seed: Optional[int] = None) -> "pyarrow.Tabl
 
 
 def _align_tensor_types_in_struct_field(
-    field: "pyarrow.Field", tensor_types
+    field: "pyarrow.Field", tensor_types: "Tuple[Type[pyarrow.ExtensionType], ...]"
 ) -> "pyarrow.Field":
+    """Align tensor types in struct fields to ensure consistent tensor type handling.
+
+    This function recursively processes struct fields and promotes fixed-shape tensor
+    types to variable-shaped tensor types when needed for consistency across blocks.
+
+    Args:
+        field: The PyArrow field to process.
+        tensor_types: Tuple of Arrow extension types that represent tensor types.
+
+    Returns:
+        A new PyArrow field with aligned tensor types.
+    """
     import pyarrow as pa
 
     from ray.air.util.tensor_extensions.arrow import (
