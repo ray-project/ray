@@ -36,7 +36,7 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     DataOpTask,
     MetadataOpTask,
     OpTask,
-    update_task_output_stats,
+    estimate_total_num_of_blocks,
 )
 from ray.data._internal.execution.operators.base_physical_operator import (
     InternalQueueOperatorMixin,
@@ -412,7 +412,7 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
                 _,
                 self._estimated_num_output_bundles,
                 self._estimated_output_num_rows,
-            ) = update_task_output_stats(
+            ) = estimate_total_num_of_blocks(
                 self._next_data_task_idx, self.upstream_op_num_outputs(), self._metrics
             )
 

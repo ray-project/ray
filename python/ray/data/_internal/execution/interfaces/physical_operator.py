@@ -705,15 +705,6 @@ class ReportsExtraResourceUsage(abc.ABC):
 
 
 class WithSubProgressBarMixin:
-    def init_sub_progress_bars(self, sub_progress_bar_names: List[Optional[str]]):
-        """Initialize the sub progress bar mixin."""
-        self._sub_progress_bar_names: Optional[List[str]] = sub_progress_bar_names
-        self._sub_progress_bar_dict: Optional[Dict[str, ProgressBar]] = None
-        self._metric_dict: Dict[str, OpRuntimeMetrics] = {}
-        if sub_progress_bar_names is not None:
-            for name in self._sub_progress_bar_names:
-                self._metric_dict[name] = OpRuntimeMetrics(self)
-
     def _key(self, key: Union[str, int]) -> str:
         """Convert the key to a string."""
         if isinstance(key, int):
@@ -758,7 +749,7 @@ class WithSubProgressBarMixin:
                 sub_bar.close()
 
 
-def update_task_output_stats(
+def estimate_total_num_of_blocks(
     num_tasks_submitted: int,
     upstream_op_num_outputs: int,
     metrics: OpRuntimeMetrics,

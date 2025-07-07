@@ -41,8 +41,10 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     MetadataOpTask,
     OpTask,
     WithSubProgressBarMixin,
-    update_task_output_stats,
+    estimate_total_num_of_blocks,
 )
+from ray.data._internal.progress_bar import ProgressBar
+from ray.data._internal.stats import OpRuntimeMetrics
 from ray.data._internal.table_block import TableBlockAccessor
 from ray.data._internal.util import GiB, MiB
 from ray.data.block import (
@@ -467,6 +469,14 @@ class HashShufflingOperatorBase(PhysicalOperator, WithSubProgressBarMixin):
             int, Dict[int, _PartitionStats]
         ] = defaultdict(dict)
 
+    def init_sub_progress_bars(self, sub_progress_bar_names: List[Optional[str]]):
+        self._sub_progress_bar_names: Optional[List[str]] = sub_progress_bar_names
+        self._sub_progress_bar_dict: Optional[Dict[str, ProgressBar]] = None
+        self._metric_dict: Dict[str, OpRuntimeMetrics] = {}
+        if sub_progress_bar_names is not None:
+            for name in self._sub_progress_bar_names:
+                self._metric_dict[name] = OpRuntimeMetrics(self)
+
     def start(self, options: ExecutionOptions) -> None:
         super().start(options)
 
@@ -478,12 +488,7 @@ class HashShufflingOperatorBase(PhysicalOperator, WithSubProgressBarMixin):
 
         # TODO move to base class
         shuffle_metrics.on_input_received(input_bundle)
-        shuffle_metrics.on_input_queued(input_bundle)
-        try:
-            self._do_add_input_inner(input_bundle, input_index)
-        finally:
-            shuffle_metrics.on_input_dequeued(input_bundle)
-            shuffle_metrics.on_output_taken(input_bundle)
+        self._do_add_input_inner(input_bundle, input_index)
 
     def _do_add_input_inner(self, input_bundle: RefBundle, input_index: int):
         input_blocks_refs: List[ObjectRef[Block]] = input_bundle.block_refs
@@ -560,6 +565,7 @@ class HashShufflingOperatorBase(PhysicalOperator, WithSubProgressBarMixin):
                 # NOTE: schema doesn't matter because we are creating a ref bundle
                 # for metrics recording purposes
                 out_bundle = RefBundle(blocks, schema=None, owns_blocks=False)
+                shuffle_metrics.on_output_taken(input_bundle)
                 shuffle_metrics.on_task_output_generated(
                     cur_shuffle_task_idx, out_bundle
                 )
@@ -662,7 +668,7 @@ class HashShufflingOperatorBase(PhysicalOperator, WithSubProgressBarMixin):
                 task_index=partition_id, output=bundle
             )
             finalize_metrics.on_task_finished(task_index=partition_id, exception=None)
-            _, num_outputs, num_rows = update_task_output_stats(
+            _, num_outputs, num_rows = estimate_total_num_of_blocks(
                 partition_id + 1,
                 self.upstream_op_num_outputs(),
                 finalize_metrics,
@@ -762,6 +768,8 @@ class HashShufflingOperatorBase(PhysicalOperator, WithSubProgressBarMixin):
             )
 
             # Update Finalize Metrics on task submission
+            # NOTE: This is empty because the input is directly forwarded from the
+            # output of the shuffling stage, which we don't return.
             empty_bundle = RefBundle([], schema=None, owns_blocks=False)
             finalize_metrics.on_task_submitted(partition_id, empty_bundle)
 

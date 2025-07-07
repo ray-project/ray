@@ -81,12 +81,12 @@ class AllToAllOperator(
         self._next_task_index = 0
         self._num_outputs = num_outputs
         self._output_rows = 0
+        self._sub_progress_bar_names = sub_progress_bar_names
+        self._sub_progress_bar_dict = None
         self._input_buffer: List[RefBundle] = []
         self._output_buffer: List[RefBundle] = []
         self._stats: StatsDict = {}
         super().__init__(name, [input_op], data_context, target_max_block_size)
-
-        self.init_sub_progress_bars(sub_progress_bar_names)
 
     def num_outputs_total(self) -> Optional[int]:
         return (
