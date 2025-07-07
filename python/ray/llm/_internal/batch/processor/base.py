@@ -50,6 +50,11 @@ class ProcessorConfig(BaseModelExtended):
         description="The number of workers for data parallelism. Default to 1.",
     )
 
+    experimental: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="[Experimental] Experimental configurations.",
+    )
+
     class Config:
         validate_assignment = True
         arbitrary_types_allowed = True
