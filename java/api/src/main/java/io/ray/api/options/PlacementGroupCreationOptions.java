@@ -14,30 +14,31 @@ public class PlacementGroupCreationOptions {
   private final List<Map<String, Double>> bundles;
   private final PlacementStrategy strategy;
 
-  private PlacementGroupCreationOptions(Builder builder) {
-    if (builder.bundles == null || builder.bundles.isEmpty()) {
+  public PlacementGroupCreationOptions(
+      String name, List<Map<String, Double>> bundles, PlacementStrategy strategy) {
+    if (bundles == null || bundles.isEmpty()) {
       throw new IllegalArgumentException(
           "`Bundles` must be specified when creating a new placement group.");
     }
     boolean bundleResourceValid =
-        builder.bundles.stream()
+        bundles.stream()
             .allMatch(bundle -> bundle.values().stream().allMatch(resource -> resource > 0));
 
     if (!bundleResourceValid) {
       throw new IllegalArgumentException(
           "Bundles cannot be empty or bundle's resource must be positive.");
     }
-    if (builder.strategy == null) {
+    if (strategy == null) {
       throw new IllegalArgumentException(
           "`PlacementStrategy` must be specified when creating a new placement group.");
     }
-    this.name = builder.name;
+    this.name = name;
     this.bundles =
         Collections.unmodifiableList(
-            builder.bundles.stream()
+            bundles.stream()
                 .map(bundle -> Collections.unmodifiableMap(new HashMap<>(bundle)))
                 .collect(Collectors.toList()));
-    this.strategy = builder.strategy;
+    this.strategy = strategy;
   }
 
   public String getName() {
@@ -99,7 +100,7 @@ public class PlacementGroupCreationOptions {
     }
 
     public PlacementGroupCreationOptions build() {
-      return new PlacementGroupCreationOptions(this);
+      return new PlacementGroupCreationOptions(name, bundles, strategy);
     }
   }
 }
