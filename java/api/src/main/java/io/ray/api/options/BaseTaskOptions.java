@@ -1,15 +1,14 @@
 package io.ray.api.options;
 
 import java.io.Serializable;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 
 /** The options class for RayCall or ActorCreation. */
 public abstract class BaseTaskOptions implements Serializable {
 
-  public final Map<String, Double> resources = new HashMap<>();
-
-  public BaseTaskOptions() {}
+  private final Map<String, Double> resources;
 
   public BaseTaskOptions(Map<String, Double> resources) {
     for (Map.Entry<String, Double> entry : resources.entrySet()) {
@@ -30,12 +29,19 @@ public abstract class BaseTaskOptions implements Serializable {
                 entry.getKey(), entry.getValue()));
       }
     }
+
+    Map<String, Double> result = new HashMap<>();
     /// Filter 0 resources
     resources.forEach(
         (key, value) -> {
           if (value != 0) {
-            this.resources.put(key, value);
+            result.put(key, value);
           }
         });
+    this.resources = Collections.unmodifiableMap(result);
+  }
+
+  public Map<String, Double> getResources() {
+    return resources;
   }
 }
