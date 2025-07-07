@@ -782,9 +782,7 @@ class Dataset:
     def with_columns(
         self,
         exprs: List[Expr],
-        batch_format: Optional[str] = "pandas",
-        compute: Optional[str] = None,
-        concurrency: Optional[int] = None,
+        batch_format: Optional[str] = "pyarrow",
         **ray_remote_args,
     ) -> "Dataset":
         """
@@ -804,10 +802,11 @@ class Dataset:
 
         Args:
             exprs: The expressions to evaluate to produce the new column values.
-            batch_format: This argument is deprecated and ignored. The operation
-                is performed using PyArrow format internally for efficiency.
-            compute: This argument is deprecated. Use ``concurrency`` argument.
-            concurrency: The maximum number of Ray workers to use concurrently.
+            batch_format: If ``"numpy"``, batches are
+                ``Dict[str, numpy.ndarray]``. If ``"pandas"``, batches are
+                ``pandas.DataFrame``. If ``"pyarrow"``, batches are
+                ``pyarrow.Table``. If ``"numpy"``, batches are
+                ``Dict[str, numpy.ndarray]``.
             **ray_remote_args: Additional resource requirements to request from
                 Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
                 :func:`ray.remote` for details.
@@ -828,10 +827,7 @@ class Dataset:
             else:
                 raise ValueError("Each expression must be `.alias(<output>)`-ed.")
 
-        from ray.data._internal.compute import TaskPoolStrategy
         from ray.data._internal.logical.operators.map_operator import Project
-
-        compute_strategy = TaskPoolStrategy(size=concurrency)
 
         plan = self._plan.copy()
         project_op = Project(
@@ -839,7 +835,6 @@ class Dataset:
             cols=None,
             cols_rename=None,
             exprs=projections,  # << pass expressions
-            compute=compute_strategy,
             ray_remote_args=ray_remote_args,
         )
         logical_plan = LogicalPlan(project_op, self.context)
