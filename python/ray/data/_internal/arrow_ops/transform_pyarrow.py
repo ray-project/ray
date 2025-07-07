@@ -364,10 +364,12 @@ def _backfill_missing_fields(
 ) -> "pyarrow.StructArray":
     """
     Align a struct column's fields to match the unified schema's struct type.
+
     Args:
         column: The column data to align.
         unified_struct_type: The unified struct type to align to.
         block_length: The number of rows in the block.
+
     Returns:
         pa.StructArray: The aligned struct array.
     """
@@ -387,10 +389,11 @@ def _backfill_missing_fields(
         field.name: column.field(i) for i, field in enumerate(column.type)
     }
 
+    # Assert that the current fields are a subset of the unified struct type's field names
     unified_field_names = {field.name for field in unified_struct_type}
     assert set(current_fields.keys()).issubset(
         unified_field_names
-    ), f"Fields {set(current_fields.keys())} not subset of unified struct fields {unified_field_names}"
+    ), f"Fields {set(current_fields.keys())} are not a subset of unified struct fields {unified_field_names}."
 
     # Early exit if no fields are missing in the schema
     if column.type == unified_struct_type:
@@ -410,7 +413,7 @@ def _backfill_missing_fields(
             current_array = current_fields[field_name]
 
             if pa.types.is_struct(field_type):
-                # Recursively handle nested struct fields
+                # Recursively align nested struct fields
                 current_array = _backfill_missing_fields(
                     column=current_array,
                     unified_struct_type=field_type,
@@ -429,13 +432,10 @@ def _backfill_missing_fields(
                 ):
                     current_array = current_array.to_variable_shaped_tensor_array()
 
-            # For other mismatches, try safe cast or fallback
-            elif current_array.type != field_type:
-                try:
-                    current_array = current_array.cast(field_type)
-                except Exception:
-                    # fallback, keep original array
-                    pass
+            # The schema should already be unified by unify_schemas, so types
+            # should be compatible. If not, let the error propagate up.
+            # No explicit casting needed - PyArrow will handle type compatibility
+            # during struct creation or raise appropriate errors.
 
             aligned_fields.append(current_array)
 
