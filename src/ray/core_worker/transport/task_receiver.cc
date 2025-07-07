@@ -269,7 +269,6 @@ bool TaskReceiver::CancelQueuedNormalTask(TaskID task_id) {
   return normal_scheduling_queue_->CancelTaskIfFound(task_id);
 }
 
-/// Note that this method is only used for asyncio actor.
 void TaskReceiver::SetupActor(bool is_asyncio,
                               int fiber_max_concurrency,
                               bool execute_out_of_order) {

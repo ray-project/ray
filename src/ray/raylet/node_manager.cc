@@ -50,7 +50,6 @@
 #include "ray/stats/metric_defs.h"
 #include "ray/util/cmd_line_utils.h"
 #include "ray/util/event.h"
-#include "ray/util/event_label.h"
 #include "ray/util/util.h"
 
 namespace {
@@ -1455,7 +1454,7 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
                       << rpc::WorkerExitType_Name(disconnect_type)
                       << " Worker exit detail: " << disconnect_detail;
         std::string error_message_str = error_message.str();
-        RAY_EVENT(ERROR, EL_RAY_WORKER_FAILURE)
+        RAY_EVENT(ERROR, "RAY_WORKER_FAILURE")
                 .WithField("worker_id", worker->WorkerId().Hex())
                 .WithField("node_id", self_node_id_.Hex())
                 .WithField("job_id", worker->GetAssignedJobId().Hex())
@@ -1484,7 +1483,7 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
     RAY_LOG(INFO).WithField(worker->WorkerId()).WithField(worker->GetAssignedJobId())
         << "Driver (pid=" << worker->GetProcess().GetId() << ") is disconnected.";
     if (disconnect_type == rpc::WorkerExitType::SYSTEM_ERROR) {
-      RAY_EVENT(ERROR, EL_RAY_DRIVER_FAILURE)
+      RAY_EVENT(ERROR, "RAY_DRIVER_FAILURE")
               .WithField("node_id", self_node_id_.Hex())
               .WithField("job_id", worker->GetAssignedJobId().Hex())
           << "Driver " << worker->WorkerId() << " died. Address: " << worker->IpAddress()
