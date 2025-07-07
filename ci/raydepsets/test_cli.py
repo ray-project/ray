@@ -16,7 +16,7 @@ from unittest.mock import patch
 
 def test_cli_load_happy():
     with patch(
-        "ci.raydepsets.lib.cli.DependencySetManager.execute_all"
+        "ci.raydepsets.cli.DependencySetManager.execute_all"
     ) as execute_all_call:
         result = CliRunner().invoke(load, ["ci/raydepsets/test_data/test.config.yaml"])
         assert result.exit_code == 0
@@ -24,15 +24,17 @@ def test_cli_load_happy():
 
 
 def test_cli_load_fail_no_config():
-    result = CliRunner().invoke(load, ["ci/raydepsets/tests/test1.config.yaml"])
+    result = CliRunner().invoke(load, ["ci/raydepsets/test_data/test1.config.yaml"])
     assert result.exit_code == 1
     assert isinstance(result.exception, FileNotFoundError)
 
 
 def test_cli_load_single_happy():
-    manager = DependencySetManager(config_path="ci/raydepsets/test_data/test.config.yaml")
+    manager = DependencySetManager(
+        config_path="ci/raydepsets/test_data/test.config.yaml"
+    )
     with patch(
-        "ci.raydepsets.lib.cli.DependencySetManager.execute_single"
+        "ci.raydepsets.cli.DependencySetManager.execute_single"
     ) as execute_single_call:
         manager.execute_single(manager.get_depset("ray_base_test_depset"))
         execute_single_call.assert_called_once_with(
@@ -42,14 +44,16 @@ def test_cli_load_single_happy():
 
 def test_cli_load_single_fail_no_name():
     result = CliRunner().invoke(
-        load, ["ci/raydepsets/tests/test.config.yaml", "--name", "mock_depset"]
+        load, ["ci/raydepsets/test_data/test.config.yaml", "--name", "mock_depset"]
     )
     assert result.exit_code == 1
     assert "Dependency set mock_depset not found" in str(result.exception)
 
 
 def test_depdenecy_set_manager_init_happy():
-    manager = DependencySetManager(config_path="ci/raydepsets/test_data/test.config.yaml")
+    manager = DependencySetManager(
+        config_path="ci/raydepsets/test_data/test.config.yaml"
+    )
     assert manager is not None
     assert manager.config.depsets[0].name == "ray_base_test_depset"
     assert manager.config.depsets[0].operation == "compile"
@@ -69,10 +73,10 @@ def test_depdenecy_set_manager_init_happy():
 
 def test_depdenecy_set_manager_compile_happy():
     with patch(
-        "ci.raydepsets.lib.cli.DependencySetManager.exec_uv_cmd"
+        "ci.raydepsets.cli.DependencySetManager.exec_uv_cmd"
     ) as mock_exec_uv_cmd:
         manager = DependencySetManager(
-            config_path="ci/raydepsets/tests/test.config.yaml"
+            config_path="ci/raydepsets/test_data/test.config.yaml"
         )
         manager.compile(
             constraints=[
@@ -110,7 +114,9 @@ def test_depdenecy_set_manager_compile_happy():
 
 
 def test_depdenecy_set_manager_get_depset_happy():
-    manager = DependencySetManager(config_path="ci/raydepsets/test_data/test.config.yaml")
+    manager = DependencySetManager(
+        config_path="ci/raydepsets/test_data/test.config.yaml"
+    )
     depset = manager.get_depset("ray_base_test_depset")
     assert depset is not None
     assert depset.name == "ray_base_test_depset"
@@ -130,7 +136,9 @@ def test_depdenecy_set_manager_get_depset_happy():
 
 
 def test_depdenecy_set_manager_get_depset_fail_no_depset():
-    manager = DependencySetManager(config_path="ci/raydepsets/test_data/test.config.yaml")
+    manager = DependencySetManager(
+        config_path="ci/raydepsets/test_data/test.config.yaml"
+    )
     with pytest.raises(Exception) as e:
         manager.get_depset("mock_depset")
     assert "Dependency set mock_depset not found" in str(e.value)
