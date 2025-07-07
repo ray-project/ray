@@ -49,6 +49,7 @@ from ray.data.block import (
 )
 from ray.data.context import DataContext
 from ray.data.exceptions import UserCodeException
+from ray.data.expressions import eval_expr
 from ray.util.rpdb import _is_ray_debugger_post_mortem_enabled
 
 logger = logging.getLogger(__name__)
@@ -94,18 +95,35 @@ def plan_project_op(
 
     columns = op.cols
     columns_rename = op.cols_rename
+    exprs = op.exprs
 
     def fn(block: Block) -> Block:
         try:
             if not BlockAccessor.for_block(block).num_rows():
                 return block
+            tbl = BlockAccessor.for_block(block).to_arrow()
+
+            # 1. evaluate / add expressions
+            if exprs:
+                for name, ex in exprs.items():
+                    arr = eval_expr(ex, tbl)
+                    if name in tbl.column_names:
+                        tbl = tbl.set_column(
+                            tbl.schema.get_field_index(name), name, arr
+                        )
+                    else:
+                        tbl = tbl.append_column(name, arr)
+
+            # 2. (optional) column projection
             if columns:
-                block = BlockAccessor.for_block(block).select(columns)
+                tbl = tbl.select(columns)
+
+            # 3. (optional) rename
             if columns_rename:
-                block = block.rename_columns(
-                    [columns_rename.get(col, col) for col in block.schema.names]
+                tbl = tbl.rename_columns(
+                    [columns_rename.get(col, col) for col in tbl.schema.names]
                 )
-            return block
+            return tbl
         except Exception as e:
             _handle_debugger_exception(e, block)
 

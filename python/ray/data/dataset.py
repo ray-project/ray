@@ -134,7 +134,7 @@ if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces import Executor, NodeIdStr
     from ray.data.grouped_data import GroupedData
 
-from ray.data.expressions import AliasExpr, Expr, eval_expr
+from ray.data.expressions import AliasExpr, Expr
 
 logger = logging.getLogger(__name__)
 
@@ -793,6 +793,7 @@ class Dataset:
         Examples:
 
             >>> import ray
+            >>> import ray.data.expressions as col
             >>> ds = ray.data.range(100)
             >>> ds.with_columns([(col("id") * 2).alias("new_id"), (col("id") * 3).alias("new_id_2")]).schema()
             Column  Type
@@ -809,57 +810,37 @@ class Dataset:
                 ``pyarrow.Table``.
 
         Returns:
-            A new dataset with the added column.
+            A new dataset with the added columns evaluated via expressions.
         """
         if not exprs:
             raise ValueError("at least one expression is required")
 
-        accepted_batch_formats = ["pandas", "pyarrow", "numpy"]
-        if batch_format not in accepted_batch_formats:
-            raise ValueError(
-                f"batch_format argument must be on of {accepted_batch_formats}, "
-                f"got: {batch_format}"
-            )
-
-        projections = {}
-        for expr in exprs:
-            if not isinstance(expr, Expr):
-                raise TypeError(f"Expected Expr, got: {type(expr)}")
-            if isinstance(expr, AliasExpr):
-                projections[expr.name] = expr.expr
+        # Build mapping {new_col_name: expression}
+        projections: Dict[str, Expr] = {}
+        for e in exprs:
+            if not isinstance(e, Expr):
+                raise TypeError(f"Expected Expr, got {type(e)}")
+            if isinstance(e, AliasExpr):
+                projections[e.name] = e.expr
             else:
-                raise ValueError("Each expression must be `.alias(<output_name>)`-ed.")
+                raise ValueError("Each expression must be `.alias(<output>)`-ed.")
 
-        def _project(batch):
-            if isinstance(batch, dict):
-                for name, ex in projections.items():
-                    batch[name] = eval_expr(ex, batch)
-                return batch
+        from ray.data._internal.compute import TaskPoolStrategy
+        from ray.data._internal.logical.operators.map_operator import Project
 
-            import pandas as pd
+        compute_strategy = TaskPoolStrategy(size=concurrency)
 
-            if isinstance(batch, pd.DataFrame):
-                for name, ex in projections.items():
-                    batch[name] = eval_expr(ex, batch)
-                return batch
-
-            import pyarrow as pa
-
-            if isinstance(batch, pa.Table):
-                tbl = batch
-                for name, ex in projections.items():
-                    arr = eval_expr(ex, batch)
-                    tbl = tbl.append_column(name, arr)
-                return tbl
-
-        return self.map_batches(
-            _project,
-            batch_format=batch_format,
-            compute=compute,
-            concurrency=concurrency,
-            zero_copy_batch=False,
-            **ray_remote_args,
+        plan = self._plan.copy()
+        project_op = Project(
+            self._logical_plan.dag,
+            cols=None,
+            cols_rename=None,
+            exprs=projections,  # << pass expressions
+            compute=compute_strategy,
+            ray_remote_args=ray_remote_args,
         )
+        logical_plan = LogicalPlan(project_op, self.context)
+        return Dataset(plan, logical_plan)
 
     @PublicAPI(api_group=BT_API_GROUP)
     def add_column(
@@ -4546,7 +4527,7 @@ class Dataset:
                 * order_by:
                     Sets the `ORDER BY` clause in the `CREATE TABLE` statement, iff not provided.
                     When overwriting an existing table, its previous `ORDER BY` (if any) is reused.
-                    Otherwise, a “best” column is selected automatically (favoring a timestamp column,
+                    Otherwise, a "best" column is selected automatically (favoring a timestamp column,
                     then a non-string column, and lastly the first column).
 
                 * partition_by:
