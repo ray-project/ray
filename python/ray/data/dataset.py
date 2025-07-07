@@ -804,10 +804,13 @@ class Dataset:
 
         Args:
             exprs: The expressions to evaluate to produce the new column values.
-            batch_format: If ``"numpy"``, batches are
-                ``Dict[str, numpy.ndarray]``. If ``"pandas"``, batches are
-                ``pandas.DataFrame``. If ``"pyarrow"``, batches are
-                ``pyarrow.Table``.
+            batch_format: This argument is deprecated and ignored. The operation
+                is performed using PyArrow format internally for efficiency.
+            compute: This argument is deprecated. Use ``concurrency`` argument.
+            concurrency: The maximum number of Ray workers to use concurrently.
+            **ray_remote_args: Additional resource requirements to request from
+                Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
+                :func:`ray.remote` for details.
 
         Returns:
             A new dataset with the added columns evaluated via expressions.
