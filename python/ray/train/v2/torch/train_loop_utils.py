@@ -1,7 +1,7 @@
 import logging
 import os
 import random
-from typing import Any, Callable, Dict, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
 import torch
@@ -34,6 +34,132 @@ _TORCH_AMP_DEPRECATION_MESSAGE = (
 )
 
 
+@PublicAPI(stability="alpha")
+def get_device() -> torch.device:
+    """Gets the correct torch device configured for this process.
+
+    Returns the torch device for the current worker. If more than 1 GPU is
+    requested per worker, returns the device with the minimal device index.
+
+    .. note::
+
+        If you requested multiple GPUs per worker, and want to get
+        the full list of torch devices, please use
+        :meth:`~ray.train.torch.get_devices`.
+
+    Assumes that `CUDA_VISIBLE_DEVICES` is set and is a
+    superset of the `ray.get_gpu_ids()`.
+
+    Examples:
+
+        Example: Launched 2 workers on the current node, each with 1 GPU
+
+        .. testcode::
+            :skipif: True
+
+            os.environ["CUDA_VISIBLE_DEVICES"] = "2,3"
+            ray.get_gpu_ids() == [2]
+            torch.cuda.is_available() == True
+            get_device() == torch.device("cuda:0")
+
+        Example: Launched 4 workers on the current node, each with 1 GPU
+
+        .. testcode::
+            :skipif: True
+
+            os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3"
+            ray.get_gpu_ids() == [2]
+            torch.cuda.is_available() == True
+            get_device() == torch.device("cuda:2")
+
+        Example: Launched 2 workers on the current node, each with 2 GPUs
+
+        .. testcode::
+            :skipif: True
+
+            os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3"
+            ray.get_gpu_ids() == [2,3]
+            torch.cuda.is_available() == True
+            get_device() == torch.device("cuda:2")
+
+
+        You can move a model to device by:
+
+        .. testcode::
+            :skipif: True
+
+            model.to(ray.train.torch.get_device())
+
+        Instead of manually checking the device type:
+
+        .. testcode::
+            :skipif: True
+
+            model.to("cuda" if torch.cuda.is_available() else "cpu")
+    """
+    if ray.train.get_context().is_local_test():
+        return (
+            torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+        )
+
+    from ray.air._internal import torch_utils
+
+    record_extra_usage_tag(TagKey.TRAIN_TORCH_GET_DEVICE, "1")
+    return torch_utils.get_devices()[0]
+
+
+@PublicAPI(stability="alpha")
+def get_devices() -> List[torch.device]:
+    """Gets the correct torch device list configured for this process.
+
+    Assumes that `CUDA_VISIBLE_DEVICES` is set and is a
+    superset of the `ray.get_gpu_ids()`.
+
+
+    Examples:
+
+        Example: Launched 2 workers on the current node, each with 1 GPU
+
+        .. testcode::
+            :skipif: True
+
+            os.environ["CUDA_VISIBLE_DEVICES"] == "2,3"
+            ray.get_gpu_ids() == [2]
+            torch.cuda.is_available() == True
+            get_devices() == [torch.device("cuda:0")]
+
+        Example: Launched 4 workers on the current node, each with 1 GPU
+
+        .. testcode::
+            :skipif: True
+
+            os.environ["CUDA_VISIBLE_DEVICES"] == "0,1,2,3"
+            ray.get_gpu_ids() == [2]
+            torch.cuda.is_available() == True
+            get_devices() == [torch.device("cuda:2")]
+
+        Example: Launched 2 workers on the current node, each with 2 GPUs
+
+        .. testcode::
+            :skipif: True
+
+            os.environ["CUDA_VISIBLE_DEVICES"] == "0,1,2,3"
+            ray.get_gpu_ids() == [2,3]
+            torch.cuda.is_available() == True
+            get_devices() == [torch.device("cuda:2"), torch.device("cuda:3")]
+    """
+
+    if ray.train.get_context().is_local_test():
+        return [
+            torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+        ]
+
+    from ray.air._internal import torch_utils
+
+    record_extra_usage_tag(TagKey.TRAIN_TORCH_GET_DEVICES, "1")
+    return torch_utils.get_devices()
+
+
 def prepare_model(
     model: torch.nn.Module,
     move_to_device: Union[bool, torch.device] = True,
@@ -59,6 +185,11 @@ def prepare_model(
             initialization if ``parallel_strategy`` is set to "ddp"
             or "fsdp", respectively.
     """
+    if ray.train.get_context().is_local_test():
+        return prepare_model_for_local_test(
+            model, move_to_device, parallel_strategy, parallel_strategy_kwargs
+        )
+
     if parallel_strategy == "fsdp" and Version(torch.__version__) < Version("1.11.0"):
         raise ImportError(
             "FullyShardedDataParallel requires torch>=1.11.0. "
@@ -74,7 +205,7 @@ def prepare_model(
     if isinstance(move_to_device, torch.device):
         device = move_to_device
     else:
-        device = ray.train.torch.get_device()
+        device = get_device()
         if isinstance(device, list):
             device = device[0]
 
@@ -116,6 +247,24 @@ def prepare_model(
             logger.debug(f"Wrapping provided model in {DataParallel.__name__}.")
         model = DataParallel(model, **parallel_strategy_kwargs)
 
+    return model
+
+
+def prepare_model_for_local_test(
+    model: torch.nn.Module,
+    move_to_device: Union[bool, torch.device] = True,
+    parallel_strategy: Optional[str] = "ddp",
+    parallel_strategy_kwargs: Optional[Dict[str, Any]] = None,
+) -> torch.nn.Module:
+    if isinstance(move_to_device, torch.device):
+        device = move_to_device
+    elif torch.cuda.is_available():
+        device = torch.device("cuda")
+    else:
+        device = torch.device("cpu")
+
+    if move_to_device:
+        model = model.to(device)
     return model
 
 
