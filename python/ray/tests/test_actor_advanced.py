@@ -207,7 +207,7 @@ def test_actor_restart_multiple_callers(ray_start_cluster):
         max_restarts=1,
         # Retry transient ActorUnavailableErrors.
         max_task_retries=-1,
-        # Schedule the counter on actor_worker_node.
+        # Schedule the actor on actor_worker_node.
         resources={"actor": 1},
     )
     class A:
