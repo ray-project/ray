@@ -2551,16 +2551,6 @@ TEST_F(TaskManagerLineageTest, RecoverIntermediateObjectInStreamingGenerator) {
   CompletePendingStreamingTask(spec2, caller_address, 0);
 }
 
-void CheckObjectIDInDependencies(std::vector<ObjectID> dependencies,
-                                 int expected_size,
-                                 std::vector<ObjectID> object_ids) {
-  ASSERT_EQ(dependencies.size(), expected_size);
-  for (const auto &object_id : object_ids) {
-    ASSERT_TRUE(std::find(dependencies.begin(), dependencies.end(), object_id) !=
-                dependencies.end());
-  }
-}
-
 void AddInlinedArgWithNestedReferences(TaskSpecification &spec,
                                        std::vector<ObjectID> nested_refs) {
   auto *arg = spec.GetMutableMessage().add_args();
@@ -2585,15 +2575,17 @@ void AddInlinedArg(TaskSpecification &spec,
 TEST_F(TestExtractPlasmaDependencies, NoArguments) {
   auto spec = CreateTaskHelper(1, {});
   auto dependencies = ExtractPlasmaDependencies(spec);
-  CheckObjectIDInDependencies(dependencies, 0, {});
+  ASSERT_THAT(dependencies, ::testing::SizeIs(0));
 }
 
-TEST_F(TestExtractPlasmaDependencies, PassedByReference) {
+TEST_F(TestExtractPlasmaDependencies, TaskWithArgumentsPassedByReference) {
   ObjectID arg1 = ObjectID::FromRandom();
   ObjectID arg2 = ObjectID::FromRandom();
   auto spec = CreateTaskHelper(1, {arg1, arg2});
   auto dependencies = ExtractPlasmaDependencies(spec);
-  CheckObjectIDInDependencies(dependencies, 2, {arg1, arg2});
+
+  EXPECT_THAT(dependencies, ::testing::SizeIs(2));
+  EXPECT_THAT(dependencies, ::testing::UnorderedElementsAre(arg1, arg2));
 }
 
 TEST_F(TestExtractPlasmaDependencies, InlinedArgumentsWithNestedReferences) {
@@ -2604,7 +2596,9 @@ TEST_F(TestExtractPlasmaDependencies, InlinedArgumentsWithNestedReferences) {
   AddInlinedArgWithNestedReferences(spec, {nested_ref1, nested_ref2});
 
   auto dependencies = ExtractPlasmaDependencies(spec);
-  CheckObjectIDInDependencies(dependencies, 2, {nested_ref1, nested_ref2});
+
+  EXPECT_THAT(dependencies, ::testing::SizeIs(2));
+  EXPECT_THAT(dependencies, ::testing::UnorderedElementsAre(nested_ref1, nested_ref2));
 }
 
 TEST_F(TestExtractPlasmaDependencies, InlinedGPUObject) {
@@ -2612,7 +2606,8 @@ TEST_F(TestExtractPlasmaDependencies, InlinedGPUObject) {
   TaskSpecification spec;
   AddInlinedArg(spec, gpu_object_id, /*is_gpu_object=*/true);
   auto dependencies = ExtractPlasmaDependencies(spec);
-  CheckObjectIDInDependencies(dependencies, 1, {gpu_object_id});
+  ASSERT_THAT(dependencies, ::testing::SizeIs(1));
+  EXPECT_THAT(dependencies, ::testing::UnorderedElementsAre(gpu_object_id));
 }
 
 TEST_F(TestExtractPlasmaDependencies, InlinedObject) {
@@ -2620,7 +2615,7 @@ TEST_F(TestExtractPlasmaDependencies, InlinedObject) {
   TaskSpecification spec;
   AddInlinedArg(spec, object_id);
   auto dependencies = ExtractPlasmaDependencies(spec);
-  CheckObjectIDInDependencies(dependencies, 0, {});
+  ASSERT_THAT(dependencies, ::testing::SizeIs(0));
 }
 
 TEST_F(TestExtractPlasmaDependencies, ActorTask) {
@@ -2632,10 +2627,13 @@ TEST_F(TestExtractPlasmaDependencies, ActorTask) {
   ObjectID actor_creation_dummy_id = spec.ActorCreationDummyObjectId();
 
   auto dependencies = ExtractPlasmaDependencies(spec);
-  CheckObjectIDInDependencies(dependencies, 2, {arg1, actor_creation_dummy_id});
+
+  EXPECT_THAT(dependencies, ::testing::SizeIs(2));
+  EXPECT_THAT(dependencies,
+              ::testing::UnorderedElementsAre(arg1, actor_creation_dummy_id));
 }
 
-TEST_F(TestExtractPlasmaDependencies, MixedCase) {
+TEST_F(TestExtractPlasmaDependencies, MixedArguments) {
   ObjectID ref_arg = ObjectID::FromRandom();
   ObjectID nested_ref1 = ObjectID::FromRandom();
   ObjectID nested_ref2 = ObjectID::FromRandom();
@@ -2648,8 +2646,11 @@ TEST_F(TestExtractPlasmaDependencies, MixedCase) {
   AddInlinedArg(spec, gpu_object_id, /*is_gpu_object=*/true);
 
   auto dependencies = ExtractPlasmaDependencies(spec);
-  CheckObjectIDInDependencies(
-      dependencies, 4, {ref_arg, nested_ref1, nested_ref2, gpu_object_id});
+
+  EXPECT_THAT(dependencies, ::testing::SizeIs(4));
+  EXPECT_THAT(
+      dependencies,
+      ::testing::UnorderedElementsAre(ref_arg, nested_ref1, nested_ref2, gpu_object_id));
 }
 }  // namespace core
 }  // namespace ray
