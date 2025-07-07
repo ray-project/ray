@@ -61,9 +61,6 @@ DEFAULT_ASYNC_ROW_UDF_MAX_CONCURRENCY = env_integer(
 )
 
 # Controls default max-concurrency setting for async batch-based UDFs
-#
-# NOTE: This setting will be overridden by provided `max_concurrency` setting
-#       inside Ray Core remote args for the corresponding operator
 DEFAULT_ASYNC_BATCH_UDF_MAX_CONCURRENCY = env_integer(
     "RAY_DATA_DEFAULT_ASYNC_BATCH_UDF_MAX_CONCURRENCY", 4
 )
@@ -724,7 +721,7 @@ def _generate_transform_fn_for_async_map(
             assert len(cur_task_map) == 0, f"{cur_task_map}"
             await completed_tasks_queue.put((sentinel, None))
 
-    async def _consume(
+    async def _reorder(
         completed_tasks_queue: asyncio.Queue, output_queue: queue.Queue
     ) -> None:
         completed_task_map: Dict[int, asyncio.Task] = dict()
@@ -773,7 +770,7 @@ def _generate_transform_fn_for_async_map(
             _schedule(iter(batch_iter), task_completion_queue), loop
         )
         asyncio.run_coroutine_threadsafe(
-            _consume(task_completion_queue, output_queue), loop
+            _reorder(task_completion_queue, output_queue), loop
         )
 
         while True:
