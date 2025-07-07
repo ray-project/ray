@@ -35,11 +35,17 @@ public class ActorCreationOptions extends BaseTaskOptions {
     this.lifetime = builder.lifetime;
     this.maxRestarts = builder.maxRestarts;
     this.maxTaskRetries = builder.maxTaskRetries;
-    this.jvmOptions = builder.jvmOptions;
+    this.jvmOptions =
+        builder.jvmOptions != null
+            ? java.util.Collections.unmodifiableList(builder.jvmOptions)
+            : null;
     this.maxConcurrency = builder.maxConcurrency;
     this.group = builder.group;
     this.bundleIndex = builder.bundleIndex;
-    this.concurrencyGroups = builder.concurrencyGroups;
+    this.concurrencyGroups =
+        builder.concurrencyGroups != null
+            ? java.util.Collections.unmodifiableList(builder.concurrencyGroups)
+            : null;
     this.serializedRuntimeEnv =
         builder.runtimeEnv != null ? builder.runtimeEnv.serializeToRuntimeEnvInfo() : "";
     this.namespace = builder.namespace;
