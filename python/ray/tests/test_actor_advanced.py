@@ -7,7 +7,6 @@ from concurrent.futures import ThreadPoolExecutor
 import pytest
 
 import ray
-from ray.actor import ActorHandle
 import ray._private.gcs_utils as gcs_utils
 from ray.util.state import list_actors
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
@@ -199,8 +198,8 @@ def test_actor_restart_multiple_callers(ray_start_cluster):
     head_node = cluster.add_node(num_cpus=4)
     ray.init(address=cluster.address)
 
-    worker_node_1 = cluster.add_node(num_cpus=4)
-    worker_node_2 = cluster.add_node(num_cpus=0)
+    _ = cluster.add_node(num_cpus=4)
+    actor_worker_node = cluster.add_node(num_cpus=0)
     cluster.wait_for_nodes()
 
     @ray.remote(
@@ -209,9 +208,9 @@ def test_actor_restart_multiple_callers(ray_start_cluster):
         max_restarts=1,
         # Retry transient ActorUnavailableErrors.
         max_task_retries=-1,
-        # Schedule the counter on worker_node_2 to begin with.
+        # Schedule the counter on actor_worker_node to begin with.
         scheduling_strategy=NodeAffinitySchedulingStrategy(
-            worker_node_2.node_id, soft=True
+            actor_worker_node.node_id, soft=True
         ),
     )
     class A:
@@ -226,15 +225,14 @@ def test_actor_restart_multiple_callers(ray_start_cluster):
 
     # Run caller tasks in parallel across the other two nodes.
     results = ray.get([call_a.remote() for _ in range(8)])
-    assert all(r == worker_node_2.node_id for r in results)
+    assert all(r == actor_worker_node.node_id for r in results)
 
-    # Kill the node that the counter is running on.
-    cluster.remove_node(worker_node_2)
+    # Kill the node that the actor is running on.
+    cluster.remove_node(actor_worker_node)
 
-    # Run caller tasks in parallel again. Only one should succeed in restarting the
-    # counter actor.
+    # Run caller tasks in parallel again. The actor should be restarted..
     results = ray.get([call_a.remote() for _ in range(8)])
-    assert all(r != worker_node_2.node_id for r in results)
+    assert all(r != actor_worker_node.node_id for r in results)
 
 
 @pytest.fixture
