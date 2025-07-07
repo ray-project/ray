@@ -158,12 +158,6 @@ class ParquetDatasink(_FileDatasink):
             basename_template = f"{filename}-{{i}}.{FILE_FORMAT}"
         else:
             # Has extension but not templatized, add template while preserving extension
-            logger.warning(
-                "FilenameProvider have to provide proper filename template including '{{i}}' "
-                "macro to ensure unique filenames when writing multiple files. Appending '{{i}}' "
-                "macro to the end of the file. For more details on the expected filename template checkout "
-                "PyArrow's `write_to_dataset` API"
-            )
             # Use pathlib.Path to properly handle filenames with dots
             filename_path = Path(filename)
             stem = filename_path.stem  # filename without extension
