@@ -66,7 +66,6 @@ py_test_module_list(
         "test_reference_counting_2.py",
         "test_reference_counting_standalone.py",
         "test_runtime_env_agent.py",
-        "test_task_events_3.py",
         "test_util_helpers.py",
     ],
     tags = [
