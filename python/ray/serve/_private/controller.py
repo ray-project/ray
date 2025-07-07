@@ -36,6 +36,10 @@ from ray.serve._private.default_impl import create_cluster_node_info_cache
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.deployment_state import DeploymentStateManager
 from ray.serve._private.endpoint_state import EndpointState
+from ray.serve._private.grpc_util import set_proxy_default_grpc_options
+from ray.serve._private.http_util import (
+    configure_http_options_with_defaults,
+)
 from ray.serve._private.logging_utils import (
     configure_component_cpu_profiler,
     configure_component_logger,
@@ -156,13 +160,16 @@ class ServeController:
         self.cluster_node_info_cache = create_cluster_node_info_cache(self.gcs_client)
         self.cluster_node_info_cache.update()
 
+        # Configure proxy default HTTP and gRPC options.
         self.proxy_state_manager = ProxyStateManager(
-            http_options=http_options,
+            http_options=configure_http_options_with_defaults(http_options),
             head_node_id=self._controller_node_id,
             cluster_node_info_cache=self.cluster_node_info_cache,
             logging_config=self.global_logging_config,
-            grpc_options=grpc_options,
+            grpc_options=set_proxy_default_grpc_options(grpc_options),
         )
+        # We modify the HTTP and gRPC options above, so delete them to avoid
+        del http_options, grpc_options
 
         self.endpoint_state = EndpointState(self.kv_store, self.long_poll_host)
 

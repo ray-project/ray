@@ -657,11 +657,11 @@ class RequestIdMiddleware:
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send):
         headers = MutableHeaders(scope=scope)
-        if SERVE_HTTP_REQUEST_ID_HEADER not in headers:
+        request_id = headers.get(SERVE_HTTP_REQUEST_ID_HEADER)
+
+        if request_id is None:
             request_id = generate_request_id()
             headers.append(SERVE_HTTP_REQUEST_ID_HEADER, request_id)
-        elif SERVE_HTTP_REQUEST_ID_HEADER in headers:
-            request_id = headers[SERVE_HTTP_REQUEST_ID_HEADER]
 
         async def send_with_request_id(message: Message):
             if message["type"] == "http.response.start":
@@ -809,11 +809,18 @@ def configure_http_options_with_defaults(http_options: HTTPOptions) -> HTTPOptio
         http_options.keep_alive_timeout_s = RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S
 
     # TODO: Deprecate SERVE_REQUEST_PROCESSING_TIMEOUT_S env var
-    http_options.request_timeout_s = (
-        http_options.request_timeout_s or RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S
-    )
+    if http_options.request_timeout_s or RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S:
+        http_options.request_timeout_s = (
+            http_options.request_timeout_s or RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S
+        )
 
     http_options.middlewares = http_options.middlewares or []
+
+    return http_options
+
+
+def configure_http_middlewares(http_options: HTTPOptions) -> HTTPOptions:
+    http_options = deepcopy(http_options)
 
     # Add environment variable middleware
     if RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH:
