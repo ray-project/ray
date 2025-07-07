@@ -12,11 +12,16 @@ BK_PIPELINE = "postmerge"
 BK_HOST = "https://api.buildkite.com/v2"
 
 def cleanup():
-    os.system("rm -f results/*")
+    os.system("rm -f results/json/*")
+    os.system("rm -f results/csv/*")
     os.system("rm -f bazel_events/*")
 
+#pdate absolute paths for the script
+#Bazelify the script
+#Remove # of results md_result / rst_result
+#Default it to latest build -> don’t need to choose
 def main():
-    # cleanup()
+    cleanup()
     parser = argparse.ArgumentParser(description="Analyze Bazel test execution")
     parser.add_argument("--ray-path", help="path to ray repo")
     parser.add_argument("--bk-api-token", help="buildkite api token")
@@ -80,7 +85,7 @@ def main():
 
     # prompt user for build number
     for build in release_automation_bk_builds:
-        print(f"Build {build["number"]}: {build["web_url"]}")
+        print(f"Build {build['number']}: {build['web_url']}")
     user_selected_build_no = int(input("Which build do you want to run test coverage for (build number ex: 1234): "))
 
     user_selected_build = next(
