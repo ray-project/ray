@@ -487,7 +487,7 @@ def test_incremental_pg_and_actor_scheduling(ray_start_cluster):
 
     # Iteratively add nodes to the cluster so that some of the placement groups (and
     # therefore actors) can be scheduled. Verify that the PGs and actors are scheduled
-    # as their required resources become available.
+    # incrementally as their required resources become available.
     for i in range(5):
         cluster.add_node(num_cpus=1)
         wait_for_condition(lambda: check_num_refs_ready(pg_refs, i + 1), timeout=30)
