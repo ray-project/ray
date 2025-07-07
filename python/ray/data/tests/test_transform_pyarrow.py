@@ -1692,11 +1692,10 @@ def test_struct_with_null_tensor_values():
     )
     t1 = pa.table({"id": [1, 2], "struct": struct_array1})
 
-    # Block 2: Struct with only tensor field (missing value field)
-    tensor_data2 = np.ones((1, 2, 2), dtype=np.float32)
-    tensor_array2 = ArrowTensorArray.from_numpy(tensor_data2)
-    # Note: no value field in this struct
-    struct_array2 = pa.StructArray.from_arrays([tensor_array2], names=["tensor"])
+    # Block 2: Struct with only value field (missing tensor field)
+    value_array2 = pa.array([3], type=pa.int64())
+    # Note: no tensor field in this struct
+    struct_array2 = pa.StructArray.from_arrays([value_array2], names=["value"])
     t2 = pa.table({"id": [3], "struct": struct_array2})
 
     t3 = concat([t1, t2])
@@ -1724,17 +1723,22 @@ def test_struct_with_null_tensor_values():
 
     # Validate result
     assert t3.column("id").to_pylist() == [1, 2, 3]
-    struct_data = t3.column("struct").to_pylist()
+
+    # Check the struct column directly to avoid the Arrow tensor extension null bug
+    struct_column = t3.column("struct")
 
     # First two should have both fields
-    assert struct_data[0]["value"] == 1
-    assert struct_data[1]["value"] == 2
-    assert isinstance(struct_data[0]["tensor"], np.ndarray)
-    assert isinstance(struct_data[1]["tensor"], np.ndarray)
+    assert struct_column[0]["value"].as_py() == 1
+    assert struct_column[1]["value"].as_py() == 2
+    assert struct_column[0]["tensor"] is not None
+    assert struct_column[1]["tensor"] is not None
 
-    # Third should have tensor field but value field should be null
-    assert struct_data[2]["value"] is None
-    assert isinstance(struct_data[2]["tensor"], np.ndarray)
+    # Third should have value field but tensor field should be null
+    assert struct_column[2]["value"].as_py() == 3
+
+    # Check that the tensor field is null by checking its validity
+    tensor_field = struct_column[2]["tensor"]
+    assert tensor_field.is_valid is False
 
 
 if __name__ == "__main__":
