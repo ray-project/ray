@@ -8,6 +8,7 @@ py_library(
     ],
     deps = [
         ci_require("click"),
+        ci_require("pyyaml"),
     ],
 )
 

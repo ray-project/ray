@@ -19,6 +19,7 @@ def test_cli_load_happy():
         "ci.raydepsets.lib.cli.DependencySetManager.execute_all"
     ) as execute_all_call:
         result = CliRunner().invoke(load, ["ci/raydepsets/tests/test.config.yaml"])
+        assert result.exit_code == 0
         execute_all_call.assert_called_once()
 
 

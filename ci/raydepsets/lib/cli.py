@@ -2,7 +2,7 @@ import click
 from pathlib import Path
 from typing import List
 import subprocess
-from ci.raydepsets.lib.config import load_config, Config, Depset
+from ci.raydepsets.lib.config import load_config, Depset
 
 DEFAULT_UV_FLAGS = [
     "--strip-extras",
