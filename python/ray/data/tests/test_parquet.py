@@ -1652,6 +1652,62 @@ def test_parquet_row_group_size_002(ray_start_regular_shared, tmp_path):
     assert ds.fragments[0].num_row_groups == 10
 
 
+def test_max_block_size_none_respects_override_num_blocks(
+    ray_start_regular_shared, tmp_path
+):
+    """
+    When `DataContext.target_max_block_size` is explicitly set to ``None``,
+    read_parquet must still honour ``override_num_blocks``.
+    The read should yield a single input block and – after a pivot –
+    exactly one output row.
+    """
+    import os
+
+    import pandas as pd
+
+    from ray.data.context import DataContext
+
+    ctx = DataContext.get_current()
+    original_tmbs = ctx.target_max_block_size
+
+    try:
+        # Disable block-splitting.
+        ctx.target_max_block_size = None
+
+        # Build a >10 k-row Parquet file.
+        num_rows = 10_005
+        df = pd.DataFrame(
+            {
+                "ID": ["A"] * num_rows,
+                "values": range(num_rows),
+                "dttm": pd.date_range("2024-01-01", periods=num_rows, freq="h").astype(
+                    str
+                ),
+            }
+        )
+        file_path = os.path.join(tmp_path, "maxblock_none.parquet")
+        df.to_parquet(file_path)
+
+        # Read with a single block enforced.
+        ds = ray.data.read_parquet(file_path, override_num_blocks=1)
+
+        def _pivot_data(batch: pd.DataFrame) -> pd.DataFrame:  # noqa: WPS430
+            return batch.pivot(index="ID", columns="dttm", values="values")
+
+        out_ds = ds.map_batches(
+            _pivot_data,
+            batch_size=None,
+            batch_format="pandas",
+        )
+        out_df = out_ds.to_pandas()
+
+        # One unique ID ⇒ one row expected.
+        assert len(out_df) == 1
+    finally:
+        # Always restore the original setting.
+        ctx.target_max_block_size = original_tmbs
+
+
 if __name__ == "__main__":
     import sys
 
