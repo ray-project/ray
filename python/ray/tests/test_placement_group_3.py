@@ -490,8 +490,8 @@ def test_incremental_pg_and_actor_scheduling(ray_start_cluster):
     # as their required resources become available.
     for i in range(5):
         cluster.add_node(num_cpus=1)
-        wait_for_condition(lambda: check_num_refs_ready(pg_refs, i+1), timeout=30)
-        wait_for_condition(lambda: check_num_refs_ready(actor_refs, i+1), timeout=30)
+        wait_for_condition(lambda: check_num_refs_ready(pg_refs, i + 1), timeout=30)
+        wait_for_condition(lambda: check_num_refs_ready(actor_refs, i + 1), timeout=30)
 
 
 def test_placement_group_gpu_unique_assigned(ray_start_cluster):
