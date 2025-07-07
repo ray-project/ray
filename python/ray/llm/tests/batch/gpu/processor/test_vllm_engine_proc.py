@@ -1,7 +1,7 @@
 import sys
+from unittest.mock import MagicMock, patch
 
 import pytest
-from unittest.mock import patch, MagicMock
 
 import ray
 from ray.llm._internal.batch.processor import ProcessorBuilder
@@ -244,36 +244,46 @@ def test_vision_model(gpu_type, model_smolvlm_256m):
 
 
 class TestVLLMEngineProcessorConfig:
-
-    @pytest.mark.parametrize("experimental_config", [
-        {"max_tasks_in_flight_per_actor": 10},
-        {},
-    ])
-    def test_experimental_max_tasks_in_flight_per_actor_usage(self, experimental_config):
+    @pytest.mark.parametrize(
+        "experimental_config",
+        [
+            {"max_tasks_in_flight_per_actor": 10},
+            {},
+        ],
+    )
+    def test_experimental_max_tasks_in_flight_per_actor_usage(
+        self, experimental_config
+    ):
         """Tests that max_tasks_in_flight_per_actor is set properly in the ActorPoolStrategy."""
-        
+
+        from ray.llm._internal.batch.processor.base import DEFAULT_MAX_TASKS_IN_FLIGHT
         from ray.llm._internal.batch.processor.vllm_engine_proc import (
             build_vllm_engine_processor,
             vLLMEngineProcessorConfig,
         )
-        from ray.llm._internal.batch.processor.base import DEFAULT_MAX_TASKS_IN_FLIGHT
-        
-        with patch('ray.data.ActorPoolStrategy') as mock_actor_pool:
+
+        with patch("ray.data.ActorPoolStrategy") as mock_actor_pool:
             mock_actor_pool.return_value = MagicMock()
-            
+
             config = vLLMEngineProcessorConfig(
                 model_source="unsloth/Llama-3.2-1B-Instruct",
                 experimental=experimental_config,
             )
             build_vllm_engine_processor(config)
-            
+
             mock_actor_pool.assert_called()
             call_kwargs = mock_actor_pool.call_args[1]
             if experimental_config:
-                assert call_kwargs['max_tasks_in_flight_per_actor'] == experimental_config['max_tasks_in_flight_per_actor']
+                assert (
+                    call_kwargs["max_tasks_in_flight_per_actor"]
+                    == experimental_config["max_tasks_in_flight_per_actor"]
+                )
             else:
-                assert call_kwargs['max_tasks_in_flight_per_actor'] == DEFAULT_MAX_TASKS_IN_FLIGHT
-        
+                assert (
+                    call_kwargs["max_tasks_in_flight_per_actor"]
+                    == DEFAULT_MAX_TASKS_IN_FLIGHT
+                )
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
