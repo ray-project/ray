@@ -9,7 +9,6 @@ import pytest
 import ray
 import ray._private.gcs_utils as gcs_utils
 from ray.util.state import list_actors
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 import ray.cluster_utils
 from ray._common.test_utils import SignalActor, wait_for_condition
 from ray._private.test_utils import (
@@ -199,7 +198,7 @@ def test_actor_restart_multiple_callers(ray_start_cluster):
     ray.init(address=cluster.address)
 
     _ = cluster.add_node(num_cpus=4)
-    actor_worker_node = cluster.add_node(num_cpus=0)
+    actor_worker_node = cluster.add_node(num_cpus=0, resources={"actor": 1})
     cluster.wait_for_nodes()
 
     @ray.remote(
@@ -208,10 +207,8 @@ def test_actor_restart_multiple_callers(ray_start_cluster):
         max_restarts=1,
         # Retry transient ActorUnavailableErrors.
         max_task_retries=-1,
-        # Schedule the counter on actor_worker_node to begin with.
-        scheduling_strategy=NodeAffinitySchedulingStrategy(
-            actor_worker_node.node_id, soft=True
-        ),
+        # Schedule the counter on actor_worker_node.
+        resources={"actor": 1},
     )
     class A:
         def get_node_id(self) -> str:
@@ -225,14 +222,20 @@ def test_actor_restart_multiple_callers(ray_start_cluster):
 
     # Run caller tasks in parallel across the other two nodes.
     results = ray.get([call_a.remote() for _ in range(8)])
-    assert all(r == actor_worker_node.node_id for r in results)
+    assert all(r == actor_worker_node.node_id for r in results), results
 
     # Kill the node that the actor is running on.
     cluster.remove_node(actor_worker_node)
 
-    # Run caller tasks in parallel again. The actor should be restarted..
-    results = ray.get([call_a.remote() for _ in range(8)])
-    assert all(r != actor_worker_node.node_id for r in results)
+    # Run caller tasks in parallel again.
+    refs = [call_a.remote() for _ in range(8)]
+    ready, _ = ray.wait(refs, timeout=0.1)
+    assert len(ready) == 0
+
+    # The actor should be restarted once the node becomes available.
+    new_actor_worker_node = cluster.add_node(num_cpus=0, resources={"actor": 1})
+    results = ray.get(refs)
+    assert all(r == new_actor_worker_node.node_id for r in results), results
 
 
 @pytest.fixture
