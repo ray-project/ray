@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <algorithm>
 #include <memory>
 #include <string>
 
@@ -41,7 +42,9 @@ class ChunkObjectReader {
 
   const IObjectReader &GetObject() const { return *object_; }
 
-  uint64_t ChunkSize() const { return chunk_size_; }
+  uint64_t ChunkSize() const {
+    return std::min(chunk_size_, object_->GetDataSize() + object_->GetMetadataSize());
+  }
 
  private:
   const std::shared_ptr<IObjectReader> object_;
