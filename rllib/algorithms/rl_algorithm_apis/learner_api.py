@@ -12,13 +12,13 @@ from ray.rllib.utils.typing import ParamDict, ResultDict
 
 
 class LearnerGroupAPI(abc.ABC):
-    """Base mixin for learning functionalities.
+    """Base API for learning functionalities.
 
-    This base mixin defines a `LearnerGroup` and multiple related
+    This base api defines a `LearnerGroup` and multiple related
     methods to update `RLModule`s.
 
-    Note, only concrete mixins can be inherited from. Furthermore,
-    the "mixins-to-the-left"-rule must be applied, i.e. any mixin
+    Note, only concrete apis can be inherited from. Furthermore,
+    the "apis-to-the-left"-rule must be applied, i.e. any api
     needs to be left of `RLAlgorithm`. Finally, any derived method
     should always call `super()`.
     """
@@ -28,7 +28,7 @@ class LearnerGroupAPI(abc.ABC):
     _learner_group: LearnerGroup = None
 
     def __init__(self, config: AlgorithmConfig, **kwargs):
-        """Initializes a LearnerMixin."""
+        """Initializes a LearnerGroupAPI."""
         # Call the super's method.
         super().__init__(config=config, **kwargs)
 
@@ -87,17 +87,17 @@ class LearnerGroupAPI(abc.ABC):
 
 
 class SimpleLearnerGroupAPI(LearnerGroupAPI):
-    """Concrete mixin for learning functionalities."""
+    """Concrete API for learning functionalities."""
 
     def __init__(self, config: AlgorithmConfig, **kwargs):
         # Important here to call super.
         super().__init__(config=config, **kwargs)
 
     def _setup(self, config: AlgorithmConfig):
-        print(f"Setup  {self.__class__.__name__} ...")
+        self.logger.info(f"Setup SimpleLearnerGroupAPI ...")
         module_spec = self.get_multi_rl_module_spec(config=config)
         self._learner_group = config.build_learner_group(rl_module_spec=module_spec)
-        # Super must be called here, to ensure all other mixins
+        # `super`` must be called here, to ensure all other mixins
         # following in MRO are set up.
         super()._setup(config=config)
 
@@ -117,6 +117,6 @@ class SimpleLearnerGroupAPI(LearnerGroupAPI):
         # Note, state must have an `update` method defined, too.
         state.update(self._learner_group.get_state())
 
-        # Call super's update such that all mixins can contribute to
+        # Call super's update such that all apis can contribute to
         # the state.
         return super()._provide_sync_state(state, **kwargs)

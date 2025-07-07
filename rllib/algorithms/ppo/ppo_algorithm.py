@@ -1,3 +1,4 @@
+import logging
 import tree
 from typing import Any, Dict, Optional
 
@@ -13,7 +14,7 @@ from ray.rllib.core.learner.training_data import TrainingData
 class PPOAlgorithm(SyncOnlineSamplingAPI, SimpleLearnerGroupAPI, RLAlgorithm):
     """Defines the PPO algorithm.
 
-    Note, this algorithm includes mixins for policy rollout,
+    Note, this algorithm includes apis for policy rollout,
     model updates and derives directly from the base algorithm.
     """
 
@@ -23,7 +24,7 @@ class PPOAlgorithm(SyncOnlineSamplingAPI, SimpleLearnerGroupAPI, RLAlgorithm):
     def _setup(self, config: AlgorithmConfig):
 
         # This sets up the `RLAlgorithm` base class and the `EnvRunner`s.
-        print("Setup PPOAlgorithm ... ")
+        self.logger.info("Setup PPOAlgorithm ... ")
         # It is important to call the `super` method here to activate
         # the MRO.
         super()._setup(config=config)

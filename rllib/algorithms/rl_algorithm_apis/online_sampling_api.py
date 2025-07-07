@@ -1,6 +1,7 @@
 import abc
 import functools
 import gymnasium as gym
+import logging
 import ray
 
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
@@ -30,16 +31,15 @@ from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import EnvCreator, EnvType
 
-
 # TODO (simon): Maybe rename after old stack deprecation to `MetricsDict`.
 from ray.rllib.utils.typing import ResultDict
 from ray.tune.registry import ENV_CREATOR, _global_registry
 
 
 class OnlineSamplingAPI(abc.ABC):
-    """Base mixin for rollout functionalities.
+    """Base API for rollout functionalities.
 
-    This base mixin defines an `EnvRunnerGroup` and multiple related
+    This base api defines an `EnvRunnerGroup` and multiple related
     attributes and methods to rollout an `RLModule` and collect experiences
     in environments.
 
@@ -48,8 +48,8 @@ class OnlineSamplingAPI(abc.ABC):
     pipelines, and the corresponding spaces used in the environment
     the pipelines and the `RLModule`.
 
-    Note, only concrete mixins can be inherited from. Furthermore,
-    the "mixins-to-the-left"-rule must be applied, i.e. any mixin
+    Note, only concrete apis can be inherited from. Furthermore,
+    the "apis-to-the-left"-rule must be applied, i.e. any api
     needs to be left of `RLAlgorithm`. Finally, any derived method
     should always call `super()`.
     """
@@ -66,7 +66,7 @@ class OnlineSamplingAPI(abc.ABC):
     _module_to_env: ModuleToEnvPipeline = None
 
     def __init__(self, config: AlgorithmConfig, **kwargs):
-        """Initializes an `EnvRunnerMixin`."""
+        """Initializes an `OnlineSamplingAPI`."""
         # Call the super's method.
         super().__init__(config=config, **kwargs)
 
@@ -231,7 +231,7 @@ class OnlineSamplingAPI(abc.ABC):
 
 
 class SyncOnlineSamplingAPI(OnlineSamplingAPI):
-    """A concrete `EnvRunnerMixin` to sample sychronously."""
+    """A concrete `OnlineSamplingMixin` to sample sychronously."""
 
     class SyncEnvRunnerGroup(EnvRunnerGroup):
         def __init__(
@@ -278,15 +278,14 @@ class SyncOnlineSamplingAPI(OnlineSamplingAPI):
             )
 
     def __init__(self, config: AlgorithmConfig, **kwargs):
-        """Initializes a `SyncEnvRunnerMixin`."""
+        """Initializes a `SyncOnlineSamplingAPI`."""
         # Call `super`'s method.
         super().__init__(config=config, **kwargs)
 
     @override(OnlineSamplingAPI)
     def _setup(self, config: AlgorithmConfig):
-        """Sets up a `SyncEnvRunnerMixin`."""
-        # TODO (simon): Later use a logger.
-        print("Setup SyncOnlineSamplingAPI ... ")
+        """Sets up a `SyncOnlineSamplingAPI`."""
+        self.logger.info(f"Setup SyncOnlineSamplingAPI ... ")
         # Setup here the customized `SyncEnvRunnerGroup`.
         self._env_runner_group = self.SyncEnvRunnerGroup(config)
 
