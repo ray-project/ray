@@ -127,9 +127,7 @@ async def test_chat_template_udf_assistant_prefill(mock_tokenizer_setup):
 
     assert len(results) == 2
     assert mock_tokenizer.apply_chat_template.call_count == 2
-    assert (
-        results[0]["prompt"] == "<chat>Hello AI<assistant><think>\n</chat>"
-    )
+    assert results[0]["prompt"] == "<chat>Hello AI<assistant><think>\n</chat>"
     assert results[1]["prompt"] == "<chat>Hello AI</chat>"
     # check if kwargs were set properly
     call_args_list = mock_tokenizer.apply_chat_template.call_args_list
