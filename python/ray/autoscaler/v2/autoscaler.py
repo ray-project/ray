@@ -152,6 +152,12 @@ class Autoscaler:
                         config=config,
                     ),
                     error_queue=self._ray_install_errors_queue,
+                    # TODO(rueian): Rewrite the ThreadedRayInstaller and its underlying
+                    # NodeUpdater and CommandRunner to use the asyncio, so that we don't
+                    # need to use so many threads. We use so many threads now because
+                    # they are blocking and letting the new cloud machines to wait for
+                    # previous machines to finish installing Ray is quite inefficient.
+                    max_concurrent_installs=config.get_max_num_worker_nodes() or 50,
                 )
             )
 
