@@ -205,7 +205,7 @@ def test_fetch_gpu_object_to_driver(ray_start_regular):
 
 @pytest.mark.skipif(
     not support_tensordict,
-    reason="tensordict is not supported",
+    reason="tensordict is not supported on this platform",
 )
 def test_invalid_tensor_transport(ray_start_regular):
     with pytest.raises(ValueError, match="Invalid tensor transport"):
@@ -219,7 +219,7 @@ def test_invalid_tensor_transport(ray_start_regular):
 
 @pytest.mark.skipif(
     not support_tensordict,
-    reason="tensordict is not supported",
+    reason="tensordict is not supported on this platform",
 )
 def test_tensordict_transfer(ray_start_regular):
     world_size = 2
@@ -240,7 +240,7 @@ def test_tensordict_transfer(ray_start_regular):
 
 @pytest.mark.skipif(
     not support_tensordict,
-    reason="tensordict is not supported",
+    reason="tensordict is not supported on this platform",
 )
 def test_nested_tensordict(ray_start_regular):
     world_size = 2
@@ -265,7 +265,7 @@ def test_nested_tensordict(ray_start_regular):
 
 @pytest.mark.skipif(
     not support_tensordict,
-    reason="tensordict is not supported",
+    reason="tensordict is not supported on this platform",
 )
 def test_tensor_extracted_from_tensordict_in_gpu_object_store(ray_start_regular):
     actor = GPUTestActor.remote()
