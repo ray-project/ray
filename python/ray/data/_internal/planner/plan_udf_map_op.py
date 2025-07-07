@@ -668,11 +668,56 @@ def _generate_transform_fn_for_async_map(
     #     reporting stage is throttled (and output queue doesn't grow unbounded) in case
     #     when consumer (Ray task itself) isn't able to keep up
     #
-    async def _schedule(it: Iterator[T], completed_tasks_queue: asyncio.Queue) -> None:
+    async def _execute_transform(it: Iterator[T], output_queue: queue.Queue) -> None:
         loop = asyncio.get_running_loop()
 
-        # NOTE: To preserve the iteration ordering to that of the input sequence
-        #       we rely on deque to keep track of running tasks
+        # NOTE: Individual tasks could complete in arbitrary order.
+        #       To make sure that the ordering produced by this transformation
+        #       is deterministic we utilize subsequent reordering stage to
+        #       to keep the output ordering the same as that one of the input
+        #       iterator.
+        completed_tasks_queue = asyncio.Queue(maxsize=max_concurrency)
+        # NOTE: This method is nested to support Python 3.9 where we only can
+        #       init `asyncio.Queue` inside the async function
+        async def _reorder() -> None:
+            completed_task_map: Dict[int, asyncio.Task] = dict()
+            next_idx = 0
+            completed_scheduling = False
+
+            try:
+                while not completed_scheduling:
+                    task, idx = await completed_tasks_queue.get()
+
+                    if isinstance(task, Exception):
+                        raise task
+                    elif task is _SENTINEL:
+                        completed_scheduling = True
+                    else:
+                        completed_task_map[idx] = task
+
+                    while next_idx in completed_task_map:
+                        next_task = completed_task_map.pop(next_idx)
+
+                        # NOTE: Once output queue fills up, this will block
+                        #       therefore serving as back-pressure for scheduling tasks
+                        #       preventing it from scheduling new tasks.
+                        # NOTE: This will block the whole event-loop not just this task
+                        output_queue.put(await next_task)
+
+                        next_idx += 1
+
+                assert (
+                    len(completed_task_map) == 0
+                ), f"{next_idx=}, {completed_task_map.keys()=}"
+                sentinel = _SENTINEL
+
+            except BaseException as e:
+                sentinel = e
+            finally:
+                output_queue.put(sentinel)
+
+        reordering_task = asyncio.create_task(_reorder())
+
         cur_task_map: Dict[asyncio.Task, int] = dict()
         consumed = False
 
@@ -721,56 +766,13 @@ def _generate_transform_fn_for_async_map(
             assert len(cur_task_map) == 0, f"{cur_task_map}"
             await completed_tasks_queue.put((sentinel, None))
 
-    async def _reorder(
-        completed_tasks_queue: asyncio.Queue, output_queue: queue.Queue
-    ) -> None:
-        completed_task_map: Dict[int, asyncio.Task] = dict()
-        next_idx = 0
-        completed_scheduling = False
-
-        try:
-            while not completed_scheduling:
-                task, idx = await completed_tasks_queue.get()
-
-                if isinstance(task, Exception):
-                    raise task
-                elif task is _SENTINEL:
-                    completed_scheduling = True
-                else:
-                    completed_task_map[idx] = task
-
-                while next_idx in completed_task_map:
-                    next_task = completed_task_map.pop(next_idx)
-
-                    # NOTE: Once output queue fills up, this will block
-                    #       therefore serving as back-pressure for scheduling tasks
-                    #       preventing it from scheduling new tasks.
-                    # NOTE: This will block the whole event-loop not just this task
-                    output_queue.put(await next_task)
-
-                    next_idx += 1
-
-            assert (
-                len(completed_task_map) == 0
-            ), f"{next_idx=}, {completed_task_map.keys()=}"
-            sentinel = _SENTINEL
-
-        except BaseException as e:
-            sentinel = e
-        finally:
-            output_queue.put(sentinel)
-
     def _transform(batch_iter: Iterable[T], task_context: TaskContext) -> Iterable[U]:
-        task_completion_queue = asyncio.Queue(maxsize=max_concurrency)
         output_queue = queue.Queue(maxsize=max_concurrency)
 
         loop = ray.data._map_actor_context.udf_map_asyncio_loop
 
         asyncio.run_coroutine_threadsafe(
-            _schedule(iter(batch_iter), task_completion_queue), loop
-        )
-        asyncio.run_coroutine_threadsafe(
-            _reorder(task_completion_queue, output_queue), loop
+            _execute_transform(iter(batch_iter), output_queue), loop
         )
 
         while True:
