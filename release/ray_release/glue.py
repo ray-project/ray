@@ -433,10 +433,13 @@ def run_release_test_kuberay(
     working_dir_upload_path = upload_working_dir(get_working_dir(test))
 
     command_timeout = int(test["run"].get("timeout", DEFAULT_COMMAND_TIMEOUT))
-    job_name_hash = hashlib.sha256(test["name"].encode()).hexdigest()[:16]
+    test_name_hash = hashlib.sha256(test["name"].encode()).hexdigest()[:10]
+    # random 5 digit suffix
+    random_suffix = "".join(random.choices(string.digits, k=5))
+    job_name = f"{test["name"][:20]}-{test_name_hash}-{random_suffix}"
     kuberay_job_manager = KubeRayJobManager()
     retcode, duration = kuberay_job_manager.run_and_wait(
-        job_name=job_name_hash,
+        job_name=job_name,
         image=test.get_anyscale_byod_image(),
         cmd_to_run=test["run"]["script"],
         env_vars=test.get_byod_runtime_env(),
