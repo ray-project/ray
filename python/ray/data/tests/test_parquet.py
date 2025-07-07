@@ -1,7 +1,8 @@
 import os
 import shutil
 import time
-from typing import Any
+from dataclasses import dataclass
+from typing import Any, Optional
 
 import numpy as np
 import pandas as pd
@@ -1349,19 +1350,6 @@ def test_parquet_bulk_columns(ray_start_regular_shared):
     assert ds.columns() == ["variety"]
 
 
-@pytest.mark.parametrize("min_rows_per_file", [5, 10, 50])
-def test_write_min_rows_per_file(tmp_path, ray_start_regular_shared, min_rows_per_file):
-    import pyarrow.parquet as pq
-
-    ray.data.range(100, override_num_blocks=20).write_parquet(
-        tmp_path, min_rows_per_file=min_rows_per_file
-    )
-
-    for filename in os.listdir(tmp_path):
-        table = pq.read_table(os.path.join(tmp_path, filename))
-        assert len(table) == min_rows_per_file
-
-
 @pytest.mark.parametrize("shuffle", [True, False, "file"])
 def test_invalid_shuffle_arg_raises_error(ray_start_regular_shared, shuffle):
 
@@ -1650,6 +1638,309 @@ def test_parquet_row_group_size_002(ray_start_regular_shared, tmp_path):
             use_legacy_dataset=False,
         )
     assert ds.fragments[0].num_row_groups == 10
+
+
+@pytest.mark.parametrize("min_rows_per_file", [5, 10])
+def test_write_partition_cols_with_min_rows_per_file(
+    tmp_path, ray_start_regular_shared, min_rows_per_file
+):
+    """Test write_parquet with both partition_cols and min_rows_per_file."""
+
+    # Create dataset with 2 partitions, each having 20 rows
+    df = pd.DataFrame(
+        {
+            "partition_col": [0] * 20 + [1] * 20,  # 2 partitions with 20 rows each
+            "data": list(range(40)),
+        }
+    )
+
+    ds = ray.data.from_pandas(df)
+    ds.write_parquet(
+        tmp_path, partition_cols=["partition_col"], min_rows_per_file=min_rows_per_file
+    )
+
+    # Check partition directories exist
+    partition_0_dir = tmp_path / "partition_col=0"
+    partition_1_dir = tmp_path / "partition_col=1"
+    assert partition_0_dir.exists()
+    assert partition_1_dir.exists()
+
+    # With the new implementation that tries to minimize file count,
+    # each partition (20 rows) should be written as a single file
+    # since 20 >= min_rows_per_file for both test cases (5 and 10)
+    for partition_dir in [partition_0_dir, partition_1_dir]:
+        parquet_files = list(partition_dir.glob("*.parquet"))
+
+        # Verify total rows across all files in partition
+        total_rows = 0
+        file_sizes = []
+        for file_path in parquet_files:
+            table = pq.read_table(file_path)
+            file_size = len(table)
+            file_sizes.append(file_size)
+            total_rows += file_size
+
+        assert total_rows == 20  # Each partition should have 20 rows total
+
+        # Add explicit assertion about individual file sizes for clarity
+        print(
+            f"Partition {partition_dir.name} file sizes with min_rows_per_file={min_rows_per_file}: {file_sizes}"
+        )
+
+        # With the new optimization logic, we expect fewer files with larger sizes
+        # Each file should have at least min_rows_per_file rows
+        for file_size in file_sizes:
+            assert (
+                file_size >= min_rows_per_file
+            ), f"File size {file_size} is less than min_rows_per_file {min_rows_per_file}"
+
+    # Verify we can read back the data correctly
+    ds_read = ray.data.read_parquet(tmp_path)
+    assert ds_read.count() == 40
+    assert set(ds_read.schema().names) == {"partition_col", "data"}
+
+    # ------------------------------------------------------------------
+    # Verify that the data written and read back are identical
+    # ------------------------------------------------------------------
+    expected_df = df.sort_values("data").reset_index(drop=True)
+    actual_df = ds_read.to_pandas().sort_values("data").reset_index(drop=True)
+
+    # Parquet partition values are read back as strings; cast both sides.
+    actual_df["partition_col"] = actual_df["partition_col"].astype(str)
+    expected_df["partition_col"] = expected_df["partition_col"].astype(str)
+
+    # Align column order and compare.
+    actual_df = actual_df[expected_df.columns]
+    pd.testing.assert_frame_equal(actual_df, expected_df, check_dtype=False)
+
+
+@pytest.mark.parametrize("max_rows_per_file", [5, 10, 25])
+def test_write_max_rows_per_file(tmp_path, ray_start_regular_shared, max_rows_per_file):
+    ray.data.range(100, override_num_blocks=1).write_parquet(
+        tmp_path, max_rows_per_file=max_rows_per_file
+    )
+
+    total_rows = 0
+    file_sizes = []
+    for filename in os.listdir(tmp_path):
+        table = pq.read_table(os.path.join(tmp_path, filename))
+        file_size = len(table)
+        file_sizes.append(file_size)
+        assert file_size <= max_rows_per_file
+        total_rows += file_size
+
+    # Verify all rows were written
+    assert total_rows == 100
+
+    # Add explicit assertion about individual file sizes for clarity
+    print(f"File sizes with max_rows_per_file={max_rows_per_file}: {file_sizes}")
+    for size in file_sizes:
+        assert (
+            size <= max_rows_per_file
+        ), f"File size {size} exceeds max_rows_per_file {max_rows_per_file}"
+
+    # ------------------------------------------------------------------
+    # Verify the parquet round-trip: written data == read-back data
+    # ------------------------------------------------------------------
+    ds_reloaded = ray.data.read_parquet(tmp_path)
+    assert ds_reloaded.count() == 100
+
+    expected_df = (
+        pd.DataFrame({"id": list(range(100))}).sort_values("id").reset_index(drop=True)
+    )
+    actual_df = ds_reloaded.to_pandas().sort_values("id").reset_index(drop=True)
+
+    pd.testing.assert_frame_equal(actual_df, expected_df, check_dtype=False)
+
+
+@pytest.mark.parametrize(
+    "min_rows_per_file,max_rows_per_file", [(5, 10), (10, 20), (15, 30)]
+)
+def test_write_min_max_rows_per_file(
+    tmp_path, ray_start_regular_shared, min_rows_per_file, max_rows_per_file
+):
+    ray.data.range(100, override_num_blocks=1).write_parquet(
+        tmp_path,
+        min_rows_per_file=min_rows_per_file,
+        max_rows_per_file=max_rows_per_file,
+    )
+
+    total_rows = 0
+    file_sizes = []
+    for filename in os.listdir(tmp_path):
+        table = pq.read_table(os.path.join(tmp_path, filename))
+        file_size = len(table)
+        file_sizes.append(file_size)
+        total_rows += file_size
+
+    # Verify all rows were written
+    assert total_rows == 100
+
+    # Add explicit assertion about individual file sizes for clarity
+    print(
+        f"File sizes with min={min_rows_per_file}, max={max_rows_per_file}: {file_sizes}"
+    )
+    for size in file_sizes:
+        if size < min_rows_per_file:
+            print(
+                f"File size {size} is less than min_rows_per_file {min_rows_per_file}"
+            )
+        assert (
+            size <= max_rows_per_file
+        ), f"File size {size} not less than {max_rows_per_file}"
+
+    # ------------------------------------------------------------------
+    # Verify the parquet round-trip: written data == read-back data
+    # ------------------------------------------------------------------
+    ds_reloaded = ray.data.read_parquet(tmp_path)
+    assert ds_reloaded.count() == 100
+
+    expected_df = (
+        pd.DataFrame({"id": list(range(100))}).sort_values("id").reset_index(drop=True)
+    )
+    actual_df = ds_reloaded.to_pandas().sort_values("id").reset_index(drop=True)
+
+    pd.testing.assert_frame_equal(actual_df, expected_df, check_dtype=False)
+
+
+def test_write_max_rows_per_file_validation(tmp_path, ray_start_regular_shared):
+    """Test validation of max_rows_per_file parameter."""
+
+    # Test negative value
+    with pytest.raises(
+        ValueError, match="max_rows_per_file must be a positive integer"
+    ):
+        ray.data.range(100).write_parquet(tmp_path, max_rows_per_file=-1)
+
+    # Test zero value
+    with pytest.raises(
+        ValueError, match="max_rows_per_file must be a positive integer"
+    ):
+        ray.data.range(100).write_parquet(tmp_path, max_rows_per_file=0)
+
+
+def test_write_min_max_rows_per_file_validation(tmp_path, ray_start_regular_shared):
+    """Test validation when both min and max are specified."""
+
+    # Test min > max
+    with pytest.raises(
+        ValueError,
+        match="min_rows_per_file .* cannot be greater than max_rows_per_file",
+    ):
+        ray.data.range(100).write_parquet(
+            tmp_path, min_rows_per_file=20, max_rows_per_file=10
+        )
+
+
+@pytest.mark.parametrize("max_rows_per_file", [5, 10])
+def test_write_partition_cols_with_max_rows_per_file(
+    tmp_path, ray_start_regular_shared, max_rows_per_file
+):
+    """Test max_rows_per_file with partition columns."""
+    import pyarrow.parquet as pq
+
+    # Create data with partition column
+    def create_row(row):
+        i = row["id"]
+        return {"id": i, "partition": i % 3, "value": f"value_{i}"}
+
+    ds = ray.data.range(30).map(create_row)
+    ds.write_parquet(
+        tmp_path, partition_cols=["partition"], max_rows_per_file=max_rows_per_file
+    )
+
+    # Check each partition directory
+    total_rows = 0
+    all_file_sizes = []
+    for partition_dir in os.listdir(tmp_path):
+        partition_path = os.path.join(tmp_path, partition_dir)
+        if os.path.isdir(partition_path):
+            partition_file_sizes = []
+            for filename in os.listdir(partition_path):
+                if filename.endswith(".parquet"):
+                    table = pq.read_table(os.path.join(partition_path, filename))
+                    file_size = len(table)
+                    partition_file_sizes.append(file_size)
+                    assert file_size <= max_rows_per_file
+                    total_rows += file_size
+            all_file_sizes.extend(partition_file_sizes)
+            print(
+                f"Partition {partition_dir} file sizes with max_rows_per_file={max_rows_per_file}: {partition_file_sizes}"
+            )
+
+    # Verify all rows were written
+    assert total_rows == 30
+
+    # Add explicit assertion about individual file sizes for clarity
+    for size in all_file_sizes:
+        assert (
+            size <= max_rows_per_file
+        ), f"File size {size} exceeds max_rows_per_file {max_rows_per_file}"
+
+    # ------------------------------------------------------------------
+    # Verify the parquet round-trip: data read back must equal original
+    # ------------------------------------------------------------------
+    ds_reloaded = ray.data.read_parquet(tmp_path)
+    assert ds_reloaded.count() == 30
+
+    expected_rows = [
+        {"id": i, "partition": i % 3, "value": f"value_{i}"} for i in range(30)
+    ]
+    expected_df = pd.DataFrame(expected_rows).sort_values("id").reset_index(drop=True)
+    actual_df = ds_reloaded.to_pandas().sort_values("id").reset_index(drop=True)
+
+    # Align column order for a strict equality check.
+    actual_df = actual_df[expected_df.columns]
+    # Parquet partition values are read back as strings; make both sides `str`
+    # so the value-level comparison succeeds (dtype may still differ).
+    actual_df["partition"] = actual_df["partition"].astype(str)
+    expected_df["partition"] = expected_df["partition"].astype(str)
+
+    pd.testing.assert_frame_equal(actual_df, expected_df, check_dtype=False)
+
+
+@dataclass
+class RowGroupLimitCase:
+    row_group_size: Optional[int]
+    min_rows_per_file: Optional[int]
+    max_rows_per_file: Optional[int]
+    expected_min: Optional[int]
+    expected_max: Optional[int]
+    expected_max_file: Optional[int]
+
+
+ROW_GROUP_LIMIT_CASES = [
+    RowGroupLimitCase(None, None, None, None, None, None),
+    RowGroupLimitCase(1000, None, None, 1000, 1000, None),
+    RowGroupLimitCase(None, 500, None, 500, None, None),
+    RowGroupLimitCase(None, None, 2000, None, 2000, 2000),
+    RowGroupLimitCase(1000, 500, 2000, 1000, 1000, 2000),
+    RowGroupLimitCase(3000, 500, 2000, 2000, 2000, 2000),
+]
+
+
+@pytest.mark.parametrize(
+    "case",
+    ROW_GROUP_LIMIT_CASES,
+    ids=[f"case_{i}" for i in range(len(ROW_GROUP_LIMIT_CASES))],
+)
+def test_choose_row_group_limits_parameterized(case):
+    """Validate the helper across representative inputs."""
+    from ray.data._internal.datasource.parquet_datasink import choose_row_group_limits
+
+    result = choose_row_group_limits(
+        case.row_group_size, case.min_rows_per_file, case.max_rows_per_file
+    )
+    assert result == (
+        case.expected_min,
+        case.expected_max,
+        case.expected_max_file,
+    ), f"Unexpected result for {case}"
+
+    # Invariants when both bounds are known.
+    min_rows, max_rows, _ = result
+    if min_rows is not None and max_rows is not None:
+        assert min_rows <= max_rows
 
 
 if __name__ == "__main__":

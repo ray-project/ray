@@ -36,6 +36,49 @@ UNSUPPORTED_OPEN_STREAM_ARGS = {"path", "buffer", "metadata"}
 logger = logging.getLogger(__name__)
 
 
+def choose_row_group_limits(
+    row_group_size: Optional[int],
+    min_rows_per_file: Optional[int],
+    max_rows_per_file: Optional[int],
+) -> tuple[Optional[int], Optional[int], Optional[int]]:
+    """
+    Configure `min_rows_per_group`, `max_rows_per_group`, `max_rows_per_file` parameters of Pyarrow's `write_dataset` API based on Ray Data's configuration
+
+    Returns
+    -------
+    (min_rows_per_group, max_rows_per_group, max_rows_per_file)
+    """
+
+    if (
+        row_group_size is None
+        and min_rows_per_file is None
+        and max_rows_per_file is None
+    ):
+        return None, None, None
+
+    elif row_group_size is None:
+        # No explicit row group size provided. We are defaulting to
+        # either the caller's min_rows_per_file or max_rows_per_file limits
+        # or Arrow's defaults
+        return min_rows_per_file, max_rows_per_file, max_rows_per_file
+
+    elif row_group_size is not None and (
+        min_rows_per_file is None or max_rows_per_file is None
+    ):
+        return row_group_size, row_group_size, max_rows_per_file
+
+    else:
+        # Clamp the requested `row_group_size` so that it is
+        # * no smaller than `min_rows_per_file` (`lower`)
+        # * no larger than `max_rows_per_file` (or Arrow's default cap) (`upper`)
+        # This keeps each row-group within the per-file limits while staying
+        # as close as possible to the requested size.
+        clamped_group_size = max(
+            min_rows_per_file, min(row_group_size, max_rows_per_file)
+        )
+        return clamped_group_size, clamped_group_size, max_rows_per_file
+
+
 class ParquetDatasink(_FileDatasink):
     def __init__(
         self,
@@ -45,6 +88,7 @@ class ParquetDatasink(_FileDatasink):
         arrow_parquet_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         arrow_parquet_args: Optional[Dict[str, Any]] = None,
         min_rows_per_file: Optional[int] = None,
+        max_rows_per_file: Optional[int] = None,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         try_create_dir: bool = True,
         open_stream_args: Optional[Dict[str, Any]] = None,
@@ -61,7 +105,13 @@ class ParquetDatasink(_FileDatasink):
         self.arrow_parquet_args_fn = arrow_parquet_args_fn
         self.arrow_parquet_args = arrow_parquet_args
         self.min_rows_per_file = min_rows_per_file
+        self.max_rows_per_file = max_rows_per_file
         self.partition_cols = partition_cols
+
+        if self.min_rows_per_file is not None and self.max_rows_per_file is not None:
+            assert (
+                self.min_rows_per_file <= self.max_rows_per_file
+            ), "min_rows_per_file must be less than or equal to max_rows_per_file"
 
         if open_stream_args is not None:
             intersecting_keys = UNSUPPORTED_OPEN_STREAM_ARGS.intersection(
@@ -194,9 +244,15 @@ class ParquetDatasink(_FileDatasink):
             self.mode, "overwrite_or_ignore"
         )
 
-        # Set default row group size if not provided. Defaults are set by pyarrow.
-        min_rows_per_group = row_group_size if row_group_size else 0
-        max_rows_per_group = row_group_size if row_group_size else 1024 * 1024
+        (
+            min_rows_per_group,
+            max_rows_per_group,
+            max_rows_per_file,
+        ) = choose_row_group_limits(
+            row_group_size,
+            min_rows_per_file=self.min_rows_per_file,
+            max_rows_per_file=self.max_rows_per_file,
+        )
 
         basename_template = self._get_basename_template(filename, write_uuid)
 
@@ -213,6 +269,7 @@ class ParquetDatasink(_FileDatasink):
             use_threads=True,
             min_rows_per_group=min_rows_per_group,
             max_rows_per_group=max_rows_per_group,
+            max_rows_per_file=max_rows_per_file,
             file_options=ds.ParquetFileFormat().make_write_options(**write_kwargs),
         )
 
