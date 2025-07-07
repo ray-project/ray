@@ -222,7 +222,7 @@ def test_intelligent_scale_down(ray_cluster):
 
     def get_actor_distributions():
         node_to_actors = defaultdict(list)
-        for actor in list_actors(filters=[("STATE", "=", "ALIVE")]):
+        for actor in list_actors(address=cluster.address, filters=[("STATE", "=", "ALIVE")]):
             if "ServeReplica" not in actor.class_name:
                 continue
             node_to_actors[actor.node_id].append(actor)
@@ -448,7 +448,7 @@ class TestHealthzAndRoutes:
                 len(
                     {
                         a.node_id
-                        for a in list_actors()
+                        for a in list_actors(address=cluster.address)
                         if a.class_name.startswith("ServeReplica")
                     }
                 )
@@ -459,7 +459,7 @@ class TestHealthzAndRoutes:
 
         # Ensure total actors of 2 proxies, 1 controller, and 2 replicas,
         # and 2 nodes exist.
-        wait_for_condition(lambda: len(list_actors()) == 5)
+        wait_for_condition(lambda: len(list_actors(address=cluster.address)) == 5)
         assert len(ray.nodes()) == 2
 
         # Ensure `/-/healthz` and `/-/routes` return 200 and expected responses
@@ -492,7 +492,7 @@ class TestHealthzAndRoutes:
         serve.delete(name=SERVE_DEFAULT_APP_NAME)
 
         wait_for_condition(
-            lambda: len(list_actors(filters=[("STATE", "=", "ALIVE")])) == 3,
+            lambda: len(list_actors(address=cluster.address, filters=[("STATE", "=", "ALIVE")])) == 3,
         )
 
         # Ensure head node `/-/healthz` and `/-/routes` continue to

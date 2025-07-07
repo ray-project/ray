@@ -282,7 +282,7 @@ def test_grpc_proxy_on_draining_nodes(ray_cluster):
             len(
                 {
                     a.node_id
-                    for a in list_actors()
+                    for a in list_actors(address=cluster.address)
                     if a.class_name.startswith("ServeReplica")
                 }
             )
@@ -292,7 +292,7 @@ def test_grpc_proxy_on_draining_nodes(ray_cluster):
     wait_for_condition(check_replicas_on_worker_nodes)
 
     # Ensure total actors of 2 proxies, 1 controller, and 2 replicas, and 2 nodes exist.
-    wait_for_condition(lambda: len(list_actors()) == 5)
+    wait_for_condition(lambda: len(list_actors(address=cluster.address)) == 5)
     assert len(ray.nodes()) == 2
 
     # Set up gRPC channels.
@@ -323,7 +323,7 @@ def test_grpc_proxy_on_draining_nodes(ray_cluster):
     serve.delete(name=app_name)
 
     wait_for_condition(
-        lambda: len(list_actors(filters=[("STATE", "=", "ALIVE")])) == 3,
+        lambda: len(list_actors(address=cluster.address, filters=[("STATE", "=", "ALIVE")])) == 3,
     )
 
     # Ensures ListApplications method on the head node is succeeding.
