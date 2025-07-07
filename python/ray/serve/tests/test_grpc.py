@@ -10,7 +10,6 @@ import pytest
 import ray
 from ray import serve
 from ray._common.test_utils import SignalActor, wait_for_condition
-from ray.cluster_utils import Cluster
 from ray.serve._private.constants import SERVE_NAMESPACE
 from ray.serve._private.test_utils import (
     ping_fruit_stand,
@@ -248,7 +247,7 @@ def test_grpc_proxy_on_draining_nodes(ray_cluster):
 
     # Set up a cluster with 2 nodes.
     cluster = ray_cluster
-    cluster.add_node(num_cpus=0)
+    cluster.add_node(num_cpus=0, include_dashboard=True)
     cluster.add_node(num_cpus=2)
     cluster.wait_for_nodes()
     ray.init(address=cluster.address)
