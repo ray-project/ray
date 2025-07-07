@@ -27,7 +27,7 @@ from ray.autoscaler.tags import (
     TAG_RAY_NODE_STATUS,
     STATUS_UP_TO_DATE,
 )
-from ray._private.utils import get_ray_temp_dir
+from ray._common.utils import get_ray_temp_dir
 
 
 class OnPremCoordinatorServerTest(unittest.TestCase):

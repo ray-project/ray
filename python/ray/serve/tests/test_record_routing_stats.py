@@ -5,7 +5,7 @@ import pytest
 
 import ray
 from ray import serve
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import wait_for_condition
 from ray.serve._private.common import ReplicaID
 from ray.serve.context import _get_internal_replica_context
 from ray.serve.handle import DeploymentHandle

@@ -5,6 +5,7 @@ import time
 import pytest
 
 import ray
+from ray._common.test_utils import wait_for_condition
 import ray._private.gcs_utils as gcs_utils
 import ray.cluster_utils
 import ray.experimental.internal_kv as internal_kv
@@ -20,7 +21,6 @@ from ray._private.test_utils import (
     kill_actor_and_wait_for_failure,
     reset_autoscaler_v2_enabled_cache,
     run_string_as_driver,
-    wait_for_condition,
 )
 from ray.autoscaler._private.commands import debug_status
 from ray.exceptions import RaySystemError

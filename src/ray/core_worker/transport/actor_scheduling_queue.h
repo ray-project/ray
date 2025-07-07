@@ -17,7 +17,6 @@
 #include <map>
 #include <memory>
 #include <thread>
-#include <vector>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
@@ -39,18 +38,14 @@ namespace ray {
 namespace core {
 
 /// Used to ensure serial order of task execution per actor handle.
-/// See direct_actor.proto for a description of the ordering protocol.
+/// See core_worker.proto for a description of the ordering protocol.
 class ActorSchedulingQueue : public SchedulingQueue {
  public:
   ActorSchedulingQueue(
       instrumented_io_context &task_execution_service,
       DependencyWaiter &waiter,
       worker::TaskEventBuffer &task_event_buffer,
-      std::shared_ptr<ConcurrencyGroupManager<BoundedExecutor>> pool_manager,
-      std::shared_ptr<ConcurrencyGroupManager<FiberState>> fiber_state_manager,
-      bool is_asyncio,
-      int fiber_max_concurrency,
-      const std::vector<ConcurrencyGroup> &concurrency_groups);
+      std::shared_ptr<ConcurrencyGroupManager<BoundedExecutor>> pool_manager);
 
   void Stop() override;
 
@@ -102,12 +97,6 @@ class ActorSchedulingQueue : public SchedulingQueue {
   worker::TaskEventBuffer &task_event_buffer_;
   /// If concurrent calls are allowed, holds the pools for executing these tasks.
   std::shared_ptr<ConcurrencyGroupManager<BoundedExecutor>> pool_manager_;
-  /// Manage the running fiber states of actors in this worker. It works with
-  /// python asyncio if this is an asyncio actor.
-  std::shared_ptr<ConcurrencyGroupManager<FiberState>> fiber_state_manager_;
-  /// Whether we should enqueue requests into asyncio pool. Setting this to true
-  /// will instantiate all tasks as fibers that can be yielded.
-  bool is_asyncio_ = false;
   /// Mutext to protect attributes used for thread safe APIs.
   absl::Mutex mu_;
   /// A map of actor task IDs -> is_canceled

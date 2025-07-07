@@ -5,7 +5,8 @@ import sys
 import pytest
 
 import ray
-from ray._private.test_utils import wait_for_condition, wait_until_server_available
+from ray._common.test_utils import wait_for_condition
+from ray._private.test_utils import wait_until_server_available
 from ray.dashboard.tests.conftest import *  # noqa
 
 os.environ["RAY_enable_export_api_write"] = "1"

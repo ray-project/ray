@@ -3,13 +3,13 @@ columns_to_show:
   - frameworks
 groupby: skill_level
 examples:
-  - title: Train an image classifier with PyTorch
+  - title: Distributing your PyTorch Training Code with Ray Train and Ray Data
     skill_level: beginner
     frameworks:
       - pytorch
     use_cases:
       - computer vision
-    link: examples/pytorch/torch_fashion_mnist_example
+    link: examples/pytorch/distributing-pytorch/README
   - title: Train an image classifier with Lightning
     skill_level: beginner
     frameworks:

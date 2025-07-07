@@ -247,13 +247,13 @@ class DQNTorchLearner(DQNLearner, TorchLearner):
             key=module_id,
             window=1,  # <- single items (should not be mean/ema-reduced over time).
         )
-        # If we learn a Q-value distribution store the support and average
+        # If we learn a Q-value distribution log the support and average
         # probabilities.
         if config.num_atoms > 1:
             # Log important loss stats.
             self.metrics.log_dict(
                 {
-                    ATOMS: z,
+                    ATOMS: torch.mean(z),
                     # The absolute difference in expectation between the actions
                     # should (at least mildly) rise.
                     "expectations_abs_diff": torch.mean(

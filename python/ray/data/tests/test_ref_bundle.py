@@ -11,9 +11,7 @@ def test_get_preferred_locations():
     second_block_ref = ObjectRef(b"2" * 28)
     third_block_ref = ObjectRef(b"3" * 28)
 
-    meta = BlockMetadata(
-        num_rows=None, size_bytes=1, exec_stats=None, schema=None, input_files=None
-    )
+    meta = BlockMetadata(num_rows=None, size_bytes=1, exec_stats=None, input_files=None)
 
     bundle = RefBundle(
         blocks=[
@@ -22,6 +20,7 @@ def test_get_preferred_locations():
             (third_block_ref, meta),
         ],
         owns_blocks=True,
+        schema=None,
     )
 
     def _get_obj_locs(obj_refs):

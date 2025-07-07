@@ -3,7 +3,10 @@ from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional
 
 import numpy as np
 
-from ray.data._internal.util import _check_import, call_with_retry
+from ray.data._internal.util import (
+    _check_import,
+    call_with_retry,
+)
 from ray.data.block import BlockMetadata
 from ray.data.context import DataContext
 from ray.data.datasource.datasource import Datasource, ReadTask
@@ -71,7 +74,6 @@ class LanceDatasource(Datasource):
             # TODO(chengsu): Take column projection into consideration for schema.
             metadata = BlockMetadata(
                 num_rows=num_rows,
-                schema=fragments[0].schema,
                 input_files=input_files,
                 size_bytes=None,
                 exec_stats=None,
@@ -88,9 +90,9 @@ class LanceDatasource(Datasource):
                     retry_params,
                 ),
                 metadata,
+                schema=fragments[0].schema,
             )
             read_tasks.append(read_task)
-
         return read_tasks
 
     def estimate_inmemory_data_size(self) -> Optional[int]:

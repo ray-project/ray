@@ -4,7 +4,6 @@ from collections import defaultdict
 from contextlib import nullcontext
 from dataclasses import dataclass, asdict
 from typing import (
-    TYPE_CHECKING,
     Any,
     Dict,
     List,
@@ -83,8 +82,7 @@ from ray.dag.dag_node_operation import (
 
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
-if TYPE_CHECKING:
-    import cupy as cp
+from ray.experimental.channel.accelerator_context import AcceleratorContext
 
 logger = logging.getLogger(__name__)
 
@@ -371,17 +369,19 @@ def _device_context_manager():
         return nullcontext()
 
     import torch
+    from ray.experimental.channel.accelerator_context import AcceleratorContext
 
     device = ChannelContext.get_current().torch_device
 
-    if device.type == "cuda" and torch.cuda.is_available():
+    if device.type == "cuda" and not torch.cuda.is_available():
         # In the case of mocked NCCL, we may get a device with type "cuda"
         # but CUDA is not available. We return nullcontext() in that case,
         # otherwise torch raises a runtime error if the cuda device context
         # manager is used.
         # TODO(rui): consider better mocking NCCL to support device context.
-        return torch.cuda.device(device)
-    return nullcontext()
+        return nullcontext()
+
+    return AcceleratorContext.get().get_device_context(device)
 
 
 @DeveloperAPI
@@ -590,8 +590,10 @@ class ExecutableTask:
         self.input_reader.start()
         self.output_writer.start()
 
-        self._send_stream: Union["cp.cuda.Stream", nullcontext] = nullcontext()
-        self._recv_stream: Union["cp.cuda.Stream", nullcontext] = nullcontext()
+        # Stream context type are different between different accelerators.
+        # Type hint is not applicable here.
+        self._send_stream = nullcontext()
+        self._recv_stream = nullcontext()
         if not overlap_gpu_communication:
             return
 
@@ -674,7 +676,8 @@ class ExecutableTask:
             # a GPUFuture so that this read operation (communication) can
             # be overlapped with computation.
             self.wrap_and_set_intermediate_future(
-                input_data, wrap_in_gpu_future=overlap_gpu_communication
+                input_data,
+                wrap_in_gpu_future=overlap_gpu_communication,
             )
         except RayChannelError:
             # Channel closed. Exit the loop.
@@ -1321,6 +1324,10 @@ class CompiledDAG:
             for type_hint in type_hints:
                 type_hint.set_communicator_id(communicator_id)
 
+        # Second, get registered accelerator context if any.
+        accelerator_module_name = AcceleratorContext.get().module_name
+        accelerator_communicator_cls = AcceleratorContext.get().communicator_cls
+
         # Then, create communicators for collective operations.
         # Reuse an already created communicator for the same set of actors.
         for collective_op in self._collective_ops_with_unresolved_communicators:
@@ -1337,6 +1344,8 @@ class CompiledDAG:
                     list(actors),
                     None,
                     self._overlap_gpu_communication,
+                    accelerator_module_name,
+                    accelerator_communicator_cls,
                 )
                 self._actors_to_created_communicator_id[actors] = communicator_id
             collective_op.type_hint.set_communicator_id(communicator_id)
@@ -1358,6 +1367,8 @@ class CompiledDAG:
                     list(self._p2p_actors_with_unresolved_communicators),
                     None,
                     self._overlap_gpu_communication,
+                    accelerator_module_name,
+                    accelerator_communicator_cls,
                 )
             for dag_node in self._p2p_dag_nodes_with_unresolved_communicators:
                 dag_node.type_hint.set_communicator_id(p2p_communicator_id)

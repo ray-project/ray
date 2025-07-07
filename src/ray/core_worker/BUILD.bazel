@@ -262,8 +262,8 @@ ray_cc_library(
 )
 
 ray_cc_library(
-    name = "task_finisher",
-    hdrs = ["task_finisher.h"],
+    name = "task_manager_interface",
+    hdrs = ["task_manager_interface.h"],
     deps = [
         "//src/ray/common:id",
         "//src/ray/common:status",
@@ -282,7 +282,7 @@ ray_cc_library(
         ":actor_manager",
         ":memory_store",
         ":task_event_buffer",
-        ":task_finisher",
+        ":task_manager_interface",
         "//src/ray/gcs:gcs_pb_util",
         "//src/ray/common:id",
         "//src/ray/common:ray_object",
@@ -306,7 +306,7 @@ ray_cc_library(
     deps = [
         ":actor_creator",
         ":memory_store",
-        ":task_finisher",
+        ":task_manager_interface",
         "//src/ray/common:id",
         "//src/ray/common:task_common",
         "@com_google_absl//absl/container:flat_hash_map",

@@ -24,6 +24,7 @@ async
 autoscales
 breakpoint
 BTS
+chatbot
 CLI
 CPU(s)?
 [Aa]sync
@@ -67,6 +68,7 @@ NER
 Nsight
 NumPy
 OOM
+open-source
 pipelining
 NVIDIA
 pretraining
@@ -75,13 +77,16 @@ Pythonic
 QPS
 retrigger
 RISECamp
+RLHF
 rollouts
+SageMaker
 serverless
 SFT
 ShareGPT
 Softmax
 teardown
 deserialization
+verl
 VPC(s)?
 preemptible
 CRD(s)?
@@ -96,3 +101,5 @@ uv
 [Dd]etokenizer?s?
 [Dd]etokenization
 VS Code
+ETDataset
+DLinear

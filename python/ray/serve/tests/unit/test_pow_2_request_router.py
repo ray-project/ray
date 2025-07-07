@@ -9,8 +9,8 @@ from typing import Optional, Set
 import pytest
 
 import ray
+from ray._common.test_utils import async_wait_for_condition
 from ray._common.utils import get_or_create_event_loop
-from ray._private.test_utils import async_wait_for_condition
 from ray.actor import ActorHandle
 from ray.exceptions import ActorDiedError, ActorUnavailableError
 from ray.serve._private.common import (
@@ -221,7 +221,7 @@ async def test_no_replicas_available_then_one_available(pow_2_router):
     s = pow_2_router
     loop = get_or_create_event_loop()
 
-    task = loop.create_task(s.choose_replica_for_request(fake_pending_request()))
+    task = loop.create_task(s._choose_replica_for_request(fake_pending_request()))
     done, _ = await asyncio.wait([task], timeout=0.01)
     assert len(done) == 0
 
@@ -251,7 +251,7 @@ async def test_replica_does_not_accept_then_accepts(pow_2_router):
     s = pow_2_router
     loop = get_or_create_event_loop()
 
-    task = loop.create_task(s.choose_replica_for_request(fake_pending_request()))
+    task = loop.create_task(s._choose_replica_for_request(fake_pending_request()))
     done, _ = await asyncio.wait([task], timeout=0.01)
     assert len(done) == 0
 
@@ -285,7 +285,7 @@ async def test_no_replicas_accept_then_new_one_accepts(pow_2_router):
     s = pow_2_router
     loop = get_or_create_event_loop()
 
-    task = loop.create_task(s.choose_replica_for_request(fake_pending_request()))
+    task = loop.create_task(s._choose_replica_for_request(fake_pending_request()))
     done, _ = await asyncio.wait([task], timeout=0.01)
     assert len(done) == 0
 
@@ -326,7 +326,7 @@ async def test_one_replica_available_then_none_then_one(pow_2_router):
     r1.set_queue_len_response(DEFAULT_MAX_ONGOING_REQUESTS + 1)
     s.update_replicas([r1])
 
-    task = loop.create_task(s.choose_replica_for_request(fake_pending_request()))
+    task = loop.create_task(s._choose_replica_for_request(fake_pending_request()))
     done, _ = await asyncio.wait([task], timeout=0.01)
     assert len(done) == 0
 
@@ -367,12 +367,12 @@ async def test_two_replicas_available_then_one(pow_2_router):
     s.update_replicas([r1, r2])
 
     for _ in range(10):
-        assert (await s.choose_replica_for_request(fake_pending_request())) in {r1, r2}
+        assert (await s._choose_replica_for_request(fake_pending_request())) in {r1, r2}
 
     s.update_replicas([r1])
 
     for _ in range(10):
-        assert (await s.choose_replica_for_request(fake_pending_request())) == r1
+        assert (await s._choose_replica_for_request(fake_pending_request())) == r1
 
 
 @pytest.mark.asyncio
@@ -401,7 +401,7 @@ async def test_two_replicas_one_accepts(pow_2_router):
     s.update_replicas([r1, r2])
 
     for _ in range(10):
-        assert (await s.choose_replica_for_request(fake_pending_request())) == r1
+        assert (await s._choose_replica_for_request(fake_pending_request())) == r1
 
 
 @pytest.mark.asyncio
@@ -433,7 +433,7 @@ async def test_three_replicas_two_accept(pow_2_router):
     s.update_replicas([r1, r2, r3])
 
     for _ in range(10):
-        assert (await s.choose_replica_for_request(fake_pending_request())) in {r1, r3}
+        assert (await s._choose_replica_for_request(fake_pending_request())) in {r1, r3}
 
 
 @pytest.mark.asyncio
@@ -463,7 +463,7 @@ async def test_two_replicas_choose_shorter_queue(pow_2_router):
     s.update_replicas([r1, r2])
 
     for _ in range(10):
-        assert (await s.choose_replica_for_request(fake_pending_request())) == r2
+        assert (await s._choose_replica_for_request(fake_pending_request())) == r2
 
 
 @pytest.mark.asyncio
@@ -489,7 +489,7 @@ async def test_tasks_routed_fifo(pow_2_router):
     tasks = []
     for _ in range(10):
         tasks.append(
-            loop.create_task(s.choose_replica_for_request(fake_pending_request()))
+            loop.create_task(s._choose_replica_for_request(fake_pending_request()))
         )
 
     done, _ = await asyncio.wait(tasks, timeout=0.01)
@@ -536,7 +536,7 @@ async def test_retried_tasks_routed_fifo(pow_2_router):
     for idx in random_order_index:
         tasks.append(
             loop.create_task(
-                s.choose_replica_for_request(pending_requests[idx], is_retry=True),
+                s._choose_replica_for_request(pending_requests[idx], is_retry=True),
                 name=f"request-{idx}",
             )
         )
@@ -586,8 +586,8 @@ async def test_cancellation(pow_2_router):
     s = pow_2_router
     loop = get_or_create_event_loop()
 
-    task1 = loop.create_task(s.choose_replica_for_request(fake_pending_request()))
-    task2 = loop.create_task(s.choose_replica_for_request(fake_pending_request()))
+    task1 = loop.create_task(s._choose_replica_for_request(fake_pending_request()))
+    task2 = loop.create_task(s._choose_replica_for_request(fake_pending_request()))
 
     done, _ = await asyncio.wait([task1, task2], timeout=0.01)
     assert len(done) == 0
@@ -624,7 +624,7 @@ async def test_cancellation_when_replicas_maxed(pow_2_router):
     s = pow_2_router
     loop = get_or_create_event_loop()
 
-    task = loop.create_task(s.choose_replica_for_request(fake_pending_request()))
+    task = loop.create_task(s._choose_replica_for_request(fake_pending_request()))
 
     # There is only one replica that is maxed out on requests
     r1 = FakeRunningReplica("r1")
@@ -667,7 +667,7 @@ async def test_only_task_cancelled(pow_2_router):
     s = pow_2_router
     loop = get_or_create_event_loop()
 
-    task = loop.create_task(s.choose_replica_for_request(fake_pending_request()))
+    task = loop.create_task(s._choose_replica_for_request(fake_pending_request()))
 
     done, _ = await asyncio.wait([task], timeout=0.01)
     assert len(done) == 0
@@ -711,7 +711,7 @@ async def test_routing_task_cap(pow_2_router):
     tasks = []
     for _ in range(10):
         tasks.append(
-            loop.create_task(s.choose_replica_for_request(fake_pending_request()))
+            loop.create_task(s._choose_replica_for_request(fake_pending_request()))
         )
 
     done, _ = await asyncio.wait(tasks, timeout=0.01)
@@ -774,7 +774,7 @@ async def test_routing_task_cap_hard_limit(pow_2_router):
     tasks = []
     for _ in range(10):
         tasks.append(
-            loop.create_task(s.choose_replica_for_request(fake_pending_request()))
+            loop.create_task(s._choose_replica_for_request(fake_pending_request()))
         )
 
     done, _ = await asyncio.wait(tasks, timeout=0.01)
@@ -838,7 +838,7 @@ async def test_replica_responds_after_being_removed(pow_2_router):
     s.update_replicas([r1])
 
     # Start the routing task, which will hang waiting for the queue length response.
-    task = loop.create_task(s.choose_replica_for_request(fake_pending_request()))
+    task = loop.create_task(s._choose_replica_for_request(fake_pending_request()))
 
     done, _ = await asyncio.wait([task], timeout=0.01)
     assert len(done) == 0
@@ -887,7 +887,7 @@ async def test_prefer_replica_on_same_node(pow_2_router):
     tasks = []
     for _ in range(10):
         tasks.append(
-            loop.create_task(s.choose_replica_for_request(fake_pending_request()))
+            loop.create_task(s._choose_replica_for_request(fake_pending_request()))
         )
 
     # All requests should be routed to the replica on the same node if it accepts.
@@ -900,7 +900,7 @@ async def test_prefer_replica_on_same_node(pow_2_router):
     tasks = []
     for _ in range(10):
         tasks.append(
-            loop.create_task(s.choose_replica_for_request(fake_pending_request()))
+            loop.create_task(s._choose_replica_for_request(fake_pending_request()))
         )
 
     # All requests should be routed to the other replica.
@@ -945,7 +945,7 @@ async def test_prefer_replica_in_same_az(pow_2_router):
         tasks = []
         for _ in range(10):
             tasks.append(
-                loop.create_task(s.choose_replica_for_request(fake_pending_request()))
+                loop.create_task(s._choose_replica_for_request(fake_pending_request()))
             )
         return await asyncio.gather(*tasks)
 
@@ -990,7 +990,7 @@ async def test_prefer_az_off(pow_2_router):
         tasks = []
         for _ in range(10):
             tasks.append(
-                loop.create_task(s.choose_replica_for_request(fake_pending_request()))
+                loop.create_task(s._choose_replica_for_request(fake_pending_request()))
             )
         replicas = await asyncio.gather(*tasks)
         return {r.replica_id for r in replicas}
@@ -1042,7 +1042,7 @@ async def test_prefer_replica_in_same_az_without_prefer_node(pow_2_router):
         tasks = []
         for _ in range(10):
             tasks.append(
-                loop.create_task(s.choose_replica_for_request(fake_pending_request()))
+                loop.create_task(s._choose_replica_for_request(fake_pending_request()))
             )
         return await asyncio.gather(*tasks)
 
@@ -1093,7 +1093,7 @@ async def test_prefer_replica_on_same_node_without_prefer_az(pow_2_router):
         tasks = []
         for _ in range(10):
             tasks.append(
-                loop.create_task(s.choose_replica_for_request(fake_pending_request()))
+                loop.create_task(s._choose_replica_for_request(fake_pending_request()))
             )
         return await asyncio.gather(*tasks)
 
@@ -1136,7 +1136,7 @@ class TestModelMultiplexing:
 
         for _ in range(10):
             request = fake_pending_request(model_id="m2")
-            task = loop.create_task(s.choose_replica_for_request(request))
+            task = loop.create_task(s._choose_replica_for_request(request))
             assert (await task) in {r1, r2}
 
     async def test_choose_least_number_of_models_replicas(self, pow_2_router):
@@ -1152,7 +1152,7 @@ class TestModelMultiplexing:
         s.update_replicas([r1, r2])
         for _ in range(10):
             request = fake_pending_request(model_id="m3")
-            task = loop.create_task(s.choose_replica_for_request(request))
+            task = loop.create_task(s._choose_replica_for_request(request))
             assert (await task) == r2
 
     async def test_backoff_from_least_number_of_models_replicas(self, pow_2_router):
@@ -1169,7 +1169,7 @@ class TestModelMultiplexing:
         s.update_replicas([r1, r2])
         for _ in range(10):
             request = fake_pending_request(model_id="m3")
-            task = loop.create_task(s.choose_replica_for_request(request))
+            task = loop.create_task(s._choose_replica_for_request(request))
             assert (await task) == r1
 
     async def test_no_replica_has_model_id(self, pow_2_router):
@@ -1185,7 +1185,7 @@ class TestModelMultiplexing:
 
         for _ in range(10):
             request = fake_pending_request(model_id="m1")
-            task = loop.create_task(s.choose_replica_for_request(request))
+            task = loop.create_task(s._choose_replica_for_request(request))
             assert (await task) == r1
 
     async def test_fall_back_to_replica_without_model_id(self, pow_2_router):
@@ -1206,7 +1206,7 @@ class TestModelMultiplexing:
 
         for _ in range(10):
             request = fake_pending_request(model_id="m2")
-            task = loop.create_task(s.choose_replica_for_request(request))
+            task = loop.create_task(s._choose_replica_for_request(request))
             assert (await task) == r3
 
     async def test_multiple_queries_with_different_model_ids(self, pow_2_router):
@@ -1228,22 +1228,22 @@ class TestModelMultiplexing:
         for _ in range(10):
             tasks = [
                 loop.create_task(
-                    s.choose_replica_for_request(fake_pending_request(model_id="m1"))
+                    s._choose_replica_for_request(fake_pending_request(model_id="m1"))
                 ),
                 loop.create_task(
-                    s.choose_replica_for_request(fake_pending_request(model_id="m2"))
+                    s._choose_replica_for_request(fake_pending_request(model_id="m2"))
                 ),
                 loop.create_task(
-                    s.choose_replica_for_request(fake_pending_request(model_id="m3"))
+                    s._choose_replica_for_request(fake_pending_request(model_id="m3"))
                 ),
                 loop.create_task(
-                    s.choose_replica_for_request(fake_pending_request(model_id="m1"))
+                    s._choose_replica_for_request(fake_pending_request(model_id="m1"))
                 ),
                 loop.create_task(
-                    s.choose_replica_for_request(fake_pending_request(model_id="m2"))
+                    s._choose_replica_for_request(fake_pending_request(model_id="m2"))
                 ),
                 loop.create_task(
-                    s.choose_replica_for_request(fake_pending_request(model_id="m3"))
+                    s._choose_replica_for_request(fake_pending_request(model_id="m3"))
                 ),
             ]
 
@@ -1274,7 +1274,7 @@ class TestModelMultiplexing:
 
         tasks = [
             loop.create_task(
-                s.choose_replica_for_request(fake_pending_request(model_id="m1"))
+                s._choose_replica_for_request(fake_pending_request(model_id="m1"))
             )
             for _ in range(100)
         ]
@@ -1309,12 +1309,12 @@ class TestModelMultiplexing:
         for _ in range(10):
             m1_tasks.append(
                 loop.create_task(
-                    s.choose_replica_for_request(fake_pending_request(model_id="m1"))
+                    s._choose_replica_for_request(fake_pending_request(model_id="m1"))
                 )
             )
             m2_tasks.append(
                 loop.create_task(
-                    s.choose_replica_for_request(fake_pending_request(model_id="m2"))
+                    s._choose_replica_for_request(fake_pending_request(model_id="m2"))
                 )
             )
 
@@ -1374,7 +1374,7 @@ class TestModelMultiplexing:
         # Sending burst of requests with model_id=m1.
         tasks = [
             loop.create_task(
-                s.choose_replica_for_request(fake_pending_request(model_id="m1"))
+                s._choose_replica_for_request(fake_pending_request(model_id="m1"))
             )
             for _ in range(100)
         ]
@@ -1382,7 +1382,7 @@ class TestModelMultiplexing:
         # Ensure that all tasks are routed to r2 and r3 right away, since r1 is busy.
         #
         # The timeout is important in this test, else the request can still wait for the
-        # multiplexed_matching_timeout to expire then to go to other replicas. This
+        # _multiplexed_matching_timeout to expire then to go to other replicas. This
         # timeout ensures that the request is routed to other replicas right away
         # after first try.
         done, _ = await asyncio.wait(tasks, timeout=0.1)
@@ -1406,7 +1406,7 @@ async def test_get_queue_len_cancelled_on_timeout(pow_2_router):
 
     # Attempt to route; the replica will be attempted and a timeout will occur
     # due to the short timeout set above.
-    task = loop.create_task(s.choose_replica_for_request(fake_pending_request()))
+    task = loop.create_task(s._choose_replica_for_request(fake_pending_request()))
     done, _ = await asyncio.wait([task], timeout=0.1)
     assert len(done) == 0
 
@@ -1432,7 +1432,7 @@ async def test_queue_len_response_deadline_backoff(pow_2_router):
 
     # Attempt to route; the replica will be attempted and a timeout will occur
     # due to the short timeout set above.
-    task = loop.create_task(s.choose_replica_for_request(fake_pending_request()))
+    task = loop.create_task(s._choose_replica_for_request(fake_pending_request()))
     done, _ = await asyncio.wait([task], timeout=0.01)
     assert len(done) == 0
 
@@ -1477,7 +1477,7 @@ async def test_max_queue_len_response_deadline(pow_2_router):
 
     # Attempt to route; the replica will be attempted and a timeout will occur
     # due to the short timeout set above.
-    task = loop.create_task(s.choose_replica_for_request(fake_pending_request()))
+    task = loop.create_task(s._choose_replica_for_request(fake_pending_request()))
     done, _ = await asyncio.wait([task], timeout=0.01)
     assert len(done) == 0
 
@@ -1586,7 +1586,7 @@ async def test_queue_len_cache_active_probing(pow_2_router):
     s.update_replicas([r1])
     s.replica_queue_len_cache.update(r1.replica_id, 0)
 
-    task = loop.create_task(s.choose_replica_for_request(fake_pending_request()))
+    task = loop.create_task(s._choose_replica_for_request(fake_pending_request()))
     done, _ = await asyncio.wait([task], timeout=0.1)
     assert len(done) == 1
     assert (await task) == r1
@@ -1598,7 +1598,7 @@ async def test_queue_len_cache_active_probing(pow_2_router):
     TIMER.advance(staleness_timeout_s + 1)
     r1.set_queue_len_response(0)
 
-    task = loop.create_task(s.choose_replica_for_request(fake_pending_request()))
+    task = loop.create_task(s._choose_replica_for_request(fake_pending_request()))
     done, _ = await asyncio.wait([task], timeout=0.1)
     assert len(done) == 1
     assert (await task) == r1
@@ -1628,7 +1628,7 @@ async def test_queue_len_cache_replica_at_capacity_is_probed(pow_2_router):
     s.update_replicas([r1])
     s.replica_queue_len_cache.update(r1.replica_id, DEFAULT_MAX_ONGOING_REQUESTS)
 
-    task = loop.create_task(s.choose_replica_for_request(fake_pending_request()))
+    task = loop.create_task(s._choose_replica_for_request(fake_pending_request()))
     done, _ = await asyncio.wait([task], timeout=0.1)
     assert len(done) == 0
     # 1 probe from routing requests
@@ -1664,7 +1664,7 @@ async def test_queue_len_cache_background_probing(pow_2_router):
     s.update_replicas([r1, r2])
     s.replica_queue_len_cache.update(r1.replica_id, 0)
 
-    task = loop.create_task(s.choose_replica_for_request(fake_pending_request()))
+    task = loop.create_task(s._choose_replica_for_request(fake_pending_request()))
     done, _ = await asyncio.wait([task], timeout=0.1)
     assert len(done) == 1
     assert (await task) == r1
@@ -1712,7 +1712,7 @@ async def test_queue_len_cache_entries_added_correctly(pow_2_router):
         r1.set_queue_len_response(r1_queue_len)
         r2.set_queue_len_response(r2_queue_len)
 
-        replica = await s.choose_replica_for_request(fake_pending_request())
+        replica = await s._choose_replica_for_request(fake_pending_request())
         if r1_queue_len < r2_queue_len:
             assert replica == r1
         elif r2_queue_len < r1_queue_len:
@@ -1754,7 +1754,7 @@ async def test_backoff_index_handling(pow_2_router, backoff_index: int):
 
     s.update_replicas([r1, r2])
 
-    r = await s.select_from_candidate_replicas([r1, r2], backoff_index)
+    r = await s._select_from_candidate_replicas([r1, r2], backoff_index)
     assert r in [r1, r2]
 
 
@@ -1782,13 +1782,13 @@ async def test_replicas_actor_died_error(
 
     # After detecting that the first replica died, the request router should
     # stop routing it.
-    await s.choose_replica_for_request(fake_pending_request())
+    await s._choose_replica_for_request(fake_pending_request())
     assert set(pow_2_router.curr_replicas.values()) == {r2}
 
     # Check that get_queue_len is never called on r1 and always called on r2.
     r1.num_get_queue_len_calls = 0
     for _ in range(10):
-        assert (await s.choose_replica_for_request(fake_pending_request())) == r2
+        assert (await s._choose_replica_for_request(fake_pending_request())) == r2
     assert r1.num_get_queue_len_calls == 0
 
 
@@ -1819,7 +1819,7 @@ async def test_replicas_actor_unavailable_error(
     s.update_replicas([r1, r2])
 
     for _ in range(10):
-        assert (await s.choose_replica_for_request(fake_pending_request())) == r2
+        assert (await s._choose_replica_for_request(fake_pending_request())) == r2
 
     # The request router should keep r1 since it may recover.
     assert set(pow_2_router.curr_replicas.values()) == {r1, r2}
@@ -1829,7 +1829,7 @@ async def test_replicas_actor_unavailable_error(
 
     # The request router should keep picking r1 since it has a smaller queue length.
     for _ in range(10):
-        assert (await s.choose_replica_for_request(fake_pending_request())) == r1
+        assert (await s._choose_replica_for_request(fake_pending_request())) == r1
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows")
@@ -1865,7 +1865,7 @@ async def test_locality_aware_backoff_skips_sleeps(pow_2_router):
     random.sample = fake_sample
 
     loop = get_or_create_event_loop()
-    task = loop.create_task(s.choose_replica_for_request(fake_pending_request()))
+    task = loop.create_task(s._choose_replica_for_request(fake_pending_request()))
 
     # Setting up 3 replicas:
     #   - r1 being same node and same zone

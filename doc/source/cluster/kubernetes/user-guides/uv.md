@@ -22,7 +22,7 @@ kind create cluster
 
 ## Step 2: Install KubeRay operator
 
-Follow the [RayCluster Quickstart](kuberay-operator-deploy) to install the latest stable KubeRay operator by Helm repository.
+Follow the [KubeRay Operator Installation](kuberay-operator-deploy) to install the latest stable KubeRay operator by Helm repository.
 
 ## Step 3: Create a RayCluster with `uv` enabled
 

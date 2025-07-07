@@ -14,7 +14,7 @@ from ray.data._internal.logical.operators.map_operator import AbstractUDFMap, Ma
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.logical.optimizers import LogicalOptimizer
 from ray.data._internal.logical.rules.randomize_blocks import ReorderRandomizeBlocksRule
-from ray.data._internal.planner.planner import Planner
+from ray.data._internal.planner import create_planner
 from ray.data.context import DataContext
 from ray.data.tests.test_util import get_parquet_read_logical_op
 from ray.data.tests.util import extract_values
@@ -23,7 +23,7 @@ from ray.data.tests.util import extract_values
 def test_randomize_blocks_operator(ray_start_regular_shared):
     ctx = DataContext.get_current()
 
-    planner = Planner()
+    planner = create_planner()
     read_op = get_parquet_read_logical_op()
     op = RandomizeBlocks(
         read_op,

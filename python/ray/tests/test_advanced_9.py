@@ -12,11 +12,10 @@ from ray._private.test_utils import (
     external_redis_test_enabled,
     client_test_enabled,
     run_string_as_driver,
-    wait_for_condition,
     get_gcs_memory_used,
     run_string_as_driver_nonblocking,
 )
-from ray._common.test_utils import Semaphore
+from ray._common.test_utils import Semaphore, wait_for_condition
 from ray.experimental.internal_kv import _internal_kv_list
 from ray.tests.conftest import call_ray_start
 from ray._raylet import GcsClient, GCS_PID_KEY

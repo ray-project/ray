@@ -88,7 +88,10 @@ from ray.rllib.utils.test_utils import (
 from ray.rllib.utils.typing import ResultDict
 from ray.tune.registry import get_trainable_cls, register_env
 
-parser = add_rllib_example_script_args(default_reward=500.0)
+parser = add_rllib_example_script_args(
+    default_timesteps=200000,
+    default_reward=500.0,
+)
 parser.set_defaults(
     evaluation_num_env_runners=2,
     evaluation_interval=1,
@@ -210,6 +213,13 @@ if __name__ == "__main__":
             },
         )
     )
+
+    # Set the minimum time for an iteration to 10sec, even for algorithms like PPO
+    # that naturally limit their iteration times to exactly one `training_step`
+    # call. This provides enough time for the eval EnvRunners in the
+    # "evaluation_duration=auto" setting to sample at least one complete episode.
+    if args.evaluation_duration == "auto":
+        base_config.reporting(min_time_s_per_iteration=10)
 
     # Add a simple multi-agent setup.
     if args.num_agents > 0:

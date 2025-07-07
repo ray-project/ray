@@ -129,6 +129,7 @@ nb_output_folder = "_build/jupyter_execute"
 # for additional context.
 nitpicky = True
 nitpick_ignore_regex = [
+    ("py:obj", "ray.actor.T"),
     ("py:class", ".*"),
     # Workaround for https://github.com/sphinx-doc/sphinx/issues/10974
     ("py:obj", "ray\\.data\\.datasource\\.datasink\\.WriteReturnType"),
@@ -226,6 +227,7 @@ exclude_patterns = [
     "cluster/running-applications/doc/ray.*",
     "data/api/ray.data.*.rst",
     "ray-overview/examples/**/README.md",  # Exclude .md files in examples subfolders
+    "train/examples/**/README.md",
 ] + autogen_files
 
 # If "DOC_LIB" is found, only build that top-level navigation item.
@@ -316,7 +318,7 @@ html_theme = "pydata_sphinx_theme"
 # documentation.
 html_theme_options = {
     "use_edit_page_button": True,
-    "announcement": """Try Ray with $100 credit — <a target="_blank" href="https://console.anyscale.com/register/ha?render_flow=ray&utm_source=ray_docs&utm_medium=docs&utm_campaign=banner">Start now</a>.""",
+    "announcement": """Try Ray with $100 credit — <a target="_blank" href="https://console.anyscale.com/register/ha?render_flow=ray&utm_source=ray_docs&utm_medium=docs&utm_campaign=banner">Start now</a><button type="button" id="close-banner" aria-label="Close banner">&times;</button>""",
     "logo": {
         "svg": render_svg_logo("_static/img/ray_logo.svg"),
     },
@@ -558,11 +560,14 @@ def setup(app):
     app.add_js_file("js/custom.js", defer="defer")
     app.add_css_file("css/custom.css", priority=800)
 
-    app.add_js_file("js/csat.js")
+    app.add_js_file("js/csat.js", defer="defer")
     app.add_css_file("css/csat.css")
 
     app.add_js_file("js/assistant.js", defer="defer")
     app.add_css_file("css/assistant.css")
+
+    app.add_js_file("js/dismissable-banner.js", defer="defer")
+    app.add_css_file("css/dismissable-banner.css")
 
     base_path = pathlib.Path(__file__).parent
     github_docs = DownloadAndPreprocessEcosystemDocs(base_path)

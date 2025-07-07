@@ -5,13 +5,13 @@ import sys
 
 import jsonschema
 import pytest
+from ray._common.test_utils import wait_for_condition
 import requests
 
 from ray._private.test_utils import (
     format_web_url,
     run_string_as_driver,
     run_string_as_driver_nonblocking,
-    wait_for_condition,
 )
 from ray.dashboard import dashboard
 from ray.dashboard.consts import RAY_CLUSTER_ACTIVITY_HOOK

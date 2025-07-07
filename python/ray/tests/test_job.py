@@ -10,13 +10,13 @@ from subprocess import Popen, PIPE, STDOUT, list2cmdline
 from typing import List
 import pytest
 
+from ray._common.test_utils import wait_for_condition
 import ray.cloudpickle as pickle
 
 import ray
 from ray._private.test_utils import (
     run_string_as_driver,
     run_string_as_driver_nonblocking,
-    wait_for_condition,
     format_web_url,
     wait_for_pid_to_exit,
 )

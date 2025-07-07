@@ -78,3 +78,6 @@ afterray = ["psutil", "setproctitle"]
 "python/ray/workflow/*" = ["I"]
 "rllib/*" = ["I"]
 "release/*" = ["I"]
+
+# TODO(matthewdeng): Remove this line
+"python/ray/tune/__init__.py" = ["I"]

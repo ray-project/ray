@@ -169,7 +169,7 @@ ray_cc_library(
     ],
     deps = [
         ":object_manager_plasma_common",
-        "//:dlmalloc",
+        "//src/ray/thirdparty:dlmalloc",
         "//src/ray/common:ray_config",
         "//src/ray/util:compat",
         "@com_google_absl//absl/container:flat_hash_map",

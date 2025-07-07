@@ -1,6 +1,6 @@
 import asyncio
 import os
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Optional
 
 import httpx
 import pytest
@@ -11,13 +11,17 @@ from starlette.responses import StreamingResponse
 import ray
 from ray import serve
 from ray._common.test_utils import SignalActor
+from ray.serve._private.test_utils import get_application_url, get_application_urls
 from ray.serve.handle import DeploymentHandle
 
 
 @ray.remote
 class StreamingRequester:
-    async def make_request(self) -> AsyncGenerator[str, None]:
-        with httpx.stream("GET", "http://localhost:8000") as r:
+    async def make_request(
+        self, url: Optional[str] = None
+    ) -> AsyncGenerator[str, None]:
+        url = url or get_application_url("HTTP")
+        with httpx.stream("GET", url) as r:
             r.raise_for_status()
             for chunk in r.iter_text():
                 yield chunk
@@ -56,7 +60,8 @@ def test_basic(serve_instance, use_async: bool, use_fastapi: bool):
 
     serve.run(SimpleGenerator.bind())
 
-    with httpx.stream("GET", "http://localhost:8000") as r:
+    url = get_application_url("HTTP")
+    with httpx.stream("GET", url) as r:
         r.raise_for_status()
         for i, chunk in enumerate(r.iter_text()):
             assert chunk == f"hi_{i}"
@@ -111,9 +116,15 @@ def test_responses_actually_streamed(
         ).bind()
     )
 
+    urls = get_application_urls("HTTP")
+
     requester = StreamingRequester.remote()
-    gen1 = requester.make_request.options(num_returns="streaming").remote()
-    gen2 = requester.make_request.options(num_returns="streaming").remote()
+    if len(urls) == 2:
+        gen1 = requester.make_request.options(num_returns="streaming").remote(urls[0])
+        gen2 = requester.make_request.options(num_returns="streaming").remote(urls[1])
+    else:
+        gen1 = requester.make_request.options(num_returns="streaming").remote()
+        gen2 = requester.make_request.options(num_returns="streaming").remote()
 
     # Check that we get the first responses before the signal is sent
     # (so the generator is still hanging after the first yield).
@@ -186,7 +197,8 @@ def test_metadata_preserved(serve_instance, use_fastapi: bool):
 
     serve.run(SimpleGenerator.bind())
 
-    with httpx.stream("GET", "http://localhost:8000") as r:
+    url = get_application_url("HTTP")
+    with httpx.stream("GET", url) as r:
         assert r.status_code == 301
         assert r.headers["hello"] == "world"
         assert r.headers["content-type"] == "foo/bar"
@@ -226,7 +238,8 @@ def test_exception_in_generator(serve_instance, use_async: bool, use_fastapi: bo
 
     serve.run(SimpleGenerator.bind())
 
-    with httpx.stream("GET", "http://localhost:8000") as r:
+    url = get_application_url("HTTP")
+    with httpx.stream("GET", url) as r:
         r.raise_for_status()
         stream_iter = r.iter_text()
         assert next(stream_iter) == "first result"
@@ -284,7 +297,8 @@ def test_proxy_from_streaming_handle(
 
     serve.run(SimpleGenerator.bind(Streamer.bind()))
 
-    with httpx.stream("GET", "http://localhost:8000") as r:
+    url = get_application_url("HTTP")
+    with httpx.stream("GET", url) as r:
         r.raise_for_status()
         for i, chunk in enumerate(r.iter_text()):
             assert chunk == f"hi_{i}"
@@ -309,7 +323,8 @@ def test_http_disconnect(serve_instance):
 
     serve.run(SimpleGenerator.bind())
 
-    with httpx.stream("GET", "http://localhost:8000"):
+    url = get_application_url("HTTP")
+    with httpx.stream("GET", url):
         with pytest.raises(TimeoutError):
             _ = ray.get(signal_actor.wait.remote(), timeout=1)
 

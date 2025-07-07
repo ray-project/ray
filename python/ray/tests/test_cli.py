@@ -48,7 +48,7 @@ import ray._private.ray_constants as ray_constants
 import ray.scripts.scripts as scripts
 import ray._private.utils as utils
 from ray.util.check_open_ports import check_open_ports
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import wait_for_condition
 from ray.cluster_utils import cluster_not_supported
 from ray.util.state import list_nodes
 from http.server import BaseHTTPRequestHandler, HTTPServer

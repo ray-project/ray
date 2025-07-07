@@ -7,8 +7,7 @@ import unittest
 
 import ray
 from ray import tune
-from ray.tune import CheckpointConfig
-from ray.tune import Trainable
+from ray.tune import CheckpointConfig, Trainable
 from ray.tune.utils import validate_save_restore
 
 

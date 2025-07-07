@@ -11,8 +11,7 @@ from starlette.responses import StreamingResponse
 
 import ray
 from ray import serve
-from ray._common.test_utils import SignalActor
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
 from ray.serve._private.test_utils import send_signal_on_cancellation
 from ray.serve.schema import ApplicationStatus, ServeInstanceDetails
@@ -21,7 +20,9 @@ from ray.util.state import list_tasks
 
 @ray.remote
 def do_request():
-    return httpx.get("http://localhost:8000")
+    # Set a timeout to 10 because some test use RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S = 5
+    # and httpx default timeout is 5 seconds.
+    return httpx.get("http://localhost:8000", timeout=10)
 
 
 @pytest.fixture
@@ -226,7 +227,7 @@ def test_streaming_request_already_sent_and_timed_out(ray_instance, shutdown_ser
         timeout=10,
     )
 
-    with httpx.stream("GET", "http://localhost:8000") as r:
+    with httpx.stream("GET", "http://localhost:8000", timeout=10) as r:
         iterator = r.iter_text()
 
         # The first chunk should be received successfully.

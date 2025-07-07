@@ -8,7 +8,11 @@ from ray_release.exception import (
 )
 from ray_release.logger import logger
 from ray_release.cluster_manager.cluster_manager import ClusterManager
-from ray_release.util import format_link, anyscale_cluster_env_build_url
+from ray_release.util import (
+    format_link,
+    anyscale_cluster_env_build_url,
+    create_cluster_env_from_image,
+)
 from ray_release.retry import retry
 
 REPORT_S = 30.0
@@ -28,7 +32,6 @@ class MinimalClusterManager(ClusterManager):
     )
     def create_cluster_env(self):
         assert self.cluster_env_id is None
-
         assert self.cluster_env_name
 
         logger.info(
@@ -37,51 +40,14 @@ class MinimalClusterManager(ClusterManager):
             f"cluster envs with this name."
         )
 
-        paging_token = None
-        while not self.cluster_env_id:
-            result = self.sdk.search_cluster_environments(
-                dict(
-                    name=dict(equals=self.cluster_env_name),
-                    paging=dict(count=50, paging_token=paging_token),
-                    project_id=None,
-                )
-            )
-            paging_token = result.metadata.next_paging_token
-
-            for res in result.results:
-                if res.name == self.cluster_env_name:
-                    self.cluster_env_id = res.id
-                    logger.info(
-                        f"Cluster env already exists with ID " f"{self.cluster_env_id}"
-                    )
-                    break
-
-            if not paging_token or self.cluster_env_id:
-                break
-
-        if not self.cluster_env_id:
-            logger.info("Cluster env not found. Creating new one.")
-            try:
-                result = self.sdk.create_byod_cluster_environment(
-                    dict(
-                        name=self.cluster_env_name,
-                        config_json=dict(
-                            docker_image=self.test.get_anyscale_byod_image(),
-                            ray_version="nightly",
-                            env_vars=self.test.get_byod_runtime_env(),
-                        ),
-                    )
-                )
-                self.cluster_env_id = result.result.id
-            except Exception as e:
-                logger.warning(
-                    f"Got exception when trying to create cluster "
-                    f"env: {e}. Sleeping for 10 seconds with jitter and then "
-                    f"try again..."
-                )
-                raise ClusterEnvCreateError("Could not create cluster env.") from e
-
-            logger.info(f"Cluster env created with ID {self.cluster_env_id}")
+        self.cluster_env_id = create_cluster_env_from_image(
+            image=self.test.get_anyscale_byod_image(),
+            test_name=self.cluster_env_name,
+            runtime_env=self.test.get_byod_runtime_env(),
+            sdk=self.sdk,
+            cluster_env_id=self.cluster_env_id,
+            cluster_env_name=self.cluster_env_name,
+        )
 
     def build_cluster_env(self, timeout: float = 600.0):
         assert self.cluster_env_id

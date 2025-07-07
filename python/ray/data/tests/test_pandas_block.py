@@ -456,5 +456,15 @@ class TestSizeBytes:
         assert bytes_size == pytest.approx(true_size, rel=0.1), (bytes_size, true_size)
 
 
+def test_iter_rows_with_na(ray_start_regular_shared):
+    block = pd.DataFrame({"col": [pd.NA]})
+    block_accessor = PandasBlockAccessor.for_block(block)
+
+    rows = block_accessor.iter_rows(public_row_format=True)
+
+    # We should return None for NaN values.
+    assert list(rows) == [{"col": None}]
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

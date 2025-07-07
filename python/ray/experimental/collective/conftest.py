@@ -1,5 +1,5 @@
 import uuid
-from typing import Dict, FrozenSet, List, Optional, Set, Tuple
+from typing import Dict, FrozenSet, List, Optional, Set, Tuple, Type
 
 import torch
 
@@ -16,8 +16,6 @@ class AbstractNcclGroup(Communicator):
     """
     A dummy NCCL group for testing.
     """
-
-    import cupy as cp
 
     def __init__(self, actor_handles: List[ray.actor.ActorHandle]):
         self._actor_handles = actor_handles
@@ -74,11 +72,11 @@ class AbstractNcclGroup(Communicator):
         raise NotImplementedError
 
     @property
-    def recv_stream(self) -> Optional["cp.cuda.ExternalStream"]:
+    def recv_stream(self):
         return None
 
     @property
-    def send_stream(self) -> Optional["cp.cuda.ExternalStream"]:
+    def send_stream(self):
         return None
 
     def destroy(self) -> None:
@@ -86,6 +84,10 @@ class AbstractNcclGroup(Communicator):
 
     def get_transport_name(self) -> str:
         return "nccl"
+
+    @classmethod
+    def generate_communicator_id(cls) -> str:
+        pass
 
 
 class MockNcclGroupSet:
@@ -101,6 +103,8 @@ class MockNcclGroupSet:
         actors: List["ray.actor.ActorHandle"],
         custom_nccl_group: Optional[Communicator] = None,
         use_communication_streams: bool = False,
+        accelerator_module_name: Optional[str] = None,
+        accelerator_communicator_cls: Optional[Type[Communicator]] = None,
     ) -> str:
         group_id = str(uuid.uuid4())
         self.ids_to_actors_and_custom_comms[group_id] = (

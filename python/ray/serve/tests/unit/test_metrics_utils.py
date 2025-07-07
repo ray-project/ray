@@ -3,7 +3,7 @@ import sys
 
 import pytest
 
-from ray._private.test_utils import async_wait_for_condition
+from ray._common.test_utils import async_wait_for_condition
 from ray.serve._private.metrics_utils import InMemoryMetricsStore, MetricsPusher
 from ray.serve._private.test_utils import MockAsyncTimer
 
