@@ -171,7 +171,7 @@ class GPUObjectStore:
             )
             if not present:
                 raise TimeoutError(
-                    f"ObjectRef({obj_id}) not found in GPU object store after {timeout} seconds, transfer may have failed"
+                    f"ObjectRef({obj_id}) not found in GPU object store after {timeout}s, transfer may have failed. Please report this issue on GitHub: https://github.com/ray-project/ray/issues/new/choose"
                 )
 
     def pop_object(self, obj_id: str) -> List["torch.Tensor"]:
