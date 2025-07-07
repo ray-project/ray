@@ -1,6 +1,9 @@
 <<<<<<< HEAD
+<<<<<<< HEAD
 #!/usr/bin/env python3
 
+=======
+>>>>>>> cleanup tests
 import click
 from pathlib import Path
 from typing import Dict, List, Optional
