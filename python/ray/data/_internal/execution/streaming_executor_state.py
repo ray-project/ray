@@ -428,7 +428,7 @@ def build_streaming_topology(
 
 def process_completed_tasks(
     topology: Topology,
-    resource_manager: ResourceManager,
+    backpressure_policies: List[BackpressurePolicy],
     max_errored_blocks: int,
 ) -> int:
     """Process any newly completed tasks. To update operator
@@ -451,7 +451,18 @@ def process_completed_tasks(
 
     max_bytes_to_read_per_op: Dict[OpState, int] = {}
     for op, state in topology.items():
-        max_bytes_to_read = resource_manager.max_task_output_bytes_to_read(op)
+        # Check all backpressure policies for max_task_output_bytes_to_read
+        # Use the minimum limit from all policies (most restrictive)
+        max_bytes_to_read = None
+        for policy in backpressure_policies:
+            policy_limit = policy.max_task_output_bytes_to_read(op)
+            if policy_limit is not None:
+                if max_bytes_to_read is None:
+                    max_bytes_to_read = policy_limit
+                else:
+                    max_bytes_to_read = min(max_bytes_to_read, policy_limit)
+
+        # If no policy provides a limit, there's no limit
         op._in_task_output_backpressure = max_bytes_to_read == 0
         if max_bytes_to_read is not None:
             max_bytes_to_read_per_op[state] = max_bytes_to_read
@@ -468,7 +479,7 @@ def process_completed_tasks(
 
         # Organize tasks by the operator they belong to, and sort them by task index.
         # So that we'll process them in a deterministic order.
-        # This is because OpResourceAllocator may limit the number of blocks to read
+        # This is because backpressure policies may limit the number of blocks to read
         # per operator. In this case, we want to have fewer tasks finish quickly and
         # yield resources, instead of having all tasks output blocks together.
         ready_tasks_by_op = defaultdict(list)
@@ -614,7 +625,7 @@ def get_eligible_operators(
         # Update scheduling status
         state._scheduling_status = OpSchedulingStatus(
             runnable=op_runnable,
-            under_resource_limits=under_resource_limits,
+            under_resource_limits=not in_backpressure,
         )
 
         # Signal whether op in backpressure for stats collections

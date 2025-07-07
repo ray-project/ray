@@ -339,7 +339,7 @@ class StreamingExecutor(Executor, threading.Thread):
         # greater parallelism.
         num_errored_blocks = process_completed_tasks(
             topology,
-            self._resource_manager,
+            self._backpressure_policies,
             self._max_errored_blocks,
         )
         if self._max_errored_blocks > 0:
