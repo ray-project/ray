@@ -4,7 +4,7 @@ from typing import List
 import subprocess
 from ci.raydepsets.lib.config import load_config, Config, Depset
 
-DEFAULT_UV_FLAGS= [
+DEFAULT_UV_FLAGS = [
     "--strip-extras",
     "--python-version=3.11",
     "--no-strip-markers",
@@ -19,13 +19,15 @@ DEFAULT_UV_FLAGS= [
     "--quiet",
 ]
 
+
 @click.group(name="raydepsets")
 def cli():
     """Manage Python dependency sets."""
 
+
 @cli.command()
 @click.argument("config_path", default="ci/raydepsets/depset.config.yaml")
-@click.option("--name", type=str,default="")
+@click.option("--name", type=str, default="")
 def load(config_path: str, name: str = ""):
     """Load a dependency sets from a config file."""
     manager = DependencySetManager(config_path=config_path)
@@ -34,8 +36,11 @@ def load(config_path: str, name: str = ""):
     else:
         manager.execute_all()
 
+
 class DependencySetManager:
-    def __init__(self, config_path: Path = Path(__file__).parent / "depset.config.yaml"):
+    def __init__(
+        self, config_path: Path = Path(__file__).parent / "depset.config.yaml"
+    ):
         self.config = load_config(config_path)
 
     def exec_uv_cmd(self, cmd: str, args: List[str]) -> str:
@@ -67,7 +72,8 @@ class DependencySetManager:
             )
             click.echo(f"Dependency set {depset.name} compiled successfully")
 
-    def compile(self,
+    def compile(
+        self,
         constraints: List[str],
         requirements: List[str],
         args: List[str],
