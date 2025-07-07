@@ -38,6 +38,8 @@ from ray.serve._private.utils import get_component_file_name
 from ray.serve.context import _get_global_client
 from ray.serve.schema import EncodingType, LoggingConfig
 
+pytestmark = [pytest.mark.timeout(500)]
+
 
 class FakeLogger:
     def __init__(self):
