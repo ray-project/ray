@@ -4,6 +4,8 @@ from typing import Any, AsyncIterator, Dict, List, Type
 import pydantic
 import pytest
 
+
+
 import ray
 from ray.llm._internal.batch.processor import vLLMEngineProcessorConfig
 from ray.llm._internal.batch.processor.base import (
@@ -200,6 +202,7 @@ class TestProcessorConfig:
             model_source="unsloth/Llama-3.2-1B-Instruct",
         )
         assert config.concurrency == 1
+        
 
 
 if __name__ == "__main__":

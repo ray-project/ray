@@ -1,6 +1,6 @@
 """This test suite does not need sglang to be installed."""
 import sys
-
+from unittest.mock import patch, MagicMock
 import pytest
 
 import ray
@@ -69,6 +69,38 @@ def test_sglang_engine_processor(gpu_type, model_llama_3_2_216M):
         "resources": None,
     }
 
+
+class TestSGLangEngineProcessorConfig:
+
+    @pytest.mark.parametrize("experimental_config", [
+        {"max_tasks_in_flight_per_actor": 10},
+        {},
+    ])
+    def test_experimental_max_tasks_in_flight_per_actor_usage(self, experimental_config):
+        """Tests that max_tasks_in_flight_per_actor is set properly in the ActorPoolStrategy."""
+        
+        from ray.llm._internal.batch.processor.sglang_engine_proc import (
+            build_sglang_engine_processor,
+            SGLangEngineProcessorConfig,
+        )
+        from ray.llm._internal.batch.processor.base import DEFAULT_MAX_TASKS_IN_FLIGHT
+        
+        with patch('ray.data.ActorPoolStrategy') as mock_actor_pool:
+            mock_actor_pool.return_value = MagicMock()
+            
+            config = SGLangEngineProcessorConfig(
+                model_source="unsloth/Llama-3.2-1B-Instruct",
+                experimental=experimental_config,
+            )
+            build_sglang_engine_processor(config)
+            
+            mock_actor_pool.assert_called()
+            call_kwargs = mock_actor_pool.call_args[1]
+            if experimental_config:
+                assert call_kwargs['max_tasks_in_flight_per_actor'] == experimental_config['max_tasks_in_flight_per_actor']
+            else:
+                assert call_kwargs['max_tasks_in_flight_per_actor'] == DEFAULT_MAX_TASKS_IN_FLIGHT
+        
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

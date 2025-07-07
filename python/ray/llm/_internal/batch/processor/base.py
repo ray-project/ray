@@ -52,7 +52,9 @@ class ProcessorConfig(BaseModelExtended):
 
     experimental: Dict[str, Any] = Field(
         default_factory=dict,
-        description="[Experimental] Experimental configurations.",
+        description="[Experimental] Experimental configurations."
+        "Supported keys:\n"
+        "`max_tasks_in_flight_per_actor`: The maximum number of tasks in flight per actor. Default to 4.",
     )
 
     class Config:
