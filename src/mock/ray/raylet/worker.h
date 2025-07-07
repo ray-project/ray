@@ -20,6 +20,10 @@ class MockWorkerInterface : public WorkerInterface {
   MOCK_METHOD(rpc::WorkerType, GetWorkerType, (), (const, override));
   MOCK_METHOD(void, MarkDead, (), (override));
   MOCK_METHOD(bool, IsDead, (), (const, override));
+  MOCK_METHOD(void,
+              KillAsync,
+              (instrumented_io_context & io_service, bool force),
+              (override));
   MOCK_METHOD(void, MarkBlocked, (), (override));
   MOCK_METHOD(void, MarkUnblocked, (), (override));
   MOCK_METHOD(bool, IsBlocked, (), (const, override));
