@@ -55,15 +55,10 @@ class DependencySetManager:
         raise Exception(f"Dependency set {name} not found")
 
     def execute_all(self):
-        print(f"Executing {len(self.config.depsets)} dependency sets")
         for depset in self.config.depsets:
             self.execute_single(depset)
 
     def execute_single(self, depset: Depset):
-        print(f"Executing {depset.operation} for {depset.name}")
-        print(f"Constraints: {depset.constraints}")
-        print(f"Requirements: {depset.requirements}")
-        print(f"Output: {depset.output}")
         if depset.operation == "compile":
             self.compile(
                 constraints=depset.constraints,
