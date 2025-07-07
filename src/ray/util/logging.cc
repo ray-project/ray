@@ -77,8 +77,8 @@ std::ostream &operator<<(std::ostream &os, const StackTrace &stack_trace) {
 
 #ifndef _WIN32
   const int num_frames = backtrace(frames, MAX_NUM_FRAMES);
-  std::unique_ptr<char *, decltype(&free)> frame_symbols(
-      backtrace_symbols(frames, num_frames), &free);
+  std::unique_ptr<char *, FreeDeleter> frame_symbols(
+      backtrace_symbols(frames, num_frames));
   for (int i = 0; i < num_frames; ++i) {
     os << frame_symbols.get()[i];
 
