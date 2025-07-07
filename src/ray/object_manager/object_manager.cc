@@ -507,12 +507,12 @@ void ObjectManager::PushObjectInternal(const ObjectID &object_id,
                   node_id,
                   chunk_id,
                   rpc_client,
-                  [=](const Status &status) {
+                  [this, push_max_chunk_size](const Status &status) {
                     // Post back to the main event loop because the
                     // PushManager is not thread-safe.
-                    main_service_->post(
+                    this->main_service_->post(
                         [this, push_max_chunk_size]() {
-                          push_manager_->OnChunkComplete(push_max_chunk_size);
+                          this->push_manager_->OnChunkComplete(push_max_chunk_size);
                         },
                         "ObjectManager.Push");
                   },

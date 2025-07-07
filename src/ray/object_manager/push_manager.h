@@ -65,7 +65,12 @@ class PushManager {
   std::string DebugString() const;
 
  private:
+  FRIEND_TEST(TestPushManager, TestSingleTransfer);
   FRIEND_TEST(TestPushManager, TestPushState);
+  FRIEND_TEST(TestPushManager, TestRetryDuplicates);
+  FRIEND_TEST(TestPushManager, TestResendWholeObject);
+  FRIEND_TEST(TestPushManager, TestMultipleTransfers);
+  FRIEND_TEST(TestPushManager, TestPushMultipleObject);
   FRIEND_TEST(TestPushManager, TestNodeRemoved);
 
   /// Tracks the state of an active object push to another node.
