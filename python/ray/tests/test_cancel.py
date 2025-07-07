@@ -16,6 +16,7 @@ from ray.exceptions import (
     GetTimeoutError,
     WorkerCrashedError,
     ObjectLostError,
+    NodeDiedError,
 )
 from ray.types import ObjectRef
 from ray._private.utils import DeferSigint
@@ -29,6 +30,57 @@ def valid_exceptions(use_force):
         return (RayTaskError, TaskCancelledError, WorkerCrashedError, ObjectLostError)
     else:
         return TaskCancelledError
+
+
+def test_task_cancel_and_failure_race_condition(ray_start_cluster):
+    """
+    Test that when a task is cancelled while it is failing due to a worker node
+    preemption, either the task will fail with a NodeDiedError or the task will be
+    cancelled gracefully.
+    This test is to:
+    1. Start a Ray cluster with a head node and a worker node.
+    2. Launch a task that will fail due to a worker node preemption.
+    3. Cancel the task while it is failing.
+    4. Verify that the task fails with a NodeDiedError or a TaskCancelledError.
+    """
+    cluster = ray_start_cluster
+    # Add a head node with 0 CPU.
+    cluster.add_node(
+        num_cpus=0,
+        _system_config={
+            "testing_asio_delay_us": (
+                "NodeManagerService.grpc_server.GetTaskFailureCause=2000000:2000000,"
+            ),
+        },
+    )
+    ray.init(address=cluster.address)
+    # Add one worker node.
+    worker_node = cluster.add_node(num_cpus=2)
+    cluster.wait_for_nodes()
+
+    @ray.remote(num_cpus=2)
+    def task_to_cancel() -> np.ndarray:
+        # Sleep for 3 seconds to ensure the node is preempted while the task is running.
+        time.sleep(3)
+        return np.zeros(1024 * 1000)
+
+    task_to_cancel_ref = task_to_cancel.options(max_retries=0).remote()
+
+    def node_preemption():
+        # Sleep for 1 second to ensure the task is running while the node is preempted.
+        time.sleep(1)
+        cluster.remove_node(worker_node)
+        ray.cancel(task_to_cancel_ref)
+
+    preemption_thread = threading.Thread(target=node_preemption)
+    preemption_thread.start()
+
+    # The task should fail with a NodeDiedError because the node is preempted before the
+    # task is cancelled.
+    with pytest.raises(NodeDiedError):
+        ray.get(task_to_cancel_ref)
+
+    preemption_thread.join()
 
 
 @pytest.mark.parametrize("use_force", [True, False])
