@@ -20,9 +20,11 @@ pieces (or use the ones available already in RLlib) and add them to one of the 3
 different pipelines described above, as required.
 
 This example:
-    - shows how the `DoubleXYPosToDiscreteIndex` and `DoubleXYPosToSingleXYPos`
-    ConnectorV2 pieces can be activated for different agents/modules and added to the
-    env-to-module pipeline.
+    - shows how the custom `AddOtherAgentsRowIndexToXYPos` ConnectorV2 piece can be
+    added to the env-to-module pipeline. It serves as a multi-agent observation
+    preprocessor and makes sure than both agents' observations contain necessary
+    information about the respective other agent. Without this extra information, the
+    agents won't be able to learn to solve the problem optimally.
     - demonstrates that using various such observation mapping connector pieces allows
     users to map from global, multi-agent observations to individual modules'
     observations.
@@ -64,9 +66,8 @@ collision can occur any longer), the maximum return per agent is under 10.0.
 from ray.rllib.examples.envs.classes.multi_agent.double_row_corridor_env import (
     DoubleRowCorridorEnv,
 )
-from ray.rllib.examples.connectors.classes.multi_agent_with_different_observation_spaces import (  # noqa
-    DoubleXYPosToDiscreteIndex,
-    DoubleXYPosToSingleXYPos,
+from ray.rllib.examples.connectors.classes.add_other_agents_row_index_to_xy_pos import (
+    AddOtherAgentsRowIndexToXYPos,
 )
 from ray.rllib.connectors.env_to_module.flatten_observations import (
     FlattenObservations,
@@ -81,8 +82,8 @@ from ray.tune.registry import get_trainable_cls
 torch, _ = try_import_torch()
 
 parser = add_rllib_example_script_args(
-    default_iters=500,
-    default_timesteps=500000,
+    default_iters=200,
+    default_timesteps=200000,
     default_reward=22.0,
 )
 parser.set_defaults(
@@ -101,13 +102,12 @@ if __name__ == "__main__":
         .env_runners(
             num_envs_per_env_runner=20,
             # Define a list of two connector piece to be prepended to the env-to-module
-            # connector pipeline.
-            # One for `agent_0` (converting the global observations into
-            # position-indices for that agent), the other for `agent_1` (converting
-            # the global observations into single x/y coordinates).
+            # connector pipeline:
+            # 1) The custom connector piece (a MultiAgentObservationPreprocessor).
+            # 2) A FlattenObservations connector to flatten the integer observations
+            # for `agent_0`, which the AddOtherAgentsRowIndexToXYPos outputs.
             env_to_module_connector=lambda env, spaces, device: [
-                DoubleXYPosToDiscreteIndex(agent_id="agent_0"),
-                DoubleXYPosToSingleXYPos(agent_id="agent_1"),
+                AddOtherAgentsRowIndexToXYPos(),
                 # Only flatten agent_0's observations (b/c these are ints that need to
                 # be one-hot'd).
                 FlattenObservations(multi_agent=True, agent_ids=["agent_0"]),

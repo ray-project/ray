@@ -70,6 +70,7 @@ def make_local_deployment_handle(
         deployment.init_kwargs,
         deployment_id=deployment_id,
         run_sync_methods_in_threadpool=RAY_SERVE_RUN_SYNC_IN_THREADPOOL,
+        run_user_code_in_separate_thread=True,
         local_testing_mode=True,
     )
     try:
@@ -311,7 +312,7 @@ class LocalRouter(Router):
                 request_meta,
                 request_args,
                 request_kwargs,
-                generator_result_callback=generator_result_callback,
+                enqueue=generator_result_callback,
             )
         else:
             fut = self._user_callable_wrapper.call_user_method(
