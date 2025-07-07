@@ -267,6 +267,17 @@ def unify_schemas(
     else:
         schemas_to_unify = schemas
 
+    # Promote nested struct fields containing tensors to variable-shaped if needed
+    for s_idx, schema in enumerate(schemas_to_unify):
+        updated_fields = []
+        for field in schema:
+            if pa.types.is_struct(field.type):
+                updated_field = _align_tensor_types_in_struct_field(field, arrow_tensor_types)
+                updated_fields.append(updated_field)
+            else:
+                updated_fields.append(field)
+        schemas_to_unify[s_idx] = pa.schema(updated_fields)
+
     try:
         if get_pyarrow_version() < MIN_PYARROW_VERSION_TYPE_PROMOTION:
             return pyarrow.unify_schemas(schemas_to_unify)
@@ -349,65 +360,73 @@ def _backfill_missing_fields(
     unified_struct_type: "pyarrow.StructType",
     block_length: int,
 ) -> "pyarrow.StructArray":
-    """
-    Align a struct column's fields to match the unified schema's struct type.
-
-    Args:
-        column: The column data to align.
-        unified_struct_type: The unified struct type to align to.
-        block_length: The number of rows in the block.
-
-    Returns:
-        pa.StructArray: The aligned struct array.
-    """
     import pyarrow as pa
+    from ray.air.util.tensor_extensions.arrow import get_arrow_extension_tensor_types, get_arrow_extension_fixed_shape_tensor_types
+    from ray.data.extensions import ArrowTensorArray
 
     # Flatten chunked arrays into a single array if necessary
     if isinstance(column, pa.ChunkedArray):
         column = pa.concat_arrays(column.chunks)
 
-    # Extract the current struct field names and their corresponding data
-    current_fields = {
-        field.name: column.field(i) for i, field in enumerate(column.type)
-    }
+    # Extract current struct fields
+    current_fields = {field.name: column.field(i) for i, field in enumerate(column.type)}
 
-    # Assert that the current fields are a subset of the unified struct type's field names
     unified_field_names = {field.name for field in unified_struct_type}
     assert set(current_fields.keys()).issubset(
         unified_field_names
-    ), f"Fields {set(current_fields.keys())} are not a subset of unified struct fields {unified_field_names}."
+    ), f"Fields {set(current_fields.keys())} not subset of unified struct fields {unified_field_names}"
 
-    # Early exit if no fields are missing in the schema
+    # Early exit if already matching schema
     if column.type == unified_struct_type:
         return column
 
-    aligned_fields = []
+    tensor_types = get_arrow_extension_tensor_types()
+    fixed_shape_tensor_types = get_arrow_extension_fixed_shape_tensor_types()
 
-    # Iterate over the fields in the unified struct type schema
+    aligned_fields = []
     for field in unified_struct_type:
         field_name = field.name
         field_type = field.type
 
         if field_name in current_fields:
-            # If the field exists in the current column, align it
             current_array = current_fields[field_name]
+
+            # Recursively handle nested struct fields
             if pa.types.is_struct(field_type):
-                # Recursively align nested struct fields
                 current_array = _backfill_missing_fields(
                     column=current_array,
                     unified_struct_type=field_type,
                     block_length=block_length,
                 )
+
+            # Handle tensor extension type mismatches
+            elif isinstance(field_type, tensor_types) and isinstance(current_array.type, tensor_types):
+                # If types differ, convert fixed shape tensor to variable shaped tensor
+                if (
+                    str(current_array.type) != str(field_type)
+                    and isinstance(current_array.type, fixed_shape_tensor_types)
+                    and not isinstance(field_type, fixed_shape_tensor_types)
+                ):
+                    current_array = current_array.to_variable_shaped_tensor_array()
+                # Otherwise keep current_array as is (do not cast storage)
+
+            # For other mismatches, try safe cast or fallback
+            elif current_array.type != field_type:
+                try:
+                    current_array = current_array.cast(field_type)
+                except Exception:
+                    # fallback, keep original array
+                    pass
+
             aligned_fields.append(current_array)
+
         else:
-            # If the field is missing, fill with nulls
+            # Field missing, fill with nulls
             aligned_fields.append(pa.nulls(block_length, type=field_type))
 
-    # Reconstruct the struct column with aligned fields
-    return pa.StructArray.from_arrays(
-        aligned_fields,
-        fields=unified_struct_type,
-    )
+    # Rebuild struct with aligned fields and unified struct type
+    return pa.StructArray.from_arrays(aligned_fields, fields=unified_struct_type)
+
 
 
 def _align_struct_fields(
@@ -496,6 +515,39 @@ def shuffle(block: "pyarrow.Table", seed: Optional[int] = None) -> "pyarrow.Tabl
     return take_table(block, indices)
 
 
+def _align_tensor_types_in_struct_field(field: "pyarrow.Field", tensor_types) -> "pyarrow.Field":
+    import pyarrow as pa
+    from ray.air.util.tensor_extensions.arrow import (
+        ArrowTensorType,
+        ArrowVariableShapedTensorType,
+        get_arrow_extension_fixed_shape_tensor_types,
+    )
+
+    if not pa.types.is_struct(field.type):
+        return field
+
+    fixed_tensor_types = get_arrow_extension_fixed_shape_tensor_types()
+    subfields = []
+    for subfield in field.type:
+        if isinstance(subfield.type, tensor_types):
+            # Assume all types need to be compared — variable-shaped promotion logic
+            if isinstance(subfield.type, fixed_tensor_types):
+                promoted_type = ArrowVariableShapedTensorType(
+                    dtype=subfield.type.scalar_type,
+                    ndim=len(subfield.type.shape),
+                )
+                subfields.append(pa.field(subfield.name, promoted_type))
+            else:
+                subfields.append(subfield)
+        elif pa.types.is_struct(subfield.type):
+            # Recurse for nested struct
+            subfields.append(_align_tensor_types_in_struct_field(subfield, tensor_types))
+        else:
+            subfields.append(subfield)
+
+    return pa.field(field.name, pa.struct(subfields))
+
+
 def concat(
     blocks: List["pyarrow.Table"], *, promote_types: bool = False
 ) -> "pyarrow.Table":
@@ -521,6 +573,15 @@ def concat(
     if len(blocks) == 1:
         return blocks[0]
 
+    # Rollup columns with opaque (null-typed) lists, to process in following for-loop.
+    cols_with_null_list = set()
+    for b in blocks:
+        for col_name in b.schema.names:
+            col_type = b.schema.field(col_name).type
+            if pa.types.is_list(col_type) and pa.types.is_null(col_type.value_type):
+                cols_with_null_list.add(col_name)
+
+    
     # If the result contains pyarrow schemas, unify them
     schemas_to_unify = [b.schema for b in blocks]
     try:
@@ -530,14 +591,6 @@ def concat(
 
     # Handle alignment of struct type columns.
     blocks = _align_struct_fields(blocks, schema)
-
-    # Rollup columns with opaque (null-typed) lists, to process in following for-loop.
-    cols_with_null_list = set()
-    for b in blocks:
-        for col_name in b.schema.names:
-            col_type = b.schema.field(col_name).type
-            if pa.types.is_list(col_type) and pa.types.is_null(col_type.value_type):
-                cols_with_null_list.add(col_name)
 
     if (
         any(isinstance(type_, pa.ExtensionType) for type_ in schema.types)

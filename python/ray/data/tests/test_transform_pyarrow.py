@@ -27,6 +27,7 @@ from ray.data.extensions import (
     ArrowPythonObjectType,
     ArrowTensorArray,
     ArrowTensorType,
+    ArrowVariableShapedTensorArray,
     ArrowVariableShapedTensorType,
     _object_extension_type_allowed,
 )
@@ -682,6 +683,207 @@ def test_struct_with_empty_arrays():
     assert result == expected, f"Expected {expected}, but got {result}"
 
 
+def test_struct_with_arrow_variable_shaped_tensor_type():
+    # Test concatenating tables with struct columns containing ArrowVariableShapedTensorType
+    # fields, ensuring proper handling of variable-shaped tensors within structs.
+
+    # Create variable-shaped tensor data for the first table
+    tensor_data1 = np.array(
+        [
+            np.ones((2, 2), dtype=np.float32),
+            np.zeros((3, 3), dtype=np.float32),
+        ],
+        dtype=object,
+    )
+    tensor_array1 = ArrowVariableShapedTensorArray.from_numpy(tensor_data1)
+
+    # Create struct data with tensor field for the first table
+    metadata_array1 = pa.array(["row1", "row2"])
+    struct_array1 = pa.StructArray.from_arrays(
+        [metadata_array1, tensor_array1], names=["metadata", "tensor"]
+    )
+
+    t1 = pa.table({"id": [1, 2], "struct_with_tensor": struct_array1})
+
+    # Create variable-shaped tensor data for the second table
+    tensor_data2 = np.array(
+        [
+            np.ones((1, 4), dtype=np.float32),
+            np.zeros((2, 1), dtype=np.float32),
+        ],
+        dtype=object,
+    )
+    tensor_array2 = ArrowVariableShapedTensorArray.from_numpy(tensor_data2)
+
+    # Create struct data with tensor field for the second table
+    metadata_array2 = pa.array(["row3", "row4"])
+    struct_array2 = pa.StructArray.from_arrays(
+        [metadata_array2, tensor_array2], names=["metadata", "tensor"]
+    )
+
+    t2 = pa.table({"id": [3, 4], "struct_with_tensor": struct_array2})
+
+    # Concatenate tables with struct columns containing variable-shaped tensors
+    t3 = concat([t1, t2])
+    assert isinstance(t3, pa.Table)
+    assert len(t3) == 4
+
+    # Validate the schema of the resulting table
+    expected_schema = pa.schema(
+        [
+            ("id", pa.int64()),
+            (
+                "struct_with_tensor",
+                pa.struct(
+                    [
+                        ("metadata", pa.string()),
+                        ("tensor", ArrowVariableShapedTensorType(pa.float32(), 2)),
+                    ]
+                ),
+            ),
+        ]
+    )
+    assert (
+        t3.schema == expected_schema
+    ), f"Expected schema: {expected_schema}, but got {t3.schema}"
+
+    # Verify the content of the resulting table
+    assert t3.column("id").to_pylist() == [1, 2, 3, 4]
+
+    # Check that the struct column contains the expected data
+    result_structs = t3.column("struct_with_tensor").to_pylist()
+    assert len(result_structs) == 4
+
+    # Verify each struct contains the correct metadata and tensor data
+    expected_metadata = ["row1", "row2", "row3", "row4"]
+    for i, (struct, expected_meta) in enumerate(zip(result_structs, expected_metadata)):
+        assert struct["metadata"] == expected_meta
+        assert isinstance(struct["tensor"], np.ndarray)
+
+        # Verify tensor shapes match expectations
+        if i == 0:
+            assert struct["tensor"].shape == (2, 2)
+            np.testing.assert_array_equal(
+                struct["tensor"], np.ones((2, 2), dtype=np.float32)
+            )
+        elif i == 1:
+            assert struct["tensor"].shape == (3, 3)
+            np.testing.assert_array_equal(
+                struct["tensor"], np.zeros((3, 3), dtype=np.float32)
+            )
+        elif i == 2:
+            assert struct["tensor"].shape == (1, 4)
+            np.testing.assert_array_equal(
+                struct["tensor"], np.ones((1, 4), dtype=np.float32)
+            )
+        elif i == 3:
+            assert struct["tensor"].shape == (2, 1)
+            np.testing.assert_array_equal(
+                struct["tensor"], np.zeros((2, 1), dtype=np.float32)
+            )
+
+
+def test_struct_with_null_tensor_values():
+    # Test concatenating tables with struct columns containing ArrowVariableShapedTensorType
+    # fields, focusing on the core functionality without null values since the extension
+    # type doesn't support with_mask method.
+
+    # Create variable-shaped tensor data for the first table
+    tensor_data1 = np.array(
+        [
+            np.ones((2, 2), dtype=np.float32),
+            np.zeros((3, 3), dtype=np.float32),
+        ],
+        dtype=object,
+    )
+    tensor_array1 = ArrowVariableShapedTensorArray.from_numpy(tensor_data1)
+
+    # Create struct data with tensor field for the first table
+    metadata_array1 = pa.array(["row1", "row2"])
+    struct_array1 = pa.StructArray.from_arrays(
+        [metadata_array1, tensor_array1], names=["metadata", "tensor"]
+    )
+
+    t1 = pa.table({"id": [1, 2], "struct_with_tensor": struct_array1})
+
+    # Create variable-shaped tensor data for the second table
+    tensor_data2 = np.array(
+        [
+            np.ones((1, 4), dtype=np.float32),
+            np.zeros((2, 1), dtype=np.float32),
+        ],
+        dtype=object,
+    )
+    tensor_array2 = ArrowVariableShapedTensorArray.from_numpy(tensor_data2)
+
+    # Create struct data with tensor field for the second table
+    metadata_array2 = pa.array(["row3", "row4"])
+    struct_array2 = pa.StructArray.from_arrays(
+        [metadata_array2, tensor_array2], names=["metadata", "tensor"]
+    )
+
+    t2 = pa.table({"id": [3, 4], "struct_with_tensor": struct_array2})
+
+    # Concatenate tables with struct columns containing variable-shaped tensors
+    t3 = concat([t1, t2])
+    assert isinstance(t3, pa.Table)
+    assert len(t3) == 4
+
+    # Validate the schema of the resulting table
+    expected_schema = pa.schema(
+        [
+            ("id", pa.int64()),
+            (
+                "struct_with_tensor",
+                pa.struct(
+                    [
+                        ("metadata", pa.string()),
+                        ("tensor", ArrowVariableShapedTensorType(pa.float32(), 2)),
+                    ]
+                ),
+            ),
+        ]
+    )
+    assert (
+        t3.schema == expected_schema
+    ), f"Expected schema: {expected_schema}, but got {t3.schema}"
+
+    # Verify the content of the resulting table
+    assert t3.column("id").to_pylist() == [1, 2, 3, 4]
+
+    # Check that the struct column contains the expected data
+    result_structs = t3.column("struct_with_tensor").to_pylist()
+    assert len(result_structs) == 4
+
+    # Verify each struct contains the correct metadata and tensor data
+    expected_metadata = ["row1", "row2", "row3", "row4"]
+    for i, (struct, expected_meta) in enumerate(zip(result_structs, expected_metadata)):
+        assert struct["metadata"] == expected_meta
+        assert isinstance(struct["tensor"], np.ndarray)
+
+        # Verify tensor shapes match expectations
+        if i == 0:
+            assert struct["tensor"].shape == (2, 2)
+            np.testing.assert_array_equal(
+                struct["tensor"], np.ones((2, 2), dtype=np.float32)
+            )
+        elif i == 1:
+            assert struct["tensor"].shape == (3, 3)
+            np.testing.assert_array_equal(
+                struct["tensor"], np.zeros((3, 3), dtype=np.float32)
+            )
+        elif i == 2:
+            assert struct["tensor"].shape == (1, 4)
+            np.testing.assert_array_equal(
+                struct["tensor"], np.ones((1, 4), dtype=np.float32)
+            )
+        elif i == 3:
+            assert struct["tensor"].shape == (2, 1)
+            np.testing.assert_array_equal(
+                struct["tensor"], np.zeros((2, 1), dtype=np.float32)
+            )
+
+
 def test_arrow_concat_object_with_tensor_fails():
     obj = types.SimpleNamespace(a=1, b="test")
     t1 = pa.table({"a": ArrowPythonObjectArray.from_objects([obj, obj]), "b": [0, 1]})
@@ -1089,6 +1291,301 @@ def test_pyarrow_conversion_error_handling(
         assert ds.take_all() == [
             {"id": i, "my_data": data[i]} for i in range(len(data))
         ]
+
+
+def test_mixed_tensor_types_basic():
+    """Test basic mixed tensor types concatenation without structs."""
+
+    # Block 1: Fixed shape tensors with float32
+    tensor_data1 = np.ones((2, 2), dtype=np.float32)
+    tensor_array1 = ArrowTensorArray.from_numpy(tensor_data1)
+
+    t1 = pa.table({"id": [1, 2], "tensor": tensor_array1})
+
+    # Block 2: Variable shape tensors with float32 (same dtype)
+    tensor_data2 = np.array(
+        [
+            np.ones((2, 2), dtype=np.float32),
+            np.zeros((3, 3), dtype=np.float32),
+        ],
+        dtype=object,
+    )
+    tensor_array2 = ArrowVariableShapedTensorArray.from_numpy(tensor_data2)
+
+    t2 = pa.table({"id": [3, 4], "tensor": tensor_array2})
+
+    # This should work with our fix
+    t3 = concat([t1, t2])
+    assert isinstance(t3, pa.Table)
+    assert len(t3) == 4
+
+    # Verify schema - should have tensor field as variable-shaped
+    tensor_field = t3.schema.field("tensor")
+    assert isinstance(tensor_field.type, ArrowVariableShapedTensorType)
+
+    # Verify content
+    result_tensors = t3.column("tensor").to_pylist()
+    assert len(result_tensors) == 4
+
+    # First 2 should be converted to variable-shaped tensors
+    assert isinstance(result_tensors[0], np.ndarray)
+    assert result_tensors[0].shape == (2,)
+    assert result_tensors[0].dtype == np.float32
+    np.testing.assert_array_equal(result_tensors[0], np.ones((2,), dtype=np.float32))
+
+    assert isinstance(result_tensors[1], np.ndarray)
+    assert result_tensors[1].shape == (2,)
+    assert result_tensors[1].dtype == np.float32
+    np.testing.assert_array_equal(result_tensors[1], np.ones((2,), dtype=np.float32))
+
+    # Last 2 should be variable-shaped tensors
+    assert isinstance(result_tensors[2], np.ndarray)
+    assert result_tensors[2].shape == (2, 2)
+    assert result_tensors[2].dtype == np.float32
+    np.testing.assert_array_equal(result_tensors[2], np.ones((2, 2), dtype=np.float32))
+
+    assert isinstance(result_tensors[3], np.ndarray)
+    assert result_tensors[3].shape == (3, 3)
+    assert result_tensors[3].dtype == np.float32
+    np.testing.assert_array_equal(result_tensors[3], np.zeros((3, 3), dtype=np.float32))
+
+
+def test_mixed_tensor_types_same_dtype():
+    """Test mixed tensor types with same data type but different shapes."""
+
+    # Block 1: Fixed shape tensors with float32
+    tensor_data1 = np.ones((2, 2), dtype=np.float32)
+    tensor_array1 = ArrowTensorArray.from_numpy(tensor_data1)
+
+    t1 = pa.table({"id": [1, 2], "tensor": tensor_array1})
+
+    # Block 2: Variable shape tensors with float32
+    tensor_data2 = np.array(
+        [
+            np.ones((3, 3), dtype=np.float32),
+            np.zeros((1, 4), dtype=np.float32),
+        ],
+        dtype=object,
+    )
+    tensor_array2 = ArrowVariableShapedTensorArray.from_numpy(tensor_data2)
+
+    t2 = pa.table({"id": [3, 4], "tensor": tensor_array2})
+
+    # This should work with our fix
+    t3 = concat([t1, t2])
+    assert isinstance(t3, pa.Table)
+    assert len(t3) == 4
+
+    # Verify schema - should have tensor field as variable-shaped
+    tensor_field = t3.schema.field("tensor")
+    assert isinstance(tensor_field.type, ArrowVariableShapedTensorType)
+
+    # Verify content
+    result_tensors = t3.column("tensor").to_pylist()
+    assert len(result_tensors) == 4
+
+    # First 2 should be converted to variable-shaped tensors
+    assert isinstance(result_tensors[0], np.ndarray)
+    assert result_tensors[0].shape == (2,)
+    assert result_tensors[0].dtype == np.float32
+    np.testing.assert_array_equal(result_tensors[0], np.ones((2,), dtype=np.float32))
+
+    assert isinstance(result_tensors[1], np.ndarray)
+    assert result_tensors[1].shape == (2,)
+    assert result_tensors[1].dtype == np.float32
+    np.testing.assert_array_equal(result_tensors[1], np.ones((2,), dtype=np.float32))
+
+    # Last 2 should be variable-shaped tensors
+    assert isinstance(result_tensors[2], np.ndarray)
+    assert result_tensors[2].shape == (3, 3)
+    assert result_tensors[2].dtype == np.float32
+    np.testing.assert_array_equal(result_tensors[2], np.ones((3, 3), dtype=np.float32))
+
+    assert isinstance(result_tensors[3], np.ndarray)
+    assert result_tensors[3].shape == (1, 4)
+    assert result_tensors[3].dtype == np.float32
+    np.testing.assert_array_equal(result_tensors[3], np.zeros((1, 4), dtype=np.float32))
+
+
+def test_mixed_tensor_types_fixed_shape_different():
+    """Test mixed tensor types with different fixed shapes."""
+
+    # Block 1: Fixed shape tensors (2x2)
+    tensor_data1 = np.ones((2, 2), dtype=np.float32)
+    tensor_array1 = ArrowTensorArray.from_numpy(tensor_data1)
+
+    t1 = pa.table({"id": [1, 2], "tensor": tensor_array1})
+
+    # Block 2: Fixed shape tensors (3x3)
+    tensor_data2 = np.zeros((3, 3), dtype=np.float32)
+    tensor_array2 = ArrowTensorArray.from_numpy(tensor_data2)
+
+    t2 = pa.table(
+        {"id": [3, 4, 5], "tensor": tensor_array2}  # Match length of tensor_array2
+    )
+
+    # This should work with our fix
+    t3 = concat([t1, t2])
+    assert isinstance(t3, pa.Table)
+    assert len(t3) == 5
+
+    # Verify schema - should have tensor field as variable-shaped
+    tensor_field = t3.schema.field("tensor")
+    assert isinstance(tensor_field.type, ArrowVariableShapedTensorType)
+
+    # Verify content
+    result_tensors = t3.column("tensor").to_pylist()
+    assert len(result_tensors) == 5
+
+    # First 2 should be converted to variable-shaped tensors
+    assert isinstance(result_tensors[0], np.ndarray)
+    assert result_tensors[0].shape == (2,)
+    assert result_tensors[0].dtype == np.float32
+    np.testing.assert_array_equal(result_tensors[0], np.ones((2,), dtype=np.float32))
+
+    assert isinstance(result_tensors[1], np.ndarray)
+    assert result_tensors[1].shape == (2,)
+    assert result_tensors[1].dtype == np.float32
+    np.testing.assert_array_equal(result_tensors[1], np.ones((2,), dtype=np.float32))
+
+    # Last 3 should be variable-shaped tensors
+    assert isinstance(result_tensors[2], np.ndarray)
+    assert result_tensors[2].shape == (3,)
+    assert result_tensors[2].dtype == np.float32
+    np.testing.assert_array_equal(result_tensors[2], np.zeros((3,), dtype=np.float32))
+
+    assert isinstance(result_tensors[3], np.ndarray)
+    assert result_tensors[3].shape == (3,)
+    assert result_tensors[3].dtype == np.float32
+    np.testing.assert_array_equal(result_tensors[3], np.zeros((3,), dtype=np.float32))
+
+    assert isinstance(result_tensors[4], np.ndarray)
+    assert result_tensors[4].shape == (3,)
+    assert result_tensors[4].dtype == np.float32
+    np.testing.assert_array_equal(result_tensors[4], np.zeros((3,), dtype=np.float32))
+
+
+def test_mixed_tensor_types_variable_shaped():
+    """Test mixed tensor types with variable-shaped tensors."""
+
+    # Block 1: Variable shape tensors
+    tensor_data1 = np.array(
+        [
+            np.ones((2, 2), dtype=np.float32),
+            np.zeros((3, 3), dtype=np.float32),
+        ],
+        dtype=object,
+    )
+    tensor_array1 = ArrowVariableShapedTensorArray.from_numpy(tensor_data1)
+
+    t1 = pa.table({"id": [1, 2], "tensor": tensor_array1})
+
+    # Block 2: Variable shape tensors with different shapes
+    tensor_data2 = np.array(
+        [
+            np.ones((1, 4), dtype=np.float32),
+            np.zeros((2, 1), dtype=np.float32),
+        ],
+        dtype=object,
+    )
+    tensor_array2 = ArrowVariableShapedTensorArray.from_numpy(tensor_data2)
+
+    t2 = pa.table({"id": [3, 4], "tensor": tensor_array2})
+
+    # This should work with our fix
+    t3 = concat([t1, t2])
+    assert isinstance(t3, pa.Table)
+    assert len(t3) == 4
+
+    # Verify schema - should have tensor field as variable-shaped
+    tensor_field = t3.schema.field("tensor")
+    assert isinstance(tensor_field.type, ArrowVariableShapedTensorType)
+
+    # Verify content
+    result_tensors = t3.column("tensor").to_pylist()
+    assert len(result_tensors) == 4
+
+    # All should be variable-shaped tensors
+    assert isinstance(result_tensors[0], np.ndarray)
+    assert result_tensors[0].shape == (2, 2)
+    assert result_tensors[0].dtype == np.float32
+    np.testing.assert_array_equal(result_tensors[0], np.ones((2, 2), dtype=np.float32))
+
+    assert isinstance(result_tensors[1], np.ndarray)
+    assert result_tensors[1].shape == (3, 3)
+    assert result_tensors[1].dtype == np.float32
+    np.testing.assert_array_equal(result_tensors[1], np.zeros((3, 3), dtype=np.float32))
+
+    assert isinstance(result_tensors[2], np.ndarray)
+    assert result_tensors[2].shape == (1, 4)
+    assert result_tensors[2].dtype == np.float32
+    np.testing.assert_array_equal(result_tensors[2], np.ones((1, 4), dtype=np.float32))
+
+    assert isinstance(result_tensors[3], np.ndarray)
+    assert result_tensors[3].shape == (2, 1)
+    assert result_tensors[3].dtype == np.float32
+    np.testing.assert_array_equal(result_tensors[3], np.zeros((2, 1), dtype=np.float32))
+
+
+def test_mixed_tensor_types_in_struct_fixed():
+    """Test that the fix works for mixed tensor types in structs."""
+    import numpy as np
+    import pyarrow as pa
+    from ray.data.extensions import ArrowTensorArray, ArrowVariableShapedTensorArray
+
+    # Block 1: Struct with fixed-shape tensor
+    tensor_data1 = np.ones((2, 2), dtype=np.float32)
+    tensor_array1 = ArrowTensorArray.from_numpy(tensor_data1)
+    value_array1 = pa.array([1, 2], type=pa.int64())
+
+    struct_array1 = pa.StructArray.from_arrays(
+        [tensor_array1, value_array1],
+        names=["tensor", "value"]
+    )
+
+    t1 = pa.table({
+        "id": [1, 2],
+        "struct": struct_array1
+    })
+
+    # Block 2: Struct with variable-shaped tensor
+    tensor_data2 = np.array([
+        np.ones((3, 3), dtype=np.float32),
+        np.zeros((1, 4), dtype=np.float32),
+    ], dtype=object)
+    tensor_array2 = ArrowVariableShapedTensorArray.from_numpy(tensor_data2)
+    value_array2 = pa.array([3, 4], type=pa.int64())
+
+    struct_array2 = pa.StructArray.from_arrays(
+        [tensor_array2, value_array2],
+        names=["tensor", "value"]
+    )
+
+    t2 = pa.table({
+        "id": [3, 4],
+        "struct": struct_array2
+    })
+
+    # This should work with our fix
+    t3 = concat([t1, t2])
+    assert isinstance(t3, pa.Table)
+    assert len(t3) == 4
+
+    # Verify the result has the expected structure
+    assert "id" in t3.column_names
+    assert "struct" in t3.column_names
+    
+    # Verify struct field contains both types of tensors
+    struct_data = t3.column("struct").to_pylist()
+    assert len(struct_data) == 4
+    
+    # First two should be from the fixed-shape tensor struct
+    assert struct_data[0]["value"] == 1
+    assert struct_data[1]["value"] == 2
+    
+    # Last two should be from the variable-shaped tensor struct
+    assert struct_data[2]["value"] == 3
+    assert struct_data[3]["value"] == 4
 
 
 if __name__ == "__main__":
