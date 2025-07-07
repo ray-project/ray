@@ -72,6 +72,8 @@ GET_ACTOR_TIMEOUT_S: int = 2
 # GET_ACTOR_TIMEOUT_S_ENV_VAR * CONTROLLERS_TO_POLL_PER_ITERATION_ENV_VAR should be
 # way less than STATE_ACTOR_POLL_INTERVAL_S_ENV_VAR.
 CONTROLLERS_TO_RECONCILE_PER_CHECK: int = 5
+# Environment variable for Train execution callbacks
+RAY_TRAIN_CALLBACKS_ENV_VAR = "RAY_TRAIN_CALLBACKS"
 
 # Environment variables to propagate from the driver to the controller,
 # and then from the controller to the workers.
