@@ -341,6 +341,10 @@ class NodeProviderAdapter(ICloudInstanceProvider):
         # temporarily.
         self._errors_queue = Queue()
 
+    @property
+    def v1_provider(self) -> NodeProviderV1:
+        return self._v1_provider
+
     def get_non_terminated(self) -> Dict[CloudInstanceId, CloudInstance]:
         nodes = {}
 
