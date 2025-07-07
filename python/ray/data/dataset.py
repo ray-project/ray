@@ -796,10 +796,10 @@ class Dataset:
             >>> from ray.data.expressions import col
             >>> ds = ray.data.range(100)
             >>> ds.with_columns([(col("id") * 2).alias("new_id"), (col("id") * 3).alias("new_id_2")]).schema()
-            Column  Type
-            ------  ----
-            id      int64
-            new_id  int64
+            Column    Type
+            ------    ----
+            id        int64
+            new_id    int64
             new_id_2  int64
 
         Args:
