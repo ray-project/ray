@@ -27,8 +27,7 @@ class DefaultFailurePolicy(FailurePolicy):
         if isinstance(worker_group_status, WorkerGroupSchedulingStatus):
             self._schedule_failures += 1
             if (
-                hasattr(self.failure_config, "scheduling_failure_limit")
-                and self.failure_config.scheduling_failure_limit != -1
+                self.failure_config.scheduling_failure_limit != -1
                 and self._schedule_failures
                 > self.failure_config.scheduling_failure_limit
             ):
