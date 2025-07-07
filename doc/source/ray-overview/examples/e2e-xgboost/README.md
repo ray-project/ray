@@ -1,14 +1,5 @@
-# Classification with XGBoost
+# Distributed XGBoost pipeline
 
-
-```{toctree}
-:hidden:
-
-notebooks/01-Distributed_Training
-notebooks/02-Validation
-notebooks/03-Serving
-
-```
 
 
 <div align="left">
@@ -30,12 +21,11 @@ These tutorials implement an end-to-end XGBoost application including:
 - **Production deployment**: Create production batch [**Jobs**](https://docs.anyscale.com/platform/jobs/) for offline workloads including data prep, training, batch prediction, and potentially online [**Services**](https://docs.anyscale.com/platform/services/).
 
 
+```{toctree}
+:hidden:
 
-# Dependencies
+notebooks/01-Distributed_Training
+notebooks/02-Validation
+notebooks/03-Serving
 
-To install the dependencies, run the following:
-
-```bash
-pip install -r requirements.txt
 ```
-

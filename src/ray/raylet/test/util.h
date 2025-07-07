@@ -87,6 +87,10 @@ class MockWorker : public WorkerInterface {
     RAY_CHECK(false) << "Method unused";
     return false;
   }
+  void KillAsync(instrumented_io_context &io_service, bool force) override {
+    killed_.store(true);
+  }
+  bool IsKilled() const { return killed_.load(); }
   void MarkBlocked() override { blocked_ = true; }
   void MarkUnblocked() override { blocked_ = false; }
   bool IsBlocked() const override { return blocked_; }
@@ -199,6 +203,7 @@ class MockWorker : public WorkerInterface {
   JobID job_id_;
   ActorID root_detached_actor_id_;
   Process proc_;
+  std::atomic<bool> killed_ = false;
 };
 
 }  // namespace raylet

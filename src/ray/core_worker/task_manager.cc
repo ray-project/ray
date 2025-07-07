@@ -1350,8 +1350,8 @@ int64_t TaskManager::RemoveLineageReference(const ObjectID &object_id,
   return total_lineage_footprint_bytes_ - total_lineage_footprint_bytes_prev;
 }
 
-bool TaskManager::MarkTaskCanceled(const TaskID &task_id) {
-  // Mark the task for cancellation. This will prevent the task from being retried.
+void TaskManager::MarkTaskCanceled(const TaskID &task_id) {
+  // Mark the task for cancelation. This will prevent the task from being retried.
   ObjectID generator_id = TaskGeneratorId(task_id);
   if (!generator_id.IsNil()) {
     // Pass -1 because the task has been canceled, so we should just end the
@@ -1369,7 +1369,6 @@ bool TaskManager::MarkTaskCanceled(const TaskID &task_id) {
     it->second.num_oom_retries_left = 0;
     it->second.is_canceled = true;
   }
-  return it != submissible_tasks_.end();
 }
 
 absl::flat_hash_set<ObjectID> TaskManager::GetTaskReturnObjectsToStoreInPlasma(

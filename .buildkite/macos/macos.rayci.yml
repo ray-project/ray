@@ -28,9 +28,7 @@ steps:
     job_env: MACOS
     instance_type: macos-arm64
     commands:
-      # TODO(aslonnie): arm64 historically only uses minimal install
-      # this should be removed.
-      - MINIMAL_INSTALL=1 bash ci/ray_ci/macos/macos_ci_build.sh
+      - bash ci/ray_ci/macos/macos_ci_build.sh
 
   # test
   - label: ":ray: core: :mac: small & client tests"

@@ -1,6 +1,6 @@
 import logging
 from collections import OrderedDict
-from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
+from typing import Any, Callable, Dict, List, Optional, Type
 
 from pydantic import Field
 
@@ -45,11 +45,9 @@ class ProcessorConfig(BaseModelExtended):
         description="The accelerator type used by the LLM stage in a processor. "
         "Default to None, meaning that only the CPU will be used.",
     )
-    concurrency: Optional[Union[int, Tuple[int, int]]] = Field(
+    concurrency: Optional[int] = Field(
         default=1,
-        description="The number of workers for data parallelism. Default to 1."
-        "If ``concurrency`` is a tuple ``(m, n)``, Ray will use an autoscaling actor pool from"
-        " ``m`` to ``n`` workers.",
+        description="The number of workers for data parallelism. Default to 1.",
     )
 
     class Config:

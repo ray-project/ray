@@ -183,7 +183,7 @@ void ObjectRecoveryManager::ReconstructObject(const ObjectID &object_id) {
   // after ResubmitTask, then it will remain true forever.
   // see https://github.com/ray-project/ray/issues/47606 for more details.
   reference_counter_.UpdateObjectPendingCreation(object_id, true);
-  auto error_type_optional = task_resubmitter_.ResubmitTask(task_id, &task_deps);
+  auto error_type_optional = task_manager_.ResubmitTask(task_id, &task_deps);
 
   if (!error_type_optional.has_value()) {
     // Try to recover the task's dependencies.
