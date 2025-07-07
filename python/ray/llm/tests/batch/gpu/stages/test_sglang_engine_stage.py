@@ -168,9 +168,10 @@ async def test_sglang_engine_udf_basic(mock_sglang_wrapper, model_llama_3_2_216M
 
     responses = []
     async for response in udf(batch):
-        responses.append(response["__data"][0])
+        responses.append(response["__data"])
 
-    assert len(responses) == 2
+    assert len(responses) == 1
+    responses = responses[0]
     assert all("batch_uuid" in r for r in responses)
     assert all("time_taken_llm" in r for r in responses)
     # The output order is not guaranteed.
