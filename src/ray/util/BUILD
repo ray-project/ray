@@ -11,11 +11,6 @@ ray_cc_library(
 )
 
 ray_cc_library(
-    name = "event_label",
-    hdrs = ["event_label.h"],
-)
-
-ray_cc_library(
     name = "array",
     hdrs = ["array.h"],
 )
@@ -52,7 +47,6 @@ ray_cc_library(
     srcs = ["logging.cc"],
     hdrs = ["logging.h"],
     deps = [
-        ":event_label",
         ":macros",
         ":string_utils",
         ":thread_utils",

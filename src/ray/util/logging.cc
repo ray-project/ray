@@ -44,7 +44,6 @@
 #include "absl/debugging/symbolize.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_format.h"
-#include "ray/util/event_label.h"
 #include "ray/util/string_utils.h"
 #include "ray/util/thread_utils.h"
 #include "spdlog/sinks/basic_file_sink.h"
@@ -592,7 +591,7 @@ RayLog::~RayLog() {
     msg_osstream_ << "\n*** StackTrace Information ***\n" << ray::StackTrace();
     expose_fatal_osstream_ << "\n*** StackTrace Information ***\n" << ray::StackTrace();
     for (const auto &callback : fatal_log_callbacks_) {
-      callback(EL_RAY_FATAL_CHECK_FAILED, expose_fatal_osstream_.str());
+      callback("RAY_FATAL_CHECK_FAILED", expose_fatal_osstream_.str());
     }
   }
 
