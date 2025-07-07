@@ -410,8 +410,8 @@ def _backfill_missing_fields(
         field_type = field.type
 
         if field_name in current_fields:
+            # If the field exists in the current column, align it
             current_array = current_fields[field_name]
-
             if pa.types.is_struct(field_type):
                 # Recursively align nested struct fields
                 current_array = _backfill_missing_fields(
@@ -565,7 +565,6 @@ def _align_tensor_types_in_struct_field(
     subfields = []
     for subfield in field.type:
         if isinstance(subfield.type, tensor_types):
-            # Assume all types need to be compared — variable-shaped promotion logic
             if isinstance(subfield.type, fixed_tensor_types):
                 promoted_type = ArrowVariableShapedTensorType(
                     dtype=subfield.type.scalar_type,
@@ -575,7 +574,6 @@ def _align_tensor_types_in_struct_field(
             else:
                 subfields.append(subfield)
         elif pa.types.is_struct(subfield.type):
-            # Recurse for nested struct
             subfields.append(
                 _align_tensor_types_in_struct_field(subfield, tensor_types)
             )
