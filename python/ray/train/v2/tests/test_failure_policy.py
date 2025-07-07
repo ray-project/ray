@@ -1,6 +1,6 @@
 import pytest
 
-from ray.air.config import FailureConfig as FailureConfigV1
+from ray.train import FailureConfig
 from ray.train.v2._internal.exceptions import WorkerGroupStartupTimeoutError
 from ray.train.v2._internal.execution.failure_handling import (
     FailureDecision,
@@ -11,7 +11,6 @@ from ray.train.v2._internal.execution.worker_group import (
     WorkerGroupSchedulingStatus,
     WorkerStatus,
 )
-from ray.train.v2.api.config import FailureConfig
 
 
 def _worker_group_status_from_errors(errors):
@@ -61,13 +60,6 @@ def test_infinite_retry():
 
 def test_infinite_reschedule():
     policy = create_failure_policy(FailureConfig(scheduling_failure_limit=-1))
-    status = _worker_group_resize_status_from_errors()
-    for _ in range(10):
-        assert policy.make_decision(status) == FailureDecision.RETRY
-
-
-def test_failure_config_v1():
-    policy = create_failure_policy(FailureConfigV1(max_failures=-1))
     status = _worker_group_resize_status_from_errors()
     for _ in range(10):
         assert policy.make_decision(status) == FailureDecision.RETRY
