@@ -7,6 +7,7 @@ from typing import Any, Callable, Dict, List, Optional, Union
 import ray
 from ray._private.ray_constants import env_bool
 from ray._private.usage import usage_lib
+from ray.actor import ActorHandle
 from ray.air._internal.usage import tag_train_v2_trainer
 from ray.train import (
     BackendConfig,
@@ -218,21 +219,31 @@ class DataParallelTrainer:
             asyncio.run(controller.run())
             return controller.get_result()
 
-    def _register_sigint_handler(self, controller: TrainController):
+    def _register_sigint_handler(self, controller: ActorHandle[TrainController]):
         """Register SIGINT handler so user Ctrl C gracefully aborts run."""
+        sigint_count = 0
 
         def sigint_handler(signum, frame):
-            try:
+            logger.info(
+                "Received SIGINT. Gracefully aborting the training run — this "
+                "may take a few seconds. To forcefully abort immediately, you "
+                "can send a different signal, such as SIGKILL."
+            )
+            nonlocal sigint_count
+            sigint_count += 1
+            if sigint_count >= 3:
                 logger.info(
-                    "Received SIGINT. Gracefully aborting the training run — this "
-                    "may take a few seconds. To forcefully abort immediately, you "
-                    "can send a different signal, such as SIGKILL."
+                    "Received SIGINT at least 3 times. "
+                    "Forcefully aborting the training run."
                 )
-                ray.get(controller.abort.remote())
-            except ray.exceptions.ActorDiedError:
-                # We catch the error and exit 0 to indicate graceful termination.
-                # However, for some reason the process still exits with 1.
                 sys.exit(0)
+            if sigint_count <= 1:
+                try:
+                    ray.get(controller.abort.remote())
+                except ray.exceptions.ActorDiedError:
+                    # We catch the error and exit 0 to indicate graceful termination.
+                    # However, for some reason the process still exits with 1.
+                    sys.exit(0)
 
         signal.signal(signal.SIGINT, sigint_handler)
 

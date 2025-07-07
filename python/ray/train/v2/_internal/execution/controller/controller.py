@@ -483,6 +483,9 @@ class TrainController:
 
     async def abort(self):
         """Trigger callback abort hooks and terminate the controller process."""
+        # Do not abort run if it's already finished.
+        if self.get_state().is_terminal():
+            return
         # Intentionally abort worker group before setting train run state because
         # we only reconcile the states of live train runs.
         if self._worker_group:
