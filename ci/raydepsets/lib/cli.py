@@ -2,7 +2,7 @@ import click
 from pathlib import Path
 from typing import List
 import subprocess
-from lib.config import load_config, Config, Depset
+from ci.raydepsets.lib.config import load_config, Config, Depset
 
 DEFAULT_UV_FLAGS= [
     "--strip-extras",
@@ -20,10 +20,8 @@ DEFAULT_UV_FLAGS= [
 ]
 
 @click.group(name="raydepsets")
-@click.pass_context
-def cli(ctx):
+def cli():
     """Manage Python dependency sets."""
-    ctx.ensure_object(dict)
 
 @cli.command()
 @click.argument("config_path", default="ci/raydepsets/depset.config.yaml")
@@ -67,6 +65,7 @@ class DependencySetManager:
                 name=depset.name,
                 output=depset.output,
             )
+            click.echo(f"Dependency set {depset.name} compiled successfully")
 
     def compile(self,
         constraints: List[str],
@@ -78,10 +77,10 @@ class DependencySetManager:
         """Compile a dependency set."""
         if constraints:
             for constraint in constraints:
-                args.append(f"-c {constraint}")
+                args.extend(["-c", constraint])
         if requirements:
             for requirement in requirements:
-                args.append(requirement)
+                args.extend([requirement])
         args.extend(["-o", f"{output}"])
         try:
             self.exec_uv_cmd("compile", args)
