@@ -10,24 +10,20 @@ class Depset:
     operation: str
     requirements: List[str]
     constraints: List[str]
-    degree: Optional[int] = None
-    output: Optional[str] = None
-    depset: Optional[List[str]] = field(default_factory=list)
-    packages: Optional[List[str]] = field(default_factory=list)
-    depsets: Optional[List[str]] = field(default_factory=list)
+    output: str
 
 
 @dataclass
 class Config:
-    depsets: Dict[str, Depset] = field(default_factory=dict)
+    depsets: List[Depset] = field(default_factory=list)
 
     @staticmethod
     def from_dict(data: dict) -> "Config":
         current_directory = get_current_directory()
-        raw_depsets = data.get("depsets", {})
-        depsets = {
-            name: Depset(
-                name=name,
+        raw_depsets = data.get("depsets", [])
+        depsets = [
+            Depset(
+                name=values.get("name"),
                 requirements=[
                     os.path.join(current_directory, requirement)
                     for requirement in values.get("requirements", [])
@@ -38,13 +34,9 @@ class Config:
                 ],
                 operation=values.get("operation", "compile"),
                 output=os.path.join(current_directory, values.get("output")),
-                depset=values.get("depset", []),
-                packages=values.get("packages", []),
-                depsets=values.get("depsets", []),
-                degree=values.get("degree", None),
             )
-            for name, values in raw_depsets.items()
-        }
+            for values in raw_depsets
+        ]
 
         return Config(depsets=depsets)
 
