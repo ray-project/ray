@@ -213,8 +213,9 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
               _env,
               java_return_objects,
               &return_objects,
-              [](JNIEnv *e, jobject java_native_ray_object) {
-                return JavaNativeRayObjectToNativeRayObject(e, java_native_ray_object);
+              [](JNIEnv *__env, jobject java_native_ray_object) {
+                return JavaNativeRayObjectToNativeRayObject(__env,
+                                                            java_native_ray_object);
               });
           for (size_t i = 0; i < return_objects.size(); i++) {
             auto &result_id = (*returns)[i].first;
@@ -330,21 +331,21 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
     // is destructed, we deference the java_weak_ref.
     std::shared_ptr<void> java_weak_ref_ptr{
         reinterpret_cast<void *>(java_weak_ref), [](auto p) {
-          JNIEnv *e = GetJNIEnv();
-          e->DeleteLocalRef(reinterpret_cast<jobject>(p));
+          JNIEnv *__env = GetJNIEnv();
+          __env->DeleteLocalRef(reinterpret_cast<jobject>(p));
         }};
     // Remove this local reference because this byte array is fate-sharing with the
     // ObjectRefImpl in Java frontend.
     _env->DeleteLocalRef(java_byte_array);
     _env->DeleteLocalRef(raw_object_id_byte_array);
     auto data_factory = [java_weak_ref_ptr, object_id]() -> std::shared_ptr<ray::Buffer> {
-      JNIEnv *e = GetJNIEnv();
-      jbyteArray _java_byte_array = (jbyteArray)e->CallObjectMethod(
+      JNIEnv *__env = GetJNIEnv();
+      jbyteArray _java_byte_array = (jbyteArray)__env->CallObjectMethod(
           reinterpret_cast<jobject>(java_weak_ref_ptr.get()), java_weak_reference_get);
-      RAY_CHECK_JAVA_EXCEPTION(e);
+      RAY_CHECK_JAVA_EXCEPTION(__env);
       RAY_CHECK(_java_byte_array != nullptr)
           << "The java byte array is null of object " << object_id;
-      return std::make_shared<JavaByteArrayBuffer>(e, _java_byte_array);
+      return std::make_shared<JavaByteArrayBuffer>(__env, _java_byte_array);
     };
     std::shared_ptr<ray::Buffer> metadata_buffer = object.GetMetadata();
     return std::make_shared<ray::RayObject>(metadata_buffer,
@@ -414,13 +415,13 @@ Java_io_ray_runtime_RayNativeRuntime_nativeGetResourceIds(JNIEnv *env, jclass) {
   };
   auto value_converter =
       [](JNIEnv *_env, const std::vector<std::pair<int64_t, double>> &value) -> jobject {
-    auto elem_converter = [](JNIEnv *e,
+    auto elem_converter = [](JNIEnv *__env,
                              const std::pair<int64_t, double> &elem) -> jobject {
-      jobject java_item = e->NewObject(java_resource_value_class,
-                                       java_resource_value_init,
-                                       (jlong)elem.first,
-                                       (jdouble)elem.second);
-      RAY_CHECK_JAVA_EXCEPTION(e);
+      jobject java_item = __env->NewObject(java_resource_value_class,
+                                           java_resource_value_init,
+                                           (jlong)elem.first,
+                                           (jdouble)elem.second);
+      RAY_CHECK_JAVA_EXCEPTION(__env);
       return java_item;
     };
     return NativeVectorToJavaList<std::pair<int64_t, double>>(

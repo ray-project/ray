@@ -74,8 +74,7 @@ void ActorTaskSubmitter::AddActorQueueIfNotExists(const ActorID &actor_id,
         << "Set actor max pending calls to " << max_pending_calls;
     inserted = client_queues_
                    .emplace(actor_id,
-                            ClientQueue(actor_id,
-                                        execute_out_of_order,
+                            ClientQueue(execute_out_of_order,
                                         max_pending_calls,
                                         fail_if_actor_unreachable,
                                         owned))

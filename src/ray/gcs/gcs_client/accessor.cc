@@ -479,7 +479,7 @@ void ActorInfoAccessor::AsyncResubscribe() {
   absl::MutexLock lock(&mutex_);
   for (auto &[actor_id, resubscribe_op] : resubscribe_operations_) {
     RAY_CHECK_OK(resubscribe_op([this, id = actor_id](const Status &status) {
-      absl::MutexLock lk(&mutex_);
+      absl::MutexLock callback_lock(&mutex_);
       auto fetch_data_operation = fetch_data_operations_[id];
       // `fetch_data_operation` is called in the callback function of subscribe.
       // Before that, if the user calls `AsyncUnsubscribe` function, the corresponding

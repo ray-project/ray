@@ -282,8 +282,7 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
   }
 
   struct ClientQueue {
-    ClientQueue(ActorID actor_id,
-                bool execute_out_of_order,
+    ClientQueue(bool execute_out_of_order,
                 int32_t _max_pending_calls,
                 bool _fail_if_actor_unreachable,
                 bool _owned)
@@ -291,9 +290,9 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
           fail_if_actor_unreachable(_fail_if_actor_unreachable),
           owned(_owned) {
       if (execute_out_of_order) {
-        actor_submit_queue = std::make_unique<OutofOrderActorSubmitQueue>(actor_id);
+        actor_submit_queue = std::make_unique<OutofOrderActorSubmitQueue>();
       } else {
-        actor_submit_queue = std::make_unique<SequentialActorSubmitQueue>(actor_id);
+        actor_submit_queue = std::make_unique<SequentialActorSubmitQueue>();
       }
     }
 

@@ -243,11 +243,12 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
               _env,
               java_func_descriptors,
               &native_func_descriptors,
-              [](JNIEnv *e, jobject java_func_descriptor) {
+              [](JNIEnv *__env, jobject java_func_descriptor) {
                 RAY_CHECK(java_func_descriptor != nullptr);
-                const jint hashcode = GetHashCodeOfJavaObject(e, java_func_descriptor);
+                const jint hashcode =
+                    GetHashCodeOfJavaObject(__env, java_func_descriptor);
                 ray::FunctionDescriptor native_func =
-                    ToRayFunction(e, java_func_descriptor, hashcode)
+                    ToRayFunction(__env, java_func_descriptor, hashcode)
                         .GetFunctionDescriptor();
                 return native_func;
               });
@@ -344,12 +345,13 @@ inline PlacementGroupCreationOptions ToPlacementGroupCreationOptions(
         return JavaMapToNativeMap<std::string, double>(
             _env,
             java_bundle,
-            [](JNIEnv *e, jobject java_key) {
-              return JavaStringToNativeString(e, (jstring)java_key);
+            [](JNIEnv *__env, jobject java_key) {
+              return JavaStringToNativeString(__env, (jstring)java_key);
             },
-            [](JNIEnv *e, jobject java_value) {
-              double value = e->CallDoubleMethod(java_value, java_double_double_value);
-              RAY_CHECK_JAVA_EXCEPTION(e);
+            [](JNIEnv *__env, jobject java_value) {
+              double value =
+                  __env->CallDoubleMethod(java_value, java_double_double_value);
+              RAY_CHECK_JAVA_EXCEPTION(__env);
               return value;
             });
       });

@@ -270,9 +270,10 @@ void GcsPlacementGroupManager::RegisterPlacementGroup(
          // The backend storage is supposed to be reliable, so the status must be ok.
          RAY_CHECK_OK(status);
          if (registered_placement_groups_.contains(placement_group_id)) {
-           auto it = placement_group_to_register_callbacks_.find(placement_group_id);
-           auto callbacks = std::move(it->second);
-           placement_group_to_register_callbacks_.erase(it);
+           auto register_callback_iter =
+               placement_group_to_register_callbacks_.find(placement_group_id);
+           auto callbacks = std::move(register_callback_iter->second);
+           placement_group_to_register_callbacks_.erase(register_callback_iter);
            for (const auto &_callback : callbacks) {
              _callback(status);
            }

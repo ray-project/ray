@@ -31,7 +31,7 @@ namespace core {
  */
 class SequentialActorSubmitQueue : public IActorSubmitQueue {
  public:
-  explicit SequentialActorSubmitQueue(ActorID actor_id);
+  explicit SequentialActorSubmitQueue();
   /// Add a task into the queue. Returns false if a task with the same sequence_no has
   /// already been inserted.
   bool Emplace(uint64_t sequence_no, const TaskSpecification &task_spec) override;
@@ -58,9 +58,6 @@ class SequentialActorSubmitQueue : public IActorSubmitQueue {
   bool Empty() override;
 
  private:
-  /// The ID of the actor.
-  ActorID actor_id_;
-
   /// The actor's pending requests, ordered by the sequence number in the request.
   /// The bool indicates whether the dependencies for that task have been resolved yet.
   /// A task will be sent after its dependencies have been resolved and its sequence

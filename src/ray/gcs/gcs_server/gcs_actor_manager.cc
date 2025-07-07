@@ -498,12 +498,15 @@ void GcsActorManager::HandleRestartActorForLineageReconstruction(
           // should overwrite the actor state to DEAD to avoid race condition.
           return;
         }
-        auto _iter = actor_to_restart_for_lineage_reconstruction_callbacks_.find(
-            actor->GetActorID());
-        RAY_CHECK(_iter != actor_to_restart_for_lineage_reconstruction_callbacks_.end() &&
-                  !_iter->second.empty());
-        auto callbacks = std::move(_iter->second);
-        actor_to_restart_for_lineage_reconstruction_callbacks_.erase(_iter);
+        auto restart_callback_iter =
+            actor_to_restart_for_lineage_reconstruction_callbacks_.find(
+                actor->GetActorID());
+        RAY_CHECK(restart_callback_iter !=
+                      actor_to_restart_for_lineage_reconstruction_callbacks_.end() &&
+                  !restart_callback_iter->second.empty());
+        auto callbacks = std::move(restart_callback_iter->second);
+        actor_to_restart_for_lineage_reconstruction_callbacks_.erase(
+            restart_callback_iter);
         for (auto &callback : callbacks) {
           callback(actor);
         }

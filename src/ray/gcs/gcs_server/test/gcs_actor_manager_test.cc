@@ -1162,12 +1162,13 @@ TEST_F(GcsActorManagerTest, TestGetAllActorInfoFilters) {
   create_actor_request.mutable_task_spec()->CopyFrom(
       registered_actor->GetCreationTaskSpecification().GetMessage());
   std::vector<std::shared_ptr<gcs::GcsActor>> finished_actors;
-  Status status = gcs_actor_manager_->CreateActor(
+  Status createStatus = gcs_actor_manager_->CreateActor(
       create_actor_request,
       [&finished_actors](const std::shared_ptr<gcs::GcsActor> &actor,
                          const rpc::PushTaskReply &reply,
                          const Status &status) { finished_actors.emplace_back(actor); });
 
+  ASSERT_TRUE(createStatus.ok());
   auto actor = mock_actor_scheduler_->actors.back();
   mock_actor_scheduler_->actors.pop_back();
 
@@ -1185,9 +1186,9 @@ TEST_F(GcsActorManagerTest, TestGetAllActorInfoFilters) {
     auto request1 = Mocker::GenRegisterActorRequest(job_id_other,
                                                     /*max_restarts=*/0,
                                                     /*detached=*/false);
-    Status status =
-        gcs_actor_manager_->RegisterActor(request1, [](const Status &status) {});
-    ASSERT_TRUE(status.ok());
+    Status registerStatus =
+        gcs_actor_manager_->RegisterActor(request1, [](const Status &) {});
+    ASSERT_TRUE(registerStatus.ok());
     io_service_.run_one();
   }
 

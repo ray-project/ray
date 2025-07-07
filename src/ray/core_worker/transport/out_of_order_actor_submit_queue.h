@@ -35,7 +35,7 @@ namespace core {
  */
 class OutofOrderActorSubmitQueue : public IActorSubmitQueue {
  public:
-  explicit OutofOrderActorSubmitQueue(ActorID actor_id);
+  explicit OutofOrderActorSubmitQueue();
   /// Add a task into the queue. Returns false if a task with the same sequence_no has
   /// already been inserted.
   bool Emplace(uint64_t position, const TaskSpecification &spec) override;
@@ -62,7 +62,6 @@ class OutofOrderActorSubmitQueue : public IActorSubmitQueue {
   bool Empty() override;
 
  private:
-  ActorID kActorId;
   absl::btree_map<uint64_t, std::pair<TaskSpecification, bool>> pending_queue_;
   absl::btree_map<uint64_t, std::pair<TaskSpecification, bool>> sending_queue_;
 };
