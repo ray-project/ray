@@ -101,11 +101,11 @@ def split_and_zero_pad(
     # If the items in the list are dicts, split each key's value sequence
     # separately and then reassemble.
     if isinstance(item_list[0], dict):
-        split_dict = {}
-        # For each key, extract the sequence of values and split/pad them.
-        for key in item_list[0]:
-            key_items = [obs[key] for obs in item_list]
-            split_dict[key] = split_and_zero_pad(key_items, max_seq_len)
+        # split each leaf sequence into chunks
+        split_dict = tree.map_structure(
+            lambda *vals: split_and_zero_pad(list(vals), max_seq_len),
+            *item_list
+        )
         # All keys should now have the same number of chunks.
         num_chunks = len(next(iter(split_dict.values())))
         ret = []
