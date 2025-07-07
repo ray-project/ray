@@ -4374,6 +4374,26 @@
     script: >
       pytest -sv test_batch_vllm.py
 
+- name: llm_batch_vllm_single_gpu
+  frequency: nightly
+  python: "3.11"
+  group: llm-batch
+  team: llm
+  working_dir: llm_tests/batch
+
+  cluster:
+    byod:
+      type: llm-cu128
+    cluster_compute: llm_1xl4.yaml
+    # NOTE: Important for getting the correct secrets
+    cloud_id: cld_wy5a6nhazplvu32526ams61d98
+    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+
+  run:
+    timeout: 3600
+    script: >
+      pytest -sv test_batch_vllm_single_gpu.py
+
 - name: llm_batch_sglang_llama
   frequency: nightly
   python: "3.11"
