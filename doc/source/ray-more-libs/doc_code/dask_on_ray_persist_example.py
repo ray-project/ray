@@ -12,10 +12,12 @@ ray.init()
 enable_dask_on_ray()
 
 d_arr = da.ones(100)
-print(dask.base.collections_to_dsk([d_arr]))
-# {('ones-c345e6f8436ff9bcd68ddf25287d27f3',
-#   0): (functools.partial(<function _broadcast_trick_inner at 0x7f27f1a71f80>,
-#   dtype=dtype('float64')), (5,))}
+
+# Print the internal Dask graph. Replace this with `print(dask.base.collections_to_dsk([d_arr]))` when dask>=2024.11.0,<2025.4.0.
+print(dask.base.collections_to_expr([d_arr]).dask)
+# {('ones_like-5902a58f37d3b639948dee893f5c4f4a', 0):
+# <Task ('ones_like-5902a58f37d3b639948dee893f5c4f4a', 0)
+# ones_like(...)>}
 
 # This submits all underlying Ray tasks to the cluster and returns
 # a Dask array with the Ray futures inlined.
@@ -23,9 +25,10 @@ d_arr_p = d_arr.persist()
 
 # Notice that the Ray ObjectRef is inlined. The dask.ones() task has
 # been submitted to and is running on the Ray cluster.
-dask.base.collections_to_dsk([d_arr_p])
-# {('ones-c345e6f8436ff9bcd68ddf25287d27f3',
-#   0): ObjectRef(8b4e50dc1ddac855ffffffffffffffffffffffff0100000001000000)}
+# Replace this in a similar way when dask>=2024.11.0,<2025.4.0.
+print(dask.base.collections_to_expr([d_arr_p]).dask)
+# {('ones_like-5902a58f37d3b639948dee893f5c4f4a', 0):
+# DataNode(ObjectRef(2c329aa28fcae64affffffffffffffffffffffff2c00000001000000))}
 
 # Future computations on this persisted Dask Array will be fast since we
 # already started computing d_arr_p in the background.

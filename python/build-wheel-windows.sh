@@ -75,14 +75,17 @@ install_ray() {
     popd
 
     cd "${WORKSPACE_DIR}"/python
-    "${WORKSPACE_DIR}"/ci/keep_alive pip install -v -e .
+    pip install -v -e .
   )
 }
 
 uninstall_ray() {
   pip uninstall -y ray
 
-  python -s -c "import runpy, sys; runpy.run_path(sys.argv.pop(), run_name='__api__')" clean "${ROOT_DIR}"/setup.py
+  # Cleanup generated thirdparty files.
+  python -c $'import shutil; import sys; \nfor d in sys.argv[1:]: shutil.rmtree(d, ignore_errors=True);' \
+    "${ROOT_DIR}/ray/thirdparty_files" \
+    "${ROOT_DIR}/ray/_private/runtime_env/agent/thirdparty_files"
 }
 
 build_wheel_windows() {

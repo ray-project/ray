@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from copy import deepcopy
 from typing import Callable, List, Optional, Sequence, Tuple
 from unittest.mock import Mock
 
@@ -7,7 +8,11 @@ import grpc
 from grpc.aio._server import Server
 
 from ray.exceptions import RayActorError, RayTaskError
-from ray.serve._private.constants import DEFAULT_GRPC_SERVER_OPTIONS, SERVE_LOGGER_NAME
+from ray.serve._private.constants import (
+    DEFAULT_GRPC_SERVER_OPTIONS,
+    RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S,
+    SERVE_LOGGER_NAME,
+)
 from ray.serve._private.proxy_request_response import ResponseStatus
 from ray.serve.config import gRPCOptions
 from ray.serve.exceptions import BackPressureError, DeploymentUnavailableError
@@ -155,3 +160,14 @@ def set_grpc_code_and_details(
         context.set_code(status.code)
     if not context.details():
         context.set_details(status.message)
+
+
+def set_proxy_default_grpc_options(grpc_options) -> gRPCOptions:
+    grpc_options = deepcopy(grpc_options) or gRPCOptions()
+
+    if grpc_options.request_timeout_s or RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S:
+        grpc_options.request_timeout_s = (
+            grpc_options.request_timeout_s or RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S
+        )
+
+    return grpc_options

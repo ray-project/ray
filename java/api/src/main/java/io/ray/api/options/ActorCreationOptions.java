@@ -27,6 +27,7 @@ public class ActorCreationOptions extends BaseTaskOptions {
   public final String namespace;
   public final int maxPendingCalls;
   public final boolean isAsync;
+  public final boolean executeOutOfOrder;
 
   private ActorCreationOptions(
       String name,
@@ -57,6 +58,7 @@ public class ActorCreationOptions extends BaseTaskOptions {
     this.namespace = namespace;
     this.maxPendingCalls = maxPendingCalls;
     this.isAsync = isAsync;
+    this.executeOutOfOrder = isAsync;
   }
 
   /** The inner class for building ActorCreationOptions. */

@@ -1,6 +1,7 @@
 # Bazel build
 # C/C++ documentation: https://docs.bazel.build/versions/master/be/c-cpp.html
 
+load("//bazel:python.bzl", "py_test_module_list")
 load("//bazel:ray.bzl", "COPTS")
 
 cc_binary(
@@ -56,12 +57,12 @@ cc_library(
     strip_include_prefix = "include",
     visibility = ["//visibility:public"],
     deps = [
-        "//src/ray/gcs/gcs_client:global_state_accessor_lib",
         "//:ray_common",
         "//src/ray/core_worker:core_worker_lib",
+        "//src/ray/gcs/gcs_client:global_state_accessor_lib",
         "//src/ray/util",
-        "//src/ray/util:process",
         "//src/ray/util:cmd_line_utils",
+        "//src/ray/util:process",
         "@boost//:callable_traits",
         "@boost//:dll",
         "@com_google_absl//absl/flags:flag",
@@ -107,6 +108,15 @@ cc_binary(
             "@nlohmann_json",
         ],
     }),
+)
+
+filegroup(
+    name = "ray_cpp_pkg_files",
+    srcs = [
+        "default_worker",
+        "libray_api.so",
+    ],
+    visibility = ["//visibility:private"],
 )
 
 genrule(
@@ -163,7 +173,7 @@ genrule(
         echo "$$WORK_DIR" > $@
     """,
     local = 1,
-    visibility = ["//visibility:public"],
+    visibility = ["//visibility:private"],
 )
 
 # test
@@ -200,8 +210,8 @@ cc_test(
     data = [
         "counter.so",
         "plus.so",
-        "ray_cpp_pkg",
         "src/ray/test/cluster/test_cross_language_invocation.py",
+        ":ray_cpp_pkg_files",
     ],
     linkstatic = True,
     tags = ["team:core"],
@@ -223,7 +233,7 @@ cc_test(
     ],
     copts = COPTS,
     data = [
-        "ray_cpp_pkg",
+        ":ray_cpp_pkg_files",
         "//java:libio_ray_ray_test.jar",
     ],
     linkstatic = True,
@@ -391,8 +401,6 @@ cc_binary(
         "@nlohmann_json",
     ],
 )
-
-load("//bazel:python.bzl", "py_test_module_list")
 
 py_test_module_list(
     size = "medium",

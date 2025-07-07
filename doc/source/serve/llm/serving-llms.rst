@@ -907,6 +907,20 @@ An example config is shown below:
       name: llm_app
       route_prefix: "/"
 
+
+There are some differences between `vllm serve` cli and Ray Serve LLM endpoint behavior. How do I work around that?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+We have opened an issue to track and fix this: https://github.com/ray-project/ray/issues/53533. Please add comments to this issue thread if you are facing problems that fall under this category. We have identified the following example issues so far: 
+
+- Tool calling is not supported in the same way it is supported in `vllm serve` CLI. This is due to the extra logical pieces of code that map CLI args to extra layers in the API server critical path. 
+
+- vLLM has a different critical path for dealing with the tokenizer of Mistral models. This logic has not been copied over to Ray Serve LLM, because we want to find a more maintainable solution.
+
+- Some sampling parameters, like `max_completion_tokens`, are supported differently in Ray Serve LLM and `vllm serve` CLI.
+
+
+
 Usage Data Collection
 --------------------------
 We collect usage data to improve Ray Serve LLM.

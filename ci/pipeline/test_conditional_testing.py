@@ -24,6 +24,7 @@ python/ray/llm/llm.py: lint llm
 python/ray/workflow/workflow.py: lint workflow
 python/ray/tune/tune.py: lint ml train tune linux_wheels
 python/ray/train/train.py: lint ml train linux_wheels
+python/ray/util/dask/dask.py: lint python dask
 .buildkite/ml.rayci.yml: lint ml train tune
 rllib/rllib.py: lint rllib rllib_gpu rllib_directly
 
@@ -54,8 +55,9 @@ docker/Dockerfile.ray: lint docker linux_wheels
 doc/code.py: lint doc
 doc/example.ipynb: lint doc
 doc/tutorial.rst: lint doc
-doc/source/cluster/kubernetes/doc_sanitize.cfg: lint k8s_doc
-ci/k8s/run-kuberay-doc-tests.sh: lint k8s_doc
+.vale.ini: lint doc
+.vale/styles/config/vocabularies/Core/accept.txt: lint doc
+
 ci/docker/doctest.build.Dockerfile: lint
 release/requirements.txt: lint release_tests
 release/requirements_buildkite.txt: lint tools

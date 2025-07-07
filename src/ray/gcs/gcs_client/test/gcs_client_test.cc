@@ -256,6 +256,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     // the scenario of registration failure, we set the address to an illegal value.
     if (!is_detached) {
       rpc::Address address;
+      address.set_worker_id(WorkerID::FromRandom().Binary());
       address.set_ip_address("");
       message.mutable_caller_address()->CopyFrom(address);
     }

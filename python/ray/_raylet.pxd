@@ -126,7 +126,6 @@ cdef class CoreWorker:
         c_bool is_driver
         object async_thread
         object async_event_loop
-        object plasma_event_handler
         object job_config
         object current_runtime_env
         c_bool is_local_mode

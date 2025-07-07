@@ -35,17 +35,13 @@ void GcsWorkerManager::HandleReportWorkerFailure(
     rpc::ReportWorkerFailureRequest request,
     rpc::ReportWorkerFailureReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  const rpc::Address worker_address = request.worker_failure().worker_address();
-  const auto worker_id = WorkerID::FromBinary(worker_address.worker_id());
+  const auto worker_id =
+      WorkerID::FromBinary(request.worker_failure().worker_address().worker_id());
   GetWorkerInfo(
       worker_id,
-      {[this,
-        reply,
-        send_reply_callback,
-        worker_id = std::move(worker_id),
-        request = std::move(request),
-        worker_address = std::move(worker_address)](
+      {[this, reply, send_reply_callback, worker_id, request = std::move(request)](
            const std::optional<rpc::WorkerTableData> &result) {
+         const auto &worker_address = request.worker_failure().worker_address();
          const auto node_id = NodeID::FromBinary(worker_address.raylet_id());
          std::string message =
              absl::StrCat("Reporting worker exit, worker id = ",

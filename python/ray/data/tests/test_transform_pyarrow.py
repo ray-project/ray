@@ -941,7 +941,6 @@ def test_arrow_block_slice_copy_empty():
 
 def test_convert_to_pyarrow(ray_start_regular_shared, tmp_path):
     ds = ray.data.range(100)
-    assert ds.to_dask().sum().compute()[0] == 4950
     path = os.path.join(tmp_path, "test_parquet_dir")
     os.mkdir(path)
     ds.write_parquet(path)

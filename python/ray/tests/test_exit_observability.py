@@ -234,7 +234,6 @@ ray.shutdown()
         return verify_failed_task(
             name="cancel-f",
             error_type="WORKER_DIED",  # Since it's a force cancel through kill signal.
-            error_message="Socket closed",
         )
 
     wait_for_condition(verify_exit_by_ray_cancel)

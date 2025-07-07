@@ -222,6 +222,7 @@ def train_fn(config):
                 world_rank=train_context.get_world_rank(),
                 world_size=train_context.get_world_size(),
                 data="barrier",
+                caller_method_name="caller_method_name",
             )
         )
 

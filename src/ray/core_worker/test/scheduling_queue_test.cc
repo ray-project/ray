@@ -85,14 +85,7 @@ TEST(SchedulingQueueTest, TestTaskEvents) {
   auto pool_manager =
       std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
 
-  ActorSchedulingQueue queue(io_service,
-                             waiter,
-                             task_event_buffer,
-                             pool_manager,
-                             /*fiber_state_manager=*/nullptr,
-                             /*is_asyncio=*/false,
-                             /*fiber_max_concurrency=*/1,
-                             /*concurrency_groups=*/{});
+  ActorSchedulingQueue queue(io_service, waiter, task_event_buffer, pool_manager);
   int n_ok = 0;
   int n_rej = 0;
   auto fn_ok = [&n_ok](const TaskSpecification &task_spec,
@@ -163,14 +156,7 @@ TEST(SchedulingQueueTest, TestInOrder) {
   auto pool_manager =
       std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
 
-  ActorSchedulingQueue queue(io_service,
-                             waiter,
-                             task_event_buffer,
-                             pool_manager,
-                             /*fiber_state_manager=*/nullptr,
-                             /*is_asyncio=*/false,
-                             /*fiber_max_concurrency=*/1,
-                             /*concurrency_groups=*/{});
+  ActorSchedulingQueue queue(io_service, waiter, task_event_buffer, pool_manager);
   int n_ok = 0;
   int n_rej = 0;
   auto fn_ok = [&n_ok](const TaskSpecification &task_spec,
@@ -206,14 +192,7 @@ TEST(SchedulingQueueTest, TestWaitForObjects) {
   auto pool_manager =
       std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
 
-  ActorSchedulingQueue queue(io_service,
-                             waiter,
-                             task_event_buffer,
-                             pool_manager,
-                             /*fiber_state_manager=*/nullptr,
-                             /*is_asyncio=*/false,
-                             /*fiber_max_concurrency=*/1,
-                             /*concurrency_groups=*/{});
+  ActorSchedulingQueue queue(io_service, waiter, task_event_buffer, pool_manager);
   std::atomic<int> n_ok(0);
   std::atomic<int> n_rej(0);
 
@@ -264,14 +243,7 @@ TEST(SchedulingQueueTest, TestWaitForObjectsNotSubjectToSeqTimeout) {
   auto pool_manager =
       std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
 
-  ActorSchedulingQueue queue(io_service,
-                             waiter,
-                             task_event_buffer,
-                             pool_manager,
-                             /*fiber_state_manager=*/nullptr,
-                             /*is_asyncio=*/false,
-                             /*fiber_max_concurrency=*/1,
-                             /*concurrency_groups=*/{});
+  ActorSchedulingQueue queue(io_service, waiter, task_event_buffer, pool_manager);
   std::atomic<int> n_ok(0);
   std::atomic<int> n_rej(0);
 
@@ -314,14 +286,7 @@ TEST(SchedulingQueueTest, TestOutOfOrder) {
   auto pool_manager =
       std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
 
-  ActorSchedulingQueue queue(io_service,
-                             waiter,
-                             task_event_buffer,
-                             pool_manager,
-                             /*fiber_state_manager=*/nullptr,
-                             /*is_asyncio=*/false,
-                             /*fiber_max_concurrency=*/1,
-                             /*concurrency_groups=*/{});
+  ActorSchedulingQueue queue(io_service, waiter, task_event_buffer, pool_manager);
   int n_ok = 0;
   int n_rej = 0;
   auto fn_ok = [&n_ok](const TaskSpecification &task_spec,
@@ -356,14 +321,7 @@ TEST(SchedulingQueueTest, TestSeqWaitTimeout) {
   auto pool_manager =
       std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
 
-  ActorSchedulingQueue queue(io_service,
-                             waiter,
-                             task_event_buffer,
-                             pool_manager,
-                             /*fiber_state_manager=*/nullptr,
-                             /*is_asyncio=*/false,
-                             /*fiber_max_concurrency=*/1,
-                             /*concurrency_groups=*/{});
+  ActorSchedulingQueue queue(io_service, waiter, task_event_buffer, pool_manager);
   std::atomic<int> n_ok(0);
   std::atomic<int> n_rej(0);
 
@@ -404,14 +362,7 @@ TEST(SchedulingQueueTest, TestSkipAlreadyProcessedByClient) {
   auto pool_manager =
       std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
 
-  ActorSchedulingQueue queue(io_service,
-                             waiter,
-                             task_event_buffer,
-                             pool_manager,
-                             /*fiber_state_manager=*/nullptr,
-                             /*is_asyncio=*/false,
-                             /*fiber_max_concurrency=*/1,
-                             /*concurrency_groups=*/{});
+  ActorSchedulingQueue queue(io_service, waiter, task_event_buffer, pool_manager);
   std::atomic<int> n_ok(0);
   std::atomic<int> n_rej(0);
   auto fn_ok = [&n_ok](const TaskSpecification &task_spec,

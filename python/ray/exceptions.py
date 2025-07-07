@@ -444,8 +444,8 @@ class ActorUnavailableError(RayActorError):
     def __init__(self, error_message: str, actor_id: Optional[bytes]):
         actor_id = ActorID(actor_id).hex() if actor_id is not None else None
         error_msg = (
-            f"The actor {actor_id} is unavailable: {error_message}. The task may or may"
-            "not have been executed on the actor."
+            f"The actor {actor_id} is unavailable: {error_message}. The task may or "
+            "may not have been executed on the actor."
         )
         actor_init_failed = False
         preempted = False

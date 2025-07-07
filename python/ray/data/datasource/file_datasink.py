@@ -6,6 +6,7 @@ from urllib.parse import urlparse
 from ray._private.arrow_utils import add_creatable_buckets_param_if_s3_uri
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.interfaces import TaskContext
+from ray.data._internal.planner.plan_write_op import WRITE_UUID_KWARG_NAME
 from ray.data._internal.savemode import SaveMode
 from ray.data._internal.util import (
     RetryingPyFileSystem,
@@ -207,7 +208,11 @@ class RowBasedFileDatasink(_FileDatasink):
     def write_block(self, block: BlockAccessor, block_index: int, ctx: TaskContext):
         for row_index, row in enumerate(block.iter_rows(public_row_format=False)):
             filename = self.filename_provider.get_filename_for_row(
-                row, ctx.task_idx, block_index, row_index
+                row,
+                ctx.kwargs[WRITE_UUID_KWARG_NAME],
+                ctx.task_idx,
+                block_index,
+                row_index,
             )
             write_path = posixpath.join(self.path, filename)
             logger.debug(f"Writing {write_path} file.")
@@ -260,7 +265,7 @@ class BlockBasedFileDatasink(_FileDatasink):
 
     def write_block(self, block: BlockAccessor, block_index: int, ctx: TaskContext):
         filename = self.filename_provider.get_filename_for_block(
-            block, ctx.task_idx, block_index
+            block, ctx.kwargs[WRITE_UUID_KWARG_NAME], ctx.task_idx, block_index
         )
         write_path = posixpath.join(self.path, filename)
 

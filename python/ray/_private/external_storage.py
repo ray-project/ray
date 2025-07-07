@@ -150,7 +150,7 @@ class ExternalStorage(metaclass=abc.ABCMeta):
         keys = []
         offset = 0
         ray_object_pairs = self._get_objects_from_store(object_refs)
-        for ref, (buf, metadata), owner_address in zip(
+        for ref, (buf, metadata, _), owner_address in zip(
             object_refs, ray_object_pairs, owner_addresses
         ):
             address_len = len(owner_address)
