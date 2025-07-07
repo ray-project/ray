@@ -109,8 +109,9 @@ def load(config_path: str, mode: str = ""):
     """Load a dependency sets from a config file."""
     manager = DependencySetManager(config_path=config_path)
     if mode == "single-rule":
-    for _, depconfig in manager.config.depsets.items():
-        execute_config(depconfig.operation, depconfig)
+        execute_single(manager.config.depsets[0])
+    else:
+        execute_all(manager.config.depsets)
 
 def compile(
     constraints: List[str],
@@ -136,6 +137,7 @@ def compile(
         click.echo(f"Error: {str(e)}", err=True)
 >>>>>>> reducing raydepsets to compile operations
 
+<<<<<<< HEAD
 if __name__ == "__main__":
     cli()
 =======
@@ -143,6 +145,9 @@ import click
 
 
 @click.group(name="depsets")
+=======
+@click.group(name="raydepsets")
+>>>>>>> code cleanup
 @click.pass_context
 def cli(ctx):
     """Manage Python dependency sets."""
