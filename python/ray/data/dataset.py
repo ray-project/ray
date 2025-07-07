@@ -778,7 +778,7 @@ class Dataset:
         logical_plan = LogicalPlan(map_batches_op, self.context)
         return Dataset(plan, logical_plan)
 
-    @PublicAPI(api_group=EXPRESSION_API_GROUP)
+    @PublicAPI(api_group=EXPRESSION_API_GROUP, stability="alpha")
     def with_columns(
         self,
         exprs: List[Expr],
@@ -793,7 +793,7 @@ class Dataset:
         Examples:
 
             >>> import ray
-            >>> import ray.data.expressions as col
+            >>> from ray.data.expressions import col
             >>> ds = ray.data.range(100)
             >>> ds.with_columns([(col("id") * 2).alias("new_id"), (col("id") * 3).alias("new_id_2")]).schema()
             Column  Type

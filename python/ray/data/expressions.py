@@ -9,10 +9,13 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.compute as pc
 
+from ray.util.annotations import DeveloperAPI
+
 
 # ──────────────────────────────────────
 #  Basic expression node definitions
 # ──────────────────────────────────────
+@DeveloperAPI
 class Expr:  # Base class – all expression nodes inherit from this
     # Binary/boolean operator overloads
     def _bin(self, other: Any, op: str) -> "Expr":
@@ -60,16 +63,19 @@ class Expr:  # Base class – all expression nodes inherit from this
         return AliasExpr(self, name)
 
 
+@DeveloperAPI
 @dataclass(frozen=True, eq=False)
 class ColumnExpr(Expr):
     name: str
 
 
+@DeveloperAPI
 @dataclass(frozen=True, eq=False)
 class LiteralExpr(Expr):
     value: Any
 
 
+@DeveloperAPI
 @dataclass(frozen=True, eq=False)
 class BinaryExpr(Expr):
     op: str
@@ -77,6 +83,7 @@ class BinaryExpr(Expr):
     right: Expr
 
 
+@DeveloperAPI
 @dataclass(frozen=True, eq=False)
 class AliasExpr(Expr):
     expr: Expr
@@ -86,11 +93,15 @@ class AliasExpr(Expr):
 # ──────────────────────────────────────
 #  User helpers
 # ──────────────────────────────────────
+
+
+@DeveloperAPI
 def col(name: str) -> ColumnExpr:
     """Reference an existing column."""
     return ColumnExpr(name)
 
 
+@DeveloperAPI
 def lit(value: Any) -> LiteralExpr:
     """Create a scalar literal expression (e.g. lit(1))."""
     return LiteralExpr(value)
@@ -158,6 +169,7 @@ def _eval_expr_recursive(expr: Expr, batch, ops: Dict[str, Callable]) -> Any:
     raise TypeError(f"Unsupported expression node: {type(expr).__name__}")
 
 
+@DeveloperAPI
 def eval_expr(expr: Expr, batch) -> Any:
     """Recursively evaluate *expr* against a batch of the appropriate type."""
     if isinstance(batch, pd.DataFrame):
