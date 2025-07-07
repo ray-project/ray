@@ -307,6 +307,7 @@ cloudpickle==2.2.0 ; python_version < "3.12"
     #   mlflow-skinny
     #   pymars
     #   statsforecast
+    #   tensordict
     #   tensorflow-probability
 cma==3.2.2
     # via nevergrad
@@ -790,6 +791,7 @@ importlib-metadata==6.11.0
     #   myst-nb
     #   opentelemetry-api
     #   pytest-virtualenv
+    #   tensordict
 importlib-resources==5.13.0
     # via
     #   etils
@@ -1261,6 +1263,7 @@ numpy==1.26.4
     #   supersuit
     #   tensorboard
     #   tensorboardx
+    #   tensordict
     #   tensorflow
     #   tensorflow-datasets
     #   tensorflow-probability
@@ -1356,7 +1359,9 @@ opt-einsum==3.3.0
 optuna==4.1.0
     # via -r python/requirements/ml/tune-requirements.txt
 orjson==3.9.10
-    # via gradio
+    # via
+    #   gradio
+    #   tensordict
 ormsgpack==1.7.0
     # via -r python/requirements/ml/rllib-requirements.txt
 packaging==23.0
@@ -1404,6 +1409,7 @@ packaging==23.0
     #   sphinx
     #   statsmodels
     #   tensorboardx
+    #   tensordict
     #   tensorflow
     #   torchmetrics
     #   transformers
@@ -2177,6 +2183,8 @@ tensorboardx==2.6.2.2
     #   -r python/requirements.txt
     #   -r python/requirements/test-requirements.txt
     #   pytorch-lightning
+tensordict==0.8.3
+    # via -r python/requirements/test-requirements.txt
 tensorflow==2.15.1 ; python_version < "3.12" and (sys_platform != "darwin" or platform_machine != "arm64")
     # via -r python/requirements/ml/dl-cpu-requirements.txt
 tensorflow-datasets==4.9.3 ; python_version < "3.12"
@@ -2251,6 +2259,7 @@ torch==2.3.0
     #   pyro-ppl
     #   pytorch-lightning
     #   pytorch-ranger
+    #   tensordict
     #   timm
     #   torch-optimizer
     #   torchmetrics
