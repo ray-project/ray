@@ -66,9 +66,7 @@ class RandomIntRowDatasource(Datasource):
             )
             read_tasks.append(
                 ReadTask(
-                    lambda count=count: [
-                        make_block(count)
-                    ],
+                    lambda count=count: [make_block(count)],
                     meta,
                     schema=schema,
                 )
