@@ -272,7 +272,9 @@ def unify_schemas(
         updated_fields = []
         for field in schema:
             if pa.types.is_struct(field.type):
-                updated_field = _align_tensor_types_in_struct_field(field, arrow_tensor_types)
+                updated_field = _align_tensor_types_in_struct_field(
+                    field, arrow_tensor_types
+                )
                 updated_fields.append(updated_field)
             else:
                 updated_fields.append(field)
@@ -361,15 +363,20 @@ def _backfill_missing_fields(
     block_length: int,
 ) -> "pyarrow.StructArray":
     import pyarrow as pa
-    from ray.air.util.tensor_extensions.arrow import get_arrow_extension_tensor_types, get_arrow_extension_fixed_shape_tensor_types
-    from ray.data.extensions import ArrowTensorArray
+
+    from ray.air.util.tensor_extensions.arrow import (
+        get_arrow_extension_fixed_shape_tensor_types,
+        get_arrow_extension_tensor_types,
+    )
 
     # Flatten chunked arrays into a single array if necessary
     if isinstance(column, pa.ChunkedArray):
         column = pa.concat_arrays(column.chunks)
 
     # Extract current struct fields
-    current_fields = {field.name: column.field(i) for i, field in enumerate(column.type)}
+    current_fields = {
+        field.name: column.field(i) for i, field in enumerate(column.type)
+    }
 
     unified_field_names = {field.name for field in unified_struct_type}
     assert set(current_fields.keys()).issubset(
@@ -400,7 +407,9 @@ def _backfill_missing_fields(
                 )
 
             # Handle tensor extension type mismatches
-            elif isinstance(field_type, tensor_types) and isinstance(current_array.type, tensor_types):
+            elif isinstance(field_type, tensor_types) and isinstance(
+                current_array.type, tensor_types
+            ):
                 # If types differ, convert fixed shape tensor to variable shaped tensor
                 if (
                     str(current_array.type) != str(field_type)
@@ -426,7 +435,6 @@ def _backfill_missing_fields(
 
     # Rebuild struct with aligned fields and unified struct type
     return pa.StructArray.from_arrays(aligned_fields, fields=unified_struct_type)
-
 
 
 def _align_struct_fields(
@@ -515,10 +523,12 @@ def shuffle(block: "pyarrow.Table", seed: Optional[int] = None) -> "pyarrow.Tabl
     return take_table(block, indices)
 
 
-def _align_tensor_types_in_struct_field(field: "pyarrow.Field", tensor_types) -> "pyarrow.Field":
+def _align_tensor_types_in_struct_field(
+    field: "pyarrow.Field", tensor_types
+) -> "pyarrow.Field":
     import pyarrow as pa
+
     from ray.air.util.tensor_extensions.arrow import (
-        ArrowTensorType,
         ArrowVariableShapedTensorType,
         get_arrow_extension_fixed_shape_tensor_types,
     )
@@ -541,7 +551,9 @@ def _align_tensor_types_in_struct_field(field: "pyarrow.Field", tensor_types) ->
                 subfields.append(subfield)
         elif pa.types.is_struct(subfield.type):
             # Recurse for nested struct
-            subfields.append(_align_tensor_types_in_struct_field(subfield, tensor_types))
+            subfields.append(
+                _align_tensor_types_in_struct_field(subfield, tensor_types)
+            )
         else:
             subfields.append(subfield)
 
@@ -581,7 +593,6 @@ def concat(
             if pa.types.is_list(col_type) and pa.types.is_null(col_type.value_type):
                 cols_with_null_list.add(col_name)
 
-    
     # If the result contains pyarrow schemas, unify them
     schemas_to_unify = [b.schema for b in blocks]
     try:

@@ -1531,6 +1531,7 @@ def test_mixed_tensor_types_in_struct_fixed():
     """Test that the fix works for mixed tensor types in structs."""
     import numpy as np
     import pyarrow as pa
+
     from ray.data.extensions import ArrowTensorArray, ArrowVariableShapedTensorArray
 
     # Block 1: Struct with fixed-shape tensor
@@ -1539,32 +1540,27 @@ def test_mixed_tensor_types_in_struct_fixed():
     value_array1 = pa.array([1, 2], type=pa.int64())
 
     struct_array1 = pa.StructArray.from_arrays(
-        [tensor_array1, value_array1],
-        names=["tensor", "value"]
+        [tensor_array1, value_array1], names=["tensor", "value"]
     )
 
-    t1 = pa.table({
-        "id": [1, 2],
-        "struct": struct_array1
-    })
+    t1 = pa.table({"id": [1, 2], "struct": struct_array1})
 
     # Block 2: Struct with variable-shaped tensor
-    tensor_data2 = np.array([
-        np.ones((3, 3), dtype=np.float32),
-        np.zeros((1, 4), dtype=np.float32),
-    ], dtype=object)
+    tensor_data2 = np.array(
+        [
+            np.ones((3, 3), dtype=np.float32),
+            np.zeros((1, 4), dtype=np.float32),
+        ],
+        dtype=object,
+    )
     tensor_array2 = ArrowVariableShapedTensorArray.from_numpy(tensor_data2)
     value_array2 = pa.array([3, 4], type=pa.int64())
 
     struct_array2 = pa.StructArray.from_arrays(
-        [tensor_array2, value_array2],
-        names=["tensor", "value"]
+        [tensor_array2, value_array2], names=["tensor", "value"]
     )
 
-    t2 = pa.table({
-        "id": [3, 4],
-        "struct": struct_array2
-    })
+    t2 = pa.table({"id": [3, 4], "struct": struct_array2})
 
     # This should work with our fix
     t3 = concat([t1, t2])
@@ -1574,15 +1570,15 @@ def test_mixed_tensor_types_in_struct_fixed():
     # Verify the result has the expected structure
     assert "id" in t3.column_names
     assert "struct" in t3.column_names
-    
+
     # Verify struct field contains both types of tensors
     struct_data = t3.column("struct").to_pylist()
     assert len(struct_data) == 4
-    
+
     # First two should be from the fixed-shape tensor struct
     assert struct_data[0]["value"] == 1
     assert struct_data[1]["value"] == 2
-    
+
     # Last two should be from the variable-shaped tensor struct
     assert struct_data[2]["value"] == 3
     assert struct_data[3]["value"] == 4
