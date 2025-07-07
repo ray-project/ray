@@ -337,8 +337,8 @@ class TestReservationOpResourceAllocator:
         o4 = LimitOperator(1, o3, DataContext.get_current())
 
         op_usages = {op: ExecutionResources.zero() for op in [o1, o2, o3, o4]}
-        op_internal_usage = {op: 0 for op in [o1, o2, o3, o4]}
-        op_outputs_usages = {op: 0 for op in [o1, o2, o3, o4]}
+        op_internal_usage = dict.fromkeys([o1, o2, o3, o4], 0)
+        op_outputs_usages = dict.fromkeys([o1, o2, o3, o4], 0)
 
         topo, _ = build_streaming_topology(o4, ExecutionOptions())
 
@@ -352,7 +352,7 @@ class TestReservationOpResourceAllocator:
             """Helper to check if operator can submit new tasks based on budget."""
             budget = allocator.get_budget(op)
             if budget is None:
-                return False
+                return True
             return op.incremental_resource_usage().satisfies_limit(budget)
 
         resource_manager = ResourceManager(
