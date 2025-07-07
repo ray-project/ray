@@ -597,13 +597,9 @@ def get_eligible_operators(
     eligible_ops: List[PhysicalOperator] = []
 
     for op, state in topology.items():
-        # Operator is considered being in task-submission back-pressure any
+        # Operator is considered being in task-submission back-pressure if any
         # back-pressure policy is violated
-        in_backpressure = False
-        for p in backpressure_policies:
-            if not p.can_add_input(op):
-                in_backpressure = True
-                break
+        in_backpressure = any(not p.can_add_input(op) for p in backpressure_policies)
 
         op_runnable = False
 
@@ -629,6 +625,7 @@ def get_eligible_operators(
         )
 
         # Signal whether op in backpressure for stats collections
+        # TODO(hchen): also report which policy triggers backpressure.
         op.notify_in_task_submission_backpressure(in_backpressure)
 
     # To ensure liveness, allow at least 1 operator to schedule tasks regardless of
