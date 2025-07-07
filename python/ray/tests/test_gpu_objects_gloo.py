@@ -5,12 +5,9 @@ import pytest
 import ray
 from ray.experimental.collective import create_collective_group
 from ray._private.custom_types import TensorTransportEnum
-import platform
 
-# tensordict is not supported on macos x86_64
-support_tensordict = sys.platform != "darwin" or (
-    sys.platform == "darwin" and platform.machine() == "arm64"
-)
+# tensordict is not supported on macos ci, so we skip the tests
+support_tensordict = sys.platform != "darwin"
 
 if support_tensordict:
     from tensordict import TensorDict
