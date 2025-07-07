@@ -39,7 +39,9 @@ def _fullname(attr):
 def _ignore(attr, extra_ignore):
     """Whether an attr should be ignored from annotation checking."""
     attr = _fullname(attr)
-    if "ray." not in attr or "._" in attr:
+    # We exclude ray.ObjectRef here since it is a C extension type and
+    # cannot have annotations
+    if "ray." not in attr or "._" in attr or attr == "ray.ObjectRef":
         return True
     for path in IGNORE_PATHS:
         if path in attr:
