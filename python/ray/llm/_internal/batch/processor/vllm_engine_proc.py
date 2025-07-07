@@ -161,8 +161,8 @@ def build_vllm_engine_processor(
                     # concurrency, start all instances without auto-scaling.
                     min_size=config.concurrency,
                     max_size=config.concurrency,
-                    max_tasks_in_flight_per_actor=max(
-                        config.max_concurrent_batches, DEFAULT_MAX_TASKS_IN_FLIGHT
+                    max_tasks_in_flight_per_actor=config.experimental.get(
+                        "max_tasks_in_flight_per_actor", DEFAULT_MAX_TASKS_IN_FLIGHT
                     ),
                 ),
                 # The number of running batches "per actor" in Ray Core level.

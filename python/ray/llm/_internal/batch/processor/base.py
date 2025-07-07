@@ -50,6 +50,13 @@ class ProcessorConfig(BaseModelExtended):
         description="The number of workers for data parallelism. Default to 1.",
     )
 
+    experimental: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="[Experimental] Experimental configurations."
+        "Supported keys:\n"
+        "`max_tasks_in_flight_per_actor`: The maximum number of tasks in flight per actor. Default to 4.",
+    )
+
     class Config:
         validate_assignment = True
         arbitrary_types_allowed = True
