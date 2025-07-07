@@ -20,6 +20,7 @@
 #include <string>
 
 #include "ray/core_worker/common.h"
+#include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
 
@@ -64,7 +65,7 @@ class ShutdownDependencies {
 };
 
 // Forward declaration to use existing WorkerType
-class CoreWorkerOptions;
+struct CoreWorkerOptions;
 
 /// Reasons for worker shutdown. Used for observability and debugging.
 enum class ShutdownReason : std::uint8_t {
@@ -280,7 +281,6 @@ class ShutdownCoordinator {
   // Dependencies and configuration
   std::shared_ptr<ShutdownDependencies> dependencies_;
   WorkerType worker_type_;
-  std::chrono::milliseconds graceful_timeout_ms_;
 
   /// Single atomic variable holding both state and reason.
   /// This design minimizes memory overhead and ensures atomic updates
