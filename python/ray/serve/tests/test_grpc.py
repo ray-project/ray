@@ -323,7 +323,10 @@ def test_grpc_proxy_on_draining_nodes(ray_cluster):
     serve.delete(name=app_name)
 
     wait_for_condition(
-        lambda: len(list_actors(address=cluster.address, filters=[("STATE", "=", "ALIVE")])) == 3,
+        lambda: len(
+            list_actors(address=cluster.address, filters=[("STATE", "=", "ALIVE")])
+        )
+        == 3,
     )
 
     # Ensures ListApplications method on the head node is succeeding.
