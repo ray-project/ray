@@ -1652,7 +1652,7 @@ std::vector<ObjectID> ExtractPlasmaDependencies(const TaskSpecification &spec) {
   for (size_t i = 0; i < spec.NumArgs(); i++) {
     if (spec.ArgByRef(i)) {
       plasma_dependencies.push_back(spec.ArgObjectId(i));
-    } else if (spec.IsInlinedGPUObject(i)) {
+    } else if (spec.ArgTensorTransport(i) != rpc::TensorTransport::OBJECT_STORE) {
       // GPU objects are inlined but the actual data lives on the remote actor.
       // Therefore, we apply the reference counting protocol used for plasma objects
       // instead of decrementing the ref count upon inlining.

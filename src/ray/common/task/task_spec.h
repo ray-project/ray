@@ -392,9 +392,6 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   /// Return the ObjectRefs that were inlined in this task argument.
   const std::vector<rpc::ObjectReference> ArgInlinedRefs(size_t arg_index) const;
 
-  /// Return true if the argument at the given index is an inlined GPU object.
-  bool IsInlinedGPUObject(size_t arg_index) const;
-
   /// Return the scheduling class of the task. The scheduler makes a best effort
   /// attempt to fairly dispatch tasks of different classes, preventing
   /// starvation of any single class of task.

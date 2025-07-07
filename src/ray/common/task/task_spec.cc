@@ -393,11 +393,6 @@ std::vector<rpc::ObjectReference> TaskSpecification::GetDependencies() const {
   return dependencies;
 }
 
-bool TaskSpecification::IsInlinedGPUObject(size_t arg_index) const {
-  return message_->args(arg_index).is_inlined() &&
-         ArgTensorTransport(arg_index) != rpc::TensorTransport::OBJECT_STORE;
-}
-
 const ResourceSet &TaskSpecification::GetRequiredPlacementResources() const {
   return *required_placement_resources_;
 }
