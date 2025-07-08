@@ -7,7 +7,6 @@ import httpx
 import pytest
 
 import ray
-import ray._private.state
 import ray.actor
 from ray import serve
 from ray._common.test_utils import wait_for_condition
