@@ -31,9 +31,6 @@ JSON_FILE_EXTENSIONS = [
     "jsonl.lz4",
 ]
 
-# TODO(rliaw): Arbitrarily chosen. Make this configurable
-_DEFAULT_JSONL_ROWS_PER_CHUNK = 10000
-
 
 class ArrowJSONDatasource(FileBasedDatasource):
     """JSON datasource, for reading and writing JSON and JSONL files."""
