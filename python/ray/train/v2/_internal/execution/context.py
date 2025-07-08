@@ -285,6 +285,7 @@ def get_train_context() -> Union[TrainContext, "LocalTestTrainContext"]:
     with _context_lock:
         if _train_context is None:
             if os.environ.get(ALLOW_LOCAL_TRAIN_FUNCTION_RUN) == "1":
+                logger.warning("Local test mode is enabled. We are only using a single GPU or CPU.")
                 return _local_train_context
             raise RuntimeError("TrainContext has not been initialized.")
         return _train_context

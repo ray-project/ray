@@ -36,67 +36,6 @@ _TORCH_AMP_DEPRECATION_MESSAGE = (
 
 @PublicAPI(stability="alpha")
 def get_device() -> torch.device:
-    """Gets the correct torch device configured for this process.
-
-    Returns the torch device for the current worker. If more than 1 GPU is
-    requested per worker, returns the device with the minimal device index.
-
-    .. note::
-
-        If you requested multiple GPUs per worker, and want to get
-        the full list of torch devices, please use
-        :meth:`~ray.train.torch.get_devices`.
-
-    Assumes that `CUDA_VISIBLE_DEVICES` is set and is a
-    superset of the `ray.get_gpu_ids()`.
-
-    Examples:
-
-        Example: Launched 2 workers on the current node, each with 1 GPU
-
-        .. testcode::
-            :skipif: True
-
-            os.environ["CUDA_VISIBLE_DEVICES"] = "2,3"
-            ray.get_gpu_ids() == [2]
-            torch.cuda.is_available() == True
-            get_device() == torch.device("cuda:0")
-
-        Example: Launched 4 workers on the current node, each with 1 GPU
-
-        .. testcode::
-            :skipif: True
-
-            os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3"
-            ray.get_gpu_ids() == [2]
-            torch.cuda.is_available() == True
-            get_device() == torch.device("cuda:2")
-
-        Example: Launched 2 workers on the current node, each with 2 GPUs
-
-        .. testcode::
-            :skipif: True
-
-            os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3"
-            ray.get_gpu_ids() == [2,3]
-            torch.cuda.is_available() == True
-            get_device() == torch.device("cuda:2")
-
-
-        You can move a model to device by:
-
-        .. testcode::
-            :skipif: True
-
-            model.to(ray.train.torch.get_device())
-
-        Instead of manually checking the device type:
-
-        .. testcode::
-            :skipif: True
-
-            model.to("cuda" if torch.cuda.is_available() else "cpu")
-    """
     if ray.train.get_context().is_local_test():
         return (
             torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
@@ -185,10 +124,6 @@ def prepare_model(
             initialization if ``parallel_strategy`` is set to "ddp"
             or "fsdp", respectively.
     """
-    if ray.train.get_context().is_local_test():
-        return prepare_model_for_local_test(
-            model, move_to_device, parallel_strategy, parallel_strategy_kwargs
-        )
 
     if parallel_strategy == "fsdp" and Version(torch.__version__) < Version("1.11.0"):
         raise ImportError(
