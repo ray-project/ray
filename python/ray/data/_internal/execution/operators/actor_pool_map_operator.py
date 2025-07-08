@@ -9,6 +9,10 @@ from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
 
 import ray
 from ray.actor import ActorHandle
+from ray.anyscale.data._internal.node_trackers.actor_location import (
+    ActorLocationTracker,
+    get_or_create_actor_location_tracker,
+)
 from ray.core.generated import gcs_pb2
 from ray.data._internal.compute import ActorPoolStrategy
 from ray.data._internal.execution.autoscaler import AutoscalingActorPool
@@ -155,7 +159,7 @@ class ActorPoolMapOperator(MapOperator):
             ),
             _enable_actor_pool_on_exit_hook=self.data_context._enable_actor_pool_on_exit_hook,
         )
-
+        self._actor_location_tracker = get_or_create_actor_location_tracker()
         self._actor_task_selector = self._create_task_selector(self._actor_pool)
         # A queue of bundles awaiting dispatch to actors.
         self._bundle_queue = create_bundle_queue()
@@ -191,7 +195,7 @@ class ActorPoolMapOperator(MapOperator):
         super().start(options)
 
         # Create the actor workers and add them to the pool.
-        self._cls = ray.remote(**self._ray_remote_args)(self.get_cls())
+        self._cls = ray.remote(**self._ray_remote_args)(_MapWorker)
         self._actor_pool.scale(
             ActorPoolScalingRequest(
                 delta=self._actor_pool.min_size(), reason="scaling to min size"
@@ -223,16 +227,6 @@ class ActorPoolMapOperator(MapOperator):
     def should_add_input(self) -> bool:
         return self._actor_pool.num_free_task_slots() > 0
 
-    def get_cls(self):
-        return _MapWorker
-
-    def get_actor_constructor_args(self):
-        return {
-            "ctx": self.data_context,
-            "src_fn_name": self.name,
-            "map_transformer": self._map_transformer,
-        }
-
     def _start_actor(
         self, labels: Dict[str, str], logical_actor_id: str
     ) -> Tuple[ActorHandle, ObjectRef]:
@@ -245,11 +239,18 @@ class ActorPoolMapOperator(MapOperator):
             A tuple of the actor handle and the object ref to the actor's location.
         """
         assert self._cls is not None
+        ctx = self.data_context
         if self._ray_remote_args_fn:
             self._refresh_actor_cls()
         actor = self._cls.options(
             _labels={self._OPERATOR_ID_LABEL_KEY: self.id, **labels}
-        ).remote(logical_actor_id=logical_actor_id, **self.get_actor_constructor_args())
+        ).remote(
+            ctx=ctx,
+            logical_actor_id=logical_actor_id,
+            src_fn_name=self.name,
+            map_transformer=self._map_transformer,
+            actor_location_tracker=self._actor_location_tracker,
+        )
         res_ref = actor.get_location.options(name=f"{self.name}.get_location").remote()
 
         def _task_done_callback(res_ref):
@@ -342,7 +343,7 @@ class ActorPoolMapOperator(MapOperator):
         for k, v in new_remote_args.items():
             remote_args[k] = v
             new_and_overriden_remote_args[k] = v
-        self._cls = ray.remote(**remote_args)(self.get_cls())
+        self._cls = ray.remote(**remote_args)(_MapWorker)
         return new_and_overriden_remote_args
 
     def all_inputs_done(self):
@@ -494,6 +495,7 @@ class _MapWorker:
         src_fn_name: str,
         map_transformer: MapTransformer,
         logical_actor_id: str,
+        actor_location_tracker: ActorLocationTracker,
     ):
         DataContext._set_current(ctx)
         self.src_fn_name: str = src_fn_name
@@ -501,6 +503,17 @@ class _MapWorker:
         # Initialize state for this actor.
         self._map_transformer.init()
         self._logical_actor_id = logical_actor_id
+        self.update_actor_location_map(actor_location_tracker)
+
+    def update_actor_location_map(
+        self,
+        actor_location_tracker: ActorLocationTracker,
+    ) -> None:
+        ray.get(
+            actor_location_tracker.update_actor_location.remote(
+                self._logical_actor_id, ray.get_runtime_context().get_node_id()
+            )
+        )
 
     def get_location(self) -> NodeIdStr:
         return ray.get_runtime_context().get_node_id()

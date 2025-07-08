@@ -22,7 +22,7 @@ class BundleQueue(abc.ABC):
         ...
 
     @abc.abstractmethod
-    def pop(self) -> Optional["RefBundle"]:
+    def pop(self) -> "RefBundle":
         """Remove and return the head of the queue.
 
         Raises:

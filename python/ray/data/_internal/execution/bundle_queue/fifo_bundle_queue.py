@@ -56,7 +56,7 @@ class FIFOBundleQueue(BundleQueue):
         self._nbytes += bundle.size_bytes()
         self._num_bundles += 1
 
-    def pop(self) -> Optional["RefBundle"]:
+    def pop(self) -> "RefBundle":
         """Return the first (left) bundle in the queue."""
         # Case 1: The queue is empty.
         if not self._head:
