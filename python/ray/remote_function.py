@@ -473,7 +473,7 @@ class RemoteFunction:
             elif not args and not kwargs and not self._function_signature:
                 list_args = []
             else:
-                list_args = ray._private.signature.flatten_args(
+                list_args = ray._common.signature.flatten_args(
                     self._function_signature, args, kwargs
                 )
 
