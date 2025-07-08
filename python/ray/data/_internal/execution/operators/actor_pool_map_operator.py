@@ -191,7 +191,7 @@ class ActorPoolMapOperator(MapOperator):
         super().start(options)
 
         # Create the actor workers and add them to the pool.
-        self._cls = ray.remote(**self._ray_remote_args)(_MapWorker)
+        self._cls = ray.remote(**self._ray_remote_args)(self.get_cls())
         self._actor_pool.scale(
             ActorPoolScalingRequest(
                 delta=self._actor_pool.min_size(), reason="scaling to min size"
@@ -223,7 +223,19 @@ class ActorPoolMapOperator(MapOperator):
     def should_add_input(self) -> bool:
         return self._actor_pool.num_free_task_slots() > 0
 
-    def _start_actor(self, labels: Dict[str, str]) -> Tuple[ActorHandle, ObjectRef]:
+    def get_cls(self):
+        return _MapWorker
+
+    def get_actor_constructor_args(self):
+        return {
+            "ctx": self.data_context,
+            "src_fn_name": self.name,
+            "map_transformer": self._map_transformer,
+        }
+
+    def _start_actor(
+        self, labels: Dict[str, str], logical_actor_id: str
+    ) -> Tuple[ActorHandle, ObjectRef]:
         """Start a new actor and add it to the actor pool as a pending actor.
 
         Args:
@@ -233,16 +245,11 @@ class ActorPoolMapOperator(MapOperator):
             A tuple of the actor handle and the object ref to the actor's location.
         """
         assert self._cls is not None
-        ctx = self.data_context
         if self._ray_remote_args_fn:
             self._refresh_actor_cls()
         actor = self._cls.options(
             _labels={self._OPERATOR_ID_LABEL_KEY: self.id, **labels}
-        ).remote(
-            ctx,
-            src_fn_name=self.name,
-            map_transformer=self._map_transformer,
-        )
+        ).remote(logical_actor_id=logical_actor_id, **self.get_actor_constructor_args())
         res_ref = actor.get_location.options(name=f"{self.name}.get_location").remote()
 
         def _task_done_callback(res_ref):
@@ -335,7 +342,7 @@ class ActorPoolMapOperator(MapOperator):
         for k, v in new_remote_args.items():
             remote_args[k] = v
             new_and_overriden_remote_args[k] = v
-        self._cls = ray.remote(**remote_args)(_MapWorker)
+        self._cls = ray.remote(**remote_args)(self.get_cls())
         return new_and_overriden_remote_args
 
     def all_inputs_done(self):
@@ -486,12 +493,14 @@ class _MapWorker:
         ctx: DataContext,
         src_fn_name: str,
         map_transformer: MapTransformer,
+        logical_actor_id: str,
     ):
         DataContext._set_current(ctx)
         self.src_fn_name: str = src_fn_name
         self._map_transformer = map_transformer
         # Initialize state for this actor.
         self._map_transformer.init()
+        self._logical_actor_id = logical_actor_id
 
     def get_location(self) -> NodeIdStr:
         return ray.get_runtime_context().get_node_id()
@@ -851,7 +860,7 @@ class _ActorPool(AutoscalingActorPool):
     def _create_actor(self) -> Tuple[ray.actor.ActorHandle, ObjectRef]:
         logical_actor_id = str(uuid.uuid4())
         labels = {self.get_logical_id_label_key(): logical_actor_id}
-        actor, ready_ref = self._create_actor_fn(labels)
+        actor, ready_ref = self._create_actor_fn(labels, logical_actor_id)
         self._actor_to_logical_id[actor] = logical_actor_id
         return actor, ready_ref
 
