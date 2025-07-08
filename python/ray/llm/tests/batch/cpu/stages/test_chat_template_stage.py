@@ -43,10 +43,10 @@ async def test_chat_template_udf_basic(mock_tokenizer_setup):
 
     results = []
     async for result in udf(batch):
-        results.append(result)
+        results.extend(result["__data"])
 
     assert len(results) == 1
-    assert results[0]["__data"][0]["prompt"] == "<chat>Hello AI</chat>"
+    assert results[0]["prompt"] == "<chat>Hello AI</chat>"
     mock_tokenizer.apply_chat_template.assert_called_once()
 
 
@@ -83,9 +83,9 @@ async def test_chat_template_udf_multiple_messages(mock_tokenizer_setup):
     async for result in udf(batch):
         results.append(result)
 
-    assert len(results) == 2
+    assert len(results) == 1
     assert results[0]["__data"][0]["prompt"] == "<chat>Hello AI</chat>"
-    assert results[1]["__data"][0]["prompt"] == "<chat>How are you?</chat>"
+    assert results[0]["__data"][1]["prompt"] == "<chat>How are you?</chat>"
     assert mock_tokenizer.apply_chat_template.call_count == 2
 
 
@@ -123,14 +123,12 @@ async def test_chat_template_udf_assistant_prefill(mock_tokenizer_setup):
 
     results = []
     async for result in udf(batch):
-        results.append(result)
+        results.extend(result["__data"])
 
     assert len(results) == 2
     assert mock_tokenizer.apply_chat_template.call_count == 2
-    assert (
-        results[0]["__data"][0]["prompt"] == "<chat>Hello AI<assistant><think>\n</chat>"
-    )
-    assert results[1]["__data"][0]["prompt"] == "<chat>Hello AI</chat>"
+    assert results[0]["prompt"] == "<chat>Hello AI<assistant><think>\n</chat>"
+    assert results[1]["prompt"] == "<chat>Hello AI</chat>"
     # check if kwargs were set properly
     call_args_list = mock_tokenizer.apply_chat_template.call_args_list
     args1, kwargs1 = call_args_list[0]
