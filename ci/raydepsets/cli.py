@@ -13,7 +13,7 @@ def cli():
 @click.option("--name", type=str, default="")
 def load(config_path: str, name: str = ""):
     """Load a dependency sets from a config file."""
-    manager = DependencySetManager(config_path=config_path)
+    DependencySetManager(config_path=config_path)
 
 
 class DependencySetManager:
