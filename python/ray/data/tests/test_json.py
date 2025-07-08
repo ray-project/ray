@@ -672,6 +672,7 @@ def test_json_read_zero_block_size_failure(
             path3, filesystem=fs, read_options=pajson.ReadOptions(block_size=0)
         )
         dsdf = ds.to_pandas()
+        assert dsdf.equals(df3)
 
 
 @pytest.mark.parametrize("min_rows_per_file", [5, 10, 50])
