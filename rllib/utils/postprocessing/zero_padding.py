@@ -103,8 +103,7 @@ def split_and_zero_pad(
     if isinstance(item_list[0], dict):
         # split each leaf sequence into chunks
         split_dict = tree.map_structure(
-            lambda *vals: split_and_zero_pad(list(vals), max_seq_len),
-            *item_list
+            lambda *vals: split_and_zero_pad(list(vals), max_seq_len), *item_list
         )
         # All keys should now have the same number of chunks.
         num_chunks = len(next(iter(split_dict.values())))
