@@ -180,6 +180,7 @@ class CustomArrowCollateFn(ArrowBatchCollateFn):
         self,
         dtypes: Optional[Union["torch.dtype", Dict[str, "torch.dtype"]]] = None,
         device: Optional[str] = None,
+        pin_memory: bool = False,
     ):
         """Initialize the collate function.
 
@@ -189,6 +190,7 @@ class CustomArrowCollateFn(ArrowBatchCollateFn):
         """
         self.dtypes = dtypes
         self.device = device
+        self.pin_memory = pin_memory
 
     def __call__(self, batch: "pyarrow.Table") -> Tuple[torch.Tensor, torch.Tensor]:
         """Convert an Arrow batch to PyTorch tensors.
@@ -204,7 +206,10 @@ class CustomArrowCollateFn(ArrowBatchCollateFn):
         )
 
         tensors = arrow_batch_to_tensors(
-            batch, dtypes=self.dtypes, combine_chunks=self.device.type == "cpu"
+            batch,
+            dtypes=self.dtypes,
+            combine_chunks=self.device.type == "cpu",
+            pin_memory=self.pin_memory,
         )
         return tensors["image"], tensors["label"]
 
@@ -216,7 +221,10 @@ class ImageClassificationRayDataLoaderFactory(RayDataLoaderFactory):
         super().__init__(benchmark_config)
 
     def _get_collate_fn(self) -> Optional[CollateFn]:
-        return CustomArrowCollateFn(device=ray.train.torch.get_device())
+        return CustomArrowCollateFn(
+            device=ray.train.torch.get_device(),
+            pin_memory=self.get_dataloader_config().ray_data_pin_memory,
+        )
 
 
 class ImageClassificationMockDataLoaderFactory(BaseDataLoaderFactory):

@@ -69,6 +69,7 @@ class RayDataLoaderFactory(BaseDataLoaderFactory):
                 collate_fn=self._get_collate_fn(),
                 prefetch_batches=dataloader_config.ray_data_prefetch_batches,
                 drop_last=True,
+                pin_memory=dataloader_config.ray_data_pin_memory,
             )
         )
 
