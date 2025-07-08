@@ -15,12 +15,11 @@ from ray.llm._internal.serve.configs.server_models import (
 class LLMEngine(abc.ABC):
     """Base class for all LLM engines"""
 
-    def __init__(self, llm_config: LLMConfig):
-        self._llm_config = llm_config
 
-        # Ensure transformers_modules is initialized early in worker processes.
-        # This is critical for models with trust_remote_code=True to avoid pickle errors.
-        init_hf_modules()
+    @abc.abstractmethod
+    def __init__(self, llm_config: LLMConfig):
+        """Initialize the engine with the llm config"""
+        pass
 
     @abc.abstractmethod
     async def start(self):
