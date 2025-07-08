@@ -146,7 +146,7 @@ Compare a PyTorch training script with and without Ray Train.
                     metrics = {"loss": loss.item(), "epoch": epoch}
                     with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
                         torch.save(
-                            model.module.state_dict(),
+                            model.state_dict(),
                             os.path.join(temp_checkpoint_dir, "model.pt")
                         )
                         ray.train.report(
