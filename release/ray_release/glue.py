@@ -441,7 +441,9 @@ def run_release_test_kuberay(
         test_name_hash = hashlib.sha256(test["name"].encode()).hexdigest()[:10]
         # random 8 digit suffix
         random_suffix = "".join(random.choices(string.digits, k=8))
-        job_name = f"{test['name'][:20]}-{test_name_hash}-{random_suffix}".replace("_", "-")
+        job_name = f"{test['name'][:20]}-{test_name_hash}-{random_suffix}".replace(
+            "_", "-"
+        )
         logger.info(f"Job name: {job_name}")
         kuberay_job_manager = KubeRayJobManager()
         retcode, duration = kuberay_job_manager.run_and_wait(
@@ -462,7 +464,7 @@ def run_release_test_kuberay(
         logger.info(f"Exception: {e}")
         pipeline_exception = e
         result.runtime = time.monotonic() - start_time
-    
+
     if pipeline_exception:
         buildkite_group(":rotating_light: Handling errors")
         exit_code, result_status, runtime = handle_exception(

@@ -5,8 +5,6 @@ def convert_cluster_compute_to_kuberay_compute_config(compute_config: dict) -> d
     Returns:
         Dict containing KubeRay-formatted compute configuration.
     """
-    
-    print(compute_config)
     worker_node_types = compute_config["worker_node_types"]
     head_node_resources = compute_config.get("head_node_type", {}).get("resources", {})
 

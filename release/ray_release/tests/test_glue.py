@@ -87,7 +87,9 @@ class GlueTest(unittest.TestCase):
         self.sdk.returns["get_cloud"] = APIDict(result=APIDict(provider="AWS"))
 
         self.writeClusterEnv("{'env': true}")
-        self.writeClusterCompute("{'head_node_type': {'name': 'head_node', 'instance_type': 'm5a.4xlarge'}, 'worker_node_types': []}")
+        self.writeClusterCompute(
+            "{'head_node_type': {'name': 'head_node', 'instance_type': 'm5a.4xlarge'}, 'worker_node_types': []}"
+        )
 
         with open(os.path.join(self.tempdir, "driver_fail.sh"), "wt") as f:
             f.write("exit 1\n")

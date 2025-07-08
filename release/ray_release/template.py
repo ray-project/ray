@@ -84,7 +84,6 @@ def get_working_dir(test: "Test", test_definition_root: Optional[str] = None) ->
 def load_test_cluster_compute(
     test: "Test", test_definition_root: Optional[str] = None
 ) -> Optional[Dict]:
-    print("here")
     cluster_compute_file = test["cluster"]["cluster_compute"]
     working_dir = get_working_dir(test, test_definition_root)
     f = os.path.join(working_dir, cluster_compute_file)
