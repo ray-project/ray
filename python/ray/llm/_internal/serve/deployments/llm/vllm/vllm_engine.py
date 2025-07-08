@@ -139,7 +139,6 @@ def _clear_current_platform_cache():
         current_platform.get_device_capability.cache_clear()
 
 
-
 class VLLMEngine(LLMEngine):
     def __init__(
         self,
@@ -277,14 +276,13 @@ class VLLMEngine(LLMEngine):
         logger.info("Started vLLM engine.")
 
     async def _start_engine(self) -> "EngineClient":
-        
+
         # Initialize node and return all configurations
         node_initialization = await self.initialize_node(self.llm_config)
-        
-        (
-            engine_args,
-            engine_config
-        ) = await self._prepare_engine_config(node_initialization)
+
+        (engine_args, engine_config) = await self._prepare_engine_config(
+            node_initialization
+        )
 
         return self._start_async_llm_engine(
             engine_args,
@@ -294,7 +292,7 @@ class VLLMEngine(LLMEngine):
 
     async def _prepare_engine_config(self, node_initialization: InitializeNodeOutput):
         """Prepare the engine config to start the engine.
-        
+
         Args:
             node_initialization: The node initialization.
 
@@ -303,7 +301,6 @@ class VLLMEngine(LLMEngine):
             engine_config: The vLLM's internal engine config that is nested.
         """
         engine_config: VLLMEngineConfig = self.llm_config.get_engine_config()
-
 
         if engine_config.use_gpu:
             # Create engine config on a task with access to GPU,
@@ -333,7 +330,6 @@ class VLLMEngine(LLMEngine):
         self.vllm_config = vllm_engine_config
         return vllm_engine_args, vllm_engine_config
 
-
     def _start_async_llm_engine_v0(
         self,
         engine_args: "AsyncEngineArgs",
@@ -341,8 +337,8 @@ class VLLMEngine(LLMEngine):
         placement_group: PlacementGroup,
     ) -> "EngineClient":
 
-        from vllm.executor.ray_distributed_executor import RayDistributedExecutor
         from vllm.engine.async_llm_engine import AsyncLLMEngine
+        from vllm.executor.ray_distributed_executor import RayDistributedExecutor
 
         vllm_config.parallel_config.placement_group = placement_group
 
@@ -364,16 +360,15 @@ class VLLMEngine(LLMEngine):
     ) -> "EngineClient":
         """Creates an async LLM engine from the engine arguments."""
         from vllm import envs as vllm_envs
-        
+
         # NOTE: This is a temporary solution untill vLLM v1 supports embeddings.
         if not vllm_envs.VLLM_USE_V1:
             return self._start_async_llm_engine_v0(
                 engine_args, vllm_config, placement_group
             )
-            
-        from vllm.v1.executor.abstract import Executor
-        from vllm.v1.engine.async_llm import AsyncLLM
 
+        from vllm.v1.engine.async_llm import AsyncLLM
+        from vllm.v1.executor.abstract import Executor
 
         vllm_config.parallel_config.placement_group = placement_group
 
@@ -399,7 +394,6 @@ class VLLMEngine(LLMEngine):
         )
 
         return engine_client
-
 
     async def prepare_request(
         self,
@@ -501,7 +495,9 @@ class VLLMEngine(LLMEngine):
             )
 
         # Construct a results generator from vLLM
-        results_generator: AsyncGenerator["RequestOutput", None] = self._engine_client.generate(
+        results_generator: AsyncGenerator[
+            "RequestOutput", None
+        ] = self._engine_client.generate(
             prompt=prompt,
             sampling_params=self._parse_sampling_params(request.sampling_params),
             request_id=request.request_id,
@@ -666,7 +662,9 @@ class VLLMEngine(LLMEngine):
 
         for i, prompt in enumerate(prompts):
             request_id = f"{vllm_embedding_request.request_id}-{i}"
-            gen: AsyncGenerator["PoolingRequestOutput", None] = self._engine_client.encode(
+            gen: AsyncGenerator[
+                "PoolingRequestOutput", None
+            ] = self._engine_client.encode(
                 prompt=vllm.TextPrompt(
                     prompt=prompt,
                 ),
@@ -692,7 +690,9 @@ class VLLMEngine(LLMEngine):
 
     async def check_health(self) -> None:
         if not hasattr(self._engine_client, "check_health"):
-            raise RuntimeError(f"{type(self._engine_client)} does not support health check.")
+            raise RuntimeError(
+                f"{type(self._engine_client)} does not support health check."
+            )
 
         try:
             await self._engine_client.check_health()

@@ -173,7 +173,7 @@ def main(
                         "service_name": SERVICE_NAME,
                         "py_version": get_python_version_from_image(image_uri),
                         "tag": tag,
-                        "vllm_engine": f"V1",
+                        "vllm_engine": "V1",
                         **result,
                     },
                 )
@@ -198,9 +198,7 @@ def main(
             record.write(verbose=True)
 
 
-def submit_benchmark_vllm_job(
-    image_uri: str, serve_config_file: str, hf_token: str
-):
+def submit_benchmark_vllm_job(image_uri: str, serve_config_file: str, hf_token: str):
     s3_storage_path = get_vllm_s3_storage_path()
 
     working_dir = str(Path(__file__).parent)
