@@ -112,7 +112,7 @@ def test_passing_object_ref_to_deployment_not_pinned_to_memory(serve_instance):
     See: https://github.com/ray-project/ray/issues/43248
     """
 
-    def _obj_ref_exists_in_state(obj_ref_hex: str) -> bool:
+    def _obj_ref_exists_in_state_api(obj_ref_hex: str) -> bool:
         return (
             len(
                 list_objects(
@@ -138,7 +138,7 @@ def test_passing_object_ref_to_deployment_not_pinned_to_memory(serve_instance):
             length_ref = ray.put(length)
 
             # Sanity check that the ObjectRef exists in the state API.
-            assert _obj_ref_exists_in_state(length_ref.hex())
+            assert _obj_ref_exists_in_state_api(length_ref.hex())
             return {
                 "length": length,
                 "result": await self.dep1.multiply_by_two.remote(length_ref),
@@ -153,7 +153,7 @@ def test_passing_object_ref_to_deployment_not_pinned_to_memory(serve_instance):
     assert response["result"] == length * 2
 
     # Ensure the object ref is not in the memory anymore.
-    assert not _obj_ref_exists_in_state(response["length_ref_hex"])
+    assert not _obj_ref_exists_in_state_api(response["length_ref_hex"])
 
 
 if __name__ == "__main__":
