@@ -24,7 +24,6 @@ from ray.data._internal.execution.backpressure_policy.backpressure_policy import
 )
 from ray.data._internal.execution.interfaces.op_runtime_metrics import TaskDurationStats
 from ray.data._internal.execution.interfaces.physical_operator import PhysicalOperator
-from ray.data._internal.execution.streaming_executor_state import Topology
 from ray.data._internal.stats import (
     DatasetStats,
     NodeMetrics,
@@ -134,6 +133,10 @@ def gen_expected_metrics(
             (
                 "'task_submission_backpressure_time': "
                 f"{'N' if task_backpressure else 'Z'}"
+            ),
+            (
+                "'task_output_backpressure_time': "
+                f"{'N' if task_output_backpressure else 'Z'}"
             ),
             ("'task_completion_time': " f"{'N' if task_backpressure else 'Z'}"),
             "'num_alive_actors': Z",
@@ -1378,9 +1381,6 @@ Dataset throughput:
 def test_time_backpressure(ray_start_regular_shared, restore_data_context):
     class TimedBackpressurePolicy(BackpressurePolicy):
         COUNT = 0
-
-        def __init__(self, topology: "Topology"):
-            pass
 
         def can_add_input(self, op: "PhysicalOperator") -> bool:
             if TimedBackpressurePolicy.COUNT > 1:
