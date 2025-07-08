@@ -74,7 +74,7 @@ def _bind(
         inputs = [inputs]
 
     if transport is None:
-        transport = TorchTensorType.NCCL
+        transport = TorchTensorType.ACCELERATOR
     collective_op = _CollectiveOperation(inputs, op, transport)
     collective_output_nodes: List[CollectiveOutputNode] = []
 
