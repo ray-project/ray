@@ -196,28 +196,29 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
   if (task_spec.IsActorTask()) {
     auto it = actor_scheduling_queues_.find(task_spec.CallerWorkerId());
     if (it == actor_scheduling_queues_.end()) {
-      if (execute_out_of_order_) {
-        it = actor_scheduling_queues_
-                 .emplace(task_spec.CallerWorkerId(),
-                          std::make_unique<OutOfOrderActorSchedulingQueue>(
-                              task_execution_service_,
-                              waiter_,
-                              task_event_buffer_,
-                              pool_manager_,
-                              fiber_state_manager_,
-                              is_asyncio_,
-                              fiber_max_concurrency_,
-                              concurrency_groups_))
-                 .first;
-      } else {
-        it = actor_scheduling_queues_
-                 .emplace(task_spec.CallerWorkerId(),
-                          std::make_unique<ActorSchedulingQueue>(task_execution_service_,
-                                                                 waiter_,
-                                                                 task_event_buffer_,
-                                                                 pool_manager_))
-                 .first;
-      }
+      it = actor_scheduling_queues_
+               .emplace(
+                   task_spec.CallerWorkerId(),
+                   execute_out_of_order_
+                       ? std::unique_ptr<SchedulingQueue>(
+                             std::make_unique<OutOfOrderActorSchedulingQueue>(
+                                 task_execution_service_,
+                                 waiter_,
+                                 task_event_buffer_,
+                                 pool_manager_,
+                                 fiber_state_manager_,
+                                 is_asyncio_,
+                                 fiber_max_concurrency_,
+                                 concurrency_groups_))
+                       : std::unique_ptr<SchedulingQueue>(
+                             std::make_unique<ActorSchedulingQueue>(
+                                 task_execution_service_,
+                                 waiter_,
+                                 task_event_buffer_,
+                                 pool_manager_,
+                                 RayConfig::instance()
+                                     .actor_scheduling_queue_max_reorder_wait_seconds())))
+               .first;
     }
 
     it->second->Add(request.sequence_number(),
