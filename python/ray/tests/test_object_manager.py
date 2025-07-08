@@ -2,7 +2,6 @@ import multiprocessing
 import sys
 import time
 import warnings
-from collections import defaultdict
 
 import numpy as np
 import pytest
