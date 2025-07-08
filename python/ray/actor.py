@@ -23,7 +23,7 @@ except ImportError:
     from typing_extensions import Concatenate
 
 import ray._private.ray_constants as ray_constants
-import ray._private.signature as signature
+import ray._common.signature as signature
 import ray._raylet
 from ray import ActorClassID, Language, cross_language, ObjectRef
 from ray._private import ray_option_utils
