@@ -1,6 +1,6 @@
 import asyncio
-import time
 import sys
+import time
 
 import httpx
 import pytest
