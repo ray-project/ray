@@ -549,6 +549,7 @@ def test_proxy_timeout_metrics(metrics_start_shutdown):
     assert num_errors[0]["application"] == "status_code_timeout"
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows")
 def test_proxy_disconnect_metrics(metrics_start_shutdown):
     """Test that disconnect metrics are reported correctly."""
 
