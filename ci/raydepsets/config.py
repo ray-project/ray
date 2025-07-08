@@ -42,12 +42,9 @@ class Config:
 
 
 def get_current_directory() -> str:
-    workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY")
-    if workspace_dir:
-        current_directory = workspace_dir
-    else:
-        current_directory = os.getcwd()
-    return current_directory
+    workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", os.getcwd())
+    print(f"workspace_dir: {workspace_dir}")
+    return workspace_dir
 
 
 def load_config(path: str) -> Config:
