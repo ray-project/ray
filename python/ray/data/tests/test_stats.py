@@ -68,6 +68,7 @@ def gen_expected_metrics(
     is_map: bool,
     spilled: bool = False,
     task_backpressure: bool = False,
+    task_output_backpressure: bool = False,
     extra_metrics: Optional[List[str]] = None,
 ):
     if is_map:
@@ -103,6 +104,10 @@ def gen_expected_metrics(
             (
                 "'task_submission_backpressure_time': "
                 f"{'N' if task_backpressure else 'Z'}"
+            ),
+            (
+                "'task_output_backpressure_time': "
+                f"{'N' if task_output_backpressure else 'Z'}"
             ),
             ("'task_completion_time': " f"{'N' if task_backpressure else 'Z'}"),
             "'num_alive_actors': Z",
@@ -187,6 +192,7 @@ LARGE_ARGS_EXTRA_METRICS_TASK_BACKPRESSURE = gen_expected_metrics(
     is_map=True,
     spilled=False,
     task_backpressure=True,
+    task_output_backpressure=True,
     extra_metrics=[
         "'ray_remote_args': {'num_cpus': N, 'scheduling_strategy': 'DEFAULT'}"
     ],
@@ -414,6 +420,8 @@ def test_large_args_scheduling_strategy(
         f"    * Estimated single node throughput: N rows/s\n"
         f"{gen_runtime_metrics_str(['ReadRange','MapBatches(dummy_map_batches)'], verbose_stats_logs)}"  # noqa: E501
     )
+    print(canonicalize(stats))
+    print(expected_stats)
     assert canonicalize(stats) == expected_stats
 
 
