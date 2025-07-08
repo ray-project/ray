@@ -3,10 +3,10 @@
 set -exuo pipefail
 
 # Host user UID/GID
-HOST_UID=${HOST_UID:-$(id -u)}
-HOST_GID=${HOST_GID:-$(id -g)}
+HOST_UID=${HOST_UID:-$EUID}
+HOST_GID=${HOST_GID:-$EGID}
 
-if [ "$EUID" -eq 0 ]; then
+if [[ "$HOST_UID" -ne 0 && "$EUID" -eq 0 ]]; then
 
   # Install sudo
   yum -y install sudo
@@ -18,9 +18,7 @@ if [ "$EUID" -eq 0 ]; then
   # Give sudo access
   echo "builduser ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
-  exec sudo -E -u builduser HOME="$HOME" bash "$0" "$@"
-
-  exit 0
+  exec sudo -E -u builduser HOME="$HOME" bash "$0" "$@" || exit 1
 
 fi
 
