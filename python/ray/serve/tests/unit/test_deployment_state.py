@@ -5,7 +5,6 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from ray._private.ray_constants import DEFAULT_MAX_CONCURRENCY_ASYNC
 from ray.serve._private.autoscaling_state import AutoscalingStateManager
 from ray.serve._private.common import (
     DeploymentHandleSource,
@@ -2647,7 +2646,8 @@ class TestActorReplicaWrapper:
                 deployment_id=DeploymentID(name="test_deployment", app_name="test_app"),
             ),
         )
-        max_ongoing_requests = DEFAULT_MAX_CONCURRENCY_ASYNC + 1
+        # Set max_ongoing_requests higher than the Ray default for async actors (10k).
+        max_ongoing_requests = 99_999
         d_info, _ = deployment_info(max_ongoing_requests=max_ongoing_requests)
         replica_scheduling_request = actor_replica.start(d_info)
         assert (
