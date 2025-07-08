@@ -213,7 +213,7 @@ f_app = f.bind()
 def test_intelligent_scale_down(ray_cluster):
     cluster = ray_cluster
     # Head node
-    cluster.add_node(num_cpus=0, include_dashboard=True)
+    cluster.add_node(num_cpus=0)
     cluster.connect(namespace=SERVE_NAMESPACE)
     cluster.add_node(num_cpus=2)
     cluster.add_node(num_cpus=2)
@@ -429,7 +429,7 @@ class TestHealthzAndRoutes:
 
         # Setup a cluster with 2 nodes
         cluster = ray_cluster
-        cluster.add_node(num_cpus=0, include_dashboard=True)
+        cluster.add_node(num_cpus=0)
         cluster.add_node(num_cpus=2)
         cluster.wait_for_nodes()
         ray.init(address=cluster.address)
