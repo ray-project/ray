@@ -7,6 +7,7 @@ from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
 
 import ray
 from ray._private.ray_constants import env_float
+from ray._private.state import state as ray_state
 from ray.actor import ActorHandle
 from ray.exceptions import GetTimeoutError, RayActorError
 from ray.runtime_env import RuntimeEnv
@@ -248,6 +249,22 @@ class WorkerGroup:
                 f"Attempting to start training worker group of size {worker_group_context.num_workers} with "
                 f"the following resources: [{worker_group_context.resources_per_worker}] * {worker_group_context.num_workers}"
             )
+
+            # Check if the cluster has enough resources before waiting for placement group
+            max_cluster_resources = ray_state.get_max_resources_from_cluster_config()
+            if max_cluster_resources and isinstance(max_cluster_resources, dict):
+                for (
+                    resource_name,
+                    required_amount,
+                ) in worker_group_context.resources_per_worker.items():
+                    available_amount = max_cluster_resources.get(resource_name, 0)
+                    if available_amount is None or required_amount > available_amount:
+                        remove_placement_group(pg)
+                        error_msg = (
+                            f"Insufficient cluster resources. Worker requires {required_amount} "
+                            f"{resource_name}, but cluster only has {available_amount} available."
+                        )
+                        raise WorkerGroupStartupFailedError(error_msg)
 
             # Wait for the placement group to be ready before proceeding
             # to create actors.
