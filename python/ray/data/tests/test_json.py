@@ -545,6 +545,7 @@ def test_json_roundtrip(ray_start_regular_shared, tmp_path, override_num_blocks)
         assert BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
 
+@pytest.mark.timeout(1)
 @pytest.mark.parametrize(
     "fs,data_path,endpoint_url",
     [

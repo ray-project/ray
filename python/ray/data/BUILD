@@ -257,7 +257,7 @@ py_test(
 
 py_test(
     name = "test_block_sizing",
-    size = "large",
+    size = "medium",
     srcs = ["tests/test_block_sizing.py"],
     tags = [
         "exclusive",
