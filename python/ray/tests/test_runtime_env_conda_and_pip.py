@@ -379,20 +379,22 @@ def test_pip_install_options(shutdown_only):
 
     # Test that this successfully builds a ray runtime environment using
     # pip_install_options
-    @ray.remote(runtime_env={
-        "pip": {
-            "packages": ["pip-install-test==0.5"],
-            "pip_install_options": [
-                "--no-cache-dir",
-                "--no-build-isolation",
-                "--disable-pip-version-check"
-            ]
+    @ray.remote(
+        runtime_env={
+            "pip": {
+                "packages": ["pip-install-test==0.5"],
+                "pip_install_options": [
+                    "--no-cache-dir",
+                    "--no-build-isolation",
+                    "--disable-pip-version-check",
+                ],
+            }
         }
-    })
+    )
     def f():
         return True
 
-    assert ray.get(f.remote()) == True
+    assert ray.get(f.remote())
 
 
 if __name__ == "__main__":
