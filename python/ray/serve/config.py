@@ -33,7 +33,7 @@ from ray.util.annotations import Deprecated, PublicAPI
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
-@PublicAPI(stability="stable")
+@PublicAPI(stability="alpha")
 class RequestRouterConfig(BaseModel):
     """Config for the Serve request router.
 
@@ -159,7 +159,7 @@ class RequestRouterConfig(BaseModel):
         return cloudpickle.loads(self._serialized_request_router_cls)
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="stable")
 class AutoscalingConfig(BaseModel):
     """Config for the Serve Autoscaler."""
 
