@@ -1,8 +1,6 @@
 import abc
 from typing import AsyncGenerator, Optional
 
-from transformers.dynamic_module_utils import init_hf_modules
-
 from ray.llm._internal.serve.configs.server_models import (
     DiskMultiplexConfig,
     GenerationRequest,
@@ -14,7 +12,6 @@ from ray.llm._internal.serve.configs.server_models import (
 
 class LLMEngine(abc.ABC):
     """Base class for all LLM engines"""
-
 
     @abc.abstractmethod
     def __init__(self, llm_config: LLMConfig):

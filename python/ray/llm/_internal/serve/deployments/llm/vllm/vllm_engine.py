@@ -132,11 +132,11 @@ class VLLMEngine(LLMEngine):
             llm_config: The llm configuration for this engine
         """
         super().__init__(llm_config)
-        
+
         # Ensure transformers_modules is initialized early in worker processes.
         # This is critical for models with trust_remote_code=True to avoid pickle errors.
         init_hf_modules()
-        
+
         self.llm_config = llm_config
 
         if vllm is None:
