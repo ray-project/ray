@@ -23,10 +23,7 @@ grpcio == 1.54.2; sys_platform == "darwin"
 grpcio >= 1.54.2; sys_platform != "darwin"
 numpy>=1.20
 
-# pyarrow 18 causes macos build failures.
-# See https://github.com/ray-project/ray/pull/48300
 pyarrow >= 9.0.0
-pyarrow <18; sys_platform == "darwin" and platform_machine == "x86_64"
 
 # ray[all]
 smart_open
