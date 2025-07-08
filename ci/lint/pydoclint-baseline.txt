@@ -2126,10 +2126,6 @@ python/ray/train/v2/api/context.py
     DOC201: Method `TrainContext.get_local_world_size` does not have a return section in docstring
     DOC201: Method `TrainContext.get_node_rank` does not have a return section in docstring
 --------------------
-python/ray/train/v2/api/train_fn_utils.py
-    DOC101: Function `report`: Docstring contains fewer arguments than in function signature.
-    DOC103: Function `report`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [checkpoint_dir_name: Optional[str]].
---------------------
 python/ray/train/v2/lightgbm/lightgbm_trainer.py
     DOC101: Method `LightGBMTrainer.__init__`: Docstring contains fewer arguments than in function signature.
     DOC103: Method `LightGBMTrainer.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [label_column: Optional[str], num_boost_round: Optional[int], params: Optional[Dict[str, Any]]].
