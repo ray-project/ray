@@ -337,8 +337,8 @@ class TestReservationOpResourceAllocator:
         o4 = LimitOperator(1, o3, DataContext.get_current())
 
         op_usages = {op: ExecutionResources.zero() for op in [o1, o2, o3, o4]}
-        op_internal_usage = {op: 0 for op in [o1, o2, o3, o4]}
-        op_outputs_usages = {op: 0 for op in [o1, o2, o3, o4]}
+        op_internal_usage = dict.fromkeys([o1, o2, o3, o4], 0)
+        op_outputs_usages = dict.fromkeys([o1, o2, o3, o4], 0)
 
         topo, _ = build_streaming_topology(o4, ExecutionOptions())
 
@@ -616,6 +616,149 @@ class TestReservationOpResourceAllocator:
         o2.mark_execution_finished()
         allocator.update_usages()
         assert o2 not in allocator._op_budgets
+
+    def test_gpu_allocation(self, restore_data_context):
+        """Test GPU allocation logic for operators that need GPU vs those that don't."""
+        DataContext.get_current().op_resource_reservation_enabled = True
+        DataContext.get_current().op_resource_reservation_ratio = 0.5
+
+        # Create operators with different GPU requirements
+        o1 = InputDataBuffer(DataContext.get_current(), [])
+
+        # Non-GPU operator
+        o2 = mock_map_op(o1, incremental_resource_usage=ExecutionResources(1, 0, 15))
+
+        # GPU operator
+        o3 = mock_map_op(
+            o2,
+            ray_remote_args={"num_cpus": 1, "num_gpus": 1},
+            incremental_resource_usage=ExecutionResources(1, 1, 15),
+        )
+
+        # Another non-GPU operator
+        o4 = mock_map_op(o3, incremental_resource_usage=ExecutionResources(1, 0, 15))
+
+        # Mock min_max_resource_requirements to return appropriate GPU requirements
+        o2.min_max_resource_requirements = MagicMock(
+            return_value=(ExecutionResources(0, 0, 0), ExecutionResources(1, 0, 15))
+        )
+        o3.min_max_resource_requirements = MagicMock(
+            return_value=(ExecutionResources(1, 1, 15), ExecutionResources(2, 1, 30))
+        )
+        o4.min_max_resource_requirements = MagicMock(
+            return_value=(ExecutionResources(0, 0, 0), ExecutionResources(1, 0, 15))
+        )
+
+        topo, _ = build_streaming_topology(o4, ExecutionOptions())
+
+        # Set up global limits with GPUs available
+        global_limits = ExecutionResources(cpu=16, gpu=4, object_store_memory=1000)
+
+        # Set up usage tracking
+        op_usages = {
+            o1: ExecutionResources.zero(),
+            o2: ExecutionResources(1, 0, 10),  # Non-GPU op using some resources
+            o3: ExecutionResources(1, 1, 20),  # GPU op using 1 GPU
+            o4: ExecutionResources(1, 0, 5),  # Non-GPU op using some resources
+        }
+
+        resource_manager = ResourceManager(
+            topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
+        )
+        resource_manager.get_op_usage = MagicMock(side_effect=lambda op: op_usages[op])
+        resource_manager._mem_op_internal = dict.fromkeys([o1, o2, o3, o4], 0)
+        resource_manager._mem_op_outputs = dict.fromkeys([o1, o2, o3, o4], 0)
+        resource_manager.get_global_limits = MagicMock(return_value=global_limits)
+
+        allocator = resource_manager._op_resource_allocator
+        assert isinstance(allocator, ReservationOpResourceAllocator)
+
+        allocator.update_usages()
+
+        # Test GPU allocation
+        # o2 (non-GPU): should get 0 GPU
+        assert allocator._op_budgets[o2].gpu == 0
+
+        # o3 (GPU): should get remaining GPUs (4 total - 1 used = 3 available)
+        assert allocator._op_budgets[o3].gpu == 3
+
+        # o4 (non-GPU): should get 0 GPU
+        assert allocator._op_budgets[o4].gpu == 0
+
+        # Test scenario with no GPUs available
+        op_usages[o3] = ExecutionResources(1, 4, 20)  # GPU op using all 4 GPUs
+        allocator.update_usages()
+
+        # o3 should get 0 additional GPUs since all are in use
+        assert allocator._op_budgets[o3].gpu == 0
+
+        # Test scenario with more GPUs available
+        global_limits = ExecutionResources(cpu=16, gpu=8, object_store_memory=1000)
+        resource_manager.get_global_limits = MagicMock(return_value=global_limits)
+        op_usages[o3] = ExecutionResources(1, 2, 20)  # GPU op using 2 GPUs
+        allocator.update_usages()
+
+        # o3 should get remaining GPUs (8 total - 2 used = 6 available)
+        assert allocator._op_budgets[o3].gpu == 6
+
+        # Non-GPU operators should still get 0
+        assert allocator._op_budgets[o2].gpu == 0
+        assert allocator._op_budgets[o4].gpu == 0
+
+    def test_multiple_gpu_operators(self, restore_data_context):
+        """Test that when multiple operators need GPU, each gets all available GPUs."""
+        DataContext.get_current().op_resource_reservation_enabled = True
+        DataContext.get_current().op_resource_reservation_ratio = 0.5
+
+        o1 = InputDataBuffer(DataContext.get_current(), [])
+
+        # Two GPU operators
+        o2 = mock_map_op(
+            o1,
+            ray_remote_args={"num_cpus": 1, "num_gpus": 1},
+            incremental_resource_usage=ExecutionResources(1, 1, 15),
+        )
+        o3 = mock_map_op(
+            o2,
+            ray_remote_args={"num_cpus": 1, "num_gpus": 1},
+            incremental_resource_usage=ExecutionResources(1, 1, 15),
+        )
+
+        # Mock min_max_resource_requirements for both GPU operators
+        o2.min_max_resource_requirements = MagicMock(
+            return_value=(ExecutionResources(1, 1, 15), ExecutionResources(2, 1, 30))
+        )
+        o3.min_max_resource_requirements = MagicMock(
+            return_value=(ExecutionResources(1, 1, 15), ExecutionResources(2, 1, 30))
+        )
+
+        topo, _ = build_streaming_topology(o3, ExecutionOptions())
+
+        global_limits = ExecutionResources(cpu=16, gpu=4, object_store_memory=1000)
+
+        op_usages = {
+            o1: ExecutionResources.zero(),
+            o2: ExecutionResources(1, 1, 20),  # Using 1 GPU
+            o3: ExecutionResources(1, 0, 20),  # Not using GPU yet
+        }
+
+        resource_manager = ResourceManager(
+            topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
+        )
+        resource_manager.get_op_usage = MagicMock(side_effect=lambda op: op_usages[op])
+        resource_manager._mem_op_internal = dict.fromkeys([o1, o2, o3], 0)
+        resource_manager._mem_op_outputs = dict.fromkeys([o1, o2, o3], 0)
+        resource_manager.get_global_limits = MagicMock(return_value=global_limits)
+
+        allocator = resource_manager._op_resource_allocator
+        allocator.update_usages()
+
+        # Both GPU operators should get allocated the remaining available GPUs
+        # o2: 4 total - 1 used = 3 available
+        assert allocator._op_budgets[o2].gpu == 3
+
+        # o3: 4 total - 0 used = 4 available
+        assert allocator._op_budgets[o3].gpu == 4
 
 
 if __name__ == "__main__":
