@@ -521,7 +521,7 @@ class TorchMultiCategorical(Distribution):
             if pad_width > 0:
                 # Pad only last dimension
                 pad_dims = (0, pad_width)
-                logits = torch.nn.functional.pad(logits, pad_dims, value=-float("inf"))
+                logits = nn.functional.pad(logits, pad_dims, value=-float("inf"))
             padded_logits.append(logits)
 
         # Stack along new dim=0 (categorical dimension).
