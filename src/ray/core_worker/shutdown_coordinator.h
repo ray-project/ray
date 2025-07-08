@@ -38,12 +38,14 @@ class ShutdownDependencies {
 
   /// Execute complete graceful shutdown sequence
   /// Called by coordinator - implements the full graceful shutdown logic
-  virtual void ExecuteGracefulShutdown(const std::string &detail,
+  virtual void ExecuteGracefulShutdown(const std::string &exit_type,
+                                       const std::string &detail,
                                        std::chrono::milliseconds timeout_ms) = 0;
 
   /// Execute complete force shutdown sequence
   /// Called by coordinator - implements the full force shutdown logic
-  virtual void ExecuteForceShutdown(const std::string &detail) = 0;
+  virtual void ExecuteForceShutdown(const std::string &exit_type,
+                                    const std::string &detail) = 0;
 
   /// Execute worker exit sequence with task draining
   /// Called by coordinator for Exit() operations
@@ -231,6 +233,9 @@ class ShutdownCoordinator {
   ///
   /// \return Human-readable state description
   std::string GetStateString() const;
+
+  /// Get string representation of exit type based on shutdown reason.
+  std::string GetExitTypeString() const;
 
   /// Get string representation of shutdown reason.
   ///

@@ -1152,6 +1152,12 @@ void CoreWorker::Exit(
       return ShutdownReason::kIntentionalShutdown;
     case rpc::WorkerExitType::INTENDED_USER_EXIT:
       return ShutdownReason::kGracefulExit;
+    case rpc::WorkerExitType::USER_ERROR:
+      return ShutdownReason::kUserError;
+    case rpc::WorkerExitType::SYSTEM_ERROR:
+      return ShutdownReason::kUnexpectedError;
+    case rpc::WorkerExitType::NODE_OUT_OF_MEMORY:
+      return ShutdownReason::kOutOfMemory;
     default:
       return ShutdownReason::kUnexpectedError;
     }
@@ -1176,6 +1182,12 @@ void CoreWorker::ForceExit(const rpc::WorkerExitType exit_type,
       return ShutdownReason::kForcedExit;
     case rpc::WorkerExitType::INTENDED_USER_EXIT:
       return ShutdownReason::kForcedExit;
+    case rpc::WorkerExitType::USER_ERROR:
+      return ShutdownReason::kUserError;
+    case rpc::WorkerExitType::SYSTEM_ERROR:
+      return ShutdownReason::kUnexpectedError;
+    case rpc::WorkerExitType::NODE_OUT_OF_MEMORY:
+      return ShutdownReason::kOutOfMemory;
     default:
       return ShutdownReason::kUnexpectedError;
     }
@@ -3157,7 +3169,7 @@ void CoreWorker::RunTaskExecutionLoop() {
         "CoreWorker.CheckSignal");
   }
   task_execution_service_.run();
-  RAY_CHECK(shutdown_coordinator_ && shutdown_coordinator_->IsShutdown())
+  RAY_CHECK(shutdown_coordinator_ && shutdown_coordinator_->IsShuttingDown())
       << "Task execution loop was terminated without calling shutdown API.";
 }
 

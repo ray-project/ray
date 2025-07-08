@@ -35,11 +35,13 @@ class CoreWorkerShutdownExecutor : public ShutdownDependencies {
   ~CoreWorkerShutdownExecutor() override = default;
 
   /// Execute complete graceful shutdown sequence
-  void ExecuteGracefulShutdown(const std::string &detail,
+  void ExecuteGracefulShutdown(const std::string &exit_type,
+                               const std::string &detail,
                                std::chrono::milliseconds timeout_ms) override;
 
   /// Execute complete force shutdown sequence
-  void ExecuteForceShutdown(const std::string &detail) override;
+  void ExecuteForceShutdown(const std::string &exit_type,
+                            const std::string &detail) override;
 
   /// Execute worker exit sequence with task draining
   void ExecuteWorkerExit(const std::string &exit_type,

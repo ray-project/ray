@@ -31,8 +31,10 @@ CoreWorkerShutdownExecutor::CoreWorkerShutdownExecutor(CoreWorker *core_worker)
 }
 
 void CoreWorkerShutdownExecutor::ExecuteGracefulShutdown(
-    const std::string &detail, std::chrono::milliseconds timeout_ms) {
-  RAY_LOG(INFO) << "Executing graceful shutdown: " << detail
+    const std::string &exit_type,
+    const std::string &detail,
+    std::chrono::milliseconds timeout_ms) {
+  RAY_LOG(INFO) << "Executing graceful shutdown: " << exit_type << " - " << detail
                 << " (timeout: " << timeout_ms.count() << "ms)";
 
   // Preserve current CoreWorker::Shutdown() behavior
@@ -55,7 +57,13 @@ void CoreWorkerShutdownExecutor::ExecuteGracefulShutdown(
   RAY_LOG(INFO) << "Waiting for joining a core worker io thread. If it hangs here, there "
                    "might be deadlock or a high load in the core worker io service.";
   if (core_worker_->io_thread_.joinable()) {
-    core_worker_->io_thread_.join();
+    // Check if we're already running in the IO thread to avoid self-join deadlock
+    if (core_worker_->io_thread_.get_id() != boost::this_thread::get_id()) {
+      core_worker_->io_thread_.join();
+    } else {
+      RAY_LOG(INFO)
+          << "Skipping IO thread join since we're already running in the IO thread";
+    }
   }
 
   // Shutdown gRPC server
@@ -73,12 +81,13 @@ void CoreWorkerShutdownExecutor::ExecuteGracefulShutdown(
   RAY_LOG(INFO) << "Core worker ready to be deallocated.";
 }
 
-void CoreWorkerShutdownExecutor::ExecuteForceShutdown(const std::string &detail) {
-  RAY_LOG(WARNING) << "Executing force shutdown: " << detail;
+void CoreWorkerShutdownExecutor::ExecuteForceShutdown(const std::string &exit_type,
+                                                      const std::string &detail) {
+  RAY_LOG(WARNING) << "Executing force shutdown: " << exit_type << " - " << detail;
 
   // Preserve current CoreWorker::ForceExit() behavior
   KillChildProcesses();
-  DisconnectFromServices("FORCE_EXIT", detail);
+  DisconnectFromServices(exit_type, detail);
   QuickExit();
 }
 
@@ -88,12 +97,6 @@ void CoreWorkerShutdownExecutor::ExecuteWorkerExit(const std::string &exit_type,
   RAY_LOG(INFO) << "Executing worker exit: " << exit_type << " - " << detail
                 << " (timeout: " << timeout_ms.count() << "ms)";
 
-  // Preserve current CoreWorker::Exit() behavior with task draining
-  rpc::WorkerExitType worker_exit_type = rpc::WorkerExitType::INTENDED_USER_EXIT;
-  if (exit_type == "INTENDED_SYSTEM_EXIT") {
-    worker_exit_type = rpc::WorkerExitType::INTENDED_SYSTEM_EXIT;
-  }
-
   // Set exiting detail for compatibility
   {
     absl::MutexLock lock(&core_worker_->mutex_);
@@ -102,18 +105,18 @@ void CoreWorkerShutdownExecutor::ExecuteWorkerExit(const std::string &exit_type,
   }
 
   // Callback to shutdown after task draining
-  auto shutdown_callback = [this, worker_exit_type, detail]() {
+  auto shutdown_callback = [this, exit_type, detail]() {
     // To avoid problems, make sure shutdown is always called from the same
     // event loop each time.
     core_worker_->task_execution_service_.post(
-        [this, worker_exit_type, detail]() {
+        [this, exit_type, detail]() {
           rpc::DrainServerCallExecutor();
           KillChildProcesses();
           // Disconnect should be put close to Shutdown
           // https://github.com/ray-project/ray/pull/34883
-          DisconnectFromServices(rpc::WorkerExitType_Name(worker_exit_type), detail);
-          ExecuteGracefulShutdown("Post-exit graceful shutdown",
-                                  std::chrono::milliseconds{30000});
+          DisconnectFromServices(exit_type, detail);
+          ExecuteGracefulShutdown(
+              exit_type, "Post-exit graceful shutdown", std::chrono::milliseconds{30000});
         },
         "CoreWorker.Shutdown");
   };
@@ -277,6 +280,12 @@ void CoreWorkerShutdownExecutor::DisconnectFromServices(const std::string &exit_
       rpc::WorkerExitType worker_exit_type = rpc::WorkerExitType::INTENDED_USER_EXIT;
       if (exit_type == "INTENDED_SYSTEM_EXIT") {
         worker_exit_type = rpc::WorkerExitType::INTENDED_SYSTEM_EXIT;
+      } else if (exit_type == "USER_ERROR") {
+        worker_exit_type = rpc::WorkerExitType::USER_ERROR;
+      } else if (exit_type == "SYSTEM_ERROR") {
+        worker_exit_type = rpc::WorkerExitType::SYSTEM_ERROR;
+      } else if (exit_type == "NODE_OUT_OF_MEMORY") {
+        worker_exit_type = rpc::WorkerExitType::NODE_OUT_OF_MEMORY;
       }
 
       Status status = core_worker_->local_raylet_client_->Disconnect(

@@ -165,7 +165,7 @@ void ShutdownCoordinator::ExecuteGracefulShutdown(const std::string &detail,
 
   // Delegate to concrete executor - this implements "no coordination without control"
   TryTransitionToDisconnecting();
-  dependencies_->ExecuteGracefulShutdown(detail, timeout_ms);
+  dependencies_->ExecuteGracefulShutdown(GetExitTypeString(), detail, timeout_ms);
   TryTransitionToShutdown();
 }
 
@@ -176,7 +176,8 @@ void ShutdownCoordinator::ExecuteForceShutdown(const std::string &detail) {
 
   // Delegate to concrete executor - this implements "no coordination without control"
   TryTransitionToDisconnecting();
-  dependencies_->ExecuteForceShutdown(detail);
+  // Force shutdown typically uses INTENDED_SYSTEM_EXIT (like HandleExit force_exit case)
+  dependencies_->ExecuteForceShutdown("INTENDED_SYSTEM_EXIT", detail);
   TryTransitionToShutdown();
 }
 
@@ -202,7 +203,31 @@ void ShutdownCoordinator::ExecuteWorkerShutdown(bool force_shutdown,
   if (force_shutdown) {
     ExecuteForceShutdown(detail);
   } else {
-    ExecuteGracefulShutdown(detail, timeout_ms);
+    // Determine the appropriate execution method based on shutdown reason
+    ShutdownReason reason = GetReason();
+
+    // Exit() operations need task draining and disconnect
+    if (reason == ShutdownReason::kUserError || reason == ShutdownReason::kGracefulExit ||
+        reason == ShutdownReason::kIntentionalShutdown ||
+        reason == ShutdownReason::kUnexpectedError ||
+        reason == ShutdownReason::kOutOfMemory ||
+        reason == ShutdownReason::kActorCreationFailed ||
+        reason == ShutdownReason::kActorKilled) {
+      // Call dependencies directly - no redundant coordinator methods
+      TryTransitionToDisconnecting();
+      dependencies_->ExecuteWorkerExit(GetExitTypeString(), detail, timeout_ms);
+      TryTransitionToShutdown();
+    } else if (reason == ShutdownReason::kIdleTimeout ||
+               reason == ShutdownReason::kJobFinished) {
+      // Call dependencies directly - no redundant coordinator methods
+      TryTransitionToDisconnecting();
+      dependencies_->ExecuteHandleExit(GetExitTypeString(), detail, timeout_ms);
+      TryTransitionToShutdown();
+    } else {
+      // Default to graceful shutdown for other reasons
+      ExecuteGracefulShutdown(detail, timeout_ms);
+    }
+
     // Handle timeout fallback if needed
     if (force_on_timeout && GetState() != ShutdownState::kShutdown) {
       ExecuteForceShutdown("Graceful shutdown timeout: " + detail);
@@ -224,6 +249,23 @@ void ShutdownCoordinator::ExecuteActorShutdown(bool force_shutdown,
     if (force_on_timeout && GetState() != ShutdownState::kShutdown) {
       ExecuteForceShutdown("Graceful shutdown timeout: " + detail);
     }
+  }
+}
+
+std::string ShutdownCoordinator::GetExitTypeString() const {
+  switch (GetReason()) {
+  case ShutdownReason::kIdleTimeout:
+  case ShutdownReason::kIntentionalShutdown:
+    return "INTENDED_SYSTEM_EXIT";
+  case ShutdownReason::kUserError:
+    return "USER_ERROR";
+  case ShutdownReason::kUnexpectedError:
+    return "SYSTEM_ERROR";
+  case ShutdownReason::kOutOfMemory:
+    return "NODE_OUT_OF_MEMORY";
+  case ShutdownReason::kGracefulExit:
+  default:
+    return "INTENDED_USER_EXIT";
   }
 }
 
