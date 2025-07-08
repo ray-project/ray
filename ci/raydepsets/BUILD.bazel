@@ -22,6 +22,7 @@ py_binary(
 py_test(
     name = "test_cli",
     srcs = ["test_cli.py"],
+    data = ["test_data/test.config.yaml"],
     exec_compatible_with = ["//:hermetic_python"],
     deps = [
         ci_require("pytest"),
