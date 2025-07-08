@@ -46,8 +46,8 @@ class IActorSubmitQueue {
   virtual void Emplace(uint64_t sequence_no, const TaskSpecification &task_spec) = 0;
   /// If a task exists.
   virtual bool Contains(uint64_t sequence_no) const = 0;
-  /// If the task's dependency was resolved.
-  virtual bool DependencyResolved(uint64_t sequence_no) const = 0;
+  /// If the task's dependencies were resolved.
+  virtual bool DependenciesResolved(uint64_t sequence_no) const = 0;
   /// Mark a task's dependency resolution failed thus remove from the queue.
   virtual void MarkDependencyFailed(uint64_t sequence_no) = 0;
   /// Mark a task's dependency is resolved thus ready to send.

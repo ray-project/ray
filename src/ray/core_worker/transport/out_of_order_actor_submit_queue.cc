@@ -35,7 +35,7 @@ bool OutofOrderActorSubmitQueue::Contains(uint64_t position) const {
   return pending_queue_.contains(position) || sending_queue_.contains(position);
 }
 
-bool OutofOrderActorSubmitQueue::DependencyResolved(uint64_t position) const {
+bool OutofOrderActorSubmitQueue::DependenciesResolved(uint64_t position) const {
   auto it = pending_queue_.find(position);
   if (it != pending_queue_.end()) {
     return it->second.second;

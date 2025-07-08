@@ -895,7 +895,8 @@ Status ActorTaskSubmitter::CancelTask(TaskSpecification task_spec, bool recursiv
 
     task_queued = queue->second.actor_submit_queue->Contains(send_pos);
     if (task_queued) {
-      auto dep_resolved = queue->second.actor_submit_queue->DependencyResolved(send_pos);
+      auto dep_resolved =
+          queue->second.actor_submit_queue->DependenciesResolved(send_pos);
       if (!dep_resolved) {
         RAY_LOG(DEBUG).WithField(task_id)
             << "Task has been resolving dependencies. Cancel to resolve dependencies";

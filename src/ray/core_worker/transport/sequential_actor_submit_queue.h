@@ -36,8 +36,8 @@ class SequentialActorSubmitQueue : public IActorSubmitQueue {
   void Emplace(uint64_t sequence_no, const TaskSpecification &task_spec) override;
   /// If a task exists.
   bool Contains(uint64_t sequence_no) const override;
-  /// If the task's dependency was resolved.
-  bool DependencyResolved(uint64_t sequence_no) const override;
+  /// If the task's dependencies were resolved.
+  bool DependenciesResolved(uint64_t sequence_no) const override;
   /// Mark a task's dependency resolution failed thus remove from the queue.
   void MarkDependencyFailed(uint64_t sequence_no) override;
   /// Make a task's dependency is resolved thus ready to send.
@@ -66,10 +66,10 @@ class SequentialActorSubmitQueue : public IActorSubmitQueue {
   absl::btree_map<uint64_t, std::pair<TaskSpecification, bool>> requests;
 
   /// Retries waiting for argument resolution.
-  absl::btree_map<uint64_t, TaskSpecification> retry_pending_queue;
+  absl::btree_map<uint64_t, TaskSpecification> retries_args_pending;
 
   /// Retries that are waiting to be sent to the actor.
-  absl::btree_map<uint64_t, TaskSpecification> retry_sending_queue;
+  absl::btree_map<uint64_t, TaskSpecification> retries_args_resolved;
 };
 }  // namespace core
 }  // namespace ray
