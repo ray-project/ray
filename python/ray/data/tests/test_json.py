@@ -6,12 +6,15 @@ from functools import partial
 
 import pandas as pd
 import pyarrow as pa
+import pyarrow.fs as fs
 import pyarrow.json as pajson
 import pytest
 from pytest_lazy_fixtures import lf as lazy_fixture
 
 import ray
 from ray.data import Schema
+from ray.data._internal.datasource.json_datasource import PandasJSONDatasource
+from ray.data._internal.pandas_block import PandasBlockBuilder
 from ray.data._internal.util import rows_same
 from ray.data.block import BlockAccessor
 from ray.data.datasource import (
@@ -671,6 +674,60 @@ def test_json_with_http_path_parallelization(ray_start_regular_shared, httpserve
     assert sorted(actual_rows, key=lambda row: row["id"]) == sorted(
         expected_rows, key=lambda row: row["id"]
     )
+
+
+class TestPandasJSONDatasource:
+    @pytest.mark.parametrize(
+        "data",
+        [{"a": []}, {"a": [1]}, {"a": [1, 2, 3]}],
+        ids=["empty", "single", "multiple"],
+    )
+    def test_read_stream(self, data, tmp_path):
+        # Setup test file.
+        df = pd.DataFrame(data)
+        path = os.path.join(tmp_path, "test.json")
+        df.to_json(path, orient="records", lines=True)
+
+        # Setup datasource.
+        local_filesystem = fs.LocalFileSystem()
+        source = PandasJSONDatasource(
+            path, target_output_size_bytes=1, filesystem=local_filesystem
+        )
+
+        # Read stream.
+        block_builder = PandasBlockBuilder()
+        with source._open_input_source(local_filesystem, path) as f:
+            for block in source._read_stream(f, path):
+                block_builder.add_block(block)
+        block = block_builder.build()
+
+        # Verify.
+        assert rows_same(block, df)
+
+    def test_read_stream_with_target_output_size_bytes(self, tmp_path):
+        # Setup test file. It contains 16 lines, each line is 8 MiB.
+        df = pd.DataFrame({"data": ["a" * 8 * 1024 * 1024] * 16})
+        path = os.path.join(tmp_path, "test.json")
+        df.to_json(path, orient="records", lines=True)
+
+        # Setup datasource. It should read 32 MiB (4 lines) per output.
+        local_filesystem = fs.LocalFileSystem()
+        source = PandasJSONDatasource(
+            path,
+            target_output_size_bytes=32 * 1024 * 1024,
+            filesystem=local_filesystem,
+        )
+
+        # Read stream.
+        block_builder = PandasBlockBuilder()
+        with source._open_input_source(local_filesystem, path) as f:
+            for block in source._read_stream(f, path):
+                assert len(block) == 4
+                block_builder.add_block(block)
+        block = block_builder.build()
+
+        # Verify.
+        assert rows_same(block, df)
 
 
 if __name__ == "__main__":
