@@ -177,7 +177,7 @@ void ShutdownCoordinator::ExecuteForceShutdown(const std::string &detail) {
   // Delegate to concrete executor - this implements "no coordination without control"
   TryTransitionToDisconnecting();
   // Force shutdown typically uses INTENDED_SYSTEM_EXIT (like HandleExit force_exit case)
-  dependencies_->ExecuteForceShutdown("INTENDED_SYSTEM_EXIT", detail);
+  dependencies_->ExecuteForceShutdown(GetExitTypeString(), detail);
   TryTransitionToShutdown();
 }
 
@@ -215,13 +215,17 @@ void ShutdownCoordinator::ExecuteWorkerShutdown(bool force_shutdown,
         reason == ShutdownReason::kActorKilled) {
       // Call dependencies directly - no redundant coordinator methods
       TryTransitionToDisconnecting();
-      dependencies_->ExecuteWorkerExit(GetExitTypeString(), detail, timeout_ms);
+      if (dependencies_) {
+        dependencies_->ExecuteWorkerExit(GetExitTypeString(), detail, timeout_ms);
+      }
       TryTransitionToShutdown();
     } else if (reason == ShutdownReason::kIdleTimeout ||
                reason == ShutdownReason::kJobFinished) {
       // Call dependencies directly - no redundant coordinator methods
       TryTransitionToDisconnecting();
-      dependencies_->ExecuteHandleExit(GetExitTypeString(), detail, timeout_ms);
+      if (dependencies_) {
+        dependencies_->ExecuteHandleExit(GetExitTypeString(), detail, timeout_ms);
+      }
       TryTransitionToShutdown();
     } else {
       // Default to graceful shutdown for other reasons
@@ -263,6 +267,7 @@ std::string ShutdownCoordinator::GetExitTypeString() const {
     return "SYSTEM_ERROR";
   case ShutdownReason::kOutOfMemory:
     return "NODE_OUT_OF_MEMORY";
+  case ShutdownReason::kForcedExit:
   case ShutdownReason::kGracefulExit:
   default:
     return "INTENDED_USER_EXIT";

@@ -1032,8 +1032,8 @@ void CoreWorker::Shutdown() {
   // PURE COORDINATOR DELEGATION - No coordination without control!
   // The coordinator will execute the actual shutdown sequence via dependencies
   shutdown_coordinator_->RequestShutdown(false,  // graceful shutdown
-                                         ShutdownReason::kIntentionalShutdown,
-                                         "CoreWorker::Shutdown() called",
+                                         ShutdownReason::kGracefulExit,
+                                         "ray.shutdown() called",
                                          std::chrono::milliseconds{60000},  // 60s timeout
                                          true /* force on timeout */);
 }
@@ -1179,7 +1179,7 @@ void CoreWorker::ForceExit(const rpc::WorkerExitType exit_type,
   ShutdownReason reason = [exit_type]() {
     switch (exit_type) {
     case rpc::WorkerExitType::INTENDED_SYSTEM_EXIT:
-      return ShutdownReason::kForcedExit;
+      return ShutdownReason::kIntentionalShutdown;
     case rpc::WorkerExitType::INTENDED_USER_EXIT:
       return ShutdownReason::kForcedExit;
     case rpc::WorkerExitType::USER_ERROR:
