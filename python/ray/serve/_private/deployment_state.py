@@ -2641,7 +2641,9 @@ class DeploymentStateManager:
                         deployment_to_current_replicas[deployment_id]
                     )
                 self._deployment_states[deployment_id] = deployment_state
-                self._app_deployment_mapping[deployment_id.app_name].add(deployment_id.name)
+                self._app_deployment_mapping[deployment_id.app_name].add(
+                    deployment_id.name
+                )
 
     def shutdown(self):
         """
@@ -2900,11 +2902,17 @@ class DeploymentStateManager:
             self._deployment_scheduler.on_deployment_deleted(deployment_id)
             self._autoscaling_state_manager.deregister_deployment(deployment_id)
             del self._deployment_states[deployment_id]
-            if deployment_id.app_name in self._app_deployment_mapping and deployment_id.name in self._app_deployment_mapping[deployment_id.app_name]:
-                 self._app_deployment_mapping[deployment_id.app_name].remove(deployment_id.name)
-                 # Clean up the app_name entry if no deployments are left
-                 if not self._app_deployment_mapping[deployment_id.app_name]:
-                     del self._app_deployment_mapping[deployment_id.app_name]
+            if (
+                deployment_id.app_name in self._app_deployment_mapping
+                and deployment_id.name
+                in self._app_deployment_mapping[deployment_id.app_name]
+            ):
+                self._app_deployment_mapping[deployment_id.app_name].remove(
+                    deployment_id.name
+                )
+                # Clean up the app_name entry if no deployments are left
+                if not self._app_deployment_mapping[deployment_id.app_name]:
+                    del self._app_deployment_mapping[deployment_id.app_name]
 
         if len(deleted_ids):
             self._record_deployment_usage()
