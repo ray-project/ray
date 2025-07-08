@@ -114,7 +114,7 @@ public class ActorCreationOptions extends BaseTaskOptions {
   public static class Builder {
     private String name;
     private ActorLifetime lifetime = null;
-    private Map<String, Double> resources = new HashMap<>();
+    private final Map<String, Double> resources = new HashMap<>();
     private int maxRestarts = 0;
     private int maxTaskRetries = 0;
     private List<String> jvmOptions = new ArrayList<>();
