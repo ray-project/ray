@@ -85,7 +85,7 @@ TEST(SchedulingQueueTest, TestTaskEvents) {
   auto pool_manager =
       std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
 
-  ActorSchedulingQueue queue(io_service, waiter, task_event_buffer, pool_manager);
+  ActorSchedulingQueue queue(io_service, waiter, task_event_buffer, pool_manager, 1);
   int n_ok = 0;
   int n_rej = 0;
   auto fn_ok = [&n_ok](const TaskSpecification &task_spec,
@@ -156,7 +156,7 @@ TEST(SchedulingQueueTest, TestInOrder) {
   auto pool_manager =
       std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
 
-  ActorSchedulingQueue queue(io_service, waiter, task_event_buffer, pool_manager);
+  ActorSchedulingQueue queue(io_service, waiter, task_event_buffer, pool_manager, 1);
   int n_ok = 0;
   int n_rej = 0;
   auto fn_ok = [&n_ok](const TaskSpecification &task_spec,
@@ -192,7 +192,7 @@ TEST(SchedulingQueueTest, TestWaitForObjects) {
   auto pool_manager =
       std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
 
-  ActorSchedulingQueue queue(io_service, waiter, task_event_buffer, pool_manager);
+  ActorSchedulingQueue queue(io_service, waiter, task_event_buffer, pool_manager, 1);
   std::atomic<int> n_ok(0);
   std::atomic<int> n_rej(0);
 
@@ -243,7 +243,7 @@ TEST(SchedulingQueueTest, TestWaitForObjectsNotSubjectToSeqTimeout) {
   auto pool_manager =
       std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
 
-  ActorSchedulingQueue queue(io_service, waiter, task_event_buffer, pool_manager);
+  ActorSchedulingQueue queue(io_service, waiter, task_event_buffer, pool_manager, 1);
   std::atomic<int> n_ok(0);
   std::atomic<int> n_rej(0);
 
@@ -286,7 +286,7 @@ TEST(SchedulingQueueTest, TestOutOfOrder) {
   auto pool_manager =
       std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
 
-  ActorSchedulingQueue queue(io_service, waiter, task_event_buffer, pool_manager);
+  ActorSchedulingQueue queue(io_service, waiter, task_event_buffer, pool_manager, 1);
   int n_ok = 0;
   int n_rej = 0;
   auto fn_ok = [&n_ok](const TaskSpecification &task_spec,
@@ -321,7 +321,7 @@ TEST(SchedulingQueueTest, TestSeqWaitTimeout) {
   auto pool_manager =
       std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
 
-  ActorSchedulingQueue queue(io_service, waiter, task_event_buffer, pool_manager);
+  ActorSchedulingQueue queue(io_service, waiter, task_event_buffer, pool_manager, 1);
   std::atomic<int> n_ok(0);
   std::atomic<int> n_rej(0);
 
@@ -337,7 +337,7 @@ TEST(SchedulingQueueTest, TestSeqWaitTimeout) {
   queue.Add(3, -1, fn_ok, fn_rej, nullptr, task_spec);
   ASSERT_TRUE(WaitForCondition(CreateEqualsConditionChecker(&n_ok, 1), 1000));
   ASSERT_EQ(n_rej, 0);
-  io_service.run();  // immediately triggers timeout
+  io_service.run();
   ASSERT_TRUE(WaitForCondition(CreateEqualsConditionChecker(&n_ok, 1), 1000));
   ASSERT_TRUE(WaitForCondition(CreateEqualsConditionChecker(&n_rej, 2), 1000));
   queue.Add(4, -1, fn_ok, fn_rej, nullptr, task_spec);
@@ -362,7 +362,7 @@ TEST(SchedulingQueueTest, TestSkipAlreadyProcessedByClient) {
   auto pool_manager =
       std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
 
-  ActorSchedulingQueue queue(io_service, waiter, task_event_buffer, pool_manager);
+  ActorSchedulingQueue queue(io_service, waiter, task_event_buffer, pool_manager, 1);
   std::atomic<int> n_ok(0);
   std::atomic<int> n_rej(0);
   auto fn_ok = [&n_ok](const TaskSpecification &task_spec,
