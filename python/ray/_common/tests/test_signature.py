@@ -7,6 +7,7 @@ and flattening function signatures for serialization.
 
 import inspect
 import pytest
+import sys
 from typing import Any, Optional
 from unittest.mock import Mock, patch
 
@@ -507,3 +508,7 @@ class TestIntegration:
 
         assert recovered_args == list(args)
         assert recovered_kwargs == kwargs
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", "-s", __file__]))
