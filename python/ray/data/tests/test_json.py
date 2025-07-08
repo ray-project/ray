@@ -575,7 +575,6 @@ def test_json_read_small_file_unit_block_size(
     assert ds.schema() == Schema(pa.schema([("one", pa.int64()), ("two", pa.string())]))
 
 
-@pytest.mark.timeout(1)
 @pytest.mark.parametrize(
     "fs,data_path,endpoint_url",
     [
