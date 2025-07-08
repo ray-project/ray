@@ -706,7 +706,7 @@ class TestPandasJSONDatasource:
 
     def test_read_stream_with_target_output_size_bytes(self, tmp_path):
         # Setup test file. It contains 16 lines, each line is 8 MiB.
-        df = pd.DataFrame({"data": ["a" * 8] * 16})
+        df = pd.DataFrame({"data": ["a" * 8 * 1024 * 1024] * 16})
         path = os.path.join(tmp_path, "test.json")
         df.to_json(path, orient="records", lines=True)
 
