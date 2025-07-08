@@ -2,6 +2,7 @@ import os
 import sys
 from collections import defaultdict
 from typing import Optional
+from ray._common.test_utils import SignalActor
 
 import pytest
 
@@ -336,6 +337,40 @@ def test_task_retries_on_exit(ray_start_regular_shared):
         3,
         3,
     ]
+
+
+def test_retry_not_dependent_task_seq_no(ray_start_regular_shared):
+    """
+    1. one is submitted
+    2. two is submitted
+    3. the first attempt of one fails
+    4. the second attempt of one is submitted
+    5. two succesfully finishes
+    """
+
+    @ray.remote
+    class Actor:
+        @ray.method(max_task_retries=1, retry_exceptions=[MyError])
+        def one(self, signal_actor, counter_actor):
+            ray.get(signal_actor.wait.remote())
+            ray.get(counter_actor.increment.remote())
+            # Fail on the first invocation.
+            if ray.get(counter_actor.get_count.remote()) <= 1:
+                raise MyError()
+            return 1
+
+        def two(self, one_output_ref):
+            return 2
+
+    signal_actor = SignalActor.remote()
+    counter = Counter.remote()
+    actor = Actor.remote()
+    one_output_ref = actor.one.remote(signal_actor, counter)
+    two_output_ref = actor.two.remote(one_output_ref)
+    # Unblock so the first attempt can fail and the second attempt gets submitted.
+    ray.get(signal_actor.send.remote())
+
+    assert ray.get(two_output_ref) == 2
 
 
 if __name__ == "__main__":
