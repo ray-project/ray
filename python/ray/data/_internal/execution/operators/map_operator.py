@@ -568,14 +568,18 @@ def _map_task(
         stats_builder = BlockExecStats.builder()
 
         for block in map_transformer.apply_transform(iter(blocks), ctx):
+            block_accessor = BlockAccessor.for_block(block)
+
+            assert block_accessor.num_rows() > 0, f"Operator {ctx.op_name} produced an empty block"
+
             # Collect the execution stats
             stats = stats_builder.build()
             stats.udf_time_s = map_transformer.udf_time()
             stats.task_idx = ctx.task_idx
             stats.max_uss_bytes = profiler.estimate_max_uss()
 
-            meta = BlockAccessor.for_block(block).get_metadata(exec_stats=stats)
-            schema = BlockAccessor.for_block(block).schema()
+            meta = block_accessor.get_metadata(exec_stats=stats)
+            schema = block_accessor.schema()
 
             yield block
             yield BlockMetadataWithSchema(metadata=meta, schema=schema)
