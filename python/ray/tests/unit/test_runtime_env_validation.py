@@ -501,15 +501,13 @@ class TestValidatePip:
         assert "pip_version" not in result
 
     def test_validate_pip_install_options(self):
-        opts = [
-            "--no-cache-dir",
-            "--no-build-isolation",
-            "--disable-pip-version-check"
-        ]
-        result = validation.parse_and_validate_pip({
-            "packages": ["pkg1", "ray", "pkg2"],
-            "pip_install_options": list(opts),
-        })
+        opts = ["--no-cache-dir", "--no-build-isolation", "--disable-pip-version-check"]
+        result = validation.parse_and_validate_pip(
+            {
+                "packages": ["pkg1", "ray", "pkg2"],
+                "pip_install_options": list(opts),
+            }
+        )
         assert result["packages"] == ["pkg1", "ray", "pkg2"]
         assert not result["pip_check"]
         assert "pip_version" not in result
