@@ -9,10 +9,6 @@ from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
 
 import ray
 from ray.actor import ActorHandle
-from ray.anyscale.data._internal.node_trackers.actor_location import (
-    ActorLocationTracker,
-    get_or_create_actor_location_tracker,
-)
 from ray.core.generated import gcs_pb2
 from ray.data._internal.compute import ActorPoolStrategy
 from ray.data._internal.execution.autoscaler import AutoscalingActorPool
@@ -159,7 +155,7 @@ class ActorPoolMapOperator(MapOperator):
             ),
             _enable_actor_pool_on_exit_hook=self.data_context._enable_actor_pool_on_exit_hook,
         )
-        self._actor_location_tracker = get_or_create_actor_location_tracker()
+
         self._actor_task_selector = self._create_task_selector(self._actor_pool)
         # A queue of bundles awaiting dispatch to actors.
         self._bundle_queue = create_bundle_queue()
@@ -227,9 +223,7 @@ class ActorPoolMapOperator(MapOperator):
     def should_add_input(self) -> bool:
         return self._actor_pool.num_free_task_slots() > 0
 
-    def _start_actor(
-        self, labels: Dict[str, str], logical_actor_id: str
-    ) -> Tuple[ActorHandle, ObjectRef]:
+    def _start_actor(self, labels: Dict[str, str]) -> Tuple[ActorHandle, ObjectRef]:
         """Start a new actor and add it to the actor pool as a pending actor.
 
         Args:
@@ -245,11 +239,9 @@ class ActorPoolMapOperator(MapOperator):
         actor = self._cls.options(
             _labels={self._OPERATOR_ID_LABEL_KEY: self.id, **labels}
         ).remote(
-            ctx=ctx,
-            logical_actor_id=logical_actor_id,
+            ctx,
             src_fn_name=self.name,
             map_transformer=self._map_transformer,
-            actor_location_tracker=self._actor_location_tracker,
         )
         res_ref = actor.get_location.options(name=f"{self.name}.get_location").remote()
 
@@ -494,26 +486,12 @@ class _MapWorker:
         ctx: DataContext,
         src_fn_name: str,
         map_transformer: MapTransformer,
-        logical_actor_id: str,
-        actor_location_tracker: ActorLocationTracker,
     ):
         DataContext._set_current(ctx)
         self.src_fn_name: str = src_fn_name
         self._map_transformer = map_transformer
         # Initialize state for this actor.
         self._map_transformer.init()
-        self._logical_actor_id = logical_actor_id
-        self.update_actor_location_map(actor_location_tracker)
-
-    def update_actor_location_map(
-        self,
-        actor_location_tracker: ActorLocationTracker,
-    ) -> None:
-        ray.get(
-            actor_location_tracker.update_actor_location.remote(
-                self._logical_actor_id, ray.get_runtime_context().get_node_id()
-            )
-        )
 
     def get_location(self) -> NodeIdStr:
         return ray.get_runtime_context().get_node_id()
@@ -873,7 +851,7 @@ class _ActorPool(AutoscalingActorPool):
     def _create_actor(self) -> Tuple[ray.actor.ActorHandle, ObjectRef]:
         logical_actor_id = str(uuid.uuid4())
         labels = {self.get_logical_id_label_key(): logical_actor_id}
-        actor, ready_ref = self._create_actor_fn(labels, logical_actor_id)
+        actor, ready_ref = self._create_actor_fn(labels)
         self._actor_to_logical_id[actor] = logical_actor_id
         return actor, ready_ref
 
