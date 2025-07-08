@@ -11,29 +11,32 @@ class Depset:
     requirements: List[str]
     constraints: List[str]
     output: str
+    source_depset: str
 
 
 @dataclass
 class Config:
     depsets: List[Depset] = field(default_factory=list)
+    workspace_dir: str = field(default_factory=str)
 
     @staticmethod
     def from_dict(data: dict) -> "Config":
-        current_directory = get_current_directory()
+        Config.workspace_dir = get_current_directory()
         raw_depsets = data.get("depsets", [])
         depsets = [
             Depset(
                 name=values.get("name"),
                 requirements=[
-                    os.path.join(current_directory, requirement)
+                    os.path.join(Config.workspace_dir, requirement)
                     for requirement in values.get("requirements", [])
                 ],
                 constraints=[
-                    os.path.join(current_directory, constraint)
+                    os.path.join(Config.workspace_dir, constraint)
                     for constraint in values.get("constraints", [])
                 ],
                 operation=values.get("operation", "compile"),
-                output=os.path.join(current_directory, values.get("output")),
+                source_depset=values.get("source_depset", None),
+                output=os.path.join(Config.workspace_dir, values.get("output")),
             )
             for values in raw_depsets
         ]
@@ -42,7 +45,7 @@ class Config:
 
 
 def get_current_directory() -> str:
-    workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY")
+    workspace_dir = os.environ.get("BUILD_WORKING_DIRECTORY")
     if workspace_dir:
         current_directory = workspace_dir
     else:

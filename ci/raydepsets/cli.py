@@ -71,6 +71,13 @@ class DependencySetManager:
                 output=depset.output,
             )
             click.echo(f"Dependency set {depset.name} compiled successfully")
+        elif depset.operation == "subset":
+            self.subset(
+                source_depset=depset.source_depset,
+                requirements=depset.requirements,
+                name=depset.name,
+                output=depset.output,
+            )
 
     def compile(
         self,
@@ -92,3 +99,19 @@ class DependencySetManager:
             self.exec_uv_cmd("compile", args)
         except Exception as e:
             raise Exception(f"Error: {str(e)}")
+    
+    def subset(self,
+        source_depset: str,
+        requirements: List[str],
+        name: str,
+        output: str = None,
+    ):
+        """Subset a dependency set."""
+        source_depset = self.get_depset(source_depset)
+        self.compile(
+            constraints=[source_depset.output],
+            requirements=requirements,
+            args=DEFAULT_UV_FLAGS.copy(),
+            name=name,
+            output=output,
+        )
