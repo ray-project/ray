@@ -43,7 +43,6 @@ class Config:
 
 def get_current_directory() -> str:
     workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", os.getcwd())
-    print(f"workspace_dir: {workspace_dir}")
     return workspace_dir
 
 
