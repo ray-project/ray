@@ -2694,12 +2694,13 @@ TEST_F(TaskManagerTest, TestGPUObjectTaskSuccess) {
   AddInlinedArg(spec, dep1, /*is_gpu_object=*/true);
   ObjectID dep2 = ObjectID::FromRandom();
   AddInlinedArg(spec, dep2, /*is_gpu_object=*/false);
+  ObjectID dep3 = ObjectID::FromRandom();
+  AddInlinedArg(spec, dep3, /*is_gpu_object=*/false);
 
   // Check whether the GC callback is registered for the return object.
   auto return_id = spec.ReturnId(0);
-  EXPECT_CALL(
-      *reference_counter_,
-      AddObjectOutOfScopeOrFreedCallback(return_id, testing::_))
+  EXPECT_CALL(*reference_counter_,
+              AddObjectOutOfScopeOrFreedCallback(return_id, testing::_))
       .Times(1);
 
   // Call AddPendingTask to add the task to the task manager.
