@@ -315,8 +315,8 @@ async def test_logprobs(
                 running_str += logprob["token"]
         assert running_str == resp["message"]["content"]
 
-    # top logprobs have to be between 0 and 5
-    invalid_num_logprobs = [-1, 6]
+    # top logprobs have to be positive integer
+    invalid_num_logprobs = [-1]
     bad_config = configuration.copy()
     for invalid_num_logprob in invalid_num_logprobs:
         bad_config["top_logprobs"] = invalid_num_logprob
