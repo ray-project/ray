@@ -323,7 +323,7 @@ def test_torch_tensor_auto(ray_start_regular, num_gpus):
     # Use NCCL only when sender and receiver are on different GPUs.
     # When each actor has 0.5 GPU, sender and receiver are allocated
     # on the same GPU, so we use auto.
-    expected_transport = "nccl" if num_gpus == [1, 1] else "auto"
+    expected_transport = "accelerator" if num_gpus == [1, 1] else "auto"
 
     shape = (10,)
     dtype = torch.float16
@@ -438,7 +438,7 @@ def test_torch_tensor_nccl_disallows_driver(ray_start_regular):
         ValueError,
         match=(
             r"DAG inputs cannot be transferred "
-            "via NCCL because the driver cannot participate in the NCCL group"
+            "via accelerator because the driver cannot participate in the communicator group"
         ),
     ):
         dag.experimental_compile()
@@ -450,7 +450,7 @@ def test_torch_tensor_nccl_disallows_driver(ray_start_regular):
 
     with pytest.raises(
         ValueError,
-        match=(r"Driver cannot participate in the NCCL group\."),
+        match=(r"Driver cannot participate in the communicator group\."),
     ):
         dag.experimental_compile()
 
@@ -559,7 +559,7 @@ def test_torch_tensor_custom_comm(ray_start_regular):
             return self._inner.destroy()
 
         def get_transport_name(self) -> str:
-            return "nccl"
+            return "accelerator"
 
         @classmethod
         def generate_communicator_id(self) -> str:
@@ -699,7 +699,7 @@ def test_torch_tensor_custom_comm_inited(ray_start_regular):
             pass
 
         def get_transport_name(self) -> str:
-            return "nccl"
+            return "accelerator"
 
         @classmethod
         def generate_communicator_id(self) -> str:
@@ -843,7 +843,7 @@ def test_torch_tensor_default_comm(ray_start_regular, transports):
             pass
 
         def get_transport_name(self) -> str:
-            return "nccl"
+            return "accelerator"
 
         @classmethod
         def generate_communicator_id(self) -> str:
@@ -1000,7 +1000,7 @@ def test_torch_tensor_invalid_custom_comm(ray_start_regular):
             pass
 
         def get_transport_name(self) -> str:
-            return "nccl"
+            return "accelerator"
 
         @classmethod
         def generate_communicator_id(self) -> str:
@@ -1285,8 +1285,8 @@ def test_torch_tensor_exceptions3(
         ValueError,
         match=(
             r"Actor Actor\(TorchTensorWorker, .*?\) returns a tensor with type hint "
-            r'TorchTensor\(transport="nccl"\) or '
-            r"TorchTensor\(transport=nccl_group_handle\) "
+            r'TorchTensor\(transport="accelerator"\) or '
+            r"TorchTensor\(transport=accelerator_group_handle\) "
             r"but actor does not have an accelerator assigned by Ray\."
         ),
     ):
@@ -1647,7 +1647,7 @@ def test_torch_tensor_nccl_all_reduce_custom_comm(ray_start_regular):
             return self._inner.destroy()
 
         def get_transport_name(self) -> str:
-            return "nccl"
+            return "accelerator"
 
         @classmethod
         def generate_communicator_id(self) -> str:
@@ -1890,7 +1890,7 @@ def test_torch_nccl_channel_with_all_local_readers(ray_start_regular):
         AssertionError,
         match=(
             "All readers are from the same actor. The TorchTensorType type hint "
-            "is not needed. No NCCL channel will be created."
+            "is not needed. No accelerator channel will be created."
         ),
     ):
         dag.experimental_compile()
