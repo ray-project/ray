@@ -1717,6 +1717,7 @@ def test_max_block_size_none_respects_override_num_blocks(
         # Always restore the original setting.
         ctx.target_max_block_size = original_tmbs
 
+
 @pytest.mark.parametrize("min_rows_per_file", [5, 10])
 def test_write_partition_cols_with_min_rows_per_file(
     tmp_path, ray_start_regular_shared, min_rows_per_file
