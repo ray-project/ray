@@ -19,8 +19,7 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker --
           //ci/raydepsets/... ci
-          --only-tags=release_unit,ci_unit
-          --cache-test-results --parallelism-per-worker 1
+          --cache-test-results
           --build-name oss-ci-base_test
           --build-type skip
     instance_type: small

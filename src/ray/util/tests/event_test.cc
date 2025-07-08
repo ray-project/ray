@@ -29,7 +29,6 @@
 #include <vector>
 
 #include "ray/common/ray_config.h"
-#include "ray/util/event_label.h"
 #include "ray/util/random.h"
 #include "ray/util/string_utils.h"
 #include "src/ray/protobuf/gcs.pb.h"
@@ -592,7 +591,7 @@ TEST_F(EventTest, TestRayCheckAbort) {
                    "task 1",
                    "RAYLET",
                    "FATAL",
-                   EL_RAY_FATAL_CHECK_FAILED,
+                   "RAY_FATAL_CHECK_FAILED",
                    "NULL");
   EXPECT_THAT(ele_1.message(),
               testing::HasSubstr("Check failed: 1 < 0 incorrect test case"));
