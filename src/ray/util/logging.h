@@ -111,11 +111,6 @@ inline constexpr std::string_view kLogKeyPlacementGroupID = "placement_group_id"
 template <typename T>
 struct DefaultLogKey {};
 
-// A deleter can be used with std::unique_ptr to free memory without passing function
-// pointer of free
-struct FreeDeleter {
-  void operator()(void *ptr) const { free(ptr); }
-};
 class StackTrace {
   /// This dumps the current stack trace information.
   friend std::ostream &operator<<(std::ostream &os, const StackTrace &stack_trace);

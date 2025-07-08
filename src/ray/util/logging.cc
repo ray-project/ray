@@ -76,6 +76,12 @@ std::ostream &operator<<(std::ostream &os, const StackTrace &stack_trace) {
   void *frames[MAX_NUM_FRAMES];
 
 #ifndef _WIN32
+  // A deleter can be used with std::unique_ptr to free memory without passing function
+  // pointer of free
+  struct FreeDeleter {
+    void operator()(void *ptr) const { free(ptr); }
+  };
+
   const int num_frames = backtrace(frames, MAX_NUM_FRAMES);
   std::unique_ptr<char *, FreeDeleter> frame_symbols(
       backtrace_symbols(frames, num_frames));
