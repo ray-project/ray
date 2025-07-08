@@ -37,11 +37,13 @@ class RandomIntRowDatasource(Datasource):
         row = np.random.bytes(row_size_bytes)
 
         schema = pyarrow.schema(
-            pyarrow.field("c_0", pyarrow.int64()),
-            # NOTE: We use fixed-size binary type to avoid Arrow (list) offsets
-            #       overflows when using non-fixed-size data-types (like string,
-            #       binary, list, etc) whose size exceeds int32 limit (of 2^31-1)
-            pyarrow.field("c_1", pyarrow.binary(row_size_bytes)),
+            [
+                pyarrow.field("c_0", pyarrow.int64()),
+                # NOTE: We use fixed-size binary type to avoid Arrow (list) offsets
+                #       overflows when using non-fixed-size data-types (like string,
+                #       binary, list, etc) whose size exceeds int32 limit (of 2^31-1)
+                pyarrow.field("c_1", pyarrow.binary(row_size_bytes)),
+            ]
         )
 
         def make_block(count: int) -> Block:
