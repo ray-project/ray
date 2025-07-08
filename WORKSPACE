@@ -103,7 +103,7 @@ filegroup(
 )
 
 http_archive(
-    name = "uv_x86_64_0_7_19",
+    name = "uv_x86_64",
     build_file_content = """
     filegroup(
         name = "file",
