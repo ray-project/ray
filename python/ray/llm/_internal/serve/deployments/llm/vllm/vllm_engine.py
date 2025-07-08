@@ -195,7 +195,6 @@ class VLLMEngine(LLMEngine):
             llm_config, LLMConfig
         ), f"Got invalid config {llm_config} of type {type(llm_config)}"
         self.llm_config = llm_config
-        self.engine_config = VLLMEngineConfig.from_llm_config(llm_config)
 
         self._stats = VLLMEngineStatTracker()
         self.running = False
@@ -280,13 +279,13 @@ class VLLMEngine(LLMEngine):
         # Initialize node and return all configurations
         node_initialization = await self.initialize_node(self.llm_config)
 
-        (engine_args, engine_config) = await self._prepare_engine_config(
+        vllm_engine_args, vllm_engine_config = await self._prepare_engine_config(
             node_initialization
         )
 
         return self._start_async_llm_engine(
-            engine_args,
-            engine_config,
+            vllm_engine_args,
+            vllm_engine_config,
             node_initialization.placement_group,
         )
 
@@ -332,30 +331,30 @@ class VLLMEngine(LLMEngine):
 
     def _start_async_llm_engine_v0(
         self,
-        engine_args: "AsyncEngineArgs",
-        vllm_config: "VllmConfig",
+        vllm_engine_args: "AsyncEngineArgs",
+        vllm_engine_config: "VllmConfig",
         placement_group: PlacementGroup,
     ) -> "EngineClient":
 
         from vllm.engine.async_llm_engine import AsyncLLMEngine
         from vllm.executor.ray_distributed_executor import RayDistributedExecutor
 
-        vllm_config.parallel_config.placement_group = placement_group
+        vllm_engine_config.parallel_config.placement_group = placement_group
 
         _clear_current_platform_cache()
 
         engine_client = AsyncLLMEngine(
-            vllm_config=vllm_config,
+            vllm_config=vllm_engine_config,
             executor_class=RayDistributedExecutor,
-            log_stats=not engine_args.disable_log_stats,
+            log_stats=not vllm_engine_args.disable_log_stats,
         )
 
         return engine_client
 
     def _start_async_llm_engine(
         self,
-        engine_args: "AsyncEngineArgs",
-        vllm_config: "VllmConfig",
+        vllm_engine_args: "AsyncEngineArgs",
+        vllm_engine_config: "VllmConfig",
         placement_group: PlacementGroup,
     ) -> "EngineClient":
         """Creates an async LLM engine from the engine arguments."""
@@ -364,13 +363,13 @@ class VLLMEngine(LLMEngine):
         # NOTE: This is a temporary solution untill vLLM v1 supports embeddings.
         if not vllm_envs.VLLM_USE_V1:
             return self._start_async_llm_engine_v0(
-                engine_args, vllm_config, placement_group
+                vllm_engine_args, vllm_engine_config, placement_group
             )
 
         from vllm.v1.engine.async_llm import AsyncLLM
         from vllm.v1.executor.abstract import Executor
 
-        vllm_config.parallel_config.placement_group = placement_group
+        vllm_engine_config.parallel_config.placement_group = placement_group
 
         _clear_current_platform_cache()
 
@@ -384,12 +383,12 @@ class VLLMEngine(LLMEngine):
             # For now, assume folks enabling log_engine_metrics do not require LoggingStatLogger, PrometheusStatLogger
             custom_stat_loggers = [RayPrometheusStatLogger]
 
-        executor_class = Executor.get_class(vllm_config)
+        executor_class = Executor.get_class(vllm_engine_config)
         logger.info(f"Using executor class: {executor_class}")
         engine_client = AsyncLLM(
-            vllm_config=vllm_config,
+            vllm_config=vllm_engine_config,
             executor_class=executor_class,
-            log_stats=not engine_args.disable_log_stats,
+            log_stats=not vllm_engine_args.disable_log_stats,
             stat_loggers=custom_stat_loggers,
         )
 
