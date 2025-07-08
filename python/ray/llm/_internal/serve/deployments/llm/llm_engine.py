@@ -19,24 +19,24 @@ class LLMEngine(abc.ABC):
     async def start(self):
         """Start the engine"""
         pass
-    
+
     @abc.abstractmethod
     async def resolve_lora(self, lora_model: DiskMultiplexConfig):
         """Resolve the lora model"""
         pass
-    
+
     @abc.abstractmethod
-    async def chat(self, request) ->  AsyncGenerator[Any, None]:
+    async def chat(self, request) -> AsyncGenerator[Any, None]:
         """Chat with the engine"""
         pass
-    
+
     @abc.abstractmethod
-    async def completions(self, request) ->  AsyncGenerator[Any, None]:
+    async def completions(self, request) -> AsyncGenerator[Any, None]:
         """Completion with the engine"""
         pass
-    
+
     @abc.abstractmethod
-    async def embeddings(self, request) ->  AsyncGenerator[Any, None]:
+    async def embeddings(self, request) -> AsyncGenerator[Any, None]:
         """Embed with the engine"""
         pass
 

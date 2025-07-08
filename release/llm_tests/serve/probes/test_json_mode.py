@@ -205,7 +205,10 @@ async def test_invalid_schema(model: str, openai_async_client):
     querier = TextGenerationProbeQuerier(openai_async_client, {"temperature": 0.0})
     response_format = {
         "type": "json_schema",
-        "json_schema": {"name": "expected_schema", "schema": {"type": "object", "properties": {"name": {"type": "str"}}}},
+        "json_schema": {
+            "name": "expected_schema",
+            "schema": {"type": "object", "properties": {"name": {"type": "str"}}},
+        },
     }
 
     params = {

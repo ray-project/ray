@@ -78,22 +78,23 @@ class _LLMServerBase(ABC):
         the engine is dead and needs to be restarted.
         """
         ...
-    
-    # TODO (Kourosh): This does not belong here. 
+
+    # TODO (Kourosh): This does not belong here.
     async def llm_config(self) -> Optional[LLMConfig]:
         return None
 
 
 class LLMServer(_LLMServerBase):
     """This is a shm layer to decouple the LLM engine from the ingress deployment.
-    
+
     It has a very similar API as the engine. Almost all of the abstractions are implemented by the engine. This class just a little bit more logic on top:
-    
+
     1. Logic for serve multiplexing (e.g. LoRA loading).
     2. Request id handing from serve context.
     3. Batching in case of streaming (only for chat and completions).
     4. Telemetry reporting.
     """
+
     _default_engine_cls = VLLMEngine
 
     async def __init__(
@@ -123,36 +124,38 @@ class LLMServer(_LLMServerBase):
         if self._engine_cls is not None:
             self.engine = self._engine_cls(self._llm_config)
             await asyncio.wait_for(self._start_engine(), timeout=ENGINE_START_TIMEOUT_S)
-            
+
         self._init_multiplex_loader(model_downloader)
 
-
-    def _init_multiplex_loader(self, model_downloader_cls: Optional[Type[LoraModelLoader]] = None):
+    def _init_multiplex_loader(
+        self, model_downloader_cls: Optional[Type[LoraModelLoader]] = None
+    ):
         """Initialize the multiplex loader."""
-        
+
         model_downloader_cls = model_downloader_cls or LoraModelLoader
         mx_config = self._llm_config.multiplex_config()
-        
+
         if mx_config is not None:
             model_downloader = model_downloader_cls(
                 download_timeout_s=mx_config.download_timeout_s,
                 max_tries=mx_config.max_download_tries,
             )
-            
+
             async def _load_model(lora_model_id: str) -> DiskMultiplexConfig:
                 return await model_downloader.load_model(
                     lora_model_id=lora_model_id,
                     llm_config=self._llm_config,
                 )
-            
-            self._load_model = serve.multiplexed(max_num_models_per_replica=mx_config.max_num_models_per_replica)(_load_model)
+
+            self._load_model = serve.multiplexed(
+                max_num_models_per_replica=mx_config.max_num_models_per_replica
+            )(_load_model)
         else:
+
             async def _load_model(lora_model_id: str) -> DiskMultiplexConfig:
                 raise ValueError("LoRA config is not set in the LLMConfig")
-            
+
             self._load_model = _load_model
-        
-        
 
     def _get_default_engine_class(self) -> Type[LLMEngine]:
         """Helper to load the engine class from the environment variable.
@@ -173,7 +176,6 @@ class LLMServer(_LLMServerBase):
         # Push telemetry reports for the model in the current deployment.
         push_telemetry_report_for_all_models(all_models=[self._llm_config])
 
-
     def _get_batch_interval_ms(self, stream: bool = True) -> int:
         """Calculate the batching interval for responses."""
         stream_batching_interval_ms = self._llm_config.experimental_configs.get(
@@ -182,14 +184,15 @@ class LLMServer(_LLMServerBase):
         if stream_batching_interval_ms is None:
             stream_batching_interval_ms = MODEL_RESPONSE_BATCH_TIMEOUT_MS
         return stream_batching_interval_ms if stream else None
-    
-    async def _maybe_add_request_id_to_request(self, request: Union[ChatCompletionRequest, CompletionRequest, EmbeddingRequest]):
+
+    async def _maybe_add_request_id_to_request(
+        self, request: Union[ChatCompletionRequest, CompletionRequest, EmbeddingRequest]
+    ):
         """Add the request id to the request."""
         request_id = get_serve_request_id()
         if request_id:
             request.request_id = request_id
-    
-    
+
     async def _maybe_resolve_lora_from_multiplex(self) -> None:
         """Handle the lora model for the request."""
         multiplexed_model_id = serve.get_multiplexed_model_id()
@@ -198,28 +201,33 @@ class LLMServer(_LLMServerBase):
                 raise ValueError("Must setup lora config for multiplexed requests.")
             disk_lora_model = await self._load_model(multiplexed_model_id)
             await self.engine.resolve_lora(disk_lora_model)
-            
+
     def _batch_output_stream(self, generator):
         return OpenAIResponseBatcher(
             generator,
             interval_ms=self._get_batch_interval_ms(),
         ).stream()
-        
-        
-    async def _run_request(self, request: Union[ChatCompletionRequest, CompletionRequest, EmbeddingRequest], *, engine_method: str, batch_output_stream: bool = False) -> AsyncGenerator[Any, None]:
+
+    async def _run_request(
+        self,
+        request: Union[ChatCompletionRequest, CompletionRequest, EmbeddingRequest],
+        *,
+        engine_method: str,
+        batch_output_stream: bool = False,
+    ) -> AsyncGenerator[Any, None]:
         """Run the engine method on the request + perform batching when stream=True.
-        
+
         Args:
             request: The request to run.
             engine_method: The method to call on the engine.
             batch_output_stream: Whether to batch the output stream.
-        
+
         Returns:
-            An AsyncGenerator of the response. If stream is True and batching is enabled, then the generator will yield a list of streaming responses (strings of the format data: {response_json}\n\n). Otherwise, it will yield the non-streaming response from engine directly. 
+            An AsyncGenerator of the response. If stream is True and batching is enabled, then the generator will yield a list of streaming responses (strings of the format data: {response_json}\n\n). Otherwise, it will yield the non-streaming response from engine directly.
         """
         await self._maybe_add_request_id_to_request(request)
         await self._maybe_resolve_lora_from_multiplex()
-        
+
         is_stream = hasattr(request, "stream") and request.stream
         if is_stream and batch_output_stream:
             stream = self._batch_output_stream(
@@ -227,11 +235,12 @@ class LLMServer(_LLMServerBase):
             )
         else:
             stream = getattr(self.engine, engine_method)(request)
-        
+
         return stream
 
-    async def chat(self, request: ChatCompletionRequest) -> \
-        AsyncGenerator[Union[List[str], ChatCompletionResponse], None]:
+    async def chat(
+        self, request: ChatCompletionRequest
+    ) -> AsyncGenerator[Union[List[str], ChatCompletionResponse], None]:
         """Runs a chat request to the LLM engine and returns the response.
 
         Args:
@@ -240,10 +249,13 @@ class LLMServer(_LLMServerBase):
         Returns:
             An AsyncGenerator of the response. If stream is True and batching is enabled, then the generator will yield a list of chat streaming responses (strings of the format data: {response_json}\n\n). Otherwise, it will yield the ChatCompletionResponse object directly.
         """
-        return await self._run_request(request, engine_method="chat", batch_output_stream=True)
+        return await self._run_request(
+            request, engine_method="chat", batch_output_stream=True
+        )
 
-    async def completions(self, request: CompletionRequest) -> \
-        AsyncGenerator[Union[List[str], CompletionResponse], None]:
+    async def completions(
+        self, request: CompletionRequest
+    ) -> AsyncGenerator[Union[List[str], CompletionResponse], None]:
         """Runs a completion request to the LLM engine and returns the response.
 
         Args:
@@ -252,12 +264,15 @@ class LLMServer(_LLMServerBase):
         Returns:
             An AsyncGenerator of the response. If stream is True and batching is enabled, then the generator will yield a list of completion streaming responses (strings of the format data: {response_json}\n\n). Otherwise, it will yield the CompletionResponse object directly.
         """
-        return await self._run_request(request, engine_method="completions", batch_output_stream=True)
+        return await self._run_request(
+            request, engine_method="completions", batch_output_stream=True
+        )
 
-
-    async def embeddings(self, request: EmbeddingRequest) -> AsyncGenerator[EmbeddingResponse, None]:
+    async def embeddings(
+        self, request: EmbeddingRequest
+    ) -> AsyncGenerator[EmbeddingResponse, None]:
         """Runs an embeddings request to the engine and returns the response.
-        
+
         Returns an AsyncGenerator over the EmbeddingResponse object. This is so that the caller can have a consistent interface across all the methods of chat, completions, and embeddings.
 
         Args:
@@ -267,7 +282,9 @@ class LLMServer(_LLMServerBase):
             An AsyncGenerator over the EmbeddingResponse object.
         """
         # NOTE: Embeddings does not need batching.
-        return await self._run_request(request, engine_method="embeddings", batch_output_stream=False) 
+        return await self._run_request(
+            request, engine_method="embeddings", batch_output_stream=False
+        )
 
     async def check_health(self) -> None:
         """
@@ -282,10 +299,9 @@ class LLMServer(_LLMServerBase):
             logger.error("Engine health check failed in LLMServer.check_health: %s", e)
             raise e
 
-
     async def llm_config(self) -> Optional[LLMConfig]:
         return self._llm_config
-    
+
     @classmethod
     def as_deployment(
         cls, deployment_options: Optional[Dict[str, Any]] = None

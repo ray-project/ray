@@ -45,12 +45,10 @@ from ray.llm._internal.serve.configs.openai_api_models import (
     to_model_metadata,
     ErrorResponse,
     ModelCard,
-    ModelList
+    ModelList,
 )
 
-from ray.llm._internal.serve.configs.server_models import (
-    LLMConfig
-)
+from ray.llm._internal.serve.configs.server_models import LLMConfig
 from ray.llm._internal.serve.deployments.llm.multiplex.utils import (
     get_base_model_id,
     get_lora_model_ids,

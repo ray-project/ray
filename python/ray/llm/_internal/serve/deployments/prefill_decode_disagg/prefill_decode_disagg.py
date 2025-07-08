@@ -101,11 +101,12 @@ class PDProxyServer(LLMServer):
 
         self.prefill_server = prefill_server.options(stream=True)
         self.decode_server = decode_server.options(stream=True)
-        
-    async def embeddings(self, request: EmbeddingRequest) -> AsyncGenerator[EmbeddingResponse, None]:
+
+    async def embeddings(
+        self, request: EmbeddingRequest
+    ) -> AsyncGenerator[EmbeddingResponse, None]:
         raise NotImplementedError("Embedding is not supported for P/D disaggregation")
-    
-    
+
     def _prepare_prefill_request(self, request: RequestType) -> RequestType:
         assert (
             getattr(request, "kv_transfer_params", None) is None
@@ -121,21 +122,26 @@ class PDProxyServer(LLMServer):
         }
         prefill_request.max_tokens = 1
         prefill_request.stream = False
-        
+
         return prefill_request
-    
-    
-    def _prepare_decode_request(self, request: RequestType, prefill_chunk: Union[ChatCompletionResponse, CompletionResponse]) -> RequestType:
+
+    def _prepare_decode_request(
+        self,
+        request: RequestType,
+        prefill_chunk: Union[ChatCompletionResponse, CompletionResponse],
+    ) -> RequestType:
         decode_request = request.model_copy(deep=True)
         decode_request.kv_transfer_params = prefill_chunk.kv_transfer_params
-        
+
         return decode_request
-    
+
     async def _handle_request(
-        self, 
+        self,
         request: RequestType,
-    ) -> AsyncGenerator[Union[str, ChatCompletionResponse, CompletionResponse, ErrorResponse], None]:
-        
+    ) -> AsyncGenerator[
+        Union[str, ChatCompletionResponse, CompletionResponse, ErrorResponse], None
+    ]:
+
         if isinstance(request, ChatCompletionRequest):
             method = "chat"
         elif isinstance(request, CompletionRequest):
@@ -145,29 +151,30 @@ class PDProxyServer(LLMServer):
 
         prefill_request = self._prepare_prefill_request(request)
         prefill_gen = getattr(self.prefill_server, method).remote(prefill_request)
-        
+
         prefill_chunk = await anext(prefill_gen)
-        
+
         if isinstance(prefill_chunk, ErrorResponse):
             logger.error(f"Prefill returned error: {prefill_chunk.error}")
             yield prefill_chunk
             return
-        
+
         decode_request = self._prepare_decode_request(request, prefill_chunk)
         decode_gen = self.decode_server.chat.remote(decode_request)
-        
-        
+
         async for chunk in decode_gen:
             yield chunk
-        
-        
-    async def chat(self, request: ChatCompletionRequest) -> AsyncGenerator[Union[str, ChatCompletionResponse, ErrorResponse], None]:
+
+    async def chat(
+        self, request: ChatCompletionRequest
+    ) -> AsyncGenerator[Union[str, ChatCompletionResponse, ErrorResponse], None]:
         return self._handle_request(request)
-        
-    
-    async def completions(self, request: CompletionRequest) -> AsyncGenerator[Union[str, CompletionResponse, ErrorResponse], None]:
+
+    async def completions(
+        self, request: CompletionRequest
+    ) -> AsyncGenerator[Union[str, CompletionResponse, ErrorResponse], None]:
         return self._handle_request(request)
-        
+
     @classmethod
     def as_deployment(cls) -> serve.Deployment:
         """Turns PDProxyServer into a Ray Serve deployment."""

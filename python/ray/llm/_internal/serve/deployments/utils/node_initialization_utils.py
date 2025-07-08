@@ -116,7 +116,6 @@ async def initialize_node(llm_config: LLMConfig) -> InitializeNodeOutput:
             download_extra_files=True,
         )
 
-
     return InitializeNodeOutput(
         placement_group=pg, runtime_env=runtime_env, extra_init_kwargs=extra_init_kwargs
     )

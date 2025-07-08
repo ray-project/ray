@@ -182,8 +182,8 @@ class TextGenerationProbeQuerier(BaseProbe):
             "stream": stream,
             **chat_args,
         }
-        
-        if stream: 
+
+        if stream:
             args["stream_options"] = {
                 "include_usage": True,
             }

@@ -83,7 +83,7 @@ class TestOpenAICompatibility:
             ),
             temperature=0.4,
             frequency_penalty=0.02,
-            max_tokens=5
+            max_tokens=5,
         ):
             if i == 0:
                 assert chat_completion
@@ -98,7 +98,6 @@ class TestOpenAICompatibility:
                     chat_completion.choices[0].delta, "content"
                 )
             i += 1
-
 
     def test_completions_stream_missing_model(self, testing_model):  # noqa: F811
         client, _ = testing_model

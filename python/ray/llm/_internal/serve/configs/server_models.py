@@ -562,7 +562,6 @@ class LLMServingArgs(BaseModel):
         return LLMServingArgs(llm_configs=llm_configs)
 
 
-
 class FinishReason(str, Enum):
     LENGTH = "length"
     STOP = "stop"

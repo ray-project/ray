@@ -16,7 +16,7 @@ from ray.llm._internal.serve.configs.openai_api_models import (
     EmbeddingResponse,
     ErrorResponse,
 )
-    
+
 from ray.llm._internal.serve.configs.server_models import (
     DiskMultiplexConfig,
     LLMConfig,
@@ -54,10 +54,12 @@ def _get_vllm_engine_config(
     llm_config: LLMConfig,
 ) -> Tuple["AsyncEngineArgs", "VllmConfig"]:
     engine_config = llm_config.get_engine_config()
-    async_engine_args = vllm.engine.arg_utils.AsyncEngineArgs(**engine_config.get_initialization_kwargs())
+    async_engine_args = vllm.engine.arg_utils.AsyncEngineArgs(
+        **engine_config.get_initialization_kwargs()
+    )
     vllm_engine_config = async_engine_args.create_engine_config()
     return async_engine_args, vllm_engine_config
-    
+
 
 def _clear_current_platform_cache():
     """Clear the cache of the current platform.
@@ -91,7 +93,6 @@ def _clear_current_platform_cache():
         current_platform.get_device_capability.cache_clear()
 
 
-
 class VLLMEngine(LLMEngine):
     def __init__(
         self,
@@ -104,21 +105,21 @@ class VLLMEngine(LLMEngine):
         """
         super().__init__(llm_config)
 
-        
         # Ensure transformers_modules is initialized early in worker processes.
         # This is critical for models with trust_remote_code=True to avoid pickle errors.
         init_hf_modules()
 
         self.llm_config = llm_config
 
-
         if vllm is None:
             raise ImportError(
                 "vLLM is not installed. Please install it with `pip install ray[llm]`."
             )
-            
+
         if not vllm.envs.VLLM_USE_V1:
-            logger.warning("vLLM v0 is getting fully deprecated. As a result in Ray Serve LLM only v1 is supported. Only when you know what you are doing, you can set VLLM_USE_V1=0")
+            logger.warning(
+                "vLLM v0 is getting fully deprecated. As a result in Ray Serve LLM only v1 is supported. Only when you know what you are doing, you can set VLLM_USE_V1=0"
+            )
 
         # TODO (Kourosh): This validation logic belongs to the PDProxy module.
         # Pick a random port in P/D case.
@@ -149,8 +150,7 @@ class VLLMEngine(LLMEngine):
             port = vllm.envs.VLLM_NIXL_SIDE_CHANNEL_PORT
             kv_transfer_config.engine_id = "-".join([engine_id, host, str(port)])
 
-
-        # TODO (Kourosh): What do we do with this stats tracker? 
+        # TODO (Kourosh): What do we do with this stats tracker?
         self._stats = VLLMEngineStatTracker()
         self._running = False
 
@@ -161,33 +161,31 @@ class VLLMEngine(LLMEngine):
         self._oai_serving_completion = None
         self._oai_serving_embedding = None
 
-
     async def start(self) -> None:
         """Start the vLLM engine.
 
         If the engine is already running, do nothing.
         """
-        
+
         if self._running:
             # The engine is already running!
             logger.info("Skipping engine restart because the engine is already running")
             return
 
         from vllm.entrypoints.openai.api_server import init_app_state
-        
-        
-        node_initialization = await initialize_node(self.llm_config)        
-        
+
+        node_initialization = await initialize_node(self.llm_config)
+
         (
             vllm_engine_args,
             vllm_frontend_args,
             vllm_engine_config,
         ) = self._prepare_engine_config(node_initialization)
 
-        # Apply checkpoint info to the llm_config. 
-        # This is needed for capturing model capabilities 
+        # Apply checkpoint info to the llm_config.
+        # This is needed for capturing model capabilities
         # (e.g. supports vision, etc.) on the llm_config.
-        config = self.llm_config.get_engine_config()    
+        config = self.llm_config.get_engine_config()
         self.llm_config.apply_checkpoint_info(
             config.actual_hf_model_id,
             trust_remote_code=config.trust_remote_code,
@@ -199,10 +197,9 @@ class VLLMEngine(LLMEngine):
             node_initialization.placement_group,
         )
 
-        
         state = State()
         args = argparse.Namespace(
-            **vllm_frontend_args.__dict__, 
+            **vllm_frontend_args.__dict__,
             **vllm_engine_args.__dict__,
         )
 
@@ -217,8 +214,8 @@ class VLLMEngine(LLMEngine):
         self._oai_serving_chat = state.openai_serving_chat
         self._oai_serving_completion = state.openai_serving_completion
         self._oai_serving_embedding = state.openai_serving_embedding
-        
-        self._validate_openai_serving_models()        
+
+        self._validate_openai_serving_models()
 
         self._running = True
 
@@ -227,25 +224,26 @@ class VLLMEngine(LLMEngine):
     def _validate_openai_serving_models(self):
         if not hasattr(self._oai_models, "lora_requests"):
             raise ValueError("oai_models must have a lora_requests attribute")
-        
+
         if not hasattr(self._oai_models, "load_lora_adapter"):
             raise ValueError("oai_models must have a load_lora_adapter attribute")
-        
+
     def _validate_openai_serving_chat(self):
         if not hasattr(self._oai_serving_chat, "create_chat_completion"):
-            raise ValueError("oai_serving_chat must have a create_chat_completion attribute")
-        
+            raise ValueError(
+                "oai_serving_chat must have a create_chat_completion attribute"
+            )
 
     def _prepare_engine_config(self, node_initialization: InitializeNodeOutput):
         """Prepare the engine config to start the engine.
 
         Returns:
             engine_args: The vLLM's internal engine arguments that is flattened.
-            frontend_args: The vLLM's internal frontend arguments that is 
+            frontend_args: The vLLM's internal frontend arguments that is
                 flattened.
             engine_config: The vLLM's internal engine config that is nested.
         """
-        
+
         engine_config: VLLMEngineConfig = self.llm_config.get_engine_config()
 
         if engine_config.use_gpu:
@@ -267,27 +265,34 @@ class VLLMEngine(LLMEngine):
             )
             vllm_engine_args, vllm_engine_config = ray.get(ref)
         else:
-            vllm_engine_args, vllm_engine_config = _get_vllm_engine_config(self.llm_config)
+            vllm_engine_args, vllm_engine_config = _get_vllm_engine_config(
+                self.llm_config
+            )
 
         vllm_frontend_args = FrontendArgs(**engine_config.frontend_kwargs)
         return vllm_engine_args, vllm_frontend_args, vllm_engine_config
 
-    def _start_async_llm_engine_v0(self, engine_args: "AsyncEngineArgs", vllm_config: "VllmConfig", placement_group: PlacementGroup) -> "EngineClient":
-        
+    def _start_async_llm_engine_v0(
+        self,
+        engine_args: "AsyncEngineArgs",
+        vllm_config: "VllmConfig",
+        placement_group: PlacementGroup,
+    ) -> "EngineClient":
+
         from vllm.executor.ray_distributed_executor import RayDistributedExecutor
         from vllm.engine.async_llm_engine import AsyncLLMEngine
+
         vllm_config.parallel_config.placement_group = placement_group
-        
+
         _clear_current_platform_cache()
-        
+
         engine = AsyncLLMEngine(
             vllm_config=vllm_config,
             executor_class=RayDistributedExecutor,
             log_stats=not engine_args.disable_log_stats,
         )
-        
+
         return engine
-        
 
     def _start_async_llm_engine(
         self,
@@ -296,11 +301,13 @@ class VLLMEngine(LLMEngine):
         placement_group: PlacementGroup,
     ) -> "EngineClient":
         """Creates an async LLM engine from the engine arguments."""
-        
+
         # NOTE: This is a temporary solution untill vLLM v1 supports embeddings.
         if not vllm.envs.VLLM_USE_V1:
-            return self._start_async_llm_engine_v0(engine_args, vllm_config, placement_group)
-        
+            return self._start_async_llm_engine_v0(
+                engine_args, vllm_config, placement_group
+            )
+
         from vllm.v1.executor.abstract import Executor
         from vllm.v1.engine.async_llm import AsyncLLM
 
@@ -334,7 +341,7 @@ class VLLMEngine(LLMEngine):
         if disk_lora_model.model_id in self._oai_models.lora_requests:
             # Lora is already loaded, return
             return
-        
+
         lora_request = await self._oai_models.load_lora_adapter(
             request=LoadLoRAAdapterRequest(
                 lora_name=disk_lora_model.model_id,
@@ -349,10 +356,10 @@ class VLLMEngine(LLMEngine):
         self, request: ChatCompletionRequest
     ) -> AsyncGenerator[Union[str, ChatCompletionResponse, ErrorResponse], None]:
         """
-        
+
         input: Take a genric free form input type and cast it to the target engine request type inside the engine.
-        
-        output: 
+
+        output:
         - stream: True --> for each chunk, yield astring representing data: <json_str>\n\n
         - stream: False --> yield only one string representing the response <json_str>
 
@@ -370,7 +377,9 @@ class VLLMEngine(LLMEngine):
         if isinstance(chat_response, AsyncGenerator):
             async for response in chat_response:
                 if not isinstance(response, str):
-                    raise ValueError(f"Expected create_chat_completion to return a stream of strings, got and item with type {type(response)}")
+                    raise ValueError(
+                        f"Expected create_chat_completion to return a stream of strings, got and item with type {type(response)}"
+                    )
                 yield response
         else:
             logger.info(
@@ -380,15 +389,14 @@ class VLLMEngine(LLMEngine):
                 yield ErrorResponse(**chat_response.model_dump())
             yield ChatCompletionResponse(**chat_response.model_dump())
 
-
     async def completions(
         self, request: CompletionRequest
     ) -> AsyncGenerator[Union[str, CompletionResponse, ErrorResponse], None]:
         """
-        
+
         input: Take a generic free form input type and cast it to the target engine request type inside the engine.
-        
-        output: 
+
+        output:
         - stream: True --> for each chunk, yield a string representing data: <json_str>\n\n
         - stream: False --> yield only one string representing the response <json_str>
 
@@ -400,14 +408,20 @@ class VLLMEngine(LLMEngine):
         """
 
         if self._oai_serving_completion is None:
-            raise RuntimeError("Completion service is not available. Make sure the engine is started and supports completions.")
+            raise RuntimeError(
+                "Completion service is not available. Make sure the engine is started and supports completions."
+            )
 
-        completion_response = await self._oai_serving_completion.create_completion(request)
+        completion_response = await self._oai_serving_completion.create_completion(
+            request
+        )
 
         if isinstance(completion_response, AsyncGenerator):
             async for response in completion_response:
                 if not isinstance(response, str):
-                    raise ValueError(f"Expected create_completion to return a stream of strings, got and item with type {type(response)}")
+                    raise ValueError(
+                        f"Expected create_completion to return a stream of strings, got and item with type {type(response)}"
+                    )
                 yield response
         else:
             logger.info(
@@ -429,12 +443,14 @@ class VLLMEngine(LLMEngine):
         Yields:
             An EmbeddingResponse or ErrorResponse object.
         """
-        
+
         if self._oai_serving_embedding is None:
-            raise RuntimeError("Embedding service is not available. Make sure the engine is started and supports embeddings.")
-        
+            raise RuntimeError(
+                "Embedding service is not available. Make sure the engine is started and supports embeddings."
+            )
+
         embedding_response = await self._oai_serving_embedding.create_embedding(request)
-        
+
         if isinstance(embedding_response, VLLMErrorResponse):
             yield ErrorResponse(**embedding_response.model_dump())
         else:
@@ -442,7 +458,9 @@ class VLLMEngine(LLMEngine):
 
     async def check_health(self) -> None:
         if not hasattr(self._engine_client, "check_health"):
-            raise RuntimeError(f"{type(self._engine_client)} does not support health check.")
+            raise RuntimeError(
+                f"{type(self._engine_client)} does not support health check."
+            )
 
         try:
             await self._engine_client.check_health()

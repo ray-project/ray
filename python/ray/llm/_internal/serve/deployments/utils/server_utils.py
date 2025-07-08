@@ -133,4 +133,3 @@ def get_model_request_id(model: str):
 def replace_prefix(model: str) -> str:
     """Replace -- with / in model name to handle slashes within the URL path segment"""
     return model.replace("--", "/")
-

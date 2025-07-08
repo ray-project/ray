@@ -15,7 +15,7 @@ from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import (
     VLLMEngineConfig,
 )
 from ray.llm._internal.serve.configs.openai_api_models import (
-    ChatCompletionRequest, 
+    ChatCompletionRequest,
     CompletionRequest,
     EmbeddingCompletionRequest,
 )
@@ -82,9 +82,7 @@ def mock_chat_request(stream, max_tokens):
     """Fixture for creating chat completion requests for mock testing."""
     return ChatCompletionRequest(
         model="mock-model",
-        messages=[
-            {"role": "user", "content": "Hello, world!"}
-        ],
+        messages=[{"role": "user", "content": "Hello, world!"}],
         max_tokens=max_tokens,
         stream=stream,
     )

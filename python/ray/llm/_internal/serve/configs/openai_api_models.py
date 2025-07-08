@@ -19,41 +19,50 @@ from vllm.entrypoints.openai.protocol import (
 )
 
 from typing import TYPE_CHECKING
+
 if TYPE_CHECKING:
     from ray.llm._internal.serve.configs.server_models import LLMConfig
-
-
 
 
 class ChatCompletionRequest(vLLMChatCompletionRequest):
     pass
 
+
 class ChatCompletionResponse(vLLMChatCompletionResponse):
     pass
+
 
 class ChatCompletionStreamResponse(vLLMChatCompletionStreamResponse):
     pass
 
+
 class ErrorResponse(vLLMErrorResponse):
     pass
+
 
 class CompletionRequest(vLLMCompletionRequest):
     pass
 
+
 class CompletionResponse(vLLMCompletionResponse):
     pass
+
 
 class CompletionStreamResponse(vLLMCompletionStreamResponse):
     pass
 
+
 class EmbeddingCompletionRequest(vLLMEmbeddingCompletionRequest):
     pass
+
 
 class EmbeddingChatRequest(vLLMEmbeddingChatRequest):
     pass
 
+
 class EmbeddingResponse(vLLMEmbeddingResponse):
     pass
+
 
 EmbeddingRequest = Union[EmbeddingCompletionRequest, EmbeddingChatRequest]
 
@@ -89,7 +98,7 @@ class OpenAIHTTPException(Exception):
 
 
 # TODO: upstream metadata for ModelData
-# Compared to vLLM this has a metadata field. 
+# Compared to vLLM this has a metadata field.
 class ModelCard(BaseModel):
     model_config = ConfigDict(protected_namespaces=tuple())
 
@@ -102,6 +111,7 @@ class ModelCard(BaseModel):
     @property
     def model_type(self) -> str:
         return self.metadata["engine_config"]["model_type"]
+
 
 class ModelList(BaseModel):
     data: List[ModelCard]
