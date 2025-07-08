@@ -214,6 +214,31 @@ class WorkerGroup:
 
         assert self.has_started(), "Worker group failed to start."
 
+    def _check_cluster_resources_and_raise_if_insufficient(
+        self, resources_per_worker: Dict[str, float], num_workers: int
+    ):
+        """Check if the cluster has enough resources before waiting for placement group.
+
+        Args:
+            resources_per_worker: The resources per worker.
+            num_workers: The number of workers.
+        """
+        # Check if the cluster has enough resources before waiting for placement group
+        max_cluster_resources = ray_state.get_max_resources_from_cluster_config()
+        if max_cluster_resources and isinstance(max_cluster_resources, dict):
+            for (
+                resource_name,
+                required_amount,
+            ) in resources_per_worker.items():
+                total_required_amount = required_amount * num_workers
+                available_amount = max_cluster_resources.get(resource_name, 0)
+                if available_amount is None or total_required_amount > available_amount:
+                    error_msg = (
+                        f"Insufficient cluster resources. Worker requires {total_required_amount} "
+                        f"{resource_name}, but cluster only has {available_amount} available."
+                    )
+                    raise WorkerGroupStartupFailedError(error_msg)
+
     def _start_impl(
         self,
         worker_group_state_builder: WorkerGroupStateBuilder,
@@ -240,6 +265,11 @@ class WorkerGroup:
             for callback in self._callbacks:
                 callback.before_worker_group_start(worker_group_context)
 
+            self._check_cluster_resources_and_raise_if_insufficient(
+                worker_group_context.resources_per_worker,
+                worker_group_context.num_workers,
+            )
+
             pg = placement_group(
                 bundles=[worker_group_context.resources_per_worker]
                 * worker_group_context.num_workers,
@@ -249,22 +279,6 @@ class WorkerGroup:
                 f"Attempting to start training worker group of size {worker_group_context.num_workers} with "
                 f"the following resources: [{worker_group_context.resources_per_worker}] * {worker_group_context.num_workers}"
             )
-
-            # Check if the cluster has enough resources before waiting for placement group
-            max_cluster_resources = ray_state.get_max_resources_from_cluster_config()
-            if max_cluster_resources and isinstance(max_cluster_resources, dict):
-                for (
-                    resource_name,
-                    required_amount,
-                ) in worker_group_context.resources_per_worker.items():
-                    available_amount = max_cluster_resources.get(resource_name, 0)
-                    if available_amount is None or required_amount > available_amount:
-                        remove_placement_group(pg)
-                        error_msg = (
-                            f"Insufficient cluster resources. Worker requires {required_amount} "
-                            f"{resource_name}, but cluster only has {available_amount} available."
-                        )
-                        raise WorkerGroupStartupFailedError(error_msg)
 
             # Wait for the placement group to be ready before proceeding
             # to create actors.
