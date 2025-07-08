@@ -480,7 +480,7 @@ click==8.1.7 \
     #   typer
     #   uvicorn
     #   wandb
-cloudpickle==2.2.0 \
+cloudpickle==2.2.0 ; python_version < "3.12" \
     --hash=sha256:3f4219469c55453cfe4737e564b67c2a149109dabf7f242478948b895f61106f \
     --hash=sha256:7428798d5926d8fcbfd092d18d01a2a03daf8237d8fcdc8095d256b8490796f0
     # via
@@ -1916,9 +1916,9 @@ monotonic==1.6 \
     # via
     #   -c release/ray_release/byod/requirements_compiled.txt
     #   gsutil
-more-itertools==10.1.0 \
-    --hash=sha256:626c369fa0eb37bac0291bce8259b332fd59ac792fa5497b59837309cd5b114a \
-    --hash=sha256:64e0735fcfdc6f3464ea133afe8ea4483b1c5fe3a3d69852e6503b43a0b222e6
+more-itertools==10.7.0 \
+    --hash=sha256:9fddd5403be01a94b204faadcff459ec3568cf110265d3c54323e1e866ad29d3 \
+    --hash=sha256:d43980384673cb07d2f7d2d918c616b30c659c089ee23953f601d6609c67510e
     # via
     #   -c release/ray_release/byod/requirements_compiled.txt
     #   openai-whisper
