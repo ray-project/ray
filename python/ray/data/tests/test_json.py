@@ -260,7 +260,7 @@ def test_zipped_json_read(ray_start_regular_shared, tmp_path):
     shutil.rmtree(dir_path)
 
 
-@pytest.mark.timeout(10)
+@pytest.mark.timeout(1)
 def test_read_json_fallback_from_pyarrow_failure(ray_start_regular_shared, local_path):
     # Try to read this with read_json() to trigger fallback logic
     # to read bytes with json.load().
@@ -658,7 +658,7 @@ def test_mixed_gzipped_json_files(ray_start_regular_shared, tmp_path):
     ), f"Retrieved data {retrieved_data} does not match expected {data[0]}."
 
 
-@pytest.mark.timeout(10)
+@pytest.mark.timeout(1)
 def test_json_with_http_path_parallelization(ray_start_regular_shared, httpserver):
     num_files = FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD
     urls = []
@@ -670,7 +670,6 @@ def test_json_with_http_path_parallelization(ray_start_regular_shared, httpserve
         ds = ray.data.read_json(urls)
         actual_rows = ds.take_all()
     except Exception as e:
-        httpserver.clear()
         pytest.fail(f"Failed to read JSON from HTTP URLs: {e}")
     finally:
         httpserver.clear()
