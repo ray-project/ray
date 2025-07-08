@@ -878,19 +878,20 @@ class GlobalState:
             resource that could be available in the cluster based on the cluster config.
             Returns None for a resource if it's not available or unlimited.
         """
+        # Always include CPU, GPU, TPU in the results
+        all_resource_keys = {"CPU", "GPU", "TPU"}
+
         config = self.get_cluster_config()
         if config is None:
-            return {}
+            # Return CPU/GPU/TPU as None when no config is available
+            return {key: None for key in all_resource_keys}
 
-        # First, collect all possible resource keys from node group configs
-        all_resource_keys = set()
-
-        # Check resources in node group configs
-        for node_group_config in config.node_group_configs:
-            all_resource_keys.update(node_group_config.resources.keys())
-
-        # Check resources in max_resources (global limits)
-        all_resource_keys.update(config.max_resources.keys())
+        # Only include additional resource types if there are actual node group configs
+        # If no node groups exist, resources from max_resources aren't actually available
+        if config.node_group_configs:
+            # Check resources in node group configs
+            for node_group_config in config.node_group_configs:
+                all_resource_keys.update(node_group_config.resources.keys())
 
         # Calculate max value for each resource key
         return {

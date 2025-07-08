@@ -651,19 +651,23 @@ def test_get_max_cpus_from_cluster_config(
     "description, cluster_config, expected_resources",
     [
         (
-            "should return empty dict since empty config is provided",
+            "should return CPU/GPU/TPU as None since empty config is provided",
             autoscaler_pb2.ClusterConfig(),
-            {},
+            {"CPU": None, "GPU": None, "TPU": None},
         ),
         (
-            "should return empty dict since no node_group_config is provided",
+            "should return CPU/GPU/TPU as None since no node_group_config is provided",
             autoscaler_pb2.ClusterConfig(
                 max_resources={"CPU": 100, "memory": 1000},
             ),
-            {},
+            {
+                "CPU": None,
+                "GPU": None,
+                "TPU": None,
+            },
         ),
         (
-            "should return resources from node_group_configs only",
+            "should return CPU/GPU/TPU plus resources from node_group_configs",
             autoscaler_pb2.ClusterConfig(
                 node_group_configs=[
                     autoscaler_pb2.NodeGroupConfig(
@@ -673,7 +677,7 @@ def test_get_max_cpus_from_cluster_config(
                     )
                 ],
             ),
-            {"CPU": 50, "memory": 500},
+            {"CPU": 50, "GPU": None, "TPU": None, "memory": 500},
         ),
         (
             "should return resources from both node_group_configs and max_resources",
@@ -689,9 +693,10 @@ def test_get_max_cpus_from_cluster_config(
             ),
             {
                 "CPU": 50,
-                "memory": 500,
                 "GPU": None,
-            },  # GPU is None because not in node_group_configs
+                "TPU": None,
+                "memory": 500,
+            },  # GPU and TPU are None because not in node_group_configs
         ),
         (
             "should return limited by max_resources when node_group total exceeds it",
@@ -705,7 +710,7 @@ def test_get_max_cpus_from_cluster_config(
                     )
                 ],
             ),
-            {"CPU": 30, "memory": 200},
+            {"CPU": 30, "GPU": None, "TPU": None, "memory": 200},
         ),
         (
             "should return sys.maxsize when max_count=-1",
@@ -718,7 +723,12 @@ def test_get_max_cpus_from_cluster_config(
                     )
                 ],
             ),
-            {"CPU": sys.maxsize, "custom_resource": sys.maxsize},
+            {
+                "CPU": sys.maxsize,
+                "GPU": None,
+                "TPU": None,
+                "custom_resource": sys.maxsize,
+            },
         ),
         (
             "should sum across multiple node_group_configs",
@@ -736,7 +746,12 @@ def test_get_max_cpus_from_cluster_config(
                     ),
                 ],
             ),
-            {"CPU": 90, "memory": 500, "GPU": 4},  # 50 + (10*4), 500 + 0, 0 + (1*4)
+            {
+                "CPU": 90,
+                "GPU": 4,
+                "TPU": None,
+                "memory": 500,
+            },  # 50 + (10*4), 0 + (1*4), None, 500 + 0
         ),
         (
             "should return None for resources with 0 count or 0 resources",
@@ -754,10 +769,15 @@ def test_get_max_cpus_from_cluster_config(
                     ),
                 ],
             ),
-            {"GPU": 2},  # Only GPU has valid count and resources
+            {
+                "CPU": None,
+                "GPU": 2,
+                "TPU": None,
+                "memory": None,
+            },  # CPU is None due to max_count=0, GPU has valid count
         ),
         (
-            "should discover all resource types including custom ones",
+            "should discover all resource types including custom ones, always including CPU/GPU/TPU",
             autoscaler_pb2.ClusterConfig(
                 max_resources={"TPU": 16, "special_resource": 100},
                 node_group_configs=[
@@ -781,11 +801,10 @@ def test_get_max_cpus_from_cluster_config(
             {
                 "CPU": 160,  # (32*2) + (96*1)
                 "GPU": 16,  # (8*2) + 0
+                "TPU": None,  # Always included but not in node_group_configs
                 "memory": 4000,  # (1000*2) + (2000*1)
                 "custom_accelerator": 8,  # (4*2) + 0
                 "disk": 500,  # 0 + (500*1)
-                "TPU": None,  # In max_resources but not in node_group_configs
-                "special_resource": None,  # In max_resources but not in node_group_configs
             },
         ),
     ],
@@ -799,20 +818,21 @@ def test_get_max_resources_from_cluster_config(
     """Test get_max_resources_from_cluster_config method.
 
     This test verifies that the method correctly:
-    1. Discovers all resource types from node_group_configs and max_resources
-    2. Calculates maximum values for each resource type
-    3. Handles edge cases like empty configs, zero counts, unlimited resources
-    4. Supports resource types beyond CPU/GPU/TPU
+    1. Always includes CPU/GPU/TPU in the results
+    2. Discovers additional resource types from node_group_configs and max_resources
+    3. Calculates maximum values for each resource type
+    4. Handles edge cases like empty configs, zero counts, unlimited resources
+    5. Supports resource types beyond CPU/GPU/TPU
     """
     ray.init(num_cpus=1)
     gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
 
     gcs_client.report_cluster_config(cluster_config.SerializeToString())
-    all_max_resources = ray._private.state.state.get_max_resources_from_cluster_config()
+    max_resources = ray._private.state.state.get_max_resources_from_cluster_config()
 
     assert (
-        all_max_resources == expected_resources
-    ), f"{description}\nExpected: {expected_resources}\nActual: {all_max_resources}"
+        max_resources == expected_resources
+    ), f"{description}\nExpected: {expected_resources}\nActual: {max_resources}"
 
 
 def test_get_draining_nodes(ray_start_cluster):
