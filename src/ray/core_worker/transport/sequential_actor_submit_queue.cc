@@ -14,7 +14,6 @@
 
 #include "ray/core_worker/transport/sequential_actor_submit_queue.h"
 
-#include <map>
 #include <utility>
 #include <vector>
 
@@ -64,9 +63,15 @@ void SequentialActorSubmitQueue::MarkTaskCanceled(uint64_t sequence_no) {
 }
 
 void SequentialActorSubmitQueue::MarkDependencyResolved(uint64_t sequence_no) {
-  auto it = requests.find(sequence_no);
-  if (it != requests.end()) {
-    it->second.second = true;
+  auto requests_it = requests.find(sequence_no);
+  if (requests_it != requests.end()) {
+    requests_it->second.second = true;
+    return;
+  }
+  auto retry_pending_it = retry_pending_queue.find(sequence_no);
+  if (retry_pending_it != retry_pending_queue.end()) {
+    retry_sending_queue.emplace(sequence_no, std::move(retry_pending_it->second));
+    retry_pending_queue.erase(retry_pending_it);
     return;
   }
 }
