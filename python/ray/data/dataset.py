@@ -993,23 +993,6 @@ class Dataset:
         if keep not in ("first", "last", False):
             raise ValueError(f"keep must be 'first', 'last', or False, got {keep}")
 
-        def remove_duplicates_arrow(table: pa.Table, subset=None):
-            if subset is None:
-                subset = table.column_names
-            arrays = [
-                table[col].combine_chunks().to_numpy(zero_copy_only=False)
-                for col in subset
-            ]
-            str_arrays = [np.array(arr, dtype=str) for arr in arrays]
-            sep = "\x1e"
-            rowkey_np = np.char.add(str_arrays[0], "")
-            for arr in str_arrays[1:]:
-                rowkey_np = np.char.add(rowkey_np, sep)
-                rowkey_np = np.char.add(rowkey_np, arr)
-            _, unique_indices = np.unique(rowkey_np, return_index=True)
-            unique_indices = np.sort(unique_indices)
-            return table.take(pa.array(unique_indices))
-
         def compute_dedup_key(table: pa.Table, cols):
             arrays = [
                 table[col].combine_chunks().to_numpy(zero_copy_only=False)
@@ -1024,18 +1007,6 @@ class Dataset:
             key_series = pa.array(dedup_key)
             return table.append_column("_dedup_key", key_series)
 
-        if (
-            keys is None
-            and keep == "first"
-            and getattr(self, "_get_num_blocks", lambda: 1)() == 1
-        ):
-            return self.map_batches(
-                remove_duplicates_arrow,
-                batch_format="pyarrow",
-                zero_copy_batch=False,
-                fn_kwargs={"subset": all_cols},
-            )
-
         def reducer_first(batch: pa.Table) -> pa.Table:
             return batch.slice(0, 1)
 
@@ -1043,7 +1014,6 @@ class Dataset:
             return batch.slice(batch.num_rows - 1, 1)
 
         def reducer_unique(batch: pa.Table) -> pa.Table:
-            # Only keep if group size == 1
             if batch.num_rows == 1:
                 return batch
             return batch.slice(0, 0)
