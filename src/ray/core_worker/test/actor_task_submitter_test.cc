@@ -152,15 +152,13 @@ TEST_P(ActorTaskSubmitterTest, TestSubmitTask) {
   EXPECT_CALL(*task_manager_, FailOrRetryPendingTask(_, _, _, _, _, _)).Times(0);
   worker_client_->ReplyPushTask(task1.GetTaskAttempt(), Status::OK());
   worker_client_->ReplyPushTask(task2.GetTaskAttempt(), Status::OK());
-  ASSERT_THAT(worker_client_->received_seq_nos,
-              execute_out_of_order ? ElementsAre(-1, -1) : ElementsAre(0, 1));
+  ASSERT_THAT(worker_client_->received_seq_nos, ElementsAre(0, 1));
 
   // Connect to the actor again.
   // Because the IP and port of address are not modified, it will skip directly and will
   // not reset `received_seq_nos`.
   submitter_.ConnectActor(actor_id, addr, 0);
-  ASSERT_THAT(worker_client_->received_seq_nos,
-              execute_out_of_order ? ElementsAre(-1, -1) : ElementsAre(0, 1));
+  ASSERT_THAT(worker_client_->received_seq_nos, ElementsAre(0, 1));
 }
 
 TEST_P(ActorTaskSubmitterTest, TestQueueingWarning) {
@@ -245,8 +243,7 @@ TEST_P(ActorTaskSubmitterTest, TestDependencies) {
   ASSERT_EQ(io_context.poll_one(), 1);
   ASSERT_EQ(worker_client_->callbacks.size(), 2);
 
-  ASSERT_THAT(worker_client_->received_seq_nos,
-              execute_out_of_order ? ElementsAre(-1, -1) : ElementsAre(0, 1));
+  ASSERT_THAT(worker_client_->received_seq_nos, ElementsAre(0, 1));
 }
 
 TEST_P(ActorTaskSubmitterTest, TestOutOfOrderDependencies) {
@@ -289,14 +286,12 @@ TEST_P(ActorTaskSubmitterTest, TestOutOfOrderDependencies) {
     ASSERT_TRUE(store_->Put(*data, obj2));
     ASSERT_EQ(io_context.poll_one(), 1);
     ASSERT_EQ(worker_client_->callbacks.size(), 1);
-    ASSERT_THAT(worker_client_->received_seq_nos,
-                execute_out_of_order ? ElementsAre(-1) : ElementsAre(1));
+    ASSERT_THAT(worker_client_->received_seq_nos, ElementsAre(1));
     // then task1 is submitted
     ASSERT_TRUE(store_->Put(*data, obj1));
     ASSERT_EQ(io_context.poll_one(), 1);
     ASSERT_EQ(worker_client_->callbacks.size(), 2);
-    ASSERT_THAT(worker_client_->received_seq_nos,
-                execute_out_of_order ? ElementsAre(-1, -1) : ElementsAre(1, 0));
+    ASSERT_THAT(worker_client_->received_seq_nos, ElementsAre(1, 0));
   } else {
     // Put the dependencies in the store in the opposite order of task
     // submission.
@@ -307,8 +302,7 @@ TEST_P(ActorTaskSubmitterTest, TestOutOfOrderDependencies) {
     ASSERT_TRUE(store_->Put(*data, obj1));
     ASSERT_EQ(io_context.poll_one(), 1);
     ASSERT_EQ(worker_client_->callbacks.size(), 2);
-    ASSERT_THAT(worker_client_->received_seq_nos,
-                execute_out_of_order ? ElementsAre(-1, -1) : ElementsAre(0, 1));
+    ASSERT_THAT(worker_client_->received_seq_nos, ElementsAre(0, 1));
   }
 }
 
@@ -408,9 +402,7 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartNoRetry) {
   ASSERT_TRUE(worker_client_->ReplyPushTask(task4.GetTaskAttempt(), Status::OK()));
   ASSERT_TRUE(worker_client_->callbacks.empty());
   // task1, task2 failed, task3 failed, task4
-  ASSERT_THAT(
-      worker_client_->received_seq_nos,
-      execute_out_of_order ? ElementsAre(-1, -1, -1, -1) : ElementsAre(0, 1, 2, 3));
+  ASSERT_THAT(worker_client_->received_seq_nos, ElementsAre(0, 1, 2, 3));
 }
 
 TEST_P(ActorTaskSubmitterTest, TestActorRestartRetry) {
@@ -481,9 +473,7 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartRetry) {
   ASSERT_TRUE(worker_client_->ReplyPushTask(task2.GetTaskAttempt(), Status::OK()));
   ASSERT_TRUE(worker_client_->ReplyPushTask(task3.GetTaskAttempt(), Status::OK()));
   // task1, task2 failed, task3 failed, task4, task2 retry, task3 retry
-  ASSERT_THAT(worker_client_->received_seq_nos,
-              execute_out_of_order ? ElementsAre(-1, -1, -1, -1, -1, -1)
-                                   : ElementsAre(0, 1, 2, 3, -1, -1));
+  ASSERT_THAT(worker_client_->received_seq_nos, ElementsAre(0, 1, 2, 3, 4, 5));
 }
 
 TEST_P(ActorTaskSubmitterTest, TestActorRestartOutOfOrderRetry) {

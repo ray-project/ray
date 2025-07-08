@@ -277,41 +277,6 @@ TEST(SchedulingQueueTest, TestWaitForObjectsNotSubjectToSeqTimeout) {
   queue.Stop();
 }
 
-TEST(SchedulingQueueTest, TestOutOfOrder) {
-  instrumented_io_context io_service;
-  MockWaiter waiter;
-  MockTaskEventBuffer task_event_buffer;
-
-  std::vector<ConcurrencyGroup> concurrency_groups{ConcurrencyGroup{"io", 1, {}}};
-  auto pool_manager =
-      std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
-
-  ActorSchedulingQueue queue(io_service, waiter, task_event_buffer, pool_manager, 1);
-  int n_ok = 0;
-  int n_rej = 0;
-  auto fn_ok = [&n_ok](const TaskSpecification &task_spec,
-                       rpc::SendReplyCallback callback) { n_ok++; };
-  auto fn_rej = [&n_rej](const TaskSpecification &task_spec,
-                         const Status &status,
-                         rpc::SendReplyCallback callback) { n_rej++; };
-  TaskSpecification task_spec;
-  task_spec.GetMutableMessage().set_type(TaskType::ACTOR_TASK);
-  queue.Add(2, -1, fn_ok, fn_rej, nullptr, task_spec);
-  queue.Add(0, -1, fn_ok, fn_rej, nullptr, task_spec);
-  queue.Add(3, -1, fn_ok, fn_rej, nullptr, task_spec);
-  queue.Add(1, -1, fn_ok, fn_rej, nullptr, task_spec);
-  io_service.run();
-
-  // Wait for all tasks to finish.
-  auto default_executor = pool_manager->GetDefaultExecutor();
-  default_executor->Join();
-
-  ASSERT_EQ(n_ok, 4);
-  ASSERT_EQ(n_rej, 0);
-
-  queue.Stop();
-}
-
 TEST(SchedulingQueueTest, TestSeqWaitTimeout) {
   instrumented_io_context io_service;
   MockWaiter waiter;
@@ -385,6 +350,47 @@ TEST(SchedulingQueueTest, TestSkipAlreadyProcessedByClient) {
   ASSERT_EQ(n_rej, 2);
 
   queue.Stop();
+}
+
+TEST(SchedulingQueueTest, TestRetryForInOrderActorSchedulingQueue) {
+  instrumented_io_context io_service;
+  MockWaiter waiter;
+  MockTaskEventBuffer task_event_buffer;
+
+  std::vector<ConcurrencyGroup> concurrency_groups{ConcurrencyGroup{"io", 1, {}}};
+  auto pool_manager =
+      std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
+
+  ActorSchedulingQueue queue(io_service, waiter, task_event_buffer, pool_manager, 1);
+  int n_ok = 0;
+  int n_rej = 0;
+  auto fn_ok = [&n_ok](const TaskSpecification &task_spec,
+                       rpc::SendReplyCallback callback) { n_ok++; };
+  auto fn_rej = [&n_rej](const TaskSpecification &task_spec,
+                         const Status &status,
+                         rpc::SendReplyCallback callback) { n_rej++; };
+  TaskSpecification task_spec_0;
+  task_spec_0.GetMutableMessage().set_type(TaskType::ACTOR_TASK);
+  queue.Add(0, 0, fn_ok, fn_rej, nullptr, task_spec_0);
+  TaskSpecification task_spec_retry;
+  task_spec_retry.GetMutableMessage().set_type(TaskType::ACTOR_TASK);
+  queue.Add(-1, -1, fn_ok, fn_rej, nullptr, task_spec_retry);
+  TaskSpecification task_spec_retry_with_dep;
+  auto dep_id = ObjectID::FromRandom();
+  task_spec_retry_with_dep.GetMutableMessage().set_type(TaskType::ACTOR_TASK);
+  task_spec_retry_with_dep.GetMutableMessage()
+      .add_args()
+      ->mutable_object_ref()
+      ->set_object_id(dep_id.Binary());
+  queue.Add(-1, -1, fn_ok, fn_rej, nullptr, task_spec_retry_with_dep);
+  TaskSpecification task_spec_3;
+  task_spec_3.GetMutableMessage().set_type(TaskType::ACTOR_TASK);
+  queue.Add(1, 1, fn_ok, fn_rej, nullptr, task_spec_3);
+
+  // Wait for all tasks to finish.
+  auto default_executor = pool_manager->GetDefaultExecutor();
+  default_executor->Join();
+  ASSERT_EQ(n_ok, 3);
 }
 
 TEST(SchedulingQueueTest, TestCancelQueuedTask) {

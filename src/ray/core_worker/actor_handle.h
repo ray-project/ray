@@ -89,6 +89,13 @@ class ActorHandle {
                         bool retry_exceptions,
                         const std::string &serialized_retry_exception_allowlist);
 
+  /// Reset the actor task spec fields of an existing task so that the task can
+  /// be re-executed.
+  ///
+  /// \param[in] spec An existing task spec that has executed on the actor
+  /// before.
+  void SetResubmittedActorTaskSpec(TaskSpecification &spec);
+
   void Serialize(std::string *output);
 
   int64_t MaxTaskRetries() const { return inner_.max_task_retries(); }

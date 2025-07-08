@@ -26,20 +26,20 @@ void SequentialActorSubmitQueue::Emplace(uint64_t sequence_no,
                                          const TaskSpecification &spec) {
   RAY_CHECK(
       spec.IsRetry()
-          ? retries_args_pending.emplace(sequence_no, spec).second
+          ? retry_requests
+                .emplace(sequence_no, std::make_pair(spec, /*dependency_resolved*/ false))
+                .second
           : requests
                 .emplace(sequence_no, std::make_pair(spec, /*dependency_resolved*/ false))
                 .second);
 }
 
 bool SequentialActorSubmitQueue::Contains(uint64_t sequence_no) const {
-  return requests.contains(sequence_no) || retries_args_pending.contains(sequence_no) ||
-         retries_args_resolved.contains(sequence_no);
+  return requests.contains(sequence_no) || retry_requests.contains(sequence_no);
 }
 
 bool SequentialActorSubmitQueue::Empty() {
-  return requests.empty() && retries_args_pending.empty() &&
-         retries_args_resolved.empty();
+  return requests.empty() && retry_requests.empty();
 }
 
 bool SequentialActorSubmitQueue::DependenciesResolved(uint64_t sequence_no) const {
@@ -47,20 +47,17 @@ bool SequentialActorSubmitQueue::DependenciesResolved(uint64_t sequence_no) cons
   if (requests_it != requests.end()) {
     return requests_it->second.second;
   }
-  if (retries_args_pending.contains(sequence_no)) {
-    return false;
-  }
-  RAY_CHECK(retries_args_resolved.contains(sequence_no));
-  return true;
+  auto retry_iter = retry_requests.find(sequence_no);
+  RAY_CHECK(retry_iter != retry_requests.end());
+  return retry_iter->second.second;
 }
 
 void SequentialActorSubmitQueue::MarkDependencyFailed(uint64_t sequence_no) {
-  void(requests.erase(sequence_no) > 0 || retries_args_pending.erase(sequence_no) > 0);
+  void(requests.erase(sequence_no) > 0 || retry_requests.erase(sequence_no) > 0);
 }
 
 void SequentialActorSubmitQueue::MarkTaskCanceled(uint64_t sequence_no) {
-  void(requests.erase(sequence_no) > 0 || retries_args_pending.erase(sequence_no) > 0 ||
-       retries_args_resolved.erase(sequence_no) > 0);
+  void(requests.erase(sequence_no) > 0 || retry_requests.erase(sequence_no) > 0);
 }
 
 void SequentialActorSubmitQueue::MarkDependencyResolved(uint64_t sequence_no) {
@@ -69,38 +66,37 @@ void SequentialActorSubmitQueue::MarkDependencyResolved(uint64_t sequence_no) {
     request_it->second.second = true;
     return;
   }
-  auto retry_pending_it = retries_args_pending.find(sequence_no);
-  if (retry_pending_it != retries_args_pending.end()) {
-    retries_args_resolved.emplace(sequence_no, std::move(retry_pending_it->second));
-    retries_args_pending.erase(retry_pending_it);
+  auto retry_pending_it = retry_requests.find(sequence_no);
+  if (retry_pending_it != retry_requests.end()) {
+    retry_pending_it->second.second = true;
     return;
   }
 }
 
 std::vector<TaskID> SequentialActorSubmitQueue::ClearAllTasks() {
   std::vector<TaskID> task_ids;
-  task_ids.reserve(requests.size() + retries_args_pending.size() +
-                   retries_args_resolved.size());
+  task_ids.reserve(requests.size() + retry_requests.size());
   for (auto &[_, spec] : requests) {
     task_ids.push_back(spec.first.TaskId());
   }
-  for (auto &[_, spec] : retries_args_pending) {
-    task_ids.push_back(spec.TaskId());
-  }
-  for (auto &[_, spec] : retries_args_resolved) {
-    task_ids.push_back(spec.TaskId());
+  for (auto &[_, spec] : retry_requests) {
+    task_ids.push_back(spec.first.TaskId());
   }
   requests.clear();
-  retries_args_pending.clear();
-  retries_args_resolved.clear();
+  retry_requests.clear();
   return task_ids;
 }
 
 std::optional<std::pair<TaskSpecification, bool>>
 SequentialActorSubmitQueue::PopNextTaskToSend() {
-  if (!retries_args_resolved.empty()) {
-    auto task_spec = std::move(retries_args_resolved.begin()->second);
-    retries_args_resolved.erase(retries_args_resolved.begin());
+  auto retry_iter = retry_requests.begin();
+  while (retry_iter != retry_requests.end()) {
+    if (/*dependencies not resolved*/ !retry_iter->second.second) {
+      retry_iter++;
+      continue;
+    }
+    auto task_spec = std::move(retry_iter->second.first);
+    retry_requests.erase(retry_iter);
     return std::make_pair(std::move(task_spec), /*skip_queue*/ true);
   }
   if (!requests.empty() && (/*dependencies_resolved*/ requests.begin()->second.second)) {

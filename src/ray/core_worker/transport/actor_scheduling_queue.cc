@@ -60,9 +60,8 @@ void ActorSchedulingQueue::Add(
         reject_request,
     rpc::SendReplyCallback send_reply_callback,
     TaskSpecification task_spec) {
-  // A seq_no of -1 means no ordering constraint. Actor tasks that are not retries must be
-  // executed in order.
-  RAY_CHECK(seq_no != -1 || task_spec.IsRetry());
+  // A seq_no of -1 means no ordering constraint.
+  RAY_CHECK(seq_no != -1);
 
   RAY_CHECK(std::this_thread::get_id() == main_thread_id_);
   if (client_processed_up_to >= next_seq_no_) {
@@ -75,52 +74,34 @@ void ActorSchedulingQueue::Add(
                                     << ", next_seq_no_=" << next_seq_no_;
 
   const auto dependencies = task_spec.GetDependencies();
-  if (seq_no == -1 && !dependencies.empty()) {
-    retries_pending_args_fetch_.emplace(task_id,
-                                        InboundRequest(std::move(accept_request),
-                                                       std::move(reject_request),
-                                                       std::move(send_reply_callback),
-                                                       task_spec));
-  } else if (seq_no == -1) {
-    retries_pending_execution_.emplace(task_id,
-                                       InboundRequest(std::move(accept_request),
-                                                      std::move(reject_request),
-                                                      std::move(send_reply_callback),
-                                                      task_spec));
-  } else {
-    RAY_CHECK(pending_actor_tasks_
-                  .emplace(seq_no,
-                           InboundRequest(std::move(accept_request),
-                                          std::move(reject_request),
-                                          std::move(send_reply_callback),
-                                          task_spec))
-                  .second);
-  }
+  InboundRequest inbound_request(std::move(accept_request),
+                                 std::move(reject_request),
+                                 std::move(send_reply_callback),
+                                 task_spec);
+  RAY_CHECK(
+      task_spec.IsRetry()
+          ? pending_retry_actor_tasks_.emplace(seq_no, std::move(inbound_request)).second
+          : pending_actor_tasks_.emplace(seq_no, std::move(inbound_request)).second);
   {
     absl::MutexLock lock(&mu_);
-    pending_task_id_to_is_canceled.emplace(task_spec.TaskId(), false);
+    pending_task_id_to_is_canceled.emplace(task_id, false);
   }
 
   if (!dependencies.empty()) {
     RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
-        task_spec.TaskId(),
+        task_id,
         task_spec.JobId(),
         task_spec.AttemptNumber(),
         task_spec,
         rpc::TaskStatus::PENDING_ACTOR_TASK_ARGS_FETCH,
         /* include_task_info */ false));
-    waiter_.Wait(dependencies, [this, seq_no, task_id]() mutable {
-      RAY_CHECK(std::this_thread::get_id() == main_thread_id_);
+    waiter_.Wait(dependencies, [this, seq_no]() mutable {
       InboundRequest *inbound_request = nullptr;
       if (auto it = pending_actor_tasks_.find(seq_no); it != pending_actor_tasks_.end()) {
         inbound_request = &it->second;
-      } else if (auto it = retries_pending_args_fetch_.find(task_id);
-                 it != retries_pending_args_fetch_.end()) {
-        auto [new_it, inserted] =
-            retries_pending_execution_.emplace(task_id, std::move(it->second));
-        retries_pending_args_fetch_.erase(it);
-        RAY_CHECK(inserted);
-        inbound_request = &new_it->second;
+      } else if (auto it = pending_retry_actor_tasks_.find(seq_no);
+                 it != pending_retry_actor_tasks_.end()) {
+        inbound_request = &it->second;
       }
       if (inbound_request != nullptr) {
         const auto &task_spec = inbound_request->TaskSpec();
@@ -137,7 +118,7 @@ void ActorSchedulingQueue::Add(
     });
   } else {
     RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
-        task_spec.TaskId(),
+        task_id,
         task_spec.JobId(),
         task_spec.AttemptNumber(),
         task_spec,
@@ -177,21 +158,25 @@ void ActorSchedulingQueue::ScheduleRequests() {
   }
 
   // Process as many in-order requests as we can.
-  while (!retries_pending_execution_.empty() ||
+  auto retry_iter = pending_retry_actor_tasks_.begin();
+  while ((retry_iter != pending_retry_actor_tasks_.end()) ||
          (!pending_actor_tasks_.empty() &&
           pending_actor_tasks_.begin()->first == next_seq_no_ &&
           pending_actor_tasks_.begin()->second.CanExecute())) {
     InboundRequest request;
     TaskID task_id;
-    if (!retries_pending_execution_.empty()) {
-      auto it = retries_pending_execution_.begin();
-      task_id = it->second.TaskID();
-      request = std::move(it->second);
-      retries_pending_execution_.erase(it);
+    if (retry_iter != pending_retry_actor_tasks_.end()) {
+      if (!retry_iter->second.CanExecute()) {
+        retry_iter++;
+        continue;
+      }
+      request = std::move(retry_iter->second);
+      task_id = request.TaskID();
+      pending_retry_actor_tasks_.erase(retry_iter++);
     } else {
       auto it = pending_actor_tasks_.begin();
-      task_id = it->second.TaskID();
       request = std::move(it->second);
+      task_id = request.TaskID();
       pending_actor_tasks_.erase(it);
       next_seq_no_++;
     }

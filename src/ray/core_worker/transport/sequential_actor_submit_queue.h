@@ -65,11 +65,12 @@ class SequentialActorSubmitQueue : public IActorSubmitQueue {
   /// A task will be sent after its dependencies are resolved.
   absl::btree_map<uint64_t, std::pair<TaskSpecification, bool>> requests;
 
-  /// Retries waiting for argument resolution.
-  absl::btree_map<uint64_t, TaskSpecification> retries_args_pending;
-
-  /// Retries that are waiting to be sent to the actor.
-  absl::btree_map<uint64_t, TaskSpecification> retries_args_resolved;
+  /// Map of task retries. The bool indicates whether the dependencies for that task have
+  /// been resolved yet. A task will be sent after its dependencies are resolved. This is
+  /// a separate unordered map becuase the order in which retries are executed is
+  /// purposefully not guaranteed.
+  absl::flat_hash_map<uint64_t, std::pair<TaskSpecification, bool>> retry_requests;
 };
+
 }  // namespace core
 }  // namespace ray

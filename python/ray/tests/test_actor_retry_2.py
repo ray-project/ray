@@ -339,23 +339,30 @@ def test_task_retries_on_exit(ray_start_regular_shared):
     ]
 
 
-def test_retry_not_dependent_task_seq_no(ray_start_regular_shared):
+def test_retry_dependent_task_on_same_actor(ray_start_regular_shared):
     """
-    1. one is submitted
-    2. two is submitted
-    3. the first attempt of one fails
-    4. the second attempt of one is submitted
-    5. two succesfully finishes
+    1. Create an actor
+    2. Submit an actor task (one).
+    3. Submit another actor task (two) that depends on the output of one.
+    4. Allow the first attempt of one to fail.
+    5. Expect the second attempt of one to be run, and for two to be unblocked.
+
+    The goal of this test is to make sure later actor tasks with dependencies on
+    earlier ones don't result in deadlock when the earlier tasks need to be retried.
+    See https://github.com/ray-project/ray/pull/54034 for more context.
     """
 
     @ray.remote
     class Actor:
+        def __init__(self):
+            self.counter = 0
+
         @ray.method(max_task_retries=1, retry_exceptions=[MyError])
-        def one(self, signal_actor, counter_actor):
+        def one(self, signal_actor):
             ray.get(signal_actor.wait.remote())
-            ray.get(counter_actor.increment.remote())
+            self.counter += 1
             # Fail on the first invocation.
-            if ray.get(counter_actor.get_count.remote()) <= 1:
+            if self.counter <= 1:
                 raise MyError()
             return 1
 
@@ -363,9 +370,8 @@ def test_retry_not_dependent_task_seq_no(ray_start_regular_shared):
             return 2
 
     signal_actor = SignalActor.remote()
-    counter = Counter.remote()
     actor = Actor.remote()
-    one_output_ref = actor.one.remote(signal_actor, counter)
+    one_output_ref = actor.one.remote(signal_actor)
     two_output_ref = actor.two.remote(one_output_ref)
     # Unblock so the first attempt can fail and the second attempt gets submitted.
     ray.get(signal_actor.send.remote())

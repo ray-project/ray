@@ -578,7 +578,7 @@ void ActorTaskSubmitter::PushActorTask(ClientQueue &queue,
   request->mutable_task_spec()->CopyFrom(task_spec.GetMessage());
 
   request->set_intended_worker_id(queue.worker_id);
-  request->set_sequence_number(skip_queue ? -1 : task_spec.SequenceNumber());
+  request->set_sequence_number(task_spec.SequenceNumber());
 
   const auto actor_id = task_spec.ActorId();
 

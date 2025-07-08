@@ -149,6 +149,12 @@ void ActorHandle::SetActorTaskSpec(
                            task_counter_++);
 }
 
+void ActorHandle::SetResubmittedActorTaskSpec(TaskSpecification &spec) {
+  absl::MutexLock guard(&mutex_);
+  auto mutable_spec = spec.GetMutableMessage().mutable_actor_task_spec();
+  mutable_spec->set_sequence_number(task_counter_++);
+}
+
 void ActorHandle::Serialize(std::string *output) { inner_.SerializeToString(output); }
 
 std::string ActorHandle::GetName() const { return inner_.name(); }

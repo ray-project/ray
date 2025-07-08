@@ -85,11 +85,10 @@ class ActorSchedulingQueue : public SchedulingQueue {
   const int64_t reorder_wait_seconds_;
   /// Sorted map of (accept, rej) task callbacks keyed by their sequence number.
   std::map<int64_t, InboundRequest> pending_actor_tasks_;
-  /// Retries that still need their arguments fetched.
-  absl::flat_hash_map<TaskID, InboundRequest> retries_pending_args_fetch_;
-  /// Retries that are ready to be executed. Retries are not ordered so they can be
-  /// executed in any order.
-  absl::flat_hash_map<TaskID, InboundRequest> retries_pending_execution_;
+  /// Map of task retries. This is a separate unordered map because retries don't need to
+  /// be ordered. The key is still the sequence number, because retries get new sequence
+  /// numbers.
+  absl::flat_hash_map<int64_t, InboundRequest> pending_retry_actor_tasks_;
   /// The next sequence number we are waiting for to arrive.
   int64_t next_seq_no_ = 0;
   /// Timer for waiting on dependencies. Note that this is set on the task main
