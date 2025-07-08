@@ -8,6 +8,7 @@ from ray.rllib.core.learner.learner_group import LearnerGroup
 from ray.rllib.core.learner.training_data import TrainingData
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.env import INPUT_ENV_SPACES
+from ray.rllib.utils.metrics import LEARNER_RESULTS
 from ray.rllib.utils.typing import ParamDict, ResultDict
 
 
@@ -23,9 +24,19 @@ class LearnerGroupAPI(abc.ABC):
     should always call `super()`.
     """
 
+    # TODO (simon, sven): This is no clean solution. Like this each API
+    #   must carry its own metrics container and the algorithm would have
+    #   all these metrics. Maybe instead
+    #       1. A single `metrics` attribute as a dict and all APIs write into
+    #           into it under their "key".
+    #       2. A `get_metrics` method for all components (e.g. LearnerGroup,
+    #           EnvRunnerGroup, etc.). That is called by all APIs for their
+    #           components and therefore all components must implement a
+    #           `get_metrics` method, too.
+    _learner_metrics: ResultDict
     # A learner group for managing the `RLModule`. Note, this
     # group could be customized.
-    _learner_group: LearnerGroup = None
+    _learner_group: LearnerGroup
 
     def __init__(self, config: AlgorithmConfig, **kwargs):
         """Initializes a LearnerGroupAPI."""
@@ -49,7 +60,13 @@ class LearnerGroupAPI(abc.ABC):
 
     def _provide_sync_state(self, state: Any, **kwargs):
         """Abstract method to receive a state from the Learner(s)."""
-        return state
+        return super()._provide_sync_state(state=state, **kwargs)
+
+    abc.abstractmethod
+
+    def get_metrics(self, metrics: ResultDict, **kwargs):
+        """Abstract method to return metrics."""
+        return super().get_metrics(metrics=metrics, **kwargs)
 
     abc.abstractmethod
 
@@ -107,11 +124,18 @@ class SimpleLearnerGroupAPI(LearnerGroupAPI):
         # Call update via the `LearnerGroup`.
         # TODO (simon): Maybe deprecate with v1 also any other data
         #   but `TrainingData`.
-        return self._learner_group.update(
+        self._learner_metrics = self._learner_group.update(
             training_data=training_data,
             timesteps=None,
             **kwargs,
         )
+
+    # TODO (simon, sven): Maybe turn `Any` into `Stats`.
+    def get_metrics(self, metrics: ResultDict, **kwargs):
+
+        metrics.update({LEARNER_RESULTS: self._learner_metrics})
+
+        return super().get_metrics(metrics=metrics, **kwargs)
 
     def _provide_sync_state(self, state: Any, **kwargs):
         # Note, state must have an `update` method defined, too.

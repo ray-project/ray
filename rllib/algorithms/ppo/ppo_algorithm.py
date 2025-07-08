@@ -1,4 +1,3 @@
-import logging
 import tree
 from typing import Any, Dict, Optional
 
@@ -33,7 +32,7 @@ class PPOAlgorithm(SyncOnlineSamplingAPI, SimpleLearnerGroupAPI, RLAlgorithm):
         # Implement the PPO training logic.
 
         # Sample from the `EnvRunner`s (synchronously).
-        episodes, metrics = self.sample(
+        episodes = self.sample(
             env_steps=(
                 self.config.total_train_batch_size
                 if self.config.count_steps_by == "env_steps"
@@ -52,17 +51,17 @@ class PPOAlgorithm(SyncOnlineSamplingAPI, SimpleLearnerGroupAPI, RLAlgorithm):
         #       2. MetricsActorConcreteMixin
 
         # TODO (simon): Maybe returning from EnvRunnerGroup(s) already a TrainingData?
-        learner_results = self.update(
+        self.update(
             training_data=TrainingData(episodes=tree.flatten(episodes)),
             num_epochs=self.config.num_epochs,
             minibatch_size=self.config.minibatch_size,
             shuffle_batch_per_epoch=self.config.shuffle_batch_per_epoch,
         )
 
-        state = self._provide_sync_state({})
+        # state = self._provide_sync_state({})
         self.sync()
 
-        return learner_results, metrics
+        return None
 
     def sync(self, state: Optional[Dict[str, Any]] = None, **kwargs):
         # Synchronize the `EnvRunner`s via the learner group.

@@ -29,6 +29,7 @@ from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.env.utils import _gym_env_creator
 from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.metrics import ENV_RUNNER_RESULTS
 from ray.rllib.utils.typing import EnvCreator, EnvType
 
 # TODO (simon): Maybe rename after old stack deprecation to `MetricsDict`.
@@ -54,6 +55,8 @@ class OnlineSamplingAPI(abc.ABC):
     should always call `super()`.
     """
 
+    # The sampling metrics.
+    _env_runner_metrics: Dict[str, Any] = {}
     # The `EnvRunnerGroup` could be customized.
     _env_runner_group: EnvRunnerGroup = None
     # Also enable a local `EnvRunner`, if needed
@@ -75,6 +78,11 @@ class OnlineSamplingAPI(abc.ABC):
     def _setup(self, config: AlgorithmConfig):
         """Abstract method to setup the specific `EnvRunner`s."""
         super()._setup(config=config)
+
+    abc.abstractmethod
+
+    def get_metrics(self, metrics: ResultDict, **kwargs):
+        super().get_metrics(metrics=metrics, **kwargs)
 
     abc.abstractmethod
 
@@ -314,7 +322,14 @@ class SyncOnlineSamplingAPI(OnlineSamplingAPI):
         env_steps: Optional[int] = None,
         agent_steps: Optional[int] = None,
     ) -> Tuple[List[Union[MultiAgentEpisode, SingleAgentEpisode]], ResultDict]:
-        return self._env_runner_group.sample(env_steps, agent_steps)
+        episodes, self._env_runner_metrics = self._env_runner_group.sample(
+            env_steps, agent_steps
+        )
+        return episodes
+
+    @override(OnlineSamplingAPI)
+    def get_metrics(self, metrics: ResultDict, **kwargs):
+        metrics.update({ENV_RUNNER_RESULTS: self._env_runner_metrics})
 
 
 class AsyncOnlineSamplingAPI(OnlineSamplingAPI):
