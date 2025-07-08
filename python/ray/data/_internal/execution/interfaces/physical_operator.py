@@ -633,6 +633,18 @@ class PhysicalOperator(Operator):
             self._metrics.on_toggle_task_submission_backpressure(in_backpressure)
             self._in_task_submission_backpressure = in_backpressure
 
+    def notify_in_task_output_backpressure(self, in_backpressure: bool) -> None:
+        """Called periodically from the executor to update internal output backpressure
+        status for stats collection purposes.
+
+        Args:
+            in_backpressure: Value this operator's output backpressure should be set to.
+        """
+        # only update on change to in_backpressure
+        if self._in_task_output_backpressure != in_backpressure:
+            self._metrics.on_toggle_task_output_backpressure(in_backpressure)
+            self._in_task_output_backpressure = in_backpressure
+
     def get_autoscaling_actor_pools(self) -> List[AutoscalingActorPool]:
         """Return a list of `AutoscalingActorPool`s managed by this operator."""
         return []
