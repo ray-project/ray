@@ -555,13 +555,15 @@ def test_json_roundtrip(ray_start_regular_shared, tmp_path, override_num_blocks)
         (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
     ],
 )
-def test_json_read_across_blocks(ray_start_regular_shared, fs, data_path, endpoint_url):
+def test_json_read_small_file_unit_block_size(
+    ray_start_regular_shared, fs, data_path, endpoint_url
+):
+    """Test reading a small JSON file with unit block_size."""
     if endpoint_url is None:
         storage_options = {}
     else:
         storage_options = dict(client_kwargs=dict(endpoint_url=endpoint_url))
 
-    # Single small file, unit block_size
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     path1 = os.path.join(data_path, "test1.json")
     df1.to_json(path1, orient="records", lines=True, storage_options=storage_options)
@@ -575,8 +577,26 @@ def test_json_read_across_blocks(ray_start_regular_shared, fs, data_path, endpoi
     assert ds.input_files() == [_unwrap_protocol(path1)]
     assert ds.schema() == Schema(pa.schema([("one", pa.int64()), ("two", pa.string())]))
 
-    # Single large file, default block_size
-    num_chars = 2500000
+
+@pytest.mark.parametrize(
+    "fs,data_path,endpoint_url",
+    [
+        (None, lazy_fixture("local_path"), None),
+        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
+        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+    ],
+)
+def test_json_read_file_larger_than_block_size(
+    ray_start_regular_shared, fs, data_path, endpoint_url
+):
+    """Test reading a JSON file larger than the block size."""
+    if endpoint_url is None:
+        storage_options = {}
+    else:
+        storage_options = dict(client_kwargs=dict(endpoint_url=endpoint_url))
+
+    block_size = 1024
+    num_chars = 2500
     num_rows = 3
     df2 = pd.DataFrame(
         {
@@ -586,7 +606,9 @@ def test_json_read_across_blocks(ray_start_regular_shared, fs, data_path, endpoi
     )
     path2 = os.path.join(data_path, "test2.json")
     df2.to_json(path2, orient="records", lines=True, storage_options=storage_options)
-    ds = ray.data.read_json(path2, filesystem=fs)
+    ds = ray.data.read_json(
+        path2, filesystem=fs, read_options=pajson.ReadOptions(block_size=block_size)
+    )
     dsdf = ds.to_pandas()
     assert df2.equals(dsdf)
     # Test metadata ops.
@@ -596,7 +618,24 @@ def test_json_read_across_blocks(ray_start_regular_shared, fs, data_path, endpoi
         pa.schema([("one", pa.string()), ("two", pa.string())])
     )
 
-    # Single file, negative and zero block_size (expect failure)
+
+@pytest.mark.parametrize(
+    "fs,data_path,endpoint_url",
+    [
+        (None, lazy_fixture("local_path"), None),
+        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
+        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+    ],
+)
+def test_json_read_negative_block_size_fallback(
+    ray_start_regular_shared, fs, data_path, endpoint_url
+):
+    """Test reading JSON with negative block_size triggers fallback to json.load()."""
+    if endpoint_url is None:
+        storage_options = {}
+    else:
+        storage_options = dict(client_kwargs=dict(endpoint_url=endpoint_url))
+
     df3 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     path3 = os.path.join(data_path, "test3.json")
     df3.to_json(path3, orient="records", lines=True, storage_options=storage_options)
@@ -606,6 +645,29 @@ def test_json_read_across_blocks(ray_start_regular_shared, fs, data_path, endpoi
         path3, filesystem=fs, read_options=pajson.ReadOptions(block_size=-1)
     )
     dsdf = ds.to_pandas()
+    assert df3.equals(dsdf)
+
+
+@pytest.mark.parametrize(
+    "fs,data_path,endpoint_url",
+    [
+        (None, lazy_fixture("local_path"), None),
+        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
+        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+    ],
+)
+def test_json_read_zero_block_size_failure(
+    ray_start_regular_shared, fs, data_path, endpoint_url
+):
+    """Test reading JSON with zero block_size fails in both arrow and fallback."""
+    if endpoint_url is None:
+        storage_options = {}
+    else:
+        storage_options = dict(client_kwargs=dict(endpoint_url=endpoint_url))
+
+    df3 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    path3 = os.path.join(data_path, "test3.json")
+    df3.to_json(path3, orient="records", lines=True, storage_options=storage_options)
 
     # Zero Buffer Size, fails with arrow and fails in fallback to json.load()
     with pytest.raises(json.decoder.JSONDecodeError, match="Extra data"):
@@ -613,6 +675,7 @@ def test_json_read_across_blocks(ray_start_regular_shared, fs, data_path, endpoi
             path3, filesystem=fs, read_options=pajson.ReadOptions(block_size=0)
         )
         dsdf = ds.to_pandas()
+        assert dsdf.equals(df3)
 
 
 @pytest.mark.parametrize("min_rows_per_file", [5, 10, 50])
