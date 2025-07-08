@@ -718,7 +718,6 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
         } else {
           if (spec.IsActorTask()) {
             auto actor_handle = actor_manager_->GetActorHandle(spec.ActorId());
-            actor_handle->SetResubmittedActorTaskSpec(spec);
             RAY_CHECK_OK(actor_task_submitter_->SubmitTask(spec));
           } else {
             RAY_CHECK(spec.IsNormalTask());
@@ -1372,7 +1371,6 @@ void CoreWorker::InternalHeartbeat() {
     auto &spec = task_to_retry.task_spec;
     if (spec.IsActorTask()) {
       auto actor_handle = actor_manager_->GetActorHandle(spec.ActorId());
-      actor_handle->SetResubmittedActorTaskSpec(spec);
       RAY_CHECK_OK(actor_task_submitter_->SubmitTask(spec));
     } else if (spec.IsActorCreationTask()) {
       RAY_CHECK_OK(actor_task_submitter_->SubmitActorCreationTask(spec));

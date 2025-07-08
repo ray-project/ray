@@ -85,6 +85,11 @@ class ActorSchedulingQueue : public SchedulingQueue {
       ::RayConfig::instance().actor_scheduling_queue_max_reorder_wait_seconds();
   /// Sorted map of (accept, rej) task callbacks keyed by their sequence number.
   std::map<int64_t, InboundRequest> pending_actor_tasks_;
+  /// Retries that still need their arguments fetched.
+  absl::flat_hash_map<TaskID, InboundRequest> retries_pending_args_fetch_;
+  /// Retries that are ready to be executed. Retries are not ordered so they can be
+  /// executed in any order.
+  absl::flat_hash_map<TaskID, InboundRequest> retries_pending_execution_;
   /// The next sequence number we are waiting for to arrive.
   int64_t next_seq_no_ = 0;
   /// Timer for waiting on dependencies. Note that this is set on the task main

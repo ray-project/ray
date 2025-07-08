@@ -23,63 +23,86 @@ namespace core {
 SequentialActorSubmitQueue::SequentialActorSubmitQueue(ActorID actor_id)
     : actor_id(actor_id) {}
 
-bool SequentialActorSubmitQueue::Emplace(uint64_t sequence_no,
+void SequentialActorSubmitQueue::Emplace(uint64_t sequence_no,
                                          const TaskSpecification &spec) {
-  return requests
-      .emplace(sequence_no, std::make_pair(spec, /*dependency_resolved*/ false))
-      .second;
+  RAY_CHECK(
+      spec.IsRetry()
+          ? retry_pending_queue.emplace(sequence_no, spec).second
+          : requests
+                .emplace(sequence_no, std::make_pair(spec, /*dependency_resolved*/ false))
+                .second);
 }
 
 bool SequentialActorSubmitQueue::Contains(uint64_t sequence_no) const {
-  return requests.find(sequence_no) != requests.end();
+  return requests.contains(sequence_no) || retry_pending_queue.contains(sequence_no) ||
+         retry_sending_queue.contains(sequence_no);
 }
 
-bool SequentialActorSubmitQueue::Empty() { return requests.empty(); }
+bool SequentialActorSubmitQueue::Empty() {
+  return requests.empty() && retry_pending_queue.empty() && retry_sending_queue.empty();
+}
 
-const std::pair<TaskSpecification, bool> &SequentialActorSubmitQueue::Get(
-    uint64_t sequence_no) const {
-  auto it = requests.find(sequence_no);
-  RAY_CHECK(it != requests.end());
-  return it->second;
+bool SequentialActorSubmitQueue::DependencyResolved(uint64_t sequence_no) const {
+  auto requests_it = requests.find(sequence_no);
+  if (requests_it != requests.end()) {
+    return requests_it->second.second;
+  }
+  if (retry_pending_queue.contains(sequence_no)) {
+    return false;
+  }
+  RAY_CHECK(retry_sending_queue.contains(sequence_no));
+  return true;
 }
 
 void SequentialActorSubmitQueue::MarkDependencyFailed(uint64_t sequence_no) {
-  requests.erase(sequence_no);
+  void(requests.erase(sequence_no) > 0 || retry_pending_queue.erase(sequence_no) > 0);
 }
 
 void SequentialActorSubmitQueue::MarkTaskCanceled(uint64_t sequence_no) {
-  requests.erase(sequence_no);
+  void(requests.erase(sequence_no) > 0 || retry_pending_queue.erase(sequence_no) > 0 ||
+       retry_sending_queue.erase(sequence_no) > 0);
 }
 
 void SequentialActorSubmitQueue::MarkDependencyResolved(uint64_t sequence_no) {
   auto it = requests.find(sequence_no);
-  RAY_CHECK(it != requests.end());
-  it->second.second = true;
+  if (it != requests.end()) {
+    it->second.second = true;
+    return;
+  }
 }
 
 std::vector<TaskID> SequentialActorSubmitQueue::ClearAllTasks() {
   std::vector<TaskID> task_ids;
-  for (auto &[pos, spec] : requests) {
+  task_ids.reserve(requests.size() + retry_pending_queue.size() +
+                   retry_sending_queue.size());
+  for (auto &[_, spec] : requests) {
     task_ids.push_back(spec.first.TaskId());
   }
+  for (auto &[_, spec] : retry_pending_queue) {
+    task_ids.push_back(spec.TaskId());
+  }
+  for (auto &[_, spec] : retry_sending_queue) {
+    task_ids.push_back(spec.TaskId());
+  }
   requests.clear();
+  retry_pending_queue.clear();
+  retry_sending_queue.clear();
   return task_ids;
 }
 
 std::optional<std::pair<TaskSpecification, bool>>
 SequentialActorSubmitQueue::PopNextTaskToSend() {
-  auto head = requests.begin();
-  if (head != requests.end() && (/*seqno*/ head->first <= next_send_position) &&
-      (/*dependencies_resolved*/ head->second.second)) {
-    // If the task has been sent before, skip the other tasks in the send
-    // queue.
-    bool skip_queue = head->first < next_send_position;
-    auto task_spec = std::move(head->second.first);
-    head = requests.erase(head);
-    next_send_position++;
-    return std::make_pair(std::move(task_spec), skip_queue);
+  if (!retry_sending_queue.empty()) {
+    auto task_spec = std::move(retry_sending_queue.begin()->second);
+    retry_sending_queue.erase(retry_sending_queue.begin());
+    return std::make_pair(std::move(task_spec), /*skip_queue*/ true);
   }
-  return absl::nullopt;
+  if (!requests.empty() && (/*dependencies_resolved*/ requests.begin()->second.second)) {
+    auto task_spec = std::move(requests.begin()->second.first);
+    requests.erase(requests.begin());
+    return std::make_pair(std::move(task_spec), /*skip_queue*/ false);
+  }
+  return std::nullopt;
 }
 
 }  // namespace core
