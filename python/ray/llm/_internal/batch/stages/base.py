@@ -1,4 +1,5 @@
 """The base class for all stages."""
+import copy
 import logging
 from typing import Any, AsyncIterator, Callable, Dict, List, Optional, Type
 
@@ -163,7 +164,7 @@ class StatefulStageUDF:
         # Collect all outputs first, then return them in the original order
         # This is a requirement set by https://github.com/ray-project/ray/pull/54190/
         not_outputed_rows = set(range(len(inputs)))
-        async for output in self.udf(inputs):
+        async for output in self.udf(copy.deepcopy(inputs)):
             if self.IDX_IN_BATCH_COLUMN not in output:
                 raise ValueError(
                     "The output of the UDF must contain the column "
