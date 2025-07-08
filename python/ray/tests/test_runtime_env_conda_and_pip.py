@@ -373,5 +373,27 @@ def test_working_dir_applies_for_conda_creation(start_cluster, tmp_working_dir):
     assert ray.get(test_import.remote()) == "pip_install_test"
 
 
+def test_pip_install_options(shutdown_only):
+
+    ray.init()
+
+    # Test that this successfully builds a ray runtime environment using
+    # pip_install_options
+    @ray.remote(runtime_env={
+        "pip": {
+            "packages": ["pip-install-test==0.5"],
+            "pip_install_options": [
+                "--no-cache-dir",
+                "--no-build-isolation",
+                "--disable-pip-version-check"
+            ]
+        }
+    })
+    def f():
+        return True
+
+    assert ray.get(f.remote()) == True
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
