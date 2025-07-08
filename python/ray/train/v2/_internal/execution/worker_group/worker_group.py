@@ -224,7 +224,7 @@ class WorkerGroup:
             num_workers: The number of workers.
         """
         # Check if the cluster has enough resources before waiting for placement group
-        max_cluster_resources = ray_state.get_all_max_resources_from_cluster_config()
+        max_cluster_resources = ray_state.get_max_resources_from_cluster_config()
         if max_cluster_resources and isinstance(max_cluster_resources, dict):
             for (
                 resource_name,

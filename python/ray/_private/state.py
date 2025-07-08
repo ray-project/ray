@@ -867,13 +867,7 @@ class GlobalState:
         max_value_limit = config.max_resources.get(key, default=sys.maxsize)
         return min(max_value, max_value_limit)
 
-    def get_max_accelerators_from_cluster_config(self) -> Dict[str, Optional[int]]:
-        return {
-            key: self._calculate_max_resource_from_cluster_config(key)
-            for key in ["CPU", "GPU", "TPU"]
-        }
-
-    def get_all_max_resources_from_cluster_config(self) -> Dict[str, Optional[int]]:
+    def get_max_resources_from_cluster_config(self) -> Dict[str, Optional[int]]:
         """Get the maximum available resources for all resource types from cluster config.
 
         Unlike get_max_accelerators_from_cluster_config which only checks CPU, GPU, TPU,

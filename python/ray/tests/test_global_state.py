@@ -643,7 +643,7 @@ def test_get_max_cpus_from_cluster_config(
     gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
 
     gcs_client.report_cluster_config(cluster_config.SerializeToString())
-    max_resources = ray._private.state.state.get_max_accelerators_from_cluster_config()
+    max_resources = ray._private.state.state.get_max_resources_from_cluster_config()
     assert (max_resources and max_resources["CPU"]) == num_cpu, description
 
 
@@ -790,27 +790,25 @@ def test_get_max_cpus_from_cluster_config(
         ),
     ],
 )
-def test_get_all_max_resources_from_cluster_config(
+def test_get_max_resources_from_cluster_config(
     shutdown_only,
     description: str,
     cluster_config: autoscaler_pb2.ClusterConfig,
     expected_resources: Dict[str, Optional[int]],
 ):
-    """Test get_all_max_resources_from_cluster_config method.
+    """Test get_max_resources_from_cluster_config method.
 
     This test verifies that the method correctly:
     1. Discovers all resource types from node_group_configs and max_resources
     2. Calculates maximum values for each resource type
     3. Handles edge cases like empty configs, zero counts, unlimited resources
-    4. Supports custom resource types beyond CPU/GPU/TPU
+    4. Supports resource types beyond CPU/GPU/TPU
     """
     ray.init(num_cpus=1)
     gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
 
     gcs_client.report_cluster_config(cluster_config.SerializeToString())
-    all_max_resources = (
-        ray._private.state.state.get_all_max_resources_from_cluster_config()
-    )
+    all_max_resources = ray._private.state.state.get_max_resources_from_cluster_config()
 
     assert (
         all_max_resources == expected_resources

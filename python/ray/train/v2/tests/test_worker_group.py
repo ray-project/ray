@@ -173,7 +173,7 @@ def test_insufficient_cluster_resources_startup_failure(monkeypatch):
     """
     # Mock the cluster resources to return the test cluster configuration (4 CPUs)
     monkeypatch.setattr(
-        ray_state, "get_all_max_resources_from_cluster_config", lambda: {"CPU": 4.0}
+        ray_state, "get_max_resources_from_cluster_config", lambda: {"CPU": 4.0}
     )
 
     # The test cluster has 4 CPUs, so requesting 8 workers with 1 CPU each should fail
@@ -571,7 +571,7 @@ def test_check_cluster_resources_and_raise_if_insufficient(monkeypatch):
     # Test case 1: Sufficient resources - should not raise
     monkeypatch.setattr(
         ray_state,
-        "get_all_max_resources_from_cluster_config",
+        "get_max_resources_from_cluster_config",
         lambda: {"CPU": 8.0, "GPU": 4.0},
     )
 
@@ -610,7 +610,7 @@ def test_check_cluster_resources_and_raise_if_insufficient(monkeypatch):
     # Test case 5: Resource available but None - should raise
     monkeypatch.setattr(
         ray_state,
-        "get_all_max_resources_from_cluster_config",
+        "get_max_resources_from_cluster_config",
         lambda: {"CPU": 8.0, "GPU": None},
     )
 
@@ -622,9 +622,7 @@ def test_check_cluster_resources_and_raise_if_insufficient(monkeypatch):
         )
 
     # Test case 6: Empty cluster resources - should not raise
-    monkeypatch.setattr(
-        ray_state, "get_all_max_resources_from_cluster_config", lambda: {}
-    )
+    monkeypatch.setattr(ray_state, "get_max_resources_from_cluster_config", lambda: {})
 
     # Should not raise when cluster resources is empty dict
     wg._check_cluster_resources_and_raise_if_insufficient(
@@ -633,7 +631,7 @@ def test_check_cluster_resources_and_raise_if_insufficient(monkeypatch):
 
     # Test case 7: None cluster resources - should not raise
     monkeypatch.setattr(
-        ray_state, "get_all_max_resources_from_cluster_config", lambda: None
+        ray_state, "get_max_resources_from_cluster_config", lambda: None
     )
 
     # Should not raise when cluster resources is None
@@ -643,7 +641,7 @@ def test_check_cluster_resources_and_raise_if_insufficient(monkeypatch):
 
     # Test case 8: Non-dict cluster resources - should not raise
     monkeypatch.setattr(
-        ray_state, "get_all_max_resources_from_cluster_config", lambda: "not a dict"
+        ray_state, "get_max_resources_from_cluster_config", lambda: "not a dict"
     )
 
     # Should not raise when cluster resources is not a dict
@@ -653,7 +651,7 @@ def test_check_cluster_resources_and_raise_if_insufficient(monkeypatch):
 
     # Test case 9: Edge case with zero resources - should not raise
     monkeypatch.setattr(
-        ray_state, "get_all_max_resources_from_cluster_config", lambda: {"CPU": 4.0}
+        ray_state, "get_max_resources_from_cluster_config", lambda: {"CPU": 4.0}
     )
 
     # Should not raise when requiring zero resources
