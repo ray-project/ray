@@ -1,9 +1,11 @@
 import logging
 from io import BytesIO
-from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
+
+import pandas as pd
 
 from ray.air.util.tensor_extensions.arrow import pyarrow_table_from_pydict
-from ray.data.block import DataBatch
+from ray.data._internal.pandas_block import PandasBlockAccessor
 from ray.data.context import DataContext
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
 
@@ -12,34 +14,30 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# TODO(rliaw): Arbitrarily chosen. Make this configurable
-_JSONL_ROWS_PER_CHUNK = 10000
+JSON_FILE_EXTENSIONS = [
+    "json",
+    "jsonl",
+    # gzip-compressed files
+    "json.gz",
+    "jsonl.gz",
+    # Brotli-compressed fi;es
+    "json.br",
+    "jsonl.br",
+    # Zstandard-compressed files
+    "json.zst",
+    "jsonl.zst",
+    # lz4-compressed files
+    "json.lz4",
+    "jsonl.lz4",
+]
 
 
-class JSONDatasource(FileBasedDatasource):
+class ArrowJSONDatasource(FileBasedDatasource):
     """JSON datasource, for reading and writing JSON and JSONL files."""
-
-    _FILE_EXTENSIONS = [
-        "json",
-        "jsonl",
-        # gzip-compressed files
-        "json.gz",
-        "jsonl.gz",
-        # Brotli-compressed fi;es
-        "json.br",
-        "jsonl.br",
-        # Zstandard-compressed files
-        "json.zst",
-        "jsonl.zst",
-        # lz4-compressed files
-        "json.lz4",
-        "jsonl.lz4",
-    ]
 
     def __init__(
         self,
         paths: Union[str, List[str]],
-        is_jsonl: bool = False,
         *,
         arrow_json_args: Optional[Dict[str, Any]] = None,
         **file_based_datasource_kwargs,
@@ -48,38 +46,20 @@ class JSONDatasource(FileBasedDatasource):
 
         super().__init__(paths, **file_based_datasource_kwargs)
 
-        self.is_jsonl = is_jsonl
-
         if arrow_json_args is None:
             arrow_json_args = {}
+
         self.read_options = arrow_json_args.pop(
             "read_options", json.ReadOptions(use_threads=False)
         )
         self.arrow_json_args = arrow_json_args
-
-    def _read_jsonlines_pandas(
-        self, buffer: "pyarrow.lib.Buffer"
-    ) -> Iterable[DataBatch]:
-        """Read JSONL files with pandas."""
-        import pandas as pd
-
-        reader = pd.read_json(
-            BytesIO(buffer),
-            chunksize=_JSONL_ROWS_PER_CHUNK,
-            lines=True,
-        )
-        for df in reader:
-            # Note: PandasBlockAccessor doesn't support RangeIndex, so we need to convert
-            # to string.
-            if isinstance(df.columns, pd.RangeIndex):
-                df.columns = df.columns.astype(str)
-            yield df
 
     def _read_with_pyarrow_read_json(self, buffer: "pyarrow.lib.Buffer"):
         """Read with PyArrow JSON reader, trying to auto-increase the
         read block size in the case of the read object
         straddling block boundaries."""
         import pyarrow as pa
+        import pyarrow.json as pajson
 
         # When reading large files, the default block size configured in PyArrow can be
         # too small, resulting in the following error: `pyarrow.lib.ArrowInvalid:
@@ -101,7 +81,7 @@ class JSONDatasource(FileBasedDatasource):
         max_block_size = DataContext.get_current().target_max_block_size
         while True:
             try:
-                yield pa.json.read_json(
+                yield pajson.read_json(
                     BytesIO(buffer),
                     read_options=self.read_options,
                     **self.arrow_json_args,
@@ -166,16 +146,68 @@ class JSONDatasource(FileBasedDatasource):
 
         buffer: pa.lib.Buffer = f.read_buffer()
 
-        if self.is_jsonl:
-            yield from self._read_jsonlines_pandas(buffer)
-        else:
-            try:
-                yield from self._read_with_pyarrow_read_json(buffer)
-            except pa.ArrowInvalid as e:
-                # If read with PyArrow fails, try falling back to native json.load().
-                logger.warning(
-                    f"Error reading with pyarrow.json.read_json(). "
-                    f"Falling back to native json.load(), which may be slower. "
-                    f"PyArrow error was:\n{e}"
-                )
-                yield from self._read_with_python_json(buffer)
+        try:
+            yield from self._read_with_pyarrow_read_json(buffer)
+        except pa.ArrowInvalid as e:
+            # If read with PyArrow fails, try falling back to native json.load().
+            logger.warning(
+                f"Error reading with pyarrow.json.read_json(). "
+                f"Falling back to native json.load(), which may be slower. "
+                f"PyArrow error was:\n{e}"
+            )
+            yield from self._read_with_python_json(buffer)
+
+
+class PandasJSONDatasource(FileBasedDatasource):
+    def __init__(
+        self,
+        paths: Union[str, List[str]],
+        target_output_size_bytes: int,
+        **file_based_datasource_kwargs,
+    ):
+        super().__init__(paths, **file_based_datasource_kwargs)
+
+        self._target_output_size_bytes = target_output_size_bytes
+
+    def _read_stream(self, f: "pyarrow.NativeFile", path: str):
+        chunksize = self._estimate_chunksize(f)
+        with pd.read_json(f, chunksize=chunksize, lines=True) as reader:
+            for df in reader:
+                yield _cast_range_index_to_string(df)
+
+    def _estimate_chunksize(self, f: "pyarrow.NativeFile") -> int:
+        assert f.tell() == 0, "File pointer must be at the beginning"
+
+        with pd.read_json(f, chunksize=1, lines=True) as reader:
+            df = _cast_range_index_to_string(next(reader))
+
+        block_accessor = PandasBlockAccessor.for_block(df)
+        if block_accessor.num_rows() == 0:
+            return 1
+
+        bytes_per_row = block_accessor.size_bytes() / block_accessor.num_rows()
+        chunksize = max(round(self._target_output_size_bytes / bytes_per_row), 1)
+
+        # Reset file pointer to the beginning.
+        f.seek(0)
+
+        return chunksize
+
+    def _open_input_source(
+        self,
+        filesystem: "pyarrow.fs.FileSystem",
+        path: str,
+        **open_args,
+    ) -> "pyarrow.NativeFile":
+        # Use seekable file to ensure we can correctly sample the first row.
+        file = filesystem.open_input_file(path, **open_args)
+        assert file.seekable(), "File must be seekable"
+        return file
+
+
+def _cast_range_index_to_string(df: pd.DataFrame):
+    # NOTE: PandasBlockAccessor doesn't support RangeIndex, so we need to convert
+    # to string.
+    if isinstance(df.columns, pd.RangeIndex):
+        df.columns = df.columns.astype(str)
+    return df
