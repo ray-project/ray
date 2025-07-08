@@ -6,7 +6,7 @@ import time
 import threading
 from dataclasses import asdict
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 from ray._common.test_utils import wait_for_condition
 from ray._raylet import GcsClient
 
@@ -1020,13 +1020,20 @@ available_node_types:
     cluster_config_to_report = ray_usage_lib.get_cluster_config_to_report(
         tmp_path / "does_not_exist.yaml"
     )
-    assert cluster_config_to_report == ClusterConfigToReport()
+    # can't assert cloud_provider here because it will be set based on
+    # where the test is actually running
+    assert cluster_config_to_report.head_node_instance_type is None
+    assert cluster_config_to_report.min_workers is None
+    assert cluster_config_to_report.max_workers is None
+    assert cluster_config_to_report.worker_node_instance_types is None
 
     monkeypatch.setenv("KUBERNETES_SERVICE_HOST", "localhost")
     cluster_config_to_report = ray_usage_lib.get_cluster_config_to_report(
         tmp_path / "does_not_exist.yaml"
     )
-    assert cluster_config_to_report.cloud_provider == "kubernetes"
+    # starts with because additional cloud provider info may be added depending on
+    # the environment
+    assert cluster_config_to_report.cloud_provider.startswith("kubernetes")
     assert cluster_config_to_report.min_workers is None
     assert cluster_config_to_report.max_workers is None
     assert cluster_config_to_report.head_node_instance_type is None
@@ -1036,7 +1043,7 @@ available_node_types:
     cluster_config_to_report = ray_usage_lib.get_cluster_config_to_report(
         tmp_path / "does_not_exist.yaml"
     )
-    assert cluster_config_to_report.cloud_provider == "kuberay"
+    assert cluster_config_to_report.cloud_provider.startswith("kuberay")
 
 
 def test_usage_lib_report_data(
@@ -1532,6 +1539,56 @@ def test_usages_stats_dashboard(monkeypatch, ray_start_cluster, reset_usage_stat
                 return dashboard_used == "True"
 
         wait_for_condition(verify_dashboard_used)
+
+
+def test_get_cloud_from_metadata_requests(monkeypatch):
+    def create_mock_response(url: str, provider: str, error_providers: list[str]):
+        # Create a mock response based on the URL.
+        mock_response = Mock()
+
+        if url == "http://metadata.google.internal/computeMetadata/v1":
+            # GCP endpoint
+            if "gcp" in error_providers:
+                print("raising")
+                raise requests.exceptions.ConnectionError()
+            mock_response.status_code = 200 if provider == "gcp" else 404
+        elif url == "http://169.254.169.254/latest/meta-data/":
+            # AWS endpoint
+            if "aws" in error_providers:
+                raise requests.exceptions.ConnectionError()
+            mock_response.status_code = 200 if provider == "aws" else 404
+        elif url == "http://169.254.169.254/metadata/instance?api-version=2021-02-01":
+            # Azure endpoint
+            if "azure" in error_providers:
+                raise requests.exceptions.ConnectionError()
+            mock_response.status_code = 200 if provider == "azure" else 404
+
+        return mock_response
+
+    with patch("requests.get") as mock_get:
+        mock_get.side_effect = lambda url, **kwargs: create_mock_response(
+            url, "gcp", []
+        )
+        result = ray_usage_lib.get_cloud_from_metadata_requests()
+        assert result == "gcp"
+
+        mock_get.side_effect = lambda url, **kwargs: create_mock_response(
+            url, "aws", []
+        )
+        result = ray_usage_lib.get_cloud_from_metadata_requests()
+        assert result == "aws"
+
+        mock_get.side_effect = lambda url, **kwargs: create_mock_response(
+            url, "azure", ["gcp"]
+        )
+        result = ray_usage_lib.get_cloud_from_metadata_requests()
+        assert result == "azure"
+
+        mock_get.side_effect = lambda url, **kwargs: create_mock_response(
+            url, "", ["gcp", "aws", "azure"]
+        )
+        result = ray_usage_lib.get_cloud_from_metadata_requests()
+        assert result == "unknown"
 
 
 if __name__ == "__main__":

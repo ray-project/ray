@@ -408,7 +408,7 @@ def test_placement_group_strict_spread(ray_start_cluster, gcs_actor_scheduling_e
         num_cpus=2,
     ).remote()
     with pytest.raises(ray.exceptions.GetTimeoutError):
-        ray.get(actor_no_resource.value.remote(), timeout=1)
+        ray.get(actor_no_resource.value.remote(), timeout=0.5)
 
     placement_group_assert_no_leak([placement_group])
 
