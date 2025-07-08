@@ -1486,8 +1486,8 @@ python/ray/experimental/channel/shared_memory_channel.py
     DOC101: Method `CompositeChannel.__init__`: Docstring contains fewer arguments than in function signature.
     DOC103: Method `CompositeChannel.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [_channel_dict: Optional[Dict[ray.ActorID, ChannelInterface]], _channels: Optional[Set[ChannelInterface]], _reader_registered: bool, _writer_registered: bool].
 --------------------
-python/ray/experimental/channel/torch_tensor_nccl_channel.py
-    DOC201: Method `TorchTensorNcclChannel._recv_cpu_and_gpu_data` does not have a return section in docstring
+python/ray/experimental/channel/torch_tensor_accelerator_channel.py
+    DOC201: Method `TorchTensorAcceleratorChannel._recv_cpu_and_gpu_data` does not have a return section in docstring
     DOC201: Function `_get_ranks` does not have a return section in docstring
     DOC201: Function `_init_communicator` does not have a return section in docstring
 --------------------
