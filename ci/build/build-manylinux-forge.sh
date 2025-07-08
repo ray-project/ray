@@ -9,7 +9,7 @@ if [[ ! -e /usr/bin/nproc ]]; then
 fi
 
 # Install ray cpp dependencies.
-sudo yum -y install unzip zip sudo openssl xz
+sudo yum -y install unzip zip sudo openssl xz wget
 if [[ "${HOSTTYPE-}" == "x86_64" ]]; then
   sudo yum -y install libasan-4.8.5-44.el7.x86_64 libubsan-7.3.1-5.10.el7.x86_64 \
     devtoolset-8-libasan-devel.x86_64
@@ -33,9 +33,8 @@ nvm install "$NODE_VERSION"
 nvm use "$NODE_VERSION"
 
 # Install bazel
-npm install -g @bazel/bazelisk
-mkdir -p "$HOME"/bin
-ln -sf "$(which bazelisk)" "$HOME"/bin/bazel
+wget -P "$HOME" https://github.com/bazelbuild/bazel/releases/download/6.5.0/bazel-6.5.0-installer-linux-x86_64.sh
+sudo bash "$HOME"/bazel-6.5.0-installer-linux-x86_64.sh
 
 {
   echo "build --config=ci"
