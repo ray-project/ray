@@ -6,6 +6,7 @@ import pytest
 
 import ray
 from ray._private.state import state as ray_state
+from ray.actor import exit_actor
 from ray.exceptions import RayActorError
 from ray.runtime_env import RuntimeEnv
 from ray.train.v2._internal.constants import (
@@ -392,13 +393,13 @@ def test_setup_worker_group(tmp_path):
     worker_group._start()
 
     def get_world_size():
-        return ray.train.get_context().get_world_size()
+        return get_train_context().get_world_size()
 
     def get_world_rank():
-        return ray.train.get_context().get_world_rank()
+        return get_train_context().get_world_rank()
 
     def get_storage_context_name():
-        return ray.train.get_context().get_storage().experiment_dir_name
+        return get_train_context().get_storage().experiment_dir_name
 
     assert worker_group.execute(get_world_size) == [num_workers] * num_workers
     assert sorted(worker_group.execute(get_world_rank)) == list(range(num_workers))
@@ -507,14 +508,14 @@ def test_shutdown_hook_with_dead_actors():
         def before_worker_group_shutdown(self, worker_group):
             # Mock a hanging collective call on the remaining workers.
             def f():
-                print(ray.train.get_context().get_world_rank())
+                print(get_train_context().get_world_rank())
                 time.sleep(10)
 
             wg.execute(f)
 
     def conditional_failure():
-        if ray.train.get_context().get_world_rank() % 2 == 0:
-            ray.actor.exit_actor()
+        if get_train_context().get_world_rank() % 2 == 0:
+            exit_actor()
 
     wg = _default_inactive_worker_group(callbacks=[ShutdownCallback()])
     wg._start()
