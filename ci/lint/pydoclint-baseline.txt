@@ -390,7 +390,6 @@ python/ray/air/_internal/torch_utils.py
     DOC103: Function `convert_ndarray_batch_to_torch_tensor_batch`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [dtypes: Optional[Union[torch.dtype, Dict[str, torch.dtype]]], ndarrays: Union[np.ndarray, Dict[str, np.ndarray]]]. Arguments in the docstring but not in the function signature: [dtype: , ndarray: ].
     DOC201: Function `convert_ndarray_batch_to_torch_tensor_batch` does not have a return section in docstring
     DOC201: Function `consume_prefix_in_state_dict_if_present_not_in_place` does not have a return section in docstring
-    DOC201: Function `convert_ndarray_list_to_torch_tensor_list` does not have a return section in docstring
 --------------------
 python/ray/air/_internal/uri_utils.py
     DOC101: Method `URI.rstrip_subpath`: Docstring contains fewer arguments than in function signature.
