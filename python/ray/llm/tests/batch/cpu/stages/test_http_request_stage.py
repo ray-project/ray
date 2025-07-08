@@ -73,7 +73,7 @@ async def test_http_request_udf_with_qps(mock_session):
 
         results = []
         async for result in udf(batch):
-            results.append(result)
+            results.extend(result["__data"])
 
         assert len(results) == 2
         assert mock_sleep.called  # Should have called sleep for QPS limiting
@@ -113,7 +113,7 @@ async def test_http_request_udf_with_retry(mock_response):
     with patch("asyncio.sleep") as mock_sleep:
         results = []
         async for result in udf(batch):
-            results.append(result)
+            results.extend(result["__data"])
 
         assert len(results) == 2
         mock_sleep.assert_called()
