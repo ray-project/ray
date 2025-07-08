@@ -7,6 +7,7 @@ from typing import (
 )
 
 import ray
+from ray.actor import ActorHandle
 from ray.llm._internal.serve.request_router.prefix_aware.prefix_tree import (
     PrefixTreeActor,
 )
@@ -52,21 +53,6 @@ class PrefixAwarePow2ReplicaRouter(LocalityMixin, MultiplexMixin, RequestRouter)
     increasing cache locality and reducing overhead for language model inference.
     """
 
-    def __init__(
-        self,
-        *args,
-        tree_actor=None,
-        **kwargs,
-    ):
-        super().__init__(*args, **kwargs)
-        if tree_actor is None:
-            # Use a detached actor to avoid issues with actor lifetime since this is shared between routers
-            self._tree_actor = PrefixTreeActor.options(
-                name="LlmPrefixTreeActor", get_if_exists=True, lifetime="detached"
-            ).remote()
-        else:
-            self._tree_actor = tree_actor
-
     def initialize_state(
         self,
         imbalanced_threshold: Optional[int] = 10,
@@ -75,6 +61,7 @@ class PrefixAwarePow2ReplicaRouter(LocalityMixin, MultiplexMixin, RequestRouter)
         eviction_threshold_chars: Optional[int] = 400_000,
         eviction_target_chars: Optional[int] = 360_000,
         eviction_interval_secs: Optional[int] = 10,
+        tree_actor: Optional[ActorHandle] = None,
     ):
         """Initialize the prefix-aware routing state and configuration.
 
@@ -93,6 +80,8 @@ class PrefixAwarePow2ReplicaRouter(LocalityMixin, MultiplexMixin, RequestRouter)
                 prefix tree to during eviction.
             eviction_interval_secs: Interval in seconds between eviction checks
                 when eviction is enabled.
+            tree_actor: The actor to use for the prefix tree in a test environment.
+                If None, a detached actor will be created/retrieved.
         """
         # === Prefix-aware routing logic hyperparameters ===
         self._imbalanced_threshold = imbalanced_threshold
@@ -109,6 +98,14 @@ class PrefixAwarePow2ReplicaRouter(LocalityMixin, MultiplexMixin, RequestRouter)
             else eviction_threshold_chars
         )
         self._eviction_interval_secs = eviction_interval_secs
+
+        if tree_actor is None:
+            # Use a detached actor to avoid issues with actor lifetime since this is shared between routers
+            self._tree_actor = PrefixTreeActor.options(
+                name="LlmPrefixTreeActor", get_if_exists=True, lifetime="detached"
+            ).remote()
+        else:
+            self._tree_actor = tree_actor
 
     def _extract_text_from_request(self, pending_request: PendingRequest) -> str:
         """Extracts the text content from a pending request for prefix matching.

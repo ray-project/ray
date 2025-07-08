@@ -49,7 +49,6 @@ def prefix_request_router(tree_actor, request):
             handle_source=DeploymentHandleSource.REPLICA,
             use_replica_queue_len_cache=False,
             get_curr_time_s=TIMER.time,
-            tree_actor=tree_actor,
         )
         return request_router
 
@@ -63,6 +62,7 @@ def prefix_request_router(tree_actor, request):
         eviction_threshold_chars=params.get("eviction_threshold_chars"),
         eviction_target_chars=params.get("eviction_target_chars"),
         eviction_interval_secs=params.get("eviction_interval_secs"),
+        tree_actor=tree_actor,
     )
 
     yield request_router
