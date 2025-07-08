@@ -36,11 +36,15 @@ public abstract class BaseTaskOptions implements Serializable {
   }
 
   private void validateResourceValue(String name, Double value) {
-    if (name == null || value == null || value < 0.0) {
+    if (name == null || value == null) {
       throw new IllegalArgumentException(
           String.format(
-              "Resource values should be non negative or null. Specified resource: %s = %s.",
+              "Resource name and value should not be null. Specified resource: %s = %s.",
               name, value));
+    } else if (value < 0.0) {
+      throw new IllegalArgumentException(
+          String.format(
+              "Resource values should be non negative. Specified resource: %s = %s.", name, value));
     }
   }
 
