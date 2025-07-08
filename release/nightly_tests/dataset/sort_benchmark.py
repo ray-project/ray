@@ -36,7 +36,17 @@ class RandomIntRowDatasource(Datasource):
         block_size = max(1, n // parallelism)
         row = np.random.bytes(row_size_bytes)
 
-        def make_block(count: int, row_size_bytes: int) -> Block:
+        schema = pyarrow.schema(
+            [
+                pyarrow.field("c_0", pyarrow.int64()),
+                # NOTE: We use fixed-size binary type to avoid Arrow (list) offsets
+                #       overflows when using non-fixed-size data-types (like string,
+                #       binary, list, etc) whose size exceeds int32 limit (of 2^31-1)
+                pyarrow.field("c_1", pyarrow.binary(row_size_bytes)),
+            ]
+        )
+
+        def make_block(count: int) -> Block:
             return pyarrow.Table.from_arrays(
                 [
                     np.random.randint(
@@ -44,15 +54,8 @@ class RandomIntRowDatasource(Datasource):
                     ),
                     [row for _ in range(count)],
                 ],
-                names=["c_0", "c_1"],
+                schema=schema,
             )
-
-        schema = pyarrow.Table.from_pydict(
-            {
-                "c_0": [0],
-                "c_1": [row],
-            }
-        ).schema
 
         i = 0
         while i < n:
@@ -65,9 +68,7 @@ class RandomIntRowDatasource(Datasource):
             )
             read_tasks.append(
                 ReadTask(
-                    lambda count=count, row_size_bytes=row_size_bytes: [
-                        make_block(count, row_size_bytes)
-                    ],
+                    lambda count=count: [make_block(count)],
                     meta,
                     schema=schema,
                 )
