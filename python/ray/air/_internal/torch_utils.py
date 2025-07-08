@@ -348,7 +348,8 @@ def convert_ndarray_list_to_torch_tensor_list(
             tensor(s) will be constructed on the CPU.
         pin_memory: Whether to pin the memory of the created tensors.
 
-    Returns: A dict mapping column names to lists of Tensors.
+    Returns:
+        A dict mapping column names to lists of Tensors.
     """
     return {
         col_name: [
