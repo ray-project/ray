@@ -165,6 +165,32 @@ def test_start_timeout(monkeypatch):
         wg._start()
 
 
+def test_insufficient_cluster_resources_startup_failure(monkeypatch):
+    """Test that WorkerGroup startup fails when cluster has insufficient resources.
+
+    This test mocks the cluster resources to match the test environment and
+    verifies that the resource check properly catches insufficient resources.
+    """
+    # Mock the cluster resources to return the test cluster configuration (4 CPUs)
+    monkeypatch.setattr(
+        ray_state, "get_max_resources_from_cluster_config", lambda: {"CPU": 4.0}
+    )
+
+    # The test cluster has 4 CPUs, so requesting 8 workers with 1 CPU each should fail
+    worker_group_context = _default_worker_group_context(
+        num_workers=8,  # More workers than available CPUs
+        resources_per_worker={"CPU": 1.0},
+    )
+
+    wg = _default_inactive_worker_group(worker_group_context=worker_group_context)
+
+    # This should fail during startup due to insufficient resources
+    with pytest.raises(
+        WorkerGroupStartupFailedError, match="Insufficient cluster resources"
+    ):
+        wg._start()
+
+
 def test_poll_status_running():
     worker_group_context = _default_worker_group_context(
         train_fn_ref=DummyObjectRefWrapper(lambda: time.sleep(60)),
