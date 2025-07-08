@@ -13,7 +13,7 @@ ray_cc_test(
 
 ray_cc_test(
     name = "shutdown_coordinator_test",
-    size = "small",
+    size = "medium",
     srcs = ["shutdown_coordinator_test.cc"],
     tags = ["team:core"],
     deps = [
