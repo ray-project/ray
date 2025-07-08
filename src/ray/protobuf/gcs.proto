@@ -732,4 +732,8 @@ message VirtualClusterTableData {
   bool is_removed = 4;
   // Version number of the last modification to the virtual cluster.
   uint64 revision = 5;
+
+  map<string, int32> min_replica_sets = 6;
+  map<string, int32> max_replica_sets = 7;
+  int32 max_nodes = 8;
 }

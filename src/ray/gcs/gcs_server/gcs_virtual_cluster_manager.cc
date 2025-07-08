@@ -369,6 +369,73 @@ void GcsVirtualClusterManager::HandleCreateJobCluster(
   }
 }
 
+void GcsVirtualClusterManager::HandleUpdateAutoscalingConfig(
+    rpc::UpdateAutoscalingConfigRequest request,
+    rpc::UpdateAutoscalingConfigReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  const auto &virtual_cluster_id = request.virtual_cluster_id();
+  RAY_LOG(INFO) << "Start updating autoscaling config of virtual cluster "
+                << virtual_cluster_id;
+  auto on_done = [reply, virtual_cluster_id, callback = std::move(send_reply_callback)](
+                     const Status &status,
+                     std::shared_ptr<rpc::VirtualClusterTableData> data,
+                     const ReplicaSets *replica_sets_to_recommend) {
+    if (status.ok()) {
+      RAY_LOG(INFO) << "Succeed in updating virtual cluster " << virtual_cluster_id;
+    } else {
+      RAY_LOG(WARNING) << "Failed to update virtual cluster " << virtual_cluster_id
+                       << ", status = " << status.ToString();
+    }
+    GCS_RPC_SEND_REPLY(callback, reply, status);
+  };
+
+  auto status = VerifyRequest(request);
+  if (status.ok()) {
+    status = primary_cluster_->UpdateVirtualClusterAutoscalingConfig(std::move(request),
+                                                                     on_done);
+  }
+  if (!status.ok()) {
+    on_done(status, nullptr, nullptr);
+  }
+}
+
+void GcsVirtualClusterManager::HandleGetAutoscalingConfig(
+    rpc::GetAutoscalingConfigRequest request,
+    rpc::GetAutoscalingConfigReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  const auto &virtual_cluster_id = request.virtual_cluster_id();
+  if (virtual_cluster_id.empty()) {
+    std::ostringstream ostr;
+    ostr << "Invalid request, the virtual cluster id is empty.";
+    std::string message = ostr.str();
+    RAY_LOG(ERROR) << message;
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::InvalidArgument(message));
+    return;
+  }
+
+  RAY_LOG(INFO) << "Start getting autoscaling config of virtual cluster "
+                << virtual_cluster_id;
+
+  auto virtual_cluster = primary_cluster_->GetLogicalCluster(virtual_cluster_id);
+  if (virtual_cluster) {
+    reply->mutable_min_replica_sets()->insert(
+        virtual_cluster->GetMinReplicaSets().begin(),
+        virtual_cluster->GetMinReplicaSets().end());
+    reply->mutable_max_replica_sets()->insert(
+        virtual_cluster->GetMaxReplicaSets().begin(),
+        virtual_cluster->GetMaxReplicaSets().end());
+    reply->set_max_nodes(virtual_cluster->GetMaxNodes());
+
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+  } else {
+    std::ostringstream ostr;
+    ostr << "Invalid request, the virtual cluster id does not exist.";
+    std::string message = ostr.str();
+    RAY_LOG(ERROR) << message;
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::InvalidArgument(message));
+  }
+}
+
 Status GcsVirtualClusterManager::VerifyRequest(
     const rpc::CreateOrUpdateVirtualClusterRequest &request) {
   const auto &virtual_cluster_id = request.virtual_cluster_id();
@@ -474,6 +541,51 @@ Status GcsVirtualClusterManager::VerifyRequest(
   if (virtual_cluster_id == primary_cluster_->GetID()) {
     std::ostringstream ostr;
     ostr << "Invalid request, " << virtual_cluster_id << " can not be removed.";
+    auto message = ostr.str();
+    RAY_LOG(ERROR) << message;
+    return Status::InvalidArgument(message);
+  }
+  return Status::OK();
+}
+
+Status GcsVirtualClusterManager::VerifyRequest(
+    const rpc::UpdateAutoscalingConfigRequest &request) {
+  const auto &virtual_cluster_id = request.virtual_cluster_id();
+  if (virtual_cluster_id.empty()) {
+    std::ostringstream ostr;
+    ostr << "Invalid request, the virtual cluster id is empty.";
+    std::string message = ostr.str();
+    RAY_LOG(ERROR) << message;
+    return Status::InvalidArgument(message);
+  }
+
+  if (virtual_cluster_id == primary_cluster_->GetID()) {
+    std::ostringstream ostr;
+    ostr << "Invalid request, " << virtual_cluster_id
+         << "'s autoscaling config can not be updated by this API.";
+    auto message = ostr.str();
+    RAY_LOG(ERROR) << message;
+    return Status::InvalidArgument(message);
+  }
+
+  for (const auto &[group, max_count] : request.max_replica_sets()) {
+    const auto iter = request.min_replica_sets().find(group);
+    if (iter == request.min_replica_sets().end() || iter->second > max_count) {
+      std::ostringstream ostr;
+      ostr << "Invalid request, " << group << "'s max and min configs do not match.";
+      auto message = ostr.str();
+      RAY_LOG(ERROR) << message;
+      return Status::InvalidArgument(message);
+    }
+  }
+
+  int32_t min_count_sum = 0;
+  for (const auto &[group, min_count] : request.min_replica_sets()) {
+    min_count_sum += min_count;
+  }
+  if (min_count_sum > request.max_nodes()) {
+    std::ostringstream ostr;
+    ostr << "Invalid request, max_nodes is too small.";
     auto message = ostr.str();
     RAY_LOG(ERROR) << message;
     return Status::InvalidArgument(message);

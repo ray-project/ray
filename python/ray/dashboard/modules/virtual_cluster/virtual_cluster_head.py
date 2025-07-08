@@ -10,6 +10,8 @@ from ray.core.generated.gcs_service_pb2 import (
     RemoveNodesFromVirtualClusterRequest,
     GetVirtualClustersRequest,
     RemoveVirtualClusterRequest,
+    UpdateAutoscalingConfigRequest,
+    GetAutoscalingConfigRequest,
 )
 
 logger = logging.getLogger(__name__)
@@ -164,6 +166,77 @@ class VirtualClusterHead(dashboard_utils.DashboardHeadModule):
                     virtual_cluster_id, reply.status.message
                 ),
                 virtual_cluster_id=virtual_cluster_id,
+            )
+
+    @routes.post("/virtual_clusters/update_autoscaling_config")
+    async def update_autoscaling_config(self, req) -> aiohttp.web.Response:
+        autoscaling_config_json = await req.json()
+        logger.info(
+            "POST /virtual_clusters/update_autoscaling_config %s",
+            autoscaling_config_json,
+        )
+
+        autoscaling_config = dict(autoscaling_config_json)
+        virtual_cluster_id = autoscaling_config["virtualClusterId"]
+        request = UpdateAutoscalingConfigRequest(
+            virtual_cluster_id=virtual_cluster_id,
+            min_replica_sets=autoscaling_config.get("minReplicaSets", {}),
+            max_replica_sets=autoscaling_config.get("maxReplicaSets", {}),
+            max_nodes=autoscaling_config.get("maxNodes", 0),
+        )
+
+        reply = await self._gcs_virtual_cluster_info_stub.UpdateAutoscalingConfig(
+            request
+        )
+
+        if reply.status.code == 0:
+            logger.info(
+                "Virtual cluster %s's autoscaling config updated", virtual_cluster_id
+            )
+            return dashboard_optional_utils.rest_response(
+                success=True,
+                message=f"Virtual cluster {virtual_cluster_id}'s autoscaling config updated.",
+                virtual_cluster_id=virtual_cluster_id,
+            )
+        else:
+            logger.info(
+                "Failed to update virtual cluster %s's autoscaling config",
+                virtual_cluster_id,
+            )
+            return dashboard_optional_utils.rest_response(
+                success=False,
+                message="Failed to update virtual cluster {}'s autoscaling config: {}".format(
+                    virtual_cluster_id, reply.status.message
+                ),
+                virtual_cluster_id=virtual_cluster_id,
+            )
+
+    @routes.get("/virtual_clusters/autoscaling_config/{virtual_cluster_id}")
+    @dashboard_optional_utils.aiohttp_cache(10)
+    async def get_autoscaling_config(self, req) -> aiohttp.web.Response:
+        virtual_cluster_id = req.match_info.get("virtual_cluster_id")
+        reply = await self._gcs_virtual_cluster_info_stub.GetAutoscalingConfig(
+            GetAutoscalingConfigRequest(virtual_cluster_id=virtual_cluster_id)
+        )
+
+        if reply.status.code == 0:
+            data = dashboard_utils.message_to_dict(
+                reply, always_print_fields_with_no_presence=True
+            )
+            return dashboard_optional_utils.rest_response(
+                success=True,
+                message="Autoscaling config fetched.",
+                min_replica_sets=data.get("minReplicaSets", {}),
+                max_replica_sets=data.get("maxReplicaSets", {}),
+                max_nodes=data.get("maxNodes", 0),
+            )
+        else:
+            logger.info("Failed to get the autoscaling config")
+            return dashboard_optional_utils.rest_response(
+                success=False,
+                message="Failed to get the autoscaling config: {}".format(
+                    reply.status.message
+                ),
             )
 
     async def run(self, server):

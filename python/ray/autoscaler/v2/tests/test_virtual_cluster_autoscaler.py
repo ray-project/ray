@@ -736,6 +736,128 @@ time.sleep(600)
             os.rmdir(temp_dir)
 
 
+# Test whether virtual cluster's autoscaling config (e.g., min/max limits) is enforced.
+def test_virtual_cluster_autoscaling_config(make_autoscaler):
+    config = copy.deepcopy(DEFAULT_AUTOSCALING_CONFIG)
+    config["idle_timeout_minutes"] = 10
+    autoscaler, cluster = make_autoscaler(config)
+    gcs_address = autoscaler._gcs_client.address
+
+    # Resource requests
+    print("=================== Test scaling up constraint ====================")
+    request_cluster_resources(gcs_address, [{"CPU": 1}, {"CPU": 2}])
+
+    def verify():
+        autoscaler.update_autoscaling_state()
+        cluster_state = get_cluster_status(gcs_address)
+        assert len(cluster_state.active_nodes + cluster_state.idle_nodes) == 3
+        return True
+
+    wait_for_condition(verify, retry_interval_ms=5000)
+
+    logger.info("Cancel resource constraints.")
+    request_cluster_resources(gcs_address, [])
+
+    print("=================== Create a virtual cluster ====================")
+    ip, _ = cluster.webui_url.split(":")
+    agent_address = f"{ip}:{DEFAULT_DASHBOARD_AGENT_LISTEN_PORT}"
+    assert wait_until_server_available(agent_address)
+    assert wait_until_server_available(cluster.webui_url)
+    webui_url = cluster.webui_url
+    webui_url = format_web_url(webui_url)
+
+    # Create a virtual cluster with one `1c2g` node.
+    resp = requests.post(
+        webui_url + "/virtual_clusters",
+        json={
+            "virtualClusterId": "virtual_cluster_1",
+            "divisible": False,
+            "replicaSets": {"1c2g": 1},
+            "revision": 0,
+        },
+        timeout=10,
+    )
+    result = resp.json()
+    assert result["result"]
+
+    # Update the autoscaling config, making the min replica sets of each node type
+    # become two.
+    resp = requests.post(
+        webui_url + "/virtual_clusters/update_autoscaling_config",
+        json={
+            "virtualClusterId": "virtual_cluster_1",
+            "minReplicaSets": {"1c2g": 2, "2c4g": 2},
+            "maxReplicaSets": {"1c2g": 5, "2c4g": 5},
+            "maxNodes": 10,
+        },
+        timeout=10,
+    )
+    result = resp.json()
+    assert result["result"]
+
+    def check_virtual_cluster(total_count):
+        try:
+            autoscaler.update_autoscaling_state()
+
+            cluster_resource_state = get_cluster_resource_state(autoscaler._gcs_client)
+            state = cluster_resource_state.virtual_cluster_states["virtual_cluster_1"]
+
+            # Check the virtual cluster's node count.
+            assert len(state.nodes) == total_count
+            return True
+
+        except Exception as ex:
+            logger.info(ex)
+            return False
+
+    # The autoscaler will upscale the node count to four, in order to enforce
+    # the min replica sets.
+    wait_for_condition(
+        check_virtual_cluster, timeout=30, retry_interval_ms=2000, total_count=4
+    )
+
+    # Update the autoscaling config, making the max replica sets of each node type
+    # become one.
+    resp = requests.post(
+        webui_url + "/virtual_clusters/update_autoscaling_config",
+        json={
+            "virtualClusterId": "virtual_cluster_1",
+            "minReplicaSets": {"1c2g": 0, "2c4g": 0},
+            "maxReplicaSets": {"1c2g": 1, "2c4g": 1},
+            "maxNodes": 10,
+        },
+        timeout=10,
+    )
+    result = resp.json()
+    assert result["result"]
+
+    # The autoscaler will downscale the node count to two, in order to enforce
+    # the max replica sets.
+    wait_for_condition(
+        check_virtual_cluster, timeout=30, retry_interval_ms=2000, total_count=2
+    )
+
+    # Update the autoscaling config, making the max node count of the virtual cluster
+    # become one.
+    resp = requests.post(
+        webui_url + "/virtual_clusters/update_autoscaling_config",
+        json={
+            "virtualClusterId": "virtual_cluster_1",
+            "minReplicaSets": {"1c2g": 0, "2c4g": 0},
+            "maxReplicaSets": {"1c2g": 1, "2c4g": 1},
+            "maxNodes": 1,
+        },
+        timeout=10,
+    )
+    result = resp.json()
+    assert result["result"]
+
+    # The autoscaler will downscale the node count to one.
+    wait_for_condition(
+        check_virtual_cluster, timeout=30, retry_interval_ms=2000, total_count=1
+    )
+
+
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))

@@ -101,6 +101,8 @@ using RemoveVirtualClusterCallback = CreateOrUpdateVirtualClusterCallback;
 
 using RemoveNodesFromVirtualClusterCallback = CreateOrUpdateVirtualClusterCallback;
 
+using UpdateAutoscalingConfigCallback = CreateOrUpdateVirtualClusterCallback;
+
 using VirtualClustersDataVisitCallback =
     std::function<void(std::shared_ptr<rpc::VirtualClusterTableData>)>;
 
@@ -173,6 +175,12 @@ class VirtualCluster {
   const ReplicaInstances &GetVisibleNodeInstances() const {
     return visible_node_instances_;
   }
+
+  const ReplicaSets &GetMinReplicaSets() const { return min_replica_sets_; }
+
+  const ReplicaSets &GetMaxReplicaSets() const { return max_replica_sets_; }
+
+  int32_t GetMaxNodes() const { return max_nodes_; }
 
   /// Update the node instances of the cluster.
   ///
@@ -267,6 +275,10 @@ class VirtualCluster {
   Status RemoveNodeInstances(const std::vector<std::string> &nodes_to_remove,
                              ReplicaInstances *removed_replica_instances);
 
+  Status UpdateAutoscalingConfig(const ReplicaSets &min_replica_sets,
+                                 const ReplicaSets &max_replica_sets,
+                                 int32_t max_ndoes);
+
  protected:
   /// Insert the node instances to the cluster.
   ///
@@ -293,6 +305,9 @@ class VirtualCluster {
   /// instance.
   absl::flat_hash_map<std::string, std::shared_ptr<NodeInstance>> node_instances_map_;
   const ClusterResourceManager &cluster_resource_manager_;
+  ReplicaSets min_replica_sets_;
+  ReplicaSets max_replica_sets_;
+  int32_t max_nodes_;
 };
 
 class JobCluster;
@@ -493,6 +508,10 @@ class PrimaryCluster : public DivisibleCluster,
   Status RemoveNodesFromVirtualCluster(
       const rpc::RemoveNodesFromVirtualClusterRequest &request,
       RemoveNodesFromVirtualClusterCallback callback);
+
+  Status UpdateVirtualClusterAutoscalingConfig(
+      const rpc::UpdateAutoscalingConfigRequest &request,
+      UpdateAutoscalingConfigCallback callback);
 
   /// Get the virtual cluster by the logical cluster id.
   ///

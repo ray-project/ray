@@ -95,6 +95,13 @@ void GcsVirtualClusterAutoscalerStateManager::MakeVirtualClusterResourceStatesIn
           // Collect the pending resource requests in this virtual cluster.
           GetVirtualClusterPendingResourceRequests(&virtual_cluster_state);
         }
+        virtual_cluster_state.mutable_min_replica_sets()->insert(
+            virtual_cluster->GetMinReplicaSets().begin(),
+            virtual_cluster->GetMinReplicaSets().end());
+        virtual_cluster_state.mutable_max_replica_sets()->insert(
+            virtual_cluster->GetMaxReplicaSets().begin(),
+            virtual_cluster->GetMaxReplicaSets().end());
+        virtual_cluster_state.set_max_nodes(virtual_cluster->GetMaxNodes());
 
         (*virtual_cluster_states)[virtual_cluster->GetID()] = virtual_cluster_state;
       });

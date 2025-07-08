@@ -185,6 +185,15 @@ Status VirtualCluster::RemoveNodeInstances(
   return Status::OK();
 }
 
+Status VirtualCluster::UpdateAutoscalingConfig(const ReplicaSets &min_replica_sets,
+                                               const ReplicaSets &max_replica_sets,
+                                               int32_t max_nodes) {
+  min_replica_sets_ = min_replica_sets;
+  max_replica_sets_ = max_replica_sets;
+  max_nodes_ = max_nodes;
+  return Status::OK();
+}
+
 bool VirtualCluster::IsNodeInstanceIdle(const std::string &node_instance_id) {
   auto node_id = scheduling::NodeID(NodeID::FromHex(node_instance_id).Binary());
   const auto &node_resources = cluster_resource_manager_.GetNodeResources(node_id);
@@ -353,6 +362,11 @@ std::shared_ptr<rpc::VirtualClusterTableData> VirtualCluster::ToProto() const {
       }
     }
   }
+  data->mutable_min_replica_sets()->insert(min_replica_sets_.begin(),
+                                           min_replica_sets_.end());
+  data->mutable_max_replica_sets()->insert(max_replica_sets_.begin(),
+                                           max_replica_sets_.end());
+  data->set_max_nodes(max_nodes_);
   return data;
 }
 
@@ -718,9 +732,13 @@ void PrimaryCluster::Initialize(const GcsInitData &gcs_init_data) {
           std::move(replica_instances);
     } else {
       // Load the logical cluster.
-      LoadLogicalCluster(virtual_cluster_data.id(),
-                         virtual_cluster_data.divisible(),
-                         std::move(replica_instances));
+      auto virtual_cluster = LoadLogicalCluster(virtual_cluster_data.id(),
+                                                virtual_cluster_data.divisible(),
+                                                std::move(replica_instances));
+      virtual_cluster->UpdateAutoscalingConfig(
+          MapFromProtobuf(virtual_cluster_data.min_replica_sets()),
+          MapFromProtobuf(virtual_cluster_data.max_replica_sets()),
+          virtual_cluster_data.max_nodes());
     }
   }
 
@@ -975,6 +993,22 @@ Status PrimaryCluster::RemoveNodesFromVirtualCluster(
   UpdateNodeInstances(/*replica_instances_to_add=*/std::move(removed_replica_instances),
                       /*replica_instances_to_remove=*/ReplicaInstances());
 
+  return async_data_flusher_(logical_cluster->ToProto(), std::move(callback));
+}
+
+Status PrimaryCluster::UpdateVirtualClusterAutoscalingConfig(
+    const rpc::UpdateAutoscalingConfigRequest &request,
+    UpdateAutoscalingConfigCallback callback) {
+  auto logical_cluster = GetLogicalCluster(request.virtual_cluster_id());
+  if (!logical_cluster) {
+    std::ostringstream ostr;
+    ostr << "Virtual cluster " << request.virtual_cluster_id() << " does not exist.";
+    auto message = ostr.str();
+    return Status::NotFound(message);
+  }
+  logical_cluster->UpdateAutoscalingConfig(MapFromProtobuf(request.min_replica_sets()),
+                                           MapFromProtobuf(request.max_replica_sets()),
+                                           request.max_nodes());
   return async_data_flusher_(logical_cluster->ToProto(), std::move(callback));
 }
 

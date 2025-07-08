@@ -72,6 +72,27 @@ def remove_virtual_cluster(webui_url, virtual_cluster_id):
         logger.info(ex)
 
 
+def update_autoscaling_config(
+    webui_url, virtual_cluster_id, min_replica_sets, max_replica_sets, max_nodes
+):
+    try:
+        resp = requests.post(
+            webui_url + "/virtual_clusters/update_autoscaling_config",
+            json={
+                "virtualClusterId": virtual_cluster_id,
+                "minReplicaSets": min_replica_sets,
+                "maxReplicaSets": max_replica_sets,
+                "maxNodes": max_nodes,
+            },
+            timeout=10,
+        )
+        result = resp.json()
+        print(result)
+        return result
+    except Exception as ex:
+        logger.info(ex)
+
+
 @ray.remote
 class SmallActor:
     def pid(self):
@@ -747,6 +768,101 @@ time.sleep(600)
             os.remove(file_path)
         if temp_dir:
             os.rmdir(temp_dir)
+
+
+@pytest.mark.parametrize(
+    "ray_start_cluster_head",
+    [
+        {
+            "include_dashboard": True,
+        }
+    ],
+    indirect=True,
+)
+def test_virtual_cluster_autoscaling_config(
+    disable_aiohttp_cache, ray_start_cluster_head
+):
+    cluster: Cluster = ray_start_cluster_head
+    assert wait_until_server_available(cluster.webui_url) is True
+    webui_url = cluster.webui_url
+    webui_url = format_web_url(webui_url)
+
+    # Add one `4c8g` nodes and one `8c16g` nodes to the primary cluster.
+    cluster.add_node(env_vars={"RAY_NODE_TYPE_NAME": "4c8g"})
+    cluster.add_node(env_vars={"RAY_NODE_TYPE_NAME": "8c16g"})
+
+    # Create a new indivisible virtual cluster.
+    result = create_or_update_virtual_cluster(
+        webui_url=webui_url,
+        virtual_cluster_id="virtual_cluster_1",
+        divisible=False,
+        replica_sets={"4c8g": 1, "8c16g": 1},
+        revision=0,
+    )
+    assert result["result"] is True
+
+    min_replica_sets = {"4c8g": 1, "8c16g": 0}
+    max_replica_sets = {"4c8g": 2, "8c16g": 2}
+    max_nodes = 4
+    # Update the autoscaling config.
+    result = update_autoscaling_config(
+        webui_url=webui_url,
+        virtual_cluster_id="virtual_cluster_1",
+        min_replica_sets=min_replica_sets,
+        max_replica_sets=max_replica_sets,
+        max_nodes=max_nodes,
+    )
+    assert result["result"] is True
+
+    def _get_autoscaling_config():
+        try:
+            resp = requests.get(
+                webui_url + "/virtual_clusters/autoscaling_config/virtual_cluster_1"
+            )
+            resp.raise_for_status()
+            result = resp.json()
+            print(result)
+            assert result["result"] is True, resp.text
+            assert result["data"]["minReplicaSets"] == min_replica_sets
+            assert result["data"]["maxReplicaSets"] == max_replica_sets
+            assert result["data"]["maxNodes"] == max_nodes
+            return True
+        except Exception as ex:
+            logger.info(ex)
+            return False
+
+    wait_for_condition(_get_autoscaling_config, timeout=10)
+
+    # Update the autoscaling config of a non-exist virtual cluster, which should fail.
+    result = update_autoscaling_config(
+        webui_url=webui_url,
+        virtual_cluster_id="virtual_cluster_2",
+        min_replica_sets={"4c8g": 1, "8c16g": 0},
+        max_replica_sets={"4c8g": 2, "8c16g": 2},
+        max_nodes=4,
+    )
+    assert result["result"] is False
+
+    # Update the autoscaling config with max smaller than min, which should fail.
+    result = update_autoscaling_config(
+        webui_url=webui_url,
+        virtual_cluster_id="virtual_cluster_1",
+        min_replica_sets={"4c8g": 1, "8c16g": 0},
+        max_replica_sets={"4c8g": 0, "8c16g": 2},
+        max_nodes=4,
+    )
+    assert result["result"] is False
+
+    # Update the autoscaling config with max_nodes smaller than
+    # the sum of min replica sets, which should fail.
+    result = update_autoscaling_config(
+        webui_url=webui_url,
+        virtual_cluster_id="virtual_cluster_1",
+        min_replica_sets={"4c8g": 1, "8c16g": 1},
+        max_replica_sets={"4c8g": 2, "8c16g": 2},
+        max_nodes=1,
+    )
+    assert result["result"] is False
 
 
 if __name__ == "__main__":

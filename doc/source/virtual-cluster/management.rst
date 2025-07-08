@@ -216,3 +216,64 @@ To get the metadata of all virtual clusters, users can send a GET request to the
             ]
         }
     }
+
+Update Autoscaling Config
+-------------------------
+
+Users can update the autoscaling config (e.g., min/max limits) of a virtual cluster by sending a POST request to the http endpoint at `/virtual_clusters/update_autoscaling_config`.
+
+Once the autoscaling config is updated, the autoscaler (v2 only) will try to enforce it.
+
+**Sample Request:**
+
+.. code-block:: json
+
+    {
+        "virtualClusterId":"virtual_cluster_1",
+        "minReplicaSets":{ // The min replica sets of each node type.
+            "4c8g":1,
+            "8c16g":0
+        },
+        "maxReplicaSets":{ // The max replica sets of each node type.
+            "4c8g":2,
+            "8c16g":2
+        },
+        "maxNodes":4 // The max total node count
+    }
+
+**Sample Response:**
+
+.. code-block:: json
+
+    {
+        "result":true,
+        "msg":"Virtual cluster virtual_cluster_1's autoscaling config updated.",
+        "data":{
+            "virtualClusterId":"virtual_cluster_1"
+        }
+    }
+
+Get Autoscaling Config
+----------------------
+
+To get the autoscaling config of a virtual clusters, users can send a GET request to the http endpoint at `/virtual_clusters/autoscaling_config/{virtual_cluster_id}`.
+
+**Success Response:**
+
+.. code-block:: json
+
+    {
+        "result":true,
+        "msg":"Autoscaling config fetched.",
+        "data":{
+            "minReplicaSets":{
+                "4c8g":1,
+                "8c16g":0
+            },
+            "maxReplicaSets":{
+                "4c8g":2,
+                "8c16g":2
+            },
+            "maxNodes":4
+        }
+    }

@@ -181,6 +181,9 @@ message VirtualClusterState {
   repeated ResourceRequestByCount pending_resource_requests = 5;
   // Gang resource requests pending scheduling.
   repeated GangResourceRequest pending_gang_resource_requests = 6;
+  map<string, int32> min_replica_sets = 7;
+  map<string, int32> max_replica_sets = 8;
+  int32 max_nodes = 9;
 }
 
 // Represents a cluster resource state.

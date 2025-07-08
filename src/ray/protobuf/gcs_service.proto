@@ -984,6 +984,28 @@ message CreateJobClusterReply {
   map<string, int32> replica_sets_to_recommend = 3;
 }
 
+message UpdateAutoscalingConfigRequest {
+  string virtual_cluster_id = 1;
+  map<string, int32> min_replica_sets = 2;
+  map<string, int32> max_replica_sets = 3;
+  int32 max_nodes = 4;
+}
+
+message UpdateAutoscalingConfigReply {
+  GcsStatus status = 1;
+}
+
+message GetAutoscalingConfigRequest {
+  string virtual_cluster_id = 1;
+}
+
+message GetAutoscalingConfigReply {
+  GcsStatus status = 1;
+  map<string, int32> min_replica_sets = 2;
+  map<string, int32> max_replica_sets = 3;
+  int32 max_nodes = 4;
+}
+
 service VirtualClusterInfoGcsService {
   // Create or update a virtual cluster.
   rpc CreateOrUpdateVirtualCluster(CreateOrUpdateVirtualClusterRequest)
@@ -1001,4 +1023,6 @@ service VirtualClusterInfoGcsService {
   // Get all virtual clusters info for display.
   rpc GetAllVirtualClusterInfo(GetAllVirtualClusterInfoRequest)
       returns (GetAllVirtualClusterInfoReply);
+  rpc UpdateAutoscalingConfig(UpdateAutoscalingConfigRequest) returns (UpdateAutoscalingConfigReply);
+  rpc GetAutoscalingConfig(GetAutoscalingConfigRequest) returns (GetAutoscalingConfigReply);
 }

@@ -193,9 +193,23 @@ class VirtualClusterReconciler:
                 )
 
         node_type_configs = autoscaling_config.get_node_type_configs()
+        # Use the virtual cluster's min/max config.
+        for _, config in node_type_configs.items():
+            if config.ray_node_type in ray_state.min_replica_sets:
+                config.min_worker_nodes = ray_state.min_replica_sets[
+                    config.ray_node_type
+                ]
+                config.max_worker_nodes = ray_state.max_replica_sets[
+                    config.ray_node_type
+                ]
+            else:
+                config.min_worker_nodes = 0
+
         sched_request = SchedulingRequest(
             node_type_configs=node_type_configs,
-            max_num_nodes=autoscaling_config.get_max_num_nodes(),
+            max_num_nodes=ray_state.max_nodes
+            if ray_state.max_nodes > 0
+            else autoscaling_config.get_max_num_nodes(),
             resource_requests=ray_state.pending_resource_requests,
             gang_resource_requests=ray_state.pending_gang_resource_requests,
             # For now, we don't support resource constraints at the virtual cluster level.

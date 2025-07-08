@@ -119,11 +119,21 @@ class GcsVirtualClusterManager : public rpc::VirtualClusterInfoHandler {
       rpc::GetAllVirtualClusterInfoReply *reply,
       rpc::SendReplyCallback send_reply_callback) override;
 
+  void HandleUpdateAutoscalingConfig(rpc::UpdateAutoscalingConfigRequest request,
+                                     rpc::UpdateAutoscalingConfigReply *reply,
+                                     rpc::SendReplyCallback send_reply_callback) override;
+
+  void HandleGetAutoscalingConfig(rpc::GetAutoscalingConfigRequest request,
+                                  rpc::GetAutoscalingConfigReply *reply,
+                                  rpc::SendReplyCallback send_reply_callback) override;
+
   Status VerifyRequest(const rpc::CreateOrUpdateVirtualClusterRequest &request);
 
   Status VerifyRequest(const rpc::RemoveNodesFromVirtualClusterRequest &request);
 
   Status VerifyRequest(const rpc::RemoveVirtualClusterRequest &request);
+
+  Status VerifyRequest(const rpc::UpdateAutoscalingConfigRequest &request);
 
   Status FlushAndPublish(std::shared_ptr<rpc::VirtualClusterTableData> data,
                          CreateOrUpdateVirtualClusterCallback callback);
