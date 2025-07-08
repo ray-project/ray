@@ -139,7 +139,7 @@ def test_all_reduce_custom_comm_wrong_actors(ray_start_regular):
         computes = [worker.return_tensor.bind(inp) for worker in workers]
         with pytest.raises(
             ValueError,
-            match="Expected actor handles to match the custom NCCL group",
+            match="Expected actor handles to match the custom communicator group",
         ):
             collective.allreduce.bind(computes, transport=nccl_group)
 
