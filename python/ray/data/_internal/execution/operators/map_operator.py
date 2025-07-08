@@ -570,7 +570,9 @@ def _map_task(
         for block in map_transformer.apply_transform(iter(blocks), ctx):
             block_accessor = BlockAccessor.for_block(block)
 
-            assert block_accessor.num_rows() > 0, f"Operator {ctx.op_name} produced an empty block"
+            assert (
+                block_accessor.num_rows() > 0
+            ), f"Operator {ctx.op_name} produced an empty block"
 
             # Collect the execution stats
             stats = stats_builder.build()
