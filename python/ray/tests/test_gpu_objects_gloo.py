@@ -6,6 +6,12 @@ import ray
 from ray.experimental.collective import create_collective_group
 from ray._private.custom_types import TensorTransportEnum
 
+# tensordict is not supported on macos ci, so we skip the tests
+support_tensordict = sys.platform != "darwin"
+
+if support_tensordict:
+    from tensordict import TensorDict
+
 
 @ray.remote
 class GPUTestActor:
@@ -15,7 +21,9 @@ class GPUTestActor:
 
     def double(self, data):
         if isinstance(data, list):
-            return [d * 2 for d in data]
+            return [self.double(d) for d in data]
+        if support_tensordict and isinstance(data, TensorDict):
+            return data.apply(lambda x: x * 2)
         return data * 2
 
     def get_gpu_object(self, obj_id: str):
@@ -104,8 +112,18 @@ def test_multiple_tensors(ray_start_regular):
 
     tensor1 = torch.randn((1,))
     tensor2 = torch.randn((2,))
+    if support_tensordict:
+        td1 = TensorDict(
+            {"action1": torch.randn((2,)), "reward1": torch.randn((2,))}, batch_size=[2]
+        )
+        td2 = TensorDict(
+            {"action2": torch.randn((2,)), "reward2": torch.randn((2,))}, batch_size=[2]
+        )
+    else:
+        td1 = 0
+        td2 = 0
     cpu_data = random.randint(0, 100)
-    data = [tensor1, tensor2, cpu_data]
+    data = [tensor1, tensor2, cpu_data, td1, td2]
 
     sender, receiver = actors[0], actors[1]
     ref = sender.echo.remote(data)
@@ -115,6 +133,11 @@ def test_multiple_tensors(ray_start_regular):
     assert result[0] == pytest.approx(tensor1 * 2)
     assert result[1] == pytest.approx(tensor2 * 2)
     assert result[2] == cpu_data * 2
+    if support_tensordict:
+        assert result[3]["action1"] == pytest.approx(td1["action1"] * 2)
+        assert result[3]["reward1"] == pytest.approx(td1["reward1"] * 2)
+        assert result[4]["action2"] == pytest.approx(td2["action2"] * 2)
+        assert result[4]["reward2"] == pytest.approx(td2["reward2"] * 2)
 
 
 def test_trigger_out_of_band_tensor_transfer(ray_start_regular):
@@ -177,6 +200,10 @@ def test_fetch_gpu_object_to_driver(ray_start_regular):
     assert result[2] == 7
 
 
+@pytest.mark.skipif(
+    not support_tensordict,
+    reason="tensordict is not supported on this platform",
+)
 def test_invalid_tensor_transport(ray_start_regular):
     with pytest.raises(ValueError, match="Invalid tensor transport"):
 
@@ -185,6 +212,74 @@ def test_invalid_tensor_transport(ray_start_regular):
             @ray.method(tensor_transport="invalid")
             def echo(self, data):
                 return data
+
+
+@pytest.mark.skipif(
+    not support_tensordict,
+    reason="tensordict is not supported on this platform",
+)
+def test_tensordict_transfer(ray_start_regular):
+    world_size = 2
+    actors = [GPUTestActor.remote() for _ in range(world_size)]
+    create_collective_group(actors, backend="torch_gloo")
+
+    td = TensorDict(
+        {"action": torch.randn((2,)), "reward": torch.randn((2,))}, batch_size=[2]
+    )
+    sender, receiver = actors[0], actors[1]
+    ref = sender.echo.remote(td)
+    result = receiver.double.remote(ref)
+    td_result = ray.get(result)
+
+    assert td_result["action"] == pytest.approx(td["action"] * 2)
+    assert td_result["reward"] == pytest.approx(td["reward"] * 2)
+
+
+@pytest.mark.skipif(
+    not support_tensordict,
+    reason="tensordict is not supported on this platform",
+)
+def test_nested_tensordict(ray_start_regular):
+    world_size = 2
+    actors = [GPUTestActor.remote() for _ in range(world_size)]
+    create_collective_group(actors, backend="torch_gloo")
+
+    inner_td = TensorDict(
+        {"action": torch.randn((2,)), "reward": torch.randn((2,))}, batch_size=[2]
+    )
+    outer_td = TensorDict(
+        {"inner_td": inner_td, "test": torch.randn((2,))}, batch_size=[2]
+    )
+    sender = actors[0]
+    receiver = actors[1]
+    gpu_ref = sender.echo.remote(outer_td)
+    ret_val_src = ray.get(receiver.double.remote(gpu_ref))
+    assert ret_val_src is not None
+    assert torch.equal(ret_val_src["inner_td"]["action"], inner_td["action"] * 2)
+    assert torch.equal(ret_val_src["inner_td"]["reward"], inner_td["reward"] * 2)
+    assert torch.equal(ret_val_src["test"], outer_td["test"] * 2)
+
+
+@pytest.mark.skipif(
+    not support_tensordict,
+    reason="tensordict is not supported on this platform",
+)
+def test_tensor_extracted_from_tensordict_in_gpu_object_store(ray_start_regular):
+    actor = GPUTestActor.remote()
+    create_collective_group([actor], backend="torch_gloo")
+
+    td = TensorDict(
+        {"action": torch.randn((2,)), "reward": torch.randn((2,))}, batch_size=[2]
+    ).to("cpu")
+    gpu_ref = actor.echo.remote(td)
+
+    # Since the tensor is extracted from the tensordict, the `ret_val_src` will be a list of tensors
+    # instead of a tensordict.
+    ret_val_src = ray.get(actor.get_gpu_object.remote(gpu_ref.hex()))
+    assert ret_val_src is not None
+    assert len(ret_val_src) == 2
+    assert torch.equal(ret_val_src[0], td["action"])
+    assert torch.equal(ret_val_src[1], td["reward"])
 
 
 if __name__ == "__main__":
