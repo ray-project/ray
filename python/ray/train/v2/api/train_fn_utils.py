@@ -81,9 +81,10 @@ def report(
     Args:
         metrics: The metrics you want to report.
         checkpoint: The optional checkpoint you want to report.
-        checkpoint_dir_name: The optional directory to store the checkpoint.
-            If not set, the checkpoint will be stored in the default storage path.
-            If set, make sure this value is unique for each iteration.
+        checkpoint_dir_name: Custom name for the checkpoint directory. If not provided, a unique directory
+    name will be automatically generated. If provided, it must be unique
+    across all checkpoints to avoid naming collisions. Consider including identifiers
+    such as the epoch or batch index in the name.
     """
 
     get_train_context().report(
