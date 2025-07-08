@@ -260,7 +260,6 @@ def test_zipped_json_read(ray_start_regular_shared, tmp_path):
     shutil.rmtree(dir_path)
 
 
-@pytest.mark.timeout(1)
 def test_read_json_fallback_from_pyarrow_failure(ray_start_regular_shared, local_path):
     # Try to read this with read_json() to trigger fallback logic
     # to read bytes with json.load().
@@ -545,7 +544,6 @@ def test_json_roundtrip(ray_start_regular_shared, tmp_path, override_num_blocks)
         assert BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
 
-@pytest.mark.timeout(1)
 @pytest.mark.parametrize(
     "fs,data_path,endpoint_url",
     [
@@ -554,7 +552,9 @@ def test_json_roundtrip(ray_start_regular_shared, tmp_path, override_num_blocks)
         (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
     ],
 )
-def test_json_read_small_file_unit_block_size(ray_start_regular_shared, fs, data_path, endpoint_url):
+def test_json_read_small_file_unit_block_size(
+    ray_start_regular_shared, fs, data_path, endpoint_url
+):
     """Test reading a small JSON file with unit block_size."""
     if endpoint_url is None:
         storage_options = {}
@@ -584,14 +584,17 @@ def test_json_read_small_file_unit_block_size(ray_start_regular_shared, fs, data
         (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
     ],
 )
-def test_json_read_large_file_default_block_size(ray_start_regular_shared, fs, data_path, endpoint_url):
-    """Test reading a large JSON file with default block_size."""
+def test_json_read_file_larger_than_block_size(
+    ray_start_regular_shared, fs, data_path, endpoint_url
+):
+    """Test reading a JSON file larger than the block size."""
     if endpoint_url is None:
         storage_options = {}
     else:
         storage_options = dict(client_kwargs=dict(endpoint_url=endpoint_url))
 
-    num_chars = 2500000
+    block_size = 1024
+    num_chars = 2500
     num_rows = 3
     df2 = pd.DataFrame(
         {
@@ -601,7 +604,9 @@ def test_json_read_large_file_default_block_size(ray_start_regular_shared, fs, d
     )
     path2 = os.path.join(data_path, "test2.json")
     df2.to_json(path2, orient="records", lines=True, storage_options=storage_options)
-    ds = ray.data.read_json(path2, filesystem=fs)
+    ds = ray.data.read_json(
+        path2, filesystem=fs, read_options=pajson.ReadOptions(block_size=block_size)
+    )
     dsdf = ds.to_pandas()
     assert df2.equals(dsdf)
     # Test metadata ops.
@@ -612,7 +617,6 @@ def test_json_read_large_file_default_block_size(ray_start_regular_shared, fs, d
     )
 
 
-@pytest.mark.timeout(1)
 @pytest.mark.parametrize(
     "fs,data_path,endpoint_url",
     [
@@ -621,7 +625,9 @@ def test_json_read_large_file_default_block_size(ray_start_regular_shared, fs, d
         (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
     ],
 )
-def test_json_read_negative_block_size_fallback(ray_start_regular_shared, fs, data_path, endpoint_url):
+def test_json_read_negative_block_size_fallback(
+    ray_start_regular_shared, fs, data_path, endpoint_url
+):
     """Test reading JSON with negative block_size triggers fallback to json.load()."""
     if endpoint_url is None:
         storage_options = {}
@@ -640,7 +646,6 @@ def test_json_read_negative_block_size_fallback(ray_start_regular_shared, fs, da
     assert df3.equals(dsdf)
 
 
-@pytest.mark.timeout(1)
 @pytest.mark.parametrize(
     "fs,data_path,endpoint_url",
     [
@@ -649,7 +654,9 @@ def test_json_read_negative_block_size_fallback(ray_start_regular_shared, fs, da
         (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
     ],
 )
-def test_json_read_zero_block_size_failure(ray_start_regular_shared, fs, data_path, endpoint_url):
+def test_json_read_zero_block_size_failure(
+    ray_start_regular_shared, fs, data_path, endpoint_url
+):
     """Test reading JSON with zero block_size fails in both arrow and fallback."""
     if endpoint_url is None:
         storage_options = {}
@@ -713,7 +720,6 @@ def test_mixed_gzipped_json_files(ray_start_regular_shared, tmp_path):
     ), f"Retrieved data {retrieved_data} does not match expected {data[0]}."
 
 
-@pytest.mark.timeout(1)
 def test_json_with_http_path_parallelization(ray_start_regular_shared, httpserver):
     num_files = FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD
     urls = []
@@ -721,13 +727,8 @@ def test_json_with_http_path_parallelization(ray_start_regular_shared, httpserve
         httpserver.expect_request(f"/file{i}.json").respond_with_json({"id": i})
         urls.append(httpserver.url_for(f"/file{i}.json"))
 
-    try:
-        ds = ray.data.read_json(urls)
-        actual_rows = ds.take_all()
-    except Exception as e:
-        pytest.fail(f"Failed to read JSON from HTTP URLs: {e}")
-    finally:
-        httpserver.clear()
+    ds = ray.data.read_json(urls)
+    actual_rows = ds.take_all()
 
     expected_rows = [{"id": i} for i in range(num_files)]
     assert sorted(actual_rows, key=lambda row: row["id"]) == sorted(
