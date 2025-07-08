@@ -848,29 +848,60 @@ class GlobalState:
             return autoscaler_pb2.ClusterConfig.FromString(serialized_cluster_config)
         return None
 
-    def get_max_resources_from_cluster_config(self) -> Optional[int]:
+    def _calculate_max_resource_from_cluster_config(self, key: str) -> Optional[int]:
         config = self.get_cluster_config()
         if config is None:
             return None
 
-        def calculate_max_resource_from_cluster_config(key: str) -> Optional[int]:
-            max_value = 0
-            for node_group_config in config.node_group_configs:
-                num_cpus = node_group_config.resources.get(key, default=0)
-                num_nodes = node_group_config.max_count
-                if num_nodes == 0 or num_cpus == 0:
-                    continue
-                if num_nodes == -1 or num_cpus == -1:
-                    return sys.maxsize
-                max_value += num_nodes * num_cpus
-            if max_value == 0:
-                return None
-            max_value_limit = config.max_resources.get(key, default=sys.maxsize)
-            return min(max_value, max_value_limit)
+        max_value = 0
+        for node_group_config in config.node_group_configs:
+            num_resources = node_group_config.resources.get(key, default=0)
+            num_nodes = node_group_config.max_count
+            if num_nodes == 0 or num_resources == 0:
+                continue
+            if num_nodes == -1 or num_resources == -1:
+                return sys.maxsize
+            max_value += num_nodes * num_resources
+        if max_value == 0:
+            return None
+        max_value_limit = config.max_resources.get(key, default=sys.maxsize)
+        return min(max_value, max_value_limit)
 
+    def get_max_accelerators_from_cluster_config(self) -> Dict[str, Optional[int]]:
         return {
-            key: calculate_max_resource_from_cluster_config(key)
+            key: self._calculate_max_resource_from_cluster_config(key)
             for key in ["CPU", "GPU", "TPU"]
+        }
+
+    def get_all_max_resources_from_cluster_config(self) -> Dict[str, Optional[int]]:
+        """Get the maximum available resources for all resource types from cluster config.
+
+        Unlike get_max_accelerators_from_cluster_config which only checks CPU, GPU, TPU,
+        this method checks all possible resource types defined in the cluster config.
+
+        Returns:
+            A dictionary mapping resource name to the maximum quantity of that
+            resource that could be available in the cluster based on the cluster config.
+            Returns None for a resource if it's not available or unlimited.
+        """
+        config = self.get_cluster_config()
+        if config is None:
+            return {}
+
+        # First, collect all possible resource keys from node group configs
+        all_resource_keys = set()
+
+        # Check resources in node group configs
+        for node_group_config in config.node_group_configs:
+            all_resource_keys.update(node_group_config.resources.keys())
+
+        # Check resources in max_resources (global limits)
+        all_resource_keys.update(config.max_resources.keys())
+
+        # Calculate max value for each resource key
+        return {
+            key: self._calculate_max_resource_from_cluster_config(key)
+            for key in all_resource_keys
         }
 
 
