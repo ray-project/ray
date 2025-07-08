@@ -683,6 +683,10 @@ def test_struct_with_empty_arrays():
     assert result == expected, f"Expected {expected}, but got {result}"
 
 
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("17.0.0"),
+    reason="Requires PyArrow version 17 or higher",
+)
 def test_struct_with_arrow_variable_shaped_tensor_type():
     # Test concatenating tables with struct columns containing ArrowVariableShapedTensorType
     # fields, ensuring proper handling of variable-shaped tensors within structs.
@@ -1191,6 +1195,10 @@ def test_pyarrow_conversion_error_handling(
         ]
 
 
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("17.0.0"),
+    reason="Requires PyArrow version 17 or higher",
+)
 def test_mixed_tensor_types_same_dtype():
     """Test mixed tensor types with same data type but different shapes."""
 
@@ -1247,6 +1255,10 @@ def test_mixed_tensor_types_same_dtype():
     np.testing.assert_array_equal(result_tensors[3], np.zeros((1, 4), dtype=np.float32))
 
 
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("17.0.0"),
+    reason="Requires PyArrow version 17 or higher",
+)
 def test_mixed_tensor_types_fixed_shape_different():
     """Test mixed tensor types with different fixed shapes."""
 
@@ -1304,6 +1316,10 @@ def test_mixed_tensor_types_fixed_shape_different():
     np.testing.assert_array_equal(result_tensors[4], np.zeros((3,), dtype=np.float32))
 
 
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("17.0.0"),
+    reason="Requires PyArrow version 17 or higher",
+)
 def test_mixed_tensor_types_variable_shaped():
     """Test mixed tensor types with variable-shaped tensors."""
 
@@ -1365,6 +1381,10 @@ def test_mixed_tensor_types_variable_shaped():
     np.testing.assert_array_equal(result_tensors[3], np.zeros((2, 1), dtype=np.float32))
 
 
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("17.0.0"),
+    reason="Requires PyArrow version 17 or higher",
+)
 def test_mixed_tensor_types_in_struct():
     """Test that the fix works for mixed tensor types in structs."""
     import numpy as np
@@ -1422,6 +1442,10 @@ def test_mixed_tensor_types_in_struct():
     assert struct_data[3]["value"] == 4
 
 
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("17.0.0"),
+    reason="Requires PyArrow version 17 or higher",
+)
 def test_nested_struct_with_mixed_tensor_types():
     """Test nested structs with mixed tensor types at different levels."""
     import numpy as np
@@ -1498,6 +1522,10 @@ def test_nested_struct_with_mixed_tensor_types():
     assert "inner_value" in struct_data[0]["nested"]
 
 
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("17.0.0"),
+    reason="Requires PyArrow version 17 or higher",
+)
 def test_multiple_tensor_fields_in_struct():
     """Test structs with multiple tensor fields of different types."""
     import numpy as np
@@ -1564,6 +1592,10 @@ def test_multiple_tensor_fields_in_struct():
         assert "value" in row
 
 
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("17.0.0"),
+    reason="Requires PyArrow version 17 or higher",
+)
 def test_struct_with_incompatible_tensor_dtypes_fails():
     """Test that concatenating structs with incompatible tensor dtypes fails gracefully."""
     import numpy as np
@@ -1606,6 +1638,10 @@ def test_struct_with_incompatible_tensor_dtypes_fails():
         concat([t1, t2])
 
 
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("17.0.0"),
+    reason="Requires PyArrow version 17 or higher",
+)
 def test_struct_with_additional_fields():
     """Test structs where some blocks have additional fields."""
     import numpy as np
@@ -1675,6 +1711,10 @@ def test_struct_with_additional_fields():
     assert struct_data[3]["extra"] == "b"
 
 
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("17.0.0"),
+    reason="Requires PyArrow version 17 or higher",
+)
 def test_struct_with_null_tensor_values():
     """Test structs where some fields are missing and get filled with nulls."""
     import numpy as np
