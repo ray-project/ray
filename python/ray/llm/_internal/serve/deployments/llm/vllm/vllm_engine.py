@@ -141,9 +141,9 @@ def _clear_current_platform_cache():
 
 class _EngineBackgroundProcess:
     def __init__(self, ipc_path, engine_args, engine_config):
-        from vllm.usage.usage_lib import UsageContext
         from vllm.engine.multiprocessing.engine import MQLLMEngine
         from vllm.plugins import load_general_plugins
+        from vllm.usage.usage_lib import UsageContext
 
         # Adapted from vllm.engine.multiprocessing.engine.MQLLMEngine.from_engine_args
         load_general_plugins()
@@ -195,8 +195,7 @@ class VLLMEngine(LLMEngine):
             raise ImportError(
                 "vLLM is not installed. Please install it with `pip install ray[llm]`."
             )
-        from vllm import utils as vllm_utils
-        from vllm import envs as vllm_envs
+        from vllm import envs as vllm_envs, utils as vllm_utils
 
         # Pick a random port in P/D case.
         kv_transfer_config = llm_config.engine_kwargs.get("kv_transfer_config", None)
