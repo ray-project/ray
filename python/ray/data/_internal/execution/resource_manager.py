@@ -700,7 +700,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
                 # TODO(hchen): allocate resources across multiple GPU operators.
                 self._op_budgets[op].gpu = (
                     self._resource_manager._global_limits.gpu
-                    - self._resource_manager._op_usages[op].gpu
+                    - self._resource_manager.get_op_usage(op).gpu
                 )
             else:
                 self._op_budgets[op].gpu = 0

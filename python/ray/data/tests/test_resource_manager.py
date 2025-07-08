@@ -388,8 +388,8 @@ class TestReservationOpResourceAllocator:
         # 50% of the global limits are shared.
         assert allocator._total_shared == ExecutionResources(8, 0, 500)
         # Test budgets.
-        assert allocator._op_budgets[o2] == ExecutionResources(8, float("inf"), 375)
-        assert allocator._op_budgets[o3] == ExecutionResources(8, float("inf"), 375)
+        assert allocator._op_budgets[o2] == ExecutionResources(8, 0, 375)
+        assert allocator._op_budgets[o3] == ExecutionResources(8, 0, 375)
         # Test can_submit_new_task and max_task_output_bytes_to_read.
         assert allocator.can_submit_new_task(o2)
         assert allocator.can_submit_new_task(o3)
@@ -418,9 +418,9 @@ class TestReservationOpResourceAllocator:
         # remaining shared = 1000/2 - 275 = 225
         # Test budgets.
         # memory_budget[o2] = 0 + 225/2 = 112.5
-        assert allocator._op_budgets[o2] == ExecutionResources(3, float("inf"), 112.5)
+        assert allocator._op_budgets[o2] == ExecutionResources(3, 0, 112.5)
         # memory_budget[o3] = 95 + 225/2 = 207.5
-        assert allocator._op_budgets[o3] == ExecutionResources(5, float("inf"), 207.5)
+        assert allocator._op_budgets[o3] == ExecutionResources(5, 0, 207.5)
         # Test can_submit_new_task and max_task_output_bytes_to_read.
         assert allocator.can_submit_new_task(o2)
         assert allocator.can_submit_new_task(o3)
@@ -454,9 +454,9 @@ class TestReservationOpResourceAllocator:
 
         # Test budgets.
         # memory_budget[o2] = 0 + 100/2 = 50
-        assert allocator._op_budgets[o2] == ExecutionResources(1.5, float("inf"), 50)
+        assert allocator._op_budgets[o2] == ExecutionResources(1.5, 0, 50)
         # memory_budget[o3] = 70 + 100/2 = 120
-        assert allocator._op_budgets[o3] == ExecutionResources(2.5, float("inf"), 120)
+        assert allocator._op_budgets[o3] == ExecutionResources(2.5, 0, 120)
         # Test can_submit_new_task and max_task_output_bytes_to_read.
         assert allocator.can_submit_new_task(o2)
         assert allocator.can_submit_new_task(o3)
