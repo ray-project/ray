@@ -21,6 +21,7 @@ class BackpressurePolicy(ABC):
         resource_manager: "ResourceManager",
     ):
         """Initialize the backpressure policy.
+
         Args:
             data_context: The data context.
             topology: The execution topology.
