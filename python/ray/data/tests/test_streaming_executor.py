@@ -10,6 +10,7 @@ import ray
 from ray._private.test_utils import run_string_as_driver_nonblocking
 from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
 from ray.data._internal.datasource.parquet_datasource import ParquetDatasource
+from ray.data._internal.execution.backpressure_policy import BackpressurePolicy
 from ray.data._internal.execution.execution_callback import (
     EXECUTION_CALLBACKS_ENV_VAR,
     ExecutionCallback,
@@ -35,7 +36,6 @@ from ray.data._internal.execution.streaming_executor import (
     _debug_dump_topology,
     _validate_dag,
 )
-from ray.data._internal.execution.backpressure_policy import BackpressurePolicy
 from ray.data._internal.execution.streaming_executor_state import (
     OpBufferQueue,
     OpState,

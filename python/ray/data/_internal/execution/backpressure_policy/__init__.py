@@ -1,14 +1,13 @@
 from typing import TYPE_CHECKING, List
 
-import ray
-from ray.data.context import DataContext
 from .backpressure_policy import BackpressurePolicy
 from .concurrency_cap_backpressure_policy import ConcurrencyCapBackpressurePolicy
 from .resource_budget_backpressure_policy import ResourceBudgetBackpressurePolicy
+from ray.data.context import DataContext
 
 if TYPE_CHECKING:
-    from ray.data._internal.execution.streaming_executor_state import Topology
     from ray.data._internal.execution.resource_manager import ResourceManager
+    from ray.data._internal.execution.streaming_executor_state import Topology
 
 # Default enabled backpressure policies and its config key.
 # Use `DataContext.set_config` to config it.
