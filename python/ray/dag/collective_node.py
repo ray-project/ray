@@ -181,8 +181,8 @@ class _CollectiveOperation:
         allocated and returned.
 
         Args:
-            send_buf: A variable number of torch tensors to send to the collective
-            operation. The tensors have the same order as the input nodes.
+            *send_buf: A variable number of torch tensors to send to the collective
+                operation. The tensors have the same order as the input nodes.
 
         Returns:
             A torch tensor or a tuple of torch tensors containing the results of the

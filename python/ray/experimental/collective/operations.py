@@ -54,10 +54,10 @@ def _bind(
 
     Args:
         inputs: A list of DAG nodes or a list of lists of DAG nodes. Each leaf list
-        should contain one object per actor.
+            should contain one object per actor.
         op: The collective operation.
         transport: GPU communicator for the collective operation. If not
-            specified, the default NCCL is used.
+            specified, the default ACCELERATOR is used.
 
     Returns:
         A list of collective output nodes or a list of lists of collective output nodes,
