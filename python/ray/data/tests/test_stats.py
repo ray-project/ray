@@ -24,7 +24,6 @@ from ray.data._internal.execution.backpressure_policy.backpressure_policy import
 )
 from ray.data._internal.execution.interfaces.op_runtime_metrics import TaskDurationStats
 from ray.data._internal.execution.interfaces.physical_operator import PhysicalOperator
-from ray.data._internal.execution.streaming_executor_state import Topology
 from ray.data._internal.stats import (
     DatasetStats,
     NodeMetrics,
@@ -68,6 +67,7 @@ def gen_expected_metrics(
     is_map: bool,
     spilled: bool = False,
     task_backpressure: bool = False,
+    task_output_backpressure: bool = False,
     extra_metrics: Optional[List[str]] = None,
 ):
     if is_map:
@@ -104,6 +104,10 @@ def gen_expected_metrics(
                 "'task_submission_backpressure_time': "
                 f"{'N' if task_backpressure else 'Z'}"
             ),
+            (
+                "'task_output_backpressure_time': "
+                f"{'N' if task_output_backpressure else 'Z'}"
+            ),
             ("'task_completion_time': " f"{'N' if task_backpressure else 'Z'}"),
             "'num_alive_actors': Z",
             "'num_restarting_actors': Z",
@@ -129,6 +133,10 @@ def gen_expected_metrics(
             (
                 "'task_submission_backpressure_time': "
                 f"{'N' if task_backpressure else 'Z'}"
+            ),
+            (
+                "'task_output_backpressure_time': "
+                f"{'N' if task_output_backpressure else 'Z'}"
             ),
             ("'task_completion_time': " f"{'N' if task_backpressure else 'Z'}"),
             "'num_alive_actors': Z",
@@ -187,6 +195,7 @@ LARGE_ARGS_EXTRA_METRICS_TASK_BACKPRESSURE = gen_expected_metrics(
     is_map=True,
     spilled=False,
     task_backpressure=True,
+    task_output_backpressure=True,
     extra_metrics=[
         "'ray_remote_args': {'num_cpus': N, 'scheduling_strategy': 'DEFAULT'}"
     ],
@@ -414,6 +423,8 @@ def test_large_args_scheduling_strategy(
         f"    * Estimated single node throughput: N rows/s\n"
         f"{gen_runtime_metrics_str(['ReadRange','MapBatches(dummy_map_batches)'], verbose_stats_logs)}"  # noqa: E501
     )
+    print(canonicalize(stats))
+    print(expected_stats)
     assert canonicalize(stats) == expected_stats
 
 
@@ -622,6 +633,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      num_tasks_failed: Z,\n"
         "      block_generation_time: N,\n"
         "      task_submission_backpressure_time: N,\n"
+        "      task_output_backpressure_time: Z,\n"
         "      task_completion_time: N,\n"
         "      num_alive_actors: Z,\n"
         "      num_restarting_actors: Z,\n"
@@ -743,6 +755,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      num_tasks_failed: Z,\n"
         "      block_generation_time: N,\n"
         "      task_submission_backpressure_time: N,\n"
+        "      task_output_backpressure_time: Z,\n"
         "      task_completion_time: N,\n"
         "      num_alive_actors: Z,\n"
         "      num_restarting_actors: Z,\n"
@@ -819,6 +832,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "            num_tasks_failed: Z,\n"
         "            block_generation_time: N,\n"
         "            task_submission_backpressure_time: N,\n"
+        "            task_output_backpressure_time: Z,\n"
         "            task_completion_time: N,\n"
         "            num_alive_actors: Z,\n"
         "            num_restarting_actors: Z,\n"
@@ -1370,9 +1384,6 @@ Dataset throughput:
 def test_time_backpressure(ray_start_regular_shared, restore_data_context):
     class TimedBackpressurePolicy(BackpressurePolicy):
         COUNT = 0
-
-        def __init__(self, topology: "Topology"):
-            pass
 
         def can_add_input(self, op: "PhysicalOperator") -> bool:
             if TimedBackpressurePolicy.COUNT > 1:
