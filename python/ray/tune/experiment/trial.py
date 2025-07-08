@@ -14,7 +14,7 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
 
 import ray
 import ray.cloudpickle as cloudpickle
-from ray._private.utils import binary_to_hex, hex_to_binary
+from ray._common.utils import binary_to_hex, hex_to_binary
 from ray.air.constants import (
     EXPR_ERROR_FILE,
     EXPR_ERROR_PICKLE_FILE,

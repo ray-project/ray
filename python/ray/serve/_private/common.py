@@ -14,6 +14,7 @@ from ray.serve.generated.serve_pb2 import (
     DeploymentStatusTrigger as DeploymentStatusTriggerProto,
 )
 from ray.serve.grpc_util import RayServegRPCContext
+from ray.util.annotations import PublicAPI
 
 REPLICA_ID_FULL_ID_STR_PREFIX = "SERVE_REPLICA::"
 
@@ -33,10 +34,16 @@ class DeploymentID:
         return str(self)
 
 
+@PublicAPI(stability="alpha")
 @dataclass(frozen=True)
 class ReplicaID:
+    """A unique identifier for a replica."""
+
     unique_id: str
+    """A unique identifier for the replica within the deployment."""
+
     deployment_id: DeploymentID
+    """The deployment this replica belongs to."""
 
     def to_full_id_str(self) -> str:
         s = f"{self.deployment_id.name}#{self.unique_id}"
@@ -621,6 +628,8 @@ class RequestMetadata:
 
     # If this request expects a streaming response.
     is_streaming: bool = False
+
+    _http_method: str = ""
 
     # The protocol to serve this request
     _request_protocol: RequestProtocol = RequestProtocol.UNDEFINED
