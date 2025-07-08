@@ -1652,14 +1652,15 @@ def test_parquet_row_group_size_002(ray_start_regular_shared, tmp_path):
     assert ds.fragments[0].num_row_groups == 10
 
 
+@pytest.mark.parametrize("override_num_blocks", [1, 2, 3])
 def test_max_block_size_none_respects_override_num_blocks(
-    ray_start_regular_shared, tmp_path
+    ray_start_regular_shared, tmp_path, override_num_blocks
 ):
     """
     When `DataContext.target_max_block_size` is explicitly set to ``None``,
     read_parquet must still honour ``override_num_blocks``.
-    The read should yield a single input block and – after a pivot –
-    exactly one output row.
+    The read should yield the specified number of input blocks and – after a pivot –
+    one output row per block (since all rows have the same ID).
     """
     import os
 
@@ -1688,8 +1689,8 @@ def test_max_block_size_none_respects_override_num_blocks(
         file_path = os.path.join(tmp_path, "maxblock_none.parquet")
         df.to_parquet(file_path)
 
-        # Read with a single block enforced.
-        ds = ray.data.read_parquet(file_path, override_num_blocks=1)
+        # Read with the specified number of blocks enforced.
+        ds = ray.data.read_parquet(file_path, override_num_blocks=override_num_blocks)
 
         def _pivot_data(batch: pd.DataFrame) -> pd.DataFrame:  # noqa: WPS430
             return batch.pivot(index="ID", columns="dttm", values="values")
@@ -1701,8 +1702,29 @@ def test_max_block_size_none_respects_override_num_blocks(
         )
         out_df = out_ds.to_pandas()
 
-        # One unique ID ⇒ one row expected.
-        assert len(out_df) == 1
+        # Create expected result using pandas pivot on original data
+        expected_df = df.pivot(index="ID", columns="dttm", values="values")
+
+        # Verify the schemas match (same columns)
+        assert set(out_df.columns) == set(expected_df.columns)
+
+        # Verify we have the expected number of rows (one per block)
+        assert len(out_df) == override_num_blocks
+
+        # Verify that all original values are present by comparing with expected result
+        # Only sum non-null values to avoid counting NaN as -1
+        expected_sum = expected_df.sum(skipna=True).sum()
+        actual_sum = out_df.sum(skipna=True).sum()
+        assert actual_sum == expected_sum
+
+        # Verify that the combined result contains the same data as the expected result
+        # by checking that each column's non-null values match
+        for col in expected_df.columns:
+            expected_values = expected_df[col].dropna()
+            actual_values = out_df[col].dropna()
+            assert len(expected_values) == len(actual_values)
+            assert set(expected_values) == set(actual_values)
+
     finally:
         # Always restore the original setting.
         ctx.target_max_block_size = original_tmbs
