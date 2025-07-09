@@ -14,6 +14,7 @@ from ray.air.util.tensor_extensions.arrow import ArrowTensorTypeV2
 from ray.data import DataContext
 from ray.data._internal.arrow_ops.transform_pyarrow import (
     MIN_PYARROW_VERSION_TYPE_PROMOTION,
+    _align_struct_fields,
     concat,
     hash_partition,
     shuffle,
@@ -118,567 +119,306 @@ def test_shuffle():
     )
 
 
-def test_arrow_concat_empty():
+def test_arrow_concat_empty(simple_concat_data):
     # Test empty.
-    assert concat([]) == pa.table([])
+    assert concat(simple_concat_data["empty"]) == pa.table([])
 
 
-def test_arrow_concat_single_block():
+def test_arrow_concat_single_block(simple_concat_data):
     # Test single block:
-    t = pa.table({"a": [1, 2]})
-    out = concat([t])
+    out = concat([simple_concat_data["single_block"]])
     assert len(out) == 2
-    assert out == t
+    assert out == simple_concat_data["single_block"]
 
 
-def test_arrow_concat_basic():
+def test_arrow_concat_basic(basic_concat_blocks, basic_concat_expected):
     # Test two basic tables.
-    t1 = pa.table({"a": [1, 2], "b": [5, 6]})
-    t2 = pa.table({"a": [3, 4], "b": [7, 8]})
-    ts = [t1, t2]
+    ts = basic_concat_blocks
     out = concat(ts)
     # Check length.
-    assert len(out) == 4
+    assert len(out) == basic_concat_expected["length"]
     # Check schema.
-    assert out.column_names == ["a", "b"]
-    assert out.schema.types == [pa.int64(), pa.int64()]
+    assert out.column_names == basic_concat_expected["column_names"]
+    assert out.schema.types == basic_concat_expected["schema_types"]
     # Confirm that concatenation is zero-copy (i.e. it didn't trigger chunk
     # consolidation).
-    assert out["a"].num_chunks == 2
-    assert out["b"].num_chunks == 2
+    assert out["a"].num_chunks == basic_concat_expected["chunks"]
+    assert out["b"].num_chunks == basic_concat_expected["chunks"]
     # Check content.
-    assert out["a"].to_pylist() == [1, 2, 3, 4]
-    assert out["b"].to_pylist() == [5, 6, 7, 8]
+    assert out["a"].to_pylist() == basic_concat_expected["content"]["a"]
+    assert out["b"].to_pylist() == basic_concat_expected["content"]["b"]
     # Check equivalence.
     expected = pa.concat_tables(ts)
     assert out == expected
 
 
-def test_arrow_concat_null_promotion():
+def test_arrow_concat_null_promotion(null_promotion_blocks, null_promotion_expected):
     # Test null column --> well-typed column promotion.
-    t1 = pa.table({"a": [None, None], "b": [5, 6]})
-    t2 = pa.table({"a": [3, 4], "b": [None, None]})
-    ts = [t1, t2]
+    ts = null_promotion_blocks
     out = concat(ts)
     # Check length.
-    assert len(out) == 4
+    assert len(out) == null_promotion_expected["length"]
     # Check schema.
-    assert out.column_names == ["a", "b"]
-    assert out.schema.types == [pa.int64(), pa.int64()]
+    assert out.column_names == null_promotion_expected["column_names"]
+    assert out.schema.types == null_promotion_expected["schema_types"]
     # Confirm that concatenation is zero-copy (i.e. it didn't trigger chunk
     # consolidation).
-    assert out["a"].num_chunks == 2
-    assert out["b"].num_chunks == 2
+    assert out["a"].num_chunks == null_promotion_expected["chunks"]
+    assert out["b"].num_chunks == null_promotion_expected["chunks"]
     # Check content.
-    assert out["a"].to_pylist() == [None, None, 3, 4]
-    assert out["b"].to_pylist() == [5, 6, None, None]
+    assert out["a"].to_pylist() == null_promotion_expected["content"]["a"]
+    assert out["b"].to_pylist() == null_promotion_expected["content"]["b"]
     # Check equivalence.
     expected = pa.concat_tables(ts, promote=True)
     assert out == expected
 
 
-def test_arrow_concat_tensor_extension_uniform():
+def test_arrow_concat_tensor_extension_uniform(
+    uniform_tensor_blocks, uniform_tensor_expected
+):
     # Test tensor column concatenation.
-    a1 = np.arange(12).reshape((3, 2, 2))
-    t1 = pa.table({"a": ArrowTensorArray.from_numpy(a1)})
-    a2 = np.arange(12, 24).reshape((3, 2, 2))
-    t2 = pa.table({"a": ArrowTensorArray.from_numpy(a2)})
+    t1, t2 = uniform_tensor_blocks
     ts = [t1, t2]
     out = concat(ts)
 
     # Check length.
-    assert len(out) == 6
+    assert len(out) == uniform_tensor_expected["length"]
 
     # Check schema.
-    if DataContext.get_current().use_arrow_tensor_v2:
-        tensor_type = ArrowTensorTypeV2
-    else:
-        tensor_type = ArrowTensorType
-
     assert out.column_names == ["a"]
-    assert out.schema.types == [tensor_type((2, 2), pa.int64())]
+    assert out.schema == uniform_tensor_expected["schema"]
 
     # Confirm that concatenation is zero-copy (i.e. it didn't trigger chunk
     # consolidation).
-    assert out["a"].num_chunks == 2
+    assert out["a"].num_chunks == uniform_tensor_expected["chunks"]
 
     # Check content.
-    np.testing.assert_array_equal(out["a"].chunk(0).to_numpy(), a1)
-    np.testing.assert_array_equal(out["a"].chunk(1).to_numpy(), a2)
+    content = uniform_tensor_expected["content"]
+    np.testing.assert_array_equal(out["a"].chunk(0).to_numpy(), content[0])
+    np.testing.assert_array_equal(out["a"].chunk(1).to_numpy(), content[1])
 
     # Check equivalence.
     expected = pa.concat_tables(ts, promote=True)
     assert out == expected
 
 
-def test_arrow_concat_tensor_extension_variable_shaped():
+def test_arrow_concat_tensor_extension_variable_shaped(
+    variable_shaped_tensor_blocks, variable_shaped_tensor_expected
+):
     # Test variable_shaped tensor column concatenation.
-    a1 = np.array(
-        [np.arange(4).reshape((2, 2)), np.arange(4, 13).reshape((3, 3))], dtype=object
-    )
-    t1 = pa.table({"a": ArrowTensorArray.from_numpy(a1)})
-    a2 = np.array(
-        [np.arange(4).reshape((2, 2)), np.arange(4, 13).reshape((3, 3))], dtype=object
-    )
-    t2 = pa.table({"a": ArrowTensorArray.from_numpy(a2)})
+    t1, t2 = variable_shaped_tensor_blocks
     ts = [t1, t2]
     out = concat(ts)
     # Check length.
-    assert len(out) == 4
+    assert len(out) == variable_shaped_tensor_expected["length"]
     # Check schema.
     assert out.column_names == ["a"]
-    assert out.schema.types == [ArrowVariableShapedTensorType(pa.int64(), 2)]
+    assert out.schema == variable_shaped_tensor_expected["schema"]
     # Confirm that concatenation is zero-copy (i.e. it didn't trigger chunk
     # consolidation).
-    assert out["a"].num_chunks == 2
+    assert out["a"].num_chunks == variable_shaped_tensor_expected["chunks"]
     # Check content.
-    for o, e in zip(out["a"].chunk(0).to_numpy(), a1):
+    content = variable_shaped_tensor_expected["content"]
+    for o, e in zip(out["a"].chunk(0).to_numpy(), content[0]):
         np.testing.assert_array_equal(o, e)
-    for o, e in zip(out["a"].chunk(1).to_numpy(), a2):
+    for o, e in zip(out["a"].chunk(1).to_numpy(), content[1]):
         np.testing.assert_array_equal(o, e)
     # NOTE: We don't check equivalence with pyarrow.concat_tables since it currently
     # fails for this case.
 
 
-def test_arrow_concat_tensor_extension_uniform_and_variable_shaped():
+def test_arrow_concat_tensor_extension_uniform_and_variable_shaped(
+    mixed_tensor_blocks, mixed_tensor_expected
+):
     # Test concatenating a homogeneous-shaped tensor column with a variable-shaped
     # tensor column.
-    a1 = np.arange(12).reshape((3, 2, 2))
-    t1 = pa.table({"a": ArrowTensorArray.from_numpy(a1)})
-    a2 = np.array(
-        [np.arange(4).reshape((2, 2)), np.arange(4, 13).reshape((3, 3))], dtype=object
-    )
-    t2 = pa.table({"a": ArrowTensorArray.from_numpy(a2)})
+    t1, t2 = mixed_tensor_blocks
     ts = [t1, t2]
     out = concat(ts)
     # Check length.
-    assert len(out) == 5
+    assert len(out) == mixed_tensor_expected["length"]
     # Check schema.
     assert out.column_names == ["a"]
-    assert out.schema.types == [ArrowVariableShapedTensorType(pa.int64(), 2)]
+    assert out.schema == mixed_tensor_expected["schema"]
     # Confirm that concatenation is zero-copy (i.e. it didn't trigger chunk
     # consolidation).
-    assert out["a"].num_chunks == 2
+    assert out["a"].num_chunks == mixed_tensor_expected["chunks"]
     # Check content.
-    for o, e in zip(out["a"].chunk(0).to_numpy(), a1):
+    content = mixed_tensor_expected["content"]
+    for o, e in zip(out["a"].chunk(0).to_numpy(), content[0]):
         np.testing.assert_array_equal(o, e)
-    for o, e in zip(out["a"].chunk(1).to_numpy(), a2):
+    for o, e in zip(out["a"].chunk(1).to_numpy(), content[1]):
         np.testing.assert_array_equal(o, e)
     # NOTE: We don't check equivalence with pyarrow.concat_tables since it currently
     # fails for this case.
 
 
-def test_arrow_concat_tensor_extension_uniform_but_different():
+def test_arrow_concat_tensor_extension_uniform_but_different(
+    different_shape_tensor_blocks, different_shape_tensor_expected
+):
     # Test concatenating two homogeneous-shaped tensor columns with differing shapes
     # between them.
-    a1 = np.arange(12).reshape((3, 2, 2))
-    t1 = pa.table({"a": ArrowTensorArray.from_numpy(a1)})
-    a2 = np.arange(12, 39).reshape((3, 3, 3))
-    t2 = pa.table({"a": ArrowTensorArray.from_numpy(a2)})
+    t1, t2 = different_shape_tensor_blocks
     ts = [t1, t2]
     out = concat(ts)
     # Check length.
-    assert len(out) == 6
+    assert len(out) == different_shape_tensor_expected["length"]
     # Check schema.
     assert out.column_names == ["a"]
-    assert out.schema.types == [ArrowVariableShapedTensorType(pa.int64(), 2)]
+    assert out.schema == different_shape_tensor_expected["schema"]
     # Confirm that concatenation is zero-copy (i.e. it didn't trigger chunk
     # consolidation).
-    assert out["a"].num_chunks == 2
+    assert out["a"].num_chunks == different_shape_tensor_expected["chunks"]
     # Check content.
-    for o, e in zip(out["a"].chunk(0).to_numpy(), a1):
+    content = different_shape_tensor_expected["content"]
+    for o, e in zip(out["a"].chunk(0).to_numpy(), content[0]):
         np.testing.assert_array_equal(o, e)
-    for o, e in zip(out["a"].chunk(1).to_numpy(), a2):
+    for o, e in zip(out["a"].chunk(1).to_numpy(), content[1]):
         np.testing.assert_array_equal(o, e)
     # NOTE: We don't check equivalence with pyarrow.concat_tables since it currently
     # fails for this case.
 
 
-def test_arrow_concat_with_objects():
-    obj = types.SimpleNamespace(a=1, b="test")
-    t1 = pa.table({"a": [3, 4], "b": [7, 8]})
-    t2 = pa.table({"a": ArrowPythonObjectArray.from_objects([obj, obj]), "b": [0, 1]})
-    t3 = concat([t1, t2])
+def test_arrow_concat_with_objects(object_concat_blocks, object_concat_expected):
+    t3 = concat(object_concat_blocks)
     assert isinstance(t3, pa.Table)
-    assert len(t3) == 4
-    assert isinstance(t3.schema.field("a").type, ArrowPythonObjectType)
-    assert pa.types.is_integer(t3.schema.field("b").type)
-    assert t3.column("a").to_pylist() == [3, 4, obj, obj]
-    assert t3.column("b").to_pylist() == [7, 8, 0, 1]
+    assert len(t3) == object_concat_expected["length"]
+    assert isinstance(t3.schema.field("a").type, object_concat_expected["a_type"])
+    assert object_concat_expected["b_type"](t3.schema.field("b").type)
+    assert t3.column("a").to_pylist() == object_concat_expected["content"]["a"]
+    assert t3.column("b").to_pylist() == object_concat_expected["content"]["b"]
 
 
 @pytest.mark.skipif(
     get_pyarrow_version() < parse_version("17.0.0"),
     reason="Requires PyArrow version 17 or higher",
 )
-def test_struct_with_different_field_names():
+def test_struct_with_different_field_names(
+    struct_different_field_names_blocks, struct_different_field_names_expected
+):
     # Ensures that when concatenating tables with struct columns having different
     # field names, missing fields in each struct are filled with None in the
     # resulting table.
 
-    t1 = pa.table(
-        {
-            "a": [1, 2],
-            "d": pa.array(
-                [{"x": 1, "y": "a"}, {"x": 2, "y": "b"}],
-                type=pa.struct([("x", pa.int32()), ("y", pa.string())]),
-            ),
-        }
-    )
-
-    t2 = pa.table(
-        {
-            "a": [3],
-            "d": pa.array(
-                [{"x": 3, "z": "c"}],
-                type=pa.struct([("x", pa.int32()), ("z", pa.string())]),
-            ),
-        }
-    )
-
     # Concatenate tables with different field names in struct
-    t3 = concat([t1, t2])
+    t3 = concat(struct_different_field_names_blocks)
 
     assert isinstance(t3, pa.Table)
-    assert len(t3) == 3
+    assert len(t3) == struct_different_field_names_expected["length"]
 
     # Check the entire schema
-    expected_schema = pa.schema(
-        [
-            ("a", pa.int64()),
-            (
-                "d",
-                pa.struct(
-                    [
-                        ("x", pa.int32()),
-                        ("y", pa.string()),
-                        ("z", pa.string()),
-                    ]
-                ),
-            ),
-        ]
-    )
-    assert t3.schema == expected_schema
+    assert t3.schema == struct_different_field_names_expected["schema"]
 
     # Check that missing fields are filled with None
-    assert t3.column("a").to_pylist() == [1, 2, 3]
-    assert t3.column("d").to_pylist() == [
-        {"x": 1, "y": "a", "z": None},
-        {"x": 2, "y": "b", "z": None},
-        {"x": 3, "y": None, "z": "c"},
-    ]
+    assert (
+        t3.column("a").to_pylist()
+        == struct_different_field_names_expected["content"]["a"]
+    )
+    assert (
+        t3.column("d").to_pylist()
+        == struct_different_field_names_expected["content"]["d"]
+    )
 
 
 @pytest.mark.skipif(
     get_pyarrow_version() < parse_version("17.0.0"),
     reason="Requires PyArrow version 17 or higher",
 )
-def test_nested_structs():
+def test_nested_structs(nested_structs_blocks, nested_structs_expected):
     # Checks that deeply nested structs (3 levels of nesting) are handled properly
     # during concatenation and the resulting table preserves the correct nesting
     # structure.
 
-    t1 = pa.table(
-        {
-            "a": [1],
-            "d": pa.array(
-                [
-                    {
-                        "x": {
-                            "y": {"p": 1},  # Missing "q"
-                            "z": {"m": 3},  # Missing "n"
-                        },
-                        "w": 5,
-                    }
-                ],
-                type=pa.struct(
-                    [
-                        (
-                            "x",
-                            pa.struct(
-                                [
-                                    (
-                                        "y",
-                                        pa.struct([("p", pa.int32())]),  # Only "p"
-                                    ),
-                                    (
-                                        "z",
-                                        pa.struct([("m", pa.int32())]),  # Only "m"
-                                    ),
-                                ]
-                            ),
-                        ),
-                        ("w", pa.int32()),
-                    ]
-                ),
-            ),
-        }
-    )
-
-    t2 = pa.table(
-        {
-            "a": [2],
-            "d": pa.array(
-                [
-                    {
-                        "x": {
-                            "y": {"q": 7},  # Missing "p"
-                            "z": {"n": 9},  # Missing "m"
-                        },
-                        "w": 10,
-                    }
-                ],
-                type=pa.struct(
-                    [
-                        (
-                            "x",
-                            pa.struct(
-                                [
-                                    (
-                                        "y",
-                                        pa.struct([("q", pa.int32())]),  # Only "q"
-                                    ),
-                                    (
-                                        "z",
-                                        pa.struct([("n", pa.int32())]),  # Only "n"
-                                    ),
-                                ]
-                            ),
-                        ),
-                        ("w", pa.int32()),
-                    ]
-                ),
-            ),
-        }
-    )
-
     # Concatenate tables with nested structs and missing fields
-    t3 = concat([t1, t2])
+    t3 = concat(nested_structs_blocks)
     assert isinstance(t3, pa.Table)
-    assert len(t3) == 2
+    assert len(t3) == nested_structs_expected["length"]
 
     # Validate the schema of the resulting table
-    expected_schema = pa.schema(
-        [
-            ("a", pa.int64()),
-            (
-                "d",
-                pa.struct(
-                    [
-                        (
-                            "x",
-                            pa.struct(
-                                [
-                                    (
-                                        "y",
-                                        pa.struct(
-                                            [("p", pa.int32()), ("q", pa.int32())]
-                                        ),
-                                    ),
-                                    (
-                                        "z",
-                                        pa.struct(
-                                            [("m", pa.int32()), ("n", pa.int32())]
-                                        ),
-                                    ),
-                                ]
-                            ),
-                        ),
-                        ("w", pa.int32()),
-                    ]
-                ),
-            ),
-        ]
-    )
-    assert t3.schema == expected_schema
+    assert t3.schema == nested_structs_expected["schema"]
 
     # Validate the data in the concatenated table
-    assert t3.column("a").to_pylist() == [1, 2]
-    assert t3.column("d").to_pylist() == [
-        {
-            "x": {
-                "y": {"p": 1, "q": None},  # Missing "q" filled with None
-                "z": {"m": 3, "n": None},  # Missing "n" filled with None
-            },
-            "w": 5,
-        },
-        {
-            "x": {
-                "y": {"p": None, "q": 7},  # Missing "p" filled with None
-                "z": {"m": None, "n": 9},  # Missing "m" filled with None
-            },
-            "w": 10,
-        },
-    ]
+    assert t3.column("a").to_pylist() == nested_structs_expected["content"]["a"]
+    assert t3.column("d").to_pylist() == nested_structs_expected["content"]["d"]
 
 
-def test_struct_with_null_values():
+def test_struct_with_null_values(
+    struct_null_values_blocks, struct_null_values_expected
+):
     # Ensures that when concatenating tables with struct columns containing null
     # values, the null values are properly handled, and the result reflects the
     # expected structure.
 
-    # Define the first table with struct containing null values
-    t1 = pa.table(
-        {
-            "a": [1, 2],
-            "d": pa.array(
-                [{"x": 1, "y": "a"}, None],  # Second row is null
-                type=pa.struct([("x", pa.int32()), ("y", pa.string())]),
-            ),
-        }
-    )
-
-    # Define the second table with struct containing a null value
-    t2 = pa.table(
-        {
-            "a": [3],
-            "d": pa.array(
-                [None],  # Entire struct is null
-                type=pa.struct([("x", pa.int32()), ("y", pa.string())]),
-            ),
-        }
-    )
-
     # Concatenate tables with struct columns containing null values
-    t3 = concat([t1, t2])
+    t3 = concat(struct_null_values_blocks)
     assert isinstance(t3, pa.Table)
-    assert len(t3) == 3
+    assert len(t3) == struct_null_values_expected["length"]
 
     # Validate the schema of the resulting table
-    expected_schema = pa.schema(
-        [
-            ("a", pa.int64()),
-            ("d", pa.struct([("x", pa.int32()), ("y", pa.string())])),
-        ]
-    )
     assert (
-        t3.schema == expected_schema
-    ), f"Expected schema: {expected_schema}, but got {t3.schema}"
+        t3.schema == struct_null_values_expected["schema"]
+    ), f"Expected schema: {struct_null_values_expected['schema']}, but got {t3.schema}"
 
     # Verify the PyArrow table content
-    assert t3.column("a").to_pylist() == [1, 2, 3]
-
-    # Adjust expected to match the format of the actual result
-    expected = [
-        {"x": 1, "y": "a"},
-        None,  # Entire struct is None, not {"x": None, "y": None}
-        None,  # Entire struct is None, not {"x": None, "y": None}
-    ]
+    assert t3.column("a").to_pylist() == struct_null_values_expected["content"]["a"]
 
     result = t3.column("d").to_pylist()
+    expected = struct_null_values_expected["content"]["d"]
     assert result == expected, f"Expected {expected}, but got {result}"
 
 
-def test_struct_with_mismatched_lengths():
+def test_struct_with_mismatched_lengths(
+    struct_mismatched_lengths_blocks, struct_mismatched_lengths_expected
+):
     # Verifies that when concatenating tables with struct columns of different lengths,
     # the missing values are properly padded with None in the resulting table.
-    # Define the first table with 2 rows and a struct column
-    t1 = pa.table(
-        {
-            "a": [1, 2],
-            "d": pa.array(
-                [{"x": 1, "y": "a"}, {"x": 2, "y": "b"}],
-                type=pa.struct([("x", pa.int32()), ("y", pa.string())]),
-            ),
-        }
-    )
-
-    # Define the second table with 1 row and a struct column
-    t2 = pa.table(
-        {
-            "a": [3],
-            "d": pa.array(
-                [{"x": 3, "y": "c"}],
-                type=pa.struct([("x", pa.int32()), ("y", pa.string())]),
-            ),
-        }
-    )
 
     # Concatenate tables with struct columns of different lengths
-    t3 = concat([t1, t2])
+    t3 = concat(struct_mismatched_lengths_blocks)
     assert isinstance(t3, pa.Table)
-    assert len(t3) == 3  # Check that the resulting table has the correct number of rows
+    assert (
+        len(t3) == struct_mismatched_lengths_expected["length"]
+    )  # Check that the resulting table has the correct number of rows
 
     # Validate the schema of the resulting table
-    expected_schema = pa.schema(
-        [
-            ("a", pa.int64()),
-            ("d", pa.struct([("x", pa.int32()), ("y", pa.string())])),
-        ]
-    )
     assert (
-        t3.schema == expected_schema
-    ), f"Expected schema: {expected_schema}, but got {t3.schema}"
+        t3.schema == struct_mismatched_lengths_expected["schema"]
+    ), f"Expected schema: {struct_mismatched_lengths_expected['schema']}, but got {t3.schema}"
 
     # Verify the content of the resulting table
-    assert t3.column("a").to_pylist() == [1, 2, 3]
-    expected = [
-        {"x": 1, "y": "a"},
-        {"x": 2, "y": "b"},
-        {"x": 3, "y": "c"},
-    ]
+    assert (
+        t3.column("a").to_pylist() == struct_mismatched_lengths_expected["content"]["a"]
+    )
     result = t3.column("d").to_pylist()
+    expected = struct_mismatched_lengths_expected["content"]["d"]
 
     assert result == expected, f"Expected {expected}, but got {result}"
 
 
-def test_struct_with_empty_arrays():
+def test_struct_with_empty_arrays(
+    struct_empty_arrays_blocks, struct_empty_arrays_expected
+):
     # Checks the behavior when concatenating tables with structs containing empty
     # arrays, verifying that null structs are correctly handled.
 
-    # Define the first table with valid struct data
-    t1 = pa.table(
-        {
-            "a": [1, 2],
-            "d": pa.array(
-                [{"x": 1, "y": "a"}, {"x": 2, "y": "b"}],
-                type=pa.struct([("x", pa.int32()), ("y", pa.string())]),
-            ),
-        }
-    )
-
-    # Define the second table with null struct value (empty arrays for fields)
-    x_array = pa.array([None], type=pa.int32())
-    y_array = pa.array([None], type=pa.string())
-
-    # Create a struct array from null field arrays
-    null_struct_array = pa.StructArray.from_arrays(
-        [x_array, y_array],
-        ["x", "y"],
-        mask=pa.array([True]),
-    )
-
-    t2 = pa.table({"a": [3], "d": null_struct_array})
-
     # Concatenate tables with struct columns containing null values
-    t3 = concat([t1, t2])
+    t3 = concat(struct_empty_arrays_blocks)
 
     # Verify that the concatenated result is a valid PyArrow Table
     assert isinstance(t3, pa.Table)
-    assert len(t3) == 3  # Check that the concatenated table has 3 rows
+    assert (
+        len(t3) == struct_empty_arrays_expected["length"]
+    )  # Check that the concatenated table has 3 rows
 
     # Validate the schema of the resulting concatenated table
-    expected_schema = pa.schema(
-        [
-            ("a", pa.int64()),  # Assuming 'a' is an integer column
-            (
-                "d",
-                pa.struct([("x", pa.int32()), ("y", pa.string())]),
-            ),  # Struct column 'd'
-        ]
-    )
     assert (
-        t3.schema == expected_schema
-    ), f"Expected schema: {expected_schema}, but got {t3.schema}"
+        t3.schema == struct_empty_arrays_expected["schema"]
+    ), f"Expected schema: {struct_empty_arrays_expected['schema']}, but got {t3.schema}"
 
     # Verify the content of the concatenated table
-    assert t3.column("a").to_pylist() == [1, 2, 3]
-    expected = [
-        {"x": 1, "y": "a"},
-        {"x": 2, "y": "b"},
-        None,  # Entire struct is None, as PyArrow handles it
-    ]
+    assert t3.column("a").to_pylist() == struct_empty_arrays_expected["content"]["a"]
     result = t3.column("d").to_pylist()
+    expected = struct_empty_arrays_expected["content"]["d"]
 
     assert result == expected, f"Expected {expected}, but got {result}"
 
@@ -687,72 +427,27 @@ def test_struct_with_empty_arrays():
     get_pyarrow_version() < parse_version("17.0.0"),
     reason="Requires PyArrow version 17 or higher",
 )
-def test_struct_with_arrow_variable_shaped_tensor_type():
+def test_struct_with_arrow_variable_shaped_tensor_type(
+    struct_variable_shaped_tensor_blocks, struct_variable_shaped_tensor_expected
+):
     # Test concatenating tables with struct columns containing ArrowVariableShapedTensorType
     # fields, ensuring proper handling of variable-shaped tensors within structs.
 
-    # Create variable-shaped tensor data for the first table
-    tensor_data1 = np.array(
-        [
-            np.ones((2, 2), dtype=np.float32),
-            np.zeros((3, 3), dtype=np.float32),
-        ],
-        dtype=object,
-    )
-    tensor_array1 = ArrowVariableShapedTensorArray.from_numpy(tensor_data1)
-
-    # Create struct data with tensor field for the first table
-    metadata_array1 = pa.array(["row1", "row2"])
-    struct_array1 = pa.StructArray.from_arrays(
-        [metadata_array1, tensor_array1], names=["metadata", "tensor"]
-    )
-
-    t1 = pa.table({"id": [1, 2], "struct_with_tensor": struct_array1})
-
-    # Create variable-shaped tensor data for the second table
-    tensor_data2 = np.array(
-        [
-            np.ones((1, 4), dtype=np.float32),
-            np.zeros((2, 1), dtype=np.float32),
-        ],
-        dtype=object,
-    )
-    tensor_array2 = ArrowVariableShapedTensorArray.from_numpy(tensor_data2)
-
-    # Create struct data with tensor field for the second table
-    metadata_array2 = pa.array(["row3", "row4"])
-    struct_array2 = pa.StructArray.from_arrays(
-        [metadata_array2, tensor_array2], names=["metadata", "tensor"]
-    )
-
-    t2 = pa.table({"id": [3, 4], "struct_with_tensor": struct_array2})
-
     # Concatenate tables with struct columns containing variable-shaped tensors
-    t3 = concat([t1, t2])
+    t3 = concat(struct_variable_shaped_tensor_blocks)
     assert isinstance(t3, pa.Table)
-    assert len(t3) == 4
+    assert len(t3) == struct_variable_shaped_tensor_expected["length"]
 
     # Validate the schema of the resulting table
-    expected_schema = pa.schema(
-        [
-            ("id", pa.int64()),
-            (
-                "struct_with_tensor",
-                pa.struct(
-                    [
-                        ("metadata", pa.string()),
-                        ("tensor", ArrowVariableShapedTensorType(pa.float32(), 2)),
-                    ]
-                ),
-            ),
-        ]
-    )
     assert (
-        t3.schema == expected_schema
-    ), f"Expected schema: {expected_schema}, but got {t3.schema}"
+        t3.schema == struct_variable_shaped_tensor_expected["schema"]
+    ), f"Expected schema: {struct_variable_shaped_tensor_expected['schema']}, but got {t3.schema}"
 
     # Verify the content of the resulting table
-    assert t3.column("id").to_pylist() == [1, 2, 3, 4]
+    assert (
+        t3.column("id").to_pylist()
+        == struct_variable_shaped_tensor_expected["content"]["id"]
+    )
 
     # Check that the struct column contains the expected data
     result_structs = t3.column("struct_with_tensor").to_pylist()
@@ -787,25 +482,22 @@ def test_struct_with_arrow_variable_shaped_tensor_type():
             )
 
 
-def test_arrow_concat_object_with_tensor_fails():
-    obj = types.SimpleNamespace(a=1, b="test")
-    t1 = pa.table({"a": ArrowPythonObjectArray.from_objects([obj, obj]), "b": [0, 1]})
-    t2 = pa.table(
-        {"a": ArrowTensorArray.from_numpy([np.zeros((10, 10))] * 2), "b": [7, 8]}
-    )
+def test_arrow_concat_object_with_tensor_fails(object_with_tensor_fails_blocks):
     with pytest.raises(ArrowConversionError) as exc_info:
-        concat([t1, t2])
+        concat(object_with_tensor_fails_blocks)
     assert "objects and tensors" in str(exc_info.value.__cause__)
 
 
-def test_unify_schemas():
+def test_unify_schemas(unify_schemas_basic_schemas, unify_schemas_multicol_schemas):
     # Unifying a schema with the same schema as itself
-    tensor_arr_1 = pa.schema([("tensor_arr", ArrowTensorType((3, 5), pa.int32()))])
-    assert unify_schemas([tensor_arr_1, tensor_arr_1]) == tensor_arr_1
+    schemas = unify_schemas_basic_schemas
+    assert (
+        unify_schemas([schemas["tensor_arr_1"], schemas["tensor_arr_1"]])
+        == schemas["tensor_arr_1"]
+    )
 
     # Single columns with different shapes
-    tensor_arr_2 = pa.schema([("tensor_arr", ArrowTensorType((2, 1), pa.int32()))])
-    contains_diff_shaped = [tensor_arr_1, tensor_arr_2]
+    contains_diff_shaped = [schemas["tensor_arr_1"], schemas["tensor_arr_2"]]
     assert unify_schemas(contains_diff_shaped) == pa.schema(
         [
             ("tensor_arr", ArrowVariableShapedTensorType(pa.int32(), 2)),
@@ -813,8 +505,7 @@ def test_unify_schemas():
     )
 
     # Single columns with same shapes
-    tensor_arr_3 = pa.schema([("tensor_arr", ArrowTensorType((3, 5), pa.int32()))])
-    contains_diff_types = [tensor_arr_1, tensor_arr_3]
+    contains_diff_types = [schemas["tensor_arr_1"], schemas["tensor_arr_3"]]
     assert unify_schemas(contains_diff_types) == pa.schema(
         [
             ("tensor_arr", ArrowTensorType((3, 5), pa.int32())),
@@ -822,12 +513,7 @@ def test_unify_schemas():
     )
 
     # Single columns with a variable shaped tensor, same ndim
-    var_tensor_arr = pa.schema(
-        [
-            ("tensor_arr", ArrowVariableShapedTensorType(pa.int32(), 2)),
-        ]
-    )
-    contains_var_shaped = [tensor_arr_1, var_tensor_arr]
+    contains_var_shaped = [schemas["tensor_arr_1"], schemas["var_tensor_arr"]]
     assert unify_schemas(contains_var_shaped) == pa.schema(
         [
             ("tensor_arr", ArrowVariableShapedTensorType(pa.int32(), 2)),
@@ -835,23 +521,13 @@ def test_unify_schemas():
     )
 
     # Single columns with a variable shaped tensor, different ndim
-    var_tensor_arr_1d = pa.schema(
-        [
-            ("tensor_arr", ArrowVariableShapedTensorType(pa.int32(), 1)),
-        ]
-    )
-    var_tensor_arr_3d = pa.schema(
-        [
-            ("tensor_arr", ArrowVariableShapedTensorType(pa.int32(), 3)),
-        ]
-    )
-    contains_1d2d = [tensor_arr_1, var_tensor_arr_1d]
+    contains_1d2d = [schemas["tensor_arr_1"], schemas["var_tensor_arr_1d"]]
     assert unify_schemas(contains_1d2d) == pa.schema(
         [
             ("tensor_arr", ArrowVariableShapedTensorType(pa.int32(), 2)),
         ]
     )
-    contains_2d3d = [tensor_arr_1, var_tensor_arr_3d]
+    contains_2d3d = [schemas["tensor_arr_1"], schemas["var_tensor_arr_3d"]]
     assert unify_schemas(contains_2d3d) == pa.schema(
         [
             ("tensor_arr", ArrowVariableShapedTensorType(pa.int32(), 3)),
@@ -859,21 +535,10 @@ def test_unify_schemas():
     )
 
     # Multi-column schemas
-    multicol_schema_1 = pa.schema(
-        [
-            ("col_int", pa.int32()),
-            ("col_fixed_tensor", ArrowTensorType((4, 2), pa.int32())),
-            ("col_var_tensor", ArrowVariableShapedTensorType(pa.int16(), 5)),
-        ]
-    )
-    multicol_schema_2 = pa.schema(
-        [
-            ("col_int", pa.int32()),
-            ("col_fixed_tensor", ArrowTensorType((4, 2), pa.int32())),
-            ("col_var_tensor", ArrowTensorType((9, 4, 1, 0, 5), pa.int16())),
-        ]
-    )
-    assert unify_schemas([multicol_schema_1, multicol_schema_2]) == pa.schema(
+    multicol = unify_schemas_multicol_schemas
+    assert unify_schemas(
+        [multicol["multicol_schema_1"], multicol["multicol_schema_2"]]
+    ) == pa.schema(
         [
             ("col_int", pa.int32()),
             ("col_fixed_tensor", ArrowTensorType((4, 2), pa.int32())),
@@ -881,14 +546,9 @@ def test_unify_schemas():
         ]
     )
 
-    multicol_schema_3 = pa.schema(
-        [
-            ("col_int", pa.int32()),
-            ("col_fixed_tensor", ArrowVariableShapedTensorType(pa.int32(), 3)),
-            ("col_var_tensor", ArrowVariableShapedTensorType(pa.int16(), 5)),
-        ]
-    )
-    assert unify_schemas([multicol_schema_1, multicol_schema_3]) == pa.schema(
+    assert unify_schemas(
+        [multicol["multicol_schema_1"], multicol["multicol_schema_3"]]
+    ) == pa.schema(
         [
             ("col_int", pa.int32()),
             ("col_fixed_tensor", ArrowVariableShapedTensorType(pa.int32(), 3)),
@@ -898,7 +558,11 @@ def test_unify_schemas():
 
     # Unifying >2 schemas together
     assert unify_schemas(
-        [multicol_schema_1, multicol_schema_2, multicol_schema_3]
+        [
+            multicol["multicol_schema_1"],
+            multicol["multicol_schema_2"],
+            multicol["multicol_schema_3"],
+        ]
     ) == pa.schema(
         [
             ("col_int", pa.int32()),
@@ -908,48 +572,155 @@ def test_unify_schemas():
     )
 
 
+def test_unify_schemas_null_typed_lists(unify_schemas_null_typed_lists_schemas):
+    """Test handling of null-typed lists (cols_with_null_list functionality)."""
+    schemas = unify_schemas_null_typed_lists_schemas
+
+    # Should find valid value_type from schema2 and override
+    result = unify_schemas([schemas["null_list"], schemas["int_list"]])
+    assert result == schemas["expected"]
+
+    # Test with multiple schemas, some with null types
+    result = unify_schemas(
+        [schemas["null_list"], schemas["int_list"], schemas["string_list"]]
+    )
+    # Should use the first non-null type found (int32)
+    assert result == schemas["expected"]
+
+
+def test_unify_schemas_object_types(unify_schemas_object_types_schemas):
+    """Test handling of object types (columns_with_objects functionality)."""
+    schemas = unify_schemas_object_types_schemas
+
+    # Should convert to ArrowPythonObjectType
+    result = unify_schemas([schemas["object_schema"], schemas["int_schema"]])
+    assert result == schemas["expected"]
+
+    # Test multiple object types
+    result = unify_schemas(
+        [schemas["object_schema"], schemas["int_schema"], schemas["float_schema"]]
+    )
+    assert result == schemas["expected"]
+
+
+def test_unify_schemas_duplicate_fields(unify_schemas_duplicate_fields_schema):
+    """Test error handling for duplicate field names."""
+    with pytest.raises(ValueError, match="has multiple fields with the same name"):
+        unify_schemas([unify_schemas_duplicate_fields_schema])
+
+
+def test_unify_schemas_incompatible_tensor_dtypes(
+    unify_schemas_incompatible_tensor_schemas,
+):
+    """Test error handling for incompatible tensor dtypes."""
+    from ray.air.util.tensor_extensions.arrow import ArrowConversionError
+
+    with pytest.raises(ArrowConversionError, match="Incompatible tensor dtypes found"):
+        unify_schemas(unify_schemas_incompatible_tensor_schemas)
+
+
+def test_unify_schemas_objects_and_tensors(unify_schemas_objects_and_tensors_schemas):
+    """Test error handling for intersection of objects and tensors."""
+    with pytest.raises(ValueError, match="Found columns with both objects and tensors"):
+        unify_schemas(unify_schemas_objects_and_tensors_schemas)
+
+
+def test_unify_schemas_missing_tensor_fields(
+    unify_schemas_missing_tensor_fields_schemas,
+):
+    """Test handling of missing tensor fields in structs (has_missing_fields logic)."""
+    schemas = unify_schemas_missing_tensor_fields_schemas
+
+    # Should convert tensor to variable-shaped to accommodate missing field
+    result = unify_schemas([schemas["with_tensor"], schemas["without_tensor"]])
+    assert result == schemas["expected"]
+
+
+def test_unify_schemas_nested_struct_tensors(
+    unify_schemas_nested_struct_tensors_schemas,
+):
+    """Test handling of nested structs with tensor fields."""
+    schemas = unify_schemas_nested_struct_tensors_schemas
+
+    # Should convert nested tensor to variable-shaped
+    result = unify_schemas([schemas["with_tensor"], schemas["without_tensor"]])
+    assert result == schemas["expected"]
+
+
+def test_unify_schemas_edge_cases(unify_schemas_edge_cases_data):
+    """Test edge cases and robustness."""
+    data = unify_schemas_edge_cases_data
+
+    # Empty schema list
+    with pytest.raises(Exception):  # Should handle gracefully
+        unify_schemas(data["empty_schemas"])
+
+    # Single schema
+    assert unify_schemas([data["single_schema"]]) == data["single_schema"]
+
+    # Schemas with no common columns
+    result = unify_schemas(
+        [data["no_common_columns"]["schema1"], data["no_common_columns"]["schema2"]]
+    )
+    assert result == data["no_common_columns"]["expected"]
+
+    # All null schemas
+    result = unify_schemas(
+        [data["all_null_schemas"]["schema1"], data["all_null_schemas"]["schema2"]]
+    )
+    assert result == data["all_null_schemas"]["schema1"]
+
+
+def test_unify_schemas_mixed_tensor_types(unify_schemas_mixed_tensor_data):
+    """Test handling of mixed tensor types (fixed and variable shaped)."""
+    data = unify_schemas_mixed_tensor_data
+
+    # Should result in variable-shaped tensor
+    result = unify_schemas([data["fixed_shape"], data["variable_shaped"]])
+    assert result == data["expected_variable"]
+
+    # Test with different shapes but same dtype
+    result = unify_schemas([data["fixed_shape"], data["different_shape"]])
+    assert result == data["expected_variable"]
+
+
+def test_unify_schemas_promote_types(unify_schemas_promote_types_data):
+    """Test type promotion functionality."""
+    data = unify_schemas_promote_types_data
+
+    # Should promote int32 to float64
+    result = unify_schemas(
+        [data["int32_schema"], data["float64_schema"]], promote_types=True
+    )
+    assert result == data["expected_promoted"]
+
+    # Test with promote_types=False (should fail)
+    with pytest.raises(Exception):
+        unify_schemas(
+            [data["int32_schema"], data["float64_schema"]], promote_types=False
+        )
+
+
 @pytest.mark.skipif(
     get_pyarrow_version() < MIN_PYARROW_VERSION_TYPE_PROMOTION,
     reason="Requires Arrow version of at least 14.0.0",
 )
-def test_unify_schemas_type_promotion():
-    s_non_null = pa.schema(
-        [
-            pa.field("A", pa.int32()),
-        ]
-    )
-
-    s_nullable = pa.schema(
-        [
-            pa.field("A", pa.int32(), nullable=True),
-        ]
-    )
+def test_unify_schemas_type_promotion(unify_schemas_type_promotion_data):
+    data = unify_schemas_type_promotion_data
 
     # No type promotion
     assert (
         unify_schemas(
-            [s_non_null, s_nullable],
+            [data["non_null"], data["nullable"]],
             promote_types=False,
         )
-        == s_nullable
-    )
-
-    s1 = pa.schema(
-        [
-            pa.field("A", pa.int64()),
-        ]
-    )
-
-    s2 = pa.schema(
-        [
-            pa.field("A", pa.float64()),
-        ]
+        == data["nullable"]
     )
 
     # No type promotion
     with pytest.raises(pa.lib.ArrowTypeError) as exc_info:
         unify_schemas(
-            [s1, s2],
+            [data["int64"], data["float64"]],
             promote_types=False,
         )
 
@@ -960,31 +731,30 @@ def test_unify_schemas_type_promotion():
     # Type promoted
     assert (
         unify_schemas(
-            [s1, s2],
+            [data["int64"], data["float64"]],
             promote_types=True,
         )
-        == s2
+        == data["float64"]
     )
 
 
-def test_arrow_block_select():
-    df = pd.DataFrame({"one": [10, 11, 12], "two": [11, 12, 13], "three": [14, 15, 16]})
-    table = pa.Table.from_pandas(df)
-    block_accessor = BlockAccessor.for_block(table)
+def test_arrow_block_select(block_select_data):
+    data = block_select_data
+    block_accessor = BlockAccessor.for_block(data["table"])
 
-    block = block_accessor.select(["two"])
-    assert block.schema == pa.schema([("two", pa.int64())])
-    assert block.to_pandas().equals(df[["two"]])
+    block = block_accessor.select(data["single_column"]["columns"])
+    assert block.schema == data["single_column"]["expected_schema"]
+    assert block.to_pandas().equals(data["df"][data["single_column"]["columns"]])
 
-    block = block_accessor.select(["two", "one"])
-    assert block.schema == pa.schema([("two", pa.int64()), ("one", pa.int64())])
-    assert block.to_pandas().equals(df[["two", "one"]])
+    block = block_accessor.select(data["multiple_columns"]["columns"])
+    assert block.schema == data["multiple_columns"]["expected_schema"]
+    assert block.to_pandas().equals(data["df"][data["multiple_columns"]["columns"]])
 
     with pytest.raises(ValueError):
         block = block_accessor.select([lambda x: x % 3, "two"])
 
 
-def test_arrow_block_slice_copy():
+def test_arrow_block_slice_copy(block_slice_data):
     # Test that ArrowBlock slicing properly copies the underlying Arrow
     # table.
     def check_for_copy(table1, table2, a, b, is_copy):
@@ -1005,12 +775,9 @@ def test_arrow_block_slice_copy():
                 else:
                     assert bufs2[1].address == bufs1[1].address
 
-    n = 20
-    df = pd.DataFrame(
-        {"one": list(range(n)), "two": ["a"] * n, "three": [np.nan] + [1.5] * (n - 1)}
-    )
-    table = pa.Table.from_pandas(df)
-    a, b = 5, 10
+    data = block_slice_data["normal"]
+    table = data["table"]
+    a, b = data["slice_params"]["a"], data["slice_params"]["b"]
     block_accessor = BlockAccessor.for_block(table)
 
     # Test with copy.
@@ -1022,12 +789,12 @@ def test_arrow_block_slice_copy():
     check_for_copy(table, table2, a, b, is_copy=False)
 
 
-def test_arrow_block_slice_copy_empty():
+def test_arrow_block_slice_copy_empty(block_slice_data):
     # Test that ArrowBlock slicing properly copies the underlying Arrow
     # table when the table is empty.
-    df = pd.DataFrame({"one": []})
-    table = pa.Table.from_pandas(df)
-    a, b = 0, 0
+    data = block_slice_data["empty"]
+    table = data["table"]
+    a, b = data["slice_params"]["a"], data["slice_params"]["b"]
     expected_slice = table.slice(a, b - a)
     block_accessor = BlockAccessor.for_block(table)
 
@@ -1199,13 +966,981 @@ def test_pyarrow_conversion_error_handling(
     get_pyarrow_version() < parse_version("17.0.0"),
     reason="Requires PyArrow version 17 or higher",
 )
-def test_mixed_tensor_types_same_dtype():
+def test_mixed_tensor_types_same_dtype(
+    mixed_tensor_types_same_dtype_blocks, mixed_tensor_types_same_dtype_expected
+):
     """Test mixed tensor types with same data type but different shapes."""
 
+    t1, t2 = mixed_tensor_types_same_dtype_blocks
+
+    t3 = concat([t1, t2])
+    assert isinstance(t3, pa.Table)
+    assert len(t3) == mixed_tensor_types_same_dtype_expected["length"]
+
+    # Verify schema - should have tensor field as variable-shaped
+    assert t3.schema == mixed_tensor_types_same_dtype_expected["schema"]
+    tensor_field = t3.schema.field("tensor")
+    assert isinstance(tensor_field.type, ArrowVariableShapedTensorType)
+
+    # Verify content
+    result_tensors = t3.column("tensor").to_pylist()
+    assert len(result_tensors) == mixed_tensor_types_same_dtype_expected["length"]
+
+    expected_tensors = mixed_tensor_types_same_dtype_expected["tensor_values"]
+
+    # Verify each tensor
+    for i, (result_tensor, expected_tensor) in enumerate(
+        zip(result_tensors, expected_tensors)
+    ):
+        assert isinstance(result_tensor, np.ndarray)
+        assert result_tensor.shape == expected_tensor.shape
+        assert result_tensor.dtype == expected_tensor.dtype
+        np.testing.assert_array_equal(result_tensor, expected_tensor)
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("17.0.0"),
+    reason="Requires PyArrow version 17 or higher",
+)
+def test_mixed_tensor_types_fixed_shape_different(
+    mixed_tensor_types_fixed_shape_blocks, mixed_tensor_types_fixed_shape_expected
+):
+    """Test mixed tensor types with different fixed shapes."""
+
+    t1, t2 = mixed_tensor_types_fixed_shape_blocks
+
+    t3 = concat([t1, t2])
+    assert isinstance(t3, pa.Table)
+    assert len(t3) == mixed_tensor_types_fixed_shape_expected["length"]
+
+    # Verify schema - should have tensor field as variable-shaped
+    assert t3.schema == mixed_tensor_types_fixed_shape_expected["schema"]
+    tensor_field = t3.schema.field("tensor")
+    assert isinstance(tensor_field.type, ArrowVariableShapedTensorType)
+
+    # Verify content
+    result_tensors = t3.column("tensor").to_pylist()
+    assert len(result_tensors) == mixed_tensor_types_fixed_shape_expected["length"]
+
+    expected_tensors = mixed_tensor_types_fixed_shape_expected["tensor_values"]
+
+    # Verify each tensor
+    for i, (result_tensor, expected_tensor) in enumerate(
+        zip(result_tensors, expected_tensors)
+    ):
+        assert isinstance(result_tensor, np.ndarray)
+        assert result_tensor.shape == expected_tensor.shape
+        assert result_tensor.dtype == expected_tensor.dtype
+        np.testing.assert_array_equal(result_tensor, expected_tensor)
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("17.0.0"),
+    reason="Requires PyArrow version 17 or higher",
+)
+def test_mixed_tensor_types_variable_shaped(
+    mixed_tensor_types_variable_shaped_blocks,
+    mixed_tensor_types_variable_shaped_expected,
+):
+    """Test mixed tensor types with variable-shaped tensors."""
+
+    t1, t2 = mixed_tensor_types_variable_shaped_blocks
+
+    t3 = concat([t1, t2])
+    assert isinstance(t3, pa.Table)
+    assert len(t3) == mixed_tensor_types_variable_shaped_expected["length"]
+
+    # Verify schema - should have tensor field as variable-shaped
+    assert t3.schema == mixed_tensor_types_variable_shaped_expected["schema"]
+    tensor_field = t3.schema.field("tensor")
+    assert isinstance(tensor_field.type, ArrowVariableShapedTensorType)
+
+    # Verify content
+    result_tensors = t3.column("tensor").to_pylist()
+    assert len(result_tensors) == mixed_tensor_types_variable_shaped_expected["length"]
+
+    expected_tensors = mixed_tensor_types_variable_shaped_expected["tensor_values"]
+
+    # Verify each tensor
+    for i, (result_tensor, expected_tensor) in enumerate(
+        zip(result_tensors, expected_tensors)
+    ):
+        assert isinstance(result_tensor, np.ndarray)
+        assert result_tensor.shape == expected_tensor.shape
+        assert result_tensor.dtype == expected_tensor.dtype
+        np.testing.assert_array_equal(result_tensor, expected_tensor)
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("17.0.0"),
+    reason="Requires PyArrow version 17 or higher",
+)
+def test_mixed_tensor_types_in_struct(
+    struct_with_mixed_tensor_types_blocks, struct_with_mixed_tensor_types_expected
+):
+    """Test that the fix works for mixed tensor types in structs."""
+
+    t1, t2 = struct_with_mixed_tensor_types_blocks
+
+    # This should work with our fix
+    t3 = concat([t1, t2])
+    assert isinstance(t3, pa.Table)
+    assert len(t3) == struct_with_mixed_tensor_types_expected["length"]
+
+    # Verify the result has the expected structure
+    assert t3.schema == struct_with_mixed_tensor_types_expected["schema"]
+    assert "id" in t3.column_names
+    assert "struct" in t3.column_names
+
+    # Verify struct field contains both types of tensors
+    struct_data = t3.column("struct").to_pylist()
+    assert len(struct_data) == struct_with_mixed_tensor_types_expected["length"]
+
+    expected_struct_values = struct_with_mixed_tensor_types_expected["struct_values"]
+
+    # Verify struct values
+    for i, (struct_row, expected_values) in enumerate(
+        zip(struct_data, expected_struct_values)
+    ):
+        for key, expected_value in expected_values.items():
+            assert struct_row[key] == expected_value
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("17.0.0"),
+    reason="Requires PyArrow version 17 or higher",
+)
+def test_nested_struct_with_mixed_tensor_types(
+    nested_struct_with_mixed_tensor_types_blocks,
+    nested_struct_with_mixed_tensor_types_expected,
+):
+    """Test nested structs with mixed tensor types at different levels."""
+
+    t1, t2 = nested_struct_with_mixed_tensor_types_blocks
+
+    t3 = concat([t1, t2])
+    assert isinstance(t3, pa.Table)
+    assert len(t3) == nested_struct_with_mixed_tensor_types_expected["length"]
+
+    # Verify the result has the expected structure
+    assert t3.schema == nested_struct_with_mixed_tensor_types_expected["schema"]
+    assert "id" in t3.column_names
+    assert "complex_struct" in t3.column_names
+
+    # Verify nested struct field contains both types of tensors
+    struct_data = t3.column("complex_struct").to_pylist()
+    assert len(struct_data) == nested_struct_with_mixed_tensor_types_expected["length"]
+
+    expected_fields = nested_struct_with_mixed_tensor_types_expected["expected_fields"]
+
+    # Check that nested structures are preserved
+    for field in expected_fields:
+        if field in ["nested", "outer_tensor", "outer_value"]:
+            assert field in struct_data[0]
+        elif field in ["inner_tensor", "inner_value"]:
+            assert field in struct_data[0]["nested"]
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("17.0.0"),
+    reason="Requires PyArrow version 17 or higher",
+)
+def test_multiple_tensor_fields_in_struct(
+    multiple_tensor_fields_struct_blocks, multiple_tensor_fields_struct_expected
+):
+    """Test structs with multiple tensor fields of different types."""
+
+    t1, t2 = multiple_tensor_fields_struct_blocks
+
+    t3 = concat([t1, t2])
+    assert isinstance(t3, pa.Table)
+    assert len(t3) == multiple_tensor_fields_struct_expected["length"]
+
+    # Verify the result has the expected structure
+    assert t3.schema == multiple_tensor_fields_struct_expected["schema"]
+    assert "id" in t3.column_names
+    assert "multi_tensor_struct" in t3.column_names
+
+    # Verify struct field contains both types of tensors
+    struct_data = t3.column("multi_tensor_struct").to_pylist()
+    assert len(struct_data) == multiple_tensor_fields_struct_expected["length"]
+
+    expected_fields = multiple_tensor_fields_struct_expected["expected_fields"]
+
+    # Check that all tensor fields are present
+    for row in struct_data:
+        for field in expected_fields:
+            assert field in row
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("17.0.0"),
+    reason="Requires PyArrow version 17 or higher",
+)
+def test_struct_with_incompatible_tensor_dtypes_fails(
+    incompatible_tensor_dtypes_blocks,
+):
+    """Test that concatenating structs with incompatible tensor dtypes fails gracefully."""
+
+    t1, t2 = incompatible_tensor_dtypes_blocks
+
+    # This should fail because of incompatible tensor dtypes
+    with pytest.raises(ArrowConversionError):
+        concat([t1, t2])
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("17.0.0"),
+    reason="Requires PyArrow version 17 or higher",
+)
+def test_struct_with_additional_fields(
+    struct_with_additional_fields_blocks, struct_with_additional_fields_expected
+):
+    """Test structs where some blocks have additional fields."""
+
+    t1, t2 = struct_with_additional_fields_blocks
+
+    t3 = concat([t1, t2])
+    assert isinstance(t3, pa.Table)
+    assert len(t3) == struct_with_additional_fields_expected["length"]
+
+    # Verify the result has the expected structure
+    assert t3.schema == struct_with_additional_fields_expected["schema"]
+    assert "id" in t3.column_names
+    assert "struct" in t3.column_names
+
+    # Verify struct field contains both types of tensors
+    struct_data = t3.column("struct").to_pylist()
+    assert len(struct_data) == struct_with_additional_fields_expected["length"]
+
+    field_presence = struct_with_additional_fields_expected["field_presence"]
+    extra_values = struct_with_additional_fields_expected["extra_values"]
+
+    # Check field presence and values
+    for i, row in enumerate(struct_data):
+        for field, should_be_present in field_presence.items():
+            assert (field in row) == should_be_present
+
+        # Check extra field values
+        if "extra" in row:
+            assert row["extra"] == extra_values[i]
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("17.0.0"),
+    reason="Requires PyArrow version 17 or higher",
+)
+def test_struct_with_null_tensor_values(
+    struct_with_null_tensor_values_blocks, struct_with_null_tensor_values_expected
+):
+    """Test structs where some fields are missing and get filled with nulls."""
+
+    t1, t2 = struct_with_null_tensor_values_blocks
+
+    t3 = concat([t1, t2])
+    assert isinstance(t3, pa.Table)
+    assert len(t3) == struct_with_null_tensor_values_expected["length"]
+
+    # Validate schema - should have both fields
+    assert t3.schema == struct_with_null_tensor_values_expected["schema"]
+
+    # Validate result
+    assert t3.column("id").to_pylist() == struct_with_null_tensor_values_expected["ids"]
+
+    # Check the struct column directly to avoid the Arrow tensor extension null bug
+    struct_column = t3.column("struct")
+    expected_values = struct_with_null_tensor_values_expected["values"]
+    expected_tensor_validity = struct_with_null_tensor_values_expected[
+        "tensor_validity"
+    ]
+
+    # Check each row
+    for i, (expected_value, expected_valid) in enumerate(
+        zip(expected_values, expected_tensor_validity)
+    ):
+        assert struct_column[i]["value"].as_py() == expected_value
+
+        if expected_valid:
+            assert struct_column[i]["tensor"] is not None
+        else:
+            # Check that the tensor field is null by checking its validity
+            tensor_field = struct_column[i]["tensor"]
+            assert tensor_field.is_valid is False
+
+
+# Test fixtures for _align_struct_fields tests
+@pytest.fixture
+def simple_struct_blocks():
+    """Fixture for simple struct blocks with missing fields."""
+    # Block 1: Struct with fields 'a' and 'b'
+    t1 = pa.table({"struct": pa.array([{"a": 1, "b": "x"}, {"a": 2, "b": "y"}])})
+
+    # Block 2: Struct with fields 'a' and 'c' (missing 'b', has 'c')
+    t2 = pa.table({"struct": pa.array([{"a": 3, "c": True}, {"a": 4, "c": False}])})
+
+    return t1, t2
+
+
+@pytest.fixture
+def simple_struct_schema():
+    """Fixture for simple struct schema with all fields."""
+    return pa.schema(
+        [
+            (
+                "struct",
+                pa.struct([("a", pa.int64()), ("b", pa.string()), ("c", pa.bool_())]),
+            )
+        ]
+    )
+
+
+@pytest.fixture
+def nested_struct_blocks():
+    """Fixture for nested struct blocks with missing fields."""
+    # Block 1: Nested struct with inner fields 'x' and 'y'
+    t1 = pa.table(
+        {
+            "outer": pa.array(
+                [{"inner": {"x": 1, "y": "a"}}, {"inner": {"x": 2, "y": "b"}}]
+            )
+        }
+    )
+
+    # Block 2: Nested struct with inner fields 'x' and 'z' (missing 'y', has 'z')
+    t2 = pa.table(
+        {
+            "outer": pa.array(
+                [{"inner": {"x": 3, "z": 1.5}}, {"inner": {"x": 4, "z": 2.5}}]
+            )
+        }
+    )
+
+    return t1, t2
+
+
+@pytest.fixture
+def nested_struct_schema():
+    """Fixture for nested struct schema with all fields."""
+    return pa.schema(
+        [
+            (
+                "outer",
+                pa.struct(
+                    [
+                        (
+                            "inner",
+                            pa.struct(
+                                [
+                                    ("x", pa.int64()),
+                                    ("y", pa.string()),
+                                    ("z", pa.float64()),
+                                ]
+                            ),
+                        )
+                    ]
+                ),
+            )
+        ]
+    )
+
+
+@pytest.fixture
+def missing_column_blocks():
+    """Fixture for blocks where one is missing a struct column entirely."""
+    # Block 1: Has struct column
+    t1 = pa.table(
+        {
+            "struct": pa.array([{"a": 1, "b": "x"}, {"a": 2, "b": "y"}]),
+            "other": pa.array([10, 20]),
+        }
+    )
+
+    # Block 2: Missing struct column entirely
+    t2 = pa.table({"other": pa.array([30, 40])})
+
+    return t1, t2
+
+
+@pytest.fixture
+def missing_column_schema():
+    """Fixture for schema with struct column that may be missing."""
+    return pa.schema(
+        [
+            ("struct", pa.struct([("a", pa.int64()), ("b", pa.string())])),
+            ("other", pa.int64()),
+        ]
+    )
+
+
+@pytest.fixture
+def multiple_struct_blocks():
+    """Fixture for blocks with multiple struct columns."""
+    # Block 1: Two struct columns with different field sets
+    t1 = pa.table(
+        {
+            "struct1": pa.array([{"a": 1, "b": "x"}, {"a": 2, "b": "y"}]),
+            "struct2": pa.array([{"p": 10, "q": True}, {"p": 20, "q": False}]),
+        }
+    )
+
+    # Block 2: Same struct columns but with different/missing fields
+    t2 = pa.table(
+        {
+            "struct1": pa.array(
+                [{"a": 3, "c": 1.5}, {"a": 4, "c": 2.5}]
+            ),  # missing 'b', has 'c'
+            "struct2": pa.array(
+                [{"p": 30, "r": "alpha"}, {"p": 40, "r": "beta"}]
+            ),  # missing 'q', has 'r'
+        }
+    )
+
+    return t1, t2
+
+
+@pytest.fixture
+def multiple_struct_schema():
+    """Fixture for schema with multiple struct columns."""
+    return pa.schema(
+        [
+            (
+                "struct1",
+                pa.struct([("a", pa.int64()), ("b", pa.string()), ("c", pa.float64())]),
+            ),
+            (
+                "struct2",
+                pa.struct([("p", pa.int64()), ("q", pa.bool_()), ("r", pa.string())]),
+            ),
+        ]
+    )
+
+
+@pytest.fixture
+def mixed_column_blocks():
+    """Fixture for blocks with mix of struct and non-struct columns."""
+    # Block 1: Mix of struct and non-struct columns
+    t1 = pa.table(
+        {
+            "struct": pa.array([{"a": 1, "b": "x"}, {"a": 2, "b": "y"}]),
+            "int_col": pa.array([10, 20]),
+            "string_col": pa.array(["foo", "bar"]),
+        }
+    )
+
+    # Block 2: Same structure
+    t2 = pa.table(
+        {
+            "struct": pa.array(
+                [{"a": 3, "c": True}, {"a": 4, "c": False}]
+            ),  # missing 'b', has 'c'
+            "int_col": pa.array([30, 40]),
+            "string_col": pa.array(["baz", "qux"]),
+        }
+    )
+
+    return t1, t2
+
+
+@pytest.fixture
+def mixed_column_schema():
+    """Fixture for schema with mix of struct and non-struct columns."""
+    return pa.schema(
+        [
+            (
+                "struct",
+                pa.struct([("a", pa.int64()), ("b", pa.string()), ("c", pa.bool_())]),
+            ),
+            ("int_col", pa.int64()),
+            ("string_col", pa.string()),
+        ]
+    )
+
+
+@pytest.fixture
+def empty_block_blocks():
+    """Fixture for blocks where one is empty."""
+    # Empty block
+    t1 = pa.table(
+        {
+            "struct": pa.array(
+                [], type=pa.struct([("a", pa.int64()), ("b", pa.string())])
+            )
+        }
+    )
+
+    # Non-empty block
+    t2 = pa.table(
+        {
+            "struct": pa.array(
+                [{"a": 1, "c": True}, {"a": 2, "c": False}]
+            )  # missing 'b', has 'c'
+        }
+    )
+
+    return t1, t2
+
+
+@pytest.fixture
+def empty_block_schema():
+    """Fixture for schema used with empty blocks."""
+    return pa.schema(
+        [
+            (
+                "struct",
+                pa.struct([("a", pa.int64()), ("b", pa.string()), ("c", pa.bool_())]),
+            )
+        ]
+    )
+
+
+@pytest.fixture
+def already_aligned_blocks():
+    """Fixture for blocks that are already aligned."""
+    # Both blocks have identical schemas
+    t1 = pa.table({"struct": pa.array([{"a": 1, "b": "x"}, {"a": 2, "b": "y"}])})
+    t2 = pa.table({"struct": pa.array([{"a": 3, "b": "z"}, {"a": 4, "b": "w"}])})
+
+    return t1, t2
+
+
+@pytest.fixture
+def already_aligned_schema():
+    """Fixture for schema used with already aligned blocks."""
+    return pa.schema([("struct", pa.struct([("a", pa.int64()), ("b", pa.string())]))])
+
+
+@pytest.fixture
+def no_struct_blocks():
+    """Fixture for blocks with no struct columns."""
+    # Blocks with no struct columns
+    t1 = pa.table({"int_col": pa.array([1, 2]), "string_col": pa.array(["a", "b"])})
+    t2 = pa.table({"int_col": pa.array([3, 4]), "string_col": pa.array(["c", "d"])})
+
+    return t1, t2
+
+
+@pytest.fixture
+def no_struct_schema():
+    """Fixture for schema with no struct columns."""
+    return pa.schema([("int_col", pa.int64()), ("string_col", pa.string())])
+
+
+@pytest.fixture
+def deep_nesting_blocks():
+    """Fixture for blocks with deeply nested structs."""
+    # Block 1: Deeply nested struct
+    t1 = pa.table(
+        {
+            "level1": pa.array(
+                [
+                    {"level2": {"level3": {"a": 1, "b": "x"}}},
+                    {"level2": {"level3": {"a": 2, "b": "y"}}},
+                ]
+            )
+        }
+    )
+
+    # Block 2: Same structure but missing some fields
+    t2 = pa.table(
+        {
+            "level1": pa.array(
+                [
+                    {"level2": {"level3": {"a": 3, "c": True}}},  # missing 'b', has 'c'
+                    {"level2": {"level3": {"a": 4, "c": False}}},
+                ]
+            )
+        }
+    )
+
+    return t1, t2
+
+
+@pytest.fixture
+def deep_nesting_schema():
+    """Fixture for schema with deeply nested structs."""
+    return pa.schema(
+        [
+            (
+                "level1",
+                pa.struct(
+                    [
+                        (
+                            "level2",
+                            pa.struct(
+                                [
+                                    (
+                                        "level3",
+                                        pa.struct(
+                                            [
+                                                ("a", pa.int64()),
+                                                ("b", pa.string()),
+                                                ("c", pa.bool_()),
+                                            ]
+                                        ),
+                                    )
+                                ]
+                            ),
+                        )
+                    ]
+                ),
+            )
+        ]
+    )
+
+
+def test_align_struct_fields_simple(simple_struct_blocks, simple_struct_schema):
+    """Test basic struct field alignment with missing fields."""
+    t1, t2 = simple_struct_blocks
+
+    aligned_blocks = _align_struct_fields([t1, t2], simple_struct_schema)
+
+    assert len(aligned_blocks) == 2
+
+    # Check first block - should have 'c' field filled with None
+    result1 = aligned_blocks[0]
+    assert result1.schema == simple_struct_schema
+    assert result1["struct"].to_pylist() == [
+        {"a": 1, "b": "x", "c": None},
+        {"a": 2, "b": "y", "c": None},
+    ]
+
+    # Check second block - should have 'b' field filled with None
+    result2 = aligned_blocks[1]
+    assert result2.schema == simple_struct_schema
+    assert result2["struct"].to_pylist() == [
+        {"a": 3, "b": None, "c": True},
+        {"a": 4, "b": None, "c": False},
+    ]
+
+
+def test_align_struct_fields_nested(nested_struct_blocks, nested_struct_schema):
+    """Test nested struct field alignment."""
+    t1, t2 = nested_struct_blocks
+
+    aligned_blocks = _align_struct_fields([t1, t2], nested_struct_schema)
+
+    assert len(aligned_blocks) == 2
+
+    # Check first block - should have 'z' field filled with None
+    result1 = aligned_blocks[0]
+    assert result1.schema == nested_struct_schema
+    assert result1["outer"].to_pylist() == [
+        {"inner": {"x": 1, "y": "a", "z": None}},
+        {"inner": {"x": 2, "y": "b", "z": None}},
+    ]
+
+    # Check second block - should have 'y' field filled with None
+    result2 = aligned_blocks[1]
+    assert result2.schema == nested_struct_schema
+    assert result2["outer"].to_pylist() == [
+        {"inner": {"x": 3, "y": None, "z": 1.5}},
+        {"inner": {"x": 4, "y": None, "z": 2.5}},
+    ]
+
+
+def test_align_struct_fields_missing_column(
+    missing_column_blocks, missing_column_schema
+):
+    """Test alignment when a struct column is missing from some blocks."""
+    t1, t2 = missing_column_blocks
+
+    aligned_blocks = _align_struct_fields([t1, t2], missing_column_schema)
+
+    assert len(aligned_blocks) == 2
+
+    # Check first block - should be unchanged
+    result1 = aligned_blocks[0]
+    assert result1.schema == missing_column_schema
+    assert result1["struct"].to_pylist() == [{"a": 1, "b": "x"}, {"a": 2, "b": "y"}]
+    assert result1["other"].to_pylist() == [10, 20]
+
+    # Check second block - should have null struct column
+    result2 = aligned_blocks[1]
+    assert result2.schema == missing_column_schema
+    assert result2["struct"].to_pylist() == [None, None]
+    assert result2["other"].to_pylist() == [30, 40]
+
+
+def test_align_struct_fields_multiple_structs(
+    multiple_struct_blocks, multiple_struct_schema
+):
+    """Test alignment with multiple struct columns."""
+    t1, t2 = multiple_struct_blocks
+
+    aligned_blocks = _align_struct_fields([t1, t2], multiple_struct_schema)
+
+    assert len(aligned_blocks) == 2
+
+    # Check first block
+    result1 = aligned_blocks[0]
+    assert result1.schema == multiple_struct_schema
+    assert result1["struct1"].to_pylist() == [
+        {"a": 1, "b": "x", "c": None},
+        {"a": 2, "b": "y", "c": None},
+    ]
+    assert result1["struct2"].to_pylist() == [
+        {"p": 10, "q": True, "r": None},
+        {"p": 20, "q": False, "r": None},
+    ]
+
+    # Check second block
+    result2 = aligned_blocks[1]
+    assert result2.schema == multiple_struct_schema
+    assert result2["struct1"].to_pylist() == [
+        {"a": 3, "b": None, "c": 1.5},
+        {"a": 4, "b": None, "c": 2.5},
+    ]
+    assert result2["struct2"].to_pylist() == [
+        {"p": 30, "q": None, "r": "alpha"},
+        {"p": 40, "q": None, "r": "beta"},
+    ]
+
+
+def test_align_struct_fields_non_struct_columns(
+    mixed_column_blocks, mixed_column_schema
+):
+    """Test that non-struct columns are left unchanged."""
+    t1, t2 = mixed_column_blocks
+
+    aligned_blocks = _align_struct_fields([t1, t2], mixed_column_schema)
+
+    assert len(aligned_blocks) == 2
+
+    # Check that non-struct columns are unchanged
+    for i, block in enumerate(aligned_blocks):
+        assert block["int_col"].to_pylist() == [10 + i * 20, 20 + i * 20]
+        assert (
+            block["string_col"].to_pylist() == ["foo", "bar"]
+            if i == 0
+            else ["baz", "qux"]
+        )
+
+
+def test_align_struct_fields_empty_blocks(empty_block_blocks, empty_block_schema):
+    """Test alignment with empty blocks."""
+    t1, t2 = empty_block_blocks
+
+    aligned_blocks = _align_struct_fields([t1, t2], empty_block_schema)
+
+    assert len(aligned_blocks) == 2
+
+    # Check empty block
+    result1 = aligned_blocks[0]
+    assert result1.schema == empty_block_schema
+    assert len(result1) == 0
+
+    # Check non-empty block
+    result2 = aligned_blocks[1]
+    assert result2.schema == empty_block_schema
+    assert result2["struct"].to_pylist() == [
+        {"a": 1, "b": None, "c": True},
+        {"a": 2, "b": None, "c": False},
+    ]
+
+
+def test_align_struct_fields_already_aligned(
+    already_aligned_blocks, already_aligned_schema
+):
+    """Test that already aligned blocks are returned unchanged."""
+    t1, t2 = already_aligned_blocks
+
+    aligned_blocks = _align_struct_fields([t1, t2], already_aligned_schema)
+
+    # Should return the original blocks unchanged
+    assert aligned_blocks == [t1, t2]
+
+
+def test_align_struct_fields_no_struct_columns(no_struct_blocks, no_struct_schema):
+    """Test alignment when there are no struct columns in the schema."""
+    t1, t2 = no_struct_blocks
+
+    aligned_blocks = _align_struct_fields([t1, t2], no_struct_schema)
+
+    # Should return the original blocks unchanged
+    assert aligned_blocks == [t1, t2]
+
+
+def test_align_struct_fields_deep_nesting(deep_nesting_blocks, deep_nesting_schema):
+    """Test alignment with deeply nested structs."""
+    t1, t2 = deep_nesting_blocks
+
+    aligned_blocks = _align_struct_fields([t1, t2], deep_nesting_schema)
+
+    assert len(aligned_blocks) == 2
+
+    # Check first block - should have 'c' field filled with None
+    result1 = aligned_blocks[0]
+    assert result1.schema == deep_nesting_schema
+    assert result1["level1"].to_pylist() == [
+        {"level2": {"level3": {"a": 1, "b": "x", "c": None}}},
+        {"level2": {"level3": {"a": 2, "b": "y", "c": None}}},
+    ]
+
+    # Check second block - should have 'b' field filled with None
+    result2 = aligned_blocks[1]
+    assert result2.schema == deep_nesting_schema
+    assert result2["level1"].to_pylist() == [
+        {"level2": {"level3": {"a": 3, "b": None, "c": True}}},
+        {"level2": {"level3": {"a": 4, "b": None, "c": False}}},
+    ]
+
+
+# Test fixtures for tensor-related tests
+@pytest.fixture
+def uniform_tensor_blocks():
+    """Fixture for uniform tensor blocks with same shape."""
+    # Block 1: Fixed shape tensors (2x2)
+    a1 = np.arange(12).reshape((3, 2, 2))
+    t1 = pa.table({"a": ArrowTensorArray.from_numpy(a1)})
+
+    # Block 2: Fixed shape tensors (2x2)
+    a2 = np.arange(12, 24).reshape((3, 2, 2))
+    t2 = pa.table({"a": ArrowTensorArray.from_numpy(a2)})
+
+    return t1, t2
+
+
+@pytest.fixture
+def uniform_tensor_expected():
+    """Fixture for expected results from uniform tensor concatenation."""
+    if DataContext.get_current().use_arrow_tensor_v2:
+        tensor_type = ArrowTensorTypeV2
+    else:
+        tensor_type = ArrowTensorType
+
+    expected_schema = pa.schema([("a", tensor_type((2, 2), pa.int64()))])
+    expected_length = 6
+    expected_chunks = 2
+
+    # Expected content
+    a1 = np.arange(12).reshape((3, 2, 2))
+    a2 = np.arange(12, 24).reshape((3, 2, 2))
+
+    return {
+        "schema": expected_schema,
+        "length": expected_length,
+        "chunks": expected_chunks,
+        "content": [a1, a2],
+    }
+
+
+@pytest.fixture
+def variable_shaped_tensor_blocks():
+    """Fixture for variable-shaped tensor blocks."""
+    # Block 1: Variable shape tensors
+    a1 = np.array(
+        [np.arange(4).reshape((2, 2)), np.arange(4, 13).reshape((3, 3))], dtype=object
+    )
+    t1 = pa.table({"a": ArrowTensorArray.from_numpy(a1)})
+
+    # Block 2: Variable shape tensors
+    a2 = np.array(
+        [np.arange(4).reshape((2, 2)), np.arange(4, 13).reshape((3, 3))], dtype=object
+    )
+    t2 = pa.table({"a": ArrowTensorArray.from_numpy(a2)})
+
+    return t1, t2
+
+
+@pytest.fixture
+def variable_shaped_tensor_expected():
+    """Fixture for expected results from variable-shaped tensor concatenation."""
+    expected_schema = pa.schema([("a", ArrowVariableShapedTensorType(pa.int64(), 2))])
+    expected_length = 4
+    expected_chunks = 2
+
+    # Expected content
+    a1 = np.array(
+        [np.arange(4).reshape((2, 2)), np.arange(4, 13).reshape((3, 3))], dtype=object
+    )
+    a2 = np.array(
+        [np.arange(4).reshape((2, 2)), np.arange(4, 13).reshape((3, 3))], dtype=object
+    )
+
+    return {
+        "schema": expected_schema,
+        "length": expected_length,
+        "chunks": expected_chunks,
+        "content": [a1, a2],
+    }
+
+
+@pytest.fixture
+def mixed_tensor_blocks():
+    """Fixture for mixed fixed-shape and variable-shaped tensor blocks."""
+    # Block 1: Fixed shape tensors
+    a1 = np.arange(12).reshape((3, 2, 2))
+    t1 = pa.table({"a": ArrowTensorArray.from_numpy(a1)})
+
+    # Block 2: Variable shape tensors
+    a2 = np.array(
+        [np.arange(4).reshape((2, 2)), np.arange(4, 13).reshape((3, 3))], dtype=object
+    )
+    t2 = pa.table({"a": ArrowTensorArray.from_numpy(a2)})
+
+    return t1, t2
+
+
+@pytest.fixture
+def mixed_tensor_expected():
+    """Fixture for expected results from mixed tensor concatenation."""
+    expected_schema = pa.schema([("a", ArrowVariableShapedTensorType(pa.int64(), 2))])
+    expected_length = 5
+    expected_chunks = 2
+
+    # Expected content
+    a1 = np.arange(12).reshape((3, 2, 2))
+    a2 = np.array(
+        [np.arange(4).reshape((2, 2)), np.arange(4, 13).reshape((3, 3))], dtype=object
+    )
+
+    return {
+        "schema": expected_schema,
+        "length": expected_length,
+        "chunks": expected_chunks,
+        "content": [a1, a2],
+    }
+
+
+@pytest.fixture
+def different_shape_tensor_blocks():
+    """Fixture for tensor blocks with different fixed shapes."""
+    # Block 1: Fixed shape tensors (2x2)
+    a1 = np.arange(12).reshape((3, 2, 2))
+    t1 = pa.table({"a": ArrowTensorArray.from_numpy(a1)})
+
+    # Block 2: Fixed shape tensors (3x3)
+    a2 = np.arange(12, 39).reshape((3, 3, 3))
+    t2 = pa.table({"a": ArrowTensorArray.from_numpy(a2)})
+
+    return t1, t2
+
+
+@pytest.fixture
+def different_shape_tensor_expected():
+    """Fixture for expected results from different shape tensor concatenation."""
+    expected_schema = pa.schema([("a", ArrowVariableShapedTensorType(pa.int64(), 2))])
+    expected_length = 6
+    expected_chunks = 2
+
+    # Expected content
+    a1 = np.arange(12).reshape((3, 2, 2))
+    a2 = np.arange(12, 39).reshape((3, 3, 3))
+
+    return {
+        "schema": expected_schema,
+        "length": expected_length,
+        "chunks": expected_chunks,
+        "content": [a1, a2],
+    }
+
+
+@pytest.fixture
+def mixed_tensor_types_same_dtype_blocks():
+    """Fixture for mixed tensor types with same dtype but different shapes."""
     # Block 1: Fixed shape tensors with float32
     tensor_data1 = np.ones((2, 2), dtype=np.float32)
     tensor_array1 = ArrowTensorArray.from_numpy(tensor_data1)
-
     t1 = pa.table({"id": [1, 2], "tensor": tensor_array1})
 
     # Block 2: Variable shape tensors with float32
@@ -1217,112 +1952,77 @@ def test_mixed_tensor_types_same_dtype():
         dtype=object,
     )
     tensor_array2 = ArrowVariableShapedTensorArray.from_numpy(tensor_data2)
-
     t2 = pa.table({"id": [3, 4], "tensor": tensor_array2})
 
-    t3 = concat([t1, t2])
-    assert isinstance(t3, pa.Table)
-    assert len(t3) == 4
-
-    # Verify schema - should have tensor field as variable-shaped
-    tensor_field = t3.schema.field("tensor")
-    assert isinstance(tensor_field.type, ArrowVariableShapedTensorType)
-
-    # Verify content
-    result_tensors = t3.column("tensor").to_pylist()
-    assert len(result_tensors) == 4
-
-    # First 2 should be converted to variable-shaped tensors
-    assert isinstance(result_tensors[0], np.ndarray)
-    assert result_tensors[0].shape == (2,)
-    assert result_tensors[0].dtype == np.float32
-    np.testing.assert_array_equal(result_tensors[0], np.ones((2,), dtype=np.float32))
-
-    assert isinstance(result_tensors[1], np.ndarray)
-    assert result_tensors[1].shape == (2,)
-    assert result_tensors[1].dtype == np.float32
-    np.testing.assert_array_equal(result_tensors[1], np.ones((2,), dtype=np.float32))
-
-    # Last 2 should be variable-shaped tensors
-    assert isinstance(result_tensors[2], np.ndarray)
-    assert result_tensors[2].shape == (3, 3)
-    assert result_tensors[2].dtype == np.float32
-    np.testing.assert_array_equal(result_tensors[2], np.ones((3, 3), dtype=np.float32))
-
-    assert isinstance(result_tensors[3], np.ndarray)
-    assert result_tensors[3].shape == (1, 4)
-    assert result_tensors[3].dtype == np.float32
-    np.testing.assert_array_equal(result_tensors[3], np.zeros((1, 4), dtype=np.float32))
+    return t1, t2
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("17.0.0"),
-    reason="Requires PyArrow version 17 or higher",
-)
-def test_mixed_tensor_types_fixed_shape_different():
-    """Test mixed tensor types with different fixed shapes."""
+@pytest.fixture
+def mixed_tensor_types_same_dtype_expected():
+    """Fixture for expected results from mixed tensor types with same dtype."""
+    expected_schema = pa.schema(
+        [("id", pa.int64()), ("tensor", ArrowVariableShapedTensorType(pa.float32(), 2))]
+    )
+    expected_length = 4
 
+    # Expected tensor values
+    expected_tensors = [
+        np.ones((2,), dtype=np.float32),  # First 2 converted to variable-shaped
+        np.ones((2,), dtype=np.float32),
+        np.ones((3, 3), dtype=np.float32),  # Last 2 variable-shaped
+        np.zeros((1, 4), dtype=np.float32),
+    ]
+
+    return {
+        "schema": expected_schema,
+        "length": expected_length,
+        "tensor_values": expected_tensors,
+    }
+
+
+@pytest.fixture
+def mixed_tensor_types_fixed_shape_blocks():
+    """Fixture for mixed tensor types with different fixed shapes."""
     # Block 1: Fixed shape tensors (2x2)
     tensor_data1 = np.ones((2, 2), dtype=np.float32)
     tensor_array1 = ArrowTensorArray.from_numpy(tensor_data1)
-
     t1 = pa.table({"id": [1, 2], "tensor": tensor_array1})
 
     # Block 2: Fixed shape tensors (3x3)
     tensor_data2 = np.zeros((3, 3), dtype=np.float32)
     tensor_array2 = ArrowTensorArray.from_numpy(tensor_data2)
+    t2 = pa.table({"id": [3, 4, 5], "tensor": tensor_array2})
 
-    t2 = pa.table(
-        {"id": [3, 4, 5], "tensor": tensor_array2}  # Match length of tensor_array2
+    return t1, t2
+
+
+@pytest.fixture
+def mixed_tensor_types_fixed_shape_expected():
+    """Fixture for expected results from mixed tensor types with different fixed shapes."""
+    expected_schema = pa.schema(
+        [("id", pa.int64()), ("tensor", ArrowVariableShapedTensorType(pa.float32(), 2))]
     )
+    expected_length = 5
 
-    t3 = concat([t1, t2])
-    assert isinstance(t3, pa.Table)
-    assert len(t3) == 5
+    # Expected tensor values
+    expected_tensors = [
+        np.ones((2,), dtype=np.float32),  # First 2 converted to variable-shaped
+        np.ones((2,), dtype=np.float32),
+        np.zeros((3,), dtype=np.float32),  # Last 3 variable-shaped
+        np.zeros((3,), dtype=np.float32),
+        np.zeros((3,), dtype=np.float32),
+    ]
 
-    # Verify schema - should have tensor field as variable-shaped
-    tensor_field = t3.schema.field("tensor")
-    assert isinstance(tensor_field.type, ArrowVariableShapedTensorType)
-
-    # Verify content
-    result_tensors = t3.column("tensor").to_pylist()
-    assert len(result_tensors) == 5
-
-    # First 2 should be converted to variable-shaped tensors
-    assert isinstance(result_tensors[0], np.ndarray)
-    assert result_tensors[0].shape == (2,)
-    assert result_tensors[0].dtype == np.float32
-    np.testing.assert_array_equal(result_tensors[0], np.ones((2,), dtype=np.float32))
-
-    assert isinstance(result_tensors[1], np.ndarray)
-    assert result_tensors[1].shape == (2,)
-    assert result_tensors[1].dtype == np.float32
-    np.testing.assert_array_equal(result_tensors[1], np.ones((2,), dtype=np.float32))
-
-    # Last 3 should be variable-shaped tensors
-    assert isinstance(result_tensors[2], np.ndarray)
-    assert result_tensors[2].shape == (3,)
-    assert result_tensors[2].dtype == np.float32
-    np.testing.assert_array_equal(result_tensors[2], np.zeros((3,), dtype=np.float32))
-
-    assert isinstance(result_tensors[3], np.ndarray)
-    assert result_tensors[3].shape == (3,)
-    assert result_tensors[3].dtype == np.float32
-    np.testing.assert_array_equal(result_tensors[3], np.zeros((3,), dtype=np.float32))
-
-    assert isinstance(result_tensors[4], np.ndarray)
-    assert result_tensors[4].shape == (3,)
-    assert result_tensors[4].dtype == np.float32
-    np.testing.assert_array_equal(result_tensors[4], np.zeros((3,), dtype=np.float32))
+    return {
+        "schema": expected_schema,
+        "length": expected_length,
+        "tensor_values": expected_tensors,
+    }
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("17.0.0"),
-    reason="Requires PyArrow version 17 or higher",
-)
-def test_mixed_tensor_types_variable_shaped():
-    """Test mixed tensor types with variable-shaped tensors."""
-
+@pytest.fixture
+def mixed_tensor_types_variable_shaped_blocks():
+    """Fixture for mixed tensor types with variable-shaped tensors."""
     # Block 1: Variable shape tensors
     tensor_data1 = np.array(
         [
@@ -1332,7 +2032,6 @@ def test_mixed_tensor_types_variable_shaped():
         dtype=object,
     )
     tensor_array1 = ArrowVariableShapedTensorArray.from_numpy(tensor_data1)
-
     t1 = pa.table({"id": [1, 2], "tensor": tensor_array1})
 
     # Block 2: Variable shape tensors with different shapes
@@ -1344,63 +2043,44 @@ def test_mixed_tensor_types_variable_shaped():
         dtype=object,
     )
     tensor_array2 = ArrowVariableShapedTensorArray.from_numpy(tensor_data2)
-
     t2 = pa.table({"id": [3, 4], "tensor": tensor_array2})
 
-    t3 = concat([t1, t2])
-    assert isinstance(t3, pa.Table)
-    assert len(t3) == 4
-
-    # Verify schema - should have tensor field as variable-shaped
-    tensor_field = t3.schema.field("tensor")
-    assert isinstance(tensor_field.type, ArrowVariableShapedTensorType)
-
-    # Verify content
-    result_tensors = t3.column("tensor").to_pylist()
-    assert len(result_tensors) == 4
-
-    # All should be variable-shaped tensors
-    assert isinstance(result_tensors[0], np.ndarray)
-    assert result_tensors[0].shape == (2, 2)
-    assert result_tensors[0].dtype == np.float32
-    np.testing.assert_array_equal(result_tensors[0], np.ones((2, 2), dtype=np.float32))
-
-    assert isinstance(result_tensors[1], np.ndarray)
-    assert result_tensors[1].shape == (3, 3)
-    assert result_tensors[1].dtype == np.float32
-    np.testing.assert_array_equal(result_tensors[1], np.zeros((3, 3), dtype=np.float32))
-
-    assert isinstance(result_tensors[2], np.ndarray)
-    assert result_tensors[2].shape == (1, 4)
-    assert result_tensors[2].dtype == np.float32
-    np.testing.assert_array_equal(result_tensors[2], np.ones((1, 4), dtype=np.float32))
-
-    assert isinstance(result_tensors[3], np.ndarray)
-    assert result_tensors[3].shape == (2, 1)
-    assert result_tensors[3].dtype == np.float32
-    np.testing.assert_array_equal(result_tensors[3], np.zeros((2, 1), dtype=np.float32))
+    return t1, t2
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("17.0.0"),
-    reason="Requires PyArrow version 17 or higher",
-)
-def test_mixed_tensor_types_in_struct():
-    """Test that the fix works for mixed tensor types in structs."""
-    import numpy as np
-    import pyarrow as pa
+@pytest.fixture
+def mixed_tensor_types_variable_shaped_expected():
+    """Fixture for expected results from mixed variable-shaped tensor types."""
+    expected_schema = pa.schema(
+        [("id", pa.int64()), ("tensor", ArrowVariableShapedTensorType(pa.float32(), 2))]
+    )
+    expected_length = 4
 
-    from ray.data.extensions import ArrowTensorArray, ArrowVariableShapedTensorArray
+    # Expected tensor values
+    expected_tensors = [
+        np.ones((2, 2), dtype=np.float32),
+        np.zeros((3, 3), dtype=np.float32),
+        np.ones((1, 4), dtype=np.float32),
+        np.zeros((2, 1), dtype=np.float32),
+    ]
 
+    return {
+        "schema": expected_schema,
+        "length": expected_length,
+        "tensor_values": expected_tensors,
+    }
+
+
+@pytest.fixture
+def struct_with_mixed_tensor_types_blocks():
+    """Fixture for struct blocks with mixed tensor types."""
     # Block 1: Struct with fixed-shape tensor
     tensor_data1 = np.ones((2, 2), dtype=np.float32)
     tensor_array1 = ArrowTensorArray.from_numpy(tensor_data1)
     value_array1 = pa.array([1, 2], type=pa.int64())
-
     struct_array1 = pa.StructArray.from_arrays(
         [tensor_array1, value_array1], names=["tensor", "value"]
     )
-
     t1 = pa.table({"id": [1, 2], "struct": struct_array1})
 
     # Block 2: Struct with variable-shaped tensor
@@ -1413,335 +2093,17 @@ def test_mixed_tensor_types_in_struct():
     )
     tensor_array2 = ArrowVariableShapedTensorArray.from_numpy(tensor_data2)
     value_array2 = pa.array([3, 4], type=pa.int64())
-
     struct_array2 = pa.StructArray.from_arrays(
         [tensor_array2, value_array2], names=["tensor", "value"]
     )
-
     t2 = pa.table({"id": [3, 4], "struct": struct_array2})
 
-    # This should work with our fix
-    t3 = concat([t1, t2])
-    assert isinstance(t3, pa.Table)
-    assert len(t3) == 4
+    return t1, t2
 
-    # Verify the result has the expected structure
-    assert "id" in t3.column_names
-    assert "struct" in t3.column_names
 
-    # Verify struct field contains both types of tensors
-    struct_data = t3.column("struct").to_pylist()
-    assert len(struct_data) == 4
-
-    # First two should be from the fixed-shape tensor struct
-    assert struct_data[0]["value"] == 1
-    assert struct_data[1]["value"] == 2
-
-    # Last two should be from the variable-shaped tensor struct
-    assert struct_data[2]["value"] == 3
-    assert struct_data[3]["value"] == 4
-
-
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("17.0.0"),
-    reason="Requires PyArrow version 17 or higher",
-)
-def test_nested_struct_with_mixed_tensor_types():
-    """Test nested structs with mixed tensor types at different levels."""
-    import numpy as np
-    import pyarrow as pa
-
-    from ray.data.extensions import ArrowTensorArray, ArrowVariableShapedTensorArray
-
-    # Block 1: Nested struct with fixed-shape tensors
-    tensor_data1 = np.ones((2, 2), dtype=np.float32)
-    tensor_array1 = ArrowTensorArray.from_numpy(tensor_data1)
-
-    # Inner struct with fixed-shape tensor
-    inner_struct1 = pa.StructArray.from_arrays(
-        [tensor_array1, pa.array([10, 20], type=pa.int64())],
-        names=["inner_tensor", "inner_value"],
-    )
-
-    # Outer struct with nested struct and fixed-shape tensor
-    outer_tensor1 = ArrowTensorArray.from_numpy(np.zeros((2, 1), dtype=np.float32))
-    outer_struct1 = pa.StructArray.from_arrays(
-        [inner_struct1, outer_tensor1, pa.array([1, 2], type=pa.int64())],
-        names=["nested", "outer_tensor", "outer_value"],
-    )
-
-    t1 = pa.table({"id": [1, 2], "complex_struct": outer_struct1})
-
-    # Block 2: Nested struct with variable-shaped tensors
-    tensor_data2 = np.array(
-        [
-            np.ones((3, 3), dtype=np.float32),
-            np.zeros((1, 4), dtype=np.float32),
-        ],
-        dtype=object,
-    )
-    tensor_array2 = ArrowVariableShapedTensorArray.from_numpy(tensor_data2)
-
-    # Inner struct with variable-shaped tensor
-    inner_struct2 = pa.StructArray.from_arrays(
-        [tensor_array2, pa.array([30, 40], type=pa.int64())],
-        names=["inner_tensor", "inner_value"],
-    )
-
-    # Outer struct with nested struct and variable-shaped tensor
-    outer_tensor2 = ArrowVariableShapedTensorArray.from_numpy(
-        np.array(
-            [np.ones((2, 2), dtype=np.float32), np.zeros((1, 3), dtype=np.float32)],
-            dtype=object,
-        )
-    )
-    outer_struct2 = pa.StructArray.from_arrays(
-        [inner_struct2, outer_tensor2, pa.array([3, 4], type=pa.int64())],
-        names=["nested", "outer_tensor", "outer_value"],
-    )
-
-    t2 = pa.table({"id": [3, 4], "complex_struct": outer_struct2})
-
-    t3 = concat([t1, t2])
-    assert isinstance(t3, pa.Table)
-    assert len(t3) == 4
-
-    # Verify the result has the expected structure
-    assert "id" in t3.column_names
-    assert "complex_struct" in t3.column_names
-
-    # Verify nested struct field contains both types of tensors
-    struct_data = t3.column("complex_struct").to_pylist()
-    assert len(struct_data) == 4
-
-    # Check that nested structures are preserved
-    assert "nested" in struct_data[0]
-    assert "outer_tensor" in struct_data[0]
-    assert "outer_value" in struct_data[0]
-    assert "inner_tensor" in struct_data[0]["nested"]
-    assert "inner_value" in struct_data[0]["nested"]
-
-
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("17.0.0"),
-    reason="Requires PyArrow version 17 or higher",
-)
-def test_multiple_tensor_fields_in_struct():
-    """Test structs with multiple tensor fields of different types."""
-    import numpy as np
-    import pyarrow as pa
-
-    from ray.data.extensions import ArrowTensorArray, ArrowVariableShapedTensorArray
-
-    # Block 1: Struct with multiple fixed-shape tensors
-    tensor1_data = np.ones((2, 2), dtype=np.float32)
-    tensor1_array = ArrowTensorArray.from_numpy(tensor1_data)
-
-    tensor2_data = np.zeros((2, 3), dtype=np.int32)
-    tensor2_array = ArrowTensorArray.from_numpy(tensor2_data)
-
-    struct_array1 = pa.StructArray.from_arrays(
-        [tensor1_array, tensor2_array, pa.array([1, 2], type=pa.int64())],
-        names=["tensor1", "tensor2", "value"],
-    )
-
-    t1 = pa.table({"id": [1, 2], "multi_tensor_struct": struct_array1})
-
-    # Block 2: Struct with multiple variable-shaped tensors
-    tensor1_data2 = np.array(
-        [
-            np.ones((3, 3), dtype=np.float32),
-            np.zeros((1, 4), dtype=np.float32),
-        ],
-        dtype=object,
-    )
-    tensor1_array2 = ArrowVariableShapedTensorArray.from_numpy(tensor1_data2)
-
-    tensor2_data2 = np.array(
-        [
-            np.ones((2, 2), dtype=np.int32),
-            np.zeros((3, 1), dtype=np.int32),
-        ],
-        dtype=object,
-    )
-    tensor2_array2 = ArrowVariableShapedTensorArray.from_numpy(tensor2_data2)
-
-    struct_array2 = pa.StructArray.from_arrays(
-        [tensor1_array2, tensor2_array2, pa.array([3, 4], type=pa.int64())],
-        names=["tensor1", "tensor2", "value"],
-    )
-
-    t2 = pa.table({"id": [3, 4], "multi_tensor_struct": struct_array2})
-
-    t3 = concat([t1, t2])
-    assert isinstance(t3, pa.Table)
-    assert len(t3) == 4
-
-    # Verify the result has the expected structure
-    assert "id" in t3.column_names
-    assert "multi_tensor_struct" in t3.column_names
-
-    # Verify struct field contains both types of tensors
-    struct_data = t3.column("multi_tensor_struct").to_pylist()
-    assert len(struct_data) == 4
-
-    # Check that all tensor fields are present
-    for row in struct_data:
-        assert "tensor1" in row
-        assert "tensor2" in row
-        assert "value" in row
-
-
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("17.0.0"),
-    reason="Requires PyArrow version 17 or higher",
-)
-def test_struct_with_incompatible_tensor_dtypes_fails():
-    """Test that concatenating structs with incompatible tensor dtypes fails gracefully."""
-    import numpy as np
-    import pyarrow as pa
-    import pytest
-
-    from ray.air.util.tensor_extensions.arrow import ArrowConversionError
-    from ray.data.extensions import ArrowTensorArray, ArrowVariableShapedTensorArray
-
-    # Block 1: Struct with float32 fixed-shape tensor
-    tensor_data1 = np.ones((2, 2), dtype=np.float32)
-    tensor_array1 = ArrowTensorArray.from_numpy(tensor_data1)
-    value_array1 = pa.array([1, 2], type=pa.int64())
-
-    struct_array1 = pa.StructArray.from_arrays(
-        [tensor_array1, value_array1], names=["tensor", "value"]
-    )
-
-    t1 = pa.table({"id": [1, 2], "struct": struct_array1})
-
-    # Block 2: Struct with int64 variable-shaped tensor (different dtype)
-    tensor_data2 = np.array(
-        [
-            np.ones((3, 3), dtype=np.int64),
-            np.zeros((1, 4), dtype=np.int64),
-        ],
-        dtype=object,
-    )
-    tensor_array2 = ArrowVariableShapedTensorArray.from_numpy(tensor_data2)
-    value_array2 = pa.array([3, 4], type=pa.int64())
-
-    struct_array2 = pa.StructArray.from_arrays(
-        [tensor_array2, value_array2], names=["tensor", "value"]
-    )
-
-    t2 = pa.table({"id": [3, 4], "struct": struct_array2})
-
-    # This should fail because of incompatible tensor dtypes
-    with pytest.raises(ArrowConversionError):
-        concat([t1, t2])
-
-
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("17.0.0"),
-    reason="Requires PyArrow version 17 or higher",
-)
-def test_struct_with_additional_fields():
-    """Test structs where some blocks have additional fields."""
-    import numpy as np
-    import pyarrow as pa
-
-    from ray.data.extensions import ArrowTensorArray, ArrowVariableShapedTensorArray
-
-    # Block 1: Struct with tensor field and basic fields
-    tensor_data1 = np.ones((2, 2), dtype=np.float32)
-    tensor_array1 = ArrowTensorArray.from_numpy(tensor_data1)
-    value_array1 = pa.array([1, 2], type=pa.int64())
-
-    struct_array1 = pa.StructArray.from_arrays(
-        [tensor_array1, value_array1], names=["tensor", "value"]
-    )
-
-    t1 = pa.table({"id": [1, 2], "struct": struct_array1})
-
-    # Block 2: Struct with tensor field and additional fields
-    tensor_data2 = np.array(
-        [
-            np.ones((3, 3), dtype=np.float32),
-            np.zeros((1, 4), dtype=np.float32),
-        ],
-        dtype=object,
-    )
-    tensor_array2 = ArrowVariableShapedTensorArray.from_numpy(tensor_data2)
-    value_array2 = pa.array([3, 4], type=pa.int64())
-    extra_array2 = pa.array(["a", "b"], type=pa.string())
-
-    struct_array2 = pa.StructArray.from_arrays(
-        [tensor_array2, value_array2, extra_array2], names=["tensor", "value", "extra"]
-    )
-
-    t2 = pa.table({"id": [3, 4], "struct": struct_array2})
-
-    t3 = concat([t1, t2])
-    assert isinstance(t3, pa.Table)
-    assert len(t3) == 4
-
-    # Verify the result has the expected structure
-    assert "id" in t3.column_names
-    assert "struct" in t3.column_names
-
-    # Verify struct field contains both types of tensors
-    struct_data = t3.column("struct").to_pylist()
-    assert len(struct_data) == 4
-
-    # First two should have tensor field and extra field filled with None
-    assert "tensor" in struct_data[0]
-    assert "tensor" in struct_data[1]
-    assert "value" in struct_data[0]
-    assert "value" in struct_data[1]
-    assert "extra" in struct_data[0]
-    assert "extra" in struct_data[1]
-    assert struct_data[0]["extra"] is None
-    assert struct_data[1]["extra"] is None
-
-    # Last two should have tensor field and extra field
-    assert "tensor" in struct_data[2]
-    assert "tensor" in struct_data[3]
-    assert "value" in struct_data[2]
-    assert "value" in struct_data[3]
-    assert "extra" in struct_data[2]
-    assert "extra" in struct_data[3]
-    assert struct_data[2]["extra"] == "a"
-    assert struct_data[3]["extra"] == "b"
-
-
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("17.0.0"),
-    reason="Requires PyArrow version 17 or higher",
-)
-def test_struct_with_null_tensor_values():
-    """Test structs where some fields are missing and get filled with nulls."""
-    import numpy as np
-    import pyarrow as pa
-
-    from ray.data.extensions import ArrowTensorArray, ArrowVariableShapedTensorType
-
-    # Block 1: Struct with tensor and value fields
-    tensor_data1 = np.ones((2, 2), dtype=np.float32)
-    tensor_array1 = ArrowTensorArray.from_numpy(tensor_data1)
-    value_array1 = pa.array([1, 2], type=pa.int64())
-    struct_array1 = pa.StructArray.from_arrays(
-        [tensor_array1, value_array1], names=["tensor", "value"]
-    )
-    t1 = pa.table({"id": [1, 2], "struct": struct_array1})
-
-    # Block 2: Struct with only value field (missing tensor field)
-    value_array2 = pa.array([3], type=pa.int64())
-    # Note: no tensor field in this struct
-    struct_array2 = pa.StructArray.from_arrays([value_array2], names=["value"])
-    t2 = pa.table({"id": [3], "struct": struct_array2})
-
-    t3 = concat([t1, t2])
-    assert isinstance(t3, pa.Table)
-    assert len(t3) == 3
-
-    # Validate schema - should have both fields
+@pytest.fixture
+def struct_with_mixed_tensor_types_expected():
+    """Fixture for expected results from struct with mixed tensor types."""
     expected_schema = pa.schema(
         [
             ("id", pa.int64()),
@@ -1756,28 +2118,1123 @@ def test_struct_with_null_tensor_values():
             ),
         ]
     )
-    assert (
-        t3.schema == expected_schema
-    ), f"Expected schema: {expected_schema}, got: {t3.schema}"
+    expected_length = 4
 
-    # Validate result
-    assert t3.column("id").to_pylist() == [1, 2, 3]
+    # Expected struct values
+    expected_struct_values = [
+        {"value": 1},  # First two from fixed-shape tensor struct
+        {"value": 2},
+        {"value": 3},  # Last two from variable-shaped tensor struct
+        {"value": 4},
+    ]
 
-    # Check the struct column directly to avoid the Arrow tensor extension null bug
-    struct_column = t3.column("struct")
+    return {
+        "schema": expected_schema,
+        "length": expected_length,
+        "struct_values": expected_struct_values,
+    }
 
-    # First two should have both fields
-    assert struct_column[0]["value"].as_py() == 1
-    assert struct_column[1]["value"].as_py() == 2
-    assert struct_column[0]["tensor"] is not None
-    assert struct_column[1]["tensor"] is not None
 
-    # Third should have value field but tensor field should be null
-    assert struct_column[2]["value"].as_py() == 3
+@pytest.fixture
+def nested_struct_with_mixed_tensor_types_blocks():
+    """Fixture for nested struct blocks with mixed tensor types."""
+    # Block 1: Nested struct with fixed-shape tensors
+    tensor_data1 = np.ones((2, 2), dtype=np.float32)
+    tensor_array1 = ArrowTensorArray.from_numpy(tensor_data1)
+    inner_struct1 = pa.StructArray.from_arrays(
+        [tensor_array1, pa.array([10, 20], type=pa.int64())],
+        names=["inner_tensor", "inner_value"],
+    )
+    outer_tensor1 = ArrowTensorArray.from_numpy(np.zeros((2, 1), dtype=np.float32))
+    outer_struct1 = pa.StructArray.from_arrays(
+        [inner_struct1, outer_tensor1, pa.array([1, 2], type=pa.int64())],
+        names=["nested", "outer_tensor", "outer_value"],
+    )
+    t1 = pa.table({"id": [1, 2], "complex_struct": outer_struct1})
 
-    # Check that the tensor field is null by checking its validity
-    tensor_field = struct_column[2]["tensor"]
-    assert tensor_field.is_valid is False
+    # Block 2: Nested struct with variable-shaped tensors
+    tensor_data2 = np.array(
+        [
+            np.ones((3, 3), dtype=np.float32),
+            np.zeros((1, 4), dtype=np.float32),
+        ],
+        dtype=object,
+    )
+    tensor_array2 = ArrowVariableShapedTensorArray.from_numpy(tensor_data2)
+    inner_struct2 = pa.StructArray.from_arrays(
+        [tensor_array2, pa.array([30, 40], type=pa.int64())],
+        names=["inner_tensor", "inner_value"],
+    )
+    outer_tensor2 = ArrowVariableShapedTensorArray.from_numpy(
+        np.array(
+            [np.ones((2, 2), dtype=np.float32), np.zeros((1, 3), dtype=np.float32)],
+            dtype=object,
+        )
+    )
+    outer_struct2 = pa.StructArray.from_arrays(
+        [inner_struct2, outer_tensor2, pa.array([3, 4], type=pa.int64())],
+        names=["nested", "outer_tensor", "outer_value"],
+    )
+    t2 = pa.table({"id": [3, 4], "complex_struct": outer_struct2})
+
+    return t1, t2
+
+
+@pytest.fixture
+def nested_struct_with_mixed_tensor_types_expected():
+    """Fixture for expected results from nested struct with mixed tensor types."""
+    expected_schema = pa.schema(
+        [
+            ("id", pa.int64()),
+            (
+                "complex_struct",
+                pa.struct(
+                    [
+                        (
+                            "nested",
+                            pa.struct(
+                                [
+                                    (
+                                        "inner_tensor",
+                                        ArrowVariableShapedTensorType(pa.float32(), 2),
+                                    ),
+                                    ("inner_value", pa.int64()),
+                                ]
+                            ),
+                        ),
+                        (
+                            "outer_tensor",
+                            ArrowVariableShapedTensorType(pa.float32(), 2),
+                        ),
+                        ("outer_value", pa.int64()),
+                    ]
+                ),
+            ),
+        ]
+    )
+    expected_length = 4
+
+    # Expected nested structure fields
+    expected_fields = [
+        "nested",
+        "outer_tensor",
+        "outer_value",
+        "inner_tensor",
+        "inner_value",
+    ]
+
+    return {
+        "schema": expected_schema,
+        "length": expected_length,
+        "expected_fields": expected_fields,
+    }
+
+
+@pytest.fixture
+def multiple_tensor_fields_struct_blocks():
+    """Fixture for struct blocks with multiple tensor fields."""
+    # Block 1: Struct with multiple fixed-shape tensors
+    tensor1_data = np.ones((2, 2), dtype=np.float32)
+    tensor1_array = ArrowTensorArray.from_numpy(tensor1_data)
+    tensor2_data = np.zeros((2, 3), dtype=np.int32)
+    tensor2_array = ArrowTensorArray.from_numpy(tensor2_data)
+    struct_array1 = pa.StructArray.from_arrays(
+        [tensor1_array, tensor2_array, pa.array([1, 2], type=pa.int64())],
+        names=["tensor1", "tensor2", "value"],
+    )
+    t1 = pa.table({"id": [1, 2], "multi_tensor_struct": struct_array1})
+
+    # Block 2: Struct with multiple variable-shaped tensors
+    tensor1_data2 = np.array(
+        [
+            np.ones((3, 3), dtype=np.float32),
+            np.zeros((1, 4), dtype=np.float32),
+        ],
+        dtype=object,
+    )
+    tensor1_array2 = ArrowVariableShapedTensorArray.from_numpy(tensor1_data2)
+    tensor2_data2 = np.array(
+        [
+            np.ones((2, 2), dtype=np.int32),
+            np.zeros((3, 1), dtype=np.int32),
+        ],
+        dtype=object,
+    )
+    tensor2_array2 = ArrowVariableShapedTensorArray.from_numpy(tensor2_data2)
+    struct_array2 = pa.StructArray.from_arrays(
+        [tensor1_array2, tensor2_array2, pa.array([3, 4], type=pa.int64())],
+        names=["tensor1", "tensor2", "value"],
+    )
+    t2 = pa.table({"id": [3, 4], "multi_tensor_struct": struct_array2})
+
+    return t1, t2
+
+
+@pytest.fixture
+def multiple_tensor_fields_struct_expected():
+    """Fixture for expected results from struct with multiple tensor fields."""
+    expected_schema = pa.schema(
+        [
+            ("id", pa.int64()),
+            (
+                "multi_tensor_struct",
+                pa.struct(
+                    [
+                        ("tensor1", ArrowVariableShapedTensorType(pa.float32(), 2)),
+                        ("tensor2", ArrowVariableShapedTensorType(pa.int32(), 2)),
+                        ("value", pa.int64()),
+                    ]
+                ),
+            ),
+        ]
+    )
+    expected_length = 4
+
+    # Expected tensor fields
+    expected_fields = ["tensor1", "tensor2", "value"]
+
+    return {
+        "schema": expected_schema,
+        "length": expected_length,
+        "expected_fields": expected_fields,
+    }
+
+
+@pytest.fixture
+def incompatible_tensor_dtypes_blocks():
+    """Fixture for struct blocks with incompatible tensor dtypes."""
+    # Block 1: Struct with float32 fixed-shape tensor
+    tensor_data1 = np.ones((2, 2), dtype=np.float32)
+    tensor_array1 = ArrowTensorArray.from_numpy(tensor_data1)
+    value_array1 = pa.array([1, 2], type=pa.int64())
+    struct_array1 = pa.StructArray.from_arrays(
+        [tensor_array1, value_array1], names=["tensor", "value"]
+    )
+    t1 = pa.table({"id": [1, 2], "struct": struct_array1})
+
+    # Block 2: Struct with int64 variable-shaped tensor (different dtype)
+    tensor_data2 = np.array(
+        [
+            np.ones((3, 3), dtype=np.int64),
+            np.zeros((1, 4), dtype=np.int64),
+        ],
+        dtype=object,
+    )
+    tensor_array2 = ArrowVariableShapedTensorArray.from_numpy(tensor_data2)
+    value_array2 = pa.array([3, 4], type=pa.int64())
+    struct_array2 = pa.StructArray.from_arrays(
+        [tensor_array2, value_array2], names=["tensor", "value"]
+    )
+    t2 = pa.table({"id": [3, 4], "struct": struct_array2})
+
+    return t1, t2
+
+
+@pytest.fixture
+def struct_with_additional_fields_blocks():
+    """Fixture for struct blocks where some have additional fields."""
+    # Block 1: Struct with tensor field and basic fields
+    tensor_data1 = np.ones((2, 2), dtype=np.float32)
+    tensor_array1 = ArrowTensorArray.from_numpy(tensor_data1)
+    value_array1 = pa.array([1, 2], type=pa.int64())
+    struct_array1 = pa.StructArray.from_arrays(
+        [tensor_array1, value_array1], names=["tensor", "value"]
+    )
+    t1 = pa.table({"id": [1, 2], "struct": struct_array1})
+
+    # Block 2: Struct with tensor field and additional fields
+    tensor_data2 = np.array(
+        [
+            np.ones((3, 3), dtype=np.float32),
+            np.zeros((1, 4), dtype=np.float32),
+        ],
+        dtype=object,
+    )
+    tensor_array2 = ArrowVariableShapedTensorArray.from_numpy(tensor_data2)
+    value_array2 = pa.array([3, 4], type=pa.int64())
+    extra_array2 = pa.array(["a", "b"], type=pa.string())
+    struct_array2 = pa.StructArray.from_arrays(
+        [tensor_array2, value_array2, extra_array2], names=["tensor", "value", "extra"]
+    )
+    t2 = pa.table({"id": [3, 4], "struct": struct_array2})
+
+    return t1, t2
+
+
+@pytest.fixture
+def struct_with_additional_fields_expected():
+    """Fixture for expected results from struct with additional fields."""
+    expected_schema = pa.schema(
+        [
+            ("id", pa.int64()),
+            (
+                "struct",
+                pa.struct(
+                    [
+                        ("tensor", ArrowVariableShapedTensorType(pa.float32(), 2)),
+                        ("value", pa.int64()),
+                        ("extra", pa.string()),
+                    ]
+                ),
+            ),
+        ]
+    )
+    expected_length = 4
+
+    # Expected field presence and values
+    expected_field_presence = {"tensor": True, "value": True, "extra": True}
+
+    expected_extra_values = [None, None, "a", "b"]
+
+    return {
+        "schema": expected_schema,
+        "length": expected_length,
+        "field_presence": expected_field_presence,
+        "extra_values": expected_extra_values,
+    }
+
+
+@pytest.fixture
+def struct_with_null_tensor_values_blocks():
+    """Fixture for struct blocks where some fields are missing and get filled with nulls."""
+    # Block 1: Struct with tensor and value fields
+    tensor_data1 = np.ones((2, 2), dtype=np.float32)
+    tensor_array1 = ArrowTensorArray.from_numpy(tensor_data1)
+    value_array1 = pa.array([1, 2], type=pa.int64())
+    struct_array1 = pa.StructArray.from_arrays(
+        [tensor_array1, value_array1], names=["tensor", "value"]
+    )
+    t1 = pa.table({"id": [1, 2], "struct": struct_array1})
+
+    # Block 2: Struct with only value field (missing tensor field)
+    value_array2 = pa.array([3], type=pa.int64())
+    struct_array2 = pa.StructArray.from_arrays([value_array2], names=["value"])
+    t2 = pa.table({"id": [3], "struct": struct_array2})
+
+    return t1, t2
+
+
+@pytest.fixture
+def struct_with_null_tensor_values_expected():
+    """Fixture for expected results from struct with null tensor values."""
+    expected_schema = pa.schema(
+        [
+            ("id", pa.int64()),
+            (
+                "struct",
+                pa.struct(
+                    [
+                        ("tensor", ArrowVariableShapedTensorType(pa.float32(), 2)),
+                        ("value", pa.int64()),
+                    ]
+                ),
+            ),
+        ]
+    )
+    expected_length = 3
+    expected_ids = [1, 2, 3]
+
+    # Expected value field values
+    expected_values = [1, 2, 3]
+
+    # Expected tensor field validity
+    expected_tensor_validity = [True, True, False]
+
+    return {
+        "schema": expected_schema,
+        "length": expected_length,
+        "ids": expected_ids,
+        "values": expected_values,
+        "tensor_validity": expected_tensor_validity,
+    }
+
+
+@pytest.fixture
+def basic_concat_blocks():
+    """Fixture for basic concat test data."""
+    t1 = pa.table({"a": [1, 2], "b": [5, 6]})
+    t2 = pa.table({"a": [3, 4], "b": [7, 8]})
+    return [t1, t2]
+
+
+@pytest.fixture
+def basic_concat_expected():
+    """Fixture for basic concat expected results."""
+    return {
+        "length": 4,
+        "column_names": ["a", "b"],
+        "schema_types": [pa.int64(), pa.int64()],
+        "chunks": 2,
+        "content": {"a": [1, 2, 3, 4], "b": [5, 6, 7, 8]},
+    }
+
+
+@pytest.fixture
+def null_promotion_blocks():
+    """Fixture for null promotion test data."""
+    t1 = pa.table({"a": [None, None], "b": [5, 6]})
+    t2 = pa.table({"a": [3, 4], "b": [None, None]})
+    return [t1, t2]
+
+
+@pytest.fixture
+def null_promotion_expected():
+    """Fixture for null promotion expected results."""
+    return {
+        "length": 4,
+        "column_names": ["a", "b"],
+        "schema_types": [pa.int64(), pa.int64()],
+        "chunks": 2,
+        "content": {"a": [None, None, 3, 4], "b": [5, 6, None, None]},
+    }
+
+
+@pytest.fixture
+def struct_different_field_names_blocks():
+    """Fixture for struct with different field names test data."""
+    t1 = pa.table(
+        {
+            "a": [1, 2],
+            "d": pa.array(
+                [{"x": 1, "y": "a"}, {"x": 2, "y": "b"}],
+                type=pa.struct([("x", pa.int32()), ("y", pa.string())]),
+            ),
+        }
+    )
+    t2 = pa.table(
+        {
+            "a": [3],
+            "d": pa.array(
+                [{"x": 3, "z": "c"}],
+                type=pa.struct([("x", pa.int32()), ("z", pa.string())]),
+            ),
+        }
+    )
+    return [t1, t2]
+
+
+@pytest.fixture
+def struct_different_field_names_expected():
+    """Fixture for struct with different field names expected results."""
+    return {
+        "length": 3,
+        "schema": pa.schema(
+            [
+                ("a", pa.int64()),
+                (
+                    "d",
+                    pa.struct(
+                        [
+                            ("x", pa.int32()),
+                            ("y", pa.string()),
+                            ("z", pa.string()),
+                        ]
+                    ),
+                ),
+            ]
+        ),
+        "content": {
+            "a": [1, 2, 3],
+            "d": [
+                {"x": 1, "y": "a", "z": None},
+                {"x": 2, "y": "b", "z": None},
+                {"x": 3, "y": None, "z": "c"},
+            ],
+        },
+    }
+
+
+@pytest.fixture
+def nested_structs_blocks():
+    """Fixture for nested structs test data."""
+    t1 = pa.table(
+        {
+            "a": [1],
+            "d": pa.array(
+                [
+                    {
+                        "x": {
+                            "y": {"p": 1},  # Missing "q"
+                            "z": {"m": 3},  # Missing "n"
+                        },
+                        "w": 5,
+                    }
+                ],
+                type=pa.struct(
+                    [
+                        (
+                            "x",
+                            pa.struct(
+                                [
+                                    (
+                                        "y",
+                                        pa.struct([("p", pa.int32())]),  # Only "p"
+                                    ),
+                                    (
+                                        "z",
+                                        pa.struct([("m", pa.int32())]),  # Only "m"
+                                    ),
+                                ]
+                            ),
+                        ),
+                        ("w", pa.int32()),
+                    ]
+                ),
+            ),
+        }
+    )
+    t2 = pa.table(
+        {
+            "a": [2],
+            "d": pa.array(
+                [
+                    {
+                        "x": {
+                            "y": {"q": 7},  # Missing "p"
+                            "z": {"n": 9},  # Missing "m"
+                        },
+                        "w": 10,
+                    }
+                ],
+                type=pa.struct(
+                    [
+                        (
+                            "x",
+                            pa.struct(
+                                [
+                                    (
+                                        "y",
+                                        pa.struct([("q", pa.int32())]),  # Only "q"
+                                    ),
+                                    (
+                                        "z",
+                                        pa.struct([("n", pa.int32())]),  # Only "n"
+                                    ),
+                                ]
+                            ),
+                        ),
+                        ("w", pa.int32()),
+                    ]
+                ),
+            ),
+        }
+    )
+    return [t1, t2]
+
+
+@pytest.fixture
+def nested_structs_expected():
+    """Fixture for nested structs expected results."""
+    return {
+        "length": 2,
+        "schema": pa.schema(
+            [
+                ("a", pa.int64()),
+                (
+                    "d",
+                    pa.struct(
+                        [
+                            (
+                                "x",
+                                pa.struct(
+                                    [
+                                        (
+                                            "y",
+                                            pa.struct(
+                                                [("p", pa.int32()), ("q", pa.int32())]
+                                            ),
+                                        ),
+                                        (
+                                            "z",
+                                            pa.struct(
+                                                [("m", pa.int32()), ("n", pa.int32())]
+                                            ),
+                                        ),
+                                    ]
+                                ),
+                            ),
+                            ("w", pa.int32()),
+                        ]
+                    ),
+                ),
+            ]
+        ),
+        "content": {
+            "a": [1, 2],
+            "d": [
+                {
+                    "x": {
+                        "y": {"p": 1, "q": None},  # Missing "q" filled with None
+                        "z": {"m": 3, "n": None},  # Missing "n" filled with None
+                    },
+                    "w": 5,
+                },
+                {
+                    "x": {
+                        "y": {"p": None, "q": 7},  # Missing "p" filled with None
+                        "z": {"m": None, "n": 9},  # Missing "m" filled with None
+                    },
+                    "w": 10,
+                },
+            ],
+        },
+    }
+
+
+@pytest.fixture
+def struct_null_values_blocks():
+    """Fixture for struct with null values test data."""
+    t1 = pa.table(
+        {
+            "a": [1, 2],
+            "d": pa.array(
+                [{"x": 1, "y": "a"}, None],  # Second row is null
+                type=pa.struct([("x", pa.int32()), ("y", pa.string())]),
+            ),
+        }
+    )
+    t2 = pa.table(
+        {
+            "a": [3],
+            "d": pa.array(
+                [None],  # Entire struct is null
+                type=pa.struct([("x", pa.int32()), ("y", pa.string())]),
+            ),
+        }
+    )
+    return [t1, t2]
+
+
+@pytest.fixture
+def struct_null_values_expected():
+    """Fixture for struct with null values expected results."""
+    return {
+        "length": 3,
+        "schema": pa.schema(
+            [
+                ("a", pa.int64()),
+                ("d", pa.struct([("x", pa.int32()), ("y", pa.string())])),
+            ]
+        ),
+        "content": {
+            "a": [1, 2, 3],
+            "d": [
+                {"x": 1, "y": "a"},
+                None,  # Entire struct is None, not {"x": None, "y": None}
+                None,  # Entire struct is None, not {"x": None, "y": None}
+            ],
+        },
+    }
+
+
+@pytest.fixture
+def struct_mismatched_lengths_blocks():
+    """Fixture for struct with mismatched lengths test data."""
+    t1 = pa.table(
+        {
+            "a": [1, 2],
+            "d": pa.array(
+                [{"x": 1, "y": "a"}, {"x": 2, "y": "b"}],
+                type=pa.struct([("x", pa.int32()), ("y", pa.string())]),
+            ),
+        }
+    )
+    t2 = pa.table(
+        {
+            "a": [3],
+            "d": pa.array(
+                [{"x": 3, "y": "c"}],
+                type=pa.struct([("x", pa.int32()), ("y", pa.string())]),
+            ),
+        }
+    )
+    return [t1, t2]
+
+
+@pytest.fixture
+def struct_mismatched_lengths_expected():
+    """Fixture for struct with mismatched lengths expected results."""
+    return {
+        "length": 3,
+        "schema": pa.schema(
+            [
+                ("a", pa.int64()),
+                ("d", pa.struct([("x", pa.int32()), ("y", pa.string())])),
+            ]
+        ),
+        "content": {
+            "a": [1, 2, 3],
+            "d": [
+                {"x": 1, "y": "a"},
+                {"x": 2, "y": "b"},
+                {"x": 3, "y": "c"},
+            ],
+        },
+    }
+
+
+@pytest.fixture
+def struct_empty_arrays_blocks():
+    """Fixture for struct with empty arrays test data."""
+    t1 = pa.table(
+        {
+            "a": [1, 2],
+            "d": pa.array(
+                [{"x": 1, "y": "a"}, {"x": 2, "y": "b"}],
+                type=pa.struct([("x", pa.int32()), ("y", pa.string())]),
+            ),
+        }
+    )
+
+    # Define the second table with null struct value (empty arrays for fields)
+    x_array = pa.array([None], type=pa.int32())
+    y_array = pa.array([None], type=pa.string())
+
+    # Create a struct array from null field arrays
+    null_struct_array = pa.StructArray.from_arrays(
+        [x_array, y_array],
+        ["x", "y"],
+        mask=pa.array([True]),
+    )
+
+    t2 = pa.table({"a": [3], "d": null_struct_array})
+    return [t1, t2]
+
+
+@pytest.fixture
+def struct_empty_arrays_expected():
+    """Fixture for struct with empty arrays expected results."""
+    return {
+        "length": 3,
+        "schema": pa.schema(
+            [
+                ("a", pa.int64()),  # Assuming 'a' is an integer column
+                (
+                    "d",
+                    pa.struct([("x", pa.int32()), ("y", pa.string())]),
+                ),  # Struct column 'd'
+            ]
+        ),
+        "content": {
+            "a": [1, 2, 3],
+            "d": [
+                {"x": 1, "y": "a"},
+                {"x": 2, "y": "b"},
+                None,  # Entire struct is None, as PyArrow handles it
+            ],
+        },
+    }
+
+
+@pytest.fixture
+def unify_schemas_basic_schemas():
+    """Fixture for basic unify schemas test data."""
+    tensor_arr_1 = pa.schema([("tensor_arr", ArrowTensorType((3, 5), pa.int32()))])
+    tensor_arr_2 = pa.schema([("tensor_arr", ArrowTensorType((2, 1), pa.int32()))])
+    tensor_arr_3 = pa.schema([("tensor_arr", ArrowTensorType((3, 5), pa.int32()))])
+    var_tensor_arr = pa.schema(
+        [
+            ("tensor_arr", ArrowVariableShapedTensorType(pa.int32(), 2)),
+        ]
+    )
+    var_tensor_arr_1d = pa.schema(
+        [
+            ("tensor_arr", ArrowVariableShapedTensorType(pa.int32(), 1)),
+        ]
+    )
+    var_tensor_arr_3d = pa.schema(
+        [
+            ("tensor_arr", ArrowVariableShapedTensorType(pa.int32(), 3)),
+        ]
+    )
+    return {
+        "tensor_arr_1": tensor_arr_1,
+        "tensor_arr_2": tensor_arr_2,
+        "tensor_arr_3": tensor_arr_3,
+        "var_tensor_arr": var_tensor_arr,
+        "var_tensor_arr_1d": var_tensor_arr_1d,
+        "var_tensor_arr_3d": var_tensor_arr_3d,
+    }
+
+
+@pytest.fixture
+def unify_schemas_multicol_schemas():
+    """Fixture for multi-column unify schemas test data."""
+    multicol_schema_1 = pa.schema(
+        [
+            ("col_int", pa.int32()),
+            ("col_fixed_tensor", ArrowTensorType((4, 2), pa.int32())),
+            ("col_var_tensor", ArrowVariableShapedTensorType(pa.int16(), 5)),
+        ]
+    )
+    multicol_schema_2 = pa.schema(
+        [
+            ("col_int", pa.int32()),
+            ("col_fixed_tensor", ArrowTensorType((4, 2), pa.int32())),
+            ("col_var_tensor", ArrowTensorType((9, 4, 1, 0, 5), pa.int16())),
+        ]
+    )
+    multicol_schema_3 = pa.schema(
+        [
+            ("col_int", pa.int32()),
+            ("col_fixed_tensor", ArrowVariableShapedTensorType(pa.int32(), 3)),
+            ("col_var_tensor", ArrowVariableShapedTensorType(pa.int16(), 5)),
+        ]
+    )
+    return {
+        "multicol_schema_1": multicol_schema_1,
+        "multicol_schema_2": multicol_schema_2,
+        "multicol_schema_3": multicol_schema_3,
+    }
+
+
+@pytest.fixture
+def object_concat_blocks():
+    """Fixture for object concat test data."""
+    obj = types.SimpleNamespace(a=1, b="test")
+    t1 = pa.table({"a": [3, 4], "b": [7, 8]})
+    t2 = pa.table({"a": ArrowPythonObjectArray.from_objects([obj, obj]), "b": [0, 1]})
+    return [t1, t2]
+
+
+@pytest.fixture
+def object_concat_expected():
+    """Fixture for object concat expected results."""
+    obj = types.SimpleNamespace(a=1, b="test")
+    return {
+        "length": 4,
+        "a_type": ArrowPythonObjectType,
+        "b_type": pa.types.is_integer,
+        "content": {"a": [3, 4, obj, obj], "b": [7, 8, 0, 1]},
+    }
+
+
+@pytest.fixture
+def struct_variable_shaped_tensor_blocks():
+    """Fixture for struct with variable shaped tensor test data."""
+    # Create variable-shaped tensor data for the first table
+    tensor_data1 = np.array(
+        [
+            np.ones((2, 2), dtype=np.float32),
+            np.zeros((3, 3), dtype=np.float32),
+        ],
+        dtype=object,
+    )
+    tensor_array1 = ArrowVariableShapedTensorArray.from_numpy(tensor_data1)
+
+    # Create struct data with tensor field for the first table
+    metadata_array1 = pa.array(["row1", "row2"])
+    struct_array1 = pa.StructArray.from_arrays(
+        [metadata_array1, tensor_array1], names=["metadata", "tensor"]
+    )
+
+    t1 = pa.table({"id": [1, 2], "struct_with_tensor": struct_array1})
+
+    # Create variable-shaped tensor data for the second table
+    tensor_data2 = np.array(
+        [
+            np.ones((1, 4), dtype=np.float32),
+            np.zeros((2, 1), dtype=np.float32),
+        ],
+        dtype=object,
+    )
+    tensor_array2 = ArrowVariableShapedTensorArray.from_numpy(tensor_data2)
+
+    # Create struct data with tensor field for the second table
+    metadata_array2 = pa.array(["row3", "row4"])
+    struct_array2 = pa.StructArray.from_arrays(
+        [metadata_array2, tensor_array2], names=["metadata", "tensor"]
+    )
+
+    t2 = pa.table({"id": [3, 4], "struct_with_tensor": struct_array2})
+    return [t1, t2]
+
+
+@pytest.fixture
+def struct_variable_shaped_tensor_expected():
+    """Fixture for struct with variable shaped tensor expected results."""
+    return {
+        "length": 4,
+        "schema": pa.schema(
+            [
+                ("id", pa.int64()),
+                (
+                    "struct_with_tensor",
+                    pa.struct(
+                        [
+                            ("metadata", pa.string()),
+                            ("tensor", ArrowVariableShapedTensorType(pa.float32(), 2)),
+                        ]
+                    ),
+                ),
+            ]
+        ),
+        "content": {"id": [1, 2, 3, 4]},
+    }
+
+
+@pytest.fixture
+def unify_schemas_null_typed_lists_schemas():
+    """Fixture for null typed lists unify schemas test data."""
+    schema1 = pa.schema([("list_col", pa.list_(pa.null()))])
+    schema2 = pa.schema([("list_col", pa.list_(pa.int32()))])
+    schema3 = pa.schema([("list_col", pa.list_(pa.string()))])
+    return {
+        "null_list": schema1,
+        "int_list": schema2,
+        "string_list": schema3,
+        "expected": pa.schema([("list_col", pa.list_(pa.int32()))]),
+    }
+
+
+@pytest.fixture
+def unify_schemas_object_types_schemas():
+    """Fixture for object types unify schemas test data."""
+    from ray.air.util.object_extensions.arrow import ArrowPythonObjectType
+
+    schema1 = pa.schema([("obj_col", ArrowPythonObjectType())])
+    schema2 = pa.schema([("obj_col", pa.int32())])
+    schema3 = pa.schema([("obj_col", pa.float64())])
+    expected = pa.schema([("obj_col", ArrowPythonObjectType())])
+
+    return {
+        "object_schema": schema1,
+        "int_schema": schema2,
+        "float_schema": schema3,
+        "expected": expected,
+    }
+
+
+@pytest.fixture
+def unify_schemas_duplicate_fields_schema():
+    """Fixture for duplicate fields unify schemas test data."""
+    return pa.schema([("col", pa.int32()), ("col", pa.int64())])  # Duplicate name
+
+
+@pytest.fixture
+def unify_schemas_incompatible_tensor_schemas():
+    """Fixture for incompatible tensor dtypes unify schemas test data."""
+    schema1 = pa.schema([("tensor", ArrowTensorType((2, 2), pa.int32()))])
+    schema2 = pa.schema([("tensor", ArrowTensorType((2, 2), pa.float32()))])
+    return [schema1, schema2]
+
+
+@pytest.fixture
+def unify_schemas_objects_and_tensors_schemas():
+    """Fixture for objects and tensors unify schemas test data."""
+    from ray.air.util.object_extensions.arrow import ArrowPythonObjectType
+
+    schema1 = pa.schema([("col", ArrowPythonObjectType())])
+    schema2 = pa.schema([("col", ArrowTensorType((2, 2), pa.int32()))])
+    return [schema1, schema2]
+
+
+@pytest.fixture
+def unify_schemas_missing_tensor_fields_schemas():
+    """Fixture for missing tensor fields unify schemas test data."""
+    schema1 = pa.schema(
+        [
+            (
+                "struct",
+                pa.struct(
+                    [
+                        ("tensor", ArrowTensorType((2, 2), pa.int32())),
+                        ("value", pa.int64()),
+                    ]
+                ),
+            )
+        ]
+    )
+    schema2 = pa.schema(
+        [("struct", pa.struct([("value", pa.int64())]))]  # Missing tensor field
+    )
+    expected = pa.schema(
+        [
+            (
+                "struct",
+                pa.struct(
+                    [
+                        ("tensor", ArrowVariableShapedTensorType(pa.int32(), 2)),
+                        ("value", pa.int64()),
+                    ]
+                ),
+            )
+        ]
+    )
+    return {"with_tensor": schema1, "without_tensor": schema2, "expected": expected}
+
+
+@pytest.fixture
+def unify_schemas_nested_struct_tensors_schemas():
+    """Fixture for nested struct tensors unify schemas test data."""
+    schema1 = pa.schema(
+        [
+            (
+                "outer",
+                pa.struct(
+                    [
+                        (
+                            "inner",
+                            pa.struct(
+                                [
+                                    ("tensor", ArrowTensorType((3, 3), pa.float32())),
+                                    ("data", pa.string()),
+                                ]
+                            ),
+                        ),
+                        ("id", pa.int64()),
+                    ]
+                ),
+            )
+        ]
+    )
+    schema2 = pa.schema(
+        [
+            (
+                "outer",
+                pa.struct(
+                    [
+                        (
+                            "inner",
+                            pa.struct([("data", pa.string())]),  # Missing tensor field
+                        ),
+                        ("id", pa.int64()),
+                    ]
+                ),
+            )
+        ]
+    )
+    expected = pa.schema(
+        [
+            (
+                "outer",
+                pa.struct(
+                    [
+                        (
+                            "inner",
+                            pa.struct(
+                                [
+                                    (
+                                        "tensor",
+                                        ArrowVariableShapedTensorType(pa.float32(), 2),
+                                    ),
+                                    ("data", pa.string()),
+                                ]
+                            ),
+                        ),
+                        ("id", pa.int64()),
+                    ]
+                ),
+            )
+        ]
+    )
+    return {"with_tensor": schema1, "without_tensor": schema2, "expected": expected}
+
+
+@pytest.fixture
+def object_with_tensor_fails_blocks():
+    """Blocks that should fail when concatenating objects with tensors."""
+    obj = types.SimpleNamespace(a=1, b="test")
+    t1 = pa.table({"a": ArrowPythonObjectArray.from_objects([obj, obj])})
+    # Create tensor array with proper extension type
+    tensor_array = ArrowTensorArray.from_numpy(np.array([[1, 2], [3, 4]]))
+    t2 = pa.table({"a": tensor_array})
+    return [t1, t2]
+
+
+@pytest.fixture
+def simple_concat_data():
+    """Test data for simple concat operations."""
+    return {"empty": [], "single_block": pa.table({"a": [1, 2]})}
+
+
+@pytest.fixture
+def unify_schemas_edge_cases_data():
+    """Test data for unify schemas edge cases."""
+    return {
+        "empty_schemas": [],
+        "single_schema": pa.schema([("col", pa.int32())]),
+        "no_common_columns": {
+            "schema1": pa.schema([("col1", pa.int32())]),
+            "schema2": pa.schema([("col2", pa.string())]),
+            "expected": pa.schema([("col1", pa.int32()), ("col2", pa.string())]),
+        },
+        "all_null_schemas": {
+            "schema1": pa.schema([("col", pa.null())]),
+            "schema2": pa.schema([("col", pa.null())]),
+        },
+    }
+
+
+@pytest.fixture
+def unify_schemas_mixed_tensor_data():
+    """Test data for mixed tensor types in unify schemas."""
+    return {
+        "fixed_shape": pa.schema([("tensor", ArrowTensorType((2, 2), pa.int32()))]),
+        "variable_shaped": pa.schema(
+            [("tensor", ArrowVariableShapedTensorType(pa.int32(), 2))]
+        ),
+        "different_shape": pa.schema([("tensor", ArrowTensorType((3, 3), pa.int32()))]),
+        "expected_variable": pa.schema(
+            [("tensor", ArrowVariableShapedTensorType(pa.int32(), 2))]
+        ),
+    }
+
+
+@pytest.fixture
+def unify_schemas_promote_types_data():
+    """Test data for type promotion in unify schemas."""
+    return {
+        "int32_schema": pa.schema([("col", pa.int32())]),
+        "float64_schema": pa.schema([("col", pa.float64())]),
+        "expected_promoted": pa.schema([("col", pa.float64())]),
+    }
+
+
+@pytest.fixture
+def unify_schemas_type_promotion_data():
+    """Test data for type promotion scenarios."""
+    return {
+        "non_null": pa.schema([pa.field("A", pa.int32())]),
+        "nullable": pa.schema([pa.field("A", pa.int32(), nullable=True)]),
+        "int64": pa.schema([pa.field("A", pa.int64())]),
+        "float64": pa.schema([pa.field("A", pa.float64())]),
+    }
+
+
+@pytest.fixture
+def block_select_data():
+    """Test data for block select operations."""
+    df = pd.DataFrame({"one": [10, 11, 12], "two": [11, 12, 13], "three": [14, 15, 16]})
+    table = pa.Table.from_pandas(df)
+    return {
+        "table": table,
+        "df": df,
+        "single_column": {
+            "columns": ["two"],
+            "expected_schema": pa.schema([("two", pa.int64())]),
+        },
+        "multiple_columns": {
+            "columns": ["two", "one"],
+            "expected_schema": pa.schema([("two", pa.int64()), ("one", pa.int64())]),
+        },
+    }
+
+
+@pytest.fixture
+def block_slice_data():
+    """Test data for block slice operations."""
+    n = 20
+    df = pd.DataFrame(
+        {"one": list(range(n)), "two": ["a"] * n, "three": [np.nan] + [1.5] * (n - 1)}
+    )
+    table = pa.Table.from_pandas(df)
+    empty_df = pd.DataFrame({"one": []})
+    empty_table = pa.Table.from_pandas(empty_df)
+    return {
+        "normal": {"table": table, "df": df, "slice_params": {"a": 5, "b": 10}},
+        "empty": {"table": empty_table, "slice_params": {"a": 0, "b": 0}},
+    }
 
 
 if __name__ == "__main__":
