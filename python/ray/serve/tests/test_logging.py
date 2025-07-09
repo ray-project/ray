@@ -166,6 +166,7 @@ def test_http_access_log_in_stderr(serve_instance, log_format):
             method="GET",
             route="/",
             status_code="200",
+            timeout=20,
         )
 
         r = httpx.post(url)
@@ -176,6 +177,7 @@ def test_http_access_log_in_stderr(serve_instance, log_format):
             method="POST",
             route="/",
             status_code="200",
+            timeout=20,
         )
 
         r = httpx.get(f"{url}/350")
@@ -186,6 +188,7 @@ def test_http_access_log_in_stderr(serve_instance, log_format):
             method="GET",
             route="/{status}",
             status_code="350",
+            timeout=20,
         )
 
         r = httpx.put(f"{url}/fail")
@@ -197,6 +200,7 @@ def test_http_access_log_in_stderr(serve_instance, log_format):
             route="/fail",
             status_code="500",
             fail=True,
+            timeout=20,
         )
 
 
