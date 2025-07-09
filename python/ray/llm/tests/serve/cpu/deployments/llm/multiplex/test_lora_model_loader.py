@@ -59,7 +59,7 @@ class TestLoRAModelLoader:
         mock_download_files = Mock()
 
         with patch.multiple(
-            "ray.llm._internal.common.utils.download_utils",
+            "ray.llm._internal.common.utils.lora_utils",
             CloudFileSystem=Mock(download_files=mock_download_files),
         ):
             # First load should download the model
@@ -101,7 +101,7 @@ class TestLoRAModelLoader:
             return None
 
         with patch.multiple(
-            "ray.llm._internal.common.utils.download_utils",
+            "ray.llm._internal.common.utils.lora_utils",
             CloudFileSystem=Mock(download_files=Mock(side_effect=mock_download_files)),
         ):
             # First load should trigger a retry
@@ -148,7 +148,7 @@ class TestLoRAModelLoader:
             return None
 
         with patch.multiple(
-            "ray.llm._internal.common.utils.download_utils",
+            "ray.llm._internal.common.utils.lora_utils",
             CloudFileSystem=Mock(download_files=Mock(side_effect=mock_download_files)),
         ):
             # Clear cache to force download
@@ -184,7 +184,7 @@ class TestLoRAModelLoader:
             raise RuntimeError("Simulated persistent failure")
 
         with patch.multiple(
-            "ray.llm._internal.common.utils.download_utils",
+            "ray.llm._internal.common.utils.lora_utils",
             CloudFileSystem=Mock(
                 download_files=Mock(side_effect=mock_download_files_always_fails)
             ),
