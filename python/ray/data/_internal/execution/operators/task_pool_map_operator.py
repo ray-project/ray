@@ -26,6 +26,7 @@ class TaskPoolMapOperator(MapOperator):
         min_rows_per_bundle: Optional[int] = None,
         concurrency: Optional[int] = None,
         supports_fusion: bool = True,
+        map_task_kwargs: Optional[Dict[str, Any]] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
@@ -44,6 +45,8 @@ class TaskPoolMapOperator(MapOperator):
             concurrency: The maximum number of Ray tasks to use concurrently,
                 or None to use as many tasks as possible.
             supports_fusion: Whether this operator supports fusion with other operators.
+            map_task_kwargs: A dictionary of kwargs to pass to the map task. You can
+                access these kwargs through the `TaskContext.kwargs` dictionary.
             ray_remote_args_fn: A function that returns a dictionary of remote args
                 passed to each map worker. The purpose of this argument is to generate
                 dynamic arguments for each actor/task, and will be called each time
@@ -60,6 +63,7 @@ class TaskPoolMapOperator(MapOperator):
             target_max_block_size,
             min_rows_per_bundle,
             supports_fusion,
+            map_task_kwargs,
             ray_remote_args_fn,
             ray_remote_args,
         )

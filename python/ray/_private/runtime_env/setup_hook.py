@@ -7,7 +7,7 @@ from typing import Any, Callable, Dict, Optional, Union
 import ray
 import ray._private.ray_constants as ray_constants
 import ray.cloudpickle as pickle
-from ray._private.utils import load_class
+from ray._common.utils import load_class
 from ray.runtime_env import RuntimeEnv
 
 logger = logging.getLogger(__name__)
