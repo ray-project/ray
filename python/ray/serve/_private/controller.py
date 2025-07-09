@@ -943,7 +943,7 @@ class ServeController:
 
         if source:
             app_statuses = self.application_state_manager.filter_app_statuses_by_source(
-                source=APIType(source)
+                source=source
             )
         else:
             app_statuses = self.application_state_manager.list_app_statuses()
