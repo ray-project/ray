@@ -27,11 +27,11 @@ from ray.train.v2._internal.state.schema import (
     TrainRunAttempt,
 )
 from ray.train.v2._internal.state.util import (
+    is_actor_alive,
     update_train_run_aborted,
     update_train_run_attempt_aborted,
 )
 from ray.train.v2._internal.util import time_monotonic
-from ray.util.state import get_actor
 
 logger = logging.getLogger(__name__)
 
@@ -39,8 +39,8 @@ logger = logging.getLogger(__name__)
 class TrainStateActor:
     def __init__(
         self,
-        enable_state_actor_polling: bool,
-        poll_interval_s: float,
+        enable_state_actor_polling: bool = False,
+        poll_interval_s: float = 30,
         get_actor_timeout_s: int = GET_ACTOR_TIMEOUT_S,
         controllers_to_poll_per_iteration: int = CONTROLLERS_TO_RECONCILE_PER_CHECK,
     ):
@@ -96,14 +96,13 @@ class TrainStateActor:
                 last_poll_run_id = run.id
                 if run.status.is_terminal():
                     continue
-                actor_state = get_actor(
-                    run.controller_actor_id, timeout=self._get_actor_timeout_s
-                )
-                num_sampled_runs += 1
-                if not actor_state or actor_state.state == "DEAD":
+                if not is_actor_alive(
+                    run.controller_actor_id, self._get_actor_timeout_s
+                ):
                     update_train_run_aborted(run, False)
                     self.create_or_update_train_run(run)
                     aborted_run_ids.append(run.id)
+                num_sampled_runs += 1
 
         # Abort run attempts.
         with self._run_attempts_lock:
@@ -131,11 +130,11 @@ class TrainStateActor:
                 )
                 latest_poll_time = time_monotonic()
 
-        thread = threading.Thread(target=_reconciliation_loop, daemon=True)
-        thread.start()
+        threading.Thread(target=_reconciliation_loop, daemon=True).start()
 
     def _get_latest_run_attempt(self, run_id: str) -> Optional[TrainRunAttempt]:
         with self._run_attempts_lock:
+            # NOTE: run_attempts is OrderedDict from attempt_id to TrainRunAttempt.
             run_attempts = self._run_attempts.get(run_id, {})
             if not run_attempts:
                 return None
