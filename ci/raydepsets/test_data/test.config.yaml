@@ -4,7 +4,7 @@ depsets:
       - python/requirements.txt
     constraints:
       - python/requirements_compiled_ray_test_py311_cpu.txt
-    output: ci/raydepsets/tests/requirements_compiled_test.txt
+    output: tests/requirements_compiled_test.txt
     operation: compile
   - name: general_depset
     operation: compile
