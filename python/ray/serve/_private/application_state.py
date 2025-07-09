@@ -329,6 +329,13 @@ class ApplicationState:
             deleting=checkpoint_data.deleting,
         )
 
+        # Restore route prefix and docs path from checkpointed deployments when
+        # the imperatively started application is restarting with controller.
+        if checkpoint_data.deployment_infos is not None:
+            self._route_prefix, self._docs_path = self._check_routes(
+                checkpoint_data.deployment_infos
+            )
+
     def _set_target_state(
         self,
         deployment_infos: Optional[Dict[str, DeploymentInfo]],

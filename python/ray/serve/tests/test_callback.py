@@ -12,7 +12,6 @@ import ray
 from ray import serve
 from ray._common.test_utils import wait_for_condition
 from ray.exceptions import RayActorError
-from ray.serve._private.test_utils import get_application_url
 from ray.serve._private.utils import call_function_from_import_path
 from ray.serve.config import HTTPOptions, gRPCOptions
 from ray.serve.context import _get_global_client
@@ -142,8 +141,7 @@ def test_callback(ray_instance, capsys):
             return "Not found custom headers"
 
     serve.run(Model.bind())
-    url = get_application_url()
-    resp = httpx.get(url)
+    resp = httpx.get("http://localhost:8000")
 
     assert resp.text == "custom_header_value"
 
