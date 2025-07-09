@@ -1,5 +1,5 @@
 from functools import partial
-from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Tuple, Union
 
 from ray.data._internal.compute import ComputeStrategy
 from ray.data._internal.logical.interfaces import LogicalPlan
@@ -240,47 +240,35 @@ class GroupedData:
 
         # The batch is the entire block, because we have batch_size=None for
         # map_batches() below.
-        def _apply_udf_to_groups(udf, batch, *args, **kwargs):
-            block = BlockAccessor.batch_to_block(batch)
-            block_accessor = BlockAccessor.for_block(block)
 
-            if self._key is None:
-                keys = []
-            elif isinstance(self._key, str):
-                keys = [self._key]
-            elif isinstance(self._key, List):
-                keys = self._key
-            else:
-                raise ValueError(
-                    f"Group-by keys are expected to either be a single column (str) "
-                    f"or a list of columns (got '{self._key}')"
-                )
+        # Extract the key information to avoid capturing the entire GroupedData object
+        if self._key is None:
+            keys = []
+        elif isinstance(self._key, str):
+            keys = [self._key]
+        elif isinstance(self._key, List):
+            keys = self._key
+        else:
+            raise ValueError(
+                f"Group-by keys are expected to either be a single column (str) "
+                f"or a list of columns (got '{self._key}')"
+            )
 
-            boundaries = block_accessor._get_group_boundaries_sorted(keys)
-
-            for start, end in zip(boundaries[:-1], boundaries[1:]):
-                group_block = block_accessor.slice(start, end, copy=False)
-                group_block_accessor = BlockAccessor.for_block(group_block)
-                # Convert block of each group to batch format here, because the
-                # block format here can be different from batch format
-                # (e.g. block is Arrow format, and batch is NumPy format).
-                group_batch = group_block_accessor.to_batch_format(batch_format)
-                applied = udf(group_batch, *args, **kwargs)
-                yield applied
-
+        # NOTE: It's crucial to make sure that UDF isn't captured `GroupedData`
+        #       object in its closure to ensure its serializability
+        #
+        # See https://github.com/ray-project/ray/issues/54280 for more details
         if isinstance(fn, CallableClass):
-
             class wrapped_fn:
                 def __init__(self, *args, **kwargs):
                     self.fn = fn(*args, **kwargs)
 
                 def __call__(self, batch, *args, **kwargs):
-                    yield from _apply_udf_to_groups(self.fn, batch, *args, **kwargs)
+                    yield from _apply_udf_to_groups(self.fn, batch, keys, batch_format, *args, **kwargs)
 
         else:
-
             def wrapped_fn(batch, *args, **kwargs):
-                yield from _apply_udf_to_groups(fn, batch, *args, **kwargs)
+                yield from _apply_udf_to_groups(fn, batch, keys, batch_format, *args, **kwargs)
 
         # Change the name of the wrapped function so that users see the name of their
         # function rather than `wrapped_fn` in the progress bar.
@@ -538,6 +526,32 @@ class GroupedData:
             If groupby key is ``None`` then the key part of return is omitted.
         """
         return self._aggregate_on(Std, on, ignore_nulls=ignore_nulls, ddof=ddof)
+
+
+def _apply_udf_to_groups(
+    udf: UserDefinedFunction[DataBatch, DataBatch],
+    batch: DataBatch,
+    keys: List[str],
+    batch_format: Optional[str],
+    *args: Any,
+    **kwargs: Any,
+) -> Iterator[DataBatch]:
+    """Apply UDF to groups within a batch. This function is defined at module level
+    to avoid capturing closures and make it serializable."""
+    block = BlockAccessor.batch_to_block(batch)
+    block_accessor = BlockAccessor.for_block(block)
+
+    boundaries = block_accessor._get_group_boundaries_sorted(keys)
+
+    for start, end in zip(boundaries[:-1], boundaries[1:]):
+        group_block = block_accessor.slice(start, end, copy=False)
+        group_block_accessor = BlockAccessor.for_block(group_block)
+        # Convert block of each group to batch format here, because the
+        # block format here can be different from batch format
+        # (e.g. block is Arrow format, and batch is NumPy format).
+        group_batch = group_block_accessor.to_batch_format(batch_format)
+        applied = udf(group_batch, *args, **kwargs)
+        yield applied
 
 
 # Backwards compatibility alias.
