@@ -3,7 +3,6 @@ import fnmatch
 import io
 import json
 import logging
-import math
 import os
 import pathlib
 import random
@@ -739,36 +738,6 @@ def generate_system_config_map(**kwargs):
         "_system_config": kwargs,
     }
     return ray_kwargs
-
-
-@ray.remote
-class Collector:
-    def __init__(self):
-        self.items = []
-
-    def add(self, item):
-        self.items.append(item)
-
-    def get(self):
-        return self.items
-
-
-def dicts_equal(dict1, dict2, abs_tol=1e-4):
-    """Compares to dicts whose values may be floating point numbers."""
-
-    if dict1.keys() != dict2.keys():
-        return False
-
-    for k, v in dict1.items():
-        if (
-            isinstance(v, float)
-            and isinstance(dict2[k], float)
-            and math.isclose(v, dict2[k], abs_tol=abs_tol)
-        ):
-            continue
-        if v != dict2[k]:
-            return False
-    return True
 
 
 def same_elements(elems_a, elems_b):
@@ -2005,23 +1974,6 @@ def reset_autoscaler_v2_enabled_cache():
     import ray.autoscaler.v2.utils as u
 
     u.cached_is_autoscaler_v2 = None
-
-
-def skip_flaky_core_test_premerge(reason: str):
-    """
-    Decorator to skip a test if it is flaky (e.g. in premerge)
-
-    Default we will skip the flaky test if not specified otherwise in
-    CI with CI_SKIP_FLAKY_TEST="0"
-    """
-    import pytest
-
-    def wrapper(func):
-        return pytest.mark.skipif(
-            os.environ.get("CI_SKIP_FLAKY_TEST", "1") == "1", reason=reason
-        )(func)
-
-    return wrapper
 
 
 def _get_library_usages() -> Set[str]:

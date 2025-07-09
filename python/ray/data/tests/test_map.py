@@ -3,9 +3,12 @@ import itertools
 import logging
 import math
 import os
+import random
 import threading
 import time
+from asyncio import AbstractEventLoop
 from typing import Iterator, Literal
+from unittest.mock import Mock, patch
 
 import numpy as np
 import pandas as pd
@@ -26,6 +29,10 @@ from ray.data._internal.execution.interfaces.ref_bundle import (
     _ref_bundles_iterator_to_block_refs_list,
 )
 from ray.data._internal.execution.operators.actor_pool_map_operator import _MapWorker
+from ray.data._internal.planner.plan_udf_map_op import (
+    _generate_transform_fn_for_async_map,
+    _MapActorContext,
+)
 from ray.data.context import DataContext
 from ray.data.exceptions import UserCodeException
 from ray.data.tests.conftest import *  # noqa
@@ -361,14 +368,25 @@ def test_concurrency(shutdown_only):
         ds.map(UDFClass).take_all()
 
 
-def test_flat_map_generator(ray_start_regular_shared):
+@pytest.mark.parametrize("udf_kind", ["gen", "func"])
+def test_flat_map(ray_start_regular_shared, udf_kind):
     ds = ray.data.range(3)
 
-    def map_generator(item: dict) -> Iterator[int]:
-        for _ in range(2):
-            yield {"id": item["id"] + 1}
+    if udf_kind == "gen":
 
-    assert sorted(extract_values("id", ds.flat_map(map_generator).take())) == [
+        def _udf(item: dict) -> Iterator[int]:
+            for _ in range(2):
+                yield {"id": item["id"] + 1}
+
+    elif udf_kind == "func":
+
+        def _udf(item: dict) -> dict:
+            return [{"id": item["id"] + 1} for _ in range(2)]
+
+    else:
+        pytest.fail(f"Invalid udf_kind: {udf_kind}")
+
+    assert sorted(extract_values("id", ds.flat_map(_udf).take())) == [
         1,
         1,
         2,
@@ -1739,22 +1757,33 @@ def test_nonserializable_map_batches(shutdown_only):
         x.map_batches(lambda _: lock).take(1)
 
 
-def test_map_batches_async_generator(shutdown_only):
+@pytest.mark.parametrize("udf_kind", ["coroutine", "async_gen"])
+def test_async_map_batches(shutdown_only, udf_kind):
     ray.shutdown()
     ray.init(num_cpus=10)
-
-    async def sleep_and_yield(i):
-        await asyncio.sleep(i % 5)
-        return {"input": [i], "output": [2**i]}
 
     class AsyncActor:
         def __init__(self):
             pass
 
-        async def __call__(self, batch):
-            tasks = [asyncio.create_task(sleep_and_yield(i)) for i in batch["id"]]
-            for task in tasks:
-                yield await task
+        if udf_kind == "async_gen":
+
+            async def __call__(self, batch):
+                for i in batch["id"]:
+                    await asyncio.sleep((i % 5) / 100)
+                    yield {"input": [i], "output": [2**i]}
+
+        elif udf_kind == "coroutine":
+
+            async def __call__(self, batch):
+                await asyncio.sleep(random.randint(0, 5) / 100)
+                return {
+                    "input": list(batch["id"]),
+                    "output": [2**i for i in batch["id"]],
+                }
+
+        else:
+            pytest.fail(f"Unknown udf_kind: {udf_kind}")
 
     n = 10
     ds = ray.data.range(n, override_num_blocks=2)
@@ -1773,30 +1802,35 @@ def test_map_batches_async_generator(shutdown_only):
     )
 
 
-def test_flat_map_async_generator(shutdown_only):
-    async def fetch_data(id):
-        return {"id": id}
-
+@pytest.mark.parametrize("udf_kind", ["coroutine", "async_gen"])
+def test_async_flat_map(shutdown_only, udf_kind):
     class AsyncActor:
         def __init__(self):
             pass
 
-        async def __call__(self, row):
-            id = row["id"]
-            task1 = asyncio.create_task(fetch_data(id))
-            task2 = asyncio.create_task(fetch_data(id + 1))
-            print(f"yield task1: {id}")
-            yield await task1
-            print(f"sleep: {id}")
-            await asyncio.sleep(id % 5)
-            print(f"yield task2: {id}")
-            yield await task2
+        if udf_kind == "async_gen":
+
+            async def __call__(self, row):
+                id = row["id"]
+                yield {"id": id}
+                await asyncio.sleep(random.randint(0, 5) / 100)
+                yield {"id": id + 1}
+
+        elif udf_kind == "coroutine":
+
+            async def __call__(self, row):
+                id = row["id"]
+                await asyncio.sleep(random.randint(0, 5) / 100)
+                return [{"id": id}, {"id": id + 1}]
+
+        else:
+            pytest.fail(f"Unknown udf_kind: {udf_kind}")
 
     n = 10
     ds = ray.data.from_items([{"id": i} for i in range(0, n, 2)])
     ds = ds.flat_map(AsyncActor, concurrency=1, max_concurrency=2)
     output = ds.take_all()
-    assert sorted(extract_values("id", output)) == list(range(0, n)), output
+    assert sorted(extract_values("id", output)) == list(range(n))
 
 
 def test_map_batches_async_exception_propagation(shutdown_only):
@@ -1859,6 +1893,196 @@ def test_map_batches_async_generator_fast_yield(shutdown_only):
     # Because all tasks are submitted almost simultaneously,
     # the output order may be different compared to the original input.
     assert len(output) == len(expected_output), (len(output), len(expected_output))
+
+
+class TestGenerateTransformFnForAsyncMap:
+    @pytest.fixture
+    def mock_actor_async_ctx(self):
+        _map_actor_ctx = _MapActorContext(Mock(), Mock(), is_async=True)
+
+        loop: AbstractEventLoop = _map_actor_ctx.udf_map_asyncio_loop
+        assert loop is not None
+
+        with patch("ray.data._map_actor_context", _map_actor_ctx):
+
+            yield _map_actor_ctx
+
+            loop.call_soon_threadsafe(loop.stop)
+            _map_actor_ctx.udf_map_asyncio_thread.join()
+
+    def test_non_coroutine_function_assertion(self):
+        """Test that non-coroutine function raises assertion error."""
+
+        def sync_fn(x):
+            return x
+
+        validate_fn = Mock()
+
+        with pytest.raises(ValueError, match="Expected a coroutine function"):
+            _generate_transform_fn_for_async_map(
+                sync_fn, validate_fn, max_concurrency=1
+            )
+
+    def test_zero_max_concurrent_batches_assertion(self):
+        """Test that zero max_concurrent_batches raises assertion error."""
+
+        async def async_fn(x):
+            yield x
+
+        validate_fn = Mock()
+
+        with pytest.raises(AssertionError):
+            _generate_transform_fn_for_async_map(
+                async_fn, validate_fn, max_concurrency=0
+            )
+
+    def test_empty_input(self, mock_actor_async_ctx):
+        """Test with empty input iterator."""
+
+        async def async_fn(x):
+            yield x
+
+        validate_fn = Mock()
+
+        transform_fn = _generate_transform_fn_for_async_map(
+            async_fn, validate_fn, max_concurrency=2
+        )
+
+        task_context = Mock()
+        assert list(transform_fn([], task_context)) == []
+        validate_fn.assert_not_called()
+
+    @pytest.mark.parametrize("udf_kind", ["coroutine", "async_gen"])
+    def test_basic_async_processing(self, udf_kind, mock_actor_async_ctx):
+        """Test basic async processing with order preservation."""
+
+        if udf_kind == "async_gen":
+
+            async def async_fn(x):
+                # Randomly slow-down UDFs (capped by 5ms)
+                delay = random.randint(0, 5) / 1000
+                await asyncio.sleep(delay)
+                yield x
+
+        elif udf_kind == "coroutine":
+
+            async def async_fn(x):
+                # Randomly slow-down UDFs (capped by 5ms)
+                delay = random.randint(0, 5) / 1000
+                await asyncio.sleep(delay)
+                return x
+
+        else:
+            pytest.fail(f"Unrecognized udf_kind ({udf_kind})")
+
+        validate_fn = Mock()
+
+        transform_fn = _generate_transform_fn_for_async_map(
+            async_fn, validate_fn, max_concurrency=100
+        )
+
+        N = 10_000
+
+        task_context = Mock()
+        result = list(transform_fn(range(N), task_context))
+
+        assert result == list(range(N))
+        assert validate_fn.call_count == N
+
+    @pytest.mark.parametrize("result_len", [0, 5])
+    def test_basic_async_processing_with_iterator(
+        self,
+        result_len: int,
+        mock_actor_async_ctx,
+    ):
+        """Test UDF that yields multiple items per input."""
+
+        async def multi_yield_fn(x):
+            for i in range(result_len):
+                yield f"processed_{x}_{i}"
+
+        validate_fn = Mock()
+
+        transform_fn = _generate_transform_fn_for_async_map(
+            multi_yield_fn, validate_fn, max_concurrency=2
+        )
+
+        task_context = Mock()
+
+        input_seq = [1, 2]
+
+        # NOTE: Outputs are expected to match input sequence ordering
+        expected = [f"processed_{x}_{i}" for x in input_seq for i in range(result_len)]
+
+        assert list(transform_fn(input_seq, task_context)) == expected
+
+    def test_concurrency_limiting(self, mock_actor_async_ctx, restore_data_context):
+        """Test that concurrency is properly limited."""
+        max_concurrency = 10
+
+        concurrent_task_counter = 0
+
+        async def async_fn(x):
+            # NOTE: This is safe, since event-loop is single-threaded
+            nonlocal concurrent_task_counter
+            concurrent_task_counter += 1
+
+            assert concurrent_task_counter <= max_concurrency
+
+            yield x
+
+            # NOTE: We're doing sleep here to interrupt the task and yield
+            #       event loop to the next one (otherwise tasks will simply be
+            #       completed sequentially)
+            await asyncio.sleep(0.001)
+
+            concurrent_task_counter -= 1
+
+        validate_fn = Mock()
+
+        transform_fn = _generate_transform_fn_for_async_map(
+            async_fn, validate_fn, max_concurrency=max_concurrency
+        )
+
+        task_context = Mock()
+        result = list(transform_fn(range(10_000), task_context))
+        assert len(result) == 10_000
+
+    @pytest.mark.parametrize("failure_kind", ["udf", "validation"])
+    def test_exception_in_udf(
+        self,
+        failure_kind: str,
+        mock_actor_async_ctx,
+    ):
+        """Test exception handling in UDF."""
+
+        udf_failure_msg = "UDF failure"
+        validation_failure_msg = "Validation failure"
+
+        async def failing_async_fn(x):
+            if failure_kind == "udf" and x == 2:
+                raise ValueError(udf_failure_msg)
+            yield x
+
+        def validate_fn(x):
+            if failure_kind == "validation" and x == 2:
+                raise ValueError(validation_failure_msg)
+
+        transform_fn = _generate_transform_fn_for_async_map(
+            failing_async_fn, validate_fn, max_concurrency=2
+        )
+
+        task_context = Mock()
+
+        if failure_kind == "udf":
+            expected_exception_msg = udf_failure_msg
+        elif failure_kind == "validation":
+            expected_exception_msg = validation_failure_msg
+        else:
+            pytest.fail(f"Unexpected failure type ({failure_kind})")
+
+        with pytest.raises(ValueError, match=expected_exception_msg):
+            list(transform_fn([1, 2, 3], task_context))
 
 
 @pytest.mark.parametrize("fn_type", ["func", "class"])

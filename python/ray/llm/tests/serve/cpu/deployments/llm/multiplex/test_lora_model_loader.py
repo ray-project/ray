@@ -25,7 +25,7 @@ class TestLoRAModelLoader:
         return LoraModelLoader("/tmp/ray/lora/cache", max_tries=3)
 
     @pytest.fixture
-    def llm_config(self):
+    def llm_config(self, disable_placement_bundles):
         """Common LLM config used across tests."""
         return LLMConfig(
             model_loading_config=ModelLoadingConfig(model_id="llm_model_id"),
