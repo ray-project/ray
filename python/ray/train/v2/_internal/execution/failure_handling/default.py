@@ -1,6 +1,10 @@
 import logging
 from typing import Union
 
+from ray.train.v2._internal.exceptions import (
+    WorkerGroupStartupFailedError,
+    WorkerGroupStartupTimeoutError,
+)
 from ray.train.v2._internal.execution.failure_handling import (
     FailureDecision,
     FailurePolicy,
@@ -12,6 +16,12 @@ from ray.train.v2._internal.execution.worker_group import (
 from ray.train.v2.api.config import FailureConfig
 
 logger = logging.getLogger(__name__)
+
+
+RETRYABLE_SCHEDULING_ERRORS = (
+    WorkerGroupStartupFailedError,
+    WorkerGroupStartupTimeoutError,
+)
 
 
 class DefaultFailurePolicy(FailurePolicy):
@@ -30,6 +40,12 @@ class DefaultFailurePolicy(FailurePolicy):
 
         if isinstance(worker_group_status, WorkerGroupSchedulingStatus):
             self._schedule_failures += 1
+            if not isinstance(worker_group_status.error, RETRYABLE_SCHEDULING_ERRORS):
+                logger.info(
+                    "Decided to terminate the scheduling operation, since the scheduling failure is not retryable, "
+                    f"Error: {worker_group_status.get_error_string()}"
+                )
+                return FailureDecision.RAISE
             if (
                 self.failure_config.scheduling_failure_limit != -1
                 and self._schedule_failures
