@@ -22,7 +22,7 @@ for nb in \
   "04 Deploy_multiple_mcp_stdio_docker_images_with_ray_serve" \
   "05 (Optional) Build_docker_image_for_mcp_server"
 do
-  python ci/nb2py.py "${nb}.ipynb" "${nb}.py"
+  python ci/nb2py.py "${nb}.ipynb" "${nb}.py" --ignore-cmds
   python "${nb}.py"
   rm "${nb}.py"
 done
