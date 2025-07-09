@@ -218,6 +218,8 @@ install_pip_packages() {
   # shellcheck disable=SC2262
   alias pip="python -m pip"
 
+  pip install "pip>=25.0"
+
   # Array to hold all requirements files to install later
   requirements_files=()
   # Single packages to install in sync with files
@@ -349,7 +351,7 @@ install_pip_packages() {
   # Generate the pip command with collected requirements files
   pip_cmd="pip install -U -c ${WORKSPACE_DIR}/python/requirements.txt"
 
-  if [[ -f "${WORKSPACE_DIR}/python/requirements_compiled.txt" && "${OSTYPE}" != "msys" ]]; then
+  if [[ "${OSTYPE}" != "msys" ]]; then
     # On Windows, some pinned dependencies are not built for win, so we
     # skip this until we have a good wy to resolve cross-platform dependencies.
     pip_cmd+=" -c ${WORKSPACE_DIR}/python/requirements_compiled.txt"
@@ -428,8 +430,18 @@ install_dependencies() {
     "${SCRIPT_DIR}"/install-hdfs.sh
   fi
 
-  if [[ "${MINIMAL_INSTALL:-}" != "1" && "${SKIP_PYTHON_PACKAGES:-}" != "1" ]]; then
-    install_pip_packages
+  if [[ "${SKIP_PYTHON_PACKAGES:-}" != 1 ]]; then
+    if [[ "${RAY_MACOS_TEST_INSTALL-}" == 1 ]]; then
+      # CC=gcc retry_pip_install pip install -Ur "${WORKSPACE_DIR}/python/requirements_macos_test.txt" \
+      #   -c "${WORKSPACE_DIR}/python/requirements_compiled.txt"
+      python -m pip install "pip==25.1.1" "setuptools==75.8.0"
+      CC=gcc retry_pip_install python -m pip install -U \
+        -r "${WORKSPACE_DIR}/python/requirements.txt" \
+        -r "${WORKSPACE_DIR}/python/requirements/test-requirements.txt" \
+        -c "${WORKSPACE_DIR}/python/requirements_compiled.txt"
+    elif [[ "${MINIMAL_INSTALL:-}" != "1" ]]; then
+      install_pip_packages
+    fi
   fi
 
   install_thirdparty_packages
