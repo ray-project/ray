@@ -872,30 +872,33 @@ class GlobalState:
         max_value_limit = cluster_config.max_resources.get(key, default=sys.maxsize)
         return min(max_value, max_value_limit)
 
-    def get_max_resources_from_cluster_config(self) -> Dict[str, Optional[int]]:
+    def get_max_resources_from_cluster_config(self) -> Optional[Dict[str, int]]:
         """Get the maximum available resources for all resource types from cluster config.
-        CPU, GPU, TPU are always included in the results.
 
         Returns:
             A dictionary mapping resource name to the maximum quantity of that
             resource that could be available in the cluster based on the cluster config.
-            Returns None for a resource if it's not available or unlimited.
+            Returns None if the config is not available.
+            Values in the dictionary default to 0 if there is no such resource.
         """
-        all_resource_keys = {"CPU", "GPU", "TPU"}
+        all_resource_keys = set()
 
         config = self.get_cluster_config()
         if config is None:
-            # Return CPU/GPU/TPU as None when no config is available
-            return {key: None for key in all_resource_keys}
+            return None
 
         if config.node_group_configs:
             for node_group_config in config.node_group_configs:
                 all_resource_keys.update(node_group_config.resources.keys())
+        if len(all_resource_keys) == 0:
+            return None
 
-        return {
-            key: self._calculate_max_resource_from_cluster_config(config, key)
-            for key in all_resource_keys
-        }
+        result = {}
+        for key in all_resource_keys:
+            max_value = self._calculate_max_resource_from_cluster_config(config, key)
+            result[key] = max_value if max_value is not None else 0
+
+        return result
 
 
 state = GlobalState()
