@@ -576,6 +576,24 @@ def make_sure_dashboard_http_port_unused():
     yield
 
 
+class FakeTime:
+    def __init__(self):
+        self._value = 0.0
+
+    def __call__(self):
+        return self._value
+
+    def advance(self, seconds):
+        self._value += seconds
+
+
+@pytest.fixture
+def fake_time():
+    clock = FakeTime()
+    with mock.patch("time.time", clock):
+        yield clock
+
+
 @pytest.fixture(scope="module")
 def disable_cache_fixture():
     with _disable_cache_for_tests():
