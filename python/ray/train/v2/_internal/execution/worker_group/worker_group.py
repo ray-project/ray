@@ -23,6 +23,7 @@ from ray.train.v2._internal.constants import (
     get_env_vars_to_propagate,
 )
 from ray.train.v2._internal.exceptions import (
+    InsufficientClusterResourcesError,
     WorkerGroupStartupFailedError,
     WorkerGroupStartupTimeoutError,
     WorkerHealthCheckFailedError,
@@ -231,7 +232,7 @@ class WorkerGroup:
                         f"Insufficient cluster resources. Worker requires {total_required_amount} "
                         f"{resource_name}, but cluster only has {available_amount} available."
                     )
-                    raise WorkerGroupStartupFailedError(error_msg)
+                    raise InsufficientClusterResourcesError(error_msg)
 
     def _start_impl(
         self,

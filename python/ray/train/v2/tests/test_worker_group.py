@@ -15,6 +15,7 @@ from ray.train.v2._internal.constants import (
     WORKER_HEALTH_CHECK_TIMEOUT_S_ENV_VAR,
 )
 from ray.train.v2._internal.exceptions import (
+    InsufficientClusterResourcesError,
     WorkerGroupStartupFailedError,
     WorkerGroupStartupTimeoutError,
     WorkerHealthCheckFailedError,
@@ -186,7 +187,7 @@ def test_insufficient_cluster_resources_startup_failure(monkeypatch):
 
     # This should fail during startup due to insufficient resources
     with pytest.raises(
-        WorkerGroupStartupFailedError, match="Insufficient cluster resources"
+        InsufficientClusterResourcesError, match="Insufficient cluster resources"
     ):
         wg._start()
 
@@ -582,7 +583,7 @@ def test_check_cluster_resources_and_raise_if_insufficient(monkeypatch):
 
     # Test case 2: Insufficient CPU resources - should raise
     with pytest.raises(
-        WorkerGroupStartupFailedError, match="Insufficient cluster resources"
+        InsufficientClusterResourcesError, match="Insufficient cluster resources"
     ):
         wg._check_cluster_resources_and_raise_if_insufficient(
             resources_per_worker={"CPU": 3.0},
@@ -591,7 +592,7 @@ def test_check_cluster_resources_and_raise_if_insufficient(monkeypatch):
 
     # Test case 3: Insufficient GPU resources - should raise
     with pytest.raises(
-        WorkerGroupStartupFailedError, match="Insufficient cluster resources"
+        InsufficientClusterResourcesError, match="Insufficient cluster resources"
     ):
         wg._check_cluster_resources_and_raise_if_insufficient(
             resources_per_worker={"GPU": 2.0},
@@ -600,7 +601,7 @@ def test_check_cluster_resources_and_raise_if_insufficient(monkeypatch):
 
     # Test case 4: Missing resource type in cluster - should raise
     with pytest.raises(
-        WorkerGroupStartupFailedError, match="Insufficient cluster resources"
+        InsufficientClusterResourcesError, match="Insufficient cluster resources"
     ):
         wg._check_cluster_resources_and_raise_if_insufficient(
             resources_per_worker={"TPU": 1.0},
@@ -615,7 +616,7 @@ def test_check_cluster_resources_and_raise_if_insufficient(monkeypatch):
     )
 
     with pytest.raises(
-        WorkerGroupStartupFailedError, match="Insufficient cluster resources"
+        InsufficientClusterResourcesError, match="Insufficient cluster resources"
     ):
         wg._check_cluster_resources_and_raise_if_insufficient(
             resources_per_worker={"GPU": 1.0}, num_workers=1
