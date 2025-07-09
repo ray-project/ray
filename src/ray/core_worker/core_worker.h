@@ -1309,6 +1309,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Mark this worker is exiting.
   void SetIsExiting();
 
+  /// Check if the worker should exit based on idle state.
+  /// This method is used by the shutdown executor to implement the idle checking logic.
+  bool ShouldWorkerExit() const;
+
   /// Add task log info for a task when it starts executing.
   ///
   /// It's an no-op in local mode.
