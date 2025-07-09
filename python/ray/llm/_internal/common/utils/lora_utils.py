@@ -427,7 +427,6 @@ class _LoraModelLoader:
             lora_mirror_config.bucket_uri,
             model_local_path,
             timeout=self.download_timeout_s,
-            sync_args=lora_mirror_config.sync_args,
         )
         return model_local_path
 
@@ -436,7 +435,6 @@ class _LoraModelLoader:
         bucket_uri: str,
         local_path: str,
         timeout: Optional[float] = None,
-        sync_args: Optional[List[str]] = None,
     ):
         """Sync from bucket_uri to local_path.
 

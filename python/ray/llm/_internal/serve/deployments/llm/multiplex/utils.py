@@ -6,7 +6,7 @@ LoRA abstractions from common/lora_utils.py. This ensures clean separation
 between generic and serve-specific concerns.
 """
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 from filelock import FileLock
 
@@ -35,7 +35,6 @@ def sync_model(
     bucket_uri: str,
     local_path: str,
     timeout: Optional[float] = None,
-    sync_args: Optional[List[str]] = None,
 ):
     """Sync from bucket_uri to local_path.
 

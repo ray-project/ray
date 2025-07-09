@@ -85,7 +85,6 @@ class LoraMirrorConfig(BaseModelExtended):
     lora_model_id: str
     bucket_uri: str
     max_total_tokens: Optional[int]
-    sync_args: Optional[List[str]] = None
 
     @field_validator("bucket_uri")
     @classmethod
