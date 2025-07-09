@@ -97,6 +97,7 @@ class GroupedData:
         self,
         fn: UserDefinedFunction[DataBatch, DataBatch],
         *,
+        zero_copy_batch: bool = False,
         compute: Union[str, ComputeStrategy] = None,
         batch_format: Optional[str] = "default",
         fn_args: Optional[Iterable[Any]] = None,
@@ -287,7 +288,7 @@ class GroupedData:
             #       back-n-forth between batch and block formats (instead we convert
             #       once per group inside the method applying the UDF itself)
             batch_format=None,
-            zero_copy_batch=False,
+            zero_copy_batch=zero_copy_batch,
             fn_args=fn_args,
             fn_kwargs=fn_kwargs,
             fn_constructor_args=fn_constructor_args,
