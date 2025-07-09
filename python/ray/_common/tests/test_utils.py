@@ -22,7 +22,6 @@ from ray._common.utils import (
     get_system_memory,
 )
 
-
 # Optional imports for testing
 try:
     import psutil
