@@ -614,8 +614,6 @@ assert(ray.get([task1.remote(), task2.remote(), task3.remote(), task4.remote()])
         run_string_as_driver_nonblocking(driver_script)
         wait_for_condition(tasks_run)
 
-        reached_threshold = False
-
         def all_tasks_scheduled():
             status = get_cluster_status(gcs_address)
             return len(status.active_nodes) == expected_nodes
