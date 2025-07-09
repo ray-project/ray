@@ -3,15 +3,12 @@ from collections import deque
 from typing import Iterable, List
 
 from ray.data._internal.logical.interfaces import LogicalOperator, LogicalPlan, Rule
-from ray.data._internal.logical.operators.map_operator import (
-    MapBatches,
-    MapRows,
-    Project,
-)
 from ray.data._internal.logical.operators.n_ary_operator import Union
 from ray.data._internal.logical.operators.one_to_one_operator import (
+    AbstractOneToOne,
     Limit,
 )
+from ray.data._internal.logical.operators.read_operator import Read
 
 
 class LimitPushdownRule(Rule):
@@ -78,7 +75,11 @@ class LimitPushdownRule(Rule):
         new_input_into_limit = limit_op.input_dependency
         ops_between_new_input_and_limit: List[LogicalOperator] = []
 
-        while isinstance(new_input_into_limit, (Project, MapRows, MapBatches)):
+        while (
+            isinstance(new_input_into_limit, AbstractOneToOne)
+            and not isinstance(new_input_into_limit, Read)
+            and not new_input_into_limit.can_modify_num_rows()
+        ):
             new_input_into_limit_copy = copy.copy(new_input_into_limit)
             ops_between_new_input_and_limit.append(new_input_into_limit_copy)
             new_input_into_limit = new_input_into_limit.input_dependency

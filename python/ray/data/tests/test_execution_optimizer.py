@@ -1108,6 +1108,18 @@ def test_limit_pushdown_conservative(ray_start_regular_shared_2_cpus):
         [{"id": i} for i in range(5)],
     )
 
+    # Test limit pushdown between two Map operators.
+    ds = ray.data.range(100, override_num_blocks=100).map(f1).limit(1).map(f2)
+    # Limit operators get pushed down in the logical plan optimization,
+    # then fused together.
+    _check_valid_plan_and_result(
+        ds,
+        "Read[ReadRange] -> Limit[limit=1] -> MapRows[Map(f1)] -> MapRows[Map(f2)]",
+        [{"id": 0}],
+    )
+    # Map operators only get fused in the optimized physical plan, not the logical plan.
+    assert "Map(f1)->Map(f2)" in ds.stats()
+
 
 def test_limit_pushdown_union(ray_start_regular_shared_2_cpus):
     """Test limit pushdown through union operations."""
