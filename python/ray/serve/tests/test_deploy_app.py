@@ -6,7 +6,6 @@ import httpx
 import pytest
 
 import ray
-import ray._private.state
 import ray.actor
 from ray import serve
 from ray._common.test_utils import SignalActor, wait_for_condition
@@ -464,9 +463,11 @@ def test_deploy_multi_app_deployments_removed(serve_instance):
     # Redeploy with world graph
     test_config.applications[0].import_path = world_import_path
     client.deploy_apps(test_config)
+    wait_for_condition(check_running, app_name="app1", timeout=15)
+    url = get_application_url("HTTP", app_name="app1")
 
     wait_for_condition(check_app, deployments=world_deployments)
-    wait_for_condition(lambda: httpx.get(f"{url}").text == "wonderful world")
+    wait_for_condition(lambda: httpx.post(f"{url}").text == "wonderful world")
 
 
 @pytest.mark.parametrize(
@@ -496,7 +497,7 @@ def test_deploy_config_update_heavyweight(serve_instance, field_to_update: str):
     client.deploy_apps(ServeDeploySchema.parse_obj(config_template))
     wait_for_condition(check_running, timeout=15)
     url = get_application_url("HTTP", app_name=SERVE_DEFAULT_APP_NAME)
-    pid1, _ = httpx.get(f"{url}/f").json()
+    pid1, _ = httpx.get(f"{url}").json()
 
     if field_to_update == "import_path":
         config_template["applications"][0][
@@ -513,10 +514,11 @@ def test_deploy_config_update_heavyweight(serve_instance, field_to_update: str):
 
     client.deploy_apps(ServeDeploySchema.parse_obj(config_template))
     wait_for_condition(check_running, timeout=15)
+    url = get_application_url("HTTP", app_name=SERVE_DEFAULT_APP_NAME)
 
     pids = []
     for _ in range(4):
-        pids.append(httpx.get(f"{url}/f").json()[0])
+        pids.append(httpx.get(f"{url}").json()[0])
     assert pid1 not in pids
 
 

@@ -549,9 +549,12 @@ def test_deploy_application_with_same_name(serve_instance):
 
     # Redeploy with same app to update route prefix
     serve.run(Model1.bind(), name="app", route_prefix="/my_app")
-    url_new = get_application_url("HTTP", app_name="app", route_prefix="/my_app")
+    url_new = get_application_url("HTTP", app_name="app")
     # Reread the url to get the correct port value
-    url = get_application_url("HTTP", app_name="app", exclude_route_prefix=True)
+    old_url_route_prefix = "/"
+    url = {
+        get_application_url("HTTP", app_name="app", exclude_route_prefix=True)
+    } + old_url_route_prefix
 
     assert httpx.get(url_new).text == "got model1"
     assert httpx.get(url).status_code == 404
