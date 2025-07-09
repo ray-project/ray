@@ -1224,9 +1224,9 @@ def build_serve_application(
                 )
             )
         if num_ingress_deployments > 1:
-            raise RayServeException(
-                f'Found multiple FastAPI deployments in application "{built_app.name}".'
-                "Please only include one deployment with @serve.ingress"
+            return None, (
+                f'Found multiple FastAPI deployments in application "{built_app.name}". '
+                "Please only include one deployment with @serve.ingress "
                 "in your application to avoid this issue."
             )
         return deploy_args_list, None
