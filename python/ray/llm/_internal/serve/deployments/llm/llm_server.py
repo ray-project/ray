@@ -408,7 +408,7 @@ class ResponsePostprocessor:
 
 
 class LLMServer(_LLMServerBase):
-    """This is an abstraction layer to decouple the LLM engine from the ingress 
+    """This is an abstraction layer to decouple the LLM engine from the ingress
     deployment.
 
     It has a very similar API as the engine. Almost all of the abstractions are implemented by the engine. This class just a little bit more logic on top:
@@ -418,7 +418,7 @@ class LLMServer(_LLMServerBase):
     3. Batching in case of streaming (only for chat and completions).
     4. Telemetry reporting.
     """
-    
+
     _default_engine_cls = VLLMEngine
 
     async def __init__(
@@ -448,19 +448,17 @@ class LLMServer(_LLMServerBase):
         if self._engine_cls is not None:
             self.engine = self._engine_cls(self._llm_config)
             await asyncio.wait_for(self._start_engine(), timeout=ENGINE_START_TIMEOUT_S)
-            
+
         self._init_multiplex_loader(model_downloader)
         self.response_postprocessor = ResponsePostprocessor()
-        
 
     def _init_multiplex_loader(
         self, model_downloader_cls: Optional[Type[LoraModelLoader]] = None
     ):
         """Initialize the multiplex loader."""
-        
+
         model_downloader_cls = model_downloader_cls or LoraModelLoader
         mx_config = self._llm_config.multiplex_config()
-
 
         if mx_config is not None:
             model_downloader = model_downloader_cls(
@@ -483,7 +481,6 @@ class LLMServer(_LLMServerBase):
                 raise ValueError("LoRA config is not set in the LLMConfig")
 
             self._load_model = _load_model
-
 
     def _get_default_engine_class(self) -> Type[LLMEngine]:
         """Helper to load the engine class from the environment variable.
@@ -539,7 +536,6 @@ class LLMServer(_LLMServerBase):
             stream_batching_interval_ms = MODEL_RESPONSE_BATCH_TIMEOUT_MS
         return stream_batching_interval_ms if stream else None
 
-
     def _maybe_add_request_id_to_request(
         self, request: Union[ChatCompletionRequest, CompletionRequest, EmbeddingRequest]
     ) -> None:
@@ -547,7 +543,6 @@ class LLMServer(_LLMServerBase):
         request_id = get_serve_request_id()
         if request_id:
             request.request_id = request_id
-
 
     async def _maybe_resolve_lora_from_multiplex(self) -> Optional[DiskMultiplexConfig]:
         """Handle the lora model for the request."""
@@ -558,13 +553,12 @@ class LLMServer(_LLMServerBase):
             disk_lora_model = await self._load_model(multiplexed_model_id)
             return disk_lora_model
 
-
     def _batch_output_stream(self, generator):
         return OpenAIResponseBatcher(
             generator,
             interval_ms=self._get_batch_interval_ms(),
         ).stream()
-        
+
     async def _process_llm_request(
         self, request: Union[ChatCompletionRequest, CompletionRequest], is_chat: bool
     ) -> Union[LLMChatResponse, LLMCompletionsResponse]:
@@ -595,7 +589,9 @@ class LLMServer(_LLMServerBase):
             )
 
         # 2. Predict using the engine
-        gen = self._predict(request_id=request.request_id, prompt=prompt, stream=request.stream)
+        gen = self._predict(
+            request_id=request.request_id, prompt=prompt, stream=request.stream
+        )
 
         # 3. Convert raw LLM responses to OpenAI format
         processor_method = (
