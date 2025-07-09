@@ -243,10 +243,10 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
                 ActorPoolMapOperator,
             )
 
-            return ActorPoolMapOperator.create(
-                map_transformer=map_transformer,
-                input_op=input_op,
-                data_context=data_context,
+            return ActorPoolMapOperator(
+                map_transformer,
+                input_op,
+                data_context,
                 target_max_block_size=target_max_block_size,
                 compute_strategy=compute_strategy,
                 name=name,

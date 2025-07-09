@@ -24,19 +24,19 @@ from ray.data._internal.execution.operators.actor_pool_map_operator import (
     ActorPoolMapOperator,
     _ActorPool,
     _ActorTaskSelector,
-    _shared_operator_registry,
+    _shared_actor_pool_registry,
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.util import make_ref_bundles
-from ray.data._internal.stats import Timer
 from ray.tests.conftest import *  # noqa
 from ray.types import ObjectRef
 
 
 @pytest.fixture
 def clean_registry():
+    """Fixture to clean shared registries between tests."""
     yield
-    _shared_operator_registry.shutdown()
+    _shared_actor_pool_registry.shutdown()
 
 
 @ray.remote
@@ -760,8 +760,8 @@ def test_actor_pool_fault_tolerance_e2e(ray_start_cluster, restore_data_context)
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 2}], indirect=True)
-def test_shared_key_actor_pool_operator_reuse(ray_start_regular, clean_registry):
-    """Test that ActorPoolMapOperator with the same shared_key are reused across dataset executions."""
+def test_shared_key_actor_pool_reuse(ray_start_regular, clean_registry):
+    """Test that ActorPoolMapOperator with the same shared_key share actor pools but remain separate operators."""
 
     @ray.remote
     class Counter:
@@ -793,9 +793,9 @@ def test_shared_key_actor_pool_operator_reuse(ray_start_regular, clean_registry)
         shared_key=shared_key,
     ).take_all()
 
-    operator1 = _shared_operator_registry.get(shared_key)
-    assert operator1 is not None
-    operator1_id = id(operator1)
+    shared_pool = _shared_actor_pool_registry.get(shared_key)
+    assert shared_pool is not None
+    shared_pool_id = id(shared_pool)
 
     count = ray.get(counter.get_count.remote())
     assert count == 1
@@ -808,13 +808,10 @@ def test_shared_key_actor_pool_operator_reuse(ray_start_regular, clean_registry)
         shared_key=shared_key,
     ).take_all()
 
-    # With the same shared_key, the operator should be reused
-    operator2 = _shared_operator_registry.get(shared_key)
-    assert operator2 is not None
-    operator2_id = id(operator2)
-
-    assert operator1_id == operator2_id
-    assert operator1 is operator2
+    shared_pool2 = _shared_actor_pool_registry.get(shared_key)
+    assert shared_pool2 is not None
+    assert id(shared_pool2) == shared_pool_id
+    assert shared_pool is shared_pool2
 
     count = ray.get(counter.get_count.remote())
     assert count == 1
@@ -825,8 +822,104 @@ def test_shared_key_actor_pool_operator_reuse(ray_start_regular, clean_registry)
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 2}], indirect=True)
+def test_shared_key_actor_pool_chaining(ray_start_regular, clean_registry):
+    """Test that chained operations with shared actor pools work without materialization."""
+
+    @ray.remote
+    class Counter:
+        def __init__(self):
+            self.count = 0
+
+        def increment(self):
+            self.count += 1
+
+        def get_count(self):
+            return self.count
+
+    counter = Counter.remote()
+
+    class UDFClass:
+        def __init__(self):
+            ray.get(counter.increment.remote())
+
+        def __call__(self, x):
+            return {"id": x["id"] + 1}
+
+    shared_key = "test_shared_key"
+
+    ds = ray.data.range(5)
+    result = (
+        ds.map_batches(
+            UDFClass,
+            batch_size=1,
+            compute=ray.data.ActorPoolStrategy(size=1),
+            shared_key=shared_key,
+        )
+        .map_batches(
+            UDFClass,
+            batch_size=1,
+            compute=ray.data.ActorPoolStrategy(size=1),
+            shared_key=shared_key,
+        )
+        .take_all()
+    )
+
+    shared_pool = _shared_actor_pool_registry.get(shared_key)
+    assert shared_pool is not None
+
+    count = ray.get(counter.get_count.remote())
+    assert count == 1
+
+    expected_result = [{"id": i + 2} for i in range(5)]
+    assert sorted(result, key=lambda x: x["id"]) == expected_result
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 2}], indirect=True)
+def test_shared_key_actor_pool_compatibility_error(ray_start_regular, clean_registry):
+    """Test that incompatible configurations raise an error when trying to reuse actor pools."""
+
+    class UDFClass:
+        def __call__(self, x):
+            return x
+
+    shared_key = "test_shared_key"
+
+    ds1 = ray.data.range(5)
+    ds1.map_batches(
+        UDFClass,
+        batch_size=1,
+        compute=ray.data.ActorPoolStrategy(size=1),
+        shared_key=shared_key,
+    ).take_all()
+
+    ds2 = ray.data.range(5)
+    with pytest.raises(
+        ValueError, match="Cannot reuse shared actor pool.*Compute strategy mismatch"
+    ):
+        ds2.map_batches(
+            UDFClass,
+            batch_size=1,
+            compute=ray.data.ActorPoolStrategy(size=2),
+            shared_key=shared_key,
+        ).take_all()
+
+    ds3 = ray.data.range(5)
+    with pytest.raises(
+        ValueError,
+        match="Cannot reuse shared actor pool.*Resource requirements mismatch",
+    ):
+        ds3.map_batches(
+            UDFClass,
+            batch_size=1,
+            compute=ray.data.ActorPoolStrategy(size=1),
+            shared_key=shared_key,
+            num_cpus=2,
+        ).take_all()
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 2}], indirect=True)
 def test_shared_registry_shutdown(ray_start_regular, clean_registry):
-    """Test that the shared operator registry is cleaned up when the process exits."""
+    """Test that the shared actor pool registry is cleaned up when the process exits."""
 
     class UDFClass:
         def __call__(self, x):
@@ -841,15 +934,16 @@ def test_shared_registry_shutdown(ray_start_regular, clean_registry):
         shared_key=shared_key,
     ).take_all()
 
-    op = _shared_operator_registry.get(shared_key)
-    actor_ids = [a._actor_id.hex() for a in op._actor_pool.get_running_actor_refs()]
+    pool = _shared_actor_pool_registry.get(shared_key)
+    assert pool is not None
+    actor_ids = [a._actor_id.hex() for a in pool.get_running_actor_refs()]
 
     # Simulate interpreter exit
-    _shared_operator_registry.shutdown()
+    _shared_actor_pool_registry.shutdown()
 
-    assert _shared_operator_registry.get(shared_key) is None
-    assert shared_key not in _shared_operator_registry._operators
-    assert shared_key not in _shared_operator_registry._usage_count
+    assert _shared_actor_pool_registry.get(shared_key) is None
+    assert shared_key not in _shared_actor_pool_registry._pools
+    assert shared_key not in _shared_actor_pool_registry._usage_count
 
     def _all_dead():
         info = ray.state.actors()

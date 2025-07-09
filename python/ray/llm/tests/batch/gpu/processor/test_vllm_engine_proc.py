@@ -332,9 +332,7 @@ def test_multi_turn_shared_engine(gpu_type, model_opt_125m):
         processor_config_2,
         preprocess=lambda row: dict(
             messages=[
-                {"role": "system", "content": "You are a calculator"},
-                {"role": "user", "content": f"{row['id']} ** 3 = ?"},
-                {"role": "assistant", "content": row["resp1"]},
+                {"role": "system", "content": "Based on the previous conversation"},
                 {"role": "user", "content": "What is this number minus 2?"},
             ],
             sampling_params=dict(
@@ -352,16 +350,13 @@ def test_multi_turn_shared_engine(gpu_type, model_opt_125m):
     ds = ray.data.range(60)
     ds = ds.map(lambda x: {"id": x["id"], "val": x["id"] + 5})
 
-    # First conversation turn. Materialize here to break the lineage so that
-    # the second turn does *not* depend on the logical operators of the first
-    # turn. This avoids cycles in the execution plan when the same vLLM engine
-    # is reused across processors.
-    ds_turn1 = processor1(ds).materialize()
-    ds_turn2 = processor2(ds_turn1).materialize()
+    ds_turn1 = processor1(ds)
+    ds_turn2 = processor2(ds_turn1)
 
     outs = ds_turn2.take_all()
-    print(outs)
+
     assert len(outs) == 60
+    print(outs)
     assert all("resp1" in out for out in outs)
     assert all("resp2" in out for out in outs)
 
