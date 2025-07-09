@@ -1,8 +1,5 @@
 from typing import TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional, Tuple
 
-import nixl._utils as nixl_utils
-from nixl._api import nixl_agent, nixl_agent_config
-
 import ray
 from ray._private.custom_types import TensorTransportEnum
 from ray._raylet import ObjectRef
@@ -17,6 +14,9 @@ if TYPE_CHECKING:
     import torch
 
     from ray._private import gpu_object_manager_util as util
+
+    import nixl._utils as nixl_utils
+    from nixl._api import nixl_agent, nixl_agent_config
 
 
 def _get_or_import_util():
@@ -39,6 +39,9 @@ class GPUObjectMeta(NamedTuple):
     # `ray.util.collective.types.Backend`.
     tensor_transport_backend: str
     tensor_meta: List[Tuple["torch.Size", "torch.dtype"]]
+    # The serialized descs and agent metadata for nixl.
+    nixl_serialized_descs: Optional[bytes] = None
+    nixl_agent_meta: Optional[bytes] = None
 
 
 class GPUObjectManager:
@@ -49,16 +52,18 @@ class GPUObjectManager:
         self.gpu_object_store: Dict[str, List["torch.Tensor"]] = {}
         # A dictionary that maps from owned object's ID to GPUObjectMeta.
         self.managed_gpu_object_metadata: Dict[str, GPUObjectMeta] = {}
+        # The agent when using nixl for transfer.
+        self.nixl_agent = None
 
-        self.agent = None
+    def init_nixl_agent(self) -> nixl_agent:
+        from nixl._api import nixl_agent, nixl_agent_config
 
-    def init_nixl_agent(self):
-        if self.agent is None:
+        if self.nixl_agent is None:
             agent_config = nixl_agent_config(backends=["UCX"])
             ctx = ray.get_runtime_context()
             actor_id = ctx.get_actor_id()
-            self.agent = nixl_agent(actor_id, agent_config)
-        return self.agent
+            self.nixl_agent = nixl_agent(actor_id, agent_config)
+        return self.nixl_agent
 
     def has_gpu_object(self, obj_id: str) -> bool:
         return obj_id in self.gpu_object_store
@@ -67,7 +72,6 @@ class GPUObjectManager:
         return self.gpu_object_store[obj_id]
 
     def add_gpu_object(self, obj_id: str, gpu_object: List["torch.Tensor"]):
-        self.init_nixl_agent()
         self.gpu_object_store[obj_id] = gpu_object
 
     def remove_gpu_object(self, obj_id: str):
@@ -142,7 +146,6 @@ class GPUObjectManager:
     def _send_gpu_object(
         self, communicator_name: str, src_actor: ActorHandle, obj_id: str, dst_rank: int
     ):
-        return
         # Send tensors stored in the `src_actor`'s GPU object store to the
         # destination rank `dst_rank`.
         util = _get_or_import_util()
@@ -157,12 +160,14 @@ class GPUObjectManager:
         obj_id: str,
         src_rank: int,
         tensor_meta: List[Tuple["torch.Size", "torch.dtype"]],
+        nixl_serialized_descs: Optional[bytes] = None,
+        nixl_agent_meta: Optional[bytes] = None,
     ):
         # Receive tensors from the source rank and store them in the
         # `dst_actor`'s GPU object store.
         util = _get_or_import_util()
         dst_actor.__ray_call__.remote(
-            util.__ray_recv__, communicator_name, obj_id, src_rank, tensor_meta
+            util.__ray_recv__, communicator_name, obj_id, src_rank, tensor_meta, nixl_serialized_descs, nixl_agent_meta
         )
 
     def fetch_gpu_object(self, obj_id: str):
@@ -228,6 +233,8 @@ class GPUObjectManager:
 
             src_actor = gpu_object_meta.src_actor
             tensor_meta = gpu_object_meta.tensor_meta
+            nixl_serialized_descs = gpu_object_meta.nixl_serialized_descs
+            nixl_agent_meta = gpu_object_meta.nixl_agent_meta
             communicators = get_collective_groups(
                 [src_actor, dst_actor], backend=gpu_object_meta.tensor_transport_backend
             )
@@ -265,5 +272,5 @@ class GPUObjectManager:
                 continue
             self._send_gpu_object(communicator.name, src_actor, arg.hex(), dst_rank)
             self._recv_gpu_object(
-                communicator.name, dst_actor, arg.hex(), src_rank, tensor_meta
+                communicator.name, dst_actor, arg.hex(), src_rank, tensor_meta, nixl_serialized_descs, nixl_agent_meta
             )
