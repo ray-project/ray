@@ -1068,6 +1068,16 @@ class ApplicationStateManager:
     def get_app_source(self, name: str) -> APIType:
         return self._application_states[name].api_type
 
+    def filter_app_statuses_by_source(
+        self, source: APIType
+    ) -> Dict[str, ApplicationStatusInfo]:
+        """Return a dictionary with {app name: application info}"""
+        return {
+            name: self._application_states[name].get_application_status_info()
+            for name in self._application_states
+            if self.get_app_source(name) is source
+        }
+
     def list_app_statuses(self) -> Dict[str, ApplicationStatusInfo]:
         """Return a dictionary with {app name: application info}"""
         return {
