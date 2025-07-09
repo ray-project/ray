@@ -78,7 +78,9 @@ def get_fake_engine_and_request(llm_config: LLMConfig, expected_out: List[str]):
     vllm_engine.model_config.max_model_len = 1
 
     engine_mock = Mock()
-    vllm_engine._engine_client = FakeVLLMEngine(engine_mock, get_fake_responses(*expected_out))
+    vllm_engine._engine_client = FakeVLLMEngine(
+        engine_mock, get_fake_responses(*expected_out)
+    )
 
     req = VLLMGenerationRequest(
         prompt="prompt",
