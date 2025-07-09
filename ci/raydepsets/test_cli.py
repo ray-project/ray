@@ -2,9 +2,11 @@ import pytest
 import sys
 import os
 from ci.raydepsets.cli import load, DependencySetManager
-from ci.raydepsets.config import get_current_directory
+from ci.raydepsets.workspace import Workspace
 from click.testing import CliRunner
 from unittest.mock import patch
+
+# update these tests to use the new workspace class
 
 
 def test_cli_load_fail_no_config():
@@ -13,25 +15,37 @@ def test_cli_load_fail_no_config():
     assert isinstance(result.exception, FileNotFoundError)
 
 
-def test_depdenecy_set_manager_init_happy():
+def test_workspace_init_happy():
+    workspace = Workspace()
+    assert workspace.dir is not None
+
+
+def test_dependency_set_manager_init_happy():
+    workspace = Workspace()
     manager = DependencySetManager(
         config_path="ci/raydepsets/test_data/test.config.yaml"
     )
     assert manager is not None
+    assert manager.workspace.dir == workspace.dir
     assert manager.config.depsets[0].name == "ray_base_test_depset"
     assert manager.config.depsets[0].operation == "compile"
     assert manager.config.depsets[0].requirements == [
-        os.path.join(get_current_directory(), "python/requirements.txt")
+        os.path.join(workspace.dir, "python/requirements.txt")
     ]
     assert manager.config.depsets[0].constraints == [
         os.path.join(
-            get_current_directory(),
-            "python/requirements_compiled_ray_test_py311_cpu.txt",
+            workspace.dir, "python/requirements_compiled_ray_test_py311_cpu.txt"
         )
     ]
     assert manager.config.depsets[0].output == os.path.join(
-        get_current_directory(), "ci/raydepsets/tests/requirements_compiled_test.txt"
+        workspace.dir, "ci/raydepsets/tests/requirements_compiled_test.txt"
     )
+
+
+def test_workspace_init_fail_no_dir():
+    os.environ.pop("BUILD_WORKSPACE_DIRECTORY")
+    with pytest.raises(Exception, match="BUILD_WORKSPACE_DIRECTORY is not set"):
+        Workspace()
 
 
 if __name__ == "__main__":

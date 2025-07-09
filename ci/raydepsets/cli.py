@@ -1,6 +1,6 @@
 import click
 from pathlib import Path
-from ci.raydepsets.config import load_config, Depset
+from ci.raydepsets.workspace import Workspace, Depset
 
 
 @click.group(name="raydepsets")
@@ -20,7 +20,8 @@ class DependencySetManager:
     def __init__(
         self, config_path: Path = Path(__file__).parent / "depset.config.yaml"
     ):
-        self.config = load_config(config_path)
+        self.workspace = Workspace()
+        self.config = self.workspace.load_config(config_path)
 
     def get_depset(self, name: str) -> Depset:
         for depset in self.config.depsets:

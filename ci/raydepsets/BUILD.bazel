@@ -4,7 +4,7 @@ py_library(
     name = "raydepsets_lib",
     srcs = [
         "cli.py",
-        "config.py",
+        "workspace.py",
     ],
     deps = [
         ci_require("click"),
