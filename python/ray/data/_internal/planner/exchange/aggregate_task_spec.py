@@ -3,6 +3,7 @@ from typing import List, Tuple, Union
 from ray.data._internal.planner.exchange.interfaces import ExchangeTaskSpec
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 from ray.data._internal.table_block import TableBlockAccessor
+from ray.data._internal.util import unify_block_metadata_schema
 from ray.data.aggregate import AggregateFn, AggregateFnV2, Count
 from ray.data.block import (
     Block,
@@ -66,7 +67,7 @@ class SortAggregateTaskSpec(ExchangeTaskSpec):
         from ray.data.block import BlockMetadataWithSchema
 
         meta_with_schema = BlockMetadataWithSchema.from_block(
-            block, stats=stats.build()
+            parts[0], stats=stats.build()
         )
         return parts + [meta_with_schema]
 

@@ -140,7 +140,7 @@ class SortTaskSpec(ExchangeTaskSpec):
         from ray.data.block import BlockMetadataWithSchema
 
         meta_with_schema = BlockMetadataWithSchema.from_block(
-            block, stats=stats.build()
+            out[0], stats=stats.build()
         )
         return out + [meta_with_schema]
 
