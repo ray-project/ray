@@ -153,7 +153,7 @@ def start_nccl_mock():
     tensor_patcher = mock.patch("torch.Tensor.is_cuda", True)
     tensor_patcher.start()
     tensor_allocator_patcher = mock.patch(
-        "ray.experimental.channel.torch_tensor_nccl_channel._torch_zeros_allocator",
+        "ray.experimental.channel.torch_tensor_accelerator_channel._torch_zeros_allocator",
         lambda shape, dtype: torch.zeros(shape, dtype=dtype),
     )
     tensor_allocator_patcher.start()
