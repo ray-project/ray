@@ -243,7 +243,6 @@ class GroupedData:
         # The batch is the entire block, because we have batch_size=None for
         # map_batches() below.
 
-        # Extract the key information to avoid capturing the entire GroupedData object
         if self._key is None:
             keys = []
         elif isinstance(self._key, str):
@@ -256,7 +255,7 @@ class GroupedData:
                 f"or a list of columns (got '{self._key}')"
             )
 
-        # NOTE: It's crucial to make sure that UDF isn't captured `GroupedData`
+        # NOTE: It's crucial to make sure that UDF isn't capturing `GroupedData`
         #       object in its closure to ensure its serializability
         #
         # See https://github.com/ray-project/ray/issues/54280 for more details
