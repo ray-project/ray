@@ -1,4 +1,4 @@
-// Copyright 2017 The Ray Authors.
+// Copyright 2025 The Ray Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -25,7 +25,7 @@ namespace core {
 class CoreWorker;
 
 /// Concrete implementation of ShutdownDependencies that executes actual
-/// shutdown operations for CoreWorker. NO COORDINATION WITHOUT CONTROL.
+/// shutdown operations for CoreWorker.
 class CoreWorkerShutdownExecutor : public ShutdownDependencies {
  public:
   /// Constructor with CoreWorker reference for accessing internals

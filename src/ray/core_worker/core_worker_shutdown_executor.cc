@@ -1,4 +1,4 @@
-// Copyright 2017 The Ray Authors.
+// Copyright 2025 The Ray Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -85,7 +85,6 @@ void CoreWorkerShutdownExecutor::ExecuteForceShutdown(const std::string &exit_ty
                                                       const std::string &detail) {
   RAY_LOG(WARNING) << "Executing force shutdown: " << exit_type << " - " << detail;
 
-  // Preserve current CoreWorker::ForceExit() behavior
   KillChildProcesses();
   DisconnectFromServices(exit_type, detail);
   QuickExit();
@@ -97,14 +96,12 @@ void CoreWorkerShutdownExecutor::ExecuteWorkerExit(const std::string &exit_type,
   RAY_LOG(INFO) << "Executing worker exit: " << exit_type << " - " << detail
                 << " (timeout: " << timeout_ms.count() << "ms)";
 
-  // Set exiting detail for compatibility
   {
     absl::MutexLock lock(&core_worker_->mutex_);
     RAY_CHECK_NE(detail, "");
     core_worker_->exiting_detail_ = std::optional<std::string>{detail};
   }
 
-  // Callback to shutdown after task draining
   auto shutdown_callback = [this, exit_type, detail]() {
     // To avoid problems, make sure shutdown is always called from the same
     // event loop each time.
@@ -121,7 +118,6 @@ void CoreWorkerShutdownExecutor::ExecuteWorkerExit(const std::string &exit_type,
         "CoreWorker.Shutdown");
   };
 
-  // Callback to drain objects once all pending tasks have been drained
   auto drain_references_callback = [this, shutdown_callback]() {
     // Post to the event loop to avoid a deadlock between the TaskManager and
     // the ReferenceCounter. The deadlock can occur because this callback may
@@ -189,16 +185,9 @@ void CoreWorkerShutdownExecutor::ExecuteHandleExit(const std::string &exit_type,
   RAY_LOG(INFO) << "Executing handle exit: " << exit_type << " - " << detail
                 << " (timeout: " << timeout_ms.count() << "ms)";
 
-  // Preserve current CoreWorker::HandleExit() behavior with idle checking; we no
-  // longer need the concrete rpc::WorkerExitType value here because
-  // ExecuteWorkerExit() accepts the string representation directly.
-
-  // Check if worker should exit based on idle state
   if (ShouldWorkerExit()) {
-    // Use configurable timeout based on worker state
     auto actual_timeout = timeout_ms;
     if (actual_timeout.count() == 0) {
-      // Default timeout logic from original HandleExit
       actual_timeout = std::chrono::milliseconds{10000};  // 10s default
     }
 
@@ -209,7 +198,6 @@ void CoreWorkerShutdownExecutor::ExecuteHandleExit(const std::string &exit_type,
 }
 
 void CoreWorkerShutdownExecutor::KillChildProcesses() {
-  // Preserve current CoreWorker::KillChildProcs() behavior
   if (!RayConfig::instance().kill_child_processes_on_worker_exit()) {
     RAY_LOG(DEBUG)
         << "kill_child_processes_on_worker_exit is not true, skipping KillChildProcs";
@@ -246,18 +234,13 @@ void CoreWorkerShutdownExecutor::KillChildProcesses() {
 }
 
 bool CoreWorkerShutdownExecutor::ShouldWorkerExit() const {
-  // Delegate to CoreWorker's idle checking logic
   return core_worker_->ShouldWorkerExit();
 }
 
 void CoreWorkerShutdownExecutor::DisconnectFromServices(const std::string &exit_type,
                                                         const std::string &detail) {
-  // Preserve current CoreWorker::Disconnect() behavior
-
-  // Force stats export before exiting the worker.
   core_worker_->RecordMetrics();
 
-  // Driver exiting.
   if (core_worker_->options_.worker_type == WorkerType::DRIVER &&
       core_worker_->task_event_buffer_->Enabled() &&
       !RayConfig::instance().task_events_skip_driver_for_test()) {
@@ -298,7 +281,6 @@ void CoreWorkerShutdownExecutor::DisconnectFromServices(const std::string &exit_
 }
 
 void CoreWorkerShutdownExecutor::QuickExit() {
-  // Preserve current CoreWorker quick exit behavior
   RAY_LOG(WARNING) << "Quick exit - terminating process immediately";
   std::quick_exit(1);
 }
