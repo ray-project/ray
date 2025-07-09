@@ -278,8 +278,10 @@ def parse_and_validate_pip(pip: Union[str, List[str], Dict]) -> Optional[Dict]:
     dependencies (e.g. "uvicorn", "requests").
     """
     assert pip is not None
-
     result = None
+
+    default_pip_install_options = ["--disable-pip-version-check", "--no-cache-dir"]
+
     if sys.platform == "win32":
         logger.warning(
             "runtime environment support is experimental on Windows. "
@@ -289,9 +291,17 @@ def parse_and_validate_pip(pip: Union[str, List[str], Dict]) -> Optional[Dict]:
     if isinstance(pip, str):
         # We have been given a path to a requirements.txt file.
         pip_list = _handle_local_deps_requirement_file(pip)
-        result = dict(packages=pip_list, pip_check=False)
+        result = dict(
+            packages=pip_list,
+            pip_check=False,
+            pip_install_options=default_pip_install_options,
+        )
     elif isinstance(pip, list) and all(isinstance(dep, str) for dep in pip):
-        result = dict(packages=pip, pip_check=False)
+        result = dict(
+            packages=pip,
+            pip_check=False,
+            pip_install_options=default_pip_install_options,
+        )
     elif isinstance(pip, dict):
         if set(pip.keys()) - {
             "packages",
@@ -333,8 +343,9 @@ def parse_and_validate_pip(pip: Union[str, List[str], Dict]) -> Optional[Dict]:
         result = pip.copy()
         result["pip_check"] = pip.get("pip_check", False)
         result["pip_install_options"] = pip.get(
-            "pip_install_options", ["--disable-pip-version-check", "--no-cache-dir"]
+            "pip_install_options", default_pip_install_options
         )
+
         if "packages" not in pip:
             raise ValueError(
                 f"runtime_env['pip'] must include field 'packages', but got {pip}"
