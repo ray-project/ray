@@ -115,15 +115,17 @@ sudo apt-get install -y kmod pkg-config librdmacm-dev
     cd "${TEMP_DIR}"
     wget "https://github.com/ai-dynamo/nixl/archive/refs/tags/${NIXL_VERSION}.tar.gz" -q
     tar xzf ${NIXL_VERSION}.tar.gz; rm ${NIXL_VERSION}.tar.gz
-    cd nixl-${NIXL_VERSION}
-    meson setup build --prefix=${NIXL_HOME} -Ducx_path=${UCX_HOME}
-    cd build
-    ninja
-    sudo env "PATH=$PATH" ninja install
-    pip install --no-cache-dir nixl==${NIXL_VERSION}
+    (
+        cd nixl-${NIXL_VERSION}
+        meson setup build --prefix=${NIXL_HOME} -Ducx_path=${UCX_HOME}
+        cd build
+        ninja
+        sudo env "PATH=$PATH" ninja install
+        pip install --no-cache-dir nixl==${NIXL_VERSION}
+    )
 
     echo "Installing NIXL benchmark"
-    sudo apt-get install -y libgflags-dev
+    sudo apt-get install -y libgflags-dev cmake
     # ETCD c++
     sudo apt-get install -y libboost-all-dev libssl-dev
     sudo apt-get install -y libgrpc-dev \
@@ -147,11 +149,13 @@ sudo apt-get install -y kmod pkg-config librdmacm-dev
         sudo env "PATH=$PATH" make install
     )
     # End ETCD c++
-    cd benchmark/nixlbench
-    meson setup build -Dnixl_path=${NIXL_HOME}}
-    cd build
-    sudo env "PATH=$PATH" ninja
-    cp nixlbench "${NIXL_HOME}/bin/"
+    (
+        cd nixl-${NIXL_VERSION}/benchmark/nixlbench
+        meson setup build -Dnixl_path=${NIXL_HOME}
+        cd build
+        sudo env "PATH=$PATH" ninja
+        cp nixlbench "${NIXL_HOME}/bin/"
+    )
 )
 sudo rm -rf "${TEMP_DIR}"
 
