@@ -458,7 +458,7 @@ class ReplicaBase(ABC):
             component_id=self._component_id,
         )
 
-    def _can_accept_request(self) -> bool:
+    def _can_accept_request(self, request_metadata: RequestMetadata) -> bool:
         # This replica gates concurrent request handling with an asyncio.Semaphore.
         # Each in-flight request acquires the semaphore. When the number of ongoing
         # requests reaches max_ongoing_requests, the semaphore becomes locked.
@@ -643,7 +643,7 @@ class ReplicaBase(ABC):
         self, request_metadata: RequestMetadata, *request_args, **request_kwargs
     ):
         # Check if the replica has capacity for the request.
-        if not self._can_accept_request():
+        if not self._can_accept_request(request_metadata):
             limit = self.max_ongoing_requests
             logger.warning(
                 f"Replica at capacity of max_ongoing_requests={limit}, "
