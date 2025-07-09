@@ -1,181 +1,348 @@
 from __future__ import annotations
 
-import operator
 from dataclasses import dataclass
-from typing import Any, Callable, Dict
+from enum import Enum
+from typing import Any
 
-import numpy as np
-import pandas as pd
-import pyarrow as pa
-import pyarrow.compute as pc
-
+from ray.data._expression_evaluator import eval_expr
 from ray.util.annotations import DeveloperAPI
 
 
-# ──────────────────────────────────────
-#  Basic expression node definitions
-# ──────────────────────────────────────
 @DeveloperAPI
-class Expr:  # Base class – all expression nodes inherit from this
-    # Binary/boolean operator overloads
-    def _bin(self, other: Any, op: str) -> "Expr":
-        other = other if isinstance(other, Expr) else LiteralExpr(other)
+@dataclass(frozen=True, eq=False)
+class Operation(Enum):
+    """Enumeration of supported operations in expressions.
+
+    This enum defines all the binary operations that can be performed
+    between expressions, including arithmetic, comparison, and boolean operations.
+
+    Attributes:
+        ADD: Addition operation (+)
+        SUB: Subtraction operation (-)
+        MUL: Multiplication operation (*)
+        DIV: Division operation (/)
+        GT: Greater than comparison (>)
+        LT: Less than comparison (<)
+        GE: Greater than or equal comparison (>=)
+        LE: Less than or equal comparison (<=)
+        EQ: Equality comparison (==)
+        AND: Logical AND operation (&)
+        OR: Logical OR operation (|)
+    """
+
+    ADD = "add"
+    SUB = "sub"
+    MUL = "mul"
+    DIV = "div"
+    GT = "gt"
+    LT = "lt"
+    GE = "ge"
+    LE = "le"
+    EQ = "eq"
+    AND = "and"
+    OR = "or"
+
+
+@DeveloperAPI
+@dataclass(frozen=True)
+class Expr:
+    """Base class for all expression nodes.
+
+    This is the abstract base class that all expression types inherit from.
+    It provides operator overloads for building complex expressions using
+    standard Python operators.
+
+    Expressions form a tree structure where each node represents an operation
+    or value. The tree can be evaluated against data batches to compute results.
+
+    Example:
+        >>> from ray.data.expressions import col, lit
+        >>> # Create an expression tree: (col("x") + 5) * col("y")
+        >>> expr = (col("x") + lit(5)) * col("y")
+        >>> # This creates a BinaryExpr with operation=MUL
+        >>> # left=BinaryExpr(op=ADD, left=ColumnExpr("x"), right=LiteralExpr(5))
+        >>> # right=ColumnExpr("y")
+
+    Note:
+        This class should not be instantiated directly. Use the concrete
+        subclasses like ColumnExpr, LiteralExpr, etc.
+    """
+
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        # Override dataclass __eq__ with expression __eq__
+        cls.__eq__ = cls._expr_eq
+
+    def _expr_eq(self, other: Any) -> "Expr":
+        """Expression equality operator."""
+        return self._bin(other, Operation.EQ)
+
+    def _bin(self, other: Any, op: Operation) -> "Expr":
+        """Create a binary expression with the given operation.
+
+        Args:
+            other: The right operand expression or literal value
+            op: The operation to perform
+
+        Returns:
+            A new BinaryExpr representing the operation
+
+        Note:
+            If other is not an Expr, it will be automatically converted to a LiteralExpr.
+        """
+        if not isinstance(other, Expr):
+            other = LiteralExpr(other)
         return BinaryExpr(op, self, other)
 
     # arithmetic
-    def __add__(self, other):
-        return self._bin(other, "add")
+    def __add__(self, other: Any) -> "Expr":
+        """Addition operator (+)."""
+        return self._bin(other, Operation.ADD)
 
-    def __sub__(self, other):
-        return self._bin(other, "sub")
+    def __radd__(self, other: Any) -> "Expr":
+        """Reverse addition operator (for literal + expr)."""
+        return LiteralExpr(other)._bin(self, Operation.ADD)
 
-    def __mul__(self, other):
-        return self._bin(other, "mul")
+    def __sub__(self, other: Any) -> "Expr":
+        """Subtraction operator (-)."""
+        return self._bin(other, Operation.SUB)
 
-    def __truediv__(self, other):
-        return self._bin(other, "div")
+    def __rsub__(self, other: Any) -> "Expr":
+        """Reverse subtraction operator (for literal - expr)."""
+        return LiteralExpr(other)._bin(self, Operation.SUB)
+
+    def __mul__(self, other: Any) -> "Expr":
+        """Multiplication operator (*)."""
+        return self._bin(other, Operation.MUL)
+
+    def __rmul__(self, other: Any) -> "Expr":
+        """Reverse multiplication operator (for literal * expr)."""
+        return LiteralExpr(other)._bin(self, Operation.MUL)
+
+    def __truediv__(self, other: Any) -> "Expr":
+        """Division operator (/)."""
+        return self._bin(other, Operation.DIV)
+
+    def __rtruediv__(self, other: Any) -> "Expr":
+        """Reverse division operator (for literal / expr)."""
+        return LiteralExpr(other)._bin(self, Operation.DIV)
 
     # comparison
-    def __gt__(self, other):
-        return self._bin(other, "gt")
+    def __gt__(self, other: Any) -> "Expr":
+        """Greater than operator (>)."""
+        return self._bin(other, Operation.GT)
 
-    def __lt__(self, other):
-        return self._bin(other, "lt")
+    def __lt__(self, other: Any) -> "Expr":
+        """Less than operator (<)."""
+        return self._bin(other, Operation.LT)
 
-    def __ge__(self, other):
-        return self._bin(other, "ge")
+    def __ge__(self, other: Any) -> "Expr":
+        """Greater than or equal operator (>=)."""
+        return self._bin(other, Operation.GE)
 
-    def __le__(self, other):
-        return self._bin(other, "le")
+    def __le__(self, other: Any) -> "Expr":
+        """Less than or equal operator (<=)."""
+        return self._bin(other, Operation.LE)
 
-    def __eq__(self, other):
-        return self._bin(other, "eq")
+    def __eq__(self, other: Any) -> "Expr":
+        """Equality operator (==)."""
+        return self._bin(other, Operation.EQ)
 
     # boolean
-    def __and__(self, other):
-        return self._bin(other, "and")
+    def __and__(self, other: Any) -> "Expr":
+        """Logical AND operator (&)."""
+        return self._bin(other, Operation.AND)
 
-    def __or__(self, other):
-        return self._bin(other, "or")
+    def __or__(self, other: Any) -> "Expr":
+        """Logical OR operator (|)."""
+        return self._bin(other, Operation.OR)
 
-    # Rename the output column
     def alias(self, name: str) -> "AliasExpr":
+        """Give this expression a new name.
+
+        Args:
+            name: The new name for the expression result
+
+        Returns:
+            An AliasExpr that evaluates this expression and assigns the result
+            to the given name
+
+        Example:
+            >>> from ray.data.expressions import col
+            >>> # Create a column named "sum" from adding x and y
+            >>> expr = (col("x") + col("y")).alias("sum")
+        """
         return AliasExpr(self, name)
 
 
 @DeveloperAPI
-@dataclass(frozen=True, eq=False)
+@dataclass(frozen=True)
 class ColumnExpr(Expr):
+    """Expression that references a column by name.
+
+    This expression type represents a reference to an existing column
+    in the dataset. When evaluated, it returns the values from the
+    specified column.
+
+    Args:
+        name: The name of the column to reference
+
+    Example:
+        >>> from ray.data.expressions import col
+        >>> # Reference the "age" column
+        >>> age_expr = col("age")  # Creates ColumnExpr(name="age")
+    """
+
     name: str
 
 
 @DeveloperAPI
-@dataclass(frozen=True, eq=False)
+@dataclass(frozen=True)
 class LiteralExpr(Expr):
+    """Expression that represents a constant scalar value.
+
+    This expression type represents a literal value that will be broadcast
+    to all rows when evaluated. The value can be any Python object.
+
+    Args:
+        value: The constant value to represent
+
+    Example:
+        >>> from ray.data.expressions import lit
+        >>> # Create a literal value
+        >>> five = lit(5)  # Creates LiteralExpr(value=5)
+        >>> name = lit("John")  # Creates LiteralExpr(value="John")
+    """
+
     value: Any
 
 
 @DeveloperAPI
-@dataclass(frozen=True, eq=False)
+@dataclass(frozen=True)
 class BinaryExpr(Expr):
-    op: str
+    """Expression that represents a binary operation between two expressions.
+
+    This expression type represents an operation with two operands (left and right).
+    The operation is specified by the `op` field, which must be one of the
+    supported operations from the Operation enum.
+
+    Args:
+        op: The operation to perform (from Operation enum)
+        left: The left operand expression
+        right: The right operand expression
+
+    Example:
+        >>> from ray.data.expressions import col, lit, Operation
+        >>> # Manually create a binary expression (usually done via operators)
+        >>> expr = BinaryExpr(Operation.ADD, col("x"), lit(5))
+        >>> # This is equivalent to: col("x") + lit(5)
+    """
+
+    op: Operation
     left: Expr
     right: Expr
 
 
 @DeveloperAPI
-@dataclass(frozen=True, eq=False)
+@dataclass(frozen=True)
 class AliasExpr(Expr):
+    """Expression that assigns a name to another expression's result.
+
+    This expression type wraps another expression and assigns a specific
+    name to its result. This is useful for creating new columns with
+    meaningful names.
+
+    Args:
+        expr: The expression to evaluate
+        name: The name to assign to the result
+
+    Example:
+        >>> from ray.data.expressions import col
+        >>> # Create an alias for a computed column
+        >>> expr = AliasExpr(col("x") + col("y"), "sum")
+        >>> # This is equivalent to: (col("x") + col("y")).alias("sum")
+    """
+
     expr: Expr
     name: str
 
 
-# ──────────────────────────────────────
-#  User helpers
-# ──────────────────────────────────────
-
-
 @DeveloperAPI
 def col(name: str) -> ColumnExpr:
-    """Reference an existing column."""
+    """Reference an existing column by name.
+
+    This is the primary way to reference columns in expressions.
+    The returned expression will extract values from the specified
+    column when evaluated.
+
+    Args:
+        name: The name of the column to reference
+
+    Returns:
+        A ColumnExpr that references the specified column
+
+    Example:
+        >>> from ray.data.expressions import col
+        >>> # Reference columns in an expression
+        >>> expr = col("price") * col("quantity")
+        >>>
+        >>> # Use with Dataset.with_columns()
+        >>> import ray
+        >>> ds = ray.data.from_items([{"price": 10, "quantity": 2}])
+        >>> ds = ds.with_columns(total=col("price") * col("quantity"))
+    """
     return ColumnExpr(name)
 
 
 @DeveloperAPI
 def lit(value: Any) -> LiteralExpr:
-    """Create a scalar literal expression (e.g. lit(1))."""
+    """Create a literal expression from a constant value.
+
+    This creates an expression that represents a constant scalar value.
+    The value will be broadcast to all rows when the expression is evaluated.
+
+    Args:
+        value: The constant value to represent. Can be any Python object
+               (int, float, str, bool, etc.)
+
+    Returns:
+        A LiteralExpr containing the specified value
+
+    Example:
+        >>> from ray.data.expressions import col, lit
+        >>> # Create literals of different types
+        >>> five = lit(5)
+        >>> pi = lit(3.14159)
+        >>> name = lit("Alice")
+        >>> flag = lit(True)
+        >>>
+        >>> # Use in expressions
+        >>> expr = col("age") + lit(1)  # Add 1 to age column
+        >>>
+        >>> # Use with Dataset.with_columns()
+        >>> import ray
+        >>> ds = ray.data.from_items([{"age": 25}, {"age": 30}])
+        >>> ds = ds.with_columns(age_plus_one=col("age") + lit(1))
+    """
     return LiteralExpr(value)
 
 
 # ──────────────────────────────────────
-#  Local evaluator (pandas batches)
+#  Public API for evaluation
 # ──────────────────────────────────────
-# This is used by Dataset.with_columns – kept here so it can be re-used by
-# future optimised executors.
-_PANDAS_OPS: Dict[str, Callable[[Any, Any], Any]] = {
-    "add": operator.add,
-    "sub": operator.sub,
-    "mul": operator.mul,
-    "div": operator.truediv,
-    "gt": operator.gt,
-    "lt": operator.lt,
-    "ge": operator.ge,
-    "le": operator.le,
-    "eq": operator.eq,
-    "and": operator.and_,
-    "or": operator.or_,
-}
+# Note: Implementation details are in _expression_evaluator.py
 
-_NUMPY_OPS: Dict[str, Callable[[Any, Any], Any]] = {
-    "add": np.add,
-    "sub": np.subtract,
-    "mul": np.multiply,
-    "div": np.divide,
-    "gt": np.greater,
-    "lt": np.less,
-    "ge": np.greater_equal,
-    "le": np.less_equal,
-    "eq": np.equal,
-    "and": np.logical_and,
-    "or": np.logical_or,
-}
-
-_ARROW_OPS: Dict[str, Callable[[Any, Any], Any]] = {
-    "add": pc.add,
-    "sub": pc.subtract,
-    "mul": pc.multiply,
-    "div": pc.divide,
-    "gt": pc.greater,
-    "lt": pc.less,
-    "ge": pc.greater_equal,
-    "le": pc.less_equal,
-    "eq": pc.equal,
-    "and": pc.and_,
-    "or": pc.or_,
-}
+# Re-export eval_expr for public use
 
 
-def _eval_expr_recursive(expr: Expr, batch, ops: Dict[str, Callable]) -> Any:
-    """Generic recursive expression evaluator."""
-    if isinstance(expr, ColumnExpr):
-        return batch[expr.name]
-    if isinstance(expr, LiteralExpr):
-        return expr.value
-    if isinstance(expr, BinaryExpr):
-        return ops[expr.op](
-            _eval_expr_recursive(expr.left, batch, ops),
-            _eval_expr_recursive(expr.right, batch, ops),
-        )
-    raise TypeError(f"Unsupported expression node: {type(expr).__name__}")
-
-
-@DeveloperAPI
-def eval_expr(expr: Expr, batch) -> Any:
-    """Recursively evaluate *expr* against a batch of the appropriate type."""
-    if isinstance(batch, pd.DataFrame):
-        return _eval_expr_recursive(expr, batch, _PANDAS_OPS)
-    elif isinstance(batch, (np.ndarray, dict)):
-        return _eval_expr_recursive(expr, batch, _NUMPY_OPS)
-    elif isinstance(batch, pa.Table):
-        return _eval_expr_recursive(expr, batch, _ARROW_OPS)
-    raise TypeError(f"Unsupported batch type: {type(batch).__name__}")
+__all__ = [
+    "Operation",
+    "Expr",
+    "ColumnExpr",
+    "LiteralExpr",
+    "BinaryExpr",
+    "AliasExpr",
+    "col",
+    "lit",
+    "eval_expr",
+]

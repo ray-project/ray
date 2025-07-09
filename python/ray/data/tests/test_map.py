@@ -1983,7 +1983,6 @@ def test_map_names():
     assert r.startswith("OneHotEncoder"), r
 
 
-@pytest.mark.parametrize("batch_format", ["pandas", "numpy", "pyarrow"])
 @pytest.mark.parametrize(
     "expr, expected_value",
     [
@@ -2010,9 +2009,9 @@ def test_map_names():
         ((lit(10) / (col("id") + 1)).alias("result"), 10.0),  # 10 / (0 + 1) = 10.0
     ],
 )
-def test_with_columns(ray_start_regular_shared, batch_format, expr, expected_value):
-    """Verify that `with_column` works for pandas, numpy, and pyarrow batch formats with various operations."""
-    ds = ray.data.range(5).with_columns([expr], batch_format=batch_format)
+def test_with_columns(ray_start_regular_shared, expr, expected_value):
+    """Verify that `with_column` works with various operations."""
+    ds = ray.data.range(5).with_columns([expr])
     result = ds.take(1)[0]
     assert result["id"] == 0
     assert result["result"] == expected_value
@@ -2028,16 +2027,15 @@ def test_with_columns_nonexistent_column(ray_start_regular_shared):
         ds.with_columns([(col("nonexistent_column") + 1).alias("result")]).materialize()
 
 
-@pytest.mark.parametrize("batch_format", ["pandas", "numpy", "pyarrow"])
-def test_with_columns_multiple_expressions(ray_start_regular_shared, batch_format):
+def test_with_columns_multiple_expressions(ray_start_regular_shared):
     """Verify that `with_column` correctly handles multiple expressions at once."""
     ds = ray.data.range(5)
 
     expr1 = (col("id") + 1).alias("plus_one")
     expr2 = (col("id") * 2).alias("times_two")
-    expr3 = (lit(10) - col("id")).alias("ten_minus_id")
+    expr3 = (10 - col("id")).alias("ten_minus_id")
 
-    ds = ds.with_columns([expr1, expr2, expr3], batch_format=batch_format)
+    ds = ds.with_columns([expr1, expr2, expr3])
 
     first_row = ds.take(1)[0]
     assert first_row["id"] == 0

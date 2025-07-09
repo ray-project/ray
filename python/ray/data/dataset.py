@@ -782,7 +782,6 @@ class Dataset:
     def with_columns(
         self,
         exprs: List[Expr],
-        batch_format: Optional[str] = "pyarrow",
         **ray_remote_args,
     ) -> "Dataset":
         """
@@ -802,11 +801,6 @@ class Dataset:
 
         Args:
             exprs: The expressions to evaluate to produce the new column values.
-            batch_format: If ``"numpy"``, batches are
-                ``Dict[str, numpy.ndarray]``. If ``"pandas"``, batches are
-                ``pandas.DataFrame``. If ``"pyarrow"``, batches are
-                ``pyarrow.Table``. If ``"numpy"``, batches are
-                ``Dict[str, numpy.ndarray]``.
             **ray_remote_args: Additional resource requirements to request from
                 Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
                 :func:`ray.remote` for details.
