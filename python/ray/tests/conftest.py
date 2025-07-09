@@ -42,7 +42,7 @@ from ray._private.test_utils import (
     reset_autoscaler_v2_enabled_cache,
     RayletKiller,
 )
-from ray.anyscale.data._internal.util.cache import _disable_cache_for_tests
+from ray.anyscale.data._internal.util.cache import _disable_timed_cache_for_tests
 from ray.cluster_utils import AutoscalingCluster, Cluster, cluster_not_supported
 
 # TODO (mengjin) Improve the logging in the conftest files so that the logger can log
@@ -576,27 +576,9 @@ def make_sure_dashboard_http_port_unused():
     yield
 
 
-class FakeTime:
-    def __init__(self):
-        self._value = 0.0
-
-    def __call__(self):
-        return self._value
-
-    def advance(self, seconds):
-        self._value += seconds
-
-
-@pytest.fixture
-def fake_time():
-    clock = FakeTime()
-    with mock.patch("time.time", clock):
-        yield clock
-
-
 @pytest.fixture(scope="module")
-def disable_cache_fixture():
-    with _disable_cache_for_tests():
+def disable_timed_cache_fixture():
+    with _disable_timed_cache_for_tests():
         yield
 
 
