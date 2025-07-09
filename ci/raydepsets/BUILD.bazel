@@ -26,6 +26,7 @@ py_test(
     exec_compatible_with = ["//:hermetic_python"],
     deps = [
         ci_require("pytest"),
+        ci_require("bazel-runfiles"),
         ":raydepsets_lib",
     ],
     tags = [
