@@ -200,7 +200,6 @@ class VLLMEngine(LLMEngine):
             self._tokenize, executor=self._tokenizer_executor
         )
 
-
     def _tokenize(
         self, prompt_text: str, add_special_tokens: bool = False
     ) -> List[int]:
@@ -257,8 +256,9 @@ class VLLMEngine(LLMEngine):
         # Initialize node and return all configurations
         node_initialization = await initialize_node(self.llm_config)
 
-        vllm_engine_args, vllm_engine_config = \
-            await self._prepare_engine_config(node_initialization)
+        vllm_engine_args, vllm_engine_config = await self._prepare_engine_config(
+            node_initialization
+        )
 
         # Apply checkpoint info to the llm_config.
         # This is needed for capturing model capabilities
