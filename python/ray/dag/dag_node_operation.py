@@ -526,7 +526,10 @@ def _build_dag_node_operation_graph(
         _CollectiveOperation, Set[Tuple[int, _DAGNodeOperationType]]
     ] = defaultdict(set)
     for task_idx, task in idx_to_task.items():
-        if isinstance(task.dag_node, CollectiveOutputNode):
+        if (
+            isinstance(task.dag_node, CollectiveOutputNode)
+            and not task.dag_node.is_class_method_output
+        ):
             collective_op_to_idxs[task.dag_node.collective_op].add(
                 (task_idx, _DAGNodeOperationType.COMPUTE)
             )
