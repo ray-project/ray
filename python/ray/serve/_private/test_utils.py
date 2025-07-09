@@ -708,7 +708,6 @@ def tlog(s: str, level: str = "INFO"):
 def get_application_urls(
     protocol: Union[str, RequestProtocol] = RequestProtocol.HTTP,
     app_name: str = SERVE_DEFAULT_APP_NAME,
-    route_prefix: str = None,
     use_localhost: bool = False,
     exclude_route_prefix: bool = False,
 ) -> List[str]:
@@ -717,7 +716,6 @@ def get_application_urls(
     Args:
         protocol: The protocol to use for the application.
         app_name: The name of the application.
-        route_prefix: The route prefix of the application.
         use_localhost: Whether to use localhost instead of the IP address.
             Set to True if Serve deployments are not exposed publicly or
             for low latency benchmarking.
@@ -764,7 +762,6 @@ def get_application_urls(
 def get_application_url(
     protocol: Union[str, RequestProtocol] = RequestProtocol.HTTP,
     app_name: str = SERVE_DEFAULT_APP_NAME,
-    route_prefix: str = None,
     use_localhost: bool = False,
     exclude_route_prefix: bool = False,
 ) -> str:
@@ -773,7 +770,6 @@ def get_application_url(
     Args:
         protocol: The protocol to use for the application.
         app_name: The name of the application.
-        route_prefix: The route prefix of the application.
         use_localhost: Whether to use localhost instead of the IP address.
             Set to True if Serve deployments are not exposed publicly or
             for low latency benchmarking.
@@ -783,6 +779,6 @@ def get_application_url(
     """
     return random.choice(
         get_application_urls(
-            protocol, app_name, route_prefix, use_localhost, exclude_route_prefix
+            protocol, app_name, use_localhost, exclude_route_prefix
         )
     )
