@@ -3827,5 +3827,6 @@ def test_address_defaults_to_connected_ray_instance(shutdown_only):
     cluster_2_jobs = list_jobs(address=f"http://localhost:{cluster_2_dashboard_port}")
     assert len(cluster_2_jobs) == 0
 
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
