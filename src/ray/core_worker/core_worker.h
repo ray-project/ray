@@ -1379,6 +1379,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                                         const StartupToken &startup_token,
                                         int port);
 
+  /// Used to lazily subscribe to node_changes only if the worker takes any owner actions.
+  void SubscribeToNodeChanges();
+
   std::shared_ptr<rpc::RuntimeEnvInfo> OverrideTaskOrActorRuntimeEnvInfo(
       const std::string &serialized_runtime_env_info) const;
 
