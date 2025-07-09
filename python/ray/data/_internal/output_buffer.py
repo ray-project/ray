@@ -49,7 +49,6 @@ class BlockOutputBuffer:
     def __init__(self, output_block_size_option: OutputBlockSizeOption):
         self._output_block_size_option = output_block_size_option
         self._buffer = DelegatingBlockBuilder()
-        self._returned_at_least_one_block = False
         self._finalized = False
 
     def add(self, item: Any) -> None:
@@ -89,7 +88,7 @@ class BlockOutputBuffer:
     def has_next(self) -> bool:
         """Returns true when a complete output block is produced."""
         if self._finalized:
-            return not self._returned_at_least_one_block or self._buffer.num_rows() > 0
+            return self._buffer.num_rows() > 0
         else:
             return (
                 self._exceeded_buffer_row_limit() or self._exceeded_buffer_size_limit()
@@ -155,5 +154,6 @@ class BlockOutputBuffer:
         if block_remainder is not None:
             self._buffer.add_block(block_remainder)
 
-        self._returned_at_least_one_block = True
+        assert BlockAccessor.for_block(block_to_yield).num_rows() > 0
+
         return block_to_yield
