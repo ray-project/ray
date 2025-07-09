@@ -441,7 +441,7 @@ def test_delete_application(serve_instance):
 
     # make sure no affect to app_g
     assert g_handle.remote().result() == "got g"
-    url = "http://localhost:8000/app_g"
+    url = get_application_url("HTTP", app_name="app_g")
     assert httpx.get(url).text == "got g"
 
 
