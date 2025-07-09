@@ -141,7 +141,7 @@ void ActorSchedulingQueue::ScheduleRequests() {
     auto head = pending_actor_tasks_.begin();
     RAY_LOG(ERROR) << "Cancelling stale RPC with seqno "
                    << pending_actor_tasks_.begin()->first << " < " << next_seq_no_;
-    head->second.Cancel(Status::Invalid("Task cancelled due to stale sequence number. The client intentionally discarded this task."));
+    head->second.Cancel(Status::Invalid("Task canceled due to stale sequence number. The client intentionally discarded this task."));
     {
       absl::MutexLock lock(&mu_);
       pending_task_id_to_is_canceled.erase(head->second.TaskID());
@@ -192,7 +192,7 @@ void ActorSchedulingQueue::ScheduleRequests() {
         return;  // Timer deadline was adjusted.
       }
       RAY_LOG(ERROR) << "Timed out waiting for task with seq_no=" << next_seq_no_
-                     << ", cancelling all queued tasks.";
+                     << ", canceling all queued tasks.";
       while (!pending_actor_tasks_.empty()) {
         auto head = pending_actor_tasks_.begin();
         head->second.Cancel(Status::Invalid("Server timed out while waiting for an earlier seq_no."));
