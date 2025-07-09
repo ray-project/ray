@@ -3803,38 +3803,38 @@ def test_hang_driver_has_no_is_running_task(monkeypatch, ray_start_cluster):
 
 def test_get_actor_timeout_multiplier(shutdown_only):
     """Test that GetApiOptions applies the same timeout multiplier as ListApiOptions.
-    
+
     This test reproduces the issue where get_actor with timeout=1 fails even though
     the actual operation takes less than 1 second, because GetApiOptions doesn't
     apply the 0.8 server timeout multiplier that ListApiOptions uses.
     """
     from ray.util.state.common import GetApiOptions, ListApiOptions
-    
+
     ray.init()
-    
+
     @ray.remote
     class TestActor:
         def ready(self):
             pass
-    
+
     actor = TestActor.remote()
     ray.get(actor.ready.remote())
-    
+
     # Test that both options classes apply the same timeout multiplier
     test_timeout = 1
     get_options = GetApiOptions(timeout=test_timeout)
     list_options = ListApiOptions(timeout=test_timeout)
-    
+
     # After __post_init__, both should have the same effective timeout
     assert get_options.timeout == list_options.timeout, (
         f"GetApiOptions timeout ({get_options.timeout}) should match "
         f"ListApiOptions timeout ({list_options.timeout}) after applying multiplier"
     )
-    
+
     # Test that get_actor works with a 1-second timeout
     actors = list_actors()
     actor_id = actors[0]["actor_id"]
-    
+
     # This should work without timeout issues
     result = get_actor(actor_id, timeout=1)
     assert result is not None
