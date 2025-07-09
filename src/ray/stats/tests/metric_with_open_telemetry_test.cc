@@ -51,9 +51,19 @@ TEST_F(MetricTest, TestGaugeMetric) {
   ASSERT_TRUE(
       OpenTelemetryMetricRecorder::GetInstance().IsMetricRegistered("metric_gauge_test"));
   STATS_metric_gauge_test.Record(42.0, {{"Tag1", "Value1"}, {"Tag2", "Value2"}});
+  // Test valid tags for a registered metric.
   ASSERT_EQ(OpenTelemetryMetricRecorder::GetInstance().GetObservableMetricValue(
                 "metric_gauge_test", {{"Tag1", "Value1"}, {"Tag2", "Value2"}}),
             42.0);
+  // Test invalid tags for a registered metric.
+  ASSERT_EQ(OpenTelemetryMetricRecorder::GetInstance().GetObservableMetricValue(
+                "metric_gauge_test", {{"Tag1", "Value1"}, {"Tag2", "Value3"}}),
+            std::nullopt);
+  // Test unregistered metric.
+  ASSERT_EQ(
+      OpenTelemetryMetricRecorder::GetInstance().GetObservableMetricValue(
+          "metric_gauge_test_unregistered", {{"Tag1", "Value1"}, {"Tag2", "Value2"}}),
+      std::nullopt);
 }
 
 TEST_F(MetricTest, TestCounterMetric) {

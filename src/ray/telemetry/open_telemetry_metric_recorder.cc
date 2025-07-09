@@ -47,6 +47,8 @@ namespace ray {
 namespace telemetry {
 
 OpenTelemetryMetricRecorder &OpenTelemetryMetricRecorder::GetInstance() {
+  // Note: This creates a singleton instance of the OpenTelemetryMetricRecorder. The
+  // singleton lives until and is cleaned up automatically by the process exit.
   static auto *instance = new OpenTelemetryMetricRecorder();
   return *instance;
 }
@@ -102,6 +104,8 @@ void OpenTelemetryMetricRecorder::CollectGaugeMetricValues(
   std::lock_guard<std::mutex> lock(mutex_);
   auto it = observations_by_name_.find(name);
   if (it == observations_by_name_.end()) {
+    RAY_LOG(WARNING) << "Metric " << name
+                     << " is not registered. Skipping exporting its values.";
     return;  // Not registered
   }
   for (const auto &observation : it->second) {
@@ -117,10 +121,12 @@ void OpenTelemetryMetricRecorder::RegisterGaugeMetric(const std::string &name,
   {
     std::lock_guard<std::mutex> lock(mutex_);
     if (registered_instruments_.contains(name)) {
+      RAY_LOG(WARNING) << "Metric " << name
+                       << " is already registered. Skipping registering it again.";
       return;  // Already registered
     }
-    gauge_callback_names_.push_back(name);
-    name_ptr = &gauge_callback_names_.back();
+    gauge_metric_names_.push_back(name);
+    name_ptr = &gauge_metric_names_.back();
     instrument = GetMeter()->CreateDoubleObservableGauge(name, description, "");
     observations_by_name_[name] = {};
     registered_instruments_[name] = instrument;
