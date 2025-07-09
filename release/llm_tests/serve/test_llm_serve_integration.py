@@ -68,11 +68,13 @@ def remote_model_app(request):
         ),
         "engine_kwargs": dict(
             tensor_parallel_size=2,
-            pipeline_parallel_size=2,
+            # TODO(lk-chen): Enable PP after
+            # https://github.com/vllm-project/vllm/issues/20647 being fixed
+            pipeline_parallel_size=1,
             gpu_memory_utilization=0.92,
             dtype="auto",
             max_num_seqs=40,
-            max_model_len=16384,
+            max_model_len=8192,
             enable_chunked_prefill=True,
             enable_prefix_caching=True,
             trust_remote_code=remote_code,
