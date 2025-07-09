@@ -276,24 +276,6 @@ install_pip_packages() {
     requirements_files+=("${WORKSPACE_DIR}/python/requirements/ml/tune-test-requirements.txt")
   fi
 
-  # Additional dependency for Ludwig.
-  # This cannot be included in requirements files as it has conflicting
-  # dependencies with Modin.
-  if [[ "${INSTALL_LUDWIG-}" == 1 ]]; then
-    # TODO: eventually pin this to master.
-    requirements_packages+=("ludwig[test]>=0.4")
-    requirements_packages+=("jsonschema>=4")
-  fi
-
-  # Additional dependency for time series libraries.
-  # This cannot be included in tune-requirements.txt as it has conflicting
-  # dependencies.
-  if [[ "${INSTALL_TIMESERIES_LIBS-}" == 1 ]]; then
-    requirements_packages+=("statsforecast==1.5.0")
-    requirements_packages+=("prophet==1.1.1")
-    requirements_packages+=("holidays==0.24") # holidays 0.25 causes `import prophet` to fail.
-  fi
-
   # Data processing test dependencies.
   if [[ "${DATA_PROCESSING_TESTING-}" == 1 || "${DOC_TESTING-}" == 1 ]]; then
     requirements_files+=("${WORKSPACE_DIR}/python/requirements/ml/data-requirements.txt")
