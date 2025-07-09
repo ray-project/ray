@@ -6,9 +6,11 @@ steps:
   # builds
   - name: data9build
     wanda: ci/docker/data9.build.wanda.yaml
+    tags: cibase
 
   - name: datalbuild
     wanda: ci/docker/datal.build.wanda.yaml
+    tags: cibase
 
   - name: databuild-multipy
     label: "wanda: databuild-py{{matrix}}"
@@ -17,15 +19,19 @@ steps:
     env:
       PYTHON: "{{matrix}}"
     depends_on: oss-ci-base_ml-multipy
+    tags: cibase
 
   - name: datanbuild
     wanda: ci/docker/datan.build.wanda.yaml
+    tags: cibase
 
   - name: datamongobuild
     wanda: ci/docker/datamongo.build.wanda.yaml
+    tags: cibase
 
   - name: datatfxbslbuild
     wanda: ci/docker/datatfxbsl.build.wanda.yaml
+    tags: cibase
 
   # tests
   - label: ":database: data: arrow v9 tests"
@@ -38,7 +44,7 @@ steps:
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}"
         --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --build-name data9build
-        --except-tags data_integration,doctest,data_non_parallel
+        --except-tags data_integration,doctest,data_non_parallel,dask
     depends_on: data9build
 
   - label: ":database: data: arrow v9 tests (data_non_parallel)"
@@ -63,7 +69,7 @@ steps:
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}"
         --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --build-name datalbuild
-        --except-tags data_integration,doctest,data_non_parallel
+        --except-tags data_integration,doctest,data_non_parallel,dask
     depends_on: datalbuild
 
   - label: ":database: data: arrow v20 tests (data_non_parallel)"
@@ -88,7 +94,7 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //python/ray/air/... data
         --workers 2 --worker-id {{matrix.worker_id}} --parallelism-per-worker 3
         --python-version {{matrix.python}}
-        --except-tags data_integration,doctest,data_non_parallel
+        --except-tags data_integration,doctest,data_non_parallel,dask
     depends_on: databuild-multipy
     matrix:
       setup:
@@ -122,7 +128,7 @@ steps:
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}"
         --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --build-name datanbuild
-        --except-tags data_integration,doctest,data_non_parallel
+        --except-tags data_integration,doctest,data_non_parallel,dask
     depends_on: datanbuild
     soft_fail: true
 
@@ -139,14 +145,23 @@ steps:
     depends_on: datanbuild
     soft_fail: true
 
+  - label: ":database: data: dask tests"
+    tags:
+      - data
+      - dask
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... data
+        --build-name databuild-py3.12
+        --only-tags dask
+    depends_on: databuild-multipy
+
   - label: ":database: data: TFRecords (tfx-bsl) tests"
     tags:
-      - python
       - data
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... data
-        --parallelism-per-worker 3
         --build-name datatfxbslbuild
         --only-tags tfxbsl
     depends_on: datatfxbslbuild
@@ -166,10 +181,22 @@ steps:
       # doc examples
       - bazel run //ci/ray_ci:test_in_docker -- //doc/... data
         --build-name datalbuild
-        --except-tags gpu,post_wheel_build,doctest
+        --except-tags gpu,post_wheel_build,doctest,dask
         --parallelism-per-worker 2
         --skip-ray-installation
     depends_on: datalbuild
+
+  - label: ":database: data: dask doc tests"
+    tags:
+      - data
+      - doc
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //doc/... data
+        --build-name databuild-py3.12
+        --only-tags dask
+        --parallelism-per-worker 2
+    depends_on: databuild-multipy
 
   - label: ":database: data: doc gpu tests"
     tags:

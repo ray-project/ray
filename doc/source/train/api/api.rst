@@ -147,6 +147,14 @@ Ray Train Utilities
     ~train.get_dataset_shard
     ~train.report
 
+**Collective**
+
+.. autosummary::
+    :nosignatures:
+    :toctree: doc/
+
+    ~train.collective.barrier
+    ~train.collective.broadcast_from_rank_zero
 
 Ray Train Output
 ----------------
