@@ -103,6 +103,19 @@ filegroup(
 )
 
 http_archive(
+    name = "uv_x86_64",
+    build_file_content = """
+    filegroup(
+        name = "file",
+        srcs = glob(["**"]),
+        visibility = ["//visibility:public"],
+)
+""",
+    sha256 = "1785537fc65a35609dc33063b5f1cc85437a08ade4c0a832071c018481afe515",
+    urls = ["https://github.com/astral-sh/uv/releases/download/0.7.19/uv-i686-unknown-linux-gnu.tar.gz"],
+)
+
+http_archive(
     name = "com_github_storypku_bazel_iwyu",
     sha256 = "aa78c331a2cb139f73f7d74eeb4d5ab29794af82023ef5d6d5194f76b7d37449",
     strip_prefix = "bazel_iwyu-0.19.2",
