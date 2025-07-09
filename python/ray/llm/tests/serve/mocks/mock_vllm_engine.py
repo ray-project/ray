@@ -54,14 +54,6 @@ class MockVLLMEngine(LLMEngine):
 
         self._stats = VLLMEngineStatTracker()
 
-    @staticmethod
-    async def initialize_node(llm_config: LLMConfig) -> InitializeNodeOutput:
-        return InitializeNodeOutput(
-            placement_group=None,
-            runtime_env={},
-            extra_init_kwargs={},
-        )
-
     async def start(self):
         """No-Op"""
         return
@@ -266,14 +258,6 @@ class MockEchoVLLMEngine(MockVLLMEngine):
 class MockMultiplexEngine(LLMEngine):
     def __init__(self, *args, **kwargs):
         self.started = False
-
-    @staticmethod
-    async def initialize_node(llm_config: LLMConfig) -> InitializeNodeOutput:
-        return InitializeNodeOutput(
-            placement_group=None,
-            runtime_env={},
-            extra_init_kwargs={},
-        )
 
     async def prepare_request(
         self,
