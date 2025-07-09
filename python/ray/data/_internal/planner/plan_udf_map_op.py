@@ -99,31 +99,38 @@ def plan_project_op(
 
     def fn(block: Block) -> Block:
         try:
-            if not BlockAccessor.for_block(block).num_rows():
+            block_accessor = BlockAccessor.for_block(block)
+            if not block_accessor.num_rows():
                 return block
-            tbl = BlockAccessor.for_block(block).to_arrow()
 
             # 1. evaluate / add expressions
             if exprs:
+                # Extract existing columns directly from the block
+                new_columns = {}
+                for col_name in block_accessor.column_names():
+                    # For Arrow blocks, block[col_name] gives us a ChunkedArray
+                    # For Pandas blocks, block[col_name] gives us a Series
+                    new_columns[col_name] = block[col_name]
+
+                # Add/update with expression results
                 for name, ex in exprs.items():
-                    arr = eval_expr(ex, tbl)
-                    if name in tbl.column_names:
-                        tbl = tbl.set_column(
-                            tbl.schema.get_field_index(name), name, arr
-                        )
-                    else:
-                        tbl = tbl.append_column(name, arr)
+                    result = eval_expr(ex, block)
+                    new_columns[name] = result
+
+                # Create new block from updated columns
+                block = BlockAccessor.batch_to_block(new_columns)
+                block_accessor = BlockAccessor.for_block(block)
 
             # 2. (optional) column projection
             if columns:
-                tbl = tbl.select(columns)
+                block = block_accessor.select(columns)
+                block_accessor = BlockAccessor.for_block(block)
 
             # 3. (optional) rename
             if columns_rename:
-                tbl = tbl.rename_columns(
-                    [columns_rename.get(col, col) for col in tbl.schema.names]
-                )
-            return tbl
+                block = block_accessor.rename_columns(columns_rename)
+
+            return block
         except Exception as e:
             _handle_debugger_exception(e, block)
 

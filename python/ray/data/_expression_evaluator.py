@@ -3,7 +3,6 @@ from __future__ import annotations
 import operator
 from typing import TYPE_CHECKING, Any, Callable, Dict
 
-import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pyarrow.compute as pc
@@ -34,20 +33,6 @@ def _get_operation_maps():
         Operation.OR: operator.or_,
     }
 
-    numpy_ops = {
-        Operation.ADD: np.add,
-        Operation.SUB: np.subtract,
-        Operation.MUL: np.multiply,
-        Operation.DIV: np.divide,
-        Operation.GT: np.greater,
-        Operation.LT: np.less,
-        Operation.GE: np.greater_equal,
-        Operation.LE: np.less_equal,
-        Operation.EQ: np.equal,
-        Operation.AND: np.logical_and,
-        Operation.OR: np.logical_or,
-    }
-
     arrow_ops = {
         Operation.ADD: pc.add,
         Operation.SUB: pc.subtract,
@@ -62,7 +47,7 @@ def _get_operation_maps():
         Operation.OR: pc.or_,
     }
 
-    return pandas_ops, numpy_ops, arrow_ops
+    return pandas_ops, arrow_ops
 
 
 def _eval_expr_recursive(expr: "Expr", batch, ops: Dict["Operation", Callable]) -> Any:
@@ -87,12 +72,10 @@ def _eval_expr_recursive(expr: "Expr", batch, ops: Dict["Operation", Callable]) 
 
 def eval_expr(expr: "Expr", batch) -> Any:
     """Recursively evaluate *expr* against a batch of the appropriate type."""
-    pandas_ops, numpy_ops, arrow_ops = _get_operation_maps()
+    pandas_ops, arrow_ops = _get_operation_maps()
 
     if isinstance(batch, pd.DataFrame):
         return _eval_expr_recursive(expr, batch, pandas_ops)
-    elif isinstance(batch, (np.ndarray, dict)):
-        return _eval_expr_recursive(expr, batch, numpy_ops)
     elif isinstance(batch, pa.Table):
         return _eval_expr_recursive(expr, batch, arrow_ops)
     raise TypeError(f"Unsupported batch type: {type(batch).__name__}")

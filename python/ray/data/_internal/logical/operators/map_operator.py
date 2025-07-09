@@ -264,7 +264,9 @@ class Project(AbstractMap):
         input_op: LogicalOperator,
         cols: Optional[List[str]] = None,
         cols_rename: Optional[Dict[str, str]] = None,
-        exprs: Optional[Dict[str, "Expr"]] = None,
+        exprs: Optional[
+            Dict[str, "Expr"]
+        ] = None,  # TODO Remove cols and cols_rename and replace them with corresponding exprs
         compute: Optional[ComputeStrategy] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
@@ -280,6 +282,14 @@ class Project(AbstractMap):
         self._exprs = exprs
         self._batch_format = "pyarrow"
         self._zero_copy_batch = True
+
+        if exprs is not None:
+            # Validate that all values are expressions
+            for name, expr in exprs.items():
+                if not isinstance(expr, Expr):
+                    raise TypeError(
+                        f"Expected Expr for column '{name}', got {type(expr)}"
+                    )
 
     @property
     def cols(self) -> Optional[List[str]]:

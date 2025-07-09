@@ -156,23 +156,6 @@ class Expr:
         """Logical OR operator (|)."""
         return self._bin(other, Operation.OR)
 
-    def alias(self, name: str) -> "AliasExpr":
-        """Give this expression a new name.
-
-        Args:
-            name: The new name for the expression result
-
-        Returns:
-            An AliasExpr that evaluates this expression and assigns the result
-            to the given name
-
-        Example:
-            >>> from ray.data.expressions import col
-            >>> # Create a column named "sum" from adding x and y
-            >>> expr = (col("x") + col("y")).alias("sum")
-        """
-        return AliasExpr(self, name)
-
 
 @DeveloperAPI
 @dataclass(frozen=True)
@@ -240,30 +223,6 @@ class BinaryExpr(Expr):
     op: Operation
     left: Expr
     right: Expr
-
-
-@DeveloperAPI
-@dataclass(frozen=True)
-class AliasExpr(Expr):
-    """Expression that assigns a name to another expression's result.
-
-    This expression type wraps another expression and assigns a specific
-    name to its result. This is useful for creating new columns with
-    meaningful names.
-
-    Args:
-        expr: The expression to evaluate
-        name: The name to assign to the result
-
-    Example:
-        >>> from ray.data.expressions import col
-        >>> # Create an alias for a computed column
-        >>> expr = AliasExpr(col("x") + col("y"), "sum")
-        >>> # This is equivalent to: (col("x") + col("y")).alias("sum")
-    """
-
-    expr: Expr
-    name: str
 
 
 @DeveloperAPI

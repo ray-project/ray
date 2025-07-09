@@ -1984,34 +1984,34 @@ def test_map_names():
 
 
 @pytest.mark.parametrize(
-    "expr, expected_value",
+    "exprs, expected_value",
     [
         # Arithmetic operations
-        ((col("id") + 1).alias("result"), 1),  # 0 + 1 = 1
-        ((col("id") + 5).alias("result"), 5),  # 0 + 5 = 5
-        ((col("id") - 1).alias("result"), -1),  # 0 - 1 = -1
-        ((col("id") * 2).alias("result"), 0),  # 0 * 2 = 0
-        ((col("id") * 3).alias("result"), 0),  # 0 * 3 = 0
-        ((col("id") / 2).alias("result"), 0.0),  # 0 / 2 = 0.0
+        ({"result": col("id") + 1}, 1),  # 0 + 1 = 1
+        ({"result": col("id") + 5}, 5),  # 0 + 5 = 5
+        ({"result": col("id") - 1}, -1),  # 0 - 1 = -1
+        ({"result": col("id") * 2}, 0),  # 0 * 2 = 0
+        ({"result": col("id") * 3}, 0),  # 0 * 3 = 0
+        ({"result": col("id") / 2}, 0.0),  # 0 / 2 = 0.0
         # More complex arithmetic
-        (((col("id") + 1) * 2).alias("result"), 2),  # (0 + 1) * 2 = 2
-        (((col("id") * 2) + 3).alias("result"), 3),  # 0 * 2 + 3 = 3
+        ({"result": (col("id") + 1) * 2}, 2),  # (0 + 1) * 2 = 2
+        ({"result": (col("id") * 2) + 3}, 3),  # 0 * 2 + 3 = 3
         # Comparison operations
-        ((col("id") > 0).alias("result"), False),  # 0 > 0 = False
-        ((col("id") >= 0).alias("result"), True),  # 0 >= 0 = True
-        ((col("id") < 1).alias("result"), True),  # 0 < 1 = True
-        ((col("id") <= 0).alias("result"), True),  # 0 <= 0 = True
-        ((col("id") == 0).alias("result"), True),  # 0 == 0 = True
+        ({"result": col("id") > 0}, False),  # 0 > 0 = False
+        ({"result": col("id") >= 0}, True),  # 0 >= 0 = True
+        ({"result": col("id") < 1}, True),  # 0 < 1 = True
+        ({"result": col("id") <= 0}, True),  # 0 <= 0 = True
+        ({"result": col("id") == 0}, True),  # 0 == 0 = True
         # Operations with literals
-        ((col("id") + lit(10)).alias("result"), 10),  # 0 + 10 = 10
-        ((col("id") * lit(5)).alias("result"), 0),  # 0 * 5 = 0
-        ((lit(2) + col("id")).alias("result"), 2),  # 2 + 0 = 2
-        ((lit(10) / (col("id") + 1)).alias("result"), 10.0),  # 10 / (0 + 1) = 10.0
+        ({"result": col("id") + lit(10)}, 10),  # 0 + 10 = 10
+        ({"result": col("id") * lit(5)}, 0),  # 0 * 5 = 0
+        ({"result": lit(2) + col("id")}, 2),  # 2 + 0 = 2
+        ({"result": lit(10) / (col("id") + 1)}, 10.0),  # 10 / (0 + 1) = 10.0
     ],
 )
-def test_with_columns(ray_start_regular_shared, expr, expected_value):
-    """Verify that `with_column` works with various operations."""
-    ds = ray.data.range(5).with_columns([expr])
+def test_with_columns(ray_start_regular_shared, exprs, expected_value):
+    """Verify that `with_columns` works with various operations."""
+    ds = ray.data.range(5).with_columns(exprs)
     result = ds.take(1)[0]
     assert result["id"] == 0
     assert result["result"] == expected_value
@@ -2024,18 +2024,20 @@ def test_with_columns_nonexistent_column(ray_start_regular_shared):
 
     # Try to reference a non-existent column - this should raise an exception
     with pytest.raises(UserCodeException):
-        ds.with_columns([(col("nonexistent_column") + 1).alias("result")]).materialize()
+        ds.with_columns({"result": col("nonexistent_column") + 1}).materialize()
 
 
 def test_with_columns_multiple_expressions(ray_start_regular_shared):
-    """Verify that `with_column` correctly handles multiple expressions at once."""
+    """Verify that `with_columns` correctly handles multiple expressions at once."""
     ds = ray.data.range(5)
 
-    expr1 = (col("id") + 1).alias("plus_one")
-    expr2 = (col("id") * 2).alias("times_two")
-    expr3 = (10 - col("id")).alias("ten_minus_id")
+    exprs = {
+        "plus_one": col("id") + 1,
+        "times_two": col("id") * 2,
+        "ten_minus_id": 10 - col("id"),
+    }
 
-    ds = ds.with_columns([expr1, expr2, expr3])
+    ds = ds.with_columns(exprs)
 
     first_row = ds.take(1)[0]
     assert first_row["id"] == 0

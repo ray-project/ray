@@ -134,7 +134,7 @@ if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces import Executor, NodeIdStr
     from ray.data.grouped_data import GroupedData
 
-from ray.data.expressions import AliasExpr, Expr
+from ray.data.expressions import Expr
 
 logger = logging.getLogger(__name__)
 
@@ -781,7 +781,7 @@ class Dataset:
     @PublicAPI(api_group=EXPRESSION_API_GROUP, stability="alpha")
     def with_columns(
         self,
-        exprs: List[Expr],
+        exprs: Dict[str, Expr],
         **ray_remote_args,
     ) -> "Dataset":
         """
@@ -792,7 +792,7 @@ class Dataset:
             >>> import ray
             >>> from ray.data.expressions import col
             >>> ds = ray.data.range(100)
-            >>> ds.with_columns([(col("id") * 2).alias("new_id"), (col("id") * 3).alias("new_id_2")]).schema()
+            >>> ds.with_columns({"new_id": col("id") * 2, "new_id_2": col("id") * 3}).schema()
             Column    Type
             ------    ----
             id        int64
@@ -800,7 +800,7 @@ class Dataset:
             new_id_2  int64
 
         Args:
-            exprs: The expressions to evaluate to produce the new column values.
+            exprs: A dictionary mapping column names to expressions that define the new column values.
             **ray_remote_args: Additional resource requirements to request from
                 Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
                 :func:`ray.remote` for details.
@@ -811,16 +811,6 @@ class Dataset:
         if not exprs:
             raise ValueError("at least one expression is required")
 
-        # Build mapping {new_col_name: expression}
-        projections: Dict[str, Expr] = {}
-        for e in exprs:
-            if not isinstance(e, Expr):
-                raise TypeError(f"Expected Expr, got {type(e)}")
-            if isinstance(e, AliasExpr):
-                projections[e.name] = e.expr
-            else:
-                raise ValueError("Each expression must be `.alias(<output>)`-ed.")
-
         from ray.data._internal.logical.operators.map_operator import Project
 
         plan = self._plan.copy()
@@ -828,7 +818,7 @@ class Dataset:
             self._logical_plan.dag,
             cols=None,
             cols_rename=None,
-            exprs=projections,  # << pass expressions
+            exprs=exprs,
             ray_remote_args=ray_remote_args,
         )
         logical_plan = LogicalPlan(project_op, self.context)
@@ -5077,7 +5067,7 @@ class Dataset:
                 using a local in-memory shuffle buffer, and this value will serve as the
                 minimum number of rows that must be in the local in-memory shuffle
                 buffer in order to yield a batch. When there are no more rows to add to
-                the buffer, the remaining rows in the buffer is drained. This
+                the buffer, the remaining rows in the buffer are drained. This
                 buffer size must be greater than or equal to ``batch_size``, and
                 therefore ``batch_size`` must also be specified when using local
                 shuffling.
