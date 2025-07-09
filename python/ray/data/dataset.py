@@ -672,8 +672,8 @@ class Dataset:
         """  # noqa: E501
         use_gpus = num_gpus is not None and num_gpus > 0
         if use_gpus and (batch_size is None or batch_size == "default"):
-            raise ValueError(
-                "You must provide `batch_size` to `map_batches` when requesting GPUs. "
+            logger.warning(
+                "You should provide `batch_size` to `map_batches` when requesting GPUs. "
                 "The optimal batch size depends on the model, data, and GPU used. "
                 "We recommend using the largest batch size that doesn't result "
                 "in your GPU device running out of memory. You can view the GPU memory "
