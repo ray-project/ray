@@ -195,7 +195,8 @@ void ActorSchedulingQueue::ScheduleRequests() {
                      << ", canceling all queued tasks.";
       while (!pending_actor_tasks_.empty()) {
         auto head = pending_actor_tasks_.begin();
-        head->second.Cancel(Status::Invalid("Server timed out while waiting for an earlier seq_no."));
+        head->second.Cancel(Status::Invalid(absl::StrCat("Server timed out after waiting ", reorder_wait_seconds_,
+                                                            " seconds for an earlier seq_no.")));
         next_seq_no_ = std::max(next_seq_no_, head->first + 1);
         {
           absl::MutexLock lock(&mu_);
