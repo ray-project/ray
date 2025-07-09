@@ -31,11 +31,6 @@ void FillAggregateLoad(
       key.label_selectors.push_back(selector);
     }
     auto &aggregate_demand = (*aggregate_load)[key];
-    if (aggregate_demand.label_selectors_size() == 0) {
-      for (const auto &selector : demand.label_selectors()) {
-        *aggregate_demand.add_label_selectors() = selector;
-      }
-    }
     aggregate_demand.set_num_ready_requests_queued(
         aggregate_demand.num_ready_requests_queued() +
         demand.num_ready_requests_queued());
