@@ -1,5 +1,4 @@
 from .poll import WorkerGroupPollStatus, WorkerStatus
-from .protocol import WorkerGroupStatus
 from .state import (
     WorkerGroupSchedulingStatus,
     WorkerGroupState,
@@ -18,6 +17,5 @@ __all__ = [
     "WorkerGroupState",
     "WorkerGroupStateBuilder",
     "WorkerStatus",
-    "WorkerGroupStatus",
     "WorkerGroupSchedulingStatus",
 ]
