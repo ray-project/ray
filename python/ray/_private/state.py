@@ -848,16 +848,18 @@ class GlobalState:
             return autoscaler_pb2.ClusterConfig.FromString(serialized_cluster_config)
         return None
 
-    def _calculate_max_resource_from_cluster_config(self, key: str) -> Optional[int]:
+    @staticmethod
+    def _calculate_max_resource_from_cluster_config(
+        cluster_config: Optional[autoscaler_pb2.ClusterConfig], key: str
+    ) -> Optional[int]:
         """Calculate the maximum available resources for a given resource type from cluster config.
         If the resource type is not available, return None.
         """
-        config = self.get_cluster_config()
-        if config is None:
+        if cluster_config is None:
             return None
 
         max_value = 0
-        for node_group_config in config.node_group_configs:
+        for node_group_config in cluster_config.node_group_configs:
             num_resources = node_group_config.resources.get(key, default=0)
             num_nodes = node_group_config.max_count
             if num_nodes == 0 or num_resources == 0:
@@ -867,7 +869,7 @@ class GlobalState:
             max_value += num_nodes * num_resources
         if max_value == 0:
             return None
-        max_value_limit = config.max_resources.get(key, default=sys.maxsize)
+        max_value_limit = cluster_config.max_resources.get(key, default=sys.maxsize)
         return min(max_value, max_value_limit)
 
     def get_max_resources_from_cluster_config(self) -> Dict[str, Optional[int]]:
@@ -891,7 +893,7 @@ class GlobalState:
                 all_resource_keys.update(node_group_config.resources.keys())
 
         return {
-            key: self._calculate_max_resource_from_cluster_config(key)
+            key: self._calculate_max_resource_from_cluster_config(config, key)
             for key in all_resource_keys
         }
 
