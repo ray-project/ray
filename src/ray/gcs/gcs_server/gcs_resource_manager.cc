@@ -216,9 +216,6 @@ void GcsResourceManager::HandleGetAllResourceUsage(
     for (const auto &demand : aggregate_load) {
       auto demand_proto = batch.mutable_resource_load_by_shape()->add_resource_demands();
       demand_proto->CopyFrom(demand.second);
-      for (const auto &resource_pair : demand.first.shape) {
-        (*demand_proto->mutable_shape())[resource_pair.first] = resource_pair.second;
-      }
     }
     // Update placement group load to heartbeat batch.
     // This is updated only one per second.
