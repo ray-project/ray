@@ -267,6 +267,13 @@ def test_train_state_actor_abort_dead_controller_live_runs(monkeypatch):
         run_id="live_controller_one_attempt_run_id",
         attempt_id="attempt_1",
     )
+    dead_controller_two_attempts_first_attempt = (
+        create_mock_train_run_attempt(
+            attempt_id="attempt_1",
+            status=RunAttemptStatus.ERRORED,
+            run_id="dead_controller_two_attempts_run_id",
+        ),
+    )
     actor._run_attempts = {
         "nonexistent_controller_no_attempts_run_id": {},
         "dead_controller_one_attempt_run_id": {
@@ -278,11 +285,7 @@ def test_train_state_actor_abort_dead_controller_live_runs(monkeypatch):
         },
         "dead_controller_two_attempts_run_id": OrderedDict(
             {
-                "attempt_1": create_mock_train_run_attempt(
-                    attempt_id="attempt_1",
-                    status=RunAttemptStatus.ERRORED,
-                    run_id="dead_controller_two_attempts_run_id",
-                ),
+                "attempt_1": dead_controller_two_attempts_first_attempt,
                 "attempt_2": create_mock_train_run_attempt(
                     status=RunAttemptStatus.RUNNING,
                     attempt_id="attempt_2",
@@ -344,11 +347,7 @@ def test_train_state_actor_abort_dead_controller_live_runs(monkeypatch):
         },
         "dead_controller_two_attempts_run_id": OrderedDict(
             {
-                "attempt_1": create_mock_train_run_attempt(
-                    status=RunAttemptStatus.ERRORED,
-                    run_id="dead_controller_two_attempts_run_id",
-                    attempt_id="attempt_1",
-                ),
+                "attempt_1": dead_controller_two_attempts_first_attempt,
                 "attempt_2": create_mock_train_run_attempt(
                     status=RunAttemptStatus.ABORTED,
                     run_id="dead_controller_two_attempts_run_id",
