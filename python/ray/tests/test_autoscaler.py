@@ -3620,9 +3620,7 @@ class AutoscalingTest(unittest.TestCase):
         worker_ip = self.provider.non_terminated_node_ips(WORKER_FILTER)[0]
         # Mark the node as idle
         lm.update(worker_ip, mock_raylet_id(), {"CPU": 1}, {"CPU": 1}, 20)
-        assert lm.is_active(worker_ip)
         autoscaler.update()
-        assert not lm.is_active(worker_ip)
         assert self.provider.internal_ip("1") == worker_ip
         events = autoscaler.event_summarizer.summary()
         assert "Removing 1 nodes of type worker (idle)." in events, events
@@ -3861,23 +3859,24 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
 
         worker_ip = self.provider.non_terminated_node_ips(WORKER_FILTER)[0]
+        fill_in_raylet_ids(self.provider, lm)
         lm.update(worker_ip, mock_raylet_id(), {"CPU": 1}, {"CPU": 1}, 0)
         autoscaler.update()
-
+        now = time.time()
         assert (
-            time.time() - lm.last_heartbeat_time_by_ip[worker_ip]
+            now - lm.last_heartbeat_time_by_ip[worker_ip]
             < AUTOSCALER_HEARTBEAT_TIMEOUT_S
         ), "Initial heartbeat should be within timeout threshold"
-        assert lm.is_active(worker_ip)
         assert self.provider.internal_ip("1") == worker_ip
 
-        past_heartbeat = time.time() - AUTOSCALER_HEARTBEAT_TIMEOUT_S - 1
+        past_heartbeat = now - AUTOSCALER_HEARTBEAT_TIMEOUT_S - 1
         lm.last_heartbeat_time_by_ip[worker_ip] = past_heartbeat
         autoscaler.update()
 
-        assert not lm.is_active(
-            worker_ip
-        ), "Node should not be active after heartbeat timeout"
+        assert not (
+            now - lm.last_heartbeat_time_by_ip[worker_ip]
+            < AUTOSCALER_HEARTBEAT_TIMEOUT_S
+        ), "Initial heartbeat should be within timeout threshold"
 
 
 def test_import():

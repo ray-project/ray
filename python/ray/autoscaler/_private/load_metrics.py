@@ -8,7 +8,6 @@ from ray._private.gcs_utils import PlacementGroupTableData
 from ray.autoscaler._private.constants import (
     AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE,
     AUTOSCALER_REPORT_PER_NODE_STATUS,
-    AUTOSCALER_HEARTBEAT_TIMEOUT_S,
 )
 from ray.autoscaler._private.util import (
     DictCount,
@@ -132,12 +131,6 @@ class LoadMetrics:
         assert ip is not None, "IP should be known at this time"
         logger.debug("Node {} is newly setup, treating as active".format(ip))
         self.last_heartbeat_time_by_ip[ip] = time.time()
-
-    def is_active(self, ip):
-        last_heartbeat = self.last_heartbeat_time_by_ip.get(ip)
-        if last_heartbeat is None:
-            return False
-        return (time.time() - last_heartbeat) < AUTOSCALER_HEARTBEAT_TIMEOUT_S
 
     def prune_active_ips(self, active_ips: List[str]):
         """The Raylet ips stored by LoadMetrics are obtained by polling
