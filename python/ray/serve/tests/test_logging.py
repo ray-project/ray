@@ -33,6 +33,7 @@ from ray.serve._private.logging_utils import (
     get_serve_logs_dir,
     redirected_print,
 )
+from ray.serve._private.test_utils import get_application_url
 from ray.serve._private.utils import get_component_file_name
 from ray.serve.context import _get_global_client
 from ray.serve.schema import EncodingType, LoggingConfig
@@ -101,7 +102,12 @@ def test_log_rotation_config(monkeypatch, ray_shutdown):
     assert rotation_config["backup_count"] == backup_count
 
 
-def test_http_access_log(serve_instance):
+@pytest.mark.parametrize("log_format", ["TEXT", "JSON"])
+def test_http_access_log_in_stderr(serve_instance, log_format):
+    if log_format == "JSON":
+        # TODO (SERVE-908|harshit): This test is flaky in premerge.
+        pytest.skip("The test for JSON log format is flaky, skipping for now.")
+
     name = "deployment_name"
 
     fastapi_app = FastAPI()
@@ -128,7 +134,7 @@ def test_http_access_log(serve_instance):
         def fail(self):
             raise RuntimeError("OOPS!")
 
-    serve.run(Handler.bind())
+    serve.run(Handler.bind(), logging_config={"encoding": log_format})
 
     f = io.StringIO()
     with redirect_stderr(f):
@@ -153,14 +159,21 @@ def test_http_access_log(serve_instance):
                 ]
             )
 
-        r = httpx.get("http://localhost:8000/")
+        url = get_application_url(use_localhost=True)
+
+        r = httpx.get(url)
         assert r.status_code == 200
         replica_id = ReplicaID(unique_id=r.text, deployment_id=DeploymentID(name=name))
         wait_for_condition(
-            check_log, replica_id=replica_id, method="GET", route="/", status_code="200"
+            check_log,
+            replica_id=replica_id,
+            method="GET",
+            route="/",
+            status_code="200",
+            timeout=20,
         )
 
-        r = httpx.post("http://localhost:8000/")
+        r = httpx.post(url)
         assert r.status_code == 200
         wait_for_condition(
             check_log,
@@ -168,9 +181,10 @@ def test_http_access_log(serve_instance):
             method="POST",
             route="/",
             status_code="200",
+            timeout=20,
         )
 
-        r = httpx.get("http://localhost:8000/350")
+        r = httpx.get(f"{url}/350")
         assert r.status_code == 350
         wait_for_condition(
             check_log,
@@ -178,9 +192,10 @@ def test_http_access_log(serve_instance):
             method="GET",
             route="/{status}",
             status_code="350",
+            timeout=20,
         )
 
-        r = httpx.put("http://localhost:8000/fail")
+        r = httpx.put(f"{url}/fail")
         assert r.status_code == 500
         wait_for_condition(
             check_log,
@@ -189,7 +204,230 @@ def test_http_access_log(serve_instance):
             route="/fail",
             status_code="500",
             fail=True,
+            timeout=20,
         )
+
+
+@pytest.mark.parametrize("log_format", ["TEXT", "JSON"])
+def test_http_access_log_in_logs_file(serve_instance, log_format):
+    name = "deployment_name"
+    fastapi_app = FastAPI()
+
+    @serve.deployment(name=name)
+    @serve.ingress(fastapi_app)
+    class Handler:
+        def __init__(self):
+            self._replica_unique_id = serve.get_replica_context().replica_id.unique_id
+
+        def _get_context_info(self):
+            """Get context information for matching with logs"""
+            request_context = ray.serve.context._get_serve_request_context()
+            return {
+                "replica": self._replica_unique_id,
+                "request_id": request_context.request_id,
+                "worker_id": ray.get_runtime_context().get_worker_id(),
+                "node_id": ray.get_runtime_context().get_node_id(),
+                "actor_id": ray.get_runtime_context().get_actor_id(),
+            }
+
+        @fastapi_app.get("/")
+        def get_root(self):
+            return self._get_context_info()
+
+        @fastapi_app.post("/")
+        def post_root(self):
+            return self._get_context_info()
+
+        @fastapi_app.get("/{status}")
+        def template(self, status: str):
+            content_info = {"context": self._get_context_info()}
+            return PlainTextResponse(
+                content=json.dumps(content_info),
+                status_code=int(status),
+                media_type="application/json",
+            )
+
+        @fastapi_app.put("/fail")
+        def fail(self):
+            error_response = {"error": "OOPS!", "context": self._get_context_info()}
+            return PlainTextResponse(
+                content=json.dumps(error_response),
+                status_code=500,
+                media_type="application/json",
+            )
+
+    serve.run(Handler.bind(), logging_config={"encoding": log_format})
+
+    # Get log file information
+    client = _get_global_client()
+    serve_log_dir = get_serve_logs_dir()
+    replicas = ray.get(
+        client._controller.get_deployment_details.remote("default", name)
+    ).replicas
+    replica_id = replicas[0].replica_id
+    replica_log_file_name = f"replica_default_{name}_{replica_id}.log"
+    log_file_path = os.path.join(serve_log_dir, replica_log_file_name)
+
+    url = get_application_url(use_localhost=True)
+
+    # Define the HTTP calls to make
+    http_calls = [
+        {
+            "method": "GET",
+            "url": url,
+            "expected_status": 200,
+            "expected_route": "/",
+        },
+        {
+            "method": "POST",
+            "url": url,
+            "expected_status": 200,
+            "expected_route": "/",
+        },
+        {
+            "method": "GET",
+            "url": f"{url}/350",
+            "expected_status": 350,
+            "expected_route": "/{status}",
+        },
+        {
+            "method": "PUT",
+            "url": f"{url}/fail",
+            "expected_status": 500,
+            "expected_route": "/fail",
+        },
+    ]
+
+    def get_file_end_position(file_path):
+        """Get the current end position of the file"""
+        try:
+            with open(file_path, "r") as f:
+                f.seek(0, 2)  # Seek to end of file
+                return f.tell()
+        except FileNotFoundError:
+            return 0
+
+    def create_line_checker(file_path, start_pos):
+        """Create a function that checks for new lines and captures them"""
+        captured_lines = {"lines": []}
+
+        def check_for_new_lines():
+            """Get new lines added to the file since start_position and return if any exist"""
+            try:
+                with open(file_path, "r") as f:
+                    f.seek(start_pos)
+                    new_content = f.read()
+                    lines = new_content.splitlines() if new_content else []
+                    captured_lines["lines"] = lines
+            except FileNotFoundError:
+                captured_lines["lines"] = []
+
+            return len(captured_lines["lines"]) > 0
+
+        return check_for_new_lines, captured_lines
+
+    def verify_http_response_in_logs(
+        response, new_log_lines, call_info, log_format, context_info=None
+    ):
+        """Verify that the HTTP response matches the new log entries"""
+        if not new_log_lines:
+            print("No new log lines found")
+            return False
+
+        if log_format == "JSON":
+            for line in new_log_lines:
+                if line.strip():
+                    try:
+                        log_data = json.loads(line.strip())
+                        message = log_data.get("message", "")
+
+                        if all(
+                            [
+                                f"default_{name}" == log_data.get("deployment"),
+                                f"{call_info['method']} {call_info['expected_route']} {call_info['expected_status']}"
+                                in message,
+                                "ms" in message,
+                                (
+                                    context_info is not None
+                                    and log_data.get("request_id")
+                                    == context_info["request_id"]
+                                    and log_data.get("worker_id")
+                                    == context_info["worker_id"]
+                                    and log_data.get("node_id")
+                                    == context_info["node_id"]
+                                    and log_data.get("replica")
+                                    == context_info["replica"]
+                                ),
+                            ]
+                        ):
+                            return True
+
+                    except json.JSONDecodeError:
+                        continue
+        else:
+            for line in new_log_lines:
+                if all(
+                    [
+                        name in line,
+                        f"default_{name} {replica_id}" in line,
+                        f"-- {call_info['method']} {call_info['expected_route']} {call_info['expected_status']}"
+                        in line,
+                        "ms" in line,
+                    ]
+                ):
+                    return True
+
+        return False
+
+    # Process each HTTP call individually
+    for i, call_info in enumerate(http_calls):
+        # Step 1: Get current file end position
+        start_position = get_file_end_position(log_file_path)
+
+        # Step 2: Make HTTP call
+        if call_info["method"] == "GET":
+            response = httpx.get(call_info["url"])
+        elif call_info["method"] == "POST":
+            response = httpx.post(call_info["url"])
+        elif call_info["method"] == "PUT":
+            response = httpx.put(call_info["url"])
+        else:
+            raise ValueError(f"Unsupported HTTP method: {call_info['method']}")
+
+        # Verify response status
+        assert (
+            response.status_code == call_info["expected_status"]
+        ), f"Expected status {call_info['expected_status']}, got {response.status_code}"
+
+        # Extract context information from response
+        context_info = None
+        response_data = response.json()
+
+        # For all routes apart from `/` endpoint, context info is nested under "context" key
+        if call_info["expected_route"] == "/":
+            context_info = response_data
+        elif "context" in response_data:
+            context_info = response_data["context"]
+        else:
+            raise ValueError(
+                f"Could not extract context info from response: {response.text}"
+            )
+
+        # Step 3: Wait a bit for logs to be written, then get new lines
+        line_checker, captured_lines = create_line_checker(
+            log_file_path, start_position
+        )
+        wait_for_condition(line_checker, retry_interval_ms=1000)
+        new_log_lines = captured_lines["lines"]
+
+        # Step 4: Verify HTTP response matches new log lines
+        match_found = verify_http_response_in_logs(
+            response, new_log_lines, call_info, log_format, context_info
+        )
+
+        assert (
+            match_found
+        ), f"No matching log entry found for {call_info['method']} {call_info['expected_route']}"
 
 
 def test_handle_access_log(serve_instance):
@@ -326,7 +564,8 @@ def test_log_filenames_contain_only_posix_characters(serve_instance):
 
     serve.run(A.bind())
 
-    r = httpx.get("http://localhost:8000/")
+    url = get_application_url(use_localhost=True)
+    r = httpx.get(url)
     r.raise_for_status()
     assert r.text == "hi"
 
@@ -385,10 +624,13 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
     serve.run(fn.bind(), name="app1", route_prefix="/fn")
     serve.run(Model.bind(), name="app2", route_prefix="/class_method")
 
+    url = get_application_url(app_name="app1", use_localhost=True)
+    url2 = get_application_url(app_name="app2", use_localhost=True)
+
     f = io.StringIO()
     with redirect_stderr(f):
-        resp = httpx.get("http://127.0.0.1:8000/fn").json()
-        resp2 = httpx.get("http://127.0.0.1:8000/class_method").json()
+        resp = httpx.get(url).json()
+        resp2 = httpx.get(url2).json()
 
         # Check the component log
         expected_log_infos = [
@@ -487,7 +729,9 @@ def test_extra_field(serve_and_ray_shutdown, raise_error):
         }
 
     serve.run(fn.bind(), name="app1", route_prefix="/fn")
-    resp = httpx.get("http://127.0.0.1:8000/fn")
+    url = get_application_url(app_name="app1", use_localhost=True)
+
+    resp = httpx.get(url)
     if raise_error:
         resp.status_code == 500
     else:
@@ -549,7 +793,9 @@ class TestLoggingAPI:
                 }
 
         serve.run(Model.bind())
-        resp = httpx.get("http://127.0.0.1:8000/").json()
+        url = get_application_url(use_localhost=True)
+
+        resp = httpx.get(url).json()
 
         replica_id = resp["replica"].split("#")[-1]
         if encoding_type == "JSON":
@@ -571,7 +817,9 @@ class TestLoggingAPI:
                 }
 
         serve.run(Model.bind())
-        resp = httpx.get("http://127.0.0.1:8000/").json()
+        url = get_application_url(use_localhost=True)
+
+        resp = httpx.get(url).json()
         expected_log_regex = [".*model_info_level.*"]
         check_log_file(resp["log_file"], expected_log_regex)
 
@@ -580,7 +828,9 @@ class TestLoggingAPI:
             check_log_file(resp["log_file"], [".*model_debug_level.*"])
 
         serve.run(Model.options(logging_config={"log_level": "DEBUG"}).bind())
-        resp = httpx.get("http://127.0.0.1:8000/").json()
+        url = get_application_url(use_localhost=True)
+
+        resp = httpx.get(url).json()
         expected_log_regex = [".*model_info_level.*", ".*model_debug_level.*"]
         check_log_file(resp["log_file"], expected_log_regex)
 
@@ -601,7 +851,9 @@ class TestLoggingAPI:
                 raise AssertionError("No memory handler found")
 
         serve.run(Model.bind())
-        resp = httpx.get("http://127.0.0.1:8000/").json()
+        url = get_application_url(use_localhost=True)
+
+        resp = httpx.get(url).json()
 
         paths = resp["logs_path"].split("/")
         paths[-1] = "new_dir"
@@ -615,7 +867,9 @@ class TestLoggingAPI:
                 }
             ).bind()
         )
-        resp = httpx.get("http://127.0.0.1:8000/").json()
+        url = get_application_url(use_localhost=True)
+
+        resp = httpx.get(url).json()
         assert "new_dir" in resp["logs_path"]
 
         check_log_file(resp["logs_path"], [".*model_info_level.*"])
@@ -640,8 +894,9 @@ class TestLoggingAPI:
                 }
 
         serve.run(Model.bind())
+        url = get_application_url(use_localhost=True)
 
-        resp = httpx.get("http://127.0.0.1:8000/")
+        resp = httpx.get(url)
         assert resp.status_code == 200
         resp = resp.json()
         check_log_file(resp["logs_path"], [".*model_info_level.*"])
@@ -674,8 +929,9 @@ class TestLoggingAPI:
                 }
 
         serve.run(Model.bind())
+        url = get_application_url(use_localhost=True)
 
-        resp = httpx.get("http://127.0.0.1:8000/")
+        resp = httpx.get(url)
         assert resp.status_code == 200
         resp = resp.json()
         if encoding_type == "JSON":
@@ -695,7 +951,9 @@ class TestLoggingAPI:
                 }
 
         serve.run(Model.bind(), logging_config={"log_level": "DEBUG"})
-        resp = httpx.get("http://127.0.0.1:8000/").json()
+        url = get_application_url(use_localhost=True)
+
+        resp = httpx.get(url).json()
         expected_log_regex = [".*model_info_level.*", ".*model_debug_level.*"]
         check_log_file(resp["log_file"], expected_log_regex)
 
@@ -718,7 +976,9 @@ class TestLoggingAPI:
             name="app2",
             route_prefix="/app2",
         )
-        resp = httpx.get("http://127.0.0.1:8000/app2").json()
+        url = get_application_url(app_name="app2", use_localhost=True)
+
+        resp = httpx.get(url).json()
         check_log_file(resp["log_file"], [".*model_info_level.*"])
         # Make sure 'model_debug_level' log content does not exist.
         with pytest.raises(AssertionError):
@@ -873,7 +1133,9 @@ def test_logging_disable_stdout(serve_and_ray_shutdown, ray_instance, tmp_dir):
 
     app = disable_stdout.bind()
     serve.run(app)
-    httpx.get("http://localhost:8000/", timeout=None)
+    url = get_application_url(use_localhost=True)
+
+    httpx.get(url, timeout=None)
 
     # Check if each of the logs exist in Serve's log files.
     from_serve_logger_check = False
@@ -923,7 +1185,9 @@ def test_serve_logging_file_names(serve_and_ray_shutdown, ray_instance):
 
     app = app.bind()
     serve.run(app, logging_config=logging_config)
-    r = httpx.get("http://127.0.0.1:8000/")
+    url = get_application_url(use_localhost=True)
+
+    r = httpx.get(url)
     assert r.status_code == 200
 
     # Construct serve log file names.
@@ -1021,7 +1285,9 @@ def test_json_logging_with_unpickleable_exc_info(
             return "foo"
 
     serve.run(App.bind())
-    r = httpx.get("http://127.0.0.1:8000/")
+    url = get_application_url(use_localhost=True)
+
+    r = httpx.get(f"{url}")
     assert r.status_code == 200
     for log_file in os.listdir(logs_dir):
         with open(logs_dir / log_file) as f:
