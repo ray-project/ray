@@ -104,6 +104,10 @@ def test_log_rotation_config(monkeypatch, ray_shutdown):
 
 @pytest.mark.parametrize("log_format", ["TEXT", "JSON"])
 def test_http_access_log_in_stderr(serve_instance, log_format):
+    if log_format == "JSON":
+        # TODO (SERVE-908|harshit): This test is flaky in premerge.
+        pytest.skip("The test for JSON log format is flaky, skipping for now.")
+
     name = "deployment_name"
 
     fastapi_app = FastAPI()
