@@ -1,11 +1,10 @@
 import logging
 from dataclasses import dataclass
-from typing import Dict, List, Optional
+from typing import List, Optional
 
 import ray
 from ray.actor import ActorHandle
 from ray.train.v2._internal.execution.checkpoint.sync_actor import SynchronizationActor
-from ray.train.v2._internal.execution.worker_group.protocol import WorkerGroupStatus
 from ray.train.v2._internal.execution.worker_group.worker import Worker
 from ray.train.v2._internal.util import time_monotonic
 from ray.util.placement_group import PlacementGroup, remove_placement_group
@@ -137,31 +136,18 @@ def _shutdown_placement_group(placement_group: PlacementGroup):
 
 
 @dataclass(frozen=True)
-class WorkerGroupSchedulingStatus(WorkerGroupStatus):
+class WorkerGroupSchedulingStatus:
     """Status of a worker group resize operation.
 
     Attributes:
         error: The error that occurred during the resize operation.
     """
 
-    error: Optional[Exception] = None
+    error: Optional[Exception]
 
     @property
-    def errors(self) -> Dict[int, Exception]:
-        if self.error:
-            return {0: self.error}
-        return {}
-
-    # Currently the scheduling operation is synchronous, so it is either finished or not.
-    @property
-    def finished(self) -> bool:
-        return True
+    def has_error(self) -> bool:
+        return self.error is not None
 
     def get_error_string(self) -> str:
         return f"{self.error}"
-
-    def get_restart_error_string(self) -> str:
-        return f"Restarting worker group after encountering error during resize stage:\n {self.error}"
-
-    def get_raise_error_string(self) -> str:
-        return f"Terminating training worker group after encountering error during resize stage:\n {self.error}"

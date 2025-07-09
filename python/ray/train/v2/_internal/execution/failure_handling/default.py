@@ -1,11 +1,12 @@
 import logging
+from typing import Union
 
 from ray.train.v2._internal.execution.failure_handling import (
     FailureDecision,
     FailurePolicy,
 )
-from ray.train.v2._internal.execution.worker_group import WorkerGroupStatus
-from ray.train.v2._internal.execution.worker_group.state import (
+from ray.train.v2._internal.execution.worker_group import (
+    WorkerGroupPollStatus,
     WorkerGroupSchedulingStatus,
 )
 from ray.train.v2.api.config import FailureConfig
@@ -20,8 +21,11 @@ class DefaultFailurePolicy(FailurePolicy):
         # TODO: change to count the consecutive reschedule failures.
         self._schedule_failures = 0
 
-    def make_decision(self, worker_group_status: WorkerGroupStatus) -> FailureDecision:
-        if not worker_group_status.errors:
+    def make_decision(
+        self,
+        worker_group_status: Union[WorkerGroupPollStatus, WorkerGroupSchedulingStatus],
+    ) -> FailureDecision:
+        if not worker_group_status.has_error:
             return FailureDecision.NOOP
 
         if isinstance(worker_group_status, WorkerGroupSchedulingStatus):
@@ -32,37 +36,44 @@ class DefaultFailurePolicy(FailurePolicy):
                 > self.failure_config.scheduling_failure_limit
             ):
                 logger.info(
-                    "Deciding to TERMINATE, since the reschedule failure count "
-                    f"({self._schedule_failures}) exceeded the maximum allowed failures: "
+                    "Decided to terminate the scheduling operation, since the scheduling failure count exceeded the maximum allowed failures, "
                     f"FailureConfig(scheduling_failure_limit={self.failure_config.scheduling_failure_limit})."
+                    f"Encountered {self._schedule_failures} schedule failures so far."
+                    f"Error: {worker_group_status.get_error_string()}"
                 )
                 return FailureDecision.RAISE
-            logger.info(
-                "Deciding to reschedule."
-                f"Encountered {self._schedule_failures} schedule failures so far."
-            )
-            return FailureDecision.RETRY
+            else:
+                logger.info(
+                    "Decided to reschedule the scheduling operation, since the scheduling failure count did not exceed the maximum allowed failures, "
+                    f"FailureConfig(scheduling_failure_limit={self.failure_config.scheduling_failure_limit})."
+                    f"Encountered {self._schedule_failures} schedule failures so far."
+                    f"Error: {worker_group_status.get_error_string()}"
+                )
+                return FailureDecision.RESCHEDULE
         else:
             self._running_failures += 1
 
             if self.failure_config.max_failures == -1:
                 logger.info(
-                    "Deciding to RESTART, since infinite retry is enabled. "
+                    "Decided to restart the training operation, since infinite retry is enabled, "
                     f"Encountered {self._running_failures} failures so far."
+                    f"Error: {worker_group_status.get_error_string()}"
                 )
-                return FailureDecision.RETRY
+                return FailureDecision.RESTART
 
             if self._running_failures > self.failure_config.max_failures:
                 logger.info(
-                    "Deciding to TERMINATE, since the total failure count "
-                    f"({self._running_failures}) exceeded the maximum allowed failures: "
+                    "Decided to terminate the training operation, since the total failure count exceeded the maximum allowed failures, "
                     f"FailureConfig(max_failures={self.failure_config.max_failures})."
+                    f"Encountered {self._running_failures} failures so far."
+                    f"Error: {worker_group_status.get_error_string()}"
                 )
                 return FailureDecision.RAISE
 
             logger.info(
-                "Deciding to RESTART, since the total "
-                f"failure count ({self._running_failures}) <= "
+                "Decided to restart the training operation, since the total failure count did not exceed the maximum allowed failures, "
                 f"FailureConfig(max_failures={self.failure_config.max_failures})."
+                f"Encountered {self._running_failures} failures so far."
+                f"Error: {worker_group_status.get_error_string()}"
             )
-            return FailureDecision.RETRY
+            return FailureDecision.RESTART

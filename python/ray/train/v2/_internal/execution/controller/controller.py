@@ -3,7 +3,7 @@ import logging
 import os
 import uuid
 from dataclasses import dataclass
-from typing import Callable, List, Optional
+from typing import Callable, List, Optional, Union
 
 import pandas as pd
 
@@ -61,7 +61,6 @@ from ray.train.v2._internal.execution.worker_group import (
 )
 from ray.train.v2._internal.execution.worker_group.state import (
     WorkerGroupSchedulingStatus,
-    WorkerGroupStatus,
 )
 from ray.train.v2._internal.execution.worker_group.worker_group import (
     WorkerGroupContext,
@@ -190,7 +189,7 @@ class TrainController:
             resources_per_worker=decision.resources_per_worker,
         )
 
-        if scheduling_status.errors:
+        if scheduling_status.has_error:
             failure_decision = self._failure_policy.make_decision(scheduling_status)
             return self._execute_failure_decision(failure_decision, scheduling_status)
         else:
@@ -203,10 +202,10 @@ class TrainController:
     def _execute_failure_decision(
         self,
         failure_decision: FailureDecision,
-        worker_group_status: WorkerGroupStatus,
+        worker_group_status: Union[WorkerGroupPollStatus, WorkerGroupSchedulingStatus],
     ) -> TrainControllerLoopIterationResult:
         """Executes failure handling decisions (ex: restart, terminate)."""
-        assert worker_group_status.errors
+        assert worker_group_status.has_error
 
         controller_state = self.get_state()
 
@@ -223,22 +222,28 @@ class TrainController:
             )
 
         errors_str = worker_group_status.get_error_string()
-        training_failed_error = TrainingFailedError(
-            error_message=errors_str, worker_failures=worker_group_status.errors
+        # TODO: make TrainingFailedError accept both worker_failures and controller_error.
+        worker_failures = (
+            worker_group_status.errors
+            if isinstance(worker_group_status, WorkerGroupPollStatus)
+            else {0: worker_group_status.error}
         )
-        if failure_decision == FailureDecision.RETRY:
+        training_failed_error = TrainingFailedError(
+            error_message=errors_str, worker_failures=worker_failures
+        )
+        if failure_decision == FailureDecision.RESTART:
             return TrainControllerLoopIterationResult(
                 run_attempt_id=self._get_run_attempt_id(),
                 previous_state=controller_state,
-                next_state=ReschedulingState()
-                if isinstance(controller_state, SchedulingState)
-                else RestartingState(training_failed_error=training_failed_error),
-                training_failed_error=training_failed_error,
+                next_state=RestartingState(training_failed_error=training_failed_error),
             )
-
+        elif failure_decision == FailureDecision.RESCHEDULE:
+            return TrainControllerLoopIterationResult(
+                run_attempt_id=self._get_run_attempt_id(),
+                previous_state=controller_state,
+                next_state=ReschedulingState(),
+            )
         elif failure_decision == FailureDecision.RAISE:
-            logger.error(worker_group_status.get_raise_error_string())
-
             next_state = ErroredState(training_failed_error=training_failed_error)
             return TrainControllerLoopIterationResult(
                 run_attempt_id=self._get_run_attempt_id(),
