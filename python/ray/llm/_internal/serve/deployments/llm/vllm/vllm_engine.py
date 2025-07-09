@@ -185,7 +185,7 @@ class VLLMEngine(LLMEngine):
         self.llm_config = llm_config
 
         self._stats = VLLMEngineStatTracker()
-        self.running = False
+        self._running = False
         self.model_config: "ModelConfig" = None
         self._engine_client = None
         self.vllm_config: "VllmConfig" = None
@@ -199,6 +199,7 @@ class VLLMEngine(LLMEngine):
         self._atokenize = vllm_utils.make_async(
             self._tokenize, executor=self._tokenizer_executor
         )
+
 
     def _tokenize(
         self, prompt_text: str, add_special_tokens: bool = False
@@ -215,13 +216,13 @@ class VLLMEngine(LLMEngine):
             resolve_chat_template_content_format as _resolve_chat_template_content_format,
         )
 
-        if self.running:
+        if self._running:
             # The engine is already running!
             logger.info("Skipping engine restart because the engine is already running")
             return
 
         self._engine_client = await self._start_engine()
-        self.running = True
+        self._running = True
         self.model_config = await self._engine_client.get_model_config()
 
         self._tokenizer = await self._engine_client.get_tokenizer()
@@ -256,9 +257,8 @@ class VLLMEngine(LLMEngine):
         # Initialize node and return all configurations
         node_initialization = await initialize_node(self.llm_config)
 
-        vllm_engine_args, vllm_engine_config = await self._prepare_engine_config(
-            node_initialization
-        )
+        vllm_engine_args, vllm_engine_config = \
+            await self._prepare_engine_config(node_initialization)
 
         # Apply checkpoint info to the llm_config.
         # This is needed for capturing model capabilities
