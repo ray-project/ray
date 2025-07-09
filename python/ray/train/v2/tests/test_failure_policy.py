@@ -27,6 +27,12 @@ def _worker_group_resize_status_from_errors():
     )
 
 
+def _non_retryable_scheduling_error():
+    return WorkerGroupSchedulingStatus(
+        error=Exception("Non-retryable scheduling error")
+    )
+
+
 @pytest.mark.parametrize("max_failures", [0, 1, 10])
 def test_max_failures(max_failures):
     policy = create_failure_policy(FailureConfig(max_failures=max_failures))
@@ -56,6 +62,12 @@ def test_infinite_retry():
     )
     for _ in range(10):
         assert policy.make_decision(status) == FailureDecision.RESTART
+
+
+def test_non_retryable_scheduling_error():
+    policy = create_failure_policy(FailureConfig(scheduling_failure_limit=10))
+    status = _non_retryable_scheduling_error()
+    assert policy.make_decision(status) == FailureDecision.RAISE
 
 
 def test_infinite_reschedule():

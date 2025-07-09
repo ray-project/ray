@@ -10,7 +10,9 @@ from ray.train.v2.api.config import FailureConfig
 
 
 class FailureDecision(Enum):
+    # Restart the running worker group.
     RESTART = "RESTART"
+    # Reschedule the worker group that is in the scheduling stage.
     RESCHEDULE = "RESCHEDULE"
     RAISE = "RAISE"
     NOOP = "NOOP"
