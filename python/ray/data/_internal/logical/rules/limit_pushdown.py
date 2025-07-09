@@ -3,12 +3,10 @@ from collections import deque
 from typing import Iterable, List
 
 from ray.data._internal.logical.interfaces import LogicalOperator, LogicalPlan, Rule
-from ray.data._internal.logical.operators.n_ary_operator import Union
+from ray.data._internal.logical.operators.map_operator import Project
 from ray.data._internal.logical.operators.one_to_one_operator import (
-    AbstractOneToOne,
     Limit,
 )
-from ray.data._internal.logical.operators.read_operator import Read
 
 
 class LimitPushdownRule(Rule):
@@ -18,12 +16,11 @@ class LimitPushdownRule(Rule):
     most upstream operator that supports it. We are conservative and only
     push through operators that we know for certain do not modify row counts:
     - Project operations (column selection)
-    - MapRows operations (row-wise transformations that preserve row count)
-    - MapBatches operations (batch-wise transformations that preserve row count)
-    - Union operations (pushed to all inputs)
 
     We stop at:
     - Any operator that can modify the number of output rows (Sort, Shuffle, Aggregate, Read etc.)
+    - MapRows and MapBatches operations (to be conservative)
+    - Union operations (limits should not be pushed through unions as it changes semantics)
 
     In addition, we also fuse consecutive Limit operators into a single
     Limit operator, i.e. `Limit[n] -> Limit[m]` becomes `Limit[min(n, m)]`.
@@ -62,24 +59,16 @@ class LimitPushdownRule(Rule):
     def _push_limit_down(self, limit_op: Limit) -> LogicalOperator:
         """Push a single limit down through compatible operators conservatively.
 
-        Similar to the original algorithm but more conservative in what we push through.
+        Only pushes through Project operations.
         """
         limit_op_copy = copy.copy(limit_op)
-
-        # Handle special case for Union first
-        if isinstance(limit_op.input_dependency, Union):
-            return self._push_limit_through_union(limit_op, limit_op.input_dependency)
 
         # Traverse up the DAG until we reach the first operator that meets
         # one of the stopping conditions
         new_input_into_limit = limit_op.input_dependency
         ops_between_new_input_and_limit: List[LogicalOperator] = []
 
-        while (
-            isinstance(new_input_into_limit, AbstractOneToOne)
-            and not isinstance(new_input_into_limit, Read)
-            and not new_input_into_limit.can_modify_num_rows()
-        ):
+        while isinstance(new_input_into_limit, Project):
             new_input_into_limit_copy = copy.copy(new_input_into_limit)
             ops_between_new_input_and_limit.append(new_input_into_limit_copy)
             new_input_into_limit = new_input_into_limit.input_dependency
@@ -110,39 +99,6 @@ class LimitPushdownRule(Rule):
         last_op._output_dependencies = limit_op.output_dependencies
 
         return last_op
-
-    def _push_limit_through_union(
-        self, limit_op: Limit, union_op: Union
-    ) -> LogicalOperator:
-        """
-        Push the limit through a union conservatively:
-        1. Wrap **each** union input with its own `Limit(k)`.
-        2. Keep the original downstream `Limit(k)` so that the global
-           result is still capped at `k` rows (instead of `k * n_inputs`).
-        """
-
-        # 1) Wrap every input with a per-input Limit(k).
-        new_inputs: List[LogicalOperator] = []
-        for input_op in union_op._input_dependencies:
-            per_input_limit = Limit(input_op, limit_op._limit)
-
-            # Re-wire dependencies: input_op → per_input_limit → union_op
-            input_op._output_dependencies = [
-                dep if dep is not union_op else per_input_limit
-                for dep in input_op._output_dependencies
-            ]
-            per_input_limit._output_dependencies = [union_op]
-            new_inputs.append(per_input_limit)
-
-        # 2) Update the union to read from the new limited inputs.
-        union_op._input_dependencies = new_inputs
-
-        # 3) Re-wire the original Limit to consume the (now limited) Union.
-        limit_op._input_dependencies = [union_op]
-        union_op._output_dependencies = [limit_op]
-
-        # Downstream of `limit_op` remains unchanged.
-        return limit_op
 
     def _apply_limit_fusion(self, op: LogicalOperator) -> LogicalOperator:
         """Given a DAG of LogicalOperators, traverse the DAG and fuse all
