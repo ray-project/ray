@@ -14,7 +14,9 @@ from ray.tests.conftest import *  # noqa
 
 def test_splitrange():
     def f(n, k):
-        assert _split_range(n, k) == [len(a) for a in np.array_split(range(n), k) if len(a) > 0]
+        assert _split_range(n, k) == [
+            len(a) for a in np.array_split(range(n), k) if len(a) > 0
+        ]
 
     f(0, 1)
     f(5, 1)

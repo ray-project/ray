@@ -1505,10 +1505,7 @@ def test_empty_blocks_being_skipped(ray_start_regular_shared):
 
     df = pd.DataFrame({"x": [1, 2, 3]})
 
-    ds = (
-        ray.data.from_pandas(df)
-        .map_batches(empty_pandas)
-    )
+    ds = ray.data.from_pandas(df).map_batches(empty_pandas)
 
     bundles = ds.iter_internal_ref_bundles()
     block_refs = _ref_bundles_iterator_to_block_refs_list(bundles)

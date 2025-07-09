@@ -505,7 +505,9 @@ class PhysicalOperator(Operator):
         """
         output_bundle = self._get_next_inner()
 
-        assert output_bundle.num_rows() > 0, f"Operator {self.name} produced en empty bundle"
+        assert (
+            output_bundle.num_rows() > 0
+        ), f"Operator {self.name} produced en empty bundle"
 
         self._metrics.on_output_taken(output_bundle)
         return output_bundle
