@@ -112,14 +112,14 @@ sudo apt-get install -y kmod pkg-config librdmacm-dev
     echo "Installing NIXL"
     # NIXL needs meson pybind11 ninja, but should have been included in requirements_*.txt
     cd "${TEMP_DIR}"
-    wget "https://github.com/ai-dynamo/nixl/archive/refs/tags/0.2.0.tar.gz" -q
-    tar xzf 0.2.0.tar.gz; rm 0.2.0.tar.gz
-    cd nixl-0.2.0
+    wget "https://github.com/ai-dynamo/nixl/archive/refs/tags/0.3.1.tar.gz" -q
+    tar xzf 0.3.1.tar.gz; rm 0.3.1.tar.gz
+    cd nixl-0.3.1
     meson setup build --prefix=${NIXL_HOME} -Ducx_path=${UCX_HOME}
     cd build
     ninja
     sudo env "PATH=$PATH" ninja install
-    pip install --no-cache-dir nixl==0.2.0
+    pip install --no-cache-dir nixl==0.3.1
 )
 sudo rm -rf "${TEMP_DIR}"
 
@@ -128,3 +128,4 @@ EOF
 ENV PATH="${UCX_HOME}/bin:${NIXL_HOME}/bin:${PATH}"
 ENV LD_LIBRARY_PATH="${UCX_HOME}/lib:${NIXL_HOME}/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH}"
 ENV NIXL_PLUGIN_DIR="${NIXL_HOME}/lib/x86_64-linux-gnu/plugins/"
+ENV PKG_CONFIG_PATH="${UCX_HOME}/lib/pkgconfig:${PKG_CONFIG_PATH}"
