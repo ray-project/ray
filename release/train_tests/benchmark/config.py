@@ -47,6 +47,7 @@ class RayDataConfig(DataLoaderConfig):
     locality_with_output: bool = False
     actor_locality_enabled: bool = False
     enable_shard_locality: bool = True
+    preserve_order: bool = True
 
 
 class TorchConfig(DataLoaderConfig):
