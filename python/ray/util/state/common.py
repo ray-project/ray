@@ -207,7 +207,7 @@ class GetApiOptions:
         # To return the data to users, when there's a partial failure
         # we need to have a timeout that's smaller than the users' timeout.
         # 80% is configured arbitrarily.
-        self.timeout = int(self.timeout * self.server_timeout_multiplier)
+        self.timeout = int(self.timeout * self.server_timeout_multiplier) or (1 if self.timeout * self.server_timeout_multiplier > 0 else 0)
         assert self.timeout != 0, "0 second timeout is not supported."
 
 
