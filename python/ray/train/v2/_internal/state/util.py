@@ -10,9 +10,8 @@ from ray.train.v2._internal.state.schema import (
 
 _GRACEFUL_ABORT_STATUS_DETAIL = "User gracefully aborted run with SIGINT."
 _DEAD_CONTROLLER_ABORT_STATUS_DETAIL = (
-    "State actor aborted live run with dead controller."
+    "Run aborted because the driver process exited unexpectedly."
 )
-
 
 def update_train_run_aborted(run: TrainRun, graceful: bool) -> None:
     run.status = RunStatus.ABORTED
