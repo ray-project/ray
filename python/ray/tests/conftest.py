@@ -576,7 +576,7 @@ def make_sure_dashboard_http_port_unused():
     yield
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def disable_cache_fixture():
     with _disable_cache_for_tests():
         yield
