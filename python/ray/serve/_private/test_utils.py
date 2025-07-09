@@ -778,7 +778,5 @@ def get_application_url(
         The URL of the application. If there are multiple URLs, a random one is returned.
     """
     return random.choice(
-        get_application_urls(
-            protocol, app_name, use_localhost, exclude_route_prefix
-        )
+        get_application_urls(protocol, app_name, use_localhost, exclude_route_prefix)
     )
