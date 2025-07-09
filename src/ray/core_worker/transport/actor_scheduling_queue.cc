@@ -79,12 +79,15 @@ void ActorSchedulingQueue::Add(
                                  std::move(reject_request),
                                  std::move(send_reply_callback),
                                  task_spec);
-  RAY_CHECK(
-      task_spec.IsRetry()
-          ? pending_retry_actor_tasks_.emplace(seq_no, std::move(inbound_request)).second
-          : pending_actor_tasks_.emplace(seq_no, std::move(inbound_request)).second);
+  const bool is_retry = task_spec.IsRetry();
+  InboundRequest *retry_request = nullptr;
+  if (is_retry) {
+    retry_request = &pending_retry_actor_tasks_.emplace_back(std::move(inbound_request));
+  } else {
+    RAY_CHECK(pending_actor_tasks_.emplace(seq_no, std::move(inbound_request)).second);
+  }
 
-  if (task_spec.IsRetry()) {
+  if (is_retry) {
     seq_no_to_skip_.insert(seq_no);
   }
   {
@@ -100,14 +103,20 @@ void ActorSchedulingQueue::Add(
         task_spec,
         rpc::TaskStatus::PENDING_ACTOR_TASK_ARGS_FETCH,
         /* include_task_info */ false));
-    waiter_.Wait(dependencies, [this, seq_no]() mutable {
+    waiter_.Wait(dependencies, [this, seq_no, is_retry, retry_request]() mutable {
       InboundRequest *inbound_request = nullptr;
-      if (auto it = pending_actor_tasks_.find(seq_no); it != pending_actor_tasks_.end()) {
-        inbound_request = &it->second;
-      } else if (auto it = pending_retry_actor_tasks_.find(seq_no);
-                 it != pending_retry_actor_tasks_.end()) {
+      if (is_retry) {
+        // retry_request is guaranteed to be a valid pointer for retries because it
+        // won't be erased from the retry list until its dependencies are fetched and
+        // ExecuteRequest happens.
+        inbound_request = retry_request;
+      } else if (auto it = pending_actor_tasks_.find(seq_no);
+                 it != pending_actor_tasks_.end()) {
+        // For non-retry tasks, we need to check if the task is still in the map because
+        // it can be erased because of next_seq_no_ madness.
         inbound_request = &it->second;
       }
+
       if (inbound_request != nullptr) {
         const auto &task_spec = inbound_request->TaskSpec();
         RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
@@ -163,14 +172,16 @@ void ActorSchedulingQueue::ScheduleRequests() {
   }
 
   // Process as many retry requests as we can.
+  // Retry requests do not respect sequence number ordering, so we execute them as soon as
+  // they are ready to execute.
   auto retry_iter = pending_retry_actor_tasks_.begin();
   while (retry_iter != pending_retry_actor_tasks_.end()) {
-    auto &request = retry_iter->second;
+    auto &request = *retry_iter;
     if (!request.CanExecute()) {
       retry_iter++;
       continue;
     }
-    ProcessRequest(std::move(request));
+    ExecuteRequest(std::move(request));
     pending_retry_actor_tasks_.erase(retry_iter++);
   }
 
@@ -182,7 +193,7 @@ void ActorSchedulingQueue::ScheduleRequests() {
     auto &[seq_no, request] = *begin_it;
     if (seq_no == next_seq_no_) {
       if (request.CanExecute()) {
-        ProcessRequest(std::move(request));
+        ExecuteRequest(std::move(request));
         pending_actor_tasks_.erase(begin_it);
         next_seq_no_++;
       } else {
@@ -214,7 +225,7 @@ void ActorSchedulingQueue::ScheduleRequests() {
   }
 }
 
-void ActorSchedulingQueue::ProcessRequest(InboundRequest &&request) {
+void ActorSchedulingQueue::ExecuteRequest(InboundRequest &&request) {
   auto task_id = request.TaskID();
   auto pool = pool_manager_->GetExecutor(request.ConcurrencyGroupName(),
                                          request.FunctionDescriptor());

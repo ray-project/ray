@@ -355,18 +355,18 @@ def test_retry_dependent_task_on_same_actor(ray_start_regular_shared):
     @ray.remote
     class Actor:
         def __init__(self):
-            self.counter = 0
+            self._counter = 0
 
         @ray.method(max_task_retries=1, retry_exceptions=[MyError])
         def one(self, signal_actor):
             ray.get(signal_actor.wait.remote())
-            self.counter += 1
+            self._counter += 1
             # Fail on the first invocation.
-            if self.counter <= 1:
+            if self._counter <= 1:
                 raise MyError()
             return 1
 
-        def two(self, one_output_ref):
+        def two(self, one_output):
             return 2
 
     signal_actor = SignalActor.remote()
