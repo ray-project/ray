@@ -3,26 +3,27 @@ import time
 import json
 import sys
 import signal
+import yaml
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from typing import List
 from unittest.mock import MagicMock, AsyncMock, patch
-import yaml
 
 from click.testing import CliRunner
 import pytest
 import pytest_asyncio
+
+import ray
 from ray._private.state_api_test_utils import (
     get_state_api_manager,
     create_api_options,
     verify_schema,
 )
-from ray.util.state import get_job
 from ray.dashboard.modules.job.pydantic_models import JobDetails
+from ray.util.state import get_job
 from ray.util.state.common import Humanify
-
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
-import ray
+from ray.cluster_utils import Cluster
 import ray.dashboard.consts as dashboard_consts
 import ray._private.state as global_state
 import ray._private.ray_constants as ray_constants
@@ -3799,6 +3800,32 @@ def test_hang_driver_has_no_is_running_task(monkeypatch, ray_start_cluster):
     assert list(all_job_info.keys()) == [my_job_id]
     assert not all_job_info[my_job_id].HasField("is_running_tasks")
 
+
+def test_address_defaults_to_connected_ray_instance(shutdown_only):
+    """
+    If there are multiple local instances and a state API is invoked from within a
+    connected worker, the address should default to the connected instance.
+    """
+    cluster_1 = Cluster()
+    cluster_1_dashboard_port = find_free_port()
+    cluster_1.add_node(dashboard_port=cluster_1_dashboard_port)
+
+    cluster_2 = Cluster()
+    cluster_2_dashboard_port = find_free_port()
+    cluster_2.add_node(dashboard_port=cluster_2_dashboard_port)
+
+    # Connect the driver to cluster_1.
+    ray.init(cluster_1.address)
+
+    # Call list_jobs() with no address, should connect to cluster_1 by default.
+    [job] = list_jobs()
+    assert job.job_id == ray.get_runtime_context().get_job_id()
+
+    # Sanity checks: call list_jobs() with cluster_1 and cluster_2 addresses.
+    cluster_1_jobs = list_jobs(address=f"http://localhost:{cluster_1_dashboard_port}")
+    assert cluster_1_jobs == [job]
+    cluster_2_jobs = list_jobs(address=f"http://localhost:{cluster_2_dashboard_port}")
+    assert len(cluster_2_jobs) == 0
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
