@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import operator
-from typing import Any, Callable, Dict, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Callable, Dict
 
 import numpy as np
 import pandas as pd
@@ -10,7 +10,11 @@ import pyarrow.compute as pc
 
 # Use TYPE_CHECKING imports to avoid circular imports
 if TYPE_CHECKING:
-    from ray.data.expressions import BinaryExpr, ColumnExpr, Expr, LiteralExpr, Operation # noqa: F401
+    from ray.data.expressions import (
+        Expr,
+        Operation,
+    )  # noqa: F401
+
 
 def _get_operation_maps():
     """Get operation maps, importing Operation enum at runtime to avoid circular imports."""

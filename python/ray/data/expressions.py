@@ -9,7 +9,6 @@ from ray.util.annotations import DeveloperAPI
 
 
 @DeveloperAPI
-@dataclass(frozen=True, eq=False)
 class Operation(Enum):
     """Enumeration of supported operations in expressions.
 
