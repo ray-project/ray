@@ -49,6 +49,9 @@ enum MessageType:int {
   // Reconstruct or fetch possibly lost objects. This is sent from a worker to
   // a raylet.
   FetchOrReconstruct,
+  // The response message to FetchOrReconstruct; replies with the new get request
+  // id.
+  FetchOrReconstructReply,
   // For a worker that was blocked on some object(s), tell the raylet
   // that the worker is now unblocked. This is sent from a worker to a raylet.
   NotifyUnblocked,
@@ -200,17 +203,28 @@ table FetchOrReconstruct {
   fetch_only: bool;
   // The current task ID.
   task_id: string;
+  // The current get request ID.
+  request_id: ulong;
+}
+
+table FetchOrReconstructReply {
+  // After update get request, get new request id.
+  new_request_id: ulong;
 }
 
 table NotifyUnblocked {
   // The current task ID. This task is no longer blocked.
   task_id: string;
+  // The ID of the get request that needs to be canceled.
+  get_request_id: ulong;
 }
 
 table NotifyDirectCallTaskBlocked {
 }
 
 table NotifyDirectCallTaskUnblocked {
+  // The ID of the get request that needs to be canceled.
+  get_request_id: ulong;
 }
 
 table WaitRequest {

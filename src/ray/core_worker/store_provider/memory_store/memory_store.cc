@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <condition_variable>
 #include <memory>
+#include <limits>
 #include <utility>
 #include <vector>
 
@@ -384,7 +385,9 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
   }
 
   if (should_notify_raylet) {
-    RAY_CHECK_OK(raylet_client_->NotifyDirectCallTaskUnblocked());
+    /// No get request needs to be canceled.
+    RAY_RETURN_NOT_OK(raylet_client_->NotifyDirectCallTaskUnblocked(
+        /*get_request_id=*/std::numeric_limits<uint64_t>::max()));
   }
 
   {
