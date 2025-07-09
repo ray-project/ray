@@ -1,12 +1,17 @@
 import abc
 from enum import Enum
+from typing import Union
 
-from ray.train.v2._internal.execution.worker_group import WorkerGroupStatus
+from ray.train.v2._internal.execution.worker_group import (
+    WorkerGroupPollStatus,
+    WorkerGroupSchedulingStatus,
+)
 from ray.train.v2.api.config import FailureConfig
 
 
 class FailureDecision(Enum):
-    RETRY = "RETRY"
+    RESTART = "RESTART"
+    RESCHEDULE = "RESCHEDULE"
     RAISE = "RAISE"
     NOOP = "NOOP"
 
@@ -22,5 +27,8 @@ class FailurePolicy(abc.ABC):
         self.failure_config = failure_config
 
     @abc.abstractmethod
-    def make_decision(self, worker_group_status: WorkerGroupStatus) -> FailureDecision:
+    def make_decision(
+        self,
+        worker_group_status: Union[WorkerGroupPollStatus, WorkerGroupSchedulingStatus],
+    ) -> FailureDecision:
         raise NotImplementedError

@@ -1,6 +1,6 @@
 import time
 import uuid
-from typing import Optional
+from typing import Optional, Union
 from unittest.mock import MagicMock
 
 from ray.train.context import TrainContext
@@ -21,8 +21,8 @@ from ray.train.v2._internal.execution.worker_group import (
     WorkerGroup,
     WorkerGroupContext,
     WorkerGroupPollStatus,
+    WorkerGroupSchedulingStatus,
     WorkerGroupState,
-    WorkerGroupStatus,
     WorkerStatus,
 )
 from ray.train.v2._internal.state.schema import (
@@ -125,7 +125,10 @@ class MockFailurePolicy(FailurePolicy):
 
         super().__init__(failure_config)
 
-    def make_decision(self, worker_group_status: WorkerGroupStatus) -> FailureDecision:
+    def make_decision(
+        self,
+        worker_group_status: Union[WorkerGroupPollStatus, WorkerGroupSchedulingStatus],
+    ) -> FailureDecision:
         if self._decision_queue:
             return self._decision_queue.pop(0)
         return FailureDecision.NOOP

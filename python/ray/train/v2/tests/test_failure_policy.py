@@ -34,7 +34,7 @@ def test_max_failures(max_failures):
         [RuntimeError(f"Worker {i} failed") if i % 2 == 0 else None for i in range(8)]
     )
     for _ in range(max_failures):
-        assert policy.make_decision(status) == FailureDecision.RETRY
+        assert policy.make_decision(status) == FailureDecision.RESTART
     assert policy.make_decision(status) == FailureDecision.RAISE
 
 
@@ -45,7 +45,7 @@ def test_reschedule(scheduling_failure_limit):
     )
     status = _worker_group_resize_status_from_errors()
     for _ in range(scheduling_failure_limit):
-        assert policy.make_decision(status) == FailureDecision.RETRY
+        assert policy.make_decision(status) == FailureDecision.RESCHEDULE
     assert policy.make_decision(status) == FailureDecision.RAISE
 
 
@@ -55,14 +55,14 @@ def test_infinite_retry():
         [RuntimeError(f"Worker {i} failed") if i % 2 == 0 else None for i in range(8)]
     )
     for _ in range(10):
-        assert policy.make_decision(status) == FailureDecision.RETRY
+        assert policy.make_decision(status) == FailureDecision.RESTART
 
 
 def test_infinite_reschedule():
     policy = create_failure_policy(FailureConfig(scheduling_failure_limit=-1))
     status = _worker_group_resize_status_from_errors()
     for _ in range(10):
-        assert policy.make_decision(status) == FailureDecision.RETRY
+        assert policy.make_decision(status) == FailureDecision.RESCHEDULE
 
 
 if __name__ == "__main__":
