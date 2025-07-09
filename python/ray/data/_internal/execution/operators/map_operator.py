@@ -572,7 +572,7 @@ def _map_task(
 
             assert (
                 block_accessor.num_rows() > 0
-            ), f"Operator {ctx.op_name} produced an empty block"
+            ), f"Operator {ctx.op_name} produced an empty block ({map_transformer.get_transform_fns()})"
 
             # Collect the execution stats
             stats = stats_builder.build()
