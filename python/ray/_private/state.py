@@ -886,14 +886,10 @@ class GlobalState:
             # Return CPU/GPU/TPU as None when no config is available
             return {key: None for key in all_resource_keys}
 
-        # Only include additional resource types if there are actual node group configs
-        # If no node groups exist, resources from max_resources aren't actually available
         if config.node_group_configs:
-            # Check resources in node group configs
             for node_group_config in config.node_group_configs:
                 all_resource_keys.update(node_group_config.resources.keys())
 
-        # Calculate max value for each resource key
         return {
             key: self._calculate_max_resource_from_cluster_config(key)
             for key in all_resource_keys
