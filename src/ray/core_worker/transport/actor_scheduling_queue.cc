@@ -135,13 +135,16 @@ void ActorSchedulingQueue::ScheduleRequests() {
   // Cancel any stale requests that the client doesn't need any longer.
   // This happens when the client sends an RPC with the client_processed_up_to
   // sequence number higher than the lowest sequence number of a pending actor task.
-  // In that case, the client no longer needs the task to execute (e.g., it has been retried).
+  // In that case, the client no longer needs the task to execute (e.g., it has been
+  // retried).
   while (!pending_actor_tasks_.empty() &&
          pending_actor_tasks_.begin()->first < next_seq_no_) {
     auto head = pending_actor_tasks_.begin();
     RAY_LOG(ERROR) << "Cancelling stale RPC with seqno "
                    << pending_actor_tasks_.begin()->first << " < " << next_seq_no_;
-    head->second.Cancel(Status::Invalid("Task canceled due to stale sequence number. The client intentionally discarded this task."));
+    head->second.Cancel(
+        Status::Invalid("Task canceled due to stale sequence number. The client "
+                        "intentionally discarded this task."));
     {
       absl::MutexLock lock(&mu_);
       pending_task_id_to_is_canceled.erase(head->second.TaskID());
@@ -195,8 +198,10 @@ void ActorSchedulingQueue::ScheduleRequests() {
                      << ", canceling all queued tasks.";
       while (!pending_actor_tasks_.empty()) {
         auto head = pending_actor_tasks_.begin();
-        head->second.Cancel(Status::Invalid(absl::StrCat("Server timed out after waiting ", reorder_wait_seconds_,
-                                                            " seconds for an earlier seq_no.")));
+        head->second.Cancel(
+            Status::Invalid(absl::StrCat("Server timed out after waiting ",
+                                         reorder_wait_seconds_,
+                                         " seconds for an earlier seq_no.")));
         next_seq_no_ = std::max(next_seq_no_, head->first + 1);
         {
           absl::MutexLock lock(&mu_);

@@ -60,7 +60,9 @@ const std::vector<rpc::ObjectReference> &InboundRequest::PendingDependencies() c
   return pending_dependencies_;
 };
 
-bool InboundRequest::DependenciesResolved() const { return pending_dependencies_.empty(); }
+bool InboundRequest::DependenciesResolved() const {
+  return pending_dependencies_.empty();
+}
 
 void InboundRequest::MarkDependenciesResolved() { pending_dependencies_.clear(); }
 
