@@ -50,6 +50,8 @@ Objects
     ray.get
     ray.wait
     ray.put
+    ray.util.as_completed
+    ray.util.map_unordered
 
 .. _runtime-context-apis:
 
