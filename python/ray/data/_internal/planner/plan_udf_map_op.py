@@ -149,6 +149,7 @@ def plan_streaming_repartition_op(
     transform_fn = BuildOutputBlocksMapTransformFn.for_blocks()
     transform_fn.set_target_num_rows_per_block(op.target_num_rows_per_block)
     map_transformer = MapTransformer([transform_fn])
+    # Disable fusion for streaming repartition with the downstream op.
     return MapOperator.create(
         map_transformer,
         input_physical_dag,
@@ -157,6 +158,7 @@ def plan_streaming_repartition_op(
         compute_strategy=compute,
         ray_remote_args=op._ray_remote_args,
         ray_remote_args_fn=op._ray_remote_args_fn,
+        supports_fusion=False,
     )
 
 
