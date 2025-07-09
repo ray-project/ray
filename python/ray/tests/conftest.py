@@ -42,6 +42,7 @@ from ray._private.test_utils import (
     reset_autoscaler_v2_enabled_cache,
     RayletKiller,
 )
+from ray.anyscale.data._internal.util.cache import _disable_cache_for_tests
 from ray.cluster_utils import AutoscalingCluster, Cluster, cluster_not_supported
 
 # TODO (mengjin) Improve the logging in the conftest files so that the logger can log
@@ -573,6 +574,12 @@ def make_sure_dashboard_http_port_unused():
             except Exception:
                 pass
     yield
+
+
+@pytest.fixture
+def disable_cache_fixture():
+    with _disable_cache_for_tests():
+        yield
 
 
 # The following fixture will start ray with 0 cpu.
