@@ -2,7 +2,6 @@ import sys
 import json
 import time
 import base64
-from datetime import datetime, timezone
 
 import pytest
 from google.protobuf.timestamp_pb2 import Timestamp
@@ -33,12 +32,6 @@ from ray.core.generated.common_pb2 import TaskAttempt
 @pytest.fixture(scope="session")
 def httpserver_listen_address():
     return ("127.0.0.1", 12345)
-
-
-def _format_timestamp_ns(ts_ns: int) -> str:
-    sec, ns = divmod(ts_ns, 10**9)
-    dt = datetime.fromtimestamp(sec, tz=timezone.utc)
-    return f"{dt:%Y-%m-%dT%H:%M:%S}.{ns:09d}Z"
 
 
 def get_event_aggregator_grpc_stub(webui_url, gcs_address, head_node_id):
@@ -73,8 +66,8 @@ def test_aggregator_agent_receive_publish_events_normally(
 
     httpserver.expect_request("/", method="POST").respond_with_data("", status=200)
 
-    now = time.time_ns()
-    seconds, nanos = divmod(now, 10**9)
+    test_time = 1751302230130457542
+    seconds, nanos = divmod(test_time, 10**9)
     timestamp = Timestamp(seconds=seconds, nanos=nanos)
 
     request = AddEventRequest(
@@ -110,7 +103,7 @@ def test_aggregator_agent_receive_publish_events_normally(
     assert req_json[0]["eventType"] == "TASK_DEFINITION_EVENT"
     assert req_json[0]["severity"] == "INFO"
     assert req_json[0]["message"] == "hello"
-    assert req_json[0]["timestamp"] == _format_timestamp_ns(now)
+    assert req_json[0]["timestamp"] == "2025-06-30T16:50:30.130457542Z"
 
 
 @pytest.mark.parametrize(

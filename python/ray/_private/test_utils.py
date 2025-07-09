@@ -740,18 +740,6 @@ def generate_system_config_map(**kwargs):
     return ray_kwargs
 
 
-@ray.remote
-class Collector:
-    def __init__(self):
-        self.items = []
-
-    def add(self, item):
-        self.items.append(item)
-
-    def get(self):
-        return self.items
-
-
 def same_elements(elems_a, elems_b):
     """Checks if two iterables (such as lists) contain the same elements. Elements
     do not have to be hashable (this allows us to compare sets of dicts for
@@ -1986,23 +1974,6 @@ def reset_autoscaler_v2_enabled_cache():
     import ray.autoscaler.v2.utils as u
 
     u.cached_is_autoscaler_v2 = None
-
-
-def skip_flaky_core_test_premerge(reason: str):
-    """
-    Decorator to skip a test if it is flaky (e.g. in premerge)
-
-    Default we will skip the flaky test if not specified otherwise in
-    CI with CI_SKIP_FLAKY_TEST="0"
-    """
-    import pytest
-
-    def wrapper(func):
-        return pytest.mark.skipif(
-            os.environ.get("CI_SKIP_FLAKY_TEST", "1") == "1", reason=reason
-        )(func)
-
-    return wrapper
 
 
 def _get_library_usages() -> Set[str]:
