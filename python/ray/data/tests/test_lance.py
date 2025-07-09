@@ -178,6 +178,29 @@ def test_lance_write_max_rows_per_file(data_path):
     assert len(ds.get_fragments()) == 10
 
 
+@pytest.mark.parametrize("data_path", [lazy_fixture("local_path")])
+def test_lance_write_in_order(data_path, tmp_path):
+    ctx = ray.data.DataContext.get_current()
+    ctx.execution_options.preserve_order = True
+    schema = pa.schema([pa.field("id", pa.int64()), pa.field("str", pa.string())])
+
+    ray.data.range(10).map(
+        lambda x: {"id": x["id"], "str": f"str-{x['id']}"}
+    ).write_lance(data_path, schema=schema, max_rows_per_file=3)
+
+    new_path = tmp_path / "new_dataset"
+    new_path.mkdir(exist_ok=True)
+
+    ds = lance.dataset(data_path)
+    old_record = ds.take([8])
+    ds = ray.data.read_lance(data_path)
+    ds.write_lance(str(new_path), schema=schema, max_rows_per_file=3)
+
+    new_ds = lance.dataset(str(new_path))
+    new_record = new_ds.take([8])
+    assert old_record == new_record
+
+
 if __name__ == "__main__":
     import sys
 
