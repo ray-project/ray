@@ -779,11 +779,7 @@ class Dataset:
         return Dataset(plan, logical_plan)
 
     @PublicAPI(api_group=EXPRESSION_API_GROUP, stability="alpha")
-    def with_columns(
-        self,
-        exprs: Dict[str, Expr],
-        **ray_remote_args,
-    ) -> "Dataset":
+    def with_columns(self, exprs: Dict[str, Expr]) -> "Dataset":
         """
         Add new columns to the dataset.
 
@@ -801,9 +797,6 @@ class Dataset:
 
         Args:
             exprs: A dictionary mapping column names to expressions that define the new column values.
-            **ray_remote_args: Additional resource requirements to request from
-                Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
-                :func:`ray.remote` for details.
 
         Returns:
             A new dataset with the added columns evaluated via expressions.
@@ -819,7 +812,6 @@ class Dataset:
             cols=None,
             cols_rename=None,
             exprs=exprs,
-            ray_remote_args=ray_remote_args,
         )
         logical_plan = LogicalPlan(project_op, self.context)
         return Dataset(plan, logical_plan)
