@@ -172,21 +172,29 @@ Status RayletIpcClient::ActorCreationTaskDone() {
   return WriteMessage(MessageType::ActorCreationTaskDone);
 }
 
-Status RayletIpcClient::AsyncGetObjects(
-    const std::vector<ObjectID> &object_ids,
-    const std::vector<rpc::Address> &owner_addresses) {
+Status RayletIpcClient::AsyncGetObjects(const std::vector<ObjectID> &object_ids,
+                                        const std::vector<rpc::Address> &owner_addresses,
+                                        uint64_t *request_id) {
   RAY_CHECK(object_ids.size() == owner_addresses.size());
   flatbuffers::FlatBufferBuilder fbb;
   auto object_ids_message = to_flatbuf(fbb, object_ids);
   auto message = protocol::CreateAsyncGetObjectsRequest(
-      fbb, object_ids_message, AddressesToFlatbuffer(fbb, owner_addresses));
+      fbb, object_ids_message, AddressesToFlatbuffer(fbb, owner_addresses), *request_id);
   fbb.Finish(message);
-  return WriteMessage(MessageType::AsyncGetObjectsRequest, &fbb);
+  std::vector<uint8_t> reply;
+  RAY_RETURN_NOT_OK(AtomicRequestReply(MessageType::AsyncGetObjectsRequest,
+                                       MessageType::AsyncGetObjectsReply,
+                                       &reply,
+                                       &fbb));
+  /// Parse new request id
+  auto reply_message = flatbuffers::GetRoot<protocol::AsyncGetObjectsReply>(reply.data());
+  *request_id = reply_message->new_request_id();
+  return Status::OK();
 }
 
-Status RayletIpcClient::CancelGetRequest() {
+Status RayletIpcClient::CancelGetRequest(const uint64_t get_request_id) {
   flatbuffers::FlatBufferBuilder fbb;
-  auto message = protocol::CreateCancelGetRequest(fbb);
+  auto message = protocol::CreateCancelGetRequest(fbb, get_request_id);
   fbb.Finish(message);
   return WriteMessage(MessageType::CancelGetRequest, &fbb);
 }
@@ -198,9 +206,9 @@ Status RayletIpcClient::NotifyDirectCallTaskBlocked() {
   return WriteMessage(MessageType::NotifyDirectCallTaskBlocked, &fbb);
 }
 
-Status RayletIpcClient::NotifyDirectCallTaskUnblocked() {
+Status RayletIpcClient::NotifyDirectCallTaskUnblocked(const uint64_t get_request_id) {
   flatbuffers::FlatBufferBuilder fbb;
-  auto message = protocol::CreateNotifyDirectCallTaskUnblocked(fbb);
+  auto message = protocol::CreateNotifyDirectCallTaskUnblocked(fbb, get_request_id);
   fbb.Finish(message);
   return WriteMessage(MessageType::NotifyDirectCallTaskUnblocked, &fbb);
 }

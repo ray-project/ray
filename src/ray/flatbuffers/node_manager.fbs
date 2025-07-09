@@ -41,6 +41,9 @@ enum MessageType:int {
   // Request the Raylet to pull a set of objects to the local node.
   // a raylet.
   AsyncGetObjectsRequest,
+  // The response message to AsyncGetObjects; replies with the new get request
+  // id.
+  AsyncGetObjectsReply,
   // Cancel outstanding get requests from the worker.
   CancelGetRequest,
   // Notify the current worker is blocked. This is only used by direct task calls;
@@ -133,15 +136,26 @@ table AsyncGetObjectsRequest {
   // Object IDs that we want the Raylet to pull locally.
   object_ids: [string];
   owner_addresses: [Address];
+  // The current get request ID.
+  request_id: ulong;
+}
+
+table AsyncGetObjectsReply {
+  // After update get request, get new request id.
+  new_request_id: ulong;
 }
 
 table CancelGetRequest {
+  // The ID of the get request that needs to be canceled.
+  request_id: ulong;
 }
 
 table NotifyDirectCallTaskBlocked {
 }
 
 table NotifyDirectCallTaskUnblocked {
+  // The ID of the get request that needs to be canceled.
+  get_request_id: ulong;
 }
 
 table WaitRequest {

@@ -233,6 +233,7 @@ TEST_F(DependencyManagerTest, TestGet) {
   WorkerID worker_id = WorkerID::FromRandom();
   int num_arguments = 3;
   std::vector<ObjectID> arguments;
+  uint64_t request_id = 0;
   for (int i = 0; i < num_arguments; i++) {
     // Add the new argument to the list of dependencies to subscribe to.
     ObjectID argument_id = ObjectID::FromRandom();
@@ -241,7 +242,8 @@ TEST_F(DependencyManagerTest, TestGet) {
     // duplicates of previous subscription calls. Each argument should only be
     // requested from the node manager once.
     auto prev_pull_reqs = object_manager_mock_.active_get_requests;
-    dependency_manager_.StartOrUpdateGetRequest(worker_id, ObjectIdsToRefs(arguments));
+    dependency_manager_.StartOrUpdateGetRequest(
+        worker_id, ObjectIdsToRefs(arguments), &request_id);
     // Previous pull request for this get should be canceled upon each new
     // bundle.
     ASSERT_EQ(object_manager_mock_.active_get_requests.size(), 1);
@@ -250,7 +252,8 @@ TEST_F(DependencyManagerTest, TestGet) {
 
   // Nothing happens if the same bundle is requested.
   auto prev_pull_reqs = object_manager_mock_.active_get_requests;
-  dependency_manager_.StartOrUpdateGetRequest(worker_id, ObjectIdsToRefs(arguments));
+  dependency_manager_.StartOrUpdateGetRequest(
+      worker_id, ObjectIdsToRefs(arguments), &request_id);
   ASSERT_EQ(object_manager_mock_.active_get_requests, prev_pull_reqs);
 
   // Cancel the pull request once the worker cancels the `ray.get`.

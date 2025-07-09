@@ -105,10 +105,11 @@ class RayletIpcClientInterface {
   ///
   /// \param object_ids The IDs of the objects to pull.
   /// \param owner_addresses The owner addresses of the objects.
+  /// \param request_id The current get request ID.
   /// \return ray::Status.
-  virtual ray::Status AsyncGetObjects(
-      const std::vector<ObjectID> &object_ids,
-      const std::vector<rpc::Address> &owner_addresses) = 0;
+  virtual ray::Status AsyncGetObjects(const std::vector<ObjectID> &object_ids,
+                                      const std::vector<rpc::Address> &owner_addresses,
+                                      uint64_t *request_id) = 0;
 
   /// Wait for the given objects until timeout expires or num_return objects are
   /// found.
@@ -129,8 +130,9 @@ class RayletIpcClientInterface {
 
   /// Tell the Raylet to cancel the get request from this worker.
   ///
+  /// \param get_request_id The ID of the get request that needs to be canceled.
   /// \return ray::Status.
-  virtual ray::Status CancelGetRequest() = 0;
+  virtual ray::Status CancelGetRequest(const uint64_t get_request_id) = 0;
 
   /// Notify the raylet that this client is blocked. This is only used for direct task
   /// calls. Note that ordering of this with respect to Unblock calls is important.
@@ -141,8 +143,9 @@ class RayletIpcClientInterface {
   /// Notify the raylet that this client is unblocked. This is only used for direct task
   /// calls. Note that ordering of this with respect to Block calls is important.
   ///
+  /// \param get_request_id The ID of the get request that needs to be canceled.
   /// \return ray::Status.
-  virtual ray::Status NotifyDirectCallTaskUnblocked() = 0;
+  virtual ray::Status NotifyDirectCallTaskUnblocked(const uint64_t get_request_id) = 0;
 
   /// Wait for the given objects asynchronously.
   ///

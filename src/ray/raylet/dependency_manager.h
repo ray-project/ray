@@ -137,16 +137,22 @@ class DependencyManager : public TaskDependencyManagerInterface {
   ///
   /// \param worker_id The ID of the worker that called `ray.wait`.
   /// \param required_objects The objects required by the worker.
+  /// \param request_id The request ID.
   void StartOrUpdateGetRequest(const WorkerID &worker_id,
-                               const std::vector<rpc::ObjectReference> &required_objects);
+                               const std::vector<rpc::ObjectReference> &required_objects,
+                               uint64_t *request_id);
 
-  /// Cancel a worker's `ray.get` request. We will no longer attempt to fetch
+  /// Cancel a worker's `ray.get` requests. We will no longer attempt to fetch
   /// any objects that this worker requested previously, if no other task or
   /// worker requires them.
   ///
   /// \param worker_id The ID of the worker whose `ray.get` request we should
   /// cancel.
-  void CancelGetRequest(const WorkerID &worker_id);
+  /// \param request_ids The request IDs that need to be canceled,
+  //  std::nullopt means canceling all get requests from the worker.
+  void CancelGetRequest(
+      const WorkerID &worker_id,
+      const std::optional<absl::flat_hash_set<uint64_t>> request_ids = std::nullopt);
 
   /// Request dependencies for a queued task. This will attempt to make any
   /// remote objects local until the caller cancels the task's dependencies.
@@ -209,7 +215,7 @@ class DependencyManager : public TaskDependencyManagerInterface {
     std::unordered_set<TaskID> dependent_tasks;
     /// The workers that depend on this object because they called `ray.get` on the
     /// object.
-    std::unordered_set<WorkerID> dependent_get_requests;
+    absl::flat_hash_map<WorkerID, int> dependent_get_requests;
     /// The workers that depend on this object because they called `ray.wait` on the
     /// object.
     std::unordered_set<WorkerID> dependent_wait_requests;
@@ -295,7 +301,8 @@ class DependencyManager : public TaskDependencyManagerInterface {
   /// `ray.get` on and a pull request ID for these objects. The pull request ID
   /// should be used to cancel the pull request in the object manager once the
   /// worker cancels the `ray.get` request.
-  absl::flat_hash_map<WorkerID, std::pair<absl::flat_hash_set<ObjectID>, uint64_t>>
+  absl::flat_hash_map<WorkerID,
+                      absl::flat_hash_map<uint64_t, absl::flat_hash_set<ObjectID>>>
       get_requests_;
 
   /// A map from worker ID to the set of objects that the worker called
