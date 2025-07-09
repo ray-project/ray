@@ -527,10 +527,11 @@ class SchedulingNode:
     def _satisfies_label_constraints(
         self, sched_requests: List[ResourceRequest]
     ) -> int:
-        """Returns 1 if this node satisfies at least one label selector, 0 otherwise."""
+        """Returns a higher value based on the priority of the label selector this node
+        satisfies (first returns highest score, decreasing sequentially for fallback), 0 otherwise."""
         for req in sched_requests:
-            for selector in req.label_selectors:
-                # A label selector passes only if all constraints are satisfied
+            num_selectors = len(req.label_selectors)
+            for i, selector in enumerate(req.label_selectors):
                 all_constraints_pass = True
                 for constraint in selector.label_constraints:
                     key = constraint.label_key
@@ -551,9 +552,8 @@ class SchedulingNode:
                         break
 
                 if all_constraints_pass:
-                    return 1  # One label selector matched
-
-        return 0  # No label selectors are satisfied by SchedulingNode
+                    return num_selectors - i
+        return 0
 
     def _try_schedule_one(
         self, request: ResourceRequest, resource_request_source: ResourceRequestSource
@@ -573,33 +573,8 @@ class SchedulingNode:
 
         # Enforce label selector constraints
         if request.label_selectors:
-            selector_satisfied = False
-            for selector in request.label_selectors:
-                all_constraints_pass = True
-                for constraint in selector.label_constraints:
-                    key = constraint.label_key
-                    values = set(constraint.label_values)
-                    op = constraint.operator
-                    node_val = self.labels.get(key)
-
-                    if op == LabelSelectorOperator.LABEL_OPERATOR_IN:
-                        if node_val not in values:
-                            all_constraints_pass = False
-                            break
-                    elif op == LabelSelectorOperator.LABEL_OPERATOR_NOT_IN:
-                        if node_val in values:
-                            all_constraints_pass = False
-                            break
-                    else:
-                        all_constraints_pass = False
-                        break
-
-                if all_constraints_pass:
-                    selector_satisfied = True
-                    break  # At least one selector matched
-
-            if not selector_satisfied:
-                return False  # Node doesn't satisfy any label selector
+            if self._satisfies_label_constraints([request]) == 0:
+                return False  # Node doesn't satisfy any label selector in request.
 
         # Check if there's placement constraints that are not satisfied.
         for constraint in request.placement_constraints:
@@ -1420,17 +1395,24 @@ class ResourceDemandScheduler(IResourceScheduler):
         def _sort_resource_request(req: ResourceRequest) -> Tuple:
             """
             Sort the resource requests by:
-                1. The length of it's placement constraints.
-                2. The number of resources it requests.
-                3. The values of resources it requests.
-                4. lexicographically for each resource (for stable ordering)
+                1. The length of its placement constraints.
+                2. The length of its first label selector constraints (if any).
+                3. The number of resources it requests.
+                4. The values of resources it requests.
+                5. lexicographically for each resource (for stable ordering)
 
             This is a legacy sorting function for the autoscaler's binpacking
             algo - we do this so that we could have a deterministic scheduling
             results with reasonable fragmentation.
             """
+            label_constraint_len = (
+                len(req.label_selectors[0].label_constraints)
+                if req.label_selectors
+                else 0
+            )
             return (
                 len(req.placement_constraints),
+                label_constraint_len,
                 len(req.resources_bundle.values()),
                 sum(req.resources_bundle.values()),
                 sorted(req.resources_bundle.items()),

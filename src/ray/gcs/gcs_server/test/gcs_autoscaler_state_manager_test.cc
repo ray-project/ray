@@ -141,6 +141,15 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
 
   void CheckNodeLabels(const rpc::autoscaler::NodeState &node_state,
                        const std::unordered_map<std::string, std::string> &labels) {
+    ASSERT_EQ(node_state.labels_size(), labels.size());
+    for (const auto &label : labels) {
+      ASSERT_EQ(node_state.labels().at(label.first), label.second);
+    }
+  }
+
+  void CheckNodeDynamicLabels(
+      const rpc::autoscaler::NodeState &node_state,
+      const std::unordered_map<std::string, std::string> &labels) {
     ASSERT_EQ(node_state.dynamic_labels_size(), labels.size());
     for (const auto &label : labels) {
       ASSERT_EQ(node_state.dynamic_labels().at(label.first), label.second);
@@ -469,9 +478,9 @@ TEST_F(GcsAutoscalerStateManagerTest, TestNodeDynamicLabelsWithPG) {
 
     const auto &state = GetClusterResourceStateSync();
     ASSERT_EQ(state.node_states_size(), 1);
-    CheckNodeLabels(state.node_states(0),
-                    {{FormatPlacementGroupLabelName(pg1.Hex()), ""},
-                     {FormatPlacementGroupLabelName(pg2.Hex()), ""}});
+    CheckNodeDynamicLabels(state.node_states(0),
+                           {{FormatPlacementGroupLabelName(pg1.Hex()), ""},
+                            {FormatPlacementGroupLabelName(pg2.Hex()), ""}});
   }
 }
 
@@ -1009,6 +1018,21 @@ TEST_F(GcsAutoscalerStateManagerTest,
     RemoveNode(node_1);
     RemoveNode(node_2);
   }
+}
+
+TEST_F(GcsAutoscalerStateManagerTest, TestNodeLabelsAdded) {
+  auto node = Mocker::GenNodeInfo();
+  node->mutable_resources_total()->insert({"CPU", 2});
+  node->set_instance_id("instance_1");
+  (*node->mutable_labels())["accelerator-type"] = "TPU";
+  (*node->mutable_labels())["region"] = "us-central1";
+  AddNode(node);
+
+  const auto &state = GetClusterResourceStateSync();
+  ASSERT_EQ(state.node_states_size(), 1);
+
+  CheckNodeLabels(state.node_states(0),
+                  {{"accelerator-type", "TPU"}, {"region", "us-central1"}});
 }
 
 TEST_F(GcsAutoscalerStateManagerTest, TestGetPendingResourceRequestsWithLabelSelectors) {

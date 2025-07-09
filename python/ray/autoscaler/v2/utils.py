@@ -944,6 +944,7 @@ class ClusterStatusParser:
                 resource_usage=node_resource_usage,
                 failure_detail=failure_detail,
                 node_activity=node_state.node_activity,
+                labels=dict(node_state.labels),
             )
 
             if node_state.status == NodeStatus.DEAD:
