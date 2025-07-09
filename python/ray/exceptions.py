@@ -428,6 +428,12 @@ class ActorDiedError(RayActorError):
                 == NodeDeathInfo.AUTOSCALER_DRAIN_PREEMPTED
             ):
                 preempted = True
+            # Check if this is an initialization failure based on error message content
+            if (
+                "initialization method" in cause.error_message
+                or "init method" in cause.error_message
+            ):
+                actor_init_failed = True
             error_msg = "\n".join(error_msg_lines)
             actor_id = ActorID(cause.actor_id).hex()
         super().__init__(actor_id, error_msg, actor_init_failed, preempted)
