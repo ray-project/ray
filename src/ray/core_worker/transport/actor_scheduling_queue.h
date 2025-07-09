@@ -81,6 +81,9 @@ class ActorSchedulingQueue : public SchedulingQueue {
 
   /// Called when we time out waiting for an earlier task to show up.
   void OnSequencingWaitTimeout();
+
+  void ProcessRequest(InboundRequest &&request);
+
   /// Max time in seconds to wait for dependencies to show up.
   const int64_t reorder_wait_seconds_;
   /// Sorted map of (accept, rej) task callbacks keyed by their sequence number.
@@ -89,6 +92,8 @@ class ActorSchedulingQueue : public SchedulingQueue {
   /// be ordered. The key is still the sequence number, because retries get new sequence
   /// numbers.
   absl::flat_hash_map<int64_t, InboundRequest> pending_retry_actor_tasks_;
+  /// Set of sequence numbers that can be skipped because they were retry seq no's.
+  absl::flat_hash_set<int64_t> seq_no_to_skip_;
   /// The next sequence number we are waiting for to arrive.
   int64_t next_seq_no_ = 0;
   /// Timer for waiting on dependencies. Note that this is set on the task main

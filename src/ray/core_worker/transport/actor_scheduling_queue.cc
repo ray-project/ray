@@ -83,6 +83,10 @@ void ActorSchedulingQueue::Add(
       task_spec.IsRetry()
           ? pending_retry_actor_tasks_.emplace(seq_no, std::move(inbound_request)).second
           : pending_actor_tasks_.emplace(seq_no, std::move(inbound_request)).second);
+
+  if (task_spec.IsRetry()) {
+    seq_no_to_skip_.insert(seq_no);
+  }
   {
     absl::MutexLock lock(&mu_);
     pending_task_id_to_is_canceled.emplace(task_id, false);
@@ -158,38 +162,37 @@ void ActorSchedulingQueue::ScheduleRequests() {
     pending_actor_tasks_.erase(head);
   }
 
-  // Process as many in-order requests as we can.
+  // Process as many retry requests as we can.
   auto retry_iter = pending_retry_actor_tasks_.begin();
-  while ((retry_iter != pending_retry_actor_tasks_.end()) ||
-         (!pending_actor_tasks_.empty() &&
-          pending_actor_tasks_.begin()->first == next_seq_no_ &&
-          pending_actor_tasks_.begin()->second.CanExecute())) {
-    InboundRequest request;
-    TaskID task_id;
-    if (retry_iter != pending_retry_actor_tasks_.end()) {
-      if (!retry_iter->second.CanExecute()) {
-        retry_iter++;
-        continue;
-      }
-      request = std::move(retry_iter->second);
-      task_id = request.TaskID();
-      pending_retry_actor_tasks_.erase(retry_iter++);
-    } else {
-      auto it = pending_actor_tasks_.begin();
-      request = std::move(it->second);
-      task_id = request.TaskID();
-      pending_actor_tasks_.erase(it);
-      next_seq_no_++;
+  while (retry_iter != pending_retry_actor_tasks_.end()) {
+    auto &request = retry_iter->second;
+    if (!request.CanExecute()) {
+      retry_iter++;
+      continue;
     }
-    // Process actor tasks.
-    auto pool = pool_manager_->GetExecutor(request.ConcurrencyGroupName(),
-                                           request.FunctionDescriptor());
-    if (pool == nullptr) {
-      AcceptRequestOrRejectIfCanceled(task_id, request);
+    ProcessRequest(std::move(request));
+    pending_retry_actor_tasks_.erase(retry_iter++);
+  }
+
+  // Process as many in-order requests as we can.
+  while (!pending_actor_tasks_.empty() &&
+         pending_actor_tasks_.begin()->first == next_seq_no_ &&
+         pending_actor_tasks_.begin()->second.CanExecute()) {
+    auto begin_it = pending_actor_tasks_.begin();
+    auto &[seq_no, request] = *begin_it;
+    if (seq_no == next_seq_no_) {
+      if (request.CanExecute()) {
+        ProcessRequest(std::move(request));
+        pending_actor_tasks_.erase(begin_it);
+        next_seq_no_++;
+      } else {
+        // next_seq_no_ can't execute so break
+        break;
+      }
+    } else if (seq_no_to_skip_.erase(next_seq_no_) > 0) {
+      next_seq_no_++;
     } else {
-      pool->Post([this, request = std::move(request), task_id]() mutable {
-        AcceptRequestOrRejectIfCanceled(task_id, request);
-      });
+      break;
     }
   }
 
@@ -207,6 +210,19 @@ void ActorSchedulingQueue::ScheduleRequests() {
         return;  // time deadline was adjusted
       }
       OnSequencingWaitTimeout();
+    });
+  }
+}
+
+void ActorSchedulingQueue::ProcessRequest(InboundRequest &&request) {
+  auto task_id = request.TaskID();
+  auto pool = pool_manager_->GetExecutor(request.ConcurrencyGroupName(),
+                                         request.FunctionDescriptor());
+  if (pool == nullptr) {
+    AcceptRequestOrRejectIfCanceled(task_id, request);
+  } else {
+    pool->Post([this, request = std::move(request), task_id]() mutable {
+      AcceptRequestOrRejectIfCanceled(task_id, request);
     });
   }
 }
