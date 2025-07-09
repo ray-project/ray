@@ -220,7 +220,6 @@ if setup_spec.type == SetupType.RAY:
     numpy_dep = "numpy >= 1.20"
     pyarrow_deps = [
         "pyarrow >= 9.0.0",
-        "pyarrow <18; sys_platform == 'darwin' and platform_machine == 'x86_64'",
     ]
     pydantic_dep = "pydantic!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*,<3"
     setup_spec.extras = {
@@ -528,7 +527,8 @@ def build(build_python, build_java, build_cpp):
         )
         raise OSError(msg)
 
-    bazel_env = dict(os.environ, PYTHON3_BIN_PATH=sys.executable)
+    bazel_env = os.environ.copy()
+    bazel_env["PYTHON3_BIN_PATH"] = sys.executable
 
     if is_native_windows_or_msys():
         SHELL = bazel_env.get("SHELL")
