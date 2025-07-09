@@ -101,7 +101,7 @@ void ActorSchedulingQueue::Add(
             task_spec,
             rpc::TaskStatus::PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY,
             /* include_task_info */ false));
-        it->second.MarkDependenciesSatisfied();
+        it->second.MarkDependenciesResolved();
         ScheduleRequests();
       }
     });
@@ -152,7 +152,7 @@ void ActorSchedulingQueue::ScheduleRequests() {
   // Process as many in-order requests as we can.
   while (!pending_actor_tasks_.empty() &&
          pending_actor_tasks_.begin()->first == next_seq_no_ &&
-         pending_actor_tasks_.begin()->second.CanExecute()) {
+         pending_actor_tasks_.begin()->second.DependenciesResolved()) {
     auto head = pending_actor_tasks_.begin();
     auto request = head->second;
     auto task_id = head->second.TaskID();
@@ -172,9 +172,9 @@ void ActorSchedulingQueue::ScheduleRequests() {
   }
 
   if (pending_actor_tasks_.empty() ||
-      !pending_actor_tasks_.begin()->second.CanExecute()) {
-    // Either there are no tasks to execute, or the head of line is blocked waiting for
-    // its dependencies. We do not set a timeout waiting for the dependencies.
+      !pending_actor_tasks_.begin()->second.DependenciesResolved()) {
+    // Either there are no tasks to execute, or the head of the line is blocked waiting
+    // for its dependencies. We do not set a timeout waiting for dependency resolution.
     wait_timer_.cancel();
   } else {
     // We are waiting for a task with an earlier seq_no from the client.
