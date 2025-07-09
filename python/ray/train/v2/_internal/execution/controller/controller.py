@@ -15,10 +15,6 @@ from ray.train.v2._internal.constants import (
     ENABLE_CONTROLLER_STRUCTURED_LOGGING_ENV_VAR,
     HEALTH_CHECK_INTERVAL_S_ENV_VAR,
 )
-from ray.train.v2._internal.exceptions import (
-    WorkerGroupStartupFailedError,
-    WorkerGroupStartupTimeoutError,
-)
 from ray.train.v2._internal.execution.callback import (
     ControllerCallback,
     ReportCallback,
@@ -289,12 +285,7 @@ class TrainController:
                 worker_group_context=worker_group_context,
                 callbacks=self._worker_group_callbacks_to_propagate,
             )
-        except (WorkerGroupStartupTimeoutError, WorkerGroupStartupFailedError) as e:
-            logger.error(
-                "Retrying the launch of the training worker group. "
-                f"The previous launch attempt encountered the following failure:\n{e}"
-            )
-
+        except Exception as e:
             return WorkerGroupSchedulingStatus(
                 error=e,
             )
