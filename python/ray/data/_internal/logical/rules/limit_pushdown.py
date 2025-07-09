@@ -47,6 +47,7 @@ class LimitPushdownRule(Rule):
         for node in op.post_order_iter():
             nodes.appendleft(node)
 
+        current_dag_root = op
         while len(nodes) > 0:
             current_op = nodes.pop()
 
@@ -54,9 +55,12 @@ class LimitPushdownRule(Rule):
                 new_op = self._push_limit_down(current_op)
                 if new_op != current_op:
                     nodes.append(new_op)
-                    return new_op
+                    # If this is the DAG root, update it
+                    if current_op == current_dag_root:
+                        current_dag_root = new_op
+                    # Continue processing instead of returning early
 
-        return current_op
+        return current_dag_root
 
     def _push_limit_down(self, limit_op: Limit) -> LogicalOperator:
         """Push a single limit down through compatible operators conservatively.

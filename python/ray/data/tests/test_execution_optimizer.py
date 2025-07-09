@@ -1099,6 +1099,15 @@ def test_limit_pushdown_conservative(ray_start_regular_shared_2_cpus):
         [{"id": i} for i in range(5)],
     )
 
+    # More complex interweaved case.
+    ds = ray.data.range(100).sort("id").map(f1).limit(20).sort("id").map(f2).limit(5)
+    _check_valid_plan_and_result(
+        ds,
+        "Read[ReadRange] -> Sort[Sort] -> Limit[limit=20] -> MapRows[Map(f1)] -> "
+        "Sort[Sort] -> Limit[limit=5] -> MapRows[Map(f2)]",
+        [{"id": i} for i in range(5)],
+    )
+
 
 def test_limit_pushdown_union(ray_start_regular_shared_2_cpus):
     """Test limit pushdown through union operations."""
