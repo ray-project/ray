@@ -552,9 +552,9 @@ def test_deploy_application_with_same_name(serve_instance):
     url_new = get_application_url("HTTP", app_name="app")
     # Reread the url to get the correct port value
     old_url_route_prefix = "/"
-    url = {
+    url = (
         get_application_url("HTTP", app_name="app", exclude_route_prefix=True)
-    } + old_url_route_prefix
+    ) + old_url_route_prefix
 
     assert httpx.get(url_new).text == "got model1"
     assert httpx.get(url).status_code == 404
