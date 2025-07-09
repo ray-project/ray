@@ -288,13 +288,13 @@ class ReplicaMetricsManager:
                 ),
             )
 
-    def inc_num_ongoing_requests(self) -> int:
+    def inc_num_ongoing_requests(self, request_metadata: RequestMetadata) -> int:
         """Increment the current total queue length of requests for this replica."""
         self._num_ongoing_requests += 1
         if not self._cached_metrics_enabled:
             self._num_ongoing_requests_gauge.set(self._num_ongoing_requests)
 
-    def dec_num_ongoing_requests(self) -> int:
+    def dec_num_ongoing_requests(self, request_metadata: RequestMetadata) -> int:
         """Decrement the current total queue length of requests for this replica."""
         self._num_ongoing_requests -= 1
         if not self._cached_metrics_enabled:
@@ -458,7 +458,7 @@ class ReplicaBase(ABC):
             component_id=self._component_id,
         )
 
-    def _can_accept_request(self) -> bool:
+    def _can_accept_request(self, request_metadata: RequestMetadata) -> bool:
         # This replica gates concurrent request handling with an asyncio.Semaphore.
         # Each in-flight request acquires the semaphore. When the number of ongoing
         # requests reaches max_ongoing_requests, the semaphore becomes locked.
@@ -509,7 +509,7 @@ class ReplicaBase(ABC):
             status_code = s
 
         try:
-            self._metrics_manager.inc_num_ongoing_requests()
+            self._metrics_manager.inc_num_ongoing_requests(request_metadata)
             yield _status_code_callback
         except asyncio.CancelledError as e:
             user_exception = e
@@ -519,7 +519,7 @@ class ReplicaBase(ABC):
             logger.exception("Request failed.")
             self._on_request_failed(request_metadata, e)
         finally:
-            self._metrics_manager.dec_num_ongoing_requests()
+            self._metrics_manager.dec_num_ongoing_requests(request_metadata)
 
         latency_ms = (time.time() - start_time) * 1000
         self._record_errors_and_metrics(
@@ -643,7 +643,7 @@ class ReplicaBase(ABC):
         self, request_metadata: RequestMetadata, *request_args, **request_kwargs
     ):
         # Check if the replica has capacity for the request.
-        if not self._can_accept_request():
+        if not self._can_accept_request(request_metadata):
             limit = self.max_ongoing_requests
             logger.warning(
                 f"Replica at capacity of max_ongoing_requests={limit}, "
