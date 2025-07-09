@@ -139,6 +139,7 @@ class SortTaskSpec(ExchangeTaskSpec):
         out = accessor.sort_and_partition(boundaries, sort_key)
         from ray.data.block import BlockMetadataWithSchema
 
+        assert len(out) > 0
         meta_with_schema = BlockMetadataWithSchema.from_block(
             out[0], stats=stats.build()
         )
