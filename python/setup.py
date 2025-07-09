@@ -404,25 +404,31 @@ def is_invalid_windows_platform():
     return platform == "msys" or (platform == "win32" and ver and "GCC" in ver)
 
 
-# Calls Bazel in PATH, falling back to the standard user installation path
-# (~/bin/bazel) if it isn't found.
-def _bazel_invoke(cmdline, *args, **kwargs):
-    home = os.path.expanduser("~")
-    first_candidate = os.getenv("BAZEL_PATH", "bazel")
-    candidates = [first_candidate]
+def _find_bazel_bin():
+    candidates = []
+
+    # User specified bazel location.
+    bazel_path = os.getenv("BAZEL_PATH")
+    if bazel_path:
+        candidates.append(bazel_path)
+
+    # Default bazel locations; prefers bazelisk.
+    candidates.extend(["bazelisk", "bazel"])
+
     if sys.platform == "win32":
         mingw_dir = os.getenv("MINGW_DIR")
         if mingw_dir:
-            candidates.append(mingw_dir + "/bin/bazel.exe")
+            candidates.append(os.path.join(mingw_dir, "bin", "bazel.exe"))
     else:
-        candidates.append(os.path.join(home, "bin", "bazel"))
-    for i, cmd in enumerate(candidates):
-        try:
-            subprocess.check_call([cmd] + cmdline, *args, **kwargs)
-            break
-        except IOError:
-            if i >= len(candidates) - 1:
-                raise
+        home_dir = os.path.expanduser("~")
+        candidates.append(os.path.join(home_dir, "bin", "bazel"))
+
+    for bazel in candidates:
+        bazel_bin = shutil.which(bazel)
+        if bazel_bin:
+            return bazel_bin
+
+    raise RuntimeError("Cannot find bazel in PATH")
 
 
 def patch_isdir():
@@ -639,8 +645,14 @@ def build(build_python, build_java, build_cpp):
     if setup_spec.build_type == BuildType.TSAN:
         bazel_flags.append("--config=tsan")
 
-    _bazel_invoke(
-        bazel_precmd_flags + ["build"] + bazel_flags + ["--"] + bazel_targets,
+    bazel_bin = _find_bazel_bin()
+    subprocess.check_call(
+        [bazel_bin]
+        + bazel_precmd_flags
+        + ["build"]
+        + bazel_flags
+        + ["--"]
+        + bazel_targets,
         env=bazel_env,
     )
 
