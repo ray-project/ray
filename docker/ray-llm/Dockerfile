@@ -110,16 +110,47 @@ sudo apt-get install -y kmod pkg-config librdmacm-dev
 
 (
     echo "Installing NIXL"
+    NIXL_VERSION="0.3.1"
     # NIXL needs meson pybind11 ninja, but should have been included in requirements_*.txt
     cd "${TEMP_DIR}"
-    wget "https://github.com/ai-dynamo/nixl/archive/refs/tags/0.3.1.tar.gz" -q
-    tar xzf 0.3.1.tar.gz; rm 0.3.1.tar.gz
-    cd nixl-0.3.1
+    wget "https://github.com/ai-dynamo/nixl/archive/refs/tags/${NIXL_VERSION}.tar.gz" -q
+    tar xzf ${NIXL_VERSION}.tar.gz; rm ${NIXL_VERSION}.tar.gz
+    cd nixl-${NIXL_VERSION}
     meson setup build --prefix=${NIXL_HOME} -Ducx_path=${UCX_HOME}
     cd build
     ninja
     sudo env "PATH=$PATH" ninja install
-    pip install --no-cache-dir nixl==0.3.1
+    pip install --no-cache-dir nixl==${NIXL_VERSION}
+
+    echo "Installing NIXL benchmark"
+    sudo apt-get install libgflags-dev
+    # ETCD c++
+    sudo apt-get install libboost-all-dev libssl-dev
+    sudo apt-get install libgrpc-dev \
+        libgrpc++-dev \
+        libprotobuf-dev \
+        protobuf-compiler-grpc
+    (
+        git clone https://github.com/microsoft/cpprestsdk.git
+        cd cpprestsdk
+        mkdir build && cd build
+        cmake .. -DCPPREST_EXCLUDE_WEBSOCKETS=ON
+        make -j$(nproc)
+        sudo env "PATH=$PATH" make install
+    )
+    (
+        git clone https://github.com/etcd-cpp-apiv3/etcd-cpp-apiv3.git
+        cd etcd-cpp-apiv3
+        mkdir build && cd build
+        cmake ..
+        make -j$(nproc)
+        sudo env "PATH=$PATH" make install
+    )
+    cd benchmark/nixlbench
+    meson setup build -Dnixl_path=${NIXL_HOME}}
+    cd build
+    sudo env "PATH=$PATH" ninja
+    cp nixlbench "${NIXL_HOME}/bin/"
 )
 sudo rm -rf "${TEMP_DIR}"
 
