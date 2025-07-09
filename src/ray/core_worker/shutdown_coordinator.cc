@@ -1,4 +1,4 @@
-// Copyright 2017 The Ray Authors.
+// Copyright 2025 The Ray Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -45,7 +45,6 @@ bool ShutdownCoordinator::RequestShutdown(bool force_shutdown,
     // Store detail for observability (only first caller sets this)
     shutdown_detail_ = detail;
 
-    // Execute shutdown sequence based on force_shutdown flag and worker type
     ExecuteShutdownSequence(force_shutdown, detail, timeout_ms, force_on_timeout);
   }
 
@@ -100,7 +99,6 @@ ShutdownReason ShutdownCoordinator::GetReason() const {
 }
 
 bool ShutdownCoordinator::ShouldEarlyExit() const {
-  // Fast path: single atomic load with relaxed ordering for performance
   return UnpackState(state_and_reason_.load(std::memory_order_relaxed)) !=
          ShutdownState::kRunning;
 }
@@ -147,11 +145,9 @@ void ShutdownCoordinator::ExecuteShutdownSequence(bool force_shutdown,
     break;
   case WorkerType::SPILL_WORKER:
   case WorkerType::RESTORE_WORKER:
-    // Spill/Restore workers behave like normal workers for shutdown
     ExecuteWorkerShutdown(force_shutdown, detail, timeout_ms, force_on_timeout);
     break;
   default:
-    // Handle any unknown worker types as regular workers
     ExecuteWorkerShutdown(force_shutdown, detail, timeout_ms, force_on_timeout);
     break;
   }
@@ -163,7 +159,6 @@ void ShutdownCoordinator::ExecuteGracefulShutdown(const std::string &detail,
     return;
   }
 
-  // Delegate to concrete executor - this implements "no coordination without control"
   TryTransitionToDisconnecting();
   dependencies_->ExecuteGracefulShutdown(GetExitTypeString(), detail, timeout_ms);
   TryTransitionToShutdown();
@@ -174,9 +169,7 @@ void ShutdownCoordinator::ExecuteForceShutdown(const std::string &detail) {
     return;
   }
 
-  // Delegate to concrete executor - this implements "no coordination without control"
   TryTransitionToDisconnecting();
-  // Force shutdown typically uses INTENDED_SYSTEM_EXIT (like HandleExit force_exit case)
   dependencies_->ExecuteForceShutdown(GetExitTypeString(), detail);
   TryTransitionToShutdown();
 }
@@ -205,17 +198,14 @@ void ShutdownCoordinator::ExecuteWorkerShutdown(bool force_shutdown,
     return;
   }
 
-  // Determine the appropriate execution method based on shutdown reason
   ShutdownReason reason = GetReason();
 
-  // Exit() operations need task draining and disconnect
   if (reason == ShutdownReason::kUserError || reason == ShutdownReason::kGracefulExit ||
       reason == ShutdownReason::kIntentionalShutdown ||
       reason == ShutdownReason::kUnexpectedError ||
       reason == ShutdownReason::kOutOfMemory ||
       reason == ShutdownReason::kActorCreationFailed ||
       reason == ShutdownReason::kActorKilled) {
-    // Call dependencies directly - no redundant coordinator methods
     TryTransitionToDisconnecting();
     if (dependencies_) {
       dependencies_->ExecuteWorkerExit(GetExitTypeString(), detail, timeout_ms);
@@ -223,18 +213,15 @@ void ShutdownCoordinator::ExecuteWorkerShutdown(bool force_shutdown,
     TryTransitionToShutdown();
   } else if (reason == ShutdownReason::kIdleTimeout ||
              reason == ShutdownReason::kJobFinished) {
-    // Call dependencies directly - no redundant coordinator methods
     TryTransitionToDisconnecting();
     if (dependencies_) {
       dependencies_->ExecuteHandleExit(GetExitTypeString(), detail, timeout_ms);
     }
     TryTransitionToShutdown();
   } else {
-    // Default to graceful shutdown for other reasons
     ExecuteGracefulShutdown(detail, timeout_ms);
   }
 
-  // Handle timeout fallback if needed
   if (force_on_timeout && GetState() != ShutdownState::kShutdown) {
     ExecuteForceShutdown("Graceful shutdown timeout: " + detail);
   }

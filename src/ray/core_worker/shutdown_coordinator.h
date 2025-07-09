@@ -1,4 +1,4 @@
-// Copyright 2017 The Ray Authors.
+// Copyright 2025 The Ray Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -29,32 +29,27 @@ namespace core {
 class TaskManager;
 class ObjectRecoveryManager;
 
-/// Interface for executing shutdown operations.
-/// NO COORDINATION WITHOUT CONTROL - this interface provides the actual shutdown
-/// execution that the coordinator invokes. Dependencies execute real work.
+/// Interface for executing shutdown operations and provides the actual shutdown
+/// execution that the coordinator invokes. ShutdownDependencies execute real work.
 class ShutdownDependencies {
  public:
   virtual ~ShutdownDependencies() = default;
 
   /// Execute complete graceful shutdown sequence
-  /// Called by coordinator - implements the full graceful shutdown logic
   virtual void ExecuteGracefulShutdown(const std::string &exit_type,
                                        const std::string &detail,
                                        std::chrono::milliseconds timeout_ms) = 0;
 
   /// Execute complete force shutdown sequence
-  /// Called by coordinator - implements the full force shutdown logic
   virtual void ExecuteForceShutdown(const std::string &exit_type,
                                     const std::string &detail) = 0;
 
   /// Execute worker exit sequence with task draining
-  /// Called by coordinator for Exit() operations
   virtual void ExecuteWorkerExit(const std::string &exit_type,
                                  const std::string &detail,
                                  std::chrono::milliseconds timeout_ms) = 0;
 
   /// Execute handle exit sequence with idle checking
-  /// Called by coordinator for HandleExit() operations
   virtual void ExecuteHandleExit(const std::string &exit_type,
                                  const std::string &detail,
                                  std::chrono::milliseconds timeout_ms) = 0;

@@ -1029,8 +1029,6 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
 CoreWorker::~CoreWorker() { RAY_LOG(INFO) << "Core worker is destructed"; }
 
 void CoreWorker::Shutdown() {
-  // PURE COORDINATOR DELEGATION - No coordination without control!
-  // The coordinator will execute the actual shutdown sequence via dependencies
   shutdown_coordinator_->RequestShutdown(false,  // graceful shutdown
                                          ShutdownReason::kGracefulExit,
                                          "ray.shutdown() called",
@@ -1144,8 +1142,6 @@ void CoreWorker::Exit(
     const rpc::WorkerExitType exit_type,
     const std::string &detail,
     const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes) {
-  // PURE COORDINATOR DELEGATION - No coordination without control!
-  // Convert WorkerExitType to ShutdownReason
   ShutdownReason reason = [exit_type]() {
     switch (exit_type) {
     case rpc::WorkerExitType::INTENDED_SYSTEM_EXIT:
@@ -1163,7 +1159,6 @@ void CoreWorker::Exit(
     }
   }();
 
-  // The coordinator will execute the actual exit sequence via dependencies
   shutdown_coordinator_->RequestShutdown(
       false,  // graceful shutdown
       reason,
@@ -1174,8 +1169,6 @@ void CoreWorker::Exit(
 
 void CoreWorker::ForceExit(const rpc::WorkerExitType exit_type,
                            const std::string &detail) {
-  // PURE COORDINATOR DELEGATION - No coordination without control!
-  // Convert WorkerExitType to ShutdownReason
   ShutdownReason reason = [exit_type]() {
     switch (exit_type) {
     case rpc::WorkerExitType::INTENDED_SYSTEM_EXIT:
@@ -1193,7 +1186,6 @@ void CoreWorker::ForceExit(const rpc::WorkerExitType exit_type,
     }
   }();
 
-  // The coordinator will execute the actual force exit sequence via dependencies
   shutdown_coordinator_->RequestShutdown(
       true,  // force shutdown
       reason,
@@ -4736,10 +4728,9 @@ void CoreWorker::HandleExit(rpc::ExitRequest request,
       Status::OK(),
       [this, will_exit, force_exit]() {
         if (!will_exit) {
-          return;  // Don't exit if not idle and not forced
+          return;
         }
 
-        // Use shutdown coordinator for unified exit handling
         ShutdownReason reason;
         std::string detail;
         std::chrono::milliseconds timeout{10000};  // 10s default
@@ -4754,7 +4745,6 @@ void CoreWorker::HandleExit(rpc::ExitRequest request,
           timeout = std::chrono::milliseconds{15000};  // 15s for idle exit
         }
 
-        // Request shutdown through coordinator
         shutdown_coordinator_->RequestShutdown(force_exit,  // force flag from request
                                                reason,
                                                detail,
@@ -4935,11 +4925,7 @@ rpc::JobConfig CoreWorker::GetJobConfig() const {
   return worker_context_.GetCurrentJobConfig();
 }
 
-bool CoreWorker::IsExiting() const {
-  // FAST PATH: Pure coordinator check (~10ns atomic load, no mutex)
-  // This implements the user's "high performance" and "no unnecessary atomics" principles
-  return shutdown_coordinator_->ShouldEarlyExit();
-}
+bool CoreWorker::IsExiting() const { return shutdown_coordinator_->ShouldEarlyExit(); }
 
 bool CoreWorker::ShouldWorkerExit() const {
   // Use the same idle checking logic as HandleExit
