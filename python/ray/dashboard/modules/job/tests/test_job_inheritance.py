@@ -66,7 +66,11 @@ def test_job_driver_inheritance():
         print("Test key merged")
         runtime_env = get_runtime_env_from_logs(client, job_id)
         assert runtime_env["env_vars"] == {"A": "1", "B": "2", "C": "1"}
-        assert runtime_env["pip"] == {"packages": ["requests"], "pip_check": False}
+        assert runtime_env["pip"] == {
+            "packages": ["requests"],
+            "pip_check": False,
+            "pip_install_options": ["--disable-pip-version-check", "--no-cache-dir"],
+        }
 
         # Test worker process setuphook works.
         print("Test key setup hook")
