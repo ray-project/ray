@@ -123,10 +123,10 @@ sudo apt-get install -y kmod pkg-config librdmacm-dev
     pip install --no-cache-dir nixl==${NIXL_VERSION}
 
     echo "Installing NIXL benchmark"
-    sudo apt-get install libgflags-dev
+    sudo apt-get install -y libgflags-dev
     # ETCD c++
-    sudo apt-get install libboost-all-dev libssl-dev
-    sudo apt-get install libgrpc-dev \
+    sudo apt-get install -y libboost-all-dev libssl-dev
+    sudo apt-get install -y libgrpc-dev \
         libgrpc++-dev \
         libprotobuf-dev \
         protobuf-compiler-grpc
@@ -146,6 +146,7 @@ sudo apt-get install -y kmod pkg-config librdmacm-dev
         make -j$(nproc)
         sudo env "PATH=$PATH" make install
     )
+    # End ETCD c++
     cd benchmark/nixlbench
     meson setup build -Dnixl_path=${NIXL_HOME}}
     cd build
