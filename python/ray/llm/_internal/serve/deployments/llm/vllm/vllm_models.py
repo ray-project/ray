@@ -1,3 +1,4 @@
+import dataclasses
 import os
 from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Union
 
@@ -104,10 +105,7 @@ class VLLMEngineConfig(BaseModelExtended):
         else:
             engine_kwargs["distributed_executor_backend"] = "ray"
 
-        if (
-            "disable_log_stats" in engine_kwargs
-            and engine_kwargs["disable_log_stats"] != False
-        ):
+        if "disable_log_stats" in engine_kwargs and engine_kwargs["disable_log_stats"]:
             logger.warning(
                 "disable_log_stats = True is not allowed in engine_kwargs when using Ray Serve LLM Configs. Setting it to False."
             )
