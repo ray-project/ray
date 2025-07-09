@@ -275,7 +275,6 @@ class VLLMEngine(LLMEngine):
         logger.info("Started vLLM engine.")
 
     async def _start_engine(self) -> "EngineClient":
-
         # Initialize node and return all configurations
         node_initialization = await self.initialize_node(self.llm_config)
 
@@ -678,7 +677,10 @@ class VLLMEngine(LLMEngine):
 
         for gen in generators:
             async for result in gen:
-                embedding = result.outputs.embedding
+                if hasattr(result.outputs, "embedding"):
+                    embedding = result.outputs.embedding
+                else:
+                    embedding = result.outputs.data.tolist()
                 if vllm_embedding_request.encoding_format == "base64":
                     embedding = floats_to_base64(embedding)
 

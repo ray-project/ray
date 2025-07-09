@@ -3002,7 +3002,7 @@
 
 
   smoke_test:
-    frequency: nightly
+    frequency: manual # was nightly
     cluster:
       cluster_compute: dask_on_ray/large_scale_dask_on_ray_compute_template.yaml
 
