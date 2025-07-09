@@ -166,7 +166,11 @@ def test_job_driver_inheritance_override(monkeypatch):
         )
         runtime_env = get_runtime_env_from_logs(client, job_id)
         print(runtime_env)
-        assert runtime_env["pip"] == {"packages": ["numpy"], "pip_check": False}
+        assert runtime_env["pip"] == {
+            "packages": ["numpy"],
+            "pip_check": False,
+            "pip_install_options": ["--disable-pip-version-check", "--no-cache-dir"],
+        }
 
         # Test raise an exception upon env var conflict
         job_id = client.submit_job(
