@@ -97,11 +97,15 @@ def is_release_test_model(model: "openai.types.model.Model") -> bool:
 
 def is_finetuned_model(model: "openai.types.model.Model") -> bool:
     # If base_model_id is set, this is a finetuned model
-    return model.model_dump().get("rayllm_metadata", {}).get("base_model_id") is not None
+    return (
+        model.model_dump().get("rayllm_metadata", {}).get("base_model_id") is not None
+    )
 
 
 def is_vision_language_model(model: "openai.types.model.Model") -> bool:
-    return model.model_dump().get("rayllm_metadata", {}).get("input_modality") == "image"
+    return (
+        model.model_dump().get("rayllm_metadata", {}).get("input_modality") == "image"
+    )
 
 
 def is_rate_liming_test_model(model: "openai.types.model.Model") -> bool:
