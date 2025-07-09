@@ -684,6 +684,10 @@ def test_unify_schemas_mixed_tensor_types(unify_schemas_mixed_tensor_data):
     assert result == data["expected_variable"]
 
 
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("17.0.0"),
+    reason="Requires PyArrow version 17 or higher",
+)
 def test_unify_schemas_promote_types(unify_schemas_promote_types_data):
     """Test type promotion functionality."""
     data = unify_schemas_promote_types_data
@@ -1273,74 +1277,46 @@ def test_struct_with_null_tensor_values(
 def simple_struct_blocks():
     """Fixture for simple struct blocks with missing fields."""
     # Block 1: Struct with fields 'a' and 'b'
-    t1 = pa.table({"struct": pa.array([{"a": 1, "b": "x"}, {"a": 2, "b": "y"}])})
+    struct_data1 = [{"a": 1, "b": "x"}, {"a": 2, "b": "y"}]
 
     # Block 2: Struct with fields 'a' and 'c' (missing 'b', has 'c')
-    t2 = pa.table({"struct": pa.array([{"a": 3, "c": True}, {"a": 4, "c": False}])})
+    struct_data2 = [{"a": 3, "c": True}, {"a": 4, "c": False}]
 
-    return t1, t2
+    return _create_basic_struct_blocks(
+        struct_data1, struct_data2, id_data1=None, id_data2=None
+    )
 
 
 @pytest.fixture
 def simple_struct_schema():
     """Fixture for simple struct schema with all fields."""
-    return pa.schema(
-        [
-            (
-                "struct",
-                pa.struct([("a", pa.int64()), ("b", pa.string()), ("c", pa.bool_())]),
-            )
-        ]
-    )
+    struct_fields = [("a", pa.int64()), ("b", pa.string()), ("c", pa.bool_())]
+    return _create_struct_schema(struct_fields, include_id=False)
 
 
 @pytest.fixture
 def nested_struct_blocks():
     """Fixture for nested struct blocks with missing fields."""
     # Block 1: Nested struct with inner fields 'x' and 'y'
-    t1 = pa.table(
-        {
-            "outer": pa.array(
-                [{"inner": {"x": 1, "y": "a"}}, {"inner": {"x": 2, "y": "b"}}]
-            )
-        }
-    )
+    struct_data1 = [{"inner": {"x": 1, "y": "a"}}, {"inner": {"x": 2, "y": "b"}}]
 
     # Block 2: Nested struct with inner fields 'x' and 'z' (missing 'y', has 'z')
-    t2 = pa.table(
-        {
-            "outer": pa.array(
-                [{"inner": {"x": 3, "z": 1.5}}, {"inner": {"x": 4, "z": 2.5}}]
-            )
-        }
-    )
+    struct_data2 = [{"inner": {"x": 3, "z": 1.5}}, {"inner": {"x": 4, "z": 2.5}}]
 
-    return t1, t2
+    return _create_basic_struct_blocks(
+        struct_data1, struct_data2, column_name="outer", id_data1=None, id_data2=None
+    )
 
 
 @pytest.fixture
 def nested_struct_schema():
     """Fixture for nested struct schema with all fields."""
-    return pa.schema(
-        [
-            (
-                "outer",
-                pa.struct(
-                    [
-                        (
-                            "inner",
-                            pa.struct(
-                                [
-                                    ("x", pa.int64()),
-                                    ("y", pa.string()),
-                                    ("z", pa.float64()),
-                                ]
-                            ),
-                        )
-                    ]
-                ),
-            )
-        ]
+    inner_fields = [("x", pa.int64()), ("y", pa.string()), ("z", pa.float64())]
+    struct_fields = [("inner", pa.struct(inner_fields))]
+    return _create_struct_schema(
+        struct_fields,
+        include_id=False,
+        other_fields=[("outer", pa.struct(struct_fields))],
     )
 
 
@@ -1376,22 +1352,27 @@ def missing_column_schema():
 def multiple_struct_blocks():
     """Fixture for blocks with multiple struct columns."""
     # Block 1: Two struct columns with different field sets
+    struct1_data1 = [{"a": 1, "b": "x"}, {"a": 2, "b": "y"}]
+    struct2_data1 = [{"p": 10, "q": True}, {"p": 20, "q": False}]
+
+    # Block 2: Same struct columns but with different/missing fields
+    struct1_data2 = [{"a": 3, "c": 1.5}, {"a": 4, "c": 2.5}]  # missing 'b', has 'c'
+    struct2_data2 = [
+        {"p": 30, "r": "alpha"},
+        {"p": 40, "r": "beta"},
+    ]  # missing 'q', has 'r'
+
     t1 = pa.table(
         {
-            "struct1": pa.array([{"a": 1, "b": "x"}, {"a": 2, "b": "y"}]),
-            "struct2": pa.array([{"p": 10, "q": True}, {"p": 20, "q": False}]),
+            "struct1": pa.array(struct1_data1),
+            "struct2": pa.array(struct2_data1),
         }
     )
 
-    # Block 2: Same struct columns but with different/missing fields
     t2 = pa.table(
         {
-            "struct1": pa.array(
-                [{"a": 3, "c": 1.5}, {"a": 4, "c": 2.5}]
-            ),  # missing 'b', has 'c'
-            "struct2": pa.array(
-                [{"p": 30, "r": "alpha"}, {"p": 40, "r": "beta"}]
-            ),  # missing 'q', has 'r'
+            "struct1": pa.array(struct1_data2),
+            "struct2": pa.array(struct2_data2),
         }
     )
 
@@ -1401,16 +1382,13 @@ def multiple_struct_blocks():
 @pytest.fixture
 def multiple_struct_schema():
     """Fixture for schema with multiple struct columns."""
+    struct1_fields = [("a", pa.int64()), ("b", pa.string()), ("c", pa.float64())]
+    struct2_fields = [("p", pa.int64()), ("q", pa.bool_()), ("r", pa.string())]
+
     return pa.schema(
         [
-            (
-                "struct1",
-                pa.struct([("a", pa.int64()), ("b", pa.string()), ("c", pa.float64())]),
-            ),
-            (
-                "struct2",
-                pa.struct([("p", pa.int64()), ("q", pa.bool_()), ("r", pa.string())]),
-            ),
+            ("struct1", pa.struct(struct1_fields)),
+            ("struct2", pa.struct(struct2_fields)),
         ]
     )
 
@@ -1419,22 +1397,28 @@ def multiple_struct_schema():
 def mixed_column_blocks():
     """Fixture for blocks with mix of struct and non-struct columns."""
     # Block 1: Mix of struct and non-struct columns
+    struct_data1 = [{"a": 1, "b": "x"}, {"a": 2, "b": "y"}]
+    int_col1 = [10, 20]
+    string_col1 = ["foo", "bar"]
+
+    # Block 2: Same structure
+    struct_data2 = [{"a": 3, "c": True}, {"a": 4, "c": False}]  # missing 'b', has 'c'
+    int_col2 = [30, 40]
+    string_col2 = ["baz", "qux"]
+
     t1 = pa.table(
         {
-            "struct": pa.array([{"a": 1, "b": "x"}, {"a": 2, "b": "y"}]),
-            "int_col": pa.array([10, 20]),
-            "string_col": pa.array(["foo", "bar"]),
+            "struct": pa.array(struct_data1),
+            "int_col": pa.array(int_col1),
+            "string_col": pa.array(string_col1),
         }
     )
 
-    # Block 2: Same structure
     t2 = pa.table(
         {
-            "struct": pa.array(
-                [{"a": 3, "c": True}, {"a": 4, "c": False}]
-            ),  # missing 'b', has 'c'
-            "int_col": pa.array([30, 40]),
-            "string_col": pa.array(["baz", "qux"]),
+            "struct": pa.array(struct_data2),
+            "int_col": pa.array(int_col2),
+            "string_col": pa.array(string_col2),
         }
     )
 
@@ -1444,12 +1428,11 @@ def mixed_column_blocks():
 @pytest.fixture
 def mixed_column_schema():
     """Fixture for schema with mix of struct and non-struct columns."""
+    struct_fields = [("a", pa.int64()), ("b", pa.string()), ("c", pa.bool_())]
+
     return pa.schema(
         [
-            (
-                "struct",
-                pa.struct([("a", pa.int64()), ("b", pa.string()), ("c", pa.bool_())]),
-            ),
+            ("struct", pa.struct(struct_fields)),
             ("int_col", pa.int64()),
             ("string_col", pa.string()),
         ]
@@ -1460,22 +1443,12 @@ def mixed_column_schema():
 def empty_block_blocks():
     """Fixture for blocks where one is empty."""
     # Empty block
-    t1 = pa.table(
-        {
-            "struct": pa.array(
-                [], type=pa.struct([("a", pa.int64()), ("b", pa.string())])
-            )
-        }
-    )
+    empty_struct_type = pa.struct([("a", pa.int64()), ("b", pa.string())])
+    t1 = pa.table({"struct": pa.array([], type=empty_struct_type)})
 
     # Non-empty block
-    t2 = pa.table(
-        {
-            "struct": pa.array(
-                [{"a": 1, "c": True}, {"a": 2, "c": False}]
-            )  # missing 'b', has 'c'
-        }
-    )
+    struct_data2 = [{"a": 1, "c": True}, {"a": 2, "c": False}]  # missing 'b', has 'c'
+    t2 = pa.table({"struct": pa.array(struct_data2)})
 
     return t1, t2
 
@@ -1483,38 +1456,40 @@ def empty_block_blocks():
 @pytest.fixture
 def empty_block_schema():
     """Fixture for schema used with empty blocks."""
-    return pa.schema(
-        [
-            (
-                "struct",
-                pa.struct([("a", pa.int64()), ("b", pa.string()), ("c", pa.bool_())]),
-            )
-        ]
-    )
+    struct_fields = [("a", pa.int64()), ("b", pa.string()), ("c", pa.bool_())]
+    return _create_struct_schema(struct_fields, include_id=False)
 
 
 @pytest.fixture
 def already_aligned_blocks():
     """Fixture for blocks that are already aligned."""
     # Both blocks have identical schemas
-    t1 = pa.table({"struct": pa.array([{"a": 1, "b": "x"}, {"a": 2, "b": "y"}])})
-    t2 = pa.table({"struct": pa.array([{"a": 3, "b": "z"}, {"a": 4, "b": "w"}])})
+    struct_data1 = [{"a": 1, "b": "x"}, {"a": 2, "b": "y"}]
+    struct_data2 = [{"a": 3, "b": "z"}, {"a": 4, "b": "w"}]
 
-    return t1, t2
+    return _create_basic_struct_blocks(
+        struct_data1, struct_data2, id_data1=None, id_data2=None
+    )
 
 
 @pytest.fixture
 def already_aligned_schema():
     """Fixture for schema used with already aligned blocks."""
-    return pa.schema([("struct", pa.struct([("a", pa.int64()), ("b", pa.string())]))])
+    struct_fields = [("a", pa.int64()), ("b", pa.string())]
+    return _create_struct_schema(struct_fields, include_id=False)
 
 
 @pytest.fixture
 def no_struct_blocks():
     """Fixture for blocks with no struct columns."""
     # Blocks with no struct columns
-    t1 = pa.table({"int_col": pa.array([1, 2]), "string_col": pa.array(["a", "b"])})
-    t2 = pa.table({"int_col": pa.array([3, 4]), "string_col": pa.array(["c", "d"])})
+    int_col1 = [1, 2]
+    string_col1 = ["a", "b"]
+    int_col2 = [3, 4]
+    string_col2 = ["c", "d"]
+
+    t1 = pa.table({"int_col": pa.array(int_col1), "string_col": pa.array(string_col1)})
+    t2 = pa.table({"int_col": pa.array(int_col2), "string_col": pa.array(string_col2)})
 
     return t1, t2
 
@@ -1529,63 +1504,30 @@ def no_struct_schema():
 def deep_nesting_blocks():
     """Fixture for blocks with deeply nested structs."""
     # Block 1: Deeply nested struct
-    t1 = pa.table(
-        {
-            "level1": pa.array(
-                [
-                    {"level2": {"level3": {"a": 1, "b": "x"}}},
-                    {"level2": {"level3": {"a": 2, "b": "y"}}},
-                ]
-            )
-        }
-    )
+    struct_data1 = [
+        {"level2": {"level3": {"a": 1, "b": "x"}}},
+        {"level2": {"level3": {"a": 2, "b": "y"}}},
+    ]
 
     # Block 2: Same structure but missing some fields
-    t2 = pa.table(
-        {
-            "level1": pa.array(
-                [
-                    {"level2": {"level3": {"a": 3, "c": True}}},  # missing 'b', has 'c'
-                    {"level2": {"level3": {"a": 4, "c": False}}},
-                ]
-            )
-        }
-    )
+    struct_data2 = [
+        {"level2": {"level3": {"a": 3, "c": True}}},  # missing 'b', has 'c'
+        {"level2": {"level3": {"a": 4, "c": False}}},
+    ]
 
-    return t1, t2
+    return _create_basic_struct_blocks(
+        struct_data1, struct_data2, column_name="level1", id_data1=None, id_data2=None
+    )
 
 
 @pytest.fixture
 def deep_nesting_schema():
     """Fixture for schema with deeply nested structs."""
-    return pa.schema(
-        [
-            (
-                "level1",
-                pa.struct(
-                    [
-                        (
-                            "level2",
-                            pa.struct(
-                                [
-                                    (
-                                        "level3",
-                                        pa.struct(
-                                            [
-                                                ("a", pa.int64()),
-                                                ("b", pa.string()),
-                                                ("c", pa.bool_()),
-                                            ]
-                                        ),
-                                    )
-                                ]
-                            ),
-                        )
-                    ]
-                ),
-            )
-        ]
-    )
+    level3_fields = [("a", pa.int64()), ("b", pa.string()), ("c", pa.bool_())]
+    level2_fields = [("level3", pa.struct(level3_fields))]
+    level1_fields = [("level2", pa.struct(level2_fields))]
+
+    return pa.schema([("level1", pa.struct(level1_fields))])
 
 
 def test_align_struct_fields_simple(simple_struct_blocks, simple_struct_schema):
@@ -1940,8 +1882,6 @@ def mixed_tensor_types_same_dtype_blocks():
     """Fixture for mixed tensor types with same dtype but different shapes."""
     # Block 1: Fixed shape tensors with float32
     tensor_data1 = np.ones((2, 2), dtype=np.float32)
-    tensor_array1 = ArrowTensorArray.from_numpy(tensor_data1)
-    t1 = pa.table({"id": [1, 2], "tensor": tensor_array1})
 
     # Block 2: Variable shape tensors with float32
     tensor_data2 = np.array(
@@ -1951,21 +1891,14 @@ def mixed_tensor_types_same_dtype_blocks():
         ],
         dtype=object,
     )
-    tensor_array2 = ArrowVariableShapedTensorArray.from_numpy(tensor_data2)
-    t2 = pa.table({"id": [3, 4], "tensor": tensor_array2})
 
-    return t1, t2
+    return _create_tensor_blocks(tensor_data1, tensor_data2, "fixed", "variable")
 
 
 @pytest.fixture
 def mixed_tensor_types_same_dtype_expected():
     """Fixture for expected results from mixed tensor types with same dtype."""
-    expected_schema = pa.schema(
-        [("id", pa.int64()), ("tensor", ArrowVariableShapedTensorType(pa.float32(), 2))]
-    )
-    expected_length = 4
-
-    # Expected tensor values
+    expected_schema = _create_tensor_schema(struct_name="tensor")
     expected_tensors = [
         np.ones((2,), dtype=np.float32),  # First 2 converted to variable-shaped
         np.ones((2,), dtype=np.float32),
@@ -1973,11 +1906,7 @@ def mixed_tensor_types_same_dtype_expected():
         np.zeros((1, 4), dtype=np.float32),
     ]
 
-    return {
-        "schema": expected_schema,
-        "length": expected_length,
-        "tensor_values": expected_tensors,
-    }
+    return _create_expected_result(expected_schema, 4, tensor_values=expected_tensors)
 
 
 @pytest.fixture
@@ -1985,26 +1914,19 @@ def mixed_tensor_types_fixed_shape_blocks():
     """Fixture for mixed tensor types with different fixed shapes."""
     # Block 1: Fixed shape tensors (2x2)
     tensor_data1 = np.ones((2, 2), dtype=np.float32)
-    tensor_array1 = ArrowTensorArray.from_numpy(tensor_data1)
-    t1 = pa.table({"id": [1, 2], "tensor": tensor_array1})
 
     # Block 2: Fixed shape tensors (3x3)
     tensor_data2 = np.zeros((3, 3), dtype=np.float32)
-    tensor_array2 = ArrowTensorArray.from_numpy(tensor_data2)
-    t2 = pa.table({"id": [3, 4, 5], "tensor": tensor_array2})
 
-    return t1, t2
+    return _create_tensor_blocks(
+        tensor_data1, tensor_data2, "fixed", "fixed", id_data2=[3, 4, 5]
+    )
 
 
 @pytest.fixture
 def mixed_tensor_types_fixed_shape_expected():
     """Fixture for expected results from mixed tensor types with different fixed shapes."""
-    expected_schema = pa.schema(
-        [("id", pa.int64()), ("tensor", ArrowVariableShapedTensorType(pa.float32(), 2))]
-    )
-    expected_length = 5
-
-    # Expected tensor values
+    expected_schema = _create_tensor_schema(struct_name="tensor")
     expected_tensors = [
         np.ones((2,), dtype=np.float32),  # First 2 converted to variable-shaped
         np.ones((2,), dtype=np.float32),
@@ -2013,11 +1935,7 @@ def mixed_tensor_types_fixed_shape_expected():
         np.zeros((3,), dtype=np.float32),
     ]
 
-    return {
-        "schema": expected_schema,
-        "length": expected_length,
-        "tensor_values": expected_tensors,
-    }
+    return _create_expected_result(expected_schema, 5, tensor_values=expected_tensors)
 
 
 @pytest.fixture
@@ -2031,8 +1949,6 @@ def mixed_tensor_types_variable_shaped_blocks():
         ],
         dtype=object,
     )
-    tensor_array1 = ArrowVariableShapedTensorArray.from_numpy(tensor_data1)
-    t1 = pa.table({"id": [1, 2], "tensor": tensor_array1})
 
     # Block 2: Variable shape tensors with different shapes
     tensor_data2 = np.array(
@@ -2042,21 +1958,14 @@ def mixed_tensor_types_variable_shaped_blocks():
         ],
         dtype=object,
     )
-    tensor_array2 = ArrowVariableShapedTensorArray.from_numpy(tensor_data2)
-    t2 = pa.table({"id": [3, 4], "tensor": tensor_array2})
 
-    return t1, t2
+    return _create_tensor_blocks(tensor_data1, tensor_data2, "variable", "variable")
 
 
 @pytest.fixture
 def mixed_tensor_types_variable_shaped_expected():
     """Fixture for expected results from mixed variable-shaped tensor types."""
-    expected_schema = pa.schema(
-        [("id", pa.int64()), ("tensor", ArrowVariableShapedTensorType(pa.float32(), 2))]
-    )
-    expected_length = 4
-
-    # Expected tensor values
+    expected_schema = _create_tensor_schema(struct_name="tensor")
     expected_tensors = [
         np.ones((2, 2), dtype=np.float32),
         np.zeros((3, 3), dtype=np.float32),
@@ -2064,11 +1973,7 @@ def mixed_tensor_types_variable_shaped_expected():
         np.zeros((2, 1), dtype=np.float32),
     ]
 
-    return {
-        "schema": expected_schema,
-        "length": expected_length,
-        "tensor_values": expected_tensors,
-    }
+    return _create_expected_result(expected_schema, 4, tensor_values=expected_tensors)
 
 
 @pytest.fixture
@@ -2076,12 +1981,6 @@ def struct_with_mixed_tensor_types_blocks():
     """Fixture for struct blocks with mixed tensor types."""
     # Block 1: Struct with fixed-shape tensor
     tensor_data1 = np.ones((2, 2), dtype=np.float32)
-    tensor_array1 = ArrowTensorArray.from_numpy(tensor_data1)
-    value_array1 = pa.array([1, 2], type=pa.int64())
-    struct_array1 = pa.StructArray.from_arrays(
-        [tensor_array1, value_array1], names=["tensor", "value"]
-    )
-    t1 = pa.table({"id": [1, 2], "struct": struct_array1})
 
     # Block 2: Struct with variable-shaped tensor
     tensor_data2 = np.array(
@@ -2091,36 +1990,14 @@ def struct_with_mixed_tensor_types_blocks():
         ],
         dtype=object,
     )
-    tensor_array2 = ArrowVariableShapedTensorArray.from_numpy(tensor_data2)
-    value_array2 = pa.array([3, 4], type=pa.int64())
-    struct_array2 = pa.StructArray.from_arrays(
-        [tensor_array2, value_array2], names=["tensor", "value"]
-    )
-    t2 = pa.table({"id": [3, 4], "struct": struct_array2})
 
-    return t1, t2
+    return _create_struct_tensor_blocks(tensor_data1, tensor_data2, "fixed", "variable")
 
 
 @pytest.fixture
 def struct_with_mixed_tensor_types_expected():
     """Fixture for expected results from struct with mixed tensor types."""
-    expected_schema = pa.schema(
-        [
-            ("id", pa.int64()),
-            (
-                "struct",
-                pa.struct(
-                    [
-                        ("tensor", ArrowVariableShapedTensorType(pa.float32(), 2)),
-                        ("value", pa.int64()),
-                    ]
-                ),
-            ),
-        ]
-    )
-    expected_length = 4
-
-    # Expected struct values
+    expected_schema = _create_tensor_schema(struct_name="struct")
     expected_struct_values = [
         {"value": 1},  # First two from fixed-shape tensor struct
         {"value": 2},
@@ -2128,11 +2005,9 @@ def struct_with_mixed_tensor_types_expected():
         {"value": 4},
     ]
 
-    return {
-        "schema": expected_schema,
-        "length": expected_length,
-        "struct_values": expected_struct_values,
-    }
+    return _create_expected_result(
+        expected_schema, 4, struct_values=expected_struct_values
+    )
 
 
 @pytest.fixture
@@ -2140,12 +2015,12 @@ def nested_struct_with_mixed_tensor_types_blocks():
     """Fixture for nested struct blocks with mixed tensor types."""
     # Block 1: Nested struct with fixed-shape tensors
     tensor_data1 = np.ones((2, 2), dtype=np.float32)
-    tensor_array1 = ArrowTensorArray.from_numpy(tensor_data1)
+    tensor_array1 = _create_tensor_array(tensor_data1, "fixed")
     inner_struct1 = pa.StructArray.from_arrays(
         [tensor_array1, pa.array([10, 20], type=pa.int64())],
         names=["inner_tensor", "inner_value"],
     )
-    outer_tensor1 = ArrowTensorArray.from_numpy(np.zeros((2, 1), dtype=np.float32))
+    outer_tensor1 = _create_tensor_array(np.zeros((2, 1), dtype=np.float32), "fixed")
     outer_struct1 = pa.StructArray.from_arrays(
         [inner_struct1, outer_tensor1, pa.array([1, 2], type=pa.int64())],
         names=["nested", "outer_tensor", "outer_value"],
@@ -2160,16 +2035,17 @@ def nested_struct_with_mixed_tensor_types_blocks():
         ],
         dtype=object,
     )
-    tensor_array2 = ArrowVariableShapedTensorArray.from_numpy(tensor_data2)
+    tensor_array2 = _create_tensor_array(tensor_data2, "variable")
     inner_struct2 = pa.StructArray.from_arrays(
         [tensor_array2, pa.array([30, 40], type=pa.int64())],
         names=["inner_tensor", "inner_value"],
     )
-    outer_tensor2 = ArrowVariableShapedTensorArray.from_numpy(
+    outer_tensor2 = _create_tensor_array(
         np.array(
             [np.ones((2, 2), dtype=np.float32), np.zeros((1, 3), dtype=np.float32)],
             dtype=object,
-        )
+        ),
+        "variable",
     )
     outer_struct2 = pa.StructArray.from_arrays(
         [inner_struct2, outer_tensor2, pa.array([3, 4], type=pa.int64())],
@@ -2212,9 +2088,6 @@ def nested_struct_with_mixed_tensor_types_expected():
             ),
         ]
     )
-    expected_length = 4
-
-    # Expected nested structure fields
     expected_fields = [
         "nested",
         "outer_tensor",
@@ -2223,11 +2096,7 @@ def nested_struct_with_mixed_tensor_types_expected():
         "inner_value",
     ]
 
-    return {
-        "schema": expected_schema,
-        "length": expected_length,
-        "expected_fields": expected_fields,
-    }
+    return _create_expected_result(expected_schema, 4, expected_fields=expected_fields)
 
 
 @pytest.fixture
@@ -2235,9 +2104,9 @@ def multiple_tensor_fields_struct_blocks():
     """Fixture for struct blocks with multiple tensor fields."""
     # Block 1: Struct with multiple fixed-shape tensors
     tensor1_data = np.ones((2, 2), dtype=np.float32)
-    tensor1_array = ArrowTensorArray.from_numpy(tensor1_data)
+    tensor1_array = _create_tensor_array(tensor1_data, "fixed")
     tensor2_data = np.zeros((2, 3), dtype=np.int32)
-    tensor2_array = ArrowTensorArray.from_numpy(tensor2_data)
+    tensor2_array = _create_tensor_array(tensor2_data, "fixed")
     struct_array1 = pa.StructArray.from_arrays(
         [tensor1_array, tensor2_array, pa.array([1, 2], type=pa.int64())],
         names=["tensor1", "tensor2", "value"],
@@ -2252,7 +2121,7 @@ def multiple_tensor_fields_struct_blocks():
         ],
         dtype=object,
     )
-    tensor1_array2 = ArrowVariableShapedTensorArray.from_numpy(tensor1_data2)
+    tensor1_array2 = _create_tensor_array(tensor1_data2, "variable")
     tensor2_data2 = np.array(
         [
             np.ones((2, 2), dtype=np.int32),
@@ -2260,7 +2129,7 @@ def multiple_tensor_fields_struct_blocks():
         ],
         dtype=object,
     )
-    tensor2_array2 = ArrowVariableShapedTensorArray.from_numpy(tensor2_data2)
+    tensor2_array2 = _create_tensor_array(tensor2_data2, "variable")
     struct_array2 = pa.StructArray.from_arrays(
         [tensor1_array2, tensor2_array2, pa.array([3, 4], type=pa.int64())],
         names=["tensor1", "tensor2", "value"],
@@ -2288,16 +2157,9 @@ def multiple_tensor_fields_struct_expected():
             ),
         ]
     )
-    expected_length = 4
-
-    # Expected tensor fields
     expected_fields = ["tensor1", "tensor2", "value"]
 
-    return {
-        "schema": expected_schema,
-        "length": expected_length,
-        "expected_fields": expected_fields,
-    }
+    return _create_expected_result(expected_schema, 4, expected_fields=expected_fields)
 
 
 @pytest.fixture
@@ -2305,12 +2167,6 @@ def incompatible_tensor_dtypes_blocks():
     """Fixture for struct blocks with incompatible tensor dtypes."""
     # Block 1: Struct with float32 fixed-shape tensor
     tensor_data1 = np.ones((2, 2), dtype=np.float32)
-    tensor_array1 = ArrowTensorArray.from_numpy(tensor_data1)
-    value_array1 = pa.array([1, 2], type=pa.int64())
-    struct_array1 = pa.StructArray.from_arrays(
-        [tensor_array1, value_array1], names=["tensor", "value"]
-    )
-    t1 = pa.table({"id": [1, 2], "struct": struct_array1})
 
     # Block 2: Struct with int64 variable-shaped tensor (different dtype)
     tensor_data2 = np.array(
@@ -2320,14 +2176,8 @@ def incompatible_tensor_dtypes_blocks():
         ],
         dtype=object,
     )
-    tensor_array2 = ArrowVariableShapedTensorArray.from_numpy(tensor_data2)
-    value_array2 = pa.array([3, 4], type=pa.int64())
-    struct_array2 = pa.StructArray.from_arrays(
-        [tensor_array2, value_array2], names=["tensor", "value"]
-    )
-    t2 = pa.table({"id": [3, 4], "struct": struct_array2})
 
-    return t1, t2
+    return _create_struct_tensor_blocks(tensor_data1, tensor_data2, "fixed", "variable")
 
 
 @pytest.fixture
@@ -2335,12 +2185,6 @@ def struct_with_additional_fields_blocks():
     """Fixture for struct blocks where some have additional fields."""
     # Block 1: Struct with tensor field and basic fields
     tensor_data1 = np.ones((2, 2), dtype=np.float32)
-    tensor_array1 = ArrowTensorArray.from_numpy(tensor_data1)
-    value_array1 = pa.array([1, 2], type=pa.int64())
-    struct_array1 = pa.StructArray.from_arrays(
-        [tensor_array1, value_array1], names=["tensor", "value"]
-    )
-    t1 = pa.table({"id": [1, 2], "struct": struct_array1})
 
     # Block 2: Struct with tensor field and additional fields
     tensor_data2 = np.array(
@@ -2350,48 +2194,25 @@ def struct_with_additional_fields_blocks():
         ],
         dtype=object,
     )
-    tensor_array2 = ArrowVariableShapedTensorArray.from_numpy(tensor_data2)
-    value_array2 = pa.array([3, 4], type=pa.int64())
-    extra_array2 = pa.array(["a", "b"], type=pa.string())
-    struct_array2 = pa.StructArray.from_arrays(
-        [tensor_array2, value_array2, extra_array2], names=["tensor", "value", "extra"]
-    )
-    t2 = pa.table({"id": [3, 4], "struct": struct_array2})
 
-    return t1, t2
+    return _create_struct_tensor_blocks(
+        tensor_data1, tensor_data2, "fixed", "variable", extra_data2=["a", "b"]
+    )
 
 
 @pytest.fixture
 def struct_with_additional_fields_expected():
     """Fixture for expected results from struct with additional fields."""
-    expected_schema = pa.schema(
-        [
-            ("id", pa.int64()),
-            (
-                "struct",
-                pa.struct(
-                    [
-                        ("tensor", ArrowVariableShapedTensorType(pa.float32(), 2)),
-                        ("value", pa.int64()),
-                        ("extra", pa.string()),
-                    ]
-                ),
-            ),
-        ]
-    )
-    expected_length = 4
-
-    # Expected field presence and values
+    expected_schema = _create_tensor_schema(struct_name="struct", include_extra=True)
     expected_field_presence = {"tensor": True, "value": True, "extra": True}
-
     expected_extra_values = [None, None, "a", "b"]
 
-    return {
-        "schema": expected_schema,
-        "length": expected_length,
-        "field_presence": expected_field_presence,
-        "extra_values": expected_extra_values,
-    }
+    return _create_expected_result(
+        expected_schema,
+        4,
+        field_presence=expected_field_presence,
+        extra_values=expected_extra_values,
+    )
 
 
 @pytest.fixture
@@ -2492,56 +2313,44 @@ def null_promotion_expected():
 @pytest.fixture
 def struct_different_field_names_blocks():
     """Fixture for struct with different field names test data."""
-    t1 = pa.table(
-        {
-            "a": [1, 2],
-            "d": pa.array(
-                [{"x": 1, "y": "a"}, {"x": 2, "y": "b"}],
-                type=pa.struct([("x", pa.int32()), ("y", pa.string())]),
-            ),
-        }
+    struct_data1 = [{"x": 1, "y": "a"}, {"x": 2, "y": "b"}]
+    struct_data2 = [{"x": 3, "z": "c"}]
+
+    struct_type1 = pa.struct([("x", pa.int32()), ("y", pa.string())])
+    struct_type2 = pa.struct([("x", pa.int32()), ("z", pa.string())])
+
+    additional_columns1 = {"a": [1, 2]}
+    additional_columns2 = {"a": [3]}
+
+    return _create_struct_blocks_with_columns(
+        struct_data1,
+        struct_data2,
+        struct_type1,
+        struct_type2,
+        additional_columns1,
+        additional_columns2,
     )
-    t2 = pa.table(
-        {
-            "a": [3],
-            "d": pa.array(
-                [{"x": 3, "z": "c"}],
-                type=pa.struct([("x", pa.int32()), ("z", pa.string())]),
-            ),
-        }
-    )
-    return [t1, t2]
 
 
 @pytest.fixture
 def struct_different_field_names_expected():
     """Fixture for struct with different field names expected results."""
-    return {
-        "length": 3,
-        "schema": pa.schema(
-            [
-                ("a", pa.int64()),
-                (
-                    "d",
-                    pa.struct(
-                        [
-                            ("x", pa.int32()),
-                            ("y", pa.string()),
-                            ("z", pa.string()),
-                        ]
-                    ),
-                ),
-            ]
-        ),
-        "content": {
-            "a": [1, 2, 3],
-            "d": [
-                {"x": 1, "y": "a", "z": None},
-                {"x": 2, "y": "b", "z": None},
-                {"x": 3, "y": None, "z": "c"},
-            ],
-        },
+    field_names = ["x", "y", "z"]
+    field_types = [pa.int32(), pa.string(), pa.string()]
+    additional_fields = [("a", pa.int64())]
+
+    schema = _create_simple_struct_schema(field_names, field_types, additional_fields)
+
+    content = {
+        "a": [1, 2, 3],
+        "d": [
+            {"x": 1, "y": "a", "z": None},
+            {"x": 2, "y": "b", "z": None},
+            {"x": 3, "y": None, "z": "c"},
+        ],
     }
+
+    return _create_struct_expected_result(schema, 3, content)
 
 
 @pytest.fixture
@@ -2684,107 +2493,91 @@ def nested_structs_expected():
 @pytest.fixture
 def struct_null_values_blocks():
     """Fixture for struct with null values test data."""
-    t1 = pa.table(
-        {
-            "a": [1, 2],
-            "d": pa.array(
-                [{"x": 1, "y": "a"}, None],  # Second row is null
-                type=pa.struct([("x", pa.int32()), ("y", pa.string())]),
-            ),
-        }
+    struct_data1 = [{"x": 1, "y": "a"}, None]  # Second row is null
+    struct_data2 = [None]  # Entire struct is null
+
+    field_names = ["x", "y"]
+    field_types = [pa.int32(), pa.string()]
+    additional_columns1 = {"a": [1, 2]}
+    additional_columns2 = {"a": [3]}
+
+    return _create_simple_struct_blocks(
+        struct_data1,
+        struct_data2,
+        field_names,
+        field_types,
+        additional_columns1,
+        additional_columns2,
     )
-    t2 = pa.table(
-        {
-            "a": [3],
-            "d": pa.array(
-                [None],  # Entire struct is null
-                type=pa.struct([("x", pa.int32()), ("y", pa.string())]),
-            ),
-        }
-    )
-    return [t1, t2]
 
 
 @pytest.fixture
 def struct_null_values_expected():
     """Fixture for struct with null values expected results."""
-    return {
-        "length": 3,
-        "schema": pa.schema(
-            [
-                ("a", pa.int64()),
-                ("d", pa.struct([("x", pa.int32()), ("y", pa.string())])),
-            ]
-        ),
-        "content": {
-            "a": [1, 2, 3],
-            "d": [
-                {"x": 1, "y": "a"},
-                None,  # Entire struct is None, not {"x": None, "y": None}
-                None,  # Entire struct is None, not {"x": None, "y": None}
-            ],
-        },
+    field_names = ["x", "y"]
+    field_types = [pa.int32(), pa.string()]
+    additional_fields = [("a", pa.int64())]
+
+    schema = _create_simple_struct_schema(field_names, field_types, additional_fields)
+
+    content = {
+        "a": [1, 2, 3],
+        "d": [
+            {"x": 1, "y": "a"},
+            None,  # Entire struct is None, not {"x": None, "y": None}
+            None,  # Entire struct is None, not {"x": None, "y": None}
+        ],
     }
+
+    return _create_struct_expected_result(schema, 3, content)
 
 
 @pytest.fixture
 def struct_mismatched_lengths_blocks():
     """Fixture for struct with mismatched lengths test data."""
-    t1 = pa.table(
-        {
-            "a": [1, 2],
-            "d": pa.array(
-                [{"x": 1, "y": "a"}, {"x": 2, "y": "b"}],
-                type=pa.struct([("x", pa.int32()), ("y", pa.string())]),
-            ),
-        }
+    struct_data1 = [{"x": 1, "y": "a"}, {"x": 2, "y": "b"}]
+    struct_data2 = [{"x": 3, "y": "c"}]
+
+    field_names = ["x", "y"]
+    field_types = [pa.int32(), pa.string()]
+    additional_columns1 = {"a": [1, 2]}
+    additional_columns2 = {"a": [3]}
+
+    return _create_simple_struct_blocks(
+        struct_data1,
+        struct_data2,
+        field_names,
+        field_types,
+        additional_columns1,
+        additional_columns2,
     )
-    t2 = pa.table(
-        {
-            "a": [3],
-            "d": pa.array(
-                [{"x": 3, "y": "c"}],
-                type=pa.struct([("x", pa.int32()), ("y", pa.string())]),
-            ),
-        }
-    )
-    return [t1, t2]
 
 
 @pytest.fixture
 def struct_mismatched_lengths_expected():
     """Fixture for struct with mismatched lengths expected results."""
-    return {
-        "length": 3,
-        "schema": pa.schema(
-            [
-                ("a", pa.int64()),
-                ("d", pa.struct([("x", pa.int32()), ("y", pa.string())])),
-            ]
-        ),
-        "content": {
-            "a": [1, 2, 3],
-            "d": [
-                {"x": 1, "y": "a"},
-                {"x": 2, "y": "b"},
-                {"x": 3, "y": "c"},
-            ],
-        },
+    field_names = ["x", "y"]
+    field_types = [pa.int32(), pa.string()]
+    additional_fields = [("a", pa.int64())]
+
+    schema = _create_simple_struct_schema(field_names, field_types, additional_fields)
+
+    content = {
+        "a": [1, 2, 3],
+        "d": [
+            {"x": 1, "y": "a"},
+            {"x": 2, "y": "b"},
+            {"x": 3, "y": "c"},
+        ],
     }
+
+    return _create_struct_expected_result(schema, 3, content)
 
 
 @pytest.fixture
 def struct_empty_arrays_blocks():
     """Fixture for struct with empty arrays test data."""
-    t1 = pa.table(
-        {
-            "a": [1, 2],
-            "d": pa.array(
-                [{"x": 1, "y": "a"}, {"x": 2, "y": "b"}],
-                type=pa.struct([("x", pa.int32()), ("y", pa.string())]),
-            ),
-        }
-    )
+    struct_data1 = [{"x": 1, "y": "a"}, {"x": 2, "y": "b"}]
 
     # Define the second table with null struct value (empty arrays for fields)
     x_array = pa.array([None], type=pa.int32())
@@ -2797,6 +2590,15 @@ def struct_empty_arrays_blocks():
         mask=pa.array([True]),
     )
 
+    t1 = pa.table(
+        {
+            "a": [1, 2],
+            "d": pa.array(
+                struct_data1, type=pa.struct([("x", pa.int32()), ("y", pa.string())])
+            ),
+        }
+    )
+
     t2 = pa.table({"a": [3], "d": null_struct_array})
     return [t1, t2]
 
@@ -2804,26 +2606,22 @@ def struct_empty_arrays_blocks():
 @pytest.fixture
 def struct_empty_arrays_expected():
     """Fixture for struct with empty arrays expected results."""
-    return {
-        "length": 3,
-        "schema": pa.schema(
-            [
-                ("a", pa.int64()),  # Assuming 'a' is an integer column
-                (
-                    "d",
-                    pa.struct([("x", pa.int32()), ("y", pa.string())]),
-                ),  # Struct column 'd'
-            ]
-        ),
-        "content": {
-            "a": [1, 2, 3],
-            "d": [
-                {"x": 1, "y": "a"},
-                {"x": 2, "y": "b"},
-                None,  # Entire struct is None, as PyArrow handles it
-            ],
-        },
+    field_names = ["x", "y"]
+    field_types = [pa.int32(), pa.string()]
+    additional_fields = [("a", pa.int64())]
+
+    schema = _create_simple_struct_schema(field_names, field_types, additional_fields)
+
+    content = {
+        "a": [1, 2, 3],
+        "d": [
+            {"x": 1, "y": "a"},
+            {"x": 2, "y": "b"},
+            None,  # Entire struct is None, as PyArrow handles it
+        ],
     }
+
+    return _create_struct_expected_result(schema, 3, content)
 
 
 @pytest.fixture
@@ -3146,6 +2944,254 @@ def object_with_tensor_fails_blocks():
 def simple_concat_data():
     """Test data for simple concat operations."""
     return {"empty": [], "single_block": pa.table({"a": [1, 2]})}
+
+
+# Helper function for creating tensor arrays
+def _create_tensor_array(data, tensor_type="fixed"):
+    """Helper function to create tensor arrays with consistent patterns."""
+    if tensor_type == "fixed":
+        return ArrowTensorArray.from_numpy(data)
+    elif tensor_type == "variable":
+        return ArrowVariableShapedTensorArray.from_numpy(data)
+    else:
+        raise ValueError(f"Unknown tensor type: {tensor_type}")
+
+
+# Helper function for creating expected results
+def _create_expected_result(schema, length, **kwargs):
+    """Helper function to create expected result dictionaries."""
+    result = {"schema": schema, "length": length}
+    result.update(kwargs)
+    return result
+
+
+# Helper function for creating tensor blocks
+def _create_tensor_blocks(
+    tensor_data1,
+    tensor_data2,
+    tensor_type1="fixed",
+    tensor_type2="variable",
+    id_data1=None,
+    id_data2=None,
+    column_name="tensor",
+):
+    """Helper function to create tensor blocks with consistent patterns."""
+    if id_data1 is None:
+        id_data1 = [1, 2]
+    if id_data2 is None:
+        id_data2 = [3, 4]
+
+    tensor_array1 = _create_tensor_array(tensor_data1, tensor_type1)
+    tensor_array2 = _create_tensor_array(tensor_data2, tensor_type2)
+
+    t1 = pa.table({"id": id_data1, column_name: tensor_array1})
+    t2 = pa.table({"id": id_data2, column_name: tensor_array2})
+
+    return t1, t2
+
+
+# Helper function for creating struct blocks with tensors
+def _create_struct_tensor_blocks(
+    tensor_data1,
+    tensor_data2,
+    tensor_type1="fixed",
+    tensor_type2="variable",
+    value_data1=None,
+    value_data2=None,
+    extra_data2=None,
+    struct_name="struct",
+    id_data1=None,
+    id_data2=None,
+):
+    """Helper function to create struct blocks with tensor fields."""
+    if value_data1 is None:
+        value_data1 = [1, 2]
+    if value_data2 is None:
+        value_data2 = [3, 4]
+    if id_data1 is None:
+        id_data1 = [1, 2]
+    if id_data2 is None:
+        id_data2 = [3, 4]
+
+    tensor_array1 = _create_tensor_array(tensor_data1, tensor_type1)
+    tensor_array2 = _create_tensor_array(tensor_data2, tensor_type2)
+
+    value_array1 = pa.array(value_data1, type=pa.int64())
+    value_array2 = pa.array(value_data2, type=pa.int64())
+
+    if extra_data2 is not None:
+        extra_array2 = pa.array(extra_data2, type=pa.string())
+        struct_array1 = pa.StructArray.from_arrays(
+            [tensor_array1, value_array1], names=["tensor", "value"]
+        )
+        struct_array2 = pa.StructArray.from_arrays(
+            [tensor_array2, value_array2, extra_array2],
+            names=["tensor", "value", "extra"],
+        )
+    else:
+        struct_array1 = pa.StructArray.from_arrays(
+            [tensor_array1, value_array1], names=["tensor", "value"]
+        )
+        struct_array2 = pa.StructArray.from_arrays(
+            [tensor_array2, value_array2], names=["tensor", "value"]
+        )
+
+    t1 = pa.table({"id": id_data1, struct_name: struct_array1})
+    t2 = pa.table({"id": id_data2, struct_name: struct_array2})
+
+    return t1, t2
+
+
+# Helper function for creating expected tensor schemas
+def _create_tensor_schema(
+    tensor_type=ArrowVariableShapedTensorType,
+    dtype=pa.float32(),
+    ndim=2,
+    include_id=True,
+    struct_name="struct",
+    include_extra=False,
+):
+    """Helper function to create expected tensor schemas."""
+    fields = []
+    if include_id:
+        fields.append(("id", pa.int64()))
+
+    if struct_name == "struct":
+        struct_fields = [
+            ("tensor", tensor_type(dtype, ndim)),
+            ("value", pa.int64()),
+        ]
+        if include_extra:
+            struct_fields.append(("extra", pa.string()))
+        fields.append((struct_name, pa.struct(struct_fields)))
+    else:
+        fields.append(("tensor", tensor_type(dtype, ndim)))
+
+    return pa.schema(fields)
+
+
+# Helper function for creating basic struct blocks
+def _create_basic_struct_blocks(
+    struct_data1,
+    struct_data2,
+    column_name="struct",
+    id_data1=None,
+    id_data2=None,
+    other_columns=None,
+):
+    """Helper function to create basic struct blocks."""
+    struct_array1 = pa.array(struct_data1)
+    struct_array2 = pa.array(struct_data2)
+
+    t1_data = {column_name: struct_array1}
+    t2_data = {column_name: struct_array2}
+
+    # Only add id columns if they are provided
+    if id_data1 is not None:
+        t1_data["id"] = id_data1
+    if id_data2 is not None:
+        t2_data["id"] = id_data2
+
+    if other_columns:
+        t1_data.update(other_columns.get("t1", {}))
+        t2_data.update(other_columns.get("t2", {}))
+
+    t1 = pa.table(t1_data)
+    t2 = pa.table(t2_data)
+
+    return t1, t2
+
+
+# Helper function for creating struct schemas
+def _create_struct_schema(struct_fields, include_id=True, other_fields=None):
+    """Helper function to create struct schemas."""
+    fields = []
+    if include_id:
+        fields.append(("id", pa.int64()))
+
+    fields.append(("struct", pa.struct(struct_fields)))
+
+    if other_fields:
+        fields.extend(other_fields)
+
+    return pa.schema(fields)
+
+
+# Helper function for creating struct blocks with additional columns
+def _create_struct_blocks_with_columns(
+    struct_data1,
+    struct_data2,
+    struct_type1,
+    struct_type2,
+    additional_columns1=None,
+    additional_columns2=None,
+    struct_column="d",
+):
+    """Helper function to create struct blocks with additional columns."""
+    t1_data = {}
+    t2_data = {}
+
+    # Add additional columns first to maintain expected order
+    if additional_columns1:
+        t1_data.update(additional_columns1)
+    if additional_columns2:
+        t2_data.update(additional_columns2)
+
+    # Add struct column
+    t1_data[struct_column] = pa.array(struct_data1, type=struct_type1)
+    t2_data[struct_column] = pa.array(struct_data2, type=struct_type2)
+
+    t1 = pa.table(t1_data)
+    t2 = pa.table(t2_data)
+
+    return t1, t2
+
+
+# Helper function for creating expected results for struct tests
+def _create_struct_expected_result(schema, length, content):
+    """Helper function to create expected results for struct tests."""
+    return {
+        "length": length,
+        "schema": schema,
+        "content": content,
+    }
+
+
+# Helper function for creating struct blocks with simple field patterns
+def _create_simple_struct_blocks(
+    struct_data1,
+    struct_data2,
+    field_names,
+    field_types,
+    additional_columns1=None,
+    additional_columns2=None,
+    struct_column="d",
+):
+    """Helper function to create struct blocks with simple field patterns."""
+    struct_type = pa.struct(list(zip(field_names, field_types)))
+
+    return _create_struct_blocks_with_columns(
+        struct_data1,
+        struct_data2,
+        struct_type,
+        struct_type,
+        additional_columns1,
+        additional_columns2,
+        struct_column,
+    )
+
+
+# Helper function for creating simple struct schemas
+def _create_simple_struct_schema(field_names, field_types, additional_fields=None):
+    """Helper function to create simple struct schemas."""
+    struct_fields = list(zip(field_names, field_types))
+
+    fields = []
+    if additional_fields:
+        fields.extend(additional_fields)
+    fields.append(("d", pa.struct(struct_fields)))
+
+    return pa.schema(fields)
 
 
 @pytest.fixture
