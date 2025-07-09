@@ -37,7 +37,11 @@ from ray.data._internal.datasource.image_datasource import (
     ImageDatasource,
     ImageFileMetadataProvider,
 )
-from ray.data._internal.datasource.json_datasource import JSONDatasource
+from ray.data._internal.datasource.json_datasource import (
+    JSON_FILE_EXTENSIONS,
+    ArrowJSONDatasource,
+    PandasJSONDatasource,
+)
 from ray.data._internal.datasource.lance_datasource import LanceDatasource
 from ray.data._internal.datasource.mongo_datasource import MongoDatasource
 from ray.data._internal.datasource.numpy_datasource import NumpyDatasource
@@ -1277,7 +1281,7 @@ def read_json(
     include_paths: bool = False,
     ignore_missing_paths: bool = False,
     shuffle: Optional[Union[Literal["files"], FileShuffleConfig]] = None,
-    file_extensions: Optional[List[str]] = JSONDatasource._FILE_EXTENSIONS,
+    file_extensions: Optional[List[str]] = JSON_FILE_EXTENSIONS,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
     **arrow_json_args,
@@ -1399,10 +1403,7 @@ def read_json(
     if meta_provider is None:
         meta_provider = DefaultFileMetadataProvider()
 
-    datasource = JSONDatasource(
-        paths,
-        is_jsonl=lines,
-        arrow_json_args=arrow_json_args,
+    file_based_datasource_kwargs = dict(
         filesystem=filesystem,
         open_stream_args=arrow_open_stream_args,
         meta_provider=meta_provider,
@@ -1413,6 +1414,22 @@ def read_json(
         include_paths=include_paths,
         file_extensions=file_extensions,
     )
+    if lines:
+        target_output_size_bytes = (
+            ray.data.context.DataContext.get_current().target_max_block_size
+        )
+        datasource = PandasJSONDatasource(
+            paths,
+            target_output_size_bytes=target_output_size_bytes,
+            **file_based_datasource_kwargs,
+        )
+    else:
+        datasource = ArrowJSONDatasource(
+            paths,
+            arrow_json_args=arrow_json_args,
+            **file_based_datasource_kwargs,
+        )
+
     return read_datasource(
         datasource,
         parallelism=parallelism,

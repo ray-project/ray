@@ -358,6 +358,11 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         description="Time spent in task submission backpressure.",
         metrics_group=MetricsGroup.TASKS,
     )
+    task_output_backpressure_time: float = metric_field(
+        default=0,
+        description="Time spent in task output backpressure.",
+        metrics_group=MetricsGroup.TASKS,
+    )
     histogram_buckets_s = [
         0.1,
         0.25,
@@ -446,6 +451,8 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         self._extra_metrics: Dict[str, Any] = {}
         # Start time of current pause due to task submission backpressure
         self._task_submission_backpressure_start_time = -1
+        # Start time of current pause due to task output backpressure
+        self._task_output_backpressure_start_time = -1
 
         self._internal_inqueue = create_bundle_queue()
         self._internal_outqueue = create_bundle_queue()
@@ -666,6 +673,17 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
                 time.perf_counter() - self._task_submission_backpressure_start_time
             )
             self._task_submission_backpressure_start_time = -1
+
+    def on_toggle_task_output_backpressure(self, in_backpressure):
+        if in_backpressure and self._task_output_backpressure_start_time == -1:
+            # backpressure starting, start timer
+            self._task_output_backpressure_start_time = time.perf_counter()
+        elif self._task_output_backpressure_start_time != -1:
+            # backpressure stopping, stop timer
+            self.task_output_backpressure_time += (
+                time.perf_counter() - self._task_output_backpressure_start_time
+            )
+            self._task_output_backpressure_start_time = -1
 
     def on_output_taken(self, output: RefBundle):
         """Callback when an output is taken from the operator."""

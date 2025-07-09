@@ -319,7 +319,8 @@ class TestWorkerToWorkerDeviceCPU:
         receiver = Actor.options(num_gpus=1).remote()
 
         with pytest.raises(
-            ValueError, match="NCCL transport is not supported with CPU target device."
+            ValueError,
+            match="accelerator transport is not supported with CPU target device.",
         ):
             run_worker_to_worker_dag(sender, receiver, "cpu", "cpu")
 
@@ -343,7 +344,8 @@ class TestWorkerToWorkerDeviceCPU:
         receiver = Actor.options(num_gpus=1).remote()
 
         with pytest.raises(
-            ValueError, match="NCCL transport is not supported with CPU target device."
+            ValueError,
+            match="accelerator transport is not supported with CPU target device.",
         ):
             run_worker_to_worker_dag(
                 sender,
@@ -391,7 +393,8 @@ class TestWorkerToWorkerDeviceGPU:
         receiver = Actor.options(num_gpus=1).remote()
 
         with pytest.raises(
-            ValueError, match="NCCL transport is not supported with CPU target device."
+            ValueError,
+            match="accelerator transport is not supported with CPU target device.",
         ):
             run_worker_to_worker_dag(sender, receiver, "cpu", "cpu")
 
@@ -461,7 +464,8 @@ class TestWorkerToWorkerDeviceDefault:
         receiver = Actor.options(num_gpus=1).remote()
 
         with pytest.raises(
-            ValueError, match="NCCL transport is not supported with CPU target device."
+            ValueError,
+            match="accelerator transport is not supported with CPU target device.",
         ):
             run_worker_to_worker_dag(sender, receiver, "cpu", "cpu")
 
