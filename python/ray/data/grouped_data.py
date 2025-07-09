@@ -6,10 +6,11 @@ from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators.all_to_all_operator import Aggregate
 from ray.data.aggregate import AggregateFn, Count, Max, Mean, Min, Std, Sum
 from ray.data.block import (
+    Block,
     BlockAccessor,
     CallableClass,
     DataBatch,
-    UserDefinedFunction, Block,
+    UserDefinedFunction,
 )
 from ray.data.context import ShuffleStrategy
 from ray.data.dataset import Dataset
@@ -260,16 +261,22 @@ class GroupedData:
         #
         # See https://github.com/ray-project/ray/issues/54280 for more details
         if isinstance(fn, CallableClass):
+
             class wrapped_fn:
                 def __init__(self, *args, **kwargs):
                     self.fn = fn(*args, **kwargs)
 
                 def __call__(self, batch, *args, **kwargs):
-                    yield from _apply_udf_to_groups(self.fn, batch, keys, batch_format, *args, **kwargs)
+                    yield from _apply_udf_to_groups(
+                        self.fn, batch, keys, batch_format, *args, **kwargs
+                    )
 
         else:
+
             def wrapped_fn(batch, *args, **kwargs):
-                yield from _apply_udf_to_groups(fn, batch, keys, batch_format, *args, **kwargs)
+                yield from _apply_udf_to_groups(
+                    fn, batch, keys, batch_format, *args, **kwargs
+                )
 
         # Change the name of the wrapped function so that users see the name of their
         # function rather than `wrapped_fn` in the progress bar.
@@ -555,11 +562,7 @@ def _apply_udf_to_groups(
         # Convert corresponding block of each group to batch format here,
         # because the block format here can be different from batch format
         # (e.g. block is Arrow format, and batch is NumPy format).
-        yield udf(
-            group_block_accessor.to_batch_format(batch_format),
-            *args,
-            **kwargs
-        )
+        yield udf(group_block_accessor.to_batch_format(batch_format), *args, **kwargs)
 
 
 # Backwards compatibility alias.
