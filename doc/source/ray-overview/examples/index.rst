@@ -9,8 +9,8 @@ Examples
 
    ./e2e-multimodal-ai-workloads/README.ipynb
    ./entity-recognition-with-llms/README.ipynb
-   ./e2e-audio/index.rst
-   ./e2e-xgboost/index.rst
-   ./e2e-timeseries/index.rst
-   ./object-detection/index.rst
-   ./e2e-rag/index.rst
+   ./e2e-audio/README.ipynb
+   ./e2e-xgboost/README.ipynb
+   ./e2e-timeseries/README.ipynb
+   ./object-detection/README.ipynb
+   ./e2e-rag/README.ipynb

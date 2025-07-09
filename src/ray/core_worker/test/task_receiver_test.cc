@@ -23,7 +23,6 @@
 #include "ray/common/task/task_spec.h"
 #include "ray/common/test_util.h"
 #include "ray/core_worker/transport/normal_task_submitter.h"
-#include "ray/rpc/worker/core_worker_client.h"
 
 namespace ray {
 namespace core {
@@ -94,8 +93,6 @@ class MockDependencyWaiter : public DependencyWaiter {
   MOCK_METHOD2(Wait,
                void(const std::vector<rpc::ObjectReference> &dependencies,
                     std::function<void()> on_dependencies_available));
-
-  virtual ~MockDependencyWaiter() {}
 };
 
 class MockTaskEventBuffer : public worker::TaskEventBuffer {
@@ -113,30 +110,9 @@ class MockTaskEventBuffer : public worker::TaskEventBuffer {
   std::string DebugString() override { return ""; }
 };
 
-class MockTaskReceiver : public TaskReceiver {
- public:
-  MockTaskReceiver(instrumented_io_context &task_execution_service,
-                   worker::TaskEventBuffer &task_event_buffer,
-                   const TaskHandler &task_handler,
-                   std::function<std::function<void()>()> initialize_thread_callback,
-                   const OnActorCreationTaskDone &actor_creation_task_done_)
-      : TaskReceiver(task_execution_service,
-                     task_event_buffer,
-                     task_handler,
-                     initialize_thread_callback,
-                     actor_creation_task_done_) {}
-
-  void UpdateConcurrencyGroupsCache(const ActorID &actor_id,
-                                    const std::vector<ConcurrencyGroup> &cgs) {
-    concurrency_groups_cache_[actor_id] = cgs;
-  }
-};
-
 class TaskReceiverTest : public ::testing::Test {
  public:
-  TaskReceiverTest()
-      : worker_client_(std::make_shared<MockWorkerClient>()),
-        dependency_waiter_(std::make_unique<MockDependencyWaiter>()) {
+  TaskReceiverTest() : dependency_waiter_(std::make_unique<MockDependencyWaiter>()) {
     auto execute_task = std::bind(&TaskReceiverTest::MockExecuteTask,
                                   this,
                                   std::placeholders::_1,
@@ -147,16 +123,13 @@ class TaskReceiverTest : public ::testing::Test {
                                   std::placeholders::_6);
     RayConfig::instance().initialize(
         R"({"actor_scheduling_queue_max_reorder_wait_seconds": 1})");
-    receiver_ = std::make_unique<MockTaskReceiver>(
+    receiver_ = std::make_unique<TaskReceiver>(
         task_execution_service_,
         task_event_buffer_,
         execute_task,
+        *dependency_waiter_,
         /* initialize_thread_callback= */ []() { return []() { return; }; },
         /* actor_creation_task_done= */ []() { return Status::OK(); });
-    receiver_->Init(std::make_shared<rpc::CoreWorkerClientPool>(
-                        [&](const rpc::Address &addr) { return worker_client_; }),
-                    rpc_address_,
-                    dependency_waiter_.get());
   }
 
   Status MockExecuteTask(
@@ -179,13 +152,10 @@ class TaskReceiverTest : public ::testing::Test {
     task_execution_service_.stop();
   }
 
-  std::unique_ptr<MockTaskReceiver> receiver_;
+  std::unique_ptr<TaskReceiver> receiver_;
 
- private:
-  rpc::Address rpc_address_;
   instrumented_io_context task_execution_service_;
   MockTaskEventBuffer task_event_buffer_;
-  std::shared_ptr<MockWorkerClient> worker_client_;
   std::unique_ptr<DependencyWaiter> dependency_waiter_;
 };
 
@@ -202,7 +172,7 @@ TEST_F(TaskReceiverTest, TestNewTaskFromDifferentWorker) {
 
   int callback_count = 0;
 
-  // Push a task request with actor counter 0. This should scucceed
+  // Push a task request with actor counter 0. This should succeed
   // on the receiver.
   {
     auto request =
@@ -214,11 +184,10 @@ TEST_F(TaskReceiverTest, TestNewTaskFromDifferentWorker) {
       ++callback_count;
       ASSERT_TRUE(status.ok());
     };
-    receiver_->UpdateConcurrencyGroupsCache(actor_id, {});
     receiver_->HandleTask(request, &reply, reply_callback);
   }
 
-  // Push a task request with actor counter 1. This should scucceed
+  // Push a task request with actor counter 1. This should succeed
   // on the receiver.
   {
     auto request =

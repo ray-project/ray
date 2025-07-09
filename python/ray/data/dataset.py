@@ -3341,6 +3341,7 @@ class Dataset:
         filename_provider: Optional[FilenameProvider] = None,
         arrow_parquet_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         min_rows_per_file: Optional[int] = None,
+        max_rows_per_file: Optional[int] = None,
         ray_remote_args: Dict[str, Any] = None,
         concurrency: Optional[int] = None,
         num_rows_per_file: Optional[int] = None,
@@ -3414,6 +3415,14 @@ class Dataset:
                 specified value, Ray Data writes the number of rows per block to each file.
                 The specified value is a hint, not a strict limit. Ray Data
                 might write more or fewer rows to each file.
+            max_rows_per_file: [Experimental] The target maximum number of rows to write
+                to each file. If ``None``, Ray Data writes a system-chosen number of
+                rows to each file. If the number of rows per block is smaller than the
+                specified value, Ray Data writes the number of rows per block to each file.
+                The specified value is a hint, not a strict limit. Ray Data
+                might write more or fewer rows to each file. If both ``min_rows_per_file``
+                and ``max_rows_per_file`` are specified, ``max_rows_per_file`` takes
+                precedence when they cannot both be satisfied.
             ray_remote_args: Kwargs passed to :func:`ray.remote` in the write tasks.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
@@ -3433,14 +3442,10 @@ class Dataset:
         if arrow_parquet_args_fn is None:
             arrow_parquet_args_fn = lambda: {}  # noqa: E731
 
-        if partition_cols and (num_rows_per_file or min_rows_per_file):
-            raise ValueError(
-                "Cannot pass num_rows_per_file or min_rows_per_file when partition_cols "
-                "argument is specified"
-            )
-
-        effective_min_rows = _validate_rows_per_file_args(
-            num_rows_per_file=num_rows_per_file, min_rows_per_file=min_rows_per_file
+        effective_min_rows, effective_max_rows = _validate_rows_per_file_args(
+            num_rows_per_file=num_rows_per_file,
+            min_rows_per_file=min_rows_per_file,
+            max_rows_per_file=max_rows_per_file,
         )
 
         datasink = ParquetDatasink(
@@ -3448,7 +3453,8 @@ class Dataset:
             partition_cols=partition_cols,
             arrow_parquet_args_fn=arrow_parquet_args_fn,
             arrow_parquet_args=arrow_parquet_args,
-            min_rows_per_file=effective_min_rows,  # Pass through to datasink
+            min_rows_per_file=effective_min_rows,
+            max_rows_per_file=effective_max_rows,
             filesystem=filesystem,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
@@ -3566,7 +3572,7 @@ class Dataset:
         if pandas_json_args_fn is None:
             pandas_json_args_fn = lambda: {}  # noqa: E731
 
-        effective_min_rows = _validate_rows_per_file_args(
+        effective_min_rows, _ = _validate_rows_per_file_args(
             num_rows_per_file=num_rows_per_file, min_rows_per_file=min_rows_per_file
         )
 
@@ -3823,7 +3829,7 @@ class Dataset:
         if arrow_csv_args_fn is None:
             arrow_csv_args_fn = lambda: {}  # noqa: E731
 
-        effective_min_rows = _validate_rows_per_file_args(
+        effective_min_rows, _ = _validate_rows_per_file_args(
             num_rows_per_file=num_rows_per_file, min_rows_per_file=min_rows_per_file
         )
 
@@ -3933,7 +3939,7 @@ class Dataset:
                 NOTE: This method isn't atomic. "Overwrite" first deletes all the data
                 before writing to `path`.
         """
-        effective_min_rows = _validate_rows_per_file_args(
+        effective_min_rows, _ = _validate_rows_per_file_args(
             num_rows_per_file=num_rows_per_file, min_rows_per_file=min_rows_per_file
         )
 
@@ -4030,7 +4036,7 @@ class Dataset:
                 NOTE: This method isn't atomic. "Overwrite" first deletes all the data
                 before writing to `path`.
         """
-        effective_min_rows = _validate_rows_per_file_args(
+        effective_min_rows, _ = _validate_rows_per_file_args(
             num_rows_per_file=num_rows_per_file, min_rows_per_file=min_rows_per_file
         )
 
@@ -4130,7 +4136,7 @@ class Dataset:
                 NOTE: This method isn't atomic. "Overwrite" first deletes all the data
                 before writing to `path`.
         """
-        effective_min_rows = _validate_rows_per_file_args(
+        effective_min_rows, _ = _validate_rows_per_file_args(
             num_rows_per_file=num_rows_per_file, min_rows_per_file=min_rows_per_file
         )
 
@@ -4461,7 +4467,7 @@ class Dataset:
                 * order_by:
                     Sets the `ORDER BY` clause in the `CREATE TABLE` statement, iff not provided.
                     When overwriting an existing table, its previous `ORDER BY` (if any) is reused.
-                    Otherwise, a “best” column is selected automatically (favoring a timestamp column,
+                    Otherwise, a "best" column is selected automatically (favoring a timestamp column,
                     then a non-string column, and lastly the first column).
 
                 * partition_by:

@@ -772,7 +772,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// This is the address of that raylet.
     std::optional<NodeID> pinned_at_raylet_id;
     /// The transport used for the object.
-    rpc::TensorTransport tensor_transport;
+    rpc::TensorTransport tensor_transport = rpc::TensorTransport::OBJECT_STORE;
     /// Whether we own the object. If we own the object, then we are
     /// responsible for tracking the state of the task that creates the object
     /// (see task_manager.h).

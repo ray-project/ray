@@ -146,13 +146,17 @@ class TrainController:
         ]
         # Group callbacks that will be propagated to the worker group,
         # train worker and the train context.
-        self._worker_group_callbacks_to_propagate = [report_handler] + [
-            c
-            for c in self._callbacks
-            if isinstance(
-                c, (WorkerGroupCallback, WorkerCallback, TrainContextCallback)
-            )
-        ]
+        self._worker_group_callbacks_to_propagate = (
+            [report_handler]
+            + [
+                c
+                for c in self._callbacks
+                if isinstance(
+                    c, (WorkerGroupCallback, WorkerCallback, TrainContextCallback)
+                )
+            ]
+            + [self._checkpoint_manager]
+        )
 
         self._health_check_interval_s = float(
             os.getenv(HEALTH_CHECK_INTERVAL_S_ENV_VAR, DEFAULT_HEALTH_CHECK_INTERVAL_S)
@@ -268,27 +272,14 @@ class TrainController:
         Returns:
             True if the worker group was successfully started, False otherwise.
         """
-
-        # If there's a latest checkpoint that's been committed,
-        # use it to restore the worker group.
-        latest_checkpoint_result = self._checkpoint_manager.latest_checkpoint_result
-        latest_checkpoint = (
-            latest_checkpoint_result.checkpoint if latest_checkpoint_result else None
-        )
         placement_strategy = self._scaling_policy.scaling_config.placement_strategy
-
         worker_group_context = WorkerGroupContext(
             run_attempt_id=self._get_run_attempt_id(),
             train_fn_ref=self._train_fn_ref,
             num_workers=num_workers,
             resources_per_worker=resources_per_worker,
             placement_strategy=placement_strategy,
-            checkpoint=latest_checkpoint,
         )
-
-        # Start the worker group with the latest checkpoint if there is one.
-        # Otherwise, start the worker group with the checkpoint set by controller.
-        # Finally, if there is no checkpoint, start the worker group with None.
         try:
             self._worker_group = self.worker_group_cls.create(
                 train_run_context=self._train_run_context,
@@ -483,6 +474,9 @@ class TrainController:
 
     async def abort(self):
         """Trigger callback abort hooks and terminate the controller process."""
+        # Do not abort run if it's already finished.
+        if self.get_state().is_terminal():
+            return
         # Intentionally abort worker group before setting train run state because
         # we only reconcile the states of live train runs.
         if self._worker_group:

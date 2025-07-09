@@ -13,6 +13,7 @@ from ray.serve import HTTPOptions
 from ray.serve._private.http_util import (
     ASGIReceiveProxy,
     MessageQueue,
+    configure_http_middlewares,
     configure_http_options_with_defaults,
 )
 
@@ -359,7 +360,7 @@ class TestConfigureHttpOptionsWithDefaults:
         ]  # Return list of wrapped middleware
 
         # Act
-        result = configure_http_options_with_defaults(base_http_options)
+        result = configure_http_middlewares(base_http_options)
 
         # Assert
         mock_call_function.assert_called_once_with(

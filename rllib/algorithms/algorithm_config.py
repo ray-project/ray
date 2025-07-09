@@ -533,6 +533,8 @@ class AlgorithmConfig(_Config):
         # Offline evaluation.
         self.offline_evaluation_interval = None
         self.num_offline_eval_runners = 0
+        self.offline_evaluation_type: str = None
+        self.offline_eval_runner_class = None
         # TODO (simon): Only `_offline_evaluate_with_fixed_duration` works. Also,
         # decide, if we use `offline_evaluation_duration` or
         # `dataset_num_iters_per_offline_eval_runner`. Should the user decide here?
@@ -2705,6 +2707,8 @@ class AlgorithmConfig(_Config):
         # Offline evaluation.
         offline_evaluation_interval: Optional[int] = NotProvided,
         num_offline_eval_runners: Optional[int] = NotProvided,
+        offline_evaluation_type: Optional[Callable] = NotProvided,
+        offline_eval_runner_class: Optional[Callable] = NotProvided,
         offline_loss_for_module_fn: Optional[Callable] = NotProvided,
         offline_eval_batch_size_per_runner: Optional[int] = NotProvided,
         dataset_num_iters_per_offline_eval_runner: Optional[int] = NotProvided,
@@ -2829,6 +2833,13 @@ class AlgorithmConfig(_Config):
                 for parallel evaluation. Setting this to 0 forces sampling to be done in the
                 local OfflineEvaluationRunner (main process or the Algorithm's actor when
                 using Tune).
+            offline_evaluation_type: Type of offline evaluation to run. Either `"eval_loss"`
+                for evaluating the validation loss of the policy, `"is"` for importance
+                sampling, or `"pdis"` for per-decision importance sampling. If you want to
+                implement your own offline evaluation method write an `OfflineEvaluationRunner`
+                and use the `AlgorithmConfig.offline_eval_runner_class`.
+            offline_eval_runner_class: An `OfflineEvaluationRunner` class that implements
+                custom offline evaluation logic.
             offline_loss_for_module_fn: A callable to compute the loss per `RLModule` in
                 offline evaluation. If not provided the training loss function (
                 `Learner.compute_loss_for_module`) is used. The signature must be (
@@ -2975,6 +2986,10 @@ class AlgorithmConfig(_Config):
             self.offline_evaluation_interval = offline_evaluation_interval
         if num_offline_eval_runners is not NotProvided:
             self.num_offline_eval_runners = num_offline_eval_runners
+        if offline_evaluation_type is not NotProvided:
+            self.offline_evaluation_type = offline_evaluation_type
+        if offline_eval_runner_class is not NotProvided:
+            self.offline_eval_runner_cls = offline_eval_runner_class
         if offline_loss_for_module_fn is not NotProvided:
             self.offline_loss_for_module_fn = offline_loss_for_module_fn
         if offline_eval_batch_size_per_runner is not NotProvided:
@@ -5280,6 +5295,33 @@ class AlgorithmConfig(_Config):
                 "When recording episodes only complete episodes should be "
                 "recorded (i.e. `batch_mode=='complete_episodes'`). Otherwise "
                 "recorded episodes cannot be read in for training."
+            )
+
+        # Offline evaluation.
+        from ray.rllib.offline.offline_policy_evaluation_runner import (
+            OfflinePolicyEvaluationTypes,
+        )
+
+        offline_eval_types = list(OfflinePolicyEvaluationTypes)
+        if (
+            self.offline_evaluation_type
+            and self.offline_evaluation_type != "eval_loss"
+            and self.offline_evaluation_type not in OfflinePolicyEvaluationTypes
+        ):
+            self._value_error(
+                f"Unknown offline evaluation type: {self.offline_evaluation_type}."
+                "Available types of offline evaluation are either `'eval_loss' to evaluate "
+                f"the training loss on a validation dataset or {offline_eval_types}."
+            )
+
+        from ray.rllib.offline.offline_evaluation_runner import OfflineEvaluationRunner
+
+        if self.prelearner_class and not issubclass(
+            self.prelearner_class, OfflineEvaluationRunner
+        ):
+            self._value_error(
+                "Unknown `offline_eval_runner_class`. OfflineEvaluationRunner class needs to inherit "
+                "from `OfflineEvaluationRunner` class."
             )
 
     @property

@@ -1,3 +1,4 @@
+import math
 import os
 import sys
 import time
@@ -18,10 +19,12 @@ from ray.autoscaler.v2.instance_manager.node_provider import (  # noqa
     LaunchNodeError,
     TerminateNodeError,
 )
-from ray.autoscaler.v2.instance_manager.ray_installer import RayInstallError
 from ray.autoscaler.v2.instance_manager.reconciler import Reconciler, logger
 from ray.autoscaler.v2.instance_manager.storage import InMemoryStorage
 from ray.autoscaler.v2.instance_manager.subscribers.ray_stopper import RayStopError
+from ray.autoscaler.v2.instance_manager.subscribers.threaded_ray_installer import (
+    RayInstallError,
+)
 from ray.autoscaler.v2.scheduler import IResourceScheduler, SchedulingReply
 from ray.autoscaler.v2.tests.util import MockSubscriber, create_instance
 from ray.core.generated.autoscaler_pb2 import (
@@ -628,15 +631,15 @@ class TestReconciler:
 
     @staticmethod
     @pytest.mark.parametrize(
-        "max_concurrent_launches,num_allocated,num_requested",
+        "max_concurrent_launches,num_allocated,num_requested,num_running",
         [
-            (1, 0, 0),
-            (10, 0, 0),
-            (1, 0, 1),
-            (1, 1, 0),
-            (10, 1, 0),
-            (10, 0, 1),
-            (10, 5, 5),
+            (1, 0, 0, 0),
+            (10, 0, 0, 0),
+            (1, 0, 1, 1),
+            (1, 1, 0, 1),
+            (10, 1, 0, 1),
+            (10, 0, 1, 1),
+            (10, 5, 5, 5),
         ],
     )
     @pytest.mark.parametrize(
@@ -644,7 +647,12 @@ class TestReconciler:
         [0.0, 0.1, 0.5, 1.0, 100.0],
     )
     def test_max_concurrent_launches(
-        max_concurrent_launches, num_allocated, num_requested, upscaling_speed, setup
+        max_concurrent_launches,
+        num_allocated,
+        num_requested,
+        num_running,
+        upscaling_speed,
+        setup,
     ):
         instance_manager, instance_storage, subscriber = setup
         next_id = 0
@@ -684,7 +692,18 @@ class TestReconciler:
         ]
         TestReconciler._add_instances(instance_storage, queued_instances)
 
-        num_desired_upscale = max(1, upscaling_speed * (num_requested + num_allocated))
+        # Add some running instances.
+        for _ in range(num_running):
+            instance = create_instance(
+                str(next_id),
+                status=Instance.RAY_RUNNING,
+                instance_type="type-1",
+                launch_request_id="l-1",
+            )
+            TestReconciler._add_instances(instance_storage, [instance])
+            next_id += 1
+
+        num_desired_upscale = max(1, math.ceil(upscaling_speed * (num_running)))
         expected_launch_num = min(
             num_desired_upscale,
             max(0, max_concurrent_launches - num_requested),  # global limit

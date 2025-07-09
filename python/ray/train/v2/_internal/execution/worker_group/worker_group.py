@@ -10,7 +10,6 @@ from ray._private.ray_constants import env_float
 from ray.actor import ActorHandle
 from ray.exceptions import GetTimeoutError, RayActorError
 from ray.runtime_env import RuntimeEnv
-from ray.train import Checkpoint
 from ray.train.v2._internal.constants import (
     DEFAULT_REPORT_BARRIER_TIMEOUT_S,
     DEFAULT_REPORT_BARRIER_WARN_INTERVAL_S,
@@ -88,7 +87,6 @@ class WorkerGroupContext:
         num_workers: The number of workers in the worker group.
         resources_per_worker: The resources per worker.
         placement_strategy: Strategy for placing workers.
-        checkpoint: Optional checkpoint to restore from.
     """
 
     run_attempt_id: str
@@ -96,10 +94,6 @@ class WorkerGroupContext:
     num_workers: int
     resources_per_worker: Dict[str, float]
     placement_strategy: str = "PACK"
-    # TODO: Remove checkpoint from WorkerGroupContext
-    # and move it to CheckpointManager. Populate TrainContext
-    # similar to how the dataset shards are passed to the workers.
-    checkpoint: Optional[Checkpoint] = None
 
 
 class WorkerGroup:
@@ -290,9 +284,7 @@ class WorkerGroup:
             # To prevent the driver from crashing, catch all `RayActorError`s and
             # raise a specially handled error to the controller.
             try:
-                train_context_args = {
-                    "checkpoint": [worker_group_context.checkpoint] * len(workers)
-                }
+                train_context_args = {}
                 for callable in self._callbacks:
                     args = callable.before_init_train_context(workers)
                     for arg, arg_values in args.items():
