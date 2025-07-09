@@ -159,6 +159,8 @@ class GroupedData:
                 that can be instantiated to create such a callable. It takes as
                 input a batch of all records from a single group, and returns a
                 batch of zero or more records, similar to map_batches().
+            zero_copy_batch: If True, each group of rows (batch) will be provided w/o
+                making an additional copy.
             compute: This argument is deprecated. Use ``concurrency`` argument.
             batch_format: Specify ``"default"`` to use the default block format
                 (NumPy), ``"pandas"`` to select ``pandas.DataFrame``, "pyarrow" to
