@@ -822,7 +822,10 @@ def get_or_create_head_node(
         if not no_restart:
             warn_about_bad_start_command(ray_start_commands, no_monitor_on_head)
 
-        if os.getenv("RAY_enable_autoscaler_v2", "0") == "1":
+        # Use RAY_UP_enable_autoscaler_v2 instead of RAY_enable_autoscaler_v2
+        # to avoid accidentally enabling autoscaler v2 for ray up
+        # due to env inheritance.
+        if os.getenv("RAY_UP_enable_autoscaler_v2", "0") == "1":
             ray_start_commands = with_envs(
                 ray_start_commands,
                 {
