@@ -202,40 +202,41 @@ void ShutdownCoordinator::ExecuteWorkerShutdown(bool force_shutdown,
                                                 bool force_on_timeout) {
   if (force_shutdown) {
     ExecuteForceShutdown(detail);
+    return;
+  }
+
+  // Determine the appropriate execution method based on shutdown reason
+  ShutdownReason reason = GetReason();
+
+  // Exit() operations need task draining and disconnect
+  if (reason == ShutdownReason::kUserError || reason == ShutdownReason::kGracefulExit ||
+      reason == ShutdownReason::kIntentionalShutdown ||
+      reason == ShutdownReason::kUnexpectedError ||
+      reason == ShutdownReason::kOutOfMemory ||
+      reason == ShutdownReason::kActorCreationFailed ||
+      reason == ShutdownReason::kActorKilled) {
+    // Call dependencies directly - no redundant coordinator methods
+    TryTransitionToDisconnecting();
+    if (dependencies_) {
+      dependencies_->ExecuteWorkerExit(GetExitTypeString(), detail, timeout_ms);
+    }
+    TryTransitionToShutdown();
+  } else if (reason == ShutdownReason::kIdleTimeout ||
+             reason == ShutdownReason::kJobFinished) {
+    // Call dependencies directly - no redundant coordinator methods
+    TryTransitionToDisconnecting();
+    if (dependencies_) {
+      dependencies_->ExecuteHandleExit(GetExitTypeString(), detail, timeout_ms);
+    }
+    TryTransitionToShutdown();
   } else {
-    // Determine the appropriate execution method based on shutdown reason
-    ShutdownReason reason = GetReason();
+    // Default to graceful shutdown for other reasons
+    ExecuteGracefulShutdown(detail, timeout_ms);
+  }
 
-    // Exit() operations need task draining and disconnect
-    if (reason == ShutdownReason::kUserError || reason == ShutdownReason::kGracefulExit ||
-        reason == ShutdownReason::kIntentionalShutdown ||
-        reason == ShutdownReason::kUnexpectedError ||
-        reason == ShutdownReason::kOutOfMemory ||
-        reason == ShutdownReason::kActorCreationFailed ||
-        reason == ShutdownReason::kActorKilled) {
-      // Call dependencies directly - no redundant coordinator methods
-      TryTransitionToDisconnecting();
-      if (dependencies_) {
-        dependencies_->ExecuteWorkerExit(GetExitTypeString(), detail, timeout_ms);
-      }
-      TryTransitionToShutdown();
-    } else if (reason == ShutdownReason::kIdleTimeout ||
-               reason == ShutdownReason::kJobFinished) {
-      // Call dependencies directly - no redundant coordinator methods
-      TryTransitionToDisconnecting();
-      if (dependencies_) {
-        dependencies_->ExecuteHandleExit(GetExitTypeString(), detail, timeout_ms);
-      }
-      TryTransitionToShutdown();
-    } else {
-      // Default to graceful shutdown for other reasons
-      ExecuteGracefulShutdown(detail, timeout_ms);
-    }
-
-    // Handle timeout fallback if needed
-    if (force_on_timeout && GetState() != ShutdownState::kShutdown) {
-      ExecuteForceShutdown("Graceful shutdown timeout: " + detail);
-    }
+  // Handle timeout fallback if needed
+  if (force_on_timeout && GetState() != ShutdownState::kShutdown) {
+    ExecuteForceShutdown("Graceful shutdown timeout: " + detail);
   }
 }
 

@@ -246,10 +246,8 @@ void CoreWorkerShutdownExecutor::KillChildProcesses() {
 }
 
 bool CoreWorkerShutdownExecutor::ShouldWorkerExit() const {
-  // Preserve current CoreWorker idle checking logic
-  // This would typically check task queue status, actor state, etc.
-  // For now, return true to maintain existing behavior
-  return true;
+  // Delegate to CoreWorker's idle checking logic
+  return core_worker_->ShouldWorkerExit();
 }
 
 void CoreWorkerShutdownExecutor::DisconnectFromServices(const std::string &exit_type,
