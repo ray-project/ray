@@ -291,7 +291,11 @@ py_test(
     name = "test_autoscaling_policy_with_metr_disab",
     size = "large",
     srcs = ["test_autoscaling_policy.py"],
-    env = {"RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE": "0"},
+    env = {
+        "RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE": "0",
+        # Make sure queued metrics are cleared out quickly.
+        "RAY_SERVE_HANDLE_METRIC_PUSH_INTERVAL_S": "0.1",
+    },
     main = "test_autoscaling_policy.py",
     tags = [
         "autoscaling",
