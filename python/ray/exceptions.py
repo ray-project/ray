@@ -434,7 +434,21 @@ class ActorDiedError(RayActorError):
                 or "init method" in cause.error_message
             ):
                 actor_init_failed = True
-            error_msg = "\n".join(error_msg_lines)
+                # Check if there's a clean traceback embedded in the error message
+                if (
+                    "Traceback: The actor died because of an error raised in its creation task"
+                    in cause.error_message
+                ):
+                    # Extract the clean traceback from the embedded message
+                    traceback_start = cause.error_message.find("Traceback: ") + len(
+                        "Traceback: "
+                    )
+                    clean_traceback = cause.error_message[traceback_start:]
+                    error_msg = clean_traceback
+                else:
+                    error_msg = "\n".join(error_msg_lines)
+            else:
+                error_msg = "\n".join(error_msg_lines)
             actor_id = ActorID(cause.actor_id).hex()
         super().__init__(actor_id, error_msg, actor_init_failed, preempted)
 
