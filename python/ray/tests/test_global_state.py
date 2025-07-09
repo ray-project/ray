@@ -741,11 +741,12 @@ def test_get_max_cpus_from_cluster_config(
             ),
             {
                 "CPU": 90,
+                "GPU": 4,
                 "memory": 500,
             },  # 50 + (10*4), 500 + 0
         ),
         (
-            "should return None for resources with 0 count or 0 resources",
+            "should return 0 for resources with 0 count or 0 resources",
             autoscaler_pb2.ClusterConfig(
                 node_group_configs=[
                     autoscaler_pb2.NodeGroupConfig(
@@ -762,11 +763,12 @@ def test_get_max_cpus_from_cluster_config(
             ),
             {
                 "CPU": 0,
+                "GPU": 2,
                 "memory": 0,
-            },  # CPU is None due to max_count=0, memory has valid count
+            },  # CPU is None due to max_count=0, GPU has valid count
         ),
         (
-            "should discover all resource types including custom ones, always including CPU/GPU/TPU",
+            "should discover all resource types including custom ones",
             autoscaler_pb2.ClusterConfig(
                 max_resources={"TPU": 16, "special_resource": 100},
                 node_group_configs=[
@@ -790,7 +792,6 @@ def test_get_max_cpus_from_cluster_config(
             {
                 "CPU": 160,  # (32*2) + (96*1)
                 "GPU": 16,  # (8*2) + 0
-                "TPU": 0,  # Always included but not in node_group_configs
                 "memory": 4000,  # (1000*2) + (2000*1)
                 "custom_accelerator": 8,  # (4*2) + 0
                 "disk": 500,  # 0 + (500*1)
