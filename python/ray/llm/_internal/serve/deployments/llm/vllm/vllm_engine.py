@@ -88,7 +88,7 @@ def _get_async_engine_args(llm_config: LLMConfig) -> "AsyncEngineArgs":
     if isinstance(llm_config.model_loading_config.model_source, str):
         model = llm_config.model_loading_config.model_source
 
-    return vllm.engine.arg_utils.AsyncEngineArgs(
+    return vllm.AsyncEngineArgs(
         **{
             "model": model,
             "distributed_executor_backend": "ray",
@@ -142,9 +142,11 @@ def _clear_current_platform_cache():
 class _EngineBackgroundProcess:
     def __init__(self, ipc_path, engine_args, engine_config):
         from vllm.engine.multiprocessing.engine import MQLLMEngine
+        from vllm.plugins import load_general_plugins
+        from vllm.usage.usage_lib import UsageContext
 
         # Adapted from vllm.engine.multiprocessing.engine.MQLLMEngine.from_engine_args
-        vllm.plugins.load_general_plugins()
+        load_general_plugins()
 
         # Note (genesu): There is a bug in vllm 0.7.2 forced the use of uni processing
         # executor when world_size is 1. This is a bug in vllm 0.7.2 and
@@ -163,7 +165,7 @@ class _EngineBackgroundProcess:
             executor_class=RayDistributedExecutor,
             log_requests=not engine_args.disable_log_requests,
             log_stats=not engine_args.disable_log_stats,
-            usage_context=vllm.usage.usage_lib.UsageContext.API_SERVER,
+            usage_context=UsageContext.API_SERVER,
         )
         self._error = None
 
@@ -193,18 +195,19 @@ class VLLMEngine(LLMEngine):
             raise ImportError(
                 "vLLM is not installed. Please install it with `pip install ray[llm]`."
             )
+        from vllm import envs as vllm_envs, utils as vllm_utils
 
         # Pick a random port in P/D case.
         kv_transfer_config = llm_config.engine_kwargs.get("kv_transfer_config", None)
         if kv_transfer_config is not None:
-            if not vllm.envs.VLLM_USE_V1:
+            if not vllm_envs.VLLM_USE_V1:
                 logger.warning("Ray Serve LLM only supports P/D with v1 vLLM engine.")
             connector_type = getattr(kv_transfer_config, "kv_connector", "")
             if connector_type != "NixlConnector":
                 raise ValueError("Only NixlConnector is supported for kv transfer.")
             if (
-                "VLLM_NIXL_SIDE_CHANNEL_PORT" not in vllm.envs.environment_variables
-                or "VLLM_NIXL_SIDE_CHANNEL_HOST" not in vllm.envs.environment_variables
+                "VLLM_NIXL_SIDE_CHANNEL_PORT" not in vllm_envs.environment_variables
+                or "VLLM_NIXL_SIDE_CHANNEL_HOST" not in vllm_envs.environment_variables
             ):
                 raise ValueError(
                     "This vLLM version does not support VLLM_NIXL_SIDE_CHANNEL_PORT"
@@ -212,16 +215,16 @@ class VLLMEngine(LLMEngine):
                     "that you are using an older version of vLLM."
                 )
 
-            if not vllm.envs.is_set("VLLM_NIXL_SIDE_CHANNEL_PORT"):
-                port: int = vllm.utils.get_open_port()
+            if not vllm_envs.is_set("VLLM_NIXL_SIDE_CHANNEL_PORT"):
+                port: int = vllm_utils.get_open_port()
                 os.environ["VLLM_NIXL_SIDE_CHANNEL_PORT"] = str(port)
-            if not vllm.envs.is_set("VLLM_NIXL_SIDE_CHANNEL_HOST"):
-                os.environ["VLLM_NIXL_SIDE_CHANNEL_HOST"] = vllm.utils.get_ip()
+            if not vllm_envs.is_set("VLLM_NIXL_SIDE_CHANNEL_HOST"):
+                os.environ["VLLM_NIXL_SIDE_CHANNEL_HOST"] = vllm_utils.get_ip()
 
             # We need to overwrite the engine_id to make it unique across replicas.
             engine_id = getattr(kv_transfer_config, "engine_id", str(uuid.uuid4()))
-            host = vllm.envs.VLLM_NIXL_SIDE_CHANNEL_HOST
-            port = vllm.envs.VLLM_NIXL_SIDE_CHANNEL_PORT
+            host = vllm_envs.VLLM_NIXL_SIDE_CHANNEL_HOST
+            port = vllm_envs.VLLM_NIXL_SIDE_CHANNEL_PORT
             kv_transfer_config.engine_id = "-".join([engine_id, host, str(port)])
 
         assert isinstance(
@@ -242,7 +245,7 @@ class VLLMEngine(LLMEngine):
         self._tokenizer = None
 
         self._tokenizer_executor = ThreadPoolExecutor(max_workers=1)
-        self._atokenize = vllm.utils.make_async(
+        self._atokenize = vllm_utils.make_async(
             self._tokenize, executor=self._tokenizer_executor
         )
 
@@ -309,7 +312,7 @@ class VLLMEngine(LLMEngine):
         logger.info("Started vLLM engine.")
 
     async def _start_engine(self) -> "EngineClient":
-        from vllm import envs
+        from vllm import envs as vllm_envs
 
         # Since vLLM 0.8.0, the logic to determine v0/v1 engine is as follows:
         # 1. If VLLM_USE_V1 is not set, then it tries to use v1 engine. However,
@@ -320,14 +323,14 @@ class VLLMEngine(LLMEngine):
         #    experimental features (such as launching vLLM on a non-main thread).
         # 3. If VLLM_USE_V1 is set to 0, force using v0 engine.
         # In Ray Serve LLM, we forbid case 1 because we have to know exactly which engine is used.
-        if not envs.is_set("VLLM_USE_V1"):
+        if not vllm_envs.is_set("VLLM_USE_V1"):
             logger.warning(
                 "VLLM_USE_V1 environment variable is not set, using vLLM v0 as default. "
                 "Later we may switch default to use v1 once vLLM v1 is mature."
             )
-            envs.set_vllm_use_v1(False)
+            vllm_envs.set_vllm_use_v1(False)
 
-        if not envs.VLLM_USE_V1:
+        if not vllm_envs.VLLM_USE_V1:
             if self.llm_config.log_engine_metrics:
                 raise ValueError("V1 vLLM Engine is required to log engine metrics")
 
@@ -429,8 +432,9 @@ class VLLMEngine(LLMEngine):
         placement_group: PlacementGroup,
     ) -> "EngineClient":
         from vllm.engine.multiprocessing.client import MQLLMEngineClient
+        from vllm.utils import get_open_zmq_ipc_path
 
-        ipc_path = vllm.utils.get_open_zmq_ipc_path()
+        ipc_path = get_open_zmq_ipc_path()
 
         BackgroundCls = ray.remote(
             num_cpus=0,
@@ -512,7 +516,7 @@ class VLLMEngine(LLMEngine):
 
         executor_class = Executor.get_class(vllm_config)
         logger.info(f"Using executor class: {executor_class}")
-        engine = vllm.engine.async_llm_engine.AsyncLLMEngine(
+        engine = vllm.AsyncLLMEngine(
             vllm_config=vllm_config,
             executor_class=executor_class,
             log_stats=not engine_args.disable_log_stats,
@@ -610,12 +614,12 @@ class VLLMEngine(LLMEngine):
             )
 
         if request.prompt_token_ids is not None:
-            prompt = vllm.inputs.TokensPrompt(
+            prompt = vllm.TokensPrompt(
                 prompt_token_ids=request.prompt_token_ids,
                 multi_modal_data=request.multi_modal_data,
             )
         else:
-            prompt = vllm.inputs.TextPrompt(
+            prompt = vllm.TextPrompt(
                 prompt=request.prompt,
                 multi_modal_data=request.multi_modal_data,
             )
@@ -787,10 +791,10 @@ class VLLMEngine(LLMEngine):
         for i, prompt in enumerate(prompts):
             request_id = f"{vllm_embedding_request.request_id}-{i}"
             gen: AsyncGenerator["PoolingRequestOutput", None] = self.engine.encode(
-                prompt=vllm.inputs.TextPrompt(
+                prompt=vllm.TextPrompt(
                     prompt=prompt,
                 ),
-                pooling_params=vllm.pooling_params.PoolingParams(),
+                pooling_params=vllm.PoolingParams(),
                 request_id=request_id,
                 lora_request=vllm_embedding_request.lora_request,  # type: ignore
             )
@@ -801,7 +805,10 @@ class VLLMEngine(LLMEngine):
 
         for gen in generators:
             async for result in gen:
-                embedding = result.outputs.embedding
+                if hasattr(result.outputs, "embedding"):
+                    embedding = result.outputs.embedding
+                else:
+                    embedding = result.outputs.data.tolist()
                 if vllm_embedding_request.encoding_format == "base64":
                     embedding = floats_to_base64(embedding)
 
