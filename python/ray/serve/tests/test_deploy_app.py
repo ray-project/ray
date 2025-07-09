@@ -51,6 +51,13 @@ def check_deployments_dead(deployment_ids: List[DeploymentID]):
     return all(f"ServeReplica::{p}" not in actor_names for p in prefixes)
 
 
+def check_deploy_failed(app_name: str, message: str):
+    status = serve.status().applications[app_name]
+    assert status.status == "DEPLOY_FAILED"
+    assert message in status.message
+    return True
+
+
 def get_test_config() -> Dict:
     return {"import_path": "ray.serve.tests.test_config_files.pizza.serve_dag"}
 
@@ -127,9 +134,23 @@ def test_deploy_multi_app_basic(serve_instance):
     check_multi_app()
 
 
+def test_two_fastapi_in_one_application(serve_instance):
+    client = serve_instance
+    config = {
+        "applications": [
+            {
+                "name": "app1",
+                "route_prefix": "/app1",
+                "import_path": "ray.serve.tests.test_config_files.multi_fastapi.invalid_model",
+            }
+        ],
+    }
+    client.deploy_apps(ServeDeploySchema.parse_obj(config))
+    wait_for_condition(check_deploy_failed, app_name="app1", message="FastAPI")
+
+
 def test_deploy_multi_app_update_config(serve_instance):
     client = serve_instance
-
     config = get_test_deploy_config()
     client.deploy_apps(ServeDeploySchema.parse_obj(config))
     check_multi_app()
