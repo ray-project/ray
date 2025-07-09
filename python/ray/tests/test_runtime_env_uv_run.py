@@ -315,6 +315,26 @@ def test_uv_run_runtime_env_hook(with_uv):
         },
     )
 
+    # Check in the case that a module is use for "uv run" and there is
+    # an argument immediately behind it
+    check_uv_run(
+        cmd=[
+            uv,
+            "run",
+            "--isolated",
+            "--extra",
+            "vllm",
+            "-m",
+            "ray._private.runtime_env.uv_runtime_env_hook",
+            "--extra-args",
+        ],
+        runtime_env={},
+        expected_output={
+            "py_executable": f"{uv} run --isolated --extra vllm",
+            "working_dir": os.getcwd(),
+        },
+    )
+
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Not ported to Windows yet.")
 def test_uv_run_runtime_env_hook_e2e(shutdown_only, with_uv, temp_dir):
