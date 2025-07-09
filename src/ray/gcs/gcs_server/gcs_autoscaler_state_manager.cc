@@ -230,18 +230,20 @@ void GcsAutoscalerStateManager::GetPendingGangResourceRequests(
         // to node crashed.
         continue;
       }
-      // Add the resources.
+
+      const auto &unit_resources = bundle.unit_resources();
+
+      // Add the resources. This field will be removed after migrating to
+      // use the BundleSelector for GangResourceRequests.
       auto legacy_resource_req = gang_resource_req->add_requests();
-      *legacy_resource_req->mutable_resources_bundle() =
-          std::move(*bundle.mutable_unit_resources());
+      *legacy_resource_req->mutable_resources_bundle() = unit_resources;
 
       // Create a new BundleSelector
       auto *bundle_selector = gang_resource_req->add_bundle_selectors();
 
       // Add ResourceRequest for this bundle.
       auto *bundle_resource_req = bundle_selector->add_resource_requests();
-      *bundle_resource_req->mutable_resources_bundle() =
-          std::move(*bundle.mutable_unit_resources());
+      *bundle_resource_req->mutable_resources_bundle() = unit_resources;
 
       // Parse label selector map into LabelSelector proto in ResourceRequest
       if (!bundle.label_selector().empty()) {
@@ -520,6 +522,27 @@ std::string GcsAutoscalerStateManager::DebugString() const {
     if (num_pending > 0) {
       for (const auto &entry : key.shape) {
         stream << entry.first << ": " << entry.second << ", ";
+      }
+      if (!key.label_selectors.empty()) {
+        stream << "label_selectors: [";
+        for (const auto &selector : key.label_selectors) {
+          stream << "{";
+          for (const auto &constraint : selector.label_constraints()) {
+            stream << constraint.label_key() << " "
+                   << (constraint.operator_() ==
+                               rpc::LabelSelectorOperator::LABEL_OPERATOR_IN
+                           ? "in"
+                           : "!in")
+                   << " [";
+            for (const auto &val : constraint.label_values()) {
+              stream << val << ",";
+            }
+            stream << "]"
+                   << " ";
+          }
+          stream << "}, ";
+        }
+        stream << "]";
       }
     }
     stream << "} * " << num_pending << "\n";
