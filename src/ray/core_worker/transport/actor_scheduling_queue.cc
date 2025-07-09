@@ -60,7 +60,8 @@ void ActorSchedulingQueue::Add(
         reject_request,
     rpc::SendReplyCallback send_reply_callback,
     TaskSpecification task_spec) {
-  // A seq_no of -1 means no ordering constraint.
+  // A seq_no of -1 means no ordering constraint. Non-retry Actor tasks must be executed
+  // in order.
   RAY_CHECK(seq_no != -1);
 
   RAY_CHECK(std::this_thread::get_id() == main_thread_id_);
@@ -235,7 +236,6 @@ void ActorSchedulingQueue::AcceptRequestOrRejectIfCanceled(TaskID task_id,
     auto it = pending_task_id_to_is_canceled.find(task_id);
     if (it != pending_task_id_to_is_canceled.end()) {
       is_canceled = it->second;
-      pending_task_id_to_is_canceled.erase(it);
     }
   }
 
@@ -246,6 +246,9 @@ void ActorSchedulingQueue::AcceptRequestOrRejectIfCanceled(TaskID task_id,
   } else {
     request.Accept();
   }
+
+  absl::MutexLock lock(&mu_);
+  pending_task_id_to_is_canceled.erase(task_id);
 }
 
 }  // namespace core
