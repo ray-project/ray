@@ -299,7 +299,6 @@ __all__ = [
     "ColumnExpr",
     "LiteralExpr",
     "BinaryExpr",
-    "AliasExpr",
     "col",
     "lit",
     "eval_expr",

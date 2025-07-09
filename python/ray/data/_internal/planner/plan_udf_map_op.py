@@ -123,12 +123,13 @@ def plan_project_op(
 
             # 2. (optional) column projection
             if columns:
-                block = block_accessor.select(columns)
-                block_accessor = BlockAccessor.for_block(block)
+                block = BlockAccessor.for_block(block).select(columns)
 
             # 3. (optional) rename
             if columns_rename:
-                block = block_accessor.rename_columns(columns_rename)
+                block = block.rename_columns(
+                    [columns_rename.get(col, col) for col in block.schema.names]
+                )
 
             return block
         except Exception as e:
