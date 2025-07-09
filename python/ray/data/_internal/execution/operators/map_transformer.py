@@ -562,19 +562,28 @@ class BuildOutputBlocksMapTransformFn(MapTransformFn):
         )
 
 
-def _splitrange(n, k):
-    """Calculates array lens of np.array_split().
+def _split_range(n: int, k: int):
+    """Calculates split of the sequence of N elements, into K sequences.
 
     This is the equivalent of
-    `[len(x) for x in np.array_split(range(n), k)]`.
+
+        [len(a) for a in np.array_split(range(n), k) if len(a) > 0]
     """
+
+    if n <= k:
+        # This shortcut assures that we're not producing empty sequences
+        return [1] * n
+
     base = n // k
     output = [base] * k
-    rem = n - sum(output)
-    for i in range(len(output)):
-        if rem > 0:
-            output[i] += 1
-            rem -= 1
+    rem = n - base * k
+
+    i = 0
+    while rem > 0:
+        output[i] += 1
+        rem -= 1
+        i += 1
+
     assert rem == 0, (rem, output, n, k)
     assert sum(output) == n, (output, n, k)
     return output
@@ -600,8 +609,10 @@ class ApplyAdditionalSplitToOutputBlocks(MapTransformFn):
     def __call__(self, blocks: Iterable[Block], ctx: TaskContext) -> Iterable[Block]:
         for block in blocks:
             block = BlockAccessor.for_block(block)
+
             offset = 0
-            split_sizes = _splitrange(block.num_rows(), self._additional_split_factor)
+            split_sizes = _split_range(block.num_rows(), self._additional_split_factor)
+
             for size in split_sizes:
                 # NOTE: copy=True is needed because this is an output block. If
                 # a block slice is put into the object store, the entire block
