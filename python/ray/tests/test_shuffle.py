@@ -28,26 +28,5 @@ def test_shuffle_no_streaming():
         ray.shutdown()
 
 
-@pytest.mark.skip(reason="SIGBUS on CI.")
-def test_shuffle_multi_node(ray_start_cluster):
-    cluster = ray_start_cluster
-    for _ in range(4):
-        cluster.add_node(num_cpus=2, object_store_memory=1e9)
-
-    shuffle.run(ray_address="auto", num_partitions=200, partition_size=10e6)
-
-
-@pytest.mark.skip(reason="SIGBUS on CI.")
-def test_shuffle_multi_node_no_streaming(ray_start_cluster):
-    cluster = ray_start_cluster
-    for _ in range(4):
-        cluster.add_node(num_cpus=2, object_store_memory=1e9)
-
-    shuffle.run(
-        ray_address="auto", num_partitions=200, partition_size=10e6, no_streaming=True
-    )
-
-
 if __name__ == "__main__":
-
     sys.exit(pytest.main(["-sv", __file__]))
