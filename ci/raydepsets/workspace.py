@@ -2,6 +2,7 @@ import yaml
 from dataclasses import dataclass, field
 from typing import List, Optional
 import os
+from typing import Optional
 
 
 @dataclass
@@ -36,7 +37,6 @@ class Config:
         ]
 
         return Config(depsets=depsets)
-
 
 class Workspace:
     def __init__(self, dir: str = None):

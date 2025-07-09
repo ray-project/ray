@@ -20,9 +20,6 @@ from networkx import topological_sort
 _REPO_NAME = "com_github_ray_project_ray"
 _runfiles = runfiles.Create()
 
-# update these tests to use the new workspace class
-
-
 class TestCli(unittest.TestCase):
     def test_workspace_init(self):
         with tempfile.TemporaryDirectory() as tmpdir:
