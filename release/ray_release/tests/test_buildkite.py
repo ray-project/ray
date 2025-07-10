@@ -697,10 +697,10 @@ class BuildkiteSettingsTest(unittest.TestCase):
                 }
             )
             step = get_step(test, smoke_test=False)
-            self.assertEquals(step["concurrency_group"], "medium")
+            self.assertEqual(step["concurrency_group"], "medium")
 
             step = get_step(test, smoke_test=True)
-            self.assertEquals(step["concurrency_group"], "small")
+            self.assertEqual(step["concurrency_group"], "small")
 
     def testStepQueueClient(self):
         test_regular = MockTest(

@@ -1,10 +1,12 @@
 import sys
+from typing import Any, AsyncIterator, Dict, List, Optional
+
 import pytest
-from typing import List, Any, AsyncIterator, Dict, Optional
+
 from ray.llm._internal.batch.stages.base import (
-    wrap_preprocess,
-    wrap_postprocess,
     StatefulStageUDF,
+    wrap_postprocess,
+    wrap_preprocess,
 )
 
 
@@ -71,11 +73,10 @@ class TestStatefulStageUDF:
 
         results = []
         async for result in udf(batch):
-            results.append(result)
+            results.extend(result["__data"])
 
         assert len(results) == 2
-        for result in results:
-            data = result["__data"][0]
+        for data in results:
             val = data["value"]
             assert data["processed"] == val * 2
             assert data["extra"] == 10 * val

@@ -126,15 +126,14 @@ using PublisherFactoryFn =
 
 class MockDistributedSubscriber : public pubsub::SubscriberInterface {
  public:
-  MockDistributedSubscriber(
-      pubsub::pub_internal::SubscriptionIndex *directory,
-      SubscriptionCallbackMap *subscription_callback_map,
-      SubscriptionFailureCallbackMap *subscription_failure_callback_map,
-      pubsub::SubscriberID subscriber_id,
-      PublisherFactoryFn client_factory)
-      : directory_(directory),
-        subscription_callback_map_(subscription_callback_map),
-        subscription_failure_callback_map_(subscription_failure_callback_map),
+  MockDistributedSubscriber(pubsub::pub_internal::SubscriptionIndex *dict,
+                            SubscriptionCallbackMap *sub_callback_map,
+                            SubscriptionFailureCallbackMap *sub_failure_callback_map,
+                            pubsub::SubscriberID subscriber_id,
+                            PublisherFactoryFn client_factory)
+      : directory_(dict),
+        subscription_callback_map_(sub_callback_map),
+        subscription_failure_callback_map_(sub_failure_callback_map),
         subscriber_id_(subscriber_id),
         subscriber_(std::make_unique<pubsub::pub_internal::SubscriberState>(
             subscriber_id,
@@ -233,14 +232,13 @@ class MockDistributedSubscriber : public pubsub::SubscriberInterface {
 
 class MockDistributedPublisher : public pubsub::PublisherInterface {
  public:
-  MockDistributedPublisher(
-      pubsub::pub_internal::SubscriptionIndex *directory,
-      SubscriptionCallbackMap *subscription_callback_map,
-      SubscriptionFailureCallbackMap *subscription_failure_callback_map,
-      WorkerID publisher_id)
-      : directory_(directory),
-        subscription_callback_map_(subscription_callback_map),
-        subscription_failure_callback_map_(subscription_failure_callback_map),
+  MockDistributedPublisher(pubsub::pub_internal::SubscriptionIndex *dict,
+                           SubscriptionCallbackMap *sub_callback_map,
+                           SubscriptionFailureCallbackMap *sub_failure_callback_map,
+                           WorkerID publisher_id)
+      : directory_(dict),
+        subscription_callback_map_(sub_callback_map),
+        subscription_failure_callback_map_(sub_failure_callback_map),
         publisher_id_(publisher_id) {}
   ~MockDistributedPublisher() = default;
 
@@ -657,7 +655,7 @@ TEST_F(ReferenceCountTest, TestHandleObjectSpilled) {
                      object_size,
                      false,
                      /*add_local_ref=*/true,
-                     absl::optional<NodeID>(node1));
+                     std::optional<NodeID>(node1));
   rc->HandleObjectSpilled(obj1, "url1", node1);
   rpc::WorkerObjectLocationsPubMessage object_info;
   rc->FillObjectInformation(obj1, &object_info);
@@ -687,7 +685,7 @@ TEST_F(ReferenceCountTest, TestGetLocalityData) {
                      object_size,
                      false,
                      /*add_local_ref=*/true,
-                     absl::optional<NodeID>(node1));
+                     std::optional<NodeID>(node1));
   auto locality_data_obj1 = rc->GetLocalityData(obj1);
   ASSERT_TRUE(locality_data_obj1.has_value());
   ASSERT_EQ(locality_data_obj1->object_size, object_size);
@@ -762,7 +760,7 @@ TEST_F(ReferenceCountTest, TestGetLocalityData) {
                      -1,
                      false,
                      /*add_local_ref=*/true,
-                     absl::optional<NodeID>(node2));
+                     std::optional<NodeID>(node2));
   auto locality_data_obj2_no_object_size = rc->GetLocalityData(obj2);
   ASSERT_FALSE(locality_data_obj2_no_object_size.has_value());
 

@@ -19,8 +19,17 @@ namespace ray {
 namespace asio {
 namespace testing {
 
-int64_t get_delay_us(const std::string &name);
-void init();
+/*
+ * Get the random delay to be injected
+ * for the given asio post event.
+ */
+int64_t GetDelayUs(const std::string &name);
+
+/*
+ * Initialize the asio delay chaos framework (i.e. DelayManager).
+ * Should be called once before any asio posts.
+ */
+void Init();
 }  // namespace testing
 }  // namespace asio
 }  // namespace ray

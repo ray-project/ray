@@ -75,14 +75,17 @@ install_ray() {
     popd
 
     cd "${WORKSPACE_DIR}"/python
-    "${WORKSPACE_DIR}"/ci/keep_alive pip install -v -e .
+    pip install -v -e .
   )
 }
 
 uninstall_ray() {
   pip uninstall -y ray
 
-  python -s -c "import runpy, sys; runpy.run_path(sys.argv.pop(), run_name='__api__')" clean "${ROOT_DIR}"/setup.py
+  # Cleanup generated thirdparty files.
+  python -c $'import shutil; import sys; \nfor d in sys.argv[1:]: shutil.rmtree(d, ignore_errors=True);' \
+    "${ROOT_DIR}/ray/thirdparty_files" \
+    "${ROOT_DIR}/ray/_private/runtime_env/agent/thirdparty_files"
 }
 
 build_wheel_windows() {
@@ -132,11 +135,11 @@ build_wheel_windows() {
         exit 1
       fi
       # build ray wheel
-      python setup.py --quiet bdist_wheel
+      python -m pip wheel -q -w dist . --no-deps
       # Pack any needed system dlls like msvcp140.dll
       delvewheel repair dist/ray-*.whl
       # build ray-cpp wheel
-      RAY_INSTALL_CPP=1 python setup.py --quiet bdist_wheel
+      RAY_INSTALL_CPP=1 python -m pip wheel -q -w dist . --no-deps
       # No extra dlls are needed, do not call delvewheel
       uninstall_ray
     )

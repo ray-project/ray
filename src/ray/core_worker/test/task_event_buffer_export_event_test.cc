@@ -81,7 +81,7 @@ class TaskEventTestWriteExport : public ::testing::Test {
       TaskID task_id,
       int32_t attempt_num,
       int64_t running_ts = 1,
-      absl::optional<const TaskStatusEvent::TaskStateUpdate> state_update =
+      std::optional<const TaskStatusEvent::TaskStateUpdate> state_update =
           absl::nullopt) {
     return std::make_unique<TaskStatusEvent>(task_id,
                                              JobID::FromInt(0),

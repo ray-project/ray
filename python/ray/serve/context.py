@@ -20,6 +20,7 @@ from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
 )
+from ray.serve._private.replica_result import ReplicaResult
 from ray.serve.exceptions import RayServeException
 from ray.serve.grpc_util import RayServegRPCContext
 from ray.util.annotations import DeveloperAPI
@@ -77,8 +78,8 @@ def _get_global_client(
         set to False, returns None.
 
     Raises:
-        RayServeException: if there is no running Serve controller actor
-        and raise_if_no_controller_running is set to True.
+        RayServeException: If there is no running Serve controller actor
+            and raise_if_no_controller_running is set to True.
     """
 
     try:
@@ -127,9 +128,10 @@ def _connect(raise_if_no_controller_running: bool = True) -> ServeControllerClie
         existing Serve application's Serve Controller. None if there is
         no running Serve controller actor and raise_if_no_controller_running
         is set to False.
+
     Raises:
-        RayServeException: if there is no running Serve controller actor
-        and raise_if_no_controller_running is set to True.
+        RayServeException: If there is no running Serve controller actor
+            and raise_if_no_controller_running is set to True.
     """
 
     # Initialize ray if needed.
@@ -178,6 +180,7 @@ class _RequestContext:
     multiplexed_model_id: str = ""
     grpc_context: Optional[RayServegRPCContext] = None
     is_http_request: bool = False
+    cancel_on_parent_request_cancel: bool = False
 
 
 _serve_request_context = contextvars.ContextVar(
@@ -259,3 +262,37 @@ def _remove_request_pending_assignment(parent_request_id: str, response_id: str)
 
     if len(_requests_pending_assignment[parent_request_id]) == 0:
         del _requests_pending_assignment[parent_request_id]
+
+
+# `_in_flight_requests` is a map from request ID to a dictionary of replica results.
+# The request ID points to an ongoing Serve request, and the replica results are
+# in-flight child requests that have been assigned to a downstream replica.
+
+# A dictionary is used over a set to track the replica results for more
+# efficient addition and deletion time complexity. A uniquely generated
+# `response_id` is used to identify each replica result.
+
+_in_flight_requests: Dict[str, Dict[str, ReplicaResult]] = defaultdict(dict)
+
+# Note that the functions below that manipulate `_in_flight_requests`
+# are NOT thread-safe. They are only expected to be called from the
+# same thread/asyncio event-loop.
+
+
+def _get_in_flight_requests(parent_request_id):
+    if parent_request_id in _in_flight_requests:
+        return _in_flight_requests[parent_request_id]
+
+    return {}
+
+
+def _add_in_flight_request(parent_request_id, response_id, replica_result):
+    _in_flight_requests[parent_request_id][response_id] = replica_result
+
+
+def _remove_in_flight_request(parent_request_id, response_id):
+    if response_id in _in_flight_requests[parent_request_id]:
+        del _in_flight_requests[parent_request_id][response_id]
+
+    if len(_in_flight_requests[parent_request_id]) == 0:
+        del _in_flight_requests[parent_request_id]

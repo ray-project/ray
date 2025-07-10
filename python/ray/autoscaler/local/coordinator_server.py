@@ -2,12 +2,12 @@
 different clusters for multiple users. It receives node provider function calls
 through HTTP requests from remote CoordinatorSenderNodeProvider and runs them
 locally in LocalNodeProvider. To start the webserver the user runs:
-`python coordinator_server.py --ips <comma separated ips> --port <PORT>`."""
+`python coordinator_server.py --ips <comma separated ips> --host <HOST> --port <PORT>`."""
 import argparse
 import json
 import logging
-import socket
 import threading
+import socket
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 
 from ray.autoscaler._private.local.node_provider import LocalNodeProvider
@@ -106,16 +106,23 @@ def main():
         "--ips", required=True, help="Comma separated list of node ips."
     )
     parser.add_argument(
+        "--host",
+        type=str,
+        required=False,
+        help="The Host on which the coordinator listens.",
+    )
+    parser.add_argument(
         "--port",
         type=int,
         required=True,
         help="The port on which the coordinator listens.",
     )
     args = parser.parse_args()
+    host = args.host or socket.gethostbyname(socket.gethostname())
     list_of_node_ips = args.ips.split(",")
     OnPremCoordinatorServer(
         list_of_node_ips=list_of_node_ips,
-        host=socket.gethostbyname(socket.gethostname()),
+        host=host,
         port=args.port,
     )
 

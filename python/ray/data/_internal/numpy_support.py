@@ -76,7 +76,7 @@ def _convert_to_datetime64(dt: datetime, precision: str) -> np.datetime64:
     Args:
         dt: A datetime object to be converted.
         precision: The desired precision for the datetime64 conversion. Possible
-        values are 'D', 's', 'ms', 'us', 'ns'.
+           values are 'D', 's', 'ms', 'us', 'ns'.
 
     Returns:
         np.datetime64: A numpy datetime64 object with the specified precision.
@@ -102,19 +102,19 @@ def _convert_datetime_to_np_datetime(datetime_list: List[datetime]) -> np.ndarra
 
     Args:
         datetime_list (List[datetime]): A list of `datetime` objects to be converted.
-        Each `datetime` object represents a specific point in time.
+            Each `datetime` object represents a specific point in time.
 
     Returns:
         np.ndarray: A NumPy array containing the `datetime64` values of the datetime
-        objects from the input list, with the appropriate precision (e.g., nanoseconds,
-        microseconds, milliseconds, etc.).
+           objects from the input list, with the appropriate precision (e.g., nanoseconds,
+           microseconds, milliseconds, etc.).
     """
     # Detect the highest precision for the datetime objects
     precision = _detect_highest_datetime_precision(datetime_list)
 
     # Convert each datetime to the corresponding numpy datetime64 with the appropriate
     # precision
-    return np.array([_convert_to_datetime64(dt, precision) for dt in datetime_list])
+    return np.asarray([_convert_to_datetime64(dt, precision) for dt in datetime_list])
 
 
 def convert_to_numpy(column_values: Any) -> np.ndarray:
@@ -128,7 +128,7 @@ def convert_to_numpy(column_values: Any) -> np.ndarray:
         The input as an np.ndarray if possible, otherwise the original input.
 
     Raises:
-        ValueError if an input was array-like but we failed to convert it to an array.
+        ValueError: If an input was array-like but we failed to convert it to an array.
     """
 
     if isinstance(column_values, np.ndarray):
@@ -180,7 +180,7 @@ def convert_to_numpy(column_values: Any) -> np.ndarray:
                 # This util works around some limitations of np.array(dtype=object).
                 return create_ragged_ndarray(column_values)
             else:
-                return np.array(column_values)
+                return np.asarray(column_values)
 
         except Exception as e:
             logger.error(

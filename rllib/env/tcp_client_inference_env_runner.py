@@ -73,7 +73,7 @@ class TcpClientInferenceEnvRunner(EnvRunner, Checkpointable):
             port: The base port number. The server socket is then actually bound to
                 `port` + self.worker_index.
         """
-        super().__init__(config=config)
+        super().__init__(config=config, **kwargs)
 
         self.worker_index: int = kwargs.get("worker_index", 0)
 
@@ -427,7 +427,7 @@ def _get_message(sock_):
         # Check for proper protocol.
         if "type" not in message:
             raise ConnectionError(
-                "Protocol Error! Message from peer does not contain `type` " "field."
+                "Protocol Error! Message from peer does not contain `type` field."
             )
         return rllink(message.pop("type")), message
     except Exception as e:

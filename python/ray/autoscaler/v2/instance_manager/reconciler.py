@@ -5,7 +5,7 @@ import uuid
 from collections import defaultdict
 from typing import Dict, List, Optional, Set, Tuple
 
-from ray._private.utils import binary_to_hex
+from ray._common.utils import binary_to_hex
 from ray.autoscaler.v2.instance_manager.common import InstanceUtil
 from ray.autoscaler.v2.instance_manager.config import (
     AutoscalingConfig,
@@ -21,7 +21,9 @@ from ray.autoscaler.v2.instance_manager.node_provider import (
     LaunchNodeError,
     TerminateNodeError,
 )
-from ray.autoscaler.v2.instance_manager.ray_installer import RayInstallError
+from ray.autoscaler.v2.instance_manager.subscribers.threaded_ray_installer import (
+    RayInstallError,
+)
 from ray.autoscaler.v2.instance_manager.subscribers.ray_stopper import RayStopError
 from ray.autoscaler.v2.metrics_reporter import AutoscalerMetricsReporter
 from ray.autoscaler.v2.scheduler import IResourceScheduler, SchedulingRequest
@@ -743,15 +745,15 @@ class Reconciler:
 
         queued_instances = []
         requested_instances = []
-        allocated_instances = []
+        running_instances = []
 
         for instance in instances:
             if instance.status == IMInstance.QUEUED:
                 queued_instances.append(instance)
             elif instance.status == IMInstance.REQUESTED:
                 requested_instances.append(instance)
-            elif instance.cloud_instance_id:
-                allocated_instances.append(instance)
+            elif instance.status == IMInstance.RAY_RUNNING:
+                running_instances.append(instance)
 
         if not queued_instances:
             # No QUEUED instances
@@ -760,7 +762,7 @@ class Reconciler:
         to_launch = Reconciler._compute_to_launch(
             queued_instances,
             requested_instances,
-            allocated_instances,
+            running_instances,
             autoscaling_config.get_upscaling_speed(),
             autoscaling_config.get_max_concurrent_launches(),
         )
@@ -795,7 +797,7 @@ class Reconciler:
     def _compute_to_launch(
         queued_instances: List[IMInstance],
         requested_instances: List[IMInstance],
-        allocated_instances: List[IMInstance],
+        running_instances: List[IMInstance],
         upscaling_speed: float,
         max_concurrent_launches: int,
     ) -> Dict[NodeType, List[IMInstance]]:
@@ -813,8 +815,7 @@ class Reconciler:
             return sorted(queue_times)
 
         queued_instances_by_type = _group_by_type(queued_instances)
-        requested_instances_by_type = _group_by_type(requested_instances)
-        allocated_instances_by_type = _group_by_type(allocated_instances)
+        running_instances_by_type = _group_by_type(running_instances)
 
         total_num_requested_to_launch = len(requested_instances)
         all_to_launch: Dict[NodeType : List[IMInstance]] = defaultdict(list)
@@ -823,22 +824,14 @@ class Reconciler:
             instance_type,
             queued_instances_for_type,
         ) in queued_instances_by_type.items():
-            requested_instances_for_type = requested_instances_by_type.get(
-                instance_type, []
-            )
-            allocated_instances_for_type = allocated_instances_by_type.get(
+            running_instances_for_type = running_instances_by_type.get(
                 instance_type, []
             )
 
+            # Enforce the max allowed pending nodes based on current running nodes
             num_desired_to_upscale = max(
                 1,
-                math.ceil(
-                    upscaling_speed
-                    * (
-                        len(requested_instances_for_type)
-                        + len(allocated_instances_for_type)
-                    )
-                ),
+                math.ceil(upscaling_speed * len(running_instances_for_type)),
             )
 
             # Enforce global limit, at most we can launch `max_concurrent_launches`
@@ -1076,6 +1069,9 @@ class Reconciler:
         # Get the current instance states.
         im_instances, version = Reconciler._get_im_instances(instance_manager)
 
+        im_instances_by_instance_id = {
+            i.instance_id: i for i in im_instances if i.instance_id
+        }
         autoscaler_instances = []
         ray_nodes_by_id = {
             binary_to_hex(node.node_id): node for node in ray_state.node_states
@@ -1143,12 +1139,24 @@ class Reconciler:
         # Add terminating instances.
         for terminate_request in to_terminate:
             instance_id = terminate_request.instance_id
-            updates[terminate_request.instance_id] = IMInstanceUpdateEvent(
-                instance_id=instance_id,
-                new_instance_status=IMInstance.RAY_STOP_REQUESTED,
-                termination_request=terminate_request,
-                details=f"draining ray: {terminate_request.details}",
-            )
+            if terminate_request.instance_status == IMInstance.ALLOCATED:
+                # The instance is not yet running, so we can't request to stop/drain Ray.
+                # Therefore, we can skip the RAY_STOP_REQUESTED state and directly terminate the node.
+                im_instance_to_terminate = im_instances_by_instance_id[instance_id]
+                updates[terminate_request.instance_id] = IMInstanceUpdateEvent(
+                    instance_id=instance_id,
+                    new_instance_status=IMInstance.TERMINATING,
+                    cloud_instance_id=im_instance_to_terminate.cloud_instance_id,
+                    termination_request=terminate_request,
+                    details=f"terminating ray: {terminate_request.details}",
+                )
+            else:
+                updates[terminate_request.instance_id] = IMInstanceUpdateEvent(
+                    instance_id=instance_id,
+                    new_instance_status=IMInstance.RAY_STOP_REQUESTED,
+                    termination_request=terminate_request,
+                    details=f"draining ray: {terminate_request.details}",
+                )
 
         # Add new instances.
         for launch_request in to_launch:

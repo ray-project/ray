@@ -1,4 +1,4 @@
-from typing import Iterator, List
+from typing import Callable, Iterator, List
 
 
 class Operator:
@@ -15,9 +15,8 @@ class Operator:
         self._name = name
         self._input_dependencies = input_dependencies
         self._output_dependencies = []
-        for x in input_dependencies:
-            assert isinstance(x, Operator), x
-            x._output_dependencies.append(self)
+
+        self._wire_output_deps(input_dependencies)
 
     @property
     def name(self) -> str:
@@ -55,6 +54,39 @@ class Operator:
         for op in self.input_dependencies:
             yield from op.post_order_iter()
         yield self
+
+    def _apply_transform(
+        self, transform: Callable[["Operator"], "Operator"]
+    ) -> "Operator":
+        """Recursively applies transformation (in post-order) to the operators DAG
+
+        NOTE: This operation should be opting in to avoid in-place modifications,
+              instead creating new operations whenever any operator needs to be
+              updated.
+        """
+
+        transformed_input_ops = []
+        new_ops = []
+
+        for input_op in self.input_dependencies:
+            transformed_input_op = input_op._apply_transform(transform)
+            transformed_input_ops.append(transformed_input_op)
+            # Keep track of new input ops
+            if transformed_input_op is not input_op:
+                new_ops.append(transformed_input_op)
+
+        if new_ops:
+            # NOTE: Only newly created ops need to have output deps
+            #       wired in
+            self._wire_output_deps(new_ops)
+            self._input_dependencies = transformed_input_ops
+
+        return transform(self)
+
+    def _wire_output_deps(self, input_dependencies: List["Operator"]):
+        for x in input_dependencies:
+            assert isinstance(x, Operator), x
+            x._output_dependencies.append(self)
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}[{self._name}]"

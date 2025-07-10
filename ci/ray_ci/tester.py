@@ -447,7 +447,7 @@ def _get_test_targets(
         ).union(_get_new_tests(prefix, container))
         final_targets = high_impact_tests.intersection(final_targets)
 
-    return list(final_targets)
+    return sorted(final_targets)
 
 
 def _get_new_tests(prefix: str, container: TesterContainer) -> Set[str]:

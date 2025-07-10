@@ -8,16 +8,15 @@ import json
 
 from subprocess import Popen, PIPE, STDOUT, list2cmdline
 from typing import List
-from pathlib import Path
 import pytest
 
+from ray._common.test_utils import wait_for_condition
 import ray.cloudpickle as pickle
 
 import ray
 from ray._private.test_utils import (
     run_string_as_driver,
     run_string_as_driver_nonblocking,
-    wait_for_condition,
     format_web_url,
     wait_for_pid_to_exit,
 )
@@ -56,14 +55,13 @@ def test_invalid_gcs_address():
         JobSubmissionClient("abc:abc")
 
 
-@pytest.mark.skipif(
-    sys.version_info >= (3, 12), reason="lib is not supported on Python 3.12"
-)
-def test_job_isolation(call_ray_start):
+def test_job_isolation(ray_start_regular):
     # Make sure two jobs with same module name
     # don't interfere with each other
     # (https://github.com/ray-project/ray/issues/19358).
-    address = call_ray_start
+
+    gcs_address = ray_start_regular.address_info["gcs_address"]
+
     lib_template = """
 import ray
 
@@ -76,30 +74,54 @@ def subtask():
 """
     driver_template = """
 import ray
+import os
+import sys
+
+# Add current directory to Python path so we can import lib.py
+current_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, current_dir)
+
 import lib
 
 ray.init(address="{}")
 assert ray.get(lib.task.remote()) == {}
 """
-    with tempfile.TemporaryDirectory() as tmpdir:
-        os.makedirs(os.path.join(tmpdir, "v1"))
-        v1_lib = os.path.join(tmpdir, "v1", "lib.py")
-        v1_driver = os.path.join(tmpdir, "v1", "driver.py")
-        with open(v1_lib, "w") as f:
-            f.write(lib_template.format(1))
-        with open(v1_driver, "w") as f:
-            f.write(driver_template.format(address, 1))
 
-        os.makedirs(os.path.join(tmpdir, "v2"))
-        v2_lib = os.path.join(tmpdir, "v2", "lib.py")
-        v2_driver = os.path.join(tmpdir, "v2", "driver.py")
-        with open(v2_lib, "w") as f:
-            f.write(lib_template.format(2))
-        with open(v2_driver, "w") as f:
-            f.write(driver_template.format(address, 2))
+    def setup_driver_files(base_path: str, version: int) -> str:
+        version_path = os.path.join(base_path, f"v{version}")
+        os.makedirs(version_path)
+
+        lib_path = os.path.join(version_path, "lib.py")
+        driver_path = os.path.join(version_path, "driver.py")
+
+        with open(lib_path, "w") as f:
+            f.write(lib_template.format(version))
+        with open(driver_path, "w") as f:
+            f.write(driver_template.format(gcs_address, version))
+
+        return driver_path
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        v1_driver = setup_driver_files(tmpdir, version=1)
+        v2_driver = setup_driver_files(tmpdir, version=2)
 
         subprocess.check_call([sys.executable, v1_driver])
         subprocess.check_call([sys.executable, v2_driver])
+
+    dashboard_url = ray_start_regular.dashboard_url
+    client = JobSubmissionClient(f"http://{dashboard_url}")
+    jobs = client.list_jobs()
+    assert len(jobs) == 3  # ray_start_regular, v1, v2
+
+    num_succeeded = 0
+    num_running = 0
+    for job in jobs:
+        if job.status == "SUCCEEDED":
+            num_succeeded += 1
+        elif job.status == "RUNNING":
+            num_running += 1
+    assert num_succeeded == 2
+    assert num_running == 1
 
 
 def test_job_observability(ray_start_regular):
@@ -203,7 +225,7 @@ def test_logging_config_serialization():
     assert pb.serialized_py_logging_config == serialized_py_logging_config
 
 
-def test_get_entrypoint():
+def test_get_entrypoint(tmp_path):
     get_entrypoint = """
 from ray._private.utils import get_entrypoint_name
 print("result:", get_entrypoint_name())
@@ -219,16 +241,16 @@ print("result:", get_entrypoint_name())
         return False
 
     # Test a regular script.
-    with tempfile.NamedTemporaryFile() as fp:
-        fp.write(get_entrypoint.encode())
-        fp.seek(0)
-        path = Path(fp.name)
-        outputs = execute_driver(["python", str(path), "--flag"])
-        assert line_exists(outputs, f"result: python {path} --flag")
+    fp = tmp_path / "test.py"
+    fp.write_text(get_entrypoint)
+    outputs = execute_driver([sys.executable, str(fp), "--flag"])
+    assert line_exists(outputs, f"result: {sys.executable} {fp} --flag")
 
     # Test python shell
-    outputs = execute_driver(["python", "-i"], input=get_entrypoint)
-    assert line_exists(outputs, r".*result: \(interactive_shell\) python -i.*")
+    outputs = execute_driver([sys.executable, "-i"], input=get_entrypoint)
+    assert line_exists(
+        outputs, rf".*result: \(interactive_shell\) {re.escape(sys.executable)} -i.*"
+    )
 
     # Test IPython shell
     outputs = execute_driver(["ipython"], input=get_entrypoint)
@@ -259,7 +281,7 @@ def test_removed_internal_flags(shutdown_only):
     assert "RAY_JOB_ID is not set" in all_logs
 
 
-def test_entrypoint_field(shutdown_only):
+def test_entrypoint_field(shutdown_only, tmp_path):
     """Make sure the entrypoint field is correctly set for jobs."""
     driver = """
 import ray
@@ -277,62 +299,60 @@ ray.get(f.remote())
     client = JobSubmissionClient(address)
 
     # Test a regular script.
-    with tempfile.NamedTemporaryFile() as fp:
-        fp.write(driver.encode())
-        fp.seek(0)
-        path = Path(fp.name)
+    fp = tmp_path / "driver.py"
+    fp.write_text(driver)
 
-        """
-        Test driver.
-        """
-        commands = ["python", str(path), "--flag"]
-        print(execute_driver(commands))
+    """
+    Test driver.
+    """
+    commands = [sys.executable, str(fp), "--flag"]
+    print(execute_driver(commands))
 
+    jobs = ray.state.jobs()
+    assert len(jobs) == 2
+    jobs = list(jobs)
+    jobs.sort(key=lambda j: j["JobID"])
+
+    # The first job is the test job.
+
+    driver_job = jobs[1]
+    assert driver_job["Entrypoint"] == list2cmdline(commands)
+
+    # Make sure the Dashboard endpoint works
+    r = client._do_request(
+        "GET",
+        "/api/jobs/",
+    )
+
+    assert r.status_code == 200, r.text
+    jobs_info_json = json.loads(r.text)
+    jobs_info_json.sort(key=lambda j: j["job_id"])
+    info_json = jobs_info_json[1]
+    info = JobDetails(**info_json)
+    assert info.entrypoint == list2cmdline(commands)
+
+    """
+    Test job submission
+    """
+    client.submit_job(entrypoint=list2cmdline(commands))
+
+    def verify():
         jobs = ray.state.jobs()
-        assert len(jobs) == 2
+        # Test, first job, agent, submission job
+        assert len(jobs) == 4
         jobs = list(jobs)
         jobs.sort(key=lambda j: j["JobID"])
 
         # The first job is the test job.
 
-        driver_job = jobs[1]
-        assert driver_job["Entrypoint"] == list2cmdline(commands)
+        submission_job = jobs[3]
+        assert submission_job["Entrypoint"] == list2cmdline(commands)
+        return True
 
-        # Make sure the Dashboard endpoint works
-        r = client._do_request(
-            "GET",
-            "/api/jobs/",
-        )
+    wait_for_condition(verify)
 
-        assert r.status_code == 200, r.text
-        jobs_info_json = json.loads(r.text)
-        jobs_info_json.sort(key=lambda j: j["job_id"])
-        info_json = jobs_info_json[1]
-        info = JobDetails(**info_json)
-        assert info.entrypoint == list2cmdline(commands)
-
-        """
-        Test job submission
-        """
-        client.submit_job(entrypoint=list2cmdline(commands))
-
-        def verify():
-            jobs = ray.state.jobs()
-            # Test, first job, agent, submission job
-            assert len(jobs) == 4
-            jobs = list(jobs)
-            jobs.sort(key=lambda j: j["JobID"])
-
-            # The first job is the test job.
-
-            submission_job = jobs[3]
-            assert submission_job["Entrypoint"] == list2cmdline(commands)
-            return True
-
-        wait_for_condition(verify)
-
-        # Test client
-        # TODO(sang): Client entrypoint not supported yet.
+    # Test client
+    # TODO(sang): Client entrypoint not supported yet.
 
 
 def test_task_spec_root_detached_actor_id(shutdown_only):
@@ -433,7 +453,4 @@ if __name__ == "__main__":
     # Make subprocess happy in bazel.
     os.environ["LC_ALL"] = "en_US.UTF-8"
     os.environ["LANG"] = "en_US.UTF-8"
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

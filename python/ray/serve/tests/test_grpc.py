@@ -9,8 +9,7 @@ import pytest
 
 import ray
 from ray import serve
-from ray._private.test_utils import SignalActor, wait_for_condition
-from ray.cluster_utils import Cluster
+from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.constants import SERVE_NAMESPACE
 from ray.serve._private.test_utils import (
     ping_fruit_stand,
@@ -26,6 +25,7 @@ from ray.serve.config import gRPCOptions
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
 from ray.serve.grpc_util import RayServegRPCContext
 from ray.serve.tests.test_config_files.grpc_deployment import g, g2
+from ray.util.state import list_actors
 
 
 def test_serving_request_through_grpc_proxy(ray_cluster):
@@ -246,7 +246,7 @@ def test_grpc_proxy_on_draining_nodes(ray_cluster):
     os.environ["TEST_WORKER_NODE_GRPC_PORT"] = str(worker_node_grpc_port)
 
     # Set up a cluster with 2 nodes.
-    cluster = Cluster()
+    cluster = ray_cluster
     cluster.add_node(num_cpus=0)
     cluster.add_node(num_cpus=2)
     cluster.wait_for_nodes()
@@ -277,18 +277,21 @@ def test_grpc_proxy_on_draining_nodes(ray_cluster):
 
     # Ensure worker node has both replicas.
     def check_replicas_on_worker_nodes():
-        _actors = ray._private.state.actors().values()
-        replica_nodes = [
-            a["Address"]["NodeID"]
-            for a in _actors
-            if a["ActorClassName"].startswith("ServeReplica")
-        ]
-        return len(set(replica_nodes)) == 1
+        return (
+            len(
+                {
+                    a.node_id
+                    for a in list_actors(address=cluster.address)
+                    if a.class_name.startswith("ServeReplica")
+                }
+            )
+            == 1
+        )
 
     wait_for_condition(check_replicas_on_worker_nodes)
 
     # Ensure total actors of 2 proxies, 1 controller, and 2 replicas, and 2 nodes exist.
-    wait_for_condition(lambda: len(ray._private.state.actors()) == 5)
+    wait_for_condition(lambda: len(list_actors(address=cluster.address)) == 5)
     assert len(ray.nodes()) == 2
 
     # Set up gRPC channels.
@@ -318,21 +321,12 @@ def test_grpc_proxy_on_draining_nodes(ray_cluster):
     # replicas on all nodes.
     serve.delete(name=app_name)
 
-    def _check():
-        _actors = ray._private.state.actors().values()
-        return (
-            len(
-                list(
-                    filter(
-                        lambda a: a["State"] == "ALIVE",
-                        _actors,
-                    )
-                )
-            )
-            == 3
+    wait_for_condition(
+        lambda: len(
+            list_actors(address=cluster.address, filters=[("STATE", "=", "ALIVE")])
         )
-
-    wait_for_condition(_check)
+        == 3,
+    )
 
     # Ensures ListApplications method on the head node is succeeding.
     wait_for_condition(
@@ -354,15 +348,6 @@ def test_grpc_proxy_on_draining_nodes(ray_cluster):
     ping_grpc_healthz(worker_node_channel, test_draining=True)
 
 
-@pytest.mark.parametrize(
-    "ray_instance",
-    [
-        {
-            "RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S": "0.1",
-        },
-    ],
-    indirect=True,
-)
 @pytest.mark.parametrize("streaming", [False, True])
 def test_grpc_proxy_timeouts(ray_instance, ray_shutdown, streaming: bool):
     """Test gRPC request timed out.
@@ -375,11 +360,13 @@ def test_grpc_proxy_timeouts(ray_instance, ray_shutdown, streaming: bool):
         "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
         "ray.serve.generated.serve_pb2_grpc.add_FruitServiceServicer_to_server",
     ]
+    grpc_request_timeout_s = 0.1
 
     serve.start(
         grpc_options=gRPCOptions(
             port=grpc_port,
             grpc_servicer_functions=grpc_servicer_functions,
+            request_timeout_s=grpc_request_timeout_s,
         ),
     )
 
@@ -420,7 +407,7 @@ def test_grpc_proxy_timeouts(ray_instance, ray_shutdown, streaming: bool):
     assert timeout_response in rpc_error.details()
 
     # Unblock the handlers to avoid graceful shutdown time.
-    ray.get(signal_actor.send.remote())
+    ray.get(signal_actor.send.remote(clear=True))
 
 
 @pytest.mark.parametrize("streaming", [False, True])
@@ -526,6 +513,9 @@ async def test_grpc_proxy_cancellation(ray_instance, ray_shutdown, streaming: bo
 
     with pytest.raises(grpc.FutureCancelledError):
         r.result()
+
+    ray.get(running_signal_actor.send.remote(clear=True))
+    ray.get(cancelled_signal_actor.send.remote(clear=True))
 
 
 @pytest.mark.parametrize("streaming", [False, True])

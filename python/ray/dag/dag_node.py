@@ -151,10 +151,18 @@ class DAGNode(DAGNodeBase):
         Configure the torch tensor transport for this node.
 
         Args:
-            transport: "nccl" means that tensors will be passed via NCCL.
-                "auto" (default) means that tensor transport will be
-                automatically determined based on the sender and receiver,
-                either through NCCL or host memory.
+            transport: Specifies the tensor transport mechanism.
+                - "accelerator": Tensors are communicated using accelerator-specific backends
+                (e.g., NCCL, XLA, or vendor-provided transport). This is the recommended option
+                for most use cases, as it supports extensibility and future hardware backends.
+                - "nccl": Tensors are passed explicitly via NCCL. This option is kept for
+                backwards compatibility and may be removed in the future. Use "accelerator"
+                instead unless you have legacy requirements.
+                - "shm": Tensors are passed via host shared memory and gRPC. Typically used
+                when accelerator-based transport is unavailable or not suitable.
+                - "auto" (default): The system automatically selects the appropriate transport
+                mechanism based on the sender and receiver, usually preferring accelerator-based
+                transport when available.
             device: The target device to use for the tensor transport.
                 "default": The tensor will maintain its original device placement from the sender
                 "cpu": The tensor will be explicitly moved to CPU device in the receiver
@@ -171,9 +179,9 @@ class DAGNode(DAGNodeBase):
         try:
             device = Device(device)
         except ValueError:
+            valid_devices = ", ".join(f"'{d.value}'" for d in Device)
             raise ValueError(
-                f"Invalid device '{device}'. "
-                "Valid options are: 'default', 'cpu', 'gpu', 'cuda'."
+                f"Invalid device '{device}'. Valid options are: {valid_devices}."
             )
         if transport == "auto":
             self._type_hint = AutoTransportType(
@@ -183,7 +191,20 @@ class DAGNode(DAGNodeBase):
             )
         elif transport == "nccl":
             self._type_hint = TorchTensorType(
-                transport=transport,
+                transport="accelerator",
+                device=device,
+                _static_shape=_static_shape,
+                _direct_return=_direct_return,
+            )
+        elif transport == "accelerator":
+            self._type_hint = TorchTensorType(
+                transport == "accelerator",
+                device=device,
+                _static_shape=_static_shape,
+                _direct_return=_direct_return,
+            )
+        elif transport == "shm":
+            self._type_hint = TorchTensorType(
                 device=device,
                 _static_shape=_static_shape,
                 _direct_return=_direct_return,
@@ -191,7 +212,8 @@ class DAGNode(DAGNodeBase):
         else:
             if not isinstance(transport, Communicator):
                 raise ValueError(
-                    "transport must be 'auto', 'nccl' or a Communicator type"
+                    "transport must be 'auto', 'nccl', 'shm', 'accelerator' or "
+                    "a Communicator type"
                 )
             self._type_hint = TorchTensorType(
                 transport=transport,
@@ -347,7 +369,7 @@ class DAGNode(DAGNodeBase):
         """Execute this DAG using the Ray default executor _execute_impl().
 
         Args:
-            _ray_cache_refs: If true, stores the the default executor's return values
+            _ray_cache_refs: If true, stores the default executor's return values
                 on each node in this DAG in a cache. These should be a mix of:
                 - ray.ObjectRefs pointing to the outputs of method and function nodes
                 - Serve handles for class nodes

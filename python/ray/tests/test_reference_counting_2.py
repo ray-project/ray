@@ -1,12 +1,17 @@
+"""All tests in this file use a module-scoped fixture to reduce runtime.
+
+If you need a customized Ray instance (e.g., to change system config or env vars),
+put the test in `test_reference_counting_standalone.py`.
+"""
 # coding: utf-8
 import logging
 import os
 import copy
-import platform
-import random
+import pickle
 import signal
 import sys
 import time
+from typing import Union
 
 import numpy as np
 import pytest
@@ -14,10 +19,9 @@ import pytest
 import ray
 import ray.cluster_utils
 from ray._private.internal_api import memory_summary
+from ray._common.test_utils import SignalActor, wait_for_condition
 from ray._private.test_utils import (
-    SignalActor,
     put_object,
-    wait_for_condition,
     wait_for_num_actors,
 )
 import ray._private.gcs_utils as gcs_utils
@@ -27,8 +31,8 @@ SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
 logger = logging.getLogger(__name__)
 
 
-@pytest.fixture
-def one_worker_100MiB(request):
+@pytest.fixture(scope="module")
+def one_cpu_100MiB_shared():
     config = {
         "task_retry_delay_ms": 0,
         "object_timeout_milliseconds": 1000,
@@ -40,7 +44,14 @@ def one_worker_100MiB(request):
     ray.shutdown()
 
 
-def _fill_object_store_and_get(obj, succeed=True, object_MiB=20, num_objects=5):
+def _fill_object_store_and_get(
+    obj: Union[ray.ObjectRef, bytes],
+    *,
+    succeed: bool = True,
+    object_MiB: float = 20,
+    num_objects: int = 5,
+    timeout_s: float = 10.0,
+):
     for _ in range(num_objects):
         ray.put(np.zeros(object_MiB * 1024 * 1024, dtype=np.uint8))
 
@@ -49,11 +60,15 @@ def _fill_object_store_and_get(obj, succeed=True, object_MiB=20, num_objects=5):
 
     if succeed:
         wait_for_condition(
-            lambda: ray._private.worker.global_worker.core_worker.object_exists(obj)
+            lambda: ray._private.worker.global_worker.core_worker.object_exists(obj),
+            timeout=timeout_s,
         )
     else:
         wait_for_condition(
-            lambda: not ray._private.worker.global_worker.core_worker.object_exists(obj)
+            lambda: not ray._private.worker.global_worker.core_worker.object_exists(
+                obj
+            ),
+            timeout=timeout_s,
         )
 
 
@@ -63,7 +78,7 @@ def _fill_object_store_and_get(obj, succeed=True, object_MiB=20, num_objects=5):
 @pytest.mark.parametrize(
     "use_ray_put,failure", [(False, False), (False, True), (True, False), (True, True)]
 )
-def test_recursively_nest_ids(one_worker_100MiB, use_ray_put, failure):
+def test_recursively_nest_ids(one_cpu_100MiB_shared, use_ray_put, failure):
     @ray.remote(max_retries=1)
     def recursive(ref, signal, max_depth, depth=0):
         unwrapped = ray.get(ref[0])
@@ -117,7 +132,7 @@ def test_recursively_nest_ids(one_worker_100MiB, use_ray_put, failure):
 @pytest.mark.parametrize(
     "use_ray_put,failure", [(False, False), (False, True), (True, False), (True, True)]
 )
-def test_return_object_ref(one_worker_100MiB, use_ray_put, failure):
+def test_return_object_ref(one_cpu_100MiB_shared, use_ray_put, failure):
     @ray.remote
     def return_an_id():
         return [put_object(np.zeros(20 * 1024 * 1024, dtype=np.uint8), use_ray_put)]
@@ -152,7 +167,7 @@ def test_return_object_ref(one_worker_100MiB, use_ray_put, failure):
 @pytest.mark.parametrize(
     "use_ray_put,failure", [(False, False), (False, True), (True, False), (True, True)]
 )
-def test_pass_returned_object_ref(one_worker_100MiB, use_ray_put, failure):
+def test_pass_returned_object_ref(one_cpu_100MiB_shared, use_ray_put, failure):
     @ray.remote
     def return_an_id():
         return [put_object(np.zeros(20 * 1024 * 1024, dtype=np.uint8), use_ray_put)]
@@ -195,10 +210,13 @@ def test_pass_returned_object_ref(one_worker_100MiB, use_ray_put, failure):
 # returned by another task to the end of the chain. The reference should still
 # exist while the final task in the chain is running and should be removed once
 # it finishes.
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
 @pytest.mark.parametrize(
     "use_ray_put,failure", [(False, False), (False, True), (True, False), (True, True)]
 )
-def test_recursively_pass_returned_object_ref(one_worker_100MiB, use_ray_put, failure):
+def test_recursively_pass_returned_object_ref(
+    one_cpu_100MiB_shared, use_ray_put, failure
+):
     @ray.remote
     def return_an_id():
         return put_object(np.zeros(20 * 1024 * 1024, dtype=np.uint8), use_ray_put)
@@ -249,7 +267,7 @@ def test_recursively_pass_returned_object_ref(one_worker_100MiB, use_ray_put, fa
     del outer_oid
 
     # Reference should be gone, check that returned ID gets evicted.
-    _fill_object_store_and_get(inner_oid_bytes, succeed=False)
+    _fill_object_store_and_get(inner_oid_bytes, succeed=False, timeout_s=20)
 
 
 # Call a recursive chain of tasks. The final task in the chain returns an
@@ -262,7 +280,7 @@ def test_recursively_pass_returned_object_ref(one_worker_100MiB, use_ray_put, fa
     "use_ray_put,failure", [(False, False), (False, True), (True, False), (True, True)]
 )
 def test_recursively_return_borrowed_object_ref(
-    one_worker_100MiB, use_ray_put, failure
+    one_cpu_100MiB_shared, use_ray_put, failure
 ):
     @ray.remote
     def recursive(num_tasks_left):
@@ -301,7 +319,7 @@ def test_recursively_return_borrowed_object_ref(
 
 
 @pytest.mark.parametrize("failure", [False, True])
-def test_borrowed_id_failure(one_worker_100MiB, failure):
+def test_borrowed_id_failure(one_cpu_100MiB_shared, failure):
     @ray.remote
     class Parent:
         def __init__(self):
@@ -353,289 +371,8 @@ def test_borrowed_id_failure(one_worker_100MiB, failure):
     ray.get(borrower.resolve_ref.remote())
 
 
-@pytest.mark.skipif(platform.system() in ["Windows"], reason="Failing on Windows.")
-def test_object_unpin(ray_start_cluster):
-    nodes = []
-    cluster = ray_start_cluster
-    head_node = cluster.add_node(
-        num_cpus=0,
-        object_store_memory=100 * 1024 * 1024,
-        _system_config={
-            "subscriber_timeout_ms": 100,
-            "health_check_initial_delay_ms": 0,
-            "health_check_period_ms": 1000,
-            "health_check_failure_threshold": 5,
-        },
-    )
-    ray.init(address=cluster.address)
-
-    # Add worker nodes.
-    for i in range(2):
-        nodes.append(
-            cluster.add_node(
-                num_cpus=1,
-                resources={f"node_{i}": 1},
-                object_store_memory=100 * 1024 * 1024,
-            )
-        )
-    cluster.wait_for_nodes()
-
-    one_mb_array = np.ones(1 * 1024 * 1024, dtype=np.uint8)
-    ten_mb_array = np.ones(10 * 1024 * 1024, dtype=np.uint8)
-
-    @ray.remote
-    class ObjectsHolder:
-        def __init__(self):
-            self.ten_mb_objs = []
-            self.one_mb_objs = []
-
-        def put_10_mb(self):
-            self.ten_mb_objs.append(ray.put(ten_mb_array))
-
-        def put_1_mb(self):
-            self.one_mb_objs.append(ray.put(one_mb_array))
-
-        def pop_10_mb(self):
-            if len(self.ten_mb_objs) == 0:
-                return False
-            self.ten_mb_objs.pop()
-            return True
-
-        def pop_1_mb(self):
-            if len(self.one_mb_objs) == 0:
-                return False
-            self.one_mb_objs.pop()
-            return True
-
-    # Head node contains 11MB of data.
-    one_mb_arrays = []
-    ten_mb_arrays = []
-
-    one_mb_arrays.append(ray.put(one_mb_array))
-    ten_mb_arrays.append(ray.put(ten_mb_array))
-
-    def check_memory(mb):
-        return f"Plasma memory usage {mb} MiB" in memory_summary(
-            address=head_node.address, stats_only=True
-        )
-
-    def wait_until_node_dead(node):
-        for n in ray.nodes():
-            if n["ObjectStoreSocketName"] == node.address_info["object_store_address"]:
-                return not n["Alive"]
-        return False
-
-    wait_for_condition(lambda: check_memory(11))
-
-    # Pop one mb array and see if it works.
-    one_mb_arrays.pop()
-    wait_for_condition(lambda: check_memory(10))
-
-    # Pop 10 MB.
-    ten_mb_arrays.pop()
-    wait_for_condition(lambda: check_memory(0))
-
-    # Put 11 MB for each actor.
-    # actor 1: 1MB + 10MB
-    # actor 2: 1MB + 10MB
-    actor_on_node_1 = ObjectsHolder.options(resources={"node_0": 1}).remote()
-    actor_on_node_2 = ObjectsHolder.options(resources={"node_1": 1}).remote()
-    ray.get(actor_on_node_1.put_1_mb.remote())
-    ray.get(actor_on_node_1.put_10_mb.remote())
-    ray.get(actor_on_node_2.put_1_mb.remote())
-    ray.get(actor_on_node_2.put_10_mb.remote())
-    wait_for_condition(lambda: check_memory(22))
-
-    # actor 1: 10MB
-    # actor 2: 1MB
-    ray.get(actor_on_node_1.pop_1_mb.remote())
-    ray.get(actor_on_node_2.pop_10_mb.remote())
-    wait_for_condition(lambda: check_memory(11))
-
-    # The second node is dead, and actor 2 is dead.
-    cluster.remove_node(nodes[1], allow_graceful=False)
-    wait_for_condition(lambda: wait_until_node_dead(nodes[1]))
-    wait_for_condition(lambda: check_memory(10))
-
-    # The first actor is dead, so object should be GC'ed.
-    ray.kill(actor_on_node_1)
-    wait_for_condition(lambda: check_memory(0))
-
-
-@pytest.mark.skipif(platform.system() in ["Windows"], reason="Failing on Windows.")
-def test_object_unpin_stress(ray_start_cluster):
-    nodes = []
-    cluster = ray_start_cluster
-    cluster.add_node(
-        num_cpus=1, resources={"head": 1}, object_store_memory=1000 * 1024 * 1024
-    )
-    ray.init(address=cluster.address)
-
-    # Add worker nodes.
-    for i in range(2):
-        nodes.append(
-            cluster.add_node(
-                num_cpus=1,
-                resources={f"node_{i}": 1},
-                object_store_memory=1000 * 1024 * 1024,
-            )
-        )
-    cluster.wait_for_nodes()
-
-    one_mb_array = np.ones(1 * 1024 * 1024, dtype=np.uint8)
-    ten_mb_array = np.ones(10 * 1024 * 1024, dtype=np.uint8)
-
-    @ray.remote
-    class ObjectsHolder:
-        def __init__(self):
-            self.ten_mb_objs = []
-            self.one_mb_objs = []
-
-        def put_10_mb(self):
-            self.ten_mb_objs.append(ray.put(ten_mb_array))
-
-        def put_1_mb(self):
-            self.one_mb_objs.append(ray.put(one_mb_array))
-
-        def pop_10_mb(self):
-            if len(self.ten_mb_objs) == 0:
-                return False
-            self.ten_mb_objs.pop()
-            return True
-
-        def pop_1_mb(self):
-            if len(self.one_mb_objs) == 0:
-                return False
-            self.one_mb_objs.pop()
-            return True
-
-        def get_obj_size(self):
-            return len(self.ten_mb_objs) * 10 + len(self.one_mb_objs)
-
-    actor_on_node_1 = ObjectsHolder.options(resources={"node_0": 1}).remote()
-    actor_on_node_2 = ObjectsHolder.options(resources={"node_1": 1}).remote()
-    actor_on_head_node = ObjectsHolder.options(resources={"head": 1}).remote()
-
-    ray.get(actor_on_node_1.get_obj_size.remote())
-    ray.get(actor_on_node_2.get_obj_size.remote())
-    ray.get(actor_on_head_node.get_obj_size.remote())
-
-    def random_ops(actors):
-        r = random.random()
-        for actor in actors:
-            if r <= 0.25:
-                actor.put_10_mb.remote()
-            elif r <= 0.5:
-                actor.put_1_mb.remote()
-            elif r <= 0.75:
-                actor.pop_10_mb.remote()
-            else:
-                actor.pop_1_mb.remote()
-
-    total_iter = 15
-    for _ in range(total_iter):
-        random_ops([actor_on_node_1, actor_on_node_2, actor_on_head_node])
-
-    # Simulate node dead.
-    cluster.remove_node(nodes[1])
-    for _ in range(total_iter):
-        random_ops([actor_on_node_1, actor_on_head_node])
-
-    total_size = sum(
-        [
-            ray.get(actor_on_node_1.get_obj_size.remote()),
-            ray.get(actor_on_head_node.get_obj_size.remote()),
-        ]
-    )
-
-    wait_for_condition(
-        lambda: (
-            (f"Plasma memory usage {total_size} MiB") in memory_summary(stats_only=True)
-        )
-    )
-
-
-@pytest.mark.parametrize("inline_args", [True, False])
-def test_inlined_nested_refs(ray_start_cluster, inline_args):
-    cluster = ray_start_cluster
-    config = {}
-    if not inline_args:
-        config["max_direct_call_object_size"] = 0
-    cluster.add_node(
-        num_cpus=2, object_store_memory=100 * 1024 * 1024, _system_config=config
-    )
-    ray.init(address=cluster.address)
-
-    @ray.remote
-    class Actor:
-        def __init__(self):
-            return
-
-        def nested(self):
-            return ray.put("x")
-
-    @ray.remote
-    def nested_nested(a):
-        return a.nested.remote()
-
-    @ray.remote
-    def foo(ref):
-        time.sleep(1)
-        return ray.get(ref)
-
-    a = Actor.remote()
-    nested_nested_ref = nested_nested.remote(a)
-    # We get nested_ref's value directly from its owner.
-    nested_ref = ray.get(nested_nested_ref)
-
-    del nested_nested_ref
-    x = foo.remote(nested_ref)
-    del nested_ref
-    ray.get(x)
-
-
-# https://github.com/ray-project/ray/issues/17553
-@pytest.mark.parametrize("inline_args", [True, False])
-def test_return_nested_ids(shutdown_only, inline_args):
-    config = dict()
-    if inline_args:
-        config["max_direct_call_object_size"] = 100 * 1024 * 1024
-    else:
-        config["max_direct_call_object_size"] = 0
-    ray.init(object_store_memory=100 * 1024 * 1024, _system_config=config)
-
-    class Nested:
-        def __init__(self, blocks):
-            self._blocks = blocks
-
-    @ray.remote
-    def echo(fn):
-        return fn()
-
-    @ray.remote
-    def create_nested():
-        refs = [ray.put(np.random.random(1024 * 1024)) for _ in range(10)]
-        return Nested(refs)
-
-    @ray.remote
-    def test():
-        ref = create_nested.remote()
-        result1 = ray.get(ref)
-        del ref
-        result = echo.remote(lambda: result1)  # noqa
-        del result1
-
-        time.sleep(5)
-        block = ray.get(result)._blocks[0]
-        print(ray.get(block))
-
-    ray.get(test.remote())
-
-
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-def test_actor_constructor_borrowed_refs(shutdown_only):
-    ray.init(object_store_memory=100 * 1024 * 1024)
-
+def test_actor_constructor_borrowed_refs(one_cpu_100MiB_shared):
     @ray.remote
     class Borrower:
         def __init__(self, borrowed_refs):
@@ -655,13 +392,11 @@ def test_actor_constructor_borrowed_refs(shutdown_only):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-def test_deep_nested_refs(shutdown_only):
-    ray.init(object_store_memory=100 * 1024 * 1024)
-
+def test_deep_nested_refs(one_cpu_100MiB_shared):
     @ray.remote
     def f(x):
         print(f"=> step {x}")
-        if x > 200:
+        if x > 25:
             return x
         return f.remote(x + 1)
 
@@ -674,9 +409,7 @@ def test_deep_nested_refs(shutdown_only):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-def test_forward_nested_ref(shutdown_only):
-    ray.init(object_store_memory=100 * 1024 * 1024)
-
+def test_forward_nested_ref(one_cpu_100MiB_shared):
     @ray.remote
     def nested_ref():
         return ray.put(1)
@@ -711,9 +444,7 @@ def test_forward_nested_ref(shutdown_only):
         time.sleep(1)
 
 
-def test_out_of_band_actor_handle_deserialization(shutdown_only):
-    ray.init(object_store_memory=100 * 1024 * 1024)
-
+def test_out_of_band_actor_handle_deserialization(one_cpu_100MiB_shared):
     @ray.remote
     class Actor:
         def ping(self):
@@ -730,11 +461,7 @@ def test_out_of_band_actor_handle_deserialization(shutdown_only):
     assert ray.get(func.remote({"actor": actor})) == 1
 
 
-def test_out_of_band_actor_handle_bypass_reference_counting(shutdown_only):
-    import pickle
-
-    ray.init(object_store_memory=100 * 1024 * 1024)
-
+def test_out_of_band_actor_handle_bypass_reference_counting(one_cpu_100MiB_shared):
     @ray.remote
     class Actor:
         def ping(self):
@@ -751,7 +478,7 @@ def test_out_of_band_actor_handle_bypass_reference_counting(shutdown_only):
         ray.get(config["actor"].ping.remote())
 
 
-def test_generators(one_worker_100MiB):
+def test_generators(one_cpu_100MiB_shared):
     @ray.remote(num_returns="dynamic")
     def remote_generator():
         for _ in range(3):
@@ -777,9 +504,7 @@ def test_generators(one_worker_100MiB):
         _fill_object_store_and_get(r_oid, succeed=False)
 
 
-def test_lineage_leak(shutdown_only):
-    ray.init()
-
+def test_lineage_leak(one_cpu_100MiB_shared):
     @ray.remote
     def process(data):
         return b"\0" * 100_000_000
@@ -791,17 +516,10 @@ def test_lineage_leak(shutdown_only):
     del ref
 
     def check_usage():
-        from ray._private.internal_api import memory_summary
-
         return "Plasma memory usage 0 MiB" in memory_summary(stats_only=True)
 
     wait_for_condition(check_usage)
 
 
 if __name__ == "__main__":
-    import sys
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

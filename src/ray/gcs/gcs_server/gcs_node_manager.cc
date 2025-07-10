@@ -25,7 +25,6 @@
 #include "ray/gcs/pb_util.h"
 #include "ray/stats/stats.h"
 #include "ray/util/event.h"
-#include "ray/util/event_label.h"
 #include "ray/util/logging.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
@@ -296,7 +295,7 @@ void GcsNodeManager::HandleGetAllNodeInfo(rpc::GetAllNodeInfoRequest request,
   ++counts_[CountType::GET_ALL_NODE_INFO_REQUEST];
 }
 
-absl::optional<std::shared_ptr<rpc::GcsNodeInfo>> GcsNodeManager::GetAliveNode(
+std::optional<std::shared_ptr<rpc::GcsNodeInfo>> GcsNodeManager::GetAliveNode(
     const ray::NodeID &node_id) const {
   auto iter = alive_nodes_.find(node_id);
   if (iter == alive_nodes_.end()) {
@@ -408,7 +407,7 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
           << " has missed too many heartbeats from it. This can happen when a "
              "\t(1) raylet crashes unexpectedly (OOM, etc.) \n"
           << "\t(2) raylet has lagging heartbeats due to slow network or busy workload.";
-      RAY_EVENT(ERROR, EL_RAY_NODE_REMOVED)
+      RAY_EVENT(ERROR, "RAY_NODE_REMOVED")
               .WithField("node_id", node_id.Hex())
               .WithField("ip", removed_node->node_manager_address())
           << error_message.str();

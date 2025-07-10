@@ -1,9 +1,9 @@
 from typing import TYPE_CHECKING, Any, Dict, Optional
-from ray.util.annotations import PublicAPI
 
 from ray.train import Checkpoint
 from ray.train.v2._internal.execution.context import get_train_context
 from ray.train.v2.api.context import TrainContext
+from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.data import DataIterator
@@ -81,6 +81,11 @@ def report(
     Args:
         metrics: The metrics you want to report.
         checkpoint: The optional checkpoint you want to report.
+        checkpoint_dir_name: Custom name for the checkpoint directory.
+            If not provided, a unique directory name will be automatically generated.
+            If provided, it must be unique across all checkpoints per worker to avoid
+            naming collisions. Consider including identifiers such as the epoch or batch
+            index in the name.
     """
 
     get_train_context().report(
@@ -97,7 +102,7 @@ def get_context() -> TrainContext:
     See the :class:`~ray.train.TrainContext` API reference to see available methods.
     """
     # TODO: Return a dummy train context on the controller and driver process
-    # instead of raising an exception the the train context does not exist.
+    # instead of raising an exception if the train context does not exist.
     return TrainContext()
 
 

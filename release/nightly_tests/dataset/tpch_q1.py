@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 from typing import Dict
 
 import numpy as np
+import pandas as pd
 from benchmark import Benchmark
 
 import ray
@@ -27,11 +28,9 @@ def main(args):
         # https://examples.citusdata.com/tpch_queries.html.
         (
             ray.data.read_parquet(path)
-            .filter(
-                lambda row: row["column10"]  # l_shipdate
-                <= datetime.strptime("1998-12-01", "%Y-%m-%d").date()
-                - timedelta(days=90)
-            )
+            # We filter using `map_batches` rather than `filter` because we can't
+            # express the date filter using the `expr` syntax.
+            .map_batches(filter_shipdate, batch_format="pandas")
             .map_batches(compute_disc_price)
             .map_batches(compute_charge)
             .groupby(["column08", "column09"])  # l_returnflag, l_linestatus
@@ -54,6 +53,13 @@ def main(args):
 
     benchmark.run_fn("main", benchmark_fn)
     benchmark.write_result()
+
+
+def filter_shipdate(
+    batch: pd.DataFrame,
+    target_date=datetime.strptime("1998-12-01", "%Y-%m-%d").date() - timedelta(days=90),
+) -> pd.DataFrame:
+    return batch[batch["column10"] <= target_date]
 
 
 def compute_disc_price(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:

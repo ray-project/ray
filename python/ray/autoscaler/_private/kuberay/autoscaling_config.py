@@ -28,6 +28,9 @@ UPSCALING_VALUE_CONSERVATIVE = "Conservative"
 MAX_RAYCLUSTER_FETCH_TRIES = 5
 RAYCLUSTER_FETCH_RETRY_S = 5
 
+GKE_TPU_TOPOLOGY_LABEL = "cloud.google.com/gke-tpu-topology"
+GKE_TPU_ACCELERATOR_LABEL = "cloud.google.com/gke-tpu-accelerator"
+
 # Logical group name for the KubeRay head group.
 # Used as the name of the "head node type" by the autoscaler.
 _HEAD_GROUP_NAME = "headgroup"
@@ -225,7 +228,7 @@ def _get_ray_resources_from_group_spec(
     TODO: Expose a better interface in the RayCluster CRD for Ray resource annotations.
     For now, we take the rayStartParams as the primary source of truth.
     """
-    ray_start_params = group_spec["rayStartParams"]
+    ray_start_params = group_spec.get("rayStartParams", {})
     # In KubeRay, Ray container is always the first application container of a Ray Pod.
     k8s_resources = group_spec["template"]["spec"]["containers"][0].get("resources", {})
     group_name = _HEAD_GROUP_NAME if is_head else group_spec["groupName"]
@@ -264,15 +267,27 @@ def _get_ray_resources_from_group_spec(
         resource labels on worker 0 of each replica:
             worker 0: resources = {"TPU": 4, "TPU-v4-16-head": 1}
         """
-        topology = group_spec["template"]["spec"]["nodeSelector"][
-            "cloud.google.com/gke-tpu-topology"
-        ]
-        accelerator = group_spec["template"]["spec"]["nodeSelector"][
-            "cloud.google.com/gke-tpu-accelerator"
-        ]
-        accelerator_type = utils.tpu_node_selectors_to_type(topology, accelerator)
-        if accelerator_type:
-            resources[f"TPU-{accelerator_type}-head"] = 1
+        if (
+            "nodeSelector" in group_spec["template"]["spec"]
+            and GKE_TPU_TOPOLOGY_LABEL in group_spec["template"]["spec"]["nodeSelector"]
+            and GKE_TPU_ACCELERATOR_LABEL
+            in group_spec["template"]["spec"]["nodeSelector"]
+        ):
+            topology = group_spec["template"]["spec"]["nodeSelector"][
+                GKE_TPU_TOPOLOGY_LABEL
+            ]
+            accelerator = group_spec["template"]["spec"]["nodeSelector"][
+                GKE_TPU_ACCELERATOR_LABEL
+            ]
+            accelerator_type = utils.tpu_node_selectors_to_type(topology, accelerator)
+            if accelerator_type:
+                resources[f"TPU-{accelerator_type}-head"] = 1
+        else:
+            logger.error(
+                f"Pods using TPUs require both `{GKE_TPU_TOPOLOGY_LABEL}` and `{GKE_TPU_ACCELERATOR_LABEL}` node selectors. "
+                "See https://docs.ray.io/en/latest/cluster/kubernetes/user-guides/tpu.html#configuring-ray-pods-for-tpu-usage "
+                "and https://cloud.google.com/kubernetes-engine/docs/how-to/tpus."
+            )
 
     if memory is not None:
         resources["memory"] = memory
@@ -354,14 +369,14 @@ def _get_num_gpus(
 
 
 def _get_num_tpus(
-    custom_resource_dict: Dict[str, str],
+    custom_resource_dict: Dict[str, int],
     k8s_resources: Dict[str, Dict[str, str]],
 ) -> Optional[int]:
     """Get TPU custom resource annotation from custom_resource_dict in ray_start_params,
     or k8s_resources, with priority for custom_resource_dict.
     """
     if "TPU" in custom_resource_dict:
-        return int(custom_resource_dict["TPU"])
+        return custom_resource_dict["TPU"]
     else:
         for typ in ["limits", "requests"]:
             tpu_resource_quantity = k8s_resources.get(typ, {}).get("google.com/tpu")

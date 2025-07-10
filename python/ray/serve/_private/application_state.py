@@ -1,3 +1,4 @@
+import inspect
 import json
 import logging
 import os
@@ -40,17 +41,16 @@ from ray.serve._private.utils import (
     override_runtime_envs_except_env_vars,
     validate_route_prefix,
 )
+from ray.serve.api import ASGIAppReplicaWrapper
 from ray.serve.config import AutoscalingConfig
 from ray.serve.exceptions import RayServeException
-from ray.serve.generated.serve_pb2 import ApplicationStatus as ApplicationStatusProto
 from ray.serve.generated.serve_pb2 import (
+    ApplicationStatus as ApplicationStatusProto,
     ApplicationStatusInfo as ApplicationStatusInfoProto,
-)
-from ray.serve.generated.serve_pb2 import DeploymentLanguage
-from ray.serve.generated.serve_pb2 import (
+    DeploymentLanguage,
     DeploymentStatusInfoList as DeploymentStatusInfoListProto,
+    StatusOverview as StatusOverviewProto,
 )
-from ray.serve.generated.serve_pb2 import StatusOverview as StatusOverviewProto
 from ray.serve.schema import (
     APIType,
     ApplicationStatus,
@@ -133,8 +133,9 @@ class StatusOverview:
         Args:
             name: Deployment's name.
 
-        Return (Optional[DeploymentStatusInfo]): Status with a name matching
-            the argument, if one exists. Otherwise, returns None.
+        Returns:
+            Optional[DeploymentStatusInfo]: The status of the deployment if it exists,
+                otherwise None.
         """
 
         for deployment_status in self.deployment_statuses:
@@ -263,7 +264,20 @@ class ApplicationState:
 
     @property
     def docs_path(self) -> Optional[str]:
-        return self._docs_path
+        # if the docs path is set during the deploy app task, use that
+        # TODO (abrar): this can be dropped completely in favor of the
+        # deployment state manager once we have migrated all the tests
+        # to the new API.
+        if self._docs_path is not None:
+            return self._docs_path
+
+        # else get the docs path from the running deployments
+        # we are making an assumption that the docs path can only be set
+        # on ingress deployments with fastapi.
+        ingress_deployment = DeploymentID(self._ingress_deployment_name, self._name)
+        return self._deployment_state_manager.get_deployment_docs_path(
+            ingress_deployment
+        )
 
     @property
     def status(self) -> ApplicationStatus:
@@ -314,6 +328,13 @@ class ApplicationState:
             target_capacity_direction=checkpoint_data.target_capacity_direction,
             deleting=checkpoint_data.deleting,
         )
+
+        # Restore route prefix and docs path from checkpointed deployments when
+        # the imperatively started application is restarting with controller.
+        if checkpoint_data.deployment_infos is not None:
+            self._route_prefix, self._docs_path = self._check_routes(
+                checkpoint_data.deployment_infos
+            )
 
     def _set_target_state(
         self,
@@ -456,6 +477,7 @@ class ApplicationState:
             or docs path.
         """
 
+        self._check_ingress_deployments(deployment_infos)
         # Check routes are unique in deployment infos
         self._route_prefix, self._docs_path = self._check_routes(deployment_infos)
 
@@ -495,7 +517,9 @@ class ApplicationState:
                     self._target_state.deployment_infos,
                     config,
                 )
-                self._check_routes(overrided_infos)
+                self._route_prefix, self._docs_path = self._check_routes(
+                    overrided_infos
+                )
                 self._set_target_state(
                     # Code version doesn't change.
                     code_version=self._target_state.code_version,
@@ -516,7 +540,7 @@ class ApplicationState:
                 self._update_status(
                     ApplicationStatus.DEPLOY_FAILED,
                     (
-                        f"Unexpected error occured while applying config for "
+                        f"Unexpected error occurred while applying config for "
                         f"application '{self._name}': \n{traceback.format_exc()}"
                     ),
                 )
@@ -662,7 +686,7 @@ class ApplicationState:
             return None, BuildAppStatus.FAILED, error_msg
         except Exception:
             error_msg = (
-                f"Unexpected error occured while deploying application "
+                f"Unexpected error occurred while deploying application "
                 f"'{self._name}': \n{traceback.format_exc()}"
             )
             return None, BuildAppStatus.FAILED, error_msg
@@ -685,10 +709,32 @@ class ApplicationState:
             return None, BuildAppStatus.FAILED, traceback.format_exc()
         except Exception:
             error_msg = (
-                f"Unexpected error occured while applying config for application "
+                f"Unexpected error occurred while applying config for application "
                 f"'{self._name}': \n{traceback.format_exc()}"
             )
             return None, BuildAppStatus.FAILED, error_msg
+
+    def _check_ingress_deployments(
+        self, deployment_infos: Dict[str, DeploymentInfo]
+    ) -> None:
+        """Check @serve.ingress of deployments in app.
+
+        Raises: RayServeException if more than one @serve.ingress
+            is found among deployments.
+        """
+        num_ingress_deployments = 0
+        for info in deployment_infos.values():
+            if inspect.isclass(info.replica_config.deployment_def) and issubclass(
+                info.replica_config.deployment_def, ASGIAppReplicaWrapper
+            ):
+                num_ingress_deployments += 1
+
+        if num_ingress_deployments > 1:
+            raise RayServeException(
+                f'Found multiple FastAPI deployments in application "{self._name}".'
+                "Please only include one deployment with @serve.ingress"
+                "in your application to avoid this issue."
+            )
 
     def _check_routes(
         self, deployment_infos: Dict[str, DeploymentInfo]
@@ -707,6 +753,9 @@ class ApplicationState:
         num_route_prefixes = 0
         num_docs_paths = 0
         route_prefix = None
+        # TODO(Ziy1-Tan): `docs_path` will be removed when
+        # https://github.com/ray-project/ray/issues/53023 is resolved.
+        # We can get it from DeploymentStateManager directly.
         docs_path = None
         for info in deployment_infos.values():
             # Update route prefix of application, which may be updated
@@ -1163,7 +1212,12 @@ def build_serve_application(
             name=name,
             default_runtime_env=ray.get_runtime_context().runtime_env,
         )
+        num_ingress_deployments = 0
         for deployment in built_app.deployments:
+            if inspect.isclass(deployment.func_or_class) and issubclass(
+                deployment.func_or_class, ASGIAppReplicaWrapper
+            ):
+                num_ingress_deployments += 1
             is_ingress = deployment.name == built_app.ingress_deployment_name
             deploy_args_list.append(
                 get_deploy_args(
@@ -1175,6 +1229,12 @@ def build_serve_application(
                     route_prefix="/" if is_ingress else None,
                     docs_path=deployment._docs_path,
                 )
+            )
+        if num_ingress_deployments > 1:
+            return None, (
+                f'Found multiple FastAPI deployments in application "{built_app.name}". '
+                "Please only include one deployment with @serve.ingress "
+                "in your application to avoid this issue."
             )
         return deploy_args_list, None
     except KeyboardInterrupt:
@@ -1226,7 +1286,8 @@ def override_deployment_info(
         deployment_name = options["name"]
         if deployment_name not in deployment_infos:
             raise ValueError(
-                f"Got config override for nonexistent deployment '{deployment_name}'"
+                f"Deployment '{deployment_name}' does not exist. "
+                f"Available: {list(deployment_infos.keys())}"
             )
 
         info = deployment_infos[deployment_name]

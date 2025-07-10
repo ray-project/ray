@@ -1,0 +1,4 @@
+name: "fossa-base"
+froms:
+  - cr.ray.io/rayproject/forge
+dockerfile: ci/docker/fossa.Dockerfile

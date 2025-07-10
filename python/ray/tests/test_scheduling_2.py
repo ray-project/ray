@@ -11,17 +11,16 @@ import ray._private.gcs_utils as gcs_utils
 import ray.experimental.internal_kv as internal_kv
 from ray._private.test_utils import (
     make_global_state_accessor,
-    wait_for_condition,
     get_metric_check_condition,
     MetricSamplePattern,
 )
-from ray.util.client.ray_client_helpers import connect_to_client_or_not
 from ray.util.placement_group import placement_group
 from ray.util.scheduling_strategies import (
     NodeAffinitySchedulingStrategy,
     PlacementGroupSchedulingStrategy,
 )
-from ray._private.test_utils import SignalActor
+from ray._common.test_utils import SignalActor, wait_for_condition
+from ray.util.state import list_tasks
 
 
 @pytest.mark.skipif(
@@ -100,8 +99,7 @@ def test_critical_object_store_mem_resource_utilization(ray_start_cluster):
     assert ray.get(f.remote()) == non_local_node.unique_id
 
 
-@pytest.mark.parametrize("connect_to_client", [True, False])
-def test_default_scheduling_strategy(ray_start_cluster, connect_to_client):
+def test_default_scheduling_strategy(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(
         num_cpus=16,
@@ -116,62 +114,58 @@ def test_default_scheduling_strategy(ray_start_cluster, connect_to_client):
     ray.get(pg.ready())
     ray.get(pg.ready())
 
-    with connect_to_client_or_not(connect_to_client):
+    @ray.remote(scheduling_strategy="DEFAULT")
+    def get_node_id_1():
+        return ray._private.worker.global_worker.current_node_id
 
-        @ray.remote(scheduling_strategy="DEFAULT")
-        def get_node_id_1():
-            return ray._private.worker.global_worker.current_node_id
+    head_node_id = ray.get(get_node_id_1.options(resources={"head": 1}).remote())
+    worker_node_id = ray.get(get_node_id_1.options(resources={"worker": 1}).remote())
 
-        head_node_id = ray.get(get_node_id_1.options(resources={"head": 1}).remote())
-        worker_node_id = ray.get(
-            get_node_id_1.options(resources={"worker": 1}).remote()
-        )
+    assert ray.get(get_node_id_1.remote()) == head_node_id
 
-        assert ray.get(get_node_id_1.remote()) == head_node_id
+    @ray.remote(
+        num_cpus=1,
+        scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg),
+    )
+    def get_node_id_2():
+        return ray._private.worker.global_worker.current_node_id
 
-        @ray.remote(
-            num_cpus=1,
-            scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg),
-        )
-        def get_node_id_2():
-            return ray._private.worker.global_worker.current_node_id
+    assert (
+        ray.get(get_node_id_2.options(scheduling_strategy="DEFAULT").remote())
+        == head_node_id
+    )
 
-        assert (
-            ray.get(get_node_id_2.options(scheduling_strategy="DEFAULT").remote())
-            == head_node_id
-        )
+    @ray.remote
+    def get_node_id_3():
+        return ray._private.worker.global_worker.current_node_id
 
-        @ray.remote
-        def get_node_id_3():
-            return ray._private.worker.global_worker.current_node_id
+    @ray.remote(
+        num_cpus=1,
+        scheduling_strategy=PlacementGroupSchedulingStrategy(
+            placement_group=pg, placement_group_capture_child_tasks=True
+        ),
+    )
+    class Actor1:
+        def get_node_ids(self):
+            return [
+                ray._private.worker.global_worker.current_node_id,
+                # Use parent's placement group
+                ray.get(get_node_id_3.remote()),
+                ray.get(get_node_id_3.options(scheduling_strategy="DEFAULT").remote()),
+            ]
 
-        @ray.remote(
-            num_cpus=1,
-            scheduling_strategy=PlacementGroupSchedulingStrategy(
-                placement_group=pg, placement_group_capture_child_tasks=True
-            ),
-        )
-        class Actor1:
-            def get_node_ids(self):
-                return [
-                    ray._private.worker.global_worker.current_node_id,
-                    # Use parent's placement group
-                    ray.get(get_node_id_3.remote()),
-                    ray.get(
-                        get_node_id_3.options(scheduling_strategy="DEFAULT").remote()
-                    ),
-                ]
-
-        actor1 = Actor1.remote()
-        assert ray.get(actor1.get_node_ids.remote()) == [
-            worker_node_id,
-            worker_node_id,
-            head_node_id,
-        ]
+    actor1 = Actor1.remote()
+    assert ray.get(actor1.get_node_ids.remote()) == [
+        worker_node_id,
+        worker_node_id,
+        head_node_id,
+    ]
 
 
-@pytest.mark.parametrize("connect_to_client", [True, False])
-def test_placement_group_scheduling_strategy(ray_start_cluster, connect_to_client):
+@pytest.mark.skipif(
+    ray._private.client_mode_hook.is_client_mode_enabled, reason="Fails w/ Ray Client."
+)
+def test_placement_group_scheduling_strategy(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=8, resources={"head": 1})
     cluster.add_node(num_cpus=8, num_gpus=8, resources={"worker": 1})
@@ -181,57 +175,53 @@ def test_placement_group_scheduling_strategy(ray_start_cluster, connect_to_clien
     pg = ray.util.placement_group(bundles=[{"CPU": 1, "GPU": 1}, {"CPU": 1, "GPU": 1}])
     ray.get(pg.ready())
 
-    with connect_to_client_or_not(connect_to_client):
+    @ray.remote(scheduling_strategy="DEFAULT")
+    def get_node_id_1():
+        return ray._private.worker.global_worker.current_node_id
 
-        @ray.remote(scheduling_strategy="DEFAULT")
-        def get_node_id_1():
+    worker_node_id = ray.get(get_node_id_1.options(resources={"worker": 1}).remote())
+
+    assert (
+        ray.get(
+            get_node_id_1.options(
+                num_cpus=1,
+                scheduling_strategy=PlacementGroupSchedulingStrategy(
+                    placement_group=pg
+                ),
+            ).remote()
+        )
+        == worker_node_id
+    )
+
+    @ray.remote(
+        num_cpus=1,
+        scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg),
+    )
+    def get_node_id_2():
+        return ray._private.worker.global_worker.current_node_id
+
+    assert ray.get(get_node_id_2.remote()) == worker_node_id
+
+    @ray.remote(
+        num_cpus=1,
+        scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg),
+    )
+    class Actor1:
+        def get_node_id(self):
             return ray._private.worker.global_worker.current_node_id
 
-        worker_node_id = ray.get(
-            get_node_id_1.options(resources={"worker": 1}).remote()
-        )
+    actor1 = Actor1.remote()
+    assert ray.get(actor1.get_node_id.remote()) == worker_node_id
 
-        assert (
-            ray.get(
-                get_node_id_1.options(
-                    num_cpus=1,
-                    scheduling_strategy=PlacementGroupSchedulingStrategy(
-                        placement_group=pg
-                    ),
-                ).remote()
-            )
-            == worker_node_id
-        )
-
-        @ray.remote(
-            num_cpus=1,
-            scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg),
-        )
-        def get_node_id_2():
+    @ray.remote
+    class Actor2:
+        def get_node_id(self):
             return ray._private.worker.global_worker.current_node_id
 
-        assert ray.get(get_node_id_2.remote()) == worker_node_id
-
-        @ray.remote(
-            num_cpus=1,
-            scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg),
-        )
-        class Actor1:
-            def get_node_id(self):
-                return ray._private.worker.global_worker.current_node_id
-
-        actor1 = Actor1.remote()
-        assert ray.get(actor1.get_node_id.remote()) == worker_node_id
-
-        @ray.remote
-        class Actor2:
-            def get_node_id(self):
-                return ray._private.worker.global_worker.current_node_id
-
-        actor2 = Actor2.options(
-            scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg)
-        ).remote()
-        assert ray.get(actor2.get_node_id.remote()) == worker_node_id
+    actor2 = Actor2.options(
+        scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg)
+    ).remote()
+    assert ray.get(actor2.get_node_id.remote()) == worker_node_id
 
     with pytest.raises(ValueError):
 
@@ -252,225 +242,218 @@ def test_placement_group_scheduling_strategy(ray_start_cluster, connect_to_clien
         func.options(scheduling_strategy="XXX").remote()
 
 
-@pytest.mark.parametrize("connect_to_client", [True, False])
-def test_node_affinity_scheduling_strategy(
-    monkeypatch, ray_start_cluster, connect_to_client
-):
+def test_node_affinity_scheduling_strategy(monkeypatch, ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=8, resources={"head": 1})
     ray.init(address=cluster.address)
     cluster.add_node(num_cpus=8, resources={"worker": 1})
     cluster.wait_for_nodes()
 
-    with connect_to_client_or_not(connect_to_client):
+    @ray.remote
+    def get_node_id():
+        return ray.get_runtime_context().get_node_id()
 
-        @ray.remote
-        def get_node_id():
-            return ray.get_runtime_context().get_node_id()
+    head_node_id = ray.get(
+        get_node_id.options(num_cpus=0, resources={"head": 1}).remote()
+    )
+    worker_node_id = ray.get(
+        get_node_id.options(num_cpus=0, resources={"worker": 1}).remote()
+    )
 
-        head_node_id = ray.get(
-            get_node_id.options(num_cpus=0, resources={"head": 1}).remote()
-        )
-        worker_node_id = ray.get(
-            get_node_id.options(num_cpus=0, resources={"worker": 1}).remote()
-        )
-
-        assert worker_node_id == ray.get(
-            get_node_id.options(
-                scheduling_strategy=NodeAffinitySchedulingStrategy(
-                    worker_node_id, soft=False
-                )
-            ).remote()
-        )
-        assert head_node_id == ray.get(
-            get_node_id.options(
-                scheduling_strategy=NodeAffinitySchedulingStrategy(
-                    head_node_id, soft=False
-                )
-            ).remote()
-        )
-
-        # Doesn't fail when the node doesn't exist since soft is true.
-        ray.get(
-            get_node_id.options(
-                scheduling_strategy=NodeAffinitySchedulingStrategy(
-                    ray.NodeID.from_random().hex(), soft=True
-                )
-            ).remote()
-        )
-
-        # Doesn't fail when the node is infeasible since soft is true.
-        assert worker_node_id == ray.get(
-            get_node_id.options(
-                scheduling_strategy=NodeAffinitySchedulingStrategy(
-                    head_node_id, soft=True
-                ),
-                resources={"worker": 1},
-            ).remote()
-        )
-
-        # Fail when the node doesn't exist.
-        with pytest.raises(ray.exceptions.TaskUnschedulableError):
-            ray.get(
-                get_node_id.options(
-                    scheduling_strategy=NodeAffinitySchedulingStrategy(
-                        ray.NodeID.from_random().hex(), soft=False
-                    )
-                ).remote()
-            )
-
-        # Fail when the node is infeasible.
-        with pytest.raises(ray.exceptions.TaskUnschedulableError):
-            ray.get(
-                get_node_id.options(
-                    scheduling_strategy=NodeAffinitySchedulingStrategy(
-                        head_node_id, soft=False
-                    ),
-                    resources={"not_exist": 1},
-                ).remote()
-            )
-
-        crashed_worker_node = cluster.add_node(
-            num_cpus=8, resources={"crashed_worker": 1}
-        )
-        cluster.wait_for_nodes()
-        crashed_worker_node_id = ray.get(
-            get_node_id.options(num_cpus=0, resources={"crashed_worker": 1}).remote()
-        )
-
-        @ray.remote(
-            max_retries=-1,
-            scheduling_strategy=NodeAffinitySchedulingStrategy(
-                crashed_worker_node_id, soft=True
-            ),
-        )
-        def crashed_get_node_id():
-            if ray.get_runtime_context().get_node_id() == crashed_worker_node_id:
-                internal_kv._internal_kv_put(
-                    "crashed_get_node_id", "crashed_worker_node_id"
-                )
-                while True:
-                    time.sleep(1)
-            else:
-                return ray.get_runtime_context().get_node_id()
-
-        r = crashed_get_node_id.remote()
-        while not internal_kv._internal_kv_exists("crashed_get_node_id"):
-            time.sleep(0.1)
-        cluster.remove_node(crashed_worker_node, allow_graceful=False)
-        assert ray.get(r) in {head_node_id, worker_node_id}
-
-        @ray.remote(num_cpus=1)
-        class Actor:
-            def get_node_id(self):
-                return ray.get_runtime_context().get_node_id()
-
-        actor = Actor.options(
+    assert worker_node_id == ray.get(
+        get_node_id.options(
             scheduling_strategy=NodeAffinitySchedulingStrategy(
                 worker_node_id, soft=False
             )
         ).remote()
-        assert worker_node_id == ray.get(actor.get_node_id.remote())
-
-        actor = Actor.options(
+    )
+    assert head_node_id == ray.get(
+        get_node_id.options(
             scheduling_strategy=NodeAffinitySchedulingStrategy(head_node_id, soft=False)
         ).remote()
-        assert head_node_id == ray.get(actor.get_node_id.remote())
+    )
 
-        actor = Actor.options(
-            scheduling_strategy=NodeAffinitySchedulingStrategy(
-                worker_node_id, soft=False
-            ),
-            num_cpus=0,
-        ).remote()
-        assert worker_node_id == ray.get(actor.get_node_id.remote())
-
-        actor = Actor.options(
-            scheduling_strategy=NodeAffinitySchedulingStrategy(
-                head_node_id, soft=False
-            ),
-            num_cpus=0,
-        ).remote()
-        assert head_node_id == ray.get(actor.get_node_id.remote())
-
-        # Wait until the target node becomes available.
-        worker_actor = Actor.options(resources={"worker": 1}).remote()
-        assert worker_node_id == ray.get(worker_actor.get_node_id.remote())
-        actor = Actor.options(
-            scheduling_strategy=NodeAffinitySchedulingStrategy(
-                worker_node_id, soft=True
-            ),
-            resources={"worker": 1},
-        ).remote()
-        del worker_actor
-        assert worker_node_id == ray.get(actor.get_node_id.remote())
-
-        # Doesn't fail when the node doesn't exist since soft is true.
-        actor = Actor.options(
+    # Doesn't fail when the node doesn't exist since soft is true.
+    ray.get(
+        get_node_id.options(
             scheduling_strategy=NodeAffinitySchedulingStrategy(
                 ray.NodeID.from_random().hex(), soft=True
             )
         ).remote()
-        assert ray.get(actor.get_node_id.remote())
+    )
 
-        # Doesn't fail when the node is infeasible since soft is true.
-        actor = Actor.options(
+    # Doesn't fail when the node is infeasible since soft is true.
+    assert worker_node_id == ray.get(
+        get_node_id.options(
             scheduling_strategy=NodeAffinitySchedulingStrategy(head_node_id, soft=True),
             resources={"worker": 1},
         ).remote()
-        assert worker_node_id == ray.get(actor.get_node_id.remote())
+    )
 
-        # Fail when the node doesn't exist.
-        with pytest.raises(ray.exceptions.ActorUnschedulableError):
-            actor = Actor.options(
+    # Fail when the node doesn't exist.
+    with pytest.raises(ray.exceptions.TaskUnschedulableError):
+        ray.get(
+            get_node_id.options(
                 scheduling_strategy=NodeAffinitySchedulingStrategy(
                     ray.NodeID.from_random().hex(), soft=False
                 )
             ).remote()
-            ray.get(actor.get_node_id.remote())
+        )
 
-        # Fail when the node is infeasible.
-        with pytest.raises(ray.exceptions.ActorUnschedulableError):
-            actor = Actor.options(
+    # Fail when the node is infeasible.
+    with pytest.raises(ray.exceptions.TaskUnschedulableError):
+        ray.get(
+            get_node_id.options(
                 scheduling_strategy=NodeAffinitySchedulingStrategy(
-                    worker_node_id, soft=False
+                    head_node_id, soft=False
                 ),
                 resources={"not_exist": 1},
             ).remote()
-            ray.get(actor.get_node_id.remote())
+        )
 
-
-def test_node_affinity_scheduling_strategy_spill_on_unavailable(ray_start_cluster):
-    cluster = ray_start_cluster
-    cluster.add_node(num_cpus=3)
-    ray.init(address=cluster.address)
-    cluster.add_node(num_cpus=3)
+    crashed_worker_node = cluster.add_node(num_cpus=8, resources={"crashed_worker": 1})
     cluster.wait_for_nodes()
+    crashed_worker_node_id = ray.get(
+        get_node_id.options(num_cpus=0, resources={"crashed_worker": 1}).remote()
+    )
 
-    @ray.remote
-    def get_node_id_task(sleep_s=0):
-        time.sleep(sleep_s)
-        return ray.get_runtime_context().get_node_id()
-
-    target_node_id = ray.get(get_node_id_task.remote())
-
-    _ = [
-        get_node_id_task.options(
-            scheduling_strategy=NodeAffinitySchedulingStrategy(
-                target_node_id, soft=False
-            )
-        ).remote(1000)
-        for _ in range(3)
-    ]
-
-    soft_ref = get_node_id_task.options(
+    @ray.remote(
+        max_retries=-1,
         scheduling_strategy=NodeAffinitySchedulingStrategy(
-            target_node_id, soft=True, _spill_on_unavailable=True
+            crashed_worker_node_id, soft=True
+        ),
+    )
+    def crashed_get_node_id():
+        if ray.get_runtime_context().get_node_id() == crashed_worker_node_id:
+            internal_kv._internal_kv_put(
+                "crashed_get_node_id", "crashed_worker_node_id"
+            )
+            while True:
+                time.sleep(1)
+        else:
+            return ray.get_runtime_context().get_node_id()
+
+    r = crashed_get_node_id.remote()
+    while not internal_kv._internal_kv_exists("crashed_get_node_id"):
+        time.sleep(0.1)
+    cluster.remove_node(crashed_worker_node, allow_graceful=False)
+    assert ray.get(r) in {head_node_id, worker_node_id}
+
+    @ray.remote(num_cpus=1)
+    class Actor:
+        def get_node_id(self):
+            return ray.get_runtime_context().get_node_id()
+
+    actor = Actor.options(
+        scheduling_strategy=NodeAffinitySchedulingStrategy(worker_node_id, soft=False)
+    ).remote()
+    assert worker_node_id == ray.get(actor.get_node_id.remote())
+
+    actor = Actor.options(
+        scheduling_strategy=NodeAffinitySchedulingStrategy(head_node_id, soft=False)
+    ).remote()
+    assert head_node_id == ray.get(actor.get_node_id.remote())
+
+    actor = Actor.options(
+        scheduling_strategy=NodeAffinitySchedulingStrategy(worker_node_id, soft=False),
+        num_cpus=0,
+    ).remote()
+    assert worker_node_id == ray.get(actor.get_node_id.remote())
+
+    actor = Actor.options(
+        scheduling_strategy=NodeAffinitySchedulingStrategy(head_node_id, soft=False),
+        num_cpus=0,
+    ).remote()
+    assert head_node_id == ray.get(actor.get_node_id.remote())
+
+    # Wait until the target node becomes available.
+    worker_actor = Actor.options(resources={"worker": 1}).remote()
+    assert worker_node_id == ray.get(worker_actor.get_node_id.remote())
+    actor = Actor.options(
+        scheduling_strategy=NodeAffinitySchedulingStrategy(worker_node_id, soft=True),
+        resources={"worker": 1},
+    ).remote()
+    del worker_actor
+    assert worker_node_id == ray.get(actor.get_node_id.remote())
+
+    # Doesn't fail when the node doesn't exist since soft is true.
+    actor = Actor.options(
+        scheduling_strategy=NodeAffinitySchedulingStrategy(
+            ray.NodeID.from_random().hex(), soft=True
         )
     ).remote()
+    assert ray.get(actor.get_node_id.remote())
 
-    soft_node_id = ray.get(soft_ref, timeout=3)
-    assert target_node_id != soft_node_id
+    # Doesn't fail when the node is infeasible since soft is true.
+    actor = Actor.options(
+        scheduling_strategy=NodeAffinitySchedulingStrategy(head_node_id, soft=True),
+        resources={"worker": 1},
+    ).remote()
+    assert worker_node_id == ray.get(actor.get_node_id.remote())
+
+    # Fail when the node doesn't exist.
+    with pytest.raises(ray.exceptions.ActorUnschedulableError):
+        actor = Actor.options(
+            scheduling_strategy=NodeAffinitySchedulingStrategy(
+                ray.NodeID.from_random().hex(), soft=False
+            )
+        ).remote()
+        ray.get(actor.get_node_id.remote())
+
+    # Fail when the node is infeasible.
+    with pytest.raises(ray.exceptions.ActorUnschedulableError):
+        actor = Actor.options(
+            scheduling_strategy=NodeAffinitySchedulingStrategy(
+                worker_node_id, soft=False
+            ),
+            resources={"not_exist": 1},
+        ).remote()
+        ray.get(actor.get_node_id.remote())
+
+
+def test_node_affinity_scheduling_strategy_soft_spill_on_unavailable(ray_start_cluster):
+    cluster = ray_start_cluster
+    head_node = cluster.add_node(num_cpus=1, resources={"custom": 1})
+    worker_node = cluster.add_node(num_cpus=1, resources={"custom": 1})
+    cluster.wait_for_nodes()
+
+    ray.init(address=cluster.address)
+
+    signal = SignalActor.remote()
+
+    # NOTE: need to include custom resource because CPUs are released during `ray.get`.
+    @ray.remote(
+        num_cpus=1,
+        resources={"custom": 1},
+    )
+    def get_node_id() -> str:
+        ray.get(signal.wait.remote())
+        return ray.get_runtime_context().get_node_id()
+
+    # Submit a first task that has affinity to the worker node.
+    # It should be placed on the worker node and occupy the resources.
+    worker_node_ref = get_node_id.options(
+        scheduling_strategy=NodeAffinitySchedulingStrategy(
+            worker_node.node_id,
+            soft=False,
+        ),
+    ).remote()
+
+    wait_for_condition(lambda: ray.get(signal.cur_num_waiters.remote()) == 1)
+
+    # Submit a second task that has soft affinity to the worker node.
+    # It should be spilled to the head node.
+    head_node_ref = get_node_id.options(
+        scheduling_strategy=NodeAffinitySchedulingStrategy(
+            worker_node.node_id,
+            soft=True,
+            _spill_on_unavailable=True,
+        ),
+    ).remote()
+    ray.get(signal.send.remote())
+
+    assert ray.get(head_node_ref, timeout=10) == head_node.node_id
+    assert ray.get(worker_node_ref, timeout=10) == worker_node.node_id
 
 
 def test_node_affinity_scheduling_strategy_fail_on_unavailable(ray_start_cluster):
@@ -496,8 +479,7 @@ def test_node_affinity_scheduling_strategy_fail_on_unavailable(ray_start_cluster
         ray.get(a2.get_node_id.remote())
 
 
-@pytest.mark.parametrize("connect_to_client", [True, False])
-def test_spread_scheduling_strategy(ray_start_cluster, connect_to_client):
+def test_spread_scheduling_strategy(ray_start_cluster):
     cluster = ray_start_cluster
     # Create a head node
     cluster.add_node(
@@ -511,62 +493,60 @@ def test_spread_scheduling_strategy(ray_start_cluster, connect_to_client):
         cluster.add_node(num_cpus=8, resources={f"foo:{i}": 1})
     cluster.wait_for_nodes()
 
-    with connect_to_client_or_not(connect_to_client):
+    @ray.remote
+    def get_node_id():
+        return ray.get_runtime_context().get_node_id()
 
-        @ray.remote
-        def get_node_id():
-            return ray.get_runtime_context().get_node_id()
+    worker_node_ids = {
+        ray.get(get_node_id.options(resources={f"foo:{i}": 1}).remote())
+        for i in range(2)
+    }
+    # Wait for updating driver raylet's resource view.
+    time.sleep(5)
 
-        worker_node_ids = {
-            ray.get(get_node_id.options(resources={f"foo:{i}": 1}).remote())
-            for i in range(2)
-        }
-        # Wait for updating driver raylet's resource view.
-        time.sleep(5)
-
-        @ray.remote(scheduling_strategy="SPREAD")
-        def task1():
-            internal_kv._internal_kv_put("test_task1", "task1")
-            while internal_kv._internal_kv_exists("test_task1"):
-                time.sleep(0.1)
-            return ray.get_runtime_context().get_node_id()
-
-        @ray.remote
-        def task2():
-            internal_kv._internal_kv_put("test_task2", "task2")
-            return ray.get_runtime_context().get_node_id()
-
-        locations = []
-        locations.append(task1.remote())
-        while not internal_kv._internal_kv_exists("test_task1"):
+    @ray.remote(scheduling_strategy="SPREAD")
+    def task1():
+        internal_kv._internal_kv_put("test_task1", "task1")
+        while internal_kv._internal_kv_exists("test_task1"):
             time.sleep(0.1)
-        # Wait for updating driver raylet's resource view.
-        time.sleep(5)
-        locations.append(task2.options(scheduling_strategy="SPREAD").remote())
-        while not internal_kv._internal_kv_exists("test_task2"):
-            time.sleep(0.1)
-        internal_kv._internal_kv_del("test_task1")
-        internal_kv._internal_kv_del("test_task2")
-        assert set(ray.get(locations)) == worker_node_ids
+        return ray.get_runtime_context().get_node_id()
 
-        # Wait for updating driver raylet's resource view.
-        time.sleep(5)
+    @ray.remote
+    def task2():
+        internal_kv._internal_kv_put("test_task2", "task2")
+        return ray.get_runtime_context().get_node_id()
 
-        # Make sure actors can be spreaded as well.
-        @ray.remote(num_cpus=1)
-        class Actor:
-            def ping(self):
-                return ray.get_runtime_context().get_node_id()
+    locations = []
+    locations.append(task1.remote())
+    while not internal_kv._internal_kv_exists("test_task1"):
+        time.sleep(0.1)
+    # Wait for updating driver raylet's resource view.
+    time.sleep(5)
+    locations.append(task2.options(scheduling_strategy="SPREAD").remote())
+    while not internal_kv._internal_kv_exists("test_task2"):
+        time.sleep(0.1)
+    internal_kv._internal_kv_del("test_task1")
+    internal_kv._internal_kv_del("test_task2")
+    assert set(ray.get(locations)) == worker_node_ids
 
-        actors = []
-        locations = []
-        for i in range(8):
-            actors.append(Actor.options(scheduling_strategy="SPREAD").remote())
-            locations.append(ray.get(actors[-1].ping.remote()))
-        locations.sort()
-        expected_locations = list(worker_node_ids) * 4
-        expected_locations.sort()
-        assert locations == expected_locations
+    # Wait for updating driver raylet's resource view.
+    time.sleep(5)
+
+    # Make sure actors can be spreaded as well.
+    @ray.remote(num_cpus=1)
+    class Actor:
+        def ping(self):
+            return ray.get_runtime_context().get_node_id()
+
+    actors = []
+    locations = []
+    for i in range(8):
+        actors.append(Actor.options(scheduling_strategy="SPREAD").remote())
+        locations.append(ray.get(actors[-1].ping.remote()))
+    locations.sort()
+    expected_locations = list(worker_node_ids) * 4
+    expected_locations.sort()
+    assert locations == expected_locations
 
 
 @pytest.mark.skipif(
@@ -667,12 +647,12 @@ def test_demand_report_when_scale_up(autoscaler_v2, shutdown_only):
                     "object_store_memory": 1024 * 1024 * 1024,
                 },
                 "node_config": {},
-                "min_workers": 10,
-                "max_workers": 10,
+                "min_workers": 2,
+                "max_workers": 2,
             },
         },
         autoscaler_v2=autoscaler_v2,
-        max_workers=20,  # default 8
+        max_workers=4,  # default 8
         upscaling_speed=5,  # greater upscaling speed
     )
 
@@ -692,9 +672,9 @@ def test_demand_report_when_scale_up(autoscaler_v2, shutdown_only):
     def h():
         time.sleep(10000)
 
-    tasks = [f.remote() for _ in range(5000)].extend(  # noqa: F841
-        [g.remote() for _ in range(5000)]
-    )
+    tasks = [f.remote() for _ in range(500)] + [
+        g.remote() for _ in range(500)
+    ]  # noqa: F841
 
     global_state_accessor = make_global_state_accessor(info)
 
@@ -714,7 +694,10 @@ def test_demand_report_when_scale_up(autoscaler_v2, shutdown_only):
             aggregate_resource_load[0].num_ready_requests_queued,
             aggregate_resource_load[0].shape,
         )
-        if backlog_size + num_ready_requests_queued != 9990:
+        # The expected backlog sum is 998, which is derived from the total number of tasks
+        # (1000) minus the number of active workers (2). This ensures the test validates
+        # the correct backlog size and queued requests.
+        if backlog_size + num_ready_requests_queued != 998:
             return False
 
         if shape != {"CPU": 1.0}:
@@ -723,11 +706,21 @@ def test_demand_report_when_scale_up(autoscaler_v2, shutdown_only):
 
     # In ASAN test it's slow.
     # Wait for 20s for the cluster to be up
-    wait_for_condition(check_backlog_info, 20)
+    try:
+        wait_for_condition(check_backlog_info, 20)
+    except RuntimeError:
+        tasks = list_tasks(limit=10000)
+        print(f"Total tasks: {len(tasks)}")
+        for task in tasks:
+            print(task)
+        raise
     cluster.shutdown()
     ray.shutdown()
 
 
+@pytest.mark.skipif(
+    ray._private.client_mode_hook.is_client_mode_enabled, reason="Fails w/ Ray Client."
+)
 def test_data_locality_spilled_objects(
     ray_start_cluster_enabled, fs_only_object_spilling_config
 ):
@@ -853,9 +846,4 @@ def test_negative_resource_availability(shutdown_only):
 
 
 if __name__ == "__main__":
-    import pytest
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

@@ -97,19 +97,19 @@ void DependencyManager::StartOrUpdateWaitRequest(
 
 void DependencyManager::CancelWaitRequest(const WorkerID &worker_id) {
   RAY_LOG(DEBUG) << "Canceling wait request for worker " << worker_id;
-  auto it = wait_requests_.find(worker_id);
-  if (it == wait_requests_.end()) {
+  auto req_iter = wait_requests_.find(worker_id);
+  if (req_iter == wait_requests_.end()) {
     return;
   }
 
-  for (const auto &obj_id : it->second) {
-    auto it = required_objects_.find(obj_id);
-    RAY_CHECK(it != required_objects_.end());
-    it->second.dependent_wait_requests.erase(worker_id);
-    RemoveObjectIfNotNeeded(it);
+  for (const auto &obj_id : req_iter->second) {
+    auto obj_iter = required_objects_.find(obj_id);
+    RAY_CHECK(obj_iter != required_objects_.end());
+    obj_iter->second.dependent_wait_requests.erase(worker_id);
+    RemoveObjectIfNotNeeded(obj_iter);
   }
 
-  wait_requests_.erase(it);
+  wait_requests_.erase(req_iter);
 }
 
 void DependencyManager::StartOrUpdateGetRequest(
@@ -152,23 +152,23 @@ void DependencyManager::StartOrUpdateGetRequest(
 
 void DependencyManager::CancelGetRequest(const WorkerID &worker_id) {
   RAY_LOG(DEBUG) << "Canceling get request for worker " << worker_id;
-  auto it = get_requests_.find(worker_id);
-  if (it == get_requests_.end()) {
+  auto req_iter = get_requests_.find(worker_id);
+  if (req_iter == get_requests_.end()) {
     return;
   }
 
   RAY_LOG(DEBUG) << "Canceling pull for get request from worker " << worker_id
-                 << " request: " << it->second.second;
-  object_manager_.CancelPull(it->second.second);
+                 << " request: " << req_iter->second.second;
+  object_manager_.CancelPull(req_iter->second.second);
 
-  for (const auto &obj_id : it->second.first) {
-    auto it = required_objects_.find(obj_id);
-    RAY_CHECK(it != required_objects_.end());
-    it->second.dependent_get_requests.erase(worker_id);
-    RemoveObjectIfNotNeeded(it);
+  for (const auto &obj_id : req_iter->second.first) {
+    auto obj_iter = required_objects_.find(obj_id);
+    RAY_CHECK(obj_iter != required_objects_.end());
+    obj_iter->second.dependent_get_requests.erase(worker_id);
+    RemoveObjectIfNotNeeded(obj_iter);
   }
 
-  get_requests_.erase(it);
+  get_requests_.erase(req_iter);
 }
 
 /// Request dependencies for a queued task.

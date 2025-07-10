@@ -7,7 +7,7 @@ Fine-tune a Text Classifier with Hugging Face Transformers
 
 .. raw:: html
 
-    <a id="try-anyscale-quickstart-transformers_torch_trainer_basic" target="_blank" href="https://www.anyscale.com/ray-on-anyscale?utm_source=ray_docs&utm_medium=docs&utm_campaign=transformers_torch_trainer_basic">
+    <a id="try-anyscale-quickstart-transformers_torch_trainer_basic" target="_blank" href="https://console.anyscale.com/register/ha?render_flow=ray&utm_source=ray_docs&utm_medium=docs&utm_campaign=transformers_torch_trainer_basic">
       <img src="../../../_static/img/run-on-anyscale.svg" alt="Run on Anyscale" />
       <br/><br/>
     </a>

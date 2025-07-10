@@ -8,26 +8,28 @@ from ray.tests.conftest import *  # noqa
 @pytest.mark.parametrize("pandas", [False, True])
 def test_basic(ray_start_regular_shared, pandas):
     ds = ray.data.range(100, override_num_blocks=10)
+    ds = ds.add_column("key", lambda b: b["id"] * 2)
     ds = ds.add_column("embedding", lambda b: b["id"] ** 2)
     if not pandas:
         ds = ds.map_batches(
             lambda df: pyarrow.Table.from_pandas(df), batch_format="pandas"
         )
 
-    rad = ds.to_random_access_dataset("id", num_workers=1)
+    rad = ds.to_random_access_dataset("key", num_workers=1)
+
+    def expected(i):
+        return {"id": i, "key": i * 2, "embedding": i**2}
 
     # Test get.
     assert ray.get(rad.get_async(-1)) is None
-    assert ray.get(rad.get_async(100)) is None
+    assert ray.get(rad.get_async(200)) is None
     for i in range(100):
-        assert ray.get(rad.get_async(i)) == {"id": i, "embedding": i**2}
-
-    def expected(i):
-        return {"id": i, "embedding": i**2}
+        assert ray.get(rad.get_async(i * 2 + 1)) is None
+        assert ray.get(rad.get_async(i * 2)) == expected(i)
 
     # Test multiget.
-    results = rad.multiget([-1] + list(range(10)) + [100])
-    assert results == [None] + [expected(i) for i in range(10)] + [None]
+    results = rad.multiget([-1] + list(range(0, 20, 2)) + list(range(1, 21, 2)) + [200])
+    assert results == [None] + [expected(i) for i in range(10)] + [None] * 10 + [None]
 
 
 def test_empty_blocks(ray_start_regular_shared):

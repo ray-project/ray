@@ -1,9 +1,12 @@
 import os
+import sys
 import time
+from typing import Optional, Dict
 
 import pytest
 
 import ray
+from ray._common.test_utils import wait_for_condition
 import ray._private.gcs_utils as gcs_utils
 import ray._private.ray_constants
 from ray._raylet import GcsClient
@@ -11,7 +14,6 @@ from ray.core.generated import autoscaler_pb2
 from ray._private.test_utils import (
     convert_actor_state,
     make_global_state_accessor,
-    wait_for_condition,
 )
 
 
@@ -519,6 +521,310 @@ def test_get_cluster_config(shutdown_only):
     assert ray._private.state.state.get_cluster_config() == cluster_config
 
 
+@pytest.mark.parametrize(
+    "description, cluster_config, num_cpu",
+    [
+        (
+            "should return 0 since empty config is provided",
+            autoscaler_pb2.ClusterConfig(),
+            0,
+        ),
+        (
+            "should return 0 since no node_group_config is provided",
+            autoscaler_pb2.ClusterConfig(
+                max_resources={"CPU": 100},
+            ),
+            0,
+        ),
+        (
+            "should return 0 since no CPU is provided under node_group_configs",
+            autoscaler_pb2.ClusterConfig(
+                max_resources={"CPU": 100},
+                node_group_configs=[autoscaler_pb2.NodeGroupConfig(name="m5.large")],
+            ),
+            0,
+        ),
+        (
+            "should return None since 0 instance is provided under node_group_configs",
+            autoscaler_pb2.ClusterConfig(
+                max_resources={"CPU": 100},
+                node_group_configs=[
+                    autoscaler_pb2.NodeGroupConfig(
+                        resources={"CPU": 50},
+                        name="m5.large",
+                        max_count=0,
+                    )
+                ],
+            ),
+            0,
+        ),
+        (
+            "should return max since max_count=-1 under node_group_configs",
+            autoscaler_pb2.ClusterConfig(
+                max_resources={"CPU": 100},
+                node_group_configs=[
+                    autoscaler_pb2.NodeGroupConfig(
+                        resources={"CPU": 50},
+                        name="m5.large",
+                        max_count=-1,
+                    )
+                ],
+            ),
+            sys.maxsize,
+        ),
+        (
+            "should return the total under node_group_configs since it is less than max_resources",
+            autoscaler_pb2.ClusterConfig(
+                max_resources={"CPU": 100},
+                node_group_configs=[
+                    autoscaler_pb2.NodeGroupConfig(
+                        resources={"CPU": 50},
+                        name="m5.large",
+                        max_count=1,
+                    )
+                ],
+            ),
+            50,
+        ),
+        (
+            "should return the total under max_resources since it is less than node_group_configs total",
+            autoscaler_pb2.ClusterConfig(
+                max_resources={"CPU": 30},
+                node_group_configs=[
+                    autoscaler_pb2.NodeGroupConfig(
+                        resources={"CPU": 50},
+                        name="m5.large",
+                        max_count=1,
+                    )
+                ],
+            ),
+            30,
+        ),
+        (
+            "should return the total under node_group_configs - no max_resources",
+            autoscaler_pb2.ClusterConfig(
+                node_group_configs=[
+                    autoscaler_pb2.NodeGroupConfig(
+                        resources={"CPU": 50},
+                        name="m5.large",
+                        max_count=1,
+                    )
+                ],
+            ),
+            50,
+        ),
+        (
+            "should return the total under node_group_configs - multiple node_group_config",
+            autoscaler_pb2.ClusterConfig(
+                node_group_configs=[
+                    autoscaler_pb2.NodeGroupConfig(
+                        resources={"CPU": 50},
+                        name="m5.large",
+                        max_count=1,
+                    ),
+                    autoscaler_pb2.NodeGroupConfig(
+                        resources={"CPU": 10},
+                        name="m5.small",
+                        max_count=4,
+                    ),
+                ],
+            ),
+            90,
+        ),
+    ],
+)
+def test_get_max_cpus_from_cluster_config(
+    shutdown_only,
+    description: str,
+    cluster_config: autoscaler_pb2.ClusterConfig,
+    num_cpu: Optional[int],
+):
+    ray.init(num_cpus=1)
+    gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
+
+    gcs_client.report_cluster_config(cluster_config.SerializeToString())
+    max_resources = ray._private.state.state.get_max_resources_from_cluster_config()
+    num_cpu_from_max_resources = max_resources.get("CPU", 0) if max_resources else 0
+    assert num_cpu_from_max_resources == num_cpu, description
+
+
+@pytest.mark.parametrize(
+    "description, cluster_config, expected_resources",
+    [
+        (
+            "should return CPU/GPU/TPU as None since empty config is provided",
+            autoscaler_pb2.ClusterConfig(),
+            None,
+        ),
+        (
+            "should return CPU/GPU/TPU as None since no node_group_config is provided",
+            autoscaler_pb2.ClusterConfig(
+                max_resources={"CPU": 100, "memory": 1000},
+            ),
+            None,
+        ),
+        (
+            "should return CPU/GPU/TPU plus resources from node_group_configs",
+            autoscaler_pb2.ClusterConfig(
+                node_group_configs=[
+                    autoscaler_pb2.NodeGroupConfig(
+                        name="m5.large",
+                        resources={"CPU": 50, "memory": 500},
+                        max_count=1,
+                    )
+                ],
+            ),
+            {"CPU": 50, "memory": 500},
+        ),
+        (
+            "should return resources from both node_group_configs and max_resources",
+            autoscaler_pb2.ClusterConfig(
+                max_resources={"GPU": 8},
+                node_group_configs=[
+                    autoscaler_pb2.NodeGroupConfig(
+                        name="m5.large",
+                        resources={"CPU": 50, "memory": 500},
+                        max_count=1,
+                    )
+                ],
+            ),
+            {
+                "CPU": 50,
+                "memory": 500,
+            },  # GPU and TPU are None because not in node_group_configs
+        ),
+        (
+            "should return limited by max_resources when node_group total exceeds it",
+            autoscaler_pb2.ClusterConfig(
+                max_resources={"CPU": 30, "memory": 200},
+                node_group_configs=[
+                    autoscaler_pb2.NodeGroupConfig(
+                        name="m5.large",
+                        resources={"CPU": 50, "memory": 500},
+                        max_count=1,
+                    )
+                ],
+            ),
+            {"CPU": 30, "memory": 200},
+        ),
+        (
+            "should return sys.maxsize when max_count=-1",
+            autoscaler_pb2.ClusterConfig(
+                node_group_configs=[
+                    autoscaler_pb2.NodeGroupConfig(
+                        name="m5.large",
+                        resources={"CPU": 50, "custom_resource": 10},
+                        max_count=-1,
+                    )
+                ],
+            ),
+            {
+                "CPU": sys.maxsize,
+                "custom_resource": sys.maxsize,
+            },
+        ),
+        (
+            "should sum across multiple node_group_configs",
+            autoscaler_pb2.ClusterConfig(
+                node_group_configs=[
+                    autoscaler_pb2.NodeGroupConfig(
+                        name="m5.large",
+                        resources={"CPU": 50, "memory": 500},
+                        max_count=1,
+                    ),
+                    autoscaler_pb2.NodeGroupConfig(
+                        name="m5.small",
+                        resources={"CPU": 10, "GPU": 1},
+                        max_count=4,
+                    ),
+                ],
+            ),
+            {
+                "CPU": 90,
+                "GPU": 4,
+                "memory": 500,
+            },  # 50 + (10*4), 500 + 0
+        ),
+        (
+            "should return 0 for resources with 0 count or 0 resources",
+            autoscaler_pb2.ClusterConfig(
+                node_group_configs=[
+                    autoscaler_pb2.NodeGroupConfig(
+                        name="m5.large",
+                        resources={"CPU": 50, "memory": 0},
+                        max_count=0,  # This makes all resources None
+                    ),
+                    autoscaler_pb2.NodeGroupConfig(
+                        name="m5.small",
+                        resources={"GPU": 1},
+                        max_count=2,
+                    ),
+                ],
+            ),
+            {
+                "CPU": 0,
+                "GPU": 2,
+                "memory": 0,
+            },  # CPU is None due to max_count=0, GPU has valid count
+        ),
+        (
+            "should discover all resource types including custom ones",
+            autoscaler_pb2.ClusterConfig(
+                max_resources={"TPU": 16, "special_resource": 100},
+                node_group_configs=[
+                    autoscaler_pb2.NodeGroupConfig(
+                        name="gpu-node",
+                        resources={
+                            "CPU": 32,
+                            "GPU": 8,
+                            "memory": 1000,
+                            "custom_accelerator": 4,
+                        },
+                        max_count=2,
+                    ),
+                    autoscaler_pb2.NodeGroupConfig(
+                        name="cpu-node",
+                        resources={"CPU": 96, "memory": 2000, "disk": 500},
+                        max_count=1,
+                    ),
+                ],
+            ),
+            {
+                "CPU": 160,  # (32*2) + (96*1)
+                "GPU": 16,  # (8*2) + 0
+                "memory": 4000,  # (1000*2) + (2000*1)
+                "custom_accelerator": 8,  # (4*2) + 0
+                "disk": 500,  # 0 + (500*1)
+            },
+        ),
+    ],
+)
+def test_get_max_resources_from_cluster_config(
+    shutdown_only,
+    description: str,
+    cluster_config: autoscaler_pb2.ClusterConfig,
+    expected_resources: Dict[str, Optional[int]],
+):
+    """Test get_max_resources_from_cluster_config method.
+
+    This test verifies that the method correctly:
+    1. Always includes CPU/GPU/TPU in the results
+    2. Discovers additional resource types from node_group_configs and max_resources
+    3. Calculates maximum values for each resource type
+    4. Handles edge cases like empty configs, zero counts, unlimited resources
+    5. Supports resource types beyond CPU/GPU/TPU
+    """
+    ray.init(num_cpus=1)
+    gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
+
+    gcs_client.report_cluster_config(cluster_config.SerializeToString())
+    max_resources = ray._private.state.state.get_max_resources_from_cluster_config()
+
+    assert (
+        max_resources == expected_resources
+    ), f"{description}\nExpected: {expected_resources}\nActual: {max_resources}"
+
+
 def test_get_draining_nodes(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node()
@@ -587,9 +893,4 @@ def test_get_draining_nodes(ray_start_cluster):
 
 
 if __name__ == "__main__":
-    import sys
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

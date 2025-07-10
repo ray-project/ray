@@ -17,7 +17,7 @@
 #include <memory>
 #include <string>
 
-#include "ray/object_manager/spilled_object_reader.h"
+#include "ray/object_manager/object_reader.h"
 
 namespace ray {
 
@@ -37,7 +37,7 @@ class ChunkObjectReader {
   ///
   /// \param chunk_index the index of chunk to return. index greater or
   ///                    equal to GetNumChunks() yields undefined behavior.
-  absl::optional<std::string> GetChunk(uint64_t chunk_index) const;
+  std::optional<std::string> GetChunk(uint64_t chunk_index) const;
 
   const IObjectReader &GetObject() const { return *object_; }
 

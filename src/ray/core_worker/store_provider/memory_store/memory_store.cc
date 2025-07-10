@@ -21,8 +21,6 @@
 #include <vector>
 
 #include "ray/common/ray_config.h"
-#include "ray/core_worker/context.h"
-#include "ray/core_worker/core_worker.h"
 
 namespace ray {
 namespace core {
@@ -193,8 +191,11 @@ bool CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &object_
   if (object_allocator_ != nullptr) {
     object_entry = object_allocator_(object, object_id);
   } else {
-    object_entry = std::make_shared<RayObject>(
-        object.GetData(), object.GetMetadata(), object.GetNestedRefs(), true);
+    object_entry = std::make_shared<RayObject>(object.GetData(),
+                                               object.GetMetadata(),
+                                               object.GetNestedRefs(),
+                                               true,
+                                               object.GetTensorTransport());
   }
 
   // TODO(edoakes): we should instead return a flag to the caller to put the object in

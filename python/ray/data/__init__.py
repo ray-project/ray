@@ -14,7 +14,7 @@ from ray.data._internal.execution.interfaces import (
 )
 from ray.data._internal.logging import configure_logging
 from ray.data.context import DataContext, DatasetContext
-from ray.data.dataset import Dataset, Schema
+from ray.data.dataset import Dataset, Schema, SinkMode, ClickHouseTableSettings
 from ray.data.datasource import (
     BlockBasedFileDatasink,
     Datasink,
@@ -29,6 +29,7 @@ from ray.data.read_api import (  # noqa: F401
     from_arrow,
     from_arrow_refs,
     from_blocks,
+    from_daft,
     from_dask,
     from_huggingface,
     from_items,
@@ -51,6 +52,7 @@ from ray.data.read_api import (  # noqa: F401
     read_csv,
     read_databricks_tables,
     read_datasource,
+    read_delta,
     read_delta_sharing_tables,
     read_hudi,
     read_iceberg,
@@ -64,6 +66,7 @@ from ray.data.read_api import (  # noqa: F401
     read_sql,
     read_text,
     read_tfrecords,
+    read_unity_catalog,
     read_videos,
     read_webdataset,
 )
@@ -110,6 +113,7 @@ except ModuleNotFoundError:
 __all__ = [
     "ActorPoolStrategy",
     "BlockBasedFileDatasink",
+    "ClickHouseTableSettings",
     "Dataset",
     "DataContext",
     "DatasetContext",  # Backwards compatibility alias.
@@ -124,6 +128,8 @@ __all__ = [
     "ReadTask",
     "RowBasedFileDatasink",
     "Schema",
+    "SinkMode",
+    "from_daft",
     "from_dask",
     "from_items",
     "from_arrow",
@@ -147,6 +153,7 @@ __all__ = [
     "read_clickhouse",
     "read_csv",
     "read_datasource",
+    "read_delta",
     "read_delta_sharing_tables",
     "read_hudi",
     "read_iceberg",
@@ -159,6 +166,7 @@ __all__ = [
     "read_parquet_bulk",
     "read_sql",
     "read_tfrecords",
+    "read_unity_catalog",
     "read_videos",
     "read_webdataset",
     "Preprocessor",

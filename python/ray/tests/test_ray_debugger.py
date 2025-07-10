@@ -3,16 +3,17 @@ import os
 import subprocess
 import sys
 import unittest
+import pexpect
+from pexpect.popen_spawn import PopenSpawn
 from telnetlib import Telnet
 from typing import Union
 
 import pytest
-import pexpect
-from pexpect.popen_spawn import PopenSpawn
 
 import ray
+from ray._common.test_utils import wait_for_condition
 from ray._private import ray_constants, services
-from ray._private.test_utils import run_string_as_driver, wait_for_condition
+from ray._private.test_utils import run_string_as_driver
 from ray.cluster_utils import Cluster, cluster_not_supported
 
 
@@ -245,7 +246,7 @@ def test_ray_debugger_public(shutdown_only, call_ray_stop_only, ray_debugger_ext
     cmd = ["ray", "start", "--head", "--num-cpus=1"]
     if ray_debugger_external:
         cmd.append("--ray-debugger-external")
-    out = ray._private.utils.decode(
+    out = ray._common.utils.decode(
         subprocess.check_output(cmd, stderr=subprocess.STDOUT)
     )
     # Get the redis address from the output.
@@ -389,12 +390,7 @@ def test_env_var_enables_ray_debugger():
 
 
 if __name__ == "__main__":
-    import pytest
-
     # Make subprocess happy in bazel.
     os.environ["LC_ALL"] = "en_US.UTF-8"
     os.environ["LANG"] = "en_US.UTF-8"
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

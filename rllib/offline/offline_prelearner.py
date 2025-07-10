@@ -1,6 +1,8 @@
+import copy
 import gymnasium as gym
 import logging
 import numpy as np
+import tree
 import uuid
 
 from typing import Any, Dict, List, Optional, Union, Set, Tuple, TYPE_CHECKING
@@ -342,6 +344,7 @@ class OfflinePreLearner:
         schema: Dict[str, str] = SCHEMA,
         to_numpy: bool = False,
         input_compress_columns: Optional[List[str]] = None,
+        ignore_final_observation: Optional[bool] = False,
         observation_space: gym.Space = None,
         action_space: gym.Space = None,
         **kwargs: Dict[str, Any],
@@ -385,17 +388,19 @@ class OfflinePreLearner:
                 # TODO (simon): Add support for multi-agent episodes.
                 pass
             else:
-                # Build a single-agent episode with a single row of the batch.
-                episode = SingleAgentEpisode(
-                    id_=str(batch[schema[Columns.EPS_ID]][i]),
-                    agent_id=agent_id,
-                    # Observations might be (a) serialized and/or (b) converted
-                    # to a JSONable (when a composite space was used). We unserialize
-                    # and then reconvert from JSONable to space sample.
-                    observations=[
-                        convert(unpack_if_needed(obs), observation_space)
-                        if Columns.OBS in input_compress_columns
-                        else convert(obs, observation_space),
+                # Unpack observations, if needed.
+                unpacked_obs = (
+                    convert(unpack_if_needed(obs), observation_space)
+                    if Columns.OBS in input_compress_columns
+                    else convert(obs, observation_space)
+                )
+                # Set the next observation.
+                if ignore_final_observation:
+                    unpacked_next_obs = tree.map_structure(
+                        lambda x: 0 * x, copy.deepcopy(unpacked_obs)
+                    )
+                else:
+                    unpacked_next_obs = (
                         convert(
                             unpack_if_needed(batch[schema[Columns.NEXT_OBS]][i]),
                             observation_space,
@@ -403,8 +408,18 @@ class OfflinePreLearner:
                         if Columns.OBS in input_compress_columns
                         else convert(
                             batch[schema[Columns.NEXT_OBS]][i], observation_space
-                        ),
-                    ],
+                        )
+                    )
+                # Build a single-agent episode with a single row of the batch.
+                episode = SingleAgentEpisode(
+                    id_=str(batch[schema[Columns.EPS_ID]][i])
+                    if schema[Columns.EPS_ID] in batch
+                    else uuid.uuid4().hex,
+                    agent_id=agent_id,
+                    # Observations might be (a) serialized and/or (b) converted
+                    # to a JSONable (when a composite space was used). We unserialize
+                    # and then reconvert from JSONable to space sample.
+                    observations=[unpacked_obs, unpacked_next_obs],
                     infos=[
                         {},
                         batch[schema[Columns.INFOS]][i]

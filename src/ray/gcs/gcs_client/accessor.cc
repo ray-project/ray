@@ -307,21 +307,40 @@ Status ActorInfoAccessor::SyncListNamedActors(
   return status;
 }
 
-Status ActorInfoAccessor::AsyncRestartActor(const ray::ActorID &actor_id,
-                                            uint64_t num_restarts,
-                                            const ray::gcs::StatusCallback &callback,
-                                            int64_t timeout_ms) {
-  rpc::RestartActorRequest request;
+Status ActorInfoAccessor::AsyncRestartActorForLineageReconstruction(
+    const ray::ActorID &actor_id,
+    uint64_t num_restarts_due_to_lineage_reconstruction,
+    const ray::gcs::StatusCallback &callback,
+    int64_t timeout_ms) {
+  rpc::RestartActorForLineageReconstructionRequest request;
   request.set_actor_id(actor_id.Binary());
-  request.set_num_restarts(num_restarts);
-  client_impl_->GetGcsRpcClient().RestartActor(
+  request.set_num_restarts_due_to_lineage_reconstruction(
+      num_restarts_due_to_lineage_reconstruction);
+  client_impl_->GetGcsRpcClient().RestartActorForLineageReconstruction(
       request,
-      [callback](const Status &status, rpc::RestartActorReply &&reply) {
+      [callback](const Status &status,
+                 rpc::RestartActorForLineageReconstructionReply &&reply) {
         callback(status);
       },
       timeout_ms);
   return Status::OK();
 }
+
+namespace {
+
+// TODO(dayshah): Yes this is temporary. https://github.com/ray-project/ray/issues/54327
+Status ComputeGcsStatus(const Status &grpc_status, const rpc::GcsStatus &gcs_status) {
+  // If gRPC status is ok return the GCS status, otherwise return the gRPC status.
+  if (grpc_status.ok()) {
+    return gcs_status.code() == static_cast<int>(StatusCode::OK)
+               ? Status::OK()
+               : Status(StatusCode(gcs_status.code()), gcs_status.message());
+  } else {
+    return grpc_status;
+  }
+}
+
+}  // namespace
 
 Status ActorInfoAccessor::AsyncRegisterActor(const ray::TaskSpecification &task_spec,
                                              const ray::gcs::StatusCallback &callback,
@@ -332,7 +351,7 @@ Status ActorInfoAccessor::AsyncRegisterActor(const ray::TaskSpecification &task_
   client_impl_->GetGcsRpcClient().RegisterActor(
       request,
       [callback](const Status &status, rpc::RegisterActorReply &&reply) {
-        callback(status);
+        callback(ComputeGcsStatus(status, reply.status()));
       },
       timeout_ms);
   return Status::OK();
@@ -345,7 +364,7 @@ Status ActorInfoAccessor::SyncRegisterActor(const ray::TaskSpecification &task_s
   request.mutable_task_spec()->CopyFrom(task_spec.GetMessage());
   auto status = client_impl_->GetGcsRpcClient().SyncRegisterActor(
       request, &reply, GetGcsTimeoutMs());
-  return status;
+  return ComputeGcsStatus(status, reply.status());
 }
 
 Status ActorInfoAccessor::AsyncKillActor(const ActorID &actor_id,
@@ -1407,7 +1426,7 @@ Status InternalKVAccessor::AsyncGetInternalConfig(
         if (status.ok()) {
           RAY_LOG(DEBUG) << "Fetched internal config: " << reply.config();
         } else {
-          RAY_LOG(ERROR) << "Failed to get internal config: " << status.message();
+          RAY_LOG(ERROR) << "Failed to get internal config: " << status;
         }
         callback(status, reply.config());
       });
@@ -1549,6 +1568,49 @@ Status AutoscalerStateAccessor::DrainNode(const std::string &node_id,
   if (!is_accepted) {
     rejection_reason_message = reply.rejection_reason_message();
   }
+  return Status::OK();
+}
+
+PublisherAccessor::PublisherAccessor(GcsClient *client_impl)
+    : client_impl_(client_impl) {}
+
+Status PublisherAccessor::PublishError(std::string key_id,
+                                       rpc::ErrorTableData data,
+                                       int64_t timeout_ms) {
+  rpc::GcsPublishRequest request;
+  auto *pub_message = request.add_pub_messages();
+  pub_message->set_channel_type(rpc::RAY_ERROR_INFO_CHANNEL);
+  pub_message->set_key_id(std::move(key_id));
+  *(pub_message->mutable_error_info_message()) = std::move(data);
+  rpc::GcsPublishReply reply;
+  return client_impl_->GetGcsRpcClient().SyncGcsPublish(request, &reply, timeout_ms);
+}
+
+Status PublisherAccessor::PublishLogs(std::string key_id,
+                                      rpc::LogBatch data,
+                                      int64_t timeout_ms) {
+  rpc::GcsPublishRequest request;
+  auto *pub_message = request.add_pub_messages();
+  pub_message->set_channel_type(rpc::RAY_LOG_CHANNEL);
+  pub_message->set_key_id(std::move(key_id));
+  *(pub_message->mutable_log_batch_message()) = std::move(data);
+  rpc::GcsPublishReply reply;
+  return client_impl_->GetGcsRpcClient().SyncGcsPublish(request, &reply, timeout_ms);
+}
+
+Status PublisherAccessor::AsyncPublishNodeResourceUsage(
+    std::string key_id,
+    std::string node_resource_usage_json,
+    const StatusCallback &done) {
+  rpc::GcsPublishRequest request;
+  auto *pub_message = request.add_pub_messages();
+  pub_message->set_channel_type(rpc::RAY_NODE_RESOURCE_USAGE_CHANNEL);
+  pub_message->set_key_id(std::move(key_id));
+  pub_message->mutable_node_resource_usage_message()->set_json(
+      std::move(node_resource_usage_json));
+  client_impl_->GetGcsRpcClient().GcsPublish(
+      request,
+      [done](const Status &status, rpc::GcsPublishReply &&reply) { done(status); });
   return Status::OK();
 }
 

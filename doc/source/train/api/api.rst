@@ -11,7 +11,7 @@ Ray Train API
     These API references are for the revamped Ray Train V2 implementation that is available starting from Ray 2.43
     by enabling the environment variable ``RAY_TRAIN_V2_ENABLED=1``. These APIs assume that the environment variable has been enabled.
 
-    See :ref:`train-deprecated-api` for the old API references.
+    See :ref:`train-deprecated-api` for the old API references and the `Ray Train V2 Migration Guide <https://github.com/ray-project/ray/issues/49454>`_.
 
 
 PyTorch Ecosystem
@@ -147,6 +147,14 @@ Ray Train Utilities
     ~train.get_dataset_shard
     ~train.report
 
+**Collective**
+
+.. autosummary::
+    :nosignatures:
+    :toctree: doc/
+
+    ~train.collective.barrier
+    ~train.collective.broadcast_from_rank_zero
 
 Ray Train Output
 ----------------

@@ -6,9 +6,8 @@ import gevent.monkey
 
 gevent.monkey.patch_all()
 
-
-from .locust import LLMLoadTester
-from .configs import LoadTestConfig
+from benchmark.mocks import LLMLoadTester
+from benchmark.configs import LoadTestConfig
 
 from typing import List, Optional
 import openai

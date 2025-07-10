@@ -10,6 +10,7 @@ import pytest
 import ray
 from ray._common.utils import get_or_create_event_loop
 from ray._private.test_utils import run_string_as_driver
+from ray._common.test_utils import SignalActor
 
 
 # This tests the methods are executed in the correct eventloop.
@@ -197,8 +198,12 @@ class Actor:
 
 class TestThreadingLocalData:
     """
-    This test verifies that synchronous tasks can access thread local data
-    that was set by previous synchronous tasks.
+    This test verifies that synchronous tasks can access thread-local data that
+    was set by previous synchronous tasks when the concurrency group has only
+    one thread. For concurrency groups with multiple threads, it doesn't promise
+    access to the same thread-local data because Ray currently doesn't expose APIs
+    for users to specify which thread the task will be scheduled on in the same
+    concurrency group.
     """
 
     def test_tasks_on_default_executor(self, ray_start_regular_shared):
@@ -236,6 +241,58 @@ class TestThreadingLocalData:
         assert value == "f2"
 
 
+def test_multiple_threads_in_same_group(ray_start_regular_shared):
+    """
+    This test verifies that all threads in the same concurrency group are still
+    alive from the Python interpreter's perspective even if Ray tasks have finished, so that
+    thread-local data will not be garbage collected.
+    """
+
+    @ray.remote
+    class Actor:
+        def __init__(self, signal: SignalActor, max_concurrency: int):
+            self._thread_local_data = threading.local()
+            self.signal = signal
+            self.thread_id_to_data = {}
+            self.max_concurrency = max_concurrency
+
+        def set_thread_local(self, value: int) -> int:
+            # If the thread-local data were garbage collected after the previous
+            # task on the same thread finished, `self.data` would be incremented
+            # more than once for the same thread.
+            assert not hasattr(self._thread_local_data, "value")
+            self._thread_local_data.value = value
+            self.thread_id_to_data[threading.current_thread().ident] = value
+            ray.get(self.signal.wait.remote())
+
+        def check_thread_local_data(self) -> bool:
+            assert len(self.thread_id_to_data) == self.max_concurrency
+            assert hasattr(self._thread_local_data, "value")
+            assert (
+                self._thread_local_data.value
+                == self.thread_id_to_data[threading.current_thread().ident]
+            )
+            ray.get(self.signal.wait.remote())
+
+    max_concurrency = 5
+    signal = SignalActor.remote()
+    a = Actor.options(max_concurrency=max_concurrency).remote(signal, max_concurrency)
+
+    refs = []
+    for i in range(max_concurrency):
+        refs.append(a.set_thread_local.remote(i))
+
+    ray.get(signal.send.remote())
+    ray.get(refs)
+
+    refs = []
+    for _ in range(max_concurrency):
+        refs.append(a.check_thread_local_data.remote())
+
+    ray.get(signal.send.remote())
+    ray.get(refs)
+
+
 def test_invalid_concurrency_group():
     """Verify that when a concurrency group has max concurrency set to 0,
     an error is raised when the actor is created. This test uses
@@ -263,9 +320,5 @@ actor = A.remote()
 
 
 if __name__ == "__main__":
-    import os
 
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

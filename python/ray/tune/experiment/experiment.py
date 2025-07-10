@@ -21,9 +21,9 @@ from typing import (
 
 import ray
 from ray.exceptions import RpcError
-from ray.tune import CheckpointConfig, SyncConfig
 from ray.train._internal.storage import StorageContext
 from ray.train.constants import DEFAULT_STORAGE_PATH
+from ray.tune import CheckpointConfig, SyncConfig
 from ray.tune.error import TuneError
 from ray.tune.registry import is_function_trainable, register_trainable
 from ray.tune.stopper import CombinedStopper, FunctionStopper, Stopper, TimeoutStopper

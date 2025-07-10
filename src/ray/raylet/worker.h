@@ -46,6 +46,7 @@ class WorkerInterface {
   virtual rpc::WorkerType GetWorkerType() const = 0;
   virtual void MarkDead() = 0;
   virtual bool IsDead() const = 0;
+  virtual void KillAsync(instrumented_io_context &io_service, bool force = false) = 0;
   virtual void MarkBlocked() = 0;
   virtual void MarkUnblocked() = 0;
   virtual bool IsBlocked() const = 0;
@@ -75,13 +76,12 @@ class WorkerInterface {
   virtual void AssignActorId(const ActorID &actor_id) = 0;
   virtual const ActorID &GetActorId() const = 0;
   virtual const std::string GetTaskOrActorIdAsDebugString() const = 0;
-  virtual void MarkDetachedActor() = 0;
   virtual bool IsDetachedActor() const = 0;
   virtual const std::shared_ptr<ClientConnection> Connection() const = 0;
   virtual void SetOwnerAddress(const rpc::Address &address) = 0;
   virtual const rpc::Address &GetOwnerAddress() const = 0;
 
-  virtual void DirectActorCallArgWaitComplete(int64_t tag) = 0;
+  virtual void ActorCallArgWaitComplete(int64_t tag) = 0;
 
   virtual const BundleID &GetBundleId() const = 0;
   virtual void SetBundleId(const BundleID &bundle_id) = 0;
@@ -137,7 +137,7 @@ class WorkerInterface {
 /// Worker class encapsulates the implementation details of a worker. A worker
 /// is the execution container around a unit of Ray work, such as a task or an
 /// actor. Ray units of work execute in the context of a Worker.
-class Worker : public WorkerInterface {
+class Worker : public std::enable_shared_from_this<Worker>, public WorkerInterface {
  public:
   /// A constructor that initializes a worker object.
   /// NOTE: You MUST manually set the worker process.
@@ -155,6 +155,12 @@ class Worker : public WorkerInterface {
   rpc::WorkerType GetWorkerType() const;
   void MarkDead();
   bool IsDead() const;
+  /// Kill the worker process. This is idempotent.
+  /// \param io_service for scheduling the graceful period timer.
+  /// \param force true to kill immediately, false to give time for the worker to clean up
+  /// and exit gracefully.
+  /// \return Void.
+  void KillAsync(instrumented_io_context &io_service, bool force = false);
   void MarkBlocked();
   void MarkUnblocked();
   bool IsBlocked() const;
@@ -186,13 +192,12 @@ class Worker : public WorkerInterface {
   // Creates the debug string for the ID of the task or actor depending on which is
   // running.
   const std::string GetTaskOrActorIdAsDebugString() const;
-  void MarkDetachedActor();
   bool IsDetachedActor() const;
   const std::shared_ptr<ClientConnection> Connection() const;
   void SetOwnerAddress(const rpc::Address &address);
   const rpc::Address &GetOwnerAddress() const;
 
-  void DirectActorCallArgWaitComplete(int64_t tag);
+  void ActorCallArgWaitComplete(int64_t tag);
 
   const BundleID &GetBundleId() const;
   void SetBundleId(const BundleID &bundle_id);
@@ -299,6 +304,8 @@ class Worker : public WorkerInterface {
   BundleID bundle_id_;
   /// Whether the worker is dead.
   bool dead_;
+  /// Whether the worker is killed by the Kill method.
+  std::atomic<bool> killing_;
   /// Whether the worker is blocked. Workers become blocked in a `ray.get`, if
   /// they require a data dependency while executing a task.
   bool blocked_;
@@ -307,9 +314,6 @@ class Worker : public WorkerInterface {
   rpc::ClientCallManager &client_call_manager_;
   /// The rpc client to send tasks to this worker.
   std::shared_ptr<rpc::CoreWorkerClientInterface> rpc_client_;
-  /// Whether the worker is detached. This is applies when the worker is actor.
-  /// Detached actor means the actor's creator can exit without killing this actor.
-  bool is_detached_actor_;
   /// The address of this worker's owner. The owner is the worker that
   /// currently holds the lease on this worker, if any.
   rpc::Address owner_address_;

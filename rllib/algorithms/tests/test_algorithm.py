@@ -32,7 +32,7 @@ from ray.tune import register_env
 class TestAlgorithm(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init(local_mode=True)
+        ray.init()
         register_env("multi_cart", lambda cfg: MultiAgentCartPole(cfg))
 
     @classmethod
@@ -478,15 +478,11 @@ class TestAlgorithm(unittest.TestCase):
         self.assertTrue(EVALUATION_RESULTS in r2)
         self.assertTrue(EVALUATION_RESULTS in r3)
 
-    def test_evaluation_wo_evaluation_env_runner_group(self):
+    def test_evaluation_wo_eval_env_runner_group(self):
         # Use a custom callback that asserts that we are running the
         # configured exact number of episodes per evaluation.
         config = (
             ppo.PPOConfig()
-            .api_stack(
-                enable_env_runner_and_connector_v2=False,
-                enable_rl_module_and_learner=False,
-            )
             .environment(env="CartPole-v1")
             .callbacks(callbacks_class=AssertEvalCallback)
         )
@@ -496,12 +492,12 @@ class TestAlgorithm(unittest.TestCase):
         algo_wo_env_on_local_worker = config.build()
         self.assertRaisesRegex(
             ValueError,
-            "Can't evaluate on a local worker",
+            "doesn't have an env!",
             algo_wo_env_on_local_worker.evaluate,
         )
         algo_wo_env_on_local_worker.stop()
 
-        # Try again using `create_env_on_driver=True`.
+        # Try again using `create_local_env_runner=True`.
         # This force-adds the env on the local-worker, so this Algorithm
         # can `evaluate` even though it doesn't have an evaluation-worker
         # set.
@@ -513,7 +509,6 @@ class TestAlgorithm(unittest.TestCase):
             and EPISODE_RETURN_MEAN in results[ENV_RUNNER_RESULTS]
         )
         algo_w_env_on_local_worker.stop()
-        config.create_env_on_local_worker = False
 
     def test_no_env_but_eval_workers_do_have_env(self):
         """Tests whether no env on workers, but env on eval workers works ok."""

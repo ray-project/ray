@@ -55,14 +55,6 @@ class ConcurrencyGroupManager final {
   std::shared_ptr<ExecutorType> GetExecutor(const std::string &concurrency_group_name,
                                             const ray::FunctionDescriptor &fd);
 
-  /// Initialize the executor for specific language runtime.
-  ///
-  /// \param executor The executor to be initialized.
-
-  /// \return A function that will be called when destructing the executor.
-  std::optional<std::function<void()>> InitializeExecutor(
-      std::shared_ptr<ExecutorType> executor);
-
   /// Get the default executor.
   std::shared_ptr<ExecutorType> GetDefaultExecutor() const;
 
@@ -82,9 +74,6 @@ class ConcurrencyGroupManager final {
 
   // The language-specific callback function that initializes threads.
   std::function<std::function<void()>()> initialize_thread_callback_;
-
-  // A vector of language-specific functions used to release the executors.
-  std::vector<std::optional<std::function<void()>>> executor_releasers_;
 
   friend class ConcurrencyGroupManagerTest;
 };
