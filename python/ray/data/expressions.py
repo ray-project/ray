@@ -66,14 +66,33 @@ class Expr:
         subclasses like ColumnExpr, LiteralExpr, etc.
     """
 
-    def __init_subclass__(cls, **kwargs):
-        super().__init_subclass__(**kwargs)
-        # Override dataclass __eq__ with expression __eq__
-        cls.__eq__ = cls._expr_eq
+    def structurally_equals(self, other: Any) -> bool:
+        """Compare two expression ASTs for structural equality.
 
-    def _expr_eq(self, other: Any) -> "Expr":
-        """Expression equality operator."""
-        return self._bin(other, Operation.EQ)
+        Note:
+            This is different from the `==` operator, which is
+            used for building expression trees (e.g., `col("a") == 5`).
+        """
+        if type(self) is not type(other):
+            return False
+
+        match (self, other):
+            case (ColumnExpr(name=n1), ColumnExpr(name=n2)):
+                return n1 == n2
+            case (LiteralExpr(value=v1), LiteralExpr(value=v2)):
+                return v1 == v2 and type(v1) is type(v2)
+            case (
+                BinaryExpr(op=o1, left=l1, right=r1),
+                BinaryExpr(op=o2, left=l2, right=r2),
+            ):
+                return (
+                    o1 is o2
+                    and l1.structurally_equals(l2)
+                    and r1.structurally_equals(r2)
+                )
+            case _:
+                # This case should not be reachable for known Expr types.
+                return False
 
     def _bin(self, other: Any, op: Operation) -> "Expr":
         """Create a binary expression with the given operation.
@@ -157,7 +176,7 @@ class Expr:
 
 
 @DeveloperAPI
-@dataclass(frozen=True)
+@dataclass(frozen=True, eq=False)
 class ColumnExpr(Expr):
     """Expression that references a column by name.
 
@@ -178,7 +197,7 @@ class ColumnExpr(Expr):
 
 
 @DeveloperAPI
-@dataclass(frozen=True)
+@dataclass(frozen=True, eq=False)
 class LiteralExpr(Expr):
     """Expression that represents a constant scalar value.
 
@@ -199,7 +218,7 @@ class LiteralExpr(Expr):
 
 
 @DeveloperAPI
-@dataclass(frozen=True)
+@dataclass(frozen=True, eq=False)
 class BinaryExpr(Expr):
     """Expression that represents a binary operation between two expressions.
 
