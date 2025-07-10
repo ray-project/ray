@@ -32,7 +32,7 @@ def test_send_recv_text_and_binary(serve_instance, route_prefix: str):
     serve.run(WebSocketServer.bind(), route_prefix=route_prefix or "/")
 
     msg = "Hello world!"
-    url = f"{get_application_url(is_websocket=True)}/"
+    url = f"{get_application_url(is_websocket=True, use_localhost=True)}/"
 
     with connect(url) as websocket:
         websocket.send(msg)
