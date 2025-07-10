@@ -353,17 +353,32 @@ def test_uv_run_parser():
     assert options.python == "3.10"
     assert command == ["example.py"]
 
-    options, command = _parse_args(parser, ["--no-project", "script.py", "some", "args"])
-    assert options.no_project == True
+    options, command = _parse_args(
+        parser, ["--no-project", "script.py", "some", "args"]
+    )
+    assert options.no_project
     assert command == ["script.py", "some", "args"]
 
-    options, command = _parse_args(parser, ["--isolated", "-m", "module_name", "--extra-args"])
+    options, command = _parse_args(
+        parser, ["--isolated", "-m", "module_name", "--extra-args"]
+    )
     assert options.module == "module_name"
-    assert options.isolated == True
+    assert options.isolated
     assert command == ["--extra-args"]
 
-    options, command = _parse_args(parser, ["--isolated", "--extra", "vllm", "-m", "my_module.submodule", "--model", "Qwen/Qwen3-32B"])
-    assert options.isolated == True
+    options, command = _parse_args(
+        parser,
+        [
+            "--isolated",
+            "--extra",
+            "vllm",
+            "-m",
+            "my_module.submodule",
+            "--model",
+            "Qwen/Qwen3-32B",
+        ],
+    )
+    assert options.isolated
     assert options.extras == ["vllm"]
     assert options.module == "my_module.submodule"
     assert command == ["--model", "Qwen/Qwen3-32B"]

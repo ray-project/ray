@@ -349,7 +349,7 @@ if __name__ == "__main__":
     import json
 
     test_parser = argparse.ArgumentParser()
-    test_parser.add_argument("--extra-args", action='store_true')
+    test_parser.add_argument("--extra-args", action="store_true")
     test_parser.add_argument("runtime_env")
     args = test_parser.parse_args()
 
