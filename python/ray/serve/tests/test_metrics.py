@@ -957,8 +957,10 @@ def test_replica_metrics_fields(metrics_start_shutdown):
         err_requests[0]["application"],
     ) == expected_output
 
+    wait_for_condition(
+        lambda: len(get_metric_dictionaries("serve_deployment_replica_healthy")) == 3,
+    )
     health_metrics = get_metric_dictionaries("serve_deployment_replica_healthy")
-    assert len(health_metrics) == 3, health_metrics
     expected_output = {
         ("f", "app1"),
         ("g", "app2"),
