@@ -132,7 +132,7 @@ To persist your checkpoints and monitor training progress, add a
             ...,
             callbacks=[
                 RayTrainReportCallback(
-                    metrics=["eval-logloss"], frequency=1
+                    metrics=["eval-multi_logloss"], frequency=1
                 )
             ],
         )

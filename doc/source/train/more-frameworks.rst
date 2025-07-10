@@ -46,7 +46,7 @@ More Frameworks
         :link: getting-started-lightgbm
         :link-type: doc
 
-        XGBoost and LightGBM
+        LightGBM
 
     .. grid-item-card::
         :img-top: /images/horovod.png
