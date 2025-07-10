@@ -134,7 +134,8 @@ def test_unary_streaming_websocket_same_deployment(serve_instance):
 
     serve.run(RenaissanceMan.bind())
 
-    assert httpx.get(get_application_url()).json() == "hi"
+    http_url = get_application_url()
+    assert httpx.get(http_url).json() == "hi"
 
     with httpx.stream("GET", f"{get_application_url()}/stream") as r:
         r.raise_for_status()
