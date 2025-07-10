@@ -17,6 +17,7 @@ from ray.serve._private.request_router.request_router import (
 )
 from ray.serve._private.test_utils import check_apps_running, check_telemetry
 from ray.serve._private.usage import ServeUsageTag
+from ray.serve.config import RequestRouterConfig
 from ray.serve.context import _get_global_client
 from ray.serve.schema import ServeDeploySchema
 
@@ -159,7 +160,9 @@ def test_custom_request_router_telemetry(manage_ray_with_telemetry):
     check_telemetry(ServeUsageTag.CUSTOM_REQUEST_ROUTER_USED, expected=None)
 
     @serve.deployment(
-        request_router_class=CustomRequestRouter,
+        request_router_config=RequestRouterConfig(
+            request_router_class=CustomRequestRouter,
+        ),
     )
     class CustomRequestRouterApp:
         async def __call__(self) -> str:

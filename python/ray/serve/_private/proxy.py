@@ -6,7 +6,6 @@ import os
 import pickle
 import time
 from abc import ABC, abstractmethod
-from copy import deepcopy
 from typing import Any, Callable, Dict, Generator, Optional, Set, Tuple
 
 import grpc
@@ -28,8 +27,8 @@ from ray.serve._private.common import (
 from ray.serve._private.constants import (
     PROXY_MIN_DRAINING_PERIOD_S,
     RAY_SERVE_ENABLE_PROXY_GC_OPTIMIZATIONS,
-    RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH,
     RAY_SERVE_PROXY_GC_THRESHOLD,
+    RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE,
     REQUEST_LATENCY_BUCKETS_MS,
     SERVE_CONTROLLER_NAME,
     SERVE_HTTP_REQUEST_ID_HEADER,
@@ -45,12 +44,12 @@ from ray.serve._private.grpc_util import (
 )
 from ray.serve._private.http_util import (
     MessageQueue,
+    configure_http_middlewares,
     convert_object_to_asgi_messages,
     get_http_response_status,
     receive_http_body,
     send_http_response_on_exception,
     start_asgi_http_server,
-    validate_http_proxy_callback_return,
 )
 from ray.serve._private.logging_utils import (
     access_log_msg,
@@ -73,7 +72,6 @@ from ray.serve._private.proxy_response_generator import ProxyResponseGenerator
 from ray.serve._private.proxy_router import ProxyRouter
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
-    call_function_from_import_path,
     generate_request_id,
     get_head_node_id,
     is_grpc_enabled,
@@ -88,16 +86,6 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 SOCKET_REUSE_PORT_ENABLED = (
     os.environ.get("SERVE_SOCKET_REUSE_PORT_ENABLED", "1") == "1"
-)
-
-RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S = int(
-    os.environ.get("RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S", 0)
-)
-# TODO (shrekris-anyscale): Deprecate SERVE_REQUEST_PROCESSING_TIMEOUT_S env var
-RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S = (
-    float(os.environ.get("RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S", 0))
-    or float(os.environ.get("SERVE_REQUEST_PROCESSING_TIMEOUT_S", 0))
-    or None
 )
 
 if os.environ.get("SERVE_REQUEST_PROCESSING_TIMEOUT_S") is not None:
@@ -1017,51 +1005,13 @@ class HTTPProxy(GenericProxy):
         yield status
 
 
-def _set_proxy_default_http_options(http_options: HTTPOptions) -> HTTPOptions:
-    http_options = deepcopy(http_options)
-    # Override keep alive setting if the environment variable is set.
-    # TODO(edoakes): more sane behavior here.
-    if RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S > 0:
-        http_options.keep_alive_timeout_s = RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S
-
-    http_options.request_timeout_s = (
-        http_options.request_timeout_s or RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S
-    )
-
-    http_options.middlewares = http_options.middlewares or []
-    if RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH:
-        logger.info(
-            "Calling user-provided callback from import path "
-            f"'{RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH}'."
-        )
-        http_options.middlewares.extend(
-            validate_http_proxy_callback_return(
-                call_function_from_import_path(
-                    RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH
-                )
-            )
-        )
-
-    return http_options
-
-
-def _set_proxy_default_grpc_options(grpc_options) -> gRPCOptions:
-    grpc_options = deepcopy(grpc_options) or gRPCOptions()
-
-    grpc_options.request_timeout_s = (
-        grpc_options.request_timeout_s or RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S
-    )
-
-    return grpc_options
-
-
 @ray.remote(num_cpus=0)
 class ProxyActor:
     def __init__(
         self,
         http_options: HTTPOptions,
+        grpc_options: gRPCOptions,
         *,
-        grpc_options: Optional[gRPCOptions] = None,
         node_id: NodeId,
         node_ip_address: str,
         logging_config: LoggingConfig,
@@ -1069,16 +1019,8 @@ class ProxyActor:
     ):  # noqa: F821
         self._node_id = node_id
         self._node_ip_address = node_ip_address
-
-        # Configure proxy default HTTP and gRPC options.
-        http_options = _set_proxy_default_http_options(http_options)
-        grpc_options = _set_proxy_default_grpc_options(grpc_options)
-        self._http_options = http_options
+        self._http_options = configure_http_middlewares(http_options)
         self._grpc_options = grpc_options
-
-        # We modify the HTTP and gRPC options above, so delete them to avoid
-        del http_options, grpc_options
-
         grpc_enabled = is_grpc_enabled(self._grpc_options)
 
         event_loop = get_or_create_event_loop()
@@ -1095,6 +1037,7 @@ class ProxyActor:
             component_name="proxy",
             component_id=node_ip_address,
             logging_config=logging_config,
+            buffer_size=RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE,
         )
 
         startup_msg = f"Proxy starting on node {self._node_id} (HTTP port: {self._http_options.port}"
@@ -1183,8 +1126,8 @@ class ProxyActor:
         """Get the logging configuration (for testing purposes)."""
         log_file_path = None
         for handler in logger.handlers:
-            if isinstance(handler, logging.handlers.RotatingFileHandler):
-                log_file_path = handler.baseFilename
+            if isinstance(handler, logging.handlers.MemoryHandler):
+                log_file_path = handler.target.baseFilename
         return log_file_path
 
     def _dump_ingress_replicas_for_testing(self, route: str) -> Set[ReplicaID]:
