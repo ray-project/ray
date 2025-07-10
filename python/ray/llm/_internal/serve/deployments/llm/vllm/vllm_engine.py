@@ -5,6 +5,8 @@ import uuid
 from concurrent.futures.thread import ThreadPoolExecutor
 from typing import TYPE_CHECKING, AsyncGenerator, List, Optional, Tuple
 
+from transformers.dynamic_module_utils import init_hf_modules
+
 import ray
 from ray.llm._internal.common.utils.import_utils import try_import
 from ray.llm._internal.serve.configs.constants import (
@@ -76,35 +78,15 @@ V1_TOO_LONG_PATTERN = re.compile(
 )
 
 
-def _get_async_engine_args(llm_config: LLMConfig) -> "AsyncEngineArgs":
-    engine_config = llm_config.get_engine_config()
-
-    # This `model` is the local path on disk, or the hf model id.
-    # If it is the hf_model_id, vLLM automatically downloads the correct model from HF.
-    # We want this to be the local path on the disk when we already downloaded the
-    # model artifacts from a remote storage during node initialization,
-    # so vLLM will not require HF token for it and try to download it again.
-    model = engine_config.actual_hf_model_id
-    if isinstance(llm_config.model_loading_config.model_source, str):
-        model = llm_config.model_loading_config.model_source
-
-    return vllm.AsyncEngineArgs(
-        **{
-            "model": model,
-            "distributed_executor_backend": "ray",
-            "guided_decoding_backend": RAYLLM_GUIDED_DECODING_BACKEND,
-            "disable_log_stats": False,
-            **engine_config.get_initialization_kwargs(),
-        }
-    )
-
-
 def _get_vllm_engine_config(
     llm_config: LLMConfig,
 ) -> Tuple["AsyncEngineArgs", "VllmConfig"]:
-    async_engine_args = _get_async_engine_args(llm_config)
-    vllm_config = async_engine_args.create_engine_config()
-    return async_engine_args, vllm_config
+    engine_config = llm_config.get_engine_config()
+    async_engine_args = vllm.engine.arg_utils.AsyncEngineArgs(
+        **engine_config.get_initialization_kwargs()
+    )
+    vllm_engine_config = async_engine_args.create_engine_config()
+    return async_engine_args, vllm_engine_config
 
 
 def _clear_current_platform_cache():
@@ -150,6 +132,12 @@ class VLLMEngine(LLMEngine):
             llm_config: The llm configuration for this engine
         """
         super().__init__(llm_config)
+
+        # Ensure transformers_modules is initialized early in worker processes.
+        # This is critical for models with trust_remote_code=True to avoid pickle errors.
+        init_hf_modules()
+
+        self.llm_config = llm_config
 
         if vllm is None:
             raise ImportError(
