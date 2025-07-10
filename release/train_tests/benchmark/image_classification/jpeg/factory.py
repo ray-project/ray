@@ -96,7 +96,6 @@ class ImageClassificationJpegRayDataLoaderFactory(
         train_partitioning = Partitioning(
             "dir", base_dir=train_dir, field_names=["class"]
         )
-
         train_ds = (
             ray.data.read_images(
                 train_dir,

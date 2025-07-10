@@ -48,7 +48,6 @@ class ImageClassificationParquetRayDataLoaderFactory(
                 - "train": Training dataset with random transforms
                 - "val": Validation dataset without transforms
         """
-
         # Create training dataset with image decoding and transforms
         train_ds = (
             ray.data.read_parquet(
