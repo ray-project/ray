@@ -957,12 +957,13 @@ def test_e2e_preserve_prev_replicas(serve_instance_with_signal):
 
     handle = serve.run(scaler.bind())
     dep_id = DeploymentID(name="scaler")
-    responses = [handle.remote() for _ in range(10)]
+    responses = [handle.remote() for _ in range(20)]
 
     wait_for_condition(
         check_num_replicas_eq,
         name="scaler",
         target=2,
+        use_controller=True,
         retry_interval_ms=1000,
         timeout=20,
     )
