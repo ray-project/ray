@@ -60,7 +60,8 @@ void ActorSchedulingQueue::Add(
         reject_request,
     rpc::SendReplyCallback send_reply_callback,
     TaskSpecification task_spec) {
-  // A seq_no of -1 means no ordering constraint. Actor tasks must be executed in order.
+  // A seq_no of -1 means no ordering constraint. Non-retry Actor tasks must be executed
+  // in order.
   RAY_CHECK(seq_no != -1);
 
   RAY_CHECK(std::this_thread::get_id() == main_thread_id_);
@@ -69,31 +70,55 @@ void ActorSchedulingQueue::Add(
                   << client_processed_up_to;
     next_seq_no_ = client_processed_up_to + 1;
   }
-  RAY_LOG(DEBUG) << "Enqueue " << seq_no << " cur seqno " << next_seq_no_;
-
-  pending_actor_tasks_[seq_no] = InboundRequest(std::move(accept_request),
-                                                std::move(reject_request),
-                                                std::move(send_reply_callback),
-                                                task_spec);
-  {
-    absl::MutexLock lock(&mu_);
-    pending_task_id_to_is_canceled.emplace(task_spec.TaskId(), false);
-  }
+  auto task_id = task_spec.TaskId();
+  RAY_LOG(DEBUG).WithField(task_id) << "Enqueuing in order actor task, seq_no=" << seq_no
+                                    << ", next_seq_no_=" << next_seq_no_;
 
   const auto dependencies = task_spec.GetDependencies();
-  if (dependencies.size() > 0) {
+  InboundRequest inbound_request(std::move(accept_request),
+                                 std::move(reject_request),
+                                 std::move(send_reply_callback),
+                                 task_spec);
+  const bool is_retry = task_spec.IsRetry();
+  InboundRequest *retry_request = nullptr;
+  if (is_retry) {
+    retry_request = &pending_retry_actor_tasks_.emplace_back(std::move(inbound_request));
+  } else {
+    RAY_CHECK(pending_actor_tasks_.emplace(seq_no, std::move(inbound_request)).second);
+  }
+
+  if (is_retry) {
+    seq_no_to_skip_.insert(seq_no);
+  }
+  {
+    absl::MutexLock lock(&mu_);
+    pending_task_id_to_is_canceled.emplace(task_id, false);
+  }
+
+  if (!dependencies.empty()) {
     RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
-        task_spec.TaskId(),
+        task_id,
         task_spec.JobId(),
         task_spec.AttemptNumber(),
         task_spec,
         rpc::TaskStatus::PENDING_ACTOR_TASK_ARGS_FETCH,
         /* include_task_info */ false));
-    waiter_.Wait(dependencies, [seq_no, this]() {
-      RAY_CHECK(std::this_thread::get_id() == main_thread_id_);
-      auto it = pending_actor_tasks_.find(seq_no);
-      if (it != pending_actor_tasks_.end()) {
-        const TaskSpecification &task_spec = it->second.TaskSpec();
+    waiter_.Wait(dependencies, [this, seq_no, is_retry, retry_request]() mutable {
+      InboundRequest *inbound_request = nullptr;
+      if (is_retry) {
+        // retry_request is guaranteed to be a valid pointer for retries because it
+        // won't be erased from the retry list until its dependencies are fetched and
+        // ExecuteRequest happens.
+        inbound_request = retry_request;
+      } else if (auto it = pending_actor_tasks_.find(seq_no);
+                 it != pending_actor_tasks_.end()) {
+        // For non-retry tasks, we need to check if the task is still in the map because
+        // it can be erased due to being canceled via a higher `client_processed_up_to_`.
+        inbound_request = &it->second;
+      }
+
+      if (inbound_request != nullptr) {
+        const auto &task_spec = inbound_request->TaskSpec();
         RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
             task_spec.TaskId(),
             task_spec.JobId(),
@@ -101,13 +126,13 @@ void ActorSchedulingQueue::Add(
             task_spec,
             rpc::TaskStatus::PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY,
             /* include_task_info */ false));
-        it->second.MarkDependenciesResolved();
+        inbound_request->MarkDependenciesResolved();
         ScheduleRequests();
       }
     });
   } else {
     RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
-        task_spec.TaskId(),
+        task_id,
         task_spec.JobId(),
         task_spec.AttemptNumber(),
         task_spec,
@@ -152,26 +177,38 @@ void ActorSchedulingQueue::ScheduleRequests() {
     pending_actor_tasks_.erase(head);
   }
 
-  // Process as many in-order requests as we can.
-  while (!pending_actor_tasks_.empty() &&
-         pending_actor_tasks_.begin()->first == next_seq_no_ &&
-         pending_actor_tasks_.begin()->second.DependenciesResolved()) {
-    auto head = pending_actor_tasks_.begin();
-    auto request = head->second;
-    auto task_id = head->second.TaskID();
-
-    // Process actor tasks.
-    auto pool = pool_manager_->GetExecutor(request.ConcurrencyGroupName(),
-                                           request.FunctionDescriptor());
-    if (pool == nullptr) {
-      AcceptRequestOrRejectIfCanceled(task_id, request);
-    } else {
-      pool->Post([this, request, task_id]() mutable {
-        AcceptRequestOrRejectIfCanceled(task_id, request);
-      });
+  // Process as many retry requests as we can.
+  // Retry requests do not respect sequence number ordering, so we execute them as soon as
+  // they are ready to execute.
+  auto retry_iter = pending_retry_actor_tasks_.begin();
+  while (retry_iter != pending_retry_actor_tasks_.end()) {
+    auto &request = *retry_iter;
+    if (!request.DependenciesResolved()) {
+      retry_iter++;
+      continue;
     }
-    pending_actor_tasks_.erase(head);
-    next_seq_no_++;
+    ExecuteRequest(std::move(request));
+    pending_retry_actor_tasks_.erase(retry_iter++);
+  }
+
+  // Process as many in-order requests as we can.
+  while (!pending_actor_tasks_.empty()) {
+    auto begin_it = pending_actor_tasks_.begin();
+    auto &[seq_no, request] = *begin_it;
+    if (seq_no == next_seq_no_) {
+      if (request.DependenciesResolved()) {
+        ExecuteRequest(std::move(request));
+        pending_actor_tasks_.erase(begin_it);
+        next_seq_no_++;
+      } else {
+        // next_seq_no_ can't execute so break
+        break;
+      }
+    } else if (seq_no_to_skip_.erase(next_seq_no_) > 0) {
+      next_seq_no_++;
+    } else {
+      break;
+    }
   }
 
   if (pending_actor_tasks_.empty() ||
@@ -209,6 +246,19 @@ void ActorSchedulingQueue::ScheduleRequests() {
         }
         pending_actor_tasks_.erase(head);
       }
+    });
+  }
+}
+
+void ActorSchedulingQueue::ExecuteRequest(InboundRequest &&request) {
+  auto task_id = request.TaskID();
+  auto pool = pool_manager_->GetExecutor(request.ConcurrencyGroupName(),
+                                         request.FunctionDescriptor());
+  if (pool == nullptr) {
+    AcceptRequestOrRejectIfCanceled(task_id, request);
+  } else {
+    pool->Post([this, request = std::move(request), task_id]() mutable {
+      AcceptRequestOrRejectIfCanceled(task_id, request);
     });
   }
 }

@@ -78,7 +78,7 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
 
   rpc::Address addr;
   absl::flat_hash_map<TaskAttempt, rpc::ClientCallback<rpc::PushTaskReply>> callbacks;
-  std::vector<uint64_t> received_seq_nos;
+  std::vector<int64_t> received_seq_nos;
   int64_t acked_seqno = 0;
 };
 
