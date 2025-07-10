@@ -14,7 +14,6 @@ import pyarrow as pa
 import ray
 from ray._common.utils import get_or_create_event_loop
 from ray._private.ray_constants import env_integer
-from ray.data._expression_evaluator import eval_expr
 from ray.data._internal.compute import get_compute
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.interfaces.task_context import TaskContext
@@ -117,20 +116,8 @@ def plan_project_op(
 
             # 1. evaluate / add expressions
             if exprs:
-                # Extract existing columns directly from the block
-                new_columns = {}
-                for col_name in block_accessor.column_names():
-                    # For Arrow blocks, block[col_name] gives us a ChunkedArray
-                    # For Pandas blocks, block[col_name] gives us a Series
-                    new_columns[col_name] = block[col_name]
-
-                # Add/update with expression results
-                for name, ex in exprs.items():
-                    result = eval_expr(ex, block)
-                    new_columns[name] = result
-
-                # Create new block from updated columns
-                block = BlockAccessor.batch_to_block(new_columns)
+                builder = block_accessor.builder()
+                block = builder.append_columns(block, exprs)
                 block_accessor = BlockAccessor.for_block(block)
 
             # 2. (optional) column projection
