@@ -2,8 +2,8 @@ import abc
 from typing import AsyncGenerator, Optional
 
 from transformers.dynamic_module_utils import init_hf_modules
-
 from ray.llm._internal.common.models import DiskMultiplexConfig
+
 from ray.llm._internal.serve.configs.server_models import (
     GenerationRequest,
     LLMConfig,
@@ -15,12 +15,10 @@ from ray.llm._internal.serve.configs.server_models import (
 class LLMEngine(abc.ABC):
     """Base class for all LLM engines"""
 
+    @abc.abstractmethod
     def __init__(self, llm_config: LLMConfig):
-        self._llm_config = llm_config
-
-        # Ensure transformers_modules is initialized early in worker processes.
-        # This is critical for models with trust_remote_code=True to avoid pickle errors.
-        init_hf_modules()
+        """Initialize the engine with the llm config"""
+        pass
 
     @abc.abstractmethod
     async def start(self):
