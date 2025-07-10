@@ -145,9 +145,9 @@ bool OutOfOrderActorSchedulingQueue::CancelTaskIfFound(TaskID task_id) {
   }
 }
 
-void OutOfOrderActorSchedulingQueue::RunRequestWithSatisfiedDependencies(
+void OutOfOrderActorSchedulingQueue::RunRequestWithResolvedDependencies(
     InboundRequest &request) {
-  RAY_CHECK(request.CanExecute());
+  RAY_CHECK(request.DependenciesResolved());
   const auto task_id = request.TaskID();
   if (is_asyncio_) {
     // Process async actor task.
@@ -195,8 +195,8 @@ void OutOfOrderActorSchedulingQueue::RunRequest(InboundRequest request) {
           rpc::TaskStatus::PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY,
           /* include_task_info */ false));
 
-      request.MarkDependenciesSatisfied();
-      RunRequestWithSatisfiedDependencies(request);
+      request.MarkDependenciesResolved();
+      RunRequestWithResolvedDependencies(request);
     });
   } else {
     RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
@@ -206,8 +206,8 @@ void OutOfOrderActorSchedulingQueue::RunRequest(InboundRequest request) {
         task_spec,
         rpc::TaskStatus::PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY,
         /* include_task_info */ false));
-    request.MarkDependenciesSatisfied();
-    RunRequestWithSatisfiedDependencies(request);
+    request.MarkDependenciesResolved();
+    RunRequestWithResolvedDependencies(request);
   }
 }
 
