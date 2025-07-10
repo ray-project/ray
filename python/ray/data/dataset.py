@@ -23,6 +23,7 @@ from typing import (
 )
 
 import numpy as np
+import pyarrow as pa
 
 import ray
 import ray.cloudpickle as pickle
@@ -40,6 +41,11 @@ from ray.data._internal.datasource.clickhouse_datasink import (
     SinkMode,
 )
 from ray.data._internal.datasource.csv_datasink import CSVDatasink
+from ray.data._internal.datasource.delta_datasink import (
+    DeltaDatasink,
+    DeltaWriteConfig,
+    WriteMode,
+)
 from ray.data._internal.datasource.iceberg_datasink import IcebergDatasink
 from ray.data._internal.datasource.image_datasink import ImageDatasink
 from ray.data._internal.datasource.json_datasink import JSONDatasink
@@ -125,6 +131,7 @@ if TYPE_CHECKING:
     import modin
     import pandas
     import pyarrow
+    import pyarrow.fs as pa_fs
     import pyspark
     import tensorflow as tf
     import torch
@@ -3327,6 +3334,119 @@ class Dataset:
             list if the input files is not known.
         """
         return list(set(self._plan.input_files()))
+
+    @ConsumptionAPI
+    @PublicAPI(api_group=IOC_API_GROUP)
+    def write_delta(
+        self,
+        path: str,
+        *,
+        schema: Optional[pa.Schema] = None,
+        mode: Optional[WriteMode] = "append",
+        partition_cols: Optional[List[str]] = None,
+        partition_by: Optional[Union[List[str], str]] = None,
+        partition_filters: Optional[List[Tuple[str, str, Any]]] = None,
+        file_options: Optional[Any] = None,
+        max_partitions: Optional[int] = None,
+        max_open_files: int = 1024,
+        max_rows_per_file: int = 10_485_760,
+        max_rows_per_group: int = 131_072,
+        min_rows_per_group: int = 65_536,
+        name: Optional[str] = None,
+        description: Optional[str] = None,
+        metadata_configuration: Optional[
+            Mapping[str, Optional[str]]
+        ] = None,  # renamed from "configuration" for clarity
+        overwrite_schema: bool = False,
+        storage_options: Optional[Dict[str, str]] = None,
+        engine: Literal["pyarrow", "rust"] = "rust",
+        large_dtypes: bool = False,
+        writer_properties: Optional[Any] = None,  # WriterProperties from deltalake
+        predicate: Optional[str] = None,
+        target_file_size: Optional[int] = None,
+        try_create_dir: bool = True,
+        open_stream_args: Optional[Dict[str, Any]] = None,
+        filename_provider: Optional[FilenameProvider] = None,
+        filesystem: Optional["pa_fs.FileSystem"] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
+        concurrency: Optional[int] = None,
+    ) -> None:
+        """
+        Write this :class:`~ray.data.Dataset` as a Delta Lake table.
+
+        Example:
+            import ray
+            ds = ray.data.read_parquet("s3://anonymous@ray-example-data/iris.parquet")
+            ds.write_delta("local:///tmp/iris_delta")
+
+        Args:
+            path: Path or URI of the target Delta table.
+            schema: PyArrow schema to write, or None to infer.
+            mode: Write mode. One of "error", "append" (default), "overwrite", "ignore".
+            partition_cols: List of column names to partition the table by (alias of partition_by).
+            partition_by: Alternative way to specify partition columns as list or comma-separated string.
+            partition_filters: Partition overwrite filters (pyarrow engine only).
+            file_options: Custom file (Parquet) write options.
+            max_partitions: Max number of partitions (pyarrow only).
+            max_open_files: Max files left open while writing.
+            max_rows_per_file: Max number of rows per output file (0 disables).
+            max_rows_per_group: Max number of rows per group.
+            min_rows_per_group: Min number of rows per group before writing (for batch).
+            name: Optional identifier for this table.
+            description: User-provided table description.
+            metadata_configuration: Custom metadata configuration map (for advanced users).
+            overwrite_schema: If True, existing schema is overwritten if incompatible.
+            storage_options: Delta filesystem options (native Delta).
+            engine: Writer engine, one of "pyarrow" or "rust" (default "rust").
+            large_dtypes: PyArrow-only. Support for large data types.
+            writer_properties: Parquet writer properties (rust engine).
+            predicate: Predicate for overwrite mode (rust only).
+            target_file_size: Target file size override, in bytes.
+            try_create_dir: If True, create the target directory if needed.
+            open_stream_args: Output stream configuration, e.g. for S3/Azure.
+            filename_provider: Custom filename provider callable.
+            filesystem: PyArrow filesystem object.
+            ray_remote_args: Advanced Ray remote task options.
+            concurrency: Desired Ray write-parallelism.
+
+        """
+        # Build config object; map new parameters to config fields
+        config = DeltaWriteConfig()
+
+        config.schema = schema
+        config.partition_cols = partition_cols
+        config.partition_by = partition_by
+        config.partition_filters = partition_filters
+        config.file_options = file_options
+        config.max_partitions = max_partitions
+        config.max_open_files = max_open_files
+        config.max_rows_per_file = max_rows_per_file
+        config.max_rows_per_group = max_rows_per_group
+        config.min_rows_per_group = min_rows_per_group
+        config.name = name
+        config.description = description
+        config.configuration = metadata_configuration
+        config.overwrite_schema = overwrite_schema
+        config.storage_options = storage_options
+        config.engine = engine
+        config.large_dtypes = large_dtypes
+        config.writer_properties = writer_properties
+        config.predicate = predicate
+        config.target_file_size = target_file_size
+
+        return self.write_datasink(
+            DeltaDatasink(
+                path=path,
+                mode=mode,
+                delta_config=config,
+                try_create_dir=try_create_dir,
+                open_stream_args=open_stream_args,
+                filename_provider=filename_provider,
+                filesystem=filesystem,
+            ),
+            ray_remote_args=ray_remote_args,
+            concurrency=concurrency,
+        )
 
     @ConsumptionAPI
     @PublicAPI(api_group=IOC_API_GROUP)
