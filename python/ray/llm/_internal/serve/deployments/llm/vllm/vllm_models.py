@@ -11,6 +11,7 @@ from ray.llm._internal.common.utils.import_utils import try_import
 from ray.llm._internal.serve.configs.constants import (
     ALLOW_NEW_PLACEMENT_GROUPS_IN_DEPLOYMENT,
     ENV_VARS_TO_PROPAGATE,
+    RAYLLM_GUIDED_DECODING_BACKEND,
 )
 from ray.llm._internal.serve.configs.prompt_formats import Prompt
 from ray.llm._internal.serve.configs.server_models import (
@@ -111,6 +112,9 @@ class VLLMEngineConfig(BaseModelExtended):
             )
         engine_kwargs["disable_log_stats"] = False
 
+        if "guided_decoding_backend" not in engine_kwargs:
+            engine_kwargs["guided_decoding_backend"] = RAYLLM_GUIDED_DECODING_BACKEND
+
         return engine_kwargs
 
     def get_runtime_env_with_local_env_vars(self) -> dict:
@@ -149,7 +153,8 @@ class VLLMEngineConfig(BaseModelExtended):
             if key in async_engine_field_names:
                 engine_kwargs[key] = value
             else:
-                # Assume anything that is not a an engine argument is a frontend argument.
+                # Assume anything that is not an engine argument is a frontend
+                # argument.
                 frontend_kwargs[key] = value
 
         return VLLMEngineConfig(
