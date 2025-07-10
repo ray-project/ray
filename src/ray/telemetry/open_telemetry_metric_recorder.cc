@@ -176,9 +176,8 @@ void OpenTelemetryMetricRecorder::RegisterHistogramMetric(
     const std::string &description,
     const std::vector<double> &buckets) {
   std::lock_guard<std::mutex> lock(mutex_);
-  if (registered_instruments_.contains(name)) {
-    return;  // Already registered
-  }
+  RAY_CHECK(!registered_instruments_.contains(name))
+      << "Metric " << name << " is already registered";
   // Create a histogram instrument with explicit buckets
   auto aggregation_config =
       std::make_shared<opentelemetry::sdk::metrics::HistogramAggregationConfig>();
