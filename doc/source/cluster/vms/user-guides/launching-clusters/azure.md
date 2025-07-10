@@ -41,7 +41,7 @@ az login
 Now, install the Azure SDK libraries that will enable the Ray cluster launcher to build Azure infrastructure.
 
 ```bash
-# Install azure cli.
+# Install azure SDK libraries.
 pip install azure-core azure-mgmt-network azure-mgmt-common azure-mgmt-resource azure-mgmt-compute msrestazure
 ```
 
@@ -51,7 +51,7 @@ The provided [cluster config file](https://github.com/ray-project/ray/tree/eacc7
 
 Note that you'll need to fill in your Azure [resource_group](https://github.com/ray-project/ray/blob/eacc763c84d47c9c5b86b26a32fd62c685be84e6/python/ray/autoscaler/azure/example-full.yaml#L42) and [location](https://github.com/ray-project/ray/blob/eacc763c84d47c9c5b86b26a32fd62c685be84e6/python/ray/autoscaler/azure/example-full.yaml#L41) in those templates. You also need set the subscription to use. You can do this from the command line with `az account set -s <subscription_id>` or by filling in the [subscription_id](https://github.com/ray-project/ray/blob/eacc763c84d47c9c5b86b26a32fd62c685be84e6/python/ray/autoscaler/azure/example-full.yaml#L44) in the cluster config file.
 
-### Download and configure the example configuration
+#### Download and configure the example configuration
 
 Download the reference example locally:
 
@@ -93,9 +93,9 @@ index b25f1b07f1..c65fb77219 100644
  # list of paths. The same path on the head node will be copied to the worker node.
  ```
 
-### Launch the Ray cluster on Azure
+#### Launch the Ray cluster on Azure
 
-```
+```bash
 # Create or update the cluster. When the command finishes, it will print
 # out the command that can be used to SSH into the cluster head node.
 ray up example-full.yaml
