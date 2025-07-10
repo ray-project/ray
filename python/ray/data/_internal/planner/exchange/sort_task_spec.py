@@ -136,13 +136,18 @@ class SortTaskSpec(ExchangeTaskSpec):
     ) -> List[Union[Block, "BlockMetadataWithSchema"]]:
         stats = BlockExecStats.builder()
         accessor = BlockAccessor.for_block(block)
-        out = accessor.sort_and_partition(boundaries, sort_key)
+        res = accessor.sort_and_partition(boundaries, sort_key)
         from ray.data.block import BlockMetadataWithSchema
 
-        assert len(out) > 0
+        assert len(res) > 0
         # Look at the first non-empty block for the schema
-        b = next((b for b in out if b), out[0])
-        meta_with_schema = BlockMetadataWithSchema.from_block(b, stats=stats.build())
+        out = None
+        for b in res:
+            if b:
+                out = b
+                break
+        assert out is not None
+        meta_with_schema = BlockMetadataWithSchema.from_block(out, stats=stats.build())
         return out + [meta_with_schema]
 
     @staticmethod
