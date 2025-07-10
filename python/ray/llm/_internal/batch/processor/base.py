@@ -48,8 +48,6 @@ class ProcessorConfig(BaseModelExtended):
     concurrency: Optional[int] = Field(
         default=1,
         description="The number of workers for data parallelism. Default to 1.",
-<<<<<<< HEAD
-=======
     )
 
     experimental: Dict[str, Any] = Field(
@@ -57,7 +55,6 @@ class ProcessorConfig(BaseModelExtended):
         description="[Experimental] Experimental configurations."
         "Supported keys:\n"
         "`max_tasks_in_flight_per_actor`: The maximum number of tasks in flight per actor. Default to 4.",
->>>>>>> elliot-barn/raydepsets-v1.0.1
     )
 
     class Config:

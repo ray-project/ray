@@ -19,9 +19,11 @@ DEFAULT_UV_FLAGS = [
     "--quiet",
 ]
 
+
 @click.group(name="raydepsets")
 def cli():
     """Manage Python dependency sets."""
+
 
 @cli.command()
 @click.argument("config_path", default="ci/raydepsets/depset.config.yaml")

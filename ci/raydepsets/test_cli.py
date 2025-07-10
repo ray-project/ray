@@ -58,5 +58,6 @@ class TestCli(unittest.TestCase):
             with pytest.raises(Exception, match="BUILD_WORKSPACE_DIRECTORY is not set"):
                 Workspace()
 
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
