@@ -716,7 +716,7 @@ def test_deploy_multiple_apps_batched(serve_instance):
     assert serve.get_app_handle("a").remote().result() == "a"
     assert serve.get_app_handle("b").remote().result() == "b"
 
-    url = get_application_url("HTTP")
+    url = get_application_url("HTTP", use_localhost=True)
     assert httpx.get(f"{url}/a").text == "a"
     assert httpx.get(f"{url}/b").text == "b"
 
