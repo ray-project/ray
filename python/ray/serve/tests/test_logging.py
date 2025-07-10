@@ -645,16 +645,26 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
         ]
 
         def check_log():
-            logs_content = ""
-            time.sleep(10)
             logs_content = f.getvalue()
+
+            all_conditions_true = True
             for expected_log_info in expected_log_infos:
-                assert expected_log_info in logs_content
+                if expected_log_info not in logs_content:
+                    all_conditions_true = False
+                    break
             for regex in user_log_regexes:
-                assert re.findall(regex, logs_content) != []
+                if re.findall(regex, logs_content) == []:
+                    all_conditions_true = False
+                    break
+
+            return all_conditions_true
 
         # Check stream log
-        check_log()
+        wait_for_condition(
+            check_log,
+            timeout=25,
+            retry_interval_ms=100,
+        )
 
         # Check user log file
         method_replica_id = resp["replica"].split("#")[-1]
