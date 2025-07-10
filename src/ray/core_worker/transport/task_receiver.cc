@@ -56,7 +56,8 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
 
     TaskExecutionResult result = task_handler_(task_spec, std::move(resource_ids));
 
-    // TODO: populate reply->mutable_borrowed_refs()
+    // XXX: additional copy.
+    reply->mutable_borrowed_refs()->Swap(&result.borrowed_refs);
     reply->set_is_retryable_error(result.is_retryable_error);
     reply->set_is_application_error(!result.application_error.empty());
     std::string task_execution_error;
