@@ -570,7 +570,7 @@ class ReporterAgent(
         """
         GRPC method that receives the open telemetry metrics exported from other Ray
         components running in the same node (e.g., raylet, worker, etc.). This method
-        implements an interface of `metrics_service_pb2_grpc.MetricsServiceServicer`,
+        implements an interface of `metrics_service_pb2_grpc.MetricsServiceServicer` (https://github.com/open-telemetry/opentelemetry-proto/blob/main/opentelemetry/proto/collector/metrics/v1/metrics_service.proto#L30),
         which is the default open-telemetry metrics service interface.
         """
         for resource_metrics in request.resource_metrics:
