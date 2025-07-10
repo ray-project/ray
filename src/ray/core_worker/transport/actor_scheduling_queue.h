@@ -79,8 +79,6 @@ class ActorSchedulingQueue : public SchedulingQueue {
   /// CancelTaskIfFound.
   void AcceptRequestOrRejectIfCanceled(TaskID task_id, InboundRequest &request);
 
-  /// Called when we time out waiting for an earlier task to show up.
-  void OnSequencingWaitTimeout();
   /// Max time in seconds to wait for dependencies to show up.
   const int64_t reorder_wait_seconds_;
   /// Sorted map of (accept, rej) task callbacks keyed by their sequence number.
