@@ -1,7 +1,9 @@
+import dataclasses
 import os
 from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Union
 
 from pydantic import ConfigDict, Field, ValidationError, field_validator
+from vllm.engine.arg_utils import AsyncEngineArgs
 
 from ray.llm._internal.common.base_pydantic import BaseModelExtended
 from ray.llm._internal.common.utils.cloud_utils import CloudMirrorConfig
@@ -9,6 +11,7 @@ from ray.llm._internal.common.utils.import_utils import try_import
 from ray.llm._internal.serve.configs.constants import (
     ALLOW_NEW_PLACEMENT_GROUPS_IN_DEPLOYMENT,
     ENV_VARS_TO_PROPAGATE,
+    RAYLLM_GUIDED_DECODING_BACKEND,
 )
 from ray.llm._internal.serve.configs.prompt_formats import Prompt
 from ray.llm._internal.serve.configs.server_models import (
@@ -64,6 +67,7 @@ class VLLMEngineConfig(BaseModelExtended):
     )
     runtime_env: Optional[Dict[str, Any]] = None
     engine_kwargs: Dict[str, Any] = {}
+    frontend_kwargs: Dict[str, Any] = {}
 
     @property
     def actual_hf_model_id(self) -> str:
@@ -82,7 +86,36 @@ class VLLMEngineConfig(BaseModelExtended):
         Get kwargs that will be actually passed to the LLMInitializer
         constructor.
         """
-        return self.engine_kwargs.copy()
+        engine_kwargs = self.engine_kwargs.copy()
+
+        if "model" in engine_kwargs or "served_model_name" in engine_kwargs:
+            raise ValueError(
+                "model or served_model_name is not allowed in engine_kwargs when using Ray Serve LLM. Please use `model_loading_config` in LLMConfig instead."
+            )
+
+        engine_kwargs["model"] = self.actual_hf_model_id
+        engine_kwargs["served_model_name"] = [self.model_id]
+
+        if (
+            "distributed_executor_backend" in engine_kwargs
+            and engine_kwargs["distributed_executor_backend"] != "ray"
+        ):
+            raise ValueError(
+                "distributed_executor_backend != 'ray' is not allowed in engine_kwargs when using Ray Serve LLM Configs."
+            )
+        else:
+            engine_kwargs["distributed_executor_backend"] = "ray"
+
+        if "disable_log_stats" in engine_kwargs and engine_kwargs["disable_log_stats"]:
+            logger.warning(
+                "disable_log_stats = True is not allowed in engine_kwargs when using Ray Serve LLM Configs. Setting it to False."
+            )
+        engine_kwargs["disable_log_stats"] = False
+
+        if "guided_decoding_backend" not in engine_kwargs:
+            engine_kwargs["guided_decoding_backend"] = RAYLLM_GUIDED_DECODING_BACKEND
+
+        return engine_kwargs
 
     def get_runtime_env_with_local_env_vars(self) -> dict:
         runtime_env = self.runtime_env or {}
@@ -107,13 +140,31 @@ class VLLMEngineConfig(BaseModelExtended):
             # If it's a CloudMirrorConfig (or subtype)
             mirror_config = llm_config.model_loading_config.model_source
 
+        all_engine_kwargs = llm_config.engine_kwargs.copy()
+        engine_kwargs = {}
+        frontend_kwargs = {}
+
+        # Get field names from dataclasses
+        async_engine_field_names = {
+            field.name for field in dataclasses.fields(AsyncEngineArgs)
+        }
+
+        for key, value in all_engine_kwargs.items():
+            if key in async_engine_field_names:
+                engine_kwargs[key] = value
+            else:
+                # Assume anything that is not an engine argument is a frontend
+                # argument.
+                frontend_kwargs[key] = value
+
         return VLLMEngineConfig(
             model_id=llm_config.model_id,
             hf_model_id=hf_model_id,
             mirror_config=mirror_config,
             resources_per_bundle=llm_config.resources_per_bundle,
             accelerator_type=llm_config.accelerator_type,
-            engine_kwargs=llm_config.engine_kwargs,
+            engine_kwargs=engine_kwargs,
+            frontend_kwargs=frontend_kwargs,
             runtime_env=llm_config.runtime_env,
         )
 
