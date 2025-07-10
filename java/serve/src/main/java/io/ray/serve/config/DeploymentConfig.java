@@ -52,16 +52,9 @@ public class DeploymentConfig implements Serializable {
    */
   private Double healthCheckTimeoutS = Constants.DEFAULT_HEALTH_CHECK_TIMEOUT_S;
 
-  /** Frequency at which the controller will record request routing stats. */
-  private Double requestRoutingStatsPeriodS = Constants.DEFAULT_REQUEST_ROUTING_STATS_PERIOD_S;
-
-  /**
-   * Timeout that the controller will wait for a response from the replica's request routing stats
-   * before retrying.
-   */
-  private Double requestRoutingStatsTimeoutS = Constants.DEFAULT_REQUEST_ROUTING_STATS_TIMEOUT_S;
-
   private AutoscalingConfig autoscalingConfig;
+
+  private RequestRouterConfig routerConfig;
 
   /** This flag is used to let replica know they are deplyed from a different language. */
   private Boolean isCrossLanguage = false;
@@ -150,23 +143,23 @@ public class DeploymentConfig implements Serializable {
   }
 
   public Double getRequestRoutingStatsPeriodS() {
-    return requestRoutingStatsPeriodS;
+    return routerConfig.getRequestRoutingStatsPeriodS();
   }
 
   public DeploymentConfig setRequestRoutingStatsPeriodS(Double requestRoutingStatsPeriodS) {
     if (requestRoutingStatsPeriodS != null) {
-      this.requestRoutingStatsPeriodS = requestRoutingStatsPeriodS;
+      routerConfig.setRequestRoutingStatsPeriodS(requestRoutingStatsPeriodS);
     }
     return this;
   }
 
   public Double getRequestRoutingStatsTimeoutS() {
-    return requestRoutingStatsTimeoutS;
+    return routerConfig.getRequestRoutingStatsTimeoutS();
   }
 
   public DeploymentConfig setRequestRoutingStatsTimeoutS(Double requestRoutingStatsTimeoutS) {
     if (requestRoutingStatsTimeoutS != null) {
-      this.requestRoutingStatsTimeoutS = requestRoutingStatsTimeoutS;
+      routerConfig.setRequestRoutingStatsTimeoutS(requestRoutingStatsTimeoutS);
     }
     return this;
   }
@@ -177,6 +170,15 @@ public class DeploymentConfig implements Serializable {
 
   public DeploymentConfig setAutoscalingConfig(AutoscalingConfig autoscalingConfig) {
     this.autoscalingConfig = autoscalingConfig;
+    return this;
+  }
+
+  public RequestRouterConfig getRequestRouterConfig() {
+    return routerConfig;
+  }
+
+  public DeploymentConfig setRequestRouterConfig(RequestRouterConfig routerConfig) {
+    this.routerConfig = routerConfig;
     return this;
   }
 
@@ -230,8 +232,6 @@ public class DeploymentConfig implements Serializable {
             .setGracefulShutdownTimeoutS(gracefulShutdownTimeoutS)
             .setHealthCheckPeriodS(healthCheckPeriodS)
             .setHealthCheckTimeoutS(healthCheckTimeoutS)
-            .setRequestRoutingStatsPeriodS(requestRoutingStatsPeriodS)
-            .setRequestRoutingStatsTimeoutS(requestRoutingStatsTimeoutS)
             .setIsCrossLanguage(isCrossLanguage)
             .setDeploymentLanguage(deploymentLanguage)
             .setVersion(version);
@@ -240,6 +240,9 @@ public class DeploymentConfig implements Serializable {
     }
     if (null != autoscalingConfig) {
       builder.setAutoscalingConfig(autoscalingConfig.toProto());
+    }
+    if (null != routerConfig) {
+      builder.setRequestRouterConfig(routerConfig.toProto());
     }
     return builder.build().toByteArray();
   }
@@ -253,8 +256,6 @@ public class DeploymentConfig implements Serializable {
             .setGracefulShutdownTimeoutS(gracefulShutdownTimeoutS)
             .setHealthCheckPeriodS(healthCheckPeriodS)
             .setHealthCheckTimeoutS(healthCheckTimeoutS)
-            .setRequestRoutingStatsPeriodS(requestRoutingStatsPeriodS)
-            .setRequestRoutingStatsTimeoutS(requestRoutingStatsTimeoutS)
             .setIsCrossLanguage(isCrossLanguage)
             .setDeploymentLanguage(deploymentLanguage);
     if (null != userConfig) {
@@ -262,6 +263,9 @@ public class DeploymentConfig implements Serializable {
     }
     if (null != autoscalingConfig) {
       builder.setAutoscalingConfig(autoscalingConfig.toProto());
+    }
+    if (null != routerConfig) {
+      builder.setRequestRouterConfig(routerConfig.toProto());
     }
     return builder.build();
   }

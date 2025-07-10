@@ -15,6 +15,7 @@ from ray.serve.config import (
     DeploymentMode,
     HTTPOptions,
     ProxyLocation,
+    RequestRouterConfig,
     gRPCOptions,
 )
 from ray.serve.generated.serve_pb2 import (
@@ -144,27 +145,43 @@ class TestDeploymentConfig:
 
         # Passing request_router_class as a class.
         deployment_config = DeploymentConfig.from_default(
-            request_router_class=FakeRequestRouter
+            request_router_config=RequestRouterConfig(
+                request_router_class=FakeRequestRouter
+            )
         )
-        assert deployment_config.request_router_class == request_router_path
-        assert deployment_config.get_request_router_class() == FakeRequestRouter
+        assert (
+            deployment_config.request_router_config.request_router_class
+            == request_router_path
+        )
+        assert (
+            deployment_config.request_router_config.get_request_router_class()
+            == FakeRequestRouter
+        )
 
         # Passing request_router_class as an import path.
         deployment_config = DeploymentConfig.from_default(
-            request_router_class=request_router_path
+            request_router_config=RequestRouterConfig(
+                request_router_class=request_router_path
+            )
         )
-        assert deployment_config.request_router_class == request_router_path
-        assert deployment_config.get_request_router_class() == FakeRequestRouter
+        assert (
+            deployment_config.request_router_config.request_router_class
+            == request_router_path
+        )
+        assert (
+            deployment_config.request_router_config.get_request_router_class()
+            == FakeRequestRouter
+        )
 
         # Not passing request_router_class should
         # default to `PowerOfTwoChoicesRequestRouter`.
         deployment_config = DeploymentConfig.from_default()
         assert (
-            deployment_config.request_router_class
+            deployment_config.request_router_config.request_router_class
             == "ray.serve._private.request_router:PowerOfTwoChoicesRequestRouter"
         )
         assert (
-            deployment_config.get_request_router_class()
+            deployment_config.request_router_config.get_request_router_class()
             == PowerOfTwoChoicesRequestRouter
         )
 
