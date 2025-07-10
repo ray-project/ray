@@ -916,9 +916,9 @@ def get_wheel_filename(
     architecture = architecture or platform.processor()
 
     if py_version_str in ["311", "310", "39", "38"] and architecture == "arm64":
-        darwin_os_string = "macosx_11_0_arm64"
+        darwin_os_string = "macosx_12_0_arm64"
     else:
-        darwin_os_string = "macosx_10_15_x86_64"
+        darwin_os_string = "macosx_12_0_x86_64"
 
     if architecture == "aarch64":
         linux_os_string = "manylinux2014_aarch64"

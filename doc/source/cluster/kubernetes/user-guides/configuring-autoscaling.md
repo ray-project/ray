@@ -325,6 +325,11 @@ Starting from Ray 2.41.0, the Ray Autoscaler can read resource specifications fr
 Earlier versions only support `rayStartParams` or resource limits, and don't recognize resource requests.
 ```
 
+```{admonition} rayStartParams is optional if you're using an autoscaler image with Ray 2.45.0 or later.
+`rayStartParams` is optional with RayCluster CRD from KubeRay 1.4.0 or later but required in earlier versions.
+If you omit `rayStartParams` and want to use autoscaling, the autoscaling image must have Ray 2.45.0 or later.
+```
+
 The Ray Autoscaler reads the `rayStartParams` field or the Ray container's resource limits in the RayCluster custom resource specification to determine the Ray Pod's resource requirements.
 The information regarding the number of CPUs is essential for the Ray Autoscaler to scale the cluster.
 Therefore, without this information, the Ray Autoscaler reports an error and fails to start.
@@ -353,7 +358,6 @@ headGroupSpec:
 ...
 workerGroupSpecs:
 - groupName: small-group
-  rayStartParams: {}
   template:
     spec:
       containers:
