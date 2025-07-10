@@ -14,11 +14,12 @@
 
 #pragma once
 
-#include <map>
+#include <list>
 #include <memory>
 #include <thread>
 
 #include "absl/base/thread_annotations.h"
+#include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
@@ -79,10 +80,17 @@ class ActorSchedulingQueue : public SchedulingQueue {
   /// CancelTaskIfFound.
   void AcceptRequestOrRejectIfCanceled(TaskID task_id, InboundRequest &request);
 
+  void ExecuteRequest(InboundRequest &&request);
+
   /// Max time in seconds to wait for dependencies to show up.
   const int64_t reorder_wait_seconds_;
   /// Sorted map of (accept, rej) task callbacks keyed by their sequence number.
-  std::map<int64_t, InboundRequest> pending_actor_tasks_;
+  absl::btree_map<int64_t, InboundRequest> pending_actor_tasks_;
+  /// List of task retry requests. This is a separate from the map because retries don't
+  /// need to be ordered.
+  std::list<InboundRequest> pending_retry_actor_tasks_;
+  /// Set of sequence numbers that can be skipped because they were retry seq no's.
+  absl::flat_hash_set<int64_t> seq_no_to_skip_;
   /// The next sequence number we are waiting for to arrive.
   int64_t next_seq_no_ = 0;
   /// Timer for waiting on dependencies. Note that this is set on the task main
