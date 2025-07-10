@@ -186,12 +186,12 @@ void OutOfOrderActorSchedulingQueue::RunRequest(InboundRequest request) {
     waiter_.Wait(dependencies, [this, request = std::move(request)]() mutable {
       RAY_CHECK_EQ(std::this_thread::get_id(), main_thread_id_);
 
-      const TaskSpecification &task_spec = request.TaskSpec();
+      const TaskSpecification &_task_spec = request.TaskSpec();
       RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
-          task_spec.TaskId(),
-          task_spec.JobId(),
-          task_spec.AttemptNumber(),
-          task_spec,
+          _task_spec.TaskId(),
+          _task_spec.JobId(),
+          _task_spec.AttemptNumber(),
+          _task_spec,
           rpc::TaskStatus::PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY,
           /* include_task_info */ false));
 

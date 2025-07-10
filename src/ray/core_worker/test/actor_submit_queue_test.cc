@@ -32,7 +32,7 @@ TaskSpecification BuildTaskSpec(uint64_t seq) {
 }  // namespace
 
 TEST(OutofOrderActorSubmitQueueTest, PassThroughTest) {
-  OutofOrderActorSubmitQueue queue(ActorID{});
+  OutofOrderActorSubmitQueue queue;
   // insert request 0 1 2 3 4
   for (uint64_t i = 0; i < 5; i++) {
     EXPECT_TRUE(queue.Emplace(i, BuildTaskSpec(i)));
