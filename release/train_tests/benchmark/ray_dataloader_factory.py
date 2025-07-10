@@ -33,9 +33,7 @@ class RayDataLoaderFactory(BaseDataLoaderFactory):
         data_context.execution_options.actor_locality_enabled = (
             dataloader_config.actor_locality_enabled
         )
-        data_context.execution_options.preserve_order = (
-            dataloader_config.preserve_order
-        )
+        data_context.execution_options.preserve_order = dataloader_config.preserve_order
         data_context.override_object_store_memory_limit_fraction = (
             dataloader_config.override_object_store_memory_limit_fraction
         )
