@@ -186,9 +186,7 @@ void ActorSchedulingQueue::ScheduleRequests() {
   }
 
   // Process as many in-order requests as we can.
-  while (!pending_actor_tasks_.empty() &&
-         pending_actor_tasks_.begin()->first == next_seq_no_ &&
-         pending_actor_tasks_.begin()->second.CanExecute()) {
+  while (!pending_actor_tasks_.empty()) {
     auto begin_it = pending_actor_tasks_.begin();
     auto &[seq_no, request] = *begin_it;
     if (seq_no == next_seq_no_) {
