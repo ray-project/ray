@@ -19,8 +19,9 @@ eval_set = lgb.Dataset(eval_X, label=eval_y)
 
 # 2. Define your LightGBM model training parameters.
 params = {
-    "objective": "regression",
-    "metric": "l2",
+    "objective": "multiclass",
+    "num_class": 3,
+    "metric": ["multi_logloss", "multi_error"],
     "verbosity": -1,
     "boosting_type": "gbdt",
     "num_leaves": 31,
@@ -73,8 +74,9 @@ def train_func():
 
     # 3. Define your LightGBM model training parameters.
     params = {
-        "objective": "regression",
-        "metric": "l2",
+        "objective": "multiclass",
+        "num_class": 3,
+        "metric": ["multi_logloss", "multi_error"],
         "verbosity": -1,
         "boosting_type": "gbdt",
         "num_leaves": 31,
