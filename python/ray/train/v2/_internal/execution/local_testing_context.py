@@ -1,6 +1,6 @@
 import os
 import threading
-from typing import Any
+from typing import Any, Dict, Optional
 
 import ray.data
 from ray.data import DataIterator
@@ -41,6 +41,14 @@ class LocalTestingTrainContext:
     def get_dataset_shard(self, dataset_name: str) -> DataIterator:
         dataset_shards = _local_test_configs.get(LOCAL_CONFIG_DATASET_NAME, {})
         return dataset_shards.get(dataset_name, ray.data.from_items([]))
+
+    def report(
+        self,
+        metrics: Dict[str, Any],
+        checkpoint: Optional[Any] = None,
+        checkpoint_dir_name: Optional[str] = None,
+    ):
+        print(f"Local testing report metrics: {metrics}")
 
 
 _local_testing_train_context = LocalTestingTrainContext()
