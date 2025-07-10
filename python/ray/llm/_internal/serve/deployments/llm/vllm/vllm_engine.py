@@ -139,46 +139,6 @@ def _clear_current_platform_cache():
         current_platform.get_device_capability.cache_clear()
 
 
-class _EngineBackgroundProcess:
-    def __init__(self, ipc_path, engine_args, engine_config):
-        from vllm.engine.multiprocessing.engine import MQLLMEngine
-        from vllm.plugins import load_general_plugins
-        from vllm.usage.usage_lib import UsageContext
-
-        # Adapted from vllm.engine.multiprocessing.engine.MQLLMEngine.from_engine_args
-        load_general_plugins()
-
-        # Note (genesu): There is a bug in vllm 0.7.2 forced the use of uni processing
-        # executor when world_size is 1. This is a bug in vllm 0.7.2 and
-        # is fixed by https://github.com/vllm-project/vllm/pull/12934 which is shipped
-        # with vllm 0.7.3. However, in Ray's llm package, we will enforce the use of
-        # ray distributed executor for all cases so it's always compatible with Ray.
-        from vllm.executor.ray_distributed_executor import RayDistributedExecutor
-
-        # Clear the cache of the current platform.
-        _clear_current_platform_cache()
-
-        self.engine = MQLLMEngine(
-            ipc_path=ipc_path,
-            use_async_sockets=engine_config.model_config.use_async_output_proc,
-            vllm_config=engine_config,
-            executor_class=RayDistributedExecutor,
-            log_requests=not engine_args.disable_log_requests,
-            log_stats=not engine_args.disable_log_stats,
-            usage_context=UsageContext.API_SERVER,
-        )
-        self._error = None
-
-    def start(self):
-        try:
-            self.engine.start()
-        except Exception as e:
-            self._error = e
-
-    def get_error(self):
-        return self._error
-
-
 class VLLMEngine(LLMEngine):
     def __init__(
         self,
@@ -197,11 +157,15 @@ class VLLMEngine(LLMEngine):
             )
         from vllm import envs as vllm_envs, utils as vllm_utils
 
+        if not vllm_envs.VLLM_USE_V1:
+            logger.warning(
+                "vLLM v0 is getting fully deprecated. As a result in Ray Serve LLM only v1 is supported. Only when you know what you are doing, you can set VLLM_USE_V1=0"
+            )
+
+        # TODO (Kourosh): This validation logic belongs to the PDProxy module.
         # Pick a random port in P/D case.
         kv_transfer_config = llm_config.engine_kwargs.get("kv_transfer_config", None)
         if kv_transfer_config is not None:
-            if not vllm_envs.VLLM_USE_V1:
-                logger.warning("Ray Serve LLM only supports P/D with v1 vLLM engine.")
             connector_type = getattr(kv_transfer_config, "kv_connector", "")
             if connector_type != "NixlConnector":
                 raise ValueError("Only NixlConnector is supported for kv transfer.")
@@ -231,12 +195,11 @@ class VLLMEngine(LLMEngine):
             llm_config, LLMConfig
         ), f"Got invalid config {llm_config} of type {type(llm_config)}"
         self.llm_config = llm_config
-        self.engine_config = VLLMEngineConfig.from_llm_config(llm_config)
 
         self._stats = VLLMEngineStatTracker()
         self.running = False
         self.model_config: "ModelConfig" = None
-        self.engine = None
+        self._engine_client = None
         self.vllm_config: "VllmConfig" = None
 
         # Chat template content format (openai or string)
@@ -265,7 +228,7 @@ class VLLMEngine(LLMEngine):
         encoded = self._tokenizer(prompt_text, add_special_tokens=add_special_tokens)
         return encoded.input_ids
 
-    async def start(self):
+    async def start(self) -> None:
         """Start the vLLM engine.
 
         If the engine is already running, do nothing.
@@ -279,11 +242,11 @@ class VLLMEngine(LLMEngine):
             logger.info("Skipping engine restart because the engine is already running")
             return
 
-        self.engine = await self._start_engine()
+        self._engine_client = await self._start_engine()
         self.running = True
-        self.model_config = await self.engine.get_model_config()
+        self.model_config = await self._engine_client.get_model_config()
 
-        self._tokenizer = await self.engine.get_tokenizer()
+        self._tokenizer = await self._engine_client.get_tokenizer()
 
         def resolve_chat_template_content_format(model_config, **kwargs):
             try:
@@ -312,48 +275,32 @@ class VLLMEngine(LLMEngine):
         logger.info("Started vLLM engine.")
 
     async def _start_engine(self) -> "EngineClient":
-        from vllm import envs as vllm_envs
-
-        # Since vLLM 0.8.0, the logic to determine v0/v1 engine is as follows:
-        # 1. If VLLM_USE_V1 is not set, then it tries to use v1 engine. However,
-        #    if any feature specified in the engine config is not supported, then
-        #    it falls back to v0. Note that launching vLLM on a non-main thread
-        #    is an experimental feature, so vLLM will fall back to v0 in this case.
-        # 2. If VLLM_USE_V1 is set to 1, then it will use v1 engine even with
-        #    experimental features (such as launching vLLM on a non-main thread).
-        # 3. If VLLM_USE_V1 is set to 0, force using v0 engine.
-        # In Ray Serve LLM, we forbid case 1 because we have to know exactly which engine is used.
-        if not vllm_envs.is_set("VLLM_USE_V1"):
-            logger.warning(
-                "VLLM_USE_V1 environment variable is not set, using vLLM v0 as default. "
-                "Later we may switch default to use v1 once vLLM v1 is mature."
-            )
-            vllm_envs.set_vllm_use_v1(False)
-
-        if not vllm_envs.VLLM_USE_V1:
-            if self.llm_config.log_engine_metrics:
-                raise ValueError("V1 vLLM Engine is required to log engine metrics")
-
-            return await self._start_engine_v0()
-
-        return await self._start_engine_v1()
-
-    async def _prepare_engine_config(self, use_v1: bool):
-        """
-        Prepare the engine config to start the engine.
-
-        Args:
-            use_v1: Whether to use vLLM V1 engine.
-
-        Returns:
-            engine_args: The engine arguments.
-            engine_config: The engine configuration.
-            node_initialization: The node initialization.
-        """
         # Initialize node and return all configurations
         node_initialization = await self.initialize_node(self.llm_config)
 
-        if self.engine_config.use_gpu:
+        vllm_engine_args, vllm_engine_config = await self._prepare_engine_config(
+            node_initialization
+        )
+
+        return self._start_async_llm_engine(
+            vllm_engine_args,
+            vllm_engine_config,
+            node_initialization.placement_group,
+        )
+
+    async def _prepare_engine_config(self, node_initialization: InitializeNodeOutput):
+        """Prepare the engine config to start the engine.
+
+        Args:
+            node_initialization: The node initialization.
+
+        Returns:
+            engine_args: The vLLM's internal engine arguments that is flattened.
+            engine_config: The vLLM's internal engine config that is nested.
+        """
+        engine_config: VLLMEngineConfig = self.llm_config.get_engine_config()
+
+        if engine_config.use_gpu:
             # Create engine config on a task with access to GPU,
             # as GPU capability may be queried.
             ref = (
@@ -370,137 +317,58 @@ class VLLMEngine(LLMEngine):
                 )
                 .remote(self.llm_config)
             )
-            engine_args, engine_config = ray.get(ref)
+            vllm_engine_args, vllm_engine_config = ray.get(ref)
         else:
-            engine_args, engine_config = _get_vllm_engine_config(self.llm_config)
+            vllm_engine_args, vllm_engine_config = _get_vllm_engine_config(
+                self.llm_config
+            )
 
         # Note (genesu): vllm_config is used to extract the scheduler config for
         # computing the correct prompt limit.
-        self.vllm_config = engine_config
-        return engine_args, engine_config, node_initialization
+        self.vllm_config = vllm_engine_config
+        return vllm_engine_args, vllm_engine_config
 
-    async def _start_engine_v1(self) -> "EngineClient":
-        """Start the vLLM v1 engine. Note that we only use _get_async_engine_args
-        to get the engine args and don't use _get_vllm_engine_config, because
-        we integrate vLLM v1 using the highest-level async engine API.
-        TODO: Refactor vLLM v0 integration to use the same async engine API
-        to simplify the code.
-        """
-        (
-            engine_args,
-            engine_config,
-            node_initialization,
-        ) = await self._prepare_engine_config(use_v1=True)
-
-        return self._start_async_llm_engine(
-            engine_args,
-            engine_config,
-            node_initialization.placement_group,
-            use_v1=True,
-        )
-
-    async def _start_engine_v0(self) -> "EngineClient":
-        from vllm.engine.multiprocessing.client import MQLLMEngineClient
-
-        (
-            engine_args,
-            engine_config,
-            node_initialization,
-        ) = await self._prepare_engine_config(use_v1=False)
-
-        if MQLLMEngineClient.is_unsupported_config(engine_config):
-            # If the engine is not supported, we fall back to the legacy async engine.
-            #
-            # Note (genesu): as of 2025-02-11, this code path is only triggered when
-            # pipeline parallelism is > 1. And this is due to the vllm mq engine have
-            # not implemented the pipeline parallelism yet.
-            return self._start_async_llm_engine(
-                engine_args,
-                engine_config,
-                node_initialization.placement_group,
-                use_v1=False,
-            )
-
-        return await self._start_mq_engine(
-            engine_args, engine_config, node_initialization.placement_group
-        )
-
-    async def _start_mq_engine(
+    def _start_async_llm_engine_v0(
         self,
-        engine_args: "AsyncEngineArgs",
-        engine_config: "VllmConfig",
+        vllm_engine_args: "AsyncEngineArgs",
+        vllm_engine_config: "VllmConfig",
         placement_group: PlacementGroup,
     ) -> "EngineClient":
-        from vllm.engine.multiprocessing.client import MQLLMEngineClient
-        from vllm.utils import get_open_zmq_ipc_path
 
-        ipc_path = get_open_zmq_ipc_path()
+        from vllm.engine.async_llm_engine import AsyncLLMEngine
+        from vllm.executor.ray_distributed_executor import RayDistributedExecutor
 
-        BackgroundCls = ray.remote(
-            num_cpus=0,
-            scheduling_strategy=PlacementGroupSchedulingStrategy(
-                placement_group=placement_group,
-                placement_group_capture_child_tasks=True,
-            ),
-            runtime_env=dict(
-                env_vars=dict(
-                    VLLM_USE_V1="0",
-                ),
-            ),
-        )(_EngineBackgroundProcess)
-        # Run the process in the background
-        process_ref = BackgroundCls.remote(ipc_path, engine_args, engine_config)
-        process_ref.start.remote()
-        engine_client = MQLLMEngineClient(
-            ipc_path=ipc_path,
-            engine_config=engine_config,
-            engine_pid=os.getpid(),
+        vllm_engine_config.parallel_config.placement_group = placement_group
+
+        _clear_current_platform_cache()
+
+        engine_client = AsyncLLMEngine(
+            vllm_config=vllm_engine_config,
+            executor_class=RayDistributedExecutor,
+            log_stats=not vllm_engine_args.disable_log_stats,
         )
-
-        logger.info("[STATUS] Getting the server ready ...")
-        while True:
-            try:
-                await engine_client.setup()
-                break
-            except TimeoutError:
-                # A timeout is raised if client cannot connect to the background process.
-                # This could be due to one of the following reasons:
-                # 1. The engine has died during construction of the actor: In this case
-                # get() on any of its methods will raise an ActorDiedError which should
-                # be re-raised
-                # 2. The engine is just not up yet (downloading the model, sharding, etc.)
-                # In this case, we should just wait.
-                # 3. Something in the .start() has caused the engine to fail: In this
-                # case the exception is caught and get_error will return the error
-                # which should be re-raised.
-                logger.info("[STATUS] Waiting for engine process ...")
-                try:
-                    # Wait 1 second to get any potential error raised in the engine loop
-                    err = ray.get(process_ref.get_error.remote(), timeout=1)
-                    if err:
-                        raise RuntimeError("Background Engine loop is dead.") from err
-                except ray.exceptions.GetTimeoutError:
-                    # If it times out then the background loop is keeping it busy
-                    pass
-                except ray.exceptions.ActorDiedError as e:
-                    logger.error("[ERROR] Actor died.")
-                    raise RuntimeError("Background Engine loop is dead.") from e
-
-        logger.info("[STATUS] Server is ready.")
 
         return engine_client
 
     def _start_async_llm_engine(
         self,
-        engine_args: "AsyncEngineArgs",
-        vllm_config: "VllmConfig",
+        vllm_engine_args: "AsyncEngineArgs",
+        vllm_engine_config: "VllmConfig",
         placement_group: PlacementGroup,
-        use_v1: bool = False,
     ) -> "EngineClient":
         """Creates an async LLM engine from the engine arguments."""
+        from vllm import envs as vllm_envs
+
+        # NOTE: This is a temporary solution untill vLLM v1 supports embeddings.
+        if not vllm_envs.VLLM_USE_V1:
+            return self._start_async_llm_engine_v0(
+                vllm_engine_args, vllm_engine_config, placement_group
+            )
+
+        from vllm.v1.engine.async_llm import AsyncLLM
         from vllm.v1.executor.abstract import Executor
 
-        vllm_config.parallel_config.placement_group = placement_group
+        vllm_engine_config.parallel_config.placement_group = placement_group
 
         _clear_current_platform_cache()
 
@@ -510,20 +378,20 @@ class VLLMEngine(LLMEngine):
                 RayPrometheusStatLogger,
             )
 
-            # V1 AsyncLLMEngine does not yet support add_logger
+            # V1 AsyncLLM does not yet support add_logger
             # For now, assume folks enabling log_engine_metrics do not require LoggingStatLogger, PrometheusStatLogger
             custom_stat_loggers = [RayPrometheusStatLogger]
 
-        executor_class = Executor.get_class(vllm_config)
+        executor_class = Executor.get_class(vllm_engine_config)
         logger.info(f"Using executor class: {executor_class}")
-        engine = vllm.AsyncLLMEngine(
-            vllm_config=vllm_config,
+        engine_client = AsyncLLM(
+            vllm_config=vllm_engine_config,
             executor_class=executor_class,
-            log_stats=not engine_args.disable_log_stats,
+            log_stats=not vllm_engine_args.disable_log_stats,
             stat_loggers=custom_stat_loggers,
         )
 
-        return engine
+        return engine_client
 
     async def prepare_request(
         self,
@@ -625,7 +493,9 @@ class VLLMEngine(LLMEngine):
             )
 
         # Construct a results generator from vLLM
-        results_generator: AsyncGenerator["RequestOutput", None] = self.engine.generate(
+        results_generator: AsyncGenerator[
+            "RequestOutput", None
+        ] = self._engine_client.generate(
             prompt=prompt,
             sampling_params=self._parse_sampling_params(request.sampling_params),
             request_id=request.request_id,
@@ -736,7 +606,7 @@ class VLLMEngine(LLMEngine):
         finally:
             # Ensure that we cancel on the engine once we have exited the streaming
             # phase
-            await self.engine.abort(request.request_id)
+            await self._engine_client.abort(request.request_id)
 
     def _get_prompt_limit(self) -> int:
         """Helper to get the prompt limit from scheduler config
@@ -790,7 +660,9 @@ class VLLMEngine(LLMEngine):
 
         for i, prompt in enumerate(prompts):
             request_id = f"{vllm_embedding_request.request_id}-{i}"
-            gen: AsyncGenerator["PoolingRequestOutput", None] = self.engine.encode(
+            gen: AsyncGenerator[
+                "PoolingRequestOutput", None
+            ] = self._engine_client.encode(
                 prompt=vllm.TextPrompt(
                     prompt=prompt,
                 ),
@@ -818,11 +690,13 @@ class VLLMEngine(LLMEngine):
         return embedding_data, total_prompt_tokens
 
     async def check_health(self) -> None:
-        if not hasattr(self.engine, "check_health"):
-            raise RuntimeError(f"{type(self.engine)} does not support health check.")
+        if not hasattr(self._engine_client, "check_health"):
+            raise RuntimeError(
+                f"{type(self._engine_client)} does not support health check."
+            )
 
         try:
-            await self.engine.check_health()
+            await self._engine_client.check_health()
         except BaseException as e:
             logger.error("Healthcheck failed. The replica will be restarted")
             raise e from None

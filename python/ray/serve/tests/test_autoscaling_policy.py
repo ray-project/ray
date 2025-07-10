@@ -58,6 +58,13 @@ def get_deployment_start_time(controller: ServeController, name: str):
     return deployment_info.start_time_ms
 
 
+def check_num_queued_requests_eq(handle: DeploymentHandle, expected: int):
+    assert (
+        handle._router._asyncio_router._metrics_manager.num_queued_requests == expected
+    )
+    return True
+
+
 def assert_no_replicas_deprovisioned(
     replica_ids_1: Iterable[ReplicaID], replica_ids_2: Iterable[ReplicaID]
 ) -> None:
@@ -135,12 +142,9 @@ class TestAutoscalingMetrics:
                 "max_replicas": 10,
                 "target_ongoing_requests": 10,
                 "upscale_delay_s": 0,
-                "downscale_delay_s": 0,
+                "downscale_delay_s": 5,
                 "look_back_period_s": 1,
             },
-            # We will send many requests. This will make sure replicas are
-            # killed quickly during cleanup.
-            graceful_shutdown_timeout_s=1,
             max_ongoing_requests=25,
             version="v1",
         )
@@ -154,24 +158,27 @@ class TestAutoscalingMetrics:
 
         # Wait for metrics to propagate
         wait_for_condition(check_num_requests_ge, client=client, id=dep_id, expected=1)
-        print("Autoscaling metrics started recording on controller.")
+        tlog("Autoscaling metrics started recording on controller.")
 
         # Many queries should be inflight.
         wait_for_condition(check_num_requests_ge, client=client, id=dep_id, expected=45)
-        print("Confirmed many queries are inflight.")
+        tlog("Confirmed many queries are inflight.")
+
+        wait_for_condition(check_num_queued_requests_eq, handle=handle, expected=0)
+        tlog("Confirmed all requests are assigned to replicas.")
 
         wait_for_condition(check_num_replicas_eq, name="A", target=5)
-        print("Confirmed deployment scaled to 5 replicas.")
-        print("Releasing signal.")
+        tlog("Confirmed deployment scaled to 5 replicas.")
+        tlog("Releasing signal.")
         signal.send.remote()
 
         # After traffic stops, num replica should drop to 1
         wait_for_condition(check_num_replicas_eq, name="A", target=1, timeout=15)
-        print("Num replicas dropped to 1.")
+        tlog("Num replicas dropped to 1.")
 
         # Request metrics should drop to 0
         wait_for_condition(check_num_requests_eq, client=client, id=dep_id, expected=0)
-        print("Queued and ongoing requests dropped to 0.")
+        tlog("Queued and ongoing requests dropped to 0.")
 
     @pytest.mark.parametrize("use_generator", [True, False])
     def test_replicas_die(self, serve_instance_with_signal, use_generator):

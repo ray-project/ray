@@ -522,15 +522,6 @@ defusedxml==0.7.1 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   nbconvert
-deprecated==1.2.18 \
-    --hash=sha256:422b6f6d859da6f2ef57857761bfb392480502a64c3028ca9bbe86085d72115d \
-    --hash=sha256:bd5011788200372a32418f888e326a09ff80d0214bd961147cfed01b5c018eec
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled.txt
-    #   opentelemetry-api
-    #   opentelemetry-exporter-otlp-proto-grpc
-    #   opentelemetry-exporter-otlp-proto-http
-    #   opentelemetry-semantic-conventions
 distlib==0.3.7 \
     --hash=sha256:2e24928bc811348f0feb63014e97aaae3037f2cf48712d51ae61df7fd6075057 \
     --hash=sha256:9dafe54b34a028eafd95039d5e5d4851a13734540f1331060d31c9916e7147a8
@@ -924,8 +915,6 @@ googleapis-common-protos==1.61.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   google-api-core
-    #   opentelemetry-exporter-otlp-proto-grpc
-    #   opentelemetry-exporter-otlp-proto-http
 grpcio==1.66.2 \
     --hash=sha256:02697eb4a5cbe5a9639f57323b4c37bcb3ab2d48cec5da3dc2f13334d72790dd \
     --hash=sha256:03b0b307ba26fae695e067b94cbb014e27390f8bc5ac7a3a39b7723fed085604 \
@@ -987,7 +976,6 @@ grpcio==1.66.2 \
     #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements.txt
     #   grpcio-tools
-    #   opentelemetry-exporter-otlp-proto-grpc
 gymnasium==1.0.0 \
     --hash=sha256:9d2b66f30c1b34fe3c2ce7fae65ecf365d0e9982d2b3d860235e773328a3b403 \
     --hash=sha256:b6f40e1e24c5bd419361e1a5b86a9117d2499baecc3a660d44dfff4c465393ad
@@ -1744,71 +1732,37 @@ opencensus-context==0.1.3 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   opencensus
-opentelemetry-api==1.26.0 \
-    --hash=sha256:2bd639e4bed5b18486fef0b5a520aaffde5a18fc225e808a1ac4df363f43a1ce \
-    --hash=sha256:7d7ea33adf2ceda2dd680b18b1677e4152000b37ca76e679da71ff103b943064
+opentelemetry-api==1.34.1 \
+    --hash=sha256:64f0bd06d42824843731d05beea88d4d4b6ae59f9fe347ff7dfa2cc14233bbb3 \
+    --hash=sha256:b7df4cb0830d5a6c29ad0c0691dbae874d8daefa934b8b1d642de48323d32a8c
     # via
     #   -c /tmp/ray-deps/requirements_compiled.txt
-    #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements.txt
-    #   opentelemetry-exporter-otlp-proto-grpc
-    #   opentelemetry-exporter-otlp-proto-http
     #   opentelemetry-exporter-prometheus
     #   opentelemetry-sdk
     #   opentelemetry-semantic-conventions
-opentelemetry-exporter-otlp==1.26.0 \
-    --hash=sha256:cf0e093f080011951d9f97431a83869761e4d4ebe83a4195ee92d7806223299c \
-    --hash=sha256:f839989f54bda85ee33c5dae033c44dcec9ccbb0dafc6a43d585df44da1d2036
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled.txt
-    #   -r python/requirements/cloud-requirements.txt
-    #   -r python/requirements.txt
-opentelemetry-exporter-otlp-proto-common==1.26.0 \
-    --hash=sha256:bdbe50e2e22a1c71acaa0c8ba6efaadd58882e5a5978737a44a4c4b10d304c92 \
-    --hash=sha256:ee4d8f8891a1b9c372abf8d109409e5b81947cf66423fd998e56880057afbc71
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled.txt
-    #   opentelemetry-exporter-otlp-proto-grpc
-    #   opentelemetry-exporter-otlp-proto-http
-opentelemetry-exporter-otlp-proto-grpc==1.26.0 \
-    --hash=sha256:a65b67a9a6b06ba1ec406114568e21afe88c1cdb29c464f2507d529eb906d8ae \
-    --hash=sha256:e2be5eff72ebcb010675b818e8d7c2e7d61ec451755b8de67a140bc49b9b0280
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled.txt
-    #   opentelemetry-exporter-otlp
-opentelemetry-exporter-otlp-proto-http==1.26.0 \
-    --hash=sha256:5801ebbcf7b527377883e6cbbdda35ee712dc55114fff1e93dfee210be56c908 \
-    --hash=sha256:ee72a87c48ec977421b02f16c52ea8d884122470e0be573905237b540f4ee562
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled.txt
-    #   opentelemetry-exporter-otlp
-opentelemetry-exporter-prometheus==0.47b0 \
-    --hash=sha256:03e8ebccdaeae3a7dad9909d1203dfce5d6c3311ff715911156ed61d9928ab44 \
-    --hash=sha256:d65d73da0689f5ec4da9951b209f04ecc8596864daf9b7422bac0d7dc3cb7b76
+opentelemetry-exporter-prometheus==0.55b1 \
+    --hash=sha256:d13ec0b22bf394113ff1ada5da98133a4b051779b803dae183188e26c4bd9ee0 \
+    --hash=sha256:f364fbbff9e5de37a112ff104d1185fb1d7e2046c5ab5911e5afebc7ab3ddf0e
     # via
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements.txt
-opentelemetry-proto==1.26.0 \
-    --hash=sha256:6c4d7b4d4d9c88543bcf8c28ae3f8f0448a753dc291c18c5390444c90b76a725 \
-    --hash=sha256:c5c18796c0cab3751fc3b98dee53855835e90c0422924b484432ac852d93dc1e
+opentelemetry-proto==1.27.0 \
+    --hash=sha256:33c9345d91dafd8a74fc3d7576c5a38f18b7fdf8d02983ac67485386132aedd6 \
+    --hash=sha256:b133873de5581a50063e1e4b29cdcf0c5e253a8c2d8dc1229add20a4c3830ace
     # via
     #   -c /tmp/ray-deps/requirements_compiled.txt
-    #   opentelemetry-exporter-otlp-proto-common
-    #   opentelemetry-exporter-otlp-proto-grpc
-    #   opentelemetry-exporter-otlp-proto-http
-opentelemetry-sdk==1.26.0 \
-    --hash=sha256:c90d2868f8805619535c05562d699e2f4fb1f00dbd55a86dcefca4da6fa02f85 \
-    --hash=sha256:feb5056a84a88670c041ea0ded9921fca559efec03905dddeb3885525e0af897
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled.txt
-    #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements.txt
-    #   opentelemetry-exporter-otlp-proto-grpc
-    #   opentelemetry-exporter-otlp-proto-http
+opentelemetry-sdk==1.34.1 \
+    --hash=sha256:308effad4059562f1d92163c61c8141df649da24ce361827812c40abb2a1e96e \
+    --hash=sha256:8091db0d763fcd6098d4781bbc80ff0971f94e260739aa6afe6fd379cdf3aa4d
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled.txt
+    #   -r python/requirements.txt
     #   opentelemetry-exporter-prometheus
-opentelemetry-semantic-conventions==0.47b0 \
-    --hash=sha256:4ff9d595b85a59c1c1413f02bba320ce7ea6bf9e2ead2b0913c4395c7bbc1063 \
-    --hash=sha256:a8d57999bbe3495ffd4d510de26a97dadc1dace53e0275001b2c1b2f67992a7e
+opentelemetry-semantic-conventions==0.55b1 \
+    --hash=sha256:5da81dfdf7d52e3d37f8fe88d5e771e191de924cfff5f550ab0b8f7b2409baed \
+    --hash=sha256:ef95b1f009159c28d7a7849f5cbc71c4c34c845bb514d66adfdf1b3fff3598b3
     # via
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   opentelemetry-sdk
@@ -2617,7 +2571,6 @@ requests==2.32.3 \
     #   google-api-core
     #   google-cloud-storage
     #   jupyterlab-server
-    #   opentelemetry-exporter-otlp-proto-http
 rfc3339-validator==0.1.4 \
     --hash=sha256:138a2abdf93304ad60530167e51d2dfb9549521a836871b88d7f4695d0022f6b \
     --hash=sha256:24f6ec1eda14ef823da9e36ec7113124b39c04d50a4d3d3a3c2859577e7791fa
@@ -3018,7 +2971,9 @@ typing-extensions==4.12.2 \
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   fastapi
     #   gymnasium
+    #   opentelemetry-api
     #   opentelemetry-sdk
+    #   opentelemetry-semantic-conventions
     #   pydantic
     #   pydantic-core
     #   pyopenssl
@@ -3191,7 +3146,6 @@ wrapt==1.14.1 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/cloud-requirements.txt
-    #   deprecated
 y-py==0.6.2 \
     --hash=sha256:015f7f6c1ce8a83d57955d1dc7ddd57cb633ae00576741a4fc9a0f72ed70007d \
     --hash=sha256:032365dfe932bfab8e80937ad6093b4c22e67d63ad880096b5fa8768f8d829ba \

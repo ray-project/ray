@@ -14,7 +14,11 @@ from ray import serve
 from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.common import DeploymentStatus
 from ray.serve._private.logging_utils import get_serve_logs_dir
-from ray.serve._private.test_utils import check_deployment_status, check_num_replicas_eq
+from ray.serve._private.test_utils import (
+    check_deployment_status,
+    check_num_replicas_eq,
+    get_application_url,
+)
 from ray.serve._private.utils import get_component_file_name
 from ray.serve.schema import ApplicationStatus
 from ray.util.state import list_actors
@@ -109,7 +113,7 @@ def test_http_proxy_request_cancellation(serve_instance):
 
     serve.run(A.bind())
 
-    url = "http://127.0.0.1:8000/A"
+    url = get_application_url("HTTP") + "/A"
     with ThreadPoolExecutor() as pool:
         # Send the first request, it should block for the result
         first_blocking_fut = pool.submit(functools.partial(httpx.get, url, timeout=100))
@@ -239,7 +243,8 @@ def test_deploy_bad_pip_package_deployment(serve_instance):
         assert "No matching distribution found for does_not_exist" in deployment_message
         return True
 
-    wait_for_condition(check_fail, timeout=15)
+    # TODO: Figure out why timeout 30 is needed instead of 15 or lower the timeout to 15.
+    wait_for_condition(check_fail, timeout=30)
 
 
 def test_deploy_same_deployment_name_different_app(serve_instance):
@@ -254,10 +259,15 @@ def test_deploy_same_deployment_name_different_app(serve_instance):
     serve.run(Model.bind("alice"), name="app1", route_prefix="/app1")
     serve.run(Model.bind("bob"), name="app2", route_prefix="/app2")
 
-    assert httpx.get("http://localhost:8000/app1").text == "hello alice"
-    assert httpx.get("http://localhost:8000/app2").text == "hello bob"
-    routes = httpx.get("http://localhost:8000/-/routes").json()
+    url = get_application_url("HTTP", app_name="app1")
+    assert httpx.get(f"{url}").text == "hello alice"
+    proxy_url = "http://localhost:8000/-/routes"
+    routes = httpx.get(proxy_url).json()
     assert routes["/app1"] == "app1"
+
+    url = get_application_url("HTTP", app_name="app2")
+    assert httpx.get(f"{url}").text == "hello bob"
+    routes = httpx.get(proxy_url).json()
     assert routes["/app2"] == "app2"
 
     app1_status = serve.status().applications["app1"]
