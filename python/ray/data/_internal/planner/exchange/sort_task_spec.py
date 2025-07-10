@@ -136,19 +136,18 @@ class SortTaskSpec(ExchangeTaskSpec):
     ) -> List[Union[Block, "BlockMetadataWithSchema"]]:
         stats = BlockExecStats.builder()
         accessor = BlockAccessor.for_block(block)
-        res = accessor.sort_and_partition(boundaries, sort_key)
+        out = accessor.sort_and_partition(boundaries, sort_key)
         from ray.data.block import BlockMetadataWithSchema
 
-        assert len(res) > 0
+        assert len(out) > 0
         # Look at the first non-empty block for the schema
-        out = None
-        for b in res:
+        for b in out:
             if b:
-                out = b
-                break
-        assert out is not None
-        meta_with_schema = BlockMetadataWithSchema.from_block(out, stats=stats.build())
-        return out + [meta_with_schema]
+                meta_with_schema = BlockMetadataWithSchema.from_block(
+                    b, stats=stats.build()
+                )
+                return out + [meta_with_schema]
+        raise RuntimeError("out should contain at least 1 non-empty block")
 
     @staticmethod
     def reduce(

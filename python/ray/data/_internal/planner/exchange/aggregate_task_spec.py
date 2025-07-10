@@ -67,14 +67,13 @@ class SortAggregateTaskSpec(ExchangeTaskSpec):
 
         assert len(parts) > 0
         # Look at the first non-empty block for the schema
-        out = None
         for b in parts:
             if b:
-                out = b
-                break
-        assert out is not None
-        meta_with_schema = BlockMetadataWithSchema.from_block(out, stats=stats.build())
-        return parts + [meta_with_schema]
+                meta_with_schema = BlockMetadataWithSchema.from_block(
+                    b, stats=stats.build()
+                )
+                return parts + [meta_with_schema]
+        raise RuntimeError("parts should contain at least 1 non-empty block")
 
     @staticmethod
     def reduce(
