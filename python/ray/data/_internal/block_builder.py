@@ -1,7 +1,6 @@
-from typing import Dict, Generic
+from typing import Generic
 
 from ray.data.block import Block, BlockAccessor, BlockType, T
-from ray.data.expressions import Expr
 
 
 class BlockBuilder(Generic[T]):
