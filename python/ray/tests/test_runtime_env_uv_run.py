@@ -322,14 +322,13 @@ def test_uv_run_runtime_env_hook(with_uv):
             uv,
             "run",
             "--no-project",
-            "--isolated",
             "-m",
             "ray._private.runtime_env.uv_runtime_env_hook",
             "--extra-args",
         ],
         runtime_env={},
         expected_output={
-            "py_executable": f"{uv} run --no-project --isolated",
+            "py_executable": f"{uv} run --no-project",
             "working_dir": os.getcwd(),
         },
     )
