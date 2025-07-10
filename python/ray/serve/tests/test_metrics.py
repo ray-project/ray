@@ -550,8 +550,8 @@ def test_proxy_timeout_metrics(metrics_start_shutdown):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows")
-def test_proxy_disconnect_metrics(metrics_start_shutdown):
-    """Test that disconnect metrics are reported correctly."""
+def test_proxy_disconnect_http_metrics(metrics_start_shutdown):
+    """Test that HTTP disconnect metrics are reported correctly."""
 
     signal = SignalActor.remote()
 
@@ -579,6 +579,31 @@ def test_proxy_disconnect_metrics(metrics_start_shutdown):
     conn.close()  # Forcefully close the connection
     ray.get(signal.send.remote(clear=True))
 
+    num_errors = get_metric_dictionaries("serve_num_http_error_requests")
+    assert len(num_errors) == 1
+    assert num_errors[0]["route"] == "/disconnect"
+    assert num_errors[0]["error_code"] == "499"
+    assert num_errors[0]["method"] == "GET"
+    assert num_errors[0]["application"] == "disconnect"
+
+
+def test_proxy_disconnect_grpc_metrics(metrics_start_shutdown):
+    """Test that gRPC disconnect metrics are reported correctly."""
+
+    signal = SignalActor.remote()
+
+    @serve.deployment
+    class Disconnect:
+        async def __call__(self, request: Request):
+            await signal.wait.remote()
+            return
+
+    serve.run(
+        Disconnect.bind(),
+        route_prefix="/disconnect",
+        name="disconnect",
+    )
+
     # make grpc call
     channel = grpc.insecure_channel("localhost:9000")
     stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
@@ -604,13 +629,6 @@ def test_proxy_disconnect_metrics(metrics_start_shutdown):
     channel.close()  # Forcefully close the channel, simulating a client disconnect
     thread.join()
     ray.get(signal.send.remote(clear=True))
-
-    num_errors = get_metric_dictionaries("serve_num_http_error_requests")
-    assert len(num_errors) == 1
-    assert num_errors[0]["route"] == "/disconnect"
-    assert num_errors[0]["error_code"] == "499"
-    assert num_errors[0]["method"] == "GET"
-    assert num_errors[0]["application"] == "disconnect"
 
     num_errors = get_metric_dictionaries("serve_num_grpc_error_requests")
     assert len(num_errors) == 1
