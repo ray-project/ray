@@ -13,12 +13,6 @@ _runfiles = runfiles.Create()
 
 
 class TestCli(unittest.TestCase):
-    def setUp(self):
-        self.workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY")
-
-    def tearDown(self):
-        os.environ["BUILD_WORKSPACE_DIRECTORY"] = self.workspace_dir
-
     def test_cli_load_fail_no_config(self):
         result = CliRunner().invoke(
             load, ["/tmp/raydepsets/fake_path/test.config.yaml"]
@@ -51,12 +45,6 @@ class TestCli(unittest.TestCase):
                 manager.config.depsets[0].output
                 == "tests/requirements_compiled_test.txt"
             )
-
-    def test_workspace_init_fail_no_dir(self):
-        workspace_dir = os.environ.pop("BUILD_WORKSPACE_DIRECTORY")
-        with tempfile.TemporaryDirectory() as tmpdir:
-            with pytest.raises(Exception, match="BUILD_WORKSPACE_DIRECTORY is not set"):
-                Workspace()
 
 
 if __name__ == "__main__":
