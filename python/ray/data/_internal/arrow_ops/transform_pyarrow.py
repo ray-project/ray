@@ -157,16 +157,12 @@ def _promote_tensor_types(
         ArrowTensorType,
         ArrowVariableShapedTensorType,
         get_arrow_extension_fixed_shape_tensor_types,
-        get_arrow_extension_tensor_types,
     )
 
-    arrow_tensor_types = get_arrow_extension_tensor_types()
     arrow_fixed_shape_tensor_types = get_arrow_extension_fixed_shape_tensor_types()
 
-    # Filter out None values and non-tensor types
-    valid_tensor_types = [
-        t for t in field_types if t is not None and isinstance(t, arrow_tensor_types)
-    ]
+    # Filter out None values (missing fields)
+    valid_tensor_types = [t for t in field_types if t is not None]
     if not valid_tensor_types:
         return None
 
@@ -255,6 +251,8 @@ def unify_schemas(
     columns_with_tensor_array = set()
     columns_with_structs = set()
 
+    # First pass: collect all column names and their types across schemas
+    column_name_to_types = {}
     for schema in schemas:
         for col_name in schema.names:
             # Check for duplicate field names in this schema
@@ -267,25 +265,33 @@ def unify_schemas(
             field = schema.field(col_name)
             col_type = field.type
 
-            # Check for null-typed lists
-            if pa.types.is_list(col_type) and pa.types.is_null(col_type.value_type):
-                cols_with_null_list.add(col_name)
-            # Check for objects and tensor fields
-            elif isinstance(col_type, ArrowPythonObjectType):
-                columns_with_objects.add(col_name)
-            # Check for tensor fields
-            elif isinstance(col_type, arrow_tensor_types):
-                columns_with_tensor_array.add(col_name)
-            # Check for struct fields
-            elif pa.types.is_struct(col_type):
-                columns_with_structs.add(col_name)
+            if col_name not in column_name_to_types:
+                column_name_to_types[col_name] = []
+            column_name_to_types[col_name].append(col_type)
 
-    if len(columns_with_objects.intersection(columns_with_tensor_array)) > 0:
-        # This is supportable if we use object type, but it will be expensive
-        raise ValueError(
-            "Found columns with both objects and tensors: "
-            f"{columns_with_tensor_array.intersection(columns_with_objects)}"
-        )
+    # Second pass: categorize columns based on their types across all schemas
+    for col_name, types in column_name_to_types.items():
+        has_objects = any(isinstance(t, ArrowPythonObjectType) for t in types)
+        has_tensors = any(isinstance(t, arrow_tensor_types) for t in types)
+
+        # Check for intersection of objects and tensors (invalid case)
+        if has_objects and has_tensors:
+            # This is supportable if we use object type, but it will be expensive
+            raise ValueError(f"Found columns with both objects and tensors: {col_name}")
+
+        # Check for null-typed lists (if ANY schema has null-typed lists)
+        if any(pa.types.is_list(t) and pa.types.is_null(t.value_type) for t in types):
+            cols_with_null_list.add(col_name)
+        # Check for objects (if any schema has objects)
+        elif has_objects:
+            columns_with_objects.add(col_name)
+        # Check for tensor fields (if ANY schema has tensor types)
+        elif has_tensors:
+            columns_with_tensor_array.add(col_name)
+        # Check for struct fields (if ANY schema has struct types)
+        elif any(pa.types.is_struct(t) for t in types):
+            columns_with_structs.add(col_name)
+        # Mixed types or other types are handled by PyArrow's unify_schemas
 
     schema_field_overrides = {}
 
