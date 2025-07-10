@@ -29,31 +29,73 @@ pip install -U ray[default]
 Next, install the Azure CLI (`pip install -U azure-cli azure-identity`) and login using `az login`.
 
 ```bash
-# Install azure cli.
-pip install azure-cli azure-identity azure-mgmt-network
+# Install packages to use azure CLI.
+pip install azure-cli azure-identity
 
 # Login to azure. This will redirect you to your web browser.
 az login
 ```
 
-### Start Ray with the Ray cluster launcher
+### Install Azure SDK libraries
 
+Now, install the Azure SDK libraries that will enable the Ray cluster launcher to build Azure infrastructure.
+
+```bash
+# Install azure cli.
+pip install azure-core azure-mgmt-network azure-mgmt-common azure-mgmt-resource azure-mgmt-compute msrestazure
+```
+
+### Start Ray with the Ray cluster launcher
 
 The provided [cluster config file](https://github.com/ray-project/ray/tree/eacc763c84d47c9c5b86b26a32fd62c685be84e6/python/ray/autoscaler/azure/example-full.yaml) will create a small cluster with a Standard DS2v3 on-demand head node that is configured to autoscale to up to two Standard DS2v3 [spot-instance](https://docs.microsoft.com/en-us/azure/virtual-machines/windows/spot-vms) worker nodes.
 
 Note that you'll need to fill in your Azure [resource_group](https://github.com/ray-project/ray/blob/eacc763c84d47c9c5b86b26a32fd62c685be84e6/python/ray/autoscaler/azure/example-full.yaml#L42) and [location](https://github.com/ray-project/ray/blob/eacc763c84d47c9c5b86b26a32fd62c685be84e6/python/ray/autoscaler/azure/example-full.yaml#L41) in those templates. You also need set the subscription to use. You can do this from the command line with `az account set -s <subscription_id>` or by filling in the [subscription_id](https://github.com/ray-project/ray/blob/eacc763c84d47c9c5b86b26a32fd62c685be84e6/python/ray/autoscaler/azure/example-full.yaml#L44) in the cluster config file.
 
+### Download and configure the example configuration
 
-
-Test that it works by running the following commands from your local machine:
+Download the reference example locally:
 
 ```bash
 # Download the example-full.yaml
 wget https://raw.githubusercontent.com/ray-project/ray/master/python/ray/autoscaler/azure/example-full.yaml
+```
 
-# Update the example-full.yaml to update resource_group, location, and subscription_id.
-# vi example-full.yaml
+In order to connect to the provisioned head node VM, you'll need to ensure that the `auth.ssh_private_key`, `auth.ssh_public_key`, and `file_mounts` configuration values are properly configured to point to file paths on your local environment that have a valid keypair. By default the configuration assumes `$HOME/.ssh/id_rsa` and `$HOME/.ssh/id_rsa.pub`. If you have a different set of keypair files you wish to use (for example a `ed25519` pair), update the `example-full.yaml` configurations to use them.
 
+For example here is what a custom-configured `example-full.yaml` file might look like if you are using a `ed25519` keypair:
+
+```sh
+$ git diff example-full.yaml 
+diff --git a/python/ray/autoscaler/azure/example-full.yaml b/python/ray/autoscaler/azure/example-full.yaml
+index b25f1b07f1..c65fb77219 100644
+--- a/python/ray/autoscaler/azure/example-full.yaml
++++ b/python/ray/autoscaler/azure/example-full.yaml
+@@ -61,9 +61,9 @@ auth:
+     ssh_user: ubuntu
+     # you must specify paths to matching private and public key pair files
+     # use `ssh-keygen -t rsa -b 4096` to generate a new ssh key pair
+-    ssh_private_key: ~/.ssh/id_rsa
++    ssh_private_key: ~/.ssh/id_ed25519
+     # changes to this should match what is specified in file_mounts
+-    ssh_public_key: ~/.ssh/id_rsa.pub
++    ssh_public_key: ~/.ssh/id_ed25519.pub
+ 
+ # More specific customization to node configurations can be made using the ARM template azure-vm-template.json file
+ # See documentation here: https://docs.microsoft.com/en-us/azure/templates/microsoft.compute/2019-03-01/virtualmachines
+@@ -128,7 +128,7 @@ head_node_type: ray.head.default
+ file_mounts: {
+     #    "/path1/on/remote/machine": "/path1/on/local/machine",
+     #    "/path2/on/remote/machine": "/path2/on/local/machine",
+-    "~/.ssh/id_rsa.pub": "~/.ssh/id_rsa.pub"}
++    "~/.ssh/id_ed25519.pub": "~/.ssh/id_ed25519.pub"}
+ 
+ # Files or directories to copy from the head node to the worker nodes. The format is a
+ # list of paths. The same path on the head node will be copied to the worker node.
+ ```
+
+### Launch the Ray cluster on Azure
+
+```
 # Create or update the cluster. When the command finishes, it will print
 # out the command that can be used to SSH into the cluster head node.
 ray up example-full.yaml
