@@ -148,12 +148,10 @@ def take_table(
     return table
 
 
-def _find_and_convert_tensor_fields(
+def _promote_tensor_types(
     field_types: List[Optional["pyarrow.DataType"]],
 ) -> Optional["pyarrow.DataType"]:
-    """Find tensor fields and convert fixed-shape to variable-shape recursively."""
-    import pyarrow as pa
-
+    """Promote tensor types, handling variable-shaped conversion when needed."""
     from ray.air.util.tensor_extensions.arrow import (
         ArrowConversionError,
         ArrowTensorType,
@@ -165,122 +163,53 @@ def _find_and_convert_tensor_fields(
     arrow_tensor_types = get_arrow_extension_tensor_types()
     arrow_fixed_shape_tensor_types = get_arrow_extension_fixed_shape_tensor_types()
 
-    if not field_types:
+    # Filter out None values and non-tensor types
+    valid_tensor_types = [
+        t for t in field_types if t is not None and isinstance(t, arrow_tensor_types)
+    ]
+    if not valid_tensor_types:
         return None
 
-    valid_types = [t for t in field_types if t is not None]
-    if not valid_types:
-        return None
+    # Check if we have missing fields (None values in field_types)
+    has_missing_fields = len(valid_tensor_types) < len(field_types)
 
-    first_type = valid_types[0]
+    # First check if all tensor types have compatible dtypes
+    dtypes = set()
+    base_tensor_type = None
+    for tensor_type in valid_tensor_types:
+        dtypes.add(tensor_type.scalar_type)
+        # Collect the first fixed-shape tensor type for potential conversion
+        if base_tensor_type is None and isinstance(
+            tensor_type, arrow_fixed_shape_tensor_types
+        ):
+            base_tensor_type = tensor_type
 
-    # If it's a tensor field, check if conversion is needed
-    if isinstance(first_type, arrow_tensor_types):
-        # First check if all tensor types have compatible dtypes
-        dtypes = set()
-        base_tensor_type = None
-        for tensor_type in valid_types:
-            if isinstance(tensor_type, arrow_tensor_types):
-                dtypes.add(tensor_type.scalar_type)
-                # Collect the first fixed-shape tensor type for potential conversion
-                if base_tensor_type is None and isinstance(
-                    tensor_type, arrow_fixed_shape_tensor_types
-                ):
-                    base_tensor_type = tensor_type
+    # If we have incompatible dtypes, we can't unify them
+    if len(dtypes) > 1:
+        raise ArrowConversionError(
+            f"Incompatible tensor dtypes found: {dtypes}. "
+            "Cannot unify tensors with different dtypes."
+        )
 
-        # If we have incompatible dtypes, we can't unify them
-        if len(dtypes) > 1:
-            raise ArrowConversionError(
-                f"Incompatible tensor dtypes found: {dtypes}. "
-                "Cannot unify tensors with different dtypes."
-            )
+    # Check if we need variable-shaped for unification
+    needs_variable = ArrowTensorType._need_variable_shaped_tensor_array(
+        valid_tensor_types
+    )
 
-        # Check if we need variable-shaped for unification
-        needs_variable = ArrowTensorType._need_variable_shaped_tensor_array(valid_types)
-
-        # Also check if tensor field is missing in some schemas (None values)
-        has_missing_fields = len(valid_types) < len(field_types)
-
-        # Convert to variable-shaped tensors if we have mixed shapes or missing fields
-        if (needs_variable or has_missing_fields) and base_tensor_type is not None:
-            # needs_variable: mixed fixed-shape and variable-shaped tensors
-            # has_missing_fields: some schemas missing the tensor field entirely
-            return ArrowVariableShapedTensorType(
-                dtype=base_tensor_type.scalar_type,
-                ndim=len(base_tensor_type.shape),
-            )
-        return valid_types[0]
-
-    # If it's a struct field, recursively process its subfields
-    elif pa.types.is_struct(first_type):
-        # Get all unique field names across all struct types
-        all_field_names = set()
-        for struct_type in valid_types:
-            if struct_type is not None:
-                all_field_names.update(field.name for field in struct_type)
-
-        # Process each field name recursively
-        subfield_overrides = {}
-        for field_name in all_field_names:
-            field_types = []
-            for struct_type in valid_types:
-                if struct_type is not None:
-                    # Find the field by name
-                    field_type = None
-                    for field in struct_type:
-                        if field.name == field_name:
-                            field_type = field.type
-                            break
-                    field_types.append(field_type)
-
-            # Recursively find and convert tensors in this subfield
-            resolved_type = _find_and_convert_tensor_fields(field_types)
-            if resolved_type is not None:
-                subfield_overrides[field_name] = resolved_type
-
-        # Build the unified struct with all fields
-        all_fields = {}
-        for struct_type in valid_types:
-            if struct_type is not None:
-                for subfield in struct_type:
-                    if subfield.name not in all_fields:
-                        all_fields[subfield.name] = subfield.type
-
-        if not all_fields:
-            return None
-
-        # Build the unified struct with overrides
-        updated_subfields = []
-        for subfield_name, subfield_type in all_fields.items():
-            if subfield_name in subfield_overrides:
-                updated_subfields.append(
-                    pa.field(subfield_name, subfield_overrides[subfield_name])
-                )
-            else:
-                updated_subfields.append(pa.field(subfield_name, subfield_type))
-
-        return pa.struct(updated_subfields)
-
-    return None
-
-
-def _has_tensor_fields(field: "pyarrow.Field") -> bool:
-    """Check if a field contains any tensor types recursively."""
-    import pyarrow as pa
-
-    from ray.air.util.tensor_extensions.arrow import get_arrow_extension_tensor_types
-
-    arrow_tensor_types = get_arrow_extension_tensor_types()
-
-    if isinstance(field.type, arrow_tensor_types):
-        return True
-    elif pa.types.is_struct(field.type):
-        for subfield in field.type:
-            subfield_with_name = pa.field(subfield.name, subfield.type)
-            if _has_tensor_fields(subfield_with_name):
-                return True
-
-    return False
+    # Convert to variable-shaped tensors if needed or if we have missing fields
+    if needs_variable or has_missing_fields:
+        # If all tensor types are variable-shaped, we don't need to convert
+        if base_tensor_type is None:
+            # All types are variable-shaped, just return the first one
+            return valid_tensor_types[0]
+        # We have at least one fixed-shape tensor, convert to variable-shaped
+        return ArrowVariableShapedTensorType(
+            dtype=base_tensor_type.scalar_type,
+            ndim=len(base_tensor_type.shape),
+        )
+    else:
+        # No conversion needed, return the first type
+        return valid_tensor_types[0]
 
 
 def unify_schemas(
@@ -302,11 +231,29 @@ def unify_schemas(
     import pyarrow as pa
 
     from ray.air.util.object_extensions.arrow import ArrowPythonObjectType
+    from ray.air.util.tensor_extensions.arrow import (
+        get_arrow_extension_tensor_types,
+    )
 
-    # Rollup columns with opaque (null-typed) lists, objects, and tensor fields
+    def _collect_field_types(
+        schemas: List["pyarrow.Schema"], col_name: str
+    ) -> List[Optional["pyarrow.DataType"]]:
+        """Collect field types for a column across all schemas."""
+        field_types = []
+        for schema in schemas:
+            if col_name in schema.names:
+                field_types.append(schema.field(col_name).type)
+            else:
+                field_types.append(None)
+        return field_types
+
+    arrow_tensor_types = get_arrow_extension_tensor_types()
+
+    # Rollup columns with opaque (null-typed) lists, objects, tensor fields, and structs
     cols_with_null_list = set()
     columns_with_objects = set()
     columns_with_tensor_array = set()
+    columns_with_structs = set()
 
     for schema in schemas:
         for col_name in schema.names:
@@ -327,8 +274,11 @@ def unify_schemas(
             elif isinstance(col_type, ArrowPythonObjectType):
                 columns_with_objects.add(col_name)
             # Check for tensor fields
-            elif _has_tensor_fields(field):
+            elif isinstance(col_type, arrow_tensor_types):
                 columns_with_tensor_array.add(col_name)
+            # Check for struct fields
+            elif pa.types.is_struct(col_type):
+                columns_with_structs.add(col_name)
 
     if len(columns_with_objects.intersection(columns_with_tensor_array)) > 0:
         # This is supportable if we use object type, but it will be expensive
@@ -338,23 +288,37 @@ def unify_schemas(
         )
 
     schema_field_overrides = {}
-    for col_name in columns_with_tensor_array:
-        # Collect all field types for this column across schemas
-        field_types = []
-        for schema in schemas:
-            if col_name in schema.names:
-                field_types.append(schema.field(col_name).type)
+
+    # Handle struct fields
+    for col_name in columns_with_structs:
+        field_types = _collect_field_types(schemas, col_name)
+
+        # Unify struct schemas
+        struct_schemas = []
+        for t in field_types:
+            if t is not None and pa.types.is_struct(t):
+                struct_schemas.append(pa.schema(list(t)))
             else:
-                field_types.append(None)
+                struct_schemas.append(pa.schema([]))
 
-        # Find and convert tensors recursively
-        resolved_type = _find_and_convert_tensor_fields(field_types)
-        if resolved_type is not None:
-            schema_field_overrides[col_name] = resolved_type
+        unified_struct_schema = unify_schemas(
+            struct_schemas, promote_types=promote_types
+        )
 
+        schema_field_overrides[col_name] = pa.struct(list(unified_struct_schema))
+
+    # Handle tensor fields
+    for col_name in columns_with_tensor_array:
+        field_types = _collect_field_types(schemas, col_name)
+        unified_type = _promote_tensor_types(field_types)
+        if unified_type is not None:
+            schema_field_overrides[col_name] = unified_type
+
+    # Handle object fields
     for col_name in columns_with_objects:
         schema_field_overrides[col_name] = ArrowPythonObjectType()
 
+    # Handle null-typed lists
     if cols_with_null_list:
         # For each opaque list column, iterate through all schemas until we find
         # a valid value_type that can be used to override the column types in
@@ -368,6 +332,7 @@ def unify_schemas(
                     schema_field_overrides[col_name] = col_type
                     break
 
+    # Unify schemas
     schemas_to_unify = []
     if schema_field_overrides:
         # Go through all schemas and update the types of columns from the above loop.
@@ -480,7 +445,7 @@ def _backfill_missing_fields(
     import pyarrow as pa
 
     from ray.air.util.tensor_extensions.arrow import (
-        get_arrow_extension_fixed_shape_tensor_types,
+        ArrowTensorType,
         get_arrow_extension_tensor_types,
     )
 
@@ -504,7 +469,6 @@ def _backfill_missing_fields(
         return column
 
     tensor_types = get_arrow_extension_tensor_types()
-    fixed_shape_tensor_types = get_arrow_extension_fixed_shape_tensor_types()
 
     aligned_fields = []
 
@@ -528,11 +492,9 @@ def _backfill_missing_fields(
             elif isinstance(field_type, tensor_types) and isinstance(
                 current_array.type, tensor_types
             ):
-                # If types differ, convert fixed shape tensor to variable shaped tensor
-                if (
-                    str(current_array.type) != str(field_type)
-                    and isinstance(current_array.type, fixed_shape_tensor_types)
-                    and not isinstance(field_type, fixed_shape_tensor_types)
+                # Convert to variable-shaped if needed
+                if ArrowTensorType._need_variable_shaped_tensor_array(
+                    [current_array.type, field_type]
                 ):
                     current_array = current_array.to_variable_shaped_tensor_array()
 
