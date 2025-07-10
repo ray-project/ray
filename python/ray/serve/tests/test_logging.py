@@ -646,11 +646,8 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
 
         def check_log():
             logs_content = ""
-            for _ in range(20):
-                time.sleep(0.1)
-                logs_content = f.getvalue()
-                if logs_content:
-                    break
+            time.sleep(10)
+            logs_content = f.getvalue()
             for expected_log_info in expected_log_infos:
                 assert expected_log_info in logs_content
             for regex in user_log_regexes:
