@@ -710,6 +710,7 @@ def get_application_urls(
     app_name: str = SERVE_DEFAULT_APP_NAME,
     use_localhost: bool = False,
     is_websocket: bool = False,
+    exclude_route_prefix: bool = False,
 ) -> List[str]:
     """Get the URL of the application.
 
@@ -720,12 +721,17 @@ def get_application_urls(
             Set to True if Serve deployments are not exposed publicly or
             for low latency benchmarking.
         is_websocket: Whether the url should be served as a websocket.
+        exclude_route_prefix: The route prefix to exclude from the application.
     Returns:
         The URLs of the application.
     """
     client = _get_global_client()
     serve_details = client.get_serve_details()
+    if app_name not in serve_details["applications"]:
+        return [client.root_url]
     route_prefix = serve_details["applications"][app_name]["route_prefix"]
+    if exclude_route_prefix:
+        route_prefix = ""
     if isinstance(protocol, str):
         protocol = RequestProtocol(protocol)
     target_groups: List[TargetGroup] = ray.get(
@@ -763,7 +769,8 @@ def get_application_url(
     protocol: Union[str, RequestProtocol] = RequestProtocol.HTTP,
     app_name: str = SERVE_DEFAULT_APP_NAME,
     use_localhost: bool = False,
-    is_websocket: bool = False,
+    is_websocket: bool = False,  
+    exclude_route_prefix: bool = False,
 ) -> str:
     """Get the URL of the application.
 
@@ -774,9 +781,10 @@ def get_application_url(
             Set to True if Serve deployments are not exposed publicly or
             for low latency benchmarking.
         is_websocket: Whether the url should be served as a websocket.
+        exclude_route_prefix: The route prefix to exclude from the application.
     Returns:
         The URL of the application. If there are multiple URLs, a random one is returned.
     """
     return random.choice(
-        get_application_urls(protocol, app_name, use_localhost, is_websocket)
+        get_application_urls(protocol, app_name, use_localhost, is_websocket, exclude_route_prefix)
     )
