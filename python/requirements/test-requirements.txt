@@ -38,7 +38,6 @@ numba==0.59.1
 openpyxl==3.0.10
 opentelemetry-api
 opentelemetry-sdk
-opencensus-proto==0.1.0
 pexpect==4.8.0
 Pillow==10.3.0; platform_system != "Windows"
 proxy.py==2.4.3
