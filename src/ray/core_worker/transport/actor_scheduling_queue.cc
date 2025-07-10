@@ -101,7 +101,7 @@ void ActorSchedulingQueue::Add(
             task_spec,
             rpc::TaskStatus::PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY,
             /* include_task_info */ false));
-        it->second.MarkDependenciesSatisfied();
+        it->second.MarkDependenciesResolved();
         ScheduleRequests();
       }
     });
@@ -133,12 +133,18 @@ bool ActorSchedulingQueue::CancelTaskIfFound(TaskID task_id) {
 /// Schedules as many requests as possible in sequence.
 void ActorSchedulingQueue::ScheduleRequests() {
   // Cancel any stale requests that the client doesn't need any longer.
+  // This happens when the client sends an RPC with the client_processed_up_to
+  // sequence number higher than the lowest sequence number of a pending actor task.
+  // In that case, the client no longer needs the task to execute (e.g., it has been
+  // retried).
   while (!pending_actor_tasks_.empty() &&
          pending_actor_tasks_.begin()->first < next_seq_no_) {
     auto head = pending_actor_tasks_.begin();
     RAY_LOG(ERROR) << "Cancelling stale RPC with seqno "
                    << pending_actor_tasks_.begin()->first << " < " << next_seq_no_;
-    head->second.Cancel(Status::Invalid("client cancelled stale rpc"));
+    head->second.Cancel(
+        Status::Invalid("Task canceled due to stale sequence number. The client "
+                        "intentionally discarded this task."));
     {
       absl::MutexLock lock(&mu_);
       pending_task_id_to_is_canceled.erase(head->second.TaskID());
@@ -149,7 +155,7 @@ void ActorSchedulingQueue::ScheduleRequests() {
   // Process as many in-order requests as we can.
   while (!pending_actor_tasks_.empty() &&
          pending_actor_tasks_.begin()->first == next_seq_no_ &&
-         pending_actor_tasks_.begin()->second.CanExecute()) {
+         pending_actor_tasks_.begin()->second.DependenciesResolved()) {
     auto head = pending_actor_tasks_.begin();
     auto request = head->second;
     auto task_id = head->second.TaskID();
@@ -169,37 +175,41 @@ void ActorSchedulingQueue::ScheduleRequests() {
   }
 
   if (pending_actor_tasks_.empty() ||
-      !pending_actor_tasks_.begin()->second.CanExecute()) {
-    // No timeout for object dependency waits.
+      !pending_actor_tasks_.begin()->second.DependenciesResolved()) {
+    // Either there are no tasks to execute, or the head of the line is blocked waiting
+    // for its dependencies. We do not set a timeout waiting for dependency resolution.
     wait_timer_.cancel();
   } else {
-    // Set a timeout on the queued tasks to avoid an infinite wait on failure.
+    // We are waiting for a task with an earlier seq_no from the client.
+    // The client always sends tasks in seq_no order, so in the majority of cases we
+    // should receive the expected message soon, but messages can come in out of order.
+    //
+    // We set a generous timeout in case the expected seq_no is never received to avoid
+    // hanging. This should happen only if the client crashes or misbehaves. After the
+    // timeout, all tasks will be canceled and the client (if alive) must retry.
     wait_timer_.expires_from_now(boost::posix_time::seconds(reorder_wait_seconds_));
     RAY_LOG(DEBUG) << "waiting for " << next_seq_no_ << " queue size "
                    << pending_actor_tasks_.size();
     wait_timer_.async_wait([this](const boost::system::error_code &error) {
       if (error == boost::asio::error::operation_aborted) {
-        return;  // time deadline was adjusted
+        return;  // Timer deadline was adjusted.
       }
-      OnSequencingWaitTimeout();
+      RAY_LOG(ERROR) << "Timed out waiting for task with seq_no=" << next_seq_no_
+                     << ", canceling all queued tasks.";
+      while (!pending_actor_tasks_.empty()) {
+        auto head = pending_actor_tasks_.begin();
+        head->second.Cancel(
+            Status::Invalid(absl::StrCat("Server timed out after waiting ",
+                                         reorder_wait_seconds_,
+                                         " seconds for an earlier seq_no.")));
+        next_seq_no_ = std::max(next_seq_no_, head->first + 1);
+        {
+          absl::MutexLock lock(&mu_);
+          pending_task_id_to_is_canceled.erase(head->second.TaskID());
+        }
+        pending_actor_tasks_.erase(head);
+      }
     });
-  }
-}
-
-/// Called when we time out waiting for an earlier task to show up.
-void ActorSchedulingQueue::OnSequencingWaitTimeout() {
-  RAY_CHECK(std::this_thread::get_id() == main_thread_id_);
-  RAY_LOG(ERROR) << "timed out waiting for " << next_seq_no_
-                 << ", cancelling all queued tasks";
-  while (!pending_actor_tasks_.empty()) {
-    auto head = pending_actor_tasks_.begin();
-    head->second.Cancel(Status::Invalid("client cancelled stale rpc"));
-    next_seq_no_ = std::max(next_seq_no_, head->first + 1);
-    {
-      absl::MutexLock lock(&mu_);
-      pending_task_id_to_is_canceled.erase(head->second.TaskID());
-    }
-    pending_actor_tasks_.erase(head);
   }
 }
 
