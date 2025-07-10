@@ -375,8 +375,9 @@ class NormalTaskSubmitter {
   // Tasks that were cancelled while being resolved.
   absl::flat_hash_set<TaskID> cancelled_tasks_ ABSL_GUARDED_BY(mu_);
 
-  // Keeps track of where currently executing tasks are being run.
-  absl::flat_hash_map<TaskID, rpc::Address> executing_tasks_ ABSL_GUARDED_BY(mu_);
+  // Keeps track of the address of the worker that currently has a task being pushed to
+  // it. This include tasks that are still in the progress of post-pushing handling.
+  absl::flat_hash_map<TaskID, rpc::Address> pushed_to_worker_tasks_ ABSL_GUARDED_BY(mu_);
 
   // Generators that are currently running and need to be resubmitted.
   absl::flat_hash_set<TaskID> generators_to_resubmit_ ABSL_GUARDED_BY(mu_);
