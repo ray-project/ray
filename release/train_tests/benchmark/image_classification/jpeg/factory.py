@@ -97,14 +97,6 @@ class ImageClassificationJpegRayDataLoaderFactory(
             "dir", base_dir=train_dir, field_names=["class"]
         )
 
-        data_context = ray.data.DataContext.get_current()
-        data_context.execution_options.preserve_order = (
-            self.get_dataloader_config().preserve_order
-        )
-        data_context.override_object_store_memory_limit_fraction = (
-            self.get_dataloader_config().override_object_store_memory_limit_fraction
-        )
-
         train_ds = (
             ray.data.read_images(
                 train_dir,
