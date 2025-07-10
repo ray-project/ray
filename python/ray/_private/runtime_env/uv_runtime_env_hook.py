@@ -195,7 +195,9 @@ def _create_uv_run_parser():
     return parser
 
 
-def _parse_args(parser: optparse.OptionParser, args: List[str]):
+def _parse_args(
+    parser: optparse.OptionParser, args: List[str]
+) -> Tuple[optparse.Values, List[str]]:
     """
     Parse the command-line options found in 'args'.
 
