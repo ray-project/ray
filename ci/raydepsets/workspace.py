@@ -2,7 +2,6 @@ import yaml
 from dataclasses import dataclass, field
 from typing import List, Optional
 import os
-from typing import Optional
 
 
 @dataclass

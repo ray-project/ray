@@ -448,4 +448,4 @@ def _append_to_file(filepath, new):
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-vs", __file__]))
