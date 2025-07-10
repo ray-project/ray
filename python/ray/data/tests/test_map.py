@@ -16,6 +16,7 @@ import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.parquet as pq
 import pytest
+from pkg_resources import parse_version
 
 import ray
 from ray._common.test_utils import wait_for_condition
@@ -2207,6 +2208,10 @@ def test_map_names():
     assert r.startswith("OneHotEncoder"), r
 
 
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("20.0.0"),
+    reason="with_columns requires PyArrow >= 20.0.0",
+)
 @pytest.mark.parametrize(
     "exprs, expected_value",
     [
@@ -2241,6 +2246,10 @@ def test_with_columns(ray_start_regular_shared, exprs, expected_value):
     assert result["result"] == expected_value
 
 
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("20.0.0"),
+    reason="with_columns requires PyArrow >= 20.0.0",
+)
 def test_with_columns_nonexistent_column(ray_start_regular_shared):
     """Verify that referencing a non-existent column with col() raises an exception."""
     # Create a dataset with known column "id"
@@ -2251,6 +2260,10 @@ def test_with_columns_nonexistent_column(ray_start_regular_shared):
         ds.with_columns({"result": col("nonexistent_column") + 1}).materialize()
 
 
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("20.0.0"),
+    reason="with_columns requires PyArrow >= 20.0.0",
+)
 def test_with_columns_multiple_expressions(ray_start_regular_shared):
     """Verify that `with_columns` correctly handles multiple expressions at once."""
     ds = ray.data.range(5)
