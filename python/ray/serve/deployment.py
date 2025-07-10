@@ -7,10 +7,10 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 from ray.serve._private.config import (
     DeploymentConfig,
     ReplicaConfig,
+    RequestRouterConfig,
     handle_num_replicas_auto,
 )
 from ray.serve._private.constants import SERVE_LOGGER_NAME
-from ray.serve._private.request_router.request_router import RequestRouter
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import DEFAULT, Default
 from ray.serve.config import AutoscalingConfig
@@ -237,9 +237,9 @@ class Deployment:
         health_check_period_s: Default[float] = DEFAULT.VALUE,
         health_check_timeout_s: Default[float] = DEFAULT.VALUE,
         logging_config: Default[Union[Dict, LoggingConfig, None]] = DEFAULT.VALUE,
-        request_router_class: Default[Union[str, RequestRouter, None]] = DEFAULT.VALUE,
-        request_routing_stats_period_s: Default[float] = DEFAULT.VALUE,
-        request_routing_stats_timeout_s: Default[float] = DEFAULT.VALUE,
+        request_router_config: Default[
+            Union[Dict, RequestRouterConfig, None]
+        ] = DEFAULT.VALUE,
         _init_args: Default[Tuple[Any]] = DEFAULT.VALUE,
         _init_kwargs: Default[Dict[Any, Any]] = DEFAULT.VALUE,
         _internal: bool = False,
@@ -351,6 +351,9 @@ class Deployment:
         if autoscaling_config is not DEFAULT.VALUE:
             new_deployment_config.autoscaling_config = autoscaling_config
 
+        if request_router_config is not DEFAULT.VALUE:
+            new_deployment_config.request_router_config = request_router_config
+
         if graceful_shutdown_wait_loop_s is not DEFAULT.VALUE:
             new_deployment_config.graceful_shutdown_wait_loop_s = (
                 graceful_shutdown_wait_loop_s
@@ -371,19 +374,6 @@ class Deployment:
             if isinstance(logging_config, LoggingConfig):
                 logging_config = logging_config.dict()
             new_deployment_config.logging_config = logging_config
-
-        if request_router_class is not DEFAULT.VALUE:
-            new_deployment_config.request_router_class = request_router_class
-
-        if request_routing_stats_period_s is not DEFAULT.VALUE:
-            new_deployment_config.request_routing_stats_period_s = (
-                request_routing_stats_period_s
-            )
-
-        if request_routing_stats_timeout_s is not DEFAULT.VALUE:
-            new_deployment_config.request_routing_stats_timeout_s = (
-                request_routing_stats_timeout_s
-            )
 
         new_replica_config = ReplicaConfig.create(
             func_or_class,
@@ -453,8 +443,7 @@ def deployment_to_schema(d: Deployment) -> DeploymentSchema:
         "placement_group_bundles": d._replica_config.placement_group_bundles,
         "max_replicas_per_node": d._replica_config.max_replicas_per_node,
         "logging_config": d._deployment_config.logging_config,
-        "request_routing_stats_period_s": d._deployment_config.request_routing_stats_period_s,
-        "request_routing_stats_timeout_s": d._deployment_config.request_routing_stats_timeout_s,
+        "request_router_config": d._deployment_config.request_router_config,
     }
 
     # Let non-user-configured options be set to defaults. If the schema
@@ -515,8 +504,7 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
         health_check_period_s=s.health_check_period_s,
         health_check_timeout_s=s.health_check_timeout_s,
         logging_config=s.logging_config,
-        request_routing_stats_period_s=s.request_routing_stats_period_s,
-        request_routing_stats_timeout_s=s.request_routing_stats_timeout_s,
+        request_router_config=s.request_router_config,
     )
     deployment_config.user_configured_option_names = (
         s._get_user_configured_option_names()
