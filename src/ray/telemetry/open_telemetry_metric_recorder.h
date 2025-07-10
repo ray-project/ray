@@ -42,8 +42,9 @@ namespace telemetry {
 // 1. Register the OpenTelemetryMetricRecorder with the specified grpc endpoint,
 //    interval and timeout via RegisterGrpcExporter(). This should be called only once
 //    per process. It is recommended to call this in the main function. Note: this step
-//    does not need to be called before step 2 and 3. Metrics and values are lazily
-//    registered and recorded in step 2 and 3.
+//    does not need to be called before step 2 and 3. Registered metrics and
+//    recorded values from step 2 and 3 will be preserved in memory by open
+//    telemetry until the GrpcExporter is created and registered
 // 2. Register the metrics to be recorded via RegisterGaugeMetric() etc.
 // 3. Record the metrics via SetMetricValue().
 // 4. At the end of the main function, call the Shutdown() method to flush the
