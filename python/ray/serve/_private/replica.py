@@ -478,7 +478,7 @@ class ReplicaBase(ABC):
             req: StreamingHTTPRequest = request_args[0]
             try:
                 matched_route = get_asgi_route_name(
-                    self._user_callable_asgi_app, req.astgi_scope
+                    self._user_callable_asgi_app, req.asgi_scope
                 )
             except Exception:
                 matched_route = None
