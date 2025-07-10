@@ -48,7 +48,9 @@ namespace telemetry {
 
 OpenTelemetryMetricRecorder &OpenTelemetryMetricRecorder::GetInstance() {
   // Note: This creates a singleton instance of the OpenTelemetryMetricRecorder. The
-  // singleton lives until and is cleaned up automatically by the process exit.
+  // singleton lives until and is cleaned up automatically by the process exit. The
+  // OpenTelemetryMetricRecorder is created this way so that the singleton instance
+  // can be used to register/record metrics across the codebase easily.
   static auto *instance = new OpenTelemetryMetricRecorder();
   return *instance;
 }
@@ -103,11 +105,8 @@ void OpenTelemetryMetricRecorder::CollectGaugeMetricValues(
         opentelemetry::metrics::ObserverResultT<double>> &observer) {
   std::lock_guard<std::mutex> lock(mutex_);
   auto it = observations_by_name_.find(name);
-  if (it == observations_by_name_.end()) {
-    RAY_LOG(WARNING) << "Metric " << name
-                     << " is not registered. Skipping exporting its values.";
-    return;  // Not registered
-  }
+  RAY_CHECK(it != observations_by_name_.end())
+      << "Metric " << name << " is not registered";
   for (const auto &observation : it->second) {
     observer->Observe(observation.second, observation.first);
   }
@@ -120,11 +119,8 @@ void OpenTelemetryMetricRecorder::RegisterGaugeMetric(const std::string &name,
       instrument;
   {
     std::lock_guard<std::mutex> lock(mutex_);
-    if (registered_instruments_.contains(name)) {
-      RAY_LOG(WARNING) << "Metric " << name
-                       << " is already registered. Skipping registering it again.";
-      return;  // Already registered
-    }
+    RAY_CHECK(!registered_instruments_.contains(name))
+        << "Metric " << name << " is already registered";
     gauge_metric_names_.push_back(name);
     name_ptr = &gauge_metric_names_.back();
     instrument = GetMeter()->CreateDoubleObservableGauge(name, description, "");
@@ -154,9 +150,8 @@ bool OpenTelemetryMetricRecorder::IsMetricRegistered(const std::string &name) {
 void OpenTelemetryMetricRecorder::RegisterCounterMetric(const std::string &name,
                                                         const std::string &description) {
   std::lock_guard<std::mutex> lock(mutex_);
-  if (registered_instruments_.contains(name)) {
-    return;  // Already registered
-  }
+  RAY_CHECK(!registered_instruments_.contains(name))
+      << "Metric " << name << " is already registered";
   auto instrument = GetMeter()->CreateDoubleCounter(name, description, "");
   registered_instruments_[name] = std::move(instrument);
 }
@@ -171,20 +166,6 @@ void OpenTelemetryMetricRecorder::SetMetricValue(
   } else {
     SetSynchronousMetricValue(name, std::move(tags), value);
   }
-}
-
-std::optional<double> OpenTelemetryMetricRecorder::GetObservableMetricValue(
-    const std::string &name, const absl::flat_hash_map<std::string, std::string> &tags) {
-  std::lock_guard<std::mutex> lock(mutex_);
-  auto it = observations_by_name_.find(name);
-  if (it == observations_by_name_.end()) {
-    return std::nullopt;  // Not registered
-  }
-  auto tag_it = it->second.find(tags);
-  if (tag_it != it->second.end()) {
-    return tag_it->second;  // Get the value
-  }
-  return std::nullopt;
 }
 
 void OpenTelemetryMetricRecorder::SetObservableMetricValue(

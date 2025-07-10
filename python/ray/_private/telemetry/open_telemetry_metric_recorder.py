@@ -44,11 +44,6 @@ class OpenTelemetryMetricRecorder:
             def callback(options):
                 # Take snapshot of current observations.
                 with self._lock:
-                    if name not in self._observations_by_name:
-                        logger.warning(
-                            f"Metric {name} is not registered. Skipping exporting its values."
-                        )
-                        return []
                     observations = self._observations_by_name[name].items()
                     return [
                         Observation(val, attributes=dict(tag_set))
