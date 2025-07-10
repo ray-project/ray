@@ -18,7 +18,9 @@ def load(config_path: str, name: str = ""):
 
 class DependencySetManager:
     def __init__(
-        self, config_path: Path = Path(__file__).parent / "depset.config.yaml", workspace_dir: str = None
+        self,
+        config_path: Path = Path(__file__).parent / "depset.config.yaml",
+        workspace_dir: str = None,
     ):
         self.workspace = Workspace(workspace_dir)
         self.config = self.workspace.load_config(config_path)

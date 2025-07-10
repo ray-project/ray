@@ -27,12 +27,10 @@ class Config:
             Depset(
                 name=values.get("name"),
                 requirements=[
-                    requirement
-                    for requirement in values.get("requirements", [])
+                    requirement for requirement in values.get("requirements", [])
                 ],
                 constraints=[
-                    constraint
-                    for constraint in values.get("constraints", [])
+                    constraint for constraint in values.get("constraints", [])
                 ],
                 operation=values.get("operation", "compile"),
                 output=values.get("output"),
@@ -42,10 +40,13 @@ class Config:
 
         return Config(depsets=depsets)
 
+
 class Workspace:
     def __init__(self, dir: str = None):
         print(f"directory: {dir}")
-        self.dir = dir if dir is not None else os.getenv("BUILD_WORKSPACE_DIRECTORY", None)
+        self.dir = (
+            dir if dir is not None else os.getenv("BUILD_WORKSPACE_DIRECTORY", None)
+        )
         if self.dir is None:
             raise Exception("BUILD_WORKSPACE_DIRECTORY is not set")
 
