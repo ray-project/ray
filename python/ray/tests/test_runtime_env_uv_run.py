@@ -321,6 +321,7 @@ def test_uv_run_runtime_env_hook(with_uv):
         cmd=[
             uv,
             "run",
+            "--no-project",
             "--isolated",
             "--extra",
             "vllm",
@@ -330,7 +331,7 @@ def test_uv_run_runtime_env_hook(with_uv):
         ],
         runtime_env={},
         expected_output={
-            "py_executable": f"{uv} run --isolated --extra vllm",
+            "py_executable": f"{uv} run --no-project --isolated --extra vllm",
             "working_dir": os.getcwd(),
         },
     )
