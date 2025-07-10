@@ -35,9 +35,6 @@ from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import (
     VLLMGenerationRequest,
     VLLMSamplingParams,
 )
-from ray.llm._internal.serve.deployments.utils.node_initialization_utils import (
-    InitializeNodeOutput,
-)
 
 
 class MockVLLMEngine(LLMEngine):
@@ -53,14 +50,6 @@ class MockVLLMEngine(LLMEngine):
         self.llm_config = llm_config
 
         self._stats = VLLMEngineStatTracker()
-
-    @staticmethod
-    async def initialize_node(llm_config: LLMConfig) -> InitializeNodeOutput:
-        return InitializeNodeOutput(
-            placement_group=None,
-            runtime_env={},
-            extra_init_kwargs={},
-        )
 
     async def start(self):
         """No-Op"""
@@ -266,14 +255,6 @@ class MockEchoVLLMEngine(MockVLLMEngine):
 class MockMultiplexEngine(LLMEngine):
     def __init__(self, *args, **kwargs):
         self.started = False
-
-    @staticmethod
-    async def initialize_node(llm_config: LLMConfig) -> InitializeNodeOutput:
-        return InitializeNodeOutput(
-            placement_group=None,
-            runtime_env={},
-            extra_init_kwargs={},
-        )
 
     async def prepare_request(
         self,

@@ -472,10 +472,7 @@ class LLMServer(_LLMServerBase):
         await self.engine.start()
 
         # Push telemetry reports for the model in the current deployment.
-        # Note: the model architecture is only available after node initialized and the
-        # engine is started.
-        if self._llm_config.model_architecture:
-            push_telemetry_report_for_all_models(all_models=[self._llm_config])
+        push_telemetry_report_for_all_models(all_models=[self._llm_config])
 
     async def _predict(
         self,
