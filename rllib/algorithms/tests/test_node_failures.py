@@ -1,6 +1,7 @@
 import unittest
 
 import ray
+import ray._common
 from ray._private.test_utils import get_other_nodes
 from ray.cluster_utils import Cluster
 from ray.rllib.algorithms.appo import APPOConfig
@@ -17,7 +18,7 @@ from ray.rllib.utils.metrics import (
 object_store_memory = 10**8
 num_nodes = 3
 
-assert num_nodes * object_store_memory < ray._private.utils.get_system_memory() / 2, (
+assert num_nodes * object_store_memory < ray._common.utils.get_system_memory() / 2, (
     "Make sure there is enough memory on this machine to run this "
     "workload. We divide the system memory by 2 to provide a buffer."
 )

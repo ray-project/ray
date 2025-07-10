@@ -135,7 +135,7 @@ workloads a minimum amount of CPU but [allow them to take advantage of unused CP
 throttled][1] if they use more than their requested CPU.
 
 For GPU workloads, you may also wish to specify GPU
-limits. For example, set `nvidia.com/gpu: 2` if using an Nvidia GPU device plugin
+limits. For example, set `nvidia.com/gpu: 2` if using an NVIDIA GPU device plugin
 and you wish to specify a pod with access to 2 GPUs.
 See {ref}`this guide <kuberay-gpu>` for more details on GPU support.
 
@@ -194,7 +194,11 @@ See [KubeRay issue #587](https://github.com/ray-project/kuberay/pull/587) for mo
 ## Ray Start Parameters
 The ``rayStartParams`` field of each group spec is a string-string map of arguments to the Ray
 container’s `ray start` entrypoint. For the full list of arguments, refer to
-the documentation for {ref}`ray start <ray-start-doc>`. We make special note of the following arguments:
+the documentation for {ref}`ray start <ray-start-doc>`. The RayCluster Kubernetes custom resource
+Custom Resource Definition (CRD) in KubeRay versions before 1.4.0 required this field to exist, but the value could be
+an empty map. As of KubeRay 1.4.0, ``rayStartParams`` is optional.
+
+Note the following arguments:
 
 ### dashboard-host
 For most use-cases, this field should be set to "0.0.0.0" for the Ray head pod.

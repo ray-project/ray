@@ -1,22 +1,26 @@
 import logging
 from collections import OrderedDict
-from typing import Optional, List, Type, Callable, Dict, Union, Tuple, Any
+from typing import Any, Callable, Dict, List, Optional, Type
 
 from pydantic import Field
 
-from ray.data.block import UserDefinedFunction
+import ray
 from ray.data import Dataset
-from ray.util.annotations import PublicAPI, DeveloperAPI
-
+from ray.data.block import UserDefinedFunction
 from ray.llm._internal.batch.stages import (
     StatefulStage,
-    wrap_preprocess,
     wrap_postprocess,
+    wrap_preprocess,
 )
 from ray.llm._internal.common.base_pydantic import BaseModelExtended
-
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 logger = logging.getLogger(__name__)
+
+
+# Higher values here are better for prefetching and locality. It's ok for this to be
+# fairly high since streaming backpressure prevents us from overloading actors.
+DEFAULT_MAX_TASKS_IN_FLIGHT = 4
 
 
 class ProcessorConfig(BaseModelExtended):
@@ -41,11 +45,16 @@ class ProcessorConfig(BaseModelExtended):
         description="The accelerator type used by the LLM stage in a processor. "
         "Default to None, meaning that only the CPU will be used.",
     )
-    concurrency: Optional[Union[int, Tuple[int, int]]] = Field(
+    concurrency: Optional[int] = Field(
         default=1,
-        description="The number of workers for data parallelism. Default to 1."
-        "If ``concurrency`` is a tuple ``(m, n)``, Ray will use an autoscaling actor pool from"
-        " ``m`` to ``n`` workers.",
+        description="The number of workers for data parallelism. Default to 1.",
+    )
+
+    experimental: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="[Experimental] Experimental configurations."
+        "Supported keys:\n"
+        "`max_tasks_in_flight_per_actor`: The maximum number of tasks in flight per actor. Default to 4.",
     )
 
     class Config:
@@ -132,6 +141,14 @@ class Processor:
         self.preprocess = None
         self.postprocess = None
         self.stages: OrderedDict[str, StatefulStage] = OrderedDict()
+
+        # FIXES: https://github.com/ray-project/ray/issues/53124
+        # TODO (Kourosh): Remove this once the issue is fixed
+        data_context = ray.data.DataContext.get_current()
+        data_context.wait_for_min_actors_s = 600
+        # TODO: Remove this when https://github.com/ray-project/ray/issues/53169
+        # is fixed.
+        data_context._enable_actor_pool_on_exit_hook = True
 
         # NOTE (Kourosh): If pre/postprocess is not provided, use the identity function.
         # Wrapping is required even if they are identity functions, b/c data_column

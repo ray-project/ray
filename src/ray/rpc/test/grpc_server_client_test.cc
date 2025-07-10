@@ -111,9 +111,10 @@ class TestGrpcServerClientFixture : public ::testing::Test {
           handler_io_service_work_(handler_io_service_.get_executor());
       handler_io_service_.run();
     });
-    test_service_.reset(new TestGrpcService(handler_io_service_, test_service_handler_));
     grpc_server_.reset(new GrpcServer("test", 0, true));
-    grpc_server_->RegisterService(*test_service_, false);
+    grpc_server_->RegisterService(
+        std::make_unique<TestGrpcService>(handler_io_service_, test_service_handler_),
+        false);
     grpc_server_->Run();
 
     // Wait until server starts listening.
@@ -166,7 +167,6 @@ class TestGrpcServerClientFixture : public ::testing::Test {
   TestServiceHandler test_service_handler_;
   instrumented_io_context handler_io_service_;
   std::unique_ptr<std::thread> handler_thread_;
-  std::unique_ptr<TestGrpcService> test_service_;
   std::unique_ptr<GrpcServer> grpc_server_;
   grpc::CompletionQueue cq_;
   std::shared_ptr<grpc::Channel> channel_;

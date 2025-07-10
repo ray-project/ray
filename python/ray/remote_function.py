@@ -6,7 +6,7 @@ from functools import wraps
 from threading import Lock
 from typing import Optional
 
-import ray._private.signature
+import ray._common.signature
 from ray import Language, cross_language
 from ray._private import ray_option_utils
 from ray._private.auto_init_hook import wrap_auto_init
@@ -335,7 +335,7 @@ class RemoteFunction:
         with self._inject_lock:
             if self._function_signature is None:
                 self._function = _inject_tracing_into_function(self._function)
-                self._function_signature = ray._private.signature.extract_signature(
+                self._function_signature = ray._common.signature.extract_signature(
                     self._function
                 )
 
@@ -424,7 +424,7 @@ class RemoteFunction:
         ):
             _warn_if_using_deprecated_placement_group(task_options, 4)
 
-        resources = ray._private.utils.resources_from_ray_options(task_options)
+        resources = ray._common.utils.resources_from_ray_options(task_options)
 
         if scheduling_strategy is None or isinstance(
             scheduling_strategy, PlacementGroupSchedulingStrategy
@@ -473,7 +473,7 @@ class RemoteFunction:
             elif not args and not kwargs and not self._function_signature:
                 list_args = []
             else:
-                list_args = ray._private.signature.flatten_args(
+                list_args = ray._common.signature.flatten_args(
                     self._function_signature, args, kwargs
                 )
 

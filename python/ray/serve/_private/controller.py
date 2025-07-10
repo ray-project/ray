@@ -15,12 +15,13 @@ from ray.serve._private.autoscaling_state import AutoscalingStateManager
 from ray.serve._private.common import (
     DeploymentHandleSource,
     DeploymentID,
-    MultiplexedReplicaInfo,
     NodeId,
     RequestProtocol,
+    RequestRoutingInfo,
     RunningReplicaInfo,
     TargetCapacityDirection,
 )
+from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
     CONTROL_LOOP_INTERVAL_S,
     RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH,
@@ -35,6 +36,10 @@ from ray.serve._private.default_impl import create_cluster_node_info_cache
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.deployment_state import DeploymentStateManager
 from ray.serve._private.endpoint_state import EndpointState
+from ray.serve._private.grpc_util import set_proxy_default_grpc_options
+from ray.serve._private.http_util import (
+    configure_http_options_with_defaults,
+)
 from ray.serve._private.logging_utils import (
     configure_component_cpu_profiler,
     configure_component_logger,
@@ -49,6 +54,7 @@ from ray.serve._private.utils import (
     call_function_from_import_path,
     get_all_live_placement_group_names,
     get_head_node_id,
+    is_grpc_enabled,
 )
 from ray.serve.config import HTTPOptions, ProxyLocation, gRPCOptions
 from ray.serve.generated.serve_pb2 import (
@@ -154,13 +160,16 @@ class ServeController:
         self.cluster_node_info_cache = create_cluster_node_info_cache(self.gcs_client)
         self.cluster_node_info_cache.update()
 
+        # Configure proxy default HTTP and gRPC options.
         self.proxy_state_manager = ProxyStateManager(
-            http_options=http_options,
+            http_options=configure_http_options_with_defaults(http_options),
             head_node_id=self._controller_node_id,
             cluster_node_info_cache=self.cluster_node_info_cache,
             logging_config=self.global_logging_config,
-            grpc_options=grpc_options,
+            grpc_options=set_proxy_default_grpc_options(grpc_options),
         )
+        # We modify the HTTP and gRPC options above, so delete them to avoid
+        del http_options, grpc_options
 
         self.endpoint_state = EndpointState(self.kv_store, self.long_poll_host)
 
@@ -195,6 +204,7 @@ class ServeController:
         self._actor_details = ServeActorDetails(
             node_id=ray.get_runtime_context().get_node_id(),
             node_ip=ray.util.get_node_ip_address(),
+            node_instance_id=ray.util.get_node_instance_id(),
             actor_id=ray.get_runtime_context().get_actor_id(),
             actor_name=SERVE_CONTROLLER_NAME,
             worker_id=ray.get_runtime_context().get_worker_id(),
@@ -891,6 +901,23 @@ class ServeController:
             for id, info in self.deployment_state_manager.get_deployment_infos().items()
         }
 
+    def get_deployment_config(
+        self, deployment_id: DeploymentID
+    ) -> Optional[DeploymentConfig]:
+        """Get the deployment config for the given deployment id.
+
+        Args:
+            deployment_id: The deployment id to get the config for.
+
+        Returns:
+            A deployment config object if the deployment id exist,
+            None otherwise.
+        """
+        deployment_info = self.deployment_state_manager.get_deployment_infos().get(
+            deployment_id
+        )
+        return deployment_info.deployment_config if deployment_info else None
+
     def list_deployment_ids(self) -> List[DeploymentID]:
         """Gets the current list of all deployments' identifiers."""
         return self.deployment_state_manager._deployment_states.keys()
@@ -958,30 +985,35 @@ class ServeController:
             target_groups=self.get_target_groups(),
         )._get_user_facing_json_serializable_dict(exclude_unset=True)
 
-    def get_target_groups(self) -> List[TargetGroup]:
+    def get_target_groups(self, app_name: Optional[str] = None) -> List[TargetGroup]:
         """Target groups contains information about IP
         addresses and ports of all proxies in the cluster.
 
         This information is used to setup the load balancer.
         """
-        if self.proxy_state_manager is None:
-            return []
         target_groups: List[TargetGroup] = []
 
         if self.proxy_state_manager.get_proxy_details():
             # setting prefix route to "/" because in ray serve, proxy
             # accepts requests from the client and routes them to the
             # correct application. This is true for both HTTP and gRPC proxies.
-            target_groups.extend(
-                [
-                    TargetGroup(
-                        protocol=protocol,
-                        route_prefix="/",
-                        targets=self.proxy_state_manager.get_targets(protocol),
-                    )
-                    for protocol in [RequestProtocol.HTTP, RequestProtocol.GRPC]
-                ]
+            target_groups.append(
+                TargetGroup(
+                    protocol=RequestProtocol.HTTP,
+                    route_prefix="/",
+                    targets=self.proxy_state_manager.get_targets(RequestProtocol.HTTP),
+                )
             )
+            if is_grpc_enabled(self.get_grpc_config()):
+                target_groups.append(
+                    TargetGroup(
+                        protocol=RequestProtocol.GRPC,
+                        route_prefix="/",
+                        targets=self.proxy_state_manager.get_targets(
+                            RequestProtocol.GRPC
+                        ),
+                    )
+                )
         return target_groups
 
     def get_serve_status(self, name: str = SERVE_DEFAULT_APP_NAME) -> bytes:
@@ -1072,13 +1104,14 @@ class ServeController:
 
         self.application_state_manager.save_checkpoint()
 
-    def record_multiplexed_replica_info(self, info: MultiplexedReplicaInfo):
-        """Record multiplexed model ids for a replica of deployment
+    def record_request_routing_info(self, info: RequestRoutingInfo):
+        """Record replica routing information for a replica.
+
         Args:
-            info: MultiplexedReplicaInfo including deployment name, replica tag and
-                model ids.
+            info: RequestRoutingInfo including deployment name, replica tag,
+                multiplex model ids, and routing stats.
         """
-        self.deployment_state_manager.record_multiplexed_replica_info(info)
+        self.deployment_state_manager.record_request_routing_info(info)
 
     async def graceful_shutdown(self, wait: bool = True):
         """Set the shutting down flag on controller to signal shutdown in
@@ -1123,8 +1156,8 @@ class ServeController:
         """Get the logging configuration (for testing purposes)."""
         log_file_path = None
         for handler in logger.handlers:
-            if isinstance(handler, logging.handlers.RotatingFileHandler):
-                log_file_path = handler.baseFilename
+            if isinstance(handler, logging.handlers.MemoryHandler):
+                log_file_path = handler.target.baseFilename
         return self.global_logging_config, log_file_path
 
     def _get_target_capacity_direction(self) -> Optional[TargetCapacityDirection]:

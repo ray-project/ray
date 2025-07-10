@@ -20,7 +20,7 @@ MINIMAL_INSTALL=1 PYTHON=${PYTHON_VERSION} ci/env/install-dependencies.sh
 rm -rf python/ray/thirdparty_files
 
 # install test requirements
-python -m pip install -U pytest==7.0.1 pip-tools==7.3.0
+python -m pip install -U pytest==7.4.4 pip-tools==7.4.1
 
 # install extra dependencies
 if [[ "${EXTRA_DEPENDENCY}" == "core" ]]; then
@@ -30,7 +30,9 @@ elif [[ "${EXTRA_DEPENDENCY}" == "ml" ]]; then
 elif [[ "${EXTRA_DEPENDENCY}" == "default" ]]; then
   pip-compile -o min_requirements.txt python/setup.py --extra default
 elif [[ "${EXTRA_DEPENDENCY}" == "serve" ]]; then
-  pip-compile -o min_requirements.txt python/setup.py --extra serve-grpc
+  echo "httpx==0.27.2" >> /tmp/min_build_requirements.txt
+  pip-compile -o min_requirements.txt /tmp/min_build_requirements.txt python/setup.py --extra "serve-grpc"
+  rm /tmp/min_build_requirements.txt
 fi
 
 if [[ -f min_requirements.txt ]]; then

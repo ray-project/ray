@@ -5,7 +5,7 @@ import pytest
 
 import ray
 from ray.experimental import tqdm_ray
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import wait_for_condition
 
 
 def test_distributed_tqdm_remote():
@@ -109,5 +109,4 @@ def test_flush_interval():
 
 
 if __name__ == "__main__":
-    # Test suite is timing out. Disable on windows for now.
     sys.exit(pytest.main(["-sv", __file__]))

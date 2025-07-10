@@ -19,7 +19,8 @@ from typing import (
 import ray
 import ray.exceptions
 from ray.experimental.channel.communicator import Communicator
-from ray.experimental.channel.utils import get_devices
+from ray.experimental.channel.communicator_handle import CommunicatorHandle
+from ray.experimental.channel.accelerator_context import AcceleratorContext
 from ray.experimental.channel.serialization_context import _SerializationContext
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
@@ -102,13 +103,13 @@ class ChannelOutputType:
         """
         raise NotImplementedError
 
-    def requires_nccl(self) -> bool:
-        # By default, channels do not require NCCL.
+    def requires_accelerator(self) -> bool:
+        # By default, channels do not require accelerator.
         return False
 
     def get_custom_communicator(self) -> Optional[Communicator]:
         """
-        Return the custom NCCL group if one is specified.
+        Return the custom communicator group if one is specified.
         """
         return None
 
@@ -125,8 +126,10 @@ class ChannelContext:
     _current_stream: Optional["torch.cuda.Stream"] = None
 
     def __init__(self):
-        # Used for the torch.Tensor NCCL transport.
+        # Used for the torch.Tensor accelerator transport.
         self.communicators: Dict[str, "Communicator"] = {}
+        # Used for driver process to store actors in the communicator.
+        self.communicator_handles: Dict[str, "CommunicatorHandle"] = {}
 
     @staticmethod
     def get_current() -> "ChannelContext":
@@ -163,7 +166,7 @@ class ChannelContext:
     @property
     def torch_device(self) -> "torch.device":
         if self._torch_device is None:
-            self._torch_device = get_devices()[0]
+            self._torch_device = AcceleratorContext.get().get_accelerator_devices()[0]
 
         return self._torch_device
 

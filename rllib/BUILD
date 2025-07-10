@@ -559,6 +559,8 @@ py_test(
         "learning_tests_pytorch_use_all_core",
         "team:rllib",
         "torch_only",
+        # Disabled: https://github.com/ray-project/ray/issues/50532
+        "manual",
     ],
 )
 
@@ -638,6 +640,8 @@ py_test(
         "learning_tests_pytorch_use_all_core",
         "team:rllib",
         "torch_only",
+        # Disabled: https://github.com/ray-project/ray/issues/43808
+        "manual",
     ],
 )
 
@@ -665,6 +669,8 @@ py_test(
         "learning_tests_pytorch_use_all_core",
         "team:rllib",
         "torch_only",
+        # Disabled: https://github.com/ray-project/ray/issues/50538
+        "manual",
     ],
 )
 
@@ -750,6 +756,8 @@ py_test(
         "multi_gpu",
         "team:rllib",
         "torch_only",
+        # Disabled: https://github.com/ray-project/ray/issues/47216
+        "manual",
     ],
 )
 
@@ -3353,6 +3361,21 @@ py_test(
 )
 
 py_test(
+    name = "examples/actions/custom_action_distribution",
+    size = "large",
+    srcs = ["examples/actions/custom_action_distribution.py"],
+    args = [
+        "--enable-new-api-stack",
+        "--temperature=0.75",
+    ],
+    main = "examples/actions/custom_action_distribution.py",
+    tags = [
+        "examples",
+        "team:rllib",
+    ],
+)
+
+py_test(
     name = "examples/actions/nested_action_spaces_ppo",
     size = "large",
     srcs = ["examples/actions/nested_action_spaces.py"],
@@ -3395,7 +3418,7 @@ py_test(
 # ....................................
 py_test(
     name = "examples/algorithms/appo_custom_algorithm_w_shared_data_actor",
-    size = "medium",
+    size = "large",
     srcs = ["examples/algorithms/appo_custom_algorithm_w_shared_data_actor.py"],
     args = [
         "--enable-new-api-stack",
@@ -3433,7 +3456,7 @@ py_test(
 
 py_test(
     name = "examples/algorithms/vpg_custom_algorithm",
-    size = "medium",
+    size = "large",
     srcs = ["examples/algorithms/vpg_custom_algorithm.py"],
     args = [
         "--enable-new-api-stack",
@@ -3805,6 +3828,8 @@ py_test(
         "examples",
         "exclusive",
         "team:rllib",
+        # Disabled: https://github.com/ray-project/ray/issues/47435
+        "manual",
     ],
 )
 
@@ -3832,14 +3857,31 @@ py_test(
 )
 
 py_test(
-    name = "examples/connectors/multi_agent_with_different_observation_spaces",
+    name = "examples/connectors/multi_agent_observation_preprocessor",
     size = "medium",
-    srcs = ["examples/connectors/multi_agent_with_different_observation_spaces.py"],
+    srcs = ["examples/connectors/multi_agent_observation_preprocessor.py"],
     args = [
         "--enable-new-api-stack",
         "--num-agents=2",
+        "--algo=PPO",
     ],
-    main = "examples/connectors/multi_agent_with_different_observation_spaces.py",
+    main = "examples/connectors/multi_agent_observation_preprocessor.py",
+    tags = [
+        "examples",
+        "exclusive",
+        "team:rllib",
+    ],
+)
+
+py_test(
+    name = "examples/connectors/single_agent_observation_preprocessor",
+    size = "medium",
+    srcs = ["examples/connectors/single_agent_observation_preprocessor.py"],
+    args = [
+        "--enable-new-api-stack",
+        "--algo=PPO",
+    ],
+    main = "examples/connectors/single_agent_observation_preprocessor.py",
     tags = [
         "examples",
         "exclusive",
@@ -3929,19 +3971,35 @@ py_test(
 
 # subdirectory: debugging/
 # ....................................
-#@OldAPIStack
 py_test(
-    name = "examples/debugging/deterministic_training_torch",
+    name = "examples/debugging/deterministic_sampling_and_training",
     size = "medium",
-    srcs = ["examples/debugging/deterministic_training.py"],
+    srcs = ["examples/debugging/deterministic_sampling_and_training.py"],
     args = [
         "--as-test",
-        "--stop-iters=1",
-        "--framework=torch",
-        "--num-gpus=1",
-        "--num-gpus-per-env-runner=1",
+        "--enable-new-api-stack",
+        "--num-learners=2",
     ],
-    main = "examples/debugging/deterministic_training.py",
+    main = "examples/debugging/deterministic_sampling_and_training.py",
+    tags = [
+        "examples",
+        "exclusive",
+        "multi_gpu",
+        "team:rllib",
+    ],
+)
+
+py_test(
+    name = "examples/debugging/deterministic_sampling_and_training_multi_agent",
+    size = "medium",
+    srcs = ["examples/debugging/deterministic_sampling_and_training.py"],
+    args = [
+        "--as-test",
+        "--enable-new-api-stack",
+        "--num-learners=2",
+        "--num-agents=2",
+    ],
+    main = "examples/debugging/deterministic_sampling_and_training.py",
     tags = [
         "examples",
         "exclusive",
@@ -4184,7 +4242,7 @@ py_test(
         "--num-agents=2",
         "--as-test",
         "--evaluation-parallel-to-training",
-        "--stop-reward=900.0",
+        "--stop-reward=400.0",
         "--num-cpus=6",
         "--evaluation-duration=auto",
         "--evaluation-duration-unit=episodes",

@@ -1,22 +1,12 @@
 import sys
 
+
 import dask
 import pytest
 
 import ray
+from ray.tests.conftest import *  # noqa: F403, F401
 from ray.util.dask import ray_dask_get, RayDaskCallback
-
-pytestmark = pytest.mark.skipif(
-    sys.version_info >= (3, 12), reason="Skip dask tests for Python version 3.12+"
-)
-
-
-@pytest.fixture
-def ray_start_1_cpu():
-    address_info = ray.init(num_cpus=2)
-    yield address_info
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
 
 
 @dask.delayed
@@ -34,7 +24,7 @@ def test_callback_active():
     assert not RayDaskCallback.ray_active
 
 
-def test_presubmit_shortcircuit(ray_start_1_cpu):
+def test_presubmit_shortcircuit(ray_start_regular_shared):
     """
     Test that presubmit return short-circuits task submission, and that task's
     result is set to the presubmit return value.
@@ -57,7 +47,7 @@ def test_presubmit_shortcircuit(ray_start_1_cpu):
     assert result == 0
 
 
-def test_pretask_posttask_shared_state(ray_start_1_cpu):
+def test_pretask_posttask_shared_state(ray_start_regular_shared):
     """
     Test that pretask return value is passed to corresponding posttask
     callback.
@@ -77,7 +67,7 @@ def test_pretask_posttask_shared_state(ray_start_1_cpu):
     assert result == 5
 
 
-def test_postsubmit(ray_start_1_cpu):
+def test_postsubmit(ray_start_regular_shared):
     """
     Test that postsubmit is called after each task.
     """
@@ -109,7 +99,7 @@ def test_postsubmit(ray_start_1_cpu):
     assert result == 5
 
 
-def test_postsubmit_all(ray_start_1_cpu):
+def test_postsubmit_all(ray_start_regular_shared):
     """
     Test that postsubmit_all is called once.
     """
@@ -141,7 +131,7 @@ def test_postsubmit_all(ray_start_1_cpu):
     assert result == 5
 
 
-def test_finish(ray_start_1_cpu):
+def test_finish(ray_start_regular_shared):
     """
     Test that finish callback is called once.
     """
@@ -173,7 +163,7 @@ def test_finish(ray_start_1_cpu):
     assert result == 5
 
 
-def test_multiple_callbacks(ray_start_1_cpu):
+def test_multiple_callbacks(ray_start_regular_shared):
     """
     Test that multiple callbacks are supported.
     """
@@ -208,7 +198,7 @@ def test_multiple_callbacks(ray_start_1_cpu):
     assert result == 5
 
 
-def test_pretask_posttask_shared_state_multi(ray_start_1_cpu):
+def test_pretask_posttask_shared_state_multi(ray_start_regular_shared):
     """
     Test that pretask return values are passed to the correct corresponding
     posttask callbacks when multiple callbacks are given.
@@ -244,6 +234,4 @@ def test_pretask_posttask_shared_state_multi(ray_start_1_cpu):
 
 
 if __name__ == "__main__":
-    import sys
-
     sys.exit(pytest.main(["-v", __file__]))
