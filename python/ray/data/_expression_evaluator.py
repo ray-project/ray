@@ -8,51 +8,44 @@ import pyarrow as pa
 import pyarrow.compute as pc
 
 from ray.data.expressions import (
+    BinaryExpr,
+    ColumnExpr,
     Expr,
+    LiteralExpr,
     Operation,
 )
 
+pandas_ops = {
+    Operation.ADD: operator.add,
+    Operation.SUB: operator.sub,
+    Operation.MUL: operator.mul,
+    Operation.DIV: operator.truediv,
+    Operation.GT: operator.gt,
+    Operation.LT: operator.lt,
+    Operation.GE: operator.ge,
+    Operation.LE: operator.le,
+    Operation.EQ: operator.eq,
+    Operation.AND: operator.and_,
+    Operation.OR: operator.or_,
+}
 
-def _get_operation_maps():
-    """Get operation maps, importing Operation enum at runtime to avoid circular imports."""
-    from ray.data.expressions import Operation
-
-    pandas_ops = {
-        Operation.ADD: operator.add,
-        Operation.SUB: operator.sub,
-        Operation.MUL: operator.mul,
-        Operation.DIV: operator.truediv,
-        Operation.GT: operator.gt,
-        Operation.LT: operator.lt,
-        Operation.GE: operator.ge,
-        Operation.LE: operator.le,
-        Operation.EQ: operator.eq,
-        Operation.AND: operator.and_,
-        Operation.OR: operator.or_,
-    }
-
-    arrow_ops = {
-        Operation.ADD: pc.add,
-        Operation.SUB: pc.subtract,
-        Operation.MUL: pc.multiply,
-        Operation.DIV: pc.divide,
-        Operation.GT: pc.greater,
-        Operation.LT: pc.less,
-        Operation.GE: pc.greater_equal,
-        Operation.LE: pc.less_equal,
-        Operation.EQ: pc.equal,
-        Operation.AND: pc.and_,
-        Operation.OR: pc.or_,
-    }
-
-    return pandas_ops, arrow_ops
+arrow_ops = {
+    Operation.ADD: pc.add,
+    Operation.SUB: pc.subtract,
+    Operation.MUL: pc.multiply,
+    Operation.DIV: pc.divide,
+    Operation.GT: pc.greater,
+    Operation.LT: pc.less,
+    Operation.GE: pc.greater_equal,
+    Operation.LE: pc.less_equal,
+    Operation.EQ: pc.equal,
+    Operation.AND: pc.and_,
+    Operation.OR: pc.or_,
+}
 
 
 def _eval_expr_recursive(expr: "Expr", batch, ops: Dict["Operation", Callable]) -> Any:
     """Generic recursive expression evaluator."""
-    # Import classes at runtime to avoid circular imports
-    from ray.data.expressions import BinaryExpr, ColumnExpr, LiteralExpr
-
     # TODO: Separate unresolved expressions (arbitrary AST with unresolved refs)
     # and resolved expressions (bound to a schema) for better error handling
 
@@ -70,8 +63,6 @@ def _eval_expr_recursive(expr: "Expr", batch, ops: Dict["Operation", Callable]) 
 
 def eval_expr(expr: "Expr", batch) -> Any:
     """Recursively evaluate *expr* against a batch of the appropriate type."""
-    pandas_ops, arrow_ops = _get_operation_maps()
-
     if isinstance(batch, pd.DataFrame):
         return _eval_expr_recursive(expr, batch, pandas_ops)
     elif isinstance(batch, pa.Table):
