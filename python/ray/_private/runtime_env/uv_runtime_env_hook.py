@@ -82,7 +82,9 @@ def _create_uv_run_parser():
         type="choice",
         choices=["first-index", "unsafe-first-match", "unsafe-best-match"],
     )
-    index_group.add_option("--keyring-provider", type="choice", choices=["disabled", "subprocess"])
+    index_group.add_option(
+        "--keyring-provider", type="choice", choices=["disabled", "subprocess"]
+    )
     parser.add_option_group(index_group)
 
     # Resolver options
@@ -174,7 +176,9 @@ def _create_uv_run_parser():
     global_group = optparse.OptionGroup(parser, "Global options")
     global_group.add_option("-q", "--quiet", action="count", default=0)
     global_group.add_option("-v", "--verbose", action="count", default=0)
-    global_group.add_option("--color", type="choice", choices=["auto", "always", "never"])
+    global_group.add_option(
+        "--color", type="choice", choices=["auto", "always", "never"]
+    )
     global_group.add_option("--native-tls", action="store_true")
     global_group.add_option("--offline", action="store_true")
     global_group.add_option(
