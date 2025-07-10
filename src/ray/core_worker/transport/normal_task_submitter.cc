@@ -180,7 +180,7 @@ void NormalTaskSubmitter::OnWorkerIdle(
       task_spec.GetMutableMessage().set_lease_grant_timestamp_ms(current_sys_time_ms());
       task_spec.EmitTaskMetrics();
 
-      executing_tasks_.emplace(task_spec.TaskId(), addr);
+      pushed_to_worker_tasks_.emplace(task_spec.TaskId(), addr);
       PushNormalTask(
           addr, client, scheduling_key, std::move(task_spec), assigned_resources);
     }
@@ -578,7 +578,6 @@ void NormalTaskSubmitter::PushNormalTask(
                          << WorkerID::FromBinary(addr.worker_id()) << " of raylet "
                          << NodeID::FromBinary(addr.raylet_id());
           absl::MutexLock lock(&mu_);
-          executing_tasks_.erase(task_id);
 
           resubmit_generator = generators_to_resubmit_.erase(task_id) > 0;
 
