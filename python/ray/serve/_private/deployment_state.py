@@ -2520,6 +2520,7 @@ class DeploymentStateManager:
         self._shutting_down = False
 
         self._deployment_states: Dict[DeploymentID, DeploymentState] = {}
+        self._app_deployment_mapping: Dict[str, Set[str]] = defaultdict(set)
 
         self._recover_from_checkpoint(
             all_current_actor_names, all_current_placement_group_names
@@ -2644,6 +2645,9 @@ class DeploymentStateManager:
                         deployment_to_current_replicas[deployment_id]
                     )
                 self._deployment_states[deployment_id] = deployment_state
+                self._app_deployment_mapping[deployment_id.app_name].add(
+                    deployment_id.name
+                )
 
     def shutdown(self):
         """
@@ -2793,19 +2797,14 @@ class DeploymentStateManager:
             self._deployment_states[deployment_id] = self._create_deployment_state(
                 deployment_id
             )
+            self._app_deployment_mapping[deployment_id.app_name].add(deployment_id.name)
             self._record_deployment_usage()
 
         return self._deployment_states[deployment_id].deploy(deployment_info)
 
     def get_deployments_in_application(self, app_name: str) -> List[str]:
         """Return list of deployment names in application."""
-
-        deployments = []
-        for deployment_id in self._deployment_states:
-            if deployment_id.app_name == app_name:
-                deployments.append(deployment_id.name)
-
-        return deployments
+        return list(self._app_deployment_mapping[app_name])
 
     def delete_deployment(self, id: DeploymentID):
         # This method must be idempotent. We should validate that the
@@ -2907,6 +2906,17 @@ class DeploymentStateManager:
             self._deployment_scheduler.on_deployment_deleted(deployment_id)
             self._autoscaling_state_manager.deregister_deployment(deployment_id)
             del self._deployment_states[deployment_id]
+            if (
+                deployment_id.app_name in self._app_deployment_mapping
+                and deployment_id.name
+                in self._app_deployment_mapping[deployment_id.app_name]
+            ):
+                self._app_deployment_mapping[deployment_id.app_name].remove(
+                    deployment_id.name
+                )
+                # Clean up the app_name entry if no deployments are left
+                if not self._app_deployment_mapping[deployment_id.app_name]:
+                    del self._app_deployment_mapping[deployment_id.app_name]
 
         if len(deleted_ids):
             self._record_deployment_usage()
