@@ -45,8 +45,8 @@ class AMDGPUAcceleratorManager(AcceleratorManager):
             )
 
         env_var = HIP_VISIBLE_DEVICES_ENV_VAR
-        if cuda_val := os.environ.get(CUDA_VISIBLE_DEVICES_ENV_VAR, None) is not None:
-            if hip_val := os.environ.get(HIP_VISIBLE_DEVICES_ENV_VAR, None) is None:
+        if (cuda_val := os.environ.get(CUDA_VISIBLE_DEVICES_ENV_VAR, None)) is not None:
+            if (hip_val := os.environ.get(HIP_VISIBLE_DEVICES_ENV_VAR, None)) is None:
                 env_var = CUDA_VISIBLE_DEVICES_ENV_VAR
             elif hip_val != cuda_val:
                 raise ValueError(
