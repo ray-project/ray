@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
-from ray.data._expression_evaluator import eval_expr
 from ray.util.annotations import DeveloperAPI
 
 
@@ -301,5 +300,4 @@ __all__ = [
     "BinaryExpr",
     "col",
     "lit",
-    "eval_expr",
 ]
