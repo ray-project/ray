@@ -206,7 +206,13 @@ class AggregatorAgent(
                     if USE_PROTO:
                         event_batch.append(event_proto)
                     else:
-                        event_batch.append(json.loads(MessageToJson((event_proto))))
+                        event_batch.append(
+                            json.loads(
+                                MessageToJson(
+                                    event_proto, including_default_value_fields=True
+                                )
+                            )
+                        )
                 except queue.Empty:
                     break
 

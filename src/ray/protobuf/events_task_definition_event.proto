@@ -40,6 +40,5 @@ message TaskDefinitionEvent {
   bytes job_id = 9;
   bytes parent_task_id = 10;
   bytes placement_group_id = 11;
-  string session_name = 12;
-  map<string, bytes> ref_ids = 13;
+  map<string, bytes> ref_ids = 12;
 }
