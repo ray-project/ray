@@ -534,6 +534,13 @@ class RequestRouter(ABC):
         )
         self.num_routing_tasks_in_backoff_gauge.set(self.num_routing_tasks_in_backoff)
 
+    def initialize_state(self, **kwargs):
+        """
+        Initialize the state of the request router. Called by the Ray Serve framework with the
+        contents of `RequestRouter.request_router_kwargs`.
+        """
+        pass
+
     @property
     def _event_loop(self) -> asyncio.AbstractEventLoop:
         if self._lazily_fetched_loop is None:
