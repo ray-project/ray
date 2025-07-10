@@ -206,7 +206,7 @@ def test_controller_deserialization_deployment_def(
         from ray._common.utils import import_attr
 
         # Import and build the graph
-        graph = import_attr("test_config_files.pizza.serve_dag")
+        graph = import_attr("ray.serve.tests.test_config_files.pizza.serve_dag")
 
         # Run the graph locally on the cluster
         serve.run(graph)
