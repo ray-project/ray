@@ -189,27 +189,37 @@ void OpenTelemetryMetricRecorder::RegisterHistogramMetric(
     const std::vector<double> &buckets) {
   std::lock_guard<std::mutex> lock(mutex_);
   if (registered_instruments_.contains(name)) {
-    return;  // Already registered
+    // Already registered.  Note that this is a common case for metrics defined
+    // via Metric interface. See https://github.com/ray-project/ray/issues/54538
+    // for more details.
+    return;
   }
   // Create a histogram instrument with explicit buckets
+  // TODO(can-anyscale): use factory pattern for a cleaner creation of histogram view:
+  // https://github.com/open-telemetry/opentelemetry-cpp/blob/main/examples/metrics_simple/metrics_ostream.cc#L93.
+  // This requires a new version of the OpenTelemetry SDK. See
+  // https://github.com/ray-project/ray/issues/54538 for the complete backlog of Ray
+  // metric infra improvements.
   auto aggregation_config =
       std::make_shared<opentelemetry::sdk::metrics::HistogramAggregationConfig>();
   aggregation_config->boundaries_ = buckets;
   auto view = std::make_unique<opentelemetry::sdk::metrics::View>(
       name,
       description,
-      "",
+      /*unit=*/"",
       opentelemetry::sdk::metrics::AggregationType::kHistogram,
       aggregation_config);
 
   auto instrument_selector =
       std::make_unique<opentelemetry::sdk::metrics::InstrumentSelector>(
-          opentelemetry::sdk::metrics::InstrumentType::kHistogram, name, "");
-  auto meter_selector =
-      std::make_unique<opentelemetry::sdk::metrics::MeterSelector>(meter_name_, "", "");
+          opentelemetry::sdk::metrics::InstrumentType::kHistogram,
+          name,
+          /*unit_filter=*/"");
+  auto meter_selector = std::make_unique<opentelemetry::sdk::metrics::MeterSelector>(
+      meter_name_, /*meter_version=*/"", /*schema_url=*/"");
   meter_provider_->AddView(
       std::move(instrument_selector), std::move(meter_selector), std::move(view));
-  auto instrument = GetMeter()->CreateDoubleHistogram(name, description, "");
+  auto instrument = GetMeter()->CreateDoubleHistogram(name, description, /*unit=*/"");
   registered_instruments_[name] = std::move(instrument);
 }
 
