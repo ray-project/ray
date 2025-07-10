@@ -38,6 +38,7 @@ class Config:
 
         return Config(depsets=depsets)
 
+
 class Workspace:
     def __init__(self, dir: str = None):
         self.dir = (
