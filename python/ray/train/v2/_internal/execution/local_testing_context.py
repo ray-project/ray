@@ -1,6 +1,6 @@
 import os
 import threading
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import ray.data
 from ray.data import DataIterator
@@ -23,6 +23,9 @@ def is_local_train_function_run_allowed() -> bool:
 
 
 class LocalTestingTrainContext:
+    def get_experiment_name(self) -> str:
+        return "local_testing"
+
     def get_world_rank(self) -> int:
         return 0
 
@@ -38,6 +41,27 @@ class LocalTestingTrainContext:
     def get_node_rank(self) -> int:
         return 0
 
+    # TODO: returning None for these APIs might fail some cases.
+    def get_storage(self):
+        """Returns None for local testing (no-op)."""
+        return None
+
+    def get_result_queue(self):
+        """Returns None for local testing (no-op)."""
+        return None
+
+    def get_synchronization_actor(self):
+        """Returns None for local testing (no-op)."""
+        return None
+
+    def get_checkpoint(self):
+        """Returns None for local testing (no-op)."""
+        return None
+
+    def get_context_callbacks(self) -> List[Any]:
+        """Returns empty list for local testing."""
+        return []
+
     def get_dataset_shard(self, dataset_name: str) -> DataIterator:
         dataset_shards = _local_test_configs.get(LOCAL_CONFIG_DATASET_NAME, {})
         return dataset_shards.get(dataset_name, ray.data.from_items([]))
@@ -48,6 +72,7 @@ class LocalTestingTrainContext:
         checkpoint: Optional[Any] = None,
         checkpoint_dir_name: Optional[str] = None,
     ):
+        """No-op report for local testing, just prints metrics."""
         print(f"Local testing report metrics: {metrics}")
 
 
