@@ -2,8 +2,7 @@ import click
 from pathlib import Path
 from typing import Dict, List, Optional
 import subprocess
-from ci.raydepsets.workspace import Depset
-from ci.raydepsets.config import load_config
+from ci.raydepsets.workspace import Depset, Workspace
 
 DEFAULT_UV_FLAGS = [
     "--strip-extras",
@@ -20,6 +19,10 @@ DEFAULT_UV_FLAGS = [
     "--quiet",
 ]
 
+@click.group(name="raydepsets")
+def cli():
+    """Manage Python dependency sets."""
+
 @cli.command()
 @click.argument("config_path", default="ci/raydepsets/depset.config.yaml")
 @click.option("--name", type=str, default="")
@@ -34,9 +37,12 @@ def load(config_path: str, name: str = ""):
 
 class DependencySetManager:
     def __init__(
-        self, config_path: Path = Path(__file__).parent / "depset.config.yaml"
+        self,
+        config_path: Path = Path(__file__).parent / "depset.config.yaml",
+        workspace_dir: str = None,
     ):
-        self.config = load_config(config_path)
+        self.workspace = Workspace(workspace_dir)
+        self.config = self.workspace.load_config(config_path)
 
     def exec_uv_cmd(self, cmd: str, args: List[str]) -> str:
         cmd = f"uv pip {cmd} {' '.join(args)}"
@@ -72,13 +78,12 @@ class DependencySetManager:
         """Compile a dependency set."""
         if constraints:
             for constraint in constraints:
-                args.extend(["-c", constraint])
+                args.extend(["-c", self.get_absolute_path(constraint)])
         if requirements:
             for requirement in requirements:
-                args.append(requirement)
-        args.extend(["-o", f"{output}"])
+                args.append(self.get_absolute_path(requirement))
+        args.extend(["-o", self.get_absolute_path(output)])
         self.exec_uv_cmd("compile", args)
 
-@click.group(name="raydepsets")
-def cli():
-    """Manage Python dependency sets."""
+    def get_absolute_path(self, path: str) -> str:
+        return os.path.join(self.workspace.dir, path)
