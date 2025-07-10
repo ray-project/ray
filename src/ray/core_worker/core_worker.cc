@@ -503,16 +503,8 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
   // Initialize task receivers.
   if (options_.worker_type == WorkerType::WORKER || options_.is_local_mode) {
     RAY_CHECK(options_.task_execution_callback != nullptr);
-    auto execute_task = std::bind(&CoreWorker::ExecuteTask,
-                                  this,
-                                  std::placeholders::_1,
-                                  std::placeholders::_2,
-                                  std::placeholders::_3,
-                                  std::placeholders::_4,
-                                  std::placeholders::_5,
-                                  std::placeholders::_6,
-                                  std::placeholders::_7,
-                                  std::placeholders::_8);
+    auto execute_task = std::bind(
+        &CoreWorker::ExecuteTask, this, std::placeholders::_1, std::placeholders::_2);
     task_argument_waiter_ = std::make_unique<DependencyWaiterImpl>(*local_raylet_client_);
     task_receiver_ = std::make_unique<TaskReceiver>(
         task_execution_service_,
@@ -3295,23 +3287,19 @@ Status CoreWorker::AllocateReturnObject(const ObjectID &object_id,
   return Status::OK();
 }
 
-Status CoreWorker::ExecuteTask(
-    const TaskSpecification &task_spec,
-    std::optional<ResourceMappingType> resource_ids,
-    std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *return_objects,
-    std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *dynamic_return_objects,
-    std::vector<std::pair<ObjectID, bool>> *streaming_generator_returns,
-    ReferenceCounter::ReferenceTableProto *borrowed_refs,
-    bool *is_retryable_error,
-    std::string *application_error) {
+TaskExecutionResult CoreWorker::ExecuteTask(
+    const TaskSpecification &task_spec, std::optional<ResourceMappingType> resource_ids) {
   RAY_LOG(DEBUG) << "Executing task, task info = " << task_spec.DebugString();
+
+  TaskExecutionResult result;
 
   // If the worker is exited via Exit API, we shouldn't execute
   // tasks anymore.
   if (IsExiting()) {
     absl::MutexLock lock(&mutex_);
-    return Status::IntentionalSystemExit(
+    result.status = Status::IntentionalSystemExit(
         absl::StrCat("Worker has already exited. Detail: ", exiting_detail_.value()));
+    return result;
   }
 
   task_queue_length_ -= 1;
@@ -3363,19 +3351,17 @@ Status CoreWorker::ExecuteTask(
   RAY_CHECK_OK(GetAndPinArgsForExecutor(task_spec, &args, &arg_refs, &borrowed_ids));
 
   for (size_t i = 0; i < task_spec.NumReturns(); i++) {
-    return_objects->emplace_back(task_spec.ReturnId(i), nullptr);
+    result.return_objects.emplace_back(task_spec.ReturnId(i), nullptr);
   }
   // For dynamic tasks, pass the return IDs that were dynamically generated on
   // the first execution.
-  if (!task_spec.ReturnsDynamic()) {
-    dynamic_return_objects = nullptr;
-  } else if (task_spec.AttemptNumber() > 0) {
+  if (task_spec.ReturnsDynamic() && task_spec.AttemptNumber() > 0) {
     for (const auto &dynamic_return_id : task_spec.DynamicReturnIds()) {
       // Increase the put index so that when the generator creates a new obj
       // the object id won't conflict.
       worker_context_.GetNextPutIndex();
-      dynamic_return_objects->emplace_back(dynamic_return_id,
-                                           std::shared_ptr<RayObject>());
+      result.dynamic_return_objects.emplace_back(dynamic_return_id,
+                                                 std::shared_ptr<RayObject>());
       RAY_LOG(DEBUG) << "Re-executed task " << task_spec.TaskId()
                      << " should return dynamic object " << dynamic_return_id;
 
@@ -3385,7 +3371,6 @@ Status CoreWorker::ExecuteTask(
     }
   }
 
-  Status status;
   TaskType task_type = TaskType::NORMAL_TASK;
   if (task_spec.IsActorCreationTask()) {
     task_type = TaskType::ACTOR_CREATION_TASK;
@@ -3417,7 +3402,7 @@ Status CoreWorker::ExecuteTask(
     name_of_concurrency_group_to_execute = task_spec.ConcurrencyGroupName();
   }
 
-  status = options_.task_execution_callback(
+  result.status = options_.task_execution_callback(
       task_spec.CallerAddress(),
       task_type,
       task_spec.GetName(),
@@ -3427,12 +3412,12 @@ Status CoreWorker::ExecuteTask(
       arg_refs,
       task_spec.GetDebuggerBreakpoint(),
       task_spec.GetSerializedRetryExceptionAllowlist(),
-      return_objects,
-      dynamic_return_objects,
-      streaming_generator_returns,
+      &result.return_objects,
+      task_spec.ReturnsDynamic() ? &result.dynamic_return_objects : nullptr,
+      &result.streaming_generator_returns,
       creation_task_exception_pb_bytes,
-      is_retryable_error,
-      application_error,
+      &result.is_retryable_error,
+      &result.application_error,
       defined_concurrency_groups,
       name_of_concurrency_group_to_execute,
       /*is_reattempt=*/task_spec.AttemptNumber() > 0,
@@ -3450,13 +3435,12 @@ Status CoreWorker::ExecuteTask(
   // borrowing.
   std::vector<ObjectID> deleted;
   if (!borrowed_ids.empty()) {
-    reference_counter_->PopAndClearLocalBorrowers(borrowed_ids, borrowed_refs, &deleted);
+    reference_counter_->PopAndClearLocalBorrowers(
+        borrowed_ids, &result.borrowed_refs, &deleted);
   }
-  if (dynamic_return_objects != nullptr) {
-    for (const auto &dynamic_return : *dynamic_return_objects) {
-      reference_counter_->PopAndClearLocalBorrowers(
-          {dynamic_return.first}, borrowed_refs, &deleted);
-    }
+  for (const auto &dynamic_return : result.dynamic_return_objects) {
+    reference_counter_->PopAndClearLocalBorrowers(
+        {dynamic_return.first}, &result.borrowed_refs, &deleted);
   }
   memory_store_->Delete(deleted);
 
@@ -3487,29 +3471,29 @@ Status CoreWorker::ExecuteTask(
     task_counter_.MoveRunningToFinished(func_name, task_spec.IsRetry());
   }
   RAY_LOG(DEBUG).WithField(task_spec.TaskId())
-      << "Finished executing task, status=" << status;
+      << "Finished executing task, status=" << result.status;
 
   std::ostringstream stream;
-  if (status.IsCreationTaskError()) {
+  if (result.status.IsCreationTaskError()) {
     Exit(rpc::WorkerExitType::USER_ERROR,
          absl::StrCat(
              "Worker exits because there was an exception in the initialization method "
              "(e.g., __init__). Fix the exceptions from the initialization to resolve "
              "the issue. ",
-             status.message()),
+             result.status.message()),
          creation_task_exception_pb_bytes);
-  } else if (status.IsIntentionalSystemExit()) {
+  } else if (result.status.IsIntentionalSystemExit()) {
     Exit(rpc::WorkerExitType::INTENDED_USER_EXIT,
-         absl::StrCat("Worker exits by an user request. ", status.message()),
+         absl::StrCat("Worker exits by an user request. ", result.status.message()),
          creation_task_exception_pb_bytes);
-  } else if (status.IsUnexpectedSystemExit()) {
+  } else if (result.status.IsUnexpectedSystemExit()) {
     Exit(rpc::WorkerExitType::SYSTEM_ERROR,
-         absl::StrCat("Worker exits unexpectedly. ", status.message()),
+         absl::StrCat("Worker exits unexpectedly. ", result.status.message()),
          creation_task_exception_pb_bytes);
-  } else if (!status.ok()) {
-    RAY_LOG(FATAL) << "Unexpected task status type : " << status;
+  } else if (!result.status.ok()) {
+    RAY_LOG(FATAL) << "Unexpected task status type : " << result.status;
   }
-  return status;
+  return result;
 }
 
 Status CoreWorker::SealReturnObject(const ObjectID &return_id,
@@ -3769,19 +3753,8 @@ std::vector<rpc::ObjectReference> CoreWorker::ExecuteTaskLocalMode(
   }
   auto old_id = GetActorId();
   SetActorId(actor_id);
-  bool is_retryable_error = false;
-  std::string application_error;
-  // TODO(swang): Support DynamicObjectRefGenerators in local mode?
-  std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> dynamic_return_objects;
-  std::vector<std::pair<ObjectID, bool>> streaming_generator_returns;
-  RAY_UNUSED(ExecuteTask(task_spec,
-                         /*resource_ids=*/ResourceMappingType{},
-                         &return_objects,
-                         &dynamic_return_objects,
-                         &streaming_generator_returns,
-                         &borrowed_refs,
-                         &is_retryable_error,
-                         &application_error));
+  TaskExecutionResult result = ExecuteTask(task_spec,
+                                           /*resource_ids=*/ResourceMappingType{});
   SetActorId(old_id);
   return returned_refs;
 }

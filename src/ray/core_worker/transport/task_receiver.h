@@ -34,6 +34,7 @@
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/fiber.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
+#include "ray/core_worker/task_execution/common.h"
 #include "ray/core_worker/transport/actor_scheduling_queue.h"
 #include "ray/core_worker/transport/actor_task_submitter.h"
 #include "ray/core_worker/transport/concurrency_group_manager.h"
@@ -48,18 +49,10 @@ namespace core {
 
 class TaskReceiver {
  public:
-  using TaskHandler = std::function<Status(
-      const TaskSpecification &task_spec,
-      std::optional<ResourceMappingType> resource_ids,
-      std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *return_objects,
-      std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>>
-          *dynamic_return_objects,
-      std::vector<std::pair<ObjectID, bool>> *streaming_generator_returns,
-      ReferenceCounter::ReferenceTableProto *borrower_refs,
-      bool *is_retryable_error,
-      std::string *application_error)>;
-
   using OnActorCreationTaskDone = std::function<Status()>;
+  using TaskHandler =
+      std::function<TaskExecutionResult(const TaskSpecification &task_spec,
+                                        std::optional<ResourceMappingType> resource_ids)>;
 
   TaskReceiver(instrumented_io_context &task_execution_service,
                worker::TaskEventBuffer &task_event_buffer,

@@ -45,6 +45,7 @@
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/store_provider/plasma_store_provider.h"
 #include "ray/core_worker/task_event_buffer.h"
+#include "ray/core_worker/task_execution/common.h"
 #include "ray/core_worker/transport/normal_task_submitter.h"
 #include "ray/core_worker/transport/task_receiver.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
@@ -1499,17 +1500,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///                     error.
   /// \param results[out] application_error The error message if the
   ///                     task failed during execution or cancelled.
-  /// \return Status.
-  Status ExecuteTask(
-      const TaskSpecification &task_spec,
-      std::optional<ResourceMappingType> resource_ids,
-      std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *return_objects,
-      std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>>
-          *dynamic_return_objects,
-      std::vector<std::pair<ObjectID, bool>> *streaming_generator_returns,
-      ReferenceCounter::ReferenceTableProto *borrowed_refs,
-      bool *is_retryable_error,
-      std::string *application_error);
+  /// \return TaskExecutionResult.
+  TaskExecutionResult ExecuteTask(const TaskSpecification &task_spec,
+                                  std::optional<ResourceMappingType> resource_ids);
 
   /// Put an object in the local plasma store.
   Status PutInLocalPlasmaStore(const RayObject &object,
