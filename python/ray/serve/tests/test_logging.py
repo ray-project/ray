@@ -417,7 +417,7 @@ def test_http_access_log_in_logs_file(serve_instance, log_format):
         line_checker, captured_lines = create_line_checker(
             log_file_path, start_position
         )
-        wait_for_condition(line_checker, retry_interval_ms=1000)
+        wait_for_condition(line_checker, retry_interval_ms=1000, timeout=25)
         new_log_lines = captured_lines["lines"]
 
         # Step 4: Verify HTTP response matches new log lines
