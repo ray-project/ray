@@ -57,7 +57,7 @@ jobs:
           exempt-pr-labels: >
             weekly-release-blocker,
             release-blocker,
-            bounced
+            unstale
 
           # Set to true to ignore PRs in a milestone (defaults to false)
           exempt-all-pr-milestones: true
@@ -69,7 +69,7 @@ jobs:
           # Remove stale label from PRs on update (default is true)
           remove-pr-stale-when-updated: true
 
-          # Add bounced label. Whenever a PR is marked as 'bounced' it will not be marked stale again.
-          labels-to-add-when-unstale: bounced
+          # Add unstale label. Whenever a PR is marked as 'unstale' it will not be marked stale again.
+          labels-to-add-when-unstale: unstale
 
           ascending: true
