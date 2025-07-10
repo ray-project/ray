@@ -646,18 +646,11 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
 
         def check_log():
             logs_content = f.getvalue()
-
-            all_conditions_true = True
             for expected_log_info in expected_log_infos:
-                if expected_log_info not in logs_content:
-                    all_conditions_true = False
-                    break
+                assert expected_log_info in logs_content
             for regex in user_log_regexes:
-                if re.findall(regex, logs_content) == []:
-                    all_conditions_true = False
-                    break
-
-            return all_conditions_true
+                assert re.findall(regex, logs_content) != []
+            return True
 
         # Check stream log
         wait_for_condition(
