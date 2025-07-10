@@ -15,9 +15,6 @@ if TYPE_CHECKING:
 
     from ray._private import gpu_object_manager_util as util
 
-    import nixl._utils as nixl_utils
-    from nixl._api import nixl_agent, nixl_agent_config
-
 
 def _get_or_import_util():
     """Lazily import the gpu_object_manager_util module."""
@@ -55,7 +52,7 @@ class GPUObjectManager:
         # The agent when using nixl for transfer.
         self.nixl_agent = None
 
-    def init_nixl_agent(self) -> nixl_agent:
+    def init_nixl_agent(self):
         from nixl._api import nixl_agent, nixl_agent_config
 
         if self.nixl_agent is None:
@@ -95,7 +92,11 @@ class GPUObjectManager:
             reg_descs = agent.register_memory(tensors)
             xfer_descs = reg_descs.trim()
 
-            return [(t.shape, t.dtype) for t in tensors], agent.get_serialized_descs(xfer_descs), agent.get_agent_metadata()
+            return (
+                [(t.shape, t.dtype) for t in tensors],
+                agent.get_serialized_descs(xfer_descs),
+                agent.get_agent_metadata(),
+            )
 
         return src_actor.__ray_call__.remote(__ray_get_tensor_meta__, obj_id)
 
@@ -167,7 +168,13 @@ class GPUObjectManager:
         # `dst_actor`'s GPU object store.
         util = _get_or_import_util()
         dst_actor.__ray_call__.remote(
-            util.__ray_recv__, communicator_name, obj_id, src_rank, tensor_meta, nixl_serialized_descs, nixl_agent_meta
+            util.__ray_recv__,
+            communicator_name,
+            obj_id,
+            src_rank,
+            tensor_meta,
+            nixl_serialized_descs,
+            nixl_agent_meta,
         )
 
     def fetch_gpu_object(self, obj_id: str):
@@ -272,5 +279,11 @@ class GPUObjectManager:
                 continue
             self._send_gpu_object(communicator.name, src_actor, arg.hex(), dst_rank)
             self._recv_gpu_object(
-                communicator.name, dst_actor, arg.hex(), src_rank, tensor_meta, nixl_serialized_descs, nixl_agent_meta
+                communicator.name,
+                dst_actor,
+                arg.hex(),
+                src_rank,
+                tensor_meta,
+                nixl_serialized_descs,
+                nixl_agent_meta,
             )
