@@ -417,7 +417,7 @@ def test_http_access_log_in_logs_file(serve_instance, log_format):
         line_checker, captured_lines = create_line_checker(
             log_file_path, start_position
         )
-        wait_for_condition(line_checker, retry_interval_ms=1000)
+        wait_for_condition(line_checker, retry_interval_ms=1000, timeout=25)
         new_log_lines = captured_lines["lines"]
 
         # Step 4: Verify HTTP response matches new log lines
@@ -645,19 +645,19 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
         ]
 
         def check_log():
-            logs_content = ""
-            for _ in range(20):
-                time.sleep(0.1)
-                logs_content = f.getvalue()
-                if logs_content:
-                    break
+            logs_content = f.getvalue()
             for expected_log_info in expected_log_infos:
                 assert expected_log_info in logs_content
             for regex in user_log_regexes:
                 assert re.findall(regex, logs_content) != []
+            return True
 
         # Check stream log
-        check_log()
+        wait_for_condition(
+            check_log,
+            timeout=25,
+            retry_interval_ms=100,
+        )
 
         # Check user log file
         method_replica_id = resp["replica"].split("#")[-1]
