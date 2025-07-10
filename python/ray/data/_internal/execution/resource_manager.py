@@ -553,7 +553,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         self._total_shared = remaining
 
     def get_budget(self, op: PhysicalOperator) -> Optional[ExecutionResources]:
-        return self._op_budgets.get(op, None)
+        return self._op_budgets.get(op)
 
     def _should_unblock_streaming_output_backpressure(
         self, op: PhysicalOperator
