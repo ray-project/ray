@@ -7,6 +7,7 @@ from typing import (
 )
 
 import ray
+from ray.actor import ActorHandle
 from ray.llm._internal.serve.request_router.prefix_aware.prefix_tree import (
     PrefixTreeActor,
 )
@@ -52,27 +53,36 @@ class PrefixAwarePow2ReplicaRouter(LocalityMixin, MultiplexMixin, RequestRouter)
     increasing cache locality and reducing overhead for language model inference.
     """
 
-    def __init__(
+    def initialize_state(
         self,
-        *args,
-        imbalanced_threshold=10,
-        match_rate_threshold=0.1,
-        do_eviction=False,
-        eviction_threshold_chars=400_000,
-        eviction_target_chars=360_000,
-        eviction_interval_secs=10,
-        tree_actor=None,
-        **kwargs,
+        imbalanced_threshold: Optional[int] = 10,
+        match_rate_threshold: Optional[float] = 0.1,
+        do_eviction: Optional[bool] = False,
+        eviction_threshold_chars: Optional[int] = 400_000,
+        eviction_target_chars: Optional[int] = 360_000,
+        eviction_interval_secs: Optional[int] = 10,
+        tree_actor: Optional[ActorHandle] = None,
     ):
-        super().__init__(*args, **kwargs)
-        if tree_actor is None:
-            # Use a detached actor to avoid issues with actor lifetime since this is shared between routers
-            self._tree_actor = PrefixTreeActor.options(
-                name="LlmPrefixTreeActor", get_if_exists=True, lifetime="detached"
-            ).remote()
-        else:
-            self._tree_actor = tree_actor
+        """Initialize the prefix-aware routing state and configuration.
 
+        Args:
+            imbalanced_threshold: Threshold for queue length difference to consider
+                load balanced. When the difference between replica queue lengths is
+                less than this value, prefix-aware routing is used.
+            match_rate_threshold: Minimum prefix match rate (0.0-1.0) required to
+                use prefix-aware routing. If match rate is below this threshold,
+                falls back to smallest tenant selection.
+            do_eviction: Whether to enable automatic eviction of old prefix tree
+                entries to manage memory usage.
+            eviction_threshold_chars: Maximum number of characters in the prefix
+                tree before eviction is triggered.
+            eviction_target_chars: Target number of characters to reduce the
+                prefix tree to during eviction.
+            eviction_interval_secs: Interval in seconds between eviction checks
+                when eviction is enabled.
+            tree_actor: The actor to use for the prefix tree in a test environment.
+                If None, a detached actor will be created/retrieved.
+        """
         # === Prefix-aware routing logic hyperparameters ===
         self._imbalanced_threshold = imbalanced_threshold
         self._match_rate_threshold = match_rate_threshold
@@ -88,6 +98,14 @@ class PrefixAwarePow2ReplicaRouter(LocalityMixin, MultiplexMixin, RequestRouter)
             else eviction_threshold_chars
         )
         self._eviction_interval_secs = eviction_interval_secs
+
+        if tree_actor is None:
+            # Use a detached actor to avoid issues with actor lifetime since this is shared between routers
+            self._tree_actor = PrefixTreeActor.options(
+                name="LlmPrefixTreeActor", get_if_exists=True, lifetime="detached"
+            ).remote()
+        else:
+            self._tree_actor = tree_actor
 
     def _extract_text_from_request(self, pending_request: PendingRequest) -> str:
         """Extracts the text content from a pending request for prefix matching.
