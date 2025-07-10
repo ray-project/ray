@@ -1035,7 +1035,7 @@ def test_from_torch_e2e(ray_start_regular_shared_2_cpus, tmp_path):
 
 
 def test_limit_pushdown_conservative(ray_start_regular_shared_2_cpus):
-    """Test limit pushdown behavior - pushes through Project operations only."""
+    """Test limit pushdown behavior - pushes through safe operations."""
 
     def f1(x):
         return x
@@ -1059,17 +1059,17 @@ def test_limit_pushdown_conservative(ray_start_regular_shared_2_cpus):
         ds, "Read[ReadRange] -> Limit[limit=5]", [{"id": i} for i in range(5)]
     )
 
-    # Test 2: Limit should NOT push through MapRows operations (conservative)
+    # Test 2: Limit should push through MapRows operations (safe)
     ds = ray.data.range(100, override_num_blocks=100).map(f1).limit(1)
     _check_valid_plan_and_result(
-        ds, "Read[ReadRange] -> MapRows[Map(f1)] -> Limit[limit=1]", [{"id": 0}]
+        ds, "Read[ReadRange] -> Limit[limit=1] -> MapRows[Map(f1)]", [{"id": 0}]
     )
 
-    # Test 3: Limit should NOT push through MapBatches operations (conservative)
+    # Test 3: Limit should push through MapBatches operations (safe)
     ds = ray.data.range(100, override_num_blocks=100).map_batches(f2).limit(1)
     _check_valid_plan_and_result(
         ds,
-        "Read[ReadRange] -> MapBatches[MapBatches(f2)] -> Limit[limit=1]",
+        "Read[ReadRange] -> Limit[limit=1] -> MapBatches[MapBatches(f2)]",
         [{"id": 0}],
     )
 
@@ -1099,20 +1099,20 @@ def test_limit_pushdown_conservative(ray_start_regular_shared_2_cpus):
         [{"id": i} for i in range(5)],
     )
 
-    # Test 7: Limit should stop at MapRows operations
+    # Test 7: More complex interweaved case.
     ds = ray.data.range(100).sort("id").map(f1).limit(20).sort("id").map(f2).limit(5)
     _check_valid_plan_and_result(
         ds,
-        "Read[ReadRange] -> Sort[Sort] -> MapRows[Map(f1)] -> Limit[limit=20] -> "
-        "Sort[Sort] -> MapRows[Map(f2)] -> Limit[limit=5]",
+        "Read[ReadRange] -> Sort[Sort] -> Limit[limit=20] -> MapRows[Map(f1)] -> "
+        "Sort[Sort] -> Limit[limit=5] -> MapRows[Map(f2)]",
         [{"id": i} for i in range(5)],
     )
 
-    # Test 8: Limit should stop at MapRows operations
+    # Test 8: Test limit pushdown between two Map operators.
     ds = ray.data.range(100, override_num_blocks=100).map(f1).limit(1).map(f2)
     _check_valid_plan_and_result(
         ds,
-        "Read[ReadRange] -> MapRows[Map(f1)] -> Limit[limit=1] -> MapRows[Map(f2)]",
+        "Read[ReadRange] -> Limit[limit=1] -> MapRows[Map(f1)] -> MapRows[Map(f2)]",
         [{"id": 0}],
     )
 
@@ -1126,7 +1126,7 @@ def test_limit_pushdown_correctness(ray_start_regular_shared_2_cpus):
     expected = [{"id": i} for i in range(10)]
     assert result == expected
 
-    # Test 2: Multiple operations + limit (Project pushdown only)
+    # Test 2: Multiple operations + limit (with MapRows pushdown)
     ds = (
         ray.data.range(100)
         .map(lambda x: {"id": x["id"], "squared": x["id"] ** 2})
@@ -1137,13 +1137,13 @@ def test_limit_pushdown_correctness(ray_start_regular_shared_2_cpus):
     expected = [{"id": i} for i in range(5)]
     assert result == expected
 
-    # Test 3: MapRows operations should NOT get limit pushed
+    # Test 3: MapRows operations should get limit pushed (safe)
     ds = ray.data.range(100).map(lambda x: {"id": x["id"] * 2}).limit(5)
     result = ds.take_all()
     expected = [{"id": i * 2} for i in range(5)]
     assert result == expected
 
-    # Test 4: MapBatches operations should NOT get limit pushed
+    # Test 4: MapBatches operations should get limit pushed (safe)
     ds = ray.data.range(100).map_batches(lambda batch: {"id": batch["id"] * 2}).limit(5)
     result = ds.take_all()
     expected = [{"id": i * 2} for i in range(5)]
@@ -1155,7 +1155,7 @@ def test_limit_pushdown_correctness(ray_start_regular_shared_2_cpus):
     expected = [{"id": i} for i in [0, 2, 4]]
     assert result == expected
 
-    # Test 6: Limit should NOT push through MapRows (only Project is safe)
+    # Test 6: Complex chain with both safe operations (should all get limit pushed)
     ds = (
         ray.data.range(100)
         .select_columns(["id"])  # Project - could be safe if it was the immediate input
@@ -1166,10 +1166,10 @@ def test_limit_pushdown_correctness(ray_start_regular_shared_2_cpus):
     expected = [{"id": i + 1} for i in range(3)]
     assert result == expected
 
-    # The plan should show MapRows before limit (no pushdown through MapRows)
+    # The plan should show all operations after the limit
     plan_str = ds._plan._logical_plan.dag.dag_str
     assert (
-        "Read[ReadRange] -> Project[Project] -> MapRows[Map(<lambda>)] -> Limit[limit=3]"
+        "Read[ReadRange] -> Limit[limit=3] -> Project[Project] -> MapRows[Map(<lambda>)]"
         == plan_str
     )
 
@@ -1242,7 +1242,7 @@ def test_limit_pushdown_scan_efficiency(ray_start_regular_shared_2_cpus):
     rows_produced_1 = source.get_rows_produced()
     assert rows_produced_1 < 200  # Should be much less than total
 
-    # Test 2: MapRows + Limit should NOT scan fewer rows (no pushdown)
+    # Test 2: MapRows + Limit should also scan fewer rows due to pushdown
     source2 = CountingDatasource()
     ds2 = ray.data.read_datasource(source2, override_num_blocks=20, n_per_block=10)
     ds2 = ds2.map(lambda x: x).limit(5)
@@ -1252,9 +1252,13 @@ def test_limit_pushdown_scan_efficiency(ray_start_regular_shared_2_cpus):
     assert len(result2) == 5
     assert result2 == [{"id": i} for i in range(5)]
 
-    # Should scan fewer due to early termination but not pushdown
+    # Should also scan fewer than total due to pushdown
     rows_produced_2 = source2.get_rows_produced()
     assert rows_produced_2 < 200
+
+    # Both should be efficient with pushdown
+    assert rows_produced_1 < 100  # Should be much less than total
+    assert rows_produced_2 < 100  # Should be much less than total
 
     # Test 3: Filter + Limit should scan fewer due to early termination, but not pushdown
     source3 = CountingDatasource()
@@ -1270,28 +1274,24 @@ def test_limit_pushdown_scan_efficiency(ray_start_regular_shared_2_cpus):
     rows_produced_3 = source3.get_rows_produced()
     assert rows_produced_3 < 200
 
-    # Project should scan much less than map operations due to pushdown
-    assert rows_produced_1 < rows_produced_2
-    assert rows_produced_1 < rows_produced_3
-
 
 def test_limit_pushdown_mapbatches(ray_start_regular_shared_2_cpus):
-    """Test that limit does NOT push through MapBatches operations."""
+    """Test limit pushdown through MapBatches operations specifically."""
 
-    # Test 1: MapBatches + Limit should NOT push limit down
+    # Test 1: Simple MapBatches + Limit
     ds = ray.data.range(100).map_batches(lambda batch: batch).limit(10)
     result = ds.take_all()
     expected = [{"id": i} for i in range(10)]
     assert result == expected
 
-    # The plan should show limit NOT pushed through MapBatches
+    # The plan should show limit pushed through MapBatches
     plan_str = ds._plan._logical_plan.dag.dag_str
     assert (
-        "Read[ReadRange] -> MapBatches[MapBatches(<lambda>)] -> Limit[limit=10]"
+        "Read[ReadRange] -> Limit[limit=10] -> MapBatches[MapBatches(<lambda>)]"
         == plan_str
     )
 
-    # Test 2: Multiple MapBatches + Limit should NOT push limit down
+    # Test 2: Multiple MapBatches + Limit
     ds = (
         ray.data.range(100)
         .map_batches(lambda batch: {"id": batch["id"] * 2})
@@ -1302,14 +1302,14 @@ def test_limit_pushdown_mapbatches(ray_start_regular_shared_2_cpus):
     expected = [{"id": i * 2 + 1} for i in range(5)]
     assert result == expected
 
-    # The plan should show limit NOT pushed through MapBatches
+    # The plan should show limit pushed through both MapBatches
     plan_str = ds._plan._logical_plan.dag.dag_str
     assert (
-        "Read[ReadRange] -> MapBatches[MapBatches(<lambda>)] -> MapBatches[MapBatches(<lambda>)] -> Limit[limit=5]"
+        "Read[ReadRange] -> Limit[limit=5] -> MapBatches[MapBatches(<lambda>)] -> MapBatches[MapBatches(<lambda>)]"
         == plan_str
     )
 
-    # Test 3: Mixed operations - only Project should allow pushdown
+    # Test 3: Mixed operations (MapRows, MapBatches, Project) + Limit
     ds = (
         ray.data.range(100)
         .map(lambda x: {"id": x["id"], "doubled": x["id"] * 2})
@@ -1321,10 +1321,10 @@ def test_limit_pushdown_mapbatches(ray_start_regular_shared_2_cpus):
     expected = [{"id": i} for i in range(7)]
     assert result == expected
 
-    # The plan should show limit pushed through Project only
+    # The plan should show limit pushed through all operations
     plan_str = ds._plan._logical_plan.dag.dag_str
     assert (
-        "Read[ReadRange] -> MapRows[Map(<lambda>)] -> MapBatches[MapBatches(<lambda>)] -> Limit[limit=7] -> Project[Project]"
+        "Read[ReadRange] -> Limit[limit=7] -> MapRows[Map(<lambda>)] -> MapBatches[MapBatches(<lambda>)] -> Project[Project]"
         == plan_str
     )
 

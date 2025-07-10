@@ -3,10 +3,11 @@ from collections import deque
 from typing import Iterable, List
 
 from ray.data._internal.logical.interfaces import LogicalOperator, LogicalPlan, Rule
-from ray.data._internal.logical.operators.map_operator import Project
 from ray.data._internal.logical.operators.one_to_one_operator import (
+    AbstractOneToOne,
     Limit,
 )
+from ray.data._internal.logical.operators.read_operator import Read
 
 
 class LimitPushdownRule(Rule):
@@ -16,10 +17,11 @@ class LimitPushdownRule(Rule):
     most upstream operator that supports it. We are conservative and only
     push through operators that we know for certain do not modify row counts:
     - Project operations (column selection)
+    - MapRows operations (row-wise transformations that preserve row count)
+    - MapBatches operations (batch-wise transformations that preserve row count)
 
     We stop at:
     - Any operator that can modify the number of output rows (Sort, Shuffle, Aggregate, Read etc.)
-    - MapRows and MapBatches operations (to be conservative)
     - Union operations (limits should not be pushed through unions as it changes semantics)
 
     In addition, we also fuse consecutive Limit operators into a single
@@ -59,7 +61,7 @@ class LimitPushdownRule(Rule):
     def _push_limit_down(self, limit_op: Limit) -> LogicalOperator:
         """Push a single limit down through compatible operators conservatively.
 
-        Only pushes through Project operations.
+        Similar to the original algorithm but more conservative in what we push through.
         """
         limit_op_copy = copy.copy(limit_op)
 
@@ -68,7 +70,11 @@ class LimitPushdownRule(Rule):
         new_input_into_limit = limit_op.input_dependency
         ops_between_new_input_and_limit: List[LogicalOperator] = []
 
-        while isinstance(new_input_into_limit, Project):
+        while (
+            isinstance(new_input_into_limit, AbstractOneToOne)
+            and not isinstance(new_input_into_limit, Read)
+            and not new_input_into_limit.can_modify_num_rows()
+        ):
             new_input_into_limit_copy = copy.copy(new_input_into_limit)
             ops_between_new_input_and_limit.append(new_input_into_limit_copy)
             new_input_into_limit = new_input_into_limit.input_dependency
