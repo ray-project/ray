@@ -149,7 +149,7 @@ class VLLMEngineConfig(BaseModelExtended):
             if key in async_engine_field_names:
                 engine_kwargs[key] = value
             else:
-                # Assume anything that is not an engine argument is a frontend 
+                # Assume anything that is not an engine argument is a frontend
                 # argument.
                 frontend_kwargs[key] = value
 
