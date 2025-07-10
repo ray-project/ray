@@ -66,10 +66,9 @@ class SortAggregateTaskSpec(ExchangeTaskSpec):
         from ray.data.block import BlockMetadataWithSchema
 
         assert len(parts) > 0
-        # Look at the first block for the schema
-        meta_with_schema = BlockMetadataWithSchema.from_block(
-            parts[0], stats=stats.build()
-        )
+        # Look at the first non-empty block for the schema
+        b = next((b for b in parts if b), parts[0])
+        meta_with_schema = BlockMetadataWithSchema.from_block(b, stats=stats.build())
         return parts + [meta_with_schema]
 
     @staticmethod

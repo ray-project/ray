@@ -140,10 +140,9 @@ class SortTaskSpec(ExchangeTaskSpec):
         from ray.data.block import BlockMetadataWithSchema
 
         assert len(out) > 0
-        # Look at the first block for the schema
-        meta_with_schema = BlockMetadataWithSchema.from_block(
-            out[0], stats=stats.build()
-        )
+        # Look at the first non-empty block for the schema
+        b = next((b for b in out if b), out[0])
+        meta_with_schema = BlockMetadataWithSchema.from_block(b, stats=stats.build())
         return out + [meta_with_schema]
 
     @staticmethod
