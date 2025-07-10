@@ -745,11 +745,12 @@ def get_application_urls(
     for target_group in target_groups:
         for target in target_group.targets:
             ip = "localhost" if use_localhost else target.ip
-            if is_websocket:
-                url = f"ws://{ip}:{target.port}{route_prefix}"
-            elif protocol == RequestProtocol.HTTP:
-                url = f"http://{ip}:{target.port}{route_prefix}"
+            if protocol == RequestProtocol.HTTP:
+                scheme = "ws" if is_websocket else "http"
+                url = f"{scheme}://{ip}:{target.port}{route_prefix}"
             elif protocol == RequestProtocol.GRPC:
+                if is_websocket:
+                    raise ValueError("is_websocket=True is not supported with gRPC protocol.")
                 url = f"{ip}:{target.port}"
             else:
                 raise ValueError(f"Unsupported protocol: {protocol}")
