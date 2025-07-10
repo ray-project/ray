@@ -196,6 +196,13 @@ def _create_uv_run_parser():
 
 
 def _parse_args(parser: optparse.OptionParser, args: List[str]):
+    """
+    Parse the command-line options found in 'args'.
+
+    Replacement for parser.parse_args that handles unknown arguments
+    by keeping them in the command list instead of erroring and
+    discarding them.
+    """
     parser.rargs = args
     parser.largs = []
     options = parser.get_default_values()

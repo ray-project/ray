@@ -334,6 +334,41 @@ def test_uv_run_runtime_env_hook(with_uv):
     )
 
 
+def test_uv_run_parser():
+    from ray._private.runtime_env.uv_runtime_env_hook import (
+        _create_uv_run_parser,
+        _parse_args,
+    )
+
+    parser = _create_uv_run_parser()
+
+    options, command = _parse_args(parser, ["script.py"])
+    assert command == ["script.py"]
+
+    options, command = _parse_args(parser, ["--with", "requests", "example.py"])
+    assert options.with_packages == ["requests"]
+    assert command == ["example.py"]
+
+    options, command = _parse_args(parser, ["--python", "3.10", "example.py"])
+    assert options.python == "3.10"
+    assert command == ["example.py"]
+
+    options, command = _parse_args(parser, ["--no-project", "script.py", "some", "args"])
+    assert options.no_project == True
+    assert command == ["script.py", "some", "args"]
+
+    options, command = _parse_args(parser, ["--isolated", "-m", "module_name", "--extra-args"])
+    assert options.module == "module_name"
+    assert options.isolated == True
+    assert command == ["--extra-args"]
+
+    options, command = _parse_args(parser, ["--isolated", "--extra", "vllm", "-m", "my_module.submodule", "--model", "Qwen/Qwen3-32B"])
+    assert options.isolated == True
+    assert options.extras == ["vllm"]
+    assert options.module == "my_module.submodule"
+    assert command == ["--model", "Qwen/Qwen3-32B"]
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="Not ported to Windows yet.")
 def test_uv_run_runtime_env_hook_e2e(shutdown_only, with_uv, temp_dir):
 
