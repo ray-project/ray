@@ -756,7 +756,9 @@ def get_application_urls(
                 url = f"{scheme}://{ip}:{target.port}{route_prefix}"
             elif protocol == RequestProtocol.GRPC:
                 if is_websocket:
-                    raise ValueError("is_websocket=True is not supported with gRPC protocol.")
+                    raise ValueError(
+                        "is_websocket=True is not supported with gRPC protocol."
+                    )
                 url = f"{ip}:{target.port}"
             else:
                 raise ValueError(f"Unsupported protocol: {protocol}")
@@ -769,7 +771,7 @@ def get_application_url(
     protocol: Union[str, RequestProtocol] = RequestProtocol.HTTP,
     app_name: str = SERVE_DEFAULT_APP_NAME,
     use_localhost: bool = False,
-    is_websocket: bool = False,  
+    is_websocket: bool = False,
     exclude_route_prefix: bool = False,
 ) -> str:
     """Get the URL of the application.
@@ -786,5 +788,7 @@ def get_application_url(
         The URL of the application. If there are multiple URLs, a random one is returned.
     """
     return random.choice(
-        get_application_urls(protocol, app_name, use_localhost, is_websocket, exclude_route_prefix)
+        get_application_urls(
+            protocol, app_name, use_localhost, is_websocket, exclude_route_prefix
+        )
     )
