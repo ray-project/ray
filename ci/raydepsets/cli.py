@@ -10,8 +10,7 @@ def cli():
 
 @cli.command()
 @click.argument("config_path", default="ci/raydepsets/depset.config.yaml")
-@click.option("--name", type=str, default="")
-def load(config_path: str, name: str = ""):
+def load(config_path: str):
     """Load a dependency sets from a config file."""
     DependencySetManager(config_path=config_path)
 

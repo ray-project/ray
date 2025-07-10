@@ -1,6 +1,5 @@
 import pytest
 import sys
-import os
 import unittest
 import tempfile
 import runfiles
@@ -15,10 +14,16 @@ _runfiles = runfiles.Create()
 class TestCli(unittest.TestCase):
     def test_cli_load_fail_no_config(self):
         result = CliRunner().invoke(
-            load, ["/tmp/raydepsets/fake_path/test.config.yaml"]
+            load,
+            [
+                _runfiles.Rlocation(
+                    f"{_REPO_NAME}/ci/raydepsets/test_data/fake_path/test.config.yaml"
+                )
+            ],
         )
         assert result.exit_code == 1
         assert isinstance(result.exception, FileNotFoundError)
+        assert "No such file or directory" in str(result.exception)
 
     def test_workspace_init_happy(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -48,4 +53,4 @@ class TestCli(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-vs", __file__]))
