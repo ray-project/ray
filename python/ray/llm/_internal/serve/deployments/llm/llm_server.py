@@ -635,6 +635,7 @@ class LLMServer(_LLMServerBase):
                 "encoding_format": request.encoding_format,
                 "disk_multiplex_config": disk_lora_model,
                 "serve_request_context": serve.context._serve_request_context.get(),
+                "dimensions": request.dimensions,
             }
             vllm_request = VLLMEmbeddingRequest(**request_params)
             embedding_data, total_tokens = await self.engine.embed(vllm_request)
