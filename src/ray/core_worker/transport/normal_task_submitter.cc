@@ -604,6 +604,8 @@ void NormalTaskSubmitter::PushNormalTask(
                                             addr,
                                             get_task_failure_cause_reply_status,
                                             get_task_failure_cause_reply);
+                  absl::MutexLock lock(&mu_);
+                  pushed_to_worker_tasks_.erase(task_id);
                 };
             auto &cur_lease_entry = worker_to_lease_entry_[addr];
             RAY_CHECK(cur_lease_entry.lease_client);
@@ -641,6 +643,8 @@ void NormalTaskSubmitter::PushNormalTask(
             task_manager_.CompletePendingTask(
                 task_id, reply, addr, reply.is_application_error());
           }
+          absl::MutexLock lock(&mu_);
+          pushed_to_worker_tasks_.erase(task_id);
         }
       });
 }
@@ -742,9 +746,9 @@ Status NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
     // This will get removed either when the RPC call to cancel is returned
     // or when all dependencies are resolved.
     RAY_CHECK(cancelled_tasks_.emplace(task_spec.TaskId()).second);
-    auto rpc_client = executing_tasks_.find(task_spec.TaskId());
+    auto rpc_client = pushed_to_worker_tasks_.find(task_spec.TaskId());
 
-    if (rpc_client == executing_tasks_.end()) {
+    if (rpc_client == pushed_to_worker_tasks_.end()) {
       // This case is reached for tasks that have unresolved dependencies.
       resolver_.CancelDependencyResolution(task_spec.TaskId());
       RAY_UNUSED(task_manager_.FailPendingTask(task_spec.TaskId(),
