@@ -14,7 +14,8 @@ def _create_uv_run_parser():
 
     parser = optparse.OptionParser(prog="uv run", add_help_option=False)
 
-    # Disable interspersed args to handle remainder args
+    # Disable interspersed args to stop parsing when we hit the first
+    # argument that is not recognized by the parser.
     parser.disable_interspersed_args()
 
     # Main options group
@@ -194,6 +195,19 @@ def _create_uv_run_parser():
     return parser
 
 
+def _parse_args(parser: optparse.OptionParser, args: List[str]):
+    parser.rargs = args
+    parser.largs = []
+    options = parser.get_default_values()
+    try:
+        parser._process_args(parser.largs, parser.rargs, options)
+    except optparse.BadOptionError as err:
+        # If we hit an argument that is not recognized, we put it
+        # back into the unconsumed arguments
+        parser.rargs = [err.opt_str] + parser.rargs
+    return options, parser.rargs
+
+
 def _check_working_dir_files(
     uv_run_args: optparse.Values, runtime_env: Dict[str, Any]
 ) -> None:
@@ -294,7 +308,8 @@ def hook(runtime_env: Optional[Dict[str, Any]]) -> Dict[str, Any]:
 
     # Extract the arguments uv_run_args of 'uv run' that are not part of the command.
     parser = _create_uv_run_parser()
-    (options, command) = parser.parse_args(cmdline[2:])
+    (options, command) = _parse_args(parser, cmdline[2:])
+
     if cmdline[-len(command) :] != command:
         raise AssertionError(
             f"uv run command {command} is not a suffix of command line {cmdline}"
@@ -327,6 +342,7 @@ if __name__ == "__main__":
     import json
 
     test_parser = argparse.ArgumentParser()
+    test_parser.add_argument("--extra-args", action='store_true')
     test_parser.add_argument("runtime_env")
     args = test_parser.parse_args()
 
