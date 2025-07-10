@@ -76,23 +76,22 @@ class Expr:
         if type(self) is not type(other):
             return False
 
-        match (self, other):
-            case (ColumnExpr(name=n1), ColumnExpr(name=n2)):
-                return n1 == n2
-            case (LiteralExpr(value=v1), LiteralExpr(value=v2)):
-                return v1 == v2 and type(v1) is type(v2)
-            case (
-                BinaryExpr(op=o1, left=l1, right=r1),
-                BinaryExpr(op=o2, left=l2, right=r2),
-            ):
-                return (
-                    o1 is o2
-                    and l1.structurally_equals(l2)
-                    and r1.structurally_equals(r2)
-                )
-            case _:
-                # This case should not be reachable for known Expr types.
-                return False
+        if isinstance(self, ColumnExpr):
+            # `other` is also a ColumnExpr due to the type check above.
+            return self.name == other.name
+        elif isinstance(self, LiteralExpr):
+            # `other` is also a LiteralExpr.
+            return self.value == other.value and type(self.value) is type(other.value)
+        elif isinstance(self, BinaryExpr):
+            # `other` is also a BinaryExpr.
+            return (
+                self.op is other.op
+                and self.left.structurally_equals(other.left)
+                and self.right.structurally_equals(other.right)
+            )
+
+        # This case should not be reachable for known Expr types.
+        return False
 
     def _bin(self, other: Any, op: Operation) -> "Expr":
         """Create a binary expression with the given operation.
