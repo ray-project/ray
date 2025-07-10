@@ -4,7 +4,7 @@ dockerfile: ci/docker/base.build.Dockerfile
 srcs:
   - .bazelrc
   - ci/ci.sh
-  - ci/env/install-dependencies.sh
+  - ci/env/install-dependencies.sh install_dependencies
   - ci/env/install-llvm-binaries.sh
   - ci/suppress_output
   - python/requirements.txt
