@@ -113,7 +113,7 @@ void ActorSchedulingQueue::Add(
       } else if (auto it = pending_actor_tasks_.find(seq_no);
                  it != pending_actor_tasks_.end()) {
         // For non-retry tasks, we need to check if the task is still in the map because
-        // it can be erased because of next_seq_no_ madness.
+        // it can be erased due to being canceled via a higher `client_processed_up_to_`.
         inbound_request = &it->second;
       }
 
