@@ -2,12 +2,18 @@
 
 # __begin_deploy_app_with_uniform_request_router__
 from ray import serve
-from ray.serve.context import _get_internal_replica_context
 from ray.serve.request_router import ReplicaID
+import time
+from collections import defaultdict
+from ray.serve.context import _get_internal_replica_context
+from typing import Any, Dict
+from ray.serve.config import RequestRouterConfig
 
 
 @serve.deployment(
-    request_router_class="custom_request_router:UniformRequestRouter",
+    request_router_config=RequestRouterConfig(
+        request_router_class="custom_request_router:UniformRequestRouter",
+    ),
     num_replicas=10,
     ray_actor_options={"num_cpus": 0},
 )
@@ -30,22 +36,17 @@ print(f"Response from UniformRequestRouterApp: {response}")
 
 
 # __begin_deploy_app_with_throughput_aware_request_router__
-import time
-from collections import defaultdict
-from ray import serve
-from ray.serve.context import _get_internal_replica_context
-from typing import Any, Dict
-
-
 def _time_ms() -> int:
     return int(time.time() * 1000)
 
 
 @serve.deployment(
-    request_router_class="custom_request_router:ThroughputAwareRequestRouter",
+    request_router_config=RequestRouterConfig(
+        request_router_class="custom_request_router:ThroughputAwareRequestRouter",
+        request_routing_stats_period_s=1,
+        request_routing_stats_timeout_s=1,
+    ),
     num_replicas=3,
-    request_routing_stats_period_s=1,
-    request_routing_stats_timeout_s=1,
     ray_actor_options={"num_cpus": 0},
 )
 class ThroughputAwareRequestRouterApp:

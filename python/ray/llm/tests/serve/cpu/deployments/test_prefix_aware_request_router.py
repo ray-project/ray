@@ -5,6 +5,9 @@ import pytest
 
 import ray
 from ray._common.utils import get_or_create_event_loop
+from ray.llm._internal.serve.request_router.prefix_aware.prefix_aware_router import (
+    PrefixAwarePow2ReplicaRouter,
+)
 from ray.llm._internal.serve.request_router.prefix_aware.prefix_tree import (
     PrefixTreeActor,
 )
@@ -14,9 +17,6 @@ from ray.serve._private.common import (
     RequestMetadata,
 )
 from ray.serve._private.request_router.common import PendingRequest
-from ray.serve._private.request_router.prefix_aware_router import (
-    PrefixAwarePow2ReplicaRouter,
-)
 from ray.serve._private.test_utils import MockTimer
 from ray.serve._private.utils import generate_request_id
 from ray.serve.tests.unit.test_pow_2_request_router import (
@@ -48,19 +48,21 @@ def prefix_request_router(tree_actor, request):
             deployment_id=DeploymentID(name="TEST_DEPLOYMENT"),
             handle_source=DeploymentHandleSource.REPLICA,
             use_replica_queue_len_cache=False,
-            imbalanced_threshold=params.get("imbalanced_threshold", 10),
-            match_rate_threshold=params.get("match_rate_threshold", 0.1),
-            do_eviction=params.get("do_eviction", False),
-            eviction_threshold_chars=params.get("eviction_threshold_chars"),
-            eviction_target_chars=params.get("eviction_target_chars"),
-            eviction_interval_secs=params.get("eviction_interval_secs"),
             get_curr_time_s=TIMER.time,
-            tree_actor=tree_actor,
         )
         return request_router
 
     request_router = asyncio.new_event_loop().run_until_complete(
         construct_request_router(get_or_create_event_loop())
+    )
+    request_router.initialize_state(
+        imbalanced_threshold=params.get("imbalanced_threshold", 10),
+        match_rate_threshold=params.get("match_rate_threshold", 0.1),
+        do_eviction=params.get("do_eviction", False),
+        eviction_threshold_chars=params.get("eviction_threshold_chars"),
+        eviction_target_chars=params.get("eviction_target_chars"),
+        eviction_interval_secs=params.get("eviction_interval_secs"),
+        tree_actor=tree_actor,
     )
 
     yield request_router
@@ -124,7 +126,7 @@ class TestPow2FallbackBehavior:
 
         req = fake_pending_request()
         for _ in range(10):
-            chosen = await prefix_request_router.choose_replica_for_request(req)
+            chosen = await prefix_request_router._choose_replica_for_request(req)
             assert chosen == r1
 
     @pytest.mark.asyncio
@@ -161,7 +163,7 @@ class TestPow2FallbackBehavior:
 
         req = fake_pending_request(prompt="hello world")
         for _ in range(10):
-            chosen = await prefix_request_router.choose_replica_for_request(req)
+            chosen = await prefix_request_router._choose_replica_for_request(req)
             # Even though r2 has a higher match rate, it is not chosen because the load is imbalanced
             assert chosen == r1
 
@@ -199,13 +201,13 @@ class TestPrefixAwareLogic:
 
         prompt_req = fake_pending_request(prompt="Hello world")
         for _ in range(10):
-            chosen = await prefix_request_router.choose_replica_for_request(prompt_req)
+            chosen = await prefix_request_router._choose_replica_for_request(prompt_req)
             assert chosen == r2
         chat_req = fake_pending_request(
             messages=[{"content": "Hello"}, {"content": " world"}]
         )
         for _ in range(10):
-            chosen = await prefix_request_router.choose_replica_for_request(chat_req)
+            chosen = await prefix_request_router._choose_replica_for_request(chat_req)
             assert chosen == r2
 
     @pytest.mark.asyncio
@@ -240,14 +242,15 @@ class TestPrefixAwareLogic:
         for _ in range(10):
             # Both tenants have 0% match rate, so the smaller tenant (r1) is chosen
             assert (
-                await prefix_request_router.choose_replica_for_request(prompt_req) == r1
+                await prefix_request_router._choose_replica_for_request(prompt_req)
+                == r1
             )
 
         chat_req = fake_pending_request(messages=[{"content": "z"}])
         for _ in range(10):
             # Both tenants have 0% match rate, so the smaller tenant (r1) is chosen
             assert (
-                await prefix_request_router.choose_replica_for_request(chat_req) == r1
+                await prefix_request_router._choose_replica_for_request(chat_req) == r1
             )
 
 

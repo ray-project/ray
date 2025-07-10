@@ -359,11 +359,15 @@ class ActorReplicaWrapper:
 
     @property
     def request_routing_stats_period_s(self) -> float:
-        return self.deployment_config.request_routing_stats_period_s
+        return (
+            self.deployment_config.request_router_config.request_routing_stats_period_s
+        )
 
     @property
     def request_routing_stats_timeout_s(self) -> float:
-        return self.deployment_config.request_routing_stats_timeout_s
+        return (
+            self.deployment_config.request_router_config.request_routing_stats_timeout_s
+        )
 
     @property
     def pid(self) -> Optional[int]:
