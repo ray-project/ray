@@ -10,9 +10,10 @@ def cli():
 
 @cli.command()
 @click.argument("config_path", default="ci/raydepsets/depset.config.yaml")
-def load(config_path: str):
+@click.option("--workspace-dir", default=None)
+def load(config_path: str, workspace_dir: str):
     """Load a dependency sets from a config file."""
-    DependencySetManager(config_path=config_path)
+    DependencySetManager(config_path=config_path, workspace_dir=workspace_dir)
 
 
 class DependencySetManager:
