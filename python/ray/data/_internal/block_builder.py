@@ -19,37 +19,6 @@ class BlockBuilder(Generic[T]):
         """Append an entire block to the block being built."""
         raise NotImplementedError
 
-    def append_columns(self, block: Block, exprs: Dict[str, Expr]) -> Block:
-        """Add columns from evaluated expressions to a new builder.
-
-        Args:
-            block: The source block to copy existing columns from
-            exprs: A dictionary mapping new column names to expressions that
-                define the column values.
-
-        Returns:
-            A new block with existing columns from block and new columns from expressions.
-        """
-        from ray.data._expression_evaluator import eval_expr
-
-        # Extract existing columns directly from the block
-        block_accessor = BlockAccessor.for_block(block)
-        new_columns = {}
-        for col_name in block_accessor.column_names():
-            # For Arrow blocks, block[col_name] gives us a ChunkedArray
-            # For Pandas blocks, block[col_name] gives us a Series
-            new_columns[col_name] = block[col_name]
-
-        # Add/update with expression results
-        for name, expr in exprs.items():
-            result = eval_expr(expr, block)
-            new_columns[name] = result
-
-        # Create a new block from the combined columns and add it
-        new_block = BlockAccessor.batch_to_block(new_columns)
-
-        return new_block
-
     def will_build_yield_copy(self) -> bool:
         """Whether building this block will yield a new block copy."""
         raise NotImplementedError

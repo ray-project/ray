@@ -51,6 +51,7 @@ from ray.data.block import (
 from ray.data.context import DataContext
 from ray.data.exceptions import UserCodeException
 from ray.util.rpdb import _is_ray_debugger_post_mortem_enabled
+from ray.data._expression_evaluator import eval_expr
 
 logger = logging.getLogger(__name__)
 
@@ -116,9 +117,20 @@ def plan_project_op(
 
             # 1. evaluate / add expressions
             if exprs:
-                builder = block_accessor.builder()
-                block = builder.append_columns(block, exprs)
                 block_accessor = BlockAccessor.for_block(block)
+                new_columns = {}
+                for col_name in block_accessor.column_names():
+                    # For Arrow blocks, block[col_name] gives us a ChunkedArray
+                    # For Pandas blocks, block[col_name] gives us a Series
+                    new_columns[col_name] = block[col_name]
+
+                # Add/update with expression results
+                for name, expr in exprs.items():
+                    result = eval_expr(expr, block)
+                    new_columns[name] = result
+
+                # Create a new block from the combined columns and add it
+                block = BlockAccessor.batch_to_block(new_columns)
 
             # 2. (optional) column projection
             if columns:
