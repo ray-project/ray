@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -22,7 +23,7 @@
 #include "ray/common/status.h"
 #include "ray/common/task/task_spec.h"
 
-// TODO: move this??
+// XXX: avoid this??
 #include "ray/core_worker/reference_count.h"
 
 namespace ray {
