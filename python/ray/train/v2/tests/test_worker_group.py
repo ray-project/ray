@@ -440,6 +440,7 @@ def test_worker_group_callback():
             self.training_start_hook_called = False
             self.shutdown_hook_called = False
             self.poll_status_hook_called = False
+            self.abort_hook_called = False
 
         def after_worker_group_start(self, worker_group):
             self.start_hook_called = True
@@ -464,6 +465,23 @@ def test_worker_group_callback():
     assert hooks.poll_status_hook_called
     wg.shutdown()
     assert hooks.shutdown_hook_called
+
+
+def test_worker_group_abort():
+    class AssertCallback(WorkerGroupCallback):
+        def __init__(self):
+            self.abort_hook_called = False
+
+        def before_worker_group_abort(self, worker_group_context):
+            self.abort_hook_called = True
+
+    hooks = AssertCallback()
+    wg = _default_inactive_worker_group(callbacks=[hooks])
+
+    wg._start()
+    wg.abort()
+    assert hooks.abort_hook_called
+    wg.shutdown()
 
 
 def test_worker_log_file_paths():

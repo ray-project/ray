@@ -708,19 +708,28 @@ def tlog(s: str, level: str = "INFO"):
 def get_application_urls(
     protocol: Union[str, RequestProtocol] = RequestProtocol.HTTP,
     app_name: str = SERVE_DEFAULT_APP_NAME,
+    use_localhost: bool = False,
+    exclude_route_prefix: bool = False,
 ) -> List[str]:
     """Get the URL of the application.
 
     Args:
         protocol: The protocol to use for the application.
         app_name: The name of the application.
-
+        use_localhost: Whether to use localhost instead of the IP address.
+            Set to True if Serve deployments are not exposed publicly or
+            for low latency benchmarking.
+        exclude_route_prefix: The route prefix to exclude from the application.
     Returns:
         The URLs of the application.
     """
     client = _get_global_client()
     serve_details = client.get_serve_details()
+    if app_name not in serve_details["applications"]:
+        return [client.root_url]
     route_prefix = serve_details["applications"][app_name]["route_prefix"]
+    if exclude_route_prefix:
+        route_prefix = ""
     if isinstance(protocol, str):
         protocol = RequestProtocol(protocol)
     target_groups: List[TargetGroup] = ray.get(
@@ -738,10 +747,11 @@ def get_application_urls(
     urls = []
     for target_group in target_groups:
         for target in target_group.targets:
+            ip = "localhost" if use_localhost else target.ip
             if protocol == RequestProtocol.HTTP:
-                url = f"http://{target.ip}:{target.port}{route_prefix}"
+                url = f"http://{ip}:{target.port}{route_prefix}"
             elif protocol == RequestProtocol.GRPC:
-                url = f"{target.ip}:{target.port}"
+                url = f"{ip}:{target.port}"
             else:
                 raise ValueError(f"Unsupported protocol: {protocol}")
             url = url.rstrip("/")
@@ -752,14 +762,21 @@ def get_application_urls(
 def get_application_url(
     protocol: Union[str, RequestProtocol] = RequestProtocol.HTTP,
     app_name: str = SERVE_DEFAULT_APP_NAME,
+    use_localhost: bool = False,
+    exclude_route_prefix: bool = False,
 ) -> str:
     """Get the URL of the application.
 
     Args:
         protocol: The protocol to use for the application.
         app_name: The name of the application.
-
+        use_localhost: Whether to use localhost instead of the IP address.
+            Set to True if Serve deployments are not exposed publicly or
+            for low latency benchmarking.
+        exclude_route_prefix: The route prefix to exclude from the application.
     Returns:
         The URL of the application. If there are multiple URLs, a random one is returned.
     """
-    return random.choice(get_application_urls(protocol, app_name))
+    return random.choice(
+        get_application_urls(protocol, app_name, use_localhost, exclude_route_prefix)
+    )

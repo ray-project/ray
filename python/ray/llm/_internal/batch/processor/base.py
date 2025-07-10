@@ -1,6 +1,6 @@
 import logging
 from collections import OrderedDict
-from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
+from typing import Any, Callable, Dict, List, Optional, Type
 
 from pydantic import Field
 
@@ -16,6 +16,11 @@ from ray.llm._internal.common.base_pydantic import BaseModelExtended
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 logger = logging.getLogger(__name__)
+
+
+# Higher values here are better for prefetching and locality. It's ok for this to be
+# fairly high since streaming backpressure prevents us from overloading actors.
+DEFAULT_MAX_TASKS_IN_FLIGHT = 4
 
 
 class ProcessorConfig(BaseModelExtended):
@@ -40,11 +45,16 @@ class ProcessorConfig(BaseModelExtended):
         description="The accelerator type used by the LLM stage in a processor. "
         "Default to None, meaning that only the CPU will be used.",
     )
-    concurrency: Optional[Union[int, Tuple[int, int]]] = Field(
+    concurrency: Optional[int] = Field(
         default=1,
-        description="The number of workers for data parallelism. Default to 1."
-        "If ``concurrency`` is a tuple ``(m, n)``, Ray will use an autoscaling actor pool from"
-        " ``m`` to ``n`` workers.",
+        description="The number of workers for data parallelism. Default to 1.",
+    )
+
+    experimental: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="[Experimental] Experimental configurations."
+        "Supported keys:\n"
+        "`max_tasks_in_flight_per_actor`: The maximum number of tasks in flight per actor. Default to 4.",
     )
 
     class Config:
