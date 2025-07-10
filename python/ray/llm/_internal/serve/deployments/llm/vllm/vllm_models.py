@@ -11,6 +11,7 @@ from ray.llm._internal.common.utils.import_utils import try_import
 from ray.llm._internal.serve.configs.constants import (
     ALLOW_NEW_PLACEMENT_GROUPS_IN_DEPLOYMENT,
     ENV_VARS_TO_PROPAGATE,
+    RAYLLM_GUIDED_DECODING_BACKEND
 )
 from ray.llm._internal.serve.configs.prompt_formats import Prompt
 from ray.llm._internal.serve.configs.server_models import (
@@ -110,6 +111,10 @@ class VLLMEngineConfig(BaseModelExtended):
                 "disable_log_stats = True is not allowed in engine_kwargs when using Ray Serve LLM Configs. Setting it to False."
             )
         engine_kwargs["disable_log_stats"] = False
+        
+        
+        if "guided_decoding_backend" not in engine_kwargs:
+            engine_kwargs["guided_decoding_backend"] = RAYLLM_GUIDED_DECODING_BACKEND
 
         return engine_kwargs
 
