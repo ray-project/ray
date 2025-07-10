@@ -99,6 +99,29 @@ class OpenTelemetryMetricRecorder:
             )
             self._registered_instruments[name] = instrument
 
+    def register_histogram_metric(
+        self, name: str, description: str, buckets: List[float]
+    ) -> None:
+        """
+        Register a histogram metric with the given name and description.
+        """
+        with self._lock:
+            if name in self._registered_instruments:
+                # Histogram with the same name is already registered. This is a common
+                # case when metrics are exported from multiple Ray components (e.g.,
+                # raylet, worker, etc.) running in the same node. Since each component
+                # may export metrics with the same name, the same metric might be
+                # registered multiple times.
+                return
+
+            instrument = self.meter.create_histogram(
+                name=f"{NAMESPACE}_{name}",
+                description=description,
+                unit="1",
+                explicit_bucket_boundaries_advisory=buckets,
+            )
+            self._registered_instruments[name] = instrument
+
     def set_metric_value(self, name: str, tags: dict, value: float):
         """
         Set the value of a metric with the given name and tags. If the metric is not
@@ -119,6 +142,8 @@ class OpenTelemetryMetricRecorder:
                     instrument.add(value, attributes=tags)
                 elif isinstance(instrument, metrics.UpDownCounter):
                     instrument.add(value, attributes=tags)
+                elif isinstance(instrument, metrics.Histogram):
+                    instrument.record(value, attributes=tags)
                 else:
                     logger.warning(
                         f"Unsupported synchronous instrument type for metric: {name}."

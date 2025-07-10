@@ -189,7 +189,10 @@ void OpenTelemetryMetricRecorder::RegisterHistogramMetric(
     const std::vector<double> &buckets) {
   std::lock_guard<std::mutex> lock(mutex_);
   if (registered_instruments_.contains(name)) {
-    return;  // Already registered
+    // Already registered.  Note that this is a common case for metrics defined
+    // via Metric interface. See https://github.com/ray-project/ray/issues/54538
+    // for more details.
+    return;
   }
   // Create a histogram instrument with explicit buckets
   auto aggregation_config =
@@ -198,18 +201,20 @@ void OpenTelemetryMetricRecorder::RegisterHistogramMetric(
   auto view = std::make_unique<opentelemetry::sdk::metrics::View>(
       name,
       description,
-      "",
+      /*unit=*/"",
       opentelemetry::sdk::metrics::AggregationType::kHistogram,
       aggregation_config);
 
   auto instrument_selector =
       std::make_unique<opentelemetry::sdk::metrics::InstrumentSelector>(
-          opentelemetry::sdk::metrics::InstrumentType::kHistogram, name, "");
-  auto meter_selector =
-      std::make_unique<opentelemetry::sdk::metrics::MeterSelector>(meter_name_, "", "");
+          opentelemetry::sdk::metrics::InstrumentType::kHistogram,
+          name,
+          /*unit_filter=*/"");
+  auto meter_selector = std::make_unique<opentelemetry::sdk::metrics::MeterSelector>(
+      meter_name_, /*meter_version=*/"", /*schema_url=*/"");
   meter_provider_->AddView(
       std::move(instrument_selector), std::move(meter_selector), std::move(view));
-  auto instrument = GetMeter()->CreateDoubleHistogram(name, description, "");
+  auto instrument = GetMeter()->CreateDoubleHistogram(name, description, /*unit=*/"");
   registered_instruments_[name] = std::move(instrument);
 }
 
