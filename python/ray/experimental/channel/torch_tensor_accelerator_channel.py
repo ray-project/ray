@@ -46,7 +46,7 @@ class _TorchTensorMetadata:
 
 
 @DeveloperAPI
-class TorchTensorNcclChannel(ChannelInterface):
+class TorchTensorAcceleratorChannel(ChannelInterface):
     def __init__(
         self,
         writer: ray.actor.ActorHandle,
@@ -55,13 +55,13 @@ class TorchTensorNcclChannel(ChannelInterface):
         driver_actor_id: str,
         tensor_metadata_channel: Optional["Channel"] = None,
         _cpu_data_channel: Optional["Channel"] = None,
-        _gpu_data_channel: Optional["_TorchTensorNcclChannel"] = None,
+        _gpu_data_channel: Optional["_TorchTensorAcceleratorChannel"] = None,
         _local_channel: Optional["IntraProcessChannel"] = None,
     ):
         """
-        Can be used to send GPU tensors nested inside other data. The data is
-        sent via shared memory while the GPU tensors are sent through a P2P
-        transport (NCCL).
+        Can be used to send accelerator tensors nested inside other data. The data is
+        sent via shared memory while the accelerator tensors are sent through a P2P
+        transport (e.g., NCCL for GPU).
 
         NOTE: This class is currently not thread-safe because it reads and
         writes the worker-local
@@ -82,7 +82,7 @@ class TorchTensorNcclChannel(ChannelInterface):
                 writer and readers. If None is provided, then we assume that
                 there is no CPU-specific data, i.e. the task directly returned
                 a CUDA torch.Tensor.
-            _gpu_data_channel: A channel for sending torch.Tensors via NCCL.
+            _gpu_data_channel: A channel for sending torch.Tensors via accelerator.
             _local_channel: A channel for sending data between the writer and
                 local readers.
 
@@ -113,15 +113,17 @@ class TorchTensorNcclChannel(ChannelInterface):
         assert len(remote_reader_and_node_list) > 0, (
             "All readers are from the same actor. "
             "The TorchTensorType type hint is not needed. "
-            "No NCCL channel will be created."
+            "No accelerator channel will be created."
         )
         self._gpu_data_channel = _gpu_data_channel
         if self._gpu_data_channel is None:
-            self._gpu_data_channel: _TorchTensorNcclChannel = _TorchTensorNcclChannel(
-                writer,
-                remote_reader_and_node_list,
-                typ,
-                _meta_channel=tensor_metadata_channel,
+            self._gpu_data_channel: _TorchTensorAcceleratorChannel = (
+                _TorchTensorAcceleratorChannel(
+                    writer,
+                    remote_reader_and_node_list,
+                    typ,
+                    _meta_channel=tensor_metadata_channel,
+                )
             )
 
         self._cpu_data_channel: Optional["Channel"] = _cpu_data_channel
@@ -146,7 +148,7 @@ class TorchTensorNcclChannel(ChannelInterface):
 
     def __reduce__(self):
         return (
-            TorchTensorNcclChannel,
+            TorchTensorAcceleratorChannel,
             (
                 self._writer,
                 self._reader_and_node_list,
@@ -180,7 +182,7 @@ class TorchTensorNcclChannel(ChannelInterface):
 
     def _send_cpu_and_gpu_data(self, value: Any, timeout: Optional[float]):
         self.serialization_ctx.reset_out_of_band_tensors([])
-        # All tensors found in `value` will be transferred via NCCL.
+        # All tensors found in `value` will be transferred via accelerator.
         self.serialization_ctx.set_use_external_transport(True)
 
         try:
@@ -363,7 +365,7 @@ def _torch_zeros_allocator(
     return torch.zeros(shape, dtype=dtype, device=ctx.torch_device)
 
 
-class _TorchTensorNcclChannel(ChannelInterface):
+class _TorchTensorAcceleratorChannel(ChannelInterface):
     def __init__(
         self,
         writer: ray.actor.ActorHandle,
@@ -372,8 +374,8 @@ class _TorchTensorNcclChannel(ChannelInterface):
         _meta_channel: Optional["Channel"] = None,
     ):
         """
-        A helper channel for TorchTensorNcclChannel that is used to transfer
-        lists of torch.Tensors via NCCL. This class can only transfer
+        A helper channel for TorchTensorAcceleratorChannel that is used to transfer
+        lists of torch.Tensors via accelerator. This class can only transfer
         torch.Tensors and cannot transfer other CPU data, such as Exception
         objects or tensors nested inside of a dictionary.
 
@@ -401,39 +403,39 @@ class _TorchTensorNcclChannel(ChannelInterface):
         ctx = ChannelContext.get_current()
         assert isinstance(
             typ.communicator_id, str
-        ), f"NCCL group ID ({typ.communicator_id}) must be a str."
+        ), f"accelerator group ID ({typ.communicator_id}) must be a str."
         self._typ = typ
 
         self._static_shape = typ.static_shape
 
-        assert self._typ.communicator_id is not None, "No NCCL group specified."
-        self._nccl_group_id: str = self._typ.communicator_id
+        assert self._typ.communicator_id is not None, "No accelerator group specified."
+        self._accelerator_group_id: str = self._typ.communicator_id
 
         # If the communicators does not contain the group_id, it means the current
-        # process is the driver, and there’s no need to fetch the nccl_group.
+        # process is the driver, and there’s no need to fetch the comm_group.
         if self._typ.communicator_id in ctx.communicators:
-            self._nccl_group: "Communicator" = ctx.communicators[
+            self._accelerator_group: "Communicator" = ctx.communicators[
                 self._typ.communicator_id
             ]
             assert (
-                self._nccl_group is not None
-            ), "ChannelContext.nccl_group is not initialized."
+                self._accelerator_group is not None
+            ), "ChannelContext.accelerator_group is not initialized."
 
-            self._writer_rank = self._nccl_group.get_rank(self._writer)
+            self._writer_rank = self._accelerator_group.get_rank(self._writer)
             self._reader_ranks = [
-                self._nccl_group.get_rank(reader)
+                self._accelerator_group.get_rank(reader)
                 for reader, _ in self._reader_and_node_list
             ]
 
             if (
                 self._writer_rank is not None
-                and self._writer_rank == self._nccl_group.get_self_rank()
+                and self._writer_rank == self._accelerator_group.get_self_rank()
             ):
                 self._writer_registered = True
 
             if (
                 self._reader_ranks
-                and self._nccl_group.get_self_rank() in self._reader_ranks
+                and self._accelerator_group.get_self_rank() in self._reader_ranks
             ):
                 self._reader_registered = True
 
@@ -456,13 +458,17 @@ class _TorchTensorNcclChannel(ChannelInterface):
             )
 
     def ensure_registered_as_writer(self):
-        assert self._nccl_group is not None, "Actor is not part of a NCCL group"
+        assert (
+            self._accelerator_group is not None
+        ), "Actor is not part of an accelerator group"
         assert self._writer_registered
         ctx = ChannelContext.get_current()
         assert ctx.torch_device.type != "cpu"
 
     def ensure_registered_as_reader(self) -> bool:
-        assert self._nccl_group is not None, "Actor is not part of a NCCL group"
+        assert (
+            self._accelerator_group is not None
+        ), "Actor is not part of an accelerator group"
         assert self._reader_registered
         ctx = ChannelContext.get_current()
         assert ctx.torch_device.type != "cpu"
@@ -546,11 +552,11 @@ class _TorchTensorNcclChannel(ChannelInterface):
         timeout: Optional[float] = None,
     ):
         """
-        Write a list of tensors via NCCL:
+        Write a list of tensors via accelerator:
 
         1) Send the tensor metadata, i.e. the shape and dtypes of all tensors
         via the shared-memory metadata channel.
-        2) Send the tensor data via NCCL.
+        2) Send the tensor data via accelerator.
 
         If static_shape=True was set, then we only perform step (1) on the
         first message. The reader is expected to reuse the sent metadata for
@@ -571,17 +577,17 @@ class _TorchTensorNcclChannel(ChannelInterface):
         if metadata is not None:
             self._meta_channel.write(metadata)
 
-        # NOTE(swang): We must send the metadata *before* launching the NCCL
-        # send. We are using blocking NCCL ops, so the following calls will
+        # NOTE(swang): We must send the metadata *before* launching the accelerator
+        # send. We are using blocking accelerator ops, so the following calls will
         # block until the kernel has been enqueued. Also, peers must launch the
         # kernel together before either can proceed. Therefore, we send the
         # metadata first so that the receiver can read the metadata and then
-        # launch the same NCCL op.
+        # launch the same accelerator op.
         for tensor in tensors:
             # TODO: If there are multiple readers, can replace with a
             # broadcast.
             for rank in self._reader_ranks:
-                self._nccl_group.send(tensor, rank)
+                self._accelerator_group.send(tensor, rank)
 
     def _get_recv_tensors_metadata(
         self, timeout: Optional[float] = None
@@ -611,7 +617,7 @@ class _TorchTensorNcclChannel(ChannelInterface):
         (1) Receive the tensor metadata via the shared-memory metadata channel.
         (2) Allocate buffers on our default device according to the received
         tensor metadata.
-        (3) Receive the tensor data via NCCL.
+        (3) Receive the tensor data via accelerator.
 
         If static_data=True was set, then we only perform step (1) on the first
         message. Subsequent messages reuse the same metadata.
@@ -626,7 +632,7 @@ class _TorchTensorNcclChannel(ChannelInterface):
 
         bufs: List["torch.Tensor"] = []
         for meta in meta_list:
-            buf = self._nccl_group.recv(
+            buf = self._accelerator_group.recv(
                 meta.shape, meta.dtype, self._writer_rank, _torch_zeros_allocator
             )
             bufs.append(buf)
@@ -637,10 +643,10 @@ class _TorchTensorNcclChannel(ChannelInterface):
     def close(self) -> None:
         self._meta_channel.close()
 
-        self._nccl_group.destroy()
+        self._accelerator_group.destroy()
         ctx = ChannelContext.get_current()
-        if self._nccl_group_id in ctx.communicators:
-            del ctx.communicators[self._nccl_group_id]
+        if self._accelerator_group_id in ctx.communicators:
+            del ctx.communicators[self._accelerator_group_id]
 
 
 def _do_init_communicator(
@@ -663,7 +669,7 @@ def _do_init_communicator(
         custom_communicator.initialize(rank)
         ctx.communicators[group_id] = custom_communicator
     else:
-        # default to NcclGroup
+        # default to CommGroup
         ctx.communicators[group_id] = AcceleratorContext.get().create_communicator(
             world_size,
             comm_id,
@@ -680,8 +686,8 @@ def _do_destroy_communicator(self, group_id):
         return
     ctx.communicators[group_id].destroy()
 
-    # Keep the NCCL group in the map after destruction in case there is still a
-    # task loop running.
+    # Keep the communicator group in the map after destruction in case there is
+    # still a task loop running.
 
 
 def _do_check_has_accelerators(self) -> str:
@@ -697,32 +703,32 @@ def _do_get_unique_communication_id(self) -> bool:
 
 
 def _get_ranks(
-    actors: List[ray.actor.ActorHandle], custom_nccl_group: Optional[Communicator]
+    actors: List[ray.actor.ActorHandle], custom_comm_group: Optional[Communicator]
 ) -> List[int]:
     """
-    Get ranks for the NCCL group to use. If custom_nccl_group is specified,
-    return the ranks of the actors in the custom NCCL group, in the same
+    Get ranks for the communicator group to use. If custom_comm_group is specified,
+    return the ranks of the actors in the custom communicator group, in the same
     order of the actors; otherwise, return list(range(len(actors))).
 
     Args:
-        actors: A list of actors that participate in the NCCL group.
-        custom_nccl_group: The custom NCCL group to use.
+        actors: A list of actors that participate in the communicator group.
+        custom_comm_group: The custom communicator group to use.
     """
-    if custom_nccl_group is None:
+    if custom_comm_group is None:
         return list(range(len(actors)))
 
-    assert len(actors) == custom_nccl_group.get_world_size(), (
-        "The world size of the custom NCCL group does not match the number "
-        "of actors."
+    assert len(actors) == custom_comm_group.get_world_size(), (
+        "The world size of the custom communicator group does not match the "
+        "number of actors."
     )
     ranks = []
     for actor in actors:
-        rank = custom_nccl_group.get_rank(actor)
-        assert rank not in ranks, "Duplicate rank in custom NCCL group"
+        rank = custom_comm_group.get_rank(actor)
+        assert rank not in ranks, "Duplicate rank in custom communicator group"
         ranks.append(rank)
-    assert custom_nccl_group.get_world_size() == len(actors), (
-        "The world size of the custom NCCL group "
-        f"({custom_nccl_group.get_world_size()}) "
+    assert custom_comm_group.get_world_size() == len(actors), (
+        "The world size of the custom communicator group "
+        f"({custom_comm_group.get_world_size()}) "
         "does not match the number of actors "
         f"({len(actors)})."
     )
@@ -737,12 +743,13 @@ def _init_communicator(
     accelerator_communicator_cls: Optional[Type[Communicator]] = None,
 ) -> str:
     """
-    Initialize a NCCL group with the given actors. If a custom NCCL group is
-    provided, then it will be used, otherwise a new NCCL group will be created.
+    Initialize a communicator group with the given actors. If a custom communicator
+    group is provided, then it will be used, otherwise a new communicator group
+    will be created.
 
     Args:
-        actors: A list of actors that participate in the NCCL group.
-        custom_communicator: A custom NCCL group to initialize.
+        actors: A list of actors that participate in the communicator group.
+        custom_communicator: A custom communicator group to initialize.
         use_communication_streams: Whether to use dedicated send and recv
                 streams for communication. If True, communication and computation
                 can be overlapped to improve performance.
@@ -776,8 +783,8 @@ def _init_communicator(
         if not has_accelerator and not is_cpu_communicator:
             raise ValueError(
                 f"Actor {actor} returns a tensor with type hint "
-                'TorchTensor(transport="nccl") or '
-                "TorchTensor(transport=nccl_group_handle) "
+                'TorchTensor(transport="accelerator") or '
+                "TorchTensor(transport=accelerator_group_handle) "
                 "but actor does not have an accelerator assigned by Ray."
             )
 
@@ -786,16 +793,18 @@ def _init_communicator(
 
     # Allocate a communicator ID on one of the actors that will participate in
     # the group. This is in case the driver is not on the same node as one of
-    # the NCCL actors.
+    # the communicator actors.
     comm_id = ray.get(actors[0].__ray_call__.remote(_do_get_unique_communication_id))
 
-    # Used to uniquely identify this NCCL group.
+    # Used to uniquely identify this communicator group.
     group_id = str(uuid.uuid4())
 
     if custom_communicator is not None:
-        logger.info(f"Initializing custom NCCL group {group_id} on actors: {actors}")
+        logger.info(
+            f"Initializing custom communicator group {group_id} on actors: {actors}"
+        )
     else:
-        logger.info(f"Creating NCCL group {group_id} on actors: {actors}")
+        logger.info(f"Creating communicator group {group_id} on actors: {actors}")
 
     world_size = len(actors)
     ranks = _get_ranks(actors, custom_communicator)
@@ -816,11 +825,12 @@ def _init_communicator(
         ray.get(init_tasks, timeout=30)
     except ray.exceptions.GetTimeoutError:
         logger.warning(
-            "NCCL group creation not done after 30s. NCCL group creation may be hung."
+            "Communicator group creation not done after 30s. communicator group"
+            "creation may be hung."
         )
         ray.get(init_tasks)
 
-    logger.info("NCCL group initialized.")
+    logger.info("Communicator group initialized.")
 
     if custom_communicator is not None:
         ctx.communicator_handles[group_id] = CommunicatorHandle(
@@ -836,7 +846,7 @@ def _init_communicator(
 
 def _destroy_communicator(group_id: str) -> None:
     """
-    Destroy the NCCL group with the given ID.
+    Destroy the communicator group with the given ID.
     """
     ctx = ChannelContext.get_current()
     if group_id not in ctx.communicator_handles:
@@ -855,8 +865,8 @@ def _destroy_communicator(group_id: str) -> None:
     _, unready = ray.wait(destroy_tasks, timeout=30, num_returns=len(destroy_tasks))
     if unready:
         logger.warning(
-            "NCCL group destruction not done after 30s. NCCL group destruction "
-            "may be hung."
+            "Communicator group destruction not done after 30s. Communicator"
+            "group destruction may be hung."
         )
 
     del ctx.communicator_handles[group_id]
