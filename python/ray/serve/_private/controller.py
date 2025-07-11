@@ -777,9 +777,6 @@ class ServeController:
                         "route_prefix": (
                             args.route_prefix if args.HasField("route_prefix") else None
                         ),
-                        "docs_path": (
-                            args.docs_path if args.HasField("docs_path") else None
-                        ),
                     }
                 )
             name_to_deployment_args[name] = deployment_args_deserialized
