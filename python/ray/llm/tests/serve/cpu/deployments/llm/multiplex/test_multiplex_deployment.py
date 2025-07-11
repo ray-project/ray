@@ -77,5 +77,6 @@ async def test_multiplex_deployment(
         # random int between 1 and 100
         assert 0 < out_mx_config["lora_assigned_int_id"] < 101
 
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

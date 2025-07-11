@@ -564,7 +564,7 @@ class LLMServer(_LLMServerBase):
         """
 
         request_id = get_serve_request_id()
-        
+
         # 1. Construct the appropriate prompt based on request type
         if is_chat:
             prompt = Prompt(
