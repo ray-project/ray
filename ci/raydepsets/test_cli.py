@@ -55,4 +55,4 @@ class TestCli(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-vs", __file__]))
+    sys.exit(pytest.main(["-v", __file__]))
