@@ -579,7 +579,6 @@ void NormalTaskSubmitter::PushNormalTask(
                          << NodeID::FromBinary(addr.raylet_id());
           absl::MutexLock lock(&mu_);
           executing_tasks_.erase(task_id);
-          limbo_tasks_.insert(task_id);
 
           resubmit_generator = generators_to_resubmit_.erase(task_id) > 0;
 
@@ -596,6 +595,7 @@ void NormalTaskSubmitter::PushNormalTask(
           scheduling_key_entry.num_busy_workers--;
 
           if (!status.ok()) {
+            limbo_tasks_.insert(task_id);
             RAY_LOG(DEBUG) << "Getting error from raylet for task " << task_id;
             const ray::rpc::ClientCallback<ray::rpc::GetTaskFailureCauseReply> callback =
                 [this, status, task_id, addr](
@@ -607,6 +607,7 @@ void NormalTaskSubmitter::PushNormalTask(
                                             get_task_failure_cause_reply_status,
                                             get_task_failure_cause_reply);
                   absl::MutexLock lock(&mu_);
+                  limbo_tasks_.erase(task_id);
                 };
             auto &cur_lease_entry = worker_to_lease_entry_[addr];
             RAY_CHECK(cur_lease_entry.lease_client);
