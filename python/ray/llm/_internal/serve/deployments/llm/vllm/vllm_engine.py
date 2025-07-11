@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, AsyncGenerator, List, Optional, Tuple
 from transformers.dynamic_module_utils import init_hf_modules
 
 import ray
+from ray.llm._internal.common.models import DiskMultiplexConfig
 from ray.llm._internal.common.utils.import_utils import try_import
 from ray.llm._internal.serve.configs.constants import (
     MAX_NUM_TOPLOGPROBS_ALLOWED,
@@ -20,7 +21,6 @@ from ray.llm._internal.serve.configs.error_handling import (
     ValidationError,
 )
 from ray.llm._internal.serve.configs.server_models import (
-    DiskMultiplexConfig,
     FinishReason,
     GenerationRequest,
     LLMConfig,

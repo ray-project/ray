@@ -3,11 +3,10 @@ import os
 from abc import ABC, abstractmethod
 from typing import Any, AsyncGenerator, Dict, Optional, Type, Union
 
-# Third-party imports
 from ray import serve
 from ray._common.utils import import_attr
-
-# Local imports
+from ray.llm._internal.common.models import DiskMultiplexConfig
+from ray.llm._internal.common.utils.lora_utils import _LoraModelLoader
 from ray.llm._internal.serve.configs.constants import (
     DEFAULT_HEALTH_CHECK_PERIOD_S,
     DEFAULT_HEALTH_CHECK_TIMEOUT_S,
@@ -41,14 +40,10 @@ from ray.llm._internal.serve.configs.openai_api_models import (
 )
 from ray.llm._internal.serve.configs.prompt_formats import Message, Prompt
 from ray.llm._internal.serve.configs.server_models import (
-    DiskMultiplexConfig,
     LLMConfig,
     LLMRawResponse,
 )
 from ray.llm._internal.serve.deployments.llm.llm_engine import LLMEngine
-from ray.llm._internal.serve.deployments.llm.multiplex.lora_model_loader import (
-    LoraModelLoader,
-)
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_engine import VLLMEngine
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import (
     VLLMEmbeddingRequest,
@@ -414,7 +409,7 @@ class LLMServer(_LLMServerBase):
         llm_config: LLMConfig,
         *,
         engine_cls: Optional[Type[LLMEngine]] = None,
-        model_downloader: Optional[LoraModelLoader] = None,
+        model_downloader: Optional[_LoraModelLoader] = None,
     ):
         """Constructor of LLMServer.
 
@@ -423,10 +418,10 @@ class LLMServer(_LLMServerBase):
 
         Args:
             llm_config: LLMConfig for the model.
-            engine_cls: Dependency injection for the vllm engine class.
-                Defaults to `VLLMEngine`.
-            model_downloader: Dependency injection for the model downloader
-                object. Defaults to be initialized with `LoraModelLoader`.
+            engine_cls: Dependency injection for the vllm engine class. Defaults to
+                `VLLMEngine`.
+            model_downloader: Dependency injection for the model downloader object.
+                Defaults to be initialized with `_LoraModelLoader`.
         """
         await super().__init__(llm_config)
 
@@ -440,12 +435,12 @@ class LLMServer(_LLMServerBase):
         if model_downloader:
             self.model_downloader = model_downloader
         elif multiplex_config:
-            self.model_downloader = LoraModelLoader(
+            self.model_downloader = _LoraModelLoader(
                 download_timeout_s=multiplex_config.download_timeout_s,
                 max_tries=multiplex_config.max_download_tries,
             )
         else:
-            self.model_downloader = LoraModelLoader()
+            self.model_downloader = _LoraModelLoader()
 
         # Hack that lets us set max_num_models_per_replica from the llm_config
         if multiplex_config:
@@ -655,9 +650,35 @@ class LLMServer(_LLMServerBase):
             )
 
     async def _load_model(self, lora_model_id: str) -> DiskMultiplexConfig:
-        return await self.model_downloader.load_model(
-            lora_model_id=lora_model_id,
-            llm_config=self._llm_config,
+        """Load a LoRA model using the working download mechanism."""
+        from ray.llm._internal.common.utils.lora_utils import (
+            download_lora_adapter,
+            get_lora_id,
+        )
+
+        # Use the same download mechanism as batch (which works correctly)
+        # Extract the LoRA ID from the full model ID
+        lora_id = get_lora_id(lora_model_id)
+
+        # Download using the working mechanism
+        local_path = download_lora_adapter(
+            lora_name=lora_id,
+            remote_path=self._llm_config.lora_config.dynamic_lora_loading_path,
+        )
+
+        # Create a DiskMultiplexConfig compatible with the existing interface
+        from ray.llm._internal.common.models import (
+            DiskMultiplexConfig,
+            global_id_manager,
+        )
+
+        return DiskMultiplexConfig.model_validate(
+            {
+                "model_id": lora_model_id,
+                "max_total_tokens": 4096,  # Default value
+                "local_path": local_path,
+                "lora_assigned_int_id": global_id_manager.next(),
+            }
         )
 
     async def _disk_lora_model(self, lora_model_id: str) -> DiskMultiplexConfig:

@@ -1601,11 +1601,6 @@ python/ray/llm/_internal/serve/deployments/llm/llm_server.py
     DOC402: Method `LLMServer.embeddings` has "yield" statements, but the docstring does not have a "Yields" section
     DOC404: Method `LLMServer.embeddings` yield type(s) in docstring not consistent with the return annotation. Return annotation exists, but docstring "yields" section does not exist or has 0 type(s).
 --------------------
-python/ray/llm/_internal/serve/deployments/llm/multiplex/utils.py
-    DOC201: Function `retry_with_exponential_backoff` does not have a return section in docstring
-    DOC101: Function `get_object_from_cloud`: Docstring contains fewer arguments than in function signature.
-    DOC103: Function `get_object_from_cloud`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [object_uri: str].
---------------------
 python/ray/llm/_internal/serve/deployments/routers/router.py
     DOC101: Method `LLMRouter.completions`: Docstring contains fewer arguments than in function signature.
     DOC103: Method `LLMRouter.completions`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [body: CompletionRequest].
