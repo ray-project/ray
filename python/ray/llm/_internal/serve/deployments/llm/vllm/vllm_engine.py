@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, AsyncGenerator, List, Optional, Tuple
 
 from transformers.dynamic_module_utils import init_hf_modules
 
-import ray
 from ray.llm._internal.common.utils.import_utils import try_import
 from ray.llm._internal.serve.configs.constants import (
     MAX_NUM_TOPLOGPROBS_ALLOWED,
@@ -55,7 +54,6 @@ from ray.llm._internal.serve.observability.metrics.utils import (
 )
 from ray.util import metrics
 from ray.util.placement_group import PlacementGroup
-from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 if TYPE_CHECKING:
     from vllm import SamplingParams as VLLMInternalSamplingParams
