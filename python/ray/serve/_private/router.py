@@ -152,7 +152,8 @@ class RouterMetricsManager:
             and self.num_queued_requests >= max_queued_requests
         ):
             # Due to the async nature of request handling, we may reject more requests
-            # than strictly necessary. Here's why:
+            # than strictly necessary. This is more likely to happen during
+            # high concurrency. Here's why:
             #
             # When multiple requests arrive simultaneously with max_queued_requests=1:
             # 1. First request increments num_queued_requests to 1
