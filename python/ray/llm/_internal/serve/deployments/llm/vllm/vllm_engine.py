@@ -44,7 +44,7 @@ from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import (
 )
 from ray.llm._internal.serve.deployments.utils.node_initialization_utils import (
     InitializeNodeOutput,
-    initialize_node as initialize_node_util,
+    initialize_node,
 )
 from ray.llm._internal.serve.deployments.utils.server_utils import floats_to_base64
 from ray.llm._internal.serve.observability.logging import get_logger
@@ -185,7 +185,7 @@ class VLLMEngine(LLMEngine):
         self.llm_config = llm_config
 
         self._stats = VLLMEngineStatTracker()
-        self.running = False
+        self._running = False
         self.model_config: "ModelConfig" = None
         self._engine_client = None
         self.vllm_config: "VllmConfig" = None
@@ -199,16 +199,6 @@ class VLLMEngine(LLMEngine):
         self._atokenize = vllm_utils.make_async(
             self._tokenize, executor=self._tokenizer_executor
         )
-
-    @staticmethod
-    async def initialize_node(llm_config: LLMConfig) -> InitializeNodeOutput:
-        """Run the node initializer.
-
-        This is separate from `start` so it can run concurrently while starting the engine actor.
-
-        It's a static method so it can be overridden for testing.
-        """
-        return await initialize_node_util(llm_config)
 
     def _tokenize(
         self, prompt_text: str, add_special_tokens: bool = False
@@ -225,13 +215,13 @@ class VLLMEngine(LLMEngine):
             resolve_chat_template_content_format as _resolve_chat_template_content_format,
         )
 
-        if self.running:
+        if self._running:
             # The engine is already running!
             logger.info("Skipping engine restart because the engine is already running")
             return
 
         self._engine_client = await self._start_engine()
-        self.running = True
+        self._running = True
         self.model_config = await self._engine_client.get_model_config()
 
         self._tokenizer = await self._engine_client.get_tokenizer()
@@ -264,10 +254,19 @@ class VLLMEngine(LLMEngine):
 
     async def _start_engine(self) -> "EngineClient":
         # Initialize node and return all configurations
-        node_initialization = await self.initialize_node(self.llm_config)
+        node_initialization = await initialize_node(self.llm_config)
 
         vllm_engine_args, vllm_engine_config = await self._prepare_engine_config(
             node_initialization
+        )
+
+        # Apply checkpoint info to the llm_config.
+        # This is needed for capturing model capabilities
+        # (e.g. supports vision, etc.) on the llm_config.
+        config = self.llm_config.get_engine_config()
+        self.llm_config.apply_checkpoint_info(
+            config.actual_hf_model_id,
+            trust_remote_code=config.trust_remote_code,
         )
 
         return self._start_async_llm_engine(
