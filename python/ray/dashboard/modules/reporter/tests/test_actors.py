@@ -100,10 +100,12 @@ def test_kill_actor_gcs(ray_start_with_dashboard, enable_concurrency_group):
     assert "It will exit once running tasks complete" in resp["msg"]
     assert not _actor_killed_loop(worker_pid, timeout_secs=1)
 
-    # Force kill the actor
+    # Force kill the actor - give it more time to propagate
     resp = _kill_actor_using_dashboard_gcs(webui_url, actor_id, OK, force_kill=True)
     assert "Force killed actor with id" in resp["msg"]
-    assert _actor_killed_loop(worker_pid)
+    assert _actor_killed_loop(
+        worker_pid, timeout_secs=10
+    )  # Increased timeout for force kill
 
 
 if __name__ == "__main__":

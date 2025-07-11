@@ -24,7 +24,6 @@ namespace core {
 ShutdownCoordinator::ShutdownCoordinator(
     std::shared_ptr<ShutdownDependencies> dependencies, WorkerType worker_type)
     : dependencies_(std::move(dependencies)), worker_type_(worker_type) {
-  // Initialize to running state with no reason
   state_and_reason_.store(PackStateReason(ShutdownState::kRunning, ShutdownReason::kNone),
                           std::memory_order_release);
 }
@@ -34,17 +33,38 @@ bool ShutdownCoordinator::RequestShutdown(bool force_shutdown,
                                           const std::string &detail,
                                           std::chrono::milliseconds timeout_ms,
                                           bool force_on_timeout) {
+  RAY_LOG(WARNING) << "RequestShutdown called: force_shutdown=" << force_shutdown
+                   << ", reason=" << static_cast<int>(reason) << ", detail=" << detail;
+
+  // if (force_shutdown) {
+  //   // Force shutdown can override any current state and interrupt graceful shutdown
+  //   uint64_t current = state_and_reason_.load(std::memory_order_acquire);
+  //   ShutdownState current_state = UnpackState(current);
+
+  //   RAY_LOG(WARNING) << "Force shutdown: current_state=" <<
+  //   static_cast<int>(current_state);
+
+  //   // Force shutdown always executes - even if graceful shutdown is in progress
+  //   // or completed. This ensures immediate termination.
+  //   uint64_t desired = PackStateReason(ShutdownState::kShuttingDown, reason);
+  //   state_and_reason_.store(desired, std::memory_order_release);
+
+  //   shutdown_detail_ = detail;
+  //   RAY_LOG(WARNING) << "Force shutdown: calling ExecuteShutdownSequence";
+  //   ExecuteShutdownSequence(force_shutdown, detail, timeout_ms, force_on_timeout);
+  //   RAY_LOG(WARNING) << "Force shutdown: ExecuteShutdownSequence completed";
+  //   return true;
+  // }
+
+  // For graceful shutdown, only proceed if currently running
   uint64_t expected = PackStateReason(ShutdownState::kRunning, ShutdownReason::kNone);
   uint64_t desired = PackStateReason(ShutdownState::kShuttingDown, reason);
 
-  // Use strong compare_exchange with acquire-release semantics for proper ordering
   bool initiated = state_and_reason_.compare_exchange_strong(
       expected, desired, std::memory_order_acq_rel, std::memory_order_acquire);
 
   if (initiated) {
-    // Store detail for observability (only first caller sets this)
     shutdown_detail_ = detail;
-
     ExecuteShutdownSequence(force_shutdown, detail, timeout_ms, force_on_timeout);
   }
 
@@ -165,12 +185,22 @@ void ShutdownCoordinator::ExecuteGracefulShutdown(const std::string &detail,
 }
 
 void ShutdownCoordinator::ExecuteForceShutdown(const std::string &detail) {
+  RAY_LOG(WARNING) << "ExecuteForceShutdown called: detail=" << detail;
+
   if (!dependencies_) {
+    RAY_LOG(WARNING) << "ExecuteForceShutdown: no dependencies, exiting";
     return;
   }
 
-  TryTransitionToDisconnecting();
+  // Force shutdown bypasses normal state transitions and terminates immediately
+  // This ensures that force shutdowns can interrupt hanging graceful shutdowns
+  RAY_LOG(WARNING) << "ExecuteForceShutdown: calling dependencies_->ExecuteForceShutdown";
   dependencies_->ExecuteForceShutdown(GetExitTypeString(), detail);
+  RAY_LOG(WARNING)
+      << "ExecuteForceShutdown: dependencies_->ExecuteForceShutdown completed";
+
+  // Only update state if we're not already in final state
+  // (force shutdown should have terminated the process by now)
   TryTransitionToShutdown();
 }
 

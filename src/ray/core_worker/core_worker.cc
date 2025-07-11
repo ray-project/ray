@@ -1169,6 +1169,9 @@ void CoreWorker::Exit(
 
 void CoreWorker::ForceExit(const rpc::WorkerExitType exit_type,
                            const std::string &detail) {
+  RAY_LOG(WARNING) << "ForceExit called: exit_type=" << static_cast<int>(exit_type)
+                   << ", detail=" << detail;
+
   ShutdownReason reason = [exit_type]() {
     switch (exit_type) {
     case rpc::WorkerExitType::INTENDED_SYSTEM_EXIT:
@@ -1186,12 +1189,18 @@ void CoreWorker::ForceExit(const rpc::WorkerExitType exit_type,
     }
   }();
 
+  RAY_LOG(WARNING) << "ForceExit: calling shutdown_coordinator_->RequestShutdown with "
+                      "force=true, reason="
+                   << static_cast<int>(reason);
+
   shutdown_coordinator_->RequestShutdown(
       true,  // force shutdown
       reason,
       detail,
       std::chrono::milliseconds{0},  // no timeout for force
       false);
+
+  RAY_LOG(WARNING) << "ForceExit: RequestShutdown completed";
 }
 
 void CoreWorker::RunIOService() {
@@ -4500,11 +4509,14 @@ void CoreWorker::HandleKillActor(rpc::KillActorRequest request,
   if (request.force_kill()) {
     RAY_LOG(INFO) << "Force kill actor request has received. exiting immediately... "
                   << kill_actor_reason;
+    RAY_LOG(WARNING) << "HandleKillActor: About to call ForceExit";
     // If we don't need to restart this actor, we notify raylet before force killing it.
     ForceExit(
         rpc::WorkerExitType::INTENDED_SYSTEM_EXIT,
         absl::StrCat("Worker exits because the actor is killed. ", kill_actor_reason));
+    RAY_LOG(WARNING) << "HandleKillActor: ForceExit completed";
   } else {
+    RAY_LOG(WARNING) << "HandleKillActor: About to call Exit";
     Exit(rpc::WorkerExitType::INTENDED_SYSTEM_EXIT,
          absl::StrCat("Worker exits because the actor is killed. ", kill_actor_reason));
   }

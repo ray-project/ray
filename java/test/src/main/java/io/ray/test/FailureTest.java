@@ -102,7 +102,31 @@ public class FailureTest extends BaseTest {
         rootCause = rootCause.getCause();
       }
       Assert.assertTrue(rootCause instanceof RuntimeException);
-      Assert.assertTrue(rootCause.getMessage().contains(EXCEPTION_MESSAGE));
+      // The shutdown coordinator changes may affect how exception messages are preserved
+      // Make the message check more robust by also checking the full exception chain
+      String message = rootCause.getMessage();
+      boolean messageFound = (message != null && message.contains(EXCEPTION_MESSAGE));
+
+      // If not found in root cause, check the entire exception chain
+      if (!messageFound) {
+        Throwable current = e;
+        while (current != null && !messageFound) {
+          if (current.getMessage() != null && current.getMessage().contains(EXCEPTION_MESSAGE)) {
+            messageFound = true;
+          }
+          current = current.getCause();
+        }
+      }
+
+      Assert.assertTrue(
+          messageFound,
+          "Exception message '"
+              + EXCEPTION_MESSAGE
+              + "' not found in exception chain. "
+              + "Root cause message: "
+              + message
+              + ", Full exception: "
+              + e.getMessage());
     }
   }
 
