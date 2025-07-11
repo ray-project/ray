@@ -131,17 +131,21 @@ def test_exit_logging():
     log = run_string_as_driver(
         """
 import ray
+import unittest.mock
 
-@ray.remote
-class A:
-    def pid(self):
-        import os
-        return os.getpid()
+# Patch methods that makes calls to AcceleratorManager in Node init
+with unittest.mock.patch("ray._private.accelerators.accelerator_utils.resolve_and_update_accelerator_resources", return_value=0), \\
+     unittest.mock.patch("ray._private.accelerators.get_all_accelerator_resource_names", return_value=[]):
 
+    @ray.remote
+    class A:
+        def pid(self):
+            import os
+            return os.getpid()
 
-a = A.remote()
-ray.get(a.pid.remote())
-    """
+    a = A.remote()
+    ray.get(a.pid.remote())
+        """
     )
     assert "Traceback" not in log
 
