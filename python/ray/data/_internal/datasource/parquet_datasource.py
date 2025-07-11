@@ -601,17 +601,27 @@ def estimate_default_read_batch_size_rows(sample_infos: List[_SampleInfo]) -> in
         if not sample_info.actual_bytes_per_row:
             return PARQUET_READER_ROW_BATCH_SIZE
         else:
-            max_parquet_reader_row_batch_size_bytes = (
-                DataContext.get_current().target_max_block_size // 10
-            )
-            return max(
-                1,
-                min(
-                    PARQUET_READER_ROW_BATCH_SIZE,
-                    max_parquet_reader_row_batch_size_bytes
-                    // sample_info.actual_bytes_per_row,
-                ),
-            )
+            ctx = DataContext.get_current()
+            # If target_max_block_size is unlimited, use a larger batch size
+            # to avoid unwanted splitting within a block
+            from ray.data.context import UNLIMITED_BLOCK_SIZE
+
+            if ctx.target_max_block_size == UNLIMITED_BLOCK_SIZE:
+                # Use a large batch size to avoid splitting within a single block
+                # This should be large enough for most reasonable files
+                return 50 * PARQUET_READER_ROW_BATCH_SIZE  # 500,000 rows
+            else:
+                max_parquet_reader_row_batch_size_bytes = (
+                    ctx.target_max_block_size // 10
+                )
+                return max(
+                    1,
+                    min(
+                        PARQUET_READER_ROW_BATCH_SIZE,
+                        max_parquet_reader_row_batch_size_bytes
+                        // sample_info.actual_bytes_per_row,
+                    ),
+                )
 
     return np.mean(list(map(compute_batch_size_rows, sample_infos)))
 
