@@ -295,11 +295,20 @@ def check_num_replicas_gte(
 
 
 def check_num_replicas_eq(
-    name: str, target: int, app_name: str = SERVE_DEFAULT_APP_NAME
+    name: str,
+    target: int,
+    app_name: str = SERVE_DEFAULT_APP_NAME,
+    use_controller: bool = False,
 ) -> int:
     """Check if num replicas is == target."""
 
-    assert get_num_alive_replicas(name, app_name) == target
+    if use_controller:
+        dep = serve.status().applications[app_name].deployments[name]
+        num_running_replicas = dep.replica_states.get(ReplicaState.RUNNING, 0)
+        assert num_running_replicas == target
+    else:
+        assert get_num_alive_replicas(name, app_name) == target
+
     return True
 
 

@@ -105,10 +105,10 @@ filegroup(
 http_archive(
     name = "uv_x86_64",
     build_file_content = """
-    filegroup(
-        name = "file",
-        srcs = glob(["**"]),
-        visibility = ["//visibility:public"],
+filegroup(
+    name = "file",
+    srcs = glob(["**"]),
+    visibility = ["//visibility:public"],
 )
 """,
     sha256 = "10f204426ff188925d22a53c1d0310d190a8d4d24513712e1b8e2ca9873f0666",

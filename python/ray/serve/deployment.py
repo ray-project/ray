@@ -1,4 +1,3 @@
-import inspect
 import logging
 import warnings
 from copy import deepcopy
@@ -106,20 +105,11 @@ class Deployment:
         self._validate_name(name)
         if not (version is None or isinstance(version, str)):
             raise TypeError("version must be a string.")
-        docs_path = None
-        if (
-            inspect.isclass(replica_config.deployment_def)
-            and hasattr(replica_config.deployment_def, "__module__")
-            and replica_config.deployment_def.__module__ == "ray.serve.api"
-            and hasattr(replica_config.deployment_def, "__fastapi_docs_path__")
-        ):
-            docs_path = replica_config.deployment_def.__fastapi_docs_path__
 
         self._name = name
         self._version = version
         self._deployment_config = deployment_config
         self._replica_config = replica_config
-        self._docs_path = docs_path
 
     def _validate_name(self, name: str):
         if not isinstance(name, str):

@@ -34,6 +34,9 @@ DEFINE_stats(metric_counter_test,
              (),
              ray::stats::COUNT);
 
+DECLARE_stats(metric_sum_test);
+DEFINE_stats(metric_sum_test, "A test sum metric", ("Tag1", "Tag2"), (), ray::stats::SUM);
+
 class MetricTest : public ::testing::Test {
  public:
   MetricTest() = default;
@@ -45,15 +48,40 @@ class MetricTest : public ::testing::Test {
     }
     StatsConfig::instance().SetIsInitialized(true);
   }
+
+  std::optional<double> GetObservableMetricValue(
+      const std::string &name,
+      const absl::flat_hash_map<std::string, std::string> &tags) {
+    auto &recorder = OpenTelemetryMetricRecorder::GetInstance();
+    std::lock_guard<std::mutex> lock(recorder.mutex_);
+    auto it = recorder.observations_by_name_.find(name);
+    if (it == recorder.observations_by_name_.end()) {
+      return std::nullopt;  // Not registered
+    }
+    auto tag_it = it->second.find(tags);
+    if (tag_it != it->second.end()) {
+      return tag_it->second;  // Get the value
+    }
+    return std::nullopt;
+  }
 };
 
 TEST_F(MetricTest, TestGaugeMetric) {
   ASSERT_TRUE(
       OpenTelemetryMetricRecorder::GetInstance().IsMetricRegistered("metric_gauge_test"));
   STATS_metric_gauge_test.Record(42.0, {{"Tag1", "Value1"}, {"Tag2", "Value2"}});
-  ASSERT_EQ(OpenTelemetryMetricRecorder::GetInstance().GetObservableMetricValue(
-                "metric_gauge_test", {{"Tag1", "Value1"}, {"Tag2", "Value2"}}),
+  // Test valid tags for a registered metric.
+  ASSERT_EQ(GetObservableMetricValue("metric_gauge_test",
+                                     {{"Tag1", "Value1"}, {"Tag2", "Value2"}}),
             42.0);
+  // Test invalid tags for a registered metric.
+  ASSERT_EQ(GetObservableMetricValue("metric_gauge_test",
+                                     {{"Tag1", "Value1"}, {"Tag2", "Value3"}}),
+            std::nullopt);
+  // Test unregistered metric.
+  ASSERT_EQ(GetObservableMetricValue("metric_gauge_test_unregistered",
+                                     {{"Tag1", "Value1"}, {"Tag2", "Value2"}}),
+            std::nullopt);
 }
 
 TEST_F(MetricTest, TestCounterMetric) {
@@ -63,6 +91,15 @@ TEST_F(MetricTest, TestCounterMetric) {
   // because open telemetry does not provide a way to retrieve the value of a counter.
   // Checking value is performed via e2e tests instead (e.g., in test_metrics_agent.py).
   STATS_metric_counter_test.Record(100.0, {{"Tag1", "Value1"}, {"Tag2", "Value2"}});
+}
+
+TEST_F(MetricTest, TestSumMetric) {
+  ASSERT_TRUE(
+      OpenTelemetryMetricRecorder::GetInstance().IsMetricRegistered("metric_sum_test"));
+  // We only test that recording is not crashing. The actual value is not checked
+  // because open telemetry does not provide a way to retrieve the value of a counter.
+  // Checking value is performed via e2e tests instead (e.g., in test_metrics_agent.py).
+  STATS_metric_sum_test.Record(200.0, {{"Tag1", "Value1"}, {"Tag2", "Value2"}});
 }
 
 }  // namespace telemetry
