@@ -15,6 +15,7 @@ from opencensus.stats import stats as stats_module
 from prometheus_client.core import REGISTRY
 from prometheus_client.parser import text_string_to_metric_families
 from opentelemetry.proto.collector.metrics.v1 import metrics_service_pb2
+from opentelemetry.proto.metrics.v1.metrics_pb2 import Metric
 from grpc.aio import ServicerContext
 
 
@@ -561,6 +562,61 @@ class ReporterAgent(
         except Exception:
             logger.error(traceback.format_exc())
         return reporter_pb2.ReportOCMetricsReply()
+
+    def _export_histogram_data(
+        self,
+        metric: Metric,
+    ) -> None:
+        """
+        Export histogram data points to OpenTelemetry Metric Recorder.
+        For performance reason, we use the average value as an approximation data point
+        per collection interval. This approach should be sufficient for most use cases
+        where the histogram spans over many collection intervals.
+        """
+        data_points = metric.histogram.data_points
+        if not data_points:
+            return
+        self._open_telemetry_metric_recorder.register_histogram_metric(
+            metric.name,
+            metric.description,
+            data_points[0].explicit_bounds,
+        )
+        for data_point in data_points:
+            self._open_telemetry_metric_recorder.set_metric_value(
+                metric.name,
+                {tag.key: tag.value.string_value for tag in data_point.attributes},
+                data_point.sum / data_point.count if data_point.count > 0 else 0.0,
+            )
+
+    def _export_number_data(
+        self,
+        metric: Metric,
+    ) -> None:
+        data_points = []
+        if metric.WhichOneof("data") == "gauge":
+            self._open_telemetry_metric_recorder.register_gauge_metric(
+                metric.name,
+                metric.description,
+            )
+            data_points = metric.gauge.data_points
+        if metric.WhichOneof("data") == "sum":
+            if metric.sum.is_monotonic:
+                self._open_telemetry_metric_recorder.register_counter_metric(
+                    metric.name,
+                    metric.description,
+                )
+            else:
+                self._open_telemetry_metric_recorder.register_sum_metric(
+                    metric.name,
+                    metric.description,
+                )
+            data_points = metric.sum.data_points
+        for data_point in data_points:
+            self._open_telemetry_metric_recorder.set_metric_value(
+                metric.name,
+                {tag.key: tag.value.string_value for tag in data_point.attributes},
+                data_point.as_double,
+            )
 
     async def Export(
         self,
@@ -1678,11 +1734,12 @@ class ReporterAgent(
 
     async def run(self, server):
         if server:
-            reporter_pb2_grpc.add_ReporterServiceServicer_to_server(self, server)
             if RAY_EXPERIMENTAL_ENABLE_OPEN_TELEMETRY_ON_CORE:
                 metrics_service_pb2_grpc.add_MetricsServiceServicer_to_server(
                     self, server
                 )
+            else:
+                reporter_pb2_grpc.add_ReporterServiceServicer_to_server(self, server)
 
         await self._run_loop()
 

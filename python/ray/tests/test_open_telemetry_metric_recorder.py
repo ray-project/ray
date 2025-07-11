@@ -2,7 +2,7 @@ import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
-from opentelemetry.metrics import NoOpCounter, NoOpUpDownCounter
+from opentelemetry.metrics import NoOpCounter, NoOpUpDownCounter, NoOpHistogram
 
 from ray._private.telemetry.open_telemetry_metric_recorder import (
     OpenTelemetryMetricRecorder,
