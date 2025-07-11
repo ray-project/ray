@@ -163,7 +163,7 @@ class DatabricksUCDatasource(Datasource):
                             "external_link"
                         ]
                         # NOTE: do _NOT_ send the authorization header to external urls
-                        raw_response = requests.get(external_url)
+                        raw_response = requests.get(external_url, auth = None , headers = None)
                         raw_response.raise_for_status()
 
                         with pyarrow.ipc.open_stream(raw_response.content) as reader:
