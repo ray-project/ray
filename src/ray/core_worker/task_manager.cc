@@ -1531,6 +1531,13 @@ void TaskManager::SetTaskStatus(
       << "Setting task status from " << task_entry.GetStatus() << " to " << status;
   task_entry.SetStatus(status);
 
+  if (task_entry.is_canceled) {
+    // If the task cancellation comes in anytime after the task error has been set,
+    // reset the error info to TASK_CANCELLED.
+    rpc::RayErrorInfo error_info;
+    error_info.set_error_type(rpc::ErrorType::TASK_CANCELLED);
+    state_update = worker::TaskStatusEvent::TaskStateUpdate(error_info);
+  }
   const int32_t attempt_number_to_record =
       attempt_number.value_or(task_entry.spec.AttemptNumber());
   const auto state_update_to_record =

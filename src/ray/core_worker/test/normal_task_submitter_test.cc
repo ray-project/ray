@@ -158,8 +158,8 @@ class MockTaskManager : public MockTaskManagerInterface {
 
   bool RetryTaskIfPossible(const TaskID &task_id,
                            const rpc::RayErrorInfo &error_info) override {
-    RAY_CHECK(!not_submissible_tasks_.contains(task_id))
-        << "Tried to retry task that was not pending " << task_id;
+    EXPECT_TRUE(!not_submissible_tasks_.contains(task_id))
+        << "Tried to retry task that was not submissible " + task_id.Hex();
     num_task_retries_attempted++;
     return false;
   }
@@ -181,7 +181,8 @@ class MockTaskManager : public MockTaskManagerInterface {
                               bool fail_immediately = false) override {
     num_tasks_failed++;
     if (!fail_immediately) {
-      RetryTaskIfPossible(task_id, *ray_error_info);
+      RetryTaskIfPossible(task_id,
+                          ray_error_info ? *ray_error_info : rpc::RayErrorInfo());
     }
     return true;
   }
@@ -252,7 +253,6 @@ class MockRayletClient : public WorkerLeaseInterface {
   }
 
   bool ReplyGetTaskFailureCause() {
-    std::lock_guard<std::mutex> lock(mu_);
     if (get_task_failure_cause_callbacks.size() == 0) {
       return false;
     }
@@ -669,32 +669,10 @@ TEST_F(NormalTaskSubmitterTest, TestHandleTaskFailure) {
 TEST_F(NormalTaskSubmitterTest, TestCancellationWhileHandlingTaskFailure) {
   // This test is a regression test for a bug where a crash happens when
   // the task cancellation races between ReplyPushTask and ReplyGetTaskFailureCause.
-  // For a python integration test, see
+  // For an example of a python integration test, see
   // https://github.com/ray-project/ray/blob/2b6807f4d9c4572e6309f57bc404aa641bc4b185/python/ray/tests/test_cancel.py#L35
-  rpc::Address address;
-  auto raylet_client = std::make_shared<MockRayletClient>();
-  auto worker_client = std::make_shared<MockWorkerClient>();
-  auto store = DefaultCoreWorkerMemoryStoreWithThread::CreateShared();
-  auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
-      [&](const rpc::Address &addr) { return worker_client; });
-  auto task_manager = std::make_unique<MockTaskManager>();
-  auto actor_creator = std::make_shared<MockActorCreator>();
-  auto lease_policy = std::make_unique<MockLeasePolicy>();
-  NormalTaskSubmitter submitter(
-      address,
-      raylet_client,
-      client_pool,
-      nullptr,
-      std::move(lease_policy),
-      store,
-      *task_manager,
-      NodeID::Nil(),
-      WorkerType::WORKER,
-      kLongTimeout,
-      actor_creator,
-      JobID::Nil(),
-      kOneRateLimiter,
-      [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; });
+  auto submitter =
+      CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(1));
 
   TaskSpecification task = BuildEmptyTaskSpec();
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
