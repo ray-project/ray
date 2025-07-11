@@ -15,7 +15,7 @@ from ray._private.event.export_event_logger import (
 )
 from ray.actor import ActorHandle
 from ray.train.v2._internal.constants import (
-    CONTROLLERS_TO_RECONCILE_PER_CHECK,
+    CONTROLLERS_TO_POLL_PER_ITERATION,
     DEFAULT_ENABLE_STATE_ACTOR_POLLING,
     DEFAULT_STATE_ACTOR_POLL_INTERVAL_S,
     ENABLE_STATE_ACTOR_POLLING_ENV_VAR,
@@ -39,10 +39,11 @@ logger = logging.getLogger(__name__)
 class TrainStateActor:
     def __init__(
         self,
+        # TODO: group into single config if we need to do similar polling elsewhere
         enable_state_actor_polling: bool = False,
         poll_interval_s: float = 30,
         get_actor_timeout_s: int = GET_ACTOR_TIMEOUT_S,
-        controllers_to_poll_per_iteration: int = CONTROLLERS_TO_RECONCILE_PER_CHECK,
+        controllers_to_poll_per_iteration: int = CONTROLLERS_TO_POLL_PER_ITERATION,
     ):
         # NOTE: All runs and attempts are stored in memory.
         # This may be a memory issue for large runs.
@@ -79,20 +80,20 @@ class TrainStateActor:
             # Start iterating from poll index.
             starting_poll_index = 0
             if last_poll_run_id is not None:
-                for i, run in enumerate(runs):
+                for poll_index, run in enumerate(runs):
                     if run.id == last_poll_run_id:
-                        poll_index = (i + 1) % len(runs)
+                        starting_poll_index = (poll_index + 1) % len(runs)
                         break
 
             # Abort runs.
-            num_sampled_runs = 0
-            i = poll_index
+            num_polled_runs = 0
+            poll_index = starting_poll_index
             while (
-                i < poll_index + len(runs)
-                and num_sampled_runs < self._controllers_to_poll_per_iteration
+                poll_index < starting_poll_index + len(runs)
+                and num_polled_runs < self._controllers_to_poll_per_iteration
             ):
-                run = runs[i % len(runs)]
-                i += 1
+                run = runs[poll_index % len(runs)]
+                poll_index += 1
                 last_poll_run_id = run.id
                 if run.status.is_terminal():
                     continue
@@ -102,7 +103,7 @@ class TrainStateActor:
                     update_train_run_aborted(run, False)
                     self.create_or_update_train_run(run)
                     aborted_run_ids.append(run.id)
-                num_sampled_runs += 1
+                num_polled_runs += 1
 
         # Abort run attempts.
         with self._run_attempts_lock:
