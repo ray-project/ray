@@ -147,7 +147,8 @@ class SortTaskSpec(ExchangeTaskSpec):
                     b, stats=stats.build()
                 )
                 return out + [meta_with_schema]
-        raise RuntimeError("out should contain at least 1 non-empty block")
+        empty_schema = BlockAccessor.for_block(out[0]).schema()
+        return out + [empty_schema]
 
     @staticmethod
     def reduce(

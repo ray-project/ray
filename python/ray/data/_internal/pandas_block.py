@@ -337,6 +337,9 @@ class PandasBlockAccessor(TableBlockAccessor):
             )
         return schema
 
+    def empty_schema(self) -> PandasBlockSchema:
+        return PandasBlockSchema(names=[], types=[])
+
     def to_pandas(self) -> "pandas.DataFrame":
         from ray.air.util.data_batch_conversion import _cast_tensor_columns_to_ndarrays
 

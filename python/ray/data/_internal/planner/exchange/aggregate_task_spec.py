@@ -73,7 +73,9 @@ class SortAggregateTaskSpec(ExchangeTaskSpec):
                     b, stats=stats.build()
                 )
                 return parts + [meta_with_schema]
-        raise RuntimeError("parts should contain at least 1 non-empty block")
+
+        empty_schema = BlockAccessor.for_block(parts[0]).schema()
+        return parts + [empty_schema]
 
     @staticmethod
     def reduce(

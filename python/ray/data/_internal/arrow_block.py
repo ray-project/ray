@@ -260,6 +260,9 @@ class ArrowBlockAccessor(TableBlockAccessor):
     def schema(self) -> "pyarrow.lib.Schema":
         return self._table.schema
 
+    def empty_schema(self) -> "pyarrow.lib.Schema":
+        return pyarrow.schema([])
+
     def to_pandas(self) -> "pandas.DataFrame":
         from ray.air.util.data_batch_conversion import _cast_tensor_columns_to_ndarrays
 
