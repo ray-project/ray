@@ -154,7 +154,7 @@ async def test_failure_handling():
     assert isinstance(controller.get_state(), RunningState)
 
     controller.get_worker_group().error_worker(1)
-    failure_policy.queue_decision(FailureDecision.RESTART)
+    failure_policy.queue_decision(FailureDecision.RETRY)
     await controller._run_control_loop_iteration()
     assert isinstance(controller.get_state(), RestartingState)
 
@@ -201,7 +201,7 @@ async def test_worker_group_start_failure(monkeypatch, error_type):
 
     # Worker group will fail to start, but controller should not raise
     # and should go into ReschedulingState.
-    failure_policy.queue_decision(FailureDecision.RESCHEDULE)
+    failure_policy.queue_decision(FailureDecision.RETRY)
     await controller._run_control_loop_iteration()
     assert isinstance(controller.get_state(), ReschedulingState)
 

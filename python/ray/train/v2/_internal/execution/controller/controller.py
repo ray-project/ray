@@ -3,7 +3,7 @@ import logging
 import os
 import uuid
 from dataclasses import dataclass
-from typing import Callable, List, Optional, Union
+from typing import Callable, Dict, List, Optional, Union
 
 import pandas as pd
 
@@ -44,6 +44,7 @@ from ray.train.v2._internal.execution.controller.state import (
 from ray.train.v2._internal.execution.failure_handling import (
     FailureDecision,
     FailurePolicy,
+    get_error_string,
 )
 from ray.train.v2._internal.execution.scaling_policy import (
     NoopDecision,
@@ -186,8 +187,12 @@ class TrainController:
         )
 
         if scheduling_status.has_error:
-            failure_decision = self._failure_policy.make_decision(scheduling_status)
-            return self._execute_failure_decision(failure_decision, scheduling_status)
+            failure_decision = self._failure_policy.make_decision(
+                scheduling_status.error
+            )
+            return self._execute_failure_decision(
+                failure_decision, scheduling_status.error
+            )
         else:
             return TrainControllerLoopIterationResult(
                 run_attempt_id=self._get_run_attempt_id(),
@@ -198,10 +203,9 @@ class TrainController:
     def _execute_failure_decision(
         self,
         failure_decision: FailureDecision,
-        worker_group_status: Union[WorkerGroupPollStatus, WorkerGroupSchedulingStatus],
+        scheduling_or_poll_error: Union[Exception, Dict[int, Exception]],
     ) -> TrainControllerLoopIterationResult:
-        """Executes failure handling decisions (ex: restart, terminate)."""
-        assert worker_group_status.has_error
+        """Executes failure handling decisions for a scheduling or poll error."""
 
         controller_state = self.get_state()
 
@@ -217,27 +221,23 @@ class TrainController:
                 next_state=RunningState(),
             )
 
-        errors_str = worker_group_status.get_error_string()
         # TODO: make TrainingFailedError accept both worker_failures and controller_error.
         worker_failures = (
-            worker_group_status.errors
-            if isinstance(worker_group_status, WorkerGroupPollStatus)
-            else {0: worker_group_status.error}
+            scheduling_or_poll_error
+            if isinstance(scheduling_or_poll_error, Dict)
+            else {0: scheduling_or_poll_error}
         )
         training_failed_error = TrainingFailedError(
-            error_message=errors_str, worker_failures=worker_failures
+            error_message=get_error_string(scheduling_or_poll_error),
+            worker_failures=worker_failures,
         )
-        if failure_decision == FailureDecision.RESTART:
+        if failure_decision == FailureDecision.RETRY:
             return TrainControllerLoopIterationResult(
                 run_attempt_id=self._get_run_attempt_id(),
                 previous_state=controller_state,
-                next_state=RestartingState(training_failed_error=training_failed_error),
-            )
-        elif failure_decision == FailureDecision.RESCHEDULE:
-            return TrainControllerLoopIterationResult(
-                run_attempt_id=self._get_run_attempt_id(),
-                previous_state=controller_state,
-                next_state=ReschedulingState(),
+                next_state=RestartingState(training_failed_error=training_failed_error)
+                if isinstance(controller_state, RunningState)
+                else ReschedulingState(),
             )
         elif failure_decision == FailureDecision.RAISE:
             next_state = ErroredState(training_failed_error=training_failed_error)
@@ -386,10 +386,10 @@ class TrainController:
                 )
             if worker_group_status.errors:
                 failure_decision = self._failure_policy.make_decision(
-                    worker_group_status
+                    worker_group_status.errors
                 )
                 return self._execute_failure_decision(
-                    failure_decision, worker_group_status
+                    failure_decision, worker_group_status.errors
                 )
             else:
                 scaling_decision = self._scaling_policy.make_decision_for_running_worker_group(
