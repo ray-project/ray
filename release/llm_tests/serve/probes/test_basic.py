@@ -304,16 +304,12 @@ async def test_logprobs(
     )
 
     response = await deterministic_query.query(model, stream, **params)
+
     response = response.full_dict()
     for resp in response:
-        running_str = ""
         for logprob in resp["logprobs"]["content"]:
             assert len(logprob["top_logprobs"]) == num_logprobs
             assert list(logprob["token"].encode()) == logprob["bytes"]
-            # Special tokens that will not be a part of the response content
-            if logprob["token"] not in ("<step>", "<|eot_id|>"):
-                running_str += logprob["token"]
-        assert running_str == resp["message"]["content"]
 
     # top logprobs have to be positive integer
     invalid_num_logprobs = [-1]

@@ -5,6 +5,8 @@ from starlette.datastructures import State
 
 from typing import TYPE_CHECKING, AsyncGenerator, Tuple, Union
 
+from transformers.dynamic_module_utils import init_hf_modules
+
 import ray
 from ray.llm._internal.common.utils.import_utils import try_import
 from ray.llm._internal.serve.configs.openai_api_models import (
@@ -115,8 +117,9 @@ class VLLMEngine(LLMEngine):
             raise ImportError(
                 "vLLM is not installed. Please install it with `pip install ray[llm]`."
             )
+        from vllm import envs as vllm_envs, utils as vllm_utils
 
-        if not vllm.envs.VLLM_USE_V1:
+        if not vllm_envs.VLLM_USE_V1:
             logger.warning(
                 "vLLM v0 is getting fully deprecated. As a result in Ray Serve LLM only v1 is supported. Only when you know what you are doing, you can set VLLM_USE_V1=0"
             )
@@ -129,8 +132,8 @@ class VLLMEngine(LLMEngine):
             if connector_type != "NixlConnector":
                 raise ValueError("Only NixlConnector is supported for kv transfer.")
             if (
-                "VLLM_NIXL_SIDE_CHANNEL_PORT" not in vllm.envs.environment_variables
-                or "VLLM_NIXL_SIDE_CHANNEL_HOST" not in vllm.envs.environment_variables
+                "VLLM_NIXL_SIDE_CHANNEL_PORT" not in vllm_envs.environment_variables
+                or "VLLM_NIXL_SIDE_CHANNEL_HOST" not in vllm_envs.environment_variables
             ):
                 raise ValueError(
                     "This vLLM version does not support VLLM_NIXL_SIDE_CHANNEL_PORT"
@@ -138,16 +141,16 @@ class VLLMEngine(LLMEngine):
                     "that you are using an older version of vLLM."
                 )
 
-            if not vllm.envs.is_set("VLLM_NIXL_SIDE_CHANNEL_PORT"):
-                port: int = vllm.utils.get_open_port()
+            if not vllm_envs.is_set("VLLM_NIXL_SIDE_CHANNEL_PORT"):
+                port: int = vllm_utils.get_open_port()
                 os.environ["VLLM_NIXL_SIDE_CHANNEL_PORT"] = str(port)
-            if not vllm.envs.is_set("VLLM_NIXL_SIDE_CHANNEL_HOST"):
-                os.environ["VLLM_NIXL_SIDE_CHANNEL_HOST"] = vllm.utils.get_ip()
+            if not vllm_envs.is_set("VLLM_NIXL_SIDE_CHANNEL_HOST"):
+                os.environ["VLLM_NIXL_SIDE_CHANNEL_HOST"] = vllm_utils.get_ip()
 
             # We need to overwrite the engine_id to make it unique across replicas.
             engine_id = getattr(kv_transfer_config, "engine_id", str(uuid.uuid4()))
-            host = vllm.envs.VLLM_NIXL_SIDE_CHANNEL_HOST
-            port = vllm.envs.VLLM_NIXL_SIDE_CHANNEL_PORT
+            host = vllm_envs.VLLM_NIXL_SIDE_CHANNEL_HOST
+            port = vllm_envs.VLLM_NIXL_SIDE_CHANNEL_PORT
             kv_transfer_config.engine_id = "-".join([engine_id, host, str(port)])
 
         # TODO (Kourosh): What do we do with this stats tracker?
@@ -286,32 +289,34 @@ class VLLMEngine(LLMEngine):
 
         _clear_current_platform_cache()
 
-        engine = AsyncLLMEngine(
+        engine_client = AsyncLLMEngine(
             vllm_config=vllm_config,
             executor_class=RayDistributedExecutor,
             log_stats=not engine_args.disable_log_stats,
         )
 
-        return engine
+        return engine_client
 
     def _start_async_llm_engine(
         self,
-        engine_args: "AsyncEngineArgs",
-        vllm_config: "VllmConfig",
+        vllm_engine_args: "AsyncEngineArgs",
+        vllm_engine_config: "VllmConfig",
         placement_group: PlacementGroup,
     ) -> "EngineClient":
         """Creates an async LLM engine from the engine arguments."""
+        from vllm import envs as vllm_envs
 
         # NOTE: This is a temporary solution untill vLLM v1 supports embeddings.
-        if not vllm.envs.VLLM_USE_V1:
+        if not vllm_envs.VLLM_USE_V1:
             return self._start_async_llm_engine_v0(
-                engine_args, vllm_config, placement_group
+                vllm_engine_args, vllm_engine_config, placement_group
             )
 
         from vllm.v1.executor.abstract import Executor
         from vllm.v1.engine.async_llm import AsyncLLM
 
-        vllm_config.parallel_config.placement_group = placement_group
+        vllm_engine_config.parallel_config.placement_group = placement_group
+
         _clear_current_platform_cache()
 
         custom_stat_loggers = None
@@ -324,16 +329,16 @@ class VLLMEngine(LLMEngine):
             # For now, assume folks enabling log_engine_metrics do not require LoggingStatLogger, PrometheusStatLogger
             custom_stat_loggers = [RayPrometheusStatLogger]
 
-        executor_class = Executor.get_class(vllm_config)
+        executor_class = Executor.get_class(vllm_engine_config)
         logger.info(f"Using executor class: {executor_class}")
-        engine = AsyncLLM(
-            vllm_config=vllm_config,
+        engine_client = AsyncLLM(
+            vllm_config=vllm_engine_config,
             executor_class=executor_class,
-            log_stats=not engine_args.disable_log_stats,
+            log_stats=not vllm_engine_args.disable_log_stats,
             stat_loggers=custom_stat_loggers,
         )
 
-        return engine
+        return engine_client
 
     async def resolve_lora(self, disk_lora_model: DiskMultiplexConfig):
         from vllm.entrypoints.openai.protocol import LoadLoRAAdapterRequest

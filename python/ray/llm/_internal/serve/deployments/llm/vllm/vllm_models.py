@@ -1,8 +1,10 @@
+import dataclasses
 import os
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 import dataclasses
 
 from pydantic import ConfigDict, Field
+from vllm.engine.arg_utils import AsyncEngineArgs
 
 from ray.llm._internal.common.base_pydantic import BaseModelExtended
 from ray.llm._internal.common.utils.cloud_utils import CloudMirrorConfig
@@ -10,6 +12,7 @@ from ray.llm._internal.common.utils.import_utils import try_import
 from ray.llm._internal.serve.configs.constants import (
     ALLOW_NEW_PLACEMENT_GROUPS_IN_DEPLOYMENT,
     ENV_VARS_TO_PROPAGATE,
+    RAYLLM_GUIDED_DECODING_BACKEND,
 )
 from ray.llm._internal.serve.configs.server_models import (
     GPUType,
@@ -99,10 +102,7 @@ class VLLMEngineConfig(BaseModelExtended):
         else:
             engine_kwargs["distributed_executor_backend"] = "ray"
 
-        if (
-            "disable_log_stats" in engine_kwargs
-            and engine_kwargs["disable_log_stats"] != False
-        ):
+        if "disable_log_stats" in engine_kwargs and engine_kwargs["disable_log_stats"]:
             logger.warning(
                 "disable_log_stats = True is not allowed in engine_kwargs when using Ray Serve LLM Configs. Setting it to False."
             )
