@@ -421,6 +421,12 @@ message NumPendingTasksReply {
   int64 num_pending_tasks = 1;
 }
 
+message FreeActorObjectRequest {
+  bytes object_id = 1;
+}
+
+message FreeActorObjectReply {}
+
 message ReportGeneratorItemReturnsRequest {
   // The intermediate return object that's dynamically
   // generated from the executor side.
@@ -577,6 +583,9 @@ service CoreWorkerService {
   // Failure: Logs a warning on failure, gcs request can be retried by dashboard or state
   // API user.
   rpc NumPendingTasks(NumPendingTasksRequest) returns (NumPendingTasksReply);
+
+  // Free GPU object from in-actor GPU object store.
+  rpc FreeActorObject(FreeActorObjectRequest) returns (FreeActorObjectReply);
 
   // Registers a mutable object reader for compiled graphs.
   // Failure: TODO: Needs failure behavior.
