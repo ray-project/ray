@@ -38,7 +38,7 @@ az login
 
 ### Install Azure SDK libraries
 
-Now, install the Azure SDK libraries that will enable the Ray cluster launcher to build Azure infrastructure.
+Now, install the Azure SDK libraries that enable the Ray cluster launcher to build Azure infrastructure.
 
 ```bash
 # Install azure SDK libraries.
@@ -60,9 +60,9 @@ Download the reference example locally:
 wget https://raw.githubusercontent.com/ray-project/ray/master/python/ray/autoscaler/azure/example-full.yaml
 ```
 
-In order to connect to the provisioned head node VM, you'll need to ensure that the `auth.ssh_private_key`, `auth.ssh_public_key`, and `file_mounts` configuration values are properly configured to point to file paths on your local environment that have a valid keypair. By default the configuration assumes `$HOME/.ssh/id_rsa` and `$HOME/.ssh/id_rsa.pub`. If you have a different set of keypair files you wish to use (for example a `ed25519` pair), update the `example-full.yaml` configurations to use them.
+To connect to the provisioned head node VM, you need to ensure that you properly configure the `auth.ssh_private_key`, `auth.ssh_public_key`, and `file_mounts` configuration values to point to file paths on your local environment that have a valid key pair. By default the configuration assumes `$HOME/.ssh/id_rsa` and `$HOME/.ssh/id_rsa.pub`. If you have a different set of key pair files you want to use (for example a `ed25519` pair), update the `example-full.yaml` configurations to use them.
 
-For example here is what a custom-configured `example-full.yaml` file might look like if you are using a `ed25519` keypair:
+For example a custom-configured `example-full.yaml` file might look like the following if you're using a `ed25519` key pair:
 
 ```sh
 $ git diff example-full.yaml 
@@ -72,16 +72,16 @@ index b25f1b07f1..c65fb77219 100644
 +++ b/python/ray/autoscaler/azure/example-full.yaml
 @@ -61,9 +61,9 @@ auth:
      ssh_user: ubuntu
-     # you must specify paths to matching private and public key pair files
-     # use `ssh-keygen -t rsa -b 4096` to generate a new ssh key pair
+     # You must specify paths to matching private and public key pair files.
+     # Use `ssh-keygen -t rsa -b 4096` to generate a new ssh key pair.
 -    ssh_private_key: ~/.ssh/id_rsa
 +    ssh_private_key: ~/.ssh/id_ed25519
-     # changes to this should match what is specified in file_mounts
+     # Changes to this should match what is specified in file_mounts.
 -    ssh_public_key: ~/.ssh/id_rsa.pub
 +    ssh_public_key: ~/.ssh/id_ed25519.pub
  
- # More specific customization to node configurations can be made using the ARM template azure-vm-template.json file
- # See documentation here: https://docs.microsoft.com/en-us/azure/templates/microsoft.compute/2019-03-01/virtualmachines
+ # You can make more specific customization to node configurations can be made using the ARM template azure-vm-template.json file.
+ # See this documentation here: https://docs.microsoft.com/en-us/azure/templates/microsoft.compute/2019-03-01/virtualmachines
 @@ -128,7 +128,7 @@ head_node_type: ray.head.default
  file_mounts: {
      #    "/path1/on/remote/machine": "/path1/on/local/machine",
@@ -90,7 +90,7 @@ index b25f1b07f1..c65fb77219 100644
 +    "~/.ssh/id_ed25519.pub": "~/.ssh/id_ed25519.pub"}
  
  # Files or directories to copy from the head node to the worker nodes. The format is a
- # list of paths. The same path on the head node will be copied to the worker node.
+ # list of paths. Ray copies the same path on the head node to the worker node.
  ```
 
 #### Launch the Ray cluster on Azure
