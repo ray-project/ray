@@ -447,5 +447,13 @@ def _append_to_file(filepath, new):
         f.write(new + "\n")
 
 
+
+def _uv_binary():
+    r = runfiles.Create()
+    system = platform.system()
+    if system != "Linux" or platform.processor() != "x86_64":
+        raise ValueError(f"Unsupported platform: {system}")
+    return r.Rlocation("uv_x86_64/uv-x86_64-unknown-linux-gnu/uv")
+
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-vs", __file__]))
+    sys.exit(pytest.main(["-v", __file__]))
