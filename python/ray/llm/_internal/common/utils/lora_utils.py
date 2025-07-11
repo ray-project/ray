@@ -14,8 +14,6 @@ import time
 from functools import wraps
 from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar, Union
 
-from filelock import FileLock
-
 from ray.llm._internal.common.models import DiskMultiplexConfig, global_id_manager
 from ray.llm._internal.common.observability.logging import get_logger
 from ray.llm._internal.common.utils.cloud_utils import (
@@ -197,8 +195,11 @@ async def get_lora_finetuned_context_length(bucket_uri: str):
         return None
 
     try:
-        config = json.loads(config_body)
-        return config.get("max_length", None)
+        if isinstance(config_body, str):
+            config = json.loads(config_body)
+            return config.get("max_length", None)
+        else:
+            return None
     except (json.JSONDecodeError, KeyError):
         logger.warning(f"Failed to parse config from {config_uri}")
         return None
@@ -250,16 +251,22 @@ async def download_multiplex_config_info(
 ) -> Tuple[str, int]:
     """Download multiplex configuration info for a LoRA model.
 
+    This is a wrapper that forwards to the correct implementation.
+    The actual implementation is in multiplex/utils.py.
+
     Args:
         model_id: The LoRA model ID
         base_path: The base path where the model is stored
 
     Returns:
-        Tuple of (model_id, max_total_tokens)
+        Tuple of (bucket_uri, max_total_tokens)
     """
-    # This is a simplified implementation - in practice this would
-    # download and parse configuration files
-    return model_id, 4096  # Default max tokens
+    # Import here to avoid circular imports
+    from ray.llm._internal.serve.deployments.llm.multiplex.utils import (
+        download_multiplex_config_info as _actual_download_multiplex_config_info,
+    )
+
+    return await _actual_download_multiplex_config_info(model_id, base_path)
 
 
 def download_lora_adapter(
@@ -292,32 +299,29 @@ def download_lora_adapter(
     if remote_path is None:
         return lora_name
 
-    # Use the new unified LoRA downloading functionality
+    # Use the working implementation consistently
     lora_path = os.path.join(remote_path, lora_name)
 
-    # If advanced parameters are provided, use the new LoraModelLoader
-    if lora_root is not None or download_timeout_s is not None or max_tries != 1:
-        loader = _LoraModelLoader(
-            lora_root=lora_root,
-            download_timeout_s=download_timeout_s,
-            max_tries=max_tries,
-        )
-
-        # Create a simple LoraMirrorConfig for the loader
-        lora_mirror_config = LoraMirrorConfig(
-            lora_model_id=lora_name,
-            bucket_uri=lora_path,
-            max_total_tokens=None,
-        )
-
-        # Use the sync version directly
-        disk_config = loader._load_model_sync(lora_mirror_config)
-        return disk_config.local_path
-
-    # Fallback to original simple implementation for backward compatibility
+    # Always use CloudModelDownloader which properly downloads all files including tokenizers
+    # This ensures consistency between serve and batch paths
     mirror_config = CloudMirrorConfig(bucket_uri=lora_path)
-    downloader = CloudModelDownloader(lora_name, mirror_config)
-    return downloader.get_model(tokenizer_only=False)
+
+    # If lora_root is specified, use it for caching; otherwise use default behavior
+    if lora_root is not None:
+        # Create a local cache directory for this specific lora
+        local_cache_dir = os.path.join(lora_root, lora_name)
+        os.makedirs(local_cache_dir, exist_ok=True)
+
+        # Use CloudModelDownloader with custom cache location
+        downloader = CloudModelDownloader(
+            local_cache_dir,  # Use the cache directory as the "model_id" for local storage
+            mirror_config,
+        )
+        return downloader.get_model(tokenizer_only=False)
+    else:
+        # Original behavior for backward compatibility
+        downloader = CloudModelDownloader(lora_name, mirror_config)
+        return downloader.get_model(tokenizer_only=False)
 
 
 class _LoraModelLoader:
@@ -406,59 +410,23 @@ class _LoraModelLoader:
         """
         clear_directory(self.lora_root)
 
-    def _model_dir_path(self, model_id: str) -> str:
-        """Construct the path for the lora weight.
-
-        Given a lora model id is expected to be in the format of
-            base_model_id:lora_id
-        This function will return the path to the directory where the lora weights
-            lora_root/lora_id
-        """
-        lora_id = get_lora_id(clean_model_id(model_id))
-        path = os.path.join(self.lora_root, lora_id)
-        os.makedirs(path, exist_ok=True)
-        return path
-
     def _download_lora(self, lora_mirror_config: "LoraMirrorConfig") -> str:
-        # Note (genesu): `model_local_path` affects where the lora weights are stored
-        # on local disk.
-        model_local_path = self._model_dir_path(lora_mirror_config.lora_model_id)
-        self._sync_model(
-            lora_mirror_config.bucket_uri,
-            model_local_path,
-            timeout=self.download_timeout_s,
+        # Use the canonical download_lora_adapter function to ensure consistency
+        # between serve and batch paths, while maintaining the _LoraModelLoader's
+        # caching and async capabilities
+        lora_id = get_lora_id(clean_model_id(lora_mirror_config.lora_model_id))
+
+        # Use the canonical download function which properly downloads all files
+        # including tokenizers using CloudModelDownloader
+        local_path = download_lora_adapter(
+            lora_name=lora_id,
+            remote_path=os.path.dirname(lora_mirror_config.bucket_uri),
+            lora_root=self.lora_root,
+            download_timeout_s=self.download_timeout_s,
+            max_tries=self.max_tries,
         )
-        return model_local_path
 
-    def _sync_model(
-        self,
-        bucket_uri: str,
-        local_path: str,
-        timeout: Optional[float] = None,
-    ):
-        """Sync from bucket_uri to local_path.
-
-        This method isn't re-entrant and will block (up to timeout) if already syncing
-        at a given path.
-        """
-
-        logger.info("Downloading %s to %s", bucket_uri, local_path)
-
-        with FileLock(local_path + ".lock", timeout=timeout or -1):
-            try:
-                # Use CloudFileSystem.download_files for the sync operation
-                CloudFileSystem.download_files(
-                    path=local_path,
-                    bucket_uri=bucket_uri,
-                )
-            except Exception as e:
-                logger.error(
-                    "Failed to sync model (%s) from %s to %s",
-                    str(e),
-                    bucket_uri,
-                    local_path,
-                )
-                raise
+        return local_path
 
     def _load_model_sync(
         self, lora_mirror_config: "LoraMirrorConfig"
