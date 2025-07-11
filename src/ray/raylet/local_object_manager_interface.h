@@ -31,10 +31,10 @@ class LocalObjectManagerInterface {
  public:
   virtual ~LocalObjectManagerInterface() = default;
 
-  virtual void PinObjectsAndWaitForFree(const std::vector<ObjectID> &,
-                                        std::vector<std::unique_ptr<RayObject>> &&,
-                                        const rpc::Address &,
-                                        const ObjectID & = ObjectID::Nil()) = 0;
+  virtual Status PinObjectAndWaitForFree(const ObjectID &,
+                                         std::unique_ptr<RayObject>,
+                                         const rpc::Address &,
+                                         const ObjectID & = ObjectID::Nil()) = 0;
 
   virtual void SpillObjectUptoMaxThroughput() = 0;
 
@@ -49,8 +49,6 @@ class LocalObjectManagerInterface {
                                          std::function<void(const ray::Status &)>) = 0;
 
   virtual void FlushFreeObjects() = 0;
-
-  virtual bool ObjectPendingDeletion(const ObjectID &) = 0;
 
   virtual void ProcessSpilledObjectsDeleteQueue(uint32_t) = 0;
 
