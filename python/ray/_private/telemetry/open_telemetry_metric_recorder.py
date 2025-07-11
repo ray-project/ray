@@ -79,6 +79,26 @@ class OpenTelemetryMetricRecorder:
             )
             self._registered_instruments[name] = instrument
 
+    def register_sum_metric(self, name: str, description: str) -> None:
+        """
+        Register a sum metric with the given name and description.
+        """
+        with self._lock:
+            if name in self._registered_instruments:
+                # Sum with the same name is already registered. This is a common
+                # case when metrics are exported from multiple Ray components (e.g.,
+                # raylet, worker, etc.) running in the same node. Since each component
+                # may export metrics with the same name, the same metric might be
+                # registered multiple times.
+                return
+
+            instrument = self.meter.create_up_down_counter(
+                name=f"{NAMESPACE}_{name}",
+                description=description,
+                unit="1",
+            )
+            self._registered_instruments[name] = instrument
+
     def set_metric_value(self, name: str, tags: dict, value: float):
         """
         Set the value of a metric with the given name and tags. If the metric is not
@@ -96,6 +116,8 @@ class OpenTelemetryMetricRecorder:
                 # It is a no-op if the metric is not registered.
                 instrument = self._registered_instruments.get(name)
                 if isinstance(instrument, metrics.Counter):
+                    instrument.add(value, attributes=tags)
+                elif isinstance(instrument, metrics.UpDownCounter):
                     instrument.add(value, attributes=tags)
                 else:
                     logger.warning(
