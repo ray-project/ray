@@ -6,7 +6,6 @@ boto3
 cmake
 crc32c
 cython
-dask[complete]
 fastapi
 gcsfs==2023.5.0
 gsutil
@@ -39,3 +38,4 @@ typing-extensions
 xarray
 xgboost
 zarr
+pyyaml
