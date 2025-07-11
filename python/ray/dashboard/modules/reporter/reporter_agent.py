@@ -589,6 +589,15 @@ class ReporterAgent(
                             metric.name, metric.description or ""
                         )
                         data_points = metric.sum.data_points
+                    # sum metrics
+                    if (
+                        metric.WhichOneof("data") == "sum"
+                        and not metric.sum.is_monotonic
+                    ):
+                        self._open_telemetry_metric_recorder.register_sum_metric(
+                            metric.name, metric.description or ""
+                        )
+                        data_points = metric.sum.data_points
                     for data_point in data_points:
                         self._open_telemetry_metric_recorder.set_metric_value(
                             metric.name,
