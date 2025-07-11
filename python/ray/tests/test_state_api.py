@@ -2965,11 +2965,11 @@ def test_network_failure(shutdown_only):
     a = [f.remote() for _ in range(4)]  # noqa
     wait_for_condition(lambda: len(list_tasks()) == 4)
 
-    # Kill raylet so that list_tasks will have network error on querying raylets.
+    # Kill raylet so that list_objects will have a network error on querying raylets.
     ray._private.worker._global_node.kill_raylet()
 
-    with pytest.raises(ConnectionError):
-        list_tasks(_explain=True)
+    with pytest.raises(RayStateApiException, match="unexpected network issue"):
+        list_objects()
 
 
 def test_network_partial_failures(monkeypatch, ray_start_cluster):
@@ -3817,11 +3817,13 @@ def test_address_defaults_to_connected_ray_instance(shutdown_only):
     # Connect the driver to cluster_1.
     ray.init(cluster_1.address)
 
-    # Call list_jobs() with no address, should connect to cluster_1 by default.
+    # Call list_jobs() with no address and "auto", both should connect to cluster_1.
     [job] = list_jobs()
     assert job.job_id == ray.get_runtime_context().get_job_id()
+    [job] = list_jobs(address="auto")
+    assert job.job_id == ray.get_runtime_context().get_job_id()
 
-    # Sanity checks: call list_jobs() with cluster_1 and cluster_2 addresses.
+    # Sanity checks: call list_jobs() with cluster_1 and cluster_2 addresses specified.
     cluster_1_jobs = list_jobs(address=f"http://localhost:{cluster_1_dashboard_port}")
     assert cluster_1_jobs == [job]
     cluster_2_jobs = list_jobs(address=f"http://localhost:{cluster_2_dashboard_port}")

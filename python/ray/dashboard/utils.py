@@ -668,9 +668,9 @@ def ray_address_to_api_server_url(address: Optional[str]) -> str:
     Returns:
         API server HTTP URL.
     """
-    # If no address is provided and this worker is connected to a Ray instance,
-    # default to that Ray instance's address.
-    if address is None:
+    # Prefer to connect to the same Ray instance that this worker is connected to
+    # by default.
+    if address is None or address == "auto":
         worker = ray._private.worker.global_worker
         if worker.connected:
             address = worker.node.address_info["address"]
