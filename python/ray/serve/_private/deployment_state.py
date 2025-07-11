@@ -980,17 +980,18 @@ class ActorReplicaWrapper:
 
         return self._routing_stats
 
-    def force_stop(self):
+    def force_stop(self, log_shutdown_message: bool = False):
         """Force the actor to exit without shutting down gracefully."""
         if (
             self._ingress
             and RAY_SERVE_DISABLE_SHUTTING_DOWN_INGRESS_REPLICAS_FORCEFULLY
         ):
-            logger.info(
-                f"{self.replica_id} did not shut down because it had not finished draining requests. "
-                "Going to wait until the draining is complete. You can force-stop the replica by "
-                "setting RAY_SERVE_DISABLE_SHUTTING_DOWN_INGRESS_REPLICAS_FORCEFULLY to 0."
-            )
+            if log_shutdown_message:
+                logger.info(
+                    f"{self.replica_id} did not shut down because it had not finished draining requests. "
+                    "Going to wait until the draining is complete. You can force-stop the replica by "
+                    "setting RAY_SERVE_DISABLE_SHUTTING_DOWN_INGRESS_REPLICAS_FORCEFULLY to 0."
+                )
             return
 
         try:
@@ -1021,6 +1022,7 @@ class DeploymentReplica:
         )
         self._multiplexed_model_ids: List[str] = []
         self._routing_stats: Dict[str, Any] = {}
+        self._logged_shutdown_message = False
 
     def get_running_replica_info(
         self, cluster_node_info_cache: ClusterNodeInfoCache
@@ -1113,6 +1115,7 @@ class DeploymentReplica:
         """
         replica_scheduling_request = self._actor.start(deployment_info)
         self._start_time = time.time()
+        self._logged_shutdown_message = False
         self.update_actor_details(start_time_s=self._start_time)
         return replica_scheduling_request
 
@@ -1187,14 +1190,19 @@ class DeploymentReplica:
 
         timeout_passed = time.time() >= self._shutdown_deadline
         if timeout_passed:
-            # Graceful period passed, kill it forcefully.
-            # This will be called repeatedly until the replica shuts down.
-            logger.info(
-                f"{self.replica_id} did not shut down after grace "
-                "period, force-killing it. "
-            )
+            if (
+                not self._logged_shutdown_message
+                and not RAY_SERVE_DISABLE_SHUTTING_DOWN_INGRESS_REPLICAS_FORCEFULLY
+            ):
+                logger.info(
+                    f"{self.replica_id} did not shut down after grace "
+                    "period, force-killing it. "
+                )
 
-            self._actor.force_stop()
+            self._actor.force_stop(
+                log_shutdown_message=not self._logged_shutdown_message
+            )
+            self._logged_shutdown_message = True
         return False
 
     def check_health(self) -> bool:
