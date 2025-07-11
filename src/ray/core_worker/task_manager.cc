@@ -217,11 +217,13 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
     int max_retries) {
   int32_t max_oom_retries =
       (max_retries != 0) ? RayConfig::instance().task_oom_retries() : 0;
+
   RAY_LOG(DEBUG) << "Adding pending task " << spec.TaskId() << " with " << max_retries
                  << " retries, " << max_oom_retries << " oom retries";
 
   // Add references for the dependencies to the task.
   std::vector<ObjectID> task_deps;
+
   for (size_t i = 0; i < spec.NumArgs(); i++) {
     if (spec.ArgByRef(i)) {
       task_deps.push_back(spec.ArgObjectId(i));
@@ -235,6 +237,7 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
       }
     }
   }
+
   if (spec.IsActorTask()) {
     const auto actor_creation_return_id = spec.ActorCreationDummyObjectId();
     task_deps.push_back(actor_creation_return_id);
@@ -250,6 +253,8 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
     auto return_id = spec.ReturnId(i);
     if (!spec.IsActorCreationTask()) {
       bool is_reconstructable = max_retries != 0;
+      RAY_LOG(DEBUG).WithField(spec.TaskId()).WithField(return_id)
+          << "[AddPendingTask] is_reconstructable=" << is_reconstructable;
       // We pass an empty vector for inner IDs because we do not know the return
       // value of the task yet. If the task returns an ID(s), the worker will
       // publish the WaitForRefRemoved message that we are now a borrower for
@@ -330,6 +335,8 @@ std::optional<rpc::ErrorType> TaskManager::ResubmitTask(
       return rpc::ErrorType::TASK_CANCELLED;
     }
 
+    RAY_LOG(DEBUG).WithField(task_id);
+
     if (task_entry.spec.IsStreamingGenerator() &&
         task_entry.GetStatus() == rpc::TaskStatus::SUBMITTED_TO_WORKER) {
       if (task_entry.num_retries_left == 0) {
@@ -342,9 +349,13 @@ std::optional<rpc::ErrorType> TaskManager::ResubmitTask(
       should_queue_generator_resubmit = true;
     } else if (task_entry.GetStatus() != rpc::TaskStatus::FINISHED &&
                task_entry.GetStatus() != rpc::TaskStatus::FAILED) {
+      RAY_LOG(DEBUG).WithField(task_id)
+          << "Not resubmitting because task is not FINISHED or FAILED it is "
+          << task_entry.GetStatus();
       // Assuming the task retry is already submitted / running.
       return std::nullopt;
     } else {
+      RAY_LOG(DEBUG).WithField(task_id) << "Going to resubmit task now!";
       // Going to resubmit the task now.
       SetupTaskEntryForResubmit(task_entry);
     }
@@ -353,6 +364,8 @@ std::optional<rpc::ErrorType> TaskManager::ResubmitTask(
   }
 
   if (should_queue_generator_resubmit) {
+    RAY_LOG(DEBUG).WithField(task_id)
+        << "shuld_queue_generator_resubmit=" << should_queue_generator_resubmit;
     // Needs to be called outside of the lock to avoid deadlock.
     return queue_generator_resubmit_(spec)
                ? std::nullopt
@@ -740,11 +753,13 @@ bool TaskManager::HandleReportGeneratorItemReturns(
   RAY_LOG(DEBUG) << "Received an intermediate result of index " << item_index
                  << " generator_id: " << generator_id;
   auto backpressure_threshold = -1;
+  bool executed_for_reconstruction = false;
 
   {
     absl::MutexLock lock(&mu_);
     auto it = submissible_tasks_.find(task_id);
     if (it != submissible_tasks_.end()) {
+      executed_for_reconstruction = it->second.num_successful_executions > 0;
       backpressure_threshold = it->second.spec.GeneratorBackpressureNumObjects();
       if (it->second.spec.AttemptNumber() > attempt_number) {
         // Generator task reports can arrive at any time. If the first attempt
@@ -758,9 +773,7 @@ bool TaskManager::HandleReportGeneratorItemReturns(
     }
   }
 
-  // NOTE: If it is the first execution (e.g., CompletePendingTask has never been called),
-  // it is always empty.
-  const auto store_in_plasma_ids = GetTaskReturnObjectsToStoreInPlasma(task_id);
+  absl::flat_hash_set<ObjectID> store_in_plasma_ids;
 
   absl::MutexLock lock(&object_ref_stream_ops_mu_);
   auto stream_it = object_ref_streams_.find(generator_id);
@@ -788,10 +801,29 @@ bool TaskManager::HandleReportGeneratorItemReturns(
     }
     // When an object is reported, the object is ready to be fetched.
     reference_counter_.UpdateObjectPendingCreation(object_id, false);
+    bool in_plasma = return_object.in_plasma();
+    if (in_plasma) {
+      store_in_plasma_ids.emplace(object_id);
+    }
     HandleTaskReturn(object_id,
                      return_object,
                      NodeID::FromBinary(request.worker_addr().raylet_id()),
-                     /*store_in_plasma=*/store_in_plasma_ids.contains(object_id));
+                     /*store_in_plasma=*/in_plasma && !executed_for_reconstruction);
+  }
+
+  if (!executed_for_reconstruction) {
+    absl::MutexLock lock(&mu_);
+    auto it = submissible_tasks_.find(task_id);
+    if (it != submissible_tasks_.end()) {
+      if (it->second.num_successful_executions == 0) {
+        auto &task_spec = it->second.spec;
+        task_spec.SetNumStreamingGeneratorReturns(
+            task_spec.NumStreamingGeneratorReturns() + num_objects_written);
+        for (const auto &object_id : store_in_plasma_ids) {
+          it->second.reconstructable_return_ids.insert(object_id);
+        }
+      }
+    }
   }
 
   // Handle backpressure if needed.
@@ -859,9 +891,9 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
                                       bool is_application_error) {
   RAY_LOG(DEBUG) << "Completing task " << task_id;
 
-  bool first_execution = false;
+  bool first_successful_execution = false;
   const auto store_in_plasma_ids =
-      GetTaskReturnObjectsToStoreInPlasma(task_id, &first_execution);
+      GetTaskReturnObjectsToStoreInPlasma(task_id, &first_successful_execution);
   std::vector<ObjectID> dynamic_return_ids;
   std::vector<ObjectID> dynamic_returns_in_plasma;
   std::vector<ObjectID> direct_return_ids;
@@ -871,7 +903,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     const auto generator_id = ObjectID::FromBinary(reply.return_objects(0).object_id());
     for (const auto &return_object : reply.dynamic_return_objects()) {
       const auto object_id = ObjectID::FromBinary(return_object.object_id());
-      if (first_execution) {
+      if (first_successful_execution) {
         reference_counter_.AddDynamicReturn(object_id, generator_id);
         dynamic_return_ids.push_back(object_id);
       }
@@ -879,7 +911,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
                             return_object,
                             NodeID::FromBinary(worker_addr.raylet_id()),
                             store_in_plasma_ids.contains(object_id))) {
-        if (first_execution) {
+        if (first_successful_execution) {
           dynamic_returns_in_plasma.push_back(object_id);
         }
       }
@@ -910,39 +942,40 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     // task spec so that the worker will recreate them if the task gets
     // re-executed.
     // TODO(sang): Remove this logic once streaming generator is the default.
-    if (first_execution) {
+    if (first_successful_execution) {
       for (const auto &dynamic_return_id : dynamic_return_ids) {
         RAY_LOG(DEBUG) << "Task " << task_id << " produced dynamic return object "
                        << dynamic_return_id;
         spec.AddDynamicReturnId(dynamic_return_id);
       }
+
       for (const auto &dynamic_return_id : dynamic_returns_in_plasma) {
         it->second.reconstructable_return_ids.insert(dynamic_return_id);
       }
 
-      if (spec.IsStreamingGenerator()) {
-        // Upon the first complete execution, set the number of streaming
-        // generator returns.
-        auto num_streaming_generator_returns =
-            reply.streaming_generator_return_ids_size();
-        if (num_streaming_generator_returns > 0) {
-          spec.SetNumStreamingGeneratorReturns(num_streaming_generator_returns);
-          RAY_LOG(DEBUG) << "Completed streaming generator task " << spec.TaskId()
-                         << " has " << spec.NumStreamingGeneratorReturns()
-                         << " return objects.";
-          for (const auto &return_id_info : reply.streaming_generator_return_ids()) {
-            if (return_id_info.is_plasma_object()) {
-              // TODO(swang): It is possible that the dynamically returned refs
-              // have already been consumed by the caller and deleted. This can
-              // cause a memory leak of the task metadata, because we will
-              // never receive a callback from the ReferenceCounter to erase
-              // the task.
-              it->second.reconstructable_return_ids.insert(
-                  ObjectID::FromBinary(return_id_info.object_id()));
-            }
-          }
-        }
-      }
+      // if (spec.IsStreamingGenerator() && it->second.num_successful_executions > 0) {
+      //   // Upon the first complete execution, set the number of streaming
+      //   // generator returns.
+      //   auto num_streaming_generator_returns =
+      //       reply.streaming_generator_return_ids_size();
+      //   if (num_streaming_generator_returns > 0) {
+      //     spec.SetNumStreamingGeneratorReturns(num_streaming_generator_returns);
+      //     RAY_LOG(DEBUG) << "Completed streaming generator task " << spec.TaskId()
+      //                    << " has " << spec.NumStreamingGeneratorReturns()
+      //                    << " return objects.";
+      //     for (const auto &return_id_info : reply.streaming_generator_return_ids()) {
+      //       if (return_id_info.is_plasma_object()) {
+      //         // TODO(swang): It is possible that the dynamically returned refs
+      //         // have already been consumed by the caller and deleted. This can
+      //         // cause a memory leak of the task metadata, because we will
+      //         // never receive a callback from the ReferenceCounter to erase
+      //         // the task.
+      //         it->second.reconstructable_return_ids.insert(
+      //             ObjectID::FromBinary(return_id_info.object_id()));
+      //       }
+      //     }
+      //   }
+      // }
     }
 
     // Release the lineage for any non-plasma return objects.
@@ -992,12 +1025,12 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     }
   }
 
-  // If it is a streaming generator, mark the end of stream since the task is finished.
-  // We handle this logic here because the lock shouldn't be held while calling
-  // HandleTaskReturn.
+  // If it is a streaming generator, mark the end of stream since the task is
+  // finished. We handle this logic here because the lock shouldn't be held while
+  // calling HandleTaskReturn.
   if (spec.IsStreamingGenerator()) {
     const auto generator_id = ObjectID::FromBinary(reply.return_objects(0).object_id());
-    if (first_execution) {
+    if (first_successful_execution) {
       ObjectID last_ref_in_stream;
       MarkEndOfStream(generator_id, reply.streaming_generator_return_ids_size());
     } else {
@@ -1131,6 +1164,8 @@ void TaskManager::FailPendingTask(const TaskID &task_id,
   bool first_execution = false;
   const auto store_in_plasma_ids =
       GetTaskReturnObjectsToStoreInPlasma(task_id, &first_execution);
+  RAY_LOG(DEBUG) << "[FailPendingTask] store_in_plasma_ids.size()="
+                 << store_in_plasma_ids.size();
   {
     absl::MutexLock lock(&mu_);
     auto it = submissible_tasks_.find(task_id);
@@ -1254,6 +1289,8 @@ void TaskManager::RemoveFinishedTaskReferences(
     bool release_lineage,
     const rpc::Address &borrower_addr,
     const ReferenceCounter::ReferenceTableProto &borrowed_refs) {
+  RAY_LOG(DEBUG) << "[RemoveFinishedTaskReferences] release_lineage=" << release_lineage
+                 << ", borrower_addr=" << borrower_addr.DebugString();
   std::vector<ObjectID> plasma_dependencies;
   for (size_t i = 0; i < spec.NumArgs(); i++) {
     if (spec.ArgByRef(i)) {
@@ -1289,6 +1326,10 @@ void TaskManager::RemoveFinishedTaskReferences(
     }
   }
 
+  RAY_LOG(DEBUG) << "[RemoveFinishedTaskReferences] return_ids.size()="
+                 << return_ids.size()
+                 << ", plasma_dependencies.size()=" << plasma_dependencies.size();
+
   std::vector<ObjectID> deleted;
   reference_counter_.UpdateFinishedTaskReferences(return_ids,
                                                   plasma_dependencies,
@@ -1297,6 +1338,7 @@ void TaskManager::RemoveFinishedTaskReferences(
                                                   borrowed_refs,
                                                   &deleted);
   in_memory_store_.Delete(deleted);
+  RAY_LOG(DEBUG) << "[RemoveFinishedTaskReferences] deleted.size()=" << deleted.size();
 }
 
 int64_t TaskManager::RemoveLineageReference(const ObjectID &object_id,
@@ -1384,7 +1426,7 @@ absl::flat_hash_set<ObjectID> TaskManager::GetTaskReturnObjectsToStoreInPlasma(
     return {};
   }
   first_execution = it->second.num_successful_executions == 0;
-  if (!first_execution) {
+  if (!first_execution || it->second.spec.IsStreamingGenerator()) {
     store_in_plasma_ids = it->second.reconstructable_return_ids;
   }
   if (first_execution_out != nullptr) {
@@ -1400,9 +1442,13 @@ void TaskManager::MarkTaskReturnObjectsFailed(
     const absl::flat_hash_set<ObjectID> &store_in_plasma_ids) {
   const TaskID task_id = spec.TaskId();
   RayObject error(error_type, ray_error_info);
-  RAY_LOG(DEBUG) << "Treat task as failed. task_id: " << task_id
-                 << ", error_type: " << ErrorType_Name(error_type);
   int64_t num_returns = spec.NumReturns();
+  RAY_LOG(DEBUG) << "Treat task as failed. task_id: " << task_id
+                 << ", error_type: " << ErrorType_Name(error_type)
+                 << "num_returns=" << num_returns
+                 << ", stored_in_plasma_ids.size()=" << store_in_plasma_ids.size()
+                 << ", returns_dynamic=" << spec.ReturnsDynamic()
+                 << ", is_streaming_gen=" << spec.IsStreamingGenerator();
   for (int i = 0; i < num_returns; i++) {
     const auto object_id = ObjectID::FromIndex(task_id, /*index=*/i + 1);
     if (store_in_plasma_ids.contains(object_id)) {
@@ -1436,8 +1482,20 @@ void TaskManager::MarkTaskReturnObjectsFailed(
     // can overwrite them. See the test test_dynamic_generator_reconstruction_fails
     // for more details.
     auto num_streaming_generator_returns = spec.NumStreamingGeneratorReturns();
+    absl::MutexLock object_ref_stream_ops_lock(&object_ref_stream_ops_mu_);
+    auto it = object_ref_streams_.find(generator_id);
+    if (it != object_ref_streams_.end()) {
+      num_streaming_generator_returns =
+          std::max(num_streaming_generator_returns,
+                   static_cast<size_t>(it->second.LastConsumedIndex() + 1));
+    }
+    RAY_LOG(DEBUG) << "[MarkTaskReturnObjectsFailed] StreamingGenerator with gen_id="
+                   << generator_id << ", num_returns=" << num_streaming_generator_returns;
     for (size_t i = 0; i < num_streaming_generator_returns; i++) {
-      const auto generator_return_id = spec.StreamingGeneratorReturnId(i);
+      const ObjectID generator_return_id = spec.StreamingGeneratorReturnId(i);
+      RAY_LOG(DEBUG) << "[MarkTaskReturnObjectsFailed] i=" << i
+                     << ", gen_return_id=" << generator_return_id << ", stored_in_plasma="
+                     << store_in_plasma_ids.contains(generator_return_id);
       if (store_in_plasma_ids.contains(generator_return_id)) {
         put_in_local_plasma_callback_(error, generator_return_id);
       } else {
