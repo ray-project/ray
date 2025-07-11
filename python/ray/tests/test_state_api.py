@@ -3,26 +3,27 @@ import time
 import json
 import sys
 import signal
+import yaml
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from typing import List
 from unittest.mock import MagicMock, AsyncMock, patch
-import yaml
 
 from click.testing import CliRunner
 import pytest
 import pytest_asyncio
+
+import ray
 from ray._private.state_api_test_utils import (
     get_state_api_manager,
     create_api_options,
     verify_schema,
 )
-from ray.util.state import get_job
 from ray.dashboard.modules.job.pydantic_models import JobDetails
+from ray.util.state import get_job
 from ray.util.state.common import Humanify
-
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
-import ray
+from ray.cluster_utils import Cluster
 import ray.dashboard.consts as dashboard_consts
 import ray._private.state as global_state
 import ray._private.ray_constants as ray_constants
@@ -2964,11 +2965,11 @@ def test_network_failure(shutdown_only):
     a = [f.remote() for _ in range(4)]  # noqa
     wait_for_condition(lambda: len(list_tasks()) == 4)
 
-    # Kill raylet so that list_tasks will have network error on querying raylets.
+    # Kill raylet so that list_objects will have a network error on querying raylets.
     ray._private.worker._global_node.kill_raylet()
 
-    with pytest.raises(ConnectionError):
-        list_tasks(_explain=True)
+    with pytest.raises(RayStateApiException, match="unexpected network issue"):
+        list_objects()
 
 
 def test_network_partial_failures(monkeypatch, ray_start_cluster):
@@ -3798,6 +3799,35 @@ def test_hang_driver_has_no_is_running_task(monkeypatch, ray_start_cluster):
     all_job_info = client.get_all_job_info()
     assert list(all_job_info.keys()) == [my_job_id]
     assert not all_job_info[my_job_id].HasField("is_running_tasks")
+
+
+def test_address_defaults_to_connected_ray_instance(shutdown_only):
+    """
+    If there are multiple local instances and a state API is invoked from within a
+    connected worker, the address should default to the connected instance.
+    """
+    cluster_1 = Cluster()
+    cluster_1_dashboard_port = find_free_port()
+    cluster_1.add_node(dashboard_port=cluster_1_dashboard_port)
+
+    cluster_2 = Cluster()
+    cluster_2_dashboard_port = find_free_port()
+    cluster_2.add_node(dashboard_port=cluster_2_dashboard_port)
+
+    # Connect the driver to cluster_1.
+    ray.init(cluster_1.address)
+
+    # Call list_jobs() with no address and "auto", both should connect to cluster_1.
+    [job] = list_jobs()
+    assert job.job_id == ray.get_runtime_context().get_job_id()
+    [job] = list_jobs(address="auto")
+    assert job.job_id == ray.get_runtime_context().get_job_id()
+
+    # Sanity checks: call list_jobs() with cluster_1 and cluster_2 addresses specified.
+    cluster_1_jobs = list_jobs(address=f"http://localhost:{cluster_1_dashboard_port}")
+    assert cluster_1_jobs == [job]
+    cluster_2_jobs = list_jobs(address=f"http://localhost:{cluster_2_dashboard_port}")
+    assert len(cluster_2_jobs) == 0
 
 
 if __name__ == "__main__":
