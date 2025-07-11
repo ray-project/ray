@@ -152,7 +152,7 @@ void GcsHealthCheckManager::HealthCheckContext::StartHealthCheck() {
 
   // grpc context and health check response are dedicated to one single async request.
   auto context = std::make_shared<grpc::ClientContext>();
-  auto response = std::make_shared<::grpc::health::v1::HealthCheckResponse>();
+  auto response = std::make_shared<HealthCheckResponse>();
 
   // Get the context and response pointer before async call, since the order of function
   // arguments resolution is non-deterministic.

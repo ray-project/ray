@@ -108,8 +108,8 @@ class GcsHealthCheckManager : public std::enable_shared_from_this<GcsHealthCheck
   /// It can be updated to support streaming call for efficiency.
   class HealthCheckContext {
    public:
-    HealthCheckContext(std::shared_ptr<GcsHealthCheckManager> manager,
-                       std::shared_ptr<grpc::Channel> channel,
+    HealthCheckContext(const std::shared_ptr<GcsHealthCheckManager> &manager,
+                       const std::shared_ptr<grpc::Channel> &channel,
                        NodeID node_id)
         : manager_(manager),
           node_id_(node_id),
