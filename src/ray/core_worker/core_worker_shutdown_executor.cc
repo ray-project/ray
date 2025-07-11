@@ -85,9 +85,14 @@ void CoreWorkerShutdownExecutor::ExecuteForceShutdown(const std::string &exit_ty
                                                       const std::string &detail) {
   RAY_LOG(WARNING) << "Executing force shutdown: " << exit_type << " - " << detail;
 
+  RAY_LOG(WARNING) << "Force shutdown: About to kill child processes";
   KillChildProcesses();
+  RAY_LOG(WARNING) << "Force shutdown: About to disconnect from services";
   DisconnectFromServices(exit_type, detail);
+  RAY_LOG(WARNING) << "Force shutdown: About to call QuickExit()";
   QuickExit();
+  RAY_LOG(WARNING)
+      << "Force shutdown: This line should never be reached after QuickExit()";
 }
 
 void CoreWorkerShutdownExecutor::ExecuteWorkerExit(const std::string &exit_type,
@@ -282,7 +287,9 @@ void CoreWorkerShutdownExecutor::DisconnectFromServices(const std::string &exit_
 
 void CoreWorkerShutdownExecutor::QuickExit() {
   RAY_LOG(WARNING) << "Quick exit - terminating process immediately";
+  RAY_LOG(WARNING) << "Quick exit - calling std::quick_exit(1)";
   std::quick_exit(1);
+  RAY_LOG(WARNING) << "Quick exit - this line should never be reached";
 }
 }  // namespace core
 }  // namespace ray
