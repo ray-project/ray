@@ -609,6 +609,10 @@ def test_unify_schemas_duplicate_fields(unify_schemas_duplicate_fields_schema):
         unify_schemas([unify_schemas_duplicate_fields_schema])
 
 
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("17.0.0"),
+    reason="Requires PyArrow version 17 or higher",
+)
 def test_unify_schemas_incompatible_tensor_dtypes(
     unify_schemas_incompatible_tensor_schemas,
 ):
