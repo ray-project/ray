@@ -406,6 +406,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             int64_t generator_backpressure_num_objects,
             CTensorTransport tensor_transport
         ) nogil) task_execution_callback
+        (void(const CObjectID &) nogil) free_actor_object_callback
         (function[void()]() nogil) initialize_thread_callback
         (CRayStatus() nogil) check_signals
         (void(c_bool) nogil) gc_collect
