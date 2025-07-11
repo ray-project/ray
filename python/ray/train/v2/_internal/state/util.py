@@ -9,7 +9,7 @@ from ray.train.v2._internal.state.schema import (
 )
 from ray.util.state import get_actor
 
-_GRACEFUL_ABORT_STATUS_DETAIL = "User gracefully aborted run with SIGINT."
+_GRACEFUL_ABORT_STATUS_DETAIL = "Run aborted due to user interrupt (SIGINT)."
 _DEAD_CONTROLLER_ABORT_STATUS_DETAIL = (
     "Run aborted because the driver process exited unexpectedly."
 )
