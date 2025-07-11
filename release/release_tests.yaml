@@ -2105,7 +2105,7 @@
 # Train tests
 ########################
 
-- name: training_ingest_benchmark-task=image_classification{{order}}
+- name: training_ingest_benchmark-task=image_classification_{{order}}
   group: Train tests
   working_dir: train_tests/benchmark
 
