@@ -27,7 +27,7 @@ class TestCli(unittest.TestCase):
 def _uv_binary():
     system = platform.system()
     if system != "Linux" or platform.processor() != "x86_64":
-        raise ValueError(f"Unsupported platform: {system}")
+        raise RuntimeError(f"Unsupported platform: {system}")
     return _runfiles.Rlocation("uv_x86_64/uv-x86_64-unknown-linux-gnu/uv")
 
 
