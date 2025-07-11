@@ -26,7 +26,7 @@ from ray._common.utils import get_or_create_event_loop
 from ray._private.ray_constants import env_integer
 from ray.data._expression_evaluator import eval_expr
 from ray.data._internal.compute import get_compute
-from ray.data._internal.execution.interfaces import PhysicalOperator
+from ray.data._internal.execution.interfaces import PhysicalOperator, OperatorOptions
 from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.map_transformer import (
@@ -199,6 +199,7 @@ def plan_streaming_repartition_op(
         ray_remote_args=op._ray_remote_args,
         ray_remote_args_fn=op._ray_remote_args_fn,
         supports_fusion=False,
+        operator_options=OperatorOptions(disable_fusion=True),
     )
 
 
@@ -325,6 +326,7 @@ def plan_udf_map_op(
         min_rows_per_bundle=op._min_rows_per_bundled_input,
         ray_remote_args_fn=op._ray_remote_args_fn,
         ray_remote_args=op._ray_remote_args,
+        operator_options=op._operator_options,
     )
 
 

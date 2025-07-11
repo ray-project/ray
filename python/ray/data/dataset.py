@@ -51,7 +51,7 @@ from ray.data._internal.datasource.sql_datasink import SQLDatasink
 from ray.data._internal.datasource.tfrecords_datasink import TFRecordDatasink
 from ray.data._internal.datasource.webdataset_datasink import WebDatasetDatasink
 from ray.data._internal.equalize import _equalize
-from ray.data._internal.execution.interfaces import RefBundle
+from ray.data._internal.execution.interfaces import RefBundle, OperatorOptions
 from ray.data._internal.execution.interfaces.ref_bundle import (
     _ref_bundles_iterator_to_block_refs_list,
 )
@@ -286,6 +286,7 @@ class Dataset:
         num_gpus: Optional[float] = None,
         memory: Optional[float] = None,
         concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]] = None,
+        operator_options: Optional[OperatorOptions] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         **ray_remote_args,
     ) -> "Dataset":
@@ -378,6 +379,10 @@ class Dataset:
                 * If ``fn`` is a class and ``concurrency`` isn't set (default), this
                   method raises an error.
 
+            operator_options: Options for configuring the operator. See
+            :class:`~ray.data._internal.execution.interfaces.OperatorOptions` for more
+            details.
+
             ray_remote_args_fn: A function that returns a dictionary of remote args
                 passed to each map worker. The purpose of this argument is to generate
                 dynamic arguments for each actor/task, and will be called each time prior
@@ -420,6 +425,7 @@ class Dataset:
             fn_constructor_args=fn_constructor_args,
             fn_constructor_kwargs=fn_constructor_kwargs,
             compute=compute,
+            operator_options=operator_options,
             ray_remote_args_fn=ray_remote_args_fn,
             ray_remote_args=ray_remote_args,
         )
@@ -470,6 +476,7 @@ class Dataset:
         num_gpus: Optional[float] = None,
         memory: Optional[float] = None,
         concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]] = None,
+        operator_options: Optional[OperatorOptions] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         **ray_remote_args,
     ) -> "Dataset":
@@ -640,7 +647,9 @@ class Dataset:
 
                 * If ``fn`` is a class and ``concurrency`` isn't set (default), this
                   method raises an error.
-
+            operator_options: Options for configuring the operator. See
+            :class:`~ray.data._internal.execution.interfaces.OperatorOptions` for more
+            details.
             ray_remote_args_fn: A function that returns a dictionary of remote args
                 passed to each map worker. The purpose of this argument is to generate
                 dynamic arguments for each actor/task, and will be called each time prior
@@ -709,6 +718,7 @@ class Dataset:
             num_gpus=num_gpus,
             memory=memory,
             concurrency=concurrency,
+            operator_options=operator_options,
             ray_remote_args_fn=ray_remote_args_fn,
             **ray_remote_args,
         )
@@ -729,6 +739,7 @@ class Dataset:
         num_gpus: Optional[float],
         memory: Optional[float],
         concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]],
+        operator_options: Optional[OperatorOptions],
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]],
         **ray_remote_args,
     ):
@@ -782,6 +793,7 @@ class Dataset:
             fn_constructor_args=fn_constructor_args,
             fn_constructor_kwargs=fn_constructor_kwargs,
             compute=compute,
+            operator_options=operator_options,
             ray_remote_args_fn=ray_remote_args_fn,
             ray_remote_args=ray_remote_args,
         )

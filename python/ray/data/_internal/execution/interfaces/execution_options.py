@@ -1,6 +1,7 @@
 import math
 import os
 from typing import Any, Dict, List, Optional, Union
+from dataclasses import dataclass
 
 from .common import NodeIdStr
 from ray.data._internal.execution.util import memory_string
@@ -372,3 +373,11 @@ def safe_round(
         return value
     else:
         return round(value, ndigits)
+
+
+@dataclass
+class OperatorOptions:
+    """Options for configuring individual operators."""
+
+    # Whether to disable fusion for this operator. By default, fusion is enabled.
+    disable_fusion: bool = False
