@@ -124,9 +124,7 @@ class GcsHealthCheckManager : public std::enable_shared_from_this<GcsHealthCheck
 
     void Stop();
 
-    void SetLatestHealthTimestamp(absl::Time ts) {
-      lastest_known_healthy_timestamp_ = ts;
-    }
+    void SetLatestHealthTimestamp(absl::Time ts) { latest_known_healthy_timestamp_ = ts; }
 
    private:
     void StartHealthCheck();
@@ -136,7 +134,7 @@ class GcsHealthCheckManager : public std::enable_shared_from_this<GcsHealthCheck
     NodeID node_id_;
 
     // Timestamp for latest known status when node is healthy.
-    absl::Time lastest_known_healthy_timestamp_ = absl::InfinitePast();
+    absl::Time latest_known_healthy_timestamp_ = absl::InfinitePast();
 
     // Whether the health check has stopped.
     bool stopped_ = false;
