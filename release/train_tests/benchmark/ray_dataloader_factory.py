@@ -34,9 +34,6 @@ class RayDataLoaderFactory(BaseDataLoaderFactory):
             dataloader_config.actor_locality_enabled
         )
         data_context.execution_options.preserve_order = dataloader_config.preserve_order
-        data_context.override_object_store_memory_limit_fraction = (
-            dataloader_config.override_object_store_memory_limit_fraction
-        )
 
     @abstractmethod
     def get_ray_datasets(self) -> Dict[str, Dataset]:
