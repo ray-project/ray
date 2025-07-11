@@ -1,9 +1,7 @@
 import abc
 from typing import AsyncGenerator, Optional
 
-from transformers.dynamic_module_utils import init_hf_modules
 from ray.llm._internal.common.models import DiskMultiplexConfig
-
 from ray.llm._internal.serve.configs.server_models import (
     GenerationRequest,
     LLMConfig,
