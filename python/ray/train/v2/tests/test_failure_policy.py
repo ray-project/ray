@@ -40,8 +40,8 @@ def test_max_failures(max_failures):
         [RuntimeError(f"Worker {i} failed") if i % 2 == 0 else None for i in range(8)]
     )
     for _ in range(max_failures):
-        assert policy.make_decision(status) == FailureDecision.RESTART
-    assert policy.make_decision(status) == FailureDecision.RAISE
+        assert policy.make_decision(status.errors) == FailureDecision.RETRY
+    assert policy.make_decision(status.errors) == FailureDecision.RAISE
 
 
 @pytest.mark.parametrize("scheduling_failure_limit", [0, 1, 10])
@@ -51,8 +51,8 @@ def test_reschedule(scheduling_failure_limit):
     )
     status = _worker_group_resize_status_from_errors()
     for _ in range(scheduling_failure_limit):
-        assert policy.make_decision(status) == FailureDecision.RESCHEDULE
-    assert policy.make_decision(status) == FailureDecision.RAISE
+        assert policy.make_decision(status.error) == FailureDecision.RETRY
+    assert policy.make_decision(status.error) == FailureDecision.RAISE
 
 
 def test_infinite_retry():
@@ -61,20 +61,20 @@ def test_infinite_retry():
         [RuntimeError(f"Worker {i} failed") if i % 2 == 0 else None for i in range(8)]
     )
     for _ in range(10):
-        assert policy.make_decision(status) == FailureDecision.RESTART
+        assert policy.make_decision(status.errors) == FailureDecision.RETRY
 
 
 def test_non_retryable_scheduling_error():
     policy = create_failure_policy(FailureConfig(scheduling_failure_limit=10))
     status = _non_retryable_scheduling_error()
-    assert policy.make_decision(status) == FailureDecision.RAISE
+    assert policy.make_decision(status.error) == FailureDecision.RAISE
 
 
 def test_infinite_reschedule():
     policy = create_failure_policy(FailureConfig(scheduling_failure_limit=-1))
     status = _worker_group_resize_status_from_errors()
     for _ in range(10):
-        assert policy.make_decision(status) == FailureDecision.RESCHEDULE
+        assert policy.make_decision(status.error) == FailureDecision.RETRY
 
 
 if __name__ == "__main__":

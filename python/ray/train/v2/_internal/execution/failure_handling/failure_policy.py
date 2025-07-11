@@ -1,26 +1,19 @@
 import abc
 from enum import Enum
-from typing import Union
+from typing import Dict, Union
 
-from ray.train.v2._internal.execution.worker_group import (
-    WorkerGroupPollStatus,
-    WorkerGroupSchedulingStatus,
-)
 from ray.train.v2.api.config import FailureConfig
 
 
 class FailureDecision(Enum):
-    # Restart the running worker group.
-    RESTART = "RESTART"
-    # Reschedule the worker group that is in the scheduling stage.
-    RESCHEDULE = "RESCHEDULE"
+    RETRY = "RETRY"
     RAISE = "RAISE"
     NOOP = "NOOP"
 
 
 class FailurePolicy(abc.ABC):
     """A policy that determines how to handle user and system failures.
-    FailurePolicy will handle the resize failure and worker group poll failure.
+    FailurePolicy will handle the scheduling failure and worker group poll failure.
 
     This can be used to implement fault tolerance and error recovery.
     """
@@ -31,6 +24,6 @@ class FailurePolicy(abc.ABC):
     @abc.abstractmethod
     def make_decision(
         self,
-        worker_group_status: Union[WorkerGroupPollStatus, WorkerGroupSchedulingStatus],
+        scheduling_or_poll_error: Union[Exception, Dict[int, Exception]],
     ) -> FailureDecision:
         raise NotImplementedError

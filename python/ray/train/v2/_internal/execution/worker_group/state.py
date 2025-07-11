@@ -148,6 +148,3 @@ class WorkerGroupSchedulingStatus:
     @property
     def has_error(self) -> bool:
         return self.error is not None
-
-    def get_error_string(self) -> str:
-        return f"{self.error}"
