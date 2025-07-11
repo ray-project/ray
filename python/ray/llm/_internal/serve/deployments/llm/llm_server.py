@@ -535,7 +535,6 @@ class LLMServer(_LLMServerBase):
             stream_batching_interval_ms = MODEL_RESPONSE_BATCH_TIMEOUT_MS
         return stream_batching_interval_ms if stream else None
 
-
     async def _maybe_resolve_lora_from_multiplex(self) -> Optional[DiskMultiplexConfig]:
         """Handle the lora model for the request."""
         multiplexed_model_id = serve.get_multiplexed_model_id()
@@ -580,9 +579,7 @@ class LLMServer(_LLMServerBase):
             )
 
         # 2. Predict using the engine
-        gen = self._predict(
-            prompt=prompt, stream=request.stream
-        )
+        gen = self._predict(prompt=prompt, stream=request.stream)
 
         # 3. Convert raw LLM responses to OpenAI format
         processor_method = (
