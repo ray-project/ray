@@ -15,10 +15,6 @@ from ray.llm._internal.serve.configs.error_handling import ValidationError
 from ray.llm._internal.serve.configs.openai_api_models_patch import (
     ResponseFormatJsonObject,
 )
-from ray.llm._internal.serve.deployments.llm.multiplex.lora_model_loader import (
-    LoraModelLoader,
-)
-
 from ray.llm._internal.serve.configs.server_models import (
     DiskMultiplexConfig,
     FinishReason,
@@ -29,6 +25,9 @@ from ray.llm._internal.serve.configs.server_models import (
     Prompt,
 )
 from ray.llm._internal.serve.deployments.llm.llm_engine import LLMEngine
+from ray.llm._internal.serve.deployments.llm.multiplex.lora_model_loader import (
+    LoraModelLoader,
+)
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_engine import VLLMEngine
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_engine_stats import (
     VLLMEngineStats,
