@@ -38,6 +38,7 @@ DEFAULT_UV_FLAGS = [
     "--quiet",
 ]
 
+
 @click.group(name="raydepsets")
 def cli():
     """Manage Python dependency sets."""
@@ -54,6 +55,7 @@ def load(config_path: str, workspace_dir: str, name: str):
         manager.execute_single(manager.get_depset(name))
     else:
         manager.execute()
+
 
 
 class DependencySetManager:
