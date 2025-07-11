@@ -1,4 +1,5 @@
 import asyncio
+import concurrent.futures
 import inspect
 import json
 import logging
@@ -331,6 +332,7 @@ class ASGIReceiveProxy:
         scope: Scope,
         request_metadata: RequestMetadata,
         receive_asgi_messages: Callable[[RequestMetadata], Awaitable[bytes]],
+        fetch_loop: asyncio.AbstractEventLoop,
     ):
         self._type = scope["type"]  # Either 'http' or 'websocket'.
         # Lazy init the queue to ensure it is created in the user code event loop.
@@ -338,6 +340,7 @@ class ASGIReceiveProxy:
         self._request_metadata = request_metadata
         self._receive_asgi_messages = receive_asgi_messages
         self._disconnect_message = None
+        self._fetch_loop = fetch_loop
 
     def _get_default_disconnect_message(self) -> Message:
         """Return the appropriate disconnect message based on the connection type.
@@ -364,7 +367,17 @@ class ASGIReceiveProxy:
 
         return self._queue
 
-    async def fetch_until_disconnect(self):
+    def fetch_until_disconnect_task(
+        self,
+    ) -> Union[asyncio.Task, concurrent.futures.Future]:
+        if asyncio.get_running_loop() == self._fetch_loop:
+            return asyncio.create_task(self._fetch_until_disconnect())
+        else:
+            return asyncio.run_coroutine_threadsafe(
+                self._fetch_until_disconnect(), self._fetch_loop
+            )
+
+    async def _fetch_until_disconnect(self):
         """Fetch messages repeatedly until a disconnect message is received.
 
         If a disconnect message is received, this function exits and returns it.
