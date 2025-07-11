@@ -3,16 +3,17 @@ import re
 import sys
 import time
 from copy import copy
+from functools import partial
+from typing import List
 
 import httpx
 import pytest
 
 import ray
-import ray._private.state
 import ray.actor
 from ray import serve
 from ray._common.test_utils import SignalActor, wait_for_condition
-from ray.serve._private.common import ReplicaID
+from ray.serve._private.common import DeploymentID, ReplicaID
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
 from ray.serve._private.test_utils import (
     check_num_replicas_eq,
@@ -35,6 +36,14 @@ def check_log_file(log_file: str, expected_regex: list):
         for regex in expected_regex:
             assert re.findall(regex, s) != [], f"Did not find pattern '{regex}' in {s}"
     return True
+
+
+def check_deployments_dead(deployment_ids: List[DeploymentID]):
+    prefixes = [f"{id.app_name}#{id.name}" for id in deployment_ids]
+    actor_names = [
+        actor["name"] for actor in list_actors(filters=[("state", "=", "ALIVE")])
+    ]
+    return all(f"ServeReplica::{p}" not in actor_names for p in prefixes)
 
 
 class TestDeploywithLoggingConfig:
@@ -775,6 +784,44 @@ def test_deploy_with_route_prefix_conflict(serve_instance):
     wait_for_condition(
         lambda: httpx.get("http://localhost:8000/app2").text == "wonderful world"
     )
+
+
+def test_update_config_graceful_shutdown_timeout(serve_instance):
+    """Check that replicas stay alive when graceful_shutdown_timeout_s is updated"""
+    client = serve_instance
+
+    config_template = {
+        "import_path": "ray.serve.tests.test_config_files.pid.node",
+        "deployments": [{"name": "f", "graceful_shutdown_timeout_s": 1000}],
+    }
+
+    # Deploy first time
+    client.deploy_apps(ServeDeploySchema.parse_obj({"applications": [config_template]}))
+    wait_for_condition(check_running, timeout=15)
+    handle = serve.get_app_handle(SERVE_DEFAULT_APP_NAME)
+
+    # Start off with signal ready, and send query
+    handle.send.remote().result()
+    pid1 = handle.remote().result()[0]
+    print("PID of replica after first deployment:", pid1)
+
+    # Redeploy with shutdown timeout set to 5 seconds
+    config_template["deployments"][0]["graceful_shutdown_timeout_s"] = 5
+    client.deploy_apps(ServeDeploySchema.parse_obj({"applications": [config_template]}))
+    wait_for_condition(check_running, timeout=15)
+
+    pid2 = handle.remote().result()[0]
+    assert pid1 == pid2
+    print("PID of replica after redeployment:", pid2)
+
+    # Send blocking query
+    handle.send.remote(clear=True)
+    handle.remote()
+    # Try to delete deployment, should be blocked until the timeout at 5 seconds
+    client.delete_apps([SERVE_DEFAULT_APP_NAME], blocking=False)
+    # Replica should be dead within 10 second timeout, which means
+    # graceful_shutdown_timeout_s was successfully updated lightweightly
+    wait_for_condition(partial(check_deployments_dead, [DeploymentID(name="f")]))
 
 
 if __name__ == "__main__":

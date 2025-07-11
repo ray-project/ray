@@ -19,7 +19,6 @@ from collections import defaultdict
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from dataclasses import dataclass
 from datetime import datetime
-from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 import requests
@@ -30,7 +29,6 @@ import ray._private.gcs_utils as gcs_utils
 import ray._private.memory_monitor as memory_monitor
 import ray._private.services
 import ray._private.services as services
-import ray._private.usage.usage_lib as ray_usage_lib
 import ray._private.utils
 from ray._common.test_utils import wait_for_condition
 from ray._common.utils import get_or_create_event_loop
@@ -1974,89 +1972,6 @@ def reset_autoscaler_v2_enabled_cache():
     import ray.autoscaler.v2.utils as u
 
     u.cached_is_autoscaler_v2 = None
-
-
-def skip_flaky_core_test_premerge(reason: str):
-    """
-    Decorator to skip a test if it is flaky (e.g. in premerge)
-
-    Default we will skip the flaky test if not specified otherwise in
-    CI with CI_SKIP_FLAKY_TEST="0"
-    """
-    import pytest
-
-    def wrapper(func):
-        return pytest.mark.skipif(
-            os.environ.get("CI_SKIP_FLAKY_TEST", "1") == "1", reason=reason
-        )(func)
-
-    return wrapper
-
-
-def _get_library_usages() -> Set[str]:
-    return set(
-        ray_usage_lib.get_library_usages_to_report(
-            ray.experimental.internal_kv.internal_kv_get_gcs_client()
-        )
-    )
-
-
-def _get_extra_usage_tags() -> Dict[str, str]:
-    return ray_usage_lib.get_extra_usage_tags_to_report(
-        ray.experimental.internal_kv.internal_kv_get_gcs_client()
-    )
-
-
-class TelemetryCallsite(Enum):
-    DRIVER = "driver"
-    ACTOR = "actor"
-    TASK = "task"
-
-
-def check_library_usage_telemetry(
-    use_lib_fn: Callable[[], None],
-    *,
-    callsite: TelemetryCallsite,
-    expected_library_usages: List[Set[str]],
-    expected_extra_usage_tags: Optional[Dict[str, str]] = None,
-):
-    """Helper for writing tests to validate library usage telemetry.
-
-    `use_lib_fn` is a callable that will be called from the provided callsite.
-    After calling it, the telemetry data to export will be validated against
-    expected_library_usages and expected_extra_usage_tags.
-    """
-    assert len(_get_library_usages()) == 0, _get_library_usages()
-
-    if callsite == TelemetryCallsite.DRIVER:
-        use_lib_fn()
-    elif callsite == TelemetryCallsite.ACTOR:
-
-        @ray.remote
-        class A:
-            def __init__(self):
-                use_lib_fn()
-
-        a = A.remote()
-        ray.get(a.__ray_ready__.remote())
-    elif callsite == TelemetryCallsite.TASK:
-
-        @ray.remote
-        def f():
-            use_lib_fn()
-
-        ray.get(f.remote())
-    else:
-        assert False, f"Unrecognized callsite: {callsite}"
-
-    library_usages = _get_library_usages()
-    extra_usage_tags = _get_extra_usage_tags()
-
-    assert library_usages in expected_library_usages, library_usages
-    if expected_extra_usage_tags:
-        assert all(
-            [extra_usage_tags[k] == v for k, v in expected_extra_usage_tags.items()]
-        ), extra_usage_tags
 
 
 def _terminate_ec2_instance(ip):

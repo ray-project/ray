@@ -466,7 +466,14 @@ class PrometheusStatLogger(StatLoggerBase):
         self.metrics.gauge_scheduler_running.set(scheduler_stats.num_running_reqs)
         self.metrics.gauge_scheduler_waiting.set(scheduler_stats.num_waiting_reqs)
 
-        self.metrics.gauge_gpu_cache_usage.set(scheduler_stats.gpu_cache_usage)
+        # https://github.com/vllm-project/vllm/pull/18354 (part of vllm 0.9.2)
+        # renamed gpu_cache_usage to kv_cache_usage.
+        kv_cache_usage = (
+            scheduler_stats.kv_cache_usage
+            if hasattr(scheduler_stats, "kv_cache_usage")
+            else scheduler_stats.gpu_cache_usage
+        )
+        self.metrics.gauge_gpu_cache_usage.set(kv_cache_usage)
 
         self.metrics.counter_gpu_prefix_cache_queries.inc(
             scheduler_stats.prefix_cache_stats.queries

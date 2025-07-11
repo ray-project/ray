@@ -8,7 +8,6 @@ import httpx
 import pytest
 
 import ray
-import ray._private.state
 import ray.actor
 from ray import serve
 from ray._common.test_utils import SignalActor, wait_for_condition
@@ -20,6 +19,7 @@ from ray.serve._private.utils import get_head_node_id
 from ray.serve.context import _get_global_client
 from ray.serve.schema import ProxyStatus, ServeInstanceDetails
 from ray.tests.conftest import call_ray_stop_only  # noqa: F401
+from ray.util.state import list_actors
 
 
 @pytest.fixture
@@ -287,7 +287,7 @@ def test_autoscaler_shutdown_node_http_everynode(
     serve.run(A.bind(), name="app_f")
 
     # 2 proxies, 1 controller, 2 replicas.
-    wait_for_condition(lambda: len(ray._private.state.actors()) == 5)
+    wait_for_condition(lambda: len(list_actors()) == 5)
     assert len(ray.nodes()) == 2
 
     # Stop all deployment replicas.
@@ -295,15 +295,7 @@ def test_autoscaler_shutdown_node_http_everynode(
 
     # The http proxy on worker node should exit as well.
     wait_for_condition(
-        lambda: len(
-            list(
-                filter(
-                    lambda a: a["State"] == "ALIVE",
-                    ray._private.state.actors().values(),
-                )
-            )
-        )
-        == 2
+        lambda: len(list_actors(filters=[("STATE", "=", "ALIVE")])) == 2,
     )
 
     client = _get_global_client()
@@ -356,7 +348,7 @@ def test_drain_and_undrain_http_proxy_actors(
     serve.run(HelloModel.options(num_replicas=2).bind())
 
     # 3 proxies, 1 controller, 2 replicas.
-    wait_for_condition(lambda: len(ray._private.state.actors()) == 6)
+    wait_for_condition(lambda: len(list_actors()) == 6)
     assert len(ray.nodes()) == 3
 
     client = _get_global_client()
@@ -435,7 +427,7 @@ def test_controller_shutdown_gracefully(
     serve.run(target=model)
 
     # Ensure total actors of 2 proxies, 1 controller, and 2 replicas
-    wait_for_condition(lambda: len(ray._private.state.actors()) == 5)
+    wait_for_condition(lambda: len(list_actors()) == 5)
     assert len(ray.nodes()) == 2
 
     # Call `graceful_shutdown()` on the controller, so it will start shutdown.
@@ -450,9 +442,7 @@ def test_controller_shutdown_gracefully(
 
     # Ensure the all resources are shutdown.
     wait_for_condition(
-        lambda: all(
-            [actor["State"] == "DEAD" for actor in ray._private.state.actors().values()]
-        )
+        lambda: len(list_actors(filters=[("STATE", "=", "ALIVE")])) == 0,
     )
 
     # Clean up serve.
@@ -496,7 +486,7 @@ def test_client_shutdown_gracefully_when_timeout(
     serve.run(target=model)
 
     # Ensure total actors of 2 proxies, 1 controller, and 2 replicas
-    wait_for_condition(lambda: len(ray._private.state.actors()) == 5)
+    wait_for_condition(lambda: len(list_actors()) == 5)
     assert len(ray.nodes()) == 2
 
     # Ensure client times out if the controller does not shutdown within timeout.
@@ -510,9 +500,7 @@ def test_client_shutdown_gracefully_when_timeout(
 
     # Ensure the all resources are shutdown gracefully.
     wait_for_condition(
-        lambda: all(
-            [actor["State"] == "DEAD" for actor in ray._private.state.actors().values()]
-        ),
+        lambda: len(list_actors(filters=[("STATE", "=", "ALIVE")])) == 0,
     )
 
     # Clean up serve.
@@ -543,9 +531,7 @@ def test_serve_shut_down_without_duplicated_logs(
 
     # Ensure the all resources are shutdown gracefully.
     wait_for_condition(
-        lambda: all(
-            [actor["State"] == "DEAD" for actor in ray._private.state.actors().values()]
-        ),
+        lambda: len(list_actors(filters=[("STATE", "=", "ALIVE")])) == 0,
     )
 
     all_serve_logs = ""
