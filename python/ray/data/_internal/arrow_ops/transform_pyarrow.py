@@ -148,66 +148,6 @@ def take_table(
     return table
 
 
-def _promote_tensor_types(
-    field_types: List[Optional["pyarrow.DataType"]],
-) -> Optional["pyarrow.DataType"]:
-    """Promote tensor types, handling variable-shaped conversion when needed."""
-    from ray.air.util.tensor_extensions.arrow import (
-        ArrowConversionError,
-        ArrowTensorType,
-        ArrowVariableShapedTensorType,
-        get_arrow_extension_fixed_shape_tensor_types,
-    )
-
-    arrow_fixed_shape_tensor_types = get_arrow_extension_fixed_shape_tensor_types()
-
-    # Filter out None values (missing fields)
-    valid_tensor_types = [t for t in field_types if t is not None]
-    if not valid_tensor_types:
-        return None
-
-    # Check if we have missing fields (None values in field_types)
-    has_missing_fields = len(valid_tensor_types) < len(field_types)
-
-    # First check if all tensor types have compatible dtypes
-    dtypes = set()
-    base_tensor_type = None
-    for tensor_type in valid_tensor_types:
-        dtypes.add(tensor_type.scalar_type)
-        # Collect the first fixed-shape tensor type for potential conversion
-        if base_tensor_type is None and isinstance(
-            tensor_type, arrow_fixed_shape_tensor_types
-        ):
-            base_tensor_type = tensor_type
-
-    # If we have incompatible dtypes, we can't unify them
-    if len(dtypes) > 1:
-        raise ArrowConversionError(
-            f"Incompatible tensor dtypes found: {dtypes}. "
-            "Cannot unify tensors with different dtypes."
-        )
-
-    # Check if we need variable-shaped for unification
-    needs_variable = ArrowTensorType._need_variable_shaped_tensor_array(
-        valid_tensor_types
-    )
-
-    # Convert to variable-shaped tensors if needed or if we have missing fields
-    if needs_variable or has_missing_fields:
-        # If all tensor types are variable-shaped, we don't need to convert
-        if base_tensor_type is None:
-            # All types are variable-shaped, just return the first one
-            return valid_tensor_types[0]
-        # We have at least one fixed-shape tensor, convert to variable-shaped
-        return ArrowVariableShapedTensorType(
-            dtype=base_tensor_type.scalar_type,
-            ndim=len(base_tensor_type.shape),
-        )
-    else:
-        # No conversion needed, return the first type
-        return valid_tensor_types[0]
-
-
 def unify_schemas(
     schemas: List["pyarrow.Schema"], *, promote_types: bool = False
 ) -> "pyarrow.Schema":
@@ -228,31 +168,18 @@ def unify_schemas(
 
     from ray.air.util.object_extensions.arrow import ArrowPythonObjectType
     from ray.air.util.tensor_extensions.arrow import (
-        get_arrow_extension_tensor_types,
+        ArrowTensorType,
+        ArrowVariableShapedTensorType,
     )
 
-    def _collect_field_types(
-        schemas: List["pyarrow.Schema"], col_name: str
-    ) -> List[Optional["pyarrow.DataType"]]:
-        """Collect field types for a column across all schemas."""
-        field_types = []
-        for schema in schemas:
-            if col_name in schema.names:
-                field_types.append(schema.field(col_name).type)
-            else:
-                field_types.append(None)
-        return field_types
+    schemas_to_unify = []
+    schema_field_overrides = {}
 
-    arrow_tensor_types = get_arrow_extension_tensor_types()
-
-    # Rollup columns with opaque (null-typed) lists, objects, tensor fields, and structs
+    # Rollup columns with opaque (null-typed) lists, to override types in
+    # the following for-loop.
     cols_with_null_list = set()
-    columns_with_objects = set()
-    columns_with_tensor_array = set()
-    columns_with_structs = set()
 
-    # First pass: collect all column names and their types across schemas
-    column_name_to_types = {}
+    all_columns = set()
     for schema in schemas:
         for col_name in schema.names:
             # Check for duplicate field names in this schema
@@ -261,43 +188,73 @@ def unify_schemas(
                 raise ValueError(
                     f"Schema {schema} has multiple fields with the same name: {col_name}"
                 )
+            col_type = schema.field(col_name).type
+            if pa.types.is_list(col_type) and pa.types.is_null(col_type.value_type):
+                cols_with_null_list.add(col_name)
+            all_columns.add(col_name)
 
-            field = schema.field(col_name)
-            col_type = field.type
+    from ray.air.util.tensor_extensions.arrow import (
+        get_arrow_extension_fixed_shape_tensor_types,
+        get_arrow_extension_tensor_types,
+    )
 
-            if col_name not in column_name_to_types:
-                column_name_to_types[col_name] = []
-            column_name_to_types[col_name].append(col_type)
+    arrow_tensor_types = get_arrow_extension_tensor_types()
+    arrow_fixed_shape_tensor_types = get_arrow_extension_fixed_shape_tensor_types()
 
-    # Second pass: categorize columns based on their types across all schemas
-    for col_name, types in column_name_to_types.items():
-        has_objects = any(isinstance(t, ArrowPythonObjectType) for t in types)
-        has_tensors = any(isinstance(t, arrow_tensor_types) for t in types)
+    columns_with_objects = set()
+    columns_with_tensor_array = set()
+    columns_with_struct = set()
+    for col_name in all_columns:
+        for s in schemas:
+            if col_name in s.names:
+                if isinstance(s.field(col_name).type, ArrowPythonObjectType):
+                    columns_with_objects.add(col_name)
+                if isinstance(s.field(col_name).type, arrow_tensor_types):
+                    columns_with_tensor_array.add(col_name)
+                if isinstance(s.field(col_name).type, pa.StructType):
+                    columns_with_struct.add(col_name)
 
-        # Check for intersection of objects and tensors (invalid case)
-        if has_objects and has_tensors:
-            # This is supportable if we use object type, but it will be expensive
-            raise ValueError(f"Found columns with both objects and tensors: {col_name}")
+    if len(columns_with_objects.intersection(columns_with_tensor_array)) > 0:
+        # This is supportable if we use object type, but it will be expensive
+        raise ValueError(
+            "Found columns with both objects and tensors: "
+            f"{columns_with_tensor_array.intersection(columns_with_objects)}"
+        )
+    for col_name in columns_with_tensor_array:
+        tensor_array_types = [
+            s.field(col_name).type
+            for s in schemas
+            if col_name in s.names
+            and isinstance(s.field(col_name).type, arrow_tensor_types)
+        ]
 
-        # Check for null-typed lists (if ANY schema has null-typed lists)
-        if any(pa.types.is_list(t) and pa.types.is_null(t.value_type) for t in types):
-            cols_with_null_list.add(col_name)
-        # Check for objects (if any schema has objects)
-        elif has_objects:
-            columns_with_objects.add(col_name)
-        # Check for tensor fields (if ANY schema has tensor types)
-        elif has_tensors:
-            columns_with_tensor_array.add(col_name)
-        # Check for struct fields (if ANY schema has struct types)
-        elif any(pa.types.is_struct(t) for t in types):
-            columns_with_structs.add(col_name)
-        # Mixed types or other types are handled by PyArrow's unify_schemas
+        # Check if we have missing tensor fields (some schemas don't have this field)
+        has_missing_fields = len(tensor_array_types) < len(schemas)
 
-    schema_field_overrides = {}
+        # Convert to variable-shaped if needed or if we have missing fields
+        if (
+            ArrowTensorType._need_variable_shaped_tensor_array(tensor_array_types)
+            or has_missing_fields
+        ):
+            if isinstance(tensor_array_types[0], ArrowVariableShapedTensorType):
+                new_type = tensor_array_types[0]
+            elif isinstance(tensor_array_types[0], arrow_fixed_shape_tensor_types):
+                new_type = ArrowVariableShapedTensorType(
+                    dtype=tensor_array_types[0].scalar_type,
+                    ndim=len(tensor_array_types[0].shape),
+                )
+            else:
+                raise ValueError(
+                    "Detected need for variable shaped tensor representation, "
+                    f"but schema is not ArrayTensorType: {tensor_array_types[0]}"
+                )
+            schema_field_overrides[col_name] = new_type
 
-    # Handle struct fields
-    for col_name in columns_with_structs:
-        field_types = _collect_field_types(schemas, col_name)
+    for col_name in columns_with_objects:
+        schema_field_overrides[col_name] = ArrowPythonObjectType()
+
+    for col_name in columns_with_struct:
+        field_types = [s.field(col_name).type for s in schemas]
 
         # Unify struct schemas
         struct_schemas = []
@@ -313,18 +270,6 @@ def unify_schemas(
 
         schema_field_overrides[col_name] = pa.struct(list(unified_struct_schema))
 
-    # Handle tensor fields
-    for col_name in columns_with_tensor_array:
-        field_types = _collect_field_types(schemas, col_name)
-        unified_type = _promote_tensor_types(field_types)
-        if unified_type is not None:
-            schema_field_overrides[col_name] = unified_type
-
-    # Handle object fields
-    for col_name in columns_with_objects:
-        schema_field_overrides[col_name] = ArrowPythonObjectType()
-
-    # Handle null-typed lists
     if cols_with_null_list:
         # For each opaque list column, iterate through all schemas until we find
         # a valid value_type that can be used to override the column types in
@@ -338,20 +283,15 @@ def unify_schemas(
                     schema_field_overrides[col_name] = col_type
                     break
 
-    # Unify schemas
-    schemas_to_unify = []
     if schema_field_overrides:
         # Go through all schemas and update the types of columns from the above loop.
         for schema in schemas:
-            updated_schema = schema
             for col_name, col_new_type in schema_field_overrides.items():
-                if col_name in updated_schema.names:
-                    var_shaped_col = updated_schema.field(col_name).with_type(
-                        col_new_type
-                    )
-                    col_idx = updated_schema.get_field_index(col_name)
-                    updated_schema = updated_schema.set(col_idx, var_shaped_col)
-            schemas_to_unify.append(updated_schema)
+                if col_name in schema.names:
+                    var_shaped_col = schema.field(col_name).with_type(col_new_type)
+                    col_idx = schema.get_field_index(col_name)
+                    schema = schema.set(col_idx, var_shaped_col)
+            schemas_to_unify.append(schema)
     else:
         schemas_to_unify = schemas
 
@@ -452,6 +392,7 @@ def _backfill_missing_fields(
 
     from ray.air.util.tensor_extensions.arrow import (
         ArrowTensorType,
+        ArrowVariableShapedTensorType,
         get_arrow_extension_tensor_types,
     )
 
@@ -501,16 +442,15 @@ def _backfill_missing_fields(
                 # Convert to variable-shaped if needed
                 if ArrowTensorType._need_variable_shaped_tensor_array(
                     [current_array.type, field_type]
-                ):
+                ) and not isinstance(current_array.type, ArrowVariableShapedTensorType):
+                    # Only convert if it's not already a variable-shaped tensor array
                     current_array = current_array.to_variable_shaped_tensor_array()
 
             # The schema should already be unified by unify_schemas, so types
             # should be compatible. If not, let the error propagate up.
             # No explicit casting needed - PyArrow will handle type compatibility
             # during struct creation or raise appropriate errors.
-
             aligned_fields.append(current_array)
-
         else:
             # If the field is missing, fill with nulls
             aligned_fields.append(pa.nulls(block_length, type=field_type))
@@ -633,14 +573,6 @@ def concat(
     if len(blocks) == 1:
         return blocks[0]
 
-    # Rollup columns with opaque (null-typed) lists, to process in following for-loop.
-    cols_with_null_list = set()
-    for b in blocks:
-        for col_name in b.schema.names:
-            col_type = b.schema.field(col_name).type
-            if pa.types.is_list(col_type) and pa.types.is_null(col_type.value_type):
-                cols_with_null_list.add(col_name)
-
     # If the result contains pyarrow schemas, unify them
     schemas_to_unify = [b.schema for b in blocks]
     try:
@@ -650,6 +582,14 @@ def concat(
 
     # Handle alignment of struct type columns.
     blocks = _align_struct_fields(blocks, schema)
+
+    # Rollup columns with opaque (null-typed) lists, to process in following for-loop.
+    cols_with_null_list = set()
+    for b in blocks:
+        for col_name in b.schema.names:
+            col_type = b.schema.field(col_name).type
+            if pa.types.is_list(col_type) and pa.types.is_null(col_type.value_type):
+                cols_with_null_list.add(col_name)
 
     if (
         any(isinstance(type_, pa.ExtensionType) for type_ in schema.types)

@@ -613,9 +613,12 @@ def test_unify_schemas_incompatible_tensor_dtypes(
     unify_schemas_incompatible_tensor_schemas,
 ):
     """Test error handling for incompatible tensor dtypes."""
-    from ray.air.util.tensor_extensions.arrow import ArrowConversionError
+    import pyarrow as pa
 
-    with pytest.raises(ArrowConversionError, match="Incompatible tensor dtypes found"):
+    with pytest.raises(
+        pa.lib.ArrowTypeError,
+        match="Unable to merge: Field tensor has incompatible types",
+    ):
         unify_schemas(unify_schemas_incompatible_tensor_schemas)
 
 
@@ -682,27 +685,6 @@ def test_unify_schemas_mixed_tensor_types(unify_schemas_mixed_tensor_data):
     # Test with different shapes but same dtype
     result = unify_schemas([data["fixed_shape"], data["different_shape"]])
     assert result == data["expected_variable"]
-
-
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("17.0.0"),
-    reason="Requires PyArrow version 17 or higher",
-)
-def test_unify_schemas_promote_types(unify_schemas_promote_types_data):
-    """Test type promotion functionality."""
-    data = unify_schemas_promote_types_data
-
-    # Should promote int32 to float64
-    result = unify_schemas(
-        [data["int32_schema"], data["float64_schema"]], promote_types=True
-    )
-    assert result == data["expected_promoted"]
-
-    # Test with promote_types=False (should fail)
-    with pytest.raises(Exception):
-        unify_schemas(
-            [data["int32_schema"], data["float64_schema"]], promote_types=False
-        )
 
 
 @pytest.mark.skipif(
@@ -1189,7 +1171,7 @@ def test_struct_with_incompatible_tensor_dtypes_fails(
     t1, t2 = incompatible_tensor_dtypes_blocks
 
     # This should fail because of incompatible tensor dtypes
-    with pytest.raises(ArrowConversionError):
+    with pytest.raises(pa.ArrowInvalid):
         concat([t1, t2])
 
 
@@ -3224,16 +3206,6 @@ def unify_schemas_mixed_tensor_data():
         "expected_variable": pa.schema(
             [("tensor", ArrowVariableShapedTensorType(pa.int32(), 2))]
         ),
-    }
-
-
-@pytest.fixture
-def unify_schemas_promote_types_data():
-    """Test data for type promotion in unify schemas."""
-    return {
-        "int32_schema": pa.schema([("col", pa.int32())]),
-        "float64_schema": pa.schema([("col", pa.float64())]),
-        "expected_promoted": pa.schema([("col", pa.float64())]),
     }
 
 
