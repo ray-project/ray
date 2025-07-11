@@ -38,25 +38,23 @@ class _CollectiveOperation:
     1. Input nodes are unique.
     2. Actor handles are unique.
     3. Actor handles match the custom communicator group if specified.
+    4. If the operation is one-to-all, dst must be a list of actor handles and
+        the input node's actor handle must be in the dst list.
+    5. If the operation is all-to-one, dst must be an actor handle and dst must
+        be an input node's actor handle.
     """
 
     def __init__(
         self,
         inputs: List[List[DAGNode]],
         op: _CollectiveOp,
-        root_node: Optional[DAGNode] = None,
+        dst: Optional[Union["ray.actor.ActorHandle", List["ray.actor.ActorHandle"]]] = None,
         transport: Optional[Union[str, Communicator]] = None,
     ):
         if len(input_nodes) == 0:
             raise ValueError("Expected input nodes for a collective operation")
         if len(set(input_nodes)) != len(input_nodes):
             raise ValueError("Expected unique input nodes for a collective operation")
-
-        self._root_actor_handle = (
-            root_node._get_actor_handle() if root_node is not None else None
-        )
-        if root_node is not None and root_node not in input_nodes:
-            raise ValueError("Expected the root node to be an input node")
 
         self._actor_handles: List["ray.actor.ActorHandle"] = []
         for i, input_nodes in enumerate(inputs):
@@ -152,6 +150,22 @@ class _CollectiveOperation:
         self._actor_handles = current_actor_handles
 
         self._op = op
+        if isinstance(self._op, BroadcastOp):
+            if dst is None or not isinstance(dst, list):
+                raise ValueError("Expected a list of destination actor handles for a broadcast operation")
+            if len(self._actor_handles) != 1 or self._actor_handles[0] not in dst:
+                raise ValueError("Expected the input node to be in the destination list for a broadcast operation")
+            self._dst = dst
+        elif isinstance(self._op, ReduceOperation):
+            if dst is None or isinstance(dst, list):
+                raise ValueError("Expected a destination actor handle for a reduce operation")
+            if dst not in self._actor_handles:
+                raise ValueError("Expected the destination actor handle to be an input node")
+            self._dst = dst
+        else:
+            if dst is not None:
+                raise ValueError("Expected no dst actor handle for a non-broadcast or reduce operation")
+
         if transport is None:
             transport = TorchTensorType.ACCELERATOR
         self._type_hint = TorchTensorType(transport=transport, _direct_return=True)
@@ -261,12 +275,12 @@ class _CollectiveOperation:
             communicator.reducescatter(t, recv_buf, self._op.reduceOp)
         elif isinstance(self._op, BroadcastOp):
             recv_buf = torch.empty_like(send_buf)
-            root_rank = communicator.get_rank(self._root_actor_handle)
-            communicator.broadcast(send_buf, recv_buf, root_rank)
+            src_rank = communicator.get_rank(self._actor_handles[0])
+            communicator.broadcast(send_buf, recv_buf, src_rank)
         elif isinstance(self._op, ReduceOperation):
             recv_buf = torch.empty_like(send_buf)
-            root_rank = communicator.get_rank(self._root_actor_handle)
-            communicator.reduce(send_buf, recv_buf, root_rank, self._op.reduceOp)
+            dst_rank = communicator.get_rank(self._dst)
+            communicator.reduce(send_buf, recv_buf, dst_rank, self._op.reduceOp)
         else:
             raise ValueError("Expected a collective operation")
         return recv_buf

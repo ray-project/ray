@@ -336,14 +336,14 @@ class _NcclGroup(Communicator):
         self,
         send_buf: "torch.Tensor",
         recv_buf: "torch.Tensor",
-        root: int,
+        src_rank: int,
     ):
         operation_args = [
             self.nccl_util.get_tensor_ptr(send_buf),
             self.nccl_util.get_tensor_ptr(recv_buf),
             send_buf.numel(),
             self.nccl_util.get_nccl_tensor_dtype(send_buf),
-            root,
+            src_rank,
             self._cuda_stream.cuda_stream,
         ]
         self._exec_collective(
@@ -357,7 +357,7 @@ class _NcclGroup(Communicator):
         self,
         send_buf: "torch.Tensor",
         recv_buf: "torch.Tensor",
-        root: int,
+        dst_rank: int,
         op: ReduceOp = ReduceOp.SUM,
     ):
         operation_args = [
@@ -366,7 +366,7 @@ class _NcclGroup(Communicator):
             send_buf.numel(),
             self.nccl_util.get_nccl_tensor_dtype(send_buf),
             op.value,
-            root,
+            dst_rank,
             self._cuda_stream.cuda_stream,
         ]
         self._exec_collective(

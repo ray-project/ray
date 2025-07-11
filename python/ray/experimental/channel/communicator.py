@@ -178,7 +178,7 @@ class Communicator(ABC):
         self,
         send_buf: "torch.Tensor",
         recv_buf: "torch.Tensor",
-        root: int,
+        src_rank: int,
     ) -> None:
         raise NotImplementedError
 
@@ -187,7 +187,7 @@ class Communicator(ABC):
         self,
         send_buf: "torch.Tensor",
         recv_buf: "torch.Tensor",
-        root: int,
+        dst_rank: int,
         op: ReduceOp,
     ) -> None:
         raise NotImplementedError

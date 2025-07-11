@@ -1,5 +1,6 @@
 # coding: utf-8
 import logging
+import re
 import os
 import socket
 import sys
@@ -554,19 +555,19 @@ def test_torch_tensor_custom_comm(ray_start_regular):
             self,
             send_buf: "torch.Tensor",
             recv_buf: "torch.Tensor",
-            root_rank: int,
+            src_rank: int,
         ) -> None:
-            self._inner.broadcast(send_buf, recv_buf, root_rank)
+            self._inner.broadcast(send_buf, recv_buf, src_rank)
             recv_buf += 1
 
         def reduce(
             self,
             send_buf: "torch.Tensor",
             recv_buf: "torch.Tensor",
-            root_rank: int,
+            dst_rank: int,
             op: ReduceOp = ReduceOp.SUM,
         ) -> None:
-            self._inner.reduce(send_buf, recv_buf, root_rank, op)
+            self._inner.reduce(send_buf, recv_buf, dst_rank, op)
             recv_buf += 1
 
         @property
@@ -713,7 +714,7 @@ def test_torch_tensor_custom_comm_inited(ray_start_regular):
             self,
             send_buf: "torch.Tensor",
             recv_buf: "torch.Tensor",
-            root_rank: int,
+            src_rank: int,
         ) -> None:
             raise NotImplementedError
 
@@ -721,7 +722,7 @@ def test_torch_tensor_custom_comm_inited(ray_start_regular):
             self,
             send_buf: "torch.Tensor",
             recv_buf: "torch.Tensor",
-            root_rank: int,
+            dst_rank: int,
             op: ReduceOp = ReduceOp.SUM,
         ) -> None:
             raise NotImplementedError
@@ -874,7 +875,7 @@ def test_torch_tensor_default_comm(ray_start_regular, transports):
             self,
             send_buf: "torch.Tensor",
             recv_buf: "torch.Tensor",
-            root_rank: int,
+            src_rank: int,
         ) -> None:
             raise NotImplementedError
 
@@ -882,7 +883,7 @@ def test_torch_tensor_default_comm(ray_start_regular, transports):
             self,
             send_buf: "torch.Tensor",
             recv_buf: "torch.Tensor",
-            root_rank: int,
+            dst_rank: int,
             op: ReduceOp = ReduceOp.SUM,
         ) -> None:
             raise NotImplementedError
@@ -1048,7 +1049,7 @@ def test_torch_tensor_invalid_custom_comm(ray_start_regular):
             self,
             send_buf: "torch.Tensor",
             recv_buf: "torch.Tensor",
-            root_rank: int,
+            src_rank: int,
         ) -> None:
             raise NotImplementedError
 
@@ -1056,7 +1057,7 @@ def test_torch_tensor_invalid_custom_comm(ray_start_regular):
             self,
             send_buf: "torch.Tensor",
             recv_buf: "torch.Tensor",
-            root_rank: int,
+            dst_rank: int,
             op: ReduceOp = ReduceOp.SUM,
         ) -> None:
             raise NotImplementedError
@@ -1441,17 +1442,19 @@ def test_torch_tensor_nccl_collective_ops(ray_start_regular, operation, reduce_o
     workers = [actor_cls.remote() for _ in range(num_workers)]
 
     with InputNode() as inp:
-        computes = [
-            worker.send_tensor.bind(tensor) for worker, tensor in zip(workers, inp)
-        ]
-        if operation == collective.allgather:
-            collectives = operation.bind(computes)
-        elif operation == collective.broadcast:
-            collectives = operation.bind(computes[0], computes)
-        elif operation == collective.reduce:
-            collectives = operation.bind(computes[0], computes, op=reduce_op)
+        if operation == collective.broadcast:
+            collectives = operation.bind(workers[0].send_tensor.bind(inp), dst=workers)
         else:
-            collectives = operation.bind(computes, op=reduce_op)
+            computes = [
+                worker.send_tensor.bind(tensor) for worker, tensor in zip(workers, inp)
+            ]
+            if operation == collective.allgather:
+                collectives = operation.bind(computes)
+            elif operation == collective.reduce:
+                collectives = operation.bind(computes, dst=workers[0], op=reduce_op)
+            else:
+                collectives = operation.bind(computes, op=reduce_op)
+
         recvs = [
             worker.recv_tensor.bind(collective)
             for worker, collective in zip(workers, collectives)
@@ -1465,7 +1468,11 @@ def test_torch_tensor_nccl_collective_ops(ray_start_regular, operation, reduce_o
         shape = (num_workers * i, i)
         dtype = torch.float16
         input_tensors = [torch.randn(*shape, dtype=dtype) for _ in range(num_workers)]
-        ref = compiled_dag.execute(*input_tensors)
+
+        if operation == collective.broadcast:
+            ref = compiled_dag.execute(input_tensors[0])
+        else:
+            ref = compiled_dag.execute(*input_tensors)
         result = ray.get(ref)
 
         if operation == collective.allgather:
@@ -1634,52 +1641,6 @@ def test_torch_tensor_nccl_all_reduce_get_partial(ray_start_regular):
 
 @pytest.mark.skipif(not USE_GPU, reason="Skipping GPU Test")
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
-def test_torch_tensor_nccl_broadcast_get_partial(ray_start_regular):
-    """
-    Test getting partial results from a broadcast does not hang.
-    """
-    assert (
-        sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 1
-    ), "This test requires at least 2 GPUs"
-
-    actor_cls = TorchTensorWorker.options(num_cpus=0, num_gpus=1)
-
-    num_workers = 2
-    workers = [actor_cls.remote() for _ in range(num_workers)]
-
-    shape = (10,)
-    dtype = torch.float16
-
-    with InputNode() as inp:
-        computes = [
-            worker.compute_with_tuple_args.bind(inp, i)
-            for i, worker in enumerate(workers)
-        ]
-
-        collectives = collective.broadcast.bind(computes[0], computes)
-        recv_root = workers[0].recv.bind(collectives[0])
-        recv = workers[1].recv.bind(collectives[1])
-        tensor = workers[1].recv_tensor.bind(collectives[1])
-        dag = MultiOutputNode([recv_root, recv, tensor])
-
-    compiled_dag = dag.experimental_compile()
-
-    for i in range(3):
-        ref = compiled_dag.execute(
-            [(shape, dtype, i + idx + 1) for idx in range(num_workers)]
-        )
-        result = ray.get(ref)
-        _, metadata, tensor = result
-
-        root_val = i + 1
-        assert metadata == (root_val, shape, dtype)
-        tensor = tensor.to("cpu")
-        expected_tensor_val = torch.ones(shape, dtype=dtype) * root_val
-        assert torch.equal(tensor, expected_tensor_val)
-
-
-@pytest.mark.skipif(not USE_GPU, reason="Skipping GPU Test")
-@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_tensor_nccl_all_reduce_wrong_shape(ray_start_regular):
     """
     Test an error is thrown when an all-reduce takes tensors of wrong shapes.
@@ -1828,19 +1789,19 @@ def test_torch_tensor_nccl_all_reduce_custom_comm(ray_start_regular):
             self,
             send_buf: "torch.Tensor",
             recv_buf: "torch.Tensor",
-            root_rank: int,
+            src_rank: int,
         ) -> None:
-            self._inner.broadcast(send_buf, recv_buf, root_rank)
+            self._inner.broadcast(send_buf, recv_buf, src_rank)
             recv_buf += 1
 
         def reduce(
             self,
             send_buf: "torch.Tensor",
             recv_buf: "torch.Tensor",
-            root_rank: int,
+            dst_rank: int,
             op: ReduceOp = ReduceOp.SUM,
         ) -> None:
-            self._inner.reduce(send_buf, recv_buf, root_rank, op)
+            self._inner.reduce(send_buf, recv_buf, dst_rank, op)
             recv_buf += 1
 
         @property
@@ -2104,46 +2065,78 @@ def test_torch_nccl_channel_with_all_local_readers(ray_start_regular):
         dag.experimental_compile()
 
 
-@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 4}], indirect=True)
-@pytest.mark.parametrize("collective_op", [collective.broadcast, collective.reduce])
-def test_torch_tensor_nccl_wrong_root_node(ray_start_regular, collective_op):
+@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
+def test_collective_operation_validation(ray_start_regular):
+    """
+    Test the validation logic in _CollectiveOperation class.
+    """
     actor_cls = TorchTensorWorker.options(num_cpus=0, num_gpus=1)
-
-    num_workers = 2
-    root_worker = actor_cls.remote()
-    workers = [actor_cls.remote() for _ in range(num_workers)]
-
-    with pytest.raises(
-        ValueError,
-        match="Expected the root node to be an input node",
-    ):
-        with InputNode() as inp:
-            root_compute = root_worker.compute_with_tuple_args.bind(inp, 0)
-            computes = [
-                worker.compute_with_tuple_args.bind(inp, i)
-                for i, worker in enumerate(workers)
-            ]
-            collective_op.bind(root_compute, computes)
-
-
-@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 4}], indirect=True)
-@pytest.mark.parametrize("collective_op", [collective.broadcast, collective.reduce])
-def test_torch_tensor_nccl_no_root_node(ray_start_regular, collective_op):
-    actor_cls = TorchTensorWorker.options(num_cpus=0, num_gpus=1)
-
-    num_workers = 2
-    workers = [actor_cls.remote() for _ in range(num_workers)]
+    workers = [actor_cls.remote() for _ in range(2)]
 
     with pytest.raises(
         TypeError,
-        match="missing 1 required positional argument",
+        match=re.escape("BroadcastWrapper.bind() missing 1 required keyword-only argument: 'dst'"),
+    ):
+        with InputNode() as inp:
+            compute = workers[0].send_tensor.bind(inp)
+            collective.broadcast.bind(compute)
+
+    with pytest.raises(
+        ValueError,
+        match="Expected a list of destination actor handles for a broadcast operation",
+    ):
+        with InputNode() as inp:
+            compute = workers[0].send_tensor.bind(inp)
+            collective.broadcast.bind(compute, dst=workers[0])
+
+    with pytest.raises(
+        ValueError,
+        match="Expected the input node to be in the destination list for a broadcast operation",
+    ):
+        with InputNode() as inp:
+            compute = workers[0].send_tensor.bind(inp)
+            collective.broadcast.bind(compute, dst=[workers[1]])
+
+    with pytest.raises(
+        TypeError,
+        match=re.escape("ReduceWrapper.bind() missing 1 required keyword-only argument: 'dst'"),
     ):
         with InputNode() as inp:
             computes = [
-                worker.compute_with_tuple_args.bind(inp, i)
-                for i, worker in enumerate(workers)
+                worker.send_tensor.bind(tensor) for worker, tensor in zip(workers, inp)
             ]
-            collective_op.bind(computes)
+            collective.reduce.bind(computes)
+
+    with pytest.raises(
+        ValueError,
+        match="Expected a destination actor handle for a reduce operation",
+    ):
+        with InputNode() as inp:
+            computes = [
+                worker.send_tensor.bind(tensor) for worker, tensor in zip(workers, inp)
+            ]
+            collective.reduce.bind(computes, dst=workers)
+
+    with pytest.raises(
+        ValueError,
+        match="Expected the destination actor handle to be an input node",
+    ):
+        with InputNode() as inp:
+            computes = [
+                worker.send_tensor.bind(tensor) for worker, tensor in zip(workers, inp)
+            ]
+            extra_worker = actor_cls.remote()
+            collective.reduce.bind(computes, dst=extra_worker)
+
+    with pytest.raises(
+        TypeError,
+        match="got an unexpected keyword argument 'dst'",
+    ):
+        with InputNode() as inp:
+            computes = [
+                worker.send_tensor.bind(tensor) for worker, tensor in zip(workers, inp)
+            ]
+            collective.allreduce.bind(computes, dst=workers[0])
 
 
 if __name__ == "__main__":

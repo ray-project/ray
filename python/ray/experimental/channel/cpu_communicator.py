@@ -162,7 +162,7 @@ class CPUCommunicator(Communicator):
         self,
         send_buf: "torch.Tensor",
         recv_buf: "torch.Tensor",
-        root: int,
+        src_rank: int,
     ):
         raise NotImplementedError
 
@@ -170,7 +170,7 @@ class CPUCommunicator(Communicator):
         self,
         send_buf: "torch.Tensor",
         recv_buf: "torch.Tensor",
-        root: int,
+        dst_rank: int,
         op: ReduceOp = ReduceOp.SUM,
     ):
         raise NotImplementedError

@@ -2,6 +2,7 @@ import logging
 from typing import List, Optional, Union
 
 import ray
+from ray.dag import DAGNode
 from ray.dag.collective_node import CollectiveOutputNode, _CollectiveOperation
 from ray.dag.constants import (
     BIND_INDEX_KEY,
@@ -25,10 +26,10 @@ logger = logging.getLogger(__name__)
 
 
 def _bind(
-    inputs: Union[List["ray.dag.DAGNode"], List[List["ray.dag.DAGNode"]]],
+    input_nodes: Union[DAGNode, List[DAGNode]],
     op: _CollectiveOp,
     *,
-    root_node: Optional["ray.dag.DAGNode"] = None,
+    dst: Optional[Union["ray.actor.ActorHandle", List["ray.actor.ActorHandle"]]] = None,
     transport: Optional[Union[str, Communicator]] = None,
 ):
     """
@@ -52,9 +53,14 @@ def _bind(
     5. If input nodes are provided, then all tensors have the same shape.
         If lists of input nodes are provided, then all tensors in each
         list have the same shape.
+    6. If the operation is one-to-all, dst must be a list of actor handles and
+        the input node's actor handle must be in the dst list.
+    7. If the operation is all-to-one, dst must be an actor handle and dst must
+        be an input node's actor handle.
+    8. All tensors have the same shape.
 
-    Requirements 1-4 are checked in the `CollectiveGroup` constructor.
-    Requirement 5 is not checked yet.
+    Requirements 1-7 are checked in the `CollectiveGroup` constructor.
+    Requirement 8 is not checked yet.
 
     Args:
         inputs: A list of DAG nodes or a list of lists of DAG nodes. Each leaf list
@@ -79,7 +85,7 @@ def _bind(
 
     if transport is None:
         transport = TorchTensorType.ACCELERATOR
-    collective_op = _CollectiveOperation(inputs, op, transport)
+    collective_op = _CollectiveOperation(input_nodes, op, dst, transport)
     collective_output_nodes: List[CollectiveOutputNode] = []
 
     if isinstance(op, AllGatherOp):
@@ -140,7 +146,7 @@ class AllGatherWrapper:
 
     def bind(
         self,
-        input_nodes: List["ray.dag.DAGNode"],
+        input_nodes: List[DAGNode],
         transport: Optional[Union[str, Communicator]] = None,
     ) -> List[CollectiveOutputNode]:
         return _bind(input_nodes, AllGatherOp(), transport=transport)
@@ -161,7 +167,7 @@ class AllReduceWrapper:
 
     def bind(
         self,
-        input_nodes: List["ray.dag.DAGNode"],
+        input_nodes: List[DAGNode],
         op: ReduceOp = ReduceOp.SUM,
         transport: Optional[Union[str, Communicator]] = None,
     ) -> List[CollectiveOutputNode]:
@@ -186,7 +192,7 @@ class ReduceScatterWrapper:
 
     def bind(
         self,
-        input_nodes: List["ray.dag.DAGNode"],
+        input_nodes: List[DAGNode],
         op: ReduceOp = ReduceOp.SUM,
         transport: Optional[Union[str, Communicator]] = None,
     ) -> List[CollectiveOutputNode]:
@@ -211,12 +217,13 @@ class BroadcastWrapper:
 
     def bind(
         self,
-        root_node: "ray.dag.DAGNode",
-        input_nodes: List["ray.dag.DAGNode"],
+        input_node: DAGNode,
+        *,
+        dst: List["ray.actor.ActorHandle"],
         transport: Optional[Union[str, Communicator]] = None,
     ) -> List[CollectiveOutputNode]:
         return _bind(
-            input_nodes, BroadcastOp(), root_node=root_node, transport=transport
+            input_node, BroadcastOp(), dst=dst, transport=transport
         )
 
     def __call__(
@@ -235,8 +242,9 @@ class ReduceWrapper:
 
     def bind(
         self,
-        root_node: "ray.dag.DAGNode",
-        input_nodes: List["ray.dag.DAGNode"],
+        input_nodes: List[DAGNode],
+        *,
+        dst: "ray.actor.ActorHandle",
         op: ReduceOp = ReduceOp.SUM,
         transport: Optional[Union[str, Communicator]] = None,
     ) -> List[CollectiveOutputNode]:
@@ -246,7 +254,7 @@ class ReduceWrapper:
         return _bind(
             input_nodes,
             ReduceOperation(reduceOp=op),
-            root_node=root_node,
+            dst=dst,
             transport=transport,
         )
 
