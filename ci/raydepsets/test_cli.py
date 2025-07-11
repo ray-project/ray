@@ -3,12 +3,11 @@ import sys
 import unittest
 import tempfile
 import runfiles
-from ci.raydepsets.cli import load, DependencySetManager
-from ci.raydepsets.workspace import Workspace
-from click.testing import CliRunner
 import platform
 import subprocess
 from pathlib import Path
+from click.testing import CliRunner
+from ci.raydepsets.cli import load
 
 _REPO_NAME = "com_github_ray_project_ray"
 _runfiles = runfiles.Create()
@@ -27,6 +26,28 @@ class TestCli(unittest.TestCase):
         assert result.returncode == 0
         assert "uv 0.7.20" in result.stdout.decode("utf-8")
         assert result.stderr.decode("utf-8") == ""
+
+    def test_compile_by_depset_name_happy(self):
+        result = CliRunner().invoke(
+            load,
+            [
+                _runfiles.Rlocation(
+                    f"{_REPO_NAME}/ci/raydepsets/test_data/test.config.yaml"
+                ),
+                "--workspace-dir",
+                _runfiles.Rlocation(f"{_REPO_NAME}"),
+                "--name",
+                "ray_base_test_depset",
+            ],
+        )
+        output_fp = _runfiles.Rlocation(
+            f"{_REPO_NAME}/ci/raydepsets/test_data/requirements_compiled.txt"
+        )
+        assert result.exit_code == 0
+        assert Path(output_fp).is_file()
+        assert (
+            "Dependency set ray_base_test_depset compiled successfully" in result.output
+        )
 
 
 def _uv_binary():

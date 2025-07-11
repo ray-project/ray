@@ -3,7 +3,6 @@ from pathlib import Path
 from ci.raydepsets.workspace import Workspace, Depset
 from typing import List
 import subprocess
-from pathlib import Path
 
 DEFAULT_UV_FLAGS = [
     "--strip-extras",
