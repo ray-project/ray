@@ -343,9 +343,9 @@ class Stats {
   }
 
   /// Helper function to record a value, either through OpenTelemetry or OpenCensus.
-  void record(double val,
-              const std::vector<std::pair<opencensus::tags::TagKey, std::string>>
-                  &open_census_tags) {
+  void RecordValue(double val,
+                   const std::vector<std::pair<opencensus::tags::TagKey, std::string>>
+                       &open_census_tags) {
     if (!OpenTelemetryMetricRecorder::GetInstance().IsMetricRegistered(name_)) {
       // Use OpenCensus to record the metric if OpenTelemetry is not registered.
       opencensus::stats::Record({{*measure_, val}}, std::move(open_census_tags));
@@ -378,7 +378,7 @@ class Stats {
     TagsType combined_tags = StatsConfig::instance().GetGlobalTags();
     CheckPrintableChar(tag_val);
     combined_tags.emplace_back(tag_keys_[0], std::move(tag_val));
-    record(val, combined_tags);
+    RecordValue(val, combined_tags);
   }
 
   /// Record a value
@@ -393,7 +393,7 @@ class Stats {
       CheckPrintableChar(tag_val);
       combined_tags.emplace_back(TagKeyType::Register(tag_key), std::move(tag_val));
     }
-    record(val, combined_tags);
+    RecordValue(val, combined_tags);
   }
 
   /// Record a value
@@ -409,7 +409,7 @@ class Stats {
       CheckPrintableChar(tag_val);
     }
     combined_tags.insert(combined_tags.end(), tags.begin(), tags.end());
-    record(val, combined_tags);
+    RecordValue(val, combined_tags);
   }
 
  private:
