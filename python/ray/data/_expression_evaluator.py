@@ -15,7 +15,7 @@ from ray.data.expressions import (
     Operation,
 )
 
-pandas_ops = {
+_PANDAS_EXPR_OPS_MAP = {
     Operation.ADD: operator.add,
     Operation.SUB: operator.sub,
     Operation.MUL: operator.mul,
@@ -29,7 +29,7 @@ pandas_ops = {
     Operation.OR: operator.or_,
 }
 
-arrow_ops = {
+_ARROW_EXPR_OPS_MAP = {
     Operation.ADD: pc.add,
     Operation.SUB: pc.subtract,
     Operation.MUL: pc.multiply,
@@ -58,13 +58,14 @@ def _eval_expr_recursive(expr: "Expr", batch, ops: Dict["Operation", Callable]) 
             _eval_expr_recursive(expr.left, batch, ops),
             _eval_expr_recursive(expr.right, batch, ops),
         )
-    raise TypeError(f"Unsupported expression node: {type(expr).__name__}")
+        raise TypeError(f"Unsupported expression node: {type(expr).__name__}")
 
 
 def eval_expr(expr: "Expr", batch) -> Any:
     """Recursively evaluate *expr* against a batch of the appropriate type."""
     if isinstance(batch, pd.DataFrame):
-        return _eval_expr_recursive(expr, batch, pandas_ops)
+        return _eval_expr_recursive(expr, batch, _PANDAS_EXPR_OPS_MAP)
     elif isinstance(batch, pa.Table):
-        return _eval_expr_recursive(expr, batch, arrow_ops)
-    raise TypeError(f"Unsupported batch type: {type(batch).__name__}")
+        return _eval_expr_recursive(expr, batch, _ARROW_EXPR_OPS_MAP)
+    else:
+        raise TypeError(f"Unsupported batch type: {type(batch).__name__}")
