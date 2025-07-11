@@ -9,6 +9,7 @@ if TYPE_CHECKING:
     import torch
     from ray.experimental.gpu_object_manager.gpu_object_store import GPUObjectStore
 
+
 # GPUObjectMeta is a named tuple containing the source actor, tensor transport
 # backend, and tensor metadata.
 # - The tensor transport backend is the backend used to transport the tensors.
@@ -21,6 +22,9 @@ class GPUObjectMeta(NamedTuple):
     # `ray.util.collective.types.Backend`.
     tensor_transport_backend: str
     tensor_meta: List[Tuple["torch.Size", "torch.dtype"]]
+    # The serialized descs and agent metadata for nixl.
+    nixl_serialized_descs: Optional[bytes] = None
+    nixl_agent_meta: Optional[bytes] = None
 
 
 def __ray_get_tensor_meta__(self, obj_id: str):
@@ -32,7 +36,15 @@ def __ray_get_tensor_meta__(self, obj_id: str):
         obj_id
     ), f"obj_id={obj_id} not found in GPU object store"
     tensors = gpu_object_store.get_gpu_object(obj_id)
-    return [(t.shape, t.dtype) for t in tensors]
+    agent = global_worker.gpu_object_manager.init_nixl_agent()
+    reg_descs = agent.register_memory(tensors)
+    xfer_descs = reg_descs.trim()
+
+    return (
+        [(t.shape, t.dtype) for t in tensors],
+        agent.get_serialized_descs(xfer_descs),
+        agent.get_agent_metadata(),
+    )
 
 
 def __ray_fetch_gpu_object__(self, obj_id: str):
@@ -58,6 +70,18 @@ class GPUObjectManager:
         # avoid circular import and because it imports third-party dependencies
         # like PyTorch.
         self._gpu_object_store: Optional["GPUObjectStore"] = None
+        # The agent when using nixl for transfer.
+        self.nixl_agent = None
+
+    def init_nixl_agent(self):
+        from nixl._api import nixl_agent, nixl_agent_config
+
+        if self.nixl_agent is None:
+            agent_config = nixl_agent_config(backends=["UCX"])
+            ctx = ray.get_runtime_context()
+            actor_id = ctx.get_actor_id()
+            self.nixl_agent = nixl_agent(actor_id, agent_config)
+        return self.nixl_agent
 
     @property
     def gpu_object_store(self) -> "ray.experimental.GPUObjectStore":
@@ -145,13 +169,21 @@ class GPUObjectManager:
         obj_id: str,
         src_rank: int,
         tensor_meta: List[Tuple["torch.Size", "torch.dtype"]],
+        nixl_serialized_descs: Optional[bytes] = None,
+        nixl_agent_meta: Optional[bytes] = None,
     ):
         from ray.experimental.gpu_object_manager.gpu_object_store import __ray_recv__
 
         # Receive tensors from the source rank and store them in the
         # `dst_actor`'s GPU object store.
         dst_actor.__ray_call__.remote(
-            __ray_recv__, communicator_name, obj_id, src_rank, tensor_meta
+            __ray_recv__,
+            communicator_name,
+            obj_id,
+            src_rank,
+            tensor_meta,
+            nixl_serialized_descs,
+            nixl_agent_meta,
         )
 
     def fetch_gpu_object(self, obj_id: str):
@@ -218,6 +250,8 @@ class GPUObjectManager:
 
             src_actor = gpu_object_meta.src_actor
             tensor_meta = gpu_object_meta.tensor_meta
+            nixl_serialized_descs = gpu_object_meta.nixl_serialized_descs
+            nixl_agent_meta = gpu_object_meta.nixl_agent_meta
             communicators = get_collective_groups(
                 [src_actor, dst_actor], backend=gpu_object_meta.tensor_transport_backend
             )
@@ -255,5 +289,11 @@ class GPUObjectManager:
                 continue
             self._send_gpu_object(communicator.name, src_actor, arg.hex(), dst_rank)
             self._recv_gpu_object(
-                communicator.name, dst_actor, arg.hex(), src_rank, tensor_meta
+                communicator.name,
+                dst_actor,
+                arg.hex(),
+                src_rank,
+                tensor_meta,
+                nixl_serialized_descs,
+                nixl_agent_meta,
             )
