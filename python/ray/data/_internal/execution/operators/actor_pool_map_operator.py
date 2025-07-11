@@ -69,7 +69,6 @@ class ActorPoolMapOperator(MapOperator):
         compute_strategy: ActorPoolStrategy,
         name: str = "ActorPoolMap",
         min_rows_per_bundle: Optional[int] = None,
-        supports_fusion: bool = True,
         operator_options: Optional[OperatorOptions] = None,
         map_task_kwargs: Optional[Dict[str, Any]] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
@@ -89,7 +88,6 @@ class ActorPoolMapOperator(MapOperator):
                 transform_fn, or None to use the block size. Setting the batch size is
                 important for the performance of GPU-accelerated transform functions.
                 The actual rows passed may be less if the dataset is small.
-            supports_fusion: Whether this operator supports fusion with other operators.
             operator_options: Options for configuring the operator.
             map_task_kwargs: A dictionary of kwargs to pass to the map task. You can
                 access these kwargs through the `TaskContext.kwargs` dictionary.
@@ -111,7 +109,6 @@ class ActorPoolMapOperator(MapOperator):
             name,
             target_max_block_size_override,
             min_rows_per_bundle,
-            supports_fusion,
             operator_options,
             map_task_kwargs,
             ray_remote_args_fn,

@@ -86,7 +86,6 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
         name: str,
         target_max_block_size_override: Optional[int],
         min_rows_per_bundle: Optional[int],
-        supports_fusion: bool,
         operator_options: Optional[OperatorOptions],
         map_task_kwargs: Optional[Dict[str, Any]],
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]],
@@ -99,7 +98,6 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
             map_task_kwargs = {}
 
         self._map_transformer = map_transformer
-        self._supports_fusion = supports_fusion
         self._operator_options = operator_options
         self._map_task_kwargs = map_task_kwargs
         self._ray_remote_args = _canonicalize_ray_remote_args(ray_remote_args or {})
@@ -178,7 +176,6 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
         # config and not contain implementation code.
         compute_strategy: Optional[ComputeStrategy] = None,
         min_rows_per_bundle: Optional[int] = None,
-        supports_fusion: bool = True,
         operator_options: Optional[OperatorOptions] = None,
         map_task_kwargs: Optional[Dict[str, Any]] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
@@ -202,7 +199,6 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
                 transform_fn, or None to use the block size. Setting the batch size is
                 important for the performance of GPU-accelerated transform functions.
                 The actual rows passed may be less if the dataset is small.
-            supports_fusion: Whether this operator supports fusion with other operators.
             operator_options: Options for configuring the operator.
             map_task_kwargs: A dictionary of kwargs to pass to the map task. You can
                 access these kwargs through the `TaskContext.kwargs` dictionary.
@@ -230,7 +226,6 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
                 target_max_block_size_override=target_max_block_size_override,
                 min_rows_per_bundle=min_rows_per_bundle,
                 concurrency=compute_strategy.size,
-                supports_fusion=supports_fusion,
                 operator_options=operator_options,
                 map_task_kwargs=map_task_kwargs,
                 ray_remote_args_fn=ray_remote_args_fn,
@@ -249,7 +244,6 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
                 compute_strategy=compute_strategy,
                 name=name,
                 min_rows_per_bundle=min_rows_per_bundle,
-                supports_fusion=supports_fusion,
                 operator_options=operator_options,
                 map_task_kwargs=map_task_kwargs,
                 ray_remote_args_fn=ray_remote_args_fn,
