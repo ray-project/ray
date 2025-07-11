@@ -122,23 +122,6 @@ class MockTaskEventBuffer : public worker::TaskEventBuffer {
   MOCK_METHOD(std::string, DebugString, (), (override));
 };
 
-class MockReferenceCounter : public ReferenceCounter {
- public:
-  MockReferenceCounter(const rpc::Address &addr,
-                       pubsub::PublisherInterface *publisher,
-                       pubsub::SubscriberInterface *subscriber,
-
-                       std::function<bool(const NodeID &)> is_node_alive,
-                       bool lineage_pinning_enabled = false)
-      : ReferenceCounter(
-            addr, publisher, subscriber, is_node_alive, lineage_pinning_enabled) {}
-
-  MOCK_METHOD(bool,
-              AddObjectOutOfScopeOrFreedCallback,
-              (const ObjectID &object_id, std::function<void(const ObjectID &)> callback),
-              (override));
-};
-
 class TaskManagerTest : public ::testing::Test {
  public:
   explicit TaskManagerTest(bool lineage_pinning_enabled = false,
@@ -148,7 +131,7 @@ class TaskManagerTest : public ::testing::Test {
         publisher_(std::make_shared<pubsub::MockPublisher>()),
         subscriber_(std::make_shared<pubsub::MockSubscriber>()),
         task_event_buffer_mock_(std::make_unique<MockTaskEventBuffer>()),
-        reference_counter_(std::make_shared<MockReferenceCounter>(
+        reference_counter_(std::make_shared<ReferenceCounter>(
             addr_,
             publisher_.get(),
             subscriber_.get(),
@@ -218,7 +201,7 @@ class TaskManagerTest : public ::testing::Test {
   std::shared_ptr<pubsub::MockPublisher> publisher_;
   std::shared_ptr<pubsub::MockSubscriber> subscriber_;
   std::unique_ptr<MockTaskEventBuffer> task_event_buffer_mock_;
-  std::shared_ptr<MockReferenceCounter> reference_counter_;
+  std::shared_ptr<ReferenceCounter> reference_counter_;
   InstrumentedIOContextWithThread io_context_;
   std::shared_ptr<CoreWorkerMemoryStore> store_;
   bool all_nodes_alive_ = true;
@@ -232,11 +215,6 @@ class TaskManagerTest : public ::testing::Test {
 class TaskManagerLineageTest : public TaskManagerTest {
  public:
   TaskManagerLineageTest() : TaskManagerTest(true, /*max_lineage_bytes=*/10000) {}
-};
-
-class TestExtractPlasmaDependencies : public ::testing::Test {
- public:
-  TestExtractPlasmaDependencies() {}
 };
 
 TEST_F(TaskManagerTest, TestTaskSuccess) {
@@ -2577,108 +2555,6 @@ TEST_F(TaskManagerLineageTest, RecoverIntermediateObjectInStreamingGenerator) {
   CompletePendingStreamingTask(spec2, caller_address, 0);
 }
 
-void AddInlinedArgWithNestedReferences(TaskSpecification &spec,
-                                       std::vector<ObjectID> nested_refs) {
-  auto *arg = spec.GetMutableMessage().add_args();
-  arg->set_is_inlined(true);
-  for (const auto &ref : nested_refs) {
-    auto *nested_ref = arg->add_nested_inlined_refs();
-    nested_ref->set_object_id(ref.Binary());
-  }
-}
-
-void AddInlinedArg(TaskSpecification &spec,
-                   ObjectID object_id,
-                   bool is_gpu_object = false) {
-  auto *arg = spec.GetMutableMessage().add_args();
-  arg->set_is_inlined(true);
-  if (is_gpu_object) {
-    arg->set_tensor_transport(rpc::TensorTransport::NCCL);
-    arg->mutable_object_ref()->set_object_id(object_id.Binary());
-  }
-}
-
-TEST_F(TestExtractPlasmaDependencies, NoArguments) {
-  auto spec = CreateTaskHelper(1, {});
-  auto dependencies = ExtractPlasmaDependencies(spec);
-  ASSERT_THAT(dependencies, ::testing::SizeIs(0));
-}
-
-TEST_F(TestExtractPlasmaDependencies, TaskWithArgumentsPassedByReference) {
-  ObjectID arg1 = ObjectID::FromRandom();
-  ObjectID arg2 = ObjectID::FromRandom();
-  auto spec = CreateTaskHelper(1, {arg1, arg2});
-  auto dependencies = ExtractPlasmaDependencies(spec);
-
-  EXPECT_THAT(dependencies, ::testing::SizeIs(2));
-  EXPECT_THAT(dependencies, ::testing::UnorderedElementsAre(arg1, arg2));
-}
-
-TEST_F(TestExtractPlasmaDependencies, InlinedArgumentsWithNestedReferences) {
-  ObjectID nested_ref1 = ObjectID::FromRandom();
-  ObjectID nested_ref2 = ObjectID::FromRandom();
-
-  TaskSpecification spec;
-  AddInlinedArgWithNestedReferences(spec, {nested_ref1, nested_ref2});
-
-  auto dependencies = ExtractPlasmaDependencies(spec);
-
-  EXPECT_THAT(dependencies, ::testing::SizeIs(2));
-  EXPECT_THAT(dependencies, ::testing::UnorderedElementsAre(nested_ref1, nested_ref2));
-}
-
-TEST_F(TestExtractPlasmaDependencies, InlinedGPUObject) {
-  ObjectID gpu_object_id = ObjectID::FromRandom();
-  TaskSpecification spec;
-  AddInlinedArg(spec, gpu_object_id, /*is_gpu_object=*/true);
-  auto dependencies = ExtractPlasmaDependencies(spec);
-  ASSERT_THAT(dependencies, ::testing::SizeIs(1));
-  EXPECT_THAT(dependencies, ::testing::UnorderedElementsAre(gpu_object_id));
-}
-
-TEST_F(TestExtractPlasmaDependencies, InlinedObject) {
-  ObjectID object_id = ObjectID::FromRandom();
-  TaskSpecification spec;
-  AddInlinedArg(spec, object_id);
-  auto dependencies = ExtractPlasmaDependencies(spec);
-  ASSERT_THAT(dependencies, ::testing::SizeIs(0));
-}
-
-TEST_F(TestExtractPlasmaDependencies, ActorTask) {
-  ObjectID arg1 = ObjectID::FromRandom();
-
-  auto spec = CreateTaskHelper(1, {arg1});
-  spec.GetMutableMessage().set_type(TaskType::ACTOR_TASK);
-
-  ObjectID actor_creation_dummy_id = spec.ActorCreationDummyObjectId();
-
-  auto dependencies = ExtractPlasmaDependencies(spec);
-
-  EXPECT_THAT(dependencies, ::testing::SizeIs(2));
-  EXPECT_THAT(dependencies,
-              ::testing::UnorderedElementsAre(arg1, actor_creation_dummy_id));
-}
-
-TEST_F(TestExtractPlasmaDependencies, MixedArguments) {
-  ObjectID ref_arg = ObjectID::FromRandom();
-  ObjectID nested_ref1 = ObjectID::FromRandom();
-  ObjectID nested_ref2 = ObjectID::FromRandom();
-  ObjectID inlined_arg = ObjectID::FromRandom();
-  ObjectID gpu_object_id = ObjectID::FromRandom();
-
-  auto spec = CreateTaskHelper(1, {ref_arg});
-  AddInlinedArgWithNestedReferences(spec, {nested_ref1, nested_ref2});
-  AddInlinedArg(spec, inlined_arg);
-  AddInlinedArg(spec, gpu_object_id, /*is_gpu_object=*/true);
-
-  auto dependencies = ExtractPlasmaDependencies(spec);
-
-  EXPECT_THAT(dependencies, ::testing::SizeIs(4));
-  EXPECT_THAT(
-      dependencies,
-      ::testing::UnorderedElementsAre(ref_arg, nested_ref1, nested_ref2, gpu_object_id));
-}
-
 TEST_F(TaskManagerTest, TestGPUObjectTaskSuccess) {
   rpc::Address caller_address;
   auto spec = CreateTaskHelper(/*num_returns*/ 1,
@@ -2688,20 +2564,16 @@ TEST_F(TaskManagerTest, TestGPUObjectTaskSuccess) {
                                /*generator_backpressure_num_objects*/ -1,
                                /*enable_tensor_transport=*/true);
 
-  // Add two dependencies, one is an inlined GPU object and the other is
-  // normal inlined object.
-  ObjectID dep1 = ObjectID::FromRandom();
-  AddInlinedArg(spec, dep1, /*is_gpu_object=*/true);
-  ObjectID dep2 = ObjectID::FromRandom();
-  AddInlinedArg(spec, dep2, /*is_gpu_object=*/false);
-  ObjectID dep3 = ObjectID::FromRandom();
-  AddInlinedArg(spec, dep3, /*is_gpu_object=*/false);
+  // Pass a GPU ObjectRef as an argument.
+  ObjectID gpu_obj_ref = ObjectID::FromRandom();
+  auto *arg = spec.GetMutableMessage().add_args();
+  arg->set_is_inlined(false);
+  arg->set_tensor_transport(rpc::TensorTransport::NCCL);
+  arg->mutable_object_ref()->set_object_id(gpu_obj_ref.Binary());
 
-  // Check whether the GC callback is registered for the return object.
-  auto return_id = spec.ReturnId(0);
-  EXPECT_CALL(*reference_counter_,
-              AddObjectOutOfScopeOrFreedCallback(return_id, testing::_))
-      .Times(1);
+  // `gpu_obj_ref` should have a local reference when the sender actor
+  // generates the ObjectRef.
+  reference_counter_->AddLocalReference(gpu_obj_ref, "");
 
   // Call AddPendingTask to add the task to the task manager.
   auto object_refs = manager_.AddPendingTask(caller_address, spec, "");
@@ -2710,12 +2582,15 @@ TEST_F(TaskManagerTest, TestGPUObjectTaskSuccess) {
   ASSERT_EQ(manager_.NumPendingTasks(), 1);
   ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
 
-  // Only the return object and the actor creation dummy object are in scope.
-  ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 2);
+  // GPU object, the return object and the actor creation dummy object are in
+  // scope.
+  auto return_id = spec.ReturnId(0);
+  ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 3);
   ASSERT_TRUE(reference_counter_->IsObjectPendingCreation(return_id));
 
   manager_.MarkDependenciesResolved(spec.TaskId());
   ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
+  ASSERT_FALSE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
 
   manager_.MarkTaskWaitingForExecution(
       spec.TaskId(), NodeID::FromRandom(), WorkerID::FromRandom());
@@ -2727,10 +2602,18 @@ TEST_F(TaskManagerTest, TestGPUObjectTaskSuccess) {
   auto data = GenerateRandomBuffer();
   return_object->set_data(data->Data(), data->Size());
   manager_.CompletePendingTask(spec.TaskId(), reply, rpc::Address(), false);
-
   ASSERT_FALSE(manager_.IsTaskPending(spec.TaskId()));
-  ASSERT_EQ(manager_.NumSubmissibleTasks(), 0);
-  ASSERT_EQ(manager_.NumPendingTasks(), 0);
+  // We assume that the GPU object ref is still in scope, so both the return object
+  // and the GPU object ref should remain.
+  ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 2);
+  ASSERT_FALSE(reference_counter_->IsObjectPendingCreation(return_id));
+
+  // Call `RemoveLocalReference` to simulate that the GPU object ref is out of scope.
+  // Then, the GPU object should be removed.
+  std::vector<ObjectID> removed;
+  reference_counter_->RemoveLocalReference(gpu_obj_ref, &removed);
+  ASSERT_EQ(removed[0], gpu_obj_ref);
+  ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 1);
 }
 }  // namespace core
 }  // namespace ray
