@@ -156,6 +156,16 @@ void OpenTelemetryMetricRecorder::RegisterCounterMetric(const std::string &name,
   registered_instruments_[name] = std::move(instrument);
 }
 
+void OpenTelemetryMetricRecorder::RegisterSumMetric(const std::string &name,
+                                                    const std::string &description) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  if (registered_instruments_.contains(name)) {
+    return;  // Already registered
+  }
+  auto instrument = GetMeter()->CreateDoubleUpDownCounter(name, description, "");
+  registered_instruments_[name] = std::move(instrument);
+}
+
 void OpenTelemetryMetricRecorder::SetMetricValue(
     const std::string &name,
     absl::flat_hash_map<std::string, std::string> &&tags,
@@ -196,6 +206,9 @@ void OpenTelemetryMetricRecorder::SetSynchronousMetricValue(
   if (auto *counter = dynamic_cast<opentelemetry::metrics::Counter<double> *>(
           sync_instr_ptr->get())) {
     counter->Add(value, std::move(tags));
+  } else if (auto *sum = dynamic_cast<opentelemetry::metrics::UpDownCounter<double> *>(
+                 sync_instr_ptr->get())) {
+    sum->Add(value, std::move(tags));
   } else {
     // Unknown or unsupported instrument type
     RAY_CHECK(false) << "Unsupported synchronous instrument type for metric: " << name;

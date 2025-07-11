@@ -71,5 +71,11 @@ TEST_F(OpenTelemetryMetricRecorderTest, TestCounterMetric) {
   ASSERT_TRUE(recorder_.IsMetricRegistered("test_counter"));
 }
 
+TEST_F(OpenTelemetryMetricRecorderTest, TestSumMetric) {
+  recorder_.RegisterSumMetric("test_sum", "Test sum description");
+  // Check that the sum metric is registered
+  ASSERT_TRUE(recorder_.IsMetricRegistered("test_sum"));
+}
+
 }  // namespace telemetry
 }  // namespace ray

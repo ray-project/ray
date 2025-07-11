@@ -272,6 +272,8 @@ void RegisterView(const std::string &name,
       OpenTelemetryMetricRecorder::GetInstance().RegisterGaugeMetric(name, description);
     } else if (T == COUNT) {
       OpenTelemetryMetricRecorder::GetInstance().RegisterCounterMetric(name, description);
+    } else if (T == SUM) {
+      OpenTelemetryMetricRecorder::GetInstance().RegisterSumMetric(name, description);
     } else {
       internal::RegisterAsView(view_descriptor, tag_keys);
     }
