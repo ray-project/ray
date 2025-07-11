@@ -33,7 +33,9 @@ class RayDataLoaderFactory(BaseDataLoaderFactory):
         data_context.execution_options.actor_locality_enabled = (
             dataloader_config.actor_locality_enabled
         )
-        data_context.execution_options.preserve_order = dataloader_config.preserve_order
+        data_context.execution_options.preserve_order = (
+            dataloader_config.preserve_order == "preserve_order"
+        )
 
     @abstractmethod
     def get_ray_datasets(self) -> Dict[str, Dataset]:
