@@ -115,7 +115,7 @@ class HangsOnFirstRequest:
 hangs_on_first_request_app = HangsOnFirstRequest.bind()
 
 
-def test_with_rest_api(ray_instance):
+def test_with_rest_api(ray_instance, shutdown_serve):
     """Verify the REST API can configure the request timeout."""
     config = {
         "proxy_location": "EveryNode",
