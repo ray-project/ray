@@ -77,7 +77,7 @@ class TrainStateActor:
             runs = list(self._runs.values())
 
             # Start iterating from poll index.
-            poll_index = 0
+            starting_poll_index = 0
             if last_poll_run_id is not None:
                 for i, run in enumerate(runs):
                     if run.id == last_poll_run_id:
