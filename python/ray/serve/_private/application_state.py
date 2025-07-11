@@ -324,9 +324,7 @@ class ApplicationState:
         # Restore route prefix and docs path from checkpointed deployments when
         # the imperatively started application is restarting with controller.
         if checkpoint_data.deployment_infos is not None:
-            self._route_prefix, self._docs_path = self._check_routes(
-                checkpoint_data.deployment_infos
-            )
+            self._route_prefix = self._check_routes(checkpoint_data.deployment_infos)
 
     def _set_target_state(
         self,
@@ -509,9 +507,7 @@ class ApplicationState:
                     self._target_state.deployment_infos,
                     config,
                 )
-                self._route_prefix, self._docs_path = self._check_routes(
-                    overrided_infos
-                )
+                self._route_prefix = self._check_routes(overrided_infos)
                 self._set_target_state(
                     # Code version doesn't change.
                     code_version=self._target_state.code_version,
