@@ -185,7 +185,8 @@ class MockTaskManager : public MockTaskManagerInterface {
                               bool fail_immediately = false) override {
     num_tasks_failed++;
     if (!fail_immediately) {
-      RetryTaskIfPossible(task_id, *ray_error_info);
+      RetryTaskIfPossible(task_id,
+                          ray_error_info ? *ray_error_info : rpc::RayErrorInfo());
     }
     return true;
   }

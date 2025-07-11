@@ -701,11 +701,11 @@ void NormalTaskSubmitter::HandleGetTaskFailureCause(
       return;
     }
     RAY_UNUSED(task_manager_.FailOrRetryPendingTask(task_id,
-                                                  task_error_type,
-                                                  &task_execution_status,
-                                                  error_info.get(),
-                                                  /*mark_task_object_failed*/ true,
-                                                  fail_immediately));
+                                                    task_error_type,
+                                                    &task_execution_status,
+                                                    error_info.get(),
+                                                    /*mark_task_object_failed*/ true,
+                                                    fail_immediately));
   }
 }
 
