@@ -131,7 +131,7 @@ def get_grpc_response_status(
         return ResponseStatus(
             code=grpc.StatusCode.RESOURCE_EXHAUSTED,
             is_error=True,
-            message="Request dropped due to backpressure",
+            message=exc.message,
         )
     elif isinstance(exc, DeploymentUnavailableError):
         if isinstance(exc, RayTaskError):
