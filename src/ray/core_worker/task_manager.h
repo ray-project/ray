@@ -167,14 +167,17 @@ class ObjectRefStream {
 
 class TaskManager : public TaskManagerInterface {
  public:
-  TaskManager(CoreWorkerMemoryStore &in_memory_store,
-              ReferenceCounter &reference_counter,
-              PutInLocalPlasmaCallback put_in_local_plasma_callback,
-              RetryTaskCallback retry_task_callback,
-              std::function<bool(const TaskSpecification &spec)> queue_generator_resubmit,
-              PushErrorCallback push_error_callback,
-              int64_t max_lineage_bytes,
-              worker::TaskEventBuffer &task_event_buffer)
+  TaskManager(
+      CoreWorkerMemoryStore &in_memory_store,
+      ReferenceCounter &reference_counter,
+      PutInLocalPlasmaCallback put_in_local_plasma_callback,
+      RetryTaskCallback retry_task_callback,
+      std::function<bool(const TaskSpecification &spec)> queue_generator_resubmit,
+      PushErrorCallback push_error_callback,
+      int64_t max_lineage_bytes,
+      worker::TaskEventBuffer &task_event_buffer,
+      std::function<std::shared_ptr<ray::rpc::CoreWorkerClientInterface>(const ActorID &)>
+          client_factory)
       : in_memory_store_(in_memory_store),
         reference_counter_(reference_counter),
         put_in_local_plasma_callback_(std::move(put_in_local_plasma_callback)),
@@ -182,7 +185,8 @@ class TaskManager : public TaskManagerInterface {
         queue_generator_resubmit_(std::move(queue_generator_resubmit)),
         push_error_callback_(std::move(push_error_callback)),
         max_lineage_bytes_(max_lineage_bytes),
-        task_event_buffer_(task_event_buffer) {
+        task_event_buffer_(task_event_buffer),
+        get_actor_rpc_client_callback_(std::move(client_factory)) {
     task_counter_.SetOnChangeCallback(
         [this](const std::tuple<std::string, rpc::TaskStatus, bool> &key)
             ABSL_EXCLUSIVE_LOCKS_REQUIRED(&mu_) {
@@ -773,8 +777,21 @@ class TaskManager : public TaskManagerInterface {
   /// error).
   worker::TaskEventBuffer &task_event_buffer_;
 
+  /// Callback to get the actor RPC client.
+  std::function<std::shared_ptr<ray::rpc::CoreWorkerClientInterface>(
+      const ActorID &actor_id)>
+      get_actor_rpc_client_callback_;
+
   friend class TaskManagerTest;
 };
+
+/// Extract plasma dependencies from a task specification.
+/// This includes arguments passed by reference, inlined GPU objects,
+/// inlined references, and actor creation dummy object IDs.
+///
+/// \param[in] spec The task specification to extract dependencies from.
+/// \return Vector of ObjectIDs representing plasma dependencies.
+std::vector<ObjectID> ExtractPlasmaDependencies(const TaskSpecification &spec);
 
 }  // namespace core
 }  // namespace ray

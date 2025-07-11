@@ -537,7 +537,10 @@ TEST(LocalDependencyResolverTest, TestMixedTensorTransport) {
   ASSERT_TRUE(task.GetMutableMessage().args(1).is_inlined());
   ASSERT_FALSE(task.GetMutableMessage().args(1).has_object_ref());
 
-  ASSERT_EQ(task_manager->num_inlined_dependencies, 2);
+  // The first argument is inlined but will not be passed into
+  // `OnTaskDependenciesInlined` because it is a GPU object reference.
+  // Please see https://github.com/ray-project/ray/pull/53911 for more details.
+  ASSERT_EQ(task_manager->num_inlined_dependencies, 1);
   ASSERT_EQ(resolver.NumPendingTasks(), 0);
 }
 
