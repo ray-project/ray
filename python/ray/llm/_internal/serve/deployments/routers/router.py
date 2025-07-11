@@ -43,15 +43,12 @@ from ray.llm._internal.serve.configs.openai_api_models import (
     LLMEmbeddingsResponse,
     OpenAIHTTPException,
     to_model_metadata,
-)
-from ray.llm._internal.serve.configs.openai_api_models_patch import (
     ErrorResponse,
+    ModelCard,
+    ModelList,
 )
-from ray.llm._internal.serve.configs.server_models import (
-    LLMConfig,
-    Model,
-    ModelData,
-)
+
+from ray.llm._internal.serve.configs.server_models import LLMConfig
 from ray.llm._internal.serve.deployments.llm.multiplex.utils import (
     get_base_model_id,
     get_lora_model_ids,
@@ -136,10 +133,15 @@ def _apply_openai_json_format(
         data: <response-json1>\n\ndata: <response-json2>\n\n...
     """
     if isinstance(response, list):
+        first_response = next(iter(response))
+        if isinstance(first_response, str):
+            return "".join(response)
         return "".join(f"data: {r.model_dump_json()}\n\n" for r in response)
     if hasattr(response, "model_dump_json"):
         return f"data: {response.model_dump_json()}\n\n"
-    raise ValueError(f"Unexpected response type: {type(response)}")
+    if isinstance(response, str):
+        return response
+    raise ValueError(f"Unexpected response type: {type(response)}, {response=}")
 
 
 async def _peek_at_generator(
@@ -296,7 +298,7 @@ class LLMRouter:
         async for response in getattr(model_handle, call_method).remote(body):
             yield response
 
-    async def model(self, model_id: str) -> Optional[ModelData]:
+    async def model(self, model_id: str) -> Optional[ModelCard]:
         if model_id in self._llm_configs:
             return to_model_metadata(model_id, self._llm_configs[model_id])
 
@@ -322,8 +324,8 @@ class LLMRouter:
                     "Check that adapter config file exists in cloud bucket."
                 )
 
-    @fastapi_router_app.get("/v1/models", response_model=Model)
-    async def models(self) -> Model:
+    @fastapi_router_app.get("/v1/models", response_model=ModelList)
+    async def models(self) -> ModelList:
         """OpenAI API-compliant endpoint to get all rayllm models."""
         all_models = dict()
         for base_model_id, llm_config in self._llm_configs.items():
@@ -341,11 +343,11 @@ class LLMRouter:
                     if model_data is not None:
                         all_models[lora_id] = model_data
 
-        return Model(data=list(all_models.values()))
+        return ModelList(data=list(all_models.values()))
 
     # :path allows us to have slashes in the model name
-    @fastapi_router_app.get("/v1/models/{model:path}", response_model=ModelData)
-    async def model_data(self, model: str) -> ModelData:
+    @fastapi_router_app.get("/v1/models/{model:path}", response_model=ModelCard)
+    async def model_data(self, model: str) -> ModelCard:
         """OpenAI API-compliant endpoint to get one rayllm model.
 
         :param model: The model ID (e.g. "amazon/LightGPT")
