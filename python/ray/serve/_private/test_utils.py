@@ -708,7 +708,7 @@ def tlog(s: str, level: str = "INFO"):
 def get_application_urls(
     protocol: Union[str, RequestProtocol] = RequestProtocol.HTTP,
     app_name: str = SERVE_DEFAULT_APP_NAME,
-    use_localhost: bool = False,
+    use_localhost: bool = True,
     exclude_route_prefix: bool = False,
 ) -> List[str]:
     """Get the URL of the application.
@@ -762,7 +762,7 @@ def get_application_urls(
 def get_application_url(
     protocol: Union[str, RequestProtocol] = RequestProtocol.HTTP,
     app_name: str = SERVE_DEFAULT_APP_NAME,
-    use_localhost: bool = False,
+    use_localhost: bool = True,
     exclude_route_prefix: bool = False,
 ) -> str:
     """Get the URL of the application.
