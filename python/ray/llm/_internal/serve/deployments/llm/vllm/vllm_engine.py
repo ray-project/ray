@@ -280,28 +280,12 @@ class VLLMEngine(LLMEngine):
         """
         engine_config: VLLMEngineConfig = self.llm_config.get_engine_config()
 
-        if engine_config.use_gpu:
-            # Create engine config on a task with access to GPU,
-            # as GPU capability may be queried.
-            ref = (
-                ray.remote(
-                    num_cpus=0,
-                    num_gpus=1,
-                    accelerator_type=self.llm_config.accelerator_type,
-                )(_get_vllm_engine_config)
-                .options(
-                    runtime_env=node_initialization.runtime_env,
-                    scheduling_strategy=PlacementGroupSchedulingStrategy(
-                        placement_group=node_initialization.placement_group,
-                    ),
-                )
-                .remote(self.llm_config)
+        if engine_config.placement_strategy not in ["STRICT_PACK", "PACK"]:
+            raise ValueError(
+                "_get_vllm_engine_config must run on a GPU PG if there is one."
             )
-            vllm_engine_args, vllm_engine_config = ray.get(ref)
-        else:
-            vllm_engine_args, vllm_engine_config = _get_vllm_engine_config(
-                self.llm_config
-            )
+
+        vllm_engine_args, vllm_engine_config = _get_vllm_engine_config(self.llm_config)
 
         # Note (genesu): vllm_config is used to extract the scheduler config for
         # computing the correct prompt limit.
