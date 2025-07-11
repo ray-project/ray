@@ -43,6 +43,8 @@ TEAM_API_CONFIGS = {
             "ray.util.scheduling_strategies.NodeLabelSchedulingStrategy",
             "ray.util.scheduling_strategies.In",
             "ray.util.scheduling_strategies.NotIn",
+            # TODO(jjyao): document this API
+            "ray.ObjectRefGenerator",
             # TODO(jjyao): document or deprecate these APIs
             "ray.experimental.compiled_dag_ref.CompiledDAGFuture",
             "ray.experimental.compiled_dag_ref.CompiledDAGRef",

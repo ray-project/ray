@@ -629,6 +629,8 @@ class RequestMetadata:
     # If this request expects a streaming response.
     is_streaming: bool = False
 
+    _http_method: str = ""
+
     # The protocol to serve this request
     _request_protocol: RequestProtocol = RequestProtocol.UNDEFINED
 
