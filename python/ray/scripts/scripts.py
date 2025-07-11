@@ -37,6 +37,7 @@ from ray._private.utils import (
 )
 from ray._private.internal_api import memory_summary
 from ray._private.usage import usage_lib
+import ray._private.usage.usage_constants as usage_constant
 from ray.autoscaler._private.cli_logger import add_click_logging_options, cf, cli_logger
 from ray.autoscaler._private.commands import (
     RUN_ENV_TYPES,
@@ -853,6 +854,16 @@ def start(
             ray_params.env_vars = {
                 "RAY_OVERRIDE_NODE_ID_FOR_TESTING": FAKE_HEAD_NODE_ID
             }
+
+        if (
+            no_monitor  # KubeRay sets this flag when autoscaler is enabled.
+            and usage_constant.KUBERAY_ENV in os.environ  # KubeRay exclusive.
+            and "RAY_CLOUD_INSTANCE_ID" in os.environ  # required by autoscaler v2.
+            and "RAY_NODE_TYPE_NAME" in os.environ  # required by autoscaler v2.
+        ):
+            # If this Ray cluster is managed by KubeRay and RAY_CLOUD_INSTANCE_ID and RAY_NODE_TYPE_NAME are set,
+            # we enable the v2 autoscaler by default if RAY_enable_autoscaler_v2 is not set.
+            os.environ.setdefault("RAY_enable_autoscaler_v2", "1")
 
         num_redis_shards = None
         # Start Ray on the head node.

@@ -435,7 +435,11 @@ install_dependencies() {
   install_thirdparty_packages
 }
 
-install_dependencies
+if [[ $# -eq 0 ]]; then
+  install_dependencies
+else
+  "$@"
+fi
 
 # Pop caller's shell options (quietly)
 { set -vx; eval "${SHELLOPTS_STACK##*|}"; SHELLOPTS_STACK="${SHELLOPTS_STACK%|*}"; } 2> /dev/null

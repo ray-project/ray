@@ -22,14 +22,14 @@ from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import (
 
 class FakeVLLMEngine:
     def __init__(self, mock: Mock, output=None):
-        self.engine = mock
+        self._engine_client = mock
 
         self._output = output or []
         self.num_generated = 0
 
     async def generate(self, *args, **kwargs):
         # Record the call
-        self.engine.generate(*args, **kwargs)
+        self._engine_client.generate(*args, **kwargs)
 
         for x in self._output:
             await asyncio.sleep(0.01)
@@ -38,11 +38,11 @@ class FakeVLLMEngine:
 
     async def abort(self, request_id: str):
         # Record the call
-        self.engine.abort(request_id)
+        self._engine_client.abort(request_id)
 
     def _abort(self, request_id: str, **kwargs):
         # Record the call
-        self.engine.abort(request_id)
+        self._engine_client.abort(request_id)
 
 
 def get_fake_responses(*tokens: List[str]):
@@ -78,7 +78,9 @@ def get_fake_engine_and_request(llm_config: LLMConfig, expected_out: List[str]):
     vllm_engine.model_config.max_model_len = 1
 
     engine_mock = Mock()
-    vllm_engine.engine = FakeVLLMEngine(engine_mock, get_fake_responses(*expected_out))
+    vllm_engine._engine_client = FakeVLLMEngine(
+        engine_mock, get_fake_responses(*expected_out)
+    )
 
     req = VLLMGenerationRequest(
         prompt="prompt",
@@ -155,7 +157,7 @@ class TestVLLMEngine:
         # Abort should be called
         engine_mock.abort.assert_called_once_with("req_id")
         assert (
-            vllm_engine.engine.num_generated <= 4
+            vllm_engine._engine_client.num_generated <= 4
         ), "We should have generated not more than 4 tokens"
 
     @pytest.mark.parametrize("enable_json_mode", [True, False])
