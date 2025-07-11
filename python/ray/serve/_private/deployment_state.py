@@ -1195,11 +1195,11 @@ class DeploymentReplica:
                     f"{self.replica_id} did not shut down after grace "
                     "period, force-killing it. "
                 )
-                self._logged_shutdown_message = True
 
             self._actor.force_stop(
                 log_shutdown_message=not self._logged_shutdown_message
             )
+            self._logged_shutdown_message = True
         return False
 
     def check_health(self) -> bool:
