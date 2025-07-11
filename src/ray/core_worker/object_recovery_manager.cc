@@ -155,6 +155,8 @@ void ObjectRecoveryManager::PinExistingObjectCopy(
 
 void ObjectRecoveryManager::ReconstructObject(const ObjectID &object_id) {
   bool lineage_evicted = false;
+  RAY_LOG(DEBUG).WithField(object_id)
+      << "[ReconstructObject] attempting to see if object is reconstructible";
   if (!reference_counter_.IsObjectReconstructable(object_id, &lineage_evicted)) {
     RAY_LOG(DEBUG).WithField(object_id) << "Object is not reconstructable";
     if (lineage_evicted) {
@@ -184,6 +186,10 @@ void ObjectRecoveryManager::ReconstructObject(const ObjectID &object_id) {
   // see https://github.com/ray-project/ray/issues/47606 for more details.
   reference_counter_.UpdateObjectPendingCreation(object_id, true);
   auto error_type_optional = task_manager_.ResubmitTask(task_id, &task_deps);
+
+  RAY_LOG(DEBUG) << "[ReconstructObject] "
+                 << error_type_optional.value_or(
+                        rpc::ErrorType::ErrorType_INT_MAX_SENTINEL_DO_NOT_USE_);
 
   if (!error_type_optional.has_value()) {
     // Try to recover the task's dependencies.
