@@ -13,6 +13,7 @@ from mcp.client.stdio import stdio_client
 
 logger = logging.getLogger("multi_mcp_serve")
 
+
 def _podman_args(
     image: str,
     *,
@@ -29,6 +30,7 @@ def _podman_args(
     args.append(image)
     return args
 
+
 class _BaseMCP:
     _PODMAN_ARGS: List[str] = []
     _ENV: Dict[str, str] = {}
@@ -44,7 +46,9 @@ class _BaseMCP:
         )
         self._stack = AsyncExitStack()
         stdin, stdout = await self._stack.enter_async_context(stdio_client(params))
-        self.session = await self._stack.enter_async_context(ClientSession(stdin, stdout))
+        self.session = await self._stack.enter_async_context(
+            ClientSession(stdin, stdout)
+        )
         await self.session.initialize()
         logger.info("%s replica ready", type(self).__name__)
 
@@ -55,7 +59,11 @@ class _BaseMCP:
         await self._ensure_ready()
         resp = await self.session.list_tools()
         return [
-            {"name": t.name, "description": t.description, "input_schema": t.inputSchema}
+            {
+                "name": t.name,
+                "description": t.description,
+                "input_schema": t.inputSchema,
+            }
             for t in resp.tools
         ]
 
@@ -66,6 +74,7 @@ class _BaseMCP:
     async def __del__(self):
         if hasattr(self, "_stack"):
             await self._stack.aclose()
+
 
 def build_mcp_deployment(
     *,
@@ -84,7 +93,9 @@ def build_mcp_deployment(
     - Otherwise it will launch `num_replicas` fixed replicas.
     """
     deployment_env = env or {}
-    podman_args = _podman_args(docker_image, extra_args=extra_podman_args, env=deployment_env)
+    podman_args = _podman_args(
+        docker_image, extra_args=extra_podman_args, env=deployment_env
+    )
     if server_command:
         podman_args.append(server_command)
 
@@ -105,18 +116,18 @@ def build_mcp_deployment(
 
     return MCP
 
+
 # -------------------------
 # HTTP router code
 # -------------------------
 
 api = FastAPI()
 
+
 @serve.deployment
 @serve.ingress(api)
 class Router:
-    def __init__(self,
-                 brave_search: DeploymentHandle,
-                 fetch: DeploymentHandle) -> None:
+    def __init__(self, brave_search: DeploymentHandle, fetch: DeploymentHandle) -> None:
         self._mcps = {"brave_search": brave_search, "fetch": fetch}
 
     @api.get("/{mcp_name}/tools")
@@ -146,6 +157,7 @@ class Router:
         except Exception as exc:
             logger.exception("Tool call failed")
             raise HTTPException(500, str(exc))
+
 
 # -------------------------
 # Binding deployments

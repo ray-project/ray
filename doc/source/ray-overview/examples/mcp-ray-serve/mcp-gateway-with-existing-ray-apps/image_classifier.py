@@ -7,18 +7,12 @@ from ray.serve.handle import DeploymentHandle
 @serve.deployment(
     name="image_downloader",
     num_replicas=2,
-    ray_actor_options={
-        "num_cpus": 0.3,
-        "runtime_env": {                 
-            "pip": [
-                "pillow"
-                ]
-            }
-        },
+    ray_actor_options={"num_cpus": 0.3, "runtime_env": {"pip": ["pillow"]}},
 )
 def downloader(image_url: str):
     from io import BytesIO
     from PIL import Image
+
     image_bytes = requests.get(image_url).content
     image = Image.open(BytesIO(image_bytes)).convert("RGB")
     return image
@@ -29,19 +23,13 @@ def downloader(image_url: str):
     num_replicas=2,
     ray_actor_options={
         "num_gpus": 0.5,
-        "runtime_env": {                 
-            "pip": [
-                "transformers",
-                "torch",
-                "pillow",
-                "hf_xet"
-                ]
-            }
-        },
+        "runtime_env": {"pip": ["transformers", "torch", "pillow", "hf_xet"]},
+    },
 )
 class ImageClassifier:
     def __init__(self, downloader: DeploymentHandle):
         from transformers import pipeline
+
         self.downloader = downloader
         self.model = pipeline(
             "image-classification", model="google/vit-base-patch16-224"

@@ -1,4 +1,3 @@
-
 import os
 import asyncio
 import logging
@@ -57,7 +56,9 @@ class BraveSearchDeployment:
 
         stdin, stdout = await self._exit_stack.enter_async_context(stdio_client(params))
 
-        self.session: ClientSession = await self._exit_stack.enter_async_context(ClientSession(stdin, stdout))
+        self.session: ClientSession = await self._exit_stack.enter_async_context(
+            ClientSession(stdin, stdout)
+        )
         await self.session.initialize()
 
         logger.info("BraveSearchDeployment replica ready.")

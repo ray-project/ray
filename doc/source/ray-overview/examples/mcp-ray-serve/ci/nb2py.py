@@ -3,7 +3,9 @@ import argparse
 import nbformat
 
 
-def convert_notebook(input_path: str, output_path: str, ignore_cmds: bool = False) -> None:
+def convert_notebook(
+    input_path: str, output_path: str, ignore_cmds: bool = False
+) -> None:
     """
     Read a Jupyter notebook and write a Python script, converting all %%bash
     cells and IPython "!" commands into subprocess.run calls that raise on error.
@@ -58,7 +60,7 @@ def convert_notebook(input_path: str, output_path: str, ignore_cmds: bool = Fals
                             out.write(line.rstrip() + "\n")
                     out.write("\n")
                 else:
-                    # Regular Python cell: 
+                    # Regular Python cell:
                     code = cell.source.rstrip()
                     if code == "serve.run(app)":
                         continue  # Skip the serve.run(app) line
@@ -67,7 +69,7 @@ def convert_notebook(input_path: str, output_path: str, ignore_cmds: bool = Fals
                     if "# Invoke the brave_web_search tool" in code:
                         continue  # Skip this cell for now
                     if "response = requests.get(" in code:
-                        continue # Skip this cell for now
+                        continue  # Skip this cell for now
                     # else, dump as-is
                     out.write(cell.source.rstrip() + "\n\n")
 
@@ -78,7 +80,9 @@ def main() -> None:
     )
     parser.add_argument("input_nb", help="Path to the input .ipynb file")
     parser.add_argument("output_py", help="Path for the output .py script")
-    parser.add_argument("--ignore-cmds", action="store_true", help="Ignore bash cells and '!' commands")
+    parser.add_argument(
+        "--ignore-cmds", action="store_true", help="Ignore bash cells and '!' commands"
+    )
     args = parser.parse_args()
     convert_notebook(args.input_nb, args.output_py, ignore_cmds=args.ignore_cmds)
 

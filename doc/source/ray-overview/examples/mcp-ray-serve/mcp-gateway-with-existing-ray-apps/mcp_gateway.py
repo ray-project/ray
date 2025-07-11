@@ -12,18 +12,22 @@ mcp = FastMCP("Image-N-Translate", stateless_http=True)
 # 2.  Register your tools BEFORE mounting the app
 # --------------------------------------------------------------------------
 
+
 @mcp.tool()
 async def classify(image_url: str) -> str:
     """Return the top-1 label for an image URL."""
     # these remote calls are already async, so no extra thread executor needed
-    clf = serve.get_deployment_handle("image_classifier", app_name="image_classifier_app")
+    clf = serve.get_deployment_handle(
+        "image_classifier", app_name="image_classifier_app"
+    )
     return await clf.classify.remote(image_url)
+
 
 @mcp.tool()
 async def translate(text: str) -> str:
     """Translate English → German."""
 
-    tr  = serve.get_deployment_handle("text_translator", app_name="text_translator_app")
+    tr = serve.get_deployment_handle("text_translator", app_name="text_translator_app")
     return await tr.translate.remote(text)
 
 
@@ -39,6 +43,7 @@ async def lifespan(app: fastapi.FastAPI):
     async with mcp.session_manager.run():
         yield
 
+
 api = fastapi.FastAPI(lifespan=lifespan)
 
 # --------------------------------------------------------------------------
@@ -50,21 +55,15 @@ api = fastapi.FastAPI(lifespan=lifespan)
         "max_replicas": 10,
         "target_ongoing_requests": 50,
     },
-    ray_actor_options={
-        "num_cpus": 0.5
-    }
+    ray_actor_options={"num_cpus": 0.5},
 )
 @serve.ingress(api)
 class MCPGateway:
-
     def __init__(self):
-        pass  
+        pass
 
 
 # --------------------------------------------------------------------------
 # 5.  Expose the Serve application graph
 # --------------------------------------------------------------------------
 app = MCPGateway.bind()
-
-
-

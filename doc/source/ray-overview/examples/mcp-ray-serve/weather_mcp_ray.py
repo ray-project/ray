@@ -31,8 +31,10 @@ def format_alert(feature: dict) -> str:
         f"Instructions: {props.get('instruction', 'No specific instructions provided')}"
     )
 
+
 # Instantiate FastMCP and register tools via decorators.
 mcp = FastMCP("weather", stateless_http=True)
+
 
 @mcp.tool()
 async def get_alerts(state: str) -> str:
@@ -45,6 +47,7 @@ async def get_alerts(state: str) -> str:
     if not features:
         return "No active alerts for this state."
     return "\n---\n".join(format_alert(f) for f in features)
+
 
 @mcp.tool()
 async def get_forecast(latitude: float, longitude: float) -> str:
@@ -69,11 +72,12 @@ async def get_forecast(latitude: float, longitude: float) -> str:
     parts: list[str] = []
     for p in periods[:5]:
         parts.append(
-            f"{p['name']}:\nTemperature: {p['temperature']}°{p['temperatureUnit']}\n" +
-            f"Wind: {p['windSpeed']} {p['windDirection']}\n" +
-            f"Forecast: {p['detailedForecast']}"
+            f"{p['name']}:\nTemperature: {p['temperature']}°{p['temperatureUnit']}\n"
+            + f"Wind: {p['windSpeed']} {p['windDirection']}\n"
+            + f"Forecast: {p['detailedForecast']}"
         )
     return "\n---\n".join(parts)
+
 
 ## FastAPI app and Ray Serve setup.
 @asynccontextmanager
@@ -85,21 +89,23 @@ async def lifespan(app: FastAPI):
     async with mcp.session_manager.run():
         yield
 
+
 fastapi_app = FastAPI(lifespan=lifespan)
+
 
 @serve.deployment(
     autoscaling_config={
-        "min_replicas": 2, 
-        "max_replicas": 20, 
-        "target_ongoing_requests": 5
-        },
-    ray_actor_options={"num_cpus": 0.2}
+        "min_replicas": 2,
+        "max_replicas": 20,
+        "target_ongoing_requests": 5,
+    },
+    ray_actor_options={"num_cpus": 0.2},
 )
 @serve.ingress(fastapi_app)
 class WeatherMCP:
     def __init__(self):
         pass
-       
+
 
 # Ray Serve entry point.
 app = WeatherMCP.bind()
