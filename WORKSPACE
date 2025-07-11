@@ -105,14 +105,14 @@ filegroup(
 http_archive(
     name = "uv_x86_64",
     build_file_content = """
-    filegroup(
-        name = "file",
-        srcs = glob(["**"]),
-        visibility = ["//visibility:public"],
+filegroup(
+    name = "file",
+    srcs = glob(["**"]),
+    visibility = ["//visibility:public"],
 )
 """,
-    sha256 = "1785537fc65a35609dc33063b5f1cc85437a08ade4c0a832071c018481afe515",
-    urls = ["https://github.com/astral-sh/uv/releases/download/0.7.19/uv-i686-unknown-linux-gnu.tar.gz"],
+    sha256 = "10f204426ff188925d22a53c1d0310d190a8d4d24513712e1b8e2ca9873f0666",
+    urls = ["https://github.com/astral-sh/uv/releases/download/0.7.20/uv-x86_64-unknown-linux-gnu.tar.gz"],
 )
 
 http_archive(
