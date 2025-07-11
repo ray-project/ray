@@ -1,7 +1,7 @@
 import logging
 import threading
 from collections import defaultdict
-from typing import List, Optional
+from typing import List
 
 from opentelemetry import metrics
 from opentelemetry.exporter.prometheus import PrometheusMetricReader
@@ -44,11 +44,11 @@ class OpenTelemetryMetricRecorder:
             def callback(options):
                 # Take snapshot of current observations.
                 with self._lock:
-                    observations = self._observations_by_name.get(name, {}).items()
-                return [
-                    Observation(val, attributes=dict(tag_set))
-                    for tag_set, val in observations
-                ]
+                    observations = self._observations_by_name[name].items()
+                    return [
+                        Observation(val, attributes=dict(tag_set))
+                        for tag_set, val in observations
+                    ]
 
             instrument = self.meter.create_observable_gauge(
                 name=f"{NAMESPACE}_{name}",
@@ -65,7 +65,11 @@ class OpenTelemetryMetricRecorder:
         """
         with self._lock:
             if name in self._registered_instruments:
-                # Counter with the same name is already registered.
+                # Counter with the same name is already registered. This is a common
+                # case when metrics are exported from multiple Ray components (e.g.,
+                # raylet, worker, etc.) running in the same node. Since each component
+                # may export metrics with the same name, the same metric might be
+                # registered multiple times.
                 return
 
             instrument = self.meter.create_counter(
@@ -115,10 +119,3 @@ class OpenTelemetryMetricRecorder:
                 logger.error(
                     f"Failed to record metric {gauge.name} with value {value} with tags {tags!r} and global tags {global_tags!r} due to: {e!r}"
                 )
-
-    def _get_observable_metric_value(self, name: str, tags: dict) -> Optional[float]:
-        """
-        Get the value of a metric with the given name and tags. This method is mainly
-        used for testing purposes.
-        """
-        return self._observations_by_name[name].get(frozenset(tags.items()), 0.0)

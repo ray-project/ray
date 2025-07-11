@@ -28,13 +28,11 @@ def test_register_gauge_metric(mock_get_meter, mock_set_meter_provider):
         tags={"label_key": "label_value"},
         value=42.0,
     )
-    assert (
-        recorder._get_observable_metric_value(
-            name="test_gauge",
-            tags={"label_key": "label_value"},
-        )
-        == 42.0
-    )
+    assert recorder._observations_by_name == {
+        "test_gauge": {
+            frozenset({("label_key", "label_value")}): 42.0,
+        }
+    }
 
 
 @patch("ray._private.telemetry.open_telemetry_metric_recorder.logger.warning")
@@ -60,6 +58,14 @@ def test_register_counter_metric(
         value=10.0,
     )
     mock_logger_warning.assert_not_called()
+    recorder.set_metric_value(
+        name="test_counter_unregistered",
+        tags={"label_key": "label_value"},
+        value=10.0,
+    )
+    mock_logger_warning.assert_called_once_with(
+        "Unsupported synchronous instrument type for metric: test_counter_unregistered."
+    )
 
 
 @patch("opentelemetry.metrics.set_meter_provider")
@@ -124,23 +130,23 @@ def test_record_and_export(mock_get_meter, mock_set_meter_provider):
         "hi": {
             frozenset(
                 {
-                    "label_key": "label_value",
-                    "global_label_key": "global_label_value",
-                }.items()
+                    ("label_key", "label_value"),
+                    ("global_label_key", "global_label_value"),
+                }
             ): 3.0
         },
         "w00t": {
             frozenset(
                 {
-                    "label_key": "label_value",
-                    "global_label_key": "global_label_value",
-                }.items()
+                    ("label_key", "label_value"),
+                    ("global_label_key", "global_label_value"),
+                }
             ): 2.0,
             frozenset(
                 {
-                    "another_label_key": "another_label_value",
-                    "global_label_key": "global_label_value",
-                }.items()
+                    ("another_label_key", "another_label_value"),
+                    ("global_label_key", "global_label_value"),
+                }
             ): 20.0,
         },
     }
