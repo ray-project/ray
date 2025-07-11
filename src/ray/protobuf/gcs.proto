@@ -493,6 +493,8 @@ message ResourceDemand {
   // The number of requests of this shape still queued in CoreWorkers that this
   // raylet knows about.
   int64 backlog_size = 4;
+  // The label selector constraints for this Resource shape on a node.
+  repeated LabelSelector label_selectors = 5;
 }
 
 // Represents the demand sorted by resource shape.
@@ -539,6 +541,8 @@ message ResourcesData {
   // The value is the timestamp when
   // the node will be force killed.
   int64 draining_deadline_timestamp_ms = 18;
+  // Te key-value labels of this node.
+  map<string, string> labels = 19;
 }
 
 message ResourceUsageBatchData {
