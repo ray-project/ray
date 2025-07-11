@@ -241,7 +241,8 @@ class BinaryExpr(Expr):
 
 @PublicAPI(stability="beta")
 def col(name: str) -> ColumnExpr:
-    """Reference an existing column by name.
+    """
+    Reference an existing column by name.
 
     This is the primary way to reference columns in expressions.
     The returned expression will extract values from the specified
@@ -268,7 +269,8 @@ def col(name: str) -> ColumnExpr:
 
 @PublicAPI(stability="beta")
 def lit(value: Any) -> LiteralExpr:
-    """Create a literal expression from a constant value.
+    """
+    Create a literal expression from a constant value.
 
     This creates an expression that represents a constant scalar value.
     The value will be broadcast to all rows when the expression is evaluated.
