@@ -105,9 +105,9 @@ class _LLMServerBase(ABC):
         """
         ...
 
-    # TODO (Kourosh): This does not belong here.
+    @abstractmethod
     async def llm_config(self) -> Optional[LLMConfig]:
-        return None
+        """Return the LLMConfig for the model."""
 
 
 class ResponsePostprocessor:
@@ -503,7 +503,6 @@ class LLMServer(_LLMServerBase):
 
     async def _predict(
         self,
-        request_id: str,
         prompt: Prompt,
         stream: bool,
     ) -> AsyncGenerator[LLMRawResponse, None]:
@@ -514,7 +513,7 @@ class LLMServer(_LLMServerBase):
         3. Forward request to VLLMEngine.generate()
         """
 
-        logger.info(f"Received streaming request {request_id}")
+        request_id = get_serve_request_id()
         disk_lora_model = await self._maybe_resolve_lora_from_multiplex()
 
         llm_request = await self.engine.prepare_request(
@@ -536,13 +535,6 @@ class LLMServer(_LLMServerBase):
             stream_batching_interval_ms = MODEL_RESPONSE_BATCH_TIMEOUT_MS
         return stream_batching_interval_ms if stream else None
 
-    def _maybe_add_request_id_to_request(
-        self, request: Union[ChatCompletionRequest, CompletionRequest, EmbeddingRequest]
-    ) -> None:
-        """Add the request id to the request."""
-        request_id = get_serve_request_id()
-        if request_id:
-            request.request_id = request_id
 
     async def _maybe_resolve_lora_from_multiplex(self) -> Optional[DiskMultiplexConfig]:
         """Handle the lora model for the request."""
@@ -559,7 +551,7 @@ class LLMServer(_LLMServerBase):
             interval_ms=self._get_batch_interval_ms(),
         ).stream()
 
-    async def _process_llm_request(
+    def _process_llm_request(
         self, request: Union[ChatCompletionRequest, CompletionRequest], is_chat: bool
     ) -> Union[LLMChatResponse, LLMCompletionsResponse]:
         """Common processing pipeline for both chat and completions APIs.
@@ -571,7 +563,6 @@ class LLMServer(_LLMServerBase):
         Returns:
             A generator of response objects (either chat completion or text completion)
         """
-        self._maybe_add_request_id_to_request(request)
 
         # 1. Construct the appropriate prompt based on request type
         if is_chat:
@@ -590,7 +581,7 @@ class LLMServer(_LLMServerBase):
 
         # 2. Predict using the engine
         gen = self._predict(
-            request_id=request.request_id, prompt=prompt, stream=request.stream
+            prompt=prompt, stream=request.stream
         )
 
         # 3. Convert raw LLM responses to OpenAI format
@@ -653,12 +644,12 @@ class LLMServer(_LLMServerBase):
         Returns:
             A LLMEmbeddingsResponse object.
         """
-        self._maybe_add_request_id_to_request(request)
+        request_id = get_serve_request_id()
         try:
             disk_lora_model = await self._maybe_resolve_lora_from_multiplex()
 
             request_params = {
-                "request_id": request.request_id,
+                "request_id": request_id,
                 "prompt": request.input,
                 "encoding_format": request.encoding_format,
                 "disk_multiplex_config": disk_lora_model,
@@ -681,9 +672,12 @@ class LLMServer(_LLMServerBase):
             )
         except Exception as e:
             logger.error(
-                f"Failed while handling embeddings for request ({request.request_id}): {repr(e)}",
+                f"Failed while handling embeddings for request ({request_id}): {repr(e)}",
                 exc_info=e,
             )
+
+    async def llm_config(self) -> Optional[LLMConfig]:
+        return self._llm_config
 
     @classmethod
     def as_deployment(
