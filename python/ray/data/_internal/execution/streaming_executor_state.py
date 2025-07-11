@@ -23,11 +23,14 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     MetadataOpTask,
     OpTask,
     Waitable,
-    WithSubProgressBarMixin,
     _ActorPoolInfo,
 )
 from ray.data._internal.execution.operators.base_physical_operator import (
+    AllToAllOperator,
     InternalQueueOperatorMixin,
+)
+from ray.data._internal.execution.operators.hash_shuffle import (
+    HashShuffleProgressBarMixin,
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.resource_manager import ResourceManager
@@ -212,12 +215,16 @@ class OpState:
         For AllToAllOperator, zero or more sub progress bar would be created.
         Return the number of enabled progress bars created for this operator.
         """
+        contains_sub_progress_bars = isinstance(
+            self.op, AllToAllOperator
+        ) or isinstance(self.op, HashShuffleProgressBarMixin)
         # Only show 1:1 ops when in verbose progress mode.
+
         ctx = DataContext.get_current()
         progress_bar_enabled = (
             ctx.enable_progress_bars
             and ctx.enable_operator_progress_bars
-            and (isinstance(self.op, WithSubProgressBarMixin) or verbose_progress)
+            and (contains_sub_progress_bars or verbose_progress)
         )
         self.progress_bar = ProgressBar(
             "- " + self.op.name,
@@ -227,17 +234,20 @@ class OpState:
             enabled=progress_bar_enabled,
         )
         num_progress_bars = 1
-        if isinstance(self.op, WithSubProgressBarMixin):
+        if contains_sub_progress_bars:
             # Initialize must be called for sub progress bars, even the
             # bars are not enabled via the DataContext.
-            num_progress_bars += self.op.start_sub_progress_bars(index + 1)
+            num_progress_bars += self.op.initialize_sub_progress_bars(index + 1)
         return num_progress_bars if progress_bar_enabled else 0
 
     def close_progress_bars(self):
         """Close all progress bars for this operator."""
         if self.progress_bar:
             self.progress_bar.close()
-            if isinstance(self.op, WithSubProgressBarMixin):
+            contains_sub_progress_bars = isinstance(
+                self.op, AllToAllOperator
+            ) or isinstance(self.op, HashShuffleProgressBarMixin)
+            if contains_sub_progress_bars:
                 # Close all sub progress bars.
                 self.op.close_sub_progress_bars()
 

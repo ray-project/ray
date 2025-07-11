@@ -40,7 +40,7 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     DataOpTask,
     MetadataOpTask,
     OpTask,
-    WithSubProgressBarMixin,
+    _create_sub_pb,
     estimate_total_num_of_blocks,
 )
 from ray.data._internal.progress_bar import ProgressBar
@@ -347,7 +347,64 @@ class _PartitionStats:
         )
 
 
-class HashShufflingOperatorBase(PhysicalOperator, WithSubProgressBarMixin):
+class HashShuffleProgressBarMixin(abc.ABC):
+    @property
+    @abc.abstractmethod
+    def shuffle_name(self) -> str:
+        ...
+
+    @property
+    @abc.abstractmethod
+    def reduce_name(self) -> str:
+        ...
+
+    @property
+    def shuffle_bar(self) -> ProgressBar:
+        return self._shuffle_bar
+
+    @property
+    def shuffle_metrics(self) -> OpRuntimeMetrics:
+        return self._shuffle_metrics
+
+    @property
+    def reduce_bar(self) -> ProgressBar:
+        return self._reduce_bar
+
+    @property
+    def reduce_metrics(self) -> OpRuntimeMetrics:
+        return self._reduce_metrics
+
+    def initialize_sub_progress_bars(self, position: int) -> int:
+        """Display all sub progres bars in the termainl, and return the number of bars."""
+
+        # shuffle
+        progress_bars_created = 0
+        self._shuffle_bar = None
+        if self.shuffle_name is not None:
+            self._shuffle_bar, position = _create_sub_pb(
+                self.shuffle_name, self.num_output_rows_total(), position
+            )
+            progress_bars_created += 1
+        self._shuffle_metrics = OpRuntimeMetrics(self)
+
+        # reduce
+        self._reduce_bar = None
+        if self.reduce_name is not None:
+            self._reduce_bar, position = _create_sub_pb(
+                self.reduce_name, self.num_output_rows_total(), position
+            )
+            progress_bars_created += 1
+        self._reduce_metrics = OpRuntimeMetrics(self)
+
+        return progress_bars_created
+
+    def close_sub_progress_bars(self):
+        """Close all internal sub progress bars."""
+        self.shuffle_bar.close()
+        self.reduce_bar.close()
+
+
+class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
     """Physical operator base-class for any operators requiring hash-based
     shuffling.
 
@@ -393,9 +450,9 @@ class HashShufflingOperatorBase(PhysicalOperator, WithSubProgressBarMixin):
             shuffle_progress_bar_name = "Shuffle"
         if finalize_progress_bar_name is None:
             finalize_progress_bar_name = "Reduce"
-        self.init_sub_progress_bars(
-            [shuffle_progress_bar_name, finalize_progress_bar_name]
-        )
+
+        self._shuffle_name = shuffle_progress_bar_name
+        self._reduce_name = finalize_progress_bar_name
 
         assert len(key_columns) == len(input_ops), (
             "Each input operation has to specify matching tuple of columns used as "
@@ -469,33 +526,28 @@ class HashShufflingOperatorBase(PhysicalOperator, WithSubProgressBarMixin):
             int, Dict[int, _PartitionStats]
         ] = defaultdict(dict)
 
-    def init_sub_progress_bars(self, sub_progress_bar_names: List[Optional[str]]):
-        self._sub_progress_bar_names: Optional[List[str]] = sub_progress_bar_names
-        self._sub_progress_bar_dict: Optional[Dict[str, ProgressBar]] = None
-        self._metric_dict: Dict[str, OpRuntimeMetrics] = {}
-        if sub_progress_bar_names is not None:
-            for name in self._sub_progress_bar_names:
-                self._metric_dict[name] = OpRuntimeMetrics(self)
-
     def start(self, options: ExecutionOptions) -> None:
         super().start(options)
 
         self._aggregator_pool.start()
 
+    @property
+    def shuffle_name(self) -> str:
+        return self._shuffle_name
+
+    @property
+    def reduce_name(self) -> str:
+        return self._reduce_name
+
     def _add_input_inner(self, input_bundle: RefBundle, input_index: int) -> None:
 
-        shuffle_metrics = self.get_metrics(0)
-
         # TODO move to base class
-        shuffle_metrics.on_input_received(input_bundle)
+        self.shuffle_metrics.on_input_received(input_bundle)
         self._do_add_input_inner(input_bundle, input_index)
 
     def _do_add_input_inner(self, input_bundle: RefBundle, input_index: int):
         input_blocks_refs: List[ObjectRef[Block]] = input_bundle.block_refs
         input_blocks_metadata: List[BlockMetadata] = input_bundle.metadata
-
-        shuffle_metrics = self.get_metrics(0)
-        shuffle_bar = self.sub_progress_bar(0)
 
         for block_ref, block_metadata in zip(input_blocks_refs, input_blocks_metadata):
             # If operator hasn't propagated schemas (for this sequence) to its
@@ -565,14 +617,14 @@ class HashShufflingOperatorBase(PhysicalOperator, WithSubProgressBarMixin):
                 # NOTE: schema doesn't matter because we are creating a ref bundle
                 # for metrics recording purposes
                 out_bundle = RefBundle(blocks, schema=None, owns_blocks=False)
-                shuffle_metrics.on_output_taken(input_bundle)
-                shuffle_metrics.on_task_output_generated(
+                self.shuffle_metrics.on_output_taken(input_bundle)
+                self.shuffle_metrics.on_task_output_generated(
                     cur_shuffle_task_idx, out_bundle
                 )
-                shuffle_metrics.on_task_finished(cur_shuffle_task_idx, None)
+                self.shuffle_metrics.on_task_finished(cur_shuffle_task_idx, None)
 
                 # Update Shuffle progress bar
-                shuffle_bar.update(i=input_block_metadata.num_rows)
+                self.shuffle_bar.update(i=input_block_metadata.num_rows)
 
             # TODO update metrics
             self._shuffling_tasks[input_index][cur_shuffle_task_idx] = MetadataOpTask(
@@ -587,7 +639,7 @@ class HashShufflingOperatorBase(PhysicalOperator, WithSubProgressBarMixin):
             )
 
             #  Update Shuffle Metrics on task submission
-            shuffle_metrics.on_task_submitted(
+            self.shuffle_metrics.on_task_submitted(
                 cur_shuffle_task_idx,
                 RefBundle(
                     [(block_ref, block_metadata)], schema=None, owns_blocks=False
@@ -595,7 +647,7 @@ class HashShufflingOperatorBase(PhysicalOperator, WithSubProgressBarMixin):
             )
 
             # Update Shuffle progress bar
-            shuffle_bar.update(total=shuffle_metrics.num_row_inputs_received)
+            self.shuffle_bar.update(total=self.shuffle_metrics.num_row_inputs_received)
 
     def has_next(self) -> bool:
         self._try_finalize()
@@ -605,9 +657,8 @@ class HashShufflingOperatorBase(PhysicalOperator, WithSubProgressBarMixin):
         bundle: RefBundle = self._output_queue.popleft()
 
         # TODO move to base class
-        finalize_metrics = self.get_metrics(1)
-        finalize_metrics.on_output_dequeued(bundle)
-        finalize_metrics.on_output_taken(bundle)
+        self.reduce_metrics.on_output_dequeued(bundle)
+        self.reduce_metrics.on_output_taken(bundle)
 
         self._output_blocks_stats.extend(to_stats(bundle.metadata))
 
@@ -655,30 +706,32 @@ class HashShufflingOperatorBase(PhysicalOperator, WithSubProgressBarMixin):
             f"Scheduling next shuffling finalization batch (last finalized "
             f"partition id is {self._last_finalized_partition_id})"
         )
-        finalize_metrics = self.get_metrics(1)
-        finalize_bar = self.sub_progress_bar(1)
 
         def _on_bundle_ready(partition_id: int, bundle: RefBundle):
             # Add finalized block to the output queue
             self._output_queue.append(bundle)
 
             # Update Finalize Metrics on task output generated
-            finalize_metrics.on_output_queued(bundle)
-            finalize_metrics.on_task_output_generated(
+            self.reduce_metrics.on_output_queued(bundle)
+            self.reduce_metrics.on_task_output_generated(
                 task_index=partition_id, output=bundle
             )
-            finalize_metrics.on_task_finished(task_index=partition_id, exception=None)
+            self.reduce_metrics.on_task_finished(
+                task_index=partition_id, exception=None
+            )
             _, num_outputs, num_rows = estimate_total_num_of_blocks(
                 partition_id + 1,
                 self.upstream_op_num_outputs(),
-                finalize_metrics,
+                self.reduce_metrics,
                 total_num_tasks=self._num_partitions,
             )
             self._estimated_num_output_bundles = num_outputs
             self._estimated_output_num_rows = num_rows
 
             # Update Finalize progress bar
-            finalize_bar.update(i=bundle.num_rows(), total=self.num_output_rows_total())
+            self.reduce_bar.update(
+                i=bundle.num_rows(), total=self.num_output_rows_total()
+            )
 
         def _on_aggregation_done(partition_id: int, exc: Optional[Exception]):
             if partition_id in self._finalizing_tasks:
@@ -771,7 +824,7 @@ class HashShufflingOperatorBase(PhysicalOperator, WithSubProgressBarMixin):
             # NOTE: This is empty because the input is directly forwarded from the
             # output of the shuffling stage, which we don't return.
             empty_bundle = RefBundle([], schema=None, owns_blocks=False)
-            finalize_metrics.on_task_submitted(partition_id, empty_bundle)
+            self.reduce_metrics.on_task_submitted(partition_id, empty_bundle)
 
         # Update last finalized partition id
         self._last_finalized_partition_id = max(target_partition_ids)
@@ -789,14 +842,11 @@ class HashShufflingOperatorBase(PhysicalOperator, WithSubProgressBarMixin):
         shuffle_name = f"{self._name}_shuffle"
         finalize_name = f"{self._name}_finalize"
 
-        shuffle_metrics = self.get_metrics(0)
-        finalize_metrics = self.get_metrics(1)
-
-        shuffle_metrics.as_dict()
+        self.shuffle_metrics.as_dict()
 
         return {
-            shuffle_name: shuffle_metrics.as_dict(),
-            finalize_name: finalize_metrics.as_dict(),
+            shuffle_name: self.shuffle_metrics.as_dict(),
+            finalize_name: self.reduce_metrics.as_dict(),
         }
 
     def get_stats(self):

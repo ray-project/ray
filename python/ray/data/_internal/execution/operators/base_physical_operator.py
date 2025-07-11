@@ -7,9 +7,7 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
     TaskContext,
 )
-from ray.data._internal.execution.interfaces.physical_operator import (
-    WithSubProgressBarMixin,
-)
+from ray.data._internal.execution.interfaces.physical_operator import _create_sub_pb
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.stats import StatsDict
 from ray.data.context import DataContext
@@ -49,9 +47,7 @@ class OneToOneOperator(PhysicalOperator):
         return self.input_dependencies[0]
 
 
-class AllToAllOperator(
-    InternalQueueOperatorMixin, WithSubProgressBarMixin, PhysicalOperator
-):
+class AllToAllOperator(InternalQueueOperatorMixin, PhysicalOperator):
     """A blocking operator that executes once its inputs are complete.
 
     This operator implements distributed sort / shuffle operations, etc.
@@ -150,6 +146,25 @@ class AllToAllOperator(
 
     def progress_str(self) -> str:
         return f"{self.num_output_rows_total() or 0} rows output"
+
+    def initialize_sub_progress_bars(self, position: int) -> int:
+        """Initialize all internal sub progress bars, and return the number of bars."""
+        if self._sub_progress_bar_names is not None:
+            self._sub_progress_bar_dict = {}
+            for name in self._sub_progress_bar_names:
+                bar, position = _create_sub_pb(
+                    name, self.num_output_rows_total(), position
+                )
+                self._sub_progress_bar_dict[name] = bar
+            return len(self._sub_progress_bar_dict)
+        else:
+            return 0
+
+    def close_sub_progress_bars(self):
+        """Close all internal sub progress bars."""
+        if self._sub_progress_bar_dict is not None:
+            for sub_bar in self._sub_progress_bar_dict.values():
+                sub_bar.close()
 
     def supports_fusion(self):
         return True

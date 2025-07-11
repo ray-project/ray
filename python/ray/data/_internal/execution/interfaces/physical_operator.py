@@ -716,51 +716,6 @@ class ReportsExtraResourceUsage(abc.ABC):
         ...
 
 
-class WithSubProgressBarMixin:
-    def _key(self, key: Union[str, int]) -> str:
-        """Convert the key to a string."""
-        if isinstance(key, int):
-            return self._sub_progress_bar_names[key]
-        return key
-
-    def sub_progress_bar(self, key: Union[str, int]) -> Optional[ProgressBar]:
-        """Return the sub progress bar with the given name, or None if not found."""
-        if self._sub_progress_bar_dict is not None:
-            key = self._key(key)
-            return self._sub_progress_bar_dict.get(key)
-        return None
-
-    def get_metrics(self, key: Union[str, int]) -> Optional[OpRuntimeMetrics]:
-        key = self._key(key)
-        return self._metric_dict.get(key)
-
-    def start_sub_progress_bars(self, position: int) -> int:
-        """Display all sub progres bars in the termainl, and return the number of bars."""
-        if self._sub_progress_bar_names is not None:
-            self._sub_progress_bar_dict = {}
-            for name in self._sub_progress_bar_names:
-                progress_bar = ProgressBar(
-                    name,
-                    self.num_output_rows_total() or 1,
-                    unit="row",
-                    position=position,
-                )
-                # NOTE: call `set_description` to trigger the initial print of progress
-                # bar on console.
-                progress_bar.set_description(f"  *- {name}")
-                self._sub_progress_bar_dict[name] = progress_bar
-                position += 1
-            return len(self._sub_progress_bar_dict)
-        else:
-            return 0
-
-    def close_sub_progress_bars(self):
-        """Close all internal sub progress bars."""
-        if self._sub_progress_bar_dict is not None:
-            for sub_bar in self._sub_progress_bar_dict.values():
-                sub_bar.close()
-
-
 def estimate_total_num_of_blocks(
     num_tasks_submitted: int,
     upstream_op_num_outputs: int,
@@ -802,3 +757,19 @@ def estimate_total_num_of_blocks(
         )
 
     return (0, 0, 0)
+
+
+def _create_sub_pb(
+    name: str, total_output_rows: Optional[int], position: int
+) -> Tuple[ProgressBar, int]:
+    progress_bar = ProgressBar(
+        name,
+        total_output_rows or 1,
+        unit="row",
+        position=position,
+    )
+    # NOTE: call `set_description` to trigger the initial print of progress
+    # bar on console.
+    progress_bar.set_description(f"  *- {name}")
+    position += 1
+    return progress_bar, position
