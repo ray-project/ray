@@ -5,10 +5,10 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 
-@PublicAPI(stability="alpha")
+@DeveloperAPI
 class Operation(Enum):
     """Enumeration of supported operations in expressions.
 
@@ -42,7 +42,7 @@ class Operation(Enum):
     OR = "or"
 
 
-@PublicAPI(stability="alpha")
+@DeveloperAPI
 @dataclass(frozen=True)
 class Expr(ABC):
     """Base class for all expression nodes.
@@ -153,7 +153,7 @@ class Expr(ABC):
         return self._bin(other, Operation.OR)
 
 
-@PublicAPI(stability="alpha")
+@DeveloperAPI
 @dataclass(frozen=True, eq=False)
 class ColumnExpr(Expr):
     """Expression that references a column by name.
@@ -177,7 +177,7 @@ class ColumnExpr(Expr):
         return isinstance(other, ColumnExpr) and self.name == other.name
 
 
-@PublicAPI(stability="alpha")
+@DeveloperAPI
 @dataclass(frozen=True, eq=False)
 class LiteralExpr(Expr):
     """Expression that represents a constant scalar value.
@@ -205,7 +205,7 @@ class LiteralExpr(Expr):
         )
 
 
-@PublicAPI(stability="alpha")
+@DeveloperAPI
 @dataclass(frozen=True, eq=False)
 class BinaryExpr(Expr):
     """Expression that represents a binary operation between two expressions.
