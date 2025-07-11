@@ -154,7 +154,7 @@ sudo apt-get install -y kmod pkg-config librdmacm-dev
         meson setup build -Dnixl_path=${NIXL_HOME}
         cd build
         sudo env "PATH=$PATH" ninja
-        cp nixlbench "${NIXL_HOME}/bin/"
+        sudo cp nixlbench "${NIXL_HOME}/bin/"
     )
 )
 sudo rm -rf "${TEMP_DIR}"
