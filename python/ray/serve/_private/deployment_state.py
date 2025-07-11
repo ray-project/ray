@@ -985,13 +985,13 @@ class ActorReplicaWrapper:
         if (
             self._ingress
             and RAY_SERVE_DISABLE_SHUTTING_DOWN_INGRESS_REPLICAS_FORCEFULLY
-            and log_shutdown_message
         ):
-            logger.info(
-                f"{self.replica_id} did not shut down because it had not finished draining requests. "
-                "Going to wait until the draining is complete. You can force-stop the replica by "
-                "setting RAY_SERVE_DISABLE_SHUTTING_DOWN_INGRESS_REPLICAS_FORCEFULLY to 0."
-            )
+            if log_shutdown_message:
+                logger.info(
+                    f"{self.replica_id} did not shut down because it had not finished draining requests. "
+                    "Going to wait until the draining is complete. You can force-stop the replica by "
+                    "setting RAY_SERVE_DISABLE_SHUTTING_DOWN_INGRESS_REPLICAS_FORCEFULLY to 0."
+                )
             return
 
         try:
