@@ -2,13 +2,14 @@ import sys
 
 import pytest
 
-import ray
 from ray.train.v2._internal.execution.callback import (
     ControllerCallback,
     WorkerGroupCallback,
 )
 from ray.train.v2._internal.execution.context import TrainRunContext
+from ray.train.v2.api.config import RunConfig, ScalingConfig
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
+from ray.train.v2.api.exceptions import TrainingFailedError
 
 
 def block_import(import_name):
@@ -40,8 +41,8 @@ def test_captured_imports(ray_start_4_cpus):
 
     trainer = DataParallelTrainer(
         capture_torch_import_fn,
-        run_config=ray.train.RunConfig(callbacks=[AssertImportsCallback()]),
-        scaling_config=ray.train.ScalingConfig(num_workers=2),
+        run_config=RunConfig(callbacks=[AssertImportsCallback()]),
+        scaling_config=ScalingConfig(num_workers=2),
     )
     trainer.fit()
 
@@ -52,6 +53,9 @@ def test_deserialization_error(ray_start_4_cpus):
     This test showcases a common deserialization error example, where
     the driver script successfully imports torch, but torch is not
     installed on the worker nodes.
+
+    Note: TrainingFailedError is generated in the controller when worker
+    failures occur (see controller.py::_start_worker_group and surrounding logic).
     """
     import torch
 
@@ -66,10 +70,10 @@ def test_deserialization_error(ray_start_4_cpus):
 
     trainer = DataParallelTrainer(
         capture_torch_import_fn,
-        run_config=ray.train.RunConfig(callbacks=[BlockTorchImportCallback()]),
-        scaling_config=ray.train.ScalingConfig(num_workers=2),
+        run_config=RunConfig(callbacks=[BlockTorchImportCallback()]),
+        scaling_config=ScalingConfig(num_workers=2),
     )
-    with pytest.raises(ray.exceptions.RayTaskError, match="torch not installed"):
+    with pytest.raises(TrainingFailedError, match="torch not installed"):
         trainer.fit()
 
 
