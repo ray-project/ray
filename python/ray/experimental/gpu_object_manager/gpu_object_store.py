@@ -1,4 +1,5 @@
-from typing import Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional, Tuple
+import threading
 
 import ray.util.collective as collective
 from ray._private.custom_types import TensorTransportEnum
@@ -40,10 +41,10 @@ def __ray_send__(self, communicator_name: str, obj_id: str, dst_rank: int):
     from ray._private.worker import global_worker
 
     gpu_object_store = global_worker.gpu_object_manager.gpu_object_store
-    assert gpu_object_store.has_gpu_object(
+    assert gpu_object_store.has_object(
         obj_id
     ), f"obj_id={obj_id} not found in GPU object store"
-    tensors = gpu_object_store.get_gpu_object(obj_id)
+    tensors = gpu_object_store.get_object(obj_id)
 
     backend = collective.get_group_handle(communicator_name).backend()
     device = COLLECTIVE_BACKEND_TO_TORCH_DEVICE[backend]
@@ -59,7 +60,7 @@ def __ray_send__(self, communicator_name: str, obj_id: str, dst_rank: int):
     # TODO(kevin85421): The current garbage collection implementation for the
     # in-actor object store is naive. We garbage collect each object after it
     # is consumed once.
-    gpu_object_store.remove_gpu_object(obj_id)
+    gpu_object_store.pop_object(obj_id)
 
 
 def __ray_recv__(
@@ -82,7 +83,20 @@ def __ray_recv__(
         tensor = torch.zeros(shape, dtype=dtype, device=device)
         collective.recv(tensor, src_rank, group_name=communicator_name)
         tensors.append(tensor)
-    gpu_object_store.add_gpu_object(obj_id, tensors)
+    gpu_object_store.add_object(obj_id, tensors)
+
+
+def __ray_get_tensor_meta__(self, obj_id: str):
+    """Helper function that runs on the src actor to get the tensor metadata."""
+    from ray._private.worker import global_worker
+
+    gpu_object_store = global_worker.gpu_object_manager.gpu_object_store
+    # NOTE: We do not specify a timeout here because the user task that returns
+    # it could take arbitrarily long and we don't want to trigger a spurious
+    # timeout.
+    gpu_object_store.wait_object(obj_id)
+    tensors = gpu_object_store.get_object(obj_id)
+    return [(t.shape, t.dtype) for t in tensors]
 
 
 def __ray_fetch_gpu_object__(self, obj_id: str):
@@ -90,32 +104,75 @@ def __ray_fetch_gpu_object__(self, obj_id: str):
     from ray._private.worker import global_worker
 
     gpu_object_store = global_worker.gpu_object_manager.gpu_object_store
-    assert gpu_object_store.has_gpu_object(
+    assert gpu_object_store.has_object(
         obj_id
     ), f"obj_id={obj_id} not found in GPU object store"
-    tensors = gpu_object_store.get_gpu_object(obj_id)
+    tensors = gpu_object_store.get_object(obj_id)
     # TODO(kevin85421): The current garbage collection implementation for the
     # in-actor object store is naive. We garbage collect each object after it
     # is consumed once.
-    gpu_object_store.remove_gpu_object(obj_id)
+    gpu_object_store.pop_object(obj_id)
     return tensors
 
 
 class GPUObjectStore:
-    def __init__(self):
+    def __init__(self, gpu_object_store_lock: threading.RLock):
         # A dictionary that maps from an object ID to a list of tensors.
         #
         # Note: Currently, `gpu_object_store` is only supported for Ray Actors.
         self.gpu_object_store: Dict[str, List["torch.Tensor"]] = {}
+        # Synchronization for GPU object store. The GPU object store can be read
+        # and written by the main thread, which is executing user code, and the
+        # background _ray_system thread, which executes data transfers and
+        # performs GC.
+        self.object_present_cv = threading.Condition(gpu_object_store_lock)
 
-    def has_gpu_object(self, obj_id: str) -> bool:
+    def has_object(self, obj_id: str) -> bool:
         return obj_id in self.gpu_object_store
 
-    def get_gpu_object(self, obj_id: str) -> Optional[List["torch.Tensor"]]:
+    def get_object(self, obj_id: str) -> Optional[List["torch.Tensor"]]:
         return self.gpu_object_store[obj_id]
 
-    def add_gpu_object(self, obj_id: str, gpu_object: List["torch.Tensor"]):
-        self.gpu_object_store[obj_id] = gpu_object
+    def add_object(self, obj_id: str, tensors: List["torch.Tensor"]):
+        with self.object_present_cv:
+            self.gpu_object_store[obj_id] = tensors
+            self.object_present_cv.notify_all()
 
-    def remove_gpu_object(self, obj_id: str):
-        del self.gpu_object_store[obj_id]
+    def wait_and_pop_object(self, obj_id: str, timeout: Optional[float] = None) -> List["torch.Tensor"]:
+        """Atomically waits for the GPU object to be present in the GPU object
+        store, then pops it.  If the object is not present after the optional
+        timeout, raise a TimeoutError.
+
+        Args:
+            obj_id: The object ID to wait for.
+            timeout: The maximum time to wait for the object to be present in the GPU object store.
+            If not specified, wait indefinitely.
+        
+        Returns:
+            The tensors in the GPU object.
+        """
+        with self.object_present_cv:
+            self.wait_object(obj_id, timeout)
+            return self.pop_object(obj_id)
+
+    def wait_object(self, obj_id: str, timeout: Optional[float] = None):
+        """Wait for the GPU object to be present in the GPU object store.
+        If the object is not present after the optional timeout, raise a
+        TimeoutError.
+
+        Args:
+            obj_id: The object ID to wait for.
+            timeout: The maximum time to wait for the object to be present in the GPU object store.
+            If not specified, wait indefinitely.
+        """
+        with self.object_present_cv:
+            present = self.object_present_cv.wait_for(
+                lambda: obj_id in self.gpu_object_store, timeout=timeout
+            )
+            if not present:
+                raise TimeoutError(
+                    f"ObjectRef({obj_id}) not found in GPU object store after {timeout}s, transfer may have failed. Please report this issue on GitHub: https://github.com/ray-project/ray/issues/new/choose"
+                )
+
+    def pop_object(self, obj_id: str) -> List["torch.Tensor"]:
+        return self.gpu_object_store.pop(obj_id)

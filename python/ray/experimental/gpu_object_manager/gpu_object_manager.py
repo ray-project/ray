@@ -1,4 +1,5 @@
 from typing import TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional, Tuple
+import threading
 
 import ray
 from ray._private.custom_types import TensorTransportEnum
@@ -62,27 +63,35 @@ class GPUObjectManager:
         # avoid circular import and because it imports third-party dependencies
         # like PyTorch.
         self._gpu_object_store: Optional["GPUObjectStore"] = None
+        # Lock to synchronize access to the GPU object store. This is needed
+        # because the GPU object store is accessed by both user threads, to
+        # put/getobjects into the object store from user tasks, and by a
+        # background system thread, which handles data transfers and GC.
+        self.gpu_object_store_lock = threading.RLock()
 
     @property
     def gpu_object_store(self) -> "ray.experimental.GPUObjectStore":
-        if self._gpu_object_store is None:
-            from ray.experimental.gpu_object_manager.gpu_object_store import (
-                GPUObjectStore,
-            )
-
-            self._gpu_object_store = GPUObjectStore()
+        with self.gpu_object_store_lock:
+            if self._gpu_object_store is None:
+                from ray.experimental.gpu_object_manager.gpu_object_store import (
+                    GPUObjectStore,
+                )
+                self._gpu_object_store = GPUObjectStore(self.gpu_object_store_lock)
         return self._gpu_object_store
 
     def _get_tensor_meta(
         self, src_actor: "ray.actor.ActorHandle", obj_id: str
     ) -> ObjectRef:
+        from ray.experimental.gpu_object_manager.gpu_object_store import __ray_get_tensor_meta__
         # Submit a Ray actor task to the source actor to get the tensor metadata.
         # The metadata is a list of tuples, where each tuple contains the shape and dtype
         # of a tensor in the GPU object store. This function returns an ObjectRef that
         # points to the tensor metadata.
-        return src_actor.__ray_call__.remote(__ray_get_tensor_meta__, obj_id)
+        # NOTE(swang): We put this task on the background thread to avoid tasks
+        # executing on the main thread blocking this task.
+        return src_actor.__ray_call__.options(concurrency_group="_ray_system").remote(__ray_get_tensor_meta__, obj_id)
 
-    def is_managed_gpu_object(self, obj_id: str) -> bool:
+    def is_managed_object(self, obj_id: str) -> bool:
         """
         Check if the GPU object is managed by this process.
 
@@ -129,7 +138,7 @@ class GPUObjectManager:
         obj_id = obj_ref.hex()
         return self.managed_gpu_object_metadata[obj_id]
 
-    def _send_gpu_object(
+    def _send_object(
         self,
         communicator_name: str,
         src_actor: "ray.actor.ActorHandle",
@@ -140,9 +149,11 @@ class GPUObjectManager:
 
         # Send tensors stored in the `src_actor`'s GPU object store to the
         # destination rank `dst_rank`.
-        src_actor.__ray_call__.remote(__ray_send__, communicator_name, obj_id, dst_rank)
+        # NOTE(swang): We put this task on the background thread to avoid tasks
+        # executing on the main thread blocking the data transfer.
+        src_actor.__ray_call__.options(concurrency_group="_ray_system").remote(__ray_send__, communicator_name, obj_id, dst_rank)
 
-    def _recv_gpu_object(
+    def _recv_object(
         self,
         communicator_name: str,
         dst_actor: "ray.actor.ActorHandle",
@@ -154,11 +165,16 @@ class GPUObjectManager:
 
         # Receive tensors from the source rank and store them in the
         # `dst_actor`'s GPU object store.
-        dst_actor.__ray_call__.remote(
+        # NOTE(swang): We put this task on the background thread to avoid tasks
+        # executing on the main thread blocking the data transfer. Technically,
+        # this is only needed for the sender task, but we put the receiver task
+        # on the same background thread to ensure that all communication
+        # operations are executed in a global order.
+        dst_actor.__ray_call__.options(concurrency_group="_ray_system").remote(
             __ray_recv__, communicator_name, obj_id, src_rank, tensor_meta
         )
 
-    def fetch_gpu_object(self, obj_id: str):
+    def fetch_object(self, obj_id: str):
         """
         Fetches the GPU object from the source actor's GPU object store via the object store
         instead of out-of-band tensor transfer and stores the tensors in the local GPU object store.
@@ -173,16 +189,17 @@ class GPUObjectManager:
         Returns:
             None
         """
+        from ray.experimental.gpu_object_manager.gpu_object_store import __ray_fetch_gpu_object__
 
-        if self.gpu_object_store.has_gpu_object(obj_id):
+        if self.gpu_object_store.has_object(obj_id):
             return
 
         gpu_object_meta = self.managed_gpu_object_metadata[obj_id]
         src_actor = gpu_object_meta.src_actor
         tensors = ray.get(
-            src_actor.__ray_call__.remote(__ray_fetch_gpu_object__, obj_id)
+            src_actor.__ray_call__.options(concurrency_group="_ray_system").remote(__ray_fetch_gpu_object__, obj_id)
         )
-        self.gpu_object_store.add_gpu_object(obj_id, tensors)
+        self.gpu_object_store.add_object(obj_id, tensors)
 
     def trigger_out_of_band_tensor_transfer(
         self, dst_actor: "ray.actor.ActorHandle", task_args: Tuple[Any, ...]
@@ -211,7 +228,7 @@ class GPUObjectManager:
             if not isinstance(arg, ObjectRef):
                 continue
 
-            if not self.is_managed_gpu_object(arg.hex()):
+            if not self.is_managed_object(arg.hex()):
                 continue
 
             # Import get_collective_groups here to avoid dependency on
@@ -257,7 +274,7 @@ class GPUObjectManager:
                 # be transferred intra-process, so we skip the out-of-band tensor
                 # transfer.
                 continue
-            self._send_gpu_object(communicator.name, src_actor, arg.hex(), dst_rank)
-            self._recv_gpu_object(
+            self._send_object(communicator.name, src_actor, arg.hex(), dst_rank)
+            self._recv_object(
                 communicator.name, dst_actor, arg.hex(), src_rank, tensor_meta
             )

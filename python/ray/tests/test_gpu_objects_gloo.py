@@ -13,7 +13,7 @@ if support_tensordict:
     from tensordict import TensorDict
 
 
-@ray.remote
+@ray.remote(enable_tensor_transport=True)
 class GPUTestActor:
     @ray.method(tensor_transport="gloo")
     def echo(self, data):
@@ -30,9 +30,8 @@ class GPUTestActor:
         gpu_object_store = (
             ray._private.worker.global_worker.gpu_object_manager.gpu_object_store
         )
-        if gpu_object_store.has_gpu_object(obj_id):
-            gpu_object = gpu_object_store.get_gpu_object(obj_id)
-            print(f"gpu_object: {gpu_object}")
+        if gpu_object_store.has_object(obj_id):
+            gpu_object = gpu_object_store.get_object(obj_id)
             return gpu_object
         return None
 

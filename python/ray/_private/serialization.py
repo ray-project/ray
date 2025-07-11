@@ -285,16 +285,20 @@ class SerializationContext:
         enable_gpu_objects = tensor_transport != TensorTransportEnum.OBJECT_STORE
         if enable_gpu_objects:
             gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
-            if not gpu_object_manager.gpu_object_store.has_gpu_object(object_id):
-                assert gpu_object_manager.is_managed_gpu_object(
-                    object_id
-                ), f"obj_id={object_id} not found in GPU object store. This error is unexpected. Please report this issue on GitHub: https://github.com/ray-project/ray/issues/new/choose"
-                gpu_object_manager.fetch_gpu_object(object_id)
-            tensors = gpu_object_manager.gpu_object_store.get_gpu_object(object_id)
+            if gpu_object_manager.is_managed_object(object_id):
+                gpu_object_manager.fetch_object(object_id)
+
+            global_worker = ray._private.worker.global_worker
+            # NOTE(swang): This lock is held during all deserialization
+            # operations to prevent a race condition resulting in a partial
+            # import. We have to release the lock here because it may be needed
+            # to deserialize arguments for the task that receives and puts the
+            # tensors into the GPU object store. Releasing the lock should be
+            # safe because we should not be in the middle of an import.
+            global_worker.function_actor_manager.lock.release()
+            tensors = gpu_object_manager.gpu_object_store.wait_and_pop_object(object_id, timeout=ray_constants.FETCH_WARN_TIMEOUT_SECONDS)
+            global_worker.function_actor_manager.lock.acquire()
             ctx.reset_out_of_band_tensors(tensors)
-            # TODO(kevin85421): The current garbage collection implementation for the in-actor object store
-            # is naive. We garbage collect each object after it is consumed once.
-            gpu_object_manager.gpu_object_store.remove_gpu_object(object_id)
 
         try:
             in_band, buffers = unpack_pickle5_buffers(data)
@@ -635,7 +639,7 @@ class SerializationContext:
             obj_id = obj_id.decode("ascii")
             worker = ray._private.worker.global_worker
             gpu_object_manager = worker.gpu_object_manager
-            gpu_object_manager.gpu_object_store.add_gpu_object(obj_id, tensors)
+            gpu_object_manager.gpu_object_store.add_object(obj_id, tensors)
 
         return serialized_val
 
