@@ -218,7 +218,7 @@ class TrainController:
             return TrainControllerLoopIterationResult(
                 run_attempt_id=self._get_run_attempt_id(),
                 previous_state=controller_state,
-                next_state=RunningState(),
+                next_state=controller_state,
             )
 
         # TODO: make TrainingFailedError accept both worker_failures and controller_error.
@@ -232,6 +232,7 @@ class TrainController:
             worker_failures=worker_failures,
         )
         if failure_decision == FailureDecision.RETRY:
+            assert isinstance(controller_state, (RunningState, ResizingState))
             return TrainControllerLoopIterationResult(
                 run_attempt_id=self._get_run_attempt_id(),
                 previous_state=controller_state,
