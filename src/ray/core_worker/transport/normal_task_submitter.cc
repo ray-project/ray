@@ -180,7 +180,7 @@ void NormalTaskSubmitter::OnWorkerIdle(
       task_spec.GetMutableMessage().set_lease_grant_timestamp_ms(current_sys_time_ms());
       task_spec.EmitTaskMetrics();
 
-      pushed_to_worker_tasks_.emplace(task_spec.TaskId(), addr);
+      executing_tasks_.emplace(task_spec.TaskId(), addr);
       PushNormalTask(
           addr, client, scheduling_key, std::move(task_spec), assigned_resources);
     }
@@ -578,6 +578,8 @@ void NormalTaskSubmitter::PushNormalTask(
                          << WorkerID::FromBinary(addr.worker_id()) << " of raylet "
                          << NodeID::FromBinary(addr.raylet_id());
           absl::MutexLock lock(&mu_);
+          executing_tasks_.erase(task_id);
+          limbo_tasks_.insert(task_id);
 
           resubmit_generator = generators_to_resubmit_.erase(task_id) > 0;
 
@@ -605,7 +607,6 @@ void NormalTaskSubmitter::PushNormalTask(
                                             get_task_failure_cause_reply_status,
                                             get_task_failure_cause_reply);
                   absl::MutexLock lock(&mu_);
-                  pushed_to_worker_tasks_.erase(task_id);
                 };
             auto &cur_lease_entry = worker_to_lease_entry_[addr];
             RAY_CHECK(cur_lease_entry.lease_client);
@@ -643,8 +644,6 @@ void NormalTaskSubmitter::PushNormalTask(
             task_manager_.CompletePendingTask(
                 task_id, reply, addr, reply.is_application_error());
           }
-          absl::MutexLock lock(&mu_);
-          pushed_to_worker_tasks_.erase(task_id);
         }
       });
 }
@@ -692,12 +691,19 @@ void NormalTaskSubmitter::HandleGetTaskFailureCause(
     error_info->set_error_message(buffer.str());
     error_info->set_error_type(rpc::ErrorType::NODE_DIED);
   }
-  RAY_UNUSED(task_manager_.FailOrRetryPendingTask(task_id,
+  {
+    absl::MutexLock lock(&mu_);
+    if (!limbo_tasks_.contains(task_id)) {
+      RAY_LOG(INFO) << "Task " << task_id << " is not in limbo. Skip retrying.";
+      return;
+    }
+    RAY_UNUSED(task_manager_.FailOrRetryPendingTask(task_id,
                                                   task_error_type,
                                                   &task_execution_status,
                                                   error_info.get(),
                                                   /*mark_task_object_failed*/ true,
                                                   fail_immediately));
+  }
 }
 
 Status NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
@@ -715,6 +721,7 @@ Status NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
     absl::MutexLock lock(&mu_);
     auto task_id = task_spec.TaskId();
     generators_to_resubmit_.erase(task_id);
+    limbo_tasks_.erase(task_id);
 
     if (cancelled_tasks_.contains(task_id)) {
       // The task cancel is already in progress. We don't need to do anything.
@@ -746,9 +753,9 @@ Status NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
     // This will get removed either when the RPC call to cancel is returned
     // or when all dependencies are resolved.
     RAY_CHECK(cancelled_tasks_.emplace(task_spec.TaskId()).second);
-    auto rpc_client = pushed_to_worker_tasks_.find(task_spec.TaskId());
+    auto rpc_client = executing_tasks_.find(task_spec.TaskId());
 
-    if (rpc_client == pushed_to_worker_tasks_.end()) {
+    if (rpc_client == executing_tasks_.end()) {
       // This case is reached for tasks that have unresolved dependencies.
       resolver_.CancelDependencyResolution(task_spec.TaskId());
       RAY_UNUSED(task_manager_.FailPendingTask(task_spec.TaskId(),
