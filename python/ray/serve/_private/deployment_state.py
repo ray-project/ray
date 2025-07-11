@@ -1190,7 +1190,10 @@ class DeploymentReplica:
 
         timeout_passed = time.time() >= self._shutdown_deadline
         if timeout_passed:
-            if not self._logged_shutdown_message:
+            if (
+                not self._logged_shutdown_message
+                and not RAY_SERVE_DISABLE_SHUTTING_DOWN_INGRESS_REPLICAS_FORCEFULLY
+            ):
                 logger.info(
                     f"{self.replica_id} did not shut down after grace "
                     "period, force-killing it. "
