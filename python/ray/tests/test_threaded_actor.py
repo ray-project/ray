@@ -295,9 +295,10 @@ def test_threaded_actor_integration_test_stress(
     "ray_start_cluster_head",
     [
         test_utils.generate_system_config_map(
-            # 6MB, It is just large enough to accommodate one chunk, which 
+            # 6MB, It is just large enough to accommodate one chunk, which
             # is also intended to ensure that the push object process is sufficiently slow.
-            object_manager_max_bytes_in_flight=6 * 1024 ** 2,
+            object_manager_max_bytes_in_flight=6
+            * 1024**2,
         )
     ],
     indirect=True,
@@ -308,9 +309,9 @@ def test_ray_actor_get_in_multiple_threads(ray_start_cluster_head):
     """
     cluster = ray_start_cluster_head
 
-    # It needs to be large enough to ensure that this get operation 
+    # It needs to be large enough to ensure that this get operation
     # takes a sufficiently long time. and make sure this object in head.
-    large_object_ref = ray.put(b"0" * 2 * 1024 ** 3)
+    large_object_ref = ray.put(b"0" * 2 * 1024**3)
 
     worker = cluster.add_node(resources={"worker": 1}, num_cpus=1)
 
@@ -318,20 +319,24 @@ def test_ray_actor_get_in_multiple_threads(ray_start_cluster_head):
     class Actor:
         def run(self, refs):
             ref_largs = refs[0]
-            # put into worker plasma. Ensure that each get returns immediately. 
+            # put into worker plasma. Ensure that each get returns immediately.
             # Before this fix, this get would repeatedly clear the pull progress.
             ref_small = ray.put("1")
+
             def get_small():
                 while True:
                     ray.get(ref_small)
                     import time
+
                     time.sleep(0.1)
+
             t = threading.Thread(target=get_small, daemon=True)
             t.start()
             ray.get(ref_largs)
+
     actor = Actor.remote()
     ray.get(actor.run.remote([large_object_ref]), timeout=30)
-    
+
 
 if __name__ == "__main__":
 
