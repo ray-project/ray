@@ -243,8 +243,7 @@ def test_deploy_bad_pip_package_deployment(serve_instance):
         assert "No matching distribution found for does_not_exist" in deployment_message
         return True
 
-    # TODO: Figure out why timeout 30 is needed instead of 15 or lower the timeout to 15.
-    wait_for_condition(check_fail, timeout=30)
+    wait_for_condition(check_fail, timeout=20)
 
 
 def test_deploy_same_deployment_name_different_app(serve_instance):

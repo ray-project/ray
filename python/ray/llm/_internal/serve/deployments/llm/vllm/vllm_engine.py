@@ -5,6 +5,8 @@ import uuid
 from concurrent.futures.thread import ThreadPoolExecutor
 from typing import TYPE_CHECKING, AsyncGenerator, List, Optional, Tuple
 
+from transformers.dynamic_module_utils import init_hf_modules
+
 import ray
 from ray.llm._internal.common.utils.import_utils import try_import
 from ray.llm._internal.serve.configs.constants import (
@@ -42,7 +44,7 @@ from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import (
 )
 from ray.llm._internal.serve.deployments.utils.node_initialization_utils import (
     InitializeNodeOutput,
-    initialize_node as initialize_node_util,
+    initialize_node,
 )
 from ray.llm._internal.serve.deployments.utils.server_utils import floats_to_base64
 from ray.llm._internal.serve.observability.logging import get_logger
@@ -76,35 +78,15 @@ V1_TOO_LONG_PATTERN = re.compile(
 )
 
 
-def _get_async_engine_args(llm_config: LLMConfig) -> "AsyncEngineArgs":
-    engine_config = llm_config.get_engine_config()
-
-    # This `model` is the local path on disk, or the hf model id.
-    # If it is the hf_model_id, vLLM automatically downloads the correct model from HF.
-    # We want this to be the local path on the disk when we already downloaded the
-    # model artifacts from a remote storage during node initialization,
-    # so vLLM will not require HF token for it and try to download it again.
-    model = engine_config.actual_hf_model_id
-    if isinstance(llm_config.model_loading_config.model_source, str):
-        model = llm_config.model_loading_config.model_source
-
-    return vllm.AsyncEngineArgs(
-        **{
-            "model": model,
-            "distributed_executor_backend": "ray",
-            "guided_decoding_backend": RAYLLM_GUIDED_DECODING_BACKEND,
-            "disable_log_stats": False,
-            **engine_config.get_initialization_kwargs(),
-        }
-    )
-
-
 def _get_vllm_engine_config(
     llm_config: LLMConfig,
 ) -> Tuple["AsyncEngineArgs", "VllmConfig"]:
-    async_engine_args = _get_async_engine_args(llm_config)
-    vllm_config = async_engine_args.create_engine_config()
-    return async_engine_args, vllm_config
+    engine_config = llm_config.get_engine_config()
+    async_engine_args = vllm.engine.arg_utils.AsyncEngineArgs(
+        **engine_config.get_initialization_kwargs()
+    )
+    vllm_engine_config = async_engine_args.create_engine_config()
+    return async_engine_args, vllm_engine_config
 
 
 def _clear_current_platform_cache():
@@ -150,6 +132,12 @@ class VLLMEngine(LLMEngine):
             llm_config: The llm configuration for this engine
         """
         super().__init__(llm_config)
+
+        # Ensure transformers_modules is initialized early in worker processes.
+        # This is critical for models with trust_remote_code=True to avoid pickle errors.
+        init_hf_modules()
+
+        self.llm_config = llm_config
 
         if vllm is None:
             raise ImportError(
@@ -197,7 +185,7 @@ class VLLMEngine(LLMEngine):
         self.llm_config = llm_config
 
         self._stats = VLLMEngineStatTracker()
-        self.running = False
+        self._running = False
         self.model_config: "ModelConfig" = None
         self._engine_client = None
         self.vllm_config: "VllmConfig" = None
@@ -211,16 +199,6 @@ class VLLMEngine(LLMEngine):
         self._atokenize = vllm_utils.make_async(
             self._tokenize, executor=self._tokenizer_executor
         )
-
-    @staticmethod
-    async def initialize_node(llm_config: LLMConfig) -> InitializeNodeOutput:
-        """Run the node initializer.
-
-        This is separate from `start` so it can run concurrently while starting the engine actor.
-
-        It's a static method so it can be overridden for testing.
-        """
-        return await initialize_node_util(llm_config)
 
     def _tokenize(
         self, prompt_text: str, add_special_tokens: bool = False
@@ -237,13 +215,13 @@ class VLLMEngine(LLMEngine):
             resolve_chat_template_content_format as _resolve_chat_template_content_format,
         )
 
-        if self.running:
+        if self._running:
             # The engine is already running!
             logger.info("Skipping engine restart because the engine is already running")
             return
 
         self._engine_client = await self._start_engine()
-        self.running = True
+        self._running = True
         self.model_config = await self._engine_client.get_model_config()
 
         self._tokenizer = await self._engine_client.get_tokenizer()
@@ -276,10 +254,19 @@ class VLLMEngine(LLMEngine):
 
     async def _start_engine(self) -> "EngineClient":
         # Initialize node and return all configurations
-        node_initialization = await self.initialize_node(self.llm_config)
+        node_initialization = await initialize_node(self.llm_config)
 
         vllm_engine_args, vllm_engine_config = await self._prepare_engine_config(
             node_initialization
+        )
+
+        # Apply checkpoint info to the llm_config.
+        # This is needed for capturing model capabilities
+        # (e.g. supports vision, etc.) on the llm_config.
+        config = self.llm_config.get_engine_config()
+        self.llm_config.apply_checkpoint_info(
+            config.actual_hf_model_id,
+            trust_remote_code=config.trust_remote_code,
         )
 
         return self._start_async_llm_engine(

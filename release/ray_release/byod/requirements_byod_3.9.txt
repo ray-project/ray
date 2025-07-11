@@ -470,7 +470,6 @@ click==8.1.7 \
     --hash=sha256:ca9853ad459e787e2192211578cc907e7594e294c7ccc834310722b41b9ca6de
     # via
     #   -c release/ray_release/byod/requirements_compiled.txt
-    #   dask
     #   flask
     #   typer
 cloudpickle==2.2.0 ; python_version < "3.12" \
@@ -478,7 +477,6 @@ cloudpickle==2.2.0 ; python_version < "3.12" \
     --hash=sha256:7428798d5926d8fcbfd092d18d01a2a03daf8237d8fcdc8095d256b8490796f0
     # via
     #   -c release/ray_release/byod/requirements_compiled.txt
-    #   dask
     #   gymnasium
 cmake==3.28.1 \
     --hash=sha256:0d4051d101d151d8387156c463aa45c8cd0e164f870e0ac0c8c91d3ff08528e1 \
@@ -666,12 +664,6 @@ cython==0.29.37 \
     # via
     #   -c release/ray_release/byod/requirements_compiled.txt
     #   -r release/ray_release/byod/requirements_byod_3.9.in
-dask[complete]==2023.6.1 ; python_version < "3.12" \
-    --hash=sha256:56ccfb800c09ac7048435392f2bca2919a39bb9da502f0fddd728c9214d00098 \
-    --hash=sha256:8077b708a8a6169da208714a8a9212937e7bed0326e5fa4681456a3538fc15a6
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   -r release/ray_release/byod/requirements_byod_3.9.in
 decorator==5.1.1 \
     --hash=sha256:637996211036b6385ef91435e4fae22989472f9d571faba8927ba8253acbc330 \
     --hash=sha256:b8c3f85900b9dc423225913c5aace94729fe1fa9763b38939a95226f02d37186
@@ -824,7 +816,6 @@ fsspec==2023.5.0 \
     --hash=sha256:b3b56e00fb93ea321bc9e5d9cf6f8522a0198b20eb24e02774d329e9c6fb84ce
     # via
     #   -c release/ray_release/byod/requirements_compiled.txt
-    #   dask
     #   gcsfs
     #   petastorm
     #   s3fs
@@ -1332,7 +1323,6 @@ importlib-metadata==6.11.0 \
     #   -c release/ray_release/byod/requirements_compiled.txt
     #   -r release/ray_release/byod/requirements_byod_3.9.in
     #   ale-py
-    #   dask
     #   flask
     #   gymnasium
     #   markdown
@@ -1410,56 +1400,10 @@ lightgbm==4.6.0 \
     # via
     #   -c release/ray_release/byod/requirements_compiled.txt
     #   -r release/ray_release/byod/requirements_byod_3.9.in
-locket==1.0.0 \
-    --hash=sha256:5c0d4c052a8bbbf750e056a8e65ccd309086f4f0f18a2eac306a8dfa4112a632 \
-    --hash=sha256:b6c819a722f7b6bd955b80781788e4a66a55628b858d347536b7e81325a3a5e3
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   partd
 locust==2.18.0 \
     --hash=sha256:55036b2601ad7a2725885ceafb28f90390128a9a5dc631809da462f53b37cd56 \
     --hash=sha256:f8d668c2c33518c705664bc869791d58fc98ba8f1aadbf2335be36e4e681feae
     # via -r release/ray_release/byod/requirements_byod_3.9.in
-lz4==4.3.3 \
-    --hash=sha256:01fe674ef2889dbb9899d8a67361e0c4a2c833af5aeb37dd505727cf5d2a131e \
-    --hash=sha256:054b4631a355606e99a42396f5db4d22046a3397ffc3269a348ec41eaebd69d2 \
-    --hash=sha256:0a136e44a16fc98b1abc404fbabf7f1fada2bdab6a7e970974fb81cf55b636d0 \
-    --hash=sha256:0e9c410b11a31dbdc94c05ac3c480cb4b222460faf9231f12538d0074e56c563 \
-    --hash=sha256:222a7e35137d7539c9c33bb53fcbb26510c5748779364014235afc62b0ec797f \
-    --hash=sha256:24b3206de56b7a537eda3a8123c644a2b7bf111f0af53bc14bed90ce5562d1aa \
-    --hash=sha256:2b901c7784caac9a1ded4555258207d9e9697e746cc8532129f150ffe1f6ba0d \
-    --hash=sha256:2f7b1839f795315e480fb87d9bc60b186a98e3e5d17203c6e757611ef7dcef61 \
-    --hash=sha256:30e8c20b8857adef7be045c65f47ab1e2c4fabba86a9fa9a997d7674a31ea6b6 \
-    --hash=sha256:31ea4be9d0059c00b2572d700bf2c1bc82f241f2c3282034a759c9a4d6ca4dc2 \
-    --hash=sha256:337cb94488a1b060ef1685187d6ad4ba8bc61d26d631d7ba909ee984ea736be1 \
-    --hash=sha256:33c9a6fd20767ccaf70649982f8f3eeb0884035c150c0b818ea660152cf3c809 \
-    --hash=sha256:363ab65bf31338eb364062a15f302fc0fab0a49426051429866d71c793c23394 \
-    --hash=sha256:43cf03059c0f941b772c8aeb42a0813d68d7081c009542301637e5782f8a33e2 \
-    --hash=sha256:56f4fe9c6327adb97406f27a66420b22ce02d71a5c365c48d6b656b4aaeb7775 \
-    --hash=sha256:5d35533bf2cee56f38ced91f766cd0038b6abf46f438a80d50c52750088be93f \
-    --hash=sha256:6756212507405f270b66b3ff7f564618de0606395c0fe10a7ae2ffcbbe0b1fba \
-    --hash=sha256:6cdc60e21ec70266947a48839b437d46025076eb4b12c76bd47f8e5eb8a75dcc \
-    --hash=sha256:abc197e4aca8b63f5ae200af03eb95fb4b5055a8f990079b5bdf042f568469dd \
-    --hash=sha256:b14d948e6dce389f9a7afc666d60dd1e35fa2138a8ec5306d30cd2e30d36b40c \
-    --hash=sha256:b47839b53956e2737229d70714f1d75f33e8ac26e52c267f0197b3189ca6de24 \
-    --hash=sha256:b6d9ec061b9eca86e4dcc003d93334b95d53909afd5a32c6e4f222157b50c071 \
-    --hash=sha256:b891880c187e96339474af2a3b2bfb11a8e4732ff5034be919aa9029484cd201 \
-    --hash=sha256:bca8fccc15e3add173da91be8f34121578dc777711ffd98d399be35487c934bf \
-    --hash=sha256:c81703b12475da73a5d66618856d04b1307e43428a7e59d98cfe5a5d608a74c6 \
-    --hash=sha256:d2507ee9c99dbddd191c86f0e0c8b724c76d26b0602db9ea23232304382e1f21 \
-    --hash=sha256:e36cd7b9d4d920d3bfc2369840da506fa68258f7bb176b8743189793c055e43d \
-    --hash=sha256:e7d84b479ddf39fe3ea05387f10b779155fc0990125f4fb35d636114e1c63a2e \
-    --hash=sha256:eac9af361e0d98335a02ff12fb56caeb7ea1196cf1a49dbf6f17828a131da807 \
-    --hash=sha256:edfd858985c23523f4e5a7526ca6ee65ff930207a7ec8a8f57a01eae506aaee7 \
-    --hash=sha256:ee9ff50557a942d187ec85462bb0960207e7ec5b19b3b48949263993771c6205 \
-    --hash=sha256:f0e822cd7644995d9ba248cb4b67859701748a93e2ab7fc9bc18c599a52e4604 \
-    --hash=sha256:f180904f33bdd1e92967923a43c22899e303906d19b2cf8bb547db6653ea6e7d \
-    --hash=sha256:f1d18718f9d78182c6b60f568c9a9cec8a7204d7cb6fad4e511a2ef279e4cb05 \
-    --hash=sha256:f4c7bf687303ca47d69f9f0133274958fd672efaa33fb5bcde467862d6c621f0 \
-    --hash=sha256:f76176492ff082657ada0d0f10c794b6da5800249ef1692b35cf49b1e93e8ef7
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   dask
 markdown==3.5.1 \
     --hash=sha256:5874b47d4ee3f0b14d764324d2c94c03ea66bee56f2d929da9f2508d65e722dc \
     --hash=sha256:b65d7beb248dc22f2e8a31fb706d93798093c308dc1aba295aedeb9d41a813bd
@@ -1878,7 +1822,6 @@ packaging==23.0 \
     --hash=sha256:b6ad297f8907de0fa2fe1ccbd26fdaf387f5f47c7275fedf8cce89f99446cf97
     # via
     #   -c release/ray_release/byod/requirements_compiled.txt
-    #   dask
     #   petastorm
     #   pytest
     #   tensorboardx
@@ -1916,12 +1859,6 @@ pandas==1.5.3 ; python_version < "3.12" \
     #   -c release/ray_release/byod/requirements_compiled.txt
     #   petastorm
     #   xarray
-partd==1.4.1 \
-    --hash=sha256:27e766663d36c161e2827aa3e28541c992f0b9527d3cca047e13fb3acdb989e6 \
-    --hash=sha256:56c25dd49e6fea5727e731203c466c6e092f308d8f0024e199d02f6aa2167f67
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   dask
 petastorm==0.12.1 \
     --hash=sha256:25f7737bbbd8ebcbe6aac9546c50ee7e739902facd434c1dd2d4c6fe7c0acfe9
     # via -r release/ray_release/byod/requirements_byod_3.9.in
@@ -2138,7 +2075,6 @@ pyarrow==14.0.2 \
     # via
     #   -c release/ray_release/byod/requirements_compiled.txt
     #   -r release/ray_release/byod/requirements_byod_3.9.in
-    #   dask
     #   petastorm
 pyasn1==0.5.1 \
     --hash=sha256:4439847c58d40b1d0a573d07e3856e95333f1976294494c325775aeca506eb58 \
@@ -2373,7 +2309,7 @@ pyyaml==6.0.1 \
     --hash=sha256:fd66fc5d0da6d9815ba2cebeb4205f95818ff4b79c3ebe268e75d961704af52f
     # via
     #   -c release/ray_release/byod/requirements_compiled.txt
-    #   dask
+    #   -r release/ray_release/byod/requirements_byod_3.9.in
 pyzmq==26.0.3 \
     --hash=sha256:01fbfbeb8249a68d257f601deb50c70c929dc2dfe683b754659569e502fbd3aa \
     --hash=sha256:0270b49b6847f0d106d64b5086e9ad5dc8a902413b5dbbb15d12b60f9c1747a4 \
@@ -2834,13 +2770,6 @@ tomli==2.0.1 \
     # via
     #   -c release/ray_release/byod/requirements_compiled.txt
     #   pytest
-toolz==0.12.1 \
-    --hash=sha256:d22731364c07d72eea0a0ad45bafb2c2937ab6fd38a3507bf55eae8744aa7d85 \
-    --hash=sha256:ecca342664893f177a13dac0e6b41cbd8ac25a358e5f215316d43e2100224f4d
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   dask
-    #   partd
 tornado==6.1 ; python_version < "3.12" \
     --hash=sha256:0a00ff4561e2929a2c37ce706cb8233b7907e0cdc22eab98888aca5dd3775feb \
     --hash=sha256:0d321a39c36e5f2c4ff12b4ed58d41390460f798422c4504e09eb5678e09998c \
