@@ -4,7 +4,7 @@ import pytest
 
 import ray
 from ray.train.v2._internal.constants import (
-    ENABLE_STATE_ACTOR_POLLING_ENV_VAR,
+    ENABLE_STATE_ACTOR_RECONCILIATION_ENV_VAR,
 )
 
 
@@ -32,5 +32,5 @@ def shutdown_only():
 
 @pytest.fixture(autouse=True)
 def disable_state_actor_polling(monkeypatch):
-    monkeypatch.setenv(ENABLE_STATE_ACTOR_POLLING_ENV_VAR, "0")
+    monkeypatch.setenv(ENABLE_STATE_ACTOR_RECONCILIATION_ENV_VAR, "0")
     yield

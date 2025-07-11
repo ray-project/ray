@@ -16,11 +16,11 @@ from ray._private.event.export_event_logger import (
 from ray.actor import ActorHandle
 from ray.train.v2._internal.constants import (
     CONTROLLERS_TO_POLL_PER_ITERATION,
-    DEFAULT_ENABLE_STATE_ACTOR_POLLING,
-    DEFAULT_STATE_ACTOR_POLL_INTERVAL_S,
-    ENABLE_STATE_ACTOR_POLLING_ENV_VAR,
+    DEFAULT_ENABLE_STATE_ACTOR_RECONCILIATION,
+    DEFAULT_STATE_ACTOR_RECONCILIATION_INTERVAL_S,
+    ENABLE_STATE_ACTOR_RECONCILIATION_ENV_VAR,
     GET_ACTOR_TIMEOUT_S,
-    STATE_ACTOR_POLL_INTERVAL_S_ENV_VAR,
+    STATE_ACTOR_RECONCILIATION_INTERVAL_S_ENV_VAR,
 )
 from ray.train.v2._internal.state.schema import (
     TrainRun,
@@ -40,8 +40,8 @@ class TrainStateActor:
     def __init__(
         self,
         # TODO: group into single config if we need to do similar polling elsewhere
-        enable_state_actor_polling: bool = False,
-        poll_interval_s: float = 30,
+        enable_state_actor_reconciliation: bool = False,
+        reconciliation_interval_s: float = 30,
         get_actor_timeout_s: int = GET_ACTOR_TIMEOUT_S,
         controllers_to_poll_per_iteration: int = CONTROLLERS_TO_POLL_PER_ITERATION,
     ):
@@ -63,9 +63,9 @@ class TrainStateActor:
         self._runs_lock = threading.RLock()
         self._run_attempts_lock = threading.RLock()
 
-        # Set env vars related to polling the controller.
-        if enable_state_actor_polling:
-            self._poll_interval_s = poll_interval_s
+        # Set env vars related to reconciling train run/attempt state.
+        if enable_state_actor_reconciliation:
+            self._reconciliation_interval_s = reconciliation_interval_s
             self._controllers_to_poll_per_iteration = controllers_to_poll_per_iteration
             self._get_actor_timeout_s = get_actor_timeout_s
             self._start_run_state_reconciliation_thread()
@@ -122,8 +122,10 @@ class TrainStateActor:
             while True:
                 # Wait for the poll interval to elapse.
                 time_since_last_poll = time_monotonic() - latest_poll_time
-                if time_since_last_poll < self._poll_interval_s:
-                    remaining_time = self._poll_interval_s - time_since_last_poll
+                if time_since_last_poll < self._reconciliation_interval_s:
+                    remaining_time = (
+                        self._reconciliation_interval_s - time_since_last_poll
+                    )
                     time.sleep(remaining_time)
 
                 last_poll_run_id = self._abort_live_runs_with_dead_controllers(
@@ -266,14 +268,14 @@ def get_or_create_state_actor() -> ActorHandle:
                 max_task_retries=-1,
             )
             .remote(
-                enable_state_actor_polling=ray_constants.env_bool(
-                    ENABLE_STATE_ACTOR_POLLING_ENV_VAR,
-                    DEFAULT_ENABLE_STATE_ACTOR_POLLING,
+                enable_state_actor_reconciliation=ray_constants.env_bool(
+                    ENABLE_STATE_ACTOR_RECONCILIATION_ENV_VAR,
+                    DEFAULT_ENABLE_STATE_ACTOR_RECONCILIATION,
                 ),
-                poll_interval_s=float(
+                reconciliation_interval_s=float(
                     os.getenv(
-                        STATE_ACTOR_POLL_INTERVAL_S_ENV_VAR,
-                        DEFAULT_STATE_ACTOR_POLL_INTERVAL_S,
+                        STATE_ACTOR_RECONCILIATION_INTERVAL_S_ENV_VAR,
+                        DEFAULT_STATE_ACTOR_RECONCILIATION_INTERVAL_S,
                     )
                 ),
             )
