@@ -52,7 +52,7 @@ def ray_shutdown():
 @pytest.fixture
 def ray_cluster():
     cluster = Cluster()
-    yield Cluster()
+    yield cluster
     serve.shutdown()
     ray.shutdown()
     cluster.shutdown()
