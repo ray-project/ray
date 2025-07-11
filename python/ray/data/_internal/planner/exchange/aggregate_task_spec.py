@@ -68,14 +68,15 @@ class SortAggregateTaskSpec(ExchangeTaskSpec):
         assert len(parts) > 0
         # Look at the first non-empty block for the schema
         for b in parts:
-            if b:
+            if BlockAccessor.for_block(b).num_rows() > 0:
                 meta_with_schema = BlockMetadataWithSchema.from_block(
                     b, stats=stats.build()
                 )
                 return parts + [meta_with_schema]
 
-        empty_schema = BlockAccessor.for_block(parts[0]).schema()
-        return parts + [empty_schema]
+        empty_schema = BlockAccessor.for_block(parts[0]).empty_schema()
+        meta = BlockAccessor.for_block(parts[0]).get_metadata()
+        return parts + [BlockMetadataWithSchema(schema=empty_schema, metadata=meta)]
 
     @staticmethod
     def reduce(
