@@ -700,8 +700,6 @@ class TestReservationOpResourceAllocator:
             topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
         )
         resource_manager.get_op_usage = MagicMock(side_effect=lambda op: op_usages[op])
-        resource_manager._mem_op_internal = dict.fromkeys([o1, o2, o3], 0)
-        resource_manager._mem_op_outputs = dict.fromkeys([o1, o2, o3], 0)
         resource_manager.get_global_limits = MagicMock(return_value=global_limits)
 
         allocator = resource_manager._op_resource_allocator
