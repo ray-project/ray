@@ -284,7 +284,6 @@ class LLMRouter:
         Union[LLMChatResponse, LLMCompletionsResponse, LLMEmbeddingsResponse], None
     ]:
         """Calls the model deployment and returns the stream."""
-        await self._init_completed.wait()
         model: str = body.model
         base_model_id = get_base_model_id(model)
         if base_model_id not in self._llm_configs:
@@ -300,7 +299,6 @@ class LLMRouter:
             yield response
 
     async def model(self, model_id: str) -> Optional[ModelData]:
-        await self._init_completed.wait()
         if model_id in self._llm_configs:
             return to_model_metadata(model_id, self._llm_configs[model_id])
 
@@ -329,7 +327,6 @@ class LLMRouter:
     @fastapi_router_app.get("/v1/models", response_model=Model)
     async def models(self) -> Model:
         """OpenAI API-compliant endpoint to get all rayllm models."""
-        await self._init_completed.wait()
         all_models = dict()
         for base_model_id, llm_config in self._llm_configs.items():
             # Add the base model.
