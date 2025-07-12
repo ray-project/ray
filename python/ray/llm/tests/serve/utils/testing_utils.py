@@ -5,7 +5,7 @@ This is written with assumptions around how mocks for testing are expected to be
 
 import json
 import re
-from typing import Union, List, Optional
+from typing import List, Optional, Union
 
 from ray.llm._internal.serve.configs.openai_api_models import (
     ChatCompletionResponse,

@@ -1,37 +1,36 @@
+import argparse
 import os
 import uuid
-import argparse
-from starlette.datastructures import State
-from starlette.requests import Request
-
 from typing import TYPE_CHECKING, AsyncGenerator, Tuple, Union
 
+from starlette.datastructures import State
+from starlette.requests import Request
 from transformers.dynamic_module_utils import init_hf_modules
+from vllm.engine.arg_utils import AsyncEngineArgs
+from vllm.entrypoints.openai.protocol import ErrorResponse as VLLMErrorResponse
 
 import ray
 from ray.llm._internal.common.utils.import_utils import try_import
 from ray.llm._internal.serve.configs.openai_api_models import (
-    CompletionRequest,
-    CompletionResponse,
     ChatCompletionRequest,
     ChatCompletionResponse,
+    CompletionRequest,
+    CompletionResponse,
     EmbeddingRequest,
     EmbeddingResponse,
     ErrorResponse,
 )
-
 from ray.llm._internal.serve.configs.server_models import (
     DiskMultiplexConfig,
     LLMConfig,
 )
-
 from ray.llm._internal.serve.deployments.llm.llm_engine import LLMEngine
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_engine_stats import (
     VLLMEngineStatTracker,
 )
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import (
-    VLLMEngineConfig,
     FrontendArgs,
+    VLLMEngineConfig,
 )
 from ray.llm._internal.serve.deployments.utils.node_initialization_utils import (
     InitializeNodeOutput,
@@ -40,9 +39,6 @@ from ray.llm._internal.serve.deployments.utils.node_initialization_utils import 
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.util.placement_group import PlacementGroup
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
-from vllm.engine.arg_utils import AsyncEngineArgs
-from vllm.entrypoints.openai.protocol import ErrorResponse as VLLMErrorResponse
-
 
 if TYPE_CHECKING:
     from vllm.config import VllmConfig
@@ -282,8 +278,8 @@ class VLLMEngine(LLMEngine):
         placement_group: PlacementGroup,
     ) -> "EngineClient":
 
-        from vllm.executor.ray_distributed_executor import RayDistributedExecutor
         from vllm.engine.async_llm_engine import AsyncLLMEngine
+        from vllm.executor.ray_distributed_executor import RayDistributedExecutor
 
         vllm_config.parallel_config.placement_group = placement_group
 
@@ -312,8 +308,8 @@ class VLLMEngine(LLMEngine):
                 vllm_engine_args, vllm_engine_config, placement_group
             )
 
-        from vllm.v1.executor.abstract import Executor
         from vllm.v1.engine.async_llm import AsyncLLM
+        from vllm.v1.executor.abstract import Executor
 
         vllm_engine_config.parallel_config.placement_group = placement_group
 
@@ -348,7 +344,7 @@ class VLLMEngine(LLMEngine):
         # if disk_lora_model.model_id in self._oai_models.lora_requests:
         #     # Lora is already loaded, return
         #     return
-        
+
         if any(lora_request.lora_name == disk_lora_model.model_id
                for lora_request in self._oai_models.lora_requests):
             # Lora is already loaded, return
@@ -416,8 +412,8 @@ class VLLMEngine(LLMEngine):
             "query_string": b"",
         }
         return Request(scope)
-    
-    
+
+
     async def completions(
         self, request: CompletionRequest
     ) -> AsyncGenerator[Union[str, CompletionResponse, ErrorResponse], None]:
@@ -440,7 +436,7 @@ class VLLMEngine(LLMEngine):
             raise RuntimeError(
                 "Completion service is not available. Make sure the engine is started and supports completions."
             )
-        
+
         # TODO (Kourosh): Remove when upstream is fixed to accept req_id.
         # Create a fake starlette.Request object with the x-request-id header
         # so that the create_completion API can assign the request_id properly.
@@ -489,7 +485,7 @@ class VLLMEngine(LLMEngine):
         # Create a fake starlette.Request object with the x-request-id header
         # so that the create_embedding API can assign the request_id properly.
         raw_request = self._create_raw_request(request, "/embeddings")
-        
+
         embedding_response = await self._oai_serving_embedding.create_embedding(request, raw_request=raw_request)
 
         if isinstance(embedding_response, VLLMErrorResponse):

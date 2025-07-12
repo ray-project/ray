@@ -8,11 +8,17 @@ from pydantic import BaseModel, Field
 from vllm.config import KVTransferConfig
 
 from ray import serve
+from ray.llm._internal.serve.configs.openai_api_models import (
+    ChatCompletionRequest,
+    ChatCompletionResponse,
+    CompletionRequest,
+    CompletionResponse,
+    EmbeddingRequest,
+    EmbeddingResponse,
+    ErrorResponse,
+)
 from ray.llm._internal.serve.configs.server_models import (
     parse_args as parse_llm_configs,
-)
-from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import (
-    KV_TRANSFER_PARAMS_KEY,
 )
 from ray.serve.deployment import Application
 from ray.serve.handle import DeploymentHandle
@@ -22,15 +28,6 @@ from ray.serve.llm import (
     LLMServer,
     ModelLoadingConfig,
     build_llm_deployment,
-)
-from ray.llm._internal.serve.configs.openai_api_models import (
-    ChatCompletionRequest,
-    CompletionRequest,
-    ChatCompletionResponse,
-    CompletionResponse,
-    ErrorResponse,
-    EmbeddingRequest,
-    EmbeddingResponse,
 )
 
 logger = logging.getLogger(__name__)
@@ -110,7 +107,7 @@ class PDProxyServer(LLMServer):
     def _prepare_prefill_request(self, request: RequestType) -> RequestType:
         assert (
             getattr(request, "kv_transfer_params", None) is None
-        ), f"kv_transfer_params should be empty before proxy"
+        ), "kv_transfer_params should be empty before proxy"
         prefill_request = request.model_copy(deep=True)
         prefill_request.kv_transfer_params = {
             "do_remote_decode": True,
@@ -143,7 +140,7 @@ class PDProxyServer(LLMServer):
     ]:
 
         await self._maybe_add_request_id_to_request(request)
-        
+
         if isinstance(request, ChatCompletionRequest):
             method = "chat"
         elif isinstance(request, CompletionRequest):

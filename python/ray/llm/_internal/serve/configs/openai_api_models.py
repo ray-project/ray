@@ -1,27 +1,23 @@
-from typing import Union, AsyncGenerator, Optional, Dict, Any, List
+from typing import TYPE_CHECKING, Any, AsyncGenerator, Dict, List, Optional, Union
 
 from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
 )
-
 from vllm.entrypoints.openai.protocol import (
     ChatCompletionRequest as vLLMChatCompletionRequest,
     ChatCompletionResponse as vLLMChatCompletionResponse,
     ChatCompletionStreamResponse as vLLMChatCompletionStreamResponse,
-    ErrorResponse as vLLMErrorResponse,
     CompletionRequest as vLLMCompletionRequest,
     CompletionResponse as vLLMCompletionResponse,
     CompletionStreamResponse as vLLMCompletionStreamResponse,
-    EmbeddingCompletionRequest as vLLMEmbeddingCompletionRequest,
     EmbeddingChatRequest as vLLMEmbeddingChatRequest,
+    EmbeddingCompletionRequest as vLLMEmbeddingCompletionRequest,
     EmbeddingResponse as vLLMEmbeddingResponse,
+    ErrorResponse as vLLMErrorResponse,
 )
-
 from vllm.utils import random_uuid
-
-from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ray.llm._internal.serve.configs.server_models import LLMConfig

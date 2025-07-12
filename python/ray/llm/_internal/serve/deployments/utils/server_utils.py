@@ -1,17 +1,17 @@
 import asyncio
-import base64
-import struct
 import traceback
 from functools import partial
-from typing import Awaitable, Callable, List, TypeVar
+from typing import Awaitable, Callable, TypeVar
 
 from fastapi import HTTPException, status
 from httpx import HTTPStatusError as HTTPXHTTPStatusError
 from pydantic import ValidationError as PydanticValidationError
 
 from ray import serve
-from ray.llm._internal.serve.configs.openai_api_models import OpenAIHTTPException
-from ray.llm._internal.serve.configs.openai_api_models import ErrorResponse
+from ray.llm._internal.serve.configs.openai_api_models import (
+    ErrorResponse,
+    OpenAIHTTPException,
+)
 from ray.llm._internal.serve.observability.logging import get_logger
 
 logger = get_logger(__name__)

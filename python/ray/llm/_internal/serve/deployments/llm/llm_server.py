@@ -1,11 +1,10 @@
 import asyncio
 import os
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Optional, Type, Union, AsyncGenerator, List
+from typing import Any, AsyncGenerator, Dict, List, Optional, Type, Union
 
 from ray import serve
 from ray._common.utils import import_attr
-
 from ray.llm._internal.serve.configs.constants import (
     DEFAULT_HEALTH_CHECK_PERIOD_S,
     DEFAULT_HEALTH_CHECK_TIMEOUT_S,
@@ -23,24 +22,23 @@ from ray.llm._internal.serve.configs.openai_api_models import (
     LLMChatResponse,
     LLMCompletionsResponse,
 )
-from ray.llm._internal.serve.deployments.llm.multiplex.lora_model_loader import (
-    LoraModelLoader,
-)
 from ray.llm._internal.serve.configs.server_models import (
+    DiskMultiplexConfig,
     LLMConfig,
 )
 from ray.llm._internal.serve.deployments.llm.llm_engine import LLMEngine
+from ray.llm._internal.serve.deployments.llm.multiplex.lora_model_loader import (
+    LoraModelLoader,
+)
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_engine import VLLMEngine
 from ray.llm._internal.serve.deployments.utils.batcher import OpenAIResponseBatcher
 from ray.llm._internal.serve.deployments.utils.server_utils import (
     get_serve_request_id,
 )
-from ray.llm._internal.serve.configs.server_models import DiskMultiplexConfig
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.observability.usage_telemetry.usage import (
     push_telemetry_report_for_all_models,
 )
-
 
 logger = get_logger(__name__)
 

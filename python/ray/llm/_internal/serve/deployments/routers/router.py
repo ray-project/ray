@@ -38,16 +38,15 @@ from ray.llm._internal.serve.configs.openai_api_models import (
     CompletionStreamResponse,
     EmbeddingRequest,
     EmbeddingResponse,
+    ErrorResponse,
     LLMChatResponse,
     LLMCompletionsResponse,
     LLMEmbeddingsResponse,
-    OpenAIHTTPException,
-    to_model_metadata,
-    ErrorResponse,
     ModelCard,
     ModelList,
+    OpenAIHTTPException,
+    to_model_metadata,
 )
-
 from ray.llm._internal.serve.configs.server_models import LLMConfig
 from ray.llm._internal.serve.deployments.llm.multiplex.utils import (
     get_base_model_id,

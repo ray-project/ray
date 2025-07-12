@@ -2,11 +2,10 @@ import sys
 
 import pytest
 
-from ray.serve.llm import LLMConfig
-
 from ray.llm._internal.serve.deployments.prefill_decode_disagg.prefill_decode_disagg import (
     build_app,
 )
+from ray.serve.llm import LLMConfig
 
 
 class TestServingArgsParsing:

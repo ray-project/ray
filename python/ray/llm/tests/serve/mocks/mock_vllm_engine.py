@@ -2,7 +2,7 @@ import asyncio
 import json
 import random
 from random import randint
-from typing import AsyncGenerator, Dict, Optional, Any, List, Union
+from typing import AsyncGenerator, Dict, Union
 
 from ray.llm._internal.serve.configs.openai_api_models import (
     ChatCompletionRequest,

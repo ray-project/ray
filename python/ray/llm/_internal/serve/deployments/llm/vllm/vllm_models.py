@@ -1,7 +1,7 @@
 import dataclasses
 import os
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
-import dataclasses
 
 from pydantic import ConfigDict, Field
 from vllm.engine.arg_utils import AsyncEngineArgs
@@ -24,10 +24,6 @@ from ray.util.placement_group import (
     placement_group,
     placement_group_table,
 )
-from dataclasses import dataclass, field
-
-from vllm.engine.arg_utils import AsyncEngineArgs
-
 
 
 # TODO (Kourosh): Temprary until this abstraction lands in vllm upstream.
@@ -76,7 +72,7 @@ KV_TRANSFER_PARAMS_KEY = "kv_transfer_params"
 vllm = try_import("vllm")
 
 if TYPE_CHECKING:
-    from vllm.lora.request import LoRARequest
+    pass
 
 logger = get_logger(__name__)
 

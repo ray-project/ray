@@ -9,11 +9,12 @@ We have the following Mock:
 - An engine that returns a string of form "test_i" for i in range(max_tokens)
 """
 
-from ray.llm.tests.serve.mocks.mock_vllm_engine import MockVLLMEngine
-from ray.llm.tests.serve.utils.testing_utils import LLMResponseValidator
+from typing import Optional
 
 import pytest
-from typing import Optional
+
+from ray.llm.tests.serve.mocks.mock_vllm_engine import MockVLLMEngine
+from ray.llm.tests.serve.utils.testing_utils import LLMResponseValidator
 
 
 class TestMockLLMEngine:

@@ -187,7 +187,7 @@ class TextGenerationProbeQuerier(BaseProbe):
             args["stream_options"] = {
                 "include_usage": True,
             }
-            
+
         if chat:
             method = self.client.chat.completions.create
         else:

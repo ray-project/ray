@@ -1,17 +1,17 @@
 import sys
 from typing import Optional
-
-import pytest
 from unittest.mock import patch
 
+import pytest
+
+from ray import serve
+from ray.llm._internal.serve.configs.server_models import LoraConfig
+from ray.llm._internal.serve.deployments.llm.llm_server import LLMServer
 from ray.llm.tests.serve.mocks.mock_vllm_engine import (
-    MockVLLMEngine,
     FakeLoraModelLoader,
+    MockVLLMEngine,
 )
 from ray.llm.tests.serve.utils.testing_utils import LLMResponseValidator
-from ray import serve
-from ray.llm._internal.serve.deployments.llm.llm_server import LLMServer
-from ray.llm._internal.serve.configs.server_models import LoraConfig
 
 
 @pytest.fixture
