@@ -597,6 +597,7 @@ void NormalTaskSubmitter::PushNormalTask(
           scheduling_key_entry.num_busy_workers--;
 
           if (!status.ok()) {
+            limbo_tasks_.insert(task_id);
             RAY_LOG(DEBUG) << "Getting error from raylet for task " << task_id;
             const ray::rpc::ClientCallback<ray::rpc::GetTaskFailureCauseReply> callback =
                 [this, status, task_id, addr](
@@ -607,6 +608,8 @@ void NormalTaskSubmitter::PushNormalTask(
                                             addr,
                                             get_task_failure_cause_reply_status,
                                             get_task_failure_cause_reply);
+                  absl::MutexLock lock(&mu_);
+                  limbo_tasks_.erase(task_id);
                 };
             auto &cur_lease_entry = worker_to_lease_entry_[addr];
             RAY_CHECK(cur_lease_entry.lease_client);
@@ -691,12 +694,19 @@ void NormalTaskSubmitter::HandleGetTaskFailureCause(
     error_info->set_error_message(buffer.str());
     error_info->set_error_type(rpc::ErrorType::NODE_DIED);
   }
-  RAY_UNUSED(task_manager_.FailOrRetryPendingTask(task_id,
-                                                  task_error_type,
-                                                  &task_execution_status,
-                                                  error_info.get(),
-                                                  /*mark_task_object_failed*/ true,
-                                                  fail_immediately));
+  {
+    absl::MutexLock lock(&mu_);
+    if (!limbo_tasks_.contains(task_id)) {
+      RAY_LOG(INFO) << "Task " << task_id << " is not in limbo. Skip retrying.";
+      return;
+    }
+    RAY_UNUSED(task_manager_.FailOrRetryPendingTask(task_id,
+                                                    task_error_type,
+                                                    &task_execution_status,
+                                                    error_info.get(),
+                                                    /*mark_task_object_failed*/ true,
+                                                    fail_immediately));
+  }
 }
 
 Status NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
@@ -714,6 +724,7 @@ Status NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
     absl::MutexLock lock(&mu_);
     auto task_id = task_spec.TaskId();
     generators_to_resubmit_.erase(task_id);
+    limbo_tasks_.erase(task_id);
 
     if (cancelled_tasks_.contains(task_id)) {
       // The task cancel is already in progress. We don't need to do anything.
