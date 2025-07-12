@@ -1,3 +1,8 @@
+python/ray/serve/_private/logging_utils.py
+    DOC102: Method `ServeFormatter.format`: Docstring contains more arguments than in function signature.
+    DOC103: Method `ServeFormatter.format`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the docstring but not in the function signature: [Returns: ].
+    DOC201: Method `ServeFormatter.format` does not have a return section in docstring
+--------------------
 python/ray/_common/utils.py
     DOC101: Function `import_attr`: Docstring contains fewer arguments than in function signature.
     DOC103: Function `import_attr`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [full_path: str, reload_module: bool].
