@@ -338,17 +338,21 @@ class RayletClient : public RayletClientInterface {
   /// \param owner_addresses The addresses of the workers that own the objects.
   /// \param fetch_only Only fetch objects, do not reconstruct them.
   /// \param current_task_id The task that needs the objects.
+  /// \param request_id The current get request ID.
   /// \return int 0 means correct, other numbers mean error.
   ray::Status FetchOrReconstruct(const std::vector<ObjectID> &object_ids,
                                  const std::vector<rpc::Address> &owner_addresses,
                                  bool fetch_only,
-                                 const TaskID &current_task_id);
+                                 const TaskID &current_task_id,
+                                 uint64_t *request_id);
 
   /// Notify the raylet that this client (worker) is no longer blocked.
   ///
   /// \param current_task_id The task that is no longer blocked.
+  /// \param get_request_id The ID of the get request that needs to be canceled.
   /// \return ray::Status.
-  ray::Status NotifyUnblocked(const TaskID &current_task_id);
+  ray::Status NotifyUnblocked(const TaskID &current_task_id,
+                              const uint64_t get_request_id);
 
   /// Notify the raylet that this client is blocked. This is only used for direct task
   /// calls. Note that ordering of this with respect to Unblock calls is important.
@@ -359,8 +363,9 @@ class RayletClient : public RayletClientInterface {
   /// Notify the raylet that this client is unblocked. This is only used for direct task
   /// calls. Note that ordering of this with respect to Block calls is important.
   ///
+  /// \param get_request_id The ID of the get request that needs to be canceled.
   /// \return ray::Status.
-  ray::Status NotifyDirectCallTaskUnblocked();
+  ray::Status NotifyDirectCallTaskUnblocked(const uint64_t get_request_id);
 
   /// Wait for the given objects until timeout expires or num_return objects are
   /// found.

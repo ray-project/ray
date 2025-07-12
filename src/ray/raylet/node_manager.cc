@@ -1044,13 +1044,24 @@ void NodeManager::ProcessClientMessage(const std::shared_ptr<ClientConnection> &
     HandleDirectCallTaskBlocked(registered_worker);
   } break;
   case protocol::MessageType::NotifyDirectCallTaskUnblocked: {
-    HandleDirectCallTaskUnblocked(registered_worker);
+    auto message =
+        flatbuffers::GetRoot<protocol::NotifyDirectCallTaskUnblocked>(message_data);
+    absl::flat_hash_set<uint64_t> get_request_ids;
+    if (message->get_request_id() < std::numeric_limits<uint64_t>::max()) {
+      get_request_ids.insert(message->get_request_id());
+    }
+    HandleDirectCallTaskUnblocked(registered_worker, get_request_ids);
   } break;
   case protocol::MessageType::NotifyUnblocked: {
     // TODO(ekl) this is still used from core worker even in direct call mode to
     // finish up get requests.
     auto message = flatbuffers::GetRoot<protocol::NotifyUnblocked>(message_data);
-    AsyncResolveObjectsFinish(client, from_flatbuf<TaskID>(*message->task_id()));
+    absl::flat_hash_set<uint64_t> get_request_ids;
+    if (message->get_request_id() < std::numeric_limits<uint64_t>::max()) {
+      get_request_ids.insert(message->get_request_id());
+    }
+    AsyncResolveObjectsFinish(
+        client, from_flatbuf<TaskID>(*message->task_id()), get_request_ids);
   } break;
   case protocol::MessageType::WaitRequest: {
     ProcessWaitRequestMessage(client, message_data);
@@ -1535,6 +1546,7 @@ void NodeManager::ProcessFetchOrReconstructMessage(
       FlatbufferToObjectReference(*message->object_ids(), *message->owner_addresses());
   // TODO(ekl) we should be able to remove the fetch only flag along with the legacy
   // non-direct call support.
+  uint64_t request_id = message->request_id();
   if (message->fetch_only()) {
     std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
     if (!worker) {
@@ -1545,7 +1557,7 @@ void NodeManager::ProcessFetchOrReconstructMessage(
     if (worker && !worker->GetAssignedTaskId().IsNil()) {
       // This will start a fetch for the objects that gets canceled once the
       // objects are local, or if the worker dies.
-      dependency_manager_.StartOrUpdateGetRequest(worker->WorkerId(), refs);
+      dependency_manager_.StartOrUpdateGetRequest(worker->WorkerId(), refs, &request_id);
     }
   } else {
     // The values are needed. Add all requested objects to the list to
@@ -1556,8 +1568,19 @@ void NodeManager::ProcessFetchOrReconstructMessage(
     AsyncResolveObjects(client,
                         refs,
                         task_id,
-                        /*ray_get=*/true);
+                        /*ray_get=*/true,
+                        /*get_request_id=*/&request_id);
   }
+  // return new_request_id.
+  flatbuffers::FlatBufferBuilder fbb;
+  flatbuffers::Offset<protocol::FetchOrReconstructReply> reply =
+      protocol::CreateFetchOrReconstructReply(fbb, /*new_get_request_id=*/request_id);
+  fbb.Finish(reply);
+
+  (void)client->WriteMessage(
+      static_cast<int64_t>(protocol::MessageType::FetchOrReconstructReply),
+      fbb.GetSize(),
+      fbb.GetBufferPointer());
 }
 
 void NodeManager::ProcessWaitRequestMessage(
@@ -1633,7 +1656,8 @@ void NodeManager::ProcessWaitRequestMessage(
           // The client is unblocked now because the wait call has
           // returned.
           if (resolve_objects) {
-            AsyncResolveObjectsFinish(client, current_task_id);
+            // No get request needs to be canceled.
+            AsyncResolveObjectsFinish(client, current_task_id, /*get_request_ids=*/{});
           }
         } else {
           // We failed to write to the client, so disconnect the client.
@@ -2141,14 +2165,15 @@ void NodeManager::HandleDirectCallTaskBlocked(
 }
 
 void NodeManager::HandleDirectCallTaskUnblocked(
-    const std::shared_ptr<WorkerInterface> &worker) {
+    const std::shared_ptr<WorkerInterface> &worker,
+    std::optional<absl::flat_hash_set<uint64_t>> get_request_ids) {
   if (!worker || worker->GetAssignedTaskId().IsNil()) {
     return;  // The worker may have died or is no longer processing the task.
   }
 
   // First, always release task dependencies. This ensures we don't leak resources even
   // if we don't need to unblock the worker below.
-  dependency_manager_.CancelGetRequest(worker->WorkerId());
+  dependency_manager_.CancelGetRequest(worker->WorkerId(), get_request_ids);
 
   if (worker->IsBlocked()) {
     local_task_manager_.ReturnCpuResourcesToUnblockedWorker(worker);
@@ -2160,7 +2185,8 @@ void NodeManager::AsyncResolveObjects(
     const std::shared_ptr<ClientConnection> &client,
     const std::vector<rpc::ObjectReference> &required_object_refs,
     const TaskID &current_task_id,
-    bool ray_get) {
+    bool ray_get,
+    uint64_t *get_request_id) {
   std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
   if (!worker) {
     // The client is a driver. Drivers do not hold resources, so we simply mark
@@ -2173,7 +2199,8 @@ void NodeManager::AsyncResolveObjects(
   // fetched and/or restarted as necessary, until the objects become local
   // or are unsubscribed.
   if (ray_get) {
-    dependency_manager_.StartOrUpdateGetRequest(worker->WorkerId(), required_object_refs);
+    dependency_manager_.StartOrUpdateGetRequest(
+        worker->WorkerId(), required_object_refs, get_request_id);
   } else {
     dependency_manager_.StartOrUpdateWaitRequest(worker->WorkerId(),
                                                  required_object_refs);
@@ -2181,7 +2208,9 @@ void NodeManager::AsyncResolveObjects(
 }
 
 void NodeManager::AsyncResolveObjectsFinish(
-    const std::shared_ptr<ClientConnection> &client, const TaskID &current_task_id) {
+    const std::shared_ptr<ClientConnection> &client,
+    const TaskID &current_task_id,
+    std::optional<absl::flat_hash_set<uint64_t>> get_request_ids) {
   std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
   if (!worker) {
     // The client is a driver. Drivers do not hold resources, so we simply
@@ -2194,7 +2223,7 @@ void NodeManager::AsyncResolveObjectsFinish(
   // fetch or reconstruction operations to make the objects local are canceled.
   // `ray.wait` calls will stay active until the objects become local, or the
   // task/actor that called `ray.wait` exits.
-  dependency_manager_.CancelGetRequest(worker->WorkerId());
+  dependency_manager_.CancelGetRequest(worker->WorkerId(), get_request_ids);
 }
 
 bool NodeManager::FinishAssignedTask(const std::shared_ptr<WorkerInterface> &worker_ptr) {

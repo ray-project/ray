@@ -114,23 +114,24 @@ void DependencyManager::CancelWaitRequest(const WorkerID &worker_id) {
 
 void DependencyManager::StartOrUpdateGetRequest(
     const WorkerID &worker_id,
-    const std::vector<rpc::ObjectReference> &required_objects) {
+    const std::vector<rpc::ObjectReference> &required_objects,
+    uint64_t *request_id) {
   RAY_LOG(DEBUG) << "Starting get request for worker " << worker_id;
-  auto &get_request = get_requests_[worker_id];
+  auto &get_request = get_requests_[worker_id][*request_id];
   bool modified = false;
   for (const auto &ref : required_objects) {
     const auto obj_id = ObjectRefToId(ref);
-    if (get_request.first.insert(obj_id).second) {
+    if (get_request.insert(obj_id).second) {
       RAY_LOG(DEBUG) << "Worker " << worker_id << " called ray.get on object " << obj_id;
       auto it = GetOrInsertRequiredObject(obj_id, ref);
-      it->second.dependent_get_requests.insert(worker_id);
+      it->second.dependent_get_requests[worker_id]++;
       modified = true;
     }
   }
 
   if (modified) {
     std::vector<rpc::ObjectReference> refs;
-    for (auto &obj_id : get_request.first) {
+    for (auto &obj_id : get_request) {
       auto it = required_objects_.find(obj_id);
       RAY_CHECK(it != required_objects_.end());
       refs.push_back(ObjectIdToRef(obj_id, it->second.owner_address));
@@ -139,36 +140,75 @@ void DependencyManager::StartOrUpdateGetRequest(
     // of the old dependencies are still being fetched.
     uint64_t new_request_id =
         object_manager_.Pull(refs, BundlePriority::GET_REQUEST, {"", false});
-    if (get_request.second != 0) {
+    if (*request_id != 0) {
       RAY_LOG(DEBUG) << "Canceling pull for get request from worker " << worker_id
-                     << " request: " << get_request.second;
-      object_manager_.CancelPull(get_request.second);
+                     << " request: " << *request_id;
+      object_manager_.CancelPull(*request_id);
     }
-    get_request.second = new_request_id;
+
+    if (*request_id != new_request_id) {
+      get_requests_[worker_id][new_request_id] = get_request;
+      get_requests_[worker_id].erase(*request_id);
+    }
+
+    *request_id = new_request_id;
     RAY_LOG(DEBUG) << "Started pull for get request from worker " << worker_id
-                   << " request: " << get_request.second;
+                   << " request: " << *request_id;
   }
 }
 
-void DependencyManager::CancelGetRequest(const WorkerID &worker_id) {
+void DependencyManager::CancelGetRequest(
+    const WorkerID &worker_id, std::optional<absl::flat_hash_set<uint64_t>> request_ids) {
   RAY_LOG(DEBUG) << "Canceling get request for worker " << worker_id;
   auto req_iter = get_requests_.find(worker_id);
   if (req_iter == get_requests_.end()) {
     return;
   }
 
-  RAY_LOG(DEBUG) << "Canceling pull for get request from worker " << worker_id
-                 << " request: " << req_iter->second.second;
-  object_manager_.CancelPull(req_iter->second.second);
+  if (request_ids.has_value()) {
+    for (const uint64_t &request_id : request_ids.value()) {
+      auto get_request_it = req_iter->second.find(request_id);
+      if (get_request_it == req_iter->second.end()) continue;
 
-  for (const auto &obj_id : req_iter->second.first) {
-    auto obj_iter = required_objects_.find(obj_id);
-    RAY_CHECK(obj_iter != required_objects_.end());
-    obj_iter->second.dependent_get_requests.erase(worker_id);
-    RemoveObjectIfNotNeeded(obj_iter);
+      RAY_LOG(DEBUG) << "Canceling pull for get request from worker " << worker_id
+                     << " request: " << get_request_it->first;
+      object_manager_.CancelPull(get_request_it->first);
+      for (const auto &obj_id : get_request_it->second) {
+        auto obj_it = required_objects_.find(obj_id);
+        RAY_CHECK(obj_it != required_objects_.end());
+        obj_it->second.dependent_get_requests[worker_id]--;
+        RAY_CHECK(obj_it->second.dependent_get_requests[worker_id] >= 0);
+        if (obj_it->second.dependent_get_requests[worker_id] == 0) {
+          obj_it->second.dependent_get_requests.erase(worker_id);
+          RemoveObjectIfNotNeeded(obj_it);
+        }
+      }
+
+      req_iter->second.erase(get_request_it);
+    }
+    if (req_iter->second.empty()) {
+      get_requests_.erase(req_iter);
+    }
+  } else {
+    /// cancel all requests
+    for (const auto &get_request : req_iter->second) {
+      RAY_LOG(DEBUG) << "Canceling pull for get request from worker " << worker_id
+                     << " request: " << get_request.first;
+      object_manager_.CancelPull(get_request.first);
+
+      for (const auto &obj_id : get_request.second) {
+        auto obj_it = required_objects_.find(obj_id);
+        RAY_CHECK(obj_it != required_objects_.end());
+        obj_it->second.dependent_get_requests[worker_id]--;
+        RAY_CHECK(obj_it->second.dependent_get_requests[worker_id] >= 0);
+        if (obj_it->second.dependent_get_requests[worker_id] == 0) {
+          obj_it->second.dependent_get_requests.erase(worker_id);
+          RemoveObjectIfNotNeeded(obj_it);
+        }
+      }
+    }
+    get_requests_.erase(req_iter);
   }
-
-  get_requests_.erase(req_iter);
 }
 
 /// Request dependencies for a queued task.
