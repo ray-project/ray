@@ -13,12 +13,12 @@ VALIDATE_STORAGE_MARKER_FILENAME = ".validate_storage_marker"
 CHECKPOINT_MANAGER_SNAPSHOT_FILENAME = "checkpoint_manager_snapshot.json"
 
 
-# ------------------------------------------------------------
-# Environment variables used in the controller and workers.
+# -----------------------------------------------------------------------
+# Environment variables used in the controller, workers, and state actor.
 #
 # Be sure to update ENV_VARS_TO_PROPAGATE when adding new
 # environment variables in this section.
-# ------------------------------------------------------------
+# -----------------------------------------------------------------------
 
 # Polling interval for the Train controller.
 # This determines how many seconds the controller will wait between
@@ -59,6 +59,23 @@ ENABLE_WORKER_STRUCTURED_LOGGING_ENV_VAR = "RAY_TRAIN_ENABLE_WORKER_STRUCTURED_L
 DEFAULT_ENABLE_CONTROLLER_LOGGING = "1"
 DEFAULT_ENABLE_WORKER_LOGGING = "1"
 
+# Environment variables to configure reconciliation interval for Train state actor.
+# This determines how many seconds the state actor will wait between
+# polling the controller for its status.
+ENABLE_STATE_ACTOR_RECONCILIATION_ENV_VAR = (
+    "RAY_TRAIN_ENABLE_STATE_ACTOR_RECONCILIATION"
+)
+DEFAULT_ENABLE_STATE_ACTOR_RECONCILIATION = "1"
+STATE_ACTOR_RECONCILIATION_INTERVAL_S_ENV_VAR = (
+    "RAY_TRAIN_STATE_ACTOR_RECONCILIATION_INTERVAL_S"
+)
+DEFAULT_STATE_ACTOR_RECONCILIATION_INTERVAL_S: float = 30.0
+# TODO: `ray.util.state.api.get_actor` takes 10-50ms but we cannot pick lower than 2s
+# due to https://github.com/ray-project/ray/issues/54153. Lower this after fix.
+GET_ACTOR_TIMEOUT_S: int = 2
+# GET_ACTOR_TIMEOUT_S_ENV_VAR * CONTROLLERS_TO_POLL_PER_ITERATION_ENV_VAR should be
+# way less than STATE_ACTOR_RECONCILIATION_INTERVAL_S_ENV_VAR.
+CONTROLLERS_TO_POLL_PER_ITERATION: int = 5
 # Environment variable for Train execution callbacks
 RAY_TRAIN_CALLBACKS_ENV_VAR = "RAY_TRAIN_CALLBACKS"
 
@@ -74,6 +91,8 @@ ENV_VARS_TO_PROPAGATE = {
     ENABLE_PRINT_PATCH_ENV_VAR,
     ENABLE_CONTROLLER_STRUCTURED_LOGGING_ENV_VAR,
     ENABLE_WORKER_STRUCTURED_LOGGING_ENV_VAR,
+    ENABLE_STATE_ACTOR_RECONCILIATION_ENV_VAR,
+    STATE_ACTOR_RECONCILIATION_INTERVAL_S_ENV_VAR,
 }
 
 
