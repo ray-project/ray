@@ -79,7 +79,7 @@ class Message(BaseModel):
 
 
 class Prompt(BaseModel):
-    prompt: Union[str, List[Message]]
+    prompt: Union[str, List[Message], List[int]]
     use_prompt_format: bool = True
     parameters: Optional[Dict[str, Any]] = None
 
