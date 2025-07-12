@@ -174,6 +174,25 @@ class Communicator(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    def broadcast(
+        self,
+        send_buf: "torch.Tensor",
+        recv_buf: "torch.Tensor",
+        src_rank: int,
+    ) -> None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def reduce(
+        self,
+        send_buf: "torch.Tensor",
+        recv_buf: "torch.Tensor",
+        dst_rank: int,
+        op: ReduceOp,
+    ) -> None:
+        raise NotImplementedError
+
+    @abstractmethod
     def destroy(self) -> None:
         """
         Destroy the GPU communicator.
