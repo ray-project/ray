@@ -5,9 +5,11 @@ py_library(
     name = "raydepsets_lib",
     srcs = [
         "cli.py",
+        "workspace.py",
     ],
     deps = [
         ci_require("click"),
+        ci_require("pyyaml"),
     ],
 )
 
@@ -21,15 +23,18 @@ py_binary(
 py_test(
     name = "test_cli",
     srcs = ["test_cli.py"],
-    data = ["@uv_x86_64//:file"],
+    data = [
+        "test_data/test.config.yaml",
+        "@uv_x86_64//:file",
+    ],
     exec_compatible_with = ["//:hermetic_python"],
     tags = [
         "ci_unit",
         "team:ci",
     ],
     deps = [
-        ci_require("bazel-runfiles"),
         ci_require("pytest"),
+        ci_require("bazel-runfiles"),
         ":raydepsets_lib",
     ],
 )

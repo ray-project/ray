@@ -1,5 +1,4 @@
-#!/usr/bin/env python3
-from cli import cli
+from ci.raydepsets.cli import cli
 
 if __name__ == "__main__":
     cli()
