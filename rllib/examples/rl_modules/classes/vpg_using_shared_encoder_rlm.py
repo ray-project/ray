@@ -63,7 +63,7 @@ class VPGMultiRLModuleWithSharedEncoder(MultiRLModule):
             import gymnasium as gym
             from ray.rllib.core.rl_module.rl_module import RLModuleSpec
             from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
-            
+
             from ray.rllib.examples.algorithms.classes.vpg import VPGConfig
             from ray.rllib.examples.learners.classes.vpg_torch_learner_shared_encoder import VPGTorchLearnerSharedEncoder
             from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
@@ -138,13 +138,12 @@ class VPGMultiRLModuleWithSharedEncoder(MultiRLModule):
         )
         # Assign the encoder to a convenience attribute.
         self.encoder = self._rl_modules[SHARED_ENCODER_ID]
-        
+
     def _forward(self, batch, forward_type, **kwargs):
         # Collect our policies' outputs in this dict.
         fwd_out = {}
         # Loop through the policy nets (through the given batch's keys).
         for policy_id, policy_batch in batch.items():
-            rl_module = self._rl_modules[policy_id]
             # Feed this policy's observation into the shared encoder
             fwd_out[policy_id] = self.encoder._forward(batch[policy_id])
             policy_batch[ENCODER_OUT] = fwd_out[policy_id][ENCODER_OUT]
@@ -153,20 +152,20 @@ class VPGMultiRLModuleWithSharedEncoder(MultiRLModule):
             # Pass the policy's embeddings through the policy net.
             fwd_out[policy_id] = m(batch[policy_id], **kwargs)
         return fwd_out
-        
+
     # These methods could probably stand to be adjusted in MultiRLModule using something like this, so that subclasses that tweak _forward don't need to rewrite all of them. The prior implementation errored out because of this issue.
     @override(MultiRLModule)
     def _forward_inference(
         self, batch: Dict[str, Any], **kwargs
     ) -> Union[Dict[str, Any], Dict[ModuleID, Dict[str, Any]]]:
         return self._forward(batch, "_forward_inference", **kwargs)
-        
+
     @override(MultiRLModule)
     def _forward_exploration(
         self, batch: Dict[str, Any], **kwargs
     ) -> Union[Dict[str, Any], Dict[ModuleID, Dict[str, Any]]]:
         return self._forward(batch, "_forward_exploration", **kwargs)
-        
+
     @override(MultiRLModule)
     def _forward_train(
         self, batch: Dict[str, Any], **kwargs

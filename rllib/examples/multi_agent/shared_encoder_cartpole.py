@@ -34,7 +34,7 @@ from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
 )
-from ray.tune.registry import get_trainable_cls, register_env
+from ray.tune.registry import register_env
 
 parser = add_rllib_example_script_args(
     default_iters=200,
@@ -52,11 +52,11 @@ parser.add_argument("--encoder-emb-dim", type=int, default=64)
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    
+
     single_agent_env = gym.make("CartPole-v1") # To allow instantiation of shared encoder
     assert args.algo=="VPG", "The shared encoder example is meant for VPG agents."
     assert args.num_agents==2, "This example makes use of two agents."
-    
+
     # Register our environment with tune.
     register_env(
         "env",
@@ -70,7 +70,7 @@ if __name__ == "__main__":
         .environment("env" if args.num_agents > 0 else "CartPole-v1")
         .training(
             learner_class=VPGTorchLearnerSharedEncoder,
-            train_batch_size=2048, 
+            train_batch_size=2048,
             lr=1e-2,
         )
         .multi_agent(
@@ -108,5 +108,5 @@ if __name__ == "__main__":
             ),
         )
     )
-    
+
     run_rllib_example_script_experiment(base_config, args)

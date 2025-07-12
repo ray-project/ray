@@ -7,14 +7,14 @@ torch, _ = try_import_torch()
 
 
 class VPGTorchLearnerSharedEncoder(VPGTorchLearner):
-    '''
+    """
         In order for a shared encoder to learn properly, a special, multi-agent Learner
-        accounting for the shared encoder has been set up. There is only one optimizer 
-        (used to train all submodules: encoder and the n policy nets), in order to not 
-        destabilize learning. The latter may happen if more than one optimizer would try 
+        accounting for the shared encoder has been set up. There is only one optimizer
+        (used to train all submodules: encoder and the n policy nets), in order to not
+        destabilize learning. The latter may happen if more than one optimizer would try
         to alternatingly optimize the same shared encoder submodule.
-    '''
-    
+    """
+
     @override(TorchLearner)
     def configure_optimizers(self) -> None:
         # Get and aggregate parameters for every module
