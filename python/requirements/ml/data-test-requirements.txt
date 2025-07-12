@@ -8,9 +8,9 @@ pytest-repeat
 soundfile
 fastavro
 google-cloud-bigquery
-google-cloud-core==2.4.1
-google-cloud-bigquery-storage==2.24.0
-google-api-core==1.34.0
+google-cloud-core
+google-cloud-bigquery-storage
+google-api-core
 webdataset
 raydp==1.7.0b20250423.dev0
 pylance==0.22
