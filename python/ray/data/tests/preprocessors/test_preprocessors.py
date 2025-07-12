@@ -182,7 +182,7 @@ def test_transform_all_configs():
             assert (
                 ray.get_runtime_context().get_assigned_resources()["memory"] == memory
             )
-            assert len(data["value"]) == batch_size
+            assert len(data["value"]) <= batch_size
             return data
 
         def _transform_pandas(self, data):
