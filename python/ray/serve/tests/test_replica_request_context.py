@@ -29,7 +29,7 @@ def create_fastapi_deployment():
 
 
 def _make_http_request(
-    path: str, route_prefix: str = None, expected_status: int = 200
+    path: str, is_prefixed_route: bool = False, expected_status: int = 200
 ) -> str:
     """Make an HTTP request and return the response text.
 
