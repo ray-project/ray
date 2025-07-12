@@ -1,3 +1,22 @@
+"""A runnable example involving the use of a shared encoder module.
+
+How to run this script
+----------------------
+`python [script file name].py --enable-new-api-stack --num-agents=2`
+
+Control the number of agents and policies (RLModules) via --num-agents and
+--num-policies. --encoder-emb-dim sets the encoder output dimension.
+
+For debugging, use the following additional command line options
+`--no-tune --num-env-runners=0`
+which should allow you to set breakpoints anywhere in the RLlib code and
+have the execution stop there for inspection and debugging.
+
+For logging to your WandB account, use:
+`--wandb-key=[your WandB API key] --wandb-project=[some project name]
+--wandb-run-name=[optional: WandB run name (within the defined project)]`
+"""
+
 import gymnasium as gym
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
@@ -11,79 +30,83 @@ from ray.rllib.examples.rl_modules.classes.vpg_using_shared_encoder_rlm import (
     VPGPolicyAfterSharedEncoder,
     VPGMultiRLModuleWithSharedEncoder,
 )
-
-# TODO: Add some command line arguments.
-
-# TODO: Modify VPGLearner to include only one optimizer.
-
-single_agent_env = gym.make("CartPole-v1")
-
-EMBEDDING_DIM = 64  # encoder output dim
-
-config = (
-    VPGConfig()
-    .environment(MultiAgentCartPole, env_config={"num_agents": 2})
-    .training(
-        learner_class=VPGTorchLearnerSharedEncoder,
-        train_batch_size=200, # temporary
-    )
-    .env_runners(
-        num_env_runners=0,
-        num_envs_per_env_runner=1,
-    )
-    .multi_agent(
-        # Declare the two policies trained.
-        policies={"p0", "p1"},
-        # Agent IDs of `MultiAgentCartPole` are 0 and 1. They are mapped to
-        # the two policies with ModuleIDs "p0" and "p1", respectively.
-        policy_mapping_fn=lambda agent_id, episode, **kw: f"p{agent_id}"
-    )
-    .rl_module(
-        rl_module_spec=MultiRLModuleSpec(
-            multi_rl_module_class=VPGMultiRLModuleWithSharedEncoder,
-            rl_module_specs={
-                # Shared encoder.
-                SHARED_ENCODER_ID: RLModuleSpec(
-                    module_class=SharedEncoder,
-                    model_config={"embedding_dim": EMBEDDING_DIM},
-                    observation_space=single_agent_env.observation_space,
-                    action_space=single_agent_env.action_space,  # <-- Added
-                ),
-                # Large policy net.
-                "p0": RLModuleSpec(
-                    module_class=VPGPolicyAfterSharedEncoder,
-                    model_config={
-                        "embedding_dim": EMBEDDING_DIM,
-                        "hidden_dim": 1024,
-                    },
-                ),
-                # Small policy net.
-                "p1": RLModuleSpec(
-                    module_class=VPGPolicyAfterSharedEncoder,
-                    model_config={
-                        "embedding_dim": EMBEDDING_DIM,
-                        "hidden_dim": 64,
-                    },
-                ),
-            },
-        ),
-    )
+from ray.rllib.utils.test_utils import (
+    add_rllib_example_script_args,
+    run_rllib_example_script_experiment,
 )
-algo = config.build_algo()
+from ray.tune.registry import get_trainable_cls, register_env
 
-# TODO: replace with the experiment running code.
-from ray.rllib.utils.metrics import (
-    ENV_RUNNER_RESULTS,
-    EPISODE_RETURN_MEAN,
+parser = add_rllib_example_script_args(
+    default_iters=200,
+    default_timesteps=100000,
+    default_reward=600.0,
 )
-import numpy as np
+parser.set_defaults(
+    algo="VPG",
+    num_agents=2,
+    enable_new_api_stack=True,
+)
+# TODO (sven): This arg is currently ignored (hard-set to 2), as in multi_agent_cartpole.py.
+parser.add_argument("--num-policies", type=int, default=2)
+parser.add_argument("--encoder-emb-dim", type=int, default=64)
 
-num_iters = 100
+if __name__ == "__main__":
+    args = parser.parse_args()
+    
+    single_agent_env = gym.make("CartPole-v1") # To allow instantiation of shared encoder
+    assert args.algo=="VPG", "The shared encoder example is meant for VPG agents."
+    assert args.num_agents==2, "This example makes use of two agents."
+    
+    # Register our environment with tune.
+    register_env(
+        "env",
+        lambda _: MultiAgentCartPole(config={"num_agents": args.num_agents}),
+    )
 
-for i in range(num_iters):
-  results = algo.train()
-  if ENV_RUNNER_RESULTS in results:
-      mean_return = results[ENV_RUNNER_RESULTS].get(
-          EPISODE_RETURN_MEAN, np.nan
-      )
-      print(f"iter={i} R={mean_return}")
+    EMBEDDING_DIM = args.encoder_emb_dim  # encoder output dim
+
+    base_config = (
+        VPGConfig()
+        .environment("env" if args.num_agents > 0 else "CartPole-v1")
+        .training(
+            learner_class=VPGTorchLearnerSharedEncoder,
+            train_batch_size=2048, 
+            lr=1e-2,
+        )
+        .multi_agent(
+            policies={"p0", "p1"},
+            policy_mapping_fn=lambda agent_id, episode, **kw: f"p{agent_id}"
+        )
+        .rl_module(
+            rl_module_spec=MultiRLModuleSpec(
+                multi_rl_module_class=VPGMultiRLModuleWithSharedEncoder,
+                rl_module_specs={
+                    # Shared encoder.
+                    SHARED_ENCODER_ID: RLModuleSpec(
+                        module_class=SharedEncoder,
+                        model_config={"embedding_dim": EMBEDDING_DIM},
+                        observation_space=single_agent_env.observation_space,
+                        action_space=single_agent_env.action_space,
+                    ),
+                    # Large policy net.
+                    "p0": RLModuleSpec(
+                        module_class=VPGPolicyAfterSharedEncoder,
+                        model_config={
+                            "embedding_dim": EMBEDDING_DIM,
+                            "hidden_dim": 1024,
+                        },
+                    ),
+                    # Small policy net.
+                    "p1": RLModuleSpec(
+                        module_class=VPGPolicyAfterSharedEncoder,
+                        model_config={
+                            "embedding_dim": EMBEDDING_DIM,
+                            "hidden_dim": 64,
+                        },
+                    ),
+                },
+            ),
+        )
+    )
+    
+    run_rllib_example_script_experiment(base_config, args)
