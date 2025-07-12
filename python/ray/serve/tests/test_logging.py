@@ -307,25 +307,6 @@ def test_http_access_log_in_logs_file(serve_instance, log_format):
         except FileNotFoundError:
             return 0
 
-    def create_line_checker(file_path, start_pos):
-        """Create a function that checks for new lines and captures them"""
-        captured_lines = {"lines": []}
-
-        def check_for_new_lines():
-            """Get new lines added to the file since start_position and return if any exist"""
-            try:
-                with open(file_path, "r") as f:
-                    f.seek(start_pos)
-                    new_content = f.read()
-                    lines = new_content.splitlines() if new_content else []
-                    captured_lines["lines"] = lines
-            except FileNotFoundError:
-                captured_lines["lines"] = []
-
-            return len(captured_lines["lines"]) > 0
-
-        return check_for_new_lines, captured_lines
-
     def verify_http_response_in_logs(
         response, new_log_lines, call_info, log_format, context_info=None
     ):
@@ -413,21 +394,35 @@ def test_http_access_log_in_logs_file(serve_instance, log_format):
                 f"Could not extract context info from response: {response.text}"
             )
 
-        # Step 3: Wait a bit for logs to be written, then get new lines
-        line_checker, captured_lines = create_line_checker(
-            log_file_path, start_position
-        )
-        wait_for_condition(line_checker, retry_interval_ms=1000, timeout=25)
-        new_log_lines = captured_lines["lines"]
+        # Step 3: Verify HTTP response matches new log lines
+        def verify_log_lines(
+            file_path, start_pos, response, call_info, log_format, context_info
+        ):
+            new_log_lines = []
+            try:
+                with open(file_path, "r") as f:
+                    f.seek(start_pos)
+                    new_content = f.read()
+                    lines = new_content.splitlines() if new_content else []
+                    new_log_lines = lines
+            except FileNotFoundError:
+                new_log_lines = []
 
-        # Step 4: Verify HTTP response matches new log lines
-        match_found = verify_http_response_in_logs(
-            response, new_log_lines, call_info, log_format, context_info
-        )
+            return verify_http_response_in_logs(
+                response, new_log_lines, call_info, log_format, context_info
+            )
 
-        assert (
-            match_found
-        ), f"No matching log entry found for {call_info['method']} {call_info['expected_route']}"
+        wait_for_condition(
+            verify_log_lines,
+            timeout=20,
+            retry_interval_ms=100,
+            file_path=log_file_path,
+            start_pos=start_position,
+            response=response,
+            call_info=call_info,
+            log_format=log_format,
+            context_info=context_info,
+        )
 
 
 def test_handle_access_log(serve_instance):
