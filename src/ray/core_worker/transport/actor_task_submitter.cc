@@ -189,7 +189,7 @@ Status ActorTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
       // backpressure. The receiving actor will execute the tasks according to
       // this sequence number.
       send_pos = task_spec.SequenceNumber();
-      RAY_CHECK(queue->second.actor_submit_queue->Emplace(send_pos, task_spec));
+      queue->second.actor_submit_queue->Emplace(send_pos, task_spec);
       queue->second.cur_pending_calls++;
       task_queued = true;
     }
@@ -205,7 +205,7 @@ Status ActorTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
           resolver_.ResolveDependencies(
               task_spec, [this, send_pos, actor_id, task_id](Status status) {
                 task_manager_.MarkDependenciesResolved(task_id);
-                auto fail_or_retry_task = TaskID::Nil();
+                bool fail_or_retry_task = false;
                 {
                   absl::MutexLock lock(&mu_);
                   auto queue = client_queues_.find(actor_id);
@@ -218,14 +218,13 @@ Status ActorTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
                       actor_submit_queue->MarkDependencyResolved(send_pos);
                       SendPendingTasks(actor_id);
                     } else {
-                      fail_or_retry_task =
-                          actor_submit_queue->Get(send_pos).first.TaskId();
+                      fail_or_retry_task = true;
                       actor_submit_queue->MarkDependencyFailed(send_pos);
                     }
                   }
                 }
 
-                if (!fail_or_retry_task.IsNil()) {
+                if (fail_or_retry_task) {
                   GetTaskManagerWithoutMu().FailOrRetryPendingTask(
                       task_id, rpc::ErrorType::DEPENDENCY_RESOLUTION_FAILED, &status);
                 }
@@ -563,7 +562,7 @@ void ActorTaskSubmitter::SendPendingTasks(const ActorID &actor_id) {
       break;
     }
     RAY_CHECK(!client_queue.worker_id.empty());
-    PushActorTask(client_queue, task.value().first, task.value().second);
+    PushActorTask(client_queue, /*task_spec=*/task->first, /*skip_queue=*/task->second);
   }
 }
 
@@ -896,7 +895,8 @@ Status ActorTaskSubmitter::CancelTask(TaskSpecification task_spec, bool recursiv
 
     task_queued = queue->second.actor_submit_queue->Contains(send_pos);
     if (task_queued) {
-      auto dep_resolved = queue->second.actor_submit_queue->Get(send_pos).second;
+      auto dep_resolved =
+          queue->second.actor_submit_queue->DependenciesResolved(send_pos);
       if (!dep_resolved) {
         RAY_LOG(DEBUG).WithField(task_id)
             << "Task has been resolving dependencies. Cancel to resolve dependencies";

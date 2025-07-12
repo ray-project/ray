@@ -81,7 +81,6 @@ py_test_module_list(
         "test_healthcheck.py",
         "test_http_headers.py",
         "test_http_routes.py",
-        "test_logging.py",
         "test_max_replicas_per_node.py",
         "test_multiplex.py",
         "test_proxy.py",
@@ -133,6 +132,7 @@ py_test_module_list(
         "test_autoscaling_policy.py",
         "test_deploy.py",
         "test_grpc.py",
+        "test_logging.py",
         "test_standalone.py",
         "test_standalone_3.py",
         "test_telemetry_1.py",
@@ -214,6 +214,7 @@ py_test_module_list(
     size = "large",
     files = [
         "test_api.py",
+        "test_api_2.py",
         "test_model_composition.py",
     ],
     tags = [
@@ -253,6 +254,7 @@ py_test(
     size = "large",
     srcs = [
         "test_api.py",
+        "test_api_2.py",
         "test_controller_crashes.py",
         "test_failure.py",
     ],
@@ -291,7 +293,11 @@ py_test(
     name = "test_autoscaling_policy_with_metr_disab",
     size = "large",
     srcs = ["test_autoscaling_policy.py"],
-    env = {"RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE": "0"},
+    env = {
+        "RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE": "0",
+        # Make sure queued metrics are cleared out quickly.
+        "RAY_SERVE_HANDLE_METRIC_PUSH_INTERVAL_S": "0.1",
+    },
     main = "test_autoscaling_policy.py",
     tags = [
         "autoscaling",
