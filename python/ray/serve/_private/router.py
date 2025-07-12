@@ -151,6 +151,22 @@ class RouterMetricsManager:
             max_queued_requests != -1
             and self.num_queued_requests >= max_queued_requests
         ):
+            # Due to the async nature of request handling, we may reject more requests
+            # than strictly necessary. This is more likely to happen during
+            # high concurrency. Here's why:
+            #
+            # When multiple requests arrive simultaneously with max_queued_requests=1:
+            # 1. First request increments num_queued_requests to 1
+            # 2. Before that request gets assigned to a replica and decrements the counter,
+            #    we yield to the event loop
+            # 3. Other requests see num_queued_requests=1 and get rejected, even though
+            #    the first request will soon free up the queue slot
+            #
+            # For example, with max_queued_requests=1 and 4 simultaneous requests:
+            # - Request 1 gets queued (num_queued_requests=1)
+            # - Requests 2,3,4 get rejected since queue appears full
+            # - Request 1 gets assigned and frees queue slot (num_queued_requests=0)
+            # - But we already rejected Request 2 which could have been queued
             e = BackPressureError(
                 num_queued_requests=self.num_queued_requests,
                 max_queued_requests=max_queued_requests,
