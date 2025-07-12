@@ -1,6 +1,6 @@
 import logging
 from dataclasses import dataclass
-from typing import List
+from typing import List, Optional
 
 import ray
 from ray.actor import ActorHandle
@@ -133,3 +133,18 @@ def _shutdown_sync_actor(sync_actor: SynchronizationActor):
 
 def _shutdown_placement_group(placement_group: PlacementGroup):
     remove_placement_group(placement_group)
+
+
+@dataclass(frozen=True)
+class WorkerGroupSchedulingStatus:
+    """Status of a worker group resize operation.
+
+    Attributes:
+        error: The error that occurred during the resize operation.
+    """
+
+    error: Optional[Exception]
+
+    @property
+    def has_error(self) -> bool:
+        return self.error is not None
