@@ -205,15 +205,21 @@ calling :func:`~ray.data.Dataset.select_columns`, since column selection is push
 .. testcode::
 
     import ray
+
     # Read just two of the five columns of the Iris dataset.
-    ray.data.read_parquet(
+    ds = ray.data.read_parquet(
         "s3://anonymous@ray-example-data/iris.parquet",
         columns=["sepal.length", "variety"],
     )
+    
+    print(ds.schema())
 
 .. testoutput::
 
-    Dataset(num_rows=150, schema={sepal.length: double, variety: string})
+    Column        Type
+    ------        ----
+    sepal.length  double
+    variety       string
 
 
 .. _data_memory:
