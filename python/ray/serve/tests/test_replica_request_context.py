@@ -6,63 +6,137 @@ from fastapi import FastAPI
 from fastapi.responses import PlainTextResponse
 
 from ray import serve
+from ray.serve._private.test_utils import get_application_url
 from ray.serve.context import _get_serve_request_context
 
 
+def create_fastapi_deployment():
+    """Create a FastAPI deployment with multiple routes."""
+    fastapi_app = FastAPI()
+
+    @serve.deployment
+    @serve.ingress(fastapi_app)
+    class FastAPIDeployment:
+        @fastapi_app.get("/fastapi-path")
+        def root(self) -> str:
+            return PlainTextResponse(_get_request_context_route())
+
+        @fastapi_app.get("/dynamic/{user_id}")
+        def dynamic(self) -> str:
+            return PlainTextResponse(_get_request_context_route())
+
+    return FastAPIDeployment
+
+
+def _make_http_request(
+    path: str, route_prefix: str = None, expected_status: int = 200
+) -> str:
+    """Make an HTTP request and return the response text.
+
+    Args:
+        path: Path to request
+        route_prefix: Route prefix to use
+        expected_status: Expected HTTP status code
+
+    Returns:
+        Response text
+
+    Raises:
+        AssertionError: If status code doesn't match expected
+    """
+    if route_prefix:
+        url = get_application_url(exclude_route_prefix=True)
+    else:
+        url = get_application_url()
+
+    full_url = f"{url}{path}"
+    response = httpx.get(full_url)
+
+    assert response.status_code == expected_status, (
+        f"Expected status {expected_status}, got {response.status_code} "
+        f"for URL: {full_url}"
+    )
+
+    return response.text
+
+
 def _get_request_context_route() -> str:
+    """Get the current request route from the serve context."""
     return _get_serve_request_context().route
 
 
+def create_basic_deployment():
+    """Create a basic deployment that returns the request context route."""
+
+    @serve.deployment
+    class BasicDeployment:
+        def __call__(self) -> str:
+            return _get_request_context_route()
+
+    return BasicDeployment
+
+
 class TestHTTPRoute:
-    def test_basic_route_prefix(self):
-        @serve.deployment
-        class A:
-            def __call__(self) -> str:
-                return _get_request_context_route()
+    """Test HTTP route handling in Ray Serve deployments."""
 
-        # No route prefix, should return "/" regardless of full route.
-        serve.run(A.bind())
-        r = httpx.get("http://localhost:8000/")
-        assert r.status_code == 200
-        assert r.text == "/"
-        assert httpx.get("http://localhost:8000/subpath").text == "/"
+    def setup_method(self):
+        """Clean up any existing deployments before each test."""
+        serve.shutdown()
 
-        # Configured route prefix should be set.
-        serve.run(A.bind(), route_prefix="/prefix")
-        assert httpx.get("http://localhost:8000/prefix").text == "/prefix"
-        assert httpx.get("http://localhost:8000/prefix/subpath").text == "/prefix"
+    def teardown_method(self):
+        """Clean up deployments after each test."""
+        serve.shutdown()
 
-    def test_matching_fastapi_route(self):
-        fastapi_app = FastAPI()
+    @pytest.mark.parametrize(
+        "route_prefix,test_path,expected_route",
+        [
+            (None, "/", "/"),
+            (None, "/subpath", "/"),
+            ("/prefix", "/prefix", "/prefix"),
+            ("/prefix", "/prefix/subpath", "/prefix"),
+        ],
+    )
+    def test_basic_route_prefix(self, route_prefix, test_path, expected_route):
+        """Test basic deployment route prefix handling."""
+        deployment = create_basic_deployment()
 
-        @serve.deployment
-        @serve.ingress(fastapi_app)
-        class A:
-            @fastapi_app.get("/fastapi-path")
-            def root(self) -> str:
-                return PlainTextResponse(_get_request_context_route())
+        # Deploy with or without route prefix
+        if route_prefix:
+            serve.run(deployment.bind(), route_prefix=route_prefix)
+        else:
+            serve.run(deployment.bind())
 
-            @fastapi_app.get("/dynamic/{user_id}")
-            def dynamic(self) -> str:
-                return PlainTextResponse(_get_request_context_route())
-
-        # No route prefix, should return matched fastapi route.
-        serve.run(A.bind())
-        assert httpx.get("http://localhost:8000/fastapi-path").text == "/fastapi-path"
-        assert (
-            httpx.get("http://localhost:8000/dynamic/abc123").text
-            == "/dynamic/{user_id}"
+        # Test the path
+        response_text = _make_http_request(test_path, route_prefix=route_prefix)
+        assert response_text == expected_route, (
+            f"Expected '{expected_route}', got '{response_text}' "
+            f"for path '{test_path}' with route_prefix='{route_prefix}'"
         )
 
-        # Configured route prefix, should return matched route prefix + fastapi route.
-        serve.run(A.bind(), route_prefix="/prefix")
-        assert (
-            httpx.get("http://localhost:8000/prefix/fastapi-path").text
-            == "/prefix/fastapi-path"
-        )
-        assert (
-            httpx.get("http://localhost:8000/prefix/dynamic/abc123").text
-            == "/prefix/dynamic/{user_id}"
+    @pytest.mark.parametrize(
+        "route_prefix,test_path,expected_route",
+        [
+            (None, "/fastapi-path", "/fastapi-path"),
+            (None, "/dynamic/abc123", "/dynamic/{user_id}"),
+            ("/prefix", "/prefix/fastapi-path", "/prefix/fastapi-path"),
+            ("/prefix", "/prefix/dynamic/abc123", "/prefix/dynamic/{user_id}"),
+        ],
+    )
+    def test_fastapi_route(self, route_prefix, test_path, expected_route):
+        """Test FastAPI deployment route handling."""
+        deployment = create_fastapi_deployment()
+
+        # Deploy with or without route prefix
+        if route_prefix:
+            serve.run(deployment.bind(), route_prefix=route_prefix)
+        else:
+            serve.run(deployment.bind())
+
+        # Test the path
+        response_text = _make_http_request(test_path, route_prefix=route_prefix)
+        assert response_text == expected_route, (
+            f"Expected '{expected_route}', got '{response_text}' "
+            f"for path '{test_path}' with route_prefix='{route_prefix}'"
         )
 
 
