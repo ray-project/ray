@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 
 def _bind(
-    input_nodes: Union[DAGNode, List[DAGNode]],
+    inputs: Union[DAGNode, List[DAGNode], List[List[DAGNode]]],
     op: _CollectiveOp,
     *,
     dst: Optional[Union["ray.actor.ActorHandle", List["ray.actor.ActorHandle"]]] = None,
@@ -57,10 +57,8 @@ def _bind(
         the input node's actor handle must be in the dst list.
     7. If the operation is all-to-one, dst must be an actor handle and dst must
         be an input node's actor handle.
-    8. All tensors have the same shape.
 
     Requirements 1-7 are checked in the `CollectiveGroup` constructor.
-    Requirement 8 is not checked yet.
 
     Args:
         inputs: A list of DAG nodes or a list of lists of DAG nodes. Each leaf list
@@ -74,6 +72,10 @@ def _bind(
         with the same shape as the input nodes. Each output node has the same order and
         belongs to the same actor as the corresponding input node.
     """
+    # Convert single DAGNode into a list for type checking.
+    if isinstance(inputs, DAGNode):
+        inputs = [inputs]
+
     if isinstance(inputs[0], list) and not isinstance(op, AllReduceOp):
         raise ValueError(
             "Currently binding a nested list of dag nodes is only supported for allreduce"
@@ -85,7 +87,7 @@ def _bind(
 
     if transport is None:
         transport = TorchTensorType.ACCELERATOR
-    collective_op = _CollectiveOperation(input_nodes, op, dst, transport)
+    collective_op = _CollectiveOperation(inputs, op, dst, transport)
     collective_output_nodes: List[CollectiveOutputNode] = []
 
     if isinstance(op, AllGatherOp):
@@ -222,9 +224,7 @@ class BroadcastWrapper:
         dst: List["ray.actor.ActorHandle"],
         transport: Optional[Union[str, Communicator]] = None,
     ) -> List[CollectiveOutputNode]:
-        return _bind(
-            input_node, BroadcastOp(), dst=dst, transport=transport
-        )
+        return _bind(input_node, BroadcastOp(), dst=dst, transport=transport)
 
     def __call__(
         self,

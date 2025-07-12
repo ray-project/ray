@@ -2075,7 +2075,9 @@ def test_collective_operation_validation(ray_start_regular):
 
     with pytest.raises(
         TypeError,
-        match=re.escape("BroadcastWrapper.bind() missing 1 required keyword-only argument: 'dst'"),
+        match=re.escape(
+            "BroadcastWrapper.bind() missing 1 required keyword-only argument: 'dst'"
+        ),
     ):
         with InputNode() as inp:
             compute = workers[0].send_tensor.bind(inp)
@@ -2099,7 +2101,9 @@ def test_collective_operation_validation(ray_start_regular):
 
     with pytest.raises(
         TypeError,
-        match=re.escape("ReduceWrapper.bind() missing 1 required keyword-only argument: 'dst'"),
+        match=re.escape(
+            "ReduceWrapper.bind() missing 1 required keyword-only argument: 'dst'"
+        ),
     ):
         with InputNode() as inp:
             computes = [
