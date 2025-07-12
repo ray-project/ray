@@ -670,10 +670,15 @@ class SerializationContext:
         ctx = ChannelContext.get_current().serialization_context
         prev_use_external_transport = ctx.use_external_transport
         ctx.set_use_external_transport(True)
+        # Register a custom serializer for torch.Tensor. This allows torch.Tensors
+        # to use the created collective for communication between actors, instead of
+        # the normal serialize -> object store -> deserialize codepath.
+        from ray.experimental.channel.torch_tensor_type import TorchTensorType
+        # FIXME(Qiaolin-Yu): This is a hack to register the custom serializer for torch.Tensor.
+        TorchTensorType().register_custom_serializer()
         try:
             serialized_val = self._serialize_to_msgpack(value)
         finally:
             ctx.set_use_external_transport(prev_use_external_transport)
-
         tensors, _ = ctx.reset_out_of_band_tensors([])
         return serialized_val, tensors

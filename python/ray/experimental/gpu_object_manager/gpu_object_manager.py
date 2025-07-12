@@ -3,11 +3,12 @@ from typing import TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional, Tuple
 import ray
 from ray._private.custom_types import TensorTransportEnum
 from ray._raylet import ObjectRef
-
+from ray.util.collective.types import Backend
 
 if TYPE_CHECKING:
     import torch
     from ray.experimental.gpu_object_manager.gpu_object_store import GPUObjectStore
+    from nixl._api import nixl_agent, nixl_agent_config
 
 
 # GPUObjectMeta is a named tuple containing the source actor, tensor transport
@@ -21,13 +22,10 @@ class GPUObjectMeta(NamedTuple):
     # Must be a valid backend name as defined in
     # `ray.util.collective.types.Backend`.
     tensor_transport_backend: str
-    tensor_meta: List[Tuple["torch.Size", "torch.dtype"]]
-    # The serialized descs and agent metadata for nixl.
-    nixl_serialized_descs: Optional[bytes] = None
-    nixl_agent_meta: Optional[bytes] = None
+    tensor_meta:  Tuple[List[Tuple["torch.Size", "torch.dtype"]], Optional[bytes], Optional[bytes]]
 
 
-def __ray_get_tensor_meta__(self, obj_id: str):
+def __ray_get_tensor_meta__(self, obj_id: str, use_nixl: bool):
     """Helper function that runs on the src actor to get the tensor metadata."""
     from ray._private.worker import global_worker
 
@@ -36,15 +34,14 @@ def __ray_get_tensor_meta__(self, obj_id: str):
         obj_id
     ), f"obj_id={obj_id} not found in GPU object store"
     tensors = gpu_object_store.get_gpu_object(obj_id)
-    agent = global_worker.gpu_object_manager.init_nixl_agent()
-    reg_descs = agent.register_memory(tensors)
-    xfer_descs = reg_descs.trim()
+    if use_nixl:
+        agent = global_worker.gpu_object_manager.nixl_agent
+        reg_descs = agent.register_memory(tensors)
+        xfer_descs = reg_descs.trim()
+        return [(t.shape, t.dtype) for t in tensors], agent.get_serialized_descs(xfer_descs), agent.get_agent_metadata()
+    else:
+        return [(t.shape, t.dtype) for t in tensors], None, None
 
-    return (
-        [(t.shape, t.dtype) for t in tensors],
-        agent.get_serialized_descs(xfer_descs),
-        agent.get_agent_metadata(),
-    )
 
 
 def __ray_fetch_gpu_object__(self, obj_id: str):
@@ -75,17 +72,18 @@ class GPUObjectManager:
         # like PyTorch.
         self._gpu_object_store: Optional["GPUObjectStore"] = None
         # The agent when using nixl for transfer.
-        self.nixl_agent = None
+        self._nixl_agent: Optional["nixl_agent"] = None
 
-    def init_nixl_agent(self):
+    @property
+    def nixl_agent(self) -> "nixl_agent":
         from nixl._api import nixl_agent, nixl_agent_config
 
-        if self.nixl_agent is None:
+        if self._nixl_agent is None:
             agent_config = nixl_agent_config(backends=["UCX"])
             ctx = ray.get_runtime_context()
             actor_id = ctx.get_actor_id()
-            self.nixl_agent = nixl_agent(actor_id, agent_config)
-        return self.nixl_agent
+            self._nixl_agent = nixl_agent(actor_id, agent_config)
+        return self._nixl_agent
 
     @property
     def gpu_object_store(self) -> "ray.experimental.GPUObjectStore":
@@ -98,13 +96,13 @@ class GPUObjectManager:
         return self._gpu_object_store
 
     def _get_tensor_meta(
-        self, src_actor: "ray.actor.ActorHandle", obj_id: str
+        self, src_actor: "ray.actor.ActorHandle", obj_id: str, use_nixl: bool
     ) -> ObjectRef:
         # Submit a Ray actor task to the source actor to get the tensor metadata.
         # The metadata is a list of tuples, where each tuple contains the shape and dtype
         # of a tensor in the GPU object store. This function returns an ObjectRef that
         # points to the tensor metadata.
-        return src_actor.__ray_call__.remote(__ray_get_tensor_meta__, obj_id)
+        return src_actor.__ray_call__.remote(__ray_get_tensor_meta__, obj_id, use_nixl)
 
     def is_managed_gpu_object(self, obj_id: str) -> bool:
         """
@@ -141,8 +139,9 @@ class GPUObjectManager:
         tensor_transport_backend = _tensor_transport_to_collective_backend(
             tensor_transport
         )
+        use_nixl = tensor_transport_backend == Backend.NIXL
         obj_id = obj_ref.hex()
-        tensor_meta = self._get_tensor_meta(src_actor, obj_id)
+        tensor_meta = self._get_tensor_meta(src_actor, obj_id, use_nixl)
         self.managed_gpu_object_metadata[obj_id] = GPUObjectMeta(
             src_actor=src_actor,
             tensor_transport_backend=tensor_transport_backend,
@@ -172,9 +171,7 @@ class GPUObjectManager:
         dst_actor: "ray.actor.ActorHandle",
         obj_id: str,
         src_rank: int,
-        tensor_meta: List[Tuple["torch.Size", "torch.dtype"]],
-        nixl_serialized_descs: Optional[bytes] = None,
-        nixl_agent_meta: Optional[bytes] = None,
+        tensor_meta:  Tuple[List[Tuple["torch.Size", "torch.dtype"]], Optional[bytes], Optional[bytes]],
     ):
         from ray.experimental.gpu_object_manager.gpu_object_store import __ray_recv__
 
@@ -186,8 +183,6 @@ class GPUObjectManager:
             obj_id,
             src_rank,
             tensor_meta,
-            nixl_serialized_descs,
-            nixl_agent_meta,
         )
 
     def fetch_gpu_object(self, obj_id: str):
@@ -254,8 +249,16 @@ class GPUObjectManager:
 
             src_actor = gpu_object_meta.src_actor
             tensor_meta = gpu_object_meta.tensor_meta
-            nixl_serialized_descs = gpu_object_meta.nixl_serialized_descs
-            nixl_agent_meta = gpu_object_meta.nixl_agent_meta
+            if gpu_object_meta.tensor_transport_backend == Backend.NIXL:
+                self._send_gpu_object("nixl", src_actor, arg.hex(), 0)
+                self._recv_gpu_object(
+                    "nixl",
+                    dst_actor,
+                    arg.hex(),
+                    0,
+                    tensor_meta,
+                )
+                continue
             communicators = get_collective_groups(
                 [src_actor, dst_actor], backend=gpu_object_meta.tensor_transport_backend
             )
@@ -298,6 +301,4 @@ class GPUObjectManager:
                 arg.hex(),
                 src_rank,
                 tensor_meta,
-                nixl_serialized_descs,
-                nixl_agent_meta,
             )

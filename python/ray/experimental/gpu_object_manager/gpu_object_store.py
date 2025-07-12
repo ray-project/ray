@@ -16,11 +16,13 @@ except ImportError:
 TENSOR_TRANSPORT_TO_COLLECTIVE_BACKEND = {
     TensorTransportEnum.NCCL: Backend.NCCL,
     TensorTransportEnum.GLOO: Backend.TORCH_GLOO,
+    TensorTransportEnum.NIXL: Backend.NIXL,
 }
 
 COLLECTIVE_BACKEND_TO_TORCH_DEVICE = {
     Backend.NCCL: torch.device("cuda"),
     Backend.TORCH_GLOO: torch.device("cpu"),
+    Backend.NIXL: torch.device("cuda"),
 }
 
 
@@ -46,22 +48,10 @@ def __ray_send__(self, communicator_name: str, obj_id: str, dst_rank: int):
 
     tensors = gpu_object_store.get_gpu_object(obj_id)
 
-    if (
-        global_worker.gpu_object_manager.tensor_transport_backend
-        == TensorTransportEnum.NIXL
-    ):
-        nixl_agent = global_worker.gpu_object_manager.init_nixl_agent()
-        reg_descs = nixl_agent.register_memory(tensors)
-        xfer_descs = reg_descs.trim()
-        global_worker.gpu_object_manager.managed_gpu_object_metadata[
-            obj_id
-        ].nixl_serialized_descs = nixl_agent.get_serialized_descs(xfer_descs)
-        global_worker.gpu_object_manager.managed_gpu_object_metadata[
-            obj_id
-        ].nixl_agent_meta = nixl_agent.get_agent_metadata()
-        return
-
-    backend = collective.get_group_handle(communicator_name).backend()
+    if communicator_name != "nixl":
+        backend = collective.get_group_handle(communicator_name).backend()
+    else:
+        backend = Backend.NIXL
     device = COLLECTIVE_BACKEND_TO_TORCH_DEVICE[backend]
 
     for tensor in tensors:
@@ -71,7 +61,11 @@ def __ray_send__(self, communicator_name: str, obj_id: str, dst_rank: int):
             raise ValueError(
                 f"tensor device {tensor.device} does not match device {device}"
             )
-        collective.send(tensor, dst_rank, group_name=communicator_name)
+        if backend != Backend.NIXL:
+            collective.send(tensor, dst_rank, group_name=communicator_name)
+
+    if backend == Backend.NIXL:
+        return
     # TODO(kevin85421): The current garbage collection implementation for the
     # in-actor object store is naive. We garbage collect each object after it
     # is consumed once.
@@ -83,33 +77,29 @@ def __ray_recv__(
     communicator_name: str,
     obj_id: str,
     src_rank: int,
-    tensor_meta: List[Tuple["torch.Size", "torch.dtype"]],
-    nixl_serialized_descs: Optional[bytes] = None,
-    nixl_agent_meta: Optional[bytes] = None,
+    tensor_meta: Tuple[List[Tuple["torch.Size", "torch.dtype"]], Optional[bytes], Optional[bytes]],
 ):
     """Helper function that runs on the dst actor to receive tensors from the src actor."""
     from ray._private.worker import global_worker
-
-    backend = collective.get_group_handle(communicator_name).backend()
+    if communicator_name != "nixl":
+        backend = collective.get_group_handle(communicator_name).backend()
+    else:
+        backend = Backend.NIXL
     device = COLLECTIVE_BACKEND_TO_TORCH_DEVICE[backend]
+
+    tensor_basic_meta, nixl_serialized_descs, nixl_agent_meta = tensor_meta
 
     gpu_object_store = global_worker.gpu_object_manager.gpu_object_store
     tensors = []
-    for meta in tensor_meta:
+    for meta in tensor_basic_meta:
         shape, dtype = meta
         tensor = torch.zeros(shape, dtype=dtype, device=device)
-        if (
-            global_worker.gpu_object_manager.tensor_transport_backend
-            != TensorTransportEnum.NIXL
-        ):
+        if backend != Backend.NIXL:
             collective.recv(tensor, src_rank, group_name=communicator_name)
         tensors.append(tensor)
 
-    if (
-        global_worker.gpu_object_manager.tensor_transport_backend
-        == TensorTransportEnum.NIXL
-    ):
-        nixl_agent = global_worker.gpu_object_manager.init_nixl_agent()
+    if backend == Backend.NIXL:
+        nixl_agent = global_worker.gpu_object_manager.nixl_agent
         remote_descs = nixl_agent.deserialize_descs(nixl_serialized_descs)
         local_descs = nixl_agent.register_memory(tensors)
         remote_name = nixl_agent.add_remote_agent(nixl_agent_meta)
