@@ -69,13 +69,14 @@ class MockVLLMEngine(LLMEngine):
     ) -> VLLMGenerationRequest:
 
         if isinstance(prompt.prompt, list):
-            prompt_text = ""
+            parts = []
             for p in prompt.prompt:
                 if isinstance(p, int):
-                    prompt_text += f"tk_{p}"
+                    parts.append(f"tk_{p}")
                 else:
                     assert hasattr(p, "content")
-                    prompt_text += str(p.content)
+                    parts.append(str(p.content))
+            prompt_text = "".join(parts)
         else:
             prompt_text = prompt.prompt
 
