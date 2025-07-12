@@ -6,3 +6,4 @@ accelerator_type: A10G
 engine_kwargs:
   max_model_len: 8192
   tensor_parallel_size: 2
+  enforce_eager: true

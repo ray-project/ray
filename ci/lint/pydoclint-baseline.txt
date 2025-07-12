@@ -1584,9 +1584,6 @@ python/ray/llm/_internal/common/utils/download_utils.py
     DOC201: Function `get_model_location_on_disk` does not have a return section in docstring
     DOC201: Method `CloudModelDownloader.get_model` does not have a return section in docstring
 --------------------
-python/ray/llm/_internal/serve/configs/json_mode_utils.py
-    DOC201: Method `JSONSchemaValidator.try_load_json_schema` does not have a return section in docstring
---------------------
 python/ray/llm/_internal/serve/configs/openai_api_models.py
     DOC201: Function `to_model_metadata` does not have a return section in docstring
 --------------------
