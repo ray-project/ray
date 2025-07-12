@@ -1105,10 +1105,6 @@ class AggregatorPool:
 
             if len(self._pending_aggregators_refs) == 0:
                 self._last_health_warning_time = None
-                logger.debug(
-                    f"All {self._num_aggregators} hash shuffle aggregators "
-                    f"are now healthy"
-                )
                 return
 
             # Use ray.wait to check readiness in non-blocking fashion
@@ -1154,10 +1150,6 @@ class AggregatorPool:
             elif not unready_refs and self._last_health_warning_time is not None:
                 # All aggregators are ready
                 self._last_health_warning_time = None
-                logger.debug(
-                    f"All {self._num_aggregators} hash shuffle aggregators "
-                    f"are now healthy"
-                )
 
         except Exception as e:
             logger.warning(f"Failed to check aggregator health: {e}")
