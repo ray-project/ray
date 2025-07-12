@@ -269,9 +269,8 @@ steps:
         --build-name minbuild-core-py{{matrix}}
         --test-env=RAY_MINIMAL=1
         --test-env=EXPECTED_PYTHON_VERSION={{matrix}}
-        --only-tags gpu_objects_gloo
-        --except-tags basic_test,manual || true
-      - sleep 100000
+        --only-tags minimal
+        --except-tags basic_test,manual
       # - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dashboard/... core
       #   --parallelism-per-worker 3
       #   --build-name minbuild-core-py{{matrix}}
