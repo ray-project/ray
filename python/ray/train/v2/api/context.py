@@ -3,6 +3,9 @@ from typing import Any, Dict
 from ray.train.v2._internal.execution.context import (
     get_train_context as get_internal_train_context,
 )
+from ray.train.v2._internal.execution.local_testing_context import (
+    LocalTestingTrainContext,
+)
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 
 
@@ -210,3 +213,6 @@ class TrainContext:
         without notice between minor versions.
         """
         return get_internal_train_context().get_storage()
+
+    def is_local_test(self) -> bool:
+        return isinstance(get_internal_train_context(), LocalTestingTrainContext)

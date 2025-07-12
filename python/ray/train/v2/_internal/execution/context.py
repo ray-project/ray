@@ -4,7 +4,7 @@ import threading
 import uuid
 from dataclasses import dataclass, field
 from queue import Queue
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 import ray
 from ray.data import DataIterator, Dataset
@@ -12,6 +12,11 @@ from ray.train import BackendConfig, Checkpoint, DataConfig
 from ray.train._internal import session
 from ray.train._internal.session import _TrainingResult
 from ray.train.v2._internal.execution.checkpoint.sync_actor import SynchronizationActor
+from ray.train.v2._internal.execution.local_testing_context import (
+    LocalTestingTrainContext,
+    _local_testing_train_context,
+    is_local_train_function_run_allowed,
+)
 from ray.train.v2._internal.execution.storage import StorageContext
 from ray.train.v2._internal.util import _copy_doc, invoke_context_managers
 from ray.train.v2.api.config import RunConfig, ScalingConfig
@@ -276,10 +281,13 @@ _train_context: Optional[TrainContext] = None
 _context_lock = threading.Lock()
 
 
-def get_train_context() -> TrainContext:
+def get_train_context() -> Union[TrainContext, LocalTestingTrainContext]:
     with _context_lock:
         if _train_context is None:
-            raise RuntimeError("TrainContext has not been initialized.")
+            if is_local_train_function_run_allowed():
+                return _local_testing_train_context
+            else:
+                raise RuntimeError("TrainContext has not been initialized.")
         return _train_context
 
 

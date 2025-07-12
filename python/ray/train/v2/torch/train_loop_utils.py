@@ -1,7 +1,7 @@
 import logging
 import os
 import random
-from typing import Any, Callable, Dict, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
 import torch
@@ -17,7 +17,12 @@ from torch.utils.data import (
 
 import ray.train.torch
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
+from ray.data import Dataset
 from ray.train.torch.train_loop_utils import _WrappedDataLoader
+from ray.train.v2._internal.execution.local_testing_context import (
+    LOCAL_CONFIG_DATASET_NAME,
+    set_local_test_config,
+)
 from ray.util.annotations import Deprecated, PublicAPI
 
 logger = logging.getLogger(__name__)
@@ -32,6 +37,33 @@ _TORCH_AMP_DEPRECATION_MESSAGE = (
     "See this issue for more context: "
     "https://github.com/ray-project/ray/issues/49454"
 )
+
+
+def get_device() -> torch.device:
+    from ray.air._internal import torch_utils
+
+    if ray.train.get_context().is_local_test():
+        return (
+            torch.device("cuda:0") if torch.cuda.is_available() else torch.device("cpu")
+        )
+
+    return torch_utils.get_devices()[0]
+
+
+def get_devices() -> List[torch.device]:
+    from ray.air._internal import torch_utils
+
+    if ray.train.get_context().is_local_test():
+        return [
+            torch.device("cuda:0") if torch.cuda.is_available() else torch.device("cpu")
+        ]
+
+    return torch_utils.get_devices()
+
+
+def populate_dataset_shards_for_local_test(dataset_shards: Dict[str, Dataset]):
+    if ray.train.get_context().is_local_test():
+        set_local_test_config(LOCAL_CONFIG_DATASET_NAME, dataset_shards)
 
 
 def prepare_model(

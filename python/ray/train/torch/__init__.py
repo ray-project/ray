@@ -30,6 +30,9 @@ if is_v2_enabled():
         accelerate,
         backward,
         enable_reproducibility,
+        get_device,
+        get_devices,
+        populate_dataset_shards_for_local_test,
         prepare_data_loader,
         prepare_model,
         prepare_optimizer,
@@ -50,6 +53,7 @@ __all__ = [
     "enable_reproducibility",
     "TorchPredictor",
     "TorchDetectionPredictor",
+    "populate_dataset_shards_for_local_test",
 ]
 
 
