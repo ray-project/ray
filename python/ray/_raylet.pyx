@@ -1903,7 +1903,7 @@ cdef void execute_task(
 
                     for arg in args:
                         raise_if_dependency_failed(arg)
-                    args, kwargs = ray._private.signature.recover_args(args)
+                    args, kwargs = ray._common.signature.recover_args(args)
 
             if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK):
                 actor_id = core_worker.get_actor_id()
@@ -2286,6 +2286,12 @@ cdef execute_task_with_cancellation_handler(
             raise_sys_exit_with_custom_error_message(
                 f"Exited because worker reached max_calls={execution_info.max_calls}"
                 " for this method.")
+
+cdef void free_actor_object_callback(const CObjectID &c_object_id) nogil:
+    with gil:
+        object_id = c_object_id.Hex().decode()
+        gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
+        gpu_object_manager.gpu_object_store.remove_gpu_object(object_id)
 
 cdef shared_ptr[LocalMemoryBuffer] ray_error_to_memory_buf(ray_error):
     cdef bytes py_bytes = ray_error.to_bytes()
@@ -2998,6 +3004,7 @@ cdef class CoreWorker:
         options.driver_name = driver_name
         options.initialize_thread_callback = initialize_pygilstate_for_thread
         options.task_execution_callback = task_execution_handler
+        options.free_actor_object_callback = free_actor_object_callback
         options.check_signals = check_signals
         options.gc_collect = gc_collect
         options.spill_objects = spill_objects_handler

@@ -386,8 +386,7 @@ class NodeManagerTest : public ::testing::Test {
           return std::make_shared<rpc::MockCoreWorkerClientInterface>();
         }) {
     RayConfig::instance().initialize(R"({
-      "raylet_liveness_self_check_interval_ms": 100,
-      "kill_worker_timeout_milliseconds": 10
+      "raylet_liveness_self_check_interval_ms": 100
     })");
 
     NodeManagerConfig node_manager_config{};
@@ -622,13 +621,8 @@ TEST_F(NodeManagerTest, TestDetachedWorkerIsKilledByFailedWorker) {
         promise.set_value(status);
       });
 
-  // Prepare a mock worker with a real process so that we can check if the process is
-  // alive later.
+  // Prepare a mock worker and check if it is not killed later.
   const auto worker = std::make_shared<MockWorker>(WorkerID::FromRandom(), 10);
-  auto [proc, spawn_error] =
-      Process::Spawn(std::vector<std::string>{"sleep", "1000"}, true);
-  EXPECT_FALSE(spawn_error);
-  worker->SetProcess(proc);
   // Complete the RequestWorkerLease rpc with the mock worker.
   pop_worker_callback(worker, PopWorkerStatus::OK, "");
   EXPECT_TRUE(promise.get_future().get().ok());
@@ -639,13 +633,9 @@ TEST_F(NodeManagerTest, TestDetachedWorkerIsKilledByFailedWorker) {
   rpc::WorkerDeltaData delta_data;
   delta_data.set_worker_id(owner_worker_id.Binary());
   publish_worker_failure_callback(std::move(delta_data));
-  // Wait for more than kill_worker_timeout_milliseconds.
-  std::this_thread::sleep_for(std::chrono::seconds(1));
-  // The process should still be alive because it should not be killed by
+  // The worker should still be alive because it should not be killed by
   // publish_worker_failure_callback.
-  EXPECT_TRUE(proc.IsAlive());
-  // clean up.
-  proc.Kill();
+  EXPECT_FALSE(worker->IsKilled());
 }
 
 TEST_F(NodeManagerTest, TestDetachedWorkerIsKilledByFailedNode) {
@@ -712,13 +702,8 @@ TEST_F(NodeManagerTest, TestDetachedWorkerIsKilledByFailedNode) {
         promise.set_value(status);
       });
 
-  // Prepare a mock worker with a real process so that we can check if the process is
-  // alive later.
+  // Prepare a mock worker and check if it is not killed later.
   const auto worker = std::make_shared<MockWorker>(WorkerID::FromRandom(), 10);
-  auto [proc, spawn_error] =
-      Process::Spawn(std::vector<std::string>{"sleep", "1000"}, true);
-  EXPECT_FALSE(spawn_error);
-  worker->SetProcess(proc);
   // Complete the RequestWorkerLease rpc with the mock worker.
   pop_worker_callback(worker, PopWorkerStatus::OK, "");
   EXPECT_TRUE(promise.get_future().get().ok());
@@ -729,13 +714,9 @@ TEST_F(NodeManagerTest, TestDetachedWorkerIsKilledByFailedNode) {
   GcsNodeInfo node_info;
   node_info.set_state(GcsNodeInfo::DEAD);
   publish_node_change_callback(owner_node_id, std::move(node_info));
-  // Wait for more than kill_worker_timeout_milliseconds.
-  std::this_thread::sleep_for(std::chrono::seconds(1));
-  // The process should still be alive because it should not be killed by
+  // The worker should still be alive because it should not be killed by
   // publish_node_change_callback.
-  EXPECT_TRUE(proc.IsAlive());
-  // clean up.
-  proc.Kill();
+  EXPECT_FALSE(worker->IsKilled());
 }
 
 TEST_F(NodeManagerTest, TestPinningAnObjectPendingDeletionFails) {

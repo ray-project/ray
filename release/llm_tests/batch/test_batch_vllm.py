@@ -262,5 +262,61 @@ def test_vllm_vision_language_models(
     assert all("resp" in out for out in outs)
 
 
+@pytest.mark.parametrize("concurrency", [1, 4])
+def test_async_udf_queue_capped(concurrency):
+    """
+    Test that the large object in input/output rows
+    are stored in object store and does not OOM.
+    """
+
+    processor_config = vLLMEngineProcessorConfig(
+        model_source="unsloth/Llama-3.2-1B-Instruct",
+        engine_kwargs=dict(
+            max_model_len=16384,
+            enable_chunked_prefill=True,
+            max_num_batched_tokens=2048,
+        ),
+        tokenize=False,
+        detokenize=False,
+        batch_size=4,
+        accelerator_type=None,
+        concurrency=concurrency,
+    )
+
+    processor = build_llm_processor(
+        processor_config,
+        preprocess=lambda row: dict(
+            # 1M emoji (4 bytes), should not leak to memory heap.
+            large_memory_to_carry_over="🤗" * 1_000_000,
+            messages=[
+                {"role": "system", "content": "You are a calculator"},
+                {"role": "user", "content": f"{row['id']} ** 3 = ?"},
+            ],
+            sampling_params=dict(
+                temperature=0.3,
+                # we don't care about the actual output
+                max_tokens=1,
+                detokenize=False,
+            ),
+        ),
+        postprocess=lambda row: {
+            "resp": row["generated_text"],
+            "large_memory_still_there": "large_memory_to_carry_over" in row,
+        },
+    )
+
+    ds = ray.data.range(12000)
+
+    def map_id_to_val_in_test_no_memory_leak(x):
+        return {"id": x["id"], "val": x["id"] + 5}
+
+    ds = ds.map(map_id_to_val_in_test_no_memory_leak)
+    ds = processor(ds)
+    ds = ds.materialize()
+
+    outs = ds.take_all()
+    assert all(out["large_memory_still_there"] for out in outs)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

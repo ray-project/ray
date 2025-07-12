@@ -33,7 +33,7 @@ def handle(shutdown_ray_and_serve):
         LLMDeployment.options(placement_group_bundles=[{"CPU": 1}],).bind(
             llm_config,
             engine_cls=MockMultiplexEngine,
-            model_downloader=FakeLoraModelLoader(),
+            model_downloader=FakeLoraModelLoader,
         ),
     )
 
@@ -71,12 +71,11 @@ async def test_multiplex_deployment(
     if multiplexed_model_id is None:
         assert output.disk_multiplex_config is None
     else:
-        assert output.disk_multiplex_config.model_dump() == {
-            "model_id": multiplexed_model_id,
-            "max_total_tokens": None,
-            "local_path": "/local/path",
-            "lora_assigned_int_id": 1,
-        }
+        out_mx_config = output.disk_multiplex_config.model_dump()
+        assert out_mx_config["model_id"] == multiplexed_model_id
+        assert out_mx_config["local_path"] == "/fake/local/path"
+        # random int between 1 and 100
+        assert 0 < out_mx_config["lora_assigned_int_id"] < 101
 
 
 if __name__ == "__main__":

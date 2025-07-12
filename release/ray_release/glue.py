@@ -1,6 +1,9 @@
 import os
+import hashlib
 import time
 import traceback
+import random
+import string
 from typing import Optional, List, Tuple
 
 from ray_release.alerts.handle import handle_result, require_result
@@ -432,10 +435,14 @@ def run_release_test_kuberay(
     working_dir_upload_path = upload_working_dir(get_working_dir(test))
 
     command_timeout = int(test["run"].get("timeout", DEFAULT_COMMAND_TIMEOUT))
-
+    test_name_hash = hashlib.sha256(test["name"].encode()).hexdigest()[:10]
+    # random 8 digit suffix
+    random_suffix = "".join(random.choices(string.digits, k=8))
+    job_name = f"{test['name'][:20]}-{test_name_hash}-{random_suffix}".replace("_", "-")
+    logger.info(f"Job name: {job_name}")
     kuberay_job_manager = KubeRayJobManager()
     retcode, duration = kuberay_job_manager.run_and_wait(
-        job_name=test["name"].replace(".", "-").replace("_", "-"),
+        job_name=job_name,
         image=test.get_anyscale_byod_image(),
         cmd_to_run=test["run"]["script"],
         env_vars=test.get_byod_runtime_env(),
