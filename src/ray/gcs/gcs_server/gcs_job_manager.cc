@@ -315,10 +315,9 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
       reply->add_job_info_list()->CopyFrom(data.second);
       if (iter != metadata.end()) {
         // This job was submitted via the Ray Job API, so it has JobInfo in the kv.
-        std::string job_submission_id = iter->second;
-        std::string job_data_key = JobDataKey(job_submission_id);
-        job_api_data_keys.push_back(job_data_key);
-        job_data_key_to_indices[job_data_key].push_back(i);
+        std::string job_data_key = JobDataKey(iter->second);
+        job_api_data_keys.push_back(std::move(job_data_key));
+        job_data_key_to_indices[job_api_data_keys.back()].push_back(i);
       }
       i++;
     }
@@ -365,8 +364,6 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
     } else {
       for (int jj = 0; jj < reply->job_info_list_size(); jj++) {
         const auto &data = reply->job_info_list(jj);
-        auto job_id = JobID::FromBinary(data.job_id());
-        WorkerID worker_id = WorkerID::FromBinary(data.driver_address().worker_id());
 
         // If job is dead, no need to get.
         if (data.is_dead()) {
@@ -375,6 +372,8 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
           try_send_reply(updated_finished_tasks);
         } else {
           // Get is_running_tasks from the core worker for the driver.
+          auto job_id = JobID::FromBinary(data.job_id());
+          WorkerID worker_id = WorkerID::FromBinary(data.driver_address().worker_id());
           auto client = worker_client_pool_.GetOrConnect(data.driver_address());
           auto pending_task_req = std::make_unique<rpc::NumPendingTasksRequest>();
           constexpr int64_t kNumPendingTasksRequestTimeoutMs = 1000;
@@ -447,7 +446,8 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
   };
   Status status = gcs_table_storage_.JobTable().GetAll({on_done, io_context_});
   if (!status.ok()) {
-    on_done(absl::flat_hash_map<JobID, rpc::JobTableData>());
+    on_done(absl::flat_hash_map<JobID, rpc::JobTableData>());  // send empty map to client
+                                                               // if get Job table failed
   }
 }
 
