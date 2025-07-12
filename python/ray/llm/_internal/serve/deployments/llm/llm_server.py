@@ -1,7 +1,7 @@
 import asyncio
 import os
 from abc import ABC, abstractmethod
-from typing import Any, AsyncGenerator, Dict, List, Optional, Type, Union
+from typing import Any, AsyncGenerator, Dict, List, Optional, Type, Union, TYPE_CHECKING
 
 from ray import serve
 from ray._common.utils import import_attr
@@ -11,16 +11,6 @@ from ray.llm._internal.serve.configs.constants import (
     ENGINE_START_TIMEOUT_S,
     MODEL_RESPONSE_BATCH_TIMEOUT_MS,
     RAYLLM_VLLM_ENGINE_CLS_ENV,
-)
-from ray.llm._internal.serve.configs.openai_api_models import (
-    ChatCompletionRequest,
-    ChatCompletionResponse,
-    CompletionRequest,
-    CompletionResponse,
-    EmbeddingRequest,
-    EmbeddingResponse,
-    LLMChatResponse,
-    LLMCompletionsResponse,
 )
 from ray.llm._internal.serve.configs.server_models import (
     DiskMultiplexConfig,
@@ -40,6 +30,18 @@ from ray.llm._internal.serve.observability.usage_telemetry.usage import (
     push_telemetry_report_for_all_models,
 )
 
+if TYPE_CHECKING:
+    from ray.llm._internal.serve.configs.openai_api_models import (
+        ChatCompletionRequest,
+        ChatCompletionResponse,
+        CompletionRequest,
+        CompletionResponse,
+        EmbeddingRequest,
+        EmbeddingResponse,
+        LLMChatResponse,
+        LLMCompletionsResponse,
+    )
+
 logger = get_logger(__name__)
 
 
@@ -56,14 +58,14 @@ class _LLMServerBase(ABC):
         """
 
     @abstractmethod
-    async def chat(self, request: ChatCompletionRequest) -> LLMChatResponse:
+    async def chat(self, request: "ChatCompletionRequest") -> "LLMChatResponse":
         """
         Inferencing to the engine for chat, and return the response as LLMChatResponse.
         """
         ...
 
     @abstractmethod
-    async def completions(self, request: CompletionRequest) -> LLMCompletionsResponse:
+    async def completions(self, request: "CompletionRequest") -> "LLMCompletionsResponse":
         """
         Inferencing to the engine for completion api, and return the response as LLMCompletionsResponse.
         """
@@ -184,7 +186,7 @@ class LLMServer(_LLMServerBase):
         return stream_batching_interval_ms if stream else None
 
     async def _maybe_add_request_id_to_request(
-        self, request: Union[ChatCompletionRequest, CompletionRequest, EmbeddingRequest]
+        self, request: Union["ChatCompletionRequest", "CompletionRequest", "EmbeddingRequest"]
     ):
         """Add the request id to the request."""
         request_id = get_serve_request_id()
@@ -208,7 +210,7 @@ class LLMServer(_LLMServerBase):
 
     async def _run_request(
         self,
-        request: Union[ChatCompletionRequest, CompletionRequest, EmbeddingRequest],
+        request: Union["ChatCompletionRequest", "CompletionRequest", "EmbeddingRequest"],
         *,
         engine_method: str,
         batch_output_stream: bool = False,
@@ -237,8 +239,8 @@ class LLMServer(_LLMServerBase):
         return stream
 
     async def chat(
-        self, request: ChatCompletionRequest
-    ) -> AsyncGenerator[Union[List[str], ChatCompletionResponse], None]:
+        self, request: "ChatCompletionRequest"
+    ) -> AsyncGenerator[Union[List[str], "ChatCompletionResponse"], None]:
         """Runs a chat request to the LLM engine and returns the response.
 
         Args:
@@ -252,8 +254,8 @@ class LLMServer(_LLMServerBase):
         )
 
     async def completions(
-        self, request: CompletionRequest
-    ) -> AsyncGenerator[Union[List[str], CompletionResponse], None]:
+        self, request: "CompletionRequest"
+    ) -> AsyncGenerator[Union[List[str], "CompletionResponse"], None]:
         """Runs a completion request to the LLM engine and returns the response.
 
         Args:
@@ -267,8 +269,8 @@ class LLMServer(_LLMServerBase):
         )
 
     async def embeddings(
-        self, request: EmbeddingRequest
-    ) -> AsyncGenerator[EmbeddingResponse, None]:
+        self, request: "EmbeddingRequest"
+    ) -> AsyncGenerator["EmbeddingResponse", None]:
         """Runs an embeddings request to the engine and returns the response.
 
         Returns an AsyncGenerator over the EmbeddingResponse object. This is so that the caller can have a consistent interface across all the methods of chat, completions, and embeddings.
