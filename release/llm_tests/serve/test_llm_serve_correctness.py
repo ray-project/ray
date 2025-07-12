@@ -54,7 +54,9 @@ def create_openai_client(server_url: str) -> OpenAI:
     return OpenAI(base_url=openai_api_base, api_key="fake-key")
 
 
-def generate_completion(client: OpenAI, model_id: str, test_prompt: Union[str, list[int]]) -> str:
+def generate_completion(
+    client: OpenAI, model_id: str, test_prompt: Union[str, list[int]]
+) -> str:
     """Generate completion using the provided OpenAI client."""
     response = client.completions.create(
         model=model_id,

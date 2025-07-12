@@ -104,7 +104,7 @@ class TestVLLMEngine:
     # 3. cannot use "CPU" or anything random, which violates the check (https://github.com/ray-project/ray/blob/945b9d5dd55c9215d0aeb94a66cfda3b71c2fd43/python/ray/llm/_internal/serve/configs/server_models.py#L325)
     # so we select a non-NVIDIA type here: Intel-GAUDI.
     # Use str() such that it's not a literal string which violates pydantic check.
-    accelerator_type=str("Intel-GAUDI")
+    accelerator_type = str("Intel-GAUDI")
 
     @pytest.mark.asyncio
     async def test_generate(self, llm_config):
@@ -205,9 +205,9 @@ class TestVLLMEngine:
         assert guided_json == sampling_params.response_format.json_schema
         assert getattr(parsed_params, "response_format", None) is None
 
-    
     @pytest.mark.asyncio
-    async def test_chat_streaming(self,
+    async def test_chat_streaming(
+        self,
         # create_server is a fixture defined in llm.tests.serve.conftest.py
         create_server,
         # model_pixtral_12b is a fixture that only contains config files without weights
@@ -262,7 +262,8 @@ class TestVLLMEngine:
         assert text == "test_0 test_1 test_2 test_3 test_4 "
 
     @pytest.mark.asyncio
-    async def test_chat_non_streaming(self,
+    async def test_chat_non_streaming(
+        self,
         # create_server is a fixture defined in llm.tests.serve.conftest.py
         create_server,
         # model_pixtral_12b is a fixture that only contains config files without weights
@@ -305,7 +306,8 @@ class TestVLLMEngine:
 
     @pytest.mark.parametrize("prompt", ["Hello", [1, 2, 3]])
     @pytest.mark.asyncio
-    async def test_completions_streaming(self,
+    async def test_completions_streaming(
+        self,
         # create_server is a fixture defined in llm.tests.serve.conftest.py
         create_server,
         # model_pixtral_12b is a fixture that only contains config files without weights
@@ -355,7 +357,8 @@ class TestVLLMEngine:
 
     @pytest.mark.parametrize("prompt", ["Hello", [1, 2, 3]])
     @pytest.mark.asyncio
-    async def test_completions_non_streaming(self,
+    async def test_completions_non_streaming(
+        self,
         # create_server is a fixture defined in llm.tests.serve.conftest.py
         create_server,
         # model_pixtral_12b is a fixture that only contains config files without weights
@@ -392,7 +395,6 @@ class TestVLLMEngine:
         assert len(responses) == 1
         assert responses[0].choices[0].text == "test_0 test_1 test_2 test_3 test_4 "
         assert responses[0].choices[0].finish_reason == "stop"
-
 
 
 if __name__ == "__main__":
