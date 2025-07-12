@@ -9,9 +9,11 @@ from google.protobuf.any_pb2 import Any as AnyProto
 from ray import cloudpickle
 from ray.serve._private.default_impl import add_grpc_address
 from ray.serve._private.grpc_util import (
+    get_grpc_response_status,
     gRPCGenericServer,
 )
 from ray.serve._private.test_utils import FakeGrpcContext
+from ray.serve.exceptions import BackPressureError
 from ray.serve.grpc_util import RayServegRPCContext
 
 
@@ -99,6 +101,21 @@ def test_add_grpc_address():
     assert fake_grpc_server.address is None
     add_grpc_address(fake_grpc_server, grpc_address)
     assert fake_grpc_server.address == grpc_address
+
+
+def test_get_grpc_response_status_backpressure_error():
+    """Test that BackPressureError returns RESOURCE_EXHAUSTED status."""
+    backpressure_error = BackPressureError(
+        num_queued_requests=10, max_queued_requests=5
+    )
+
+    status = get_grpc_response_status(
+        exc=backpressure_error, request_timeout_s=30.0, request_id="test_request_123"
+    )
+
+    assert status.code == grpc.StatusCode.RESOURCE_EXHAUSTED
+    assert status.is_error is True
+    assert status.message == backpressure_error.message
 
 
 if __name__ == "__main__":
