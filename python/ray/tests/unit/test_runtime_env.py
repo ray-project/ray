@@ -496,8 +496,11 @@ def test_runtime_env_interface():
         assert set(runtime_env.pip_config()["packages"]) == set(requirement_packages)
         assert runtime_env.virtualenv_name() is None
         # The default value of pip_check is False
+        # The default value of pip_install_options is ["--disable-pip-version-check", "--no-cache-dir"]
         runtime_env_dict["pip"] = dict(
-            packages=runtime_env_dict["pip"], pip_check=False
+            packages=runtime_env_dict["pip"],
+            pip_check=False,
+            pip_install_options=["--disable-pip-version-check", "--no-cache-dir"],
         )
         assert runtime_env_dict == runtime_env.to_dict()
 
