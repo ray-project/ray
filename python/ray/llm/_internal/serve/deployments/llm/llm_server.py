@@ -65,7 +65,9 @@ class _LLMServerBase(ABC):
         ...
 
     @abstractmethod
-    async def completions(self, request: "CompletionRequest") -> "LLMCompletionsResponse":
+    async def completions(
+        self, request: "CompletionRequest"
+    ) -> "LLMCompletionsResponse":
         """
         Inferencing to the engine for completion api, and return the response as LLMCompletionsResponse.
         """
@@ -186,7 +188,10 @@ class LLMServer(_LLMServerBase):
         return stream_batching_interval_ms if stream else None
 
     async def _maybe_add_request_id_to_request(
-        self, request: Union["ChatCompletionRequest", "CompletionRequest", "EmbeddingRequest"]
+        self,
+        request: Union[
+            "ChatCompletionRequest", "CompletionRequest", "EmbeddingRequest"
+        ],
     ):
         """Add the request id to the request."""
         request_id = get_serve_request_id()
@@ -210,7 +215,9 @@ class LLMServer(_LLMServerBase):
 
     async def _run_request(
         self,
-        request: Union["ChatCompletionRequest", "CompletionRequest", "EmbeddingRequest"],
+        request: Union[
+            "ChatCompletionRequest", "CompletionRequest", "EmbeddingRequest"
+        ],
         *,
         engine_method: str,
         batch_output_stream: bool = False,
