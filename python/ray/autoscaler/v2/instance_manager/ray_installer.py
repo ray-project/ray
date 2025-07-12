@@ -1,22 +1,17 @@
-import dataclasses
 import logging
 import subprocess
 
-from ray.autoscaler._private.updater import NodeUpdater
+from ray.autoscaler._private.updater import (
+    NodeUpdater,
+    TAG_RAY_NODE_STATUS,
+    STATUS_UP_TO_DATE,
+)
 from ray.autoscaler._private.util import with_envs, with_head_node_ip
 from ray.autoscaler.node_provider import NodeProvider as NodeProviderV1
 from ray.autoscaler.v2.instance_manager.config import AutoscalingConfig
 from ray.core.generated.instance_manager_pb2 import Instance
 
 logger = logging.getLogger(__name__)
-
-
-@dataclasses.dataclass(frozen=True)
-class RayInstallError:
-    # Instance manager's instance id.
-    im_instance_id: str
-    # Error details.
-    details: str
 
 
 class RayInstaller(object):
@@ -34,7 +29,7 @@ class RayInstaller(object):
         self._config = config
         self._process_runner = process_runner
 
-    def install_ray(self, instance: Instance, head_node_ip: str) -> bool:
+    def install_ray(self, instance: Instance, head_node_ip: str) -> None:
         """
         Install ray on the target instance synchronously.
         TODO:(rickyx): This runs in another thread, and errors are silently
@@ -52,7 +47,7 @@ class RayInstaller(object):
             instance.instance_type
         )
         updater = NodeUpdater(
-            node_id=instance.instance_id,
+            node_id=instance.cloud_instance_id,
             provider_config=self._config.get_config("provider"),
             provider=self._provider,
             auth_config=self._config.get_config("auth"),
@@ -72,7 +67,7 @@ class RayInstaller(object):
                 ray_start_commands,
                 {
                     "RAY_HEAD_IP": head_node_ip,
-                    "RAY_CLOUD_INSTANCE_ID": instance.instance_id,
+                    "RAY_CLOUD_INSTANCE_ID": instance.cloud_instance_id,
                     "RAY_NODE_TYPE_NAME": instance.instance_type,
                     "RAY_CLOUD_INSTANCE_TYPE_NAME": provider_instance_type_name,
                 },
@@ -91,9 +86,11 @@ class RayInstaller(object):
             node_labels=self._config.get_node_labels(instance.instance_type),
             process_runner=self._process_runner,
         )
-        try:
-            updater.run()
-        except Exception:
-            # Errors has already been handled.
-            return False
-        return True
+        updater.run()
+        # check if the updater was successful by checking the node tags
+        # since the updater could hide exceptions and just set the status tag
+        tags = self._provider.node_tags(instance.cloud_instance_id)
+        if tags.get(TAG_RAY_NODE_STATUS) != STATUS_UP_TO_DATE:
+            raise Exception(
+                f"Ray installation failed with unexpected status: {tags.get(TAG_RAY_NODE_STATUS)}"
+            )
