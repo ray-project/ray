@@ -985,6 +985,7 @@ filegroup(
         "python/ray/autoscaler/*.py",
         "python/ray/autoscaler/_private/*.py",
         "python/ray/autoscaler/_private/_azure/*.json",
+        "python/ray/autoscaler/_private/readonly/defaults.yaml",
         "python/ray/autoscaler/aws/defaults.yaml",
         "python/ray/autoscaler/azure/defaults.yaml",
         "python/ray/autoscaler/gcp/defaults.yaml",
