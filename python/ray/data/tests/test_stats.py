@@ -81,6 +81,7 @@ def gen_expected_metrics(
             "'average_bytes_outputs_per_task': N",
             "'average_max_uss_per_task': H",
             "'num_inputs_received': N",
+            "'num_row_inputs_received': N",
             "'bytes_inputs_received': N",
             "'num_task_inputs_processed': N",
             "'bytes_task_inputs_processed': N",
@@ -125,6 +126,7 @@ def gen_expected_metrics(
             "'obj_store_mem_internal_inqueue': Z",
             "'obj_store_mem_internal_outqueue': Z",
             "'num_inputs_received': N",
+            "'num_row_inputs_received': N",
             "'bytes_inputs_received': N",
             "'row_outputs_taken': N",
             "'block_outputs_taken': N",
@@ -613,6 +615,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      average_bytes_outputs_per_task: N,\n"
         "      average_max_uss_per_task: H,\n"
         "      num_inputs_received: N,\n"
+        "      num_row_inputs_received: N,\n"
         "      bytes_inputs_received: N,\n"
         "      num_task_inputs_processed: N,\n"
         "      bytes_task_inputs_processed: N,\n"
@@ -704,7 +707,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
 
     def check_stats():
         stats = canonicalize(repr(ds._plan.stats().to_summary()))
-        assert stats == expected_stats
+        assert stats == expected_stats, stats
         return True
 
     # TODO(hchen): The reason why `wait_for_condition` is needed here is because
@@ -735,6 +738,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      average_bytes_outputs_per_task: N,\n"
         "      average_max_uss_per_task: H,\n"
         "      num_inputs_received: N,\n"
+        "      num_row_inputs_received: N,\n"
         "      bytes_inputs_received: N,\n"
         "      num_task_inputs_processed: N,\n"
         "      bytes_task_inputs_processed: N,\n"
@@ -812,6 +816,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "            average_bytes_outputs_per_task: N,\n"
         "            average_max_uss_per_task: H,\n"
         "            num_inputs_received: N,\n"
+        "            num_row_inputs_received: N,\n"
         "            bytes_inputs_received: N,\n"
         "            num_task_inputs_processed: N,\n"
         "            bytes_task_inputs_processed: N,\n"
