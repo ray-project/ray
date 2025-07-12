@@ -115,8 +115,7 @@ class DatabricksUCDatasource(Datasource):
 
             def empty_read_task(task_index, parallelism):
                 def empty_read_fn():
-                    if False:
-                        yield    # to make this a generator
+                    yield pyarrow.table({})   # Yield empty PyArrow table for empty dataset
                 metadata = BlockMetadata(num_rows=0, size_bytes=0, input_files=None, exec_stats=None)
                 return ReadTask(read_fn=empty_read_fn, metadata=metadata)
 
