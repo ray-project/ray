@@ -16,6 +16,7 @@ import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.parquet as pq
 import pytest
+from pkg_resources import parse_version
 
 import ray
 from ray._common.test_utils import wait_for_condition
@@ -35,6 +36,7 @@ from ray.data._internal.planner.plan_udf_map_op import (
 )
 from ray.data.context import DataContext
 from ray.data.exceptions import UserCodeException
+from ray.data.expressions import col, lit
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.test_util import ConcurrencyCounter  # noqa
 from ray.data.tests.util import column_udf, column_udf_class, extract_values
@@ -2204,6 +2206,84 @@ def test_map_names():
     enc = OneHotEncoder(columns=["item"])
     r = enc.fit_transform(ds).__repr__()
     assert r.startswith("OneHotEncoder"), r
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("20.0.0"),
+    reason="with_columns requires PyArrow >= 20.0.0",
+)
+@pytest.mark.parametrize(
+    "exprs, expected_value",
+    [
+        # Arithmetic operations
+        ({"result": col("id") + 1}, 1),  # 0 + 1 = 1
+        ({"result": col("id") + 5}, 5),  # 0 + 5 = 5
+        ({"result": col("id") - 1}, -1),  # 0 - 1 = -1
+        ({"result": col("id") * 2}, 0),  # 0 * 2 = 0
+        ({"result": col("id") * 3}, 0),  # 0 * 3 = 0
+        ({"result": col("id") / 2}, 0.0),  # 0 / 2 = 0.0
+        # More complex arithmetic
+        ({"result": (col("id") + 1) * 2}, 2),  # (0 + 1) * 2 = 2
+        ({"result": (col("id") * 2) + 3}, 3),  # 0 * 2 + 3 = 3
+        # Comparison operations
+        ({"result": col("id") > 0}, False),  # 0 > 0 = False
+        ({"result": col("id") >= 0}, True),  # 0 >= 0 = True
+        ({"result": col("id") < 1}, True),  # 0 < 1 = True
+        ({"result": col("id") <= 0}, True),  # 0 <= 0 = True
+        ({"result": col("id") == 0}, True),  # 0 == 0 = True
+        # Operations with literals
+        ({"result": col("id") + lit(10)}, 10),  # 0 + 10 = 10
+        ({"result": col("id") * lit(5)}, 0),  # 0 * 5 = 0
+        ({"result": lit(2) + col("id")}, 2),  # 2 + 0 = 2
+        ({"result": lit(10) / (col("id") + 1)}, 10.0),  # 10 / (0 + 1) = 10.0
+    ],
+)
+def test_with_columns(ray_start_regular_shared, exprs, expected_value):
+    """Verify that `with_columns` works with various operations."""
+    ds = ray.data.range(5).with_columns(exprs)
+    result = ds.take(1)[0]
+    assert result["id"] == 0
+    assert result["result"] == expected_value
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("20.0.0"),
+    reason="with_columns requires PyArrow >= 20.0.0",
+)
+def test_with_columns_nonexistent_column(ray_start_regular_shared):
+    """Verify that referencing a non-existent column with col() raises an exception."""
+    # Create a dataset with known column "id"
+    ds = ray.data.range(5)
+
+    # Try to reference a non-existent column - this should raise an exception
+    with pytest.raises(UserCodeException):
+        ds.with_columns({"result": col("nonexistent_column") + 1}).materialize()
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("20.0.0"),
+    reason="with_columns requires PyArrow >= 20.0.0",
+)
+def test_with_columns_multiple_expressions(ray_start_regular_shared):
+    """Verify that `with_columns` correctly handles multiple expressions at once."""
+    ds = ray.data.range(5)
+
+    exprs = {
+        "plus_one": col("id") + 1,
+        "times_two": col("id") * 2,
+        "ten_minus_id": 10 - col("id"),
+    }
+
+    ds = ds.with_columns(exprs)
+
+    first_row = ds.take(1)[0]
+    assert first_row["id"] == 0
+    assert first_row["plus_one"] == 1
+    assert first_row["times_two"] == 0
+    assert first_row["ten_minus_id"] == 10
+
+    # Ensure all new columns exist in the schema.
+    assert set(ds.schema().names) == {"id", "plus_one", "times_two", "ten_minus_id"}
 
 
 if __name__ == "__main__":

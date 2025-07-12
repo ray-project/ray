@@ -604,11 +604,18 @@ async def test_http_handler(
     result_list = []
 
     request_metadata = _make_request_metadata(is_http_request=True, is_streaming=True)
+    receive_proxy = ASGIReceiveProxy(
+        asgi_scope,
+        request_metadata,
+        receive_asgi_messages,
+        user_callable_wrapper.event_loop,
+    )
     async for result in user_callable_wrapper.call_http_entrypoint(
         request_metadata,
         lambda *args: None,
         asgi_scope,
-        ASGIReceiveProxy(asgi_scope, request_metadata, receive_asgi_messages),
+        receive_proxy,
+        receive_proxy.fetch_until_disconnect_task(),
     ):
         result_list.extend(result)
 
