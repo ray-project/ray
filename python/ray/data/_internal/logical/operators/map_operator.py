@@ -9,6 +9,7 @@ from ray.data._internal.logical.operators.one_to_one_operator import AbstractOne
 from ray.data.block import UserDefinedFunction
 from ray.data.expressions import Expr
 from ray.data.preprocessor import Preprocessor
+from ray.data._internal.execution.interfaces import OperatorOptions
 
 if TYPE_CHECKING:
     import pyarrow as pa
@@ -32,6 +33,7 @@ class AbstractMap(AbstractOneToOne):
         ray_remote_args: Optional[Dict[str, Any]] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         compute: Optional[ComputeStrategy] = None,
+        operator_options: Optional[OperatorOptions] = None,
     ):
         """
         Args:
@@ -54,6 +56,7 @@ class AbstractMap(AbstractOneToOne):
         self._ray_remote_args = ray_remote_args or {}
         self._ray_remote_args_fn = ray_remote_args_fn
         self._compute = compute or TaskPoolStrategy()
+        self._operator_options = operator_options
 
 
 class AbstractUDFMap(AbstractMap):
@@ -73,6 +76,7 @@ class AbstractUDFMap(AbstractMap):
         fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
         min_rows_per_bundled_input: Optional[int] = None,
         compute: Optional[ComputeStrategy] = None,
+        operator_options: Optional[OperatorOptions] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
@@ -93,6 +97,7 @@ class AbstractUDFMap(AbstractMap):
                 ``MapOperator._add_bundled_input()``.
             compute: The compute strategy, either ``TaskPoolStrategy`` (default) to use
                 Ray tasks, or ``ActorPoolStrategy`` to use an autoscaling actor pool.
+            operator_options: Options for configuring the operator.
             ray_remote_args_fn: A function that returns a dictionary of remote args
                 passed to each map worker. The purpose of this argument is to generate
                 dynamic arguments for each actor/task, and will be called each time
@@ -108,6 +113,7 @@ class AbstractUDFMap(AbstractMap):
             min_rows_per_bundled_input=min_rows_per_bundled_input,
             ray_remote_args=ray_remote_args,
             compute=compute,
+            operator_options=operator_options,
         )
         self._fn = fn
         self._fn_args = fn_args
@@ -162,6 +168,7 @@ class MapBatches(AbstractUDFMap):
         fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
         min_rows_per_bundled_input: Optional[int] = None,
         compute: Optional[ComputeStrategy] = None,
+        operator_options: Optional[OperatorOptions] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
@@ -175,6 +182,7 @@ class MapBatches(AbstractUDFMap):
             fn_constructor_kwargs=fn_constructor_kwargs,
             min_rows_per_bundled_input=min_rows_per_bundled_input,
             compute=compute,
+            operator_options=operator_options,
             ray_remote_args_fn=ray_remote_args_fn,
             ray_remote_args=ray_remote_args,
         )
@@ -198,6 +206,7 @@ class MapRows(AbstractUDFMap):
         fn_constructor_args: Optional[Iterable[Any]] = None,
         fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
         compute: Optional[ComputeStrategy] = None,
+        operator_options: Optional[OperatorOptions] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
@@ -210,6 +219,7 @@ class MapRows(AbstractUDFMap):
             fn_constructor_args=fn_constructor_args,
             fn_constructor_kwargs=fn_constructor_kwargs,
             compute=compute,
+            operator_options=operator_options,
             ray_remote_args_fn=ray_remote_args_fn,
             ray_remote_args=ray_remote_args,
         )
