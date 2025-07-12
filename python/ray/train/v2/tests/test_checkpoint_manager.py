@@ -14,6 +14,7 @@ from ray.train.v2._internal.execution.checkpoint.checkpoint_manager import (
 )
 from ray.train.v2._internal.execution.storage import StorageContext
 from ray.train.v2._internal.execution.worker_group import Worker
+from ray.train.v2._internal.execution.worker_group.worker import ActorMetadata
 
 
 @pytest.fixture(autouse=True, scope="module")
@@ -113,8 +114,9 @@ def test_save_load_state_equivalence(
     )
 
     # Register the training results into checkpoint manager
-    for tr in training_results:
+    for i, tr in enumerate(training_results):
         checkpoint_manager.register_checkpoint(tr)
+        assert checkpoint_manager._num_reported_checkpoints == i + 1
         loaded_checkpoint_manager = CheckpointManager(
             storage_context=storage_context,
             checkpoint_config=checkpoint_config,
@@ -158,15 +160,74 @@ def test_before_init_train_context(tmp_path):
 
     # Assert without a checkpoint.
     assert checkpoint_manager.before_init_train_context(workers) == {
-        "checkpoint": [None] * 4
+        "checkpoint": [None] * 4,
+        "num_reported_checkpoints": [0] * 4,
     }
 
     # Assert with a checkpoint
     latest_checkpoint_result = _create_dummy_training_results(1, storage_context)[0]
-    checkpoint_manager._latest_checkpoint_result = latest_checkpoint_result
+    checkpoint_manager.register_checkpoint(latest_checkpoint_result)
     assert checkpoint_manager.before_init_train_context(workers) == {
-        "checkpoint": [latest_checkpoint_result.checkpoint] * 4
+        "checkpoint": [latest_checkpoint_result.checkpoint] * 4,
+        "num_reported_checkpoints": [1] * 4,
     }
+
+
+def test_before_init_train_context_from_actor(tmp_path):
+    # Create checkpoint manager actor
+    storage_context = StorageContext(
+        storage_path=tmp_path,
+        experiment_dir_name="my_experiment_name",
+    )
+    checkpoint_manager_actor_cls = ray.remote(CheckpointManager)
+    checkpoint_manager = checkpoint_manager_actor_cls.remote(
+        storage_context=storage_context,
+        checkpoint_config=CheckpointConfig(),
+    )
+
+    # Create workers
+    @ray.remote
+    class DummyActor:
+        pass
+
+    workers = [
+        Worker(
+            actor=DummyActor.remote(),
+            metadata=ActorMetadata(
+                hostname="hostname",
+                node_id="node_id",
+                node_ip="node_ip",
+                pid="pid",
+                accelerator_ids={},
+            ),
+            resources={},
+        )
+        for _ in range(4)
+    ]
+
+    # Assert without a checkpoint.
+    assert ray.get(checkpoint_manager.before_init_train_context.remote(workers)) == {
+        "checkpoint": [None] * 4,
+        "num_reported_checkpoints": [0] * 4,
+        "controller_actor": [checkpoint_manager] * 4,
+    }
+
+    # Assert with a checkpoint.
+    latest_checkpoint_result = _create_dummy_training_results(1, storage_context)[0]
+    ray.get(checkpoint_manager.register_checkpoint.remote(latest_checkpoint_result))
+    train_context_args = ray.get(
+        checkpoint_manager.before_init_train_context.remote(workers)
+    )
+    assert train_context_args.keys() == {
+        "checkpoint",
+        "num_reported_checkpoints",
+        "controller_actor",
+    }
+    assert train_context_args["controller_actor"] == [checkpoint_manager] * 4
+    assert train_context_args["num_reported_checkpoints"] == [1] * 4
+    assert [str(checkpoint) for checkpoint in train_context_args["checkpoint"]] == [
+        str(latest_checkpoint_result.checkpoint)
+    ] * 4
 
 
 if __name__ == "__main__":

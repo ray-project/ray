@@ -7,6 +7,7 @@ from queue import Queue
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 import ray
+from ray.actor import ActorHandle
 from ray.data import DataIterator, Dataset
 from ray.train import BackendConfig, Checkpoint, DataConfig
 from ray.train._internal import session
@@ -94,6 +95,8 @@ class TrainContext:
     storage_context: StorageContext
     dataset_shards: Dict[str, DataIterator]
     checkpoint: Optional[Checkpoint] = None
+    num_reported_checkpoints: int = 0
+    controller_actor: Optional[ActorHandle] = None
 
     @_copy_doc(session.get_experiment_name)
     def get_experiment_name(self) -> str:
@@ -267,6 +270,7 @@ class TrainContext:
             # TODO (hpguo): Add a metrics to track the blocking time waiting for the
             # training result to be consumed by the controller.
             self.get_result_queue().put(training_result)
+            self.num_reported_checkpoints += 1
 
 
 # The global variable holding the current TrainContext

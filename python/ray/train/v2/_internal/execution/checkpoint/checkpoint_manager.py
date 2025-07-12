@@ -1,6 +1,7 @@
 import logging
 from typing import Any, Dict, List, Optional
 
+import ray
 from ray.air.config import CheckpointConfig
 from ray.train._checkpoint import Checkpoint
 from ray.train._internal.checkpoint_manager import (
@@ -42,6 +43,7 @@ class _CheckpointManagerState(BaseModel):
     version: int = 0
     checkpoint_results: List[_TrainingResultState]
     latest_checkpoint_result: Optional[_TrainingResultState]
+    num_reported_checkpoints: int
 
 
 def _get_training_result_from_state(
@@ -81,6 +83,7 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
     ):
         self._storage_context = storage_context
         self._checkpoint_config = checkpoint_config
+        self._num_reported_checkpoints = 0
         super().__init__(checkpoint_config)
         # If the snapshot is found, the checkpoint manager will restore its state.
         self._maybe_load_state_from_storage()
@@ -96,6 +99,9 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
         Args:
             checkpoint: Tracked checkpoint object to add to bookkeeping.
         """
+        self._num_reported_checkpoints += 1
+        # TODO: might be nice for CheckpointManager to manage ValidatedCheckpoint
+        # instead of _TrainingResult but that is a large refactor.
         self._latest_checkpoint_result = checkpoint_result
 
         if self._checkpoint_config.checkpoint_score_attribute is not None:
@@ -162,6 +168,7 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
         manager_snapshot = _CheckpointManagerState(
             checkpoint_results=checkpoint_results,
             latest_checkpoint_result=latest_checkpoint_result,
+            num_reported_checkpoints=self._num_reported_checkpoints,
         )
         return manager_snapshot.model_dump_json()
 
@@ -189,6 +196,8 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
             if manager_snapshot.latest_checkpoint_result is not None
             else None
         )
+
+        self._num_reported_checkpoints = manager_snapshot.num_reported_checkpoints
 
     def _maybe_load_state_from_storage(self):
         """Load the checkpoint manager state from storage.
@@ -284,4 +293,12 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
             if self.latest_checkpoint_result
             else None
         )
-        return {"checkpoint": [latest_checkpoint] * len(workers)}
+        train_context_args = {
+            "checkpoint": [latest_checkpoint] * len(workers),
+            "num_reported_checkpoints": [self._num_reported_checkpoints] * len(workers),
+        }
+        if ray.get_runtime_context().get_actor_id() is not None:
+            train_context_args["controller_actor"] = [
+                ray.get_runtime_context().current_actor
+            ] * len(workers)
+        return train_context_args
