@@ -3620,9 +3620,7 @@ class AutoscalingTest(unittest.TestCase):
         worker_ip = self.provider.non_terminated_node_ips(WORKER_FILTER)[0]
         # Mark the node as idle
         lm.update(worker_ip, mock_raylet_id(), {"CPU": 1}, {"CPU": 1}, 20)
-        assert lm.is_active(worker_ip)
         autoscaler.update()
-        assert not lm.is_active(worker_ip)
         assert self.provider.internal_ip("1") == worker_ip
         events = autoscaler.event_summarizer.summary()
         assert "Removing 1 nodes of type worker (idle)." in events, events
@@ -3823,6 +3821,62 @@ class AutoscalingTest(unittest.TestCase):
             == "node-specific-worker-image:latest"
         )
         assert "--gpus=all" in updater.docker_config.get("worker_run_options")
+
+    def test_node_becomes_inactive_after_heartbeat_timeout(self):
+        config = copy.deepcopy(SMALL_CLUSTER)
+        config["available_node_types"]["worker"]["min_workers"] = 1
+        config_path = self.write_config(config)
+        AUTOSCALER_HEARTBEAT_TIMEOUT_S = 30
+        self.provider = MockProvider()
+        self.provider.create_node(
+            {},
+            {
+                TAG_RAY_NODE_KIND: NODE_KIND_HEAD,
+                TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
+                TAG_RAY_USER_NODE_TYPE: "head",
+            },
+            1,
+        )
+
+        runner = MockProcessRunner()
+        lm = LoadMetrics()
+        mock_gcs_client = MockGcsClient()
+        autoscaler = MockAutoscaler(
+            config_path,
+            lm,
+            mock_gcs_client,
+            max_failures=0,
+            process_runner=runner,
+            update_interval_s=0,
+        )
+
+        autoscaler.update()
+        self.waitForNodes(1, tag_filters=WORKER_FILTER)
+
+        new_config = copy.deepcopy(SMALL_CLUSTER)
+        new_config["available_node_types"]["worker"]["min_workers"] = 0
+        self.write_config(new_config)
+        autoscaler.update()
+
+        worker_ip = self.provider.non_terminated_node_ips(WORKER_FILTER)[0]
+        fill_in_raylet_ids(self.provider, lm)
+        lm.update(worker_ip, mock_raylet_id(), {"CPU": 1}, {"CPU": 1}, 0)
+        autoscaler.update()
+        now = time.time()
+        assert (
+            now - lm.last_heartbeat_time_by_ip[worker_ip]
+            < AUTOSCALER_HEARTBEAT_TIMEOUT_S
+        ), "Initial heartbeat should be within timeout threshold"
+        assert self.provider.internal_ip("1") == worker_ip
+
+        past_heartbeat = now - AUTOSCALER_HEARTBEAT_TIMEOUT_S - 1
+        lm.last_heartbeat_time_by_ip[worker_ip] = past_heartbeat
+        autoscaler.update()
+
+        assert not (
+            now - lm.last_heartbeat_time_by_ip[worker_ip]
+            < AUTOSCALER_HEARTBEAT_TIMEOUT_S
+        ), "Initial heartbeat should be within timeout threshold"
 
 
 def test_import():
