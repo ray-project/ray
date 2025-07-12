@@ -36,14 +36,12 @@ moto[s3,server]==4.2.12
 mypy==1.7.0
 numba==0.59.1
 openpyxl==3.0.10
-opentelemetry-api==1.26.0
-opentelemetry-sdk==1.26.0
-opentelemetry-exporter-otlp>=1.26.0
-opencensus-proto==0.1.0
+opentelemetry-api
+opentelemetry-sdk
 pexpect==4.8.0
 Pillow==10.3.0; platform_system != "Windows"
 proxy.py==2.4.3
-pydantic>=2.9.0
+pydantic>=2.10.0
 pydot==1.4.2
 pygame==2.5.2
 Pygments==2.18.0
@@ -109,6 +107,9 @@ backoff==1.10
 # For test_basic.py::test_omp_threads_set
 threadpoolctl==3.1.0
 numexpr==2.8.4
+
+# For test_gpu_objects_gloo.py
+tensordict==0.8.3 ; sys_platform != "darwin"
 
 # For `serve run --reload` CLI.
 watchfiles==0.19.0
