@@ -3,7 +3,15 @@ import torch
 from ray.rllib.core import Columns
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModule
 from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
+from ray.rllib.core.models.base import ENCODER_OUT
 
+from ray.rllib.utils.annotations import override
+from ray.rllib.utils.typing import ModuleID
+from typing import (
+    Any,
+    Dict,
+    Union,
+)
 
 SHARED_ENCODER_ID = "shared_encoder"
 
@@ -34,8 +42,7 @@ class VPGPolicyAfterSharedEncoder(TorchRLModule):
         )
 
     def _forward(self, batch, **kwargs):
-        # Embeddings can be found in the batch under the "encoder_embeddings" key.
-        embeddings = batch["encoder_embeddings"]
+        embeddings = batch[ENCODER_OUT] # Set the output of the encoder
         logits = self._pi_head(embeddings)
         return {Columns.ACTION_DIST_INPUTS: logits}
 
@@ -48,23 +55,35 @@ class VPGMultiRLModuleWithSharedEncoder(MultiRLModule):
     """VPG (vanilla pol. gradient)-style MultiRLModule handling a shared encoder.
     # __sphinx_doc_mrlm_end__
 
-        This MultiRLModule needs to be configured appropriately as follows:
+        This MultiRLModule needs to be configured appropriately as below. A functioning example can be found in examples/multi_agent/shared_encoder_cartpole.py.
 
         .. testcode::
 
             # __sphinx_doc_how_to_run_begin__
             import gymnasium as gym
-            from ray.rllib.algorithms.ppo import PPOConfig
-            from ray.rllib.core import MultiRLModuleSpec, RLModuleSpec
+            from ray.rllib.core.rl_module.rl_module import RLModuleSpec
+            from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
+            
+            from ray.rllib.examples.algorithms.classes.vpg import VPGConfig
+            from ray.rllib.examples.learners.classes.vpg_torch_learner_shared_encoder import VPGTorchLearnerSharedEncoder
             from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
+            from ray.rllib.examples.rl_modules.classes.vpg_using_shared_encoder_rlm import (
+                SHARED_ENCODER_ID,
+                SharedEncoder,
+                VPGPolicyAfterSharedEncoder,
+                VPGMultiRLModuleWithSharedEncoder,
+            )
 
             single_agent_env = gym.make("CartPole-v1")
 
             EMBEDDING_DIM = 64  # encoder output dim
 
             config = (
-                PPOConfig()
+                VPGConfig()
                 .environment(MultiAgentCartPole, env_config={"num_agents": 2})
+                .training(
+                    learner_class=VPGTorchLearnerSharedEncoder,
+                )
                 .multi_agent(
                     # Declare the two policies trained.
                     policies={"p0", "p1"},
@@ -74,6 +93,7 @@ class VPGMultiRLModuleWithSharedEncoder(MultiRLModule):
                 )
                 .rl_module(
                     rl_module_spec=MultiRLModuleSpec(
+                        multi_rl_module_class=VPGMultiRLModuleWithSharedEncoder,
                         rl_module_specs={
                             # Shared encoder.
                             SHARED_ENCODER_ID: RLModuleSpec(
@@ -102,47 +122,56 @@ class VPGMultiRLModuleWithSharedEncoder(MultiRLModule):
                     ),
                 )
             )
-            algo = config.build()
-            print(algo.get_module("p0"))
+            algo = config.build_algo()
+            print(algo.train())
             # __sphinx_doc_how_to_run_end__
-
-        Also note that in order to learn properly, a special, multi-agent Learner
-        accounting for the shared encoder must be setup. This Learner should have only
-        one optimizer (used to train all submodules: encoder and the n policy nets) in
-        order to not destabilize learning. The latter would happen if more than one
-        optimizer would try to alternatingly optimize the same shared encoder submodule.
     # __sphinx_doc_mrlm_2_begin__
     """
 
     def setup(self):
         # Call the super's setup().
         super().setup()
-
         # Assert, we have the shared encoder submodule.
         assert (
             SHARED_ENCODER_ID in self._rl_modules
-            and isinstance(self._rl_modules[SHARED_ENCODER_ID], SharedEncoder)
             and len(self._rl_modules) > 1
         )
         # Assign the encoder to a convenience attribute.
         self.encoder = self._rl_modules[SHARED_ENCODER_ID]
-
-    def _forward(self, batch, **kwargs):
+        
+    def _forward(self, batch, forward_type, **kwargs):
         # Collect our policies' outputs in this dict.
-        outputs = {}
-
+        fwd_out = {}
         # Loop through the policy nets (through the given batch's keys).
         for policy_id, policy_batch in batch.items():
             rl_module = self._rl_modules[policy_id]
-
-            # Pass policy's observations through shared encoder to get the features for
-            # this policy.
-            policy_batch["encoder_embeddings"] = self.encoder._forward(batch[policy_id])
-
+            # Feed this policy's observation into the shared encoder
+            fwd_out[policy_id] = self.encoder._forward(batch[policy_id])
+            policy_batch[ENCODER_OUT] = fwd_out[policy_id][ENCODER_OUT]
+            # Get the desired module
+            m = getattr(self._rl_modules[policy_id], forward_type)
             # Pass the policy's embeddings through the policy net.
-            outputs[policy_id] = rl_module._forward(batch[policy_id], **kwargs)
-
-        return outputs
+            fwd_out[policy_id] = m(batch[policy_id], **kwargs)
+        return fwd_out
+        
+    # These methods could probably stand to be adjusted in MultiRLModule using something like this, so that subclasses that tweak _forward don't need to rewrite all of them. The prior implementation errored out because of this issue.
+    @override(MultiRLModule)
+    def _forward_inference(
+        self, batch: Dict[str, Any], **kwargs
+    ) -> Union[Dict[str, Any], Dict[ModuleID, Dict[str, Any]]]:
+        return self._forward(batch, "_forward_inference", **kwargs)
+        
+    @override(MultiRLModule)
+    def _forward_exploration(
+        self, batch: Dict[str, Any], **kwargs
+    ) -> Union[Dict[str, Any], Dict[ModuleID, Dict[str, Any]]]:
+        return self._forward(batch, "_forward_exploration", **kwargs)
+        
+    @override(MultiRLModule)
+    def _forward_train(
+        self, batch: Dict[str, Any], **kwargs
+    ) -> Union[Dict[str, Any], Dict[ModuleID, Dict[str, Any]]]:
+        return self._forward(batch, "_forward_train", **kwargs)
 
 
 # __sphinx_doc_mrlm_2_end__
@@ -165,7 +194,7 @@ class SharedEncoder(TorchRLModule):
 
     def _forward(self, batch, **kwargs):
         # Pass observations through the net and return outputs.
-        return {"encoder_embeddings": self._net(batch[Columns.OBS])}
+        return {ENCODER_OUT: self._net(batch[Columns.OBS])}
 
 
 # __sphinx_doc_encoder_end__
