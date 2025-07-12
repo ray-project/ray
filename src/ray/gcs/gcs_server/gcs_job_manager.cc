@@ -315,10 +315,9 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
       reply->add_job_info_list()->CopyFrom(data.second);
       if (iter != metadata.end()) {
         // This job was submitted via the Ray Job API, so it has JobInfo in the kv.
-        std::string job_submission_id = iter->second;
-        std::string job_data_key = JobDataKey(job_submission_id);
-        job_api_data_keys.push_back(job_data_key);
-        job_data_key_to_indices[job_data_key].push_back(i);
+        std::string job_data_key = JobDataKey(iter->second);
+        job_api_data_keys.push_back(std::move(job_data_key));
+        job_data_key_to_indices[job_api_data_keys.back()].push_back(i);
       }
       i++;
     }
