@@ -371,13 +371,13 @@ class ASGIReceiveProxy:
         self,
     ) -> Union[asyncio.Task, concurrent.futures.Future]:
         if asyncio.get_running_loop() == self._fetch_loop:
-            return asyncio.create_task(self._fetch_until_disconnect())
+            return asyncio.create_task(self.fetch_until_disconnect())
         else:
             return asyncio.run_coroutine_threadsafe(
-                self._fetch_until_disconnect(), self._fetch_loop
+                self.fetch_until_disconnect(), self._fetch_loop
             )
 
-    async def _fetch_until_disconnect(self):
+    async def fetch_until_disconnect(self):
         """Fetch messages repeatedly until a disconnect message is received.
 
         If a disconnect message is received, this function exits and returns it.
