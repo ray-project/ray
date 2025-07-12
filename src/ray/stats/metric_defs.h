@@ -235,7 +235,7 @@ static Sum NumCachedWorkersSkippedRuntimeEnvironmentMismatch(
     "workers");
 
 static Sum NumCachedWorkersSkippedDynamicOptionsMismatch(
-    "internal_num_processes_skipped_job_mismatch",
+    "internal_num_processes_skipped_dynamic_options_mismatch",
     "The total number of cached workers skipped due to dynamic options mismatch.",
     "workers");
 
