@@ -43,6 +43,7 @@ class TestCli(unittest.TestCase):
         output_fp = _runfiles.Rlocation(
             f"{_REPO_NAME}/ci/raydepsets/test_data/requirements_compiled.txt"
         )
+        assert result.output == ""
         assert result.exit_code == 0
         assert Path(output_fp).is_file()
         assert (
