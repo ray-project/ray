@@ -306,16 +306,28 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
         assert any(
             "core_worker" in components for components in components_dict.values()
         )
+        # The list of custom or user defined metrics. Open Telemetry backend does not
+        # support exporting Counter as Gauge, so we skip some metrics in that case.
+        custom_metrics = (
+            [
+                "test_counter",
+                "test_counter_total",
+                "test_histogram_bucket",
+                "test_driver_counter",
+                "test_driver_counter_total",
+                "test_gauge",
+            ]
+            if os.environ.get("RAY_experimental_enable_open_telemetry_on_core") != "1"
+            else [
+                "test_counter_total",
+                "test_histogram_bucket",
+                "test_driver_counter_total",
+                "test_gauge",
+            ]
+        )
 
         # Make sure our user defined metrics exist and have the correct types
-        for metric_name in [
-            "test_counter",
-            "test_counter_total",
-            "test_histogram_bucket",
-            "test_driver_counter",
-            "test_driver_counter_total",
-            "test_gauge",
-        ]:
+        for metric_name in custom_metrics:
             metric_name = f"ray_{metric_name}"
             assert metric_name in metric_names
             if metric_name.endswith("_total"):
@@ -702,7 +714,11 @@ def test_operation_stats(monkeypatch, shutdown_only):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Not working in Windows.")
-def test_counter(shutdown_only):
+@pytest.mark.skipif(
+    os.environ.get("RAY_experimental_enable_open_telemetry_on_core") == "1",
+    reason="OpenTelemetry backend does not support Counter exported as gauge.",
+)
+def test_counter_exported_as_gauge(shutdown_only):
     # Test to make sure Counter emits the right Prometheus metrics
     context = ray.init()
 
@@ -753,7 +769,7 @@ def test_counter(shutdown_only):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Not working in Windows.")
-def test_counter_without_export_counter_as_gauge(monkeypatch, shutdown_only):
+def test_counter(monkeypatch, shutdown_only):
     # Test to make sure we don't export counter as gauge
     # if RAY_EXPORT_COUNTER_AS_GAUGE is 0
     monkeypatch.setenv("RAY_EXPORT_COUNTER_AS_GAUGE", "0")

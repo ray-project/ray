@@ -119,8 +119,12 @@ void OpenTelemetryMetricRecorder::RegisterGaugeMetric(const std::string &name,
       instrument;
   {
     std::lock_guard<std::mutex> lock(mutex_);
-    RAY_CHECK(!registered_instruments_.contains(name))
-        << "Metric " << name << " is already registered";
+    if (registered_instruments_.contains(name)) {
+      // Already registered.  Note that this is a common case for metrics defined
+      // via Metric interface. See https://github.com/ray-project/ray/issues/54538
+      // for more details.
+      return;
+    }
     gauge_metric_names_.push_back(name);
     name_ptr = &gauge_metric_names_.back();
     instrument = GetMeter()->CreateDoubleObservableGauge(name, description, "");
@@ -150,8 +154,12 @@ bool OpenTelemetryMetricRecorder::IsMetricRegistered(const std::string &name) {
 void OpenTelemetryMetricRecorder::RegisterCounterMetric(const std::string &name,
                                                         const std::string &description) {
   std::lock_guard<std::mutex> lock(mutex_);
-  RAY_CHECK(!registered_instruments_.contains(name))
-      << "Metric " << name << " is already registered";
+  if (registered_instruments_.contains(name)) {
+    // Already registered.  Note that this is a common case for metrics defined
+    // via Metric interface. See https://github.com/ray-project/ray/issues/54538
+    // for more details.
+    return;
+  }
   auto instrument = GetMeter()->CreateDoubleCounter(name, description, "");
   registered_instruments_[name] = std::move(instrument);
 }
@@ -160,7 +168,10 @@ void OpenTelemetryMetricRecorder::RegisterSumMetric(const std::string &name,
                                                     const std::string &description) {
   std::lock_guard<std::mutex> lock(mutex_);
   if (registered_instruments_.contains(name)) {
-    return;  // Already registered
+    // Already registered.  Note that this is a common case for metrics defined
+    // via Metric interface. See https://github.com/ray-project/ray/issues/54538
+    // for more details.
+    return;
   }
   auto instrument = GetMeter()->CreateDoubleUpDownCounter(name, description, "");
   registered_instruments_[name] = std::move(instrument);

@@ -141,6 +141,7 @@ class Metric {
 
  protected:
   virtual void RegisterView() = 0;
+  virtual void RegisterOpenTelemetryMetric() = 0;
 
  protected:
   std::string name_;
@@ -166,6 +167,7 @@ class Gauge : public Metric {
 
  private:
   void RegisterView() override;
+  void RegisterOpenTelemetryMetric() override;
 
 };  // class Gauge
 
@@ -180,6 +182,7 @@ class Histogram : public Metric {
 
  private:
   void RegisterView() override;
+  void RegisterOpenTelemetryMetric() override;
 
  private:
   std::vector<double> boundaries_;
@@ -196,6 +199,7 @@ class Count : public Metric {
 
  private:
   void RegisterView() override;
+  void RegisterOpenTelemetryMetric() override;
 
 };  // class Count
 
@@ -209,6 +213,7 @@ class Sum : public Metric {
 
  private:
   void RegisterView() override;
+  void RegisterOpenTelemetryMetric() override;
 
 };  // class Sum
 
