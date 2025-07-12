@@ -345,8 +345,10 @@ class VLLMEngine(LLMEngine):
         #     # Lora is already loaded, return
         #     return
 
-        if any(lora_request.lora_name == disk_lora_model.model_id
-               for lora_request in self._oai_models.lora_requests):
+        if any(
+            lora_request.lora_name == disk_lora_model.model_id
+            for lora_request in self._oai_models.lora_requests
+        ):
             # Lora is already loaded, return
             return
 
@@ -385,7 +387,9 @@ class VLLMEngine(LLMEngine):
         # so that the create_chat_completion API can assign the request_id properly.
         raw_request = self._create_raw_request(request, "/chat/completions")
 
-        chat_response = await self._oai_serving_chat.create_chat_completion(request, raw_request=raw_request)
+        chat_response = await self._oai_serving_chat.create_chat_completion(
+            request, raw_request=raw_request
+        )
 
         if isinstance(chat_response, AsyncGenerator):
             async for response in chat_response:
@@ -403,7 +407,11 @@ class VLLMEngine(LLMEngine):
             else:
                 yield ChatCompletionResponse(**chat_response.model_dump())
 
-    def _create_raw_request(self, request: Union[CompletionRequest, ChatCompletionRequest, EmbeddingRequest], path: str) -> Request:
+    def _create_raw_request(
+        self,
+        request: Union[CompletionRequest, ChatCompletionRequest, EmbeddingRequest],
+        path: str,
+    ) -> Request:
         scope = {
             "type": "http",
             "method": "POST",
@@ -412,7 +420,6 @@ class VLLMEngine(LLMEngine):
             "query_string": b"",
         }
         return Request(scope)
-
 
     async def completions(
         self, request: CompletionRequest
@@ -441,7 +448,6 @@ class VLLMEngine(LLMEngine):
         # Create a fake starlette.Request object with the x-request-id header
         # so that the create_completion API can assign the request_id properly.
         raw_request = self._create_raw_request(request, "/completions")
-
 
         completion_response = await self._oai_serving_completion.create_completion(
             request,
@@ -486,7 +492,9 @@ class VLLMEngine(LLMEngine):
         # so that the create_embedding API can assign the request_id properly.
         raw_request = self._create_raw_request(request, "/embeddings")
 
-        embedding_response = await self._oai_serving_embedding.create_embedding(request, raw_request=raw_request)
+        embedding_response = await self._oai_serving_embedding.create_embedding(
+            request, raw_request=raw_request
+        )
 
         if isinstance(embedding_response, VLLMErrorResponse):
             yield ErrorResponse(**embedding_response.model_dump())

@@ -31,6 +31,7 @@ from ray.util.placement_group import (
 @dataclass
 class FrontendArgs:
     """Mirror of default values for FrontendArgs in vllm."""
+
     host: Optional[str] = None
     port: int = 8000
     uvicorn_log_level: str = "info"
@@ -65,6 +66,7 @@ class FrontendArgs:
     enable_server_load_tracking: bool = False
     enable_force_include_usage: bool = False
     expand_tools_even_if_tool_choice_none: bool = False
+
 
 # The key for the kv_transfer_params in the internal metadata.
 KV_TRANSFER_PARAMS_KEY = "kv_transfer_params"
@@ -139,7 +141,10 @@ class VLLMEngineConfig(BaseModelExtended):
         else:
             engine_kwargs["distributed_executor_backend"] = "ray"
 
-        if "disable_log_stats" in engine_kwargs and not engine_kwargs["disable_log_stats"]:
+        if (
+            "disable_log_stats" in engine_kwargs
+            and not engine_kwargs["disable_log_stats"]
+        ):
             logger.warning(
                 "disable_log_stats = False is not allowed in engine_kwargs when using Ray Serve LLM Configs. Setting it to True."
             )
