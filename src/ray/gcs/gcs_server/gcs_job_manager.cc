@@ -446,7 +446,8 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
   };
   Status status = gcs_table_storage_.JobTable().GetAll({on_done, io_context_});
   if (!status.ok()) {
-    on_done(absl::flat_hash_map<JobID, rpc::JobTableData>()); // send empty map to client if get Job table failed
+    on_done(absl::flat_hash_map<JobID, rpc::JobTableData>());  // send empty map to client
+                                                               // if get Job table failed
   }
 }
 
