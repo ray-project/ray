@@ -1,6 +1,6 @@
 import subprocess
 import time
-from typing import Literal
+from typing import Literal, Union
 
 import requests
 import pytest
@@ -54,7 +54,7 @@ def create_openai_client(server_url: str) -> OpenAI:
     return OpenAI(base_url=openai_api_base, api_key="fake-key")
 
 
-def generate_completion(client: OpenAI, model_id: str, test_prompt: str) -> str:
+def generate_completion(client: OpenAI, model_id: str, test_prompt: Union[str, list[int]]) -> str:
     """Generate completion using the provided OpenAI client."""
     response = client.completions.create(
         model=model_id,
@@ -114,7 +114,7 @@ class VllmServer:
         self.process = subprocess.Popen(cmd)
         return f"http://localhost:{vllm_port}"
 
-    def generate_completion(self, test_prompt: str) -> str:
+    def generate_completion(self, test_prompt: Union[str, list[int]]) -> str:
         """Generate completion using the provided OpenAI client."""
         return generate_completion(self.openai_client, self.model_id, test_prompt)
 
@@ -186,11 +186,16 @@ def wait_for_server_ready(
         (2, 2),
     ],
 )
+@pytest.mark.parametrize(
+    "test_prompt",
+    ["Two households, both alike in dignity,", [1, 2, 3]],
+)
 def test_llm_serve_correctness(
-    tensor_parallel_size: int, pipeline_parallel_size: int
+    tensor_parallel_size: int,
+    pipeline_parallel_size: int,
+    test_prompt: Union[str, list[int]],
 ) -> None:
     """Test that Ray Serve and vLLM produce the same completion output for the same input."""
-    test_prompt = "Two households, both alike in dignity,"
     test_message = "What is the capital of France?"
 
     print(

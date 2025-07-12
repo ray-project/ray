@@ -294,8 +294,9 @@ class TestLLMServer:
         )
         assert responses[0].choices[0].finish_reason == "stop"
 
+    @pytest.mark.parametrize("prompt", ["Hello", [1, 2, 3]])
     @pytest.mark.asyncio
-    async def test_completions_streaming(self, create_server):
+    async def test_completions_streaming(self, create_server, prompt):
         """Test streaming text completion."""
         llm_config = LLMConfig(
             model_loading_config=ModelLoadingConfig(
@@ -312,7 +313,7 @@ class TestLLMServer:
         # Create a completion request
         request = CompletionRequest(
             model="test_model",
-            prompt="Hello",
+            prompt=prompt,
             stream=True,
             max_tokens=5,
         )
@@ -336,8 +337,9 @@ class TestLLMServer:
 
         assert text == "test_0 test_1 test_2 test_3 test_4 "
 
+    @pytest.mark.parametrize("prompt", ["Hello", [1, 2, 3]])
     @pytest.mark.asyncio
-    async def test_completions_non_streaming(self, create_server):
+    async def test_completions_non_streaming(self, create_server, prompt):
         """Test non-streaming text completion."""
         llm_config = LLMConfig(
             model_loading_config=ModelLoadingConfig(
@@ -350,7 +352,7 @@ class TestLLMServer:
         # Create a completion request
         request = CompletionRequest(
             model="test_model",
-            prompt="Hello",
+            prompt=prompt,
             stream=False,
             max_tokens=5,
         )
