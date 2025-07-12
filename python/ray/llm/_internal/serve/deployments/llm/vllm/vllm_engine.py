@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, AsyncGenerator, List, Optional, Tuple
 
 from transformers.dynamic_module_utils import init_hf_modules
 
-import ray
 from ray.llm._internal.common.utils.import_utils import try_import
 from ray.llm._internal.serve.configs.constants import (
     MAX_NUM_TOPLOGPROBS_ALLOWED,
@@ -55,7 +54,6 @@ from ray.llm._internal.serve.observability.metrics.utils import (
 )
 from ray.util import metrics
 from ray.util.placement_group import PlacementGroup
-from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 if TYPE_CHECKING:
     from vllm import SamplingParams as VLLMInternalSamplingParams
@@ -106,13 +104,6 @@ def _clear_current_platform_cache():
     https://github.com/vllm-project/vllm/issues/7890
     """
     from vllm.platforms import current_platform
-
-    # TODO(seiji): remove this once https://github.com/vllm-project/vllm/pull/18979 is merged
-    if (
-        "CUDA_VISIBLE_DEVICES" in os.environ
-        and os.environ["CUDA_VISIBLE_DEVICES"] == ""
-    ):
-        del os.environ["CUDA_VISIBLE_DEVICES"]
 
     # This check is just to future proof this implementation
     # in case vllm removes their lru_cache decorator
@@ -287,28 +278,12 @@ class VLLMEngine(LLMEngine):
         """
         engine_config: VLLMEngineConfig = self.llm_config.get_engine_config()
 
-        if engine_config.use_gpu:
-            # Create engine config on a task with access to GPU,
-            # as GPU capability may be queried.
-            ref = (
-                ray.remote(
-                    num_cpus=0,
-                    num_gpus=1,
-                    accelerator_type=self.llm_config.accelerator_type,
-                )(_get_vllm_engine_config)
-                .options(
-                    runtime_env=node_initialization.runtime_env,
-                    scheduling_strategy=PlacementGroupSchedulingStrategy(
-                        placement_group=node_initialization.placement_group,
-                    ),
-                )
-                .remote(self.llm_config)
+        if engine_config.placement_strategy not in ["STRICT_PACK", "PACK"]:
+            raise ValueError(
+                "_get_vllm_engine_config must run on a GPU PG if there is one."
             )
-            vllm_engine_args, vllm_engine_config = ray.get(ref)
-        else:
-            vllm_engine_args, vllm_engine_config = _get_vllm_engine_config(
-                self.llm_config
-            )
+
+        vllm_engine_args, vllm_engine_config = _get_vllm_engine_config(self.llm_config)
 
         # Note (genesu): vllm_config is used to extract the scheduler config for
         # computing the correct prompt limit.
