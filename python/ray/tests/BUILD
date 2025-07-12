@@ -615,6 +615,8 @@ py_test_module_list(
     tags = [
         "exclusive",
         "gpu_objects",
+        "gpu_objects_gloo",
+        "minimal",
         "no_windows",
         "team:core",
     ],
