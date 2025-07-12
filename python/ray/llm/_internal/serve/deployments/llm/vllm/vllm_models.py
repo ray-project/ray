@@ -12,7 +12,6 @@ from ray.llm._internal.common.utils.import_utils import try_import
 from ray.llm._internal.serve.configs.constants import (
     ALLOW_NEW_PLACEMENT_GROUPS_IN_DEPLOYMENT,
     ENV_VARS_TO_PROPAGATE,
-    RAYLLM_GUIDED_DECODING_BACKEND,
 )
 from ray.llm._internal.serve.configs.server_models import (
     GPUType,
@@ -25,9 +24,51 @@ from ray.util.placement_group import (
     placement_group,
     placement_group_table,
 )
+from dataclasses import dataclass, field
 
 from vllm.engine.arg_utils import AsyncEngineArgs
-from vllm.entrypoints.openai.cli_args import FrontendArgs
+
+
+
+# TODO (Kourosh): Temprary until this abstraction lands in vllm upstream.
+# https://github.com/vllm-project/vllm/pull/20206
+@dataclass
+class FrontendArgs:
+    """Mirror of default values for FrontendArgs in vllm."""
+    host: Optional[str] = None
+    port: int = 8000
+    uvicorn_log_level: str = "info"
+    disable_uvicorn_access_log: bool = False
+    allow_credentials: bool = False
+    allowed_origins: list[str] = field(default_factory=lambda: ["*"])
+    allowed_methods: list[str] = field(default_factory=lambda: ["*"])
+    allowed_headers: list[str] = field(default_factory=lambda: ["*"])
+    api_key: Optional[str] = None
+    lora_modules: Optional[list[str]] = None
+    prompt_adapters: Optional[list[str]] = None
+    chat_template: Optional[str] = None
+    chat_template_content_format: str = "auto"
+    response_role: str = "assistant"
+    ssl_keyfile: Optional[str] = None
+    ssl_certfile: Optional[str] = None
+    ssl_ca_certs: Optional[str] = None
+    enable_ssl_refresh: bool = False
+    ssl_cert_reqs: int = 0
+    root_path: Optional[str] = None
+    middleware: list[str] = field(default_factory=lambda: [])
+    return_tokens_as_token_ids: bool = False
+    disable_frontend_multiprocessing: bool = False
+    enable_request_id_headers: bool = False
+    enable_auto_tool_choice: bool = False
+    tool_call_parser: Optional[str] = None
+    tool_parser_plugin: str = ""
+    log_config_file: Optional[str] = None
+    max_log_len: Optional[int] = None
+    disable_fastapi_docs: bool = False
+    enable_prompt_tokens_details: bool = False
+    enable_server_load_tracking: bool = False
+    enable_force_include_usage: bool = False
+    expand_tools_even_if_tool_choice_none: bool = False
 
 # The key for the kv_transfer_params in the internal metadata.
 KV_TRANSFER_PARAMS_KEY = "kv_transfer_params"
@@ -102,11 +143,11 @@ class VLLMEngineConfig(BaseModelExtended):
         else:
             engine_kwargs["distributed_executor_backend"] = "ray"
 
-        if "disable_log_stats" in engine_kwargs and engine_kwargs["disable_log_stats"]:
+        if "disable_log_stats" in engine_kwargs and not engine_kwargs["disable_log_stats"]:
             logger.warning(
-                "disable_log_stats = True is not allowed in engine_kwargs when using Ray Serve LLM Configs. Setting it to False."
+                "disable_log_stats = False is not allowed in engine_kwargs when using Ray Serve LLM Configs. Setting it to True."
             )
-        engine_kwargs["disable_log_stats"] = False
+        engine_kwargs["disable_log_stats"] = True
 
         return engine_kwargs
 

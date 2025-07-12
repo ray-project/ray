@@ -3,6 +3,7 @@ from typing import Union, AsyncGenerator, Optional, Dict, Any, List
 from pydantic import (
     BaseModel,
     ConfigDict,
+    Field,
 )
 
 from vllm.entrypoints.openai.protocol import (
@@ -17,6 +18,8 @@ from vllm.entrypoints.openai.protocol import (
     EmbeddingChatRequest as vLLMEmbeddingChatRequest,
     EmbeddingResponse as vLLMEmbeddingResponse,
 )
+
+from vllm.utils import random_uuid
 
 from typing import TYPE_CHECKING
 
@@ -39,9 +42,15 @@ class ChatCompletionStreamResponse(vLLMChatCompletionStreamResponse):
 class ErrorResponse(vLLMErrorResponse):
     pass
 
-
+# TODO (Kourosh): Upstream
 class CompletionRequest(vLLMCompletionRequest):
-    pass
+    request_id: str = Field(
+    default_factory=lambda: f"{random_uuid()}",
+    description=(
+        "The request_id related to this request. If the caller does "
+        "not set it, a random_uuid will be generated. This id is used "
+        "through out the inference process and return in response."),
+    )
 
 
 class CompletionResponse(vLLMCompletionResponse):
@@ -52,13 +61,19 @@ class CompletionStreamResponse(vLLMCompletionStreamResponse):
     pass
 
 
+# TODO (Kourosh): Upstream
 class EmbeddingCompletionRequest(vLLMEmbeddingCompletionRequest):
-    pass
+    request_id: str = Field(
+    default_factory=lambda: f"{random_uuid()}",
+    description=(
+        "The request_id related to this request. If the caller does "
+        "not set it, a random_uuid will be generated. This id is used "
+        "through out the inference process and return in response."),
+    )
 
 
 class EmbeddingChatRequest(vLLMEmbeddingChatRequest):
     pass
-
 
 class EmbeddingResponse(vLLMEmbeddingResponse):
     pass

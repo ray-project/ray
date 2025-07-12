@@ -2,6 +2,7 @@ import os
 import uuid
 import argparse
 from starlette.datastructures import State
+from starlette.requests import Request
 
 from typing import TYPE_CHECKING, AsyncGenerator, Tuple, Union
 
@@ -23,7 +24,6 @@ from ray.llm._internal.serve.configs.server_models import (
     DiskMultiplexConfig,
     LLMConfig,
 )
-from transformers.dynamic_module_utils import init_hf_modules
 
 from ray.llm._internal.serve.deployments.llm.llm_engine import LLMEngine
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_engine_stats import (
@@ -31,6 +31,7 @@ from ray.llm._internal.serve.deployments.llm.vllm.vllm_engine_stats import (
 )
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import (
     VLLMEngineConfig,
+    FrontendArgs,
 )
 from ray.llm._internal.serve.deployments.utils.node_initialization_utils import (
     InitializeNodeOutput,
@@ -39,7 +40,6 @@ from ray.llm._internal.serve.deployments.utils.node_initialization_utils import 
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.util.placement_group import PlacementGroup
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
-from vllm.entrypoints.openai.cli_args import FrontendArgs
 from vllm.engine.arg_utils import AsyncEngineArgs
 from vllm.entrypoints.openai.protocol import ErrorResponse as VLLMErrorResponse
 
@@ -343,7 +343,14 @@ class VLLMEngine(LLMEngine):
     async def resolve_lora(self, disk_lora_model: DiskMultiplexConfig):
         from vllm.entrypoints.openai.protocol import LoadLoRAAdapterRequest
 
-        if disk_lora_model.model_id in self._oai_models.lora_requests:
+        # TODO (Kourosh): We should uncomment this logic when
+        # https://github.com/vllm-project/vllm/pull/20636 is merged.
+        # if disk_lora_model.model_id in self._oai_models.lora_requests:
+        #     # Lora is already loaded, return
+        #     return
+        
+        if any(lora_request.lora_name == disk_lora_model.model_id
+               for lora_request in self._oai_models.lora_requests):
             # Lora is already loaded, return
             return
 
@@ -377,7 +384,12 @@ class VLLMEngine(LLMEngine):
 
         self._validate_openai_serving_chat()
 
-        chat_response = await self._oai_serving_chat.create_chat_completion(request)
+        # TODO (Kourosh): Remove when upstream is fixed to accept req_id.
+        # Create a fake starlette.Request object with the x-request-id header
+        # so that the create_chat_completion API can assign the request_id properly.
+        raw_request = self._create_raw_request(request, "/chat/completions")
+
+        chat_response = await self._oai_serving_chat.create_chat_completion(request, raw_request=raw_request)
 
         if isinstance(chat_response, AsyncGenerator):
             async for response in chat_response:
@@ -392,8 +404,20 @@ class VLLMEngine(LLMEngine):
             )
             if isinstance(chat_response, VLLMErrorResponse):
                 yield ErrorResponse(**chat_response.model_dump())
-            yield ChatCompletionResponse(**chat_response.model_dump())
+            else:
+                yield ChatCompletionResponse(**chat_response.model_dump())
 
+    def _create_raw_request(self, request: Union[CompletionRequest, ChatCompletionRequest, EmbeddingRequest], path: str) -> Request:
+        scope = {
+            "type": "http",
+            "method": "POST",
+            "path": path,
+            "headers": [(b"x-request-id", request.request_id.encode())],
+            "query_string": b"",
+        }
+        return Request(scope)
+    
+    
     async def completions(
         self, request: CompletionRequest
     ) -> AsyncGenerator[Union[str, CompletionResponse, ErrorResponse], None]:
@@ -416,9 +440,16 @@ class VLLMEngine(LLMEngine):
             raise RuntimeError(
                 "Completion service is not available. Make sure the engine is started and supports completions."
             )
+        
+        # TODO (Kourosh): Remove when upstream is fixed to accept req_id.
+        # Create a fake starlette.Request object with the x-request-id header
+        # so that the create_completion API can assign the request_id properly.
+        raw_request = self._create_raw_request(request, "/completions")
+
 
         completion_response = await self._oai_serving_completion.create_completion(
-            request
+            request,
+            raw_request=raw_request,
         )
 
         if isinstance(completion_response, AsyncGenerator):
@@ -454,7 +485,12 @@ class VLLMEngine(LLMEngine):
                 "Embedding service is not available. Make sure the engine is started and supports embeddings."
             )
 
-        embedding_response = await self._oai_serving_embedding.create_embedding(request)
+        # TODO (Kourosh): Remove when upstream is fixed to accept req_id.
+        # Create a fake starlette.Request object with the x-request-id header
+        # so that the create_embedding API can assign the request_id properly.
+        raw_request = self._create_raw_request(request, "/embeddings")
+        
+        embedding_response = await self._oai_serving_embedding.create_embedding(request, raw_request=raw_request)
 
         if isinstance(embedding_response, VLLMErrorResponse):
             yield ErrorResponse(**embedding_response.model_dump())

@@ -142,6 +142,8 @@ class PDProxyServer(LLMServer):
         Union[str, ChatCompletionResponse, CompletionResponse, ErrorResponse], None
     ]:
 
+        await self._maybe_add_request_id_to_request(request)
+        
         if isinstance(request, ChatCompletionRequest):
             method = "chat"
         elif isinstance(request, CompletionRequest):
@@ -155,12 +157,12 @@ class PDProxyServer(LLMServer):
         prefill_chunk = await anext(prefill_gen)
 
         if isinstance(prefill_chunk, ErrorResponse):
-            logger.error(f"Prefill returned error: {prefill_chunk.error}")
+            logger.error(f"Prefill returned error: {prefill_chunk}")
             yield prefill_chunk
             return
 
         decode_request = self._prepare_decode_request(request, prefill_chunk)
-        decode_gen = self.decode_server.chat.remote(decode_request)
+        decode_gen = getattr(self.decode_server, method).remote(decode_request)
 
         async for chunk in decode_gen:
             yield chunk
