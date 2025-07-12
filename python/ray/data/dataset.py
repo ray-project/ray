@@ -134,6 +134,7 @@ if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces import Executor, NodeIdStr
     from ray.data.grouped_data import GroupedData
 
+from ray.data.expressions import Expr
 
 logger = logging.getLogger(__name__)
 
@@ -154,6 +155,7 @@ CD_API_GROUP = "Consuming Data"
 IOC_API_GROUP = "I/O and Conversion"
 IM_API_GROUP = "Inspecting Metadata"
 E_API_GROUP = "Execution"
+EXPRESSION_API_GROUP = "Expressions"
 
 
 @PublicAPI
@@ -774,6 +776,44 @@ class Dataset:
             ray_remote_args=ray_remote_args,
         )
         logical_plan = LogicalPlan(map_batches_op, self.context)
+        return Dataset(plan, logical_plan)
+
+    @PublicAPI(api_group=EXPRESSION_API_GROUP, stability="alpha")
+    def with_columns(self, exprs: Dict[str, Expr]) -> "Dataset":
+        """
+        Add new columns to the dataset.
+
+        Examples:
+
+            >>> import ray
+            >>> from ray.data.expressions import col
+            >>> ds = ray.data.range(100)
+            >>> ds.with_columns({"new_id": col("id") * 2, "new_id_2": col("id") * 3}).schema()
+            Column    Type
+            ------    ----
+            id        int64
+            new_id    int64
+            new_id_2  int64
+
+        Args:
+            exprs: A dictionary mapping column names to expressions that define the new column values.
+
+        Returns:
+            A new dataset with the added columns evaluated via expressions.
+        """
+        if not exprs:
+            raise ValueError("at least one expression is required")
+
+        from ray.data._internal.logical.operators.map_operator import Project
+
+        plan = self._plan.copy()
+        project_op = Project(
+            self._logical_plan.dag,
+            cols=None,
+            cols_rename=None,
+            exprs=exprs,
+        )
+        logical_plan = LogicalPlan(project_op, self.context)
         return Dataset(plan, logical_plan)
 
     @PublicAPI(api_group=BT_API_GROUP)
@@ -5025,7 +5065,7 @@ class Dataset:
                 using a local in-memory shuffle buffer, and this value will serve as the
                 minimum number of rows that must be in the local in-memory shuffle
                 buffer in order to yield a batch. When there are no more rows to add to
-                the buffer, the remaining rows in the buffer is drained. This
+                the buffer, the remaining rows in the buffer are drained. This
                 buffer size must be greater than or equal to ``batch_size``, and
                 therefore ``batch_size`` must also be specified when using local
                 shuffling.

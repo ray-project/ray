@@ -12,6 +12,7 @@ Ray Data API
     execution_options.rst
     aggregate.rst
     grouped_data.rst
+    expressions.rst
     data_context.rst
     preprocessor.rst
     llm.rst
