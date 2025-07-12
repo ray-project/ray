@@ -158,7 +158,8 @@ class ActorPoolMapOperator(MapOperator):
             ),
             _enable_actor_pool_on_exit_hook=self.data_context._enable_actor_pool_on_exit_hook,
         )
-
+        # NOTE: Lazily create actor location, because this starts a ray instance
+        self._actor_location_tracker = lambda: get_or_create_actor_location_tracker()
         self._actor_task_selector = self._create_task_selector(self._actor_pool)
         # A queue of bundles awaiting dispatch to actors.
         self._bundle_queue = create_bundle_queue()
@@ -245,6 +246,7 @@ class ActorPoolMapOperator(MapOperator):
             ctx,
             src_fn_name=self.name,
             map_transformer=self._map_transformer,
+            actor_location_tracker=self._actor_location_tracker(),
         )
         res_ref = actor.get_location.options(name=f"{self.name}.get_location").remote()
 
