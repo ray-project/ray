@@ -22,7 +22,7 @@ def downloader(image_url: str):
     name="image_classifier",
     num_replicas=2,
     ray_actor_options={
-        "num_gpus": 0.5,
+        "num_gpus": 0.25,
         "runtime_env": {"pip": ["transformers", "torch", "pillow", "hf_xet"]},
     },
 )

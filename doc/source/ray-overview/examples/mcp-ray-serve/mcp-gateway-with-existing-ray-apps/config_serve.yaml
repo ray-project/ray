@@ -56,7 +56,7 @@ applications:
         - pillow
         - hf_xet
       num_cpus: 1.0
-      num_gpus: 0.5
+      num_gpus: 0.25
 
 - name: text_translator_app
 
@@ -76,7 +76,7 @@ applications:
         - transformers
         - torch
       num_cpus: 1.0
-      num_gpus: 0.5
+      num_gpus: 0.25
 
 - name: mcp_gateway_app
 

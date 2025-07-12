@@ -6,7 +6,7 @@ from starlette.requests import Request
     name="text_translator",
     num_replicas=2,
     ray_actor_options={
-        "num_gpus": 0.5,
+        "num_gpus": 0.25,
         "runtime_env": {"pip": ["transformers", "torch"]},
     },
 )
