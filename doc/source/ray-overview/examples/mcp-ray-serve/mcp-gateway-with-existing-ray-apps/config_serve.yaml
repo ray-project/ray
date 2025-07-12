@@ -1,0 +1,107 @@
+# This file was generated using the `serve build` command on Ray v2.46.0.
+
+proxy_location: EveryNode
+
+http_options:
+
+  host: 0.0.0.0
+
+  port: 8000
+
+grpc_options:
+
+  port: 9000
+
+  grpc_servicer_functions: []
+
+logging_config:
+
+  encoding: JSON
+
+  log_level: INFO
+
+  logs_dir: null
+
+  enable_access_log: true
+
+  additional_log_standard_attrs: []
+
+applications:
+
+- name: image_classifier_app
+
+  route_prefix: /classify
+
+  import_path: image_classifier:app
+
+  runtime_env: {}
+
+  deployments:
+
+  - name: image_downloader
+    num_replicas: 2
+    ray_actor_options:
+      runtime_env:
+        pip:
+        - pillow
+      num_cpus: 0.3
+
+  - name: image_classifier
+    num_replicas: 2
+    ray_actor_options:
+      runtime_env:
+        pip:
+        - transformers
+        - torch
+        - pillow
+        - hf_xet
+      num_cpus: 1.0
+      num_gpus: 0.5
+
+- name: text_translator_app
+
+  route_prefix: /translate
+
+  import_path: text_translator:app
+
+  runtime_env: {}
+
+  deployments:
+
+  - name: text_translator
+    num_replicas: 2
+    ray_actor_options:
+      runtime_env:
+        pip:
+        - transformers
+        - torch
+      num_cpus: 1.0
+      num_gpus: 0.5
+
+- name: mcp_gateway_app
+
+  route_prefix: /mcp_gateway
+
+  import_path: mcp_gateway:app
+
+  runtime_env: {}
+
+  deployments:
+
+  - name: MCPGateway
+    autoscaling_config:
+      min_replicas: 2
+      initial_replicas: null
+      max_replicas: 10
+      target_ongoing_requests: 50.0
+      metrics_interval_s: 10.0
+      look_back_period_s: 30.0
+      smoothing_factor: 1.0
+      upscale_smoothing_factor: null
+      downscale_smoothing_factor: null
+      upscaling_factor: null
+      downscaling_factor: null
+      downscale_delay_s: 600.0
+      upscale_delay_s: 30.0
+    ray_actor_options:
+      num_cpus: 0.5
