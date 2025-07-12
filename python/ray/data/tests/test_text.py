@@ -201,7 +201,7 @@ def test_read_text_remote_args(ray_start_cluster, tmp_path):
         ds.iter_internal_ref_bundles()
     )
     ray.wait(block_refs, num_returns=len(block_refs), fetch_local=False)
-    location_data = ray.experimental.get_object_locations(block_refs)
+    location_data = ray.experimental.get_local_object_locations(block_refs)
     locations = []
     for block in block_refs:
         locations.extend(location_data[block]["node_ids"])
