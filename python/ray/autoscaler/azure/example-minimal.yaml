@@ -19,3 +19,8 @@ auth:
     ssh_private_key: ~/.ssh/id_rsa
     # changes to this should match what is specified in file_mounts
     ssh_public_key: ~/.ssh/id_rsa.pub
+
+# Files or directories to copy to the head and worker nodes. The format is a
+# dictionary from REMOTE_PATH: LOCAL_PATH, e.g.
+file_mounts: {
+    "~/.ssh/id_rsa.pub": "~/.ssh/id_rsa.pub"}
