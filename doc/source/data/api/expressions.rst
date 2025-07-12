@@ -3,6 +3,8 @@
 Expressions API
 ===============
 
+.. currentmodule:: ray.data.expressions
+
 Expressions provide a way to specify column-based operations on datasets.
 Use :func:`col` to reference columns and :func:`lit` to create literal values.
 These can be combined with operators to create complex expressions for filtering,
@@ -31,8 +33,6 @@ Examples:
     # Use expressions in filtering
     ds = ds.filter(col("age") >= lit(30))
 
-.. currentmodule:: ray.data.expressions
-
 Public API
 ----------
 
@@ -57,4 +57,3 @@ instantiate them directly, but you may encounter them when working with expressi
     ColumnExpr
     LiteralExpr
     BinaryExpr
-    Operation
