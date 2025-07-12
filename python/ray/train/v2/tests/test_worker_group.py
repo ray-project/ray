@@ -5,6 +5,8 @@ import time
 import pytest
 
 import ray
+from ray._private.state import state as ray_state
+from ray.actor import exit_actor
 from ray.exceptions import RayActorError
 from ray.runtime_env import RuntimeEnv
 from ray.train.v2._internal.constants import (
@@ -13,6 +15,7 @@ from ray.train.v2._internal.constants import (
     WORKER_HEALTH_CHECK_TIMEOUT_S_ENV_VAR,
 )
 from ray.train.v2._internal.exceptions import (
+    InsufficientClusterResourcesError,
     WorkerGroupStartupFailedError,
     WorkerGroupStartupTimeoutError,
     WorkerHealthCheckFailedError,
@@ -160,6 +163,32 @@ def test_start_timeout(monkeypatch):
 
     with pytest.raises(WorkerGroupStartupTimeoutError):
         # Not enough CPU resources are available, so the workers will not start.
+        wg._start()
+
+
+def test_insufficient_cluster_resources_startup_failure(monkeypatch):
+    """Test that WorkerGroup startup fails when cluster has insufficient resources.
+
+    This test mocks the cluster resources to match the test environment and
+    verifies that the resource check properly catches insufficient resources.
+    """
+    # Mock the cluster resources to return the test cluster configuration (4 CPUs)
+    monkeypatch.setattr(
+        ray_state, "get_max_resources_from_cluster_config", lambda: {"CPU": 4.0}
+    )
+
+    # The test cluster has 4 CPUs, so requesting 8 workers with 1 CPU each should fail
+    worker_group_context = _default_worker_group_context(
+        num_workers=8,  # More workers than available CPUs
+        resources_per_worker={"CPU": 1.0},
+    )
+
+    wg = _default_inactive_worker_group(worker_group_context=worker_group_context)
+
+    # This should fail during startup due to insufficient resources
+    with pytest.raises(
+        InsufficientClusterResourcesError, match="Insufficient cluster resources"
+    ):
         wg._start()
 
 
@@ -391,13 +420,13 @@ def test_setup_worker_group(tmp_path):
     worker_group._start()
 
     def get_world_size():
-        return ray.train.get_context().get_world_size()
+        return get_train_context().get_world_size()
 
     def get_world_rank():
-        return ray.train.get_context().get_world_rank()
+        return get_train_context().get_world_rank()
 
     def get_storage_context_name():
-        return ray.train.get_context().get_storage().experiment_dir_name
+        return get_train_context().get_storage().experiment_dir_name
 
     assert worker_group.execute(get_world_size) == [num_workers] * num_workers
     assert sorted(worker_group.execute(get_world_rank)) == list(range(num_workers))
@@ -506,14 +535,14 @@ def test_shutdown_hook_with_dead_actors():
         def before_worker_group_shutdown(self, worker_group):
             # Mock a hanging collective call on the remaining workers.
             def f():
-                print(ray.train.get_context().get_world_rank())
+                print(get_train_context().get_world_rank())
                 time.sleep(10)
 
             wg.execute(f)
 
     def conditional_failure():
-        if ray.train.get_context().get_world_rank() % 2 == 0:
-            ray.actor.exit_actor()
+        if get_train_context().get_world_rank() % 2 == 0:
+            exit_actor()
 
     wg = _default_inactive_worker_group(callbacks=[ShutdownCallback()])
     wg._start()
@@ -534,6 +563,108 @@ def test_shutdown_hook_with_dead_actors():
 
     # TODO: This test leaves the WorkerGroup in a bad state.
     # If more tests are added below this, they may not be able to run.
+
+
+def test_check_cluster_resources_and_raise_if_insufficient(monkeypatch):
+    """Test _check_cluster_resources_and_raise_if_insufficient method."""
+    wg = _default_inactive_worker_group()
+
+    # Test case 1: Sufficient resources - should not raise
+    monkeypatch.setattr(
+        ray_state,
+        "get_max_resources_from_cluster_config",
+        lambda: {"CPU": 8.0, "GPU": 4.0},
+    )
+
+    # Should not raise for sufficient resources
+    wg._check_cluster_resources_and_raise_if_insufficient(
+        resources_per_worker={"CPU": 1.0, "GPU": 0.5}, num_workers=4
+    )
+
+    # Test case 2: Insufficient CPU resources - should raise
+    with pytest.raises(
+        InsufficientClusterResourcesError, match="Insufficient cluster resources"
+    ):
+        wg._check_cluster_resources_and_raise_if_insufficient(
+            resources_per_worker={"CPU": 3.0},
+            num_workers=4,  # Requires 12 CPU but only 8 available
+        )
+
+    # Test case 3: Insufficient GPU resources - should raise
+    with pytest.raises(
+        InsufficientClusterResourcesError, match="Insufficient cluster resources"
+    ):
+        wg._check_cluster_resources_and_raise_if_insufficient(
+            resources_per_worker={"GPU": 2.0},
+            num_workers=3,  # Requires 6 GPU but only 4 available
+        )
+
+    # Test case 4: Missing resource type in cluster - should raise
+    with pytest.raises(
+        InsufficientClusterResourcesError, match="Insufficient cluster resources"
+    ):
+        wg._check_cluster_resources_and_raise_if_insufficient(
+            resources_per_worker={"TPU": 1.0},
+            num_workers=1,  # TPU not available in cluster
+        )
+
+    # Test case 5: Resource available but None - should raise
+    monkeypatch.setattr(
+        ray_state,
+        "get_max_resources_from_cluster_config",
+        lambda: {"CPU": 8.0, "GPU": None},
+    )
+
+    with pytest.raises(
+        InsufficientClusterResourcesError, match="Insufficient cluster resources"
+    ):
+        wg._check_cluster_resources_and_raise_if_insufficient(
+            resources_per_worker={"GPU": 1.0}, num_workers=1
+        )
+
+    # Test case 6: Empty cluster resources - should not raise
+    monkeypatch.setattr(ray_state, "get_max_resources_from_cluster_config", lambda: {})
+
+    # Should not raise when cluster resources is empty dict
+    wg._check_cluster_resources_and_raise_if_insufficient(
+        resources_per_worker={"CPU": 1.0}, num_workers=2
+    )
+
+    # Test case 7: None cluster resources - should not raise
+    monkeypatch.setattr(
+        ray_state, "get_max_resources_from_cluster_config", lambda: None
+    )
+
+    # Should not raise when cluster resources is None
+    wg._check_cluster_resources_and_raise_if_insufficient(
+        resources_per_worker={"CPU": 1.0}, num_workers=2
+    )
+
+    # Test case 8: Non-dict cluster resources - should not raise
+    monkeypatch.setattr(
+        ray_state, "get_max_resources_from_cluster_config", lambda: "not a dict"
+    )
+
+    # Should not raise when cluster resources is not a dict
+    wg._check_cluster_resources_and_raise_if_insufficient(
+        resources_per_worker={"CPU": 1.0}, num_workers=2
+    )
+
+    # Test case 9: Edge case with zero resources - should not raise
+    monkeypatch.setattr(
+        ray_state, "get_max_resources_from_cluster_config", lambda: {"CPU": 4.0}
+    )
+
+    # Should not raise when requiring zero resources
+    wg._check_cluster_resources_and_raise_if_insufficient(
+        resources_per_worker={"CPU": 0.0}, num_workers=10
+    )
+
+    # Test case 10: Exact resource match - should not raise
+    wg._check_cluster_resources_and_raise_if_insufficient(
+        resources_per_worker={"CPU": 1.0},
+        num_workers=4,  # Exactly matches 4.0 CPU available
+    )
 
 
 if __name__ == "__main__":
