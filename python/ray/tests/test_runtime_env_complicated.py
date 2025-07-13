@@ -36,6 +36,7 @@ from ray._private.test_utils import (
 from ray._private.utils import (
     get_conda_env_dir,
     get_conda_bin_executable,
+    delete_conda_env,
 )
 
 if not os.environ.get("CI"):
@@ -48,70 +49,29 @@ EMOJI_VERSIONS = ["2.1.0", "2.2.0"]
 _WIN32 = os.name == "nt"
 
 
-@pytest.fixture(scope="session")
-def conda_env_no_ray():
-    """Creates a conda env without ray installed."""
-    env_name = "conda-no-ray"
+def create_package_env(
+    env_name, insert_ray: bool, package_version: str, tmp_path_factory, init_cmd: str
+):
+    delete_conda_env(env_name)
+    proc = subprocess.run(
+        [
+            "conda",
+            "create",
+            "-n",
+            env_name,
+            "-y",
+            f"python={_current_py_version()}",
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    if proc.returncode != 0:
+        print("conda create failed, returned %d" % proc.returncode)
+        print(proc.stdout.decode())
+        print(proc.stderr.decode())
+        assert False
 
-    def delete_env(env_name):
-        subprocess.run(["conda", "remove", "--name", env_name, "--all", "-y"])
-
-    def create_package_env(env_name: str):
-        delete_env(env_name)
-        proc = subprocess.run(
-            [
-                "conda",
-                "create",
-                "-n",
-                env_name,
-                "-y",
-                f"python={_current_py_version()}",
-            ],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        )
-        if proc.returncode != 0:
-            print("conda create failed, returned %d" % proc.returncode)
-            print(proc.stdout.decode())
-            print(proc.stderr.decode())
-            assert False
-
-    create_package_env(env_name=f"package-{env_name}")
-
-    yield
-
-    delete_env(env_name=f"package-{env_name}")
-
-
-@pytest.fixture(scope="session")
-def conda_envs(tmp_path_factory):
-    """Creates two conda env with different `emoji` package versions."""
-    conda_path = get_conda_bin_executable("conda")
-    init_cmd = f". {os.path.dirname(conda_path)}" f"/../etc/profile.d/conda.sh"
-
-    def delete_env(env_name):
-        subprocess.run(["conda", "remove", "--name", env_name, "--all", "-y"])
-
-    def create_package_env(env_name, package_version: str):
-        delete_env(env_name)
-        proc = subprocess.run(
-            [
-                "conda",
-                "create",
-                "-n",
-                env_name,
-                "-y",
-                f"python={_current_py_version()}",
-            ],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        )
-        if proc.returncode != 0:
-            print("conda create failed, returned %d" % proc.returncode)
-            print(proc.stdout.decode())
-            print(proc.stderr.decode())
-            assert False
-
+    if insert_ray:
         _inject_ray_to_conda_site(get_conda_env_dir(env_name))
         ray_deps: List[str] = _resolve_install_from_source_ray_dependencies()
         ray_deps.append(f"emoji=={package_version}")
@@ -147,15 +107,44 @@ def conda_envs(tmp_path_factory):
             print(proc.stderr.decode())
             assert False
 
+
+@pytest.fixture(scope="session")
+def conda_env_no_ray():
+    """Creates a conda env without ray installed."""
+    env_name = "conda-no-ray"
+
+    create_package_env(
+        env_name=f"package-{env_name}",
+        insert_ray=False,
+        package_version="",
+        tmp_path_factory=None,
+        init_cmd="",
+    )
+
+    yield
+
+    delete_conda_env(env_name=f"package-{env_name}")
+
+
+@pytest.fixture(scope="session")
+def conda_envs(tmp_path_factory):
+    """Creates two conda env with different `emoji` package versions."""
+    conda_path = get_conda_bin_executable("conda")
+    init_cmd = f". {os.path.dirname(conda_path)}" f"/../etc/profile.d/conda.sh"
+
     for package_version in EMOJI_VERSIONS:
         create_package_env(
-            env_name=f"package-{package_version}", package_version=package_version
+            env_name=f"package-{package_version}",
+            insert_ray=True,
+            package_version=package_version,
+            tmp_path_factory=tmp_path_factory,
+            init_cmd=init_cmd,
         )
 
     yield
 
     for package_version in EMOJI_VERSIONS:
-        delete_env(env_name=f"package-{package_version}")
+        delete_conda_env(env_name=f"package-{package_version}")
 
 
 @ray.remote
@@ -375,9 +364,12 @@ def test_job_config_conda_env(conda_envs, shutdown_only):
     reason="must be run from within a conda environment",
 )
 def test_conda_env_validation(conda_env_no_ray):
-    with pytest.raises(ValueError, validate_ray_installed_in_conda_env, "package-conda-no-ray"):
+    with pytest.raises(
+        ValueError, validate_ray_installed_in_conda_env, "package-conda-no-ray"
+    ):
         return
     pytest.fail("Expected ValueError")
+
 
 @pytest.mark.skipif(
     os.environ.get("CONDA_DEFAULT_ENV") is None,
