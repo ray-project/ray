@@ -57,7 +57,7 @@ if __name__ == "__main__":
 
     single_agent_env = gym.make(
         "CartPole-v1"
-    ) # To allow instantiation of shared encoder
+    )  # To allow instantiation of shared encoder
     assert args.algo=="VPG", "The shared encoder example is meant for VPG agents."
     assert args.num_agents==2, "This example makes use of two agents."
 
