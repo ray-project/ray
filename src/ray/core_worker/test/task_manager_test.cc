@@ -39,7 +39,8 @@ TaskSpecification CreateTaskHelper(uint64_t num_returns,
                                    std::vector<ObjectID> dependencies,
                                    bool dynamic_returns = false,
                                    bool streaming_generator = false,
-                                   int64_t generator_backpressure_num_objects = -1) {
+                                   int64_t generator_backpressure_num_objects = -1,
+                                   bool enable_tensor_transport = false) {
   TaskSpecification task;
   task.GetMutableMessage().set_task_id(TaskID::FromRandom(JobID::FromInt(1)).Binary());
   task.GetMutableMessage().set_num_returns(num_returns);
@@ -56,6 +57,14 @@ TaskSpecification CreateTaskHelper(uint64_t num_returns,
     task.GetMutableMessage().set_generator_backpressure_num_objects(
         generator_backpressure_num_objects);
   }
+
+  auto tensor_transport = rpc::TensorTransport::OBJECT_STORE;
+  if (enable_tensor_transport) {
+    // Currently, only actors support transferring tensors out-of-band.
+    task.GetMutableMessage().set_type(TaskType::ACTOR_TASK);
+    tensor_transport = rpc::TensorTransport::NCCL;
+  }
+  task.GetMutableMessage().set_tensor_transport(tensor_transport);
 
   return task;
 }
@@ -151,7 +160,11 @@ class TaskManagerTest : public ::testing::Test {
                const std::string &error_message,
                double timestamp) { return Status::OK(); },
             max_lineage_bytes,
-            *task_event_buffer_mock_.get()) {}
+            *task_event_buffer_mock_.get(),
+            [](const ActorID &actor_id)
+                -> std::shared_ptr<ray::rpc::CoreWorkerClientInterface> {
+              return nullptr;
+            }) {}
 
   virtual void TearDown() { AssertNoLeaks(); }
 
@@ -2542,6 +2555,66 @@ TEST_F(TaskManagerLineageTest, RecoverIntermediateObjectInStreamingGenerator) {
   CompletePendingStreamingTask(spec2, caller_address, 0);
 }
 
+TEST_F(TaskManagerTest, TestGPUObjectTaskSuccess) {
+  rpc::Address caller_address;
+  auto spec = CreateTaskHelper(/*num_returns*/ 1,
+                               {},
+                               /*dynamic_returns=*/false,
+                               /*streaming_generator=*/false,
+                               /*generator_backpressure_num_objects*/ -1,
+                               /*enable_tensor_transport=*/true);
+
+  // Pass a GPU ObjectRef as an argument.
+  ObjectID gpu_obj_ref = ObjectID::FromRandom();
+  auto *arg = spec.GetMutableMessage().add_args();
+  arg->set_is_inlined(false);
+  arg->set_tensor_transport(rpc::TensorTransport::NCCL);
+  arg->mutable_object_ref()->set_object_id(gpu_obj_ref.Binary());
+
+  // `gpu_obj_ref` should have a local reference when the sender actor
+  // generates the ObjectRef.
+  reference_counter_->AddLocalReference(gpu_obj_ref, "");
+
+  // Call AddPendingTask to add the task to the task manager.
+  auto object_refs = manager_.AddPendingTask(caller_address, spec, "");
+  ASSERT_EQ(object_refs.size(), 1);
+  ASSERT_EQ(manager_.NumSubmissibleTasks(), 1);
+  ASSERT_EQ(manager_.NumPendingTasks(), 1);
+  ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
+
+  // GPU object, the return object and the actor creation dummy object are in
+  // scope.
+  auto return_id = spec.ReturnId(0);
+  ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 3);
+  ASSERT_TRUE(reference_counter_->IsObjectPendingCreation(return_id));
+
+  manager_.MarkDependenciesResolved(spec.TaskId());
+  ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
+  ASSERT_FALSE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
+
+  manager_.MarkTaskWaitingForExecution(
+      spec.TaskId(), NodeID::FromRandom(), WorkerID::FromRandom());
+  ASSERT_TRUE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
+
+  rpc::PushTaskReply reply;
+  auto return_object = reply.add_return_objects();
+  return_object->set_object_id(return_id.Binary());
+  auto data = GenerateRandomBuffer();
+  return_object->set_data(data->Data(), data->Size());
+  manager_.CompletePendingTask(spec.TaskId(), reply, rpc::Address(), false);
+  ASSERT_FALSE(manager_.IsTaskPending(spec.TaskId()));
+  // We assume that the GPU object ref is still in scope, so both the return object
+  // and the GPU object ref should remain.
+  ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 2);
+  ASSERT_FALSE(reference_counter_->IsObjectPendingCreation(return_id));
+
+  // Call `RemoveLocalReference` to simulate that the GPU object ref is out of scope.
+  // Then, the GPU object should be removed.
+  std::vector<ObjectID> removed;
+  reference_counter_->RemoveLocalReference(gpu_obj_ref, &removed);
+  ASSERT_EQ(removed[0], gpu_obj_ref);
+  ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 1);
+}
 }  // namespace core
 }  // namespace ray
 
