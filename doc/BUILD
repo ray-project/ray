@@ -482,12 +482,7 @@ doctest(
             "source/data/batch_inference.rst",
             "source/data/transforming-data.rst",
             # These tests are currently failing.
-            "source/data/loading-data.rst",
-            "source/data/inspecting-data.rst",
-            "source/data/saving-data.rst",
-            "source/data/working-with-images.rst",
             "source/data/working-with-llms.rst",
-            "source/data/working-with-pytorch.rst",
         ],
     ),
     pytest_plugin_file = "//python/ray/data:tests/doctest_pytest_plugin.py",

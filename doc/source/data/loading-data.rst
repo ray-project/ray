@@ -540,6 +540,9 @@ Ray Data interoperates with distributed data processing frameworks like `Daft <h
         call :func:`~ray.data.from_spark`. This function creates a ``Dataset`` backed by
         the distributed Spark DataFrame partitions that underly the Spark DataFrame.
 
+        ..
+            TODO: This code snippet might not work correctly. We should test it.
+
         .. testcode::
             :skipif: True
 
