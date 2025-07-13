@@ -29,8 +29,8 @@ fi
 
 pip install --no-deps -r "requirements_compiled_rayllm_${PYTHON_CODE}_${CUDA_CODE}.txt"
 
-# https://buildkite.com/vllm/release/builds/5933#_
-pip install "vllm==0.9.2"
+# https://buildkite.com/vllm/release/builds/6330
+pip install "vllm@https://wheels.vllm.ai/f56d2996ca89989f9d80cde60650684c53e4caae/vllm-1.0.0.dev-cp38-abi3-manylinux1_x86_64.whl"
 
 # Export installed packages
 $HOME/anaconda3/bin/pip freeze > /home/ray/pip-freeze.txt
