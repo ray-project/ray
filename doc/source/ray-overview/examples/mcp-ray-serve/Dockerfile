@@ -7,4 +7,4 @@ RUN apt-get update && \
     apt-get install -y podman && \
     rm -rf /var/lib/apt/lists/*
 
-RUN python3 -m pip install --no-cache-dir "mcp==1.8.0" "asyncio==3.4.3"
+RUN python3 -m pip install --no-cache-dir "mcp==1.11.0" "asyncio==3.4.3"
