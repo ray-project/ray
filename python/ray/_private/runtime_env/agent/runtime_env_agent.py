@@ -28,6 +28,7 @@ from ray._private.runtime_env.plugin import (
 )
 from ray._private.runtime_env.py_executable import PyExecutablePlugin
 from ray._private.runtime_env.py_modules import PyModulesPlugin
+from ray._private.runtime_env.rocprof_sys import RocProfSysPlugin
 from ray._private.runtime_env.uv import UvPlugin
 from ray._private.runtime_env.working_dir import WorkingDirPlugin
 from ray._raylet import GcsClient
@@ -217,6 +218,7 @@ class RuntimeEnvAgent:
         # TODO(jonathan-anyscale): change the plugin to ProfilerPlugin
         # and unify with nsight and other profilers.
         self._nsight_plugin = NsightPlugin(self._runtime_env_dir)
+        self._rocprof_sys_plugin = RocProfSysPlugin(self._runtime_env_dir)
         self._mpi_plugin = MPIPlugin()
         self._image_uri_plugin = get_image_uri_plugin_cls()(temp_dir)
 
@@ -233,6 +235,7 @@ class RuntimeEnvAgent:
             self._java_jars_plugin,
             self._container_plugin,
             self._nsight_plugin,
+            self._rocprof_sys_plugin,
             self._mpi_plugin,
             self._image_uri_plugin,
         ]

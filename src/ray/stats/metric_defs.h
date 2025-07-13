@@ -22,7 +22,7 @@ namespace stats {
 
 /// The definitions of metrics that you can use everywhere.
 ///
-/// There are 4 types of metric:
+/// There are 4 types of metric. The values of the metrics are of type double.
 ///   Histogram: Histogram distribution of metric points.
 ///   Gauge: Keeps the last recorded value, drops everything before.
 ///   Count: The count of the number of metric points.
@@ -235,7 +235,7 @@ static Sum NumCachedWorkersSkippedRuntimeEnvironmentMismatch(
     "workers");
 
 static Sum NumCachedWorkersSkippedDynamicOptionsMismatch(
-    "internal_num_processes_skipped_job_mismatch",
+    "internal_num_processes_skipped_dynamic_options_mismatch",
     "The total number of cached workers skipped due to dynamic options mismatch.",
     "workers");
 

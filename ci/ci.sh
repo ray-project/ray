@@ -13,10 +13,6 @@ suppress_output() {
   "${WORKSPACE_DIR}"/ci/suppress_output "$@"
 }
 
-keep_alive() {
-  "${WORKSPACE_DIR}"/ci/keep_alive "$@"
-}
-
 # Calls the provided command with set -x temporarily suppressed
 suppress_xtrace() {
   {
@@ -360,7 +356,7 @@ build_wheels_and_jars() {
       validate_wheels_commit_str
       ;;
     msys*)
-      keep_alive "${WORKSPACE_DIR}"/python/build-wheel-windows.sh
+      "${WORKSPACE_DIR}"/python/build-wheel-windows.sh
       ;;
   esac
 }

@@ -25,6 +25,7 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "mock/ray/gcs/gcs_client/gcs_client.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/gcs/gcs_client/accessor.h"
@@ -330,7 +331,7 @@ class LocalObjectManagerTestWithMinSpillingSize {
         client_pool([&](const rpc::Address &addr) { return owner_client; }),
         manager_node_id_(NodeID::FromRandom()),
         max_fused_object_count_(max_fused_object_count),
-        gcs_client_(),
+        gcs_client_(std::make_unique<gcs::MockGcsClient>()),
         object_directory_(std::make_unique<OwnershipBasedObjectDirectory>(
             io_service_,
             *gcs_client_,
@@ -413,7 +414,7 @@ class LocalObjectManagerTestWithMinSpillingSize {
   MockIOWorkerPool worker_pool;
   NodeID manager_node_id_;
   size_t max_fused_object_count_;
-  std::shared_ptr<gcs::GcsClient> gcs_client_;
+  std::unique_ptr<gcs::GcsClient> gcs_client_;
   std::unique_ptr<IObjectDirectory> object_directory_;
   LocalObjectManager manager;
 

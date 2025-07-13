@@ -326,6 +326,22 @@ Status ActorInfoAccessor::AsyncRestartActorForLineageReconstruction(
   return Status::OK();
 }
 
+namespace {
+
+// TODO(dayshah): Yes this is temporary. https://github.com/ray-project/ray/issues/54327
+Status ComputeGcsStatus(const Status &grpc_status, const rpc::GcsStatus &gcs_status) {
+  // If gRPC status is ok return the GCS status, otherwise return the gRPC status.
+  if (grpc_status.ok()) {
+    return gcs_status.code() == static_cast<int>(StatusCode::OK)
+               ? Status::OK()
+               : Status(StatusCode(gcs_status.code()), gcs_status.message());
+  } else {
+    return grpc_status;
+  }
+}
+
+}  // namespace
+
 Status ActorInfoAccessor::AsyncRegisterActor(const ray::TaskSpecification &task_spec,
                                              const ray::gcs::StatusCallback &callback,
                                              int64_t timeout_ms) {
@@ -335,7 +351,7 @@ Status ActorInfoAccessor::AsyncRegisterActor(const ray::TaskSpecification &task_
   client_impl_->GetGcsRpcClient().RegisterActor(
       request,
       [callback](const Status &status, rpc::RegisterActorReply &&reply) {
-        callback(status);
+        callback(ComputeGcsStatus(status, reply.status()));
       },
       timeout_ms);
   return Status::OK();
@@ -348,7 +364,7 @@ Status ActorInfoAccessor::SyncRegisterActor(const ray::TaskSpecification &task_s
   request.mutable_task_spec()->CopyFrom(task_spec.GetMessage());
   auto status = client_impl_->GetGcsRpcClient().SyncRegisterActor(
       request, &reply, GetGcsTimeoutMs());
-  return status;
+  return ComputeGcsStatus(status, reply.status());
 }
 
 Status ActorInfoAccessor::AsyncKillActor(const ActorID &actor_id,

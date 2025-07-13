@@ -101,10 +101,10 @@ kubectl describe pods {YOUR_UNREADY_WORKER_POD_NAME}
 #   Type     Reason     Age                   From               Message
 #   ----     ------     ----                  ----               -------
 #   Normal   Scheduled  3m4s                  default-scheduler  Successfully assigned default/rayservice-no-ray-serve-replica-raycluster-dnm28-s-worker-77rzk to kind-control-plane
-#   Normal   Pulled     3m3s                  kubelet            Container image "rayproject/ray:2.41.0" already present on machine
+#   Normal   Pulled     3m3s                  kubelet            Container image "rayproject/ray:2.46.0" already present on machine
 #   Normal   Created    3m3s                  kubelet            Created container wait-gcs-ready
 #   Normal   Started    3m3s                  kubelet            Started container wait-gcs-ready
-#   Normal   Pulled     2m57s                 kubelet            Container image "rayproject/ray:2.41.0" already present on machine
+#   Normal   Pulled     2m57s                 kubelet            Container image "rayproject/ray:2.46.0" already present on machine
 #   Normal   Created    2m57s                 kubelet            Created container ray-worker
 #   Normal   Started    2m57s                 kubelet            Started container ray-worker
 #   Warning  Unhealthy  78s (x19 over 2m43s)  kubelet            Readiness probe failed: success

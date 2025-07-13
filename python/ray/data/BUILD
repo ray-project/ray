@@ -298,6 +298,20 @@ py_test(
 )
 
 py_test(
+    name = "test_expressions",
+    size = "small",
+    srcs = ["tests/test_expressions.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_avro",
     size = "small",
     srcs = ["tests/test_avro.py"],
@@ -464,10 +478,25 @@ py_test(
 )
 
 py_test(
-    name = "test_ecosystem",
+    name = "test_ecosystem_modin",
     size = "small",
-    srcs = ["tests/test_ecosystem.py"],
+    srcs = ["tests/test_ecosystem_modin.py"],
     tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_ecosystem_dask",
+    size = "small",
+    srcs = ["tests/test_ecosystem_dask.py"],
+    tags = [
+        "dask",
         "exclusive",
         "team:data",
     ],
@@ -875,20 +904,6 @@ py_test(
     name = "test_iceberg",
     size = "medium",
     srcs = ["tests/test_iceberg.py"],
-    tags = [
-        "exclusive",
-        "team:data",
-    ],
-    deps = [
-        ":conftest",
-        "//:ray_lib",
-    ],
-)
-
-py_test(
-    name = "test_mars",
-    size = "medium",
-    srcs = ["tests/test_mars.py"],
     tags = [
         "exclusive",
         "team:data",

@@ -38,7 +38,7 @@
 #include "ray/pubsub/subscriber.h"
 #include "ray/raylet/agent_manager.h"
 #include "ray/raylet/dependency_manager.h"
-#include "ray/raylet/local_object_manager.h"
+#include "ray/raylet/local_object_manager_interface.h"
 #include "ray/raylet/local_task_manager.h"
 #include "ray/raylet/placement_group_resource_manager.h"
 #include "ray/raylet/runtime_env_agent_client.h"
@@ -144,7 +144,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
       ClusterTaskManagerInterface &cluster_task_manager,
       IObjectDirectory &object_directory,
       ObjectManagerInterface &object_manager,
-      LocalObjectManager &local_object_manager,
+      LocalObjectManagerInterface &local_object_manager,
       DependencyManager &dependency_manager,
       WorkerPoolInterface &worker_pool,
       absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers,
@@ -202,7 +202,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   int GetObjectManagerPort() const { return object_manager_.GetServerPort(); }
 
-  LocalObjectManager &GetLocalObjectManager() { return local_object_manager_; }
+  LocalObjectManagerInterface &GetLocalObjectManager() { return local_object_manager_; }
 
   /// Trigger global GC across the cluster to free up references to actors or
   /// object ids.
@@ -255,6 +255,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \return Void.
   void HandleObjectMissing(const ObjectID &object_id);
 
+  /// Handle a `WorkerLease` request.
+  void HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest request,
+                                rpc::RequestWorkerLeaseReply *reply,
+                                rpc::SendReplyCallback send_reply_callback) override;
+
   /// Get pointers to objects stored in plasma. They will be
   /// released once the returned references go out of scope.
   ///
@@ -269,6 +274,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   std::optional<rpc::DrainRayletRequest> GetLocalDrainRequest() const {
     return cluster_resource_scheduler_.GetLocalResourceManager().GetLocalDrainRequest();
   }
+
+  /// gRPC Handlers
+  /// Handle a `PinObjectIDs` request.
+  void HandlePinObjectIDs(rpc::PinObjectIDsRequest request,
+                          rpc::PinObjectIDsReply *reply,
+                          rpc::SendReplyCallback send_reply_callback) override;
 
  private:
   FRIEND_TEST(NodeManagerStaticTest, TestHandleReportWorkerBacklog);
@@ -399,18 +410,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   ///
   /// \param worker Shared ptr to the worker, or nullptr if lost.
   void HandleDirectCallTaskUnblocked(const std::shared_ptr<WorkerInterface> &worker);
-
-  /// Kill a worker.
-  ///
-  /// This shouldn't be directly used to kill a worker. If you use this API
-  /// the worker's crash cause is not correctly recorded (it will be either SIGTERM
-  /// or an unexpected failure). Use `DestroyWorker` instead.
-  ///
-  /// \param worker The worker to kill.
-  /// \param force true to kill immediately, false to give time for the worker to
-  /// clean up and exit gracefully.
-  /// \return Void.
-  void KillWorker(std::shared_ptr<WorkerInterface> worker, bool force = false);
 
   /// Destroy a worker.
   /// We will disconnect the worker connection first and then kill the worker.
@@ -577,11 +576,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                                    rpc::CancelResourceReserveReply *reply,
                                    rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Handle a `WorkerLease` request.
-  void HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest request,
-                                rpc::RequestWorkerLeaseReply *reply,
-                                rpc::SendReplyCallback send_reply_callback) override;
-
   void HandlePrestartWorkers(rpc::PrestartWorkersRequest request,
                              rpc::PrestartWorkersReply *reply,
                              rpc::SendReplyCallback send_reply_callback) override;
@@ -631,11 +625,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   void HandleCancelWorkerLease(rpc::CancelWorkerLeaseRequest request,
                                rpc::CancelWorkerLeaseReply *reply,
                                rpc::SendReplyCallback send_reply_callback) override;
-
-  /// Handle a `PinObjectIDs` request.
-  void HandlePinObjectIDs(rpc::PinObjectIDsRequest request,
-                          rpc::PinObjectIDsReply *reply,
-                          rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `NodeStats` request.
   void HandleGetNodeStats(rpc::GetNodeStatsRequest request,
@@ -835,7 +824,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Manages all local objects that are pinned (primary
   /// copies), freed, and/or spilled.
-  LocalObjectManager &local_object_manager_;
+  LocalObjectManagerInterface &local_object_manager_;
 
   /// Map from node ids to addresses of the remote node managers.
   absl::flat_hash_map<NodeID, std::pair<std::string, int32_t>>

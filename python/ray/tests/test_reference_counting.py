@@ -20,7 +20,6 @@ from ray._common.test_utils import SignalActor, wait_for_condition
 from ray._private.test_utils import (
     kill_actor_and_wait_for_failure,
     put_object,
-    skip_flaky_core_test_premerge,
 )
 
 logger = logging.getLogger(__name__)
@@ -327,7 +326,6 @@ def test_recursive_serialized_reference(one_cpu_100MiB_shared, use_ray_put, fail
 @pytest.mark.parametrize(
     "use_ray_put,failure", [(False, False), (False, True), (True, False), (True, True)]
 )
-@skip_flaky_core_test_premerge("https://github.com/ray-project/ray/issues/41684")
 def test_actor_holding_serialized_reference(
     one_cpu_100MiB_shared, use_ray_put, failure
 ):

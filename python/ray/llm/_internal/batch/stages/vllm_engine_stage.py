@@ -475,7 +475,6 @@ class vLLMEngineStageUDF(StatefulStageUDF):
             model=self.model,
             model_source=model_source,
             idx_in_batch_column=self.IDX_IN_BATCH_COLUMN,
-            disable_log_stats=False,
             disable_log_requests=True,
             max_pending_requests=self.max_pending_requests,
             dynamic_lora_loading_path=dynamic_lora_loading_path,
@@ -566,6 +565,11 @@ class vLLMEngineStageUDF(StatefulStageUDF):
             len(batch),
             time_taken,
         )
+
+        # Log engine stats after each batch is done conditioned on the flag
+        # passed to the engine.
+        if not self.engine_kwargs.get("disable_log_stats", False):
+            await self.llm.engine.do_log_stats()
 
     def __del__(self):
         if hasattr(self, "llm"):
