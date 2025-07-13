@@ -1,7 +1,6 @@
 """The vLLM engine processor."""
 
-from typing import Any, Dict, Optional, List
-import uuid
+from typing import Any, Dict, Optional
 
 import transformers
 from pydantic import Field, root_validator
@@ -165,8 +164,8 @@ def build_vllm_engine_processor(
             compute=ray.data.ActorPoolStrategy(
                 min_size=config.concurrency,
                 max_size=config.concurrency,
-                max_tasks_in_flight_per_actor=max(
-                    DEFAULT_MAX_TASKS_IN_FLIGHT, config.max_concurrent_batches
+                max_tasks_in_flight_per_actor=config.experimental.get(
+                    "max_tasks_in_flight_per_actor", DEFAULT_MAX_TASKS_IN_FLIGHT
                 ),
             ),
             # The number of running batches "per actor" in Ray Core level.

@@ -705,6 +705,7 @@ def _generate_transform_fn_for_async_map(
         #       to keep the output ordering the same as that one of the input
         #       iterator.
         completed_tasks_queue = asyncio.Queue(maxsize=max_concurrency)
+
         # NOTE: This method is nested to support Python 3.9 where we only can
         #       init `asyncio.Queue` inside the async function
         async def _reorder() -> None:

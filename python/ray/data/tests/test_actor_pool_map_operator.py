@@ -761,8 +761,7 @@ def test_actor_pool_fault_tolerance_e2e(ray_start_cluster, restore_data_context)
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 2}], indirect=True)
 def test_shared_key_actor_pool_reuse(ray_start_regular, clean_registry):
-    """Test that ActorPoolMapOperator with the same shared_key share actor pools but remain separate operators."""
-
+    # Test that ActorPoolMapOperator with the same shared_key share actor pools
     @ray.remote
     class Counter:
         def __init__(self):
@@ -823,8 +822,7 @@ def test_shared_key_actor_pool_reuse(ray_start_regular, clean_registry):
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 2}], indirect=True)
 def test_shared_key_actor_pool_chaining(ray_start_regular, clean_registry):
-    """Test that chained operations with shared actor pools work without materialization."""
-
+    # Test that chained operations with shared actor pools work without materialization.
     @ray.remote
     class Counter:
         def __init__(self):
@@ -876,8 +874,7 @@ def test_shared_key_actor_pool_chaining(ray_start_regular, clean_registry):
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 2}], indirect=True)
 def test_shared_key_actor_pool_compatibility_error(ray_start_regular, clean_registry):
-    """Test that incompatible configurations raise an error when trying to reuse actor pools."""
-
+    # Test that incompatible configurations raise an error when trying to reuse actor pools.
     class UDFClass:
         def __call__(self, x):
             return x
@@ -919,8 +916,7 @@ def test_shared_key_actor_pool_compatibility_error(ray_start_regular, clean_regi
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 2}], indirect=True)
 def test_shared_registry_shutdown(ray_start_regular, clean_registry):
-    """Test that the shared actor pool registry is cleaned up when the process exits."""
-
+    # Test that the shared actor pool registry is cleaned up when the process exits.
     class UDFClass:
         def __call__(self, x):
             return x

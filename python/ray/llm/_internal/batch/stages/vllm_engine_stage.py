@@ -690,7 +690,6 @@ class vLLMEngineStage(StatefulStage):
         batch_size: int,
         data_column: str,
     ) -> Dict[str, Any]:
-        """Override to inject shared engine key for logical operator creation."""
         kwargs = super().get_dataset_map_batches_kwargs(batch_size, data_column)
         if getattr(self, "_shared_engine_key", None):
             kwargs["shared_key"] = self._shared_engine_key

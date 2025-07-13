@@ -270,7 +270,7 @@ def test_multi_turn_shared_engine(gpu_type, model_opt_125m):
 
     shared_engine_key = "shared_engine_key"
 
-    processor_config_1 = vLLMEngineProcessorConfig(
+    processor_config1 = vLLMEngineProcessorConfig(
         model_source=model_opt_125m,
         engine_kwargs=dict(
             enable_prefix_caching=False,
@@ -290,7 +290,7 @@ def test_multi_turn_shared_engine(gpu_type, model_opt_125m):
         shared_engine_key=shared_engine_key,
     )
 
-    processor_config_2 = vLLMEngineProcessorConfig(
+    processor_config2 = vLLMEngineProcessorConfig(
         model_source=model_opt_125m,
         engine_kwargs=dict(
             enable_prefix_caching=False,
@@ -310,7 +310,7 @@ def test_multi_turn_shared_engine(gpu_type, model_opt_125m):
     )
 
     processor1 = ProcessorBuilder.build(
-        processor_config_1,
+        processor_config1,
         preprocess=lambda row: dict(
             messages=[
                 {"role": "system", "content": "You are a calculator"},
@@ -329,7 +329,7 @@ def test_multi_turn_shared_engine(gpu_type, model_opt_125m):
     )
 
     processor2 = ProcessorBuilder.build(
-        processor_config_2,
+        processor_config2,
         preprocess=lambda row: dict(
             messages=[
                 {"role": "system", "content": "Based on the previous conversation"},
@@ -359,6 +359,100 @@ def test_multi_turn_shared_engine(gpu_type, model_opt_125m):
     print(outs)
     assert all("resp1" in out for out in outs)
     assert all("resp2" in out for out in outs)
+
+
+def test_shared_engine_instantiated_only_once(gpu_type, model_opt_125m):
+    @ray.remote
+    class UDFCounter:
+        def __init__(self):
+            self.count = 0
+
+        def increment(self):
+            self.count += 1
+
+        def get_count(self):
+            return self.count
+
+    counter = UDFCounter.remote()
+
+    class MockVLLMEngineStageUDF:
+        def __init__(self, *args, **kwargs):
+            ray.get(counter.increment.remote())
+
+        async def udf(self, batch):
+            for i, row in enumerate(batch):
+                yield {
+                    "generated_text": f"mock_response_{i}",
+                    "num_input_tokens": 10,
+                    "num_generated_tokens": 5,
+                }
+
+    with patch(
+        "ray.llm._internal.batch.stages.vllm_engine_stage.vLLMEngineStageUDF", MagicMock
+    ) as mock_class:
+        mock_class.return_value = MockVLLMEngineStageUDF()
+
+        shared_engine_key = "shared_engine_key"
+        processor_config1 = vLLMEngineProcessorConfig(
+            model_source=model_opt_125m,
+            shared_engine_key=shared_engine_key,
+            engine_kwargs=dict(
+                enable_prefix_caching=False,
+                enable_chunked_prefill=True,
+                max_num_batched_tokens=2048,
+                max_model_len=2048,
+                # Skip CUDA graph capturing to reduce startup time.
+                enforce_eager=True,
+            ),
+            batch_size=16,
+            accelerator_type=gpu_type,
+            concurrency=1,
+            apply_chat_template=False,
+            tokenize=False,
+            detokenize=False,
+        )
+
+        processor_config2 = vLLMEngineProcessorConfig(
+            model_source=model_opt_125m,
+            shared_engine_key=shared_engine_key,
+            engine_kwargs=dict(
+                enable_prefix_caching=False,
+                enable_chunked_prefill=True,
+                max_num_batched_tokens=2048,
+                max_model_len=2048,
+                # Skip CUDA graph capturing to reduce startup time.
+                enforce_eager=True,
+            ),
+            batch_size=16,
+            accelerator_type=gpu_type,
+            concurrency=1,
+            apply_chat_template=False,
+            tokenize=False,
+            detokenize=False,
+        )
+
+        processor1 = ProcessorBuilder.build(processor_config1)
+        processor2 = ProcessorBuilder.build(processor_config2)
+
+        ds = ray.data.from_items(
+            [
+                {"prompt": "Hello world!", "sampling_params": {"temperature": 0.7}},
+            ]
+        )
+
+        ds1 = processor1(ds)
+        ds1.take_all()
+
+        udf_count = ray.get(counter.get_count.remote())
+        assert udf_count == 1
+
+        ds2 = processor2(ds)
+        ds2.take_all()
+
+        udf_count = ray.get(counter.get_count.remote())
+        assert (
+            udf_count == 1
+        ), f"Expected UDF to be instantiated only once, but was instantiated {udf_count} times"
 
 
 class TestVLLMEngineProcessorConfig:

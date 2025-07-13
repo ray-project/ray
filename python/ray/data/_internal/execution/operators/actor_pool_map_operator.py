@@ -7,7 +7,7 @@ import uuid
 import warnings
 from abc import abstractmethod
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, Iterator, List, Optional, Set, Tuple, Union
+from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
 from collections import defaultdict
 
 import ray
@@ -34,7 +34,7 @@ from ray.data._internal.execution.operators.map_transformer import MapTransforme
 from ray.data._internal.execution.util import locality_string
 from ray.data._internal.remote_fn import _add_system_error_to_retry_exceptions
 from ray.data.block import Block, BlockMetadata
-from ray.data.context import DataContext
+from ray.data.context import DataContext, DEFAULT_MAX_TASKS_IN_FLIGHT_PER_ACTOR
 from ray.types import ObjectRef
 from ray.util.common import INT32_MAX
 
@@ -145,6 +145,22 @@ class ActorPoolMapOperator(MapOperator):
 
         max_actor_concurrency = self._ray_remote_args.get("max_concurrency", 1)
 
+        actor_pool_kwargs = {
+            "create_actor_fn": self._start_actor,
+            "per_actor_resource_usage": per_actor_resource_usage,
+            "min_size": compute_strategy.min_size,
+            "max_size": compute_strategy.max_size,
+            "max_actor_concurrency": max_actor_concurrency,
+            "max_tasks_in_flight_per_actor": (
+                # NOTE: Unless explicitly configured by the user, max tasks-in-flight config
+                #       will fall back to be 2 x of `max_concurrency`, entailing that for every
+                #       running task we'd allow 1 more task to be enqueued
+                compute_strategy.max_tasks_in_flight_per_actor
+                or data_context.max_tasks_in_flight_per_actor
+                or max_actor_concurrency * 2
+            ),
+            "_enable_actor_pool_on_exit_hook": self.data_context._enable_actor_pool_on_exit_hook,
+        }
 
         if shared_key is not None:
             existing_pool = _shared_actor_pool_registry.get(shared_key)
@@ -154,40 +170,10 @@ class ActorPoolMapOperator(MapOperator):
                 )
                 self._actor_pool = existing_pool
             else:
-                self._actor_pool = _ActorPool(
-                    self._start_actor,
-                    per_actor_resource_usage,
-                    min_size=compute_strategy.min_size,
-                    max_size=compute_strategy.max_size,
-                    max_actor_concurrency=max_actor_concurrency,
-                    max_tasks_in_flight_per_actor=(
-                        # NOTE: Unless explicitly configured by the user, max tasks-in-flight config
-                        #       will fall back to be 2 x of `max_concurrency`, entailing that for every
-                        #       running task we'd allow 1 more task to be enqueued
-                        compute_strategy.max_tasks_in_flight_per_actor
-                        or data_context.max_tasks_in_flight_per_actor
-                        or max_actor_concurrency * 2
-                    ),
-                    _enable_actor_pool_on_exit_hook=self.data_context._enable_actor_pool_on_exit_hook,
-                )
+                self._actor_pool = _ActorPool(**actor_pool_kwargs)
             _shared_actor_pool_registry.register(shared_key, self._actor_pool)
         else:
-            self._actor_pool = _ActorPool(
-                self._start_actor,
-                per_actor_resource_usage,
-                min_size=compute_strategy.min_size,
-                max_size=compute_strategy.max_size,
-                max_actor_concurrency=max_actor_concurrency,
-                max_tasks_in_flight_per_actor=(
-                    # NOTE: Unless explicitly configured by the user, max tasks-in-flight config
-                    #       will fall back to be 2 x of `max_concurrency`, entailing that for every
-                    #       running task we'd allow 1 more task to be enqueued
-                    compute_strategy.max_tasks_in_flight_per_actor
-                    or data_context.max_tasks_in_flight_per_actor
-                    or max_actor_concurrency * 2
-                ),
-                _enable_actor_pool_on_exit_hook=self.data_context._enable_actor_pool_on_exit_hook,
-            )
+            self._actor_pool = _ActorPool(**actor_pool_kwargs)
 
         self._actor_task_selector = self._create_task_selector(self._actor_pool)
         # A queue of bundles awaiting dispatch to actors.
@@ -223,14 +209,17 @@ class ActorPoolMapOperator(MapOperator):
         self._actor_locality_enabled = options.actor_locality_enabled
         super().start(options)
 
-        # Create the actor workers and add them to the pool (only if necessary).
+        # Create the actor workers and add them to the pool.
         self._cls = ray.remote(**self._ray_remote_args)(_MapWorker)
 
         # If we're reusing actors across executions, some actors may already exist in
         # the pool. Only create the delta needed to satisfy the minimum size.
-        delta = max(0, self._actor_pool.min_size() - self._actor_pool.current_size())
-        if delta > 0:
-            self._actor_pool.scale_up(delta, reason="scaling to min size")
+        self._actor_pool.scale(
+            ActorPoolScalingRequest(
+                delta=self._actor_pool.min_size() - self._actor_pool.current_size(),
+                reason="scaling to min size",
+            )
+        )
 
         # If `wait_for_min_actors_s` is specified and is positive, then
         # Actor Pool will block until min number of actors is provisioned.
@@ -539,7 +528,7 @@ class ActorPoolMapOperator(MapOperator):
             or existing_pool.max_tasks_in_flight_per_actor()
             != (
                 compute_strategy.max_tasks_in_flight_per_actor
-                or DEFAULT_MAX_TASKS_IN_FLIGHT
+                or DEFAULT_MAX_TASKS_IN_FLIGHT_PER_ACTOR
             )
         ):
             raise ValueError(
@@ -548,7 +537,7 @@ class ActorPoolMapOperator(MapOperator):
                 f"Existing pool: min_size={existing_pool.min_size()}, max_size={existing_pool.max_size()}, "
                 f"max_tasks_in_flight={existing_pool.max_tasks_in_flight_per_actor()}. "
                 f"New operator: min_size={compute_strategy.min_size}, max_size={compute_strategy.max_size}, "
-                f"max_tasks_in_flight={compute_strategy.max_tasks_in_flight_per_actor or DEFAULT_MAX_TASKS_IN_FLIGHT}."
+                f"max_tasks_in_flight={compute_strategy.max_tasks_in_flight_per_actor or DEFAULT_MAX_TASKS_IN_FLIGHT_PER_ACTOR}."
             )
 
         existing_resources = existing_pool.per_actor_resource_usage()
@@ -1186,6 +1175,7 @@ class _ActorPool(AutoscalingActorPool):
             return self.num_tasks_in_flight() / (
                 self._max_actor_concurrency * self.num_running_actors()
             )
+
 
 class SharedActorPoolRegistry:
     """
