@@ -25,6 +25,9 @@ from ray.llm._internal.serve.configs.server_models import (
     Prompt,
 )
 from ray.llm._internal.serve.deployments.llm.llm_engine import LLMEngine
+from ray.llm._internal.serve.deployments.llm.multiplex.lora_model_loader import (
+    LoraModelLoader,
+)
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_engine import VLLMEngine
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_engine_stats import (
     VLLMEngineStats,
@@ -34,9 +37,6 @@ from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import (
     KV_TRANSFER_PARAMS_KEY,
     VLLMGenerationRequest,
     VLLMSamplingParams,
-)
-from ray.llm._internal.serve.deployments.utils.node_initialization_utils import (
-    InitializeNodeOutput,
 )
 
 
@@ -53,14 +53,6 @@ class MockVLLMEngine(LLMEngine):
         self.llm_config = llm_config
 
         self._stats = VLLMEngineStatTracker()
-
-    @staticmethod
-    async def initialize_node(llm_config: LLMConfig) -> InitializeNodeOutput:
-        return InitializeNodeOutput(
-            placement_group=None,
-            runtime_env={},
-            extra_init_kwargs={},
-        )
 
     async def start(self):
         """No-Op"""
@@ -267,14 +259,6 @@ class MockMultiplexEngine(LLMEngine):
     def __init__(self, *args, **kwargs):
         self.started = False
 
-    @staticmethod
-    async def initialize_node(llm_config: LLMConfig) -> InitializeNodeOutput:
-        return InitializeNodeOutput(
-            placement_group=None,
-            runtime_env={},
-            extra_init_kwargs={},
-        )
-
     async def prepare_request(
         self,
         request_id: str,
@@ -311,17 +295,18 @@ class MockMultiplexEngine(LLMEngine):
         return True
 
 
-class FakeLoraModelLoader:
+class FakeLoraModelLoader(LoraModelLoader):
+    """Fake LoRA model loader for testing."""
+
     async def load_model(
         self, lora_model_id: str, llm_config: LLMConfig
     ) -> DiskMultiplexConfig:
-        return DiskMultiplexConfig.model_validate(
-            {
-                "model_id": lora_model_id,
-                "max_total_tokens": llm_config.max_request_context_length,
-                "local_path": "/local/path",
-                "lora_assigned_int_id": 1,
-            }
+        """Load a fake LoRA model."""
+        return DiskMultiplexConfig(
+            model_id=lora_model_id,
+            max_total_tokens=llm_config.max_request_context_length,
+            local_path="/fake/local/path",
+            lora_assigned_int_id=random.randint(1, 100),
         )
 
 
