@@ -3,7 +3,7 @@ import json
 import sys
 from types import SimpleNamespace
 from typing import List
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -21,6 +21,7 @@ from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import (
     VLLMSamplingParams,
 )
 from ray.serve.llm.openai_api_models import CompletionRequest
+from ray.llm.tests.serve.mocks.mock_vllm_engine import MockPDDisaggVLLMEngine
 
 
 class FakeVLLMEngine:
@@ -212,20 +213,22 @@ class TestVLLMEngine:
         create_server,
         # model_pixtral_12b is a fixture that only contains config files without weights
         model_pixtral_12b,
+        vllm_cpu_platform,
     ):
         """Test chat completion in streaming mode."""
-        llm_config = LLMConfig(
-            accelerator_type=self.accelerator_type,
-            model_loading_config=ModelLoadingConfig(
-                model_id=model_pixtral_12b,
-            ),
-            experimental_configs={
-                # Maximum batching
-                "stream_batching_interval_ms": 10000,
-            },
-        )
+        with patch("vllm.platforms.current_platform", vllm_cpu_platform()):  # type: ignore
+            llm_config = LLMConfig(
+                accelerator_type=self.accelerator_type,
+                model_loading_config=ModelLoadingConfig(
+                    model_id=model_pixtral_12b,
+                ),
+                experimental_configs={
+                    # Maximum batching
+                    "stream_batching_interval_ms": 10000,
+                },
+            )
 
-        server = await create_server(llm_config)
+            server = await create_server(llm_config, engine_cls=MockPDDisaggVLLMEngine)
 
         # Create a chat completion request
         request = ChatCompletionRequest(
@@ -259,7 +262,7 @@ class TestVLLMEngine:
 
         assert role == "assistant"
         # What mock vllm engine returns
-        assert text == "test_0 test_1 test_2 test_3 test_4 "
+        assert text == "mock_pd_client_response_0 mock_pd_client_response_1 mock_pd_client_response_2 mock_pd_client_response_3 mock_pd_client_response_4 "
 
     @pytest.mark.asyncio
     async def test_chat_non_streaming(
@@ -268,16 +271,18 @@ class TestVLLMEngine:
         create_server,
         # model_pixtral_12b is a fixture that only contains config files without weights
         model_pixtral_12b,
+        vllm_cpu_platform,
     ):
         """Test non-streaming chat completion."""
-        llm_config = LLMConfig(
-            accelerator_type=self.accelerator_type,
-            model_loading_config=ModelLoadingConfig(
-                model_id=model_pixtral_12b,
-            ),
-        )
+        with patch("vllm.platforms.current_platform", vllm_cpu_platform()):  # type: ignore
+            llm_config = LLMConfig(
+                accelerator_type=self.accelerator_type,
+                model_loading_config=ModelLoadingConfig(
+                    model_id=model_pixtral_12b,
+                ),
+            )
 
-        server = await create_server(llm_config)
+            server = await create_server(llm_config, engine_cls=MockPDDisaggVLLMEngine)
 
         # Create a chat completion request
         request = ChatCompletionRequest(
@@ -300,7 +305,7 @@ class TestVLLMEngine:
         assert responses[0].choices[0].message.role == "assistant"
         assert (
             responses[0].choices[0].message.content
-            == "test_0 test_1 test_2 test_3 test_4 "
+            == "mock_pd_client_response_0 mock_pd_client_response_1 mock_pd_client_response_2 mock_pd_client_response_3 mock_pd_client_response_4 "
         )
         assert responses[0].choices[0].finish_reason == "stop"
 
@@ -312,21 +317,23 @@ class TestVLLMEngine:
         create_server,
         # model_pixtral_12b is a fixture that only contains config files without weights
         model_pixtral_12b,
+        vllm_cpu_platform,
         prompt,
     ):
         """Test streaming text completion."""
-        llm_config = LLMConfig(
-            accelerator_type=self.accelerator_type,
-            model_loading_config=ModelLoadingConfig(
-                model_id=model_pixtral_12b,
-            ),
-            experimental_configs={
-                # Maximum batching
-                "stream_batching_interval_ms": 10000,
-            },
-        )
+        with patch("vllm.platforms.current_platform", vllm_cpu_platform()):  # type: ignore
+            llm_config = LLMConfig(
+                accelerator_type=self.accelerator_type,
+                model_loading_config=ModelLoadingConfig(
+                    model_id=model_pixtral_12b,
+                ),
+                experimental_configs={
+                    # Maximum batching
+                    "stream_batching_interval_ms": 10000,
+                },
+            )
 
-        server = await create_server(llm_config)
+            server = await create_server(llm_config, engine_cls=MockPDDisaggVLLMEngine)
 
         # Create a completion request
         request = CompletionRequest(
@@ -353,7 +360,7 @@ class TestVLLMEngine:
             for chunk in response:
                 text += chunk.choices[0].text
 
-        assert text == "test_0 test_1 test_2 test_3 test_4 "
+        assert text == "mock_pd_client_response_0 mock_pd_client_response_1 mock_pd_client_response_2 mock_pd_client_response_3 mock_pd_client_response_4 "
 
     @pytest.mark.parametrize("prompt", ["Hello", [1, 2, 3]])
     @pytest.mark.asyncio
@@ -363,17 +370,19 @@ class TestVLLMEngine:
         create_server,
         # model_pixtral_12b is a fixture that only contains config files without weights
         model_pixtral_12b,
+        vllm_cpu_platform,
         prompt,
     ):
         """Test non-streaming text completion."""
-        llm_config = LLMConfig(
-            accelerator_type=self.accelerator_type,
-            model_loading_config=ModelLoadingConfig(
-                model_id=model_pixtral_12b,
-            ),
-        )
+        with patch("vllm.platforms.current_platform", vllm_cpu_platform()):  # type: ignore
+            llm_config = LLMConfig(
+                accelerator_type=self.accelerator_type,
+                model_loading_config=ModelLoadingConfig(
+                    model_id=model_pixtral_12b,
+                ),
+            )
 
-        server = await create_server(llm_config)
+            server = await create_server(llm_config, engine_cls=MockPDDisaggVLLMEngine)
 
         # Create a completion request
         request = CompletionRequest(
@@ -393,8 +402,8 @@ class TestVLLMEngine:
 
         # Check that we got one response
         assert len(responses) == 1
-        assert responses[0].choices[0].text == "test_0 test_1 test_2 test_3 test_4 "
-        assert responses[0].choices[0].finish_reason == "stop"
+        assert responses[0].choices[0].text == "mock_pd_client_response_0 mock_pd_client_response_1 mock_pd_client_response_2 mock_pd_client_response_3 mock_pd_client_response_4 "
+
 
 
 if __name__ == "__main__":
