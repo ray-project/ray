@@ -117,6 +117,8 @@ of the returned batch, set ``batch_format``.
 
             import ray
 
+            assert ray.data.context.DataContext.get_current().execution_options.preserve_order
+
             ds = ray.data.read_csv("s3://anonymous@air-example-data/iris.csv")
 
             batch = ds.take_batch(batch_size=2, batch_format="pandas")
