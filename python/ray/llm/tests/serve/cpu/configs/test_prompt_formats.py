@@ -73,6 +73,8 @@ def test_prompt_validation():
         ]
     )
 
+    Prompt(prompt=[0, 1, 2, 3])
+
     # Test invalid prompt creation
     with pytest.raises(ValidationError):
         # Empty list should raise error

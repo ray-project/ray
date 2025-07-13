@@ -585,7 +585,7 @@ glfw==2.6.3
     #   mujoco
 glom==22.1.0
     # via semgrep
-google-api-core==1.34.0
+google-api-core==2.24.2
     # via
     #   -r python/requirements/ml/data-test-requirements.txt
     #   google-api-python-client
@@ -679,9 +679,9 @@ grpcio==1.66.2 ; sys_platform != "darwin"
     #   mlagents-envs
     #   tensorboard
     #   tensorflow
-grpcio-status==1.48.2
+grpcio-status==1.62.3
     # via google-api-core
-grpcio-tools==1.48.2
+grpcio-tools==1.62.3
     # via -r python/requirements/cloud-requirements.txt
 gsutil==5.27
     # via -r python/requirements/docker/ray-docker-requirements.txt
@@ -1290,7 +1290,7 @@ openapi-schema-validator==0.6.3
     #   openapi-spec-validator
 openapi-spec-validator==0.7.1
     # via moto
-opencensus==0.11.3
+opencensus==0.11.4
     # via -r python/requirements.txt
 opencensus-context==0.1.3
     # via opencensus
@@ -1485,11 +1485,13 @@ prophet==1.1.5
     # via -r python/requirements/ml/tune-test-requirements.txt
 proto-plus==1.22.3
     # via
+    #   google-api-core
     #   google-cloud-bigquery
     #   google-cloud-bigquery-storage
-protobuf==3.20.3
+protobuf==4.25.8
     # via
     #   -r python/requirements.txt
+    #   -r python/requirements/test-requirements.txt
     #   dm-control
     #   google-api-core
     #   google-cloud-bigquery
@@ -2024,6 +2026,7 @@ six==1.16.0
     #   ml-collections
     #   msrestazure
     #   oauth2client
+    #   opencensus
     #   paramiko
     #   paramz
     #   patsy
@@ -2164,7 +2167,7 @@ tensorflow-io-gcs-filesystem==0.31.0 ; python_version < "3.12"
     # via
     #   -r python/requirements/ml/dl-cpu-requirements.txt
     #   tensorflow
-tensorflow-metadata==1.14.0
+tensorflow-metadata==1.13.1
     # via tensorflow-datasets
 tensorflow-probability==0.23.0 ; python_version < "3.12"
     # via -r python/requirements/ml/dl-cpu-requirements.txt
