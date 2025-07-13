@@ -20,8 +20,8 @@ from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import (
     VLLMGenerationRequest,
     VLLMSamplingParams,
 )
-from ray.serve.llm.openai_api_models import CompletionRequest
 from ray.llm.tests.serve.mocks.mock_vllm_engine import MockPDDisaggVLLMEngine
+from ray.serve.llm.openai_api_models import CompletionRequest
 
 
 class FakeVLLMEngine:
@@ -262,7 +262,10 @@ class TestVLLMEngine:
 
         assert role == "assistant"
         # What mock vllm engine returns
-        assert text == "mock_pd_client_response_0 mock_pd_client_response_1 mock_pd_client_response_2 mock_pd_client_response_3 mock_pd_client_response_4 "
+        assert (
+            text
+            == "mock_pd_client_response_0 mock_pd_client_response_1 mock_pd_client_response_2 mock_pd_client_response_3 mock_pd_client_response_4 "
+        )
 
     @pytest.mark.asyncio
     async def test_chat_non_streaming(
@@ -360,7 +363,10 @@ class TestVLLMEngine:
             for chunk in response:
                 text += chunk.choices[0].text
 
-        assert text == "mock_pd_client_response_0 mock_pd_client_response_1 mock_pd_client_response_2 mock_pd_client_response_3 mock_pd_client_response_4 "
+        assert (
+            text
+            == "mock_pd_client_response_0 mock_pd_client_response_1 mock_pd_client_response_2 mock_pd_client_response_3 mock_pd_client_response_4 "
+        )
 
     @pytest.mark.parametrize("prompt", ["Hello", [1, 2, 3]])
     @pytest.mark.asyncio
@@ -402,8 +408,10 @@ class TestVLLMEngine:
 
         # Check that we got one response
         assert len(responses) == 1
-        assert responses[0].choices[0].text == "mock_pd_client_response_0 mock_pd_client_response_1 mock_pd_client_response_2 mock_pd_client_response_3 mock_pd_client_response_4 "
-
+        assert (
+            responses[0].choices[0].text
+            == "mock_pd_client_response_0 mock_pd_client_response_1 mock_pd_client_response_2 mock_pd_client_response_3 mock_pd_client_response_4 "
+        )
 
 
 if __name__ == "__main__":
