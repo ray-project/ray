@@ -206,7 +206,7 @@ def validate_ray_installed_in_conda_env(env: str):
         exec_cmd([conda_path, "--help"], throw_on_error=False)
     except EnvironmentError:
         raise ValueError(f"Could not find Conda executable at {conda_path}.")
-    _, stdout, _ = exec_cmd([conda_path, "list", "-n", env, "--full-name", "ray", "--json"])
+    _, stdout, _ = exec_cmd([conda_path, "list", "-n", env, "--full-name", "ray-core", "--json"])
     result = json.loads(stdout)
     if len(result) == 0:
         raise ValueError(f"Ray is not installed in conda_env {env}.")
