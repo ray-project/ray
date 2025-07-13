@@ -37,7 +37,7 @@ class PDServingArgs(BaseModel):
     prefill_config: Union[str, LLMConfig]
     decode_config: Union[str, LLMConfig]
     proxy_deployment_config: Dict[str, Any] = Field(
-        default_factory=dict,
+        default_factory=lambda: dict(max_ongoing_requests=1000),
         description="""
             The Ray @server.deployment options for the proxy server.
         """,
