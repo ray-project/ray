@@ -856,8 +856,7 @@ def start(
             }
 
         if (
-            no_monitor  # KubeRay sets this flag when autoscaler is enabled.
-            and usage_constant.KUBERAY_ENV in os.environ  # KubeRay exclusive.
+            usage_constant.KUBERAY_ENV in os.environ  # KubeRay exclusive.
             and "RAY_CLOUD_INSTANCE_ID" in os.environ  # required by autoscaler v2.
             and "RAY_NODE_TYPE_NAME" in os.environ  # required by autoscaler v2.
         ):
