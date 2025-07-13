@@ -851,7 +851,6 @@ py_test_module_list(
         "test_dataclient_disconnect.py",
         "test_iter.py",
         "test_placement_group.py",
-        "test_scheduling_performance.py",
         "test_state_api_2.py",
         "test_task_events.py",
         "test_unavailable_actors.py",
@@ -1227,6 +1226,7 @@ py_test(
         "exclusive",
         "medium_size_python_tests_k_to_z",
         "no_windows",
+        "serve_tracing",
         "team:serve",
     ],
     deps = [

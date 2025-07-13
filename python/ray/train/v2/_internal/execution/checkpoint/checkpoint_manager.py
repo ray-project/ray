@@ -9,9 +9,13 @@ from ray.train._internal.checkpoint_manager import (
 )
 from ray.train._internal.session import _TrainingResult
 from ray.train.v2._internal.exceptions import CheckpointManagerInitializationError
-from ray.train.v2._internal.execution.callback import ReportCallback
+from ray.train.v2._internal.execution.callback import (
+    ReportCallback,
+    WorkerGroupCallback,
+)
 from ray.train.v2._internal.execution.context import StorageContext
 from ray.train.v2._internal.execution.storage import _delete_fs_path, _exists_at_fs_path
+from ray.train.v2._internal.execution.worker_group import Worker
 
 try:
     from pydantic import BaseModel
@@ -69,7 +73,7 @@ def _get_state_from_training_result(
     )
 
 
-class CheckpointManager(_CheckpointManager, ReportCallback):
+class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback):
     def __init__(
         self,
         checkpoint_config: CheckpointConfig,
@@ -269,3 +273,15 @@ class CheckpointManager(_CheckpointManager, ReportCallback):
         self.register_checkpoint(
             _TrainingResult(checkpoint=checkpoint, metrics=rank_0_metrics)
         )
+
+    # --------------------------
+    # WorkerGroupCallback
+    # --------------------------
+
+    def before_init_train_context(self, workers: List[Worker]) -> Dict[str, List[Any]]:
+        latest_checkpoint = (
+            self.latest_checkpoint_result.checkpoint
+            if self.latest_checkpoint_result
+            else None
+        )
+        return {"checkpoint": [latest_checkpoint] * len(workers)}
