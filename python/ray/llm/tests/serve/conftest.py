@@ -138,3 +138,20 @@ def create_server():
         return server
 
     return creator
+
+
+@pytest.fixture
+def vllm_cpu_platform():
+    from vllm.platforms.interface import UnspecifiedPlatform
+
+    class FakePlatform(UnspecifiedPlatform):
+        """
+        vllm UnspecifiedPlatform has some interfaces that's left unimplemented, which
+        could trigger exception in following tests. So we implement needed interfaces
+        and patch.
+        """
+
+        def is_async_output_supported(self, enforce_eager: bool) -> bool:
+            return True
+
+    return FakePlatform

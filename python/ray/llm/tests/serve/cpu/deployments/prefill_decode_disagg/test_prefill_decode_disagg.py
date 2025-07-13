@@ -2,8 +2,8 @@ import sys
 from unittest.mock import patch
 
 import pytest
+from pytest import MonkeyPatch
 from vllm.config import KVTransferConfig
-from vllm.platforms.interface import UnspecifiedPlatform
 
 from ray.llm._internal.serve.configs.prompt_formats import Prompt
 from ray.llm._internal.serve.configs.server_models import LLMRawResponse
@@ -55,17 +55,6 @@ class TestServingArgsParsing:
         assert app is not None
 
 
-class FakePlatform(UnspecifiedPlatform):
-    """
-    vllm UnspecifiedPlatform has some interfaces that's left unimplemented, which
-    could trigger exception in following tests. So we implement needed interfaces
-    and patch.
-    """
-
-    def is_async_output_supported(self, enforce_eager: bool) -> bool:
-        return True
-
-
 class TestPDDisaggLLMServer:
     """Test PD-disaggregated LLM server.
 
@@ -75,33 +64,34 @@ class TestPDDisaggLLMServer:
     """
 
     @pytest.mark.asyncio
-    @patch("vllm.platforms.current_platform", FakePlatform())
     async def test_chat_non_streaming(
         self,
         create_server,
         # model_pixtral_12b is a fixture that only contains config files without weights
         model_pixtral_12b,
+        vllm_cpu_platform,
     ):
         """This is smoke testing that normal chat completion works."""
-        llm_config = LLMConfig(
-            # Here we
-            # 1. want to skip GPU placement in cpu test cases (https://github.com/ray-project/ray/blob/945b9d5dd55c9215d0aeb94a66cfda3b71c2fd43/python/ray/llm/_internal/serve/deployments/llm/vllm/vllm_engine.py#L330)
-            # 2. cannot set it to None, otherwise it defaults to use_gpu=True (https://github.com/ray-project/ray/blob/c7e07328c9efbd0d67bf2da4fa098d6492478ef4/python/ray/llm/_internal/serve/deployments/llm/vllm/vllm_models.py#L159)
-            # 3. cannot use "CPU" or anything random, which violates the check (https://github.com/ray-project/ray/blob/945b9d5dd55c9215d0aeb94a66cfda3b71c2fd43/python/ray/llm/_internal/serve/configs/server_models.py#L325)
-            # so we select a non-NVIDIA type here: Intel-GAUDI.
-            accelerator_type="Intel-GAUDI",
-            model_loading_config=ModelLoadingConfig(
-                model_id=model_pixtral_12b,
-            ),
-            engine_kwargs={
-                "kv_transfer_config": KVTransferConfig(
-                    kv_connector="NixlConnector",
-                    kv_role="kv_both",
+        with patch("vllm.platforms.current_platform", vllm_cpu_platform()):
+            llm_config = LLMConfig(
+                # Here we
+                # 1. want to skip GPU placement in cpu test cases (https://github.com/ray-project/ray/blob/945b9d5dd55c9215d0aeb94a66cfda3b71c2fd43/python/ray/llm/_internal/serve/deployments/llm/vllm/vllm_engine.py#L330)
+                # 2. cannot set it to None, otherwise it defaults to use_gpu=True (https://github.com/ray-project/ray/blob/c7e07328c9efbd0d67bf2da4fa098d6492478ef4/python/ray/llm/_internal/serve/deployments/llm/vllm/vllm_models.py#L159)
+                # 3. cannot use "CPU" or anything random, which violates the check (https://github.com/ray-project/ray/blob/945b9d5dd55c9215d0aeb94a66cfda3b71c2fd43/python/ray/llm/_internal/serve/configs/server_models.py#L325)
+                # so we select a non-NVIDIA type here: Intel-GAUDI.
+                accelerator_type="Intel-GAUDI",
+                model_loading_config=ModelLoadingConfig(
+                    model_id=model_pixtral_12b,
                 ),
-            },
-        )
+                engine_kwargs={
+                    "kv_transfer_config": KVTransferConfig(
+                        kv_connector="NixlConnector",
+                        kv_role="kv_both",
+                    ),
+                },
+            )
 
-        server = await create_server(llm_config, engine_cls=MockPDDisaggVLLMEngine)
+            server = await create_server(llm_config, engine_cls=MockPDDisaggVLLMEngine)
 
         # Create a chat completion request
         request = ChatCompletionRequest(
@@ -126,33 +116,34 @@ class TestPDDisaggLLMServer:
         )
 
     @pytest.mark.asyncio
-    @patch("vllm.platforms.current_platform", FakePlatform())
     async def test_predict_non_streaming(
         self,
         create_server,
         # model_pixtral_12b is a fixture that only contains config files without weights
         model_pixtral_12b,
+        vllm_cpu_platform,
     ):
         """Test non-streaming predict."""
-        llm_config = LLMConfig(
-            # Here we
-            # 1. want to skip GPU placement in cpu test cases (https://github.com/ray-project/ray/blob/945b9d5dd55c9215d0aeb94a66cfda3b71c2fd43/python/ray/llm/_internal/serve/deployments/llm/vllm/vllm_engine.py#L330)
-            # 2. cannot set it to None, otherwise it defaults to use_gpu=True (https://github.com/ray-project/ray/blob/c7e07328c9efbd0d67bf2da4fa098d6492478ef4/python/ray/llm/_internal/serve/deployments/llm/vllm/vllm_models.py#L159)
-            # 3. cannot use "CPU" or anything random, which violates the check (https://github.com/ray-project/ray/blob/945b9d5dd55c9215d0aeb94a66cfda3b71c2fd43/python/ray/llm/_internal/serve/configs/server_models.py#L325)
-            # so we select a non-NVIDIA type here: Intel-GAUDI.
-            accelerator_type="Intel-GAUDI",
-            model_loading_config=ModelLoadingConfig(
-                model_id=model_pixtral_12b,
-            ),
-            engine_kwargs={
-                "kv_transfer_config": KVTransferConfig(
-                    kv_connector="NixlConnector",
-                    kv_role="kv_both",
+        with patch("vllm.platforms.current_platform", vllm_cpu_platform()):
+            llm_config = LLMConfig(
+                # Here we
+                # 1. want to skip GPU placement in cpu test cases (https://github.com/ray-project/ray/blob/945b9d5dd55c9215d0aeb94a66cfda3b71c2fd43/python/ray/llm/_internal/serve/deployments/llm/vllm/vllm_engine.py#L330)
+                # 2. cannot set it to None, otherwise it defaults to use_gpu=True (https://github.com/ray-project/ray/blob/c7e07328c9efbd0d67bf2da4fa098d6492478ef4/python/ray/llm/_internal/serve/deployments/llm/vllm/vllm_models.py#L159)
+                # 3. cannot use "CPU" or anything random, which violates the check (https://github.com/ray-project/ray/blob/945b9d5dd55c9215d0aeb94a66cfda3b71c2fd43/python/ray/llm/_internal/serve/configs/server_models.py#L325)
+                # so we select a non-NVIDIA type here: Intel-GAUDI.
+                accelerator_type="Intel-GAUDI",
+                model_loading_config=ModelLoadingConfig(
+                    model_id=model_pixtral_12b,
                 ),
-            },
-        )
+                engine_kwargs={
+                    "kv_transfer_config": KVTransferConfig(
+                        kv_connector="NixlConnector",
+                        kv_role="kv_both",
+                    ),
+                },
+            )
 
-        server = await create_server(llm_config, engine_cls=MockPDDisaggVLLMEngine)
+            server = await create_server(llm_config, engine_cls=MockPDDisaggVLLMEngine)
 
         # Create a predict request
         request = Prompt(
