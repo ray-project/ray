@@ -22,7 +22,9 @@ from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 
 from ray.rllib.examples.algorithms.classes.vpg import VPGConfig
-from ray.rllib.examples.learners.classes.vpg_torch_learner_shared_encoder import VPGTorchLearnerSharedEncoder
+from ray.rllib.examples.learners.classes.vpg_torch_learner_shared_encoder import (
+    VPGTorchLearnerSharedEncoder,
+)
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 from ray.rllib.examples.rl_modules.classes.vpg_using_shared_encoder_rlm import (
     SHARED_ENCODER_ID,
@@ -53,7 +55,9 @@ parser.add_argument("--encoder-emb-dim", type=int, default=64)
 if __name__ == "__main__":
     args = parser.parse_args()
 
-    single_agent_env = gym.make("CartPole-v1") # To allow instantiation of shared encoder
+    single_agent_env = gym.make(
+        "CartPole-v1"
+    ) # To allow instantiation of shared encoder
     assert args.algo=="VPG", "The shared encoder example is meant for VPG agents."
     assert args.num_agents==2, "This example makes use of two agents."
 
@@ -75,7 +79,7 @@ if __name__ == "__main__":
         )
         .multi_agent(
             policies={"p0", "p1"},
-            policy_mapping_fn=lambda agent_id, episode, **kw: f"p{agent_id}"
+            policy_mapping_fn=lambda agent_id, episode, **kw: f"p{agent_id}",
         )
         .rl_module(
             rl_module_spec=MultiRLModuleSpec(

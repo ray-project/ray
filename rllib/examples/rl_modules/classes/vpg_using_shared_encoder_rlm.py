@@ -42,7 +42,7 @@ class VPGPolicyAfterSharedEncoder(TorchRLModule):
         )
 
     def _forward(self, batch, **kwargs):
-        embeddings = batch[ENCODER_OUT] # Set the output of the encoder
+        embeddings = batch[ENCODER_OUT]  # Get the output of the encoder
         logits = self._pi_head(embeddings)
         return {Columns.ACTION_DIST_INPUTS: logits}
 
@@ -132,10 +132,7 @@ class VPGMultiRLModuleWithSharedEncoder(MultiRLModule):
         # Call the super's setup().
         super().setup()
         # Assert, we have the shared encoder submodule.
-        assert (
-            SHARED_ENCODER_ID in self._rl_modules
-            and len(self._rl_modules) > 1
-        )
+        assert SHARED_ENCODER_ID in self._rl_modules and len(self._rl_modules) > 1
         # Assign the encoder to a convenience attribute.
         self.encoder = self._rl_modules[SHARED_ENCODER_ID]
 
@@ -145,8 +142,8 @@ class VPGMultiRLModuleWithSharedEncoder(MultiRLModule):
         # Loop through the policy nets (through the given batch's keys).
         for policy_id, policy_batch in batch.items():
             # Feed this policy's observation into the shared encoder
-            fwd_out[policy_id] = self.encoder._forward(batch[policy_id])
-            policy_batch[ENCODER_OUT] = fwd_out[policy_id][ENCODER_OUT]
+            encoder_output = self.encoder._forward(batch[policy_id])
+            policy_batch[ENCODER_OUT] = encoder_output[ENCODER_OUT]
             # Get the desired module
             m = getattr(self._rl_modules[policy_id], forward_type)
             # Pass the policy's embeddings through the policy net.
