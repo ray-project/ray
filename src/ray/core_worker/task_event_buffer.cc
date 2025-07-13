@@ -194,7 +194,6 @@ void TaskStatusEvent::PopulateRpcRayTaskDefinitionEvent(T &definition_event_data
   definition_event_data.set_parent_task_id(task_spec_->ParentTaskId().Binary());
   definition_event_data.set_placement_group_id(
       task_spec_->PlacementGroupBundleId().first.Binary());
-  definition_event_data.set_session_name(session_name_);
   const auto &labels = task_spec_->GetMessage().labels();
   definition_event_data.mutable_ref_ids()->insert(labels.begin(), labels.end());
 
@@ -263,6 +262,7 @@ void TaskStatusEvent::PopulateRpcRayEventBaseFields(
   ray_event.set_source_type(rpc::events::RayEvent::CORE_WORKER);
   ray_event.mutable_timestamp()->CopyFrom(timestamp);
   ray_event.set_severity(rpc::events::RayEvent::INFO);
+  ray_event.set_session_name(session_name_);
 
   if (is_actor_task_event_) {
     if (is_definition_event) {
