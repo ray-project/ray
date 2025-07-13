@@ -187,6 +187,11 @@ To add custom optimization rules, implement a class that extends ``Rule`` and co
     logical_ruleset = get_logical_ruleset()
     logical_ruleset.add(CustomRule)
 
+.. testcode::
+    :hide:
+
+    logical_ruleset.remove(CustomRule)
+
 Types of physical operators
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
