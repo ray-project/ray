@@ -62,7 +62,11 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
             map_op_no_concurrency: MagicMock(),
         }
 
-        policy = ConcurrencyCapBackpressurePolicy(topology)
+        policy = ConcurrencyCapBackpressurePolicy(
+            DataContext.get_current(),
+            topology,
+            MagicMock(),
+        )
 
         self.assertEqual(policy._concurrency_caps[map_op], concurrency)
         self.assertTrue(math.isinf(policy._concurrency_caps[input_op]))
