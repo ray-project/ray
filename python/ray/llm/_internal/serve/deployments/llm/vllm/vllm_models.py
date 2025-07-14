@@ -1,7 +1,7 @@
 import dataclasses
 import os
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import ConfigDict, Field
 from vllm.engine.arg_utils import AsyncEngineArgs
@@ -70,12 +70,7 @@ class FrontendArgs:
 
 # The key for the kv_transfer_params in the internal metadata.
 KV_TRANSFER_PARAMS_KEY = "kv_transfer_params"
-
 vllm = try_import("vllm")
-
-if TYPE_CHECKING:
-    pass
-
 logger = get_logger(__name__)
 
 
