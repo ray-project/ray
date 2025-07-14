@@ -22,9 +22,11 @@
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/server_call.h"
 #include "src/ray/protobuf/autoscaler.grpc.pb.h"
+#include "src/ray/protobuf/events_event_aggregator_service.pb.h"
 #include "src/ray/protobuf/gcs_service.grpc.pb.h"
 
 namespace ray {
+using namespace rpc::events;
 namespace rpc {
 namespace autoscaler {
 
@@ -645,6 +647,10 @@ class TaskInfoGcsServiceHandler {
                                       AddTaskEventDataReply *reply,
                                       SendReplyCallback send_reply_callback) = 0;
 
+  virtual void HandleAddEvent(AddEventRequest request,
+                              AddEventReply *reply,
+                              SendReplyCallback send_reply_callback) = 0;
+
   virtual void HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
                                    rpc::GetTaskEventsReply *reply,
                                    rpc::SendReplyCallback send_reply_callback) = 0;
@@ -669,6 +675,7 @@ class TaskInfoGrpcService : public GrpcService {
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
       const ClusterID &cluster_id) override {
     TASK_INFO_SERVICE_RPC_HANDLER(AddTaskEventData);
+    TASK_INFO_SERVICE_RPC_HANDLER(AddEvent);
     TASK_INFO_SERVICE_RPC_HANDLER(GetTaskEvents);
   }
 
