@@ -33,7 +33,7 @@ py_test_module_list(
 # Small tests.
 py_test_module_list(
     size = "small",
-    timeout = "medium",
+    timeout = "moderate",
     files = [
         "test_advanced.py",
         "test_cluster_node_info_cache.py",
