@@ -1,8 +1,8 @@
 import click
 from pathlib import Path
+from ci.raydepsets.workspace import Workspace, Depset
 from typing import List
 import subprocess
-from ci.raydepsets.config import load_config, Depset
 
 DEFAULT_UV_FLAGS = [
     "--strip-extras",
@@ -27,10 +27,11 @@ def cli():
 
 @cli.command()
 @click.argument("config_path", default="ci/raydepsets/depset.config.yaml")
-@click.option("--name", type=str, default="")
-def load(config_path: str, name: str = ""):
+@click.option("--workspace-dir", default=None)
+@click.option("--name", default=None)
+def load(config_path: str, workspace_dir: str, name: str):
     """Load a dependency sets from a config file."""
-    manager = DependencySetManager(config_path=config_path)
+    manager = DependencySetManager(config_path=config_path, workspace_dir=workspace_dir)
     if name:
         manager.execute_single(manager.get_depset(name))
     else:
@@ -39,23 +40,26 @@ def load(config_path: str, name: str = ""):
 
 class DependencySetManager:
     def __init__(
-        self, config_path: Path = Path(__file__).parent / "depset.config.yaml"
+        self,
+        config_path: Path = Path(__file__).parent / "depset.config.yaml",
+        workspace_dir: str = None,
     ):
-        self.config = load_config(config_path)
+        self.workspace = Workspace(workspace_dir)
+        self.config = self.workspace.load_config(config_path)
+
+    def get_depset(self, name: str) -> Depset:
+        for depset in self.config.depsets:
+            if depset.name == name:
+                return depset
+        raise KeyError(f"Dependency set {name} not found")
 
     def exec_uv_cmd(self, cmd: str, args: List[str]) -> str:
         cmd = f"uv pip {cmd} {' '.join(args)}"
         click.echo(f"Executing command: {cmd}")
         status = subprocess.run(cmd, shell=True)
         if status.returncode != 0:
-            raise Exception(f"Failed to execute command: {cmd}")
+            raise RuntimeError(f"Failed to execute command: {cmd}")
         return status.stdout
-
-    def get_depset(self, name: str) -> Depset:
-        for depset in self.config.depsets:
-            if depset.name == name:
-                return depset
-        raise Exception(f"Dependency set {name} not found")
 
     def execute_all(self):
         for depset in self.config.depsets:
@@ -90,17 +94,18 @@ class DependencySetManager:
         """Compile a dependency set."""
         if constraints:
             for constraint in constraints:
-                args.extend(["-c", constraint])
+                args.extend(["-c", self.get_path(constraint)])
         if requirements:
             for requirement in requirements:
-                args.extend([requirement])
-        args.extend(["-o", f"{output}"])
+                args.extend([self.get_path(requirement)])
+        args.extend(["-o", self.get_path(output)])
         try:
             self.exec_uv_cmd("compile", args)
-        except Exception as e:
-            raise Exception(f"Error: {str(e)}")
-    
-    def subset(self,
+        except RuntimeError as e:
+            raise RuntimeError(f"Error: {str(e)}")
+
+    def subset(
+        self,
         source_depset: str,
         requirements: List[str],
         name: str,
@@ -115,3 +120,6 @@ class DependencySetManager:
             name=name,
             output=output,
         )
+
+    def get_path(self, path: str) -> str:
+        return (Path(self.workspace.dir) / path).as_posix()

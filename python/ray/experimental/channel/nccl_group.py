@@ -365,7 +365,7 @@ class _NcclGroup(Communicator):
             self._comm.destroy()
 
     def get_transport_name(self) -> str:
-        return "nccl"
+        return "accelerator"
 
     @classmethod
     def generate_communicator_id(cls) -> str:

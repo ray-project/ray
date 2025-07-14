@@ -1,141 +1,127 @@
 import pytest
 import sys
-import os
+import unittest
+import tempfile
+import runfiles
+import subprocess
+import platform
+import shutil
 from ci.raydepsets.cli import load, DependencySetManager
-from ci.raydepsets.config import get_current_directory
+from ci.raydepsets.workspace import Workspace
 from click.testing import CliRunner
-from unittest.mock import patch
+from pathlib import Path
+import os
+
+_REPO_NAME = "com_github_ray_project_ray"
+_runfiles = runfiles.Create()
 
 
-def test_cli_load_happy():
-    with patch(
-        "ci.raydepsets.cli.DependencySetManager.execute_all"
-    ) as execute_all_call:
-        result = CliRunner().invoke(load, ["ci/raydepsets/test_data/test.config.yaml"])
-        assert result.exit_code == 0
-        execute_all_call.assert_called_once()
+class TestCli(unittest.TestCase):
+    def setUp(self):
+        uv_path = _uv_binary()
+        if uv_path:
+            uv_dir = str(Path(uv_path).parent)
+            current_path = os.environ.get("PATH", "")
+            if uv_dir not in current_path:
+                os.environ["PATH"] = f"{uv_dir}:{current_path}"
 
+    def test_workspace_init(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace = Workspace(tmpdir)
+            assert workspace.dir is not None
 
-def test_cli_load_fail_no_config():
-    result = CliRunner().invoke(load, ["ci/raydepsets/test_data/test1.config.yaml"])
-    assert result.exit_code == 1
-    assert isinstance(result.exception, FileNotFoundError)
-
-
-def test_cli_load_single_happy():
-    manager = DependencySetManager(
-        config_path="ci/raydepsets/test_data/test.config.yaml"
-    )
-    with patch(
-        "ci.raydepsets.cli.DependencySetManager.execute_single"
-    ) as execute_single_call:
-        manager.execute_single(manager.get_depset("ray_base_test_depset"))
-        execute_single_call.assert_called_once_with(
-            manager.get_depset("ray_base_test_depset")
-        )
-
-
-def test_cli_load_single_fail_no_name():
-    result = CliRunner().invoke(
-        load, ["ci/raydepsets/test_data/test.config.yaml", "--name", "mock_depset"]
-    )
-    assert result.exit_code == 1
-    assert "Dependency set mock_depset not found" in str(result.exception)
-
-
-def test_depdenecy_set_manager_init_happy():
-    manager = DependencySetManager(
-        config_path="ci/raydepsets/test_data/test.config.yaml"
-    )
-    assert manager is not None
-    assert manager.config.depsets[0].name == "ray_base_test_depset"
-    assert manager.config.depsets[0].operation == "compile"
-    assert manager.config.depsets[0].requirements == [
-        os.path.join(get_current_directory(), "python/requirements.txt")
-    ]
-    assert manager.config.depsets[0].constraints == [
-        os.path.join(
-            get_current_directory(),
-            "python/requirements_compiled_ray_test_py311_cpu.txt",
-        )
-    ]
-    assert manager.config.depsets[0].output == os.path.join(
-        get_current_directory(), "ci/raydepsets/tests/requirements_compiled_test.txt"
-    )
-
-
-def test_depdenecy_set_manager_compile_happy():
-    with patch(
-        "ci.raydepsets.cli.DependencySetManager.exec_uv_cmd"
-    ) as mock_exec_uv_cmd:
-        manager = DependencySetManager(
-            config_path="ci/raydepsets/test_data/test.config.yaml"
-        )
-        manager.compile(
-            constraints=[
-                os.path.join(
-                    get_current_directory(),
-                    "python/requirements_compiled_ray_test_py311_cpu.txt",
-                )
-            ],
-            requirements=[
-                os.path.join(get_current_directory(), "python/requirements.txt")
-            ],
-            args=[],
-            name="ray_base_test_depset",
-            output=os.path.join(
-                get_current_directory(),
-                "ci/raydepsets/tests/requirements_compiled_test.txt",
-            ),
-        )
-        mock_exec_uv_cmd.assert_called_once_with(
-            "compile",
+    def test_cli_load_fail_no_config(self):
+        result = CliRunner().invoke(
+            load,
             [
-                "-c",
-                os.path.join(
-                    get_current_directory(),
-                    "python/requirements_compiled_ray_test_py311_cpu.txt",
-                ),
-                os.path.join(get_current_directory(), "python/requirements.txt"),
-                "-o",
-                os.path.join(
-                    get_current_directory(),
-                    "ci/raydepsets/tests/requirements_compiled_test.txt",
-                ),
+                "fake_path/test.config.yaml",
+                "--workspace-dir",
+                "/ci/raydepsets/test_data",
             ],
         )
+        assert result.exit_code == 1
+        assert isinstance(result.exception, FileNotFoundError)
+        assert "No such file or directory" in str(result.exception)
 
+    def test_dependency_set_manager_init(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _copy_data_to_tmpdir(tmpdir)
+            manager = DependencySetManager(
+                config_path="test.config.yaml",
+                workspace_dir=tmpdir,
+            )
+            assert manager is not None
+            assert manager.workspace.dir == tmpdir
+            assert manager.config.depsets[0].name == "ray_base_test_depset"
+            assert manager.config.depsets[0].operation == "compile"
+            assert manager.config.depsets[0].requirements == ["requirements_test.txt"]
+            assert manager.config.depsets[0].constraints == [
+                "requirement_constraints_test.txt"
+            ]
+            assert manager.config.depsets[0].output == "requirements_compiled.txt"
 
-def test_depdenecy_set_manager_get_depset_happy():
-    manager = DependencySetManager(
-        config_path="ci/raydepsets/test_data/test.config.yaml"
-    )
-    depset = manager.get_depset("ray_base_test_depset")
-    assert depset is not None
-    assert depset.name == "ray_base_test_depset"
-    assert depset.operation == "compile"
-    assert depset.requirements == [
-        os.path.join(get_current_directory(), "python/requirements.txt")
-    ]
-    assert depset.constraints == [
-        os.path.join(
-            get_current_directory(),
-            "python/requirements_compiled_ray_test_py311_cpu.txt",
+    def test_dependency_set_manager_get_depset(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _copy_data_to_tmpdir(tmpdir)
+            manager = DependencySetManager(
+                config_path="test.config.yaml",
+                workspace_dir=tmpdir,
+            )
+            with self.assertRaises(KeyError):
+                manager.get_depset("fake_depset")
+
+    def test_uv_binary_exists(self):
+        assert _uv_binary() is not None
+
+    def test_uv_version(self):
+        result = subprocess.run(
+            [_uv_binary(), "--version"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
         )
-    ]
-    assert depset.output == os.path.join(
-        get_current_directory(), "ci/raydepsets/tests/requirements_compiled_test.txt"
-    )
+        assert result.returncode == 0
+        assert "uv 0.7.20" in result.stdout.decode("utf-8")
+        assert result.stderr.decode("utf-8") == ""
+
+    def test_compile_by_depset_name(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _copy_data_to_tmpdir(tmpdir)
+            result = CliRunner().invoke(
+                load,
+                [
+                    "test.config.yaml",
+                    "--workspace-dir",
+                    tmpdir,
+                    "--name",
+                    "ray_base_test_depset",
+                ],
+            )
+
+            output_fp = Path(tmpdir) / "requirements_compiled.txt"
+            assert result.exit_code == 0
+            assert Path(output_fp).is_file()
+            assert (
+                "Dependency set ray_base_test_depset compiled successfully"
+                in result.output
+            )
 
 
-def test_depdenecy_set_manager_get_depset_fail_no_depset():
-    manager = DependencySetManager(
-        config_path="ci/raydepsets/test_data/test.config.yaml"
+def _uv_binary():
+    system = platform.system()
+    if system != "Linux" or platform.processor() != "x86_64":
+        raise RuntimeError(
+            f"Unsupported platform/processor: {system}/{platform.processor()}"
+        )
+    return _runfiles.Rlocation("uv_x86_64/uv-x86_64-unknown-linux-gnu/uv")
+
+
+def _copy_data_to_tmpdir(tmpdir):
+    shutil.copytree(
+        _runfiles.Rlocation(f"{_REPO_NAME}/ci/raydepsets/test_data"),
+        tmpdir,
+        dirs_exist_ok=True,
     )
-    with pytest.raises(Exception) as e:
-        manager.get_depset("mock_depset")
-    assert "Dependency set mock_depset not found" in str(e.value)
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-vv", __file__]))
