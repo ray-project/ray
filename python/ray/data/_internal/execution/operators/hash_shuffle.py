@@ -589,6 +589,9 @@ class HashShufflingOperatorBase(PhysicalOperator):
         #   - All input sequences have been ingested
         #   - All outstanding shuffling tasks have completed
         if not self._is_shuffling_done():
+            # While shuffling is in progress, check aggregator health and log once
+            # when they are all ready.
+            self._aggregator_pool.log_once_if_all_healthy()
             return
 
         logger.debug(
@@ -1000,6 +1003,7 @@ class AggregatorPool:
         self._health_warning_interval_s: float = (
             self._data_context.hash_shuffle_aggregator_health_warning_interval_s
         )
+        self._healthy_logged: bool = False
         # Track readiness refs for non-blocking health checks
         self._pending_aggregators_refs: Optional[List[ObjectRef]] = None
 
@@ -1153,6 +1157,25 @@ class AggregatorPool:
 
         except Exception as e:
             logger.warning(f"Failed to check aggregator health: {e}")
+
+    def log_once_if_all_healthy(self):
+        """Checks if all aggregators are healthy and logs a message if so.
+        This is intended to be called only once from a non-hot path."""
+        if self._healthy_logged:
+            return
+
+        # Use the existing readiness refs if they have been created.
+        if self._pending_aggregators_refs is None:
+            # This will be initialized by the first call to _check_aggregator_health
+            return
+
+        # If all aggregators are healthy, the list of pending refs will be empty.
+        if not self._pending_aggregators_refs:
+            logger.debug(
+                f"All {self._num_aggregators} hash shuffle aggregators "
+                f"are now healthy"
+            )
+            self._healthy_logged = True
 
     @property
     def num_partitions(self):
