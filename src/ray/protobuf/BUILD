@@ -164,6 +164,7 @@ proto_library(
         ":events_event_aggregator_service_proto",
         ":gcs_proto",
         ":pubsub_proto",
+        ":events_event_aggregator_service_proto",
     ],
 )
 
