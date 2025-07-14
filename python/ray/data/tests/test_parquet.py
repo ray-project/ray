@@ -1910,12 +1910,62 @@ class RowGroupLimitCase:
 
 
 ROW_GROUP_LIMIT_CASES = [
-    RowGroupLimitCase(None, None, None, None, None, None),
-    RowGroupLimitCase(1000, None, None, 1000, 1000, None),
-    RowGroupLimitCase(None, 500, None, 500, None, None),
-    RowGroupLimitCase(None, None, 2000, None, 2000, 2000),
-    RowGroupLimitCase(1000, 500, 2000, 1000, 1000, 2000),
-    RowGroupLimitCase(3000, 500, 2000, 2000, 2000, 2000),
+    RowGroupLimitCase(
+        row_group_size=None,
+        min_rows_per_file=None,
+        max_rows_per_file=None,
+        expected_min=None,
+        expected_max=None,
+        expected_max_file=None,
+    ),
+    RowGroupLimitCase(
+        row_group_size=1000,
+        min_rows_per_file=None,
+        max_rows_per_file=None,
+        expected_min=1000,
+        expected_max=1000,
+        expected_max_file=None,
+    ),
+    RowGroupLimitCase(
+        row_group_size=None,
+        min_rows_per_file=500,
+        max_rows_per_file=None,
+        expected_min=500,
+        expected_max=None,
+        expected_max_file=None,
+    ),
+    RowGroupLimitCase(
+        row_group_size=None,
+        min_rows_per_file=None,
+        max_rows_per_file=2000,
+        expected_min=None,
+        expected_max=2000,
+        expected_max_file=2000,
+    ),
+    RowGroupLimitCase(
+        row_group_size=1000,
+        min_rows_per_file=500,
+        max_rows_per_file=2000,
+        expected_min=1000,
+        expected_max=1000,
+        expected_max_file=2000,
+    ),
+    RowGroupLimitCase(
+        row_group_size=3000,
+        min_rows_per_file=500,
+        max_rows_per_file=2000,
+        expected_min=2000,
+        expected_max=2000,
+        expected_max_file=2000,
+    ),
+    RowGroupLimitCase(
+        row_group_size=None,
+        min_rows_per_file=2000000,  # Greater than 1024 * 1024 (1048576)
+        max_rows_per_file=None,
+        expected_min=2000000,
+        expected_max=2000000,
+        expected_max_file=2000000,
+    ),
 ]
 
 
@@ -1941,6 +1991,37 @@ def test_choose_row_group_limits_parameterized(case):
     min_rows, max_rows, _ = result
     if min_rows is not None and max_rows is not None:
         assert min_rows <= max_rows
+
+
+def test_write_parquet_large_min_rows_per_file_exceeds_arrow_default(
+    tmp_path, ray_start_regular_shared
+):
+    from ray.data._internal.datasource.parquet_datasink import (
+        ARROW_DEFAULT_MAX_ROWS_PER_GROUP,
+    )
+
+    """Test that min_rows_per_file > ARROW_DEFAULT_MAX_ROWS_PER_GROUP triggers max_rows_per_group setting."""
+    # ARROW_DEFAULT_MAX_ROWS_PER_GROUP = 1024 * 1024 = 1048576
+    # We'll use a min_rows_per_file that exceeds this threshold
+    min_rows_per_file = (
+        2 * ARROW_DEFAULT_MAX_ROWS_PER_GROUP
+    )  # 2097152, which is > 1048576
+
+    # Create a dataset with the required number of rows
+    ds = ray.data.range(min_rows_per_file, override_num_blocks=1)
+
+    # Write with min_rows_per_file > ARROW_DEFAULT_MAX_ROWS_PER_GROUP
+    # This should trigger the condition where max_rows_per_group and max_rows_per_file
+    # are set to min_rows_per_group (which comes from min_rows_per_file)
+    ds.write_parquet(tmp_path, min_rows_per_file=min_rows_per_file)
+
+    # Verify that the parquet files were written correctly
+    written_files = [f for f in os.listdir(tmp_path) if f.endswith(".parquet")]
+    assert len(written_files) == 1
+
+    # Read back the data to verify correctness
+    ds_read = ray.data.read_parquet(tmp_path)
+    assert ds_read.count() == min_rows_per_file
 
 
 if __name__ == "__main__":
