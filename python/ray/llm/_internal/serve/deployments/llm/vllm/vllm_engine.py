@@ -1,7 +1,7 @@
 import argparse
 import os
 import uuid
-from typing import TYPE_CHECKING, AsyncGenerator, Tuple, Union
+from typing import TYPE_CHECKING, AsyncGenerator, Optional, Tuple, Union
 
 from starlette.datastructures import State
 from starlette.requests import Request
@@ -43,6 +43,10 @@ from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 if TYPE_CHECKING:
     from vllm.config import VllmConfig
     from vllm.engine.protocol import EngineClient
+    from vllm.entrypoints.openai.serving_chat import OpenAIServingChat
+    from vllm.entrypoints.openai.serving_completion import OpenAIServingCompletion
+    from vllm.entrypoints.openai.serving_embedding import OpenAIServingEmbedding
+    from vllm.entrypoints.openai.serving_models import OpenAIServingModels
 
 vllm = try_import("vllm")
 logger = get_logger(__name__)
@@ -155,10 +159,10 @@ class VLLMEngine(LLMEngine):
 
         # vLLM Integration points. Will be set through .start()
         self._engine_client = None
-        self._oai_models = None
-        self._oai_serving_chat = None
-        self._oai_serving_completion = None
-        self._oai_serving_embedding = None
+        self._oai_models: Optional["OpenAIServingModels"] = None
+        self._oai_serving_chat: Optional["OpenAIServingChat"] = None
+        self._oai_serving_completion: Optional["OpenAIServingCompletion"] = None
+        self._oai_serving_embedding: Optional["OpenAIServingEmbedding"] = None
 
     async def start(self) -> None:
         """Start the vLLM engine.
@@ -215,23 +219,29 @@ class VLLMEngine(LLMEngine):
         self._oai_serving_embedding = state.openai_serving_embedding
 
         self._validate_openai_serving_models()
+        self._validate_engine_client()
+
 
         self._running = True
 
         logger.info("Started vLLM engine.")
 
     def _validate_openai_serving_models(self):
-        if not hasattr(self._oai_models, "lora_requests"):
-            raise ValueError("oai_models must have a lora_requests attribute")
-
-        if not hasattr(self._oai_models, "load_lora_adapter"):
-            raise ValueError("oai_models must have a load_lora_adapter attribute")
+        assert self._oai_models is not None, "oai_models is not initialized"
+        assert hasattr(self._oai_models, "lora_requests"), "oai_models must have a lora_requests attribute"
+        assert hasattr(self._oai_models, "load_lora_adapter"), "oai_models must have a load_lora_adapter attribute"
 
     def _validate_openai_serving_chat(self):
-        if not hasattr(self._oai_serving_chat, "create_chat_completion"):
-            raise ValueError(
-                "oai_serving_chat must have a create_chat_completion attribute"
-            )
+        assert hasattr(self._oai_serving_chat, "create_chat_completion"), "oai_serving_chat must have a create_chat_completion attribute"
+
+    def _validate_openai_serving_completion(self):
+        assert hasattr(self._oai_serving_completion, "create_completion"), "oai_serving_completion must have a create_completion attribute"
+
+    def _validate_openai_serving_embedding(self):
+        assert hasattr(self._oai_serving_embedding, "create_embedding"), "oai_serving_embedding must have a create_embedding attribute"
+
+    def _validate_engine_client(self):
+        assert hasattr(self._engine_client, "check_health"), "engine_client must have a check_health attribute"
 
     def _prepare_engine_config(
         self, node_initialization: InitializeNodeOutput
@@ -350,14 +360,16 @@ class VLLMEngine(LLMEngine):
         #     # Lora is already loaded, return
         #     return
 
+        self._validate_openai_serving_models()
+
         if any(
             lora_request.lora_name == disk_lora_model.model_id
-            for lora_request in self._oai_models.lora_requests
+            for lora_request in self._oai_models.lora_requests  # type: ignore[attr-defined]
         ):
             # Lora is already loaded, return
             return
 
-        lora_request = await self._oai_models.load_lora_adapter(
+        lora_request = await self._oai_models.load_lora_adapter(  # type: ignore[attr-defined]
             request=LoadLoRAAdapterRequest(
                 lora_name=disk_lora_model.model_id,
                 lora_path=disk_lora_model.local_path,
@@ -367,24 +379,25 @@ class VLLMEngine(LLMEngine):
         if isinstance(lora_request, VLLMErrorResponse):
             raise ValueError(f"Failed to load lora model: {lora_request.message}")
 
+
+    def _create_raw_request(
+        self,
+        request: Union[CompletionRequest, ChatCompletionRequest, EmbeddingRequest],
+        path: str,
+    ) -> Request:
+        scope = {
+            "type": "http",
+            "method": "POST",
+            "path": path,
+            "headers": [(b"x-request-id", getattr(request, "request_id", "").encode())],
+            "query_string": b"",
+        }
+        return Request(scope)
+
+
     async def chat(
         self, request: ChatCompletionRequest
     ) -> AsyncGenerator[Union[str, ChatCompletionResponse, ErrorResponse], None]:
-        """
-
-        input: Take a genric free form input type and cast it to the target engine request type inside the engine.
-
-        output:
-        - stream: True --> for each chunk, yield astring representing data: <json_str>\n\n
-        - stream: False --> yield only one string representing the response <json_str>
-
-        Error:
-        option A:
-        when request hits an error, raise an HTTPException(msg, code, type)
-        option B:
-        yield a HTTPException object
-        """
-
         self._validate_openai_serving_chat()
 
         # TODO (Kourosh): Remove when upstream is fixed to accept req_id.
@@ -392,7 +405,7 @@ class VLLMEngine(LLMEngine):
         # so that the create_chat_completion API can assign the request_id properly.
         raw_request = self._create_raw_request(request, "/chat/completions")
 
-        chat_response = await self._oai_serving_chat.create_chat_completion(
+        chat_response = await self._oai_serving_chat.create_chat_completion(  # type: ignore[attr-defined]
             request, raw_request=raw_request
         )
 
@@ -404,57 +417,22 @@ class VLLMEngine(LLMEngine):
                     )
                 yield response
         else:
-            logger.info(
-                f"[Kourosh] non streaming response received, type: {type(chat_response)}, chat_response: {chat_response}"
-            )
             if isinstance(chat_response, VLLMErrorResponse):
                 yield ErrorResponse(**chat_response.model_dump())
             else:
                 yield ChatCompletionResponse(**chat_response.model_dump())
 
-    def _create_raw_request(
-        self,
-        request: Union[CompletionRequest, ChatCompletionRequest, EmbeddingRequest],
-        path: str,
-    ) -> Request:
-        scope = {
-            "type": "http",
-            "method": "POST",
-            "path": path,
-            "headers": [(b"x-request-id", request.request_id.encode())],
-            "query_string": b"",
-        }
-        return Request(scope)
-
     async def completions(
         self, request: CompletionRequest
     ) -> AsyncGenerator[Union[str, CompletionResponse, ErrorResponse], None]:
-        """
-
-        input: Take a generic free form input type and cast it to the target engine request type inside the engine.
-
-        output:
-        - stream: True --> for each chunk, yield a string representing data: <json_str>\n\n
-        - stream: False --> yield only one string representing the response <json_str>
-
-        Error:
-        option A:
-        when request hits an error, raise an HTTPException(msg, code, type)
-        option B:
-        yield a HTTPException object
-        """
-
-        if self._oai_serving_completion is None:
-            raise RuntimeError(
-                "Completion service is not available. Make sure the engine is started and supports completions."
-            )
+        self._validate_openai_serving_completion()
 
         # TODO (Kourosh): Remove when upstream is fixed to accept req_id.
         # Create a fake starlette.Request object with the x-request-id header
         # so that the create_completion API can assign the request_id properly.
         raw_request = self._create_raw_request(request, "/completions")
 
-        completion_response = await self._oai_serving_completion.create_completion(
+        completion_response = await self._oai_serving_completion.create_completion(  # type: ignore[attr-defined]
             request,
             raw_request=raw_request,
         )
@@ -467,9 +445,6 @@ class VLLMEngine(LLMEngine):
                     )
                 yield response
         else:
-            logger.info(
-                f"[Kourosh] non streaming response received, type: {type(completion_response)}, completion_response: {completion_response}"
-            )
             if isinstance(completion_response, VLLMErrorResponse):
                 yield ErrorResponse(**completion_response.model_dump())
             else:
@@ -478,26 +453,14 @@ class VLLMEngine(LLMEngine):
     async def embeddings(
         self, request: EmbeddingRequest
     ) -> AsyncGenerator[Union[EmbeddingResponse, ErrorResponse], None]:
-        """Generate embeddings using vLLM's OpenAI-compatible API.
-
-        Args:
-            request: An EmbeddingRequest object.
-
-        Yields:
-            Union[EmbeddingResponse, ErrorResponse]: An EmbeddingResponse or ErrorResponse object.
-        """
-
-        if self._oai_serving_embedding is None:
-            raise RuntimeError(
-                "Embedding service is not available. Make sure the engine is started and supports embeddings."
-            )
+        self._validate_openai_serving_embedding()
 
         # TODO (Kourosh): Remove when upstream is fixed to accept req_id.
         # Create a fake starlette.Request object with the x-request-id header
         # so that the create_embedding API can assign the request_id properly.
         raw_request = self._create_raw_request(request, "/embeddings")
 
-        embedding_response = await self._oai_serving_embedding.create_embedding(
+        embedding_response = await self._oai_serving_embedding.create_embedding(  # type: ignore[attr-defined]
             request, raw_request=raw_request
         )
 
@@ -507,10 +470,7 @@ class VLLMEngine(LLMEngine):
             yield EmbeddingResponse(**embedding_response.model_dump())
 
     async def check_health(self) -> None:
-        if not hasattr(self._engine_client, "check_health"):
-            raise RuntimeError(
-                f"{type(self._engine_client)} does not support health check."
-            )
+        assert self._engine_client is not None, "engine_client is not initialized"
 
         try:
             await self._engine_client.check_health()
