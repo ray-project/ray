@@ -3,6 +3,8 @@ from pathlib import Path
 from ci.raydepsets.workspace import Workspace, Depset
 from typing import List
 import subprocess
+import platform
+import runfiles
 
 DEFAULT_UV_FLAGS = [
     "--strip-extras",
@@ -54,7 +56,7 @@ class DependencySetManager:
         raise KeyError(f"Dependency set {name} not found")
 
     def exec_uv_cmd(self, cmd: str, args: List[str]) -> str:
-        cmd = f"uv pip {cmd} {' '.join(args)}"
+        cmd = f"{uv_binary()} pip {cmd} {' '.join(args)}"
         click.echo(f"Executing command: {cmd}")
         status = subprocess.run(cmd, shell=True)
         if status.returncode != 0:
@@ -99,3 +101,13 @@ class DependencySetManager:
 
     def get_path(self, path: str) -> str:
         return (Path(self.workspace.dir) / path).as_posix()
+
+
+def uv_binary():
+    r = runfiles.Create()
+    system = platform.system()
+    if system != "Linux" or platform.processor() != "x86_64":
+        raise RuntimeError(
+            f"Unsupported platform/processor: {system}/{platform.processor()}"
+        )
+    return r.Rlocation("uv_x86_64/uv-x86_64-unknown-linux-gnu/uv")

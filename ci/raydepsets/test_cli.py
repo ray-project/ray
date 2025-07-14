@@ -4,13 +4,13 @@ import unittest
 import tempfile
 import runfiles
 import subprocess
-import platform
 import shutil
 from ci.raydepsets.cli import load, DependencySetManager
 from ci.raydepsets.workspace import Workspace
 from click.testing import CliRunner
 from pathlib import Path
 import os
+from ci.raydepsets.cli import uv_binary
 
 _REPO_NAME = "com_github_ray_project_ray"
 _runfiles = runfiles.Create()
@@ -18,7 +18,7 @@ _runfiles = runfiles.Create()
 
 class TestCli(unittest.TestCase):
     def setUp(self):
-        uv_path = _uv_binary()
+        uv_path = uv_binary()
         if uv_path:
             uv_dir = str(Path(uv_path).parent)
             current_path = os.environ.get("PATH", "")
@@ -71,11 +71,11 @@ class TestCli(unittest.TestCase):
                 manager.get_depset("fake_depset")
 
     def test_uv_binary_exists(self):
-        assert _uv_binary() is not None
+        assert uv_binary() is not None
 
     def test_uv_version(self):
         result = subprocess.run(
-            [_uv_binary(), "--version"],
+            [uv_binary(), "--version"],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
@@ -104,15 +104,6 @@ class TestCli(unittest.TestCase):
                 "Dependency set ray_base_test_depset compiled successfully"
                 in result.output
             )
-
-
-def _uv_binary():
-    system = platform.system()
-    if system != "Linux" or platform.processor() != "x86_64":
-        raise RuntimeError(
-            f"Unsupported platform/processor: {system}/{platform.processor()}"
-        )
-    return _runfiles.Rlocation("uv_x86_64/uv-x86_64-unknown-linux-gnu/uv")
 
 
 def _copy_data_to_tmpdir(tmpdir):
