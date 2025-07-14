@@ -37,7 +37,9 @@ class LLMEngine(abc.ABC):
         pass
 
     @abc.abstractmethod
-    async def chat(self, request: "ChatCompletionRequest") -> AsyncGenerator[Union[str, "ChatCompletionResponse", "ErrorResponse"], None]:
+    async def chat(
+        self, request: "ChatCompletionRequest"
+    ) -> AsyncGenerator[Union[str, "ChatCompletionResponse", "ErrorResponse"], None]:
         """Run a ChatCompletion with the engine.
 
         To implement this method, you need to take a openAI compatible chat request, internally cast it to the target engine request type, and then call the engine's chat method.
@@ -60,18 +62,20 @@ class LLMEngine(abc.ABC):
         pass
 
     @abc.abstractmethod
-    async def completions(self, request: "CompletionRequest") -> AsyncGenerator[Union[str, "CompletionResponse", "ErrorResponse"], None]:
+    async def completions(
+        self, request: "CompletionRequest"
+    ) -> AsyncGenerator[Union[str, "CompletionResponse", "ErrorResponse"], None]:
         """Run a Completion with the engine.
 
-        Similar to chat, this method is an async generator, so it yields chunks 
-        of response and when it is done, it returns None. We have the following 
+        Similar to chat, this method is an async generator, so it yields chunks
+        of response and when it is done, it returns None. We have the following
         convention:
 
-        * In case of streaming, yield a string representing data: 
-        <json_str>\n\n for each chunk. This should be already openAI compatible 
-        with completion response format, so the higher level can just yield it 
+        * In case of streaming, yield a string representing data:
+        <json_str>\n\n for each chunk. This should be already openAI compatible
+        with completion response format, so the higher level can just yield it
         directly to the client.
-        * In case of non-streaming, yield a single object of type 
+        * In case of non-streaming, yield a single object of type
         CompletionResponse.
         * In case of error, yield a single object of type ErrorResponse.
 
@@ -79,8 +83,8 @@ class LLMEngine(abc.ABC):
             request: The completion request.
 
         Yields:
-            Union[str, CompletionResponse, ErrorResponse]: A string 
-            representing a chunk of the response, a CompletionResponse object, 
+            Union[str, CompletionResponse, ErrorResponse]: A string
+            representing a chunk of the response, a CompletionResponse object,
             or an ErrorResponse object.
 
         Returns:
@@ -89,12 +93,14 @@ class LLMEngine(abc.ABC):
         pass
 
     @abc.abstractmethod
-    async def embeddings(self, request: "EmbeddingRequest") -> AsyncGenerator[Union["EmbeddingResponse", "ErrorResponse"], None]:
+    async def embeddings(
+        self, request: "EmbeddingRequest"
+    ) -> AsyncGenerator[Union["EmbeddingResponse", "ErrorResponse"], None]:
         """Run an Embedding with the engine.
 
-        This method is different from chat and completion in that it does not 
-        have streaming, but still it is an async generator that yields chunks 
-        of response and when it is done, it returns None. We have the following 
+        This method is different from chat and completion in that it does not
+        have streaming, but still it is an async generator that yields chunks
+        of response and when it is done, it returns None. We have the following
         convention:
 
         * yield a single object of type EmbeddingResponse.
@@ -104,7 +110,7 @@ class LLMEngine(abc.ABC):
             request: The embedding request.
 
         Yields:
-            Union[EmbeddingResponse, ErrorResponse]: An EmbeddingResponse 
+            Union[EmbeddingResponse, ErrorResponse]: An EmbeddingResponse
             object, or an ErrorResponse object.
 
         Returns:
@@ -113,9 +119,9 @@ class LLMEngine(abc.ABC):
         pass
 
     async def check_health(self) -> None:
-        """Check the health of the engine. 
-        
-        Does not return anything. Raise error when the engine is dead and needs 
+        """Check the health of the engine.
+
+        Does not return anything. Raise error when the engine is dead and needs
         to be restarted.
         """
         return

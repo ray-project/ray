@@ -221,27 +221,38 @@ class VLLMEngine(LLMEngine):
         self._validate_openai_serving_models()
         self._validate_engine_client()
 
-
         self._running = True
 
         logger.info("Started vLLM engine.")
 
     def _validate_openai_serving_models(self):
         assert self._oai_models is not None, "oai_models is not initialized"
-        assert hasattr(self._oai_models, "lora_requests"), "oai_models must have a lora_requests attribute"
-        assert hasattr(self._oai_models, "load_lora_adapter"), "oai_models must have a load_lora_adapter attribute"
+        assert hasattr(
+            self._oai_models, "lora_requests"
+        ), "oai_models must have a lora_requests attribute"
+        assert hasattr(
+            self._oai_models, "load_lora_adapter"
+        ), "oai_models must have a load_lora_adapter attribute"
 
     def _validate_openai_serving_chat(self):
-        assert hasattr(self._oai_serving_chat, "create_chat_completion"), "oai_serving_chat must have a create_chat_completion attribute"
+        assert hasattr(
+            self._oai_serving_chat, "create_chat_completion"
+        ), "oai_serving_chat must have a create_chat_completion attribute"
 
     def _validate_openai_serving_completion(self):
-        assert hasattr(self._oai_serving_completion, "create_completion"), "oai_serving_completion must have a create_completion attribute"
+        assert hasattr(
+            self._oai_serving_completion, "create_completion"
+        ), "oai_serving_completion must have a create_completion attribute"
 
     def _validate_openai_serving_embedding(self):
-        assert hasattr(self._oai_serving_embedding, "create_embedding"), "oai_serving_embedding must have a create_embedding attribute"
+        assert hasattr(
+            self._oai_serving_embedding, "create_embedding"
+        ), "oai_serving_embedding must have a create_embedding attribute"
 
     def _validate_engine_client(self):
-        assert hasattr(self._engine_client, "check_health"), "engine_client must have a check_health attribute"
+        assert hasattr(
+            self._engine_client, "check_health"
+        ), "engine_client must have a check_health attribute"
 
     def _prepare_engine_config(
         self, node_initialization: InitializeNodeOutput
@@ -379,7 +390,6 @@ class VLLMEngine(LLMEngine):
         if isinstance(lora_request, VLLMErrorResponse):
             raise ValueError(f"Failed to load lora model: {lora_request.message}")
 
-
     def _create_raw_request(
         self,
         request: Union[CompletionRequest, ChatCompletionRequest, EmbeddingRequest],
@@ -393,7 +403,6 @@ class VLLMEngine(LLMEngine):
             "query_string": b"",
         }
         return Request(scope)
-
 
     async def chat(
         self, request: ChatCompletionRequest
