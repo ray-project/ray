@@ -8,13 +8,13 @@ from unittest import mock
 import pytest
 
 import ray
+from ray._common.test_utils import wait_for_condition
 import ray.experimental.internal_kv as kv
 from ray._private.ray_constants import RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_ENV_VAR
 from ray._private.utils import get_directory_size_bytes
 from ray._private.test_utils import (
     chdir,
     check_local_files_gced,
-    wait_for_condition,
     find_free_port,
 )
 
@@ -379,7 +379,4 @@ def test_pin_runtime_env_uri(start_cluster, tmp_working_dir, expiration_s, monke
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

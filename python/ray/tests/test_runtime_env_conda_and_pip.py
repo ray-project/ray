@@ -2,8 +2,8 @@ import os
 import pytest
 import sys
 import platform
+from ray._common.test_utils import wait_for_condition
 from ray._private.test_utils import (
-    wait_for_condition,
     chdir,
     check_local_files_gced,
     generate_runtime_env_dict,
@@ -204,9 +204,6 @@ class TestGC:
 
 
 def test_import_in_subprocess(shutdown_only):
-
-    ray.init()
-
     @ray.remote(runtime_env={"pip": ["pip-install-test==0.5"]})
     def f():
         return subprocess.run(["python", "-c", "import pip_install_test"]).returncode
@@ -335,6 +332,10 @@ def test_working_dir_applies_for_pip_creation_files(start_cluster, tmp_working_d
     assert ray.get(test_import.remote()) == "pip_install_test"
 
 
+@pytest.mark.skipif(
+    os.environ.get("CI") and sys.platform != "linux",
+    reason="Requires PR wheels built in CI, so only run on linux CI machines.",
+)
 def test_working_dir_applies_for_conda_creation(start_cluster, tmp_working_dir):
     cluster, address = start_cluster
 
@@ -369,8 +370,25 @@ def test_working_dir_applies_for_conda_creation(start_cluster, tmp_working_dir):
     assert ray.get(test_import.remote()) == "pip_install_test"
 
 
+def test_pip_install_options(shutdown_only):
+    # Test that this successfully builds a ray runtime environment using pip_install_options
+    @ray.remote(
+        runtime_env={
+            "pip": {
+                "packages": ["pip-install-test==0.5"],
+                "pip_install_options": [
+                    "--no-cache-dir",
+                    "--no-build-isolation",
+                    "--disable-pip-version-check",
+                ],
+            }
+        }
+    )
+    def f():
+        return True
+
+    assert ray.get(f.remote())
+
+
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

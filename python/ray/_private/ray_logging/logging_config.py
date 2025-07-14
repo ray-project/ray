@@ -1,15 +1,13 @@
+import logging
 from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
 from typing import Set
 
 from ray._private.ray_logging import default_impl
 from ray._private.ray_logging.constants import LOGRECORD_STANDARD_ATTRS
-from ray._private.ray_logging.formatters import TextFormatter, JSONFormatter
 from ray._private.ray_logging.filters import CoreContextFilter
+from ray._private.ray_logging.formatters import JSONFormatter, TextFormatter
 from ray.util.annotations import PublicAPI
-
-from dataclasses import dataclass, field
-
-import logging
 
 
 class LoggingConfigurator(ABC):

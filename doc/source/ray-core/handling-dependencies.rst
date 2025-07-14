@@ -316,16 +316,6 @@ packages. It also allows you to lock package versions using `uv lock`.
 For more details, see the `UV scripts documentation <https://docs.astral.sh/uv/guides/scripts/>`_ as
 well as `our blog post <https://www.anyscale.com/blog/uv-ray-pain-free-python-dependencies-in-clusters>`_.
 
-.. note::
-
-  Because this is a new feature, you currently need to set a feature flag:
-
-  .. code-block:: shell
-
-    export RAY_RUNTIME_ENV_HOOK=ray._private.runtime_env.uv_runtime_env_hook.hook
-
-  We plan to make it the default after collecting more feedback, and adapting the behavior if necessary.
-
 Create a file `pyproject.toml` in your working directory like the following:
 
 .. code-block:: toml
@@ -415,6 +405,50 @@ your programs:
   like bazel, a profiler, or a debugger. In these cases, you can explicitly specify the executable the worker should
   run in via `py_executable`. It could even be a shell script that is stored in `working_dir` if you are trying to wrap
   multiple processes in more complex ways.
+
+.. note::
+
+  The uv environment is inherited by all children tasks and actors. If you want to mix environments, for example, `pip`
+  runtime environments with `uv run`, you need to set the Python executable back to an executable
+  that's not running in the isolated uv environment like the following:
+
+  .. code-block:: toml
+
+    [project]
+
+    name = "test"
+
+    version = "0.1"
+
+    dependencies = [
+      "emoji",
+      "ray",
+      "pip",
+      "virtualenv",
+    ]
+
+  .. testcode::
+    :skipif: True
+
+    import ray
+
+    @ray.remote(runtime_env={"pip": ["wikipedia"], "py_executable": "python"})
+    def f():
+        import wikipedia
+        return wikipedia.summary("Wikipedia")
+
+    @ray.remote
+    def g():
+        import emoji
+        return emoji.emojize('Python is :thumbs_up:')
+
+    print(ray.get(f.remote()))
+    print(ray.get(g.remote()))
+
+
+  While the above pattern can be useful for supporting legacy applications, the Ray Team recommends
+  also using uv for tracking nested environments. You can use this approach by creating a separate
+  `pyproject.toml` containing the dependencies of the nested environment.
 
 
 Library Development
@@ -512,6 +546,7 @@ The ``runtime_env`` is a Python dictionary or a Python class :class:`ray.runtime
   `“requirements.txt” <https://pip.pypa.io/en/stable/user_guide/#requirements-files>`_ file, or (3) a python dictionary that has three fields: (a) ``packages`` (required, List[str]): a list of pip packages,
   (b) ``pip_check`` (optional, bool): whether to enable `pip check <https://pip.pypa.io/en/stable/cli/pip_check/>`_ at the end of pip install, defaults to ``False``.
   (c) ``pip_version`` (optional, str): the version of pip; Ray will spell the package name "pip" in front of the ``pip_version`` to form the final requirement string.
+  (d) ``pip_install_options`` (optional, List[str]): user-provided options for ``pip install`` command. Defaults to ``["--disable-pip-version-check", "--no-cache-dir"]``.
   The syntax of a requirement specifier is defined in full in `PEP 508 <https://www.python.org/dev/peps/pep-0508/>`_.
   This will be installed in the Ray workers at runtime.  Packages in the preinstalled cluster environment will still be available.
   To use a library like Ray Serve or Ray Tune, you will need to include ``"ray[serve]"`` or ``"ray[tune]"`` here.
@@ -815,7 +850,7 @@ Your ``runtime_env`` dictionary should contain:
   To avoid this, use the ``zip -r`` command directly on the directory you want to compress from its parent's directory. For example, if you have a directory structure such as: ``a/b`` and you what to compress ``b``, issue the ``zip -r b`` command from the directory ``a.``
   If Ray detects more than a single directory at the top level, it will use the entire zip file instead of the top-level directory, which may lead to unexpected behavior.
 
-Currently, three types of remote URIs are supported for hosting ``working_dir`` and ``py_modules`` packages:
+Currently, four types of remote URIs are supported for hosting ``working_dir`` and ``py_modules`` packages:
 
 - ``HTTPS``: ``HTTPS`` refers to URLs that start with ``https``.
   These are particularly useful because remote Git providers (e.g. GitHub, Bitbucket, GitLab, etc.) use ``https`` URLs as download links for repository archives.
@@ -846,7 +881,18 @@ Currently, three types of remote URIs are supported for hosting ``working_dir`` 
 
     - ``runtime_env = {"working_dir": "gs://example_bucket/example_file.zip"}``
 
-Note that the ``smart_open``, ``boto3``, and ``google-cloud-storage`` packages are not installed by default, and it is not sufficient to specify them in the ``pip`` section of your ``runtime_env``.
+- ``Azure``: ``Azure`` refers to URIs starting with ``azure://`` that point to compressed packages stored in `Azure Blob Storage <https://azure.microsoft.com/en-us/products/storage/blobs>`_.
+  To use packages via ``Azure`` URIs, you must have the ``smart_open``, ``azure-storage-blob``, and ``azure-identity`` libraries (you can install them using ``pip install smart_open[azure] azure-storage-blob azure-identity``).
+  Ray supports two authentication methods for Azure Blob Storage:
+  
+  1. Connection string: Set the environment variable ``AZURE_STORAGE_CONNECTION_STRING`` with your Azure storage connection string.
+  2. Managed Identity: Set the environment variable ``AZURE_STORAGE_ACCOUNT`` with your Azure storage account name. This will use Azure's Managed Identity for authentication.
+
+  - Example:
+
+    - ``runtime_env = {"working_dir": "azure://container-name/example_file.zip"}``
+
+Note that the ``smart_open``, ``boto3``, ``google-cloud-storage``, ``azure-storage-blob``, and ``azure-identity`` packages are not installed by default, and it is not sufficient to specify them in the ``pip`` section of your ``runtime_env``.
 The relevant packages must already be installed on all nodes of the cluster when Ray starts.
 
 Hosting a Dependency on a Remote Git Provider: Step-by-Step Guide

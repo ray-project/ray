@@ -1,22 +1,22 @@
+import abc
 from typing import AsyncGenerator, Optional
 
 from ray.llm._internal.serve.configs.server_models import (
-    Prompt,
-    LLMRawResponse,
-    LLMConfig,
-    GenerationRequest,
     DiskMultiplexConfig,
+    GenerationRequest,
+    LLMConfig,
+    LLMRawResponse,
+    Prompt,
 )
-
-
-import abc
 
 
 class LLMEngine(abc.ABC):
     """Base class for all LLM engines"""
 
+    @abc.abstractmethod
     def __init__(self, llm_config: LLMConfig):
-        self._llm_config = llm_config
+        """Initialize the engine with the llm config"""
+        pass
 
     @abc.abstractmethod
     async def start(self):
@@ -42,9 +42,11 @@ class LLMEngine(abc.ABC):
         """Generate an LLMRawResponse stream based on the GenerationRequest"""
         pass
 
-    async def check_health(self) -> bool:
-        """Check the health of the engine"""
-        return True
+    async def check_health(self) -> None:
+        """Check the health of the replica. Does not return anything. Raise error when
+        the engine is dead and needs to be restarted.
+        """
+        return
 
     ##############################################################
     # Optional methods

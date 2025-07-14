@@ -22,10 +22,10 @@
 #include <boost/asio/detail/socket_holder.hpp>
 #include <memory>
 #include <string>
+#include <utility>
 
 #include "ray/common/ray_config.h"
 #include "ray/rpc/common.h"
-#include "ray/stats/metric.h"
 #include "ray/util/thread_utils.h"
 
 namespace ray {
@@ -42,8 +42,7 @@ void GrpcServer::Init() {
 }
 
 void GrpcServer::Shutdown() {
-  if (!is_closed_) {
-    shutdown_ = true;
+  if (!is_shutdown_) {
     // Drain the executor threads.
     // Shutdown the server with an immediate deadline.
     // TODO(edoakes): do we want to do this in all cases?
@@ -54,7 +53,7 @@ void GrpcServer::Shutdown() {
     for (auto &polling_thread : polling_threads_) {
       polling_thread.join();
     }
-    is_closed_ = true;
+    is_shutdown_ = true;
     RAY_LOG(DEBUG) << "gRPC server of " << name_ << " shutdown.";
     server_.reset();
   }
@@ -111,11 +110,14 @@ void GrpcServer::Run() {
     builder.AddListeningPort(server_address, grpc::InsecureServerCredentials(), &port_);
   }
   // Register all the services to this server.
-  if (services_.empty()) {
+  if (grpc_services_.empty() && services_.empty()) {
     RAY_LOG(WARNING) << "No service is found when start grpc server " << name_;
   }
-  for (auto &entry : services_) {
-    builder.RegisterService(&entry.get());
+  for (auto &service : grpc_services_) {
+    builder.RegisterService(service.get());
+  }
+  for (auto &user_service : services_) {
+    builder.RegisterService(&user_service->GetGrpcService());
   }
   // Get hold of the completion queue used for the asynchronous communication
   // with the gRPC runtime.
@@ -166,22 +168,22 @@ void GrpcServer::Run() {
     polling_threads_.emplace_back(&GrpcServer::PollEventsFromCompletionQueue, this, i);
   }
   // Set the server as running.
-  is_closed_ = false;
+  is_shutdown_ = false;
 }
 
-void GrpcServer::RegisterService(grpc::Service &service) {
-  services_.emplace_back(service);
+void GrpcServer::RegisterService(std::unique_ptr<grpc::Service> &&grpc_service) {
+  grpc_services_.push_back(std::move(grpc_service));
 }
 
-void GrpcServer::RegisterService(GrpcService &service, bool token_auth) {
-  services_.emplace_back(service.GetGrpcService());
-
+void GrpcServer::RegisterService(std::unique_ptr<GrpcService> &&service,
+                                 bool token_auth) {
   for (int i = 0; i < num_threads_; i++) {
     if (token_auth && cluster_id_.IsNil()) {
       RAY_LOG(FATAL) << "Expected cluster ID for token auth!";
     }
-    service.InitServerCallFactories(cqs_[i], &server_call_factories_, cluster_id_);
+    service->InitServerCallFactories(cqs_[i], &server_call_factories_, cluster_id_);
   }
+  services_.push_back(std::move(service));
 }
 
 void GrpcServer::PollEventsFromCompletionQueue(int index) {
@@ -194,11 +196,9 @@ void GrpcServer::PollEventsFromCompletionQueue(int index) {
     auto deadline = gpr_time_add(gpr_now(GPR_CLOCK_REALTIME),
                                  gpr_time_from_millis(250, GPR_TIMESPAN));
     auto status = cqs_[index]->AsyncNext(&tag, &ok, deadline);
-    if (status == grpc::CompletionQueue::SHUTDOWN ||
-        (status == grpc::CompletionQueue::TIMEOUT && shutdown_)) {
-      // If we timed out and shutdown, then exit immediately. This should not
-      // be needed, but gRPC seems to not return SHUTDOWN correctly in these
-      // cases (e.g., test_wait will hang on shutdown without this check).
+    if (status == grpc::CompletionQueue::SHUTDOWN) {
+      // If the completion queue status is SHUTDOWN, meaning the queue has been
+      // drained. We can now exit the loop.
       break;
     } else if (status == grpc::CompletionQueue::TIMEOUT) {
       continue;

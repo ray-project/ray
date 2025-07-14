@@ -1,6 +1,5 @@
 import warnings
 from typing import Any, Dict, List, Optional, Union, Sequence
-from collections.abc import Mapping, Sequence as ABCSequence
 
 import numpy as np
 import pandas as pd
@@ -9,7 +8,23 @@ import pyarrow
 
 from ray.air._internal.device_manager import get_torch_device_manager_by_context
 from ray.air.util.data_batch_conversion import _unwrap_ndarray_object_type_if_needed
-from ray.data.collate_fn import TensorBatchType, TensorBatchReturnType
+from ray.data.collate_fn import (
+    TensorBatchType,
+    TensorBatchReturnType,
+    _is_tensor,
+    _is_tensor_sequence,
+    _is_nested_tensor_sequence,
+    _is_tensor_mapping,
+    _is_tensor_sequence_mapping,
+)
+from ray._private.ray_constants import env_bool
+
+
+# Default non-blocking transfer for tensors.
+DEFAULT_TENSOR_NON_BLOCKING_TRANSFER = env_bool(
+    "RAY_AIR_DEFAULT_TENSOR_NON_BLOCKING_TRANSFER",
+    True,
+)
 
 
 def get_devices() -> List[torch.device]:
@@ -135,6 +150,7 @@ def convert_ndarray_to_torch_tensor(
     ndarray: np.ndarray,
     dtype: Optional[torch.dtype] = None,
     device: Optional[Union[str, "torch.device"]] = None,
+    pin_memory: bool = False,
 ) -> torch.Tensor:
     """Convert a NumPy ndarray to a Torch Tensor.
 
@@ -144,6 +160,7 @@ def convert_ndarray_to_torch_tensor(
             inferred from the NumPy ndarray data.
         device: The device on which the tensor(s) should be placed; if None, the Torch
             tensor(s) will be constructed on the CPU.
+        pin_memory: Whether to pin the memory of the created tensors.
 
     Returns: A Torch Tensor.
     """
@@ -166,13 +183,23 @@ def convert_ndarray_to_torch_tensor(
     # torch/csrc/utils/tensor_numpy.cpp#L198-L206
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        return torch.as_tensor(ndarray, dtype=dtype, device=device)
+        result = torch.as_tensor(ndarray, dtype=dtype, device=device)
+
+    if pin_memory:
+        assert result.device.type == "cpu", (
+            "Pin memory is only supported for CPU tensors. "
+            f"Got device: {result.device} and pin_memory: {pin_memory}."
+        )
+        result = result.pin_memory()
+
+    return result
 
 
 def convert_ndarray_batch_to_torch_tensor_batch(
     ndarrays: Union[np.ndarray, Dict[str, np.ndarray]],
     dtypes: Optional[Union[torch.dtype, Dict[str, torch.dtype]]] = None,
     device: Optional[Union[str, "torch.device"]] = None,
+    pin_memory: bool = False,
 ) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
     """Convert a NumPy ndarray batch to a Torch Tensor batch.
 
@@ -182,6 +209,7 @@ def convert_ndarray_batch_to_torch_tensor_batch(
             will be inferred from the NumPy ndarray data.
         device: The device on which the tensor(s) should be placed; if None, the Torch
             tensor(s) will be constructed on the CPU.
+        pin_memory: Whether to pin the memory of the created tensors.
 
     Returns: A (dict of) Torch Tensor(s).
     """
@@ -194,7 +222,12 @@ def convert_ndarray_batch_to_torch_tensor_batch(
                     f"should be given, instead got: {dtypes}"
                 )
             dtypes = next(iter(dtypes.values()))
-        batch = convert_ndarray_to_torch_tensor(ndarrays, dtype=dtypes, device=device)
+        batch = convert_ndarray_to_torch_tensor(
+            ndarrays,
+            dtype=dtypes,
+            device=device,
+            pin_memory=pin_memory,
+        )
     else:
         # Multi-tensor case.
         batch = {
@@ -202,6 +235,7 @@ def convert_ndarray_batch_to_torch_tensor_batch(
                 col_ndarray,
                 dtype=dtypes[col_name] if isinstance(dtypes, dict) else dtypes,
                 device=device,
+                pin_memory=pin_memory,
             )
             for col_name, col_ndarray in ndarrays.items()
         }
@@ -301,6 +335,7 @@ def convert_ndarray_list_to_torch_tensor_list(
     ndarrays: Dict[str, List[np.ndarray]],
     dtypes: Optional[Union[torch.dtype, Dict[str, torch.dtype]]] = None,
     device: Optional[Union[str, "torch.device"]] = None,
+    pin_memory: bool = False,
 ) -> Dict[str, List[torch.Tensor]]:
     """Convert a dict mapping column names to lists of ndarrays to Torch Tensors.
 
@@ -311,8 +346,10 @@ def convert_ndarray_list_to_torch_tensor_list(
             will be inferred from the NumPy ndarray data.
         device: The device on which the tensor(s) should be placed; if None, the Torch
             tensor(s) will be constructed on the CPU.
+        pin_memory: Whether to pin the memory of the created tensors.
 
-    Returns: A dict mapping column names to lists of Tensors.
+    Returns:
+        A dict mapping column names to lists of Tensors.
     """
     return {
         col_name: [
@@ -320,6 +357,7 @@ def convert_ndarray_list_to_torch_tensor_list(
                 ndarray,
                 dtypes=dtypes[col_name] if isinstance(dtypes, dict) else dtypes,
                 device=device,
+                pin_memory=pin_memory,
             )
             for ndarray in col_ndarrays
         ]
@@ -331,6 +369,7 @@ def arrow_batch_to_tensors(
     batch: pyarrow.Table,
     dtypes: Optional[Union[torch.dtype, Dict[str, torch.dtype]]] = None,
     combine_chunks: bool = False,
+    pin_memory: bool = False,
 ) -> Dict[str, List[torch.Tensor]]:
     """Convert PyArrow batch to PyTorch tensors.
 
@@ -340,6 +379,7 @@ def arrow_batch_to_tensors(
             will be inferred from the NumPy ndarray data.
         combine_chunks: If True, combine chunks in Arrow batch before converting to
             tensors.
+        pin_memory: Whether to pin the memory of the created tensors.
 
     Returns:
         A dictionary of column name to list of tensors. For non-chunked columns,
@@ -354,6 +394,7 @@ def arrow_batch_to_tensors(
             col_name: convert_ndarray_batch_to_torch_tensor_batch(
                 col_array,
                 dtypes=dtypes[col_name] if isinstance(dtypes, dict) else dtypes,
+                pin_memory=pin_memory,
             )
             for col_name, col_array in numpy_batch.items()
         }
@@ -364,6 +405,7 @@ def arrow_batch_to_tensors(
         return convert_ndarray_list_to_torch_tensor_list(
             numpy_list,
             dtypes=dtypes,
+            pin_memory=pin_memory,
         )
 
 
@@ -371,7 +413,7 @@ def arrow_batch_to_tensors(
 def concat_tensors_to_device(
     tensor_sequence: Sequence[torch.Tensor],
     device: Optional[Union[str, "torch.device"]] = None,
-    non_blocking: bool = False,
+    non_blocking: bool = DEFAULT_TENSOR_NON_BLOCKING_TRANSFER,
 ) -> torch.Tensor:
     """Stack sequence of tensors into a contiguous GPU tensor.
 
@@ -385,16 +427,27 @@ def concat_tensors_to_device(
         A contiguous tensor on the target device
     """
     # Assumes tensors have the same shape/dtype
-    assert tensor_sequence, "Cannot stack empty sequence of tensors"
+    assert (
+        tensor_sequence
+    ), f"Cannot stack empty sequence of tensors. Received: {tensor_sequence}"
+
     assert all(
         isinstance(t, torch.Tensor) for t in tensor_sequence
-    ), "All items must be torch.Tensor"
-    assert all(
-        t.dtype == tensor_sequence[0].dtype for t in tensor_sequence
-    ), "All tensors must have the same dtype"
-    assert all(
-        t.shape[1:] == tensor_sequence[0].shape[1:] for t in tensor_sequence
-    ), "All tensors must have the same shape[1:]"
+    ), "All items must be torch.Tensor. Found invalid types: " + str(
+        [type(t) for t in tensor_sequence if not isinstance(t, torch.Tensor)]
+    )
+
+    first_dtype = tensor_sequence[0].dtype
+    assert all(t.dtype == first_dtype for t in tensor_sequence), (
+        "All tensors must have the same dtype. "
+        f"Expected: {first_dtype}, got: {[t.dtype for t in tensor_sequence]}"
+    )
+
+    first_shape = tensor_sequence[0].shape[1:]
+    assert all(t.shape[1:] == first_shape for t in tensor_sequence), (
+        "All tensors must have the same shape[1:]. "
+        f"Expected: {first_shape}, got: {[t.shape[1:] for t in tensor_sequence]}"
+    )
 
     first = tensor_sequence[0]
     dtype = first.dtype
@@ -410,17 +463,47 @@ def concat_tensors_to_device(
         result[row_start:row_end].copy_(t, non_blocking=non_blocking)
         row_start = row_end
 
-    assert isinstance(result, torch.Tensor), "Result must be a torch.Tensor"
     return result
+
+
+def _get_type_str(batch: Any) -> str:
+    """Get a string representation of the possibly nested type of the batch.
+
+    >>> import torch
+    >>> _get_type_str([1, 2, "???"])
+    'list[int | str]'
+    >>> _get_type_str({"a": [1, 2, 3], "b": 4})
+    'dict[str, int | list[int]]'
+    >>> _get_type_str({"a": torch.tensor(1), "b": [torch.tensor(2)]})
+    'dict[str, Tensor | list[Tensor]]'
+    >>> _get_type_str({"a": torch.tensor(1), "b": {"c": torch.tensor(2)}})
+    'dict[str, Tensor | dict[str, Tensor]]'
+    """
+    curr_type = type(batch).__name__
+    if isinstance(batch, (list, tuple)):
+        val_types = " | ".join(sorted({_get_type_str(v) for v in batch}))
+        invalid_type_str = f"{curr_type}[{val_types}]"
+    elif isinstance(batch, dict):
+        val_types = " | ".join(sorted({_get_type_str(v) for v in batch.values()}))
+        invalid_type_str = f"{curr_type}[str, {val_types}]"
+    else:
+        invalid_type_str = curr_type
+    return invalid_type_str
 
 
 @torch.no_grad()
 def move_tensors_to_device(
     batch: TensorBatchType,
     device: Optional[Union[str, "torch.device"]] = None,
-    non_blocking: bool = False,
+    non_blocking: bool = DEFAULT_TENSOR_NON_BLOCKING_TRANSFER,
 ) -> TensorBatchReturnType:
     """Move tensors to the specified device.
+
+    Concatenate nested lists/tuples of tensors along the first (batch) dimension.
+    For example, for the input
+    ((feature_0_chunk_0,), (feature_1_chunk_0, feature_1_chunk_1))
+    the output will be (feature_0_chunk_0, feature_1_chunk_0+1)
+    where each feature is concatenated along the batch dimension.
 
     Args:
         batch: A tensor or collection of tensors to move to device. Can be:
@@ -440,58 +523,27 @@ def move_tensors_to_device(
     if device is None:
         return batch
 
-    if isinstance(batch, torch.Tensor):
-        return batch.to(device=device, non_blocking=non_blocking)
-
-    elif isinstance(batch, Mapping):
-        new_batch = {}
-        for k, v in batch.items():
-            if isinstance(v, torch.Tensor):
-                new_batch[k] = v.to(device=device, non_blocking=non_blocking)
-
-            elif isinstance(v, ABCSequence) and not isinstance(v, (str, bytes)):
-                if all(isinstance(t, torch.Tensor) for t in v):
-                    new_batch[k] = concat_tensors_to_device(
-                        v, device=device, non_blocking=non_blocking
-                    )
-                else:
-                    raise TypeError(
-                        f"Expected a sequence of torch.Tensor for key '{k}', "
-                        f"but got sequence of types: {[type(t) for t in v]}"
-                    )
-
-            else:
-                raise TypeError(
-                    f"Unsupported type for key '{k}': expected torch.Tensor or "
-                    f"sequence of torch.Tensor, but got {type(v)}"
-                )
-        return new_batch
-
-    elif isinstance(batch, ABCSequence) and not isinstance(batch, (str, bytes)):
-        if all(isinstance(t, torch.Tensor) for t in batch):
-            return concat_tensors_to_device(
-                batch, device=device, non_blocking=non_blocking
-            )
-
-        elif all(
-            isinstance(seq, ABCSequence)
-            and not isinstance(seq, (str, bytes))
-            and all(isinstance(t, torch.Tensor) for t in seq)
-            for seq in batch
-        ):
-            return tuple(
-                concat_tensors_to_device(seq, device=device, non_blocking=non_blocking)
-                for seq in batch
-            )
-
-        else:
-            sample_type = type(batch[0]) if batch else "empty"
-            raise TypeError(
-                f"Unsupported sequence structure. Got: {type(batch)} with inner type "
-                f"{sample_type}"
-            )
-
+    if _is_tensor(batch):
+        return batch.to(device, non_blocking=non_blocking)
+    elif _is_tensor_sequence(batch):
+        return type(batch)([t.to(device, non_blocking=non_blocking) for t in batch])
+    elif _is_nested_tensor_sequence(batch):
+        return type(batch)(
+            [concat_tensors_to_device(t, device, non_blocking) for t in batch]
+        )
+    elif _is_tensor_mapping(batch):
+        return {k: t.to(device, non_blocking=non_blocking) for k, t in batch.items()}
+    elif _is_tensor_sequence_mapping(batch):
+        return {
+            k: concat_tensors_to_device(v, device, non_blocking)
+            for k, v in batch.items()
+        }
     else:
-        raise TypeError(
-            f"Batch must be one of {TensorBatchType} types, got {type(batch)}"
+        raise ValueError(
+            f"Invalid input type: {_get_type_str(batch)}.\n"
+            "Expected one of the following: "
+            "torch.Tensor, "
+            "List/Tuple[torch.Tensor], "
+            "Dict[str, torch.Tensor], "
+            "Mapping[str, List/Tuple[torch.Tensor]]"
         )

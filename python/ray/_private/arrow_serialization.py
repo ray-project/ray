@@ -2,15 +2,17 @@
 # it causes circular dependency issues for AsyncActors due to
 # ray.data's lazy import.
 # see https://github.com/ray-project/ray/issues/30498 for more context.
-from dataclasses import dataclass
 import logging
 import os
 import sys
-from typing import List, Tuple, Optional, TYPE_CHECKING
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, List, Optional, Tuple
+
 from ray._private.utils import is_in_test
 
 if TYPE_CHECKING:
     import pyarrow
+
     from ray.data.extensions import ArrowTensorArray
 
 RAY_DISABLE_CUSTOM_ARROW_JSON_OPTIONS_SERIALIZATION = (
@@ -237,6 +239,7 @@ class PicklableArrayPayload:
 def _array_payload_to_array(payload: "PicklableArrayPayload") -> "pyarrow.Array":
     """Reconstruct an Arrow Array from a possibly nested PicklableArrayPayload."""
     import pyarrow as pa
+
     from ray.air.util.tensor_extensions.arrow import get_arrow_extension_tensor_types
 
     children = [child_payload.to_array() for child_payload in payload.children]

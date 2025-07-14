@@ -2,12 +2,10 @@ import logging
 from typing import Optional
 
 from ray._private import ray_constants
-
 from ray.core.generated.common_pb2 import ErrorType, JobConfig
 from ray.core.generated.gcs_pb2 import (
     ActorTableData,
     AvailableResources,
-    TotalResources,
     ErrorTableData,
     GcsEntry,
     GcsNodeInfo,
@@ -21,6 +19,7 @@ from ray.core.generated.gcs_pb2 import (
     TablePrefix,
     TablePubsub,
     TaskEvents,
+    TotalResources,
     WorkerTableData,
 )
 

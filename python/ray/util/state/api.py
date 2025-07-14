@@ -120,7 +120,7 @@ class StateApiClient(SubmissionClient):
 
         Args:
             address: Ray bootstrap address (e.g. `127.0.0.0:6379`, `auto`), or Ray
-                Client adress (e.g. `ray://<head-node-ip>:10001`), or Ray dashboard
+                Client address (e.g. `ray://<head-node-ip>:10001`), or Ray dashboard
                 address (e.g. `http://<head-node-ip>:8265`).
                 If not provided, it will be detected automatically from any running
                 local Ray cluster.

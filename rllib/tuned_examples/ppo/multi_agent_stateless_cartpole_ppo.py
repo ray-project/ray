@@ -29,7 +29,9 @@ config = (
     PPOConfig()
     .environment("multi_stateless_cart")
     .env_runners(
-        env_to_module_connector=lambda env: MeanStdFilter(multi_agent=True),
+        env_to_module_connector=lambda env, spaces, device: MeanStdFilter(
+            multi_agent=True
+        ),
     )
     .training(
         lr=0.0003 * ((args.num_learners or 1) ** 0.5),

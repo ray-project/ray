@@ -45,8 +45,9 @@ python -m pip install pip==25.0 cffi==1.16.0
 
 # Needs to be synchronized to the host group id as we map /var/run/docker.sock
 # into the container.
-addgroup --gid 1001 docker0  # Used on old buildkite AMIs.
-addgroup --gid 993 docker
+addgroup --gid 1001 docker0  # Used on old buildkite AMIs before 2023
+addgroup --gid 993 docker1
+addgroup --gid 992 docker    # buildkite AMI as of 2025-06-07
 
 # Install bazelisk
 npm install -g @bazel/bazelisk
@@ -55,6 +56,7 @@ ln -s /usr/local/bin/bazel /usr/local/bin/bazelisk
 # A non-root user. Use 2000, which is the same as our buildkite agent VM uses.
 adduser --home /home/forge --uid 2000 forge --gid 100
 usermod -a -G docker0 forge
+usermod -a -G docker1 forge
 usermod -a -G docker forge
 
 if [[ "$(uname -i)" == "x86_64" ]]; then
@@ -79,3 +81,6 @@ set -euo pipefail
 EOF
 
 CMD ["echo", "ray forge"]
+
+
+# last update: 2025-07-11

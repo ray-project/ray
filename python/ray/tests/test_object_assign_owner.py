@@ -1,9 +1,10 @@
-import pytest
-import ray
+import sys
 import time
+
+import pytest
 import numpy as np
-import os
-from ray._private.test_utils import skip_flaky_core_test_premerge
+
+import ray
 from ray.exceptions import OwnerDiedError
 
 
@@ -156,11 +157,8 @@ def test_multiple_objects(ray_start_cluster):
     assert ray.get(owner.remote_get_object_refs.remote(borrower), timeout=60)
 
 
-@skip_flaky_core_test_premerge("https://github.com/ray-project/ray/issues/41175")
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_owner_assign_inner_object(shutdown_only):
-
-    ray.init()
-
     @ray.remote
     class Owner:
         def warmup(self):
@@ -194,10 +192,4 @@ def test_owner_assign_inner_object(shutdown_only):
 
 
 if __name__ == "__main__":
-    import pytest
-    import sys
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

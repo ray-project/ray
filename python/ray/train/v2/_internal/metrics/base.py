@@ -5,6 +5,7 @@ from typing import Dict, Generic, Optional, Tuple, TypeVar
 from ray.util.metrics import Gauge
 
 RUN_NAME_TAG_KEY = "ray_train_run_name"
+RUN_ID_TAG_KEY = "ray_train_run_id"
 
 T = TypeVar("T")
 E = TypeVar("E", bound=Enum)

@@ -1,8 +1,10 @@
+import logging
+import sys
 from typing import Dict
 from threading import RLock
-import pytest
 from unittest.mock import MagicMock, patch, call
-import logging
+
+import pytest
 
 from ray.autoscaler._private.gcp.node import (
     GCPCompute,
@@ -440,6 +442,4 @@ def test_tpu_accelerator_config_to_type(test_case):
 
 
 if __name__ == "__main__":
-    import sys
-
     sys.exit(pytest.main(["-v", __file__]))

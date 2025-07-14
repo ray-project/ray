@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 @Deprecated(message="AggregateFn is deprecated, please use AggregateFnV2")
 @PublicAPI
 class AggregateFn:
-    """NOTE: THIS IS DEPRECATED, PLEASE USE AggregateFnV2 INSTEAD
+    """NOTE: THIS IS DEPRECATED, PLEASE USE :class:`AggregateFnV2` INSTEAD
 
     Defines how to perform a custom aggregation in Ray Data.
 
@@ -109,16 +109,36 @@ class AggregateFnV2(AggregateFn, abc.ABC):
     to the dataset.
 
     `AggregateFnV2` instances are passed to a Dataset's ``.aggregate(...)`` method to
-    perform aggregations by applying distributed aggregation algorithm:
+    perform distributed aggregations. To create a custom aggregation, you should subclass
+    `AggregateFnV2` and implement the `aggregate_block` and `combine` methods.
+    The `finalize` method can also be overridden if the final accumulated state
+    needs further transformation.
 
-        - `aggregate_block` is applied to individual blocks, producing partial
-            aggregations.
-        - `combine` combines new partially aggregated value (previously returned
-            from `aggregate_block` partial aggregations into a singular partial
-            aggregation) with the previously stored accumulator.
-        - `finalize` transforms partial aggregation into its final state (for
-            some aggregations this is an identity transformation, ie no-op)
+    Aggregation follows these steps:
 
+    1. **Initialization**: For each group (if grouping) or for the entire dataset,
+       an initial accumulator is created using `zero_factory`.
+    2. **Block Aggregation**: The `aggregate_block` method is applied to
+       each block independently, producing a partial aggregation result for that block.
+    3. **Combination**: The `combine` method is used to merge these partial
+       results (or an existing accumulated result with a new partial result)
+       into a single, combined accumulator.
+    4. **Finalization**: Optionally, the `finalize` method transforms the
+       final combined accumulator into the desired output format.
+
+    Args:
+        name: The name of the aggregation. This will be used as the column name
+            in the output, e.g., "sum(my_col)".
+        zero_factory: A callable that returns the initial "zero" value for the
+            accumulator. For example, for a sum, this would be `lambda: 0`; for
+            finding a minimum, `lambda: float("inf")`, for finding a maximum,
+            `lambda: float("-inf")`.
+        on: The name of the column to perform the aggregation on. If `None`,
+            the aggregation is performed over the entire row (e.g., for `Count()`).
+        ignore_nulls: Whether to ignore null values during aggregation.
+            If `True`, nulls are skipped.
+            If `False`, the presence of a null value might result in a null output,
+            depending on the aggregation logic.
     """
 
     def __init__(
@@ -139,7 +159,7 @@ class AggregateFnV2(AggregateFn, abc.ABC):
 
         _safe_combine = _null_safe_combine(self.combine, ignore_nulls)
         _safe_aggregate = _null_safe_aggregate(self.aggregate_block, ignore_nulls)
-        _safe_finalize = _null_safe_finalize(self._finalize)
+        _safe_finalize = _null_safe_finalize(self.finalize)
 
         _safe_zero_factory = _null_safe_zero_factory(zero_factory, ignore_nulls)
 
@@ -156,20 +176,65 @@ class AggregateFnV2(AggregateFn, abc.ABC):
 
     @abc.abstractmethod
     def combine(self, current_accumulator: AggType, new: AggType) -> AggType:
-        """Combines new partially aggregated value (previously returned
-        from `aggregate_block` partial aggregations into a singular partial
-        aggregation) with the previously stored accumulator"""
+        """Combines a new partial aggregation result with the current accumulator.
+
+        This method defines how two intermediate aggregation states are merged.
+        For example, if `aggregate_block` produces partial sums `s1` and `s2` from
+        two different blocks, `combine(s1, s2)` should return `s1 + s2`.
+
+        Args:
+            current_accumulator: The current accumulated state (e.g., the result of
+                previous `combine` calls or an initial value from `zero_factory`).
+            new: A new partially aggregated value, typically the output of
+                `aggregate_block` from a new block of data, or another accumulator
+                from a parallel task.
+
+        Returns:
+            The updated accumulator after combining it with the new value.
+        """
         ...
 
     @abc.abstractmethod
     def aggregate_block(self, block: Block) -> AggType:
-        """Applies aggregations to individual block (producing
-        partial aggregation results)"""
+        """Aggregates data within a single block.
+
+        This method processes all rows in a given `Block` and returns a partial
+        aggregation result for that block. For instance, if implementing a sum,
+        this method would sum all relevant values within the block.
+
+        Args:
+            block: A `Block` of data to be aggregated.
+
+        Returns:
+            A partial aggregation result for the input block. The type of this
+            result (`AggType`) should be consistent with the `current_accumulator`
+            and `new` arguments of the `combine` method, and the `accumulator`
+            argument of the `finalize` method.
+        """
         ...
 
-    def _finalize(self, accumulator: AggType) -> Optional[U]:
-        """Transforms partial aggregation into its final state (by default
-        this is an identity transformation, ie no-op)"""
+    def finalize(self, accumulator: AggType) -> Optional[U]:
+        """Transforms the final accumulated state into the desired output.
+
+        This method is called once per group after all blocks have been processed
+        and all partial results have been combined. It provides an opportunity
+        to perform a final transformation on the accumulated data.
+
+        For many aggregations (e.g., Sum, Count, Min, Max), the accumulated state
+        is already the final result, so this method can simply return the
+        accumulator as is (which is the default behavior).
+
+        For other aggregations, like Mean, this method is crucial.
+        A Mean aggregation might accumulate `[sum, count]`. The `finalize`
+        method would then compute `sum / count` to get the final mean.
+
+        Args:
+            accumulator: The final accumulated state for a group, after all
+                `aggregate_block` and `combine` operations.
+
+        Returns:
+            The final result of the aggregation for the group.
+        """
         return accumulator
 
     def _validate(self, schema: Optional["Schema"]) -> None:
@@ -181,7 +246,40 @@ class AggregateFnV2(AggregateFn, abc.ABC):
 
 @PublicAPI
 class Count(AggregateFnV2):
-    """Defines count aggregation."""
+    """Defines count aggregation.
+
+    Example:
+
+        .. testcode::
+
+            import ray
+            from ray.data.aggregate import Count
+
+            ds = ray.data.range(100)
+            # Schema: {'id': int64}
+            ds = ds.add_column("group_key", lambda x: x % 3)
+            # Schema: {'id': int64, 'group_key': int64}
+
+            # Counting all rows:
+            result = ds.aggregate(Count())
+            # result: {'count()': 100}
+
+
+            # Counting all rows per group:
+            result = ds.groupby("group_key").aggregate(Count(on="id")).take_all()
+            # result: [{'group_key': 0, 'count(id)': 34},
+            #          {'group_key': 1, 'count(id)': 33},
+            #          {'group_key': 2, 'count(id)': 33}]
+
+
+    Args:
+        on: Optional name of the column to count values on. If None, counts rows.
+        ignore_nulls: Whether to ignore null values when counting. Only applies if
+            `on` is specified. Default is `False` which means `Count()` on a column
+            will count nulls by default. To match pandas default behavior of not counting nulls,
+            set `ignore_nulls=True`.
+        alias_name: Optional name for the resulting column.
+    """
 
     def __init__(
         self,
@@ -213,7 +311,31 @@ class Count(AggregateFnV2):
 
 @PublicAPI
 class Sum(AggregateFnV2):
-    """Defines sum aggregation."""
+    """Defines sum aggregation.
+
+    Example:
+
+        .. testcode::
+
+            import ray
+            from ray.data.aggregate import Sum
+
+            ds = ray.data.range(100)
+            # Schema: {'id': int64}
+            ds = ds.add_column("group_key", lambda x: x % 3)
+            # Schema: {'id': int64, 'group_key': int64}
+
+            # Summing all rows per group:
+            result = ds.aggregate(Sum(on="id"))
+            # result: {'sum(id)': 4950}
+
+    Args:
+        on: The name of the numerical column to sum. Must be provided.
+        ignore_nulls: Whether to ignore null values during summation. If `True` (default),
+                      nulls are skipped. If `False`, the sum will be null if any
+                      value in the group is null.
+        alias_name: Optional name for the resulting column.
+    """
 
     def __init__(
         self,
@@ -239,7 +361,34 @@ class Sum(AggregateFnV2):
 
 @PublicAPI
 class Min(AggregateFnV2):
-    """Defines min aggregation."""
+    """Defines min aggregation.
+
+    Example:
+
+        .. testcode::
+
+            import ray
+            from ray.data.aggregate import Min
+
+            ds = ray.data.range(100)
+            # Schema: {'id': int64}
+            ds = ds.add_column("group_key", lambda x: x % 3)
+            # Schema: {'id': int64, 'group_key': int64}
+
+            # Finding the minimum value per group:
+            result = ds.groupby("group_key").aggregate(Min(on="id")).take_all()
+            # result: [{'group_key': 0, 'min(id)': 0},
+            #          {'group_key': 1, 'min(id)': 1},
+            #          {'group_key': 2, 'min(id)': 2}]
+
+    Args:
+        on: The name of the column to find the minimum value from. Must be provided.
+        ignore_nulls: Whether to ignore null values. If `True` (default), nulls are
+                      skipped. If `False`, the minimum will be null if any value in
+                      the group is null (for most data types, or follow type-specific
+                      comparison rules with nulls).
+        alias_name: Optional name for the resulting column.
+    """
 
     def __init__(
         self,
@@ -265,7 +414,34 @@ class Min(AggregateFnV2):
 
 @PublicAPI
 class Max(AggregateFnV2):
-    """Defines max aggregation."""
+    """Defines max aggregation.
+
+    Example:
+
+        .. testcode::
+
+            import ray
+            from ray.data.aggregate import Max
+
+            ds = ray.data.range(100)
+            # Schema: {'id': int64}
+            ds = ds.add_column("group_key", lambda x: x % 3)
+            # Schema: {'id': int64, 'group_key': int64}
+
+            # Finding the maximum value per group:
+            result = ds.groupby("group_key").aggregate(Max(on="id")).take_all()
+            # result: [{'group_key': 0, 'max(id)': ...},
+            #          {'group_key': 1, 'max(id)': ...},
+            #          {'group_key': 2, 'max(id)': ...}]
+
+    Args:
+        on: The name of the column to find the maximum value from. Must be provided.
+        ignore_nulls: Whether to ignore null values. If `True` (default), nulls are
+                      skipped. If `False`, the maximum will be null if any value in
+                      the group is null (for most data types, or follow type-specific
+                      comparison rules with nulls).
+        alias_name: Optional name for the resulting column.
+    """
 
     def __init__(
         self,
@@ -292,7 +468,33 @@ class Max(AggregateFnV2):
 
 @PublicAPI
 class Mean(AggregateFnV2):
-    """Defines mean aggregation."""
+    """Defines mean (average) aggregation.
+
+    Example:
+
+        .. testcode::
+
+            import ray
+            from ray.data.aggregate import Mean
+
+            ds = ray.data.range(100)
+            # Schema: {'id': int64}
+            ds = ds.add_column("group_key", lambda x: x % 3)
+            # Schema: {'id': int64, 'group_key': int64}
+
+            # Calculating the mean value per group:
+            result = ds.groupby("group_key").aggregate(Mean(on="id")).take_all()
+            # result: [{'group_key': 0, 'mean(id)': ...},
+            #          {'group_key': 1, 'mean(id)': ...},
+            #          {'group_key': 2, 'mean(id)': ...}]
+
+    Args:
+        on: The name of the numerical column to calculate the mean on. Must be provided.
+        ignore_nulls: Whether to ignore null values. If `True` (default), nulls are
+                      skipped. If `False`, the mean will be null if any value in the
+                      group is null.
+        alias_name: Optional name for the resulting column.
+    """
 
     def __init__(
         self,
@@ -304,8 +506,9 @@ class Mean(AggregateFnV2):
             alias_name if alias_name else f"mean({str(on)})",
             on=on,
             ignore_nulls=ignore_nulls,
-            # NOTE: We've to copy returned list here, as some
-            #       aggregations might be modifying elements in-place
+            # The accumulator is: [current_sum, current_count].
+            # NOTE: We copy the returned list `list([0,0])` as some internal mechanisms
+            # might modify accumulators in-place.
             zero_factory=lambda: list([0, 0]),  # noqa: C410
         )
 
@@ -330,8 +533,11 @@ class Mean(AggregateFnV2):
     def combine(self, current_accumulator: AggType, new: AggType) -> AggType:
         return [current_accumulator[0] + new[0], current_accumulator[1] + new[1]]
 
-    def _finalize(self, accumulator: AggType) -> Optional[U]:
+    def finalize(self, accumulator: AggType) -> Optional[U]:
+        # The final accumulator for a group is [total_sum, total_count].
         if accumulator[1] == 0:
+            # If total_count is 0 (e.g., group was empty or all nulls ignored),
+            # the mean is undefined. Return NaN
             return np.nan
 
         return accumulator[0] / accumulator[1]
@@ -341,13 +547,37 @@ class Mean(AggregateFnV2):
 class Std(AggregateFnV2):
     """Defines standard deviation aggregation.
 
-    Uses Welford's online method for an accumulator-style computation of the
-    standard deviation. This method was chosen due to its numerical
-    stability, and it being computable in a single pass.
-    This may give different (but more accurate) results than NumPy, Pandas,
-    and sklearn, which use a less numerically stable two-pass algorithm.
-    See
-    https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Welford's_online_algorithm
+    Uses Welford's online algorithm for numerical stability. This method computes
+    the standard deviation in a single pass. Results may differ slightly from
+    libraries like NumPy or Pandas that use a two-pass algorithm but are generally
+    more accurate.
+
+    See: https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Welford's_online_algorithm
+
+    Example:
+
+        .. testcode::
+
+            import ray
+            from ray.data.aggregate import Std
+
+            ds = ray.data.range(100)
+            # Schema: {'id': int64}
+            ds = ds.add_column("group_key", lambda x: x % 3)
+            # Schema: {'id': int64, 'group_key': int64}
+
+            # Calculating the standard deviation per group:
+            result = ds.groupby("group_key").aggregate(Std(on="id")).take_all()
+            # result: [{'group_key': 0, 'std(id)': ...},
+            #          {'group_key': 1, 'std(id)': ...},
+            #          {'group_key': 2, 'std(id)': ...}]
+
+    Args:
+        on: The name of the column to calculate standard deviation on.
+        ddof: Delta Degrees of Freedom. The divisor used in calculations is `N - ddof`,
+            where `N` is the number of elements. Default is 1.
+        ignore_nulls: Whether to ignore null values. Default is True.
+        alias_name: Optional name for the resulting column.
     """
 
     def __init__(
@@ -361,8 +591,11 @@ class Std(AggregateFnV2):
             alias_name if alias_name else f"std({str(on)})",
             on=on,
             ignore_nulls=ignore_nulls,
-            # NOTE: We've to copy returned list here, as some
-            #       aggregations might be modifying elements in-place
+            # Accumulator: [M2, mean, count]
+            # M2: sum of squares of differences from the current mean
+            # mean: current mean
+            # count: current count of non-null elements
+            # We need to copy the list as it might be modified in-place by some aggregations.
             zero_factory=lambda: list([0, 0, 0]),  # noqa: C410
         )
 
@@ -376,9 +609,8 @@ class Std(AggregateFnV2):
             return None
         sum_ = block_acc.sum(self._target_col_name, self._ignore_nulls)
         if is_null(sum_):
-            # In case of ignore_nulls=False and column containing 'null'
-            # return as is (to prevent unnecessary type conversions, when, for ex,
-            # using Pandas and returning None)
+            # If sum is null (e.g., ignore_nulls=False and a null was encountered),
+            # return as is to prevent type conversions.
             return sum_
         mean = sum_ / count
         M2 = block_acc.sum_of_squared_diffs_from_mean(
@@ -387,9 +619,8 @@ class Std(AggregateFnV2):
         return [M2, mean, count]
 
     def combine(self, current_accumulator: List[float], new: List[float]) -> AggType:
-        # Merges two accumulations into one.
-        # See
-        # https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Parallel_algorithm
+        # Merges two accumulators [M2, mean, count] using a parallel algorithm.
+        # See: https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Parallel_algorithm
         M2_a, mean_a, count_a = current_accumulator
         M2_b, mean_b, count_b = new
         delta = mean_b - mean_a
@@ -403,18 +634,47 @@ class Std(AggregateFnV2):
         M2 = M2_a + M2_b + (delta**2) * count_a * count_b / count
         return [M2, mean, count]
 
-    def _finalize(self, accumulator: List[float]) -> Optional[U]:
+    def finalize(self, accumulator: List[float]) -> Optional[U]:
         # Compute the final standard deviation from the accumulated
         # sum of squared differences from current mean and the count.
+        # Final accumulator: [M2, mean, count]
         M2, mean, count = accumulator
+        # Denominator for variance calculation is count - ddof
         if count - self._ddof <= 0:
+            # If count - ddof is not positive, variance/std is undefined (or zero).
+            # Return NaN, consistent with pandas/numpy.
             return np.nan
+        # Standard deviation is the square root of variance (M2 / (count - ddof))
         return math.sqrt(M2 / (count - self._ddof))
 
 
 @PublicAPI
 class AbsMax(AggregateFnV2):
-    """Defines absolute max aggregation."""
+    """Defines absolute max aggregation.
+
+    Example:
+
+        .. testcode::
+
+            import ray
+            from ray.data.aggregate import AbsMax
+
+            ds = ray.data.range(100)
+            # Schema: {'id': int64}
+            ds = ds.add_column("group_key", lambda x: x % 3)
+            # Schema: {'id': int64, 'group_key': int64}
+
+            # Calculating the absolute maximum value per group:
+            result = ds.groupby("group_key").aggregate(AbsMax(on="id")).take_all()
+            # result: [{'group_key': 0, 'abs_max(id)': ...},
+            #          {'group_key': 1, 'abs_max(id)': ...},
+            #          {'group_key': 2, 'abs_max(id)': ...}]
+
+    Args:
+        on: The name of the column to calculate absolute maximum on. Must be provided.
+        ignore_nulls: Whether to ignore null values. Default is True.
+        alias_name: Optional name for the resulting column.
+    """
 
     def __init__(
         self,
@@ -452,7 +712,33 @@ class AbsMax(AggregateFnV2):
 
 @PublicAPI
 class Quantile(AggregateFnV2):
-    """Defines Quantile aggregation."""
+    """Defines Quantile aggregation.
+
+    Example:
+
+        .. testcode::
+
+            import ray
+            from ray.data.aggregate import Quantile
+
+            ds = ray.data.range(100)
+            # Schema: {'id': int64}
+            ds = ds.add_column("group_key", lambda x: x % 3)
+            # Schema: {'id': int64, 'group_key': int64}
+
+            # Calculating the 50th percentile (median) per group:
+            result = ds.groupby("group_key").aggregate(Quantile(q=0.5, on="id")).take_all()
+            # result: [{'group_key': 0, 'quantile(id)': ...},
+            #          {'group_key': 1, 'quantile(id)': ...},
+            #          {'group_key': 2, 'quantile(id)': ...}]
+
+    Args:
+        on: The name of the column to calculate the quantile on. Must be provided.
+        q: The quantile to compute, which must be between 0 and 1 inclusive.
+           For example, q=0.5 computes the median.
+        ignore_nulls: Whether to ignore null values. Default is True.
+        alias_name: Optional name for the resulting column.
+    """
 
     def __init__(
         self,
@@ -504,20 +790,22 @@ class Quantile(AggregateFnV2):
 
         return ls
 
-    def _finalize(self, accumulator: List[Any]) -> Optional[U]:
+    def finalize(self, accumulator: List[Any]) -> Optional[U]:
         if self._ignore_nulls:
             accumulator = [v for v in accumulator if not is_null(v)]
         else:
             nulls = [v for v in accumulator if is_null(v)]
             if len(nulls) > 0:
-                # NOTE: We return the null itself to preserve column type
+                # If nulls are present and not ignored, the quantile is undefined.
+                # Return the first null encountered to preserve column type.
                 return nulls[0]
 
         if not accumulator:
+            # If the list is empty (e.g., all values were null and ignored, or no values),
+            # quantile is undefined.
             return None
 
         key = lambda x: x  # noqa: E731
-
         input_values = sorted(accumulator)
         k = (len(input_values) - 1) * self._q
         f = math.floor(k)
@@ -526,6 +814,7 @@ class Quantile(AggregateFnV2):
         if f == c:
             return key(input_values[int(k)])
 
+        # Interpolate between the elements at floor and ceil indices.
         d0 = key(input_values[int(f)]) * (c - k)
         d1 = key(input_values[int(c)]) * (k - f)
 
@@ -534,7 +823,30 @@ class Quantile(AggregateFnV2):
 
 @PublicAPI
 class Unique(AggregateFnV2):
-    """Defines unique aggregation."""
+    """Defines unique aggregation.
+
+    Example:
+
+        .. testcode::
+
+            import ray
+            from ray.data.aggregate import Unique
+
+            ds = ray.data.range(100)
+            ds = ds.add_column("group_key", lambda x: x % 3)
+
+            # Calculating the unique values per group:
+            result = ds.groupby("group_key").aggregate(Unique(on="id")).take_all()
+            # result: [{'group_key': 0, 'unique(id)': ...},
+            #          {'group_key': 1, 'unique(id)': ...},
+            #          {'group_key': 2, 'unique(id)': ...}]
+
+    Args:
+        on: The name of the column from which to collect unique values.
+        ignore_nulls: Whether to ignore null values when collecting unique items.
+                      Default is True (nulls are excluded).
+        alias_name: Optional name for the resulting column.
+    """
 
     def __init__(
         self,

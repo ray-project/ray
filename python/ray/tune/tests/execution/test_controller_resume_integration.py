@@ -8,9 +8,8 @@ import pytest
 import ray
 from ray import tune
 from ray.air.execution import FixedResourceManager, PlacementGroupResourceManager
-from ray.tune import CheckpointConfig
 from ray.train.tests.util import mock_storage_context
-from ray.tune import Experiment, PlacementGroupFactory, ResumeConfig
+from ray.tune import CheckpointConfig, Experiment, PlacementGroupFactory, ResumeConfig
 from ray.tune.execution.tune_controller import TuneController
 from ray.tune.experiment import Trial
 from ray.tune.impl.placeholder import create_resolvers_map, inject_placeholders

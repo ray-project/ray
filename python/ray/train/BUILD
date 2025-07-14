@@ -2,10 +2,12 @@ load("@rules_python//python:defs.bzl", "py_library", "py_test")
 load("//bazel:python.bzl", "doctest")
 
 doctest(
+    name = "py_doctest[train]",
     size = "large",
     files = glob(
         ["**/*.py"],
         exclude = [
+            "collective/**",  # Only works on v2
             "examples/**",
             "tests/**",
             "horovod/**",  # CI do not have horovod installed
@@ -20,6 +22,7 @@ doctest(
 )
 
 doctest(
+    name = "py_doctest[train-gpu]",
     size = "large",
     files = [
         "_internal/session.py",

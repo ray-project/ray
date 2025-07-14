@@ -2,6 +2,11 @@ from ray.core.generated.export_train_state_pb2 import (
     ExportTrainRunAttemptEventData as ProtoTrainRunAttempt,
     ExportTrainRunEventData as ProtoTrainRun,
 )
+from ray.dashboard.modules.metrics.dashboards.common import Panel
+from ray.dashboard.modules.metrics.dashboards.train_dashboard_panels import (
+    TRAIN_RUN_PANELS,
+    TRAIN_WORKER_PANELS,
+)
 from ray.train.v2._internal.state.schema import (
     ActorStatus,
     RunAttemptStatus,
@@ -11,7 +16,7 @@ from ray.train.v2._internal.state.schema import (
     TrainWorker,
 )
 
-TRAIN_SCHEMA_VERSION = 1
+TRAIN_SCHEMA_VERSION = 2
 RAY_TRAIN_VERSION = 2
 
 # Status mapping dictionaries
@@ -86,8 +91,24 @@ def train_run_attempt_to_proto(attempt: TrainRunAttempt) -> ProtoTrainRunAttempt
     return proto_attempt
 
 
+def _to_proto_dashboard_panel(panel: Panel) -> ProtoTrainRun.DashboardPanelMetadata:
+    """Convert Dashboard Panel to protobuf format."""
+    proto_panel = ProtoTrainRun.DashboardPanelMetadata(
+        id=str(panel.id),
+        title=panel.title,
+    )
+
+    return proto_panel
+
+
 def train_run_to_proto(run: TrainRun) -> ProtoTrainRun:
     """Convert TrainRun to protobuf format."""
+
+    train_run_panels_proto = [_to_proto_dashboard_panel(p) for p in TRAIN_RUN_PANELS]
+    train_worker_panels_proto = [
+        _to_proto_dashboard_panel(p) for p in TRAIN_WORKER_PANELS
+    ]
+
     proto_run = ProtoTrainRun(
         schema_version=TRAIN_SCHEMA_VERSION,
         ray_train_version=RAY_TRAIN_VERSION,
@@ -100,6 +121,8 @@ def train_run_to_proto(run: TrainRun) -> ProtoTrainRun:
         start_time_ns=run.start_time_ns,
         end_time_ns=run.end_time_ns,
         controller_log_file_path=run.controller_log_file_path,
+        train_run_panels=train_run_panels_proto,
+        train_worker_panels=train_worker_panels_proto,
     )
 
     return proto_run

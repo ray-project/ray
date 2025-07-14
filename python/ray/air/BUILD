@@ -224,6 +224,22 @@ py_test(
 )
 
 py_test(
+    name = "test_torch_tensor_utils",
+    size = "small",
+    srcs = ["tests/test_torch_tensor_utils.py"],
+    tags = [
+        "exclusive",
+        "ray_data",
+        "team:data",
+        "team:ml",
+    ],
+    deps = [
+        ":conftest",
+        ":ml_lib",
+    ],
+)
+
+py_test(
     name = "test_object_extension",
     size = "small",
     srcs = ["tests/test_object_extension.py"],

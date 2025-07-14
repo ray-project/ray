@@ -9,7 +9,7 @@ import pytest
 
 import ray
 import ray.cluster_utils
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import wait_for_condition
 from ray.util.placement_group import placement_group
 from ray.util.accelerators import AWS_NEURON_CORE
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
@@ -743,7 +743,4 @@ def test_zero_capacity_deletion_semantics(shutdown_only):
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

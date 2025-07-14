@@ -56,16 +56,28 @@ class Concatenator(Preprocessor):
         >>> concatenator.transform(ds)  # doctest: +SKIP
         Dataset(num_rows=3, schema={Y: object, concat_out: TensorDtype(shape=(2,), dtype=float32)})
 
+        When ``flatten=True``, nested vectors in the columns will be flattened during concatenation:
+
+        >>> df = pd.DataFrame({"X0": [[1, 2], [3, 4]], "X1": [0.5, 0.2]})
+        >>> ds = ray.data.from_pandas(df)  # doctest: +SKIP
+        >>> concatenator = Concatenator(columns=["X0", "X1"], flatten=True)
+        >>> concatenator.transform(ds).to_pandas()  # doctest: +SKIP
+           concat_out
+        0  [1.0, 2.0, 0.5]
+        1  [3.0, 4.0, 0.2]
+
     Args:
-        output_column_name: The desired name for the new column.
-            Defaults to ``"concat_out"``.
         columns: A list of columns to concatenate. The provided order of the columns
              will be retained during concatenation.
+        output_column_name: The desired name for the new column.
+            Defaults to ``"concat_out"``.
         dtype: The ``dtype`` to convert the output tensors to. If unspecified,
             the ``dtype`` is determined by standard coercion rules.
         raise_if_missing: If ``True``, an error is raised if any
             of the columns in ``columns`` don't exist.
             Defaults to ``False``.
+        flatten: If ``True``, nested vectors in the columns will be flattened during
+            concatenation. Defaults to ``False``.
 
     Raises:
         ValueError: if `raise_if_missing` is `True` and a column in `columns` or
@@ -80,12 +92,14 @@ class Concatenator(Preprocessor):
         output_column_name: str = "concat_out",
         dtype: Optional[np.dtype] = None,
         raise_if_missing: bool = False,
+        flatten: bool = False,
     ):
         self.columns = columns
 
         self.output_column_name = output_column_name
         self.dtype = dtype
         self.raise_if_missing = raise_if_missing
+        self.flatten = flatten
 
     def _validate(self, df: pd.DataFrame) -> None:
         missing_columns = set(self.columns) - set(df)
@@ -101,7 +115,22 @@ class Concatenator(Preprocessor):
     def _transform_pandas(self, df: pd.DataFrame):
         self._validate(df)
 
-        concatenated = df[self.columns].to_numpy(dtype=self.dtype)
+        if self.flatten:
+            concatenated = df[self.columns].to_numpy()
+            concatenated = [
+                np.concatenate(
+                    [
+                        np.atleast_1d(elem)
+                        if self.dtype is None
+                        else np.atleast_1d(elem).astype(self.dtype)
+                        for elem in row
+                    ]
+                )
+                for row in concatenated
+            ]
+        else:
+            concatenated = df[self.columns].to_numpy(dtype=self.dtype)
+
         df = df.drop(columns=self.columns)
         # Use a Pandas Series for column assignment to get more consistent
         # behavior across Pandas versions.
@@ -114,6 +143,7 @@ class Concatenator(Preprocessor):
             "columns": None,
             "dtype": None,
             "raise_if_missing": False,
+            "flatten": False,
         }
 
         non_default_arguments = []

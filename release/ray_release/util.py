@@ -8,11 +8,13 @@ import subprocess
 import time
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
+from google.cloud import storage
 import requests
+import shutil
+
 from ray_release.logger import logger
 from ray_release.configs.global_config import get_global_config
-import shutil
-from google.cloud import storage
+from ray_release.exception import ClusterEnvCreateError
 
 if TYPE_CHECKING:
     from anyscale.sdk.anyscale_client.sdk import AnyscaleSDK
@@ -37,6 +39,7 @@ ERROR_LOG_PATTERNS = [
 ]
 KUBERAY_SERVER_URL = "https://kuberaytest.anyscale.dev"
 DEFAULT_KUBERAY_NAMESPACE = "kuberayportal-kevin"
+
 
 def get_read_state_machine_aws_bucket(allow_pr_bucket: bool = False) -> str:
     # We support by default reading from the branch bucket only, since most of the use
@@ -211,57 +214,19 @@ def join_cloud_storage_paths(*paths: str):
     return joined_path
 
 
-def convert_cluster_compute_to_kuberay_compute_config(compute_config: dict) -> dict:
-    """Convert cluster compute config to KubeRay compute config format.
-
-    Args:
-        compute_config: Original cluster compute configuration dict.
-
-    Returns:
-        Dict containing KubeRay-formatted compute configuration.
-    """
-    head_node_instance_type = compute_config["head_node_type"].get("instance_type")
-    worker_node_types = compute_config["worker_node_types"]
-    head_node_resources = compute_config.get("head_node_type", {}).get("resources", {})
-
-    kuberay_worker_nodes = []
-    for worker_node_type in worker_node_types:
-        worker_node_config = {
-            "group_name": worker_node_type.get("name"),
-            "min_nodes": worker_node_type.get("min_workers"),
-            "max_nodes": worker_node_type.get("max_workers")
-        }
-        if worker_node_type.get("resources", {}):
-            worker_node_config["resources"] = worker_node_type.get("resources", {})
-        kuberay_worker_nodes.append(worker_node_config)
-
-    config = {
-        "head_node": {},
-        "worker_nodes": kuberay_worker_nodes,
-    }
-    if head_node_resources:
-        config["head_node"]["resources"] = head_node_resources
-    if compute_config.get("autoscaler_version"):
-        config["autoscaler_version"] = compute_config.get("autoscaler_version")
-    return config
-
 def upload_working_dir(working_dir: str) -> str:
     """Upload working directory to GCS bucket.
-    
+
     Args:
         working_dir: Path to directory to upload.
-
     Returns:
         GCS path where directory was uploaded.
     """
-    import tempfile
-    import time
-    
     # Create archive of working dir
     timestamp = str(int(time.time()))
     archived_filename = f"ray_release_{timestamp}.zip"
     output_path = os.path.abspath(archived_filename)
-    
+
     logger.info(f"Archiving working directory: {working_dir}")
     shutil.make_archive(output_path[:-4], "zip", working_dir)
 
@@ -272,3 +237,68 @@ def upload_working_dir(working_dir: str) -> str:
     blob.upload_from_filename(archived_filename)
 
     return f"gs://ray-release-working-dir/{blob.name}"
+
+
+def get_custom_cluster_env_name(image: str, test_name: str) -> str:
+    image_normalized = image.replace("/", "_").replace(":", "_").replace(".", "_")
+    return f"test_env_{image_normalized}_{test_name}"
+
+
+def create_cluster_env_from_image(
+    image: str,
+    test_name: str,
+    runtime_env: Dict[str, Any],
+    sdk: Optional["AnyscaleSDK"] = None,
+    cluster_env_id: Optional[str] = None,
+    cluster_env_name: Optional[str] = None,
+) -> str:
+    anyscale_sdk = sdk or get_anyscale_sdk()
+    if not cluster_env_name:
+        cluster_env_name = get_custom_cluster_env_name(image, test_name)
+
+    # Find whether there is identical cluster env
+    paging_token = None
+    while not cluster_env_id:
+        result = anyscale_sdk.search_cluster_environments(
+            dict(
+                name=dict(equals=cluster_env_name),
+                paging=dict(count=50, paging_token=paging_token),
+                project_id=None,
+            )
+        )
+        paging_token = result.metadata.next_paging_token
+
+        for res in result.results:
+            if res.name == cluster_env_name:
+                cluster_env_id = res.id
+                logger.info(f"Cluster env already exists with ID " f"{cluster_env_id}")
+                break
+
+        if not paging_token or cluster_env_id:
+            break
+
+    if not cluster_env_id:
+        logger.info("Cluster env not found. Creating new one.")
+        try:
+            result = anyscale_sdk.create_byod_cluster_environment(
+                dict(
+                    name=cluster_env_name,
+                    config_json=dict(
+                        docker_image=image,
+                        ray_version="nightly",
+                        env_vars=runtime_env,
+                    ),
+                )
+            )
+            cluster_env_id = result.result.id
+        except Exception as e:
+            logger.warning(
+                f"Got exception when trying to create cluster "
+                f"env: {e}. Sleeping for 10 seconds with jitter and then "
+                f"try again..."
+            )
+            raise ClusterEnvCreateError("Could not create cluster env.") from e
+
+        logger.info(f"Cluster env created with ID {cluster_env_id}")
+
+    return cluster_env_id

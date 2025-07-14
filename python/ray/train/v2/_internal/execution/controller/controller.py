@@ -1,15 +1,18 @@
+import asyncio
 import logging
 import os
-import time
 import uuid
 from dataclasses import dataclass
 from typing import Callable, List, Optional
 
 import pandas as pd
 
-from ray._private.auto_init_hook import wrap_auto_init
+import ray
+import ray._private.ray_constants as ray_constants
 from ray.train.v2._internal.constants import (
+    DEFAULT_ENABLE_CONTROLLER_LOGGING,
     DEFAULT_HEALTH_CHECK_INTERVAL_S,
+    ENABLE_CONTROLLER_STRUCTURED_LOGGING_ENV_VAR,
     HEALTH_CHECK_INTERVAL_S_ENV_VAR,
 )
 from ray.train.v2._internal.exceptions import (
@@ -31,6 +34,7 @@ from ray.train.v2._internal.execution.checkpoint.report_handler import (
 )
 from ray.train.v2._internal.execution.context import TrainRunContext
 from ray.train.v2._internal.execution.controller.state import (
+    AbortedState,
     ErroredState,
     FinishedState,
     InitializingState,
@@ -48,7 +52,6 @@ from ray.train.v2._internal.execution.failure_handling import (
 from ray.train.v2._internal.execution.scaling_policy import (
     NoopDecision,
     ResizeDecision,
-    ScalingDecision,
     ScalingPolicy,
 )
 from ray.train.v2._internal.execution.storage import StorageContext
@@ -110,7 +113,11 @@ class TrainController:
         callbacks: Optional[List[RayTrainCallback]] = None,
     ):
         self._train_run_context = train_run_context
-        configure_controller_logger(self._train_run_context)
+        if ray_constants.env_bool(
+            ENABLE_CONTROLLER_STRUCTURED_LOGGING_ENV_VAR,
+            DEFAULT_ENABLE_CONTROLLER_LOGGING,
+        ):
+            configure_controller_logger(self._train_run_context)
         self._train_fn_ref = train_fn_ref
         self._scaling_policy = scaling_policy
         self._failure_policy = failure_policy
@@ -139,13 +146,17 @@ class TrainController:
         ]
         # Group callbacks that will be propagated to the worker group,
         # train worker and the train context.
-        self._worker_group_callbacks_to_propagate = [report_handler] + [
-            c
-            for c in self._callbacks
-            if isinstance(
-                c, (WorkerGroupCallback, WorkerCallback, TrainContextCallback)
-            )
-        ]
+        self._worker_group_callbacks_to_propagate = (
+            [report_handler]
+            + [
+                c
+                for c in self._callbacks
+                if isinstance(
+                    c, (WorkerGroupCallback, WorkerCallback, TrainContextCallback)
+                )
+            ]
+            + [self._checkpoint_manager]
+        )
 
         self._health_check_interval_s = float(
             os.getenv(HEALTH_CHECK_INTERVAL_S_ENV_VAR, DEFAULT_HEALTH_CHECK_INTERVAL_S)
@@ -157,38 +168,40 @@ class TrainController:
         # TODO: These can be attributes of a RunAttempt?
         self._latest_poll_time = float("-inf")
 
-    def _execute_scaling_decision(
-        self, decision: ScalingDecision
-    ) -> TrainControllerState:
-        """Executes scaling decisions."""
+        self._start()
+
+    def _execute_resize_decision(
+        self, decision: ResizeDecision
+    ) -> TrainControllerLoopIterationResult:
+        """Executes resize decisions."""
+
         for callback in self._controller_callbacks:
-            callback.before_controller_execute_scaling_decision(decision)
+            callback.before_controller_execute_resize_decision(decision)
 
-        if isinstance(decision, ResizeDecision):
-            if self._worker_group:
-                self._shutdown_worker_group()
+        if self._worker_group:
+            self._shutdown_worker_group()
 
-            worker_group_started = self._start_worker_group(
-                num_workers=decision.num_workers,
-                resources_per_worker=decision.resources_per_worker,
-            )
+        worker_group_started = self._start_worker_group(
+            num_workers=decision.num_workers,
+            resources_per_worker=decision.resources_per_worker,
+        )
 
-            if worker_group_started:
-                next_state = RunningState()
-            else:
-                next_state = ReschedulingState()
+        if worker_group_started:
+            next_state = RunningState()
+        else:
+            next_state = ReschedulingState()
 
-            return TrainControllerLoopIterationResult(
-                run_attempt_id=self._get_run_attempt_id(),
-                previous_state=self._state,
-                next_state=next_state,
-            )
+        return TrainControllerLoopIterationResult(
+            run_attempt_id=self._get_run_attempt_id(),
+            previous_state=self._state,
+            next_state=next_state,
+        )
 
     def _execute_failure_decision(
         self,
         failure_decision: FailureDecision,
         worker_group_status: WorkerGroupPollStatus,
-    ) -> TrainControllerState:
+    ) -> TrainControllerLoopIterationResult:
         """Executes failure handling decisions (ex: restart, terminate)."""
         assert worker_group_status.errors
 
@@ -240,14 +253,14 @@ class TrainController:
         else:
             raise ValueError(f"Unexpected failure decision: {failure_decision}")
 
-    def _poll_workers(self) -> WorkerGroupPollStatus:
+    async def _poll_workers(self) -> WorkerGroupPollStatus:
         # Ensure that the time between polls is at least HEALTH_CHECK_INTERVAL_S.
         time_since_last_poll = time_monotonic() - self._latest_poll_time
         if time_since_last_poll < self._health_check_interval_s:
             remaining_time = max(
                 self._health_check_interval_s - time_since_last_poll, 0
             )
-            time.sleep(remaining_time)
+            await asyncio.sleep(remaining_time)
 
         status = self._worker_group.poll_status(timeout=self._health_check_interval_s)
         self._latest_poll_time = time_monotonic()
@@ -259,27 +272,14 @@ class TrainController:
         Returns:
             True if the worker group was successfully started, False otherwise.
         """
-
-        # If there's a latest checkpoint that's been committed,
-        # use it to restore the worker group.
-        latest_checkpoint_result = self._checkpoint_manager.latest_checkpoint_result
-        latest_checkpoint = (
-            latest_checkpoint_result.checkpoint if latest_checkpoint_result else None
-        )
         placement_strategy = self._scaling_policy.scaling_config.placement_strategy
-
         worker_group_context = WorkerGroupContext(
             run_attempt_id=self._get_run_attempt_id(),
             train_fn_ref=self._train_fn_ref,
             num_workers=num_workers,
             resources_per_worker=resources_per_worker,
             placement_strategy=placement_strategy,
-            checkpoint=latest_checkpoint,
         )
-
-        # Start the worker group with the latest checkpoint if there is one.
-        # Otherwise, start the worker group with the checkpoint set by controller.
-        # Finally, if there is no checkpoint, start the worker group with None.
         try:
             self._worker_group = self.worker_group_cls.create(
                 train_run_context=self._train_run_context,
@@ -302,7 +302,7 @@ class TrainController:
 
     def _start(self):
         for callback in self._controller_callbacks:
-            callback.after_controller_start()
+            callback.after_controller_start(self._train_run_context)
 
     def _shutdown(self):
         if self._worker_group:
@@ -329,7 +329,44 @@ class TrainController:
         for callback in self._controller_callbacks:
             callback.after_controller_state_update(previous_state, state)
 
-    def _step(self) -> TrainControllerLoopIterationResult:
+    def _make_and_handle_scaling_decision_for_non_running_worker_group(
+        self,
+        controller_state: TrainControllerState,
+    ) -> TrainControllerLoopIterationResult:
+        """Make a scaling decision for a non-running worker group and return the appropriate next state.
+
+        This method should be called when entering a state that requires a scaling decision
+        for a non-running worker group.
+
+        This method handles the complete flow of:
+        1. Getting a scaling decision for a non-running worker group
+        2. Determining the next state based on the decision type
+        3. Creating and returning the iteration result
+
+        Args:
+            controller_state: The current controller state
+
+        Returns:
+            TrainControllerLoopIterationResult with the appropriate next state
+        """
+        scaling_decision = (
+            self._scaling_policy.make_decision_for_non_running_worker_group()
+        )
+
+        if isinstance(scaling_decision, NoopDecision):
+            next_state = controller_state
+        elif isinstance(scaling_decision, ResizeDecision):
+            next_state = SchedulingState(scaling_decision)
+        else:
+            raise ValueError(f"Unexpected scaling decision: {scaling_decision}")
+
+        return TrainControllerLoopIterationResult(
+            run_attempt_id=self._get_run_attempt_id(),
+            previous_state=controller_state,
+            next_state=next_state,
+        )
+
+    async def _step(self) -> TrainControllerLoopIterationResult:
         """Run a single iteration of the control loop.
 
         Returns:
@@ -337,28 +374,17 @@ class TrainController:
         """
         controller_state = self.get_state()
 
-        if isinstance(controller_state, InitializingState):
-            scaling_decision = (
-                self._scaling_policy.make_decision_for_non_running_worker_group()
-            )
-            return TrainControllerLoopIterationResult(
-                run_attempt_id=self._get_run_attempt_id(),
-                previous_state=controller_state,
-                next_state=SchedulingState(scaling_decision),
+        if isinstance(
+            controller_state, (InitializingState, ReschedulingState, RestartingState)
+        ):
+            return self._make_and_handle_scaling_decision_for_non_running_worker_group(
+                controller_state
             )
         elif isinstance(controller_state, SchedulingState):
-            return self._execute_scaling_decision(controller_state.scaling_decision)
-        elif isinstance(controller_state, ReschedulingState):
-            scaling_decision = (
-                self._scaling_policy.make_decision_for_non_running_worker_group()
-            )
-            return TrainControllerLoopIterationResult(
-                run_attempt_id=self._get_run_attempt_id(),
-                previous_state=controller_state,
-                next_state=SchedulingState(scaling_decision),
-            )
+            assert isinstance(controller_state.scaling_decision, ResizeDecision)
+            return self._execute_resize_decision(controller_state.scaling_decision)
         elif isinstance(controller_state, RunningState):
-            worker_group_status = self._poll_workers()
+            worker_group_status = await self._poll_workers()
 
             if worker_group_status.finished and not worker_group_status.errors:
                 return TrainControllerLoopIterationResult(
@@ -379,12 +405,12 @@ class TrainController:
                     worker_group_status=worker_group_status,
                 )
 
-                if isinstance(scaling_decision, ResizeDecision):
+                if isinstance(scaling_decision, NoopDecision):
+                    next_state = RunningState()
+                elif isinstance(scaling_decision, ResizeDecision):
                     next_state = ResizingState(
                         scaling_decision=scaling_decision,
                     )
-                elif isinstance(scaling_decision, NoopDecision):
-                    next_state = RunningState()
                 else:
                     raise ValueError(f"Unexpected scaling decision: {scaling_decision}")
 
@@ -393,15 +419,6 @@ class TrainController:
                     previous_state=controller_state,
                     next_state=next_state,
                 )
-        elif isinstance(controller_state, RestartingState):
-            scaling_decision = (
-                self._scaling_policy.make_decision_for_non_running_worker_group()
-            )
-            return TrainControllerLoopIterationResult(
-                run_attempt_id=self._get_run_attempt_id(),
-                previous_state=controller_state,
-                next_state=SchedulingState(scaling_decision=scaling_decision),
-            )
         elif isinstance(controller_state, ResizingState):
             return TrainControllerLoopIterationResult(
                 run_attempt_id=self._get_run_attempt_id(),
@@ -420,7 +437,7 @@ class TrainController:
     def _get_run_attempt_id(self):
         return self._run_attempt_id
 
-    def _run_control_loop_iteration(self):
+    async def _run_control_loop_iteration(self):
         """Run a single iteration of the control loop.
 
         Steps:
@@ -438,19 +455,34 @@ class TrainController:
         if controller_state.needs_new_run_attempt():
             self._generate_run_attempt_id()
 
-        result = self._step()
+        result = await self._step()
 
         self._set_state(result.next_state)
 
-    @wrap_auto_init
-    def run(self):
+    async def run(self):
         """Run the main control loop. Exits when training is finished or errored."""
-        self._start()
-
         while not self.get_state().is_terminal():
-            self._run_control_loop_iteration()
+            await self._run_control_loop_iteration()
 
+        # TODO: move to __del__ after https://github.com/ray-project/ray/issues/53169
         self._shutdown()
+
+        # Call after_controller_finish with the final result
+        result = self._build_result()
+        for callback in self._controller_callbacks:
+            callback.after_controller_finish(result)
+
+    async def abort(self):
+        """Trigger callback abort hooks and terminate the controller process."""
+        # Do not abort run if it's already finished.
+        if self.get_state().is_terminal():
+            return
+        # Intentionally abort worker group before setting train run state because
+        # we only reconcile the states of live train runs.
+        if self._worker_group:
+            self._worker_group.abort()
+        self._set_state(AbortedState())
+        ray.actor.exit_actor()
 
     def _build_result(self) -> Result:
         storage = self._checkpoint_manager._storage_context
