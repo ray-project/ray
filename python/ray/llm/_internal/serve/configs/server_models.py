@@ -1,5 +1,4 @@
 import os
-import time
 from enum import Enum
 from typing import (
     Any,
@@ -7,7 +6,6 @@ from typing import (
     List,
     Optional,
     Sequence,
-    Tuple,
     TypeVar,
     Union,
 )
@@ -20,7 +18,6 @@ from pydantic import (
     PositiveInt,
     PrivateAttr,
     field_validator,
-    model_validator,
 )
 
 import ray
@@ -37,7 +34,6 @@ from ray.llm._internal.serve.configs.constants import (
     ENABLE_WORKER_PROCESS_SETUP_HOOK,
     MODEL_RESPONSE_BATCH_TIMEOUT_MS,
 )
-from ray.llm._internal.serve.configs.openai_api_models import ErrorResponse
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.serve._private.config import DeploymentConfig
 
@@ -644,192 +640,3 @@ class LogProbs(BaseModel):
         all_logprobs = logprobs if top_logprobs else []
         ret = cls(token=token, logprob=logprob, bytes=bytes, top_logprobs=all_logprobs)
         return ret
-
-
-# TODO (Kourosh): Remove this.
-class LLMRawResponse(ComputedPropertyMixin, BaseModelExtended):
-    """The response from a query to a RayLLM Model.
-
-    Args:
-        generated_text: The generated text.
-        logprobs: Log probabilities of each token and possibly some of the unchosen tokens.
-        num_input_tokens: The number of input tokens.
-        num_generated_tokens: The number of generated tokens.
-        num_input_tokens_batch: The number of input tokens in the batch.
-        num_generated_tokens_batch: The number of generated tokens in the batch.
-        preprocessing_time: The time spent preprocessing the request.
-        generation_time: The time spent generating the response.
-        timestamp: The timestamp of the response.
-        finish_reason: The reason the generation finished.
-        error: The error, if any.
-        metadata: The metadata for internal usage.
-    """
-
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-
-    generated_text: Optional[str] = None
-    logprobs: Optional[List[LogProbs]] = None
-    num_input_tokens: Optional[int] = None
-    num_input_tokens_batch: Optional[int] = None
-    num_generated_tokens: Optional[int] = None
-    num_generated_tokens_batch: Optional[int] = None
-    preprocessing_time: Optional[float] = None
-    generation_time: Optional[float] = None
-    timestamp: Optional[float] = Field(default_factory=time.time)
-    finish_reason: Optional[str] = None
-    error: Optional[ErrorResponse] = None
-    metadata: Optional[Dict[str, Any]] = None
-
-    @model_validator(mode="before")
-    @classmethod
-    def text_or_error_or_finish_reason(cls, values):
-        if (
-            values.get("generated_text") is None
-            and values.get("error") is None
-            and values.get("finish_reason") is None
-        ):
-            raise ValueError(
-                "'generated_text', 'error', or 'finish_reason' must be set."
-            )
-        return values
-
-    @classmethod
-    def merge_stream(cls, *responses: "LLMRawResponse") -> "LLMRawResponse":
-        """
-        Merge a stream of responses into a single response.
-
-        The generated text is concatenated. Fields are maxed, except for
-        num_generated_tokens and generation_time, which are summed.
-        """
-        if len(responses) == 1:
-            return responses[0]
-
-        generated_text = (
-            None
-            if responses[0].generated_text is None
-            else "".join([response.generated_text or "" for response in responses])
-        )
-        num_input_tokens = [
-            response.num_input_tokens
-            for response in responses
-            if response.num_input_tokens is not None
-        ]
-        max_num_input_tokens = max(num_input_tokens) if num_input_tokens else None
-        num_input_tokens_batch = [
-            response.num_input_tokens_batch
-            for response in responses
-            if response.num_input_tokens_batch is not None
-        ]
-        max_num_input_tokens_batch = (
-            max(num_input_tokens_batch) if num_input_tokens_batch else None
-        )
-        num_generated_tokens = [
-            response.num_generated_tokens
-            for response in responses
-            if response.num_generated_tokens is not None
-        ]
-        total_generated_tokens = (
-            sum(num_generated_tokens) if num_generated_tokens else None
-        )
-        num_generated_tokens_batch = [
-            response.num_generated_tokens_batch
-            for response in responses
-            if response.num_generated_tokens_batch is not None
-        ]
-        total_generated_tokens_batch = (
-            sum(num_generated_tokens_batch) if num_generated_tokens_batch else None
-        )
-        preprocessing_time = [
-            response.preprocessing_time
-            for response in responses
-            if response.preprocessing_time is not None
-        ]
-        max_preprocessing_time = max(preprocessing_time) if preprocessing_time else None
-        generation_time = [
-            response.generation_time
-            for response in responses
-            if response.generation_time is not None
-        ]
-        total_generation_time = sum(generation_time) if generation_time else None
-        error = next(
-            (response.error for response in reversed(responses) if response.error), None
-        )
-        logprobs = []
-        for response in responses:
-            if response.logprobs:
-                logprobs.extend(response.logprobs)
-
-        return cls(
-            generated_text=generated_text,
-            logprobs=logprobs,
-            num_input_tokens=max_num_input_tokens,
-            num_input_tokens_batch=max_num_input_tokens_batch,
-            num_generated_tokens=total_generated_tokens,
-            num_generated_tokens_batch=total_generated_tokens_batch,
-            preprocessing_time=max_preprocessing_time,
-            generation_time=total_generation_time,
-            timestamp=responses[-1].timestamp,
-            finish_reason=responses[-1].finish_reason,
-            error=error,
-            metadata=responses[-1].metadata,
-        )
-
-    @property
-    def total_time(self) -> Optional[float]:
-        if self.generation_time is None and self.preprocessing_time is None:
-            return None
-        return (self.preprocessing_time or 0) + (self.generation_time or 0)
-
-    @property
-    def num_total_tokens(self) -> Optional[float]:
-        try:
-            return (self.num_input_tokens or 0) + (self.num_generated_tokens or 0)
-        except Exception:
-            return None
-
-    @property
-    def num_total_tokens_batch(self) -> Optional[float]:
-        try:
-            return (self.num_input_tokens_batch or 0) + (
-                self.num_generated_tokens_batch or 0
-            )
-        except Exception:
-            return None
-
-    def unpack(self) -> Tuple["LLMRawResponse", ...]:
-        return (self,)
-
-
-class BatchedLLMRawResponse(LLMRawResponse):
-    # Same as LLMRawResponse, but persists the individual responses
-    # that were batched together to produce this response.
-
-    _individual_responses: Optional[List[LLMRawResponse]] = PrivateAttr(None)
-
-    @classmethod
-    def merge_stream(cls, *responses: LLMRawResponse) -> LLMRawResponse:
-        if len(responses) == 1:
-            return responses[0]
-        obj = super().merge_stream(*responses)
-        obj._individual_responses = list(responses)  # type: ignore
-        return obj
-
-    def unpack(self) -> Tuple[LLMRawResponse]:
-        return tuple(self._individual_responses or [])
-
-
-def merge_dicts(base: Dict, overwrite: Dict) -> Dict:
-    """
-    Merge overwrite into base. Modify base inplace.
-    """
-
-    for key in overwrite:
-        if (
-            key in base
-            and isinstance(base[key], dict)
-            and isinstance(overwrite[key], dict)
-        ):
-            merge_dicts(base[key], overwrite[key])
-        else:
-            base[key] = overwrite[key]
-    return base

@@ -21,7 +21,7 @@ from ray.llm._internal.serve.deployments.llm.multiplex.lora_model_loader import 
     LoraModelLoader,
 )
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_engine import VLLMEngine
-from ray.llm._internal.serve.deployments.utils.batcher import OpenAIResponseBatcher
+from ray.llm._internal.serve.deployments.utils.batcher import Batcher
 from ray.llm._internal.serve.deployments.utils.server_utils import (
     get_serve_request_id,
 )
@@ -208,7 +208,7 @@ class LLMServer(_LLMServerBase):
             await self.engine.resolve_lora(disk_lora_model)
 
     def _batch_output_stream(self, generator):
-        return OpenAIResponseBatcher(
+        return Batcher(
             generator,
             interval_ms=self._get_batch_interval_ms(),
         ).stream()
