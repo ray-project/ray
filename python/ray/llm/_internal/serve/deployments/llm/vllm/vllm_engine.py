@@ -25,9 +25,6 @@ from ray.llm._internal.serve.configs.server_models import (
     LLMConfig,
 )
 from ray.llm._internal.serve.deployments.llm.llm_engine import LLMEngine
-from ray.llm._internal.serve.deployments.llm.vllm.vllm_engine_stats import (
-    VLLMEngineStatTracker,
-)
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import (
     FrontendArgs,
     VLLMEngineConfig,
@@ -153,8 +150,6 @@ class VLLMEngine(LLMEngine):
             port = vllm_envs.VLLM_NIXL_SIDE_CHANNEL_PORT
             kv_transfer_config.engine_id = "-".join([engine_id, host, str(port)])
 
-        # TODO (Kourosh): What do we do with this stats tracker?
-        self._stats = VLLMEngineStatTracker()
         self._running = False
 
         # vLLM Integration points. Will be set through .start()
