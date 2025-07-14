@@ -638,9 +638,7 @@ void GcsTaskManager::GcsTaskManagerStorage::RecordDataLossFromWorker(
   }
 }
 
-void GcsTaskManager::HandleAddTaskEventData(rpc::AddTaskEventDataRequest request,
-                                            rpc::AddTaskEventDataReply *reply,
-                                            rpc::SendReplyCallback send_reply_callback) {
+void GcsTaskManager::RecordTaskEventData(rpc::AddTaskEventDataRequest &request) {
   auto data = std::move(*request.mutable_data());
   task_event_storage_->RecordDataLossFromWorker(data);
 
@@ -648,15 +646,103 @@ void GcsTaskManager::HandleAddTaskEventData(rpc::AddTaskEventDataRequest request
     stats_counter_.Increment(kTotalNumTaskEventsReported);
     task_event_storage_->AddOrReplaceTaskEvent(std::move(events_by_task));
   }
+}
+
+void GcsTaskManager::ConvertAddEventRequestToAddTaskEventDataRequest(
+    rpc::events::AddEventRequest &request, rpc::AddTaskEventDataRequest &data) {
+  
+  // Convert RayEventsData to TaskEventData
+  auto *task_event_data = data.mutable_data();
+  
+  // Copy dropped task attempts from the metadata
+  for (const auto &dropped_attempt :
+       request.events_data().task_events_metadata().dropped_task_attempts()) {
+    *task_event_data->add_dropped_task_attempts() = dropped_attempt;
+  }
+  
+  // Convert RayEvents to TaskEvents
+  for (const auto &ray_event : request.events_data().events()) {
+    auto *task_event = task_event_data->add_events_by_task();
+    
+    // Set the task ID from the event ID (assuming event_id contains task_id)
+    task_event->set_task_id(ray_event.event_id());
+    
+    // Set the attempt number (default to 0 if not available)
+    task_event->set_attempt_number(0);
+    
+    // Set the job ID if available in the metadata
+    if (request.events_data().task_events_metadata().has_job_id()) {
+      task_event->set_job_id(request.events_data().task_events_metadata().job_id());
+    }
+    
+    // Set the node ID if available in the metadata
+    if (request.events_data().task_events_metadata().has_node_id()) {
+      task_event->set_node_id(request.events_data().task_events_metadata().node_id());
+    }
+    
+    // Set the worker ID if available in the metadata
+    if (request.events_data().task_events_metadata().has_worker_id()) {
+      task_event->set_worker_id(request.events_data().task_events_metadata().worker_id());
+    }
+    
+    // Set the timestamp
+    if (ray_event.has_timestamp()) {
+      task_event->set_timestamp(ray_event.timestamp().seconds() * 1000000000 + 
+                               ray_event.timestamp().nanos());
+    }
+    
+    // Set the event type based on the RayEvent type
+    switch (ray_event.event_type()) {
+      case rpc::events::RayEvent::TASK_DEFINITION_EVENT:
+        task_event->set_state(rpc::TaskStatus::PENDING_ARGS_AVAIL);
+        break;
+      case rpc::events::RayEvent::TASK_SUBMIT_EVENT:
+        task_event->set_state(rpc::TaskStatus::SUBMITTED_TO_WORKER);
+        break;
+      case rpc::events::RayEvent::TASK_PENDING_EVENT:
+        task_event->set_state(rpc::TaskStatus::PENDING_NODE_ASSIGNMENT);
+        break;
+      case rpc::events::RayEvent::TASK_SCHEDULED_EVENT:
+        task_event->set_state(rpc::TaskStatus::SUBMITTED_TO_WORKER);
+        break;
+      case rpc::events::RayEvent::TASK_RUNNING_EVENT:
+        task_event->set_state(rpc::TaskStatus::RUNNING);
+        break;
+      case rpc::events::RayEvent::TASK_FINISHED_EVENT:
+        task_event->set_state(rpc::TaskStatus::FINISHED);
+        break;
+      case rpc::events::RayEvent::TASK_FAILED_EVENT:
+        task_event->set_state(rpc::TaskStatus::FAILED);
+        break;
+      default:
+        // For unknown event types, skip this event
+        continue;
+    }
+    
+    // Set the error message if available
+    if (!ray_event.message().empty()) {
+      task_event->set_error_message(ray_event.message());
+    }
+  }
+}
+
+void GcsTaskManager::HandleAddTaskEventData(rpc::AddTaskEventDataRequest request,
+                                            rpc::AddTaskEventDataReply *reply,
+                                            rpc::SendReplyCallback send_reply_callback) {
+  RecordTaskEventData(request);
 
   // Processed all the task events
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
 }
 
-void GcsTaskManager::HandleAddEvents(rpc::events::AddEventsRequest request,
-                                     rpc::events::AddEventsReply *reply,
-                                     rpc::SendReplyCallback send_reply_callback) {
-  // TODO(can-anyscale): Implement this.
+void GcsTaskManager::HandleAddEvents(rpc::events::AddEventRequest request,
+                                    rpc::events::AddEventReply *reply,
+                                    rpc::SendReplyCallback send_reply_callback) {
+  rpc::AddTaskEventDataRequest data;
+  ConvertAddEventRequestToAddTaskEventDataRequest(request, data);
+  RecordTaskEventData(data);
+
+  // Processed all the task events
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
 }
 

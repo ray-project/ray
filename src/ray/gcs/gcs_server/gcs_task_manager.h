@@ -479,6 +479,11 @@ class GcsTaskManager : public rpc::TaskInfoHandler, public rpc::RayEventExportHa
   };
 
  private:
+  void RecordTaskEventData(rpc::AddTaskEventDataRequest &request);
+
+  void ConvertAddEventRequestToAddTaskEventDataRequest(
+      rpc::events::AddEventRequest &request, rpc::AddTaskEventDataRequest &data);
+
   /// Record data loss from worker.
   ///
   /// TODO(rickyx): This will be updated to record task attempt loss properly.
