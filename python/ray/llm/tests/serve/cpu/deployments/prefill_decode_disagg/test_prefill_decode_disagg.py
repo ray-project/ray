@@ -16,7 +16,8 @@ from ray.serve.llm.openai_api_models import ChatCompletionRequest
 
 
 class TestServingArgsParsing:
-    def test_parse_dict(self):
+    @pytest.mark.parametrize("kv_connector", ["NixlConnector", "LMCacheConnectorV1"])
+    def test_parse_dict(self, kv_connector: str):
         prefill_config = LLMConfig(
             model_loading_config=dict(
                 model_id="qwen-0.5b",
@@ -30,6 +31,10 @@ class TestServingArgsParsing:
             ),
             engine_kwargs=dict(
                 tensor_parallel_size=1,
+                kv_transfer_config=dict(
+                    kv_connector=kv_connector,
+                    kv_role="kv_both",
+                ),
             ),
         )
 
@@ -46,6 +51,10 @@ class TestServingArgsParsing:
             ),
             engine_kwargs=dict(
                 tensor_parallel_size=1,
+                kv_transfer_config=dict(
+                    kv_connector=kv_connector,
+                    kv_role="kv_both",
+                ),
             ),
         )
 

@@ -157,7 +157,7 @@ class VLLMEngine(LLMEngine):
             connector_type = getattr(kv_transfer_config, "kv_connector", "")
             if connector_type not in ["NixlConnector", "LMCacheConnectorV1"]:
                 raise ValueError(
-                    "Only NixlConnector and LMCacheConnectorV1 is supported for KV transfer."
+                    "Only NixlConnector and LMCacheConnectorV1 are supported for KV transfer."
                 )
 
             if connector_type == "NixlConnector":
