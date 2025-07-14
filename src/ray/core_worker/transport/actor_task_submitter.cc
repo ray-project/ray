@@ -216,7 +216,6 @@ Status ActorTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
                   if (actor_submit_queue->Contains(send_pos)) {
                     if (status.ok()) {
                       actor_submit_queue->MarkDependencyResolved(send_pos);
-                      RAY_LOG(DEBUG) << "Send Pending Tasks!";
                       SendPendingTasks(actor_id);
                     } else {
                       fail_or_retry_task = true;
@@ -596,7 +595,7 @@ void ActorTaskSubmitter::PushActorTask(ClientQueue &queue,
   rpc::Address addr(queue.rpc_client->Addr());
   rpc::ClientCallback<rpc::PushTaskReply> reply_callback =
       [this, addr, task_spec](const Status &status, const rpc::PushTaskReply &reply) {
-        this->HandlePushTaskReply(status, reply, addr, task_spec);
+        HandlePushTaskReply(status, reply, addr, task_spec);
       };
 
   const TaskAttempt task_attempt = std::make_pair(task_id, task_spec.AttemptNumber());
@@ -648,7 +647,6 @@ void ActorTaskSubmitter::HandlePushTaskReply(const Status &status,
       queue.cur_pending_calls--;
     }
   }
-
   if (resubmit_generator) {
     GetTaskManagerWithoutMu().MarkGeneratorFailedAndResubmit(task_id);
     return;

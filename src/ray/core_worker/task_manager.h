@@ -24,6 +24,7 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/id.h"
+#include "ray/common/status_or.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/task_event_buffer.h"
 #include "ray/core_worker/task_manager_interface.h"
@@ -625,8 +626,11 @@ class TaskManager : public TaskManagerInterface {
       const rpc::Address &worker_addr,
       const ReferenceCounter::ReferenceTableProto &borrowed_refs);
 
-  /// Get the objects that were stored in plasma upon the first successful
-  /// execution of this task. If the task is re-executed, these objects should
+  /// If the task returns a streaming generator, return all objects that have
+  /// been reported by the executor so far. If the task does not return a streaming
+  /// generator return the objects that were stored in plasma upon the first successful
+  /// execution of this task.
+  /// If the task is re-executed, these objects should
   /// get stored in plasma again, even if they are small and were returned
   /// directly in the worker's reply. This ensures that any reference holders
   /// that are already scheduled at the raylet can retrieve these objects
