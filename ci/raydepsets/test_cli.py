@@ -107,7 +107,6 @@ class TestCli(unittest.TestCase):
     def test_subset_by_depset_name(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             _copy_data_to_tmpdir(tmpdir)
-            # print(f"tmpdir files: {os.listdir(tmpdir)}")
             result = CliRunner().invoke(
                 load,
                 [
