@@ -862,6 +862,9 @@ service TaskInfoGcsService {
   // Add task event data to GCS.
   rpc AddTaskEventData(AddTaskEventDataRequest) returns (AddTaskEventDataReply);
 
+  // Add OneEvent task data to GCS.
+  rpc AddEvent(events.AddEventRequest) returns (events.AddEventReply);
+
   // Get task events.
   rpc GetTaskEvents(GetTaskEventsRequest) returns (GetTaskEventsReply);
 }
