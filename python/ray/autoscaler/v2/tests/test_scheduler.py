@@ -1931,67 +1931,67 @@ def test_node_schedule_score(source):
         infeasible, score = node.try_schedule(requests, source)
         return ResourceRequestUtil.to_resource_maps(infeasible), score
 
-    assert try_schedule({"CPU": 1}, [{"CPU": 1}]) == ([], (True, 1, 1.0, 1.0, 0))
+    assert try_schedule({"CPU": 1}, [{"CPU": 1}]) == ([], (0, True, 1, 1.0, 1.0))
 
-    assert try_schedule({"GPU": 4}, [{"GPU": 2}]) == ([], (True, 1, 0.5, 0.5, 0))
+    assert try_schedule({"GPU": 4}, [{"GPU": 2}]) == ([], (0, True, 1, 0.5, 0.5))
     assert try_schedule({"GPU": 4}, [{"GPU": 1}, {"GPU": 1}]) == (
         [],
-        (True, 1, 0.5, 0.5, 0),
+        (0, True, 1, 0.5, 0.5),
     )
-    assert try_schedule({"GPU": 2}, [{"GPU": 2}]) == ([], (True, 1, 2, 2, 0))
+    assert try_schedule({"GPU": 2}, [{"GPU": 2}]) == ([], (0, True, 1, 2, 2))
     assert try_schedule({"GPU": 2}, [{"GPU": 1}, {"GPU": 1}]) == (
         [],
-        (True, 1, 2, 2, 0),
+        (0, True, 1, 2, 2),
     )
     assert try_schedule({"GPU": 1}, [{"GPU": 1, "CPU": 1}, {"GPU": 1}]) == (
         [{"GPU": 1, "CPU": 1}],
-        (True, 1, 1, 1, 0),
+        (0, True, 1, 1, 1),
     )
     assert try_schedule({"GPU": 1, "CPU": 1}, [{"GPU": 1, "CPU": 1}, {"GPU": 1}]) == (
         [{"GPU": 1}],
-        (True, 2, 1, 1, 0),
+        (0, True, 2, 1, 1),
     )
-    assert try_schedule({"GPU": 2, "TPU": 1}, [{"GPU": 2}]) == ([], (True, 1, 0, 1, 0))
-    assert try_schedule({"CPU": 64}, [{"CPU": 64}]) == ([], (True, 1, 64, 64, 0))
-    assert try_schedule({"CPU": 64}, [{"CPU": 32}]) == ([], (True, 1, 8, 8, 0))
+    assert try_schedule({"GPU": 2, "TPU": 1}, [{"GPU": 2}]) == ([], (0, True, 1, 0, 1))
+    assert try_schedule({"CPU": 64}, [{"CPU": 64}]) == ([], (0, True, 1, 64, 64))
+    assert try_schedule({"CPU": 64}, [{"CPU": 32}]) == ([], (0, True, 1, 8, 8))
     assert try_schedule({"CPU": 64}, [{"CPU": 16}, {"CPU": 16}]) == (
         [],
-        (True, 1, 8, 8, 0),
+        (0, True, 1, 8, 8),
     )
 
     # GPU Scores
     assert try_schedule({"GPU": 1, "CPU": 1}, [{"CPU": 1}]) == (
         [],
-        (False, 1, 0.0, 0.5, 0),
+        (0, False, 1, 0.0, 0.5),
     )
     assert try_schedule({"GPU": 1, "CPU": 1}, [{"CPU": 1, "GPU": 1}]) == (
         [],
-        (True, 2, 1.0, 1.0, 0),
+        (0, True, 2, 1.0, 1.0),
     )
     assert try_schedule({"GPU": 1, "CPU": 1}, [{"GPU": 1}]) == (
         [],
-        (True, 1, 0.0, 0.5, 0),
+        (0, True, 1, 0.0, 0.5),
     )
 
     # Zero resources
     assert try_schedule({"CPU": 0, "custom": 1}, [{"custom": 1}]) == (
         [],
-        (True, 1, 1, 1, 0),
+        (0, True, 1, 1, 1),
     )
     assert try_schedule({"CPU": 0, "custom": 1}, [{"CPU": 1}]) == (
         [{"CPU": 1}],
-        (True, 0, 0.0, 0.0, 0),
+        (0, True, 0, 0.0, 0.0),
     )
 
     # Implicit resources
     implicit_resource = ray._raylet.IMPLICIT_RESOURCE_PREFIX + "a"
     assert try_schedule({"CPU": 1}, [{implicit_resource: 1}]) == (
         [],
-        (True, 0, 0.0, 0.0, 0),
+        (0, True, 0, 0.0, 0.0),
     )
     assert try_schedule({"CPU": 1}, [{implicit_resource: 1}] * 2) == (
         [{implicit_resource: 1}],
-        (True, 0, 0.0, 0.0, 0),
+        (0, True, 0, 0.0, 0.0),
     )
 
 
