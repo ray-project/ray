@@ -2,6 +2,7 @@ import logging
 import threading
 from typing import Optional
 
+import torch
 import ray
 import ray._private.ray_constants as ray_constants
 from ray.air._internal.device_manager.cpu import CPUTorchDeviceManager
@@ -13,7 +14,9 @@ from ray.air._internal.device_manager.torch_device_manager import TorchDeviceMan
 logger = logging.getLogger(__name__)
 
 
-DEFAULT_TORCH_DEVICE_MANAGER_CLS = CPUTorchDeviceManager
+DEFAULT_TORCH_DEVICE_MANAGER_CLS = (
+    CUDATorchDeviceManager if torch.cuda.is_available() else CPUTorchDeviceManager
+)
 
 
 SUPPORTED_ACCELERATOR_TORCH_DEVICE_MANAGER = {

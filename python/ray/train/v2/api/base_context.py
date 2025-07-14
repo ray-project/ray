@@ -1,6 +1,8 @@
 from abc import ABC, abstractmethod
+from typing import Any, Dict, Optional
 
 from ray.data import DataIterator
+from ray.data.checkpoint import Checkpoint
 from ray.util.annotations import PublicAPI
 
 
@@ -82,4 +84,14 @@ class TrainContext(ABC):
         Returns:
             The dataset shard.
         """
+        pass
+
+    @abstractmethod
+    def report(
+        self,
+        metrics: Dict[str, Any],
+        checkpoint: Optional[Checkpoint] = None,
+        checkpoint_dir_name: Optional[str] = None,
+    ):
+        """Report the metrics and checkpoint to the controller."""
         pass

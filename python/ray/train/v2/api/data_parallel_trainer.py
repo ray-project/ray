@@ -1,8 +1,12 @@
 import asyncio
 import logging
+import os
 import signal
 import sys
 from typing import Any, Callable, Dict, List, Optional, Union
+
+import torch
+import torch.distributed as torch_dist
 
 import ray
 from ray._private.ray_constants import env_bool
@@ -150,8 +154,44 @@ class DataParallelTrainer:
             return result
 
     def _set_local_testing_train_context(self) -> None:
+        def launched_by_torchrun() -> bool:
+            """Return True if this process looks like it came from `torchrun`."""
+            env_markers = {
+                "LOCAL_RANK",
+                "LOCAL_WORLD_SIZE",
+                "WORLD_SIZE",
+                "TORCHELASTIC_RUN_ID",
+            }  # torchrun ≥1.10
+            argv_markers = (
+                "--local-rank",
+                "--local_rank",
+            )  # torchrun always passes one of these
+
+            # Any of the env vars *or* the CLI flag counts as evidence
+            return bool(
+                (env_markers & os.environ.keys())
+                or any(a.startswith(argv_markers) for a in sys.argv)
+            )
+
         assert self.local_test_mode
-        set_train_context(LocalTestingContext(dataset_shards=self.datasets))
+        if launched_by_torchrun():
+            torch_dist.init_process_group(
+                backend="nccl" if torch.cuda.is_available() else "gloo"
+            )
+            world_size = torch_dist.get_world_size()
+            world_rank = torch_dist.get_rank()
+            # We are only using 1 node for local testing, so world_size == local_world_size
+            set_train_context(
+                LocalTestingContext(
+                    dataset_shards=self.datasets,
+                    world_size=world_size,
+                    world_rank=world_rank,
+                    local_rank=world_rank,
+                    local_world_size=world_size,
+                )
+            )
+        else:
+            set_train_context(LocalTestingContext(dataset_shards=self.datasets))
 
     def _create_default_callbacks(self) -> List[RayTrainCallback]:
         # Initialize callbacks from environment variable
