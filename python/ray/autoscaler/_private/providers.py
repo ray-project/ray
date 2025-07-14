@@ -129,7 +129,7 @@ def _load_fake_multinode_defaults_config():
 def _load_read_only_defaults_config():
     import ray.autoscaler._private.readonly as ray_readonly
 
-    return os.path.join(os.path.dirname(ray_readonly.__file__), "example.yaml")
+    return os.path.join(os.path.dirname(ray_readonly.__file__), "defaults.yaml")
 
 
 def _load_fake_multinode_docker_defaults_config():
