@@ -58,6 +58,7 @@ def get_torch_device_manager_by_context() -> TorchDeviceManager:
                     else:
                         existing_device_manager_cls = device_manager_cls
 
+            # TODO: should we update here to consider if gpu is available?
             device_manager_cls = (
                 existing_device_manager_cls or DEFAULT_TORCH_DEVICE_MANAGER_CLS
             )

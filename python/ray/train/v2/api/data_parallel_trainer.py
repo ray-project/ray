@@ -44,12 +44,13 @@ from ray.train.v2._internal.constants import (
     get_env_vars_to_propagate,
 )
 from ray.train.v2._internal.execution.callback import RayTrainCallback
-from ray.train.v2._internal.execution.context import TrainRunContext
+from ray.train.v2._internal.execution.context import TrainRunContext, set_train_context
 from ray.train.v2._internal.execution.controller import TrainController
 from ray.train.v2._internal.execution.failure_handling import create_failure_policy
 from ray.train.v2._internal.execution.scaling_policy import create_scaling_policy
 from ray.train.v2._internal.util import ObjectRefWrapper, construct_train_func
 from ray.train.v2.api.callback import UserCallback
+from ray.train.v2.api.local_testing_context import LocalTestingContext
 from ray.util.annotations import Deprecated, DeveloperAPI
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
@@ -78,6 +79,7 @@ class DataParallelTrainer:
         # TODO: [Deprecated] Remove in future release
         resume_from_checkpoint: Optional[Checkpoint] = None,
         metadata: Optional[Dict[str, Any]] = None,
+        local_test_mode: bool = False,
     ):
         self.run_config = run_config or RunConfig()
         self.train_loop_per_worker = train_loop_per_worker
@@ -86,6 +88,7 @@ class DataParallelTrainer:
         self.backend_config = backend_config or BackendConfig()
         self.datasets = datasets or {}
         self.data_config = dataset_config or DataConfig()
+        self.local_test_mode = local_test_mode
 
         self.train_run_context = TrainRunContext(
             run_config=self.run_config,
@@ -122,25 +125,33 @@ class DataParallelTrainer:
             train_func_context=self.backend_config.train_func_context,
             fn_arg_name="train_loop_per_worker",
         )
-        train_fn_ref = ObjectRefWrapper(train_fn)
+        if self.local_test_mode:
+            self._set_local_testing_train_context()
+            train_fn()
+            return Result(checkpoint=None, error=None, metrics={}, path=None)
+        else:
+            train_fn_ref = ObjectRefWrapper(train_fn)
+            result = self._initialize_and_run_controller(
+                train_fn_ref=train_fn_ref,
+                scaling_policy=create_scaling_policy(self.scaling_config),
+                failure_policy=create_failure_policy(self.run_config.failure_config),
+                train_run_context=self.train_run_context,
+                callbacks=self._create_default_callbacks(),
+            )
 
-        result = self._initialize_and_run_controller(
-            train_fn_ref=train_fn_ref,
-            scaling_policy=create_scaling_policy(self.scaling_config),
-            failure_policy=create_failure_policy(self.run_config.failure_config),
-            train_run_context=self.train_run_context,
-            callbacks=self._create_default_callbacks(),
-        )
+            if result.error:
+                # NOTE: If the training run errored out, raise an error back to the
+                # user's driver script.
+                # For example, if the Train `FailurePolicy` runs out of retries,
+                # and one of the workers errors. The controller will exit, and
+                # the error will be raised here.
+                raise result.error
 
-        if result.error:
-            # NOTE: If the training run errored out, raise an error back to the
-            # user's driver script.
-            # For example, if the Train `FailurePolicy` runs out of retries,
-            # and one of the workers errors. The controller will exit, and
-            # the error will be raised here.
-            raise result.error
+            return result
 
-        return result
+    def _set_local_testing_train_context(self) -> None:
+        assert self.local_test_mode
+        set_train_context(LocalTestingContext(dataset_shards=self.datasets))
 
     def _create_default_callbacks(self) -> List[RayTrainCallback]:
         # Initialize callbacks from environment variable

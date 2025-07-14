@@ -14,6 +14,7 @@ from ray.train._internal.session import _TrainingResult
 from ray.train.v2._internal.execution.checkpoint.sync_actor import SynchronizationActor
 from ray.train.v2._internal.execution.storage import StorageContext
 from ray.train.v2._internal.util import _copy_doc, invoke_context_managers
+from ray.train.v2.api.base_context import TrainContext
 from ray.train.v2.api.config import RunConfig, ScalingConfig
 
 if TYPE_CHECKING:
@@ -87,7 +88,9 @@ class ExecutionContext:
 
 
 @dataclass
-class TrainContext:
+class RayTrainContext(TrainContext):
+    """Ray Train specific implementation of TrainContext."""
+
     train_run_context: TrainRunContext
     distributed_context: DistributedContext
     execution_context: ExecutionContext
@@ -270,6 +273,7 @@ class TrainContext:
 
 
 # The global variable holding the current TrainContext
+# Might be RayTrainContext or LocalTestingContext
 _train_context: Optional[TrainContext] = None
 
 # Thread lock to protect the global TrainContext
