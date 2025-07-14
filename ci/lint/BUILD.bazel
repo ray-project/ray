@@ -4,5 +4,7 @@ py_binary(
     name = "check_bazel_team_owner",
     srcs = ["check_bazel_team_owner.py"],
     exec_compatible_with = ["//:hermetic_python"],
-    visibility = ["//visibility:private"],
+    visibility = [
+        "//visibility:private",
+    ],
 )
