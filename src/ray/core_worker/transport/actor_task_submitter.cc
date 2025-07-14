@@ -181,11 +181,8 @@ Status ActorTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
     RAY_CHECK(queue != client_queues_.end());
     if (queue->second.state == rpc::ActorTableData::DEAD &&
         queue->second.is_restartable && queue->second.owned) {
-      RAY_LOG(DEBUG).WithField(actor_id) << "Restart Actor for Lineage Reconstruction";
       RestartActorForLineageReconstruction(actor_id);
     }
-    // TODO(irabbani): How will we ever end up with the state being DEAD if we change it
-    // to RESTARTING in RestartActorForLineageReconstruction?
     if (queue->second.state != rpc::ActorTableData::DEAD) {
       // We must fix the send order prior to resolving dependencies, which may
       // complete out of order. This ensures that we will not deadlock due to
@@ -198,7 +195,6 @@ Status ActorTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
     }
   }
 
-  RAY_LOG(DEBUG).WithField(actor_id) << "task_queued=" << task_queued;
   if (task_queued) {
     io_service_.post(
         [task_spec, send_pos, this]() mutable {
@@ -251,7 +247,6 @@ Status ActorTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
     auto status = Status::IOError("cancelling task of dead actor");
     // No need to increment the number of completed tasks since the actor is
     // dead.
-    RAY_LOG(DEBUG) << "Going to cancel task b/c of status=" << status;
     bool fail_immediately =
         error_info.has_actor_died_error() &&
         error_info.actor_died_error().has_oom_context() &&
@@ -351,7 +346,6 @@ void ActorTaskSubmitter::RestartActorForLineageReconstruction(const ActorID &act
   RAY_CHECK(queue->second.is_restartable) << "This actor is no longer restartable";
   queue->second.state = rpc::ActorTableData::RESTARTING;
   queue->second.num_restarts_due_to_lineage_reconstructions += 1;
-  // Sends an RPC to the GCS to restart the actor
   RAY_CHECK_OK(actor_creator_.AsyncRestartActorForLineageReconstruction(
       actor_id,
       queue->second.num_restarts_due_to_lineage_reconstructions,
@@ -438,10 +432,6 @@ void ActorTaskSubmitter::DisconnectActor(const ActorID &actor_id,
     }
   }
 
-  RAY_LOG(DEBUG).WithField(actor_id)
-      << "Attempting to cancel tasks task_ids_to_fail.size()=" << task_ids_to_fail.size()
-      << ", wait_for_death_info_tasks.size()=" << wait_for_death_info_tasks.size();
-
   if (task_ids_to_fail.size() + wait_for_death_info_tasks.size() != 0) {
     // Failing tasks has to be done without mu_ hold because the callback
     // might require holding mu_ which will lead to a deadlock.
@@ -460,8 +450,6 @@ void ActorTaskSubmitter::DisconnectActor(const ActorID &actor_id,
           error_info.has_actor_died_error() &&
           error_info.actor_died_error().has_oom_context() &&
           error_info.actor_died_error().oom_context().fail_immediately();
-      RAY_LOG(DEBUG).WithField(task_id)
-          << "Canceling Task, fail_immediately=" << fail_immediatedly;
       GetTaskManagerWithoutMu().FailOrRetryPendingTask(task_id,
                                                        error_type,
                                                        &status,
@@ -612,7 +600,6 @@ void ActorTaskSubmitter::PushActorTask(ClientQueue &queue,
       };
 
   const TaskAttempt task_attempt = std::make_pair(task_id, task_spec.AttemptNumber());
-  // reply_callback is moved to the inflight_task_callbacks queue
   queue.inflight_task_callbacks.emplace(task_attempt, std::move(reply_callback));
   rpc::ClientCallback<rpc::PushTaskReply> wrapped_callback =
       [this, task_attempt, actor_id](const Status &status, rpc::PushTaskReply &&reply) {
@@ -637,8 +624,6 @@ void ActorTaskSubmitter::PushActorTask(ClientQueue &queue,
   task_manager_.MarkTaskWaitingForExecution(task_id,
                                             NodeID::FromBinary(addr.raylet_id()),
                                             WorkerID::FromBinary(addr.worker_id()));
-  // it's a little strange that we pass the wrapped callback and not just the
-  // reply_callback. Presumably we didn't want to mess with HandlePushTaskReply.
   queue.rpc_client->PushActorTask(
       std::move(request), skip_queue, std::move(wrapped_callback));
 }
@@ -666,19 +651,12 @@ void ActorTaskSubmitter::HandlePushTaskReply(const Status &status,
 
   if (resubmit_generator) {
     GetTaskManagerWithoutMu().MarkGeneratorFailedAndResubmit(task_id);
-    RAY_LOG(DEBUG).WithField(task_id).WithField(actor_id)
-        << "Handling PushTaskReply with Status" << status.CodeAsString()
-        << "resubmit_generator=" << resubmit_generator;
     return;
   }
 
   const bool is_retryable_exception = status.ok() && reply.is_retryable_error();
   /// Whether or not we will retry this actor task.
   auto will_retry = false;
-
-  RAY_LOG(DEBUG).WithField(task_id).WithField(actor_id)
-      << "Handling PushTaskReply with Status" << status.CodeAsString()
-      << ", is_retryable_exception=" << is_retryable_exception;
 
   if (status.ok() && !is_retryable_exception) {
     // status.ok() means the worker completed the reply, either succeeded or with a
@@ -749,8 +727,6 @@ void ActorTaskSubmitter::HandlePushTaskReply(const Status &status,
         &error_info,
         /*mark_task_object_failed*/ is_actor_dead,
         fail_immediately);
-    RAY_LOG(DEBUG) << "[HandlePushTaskReply]: is_actor_dead=" << is_actor_dead
-                   << ", will_retry=" << will_retry;
     if (!is_actor_dead && !will_retry) {
       // Ran out of retries, last failure = either user exception or actor death.
       if (status.ok()) {

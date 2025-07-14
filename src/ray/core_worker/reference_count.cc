@@ -327,8 +327,6 @@ bool ReferenceCounter::AddOwnedObjectInternal(
   } else {
     num_objects_owned_by_us_++;
   }
-  RAY_LOG(DEBUG).WithField(object_id)
-      << "Adding owned object is_reconstructable=" << is_reconstructable;
   // If the entry doesn't exist, we initialize the direct reference count to zero
   // because this corresponds to a submitted task whose return ObjectID will be created
   // in the frontend language, incrementing the reference count.
@@ -459,8 +457,6 @@ void ReferenceCounter::UpdateSubmittedTaskReferences(
     const std::vector<ObjectID> &argument_ids_to_remove,
     std::vector<ObjectID> *deleted) {
   absl::MutexLock lock(&mutex_);
-  // For each returned object from the task that hasn't been submitted yet, or even been
-  // asked for a worker lease, publish the location.. WHY?
   for (const auto &return_id : return_ids) {
     UpdateObjectPendingCreationInternal(return_id, true);
   }
@@ -1533,20 +1529,14 @@ void ReferenceCounter::AddBorrowerAddress(const ObjectID &object_id,
 bool ReferenceCounter::IsObjectReconstructable(const ObjectID &object_id,
                                                bool *lineage_evicted) const {
   if (!lineage_pinning_enabled_) {
-    RAY_LOG(DEBUG).WithField(object_id)
-        << "[IsObjectReconstructable] lineage pinning disabled!";
     return false;
   }
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
-    RAY_LOG(DEBUG).WithField(object_id) << "[IsObjectReconstructable] cannot find object";
     return false;
   }
   *lineage_evicted = it->second.lineage_evicted;
-  RAY_LOG(DEBUG).WithField(object_id)
-      << "[IsObjectReconstructable] lineage_evicated=" << *lineage_evicted
-      << ", is_reconstructable=" << it->second.is_reconstructable;
   return it->second.is_reconstructable;
 }
 
