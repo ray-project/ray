@@ -24,23 +24,25 @@ if TYPE_CHECKING:
 
 
 class ChatCompletionRequest(vLLMChatCompletionRequest):
-    pass
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
 class ChatCompletionResponse(vLLMChatCompletionResponse):
-    pass
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
 class ChatCompletionStreamResponse(vLLMChatCompletionStreamResponse):
-    pass
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
 class ErrorResponse(vLLMErrorResponse):
-    pass
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
 # TODO (Kourosh): Upstream
 class CompletionRequest(vLLMCompletionRequest):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+    
     request_id: str = Field(
         default_factory=lambda: f"{random_uuid()}",
         description=(
@@ -52,15 +54,17 @@ class CompletionRequest(vLLMCompletionRequest):
 
 
 class CompletionResponse(vLLMCompletionResponse):
-    pass
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
 class CompletionStreamResponse(vLLMCompletionStreamResponse):
-    pass
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
 # TODO (Kourosh): Upstream
 class EmbeddingCompletionRequest(vLLMEmbeddingCompletionRequest):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+    
     request_id: str = Field(
         default_factory=lambda: f"{random_uuid()}",
         description=(
@@ -72,11 +76,11 @@ class EmbeddingCompletionRequest(vLLMEmbeddingCompletionRequest):
 
 
 class EmbeddingChatRequest(vLLMEmbeddingChatRequest):
-    pass
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
 class EmbeddingResponse(vLLMEmbeddingResponse):
-    pass
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
 EmbeddingRequest = Union[EmbeddingCompletionRequest, EmbeddingChatRequest]
@@ -115,7 +119,7 @@ class OpenAIHTTPException(Exception):
 # TODO: upstream metadata for ModelData
 # Compared to vLLM this has a metadata field.
 class ModelCard(BaseModel):
-    model_config = ConfigDict(protected_namespaces=tuple())
+    model_config = ConfigDict(protected_namespaces=tuple(), arbitrary_types_allowed=True)
 
     id: str
     object: str
@@ -129,6 +133,7 @@ class ModelCard(BaseModel):
 
 
 class ModelList(BaseModel):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
     data: List[ModelCard]
     object: str = "list"
 

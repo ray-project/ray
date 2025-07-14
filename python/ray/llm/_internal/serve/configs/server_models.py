@@ -646,6 +646,7 @@ class LogProbs(BaseModel):
         return ret
 
 
+# TODO (Kourosh): Remove this.
 class LLMRawResponse(ComputedPropertyMixin, BaseModelExtended):
     """The response from a query to a RayLLM Model.
 
@@ -663,6 +664,7 @@ class LLMRawResponse(ComputedPropertyMixin, BaseModelExtended):
         error: The error, if any.
         metadata: The metadata for internal usage.
     """
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     generated_text: Optional[str] = None
     logprobs: Optional[List[LogProbs]] = None
