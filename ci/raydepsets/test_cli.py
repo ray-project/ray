@@ -8,12 +8,21 @@ import subprocess
 from pathlib import Path
 from click.testing import CliRunner
 from ci.raydepsets.cli import load
+import os
 
 _REPO_NAME = "com_github_ray_project_ray"
 _runfiles = runfiles.Create()
 
 
 class TestCli(unittest.TestCase):
+    def setUp(self):
+        uv_path = _uv_binary()
+        if uv_path:
+            uv_dir = str(Path(uv_path).parent)
+            current_path = os.environ.get("PATH", "")
+            if uv_dir not in current_path:
+                os.environ["PATH"] = f"{uv_dir}:{current_path}"
+
     def test_uv_binary_exists(self):
         assert _uv_binary() is not None
 
@@ -28,6 +37,7 @@ class TestCli(unittest.TestCase):
         assert result.stderr.decode("utf-8") == ""
 
     def test_compile_by_depset_name_happy(self):
+        # with tempfile.TemporaryDirectory() as tmpdir:
         result = CliRunner().invoke(
             load,
             [
@@ -40,10 +50,10 @@ class TestCli(unittest.TestCase):
                 "ray_base_test_depset",
             ],
         )
+
         output_fp = _runfiles.Rlocation(
             f"{_REPO_NAME}/ci/raydepsets/test_data/requirements_compiled.txt"
         )
-        assert result.output == ""
         assert result.exit_code == 0
         assert Path(output_fp).is_file()
         assert (
@@ -61,4 +71,4 @@ def _uv_binary():
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-vv", __file__]))

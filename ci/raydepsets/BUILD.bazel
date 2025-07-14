@@ -35,8 +35,8 @@ py_test(
         "team:ci",
     ],
     deps = [
-        ci_require("pytest"),
         ci_require("bazel-runfiles"),
+        ci_require("pytest"),
         ":raydepsets_lib",
     ],
 )
