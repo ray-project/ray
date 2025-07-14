@@ -31,9 +31,7 @@ cc_binary(
 
 cc_library(
     name = "ray_api_lib",
-    srcs = [
-        "src/ray/api.cc",
-    ] + glob([
+    srcs = glob([
         "src/ray/api/*.cc",
         "src/ray/api/*.h",
         "src/ray/app/*.cc",
