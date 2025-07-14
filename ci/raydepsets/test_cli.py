@@ -457,14 +457,6 @@ def _append_to_file(filepath, new):
     with open(filepath, "a") as f:
         f.write(new + "\n")
 
-
-def _uv_binary():
-    system = platform.system()
-    if system != "Linux" or platform.processor() != "x86_64":
-        raise ValueError(f"Unsupported platform: {system}")
-    return _runfiles.Rlocation("uv_x86_64/uv-x86_64-unknown-linux-gnu/uv")
-
-
 def _copy_data_to_tmpdir(tmpdir):
     shutil.copytree(
         _runfiles.Rlocation(f"{_REPO_NAME}/ci/raydepsets/test_data"),
