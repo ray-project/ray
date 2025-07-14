@@ -34,9 +34,6 @@ class _SerializationContext:
         # reaches 0, remove the data from the buffer.
         self.channel_id_to_num_readers: Dict[str, int] = {}
 
-        from ray.experimental.channel.torch_tensor_type import TorchTensorType
-        TorchTensorType().register_custom_serializer()
-
     def set_target_device(self, device: Device) -> None:
         self._target_device = device
 
