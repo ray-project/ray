@@ -154,6 +154,7 @@ class DataParallelTrainer:
             return result
 
     def _set_local_testing_train_context(self) -> None:
+        # TODO: warning that all configs might be overridden by default values
         def launched_by_torchrun() -> bool:
             """Return True if this process looks like it came from `torchrun`."""
             env_markers = {
@@ -180,10 +181,16 @@ class DataParallelTrainer:
             )
             world_size = torch_dist.get_world_size()
             world_rank = torch_dist.get_rank()
+            dataset_shards = DataConfig().configure(
+                datasets=self.datasets,
+                world_size=world_size,
+                worker_handles=None,
+                worker_node_ids=None,
+            )
             # We are only using 1 node for local testing, so world_size == local_world_size
             set_train_context(
                 LocalTestingContext(
-                    dataset_shards=self.datasets,
+                    dataset_shards=dataset_shards[world_rank],
                     world_size=world_size,
                     world_rank=world_rank,
                     local_rank=world_rank,
