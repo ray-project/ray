@@ -327,6 +327,7 @@ bool ReferenceCounter::AddOwnedObjectInternal(
   } else {
     num_objects_owned_by_us_++;
   }
+  RAY_LOG(DEBUG) << "Adding owned object " << object_id;
   // If the entry doesn't exist, we initialize the direct reference count to zero
   // because this corresponds to a submitted task whose return ObjectID will be created
   // in the frontend language, incrementing the reference count.

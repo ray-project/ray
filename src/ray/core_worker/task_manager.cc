@@ -217,13 +217,11 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
     int max_retries) {
   int32_t max_oom_retries =
       (max_retries != 0) ? RayConfig::instance().task_oom_retries() : 0;
-
   RAY_LOG(DEBUG) << "Adding pending task " << spec.TaskId() << " with " << max_retries
                  << " retries, " << max_oom_retries << " oom retries";
 
   // Add references for the dependencies to the task.
   std::vector<ObjectID> task_deps;
-
   for (size_t i = 0; i < spec.NumArgs(); i++) {
     if (spec.ArgByRef(i)) {
       task_deps.push_back(spec.ArgObjectId(i));
@@ -237,7 +235,6 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
       }
     }
   }
-
   if (spec.IsActorTask()) {
     const auto actor_creation_return_id = spec.ActorCreationDummyObjectId();
     task_deps.push_back(actor_creation_return_id);
@@ -966,30 +963,6 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
       for (const auto &dynamic_return_id : dynamic_returns_in_plasma) {
         it->second.reconstructable_return_ids.insert(dynamic_return_id);
       }
-
-      // if (spec.IsStreamingGenerator() && it->second.num_successful_executions > 0) {
-      //   // Upon the first complete execution, set the number of streaming
-      //   // generator returns.
-      //   auto num_streaming_generator_returns =
-      //       reply.streaming_generator_return_ids_size();
-      //   if (num_streaming_generator_returns > 0) {
-      //     spec.SetNumStreamingGeneratorReturns(num_streaming_generator_returns);
-      //     RAY_LOG(DEBUG) << "Completed streaming generator task " << spec.TaskId()
-      //                    << " has " << spec.NumStreamingGeneratorReturns()
-      //                    << " return objects.";
-      //     for (const auto &return_id_info : reply.streaming_generator_return_ids()) {
-      //       if (return_id_info.is_plasma_object()) {
-      //         // TODO(swang): It is possible that the dynamically returned refs
-      //         // have already been consumed by the caller and deleted. This can
-      //         // cause a memory leak of the task metadata, because we will
-      //         // never receive a callback from the ReferenceCounter to erase
-      //         // the task.
-      //         it->second.reconstructable_return_ids.insert(
-      //             ObjectID::FromBinary(return_id_info.object_id()));
-      //       }
-      //     }
-      //   }
-      // }
     }
 
     // Release the lineage for any non-plasma return objects.
