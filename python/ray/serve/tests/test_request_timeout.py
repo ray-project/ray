@@ -321,8 +321,8 @@ def test_cancel_on_http_timeout_during_execution(
 
     # Request should time out, causing the handler and handle call to be cancelled.
     assert httpx.get(get_application_url(use_localhost=True)).status_code == 408
-    ray.get(inner_signal_actor.wait.remote())
-    ray.get(outer_signal_actor.wait.remote())
+    ray.get(inner_signal_actor.wait.remote(), timeout=10)
+    ray.get(outer_signal_actor.wait.remote(), timeout=10)
 
 
 @pytest.mark.parametrize(
