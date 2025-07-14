@@ -1517,4 +1517,4 @@ if __name__ == "__main__":
 
     import pytest
 
-    sys.exit(pytest.main(["-v", "-s", __file__, "-k", "TestAutoscalingMetrics.test_replicas_die"]))
+    sys.exit(pytest.main(["-v", "-s", __file__]))
