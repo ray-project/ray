@@ -201,6 +201,10 @@ def _autodetect_parallelism(
     """
     min_safe_parallelism = 1
     max_reasonable_parallelism = sys.maxsize
+
+    if target_max_block_size is None:
+        target_max_block_size = sys.maxsize
+
     if mem_size is None and datasource_or_legacy_reader:
         mem_size = datasource_or_legacy_reader.estimate_inmemory_data_size()
     if mem_size is not None and not np.isnan(mem_size):
@@ -245,10 +249,15 @@ def _autodetect_parallelism(
                 f"{ctx.target_min_block_size / (1024 * 1024)}MiB"
             )
         elif parallelism == min_safe_parallelism:
+            # Handle ``None`` (unlimited) gracefully in the log message.
+            if ctx.target_max_block_size is None:
+                display_val = "unlimited"
+            else:
+                display_val = f"{ctx.target_max_block_size / (1024 * 1024)}MiB"
             reason = (
                 "output blocks of size at most "
                 "DataContext.get_current().target_max_block_size="
-                f"{ctx.target_max_block_size / (1024 * 1024)}MiB"
+                f"{display_val}"
             )
         else:
             reason = (

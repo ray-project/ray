@@ -2,7 +2,6 @@ import copy
 import enum
 import logging
 import os
-import sys
 import threading
 import warnings
 from dataclasses import dataclass, field
@@ -24,8 +23,6 @@ logger = logging.getLogger(__name__)
 # The context singleton on this process.
 _default_context: "Optional[DataContext]" = None
 _context_lock = threading.Lock()
-
-UNLIMITED_BLOCK_SIZE = sys.maxsize  # 9.22e18 - good enough for "∞"
 
 
 @DeveloperAPI(stability="alpha")
@@ -401,7 +398,7 @@ class DataContext:
             map tasks won't record memory stats.
     """
 
-    target_max_block_size: int = DEFAULT_TARGET_MAX_BLOCK_SIZE
+    target_max_block_size: Optional[int] = field(default=DEFAULT_TARGET_MAX_BLOCK_SIZE)
     target_shuffle_max_block_size: int = DEFAULT_SHUFFLE_TARGET_MAX_BLOCK_SIZE
     target_min_block_size: int = DEFAULT_TARGET_MIN_BLOCK_SIZE
     streaming_read_buffer_size: int = DEFAULT_STREAMING_READ_BUFFER_SIZE
@@ -583,10 +580,6 @@ class DataContext:
                 DeprecationWarning,
             )
             self.use_polars_sort = value
-
-        elif name == "target_max_block_size":
-            object.__setattr__(self, name, value or UNLIMITED_BLOCK_SIZE)
-            return
 
         super().__setattr__(name, value)
 

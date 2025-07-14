@@ -1,4 +1,5 @@
 import itertools
+import sys
 import time
 from abc import abstractmethod
 from enum import Enum
@@ -101,6 +102,10 @@ class MapTransformFn:
             return None
         else:
             return self._output_block_size_option.target_max_block_size
+
+    @target_max_block_size.setter
+    def target_max_block_size(self, target_max_block_size: int):
+        self.set_target_max_block_size(target_max_block_size)
 
     def set_target_num_rows_per_block(self, target_num_rows_per_block: int):
         assert target_num_rows_per_block is not None
@@ -220,6 +225,9 @@ class MapTransformer:
         ctx: TaskContext,
     ) -> Iterable[Block]:
         """Apply the transform functions to the input blocks."""
+        if self.target_max_block_size is None:
+            self.set_target_max_block_size(sys.maxsize)
+
         assert (
             self.target_max_block_size is not None
         ), "target_max_block_size must be set before running"
