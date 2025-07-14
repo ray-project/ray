@@ -80,7 +80,7 @@ class OutOfOrderActorSchedulingQueue : public SchedulingQueue {
  private:
   void RunRequest(InboundRequest request);
 
-  void RunRequestWithSatisfiedDependencies(InboundRequest &request);
+  void RunRequestWithResolvedDependencies(InboundRequest &request);
 
   /// Accept the given InboundRequest or reject it if a task id is canceled via
   /// CancelTaskIfFound.

@@ -6,7 +6,6 @@ import os
 import pickle
 import time
 from abc import ABC, abstractmethod
-from copy import deepcopy
 from typing import Any, Callable, Dict, Generator, Optional, Set, Tuple
 
 import grpc
@@ -30,7 +29,6 @@ from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_PROXY_GC_OPTIMIZATIONS,
     RAY_SERVE_PROXY_GC_THRESHOLD,
     RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE,
-    RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S,
     REQUEST_LATENCY_BUCKETS_MS,
     SERVE_CONTROLLER_NAME,
     SERVE_HTTP_REQUEST_ID_HEADER,
@@ -46,7 +44,7 @@ from ray.serve._private.grpc_util import (
 )
 from ray.serve._private.http_util import (
     MessageQueue,
-    configure_http_options_with_defaults,
+    configure_http_middlewares,
     convert_object_to_asgi_messages,
     get_http_response_status,
     receive_http_body,
@@ -1007,23 +1005,13 @@ class HTTPProxy(GenericProxy):
         yield status
 
 
-def _set_proxy_default_grpc_options(grpc_options) -> gRPCOptions:
-    grpc_options = deepcopy(grpc_options) or gRPCOptions()
-
-    grpc_options.request_timeout_s = (
-        grpc_options.request_timeout_s or RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S
-    )
-
-    return grpc_options
-
-
 @ray.remote(num_cpus=0)
 class ProxyActor:
     def __init__(
         self,
         http_options: HTTPOptions,
+        grpc_options: gRPCOptions,
         *,
-        grpc_options: Optional[gRPCOptions] = None,
         node_id: NodeId,
         node_ip_address: str,
         logging_config: LoggingConfig,
@@ -1031,16 +1019,8 @@ class ProxyActor:
     ):  # noqa: F821
         self._node_id = node_id
         self._node_ip_address = node_ip_address
-
-        # Configure proxy default HTTP and gRPC options.
-        http_options = configure_http_options_with_defaults(http_options)
-        grpc_options = _set_proxy_default_grpc_options(grpc_options)
-        self._http_options = http_options
+        self._http_options = configure_http_middlewares(http_options)
         self._grpc_options = grpc_options
-
-        # We modify the HTTP and gRPC options above, so delete them to avoid
-        del http_options, grpc_options
-
         grpc_enabled = is_grpc_enabled(self._grpc_options)
 
         event_loop = get_or_create_event_loop()

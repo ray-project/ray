@@ -3,22 +3,21 @@ import re
 import sys
 import time
 from copy import copy
+from functools import partial
+from typing import List
 
 import httpx
 import pytest
 
 import ray
-import ray._private.state
 import ray.actor
 from ray import serve
 from ray._common.test_utils import SignalActor, wait_for_condition
-from ray.serve._private.client import ServeControllerClient
-from ray.serve._private.common import ReplicaID
+from ray.serve._private.common import DeploymentID, ReplicaID
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
 from ray.serve._private.test_utils import (
     check_num_replicas_eq,
 )
-from ray.serve.context import _get_global_client
 from ray.serve.schema import (
     ApplicationStatus,
     ServeApplicationSchema,
@@ -39,6 +38,14 @@ def check_log_file(log_file: str, expected_regex: list):
     return True
 
 
+def check_deployments_dead(deployment_ids: List[DeploymentID]):
+    prefixes = [f"{id.app_name}#{id.name}" for id in deployment_ids]
+    actor_names = [
+        actor["name"] for actor in list_actors(filters=[("state", "=", "ALIVE")])
+    ]
+    return all(f"ServeReplica::{p}" not in actor_names for p in prefixes)
+
+
 class TestDeploywithLoggingConfig:
     def get_deploy_config(self, model_within_logging_config: bool = False):
         if model_within_logging_config:
@@ -57,9 +64,10 @@ class TestDeploywithLoggingConfig:
 
     @pytest.mark.parametrize("encoding_type", ["TEXT", "JSON"])
     def test_deploy_app_with_application_logging_config(
-        self, client: ServeControllerClient, encoding_type: str
+        self, serve_instance, encoding_type: str
     ):
         """Deploy application with application logging config"""
+        client = serve_instance
         config_dict = self.get_deploy_config()
 
         config_dict["applications"][0]["logging_config"] = {
@@ -82,8 +90,9 @@ class TestDeploywithLoggingConfig:
 
     @pytest.mark.parametrize("encoding_type", ["TEXT", "JSON"])
     def test_deploy_app_with_deployment_logging_config(
-        self, client: ServeControllerClient, encoding_type: str
+        self, serve_instance, encoding_type: str
     ):
+        client = serve_instance
         """Deploy application with deployment logging config inside the yaml"""
         config_dict = self.get_deploy_config()
 
@@ -110,11 +119,9 @@ class TestDeploywithLoggingConfig:
             expected_log_regex = [f".*{replica_id}.*"]
         check_log_file(resp["log_file"], expected_log_regex)
 
-    def test_deploy_app_with_deployment_logging_config_in_code(
-        self,
-        client: ServeControllerClient,
-    ):
+    def test_deployment_logging_config_in_code(self, serve_instance):
         """Deploy application with deployment logging config inside the code"""
+        client = serve_instance
         config_dict = self.get_deploy_config(model_within_logging_config=True)
         config = ServeDeploySchema.parse_obj(config_dict)
         client.deploy_apps(config)
@@ -124,8 +131,9 @@ class TestDeploywithLoggingConfig:
         resp = httpx.post("http://localhost:8000/app1").json()
         check_log_file(resp["log_file"], [".*this_is_debug_info.*"])
 
-    def test_overwritting_logging_config(self, client: ServeControllerClient):
+    def test_overwritting_logging_config(self, serve_instance):
         """Overwrite the default logging config with application logging config"""
+        client = serve_instance
         config_dict = self.get_deploy_config()
         config = ServeDeploySchema.parse_obj(config_dict)
         client.deploy_apps(config)
@@ -181,12 +189,11 @@ class TestDeploywithLoggingConfig:
             ],
         )
 
-    def test_not_overwritting_logging_config_in_yaml(
-        self, client: ServeControllerClient
-    ):
+    def test_not_overwritting_logging_config_in_yaml(self, serve_instance):
         """Deployment logging config in yaml should not be overwritten
         by application logging config.
         """
+        client = serve_instance
         config_dict = self.get_deploy_config()
         config_dict["applications"][0]["deployments"] = [
             {
@@ -208,12 +215,11 @@ class TestDeploywithLoggingConfig:
         resp = httpx.post("http://localhost:8000/app1").json()
         check_log_file(resp["log_file"], [".*this_is_debug_info.*"])
 
-    def test_not_overwritting_logging_config_in_code(
-        self, client: ServeControllerClient
-    ):
+    def test_not_overwritting_logging_config_in_code(self, serve_instance):
         """Deployment logging config in code should not be overwritten
         by application logging config.
         """
+        client = serve_instance
         config_dict = self.get_deploy_config(model_within_logging_config=True)
         config_dict["applications"][0]["logging_config"] = {
             "log_level": "INFO",
@@ -227,8 +233,8 @@ class TestDeploywithLoggingConfig:
         resp = httpx.post("http://localhost:8000/app1").json()
         check_log_file(resp["log_file"], [".*this_is_debug_info.*"])
 
-    def test_logs_dir(self, client: ServeControllerClient):
-
+    def test_logs_dir(self, serve_instance):
+        client = serve_instance
         config_dict = self.get_deploy_config()
         config_dict["applications"][0]["logging_config"] = {
             "log_level": "DEBUG",
@@ -261,8 +267,8 @@ class TestDeploywithLoggingConfig:
         check_log_file(resp["log_file"], [".*this_is_debug_info.*"])
 
     @pytest.mark.parametrize("enable_access_log", [True, False])
-    def test_access_log(self, client: ServeControllerClient, enable_access_log: bool):
-
+    def test_access_log(self, serve_instance, enable_access_log: bool):
+        client = serve_instance
         config_dict = self.get_deploy_config()
         config_dict["applications"][0]["logging_config"] = {
             "enable_access_log": enable_access_log,
@@ -282,9 +288,9 @@ class TestDeploywithLoggingConfig:
                 check_log_file(resp["log_file"], [".*this_is_access_log.*"])
 
 
-def test_deploy_with_no_applications(client: ServeControllerClient):
+def test_deploy_with_no_applications(serve_instance):
     """Deploy an empty list of applications, serve should just be started."""
-
+    client = serve_instance
     config = ServeDeploySchema.parse_obj({"applications": []})
     client.deploy_apps(config)
 
@@ -304,11 +310,11 @@ def test_deploy_with_no_applications(client: ServeControllerClient):
     wait_for_condition(serve_running)
 
 
-def test_deployments_not_listed_in_config(client: ServeControllerClient):
+def test_deployments_not_listed_in_config(serve_instance):
     """Apply a config without the app's deployments listed. The deployments should
     not redeploy.
     """
-
+    client = serve_instance
     config = {
         "applications": [{"import_path": "ray.serve.tests.test_config_files.pid.node"}]
     }
@@ -328,9 +334,7 @@ def test_deployments_not_listed_in_config(client: ServeControllerClient):
 
 
 @pytest.mark.parametrize("rebuild", [True, False])
-def test_redeploy_old_config_after_failed_deployment(
-    client: ServeControllerClient, rebuild
-):
+def test_redeploy_old_config_after_failed_deployment(serve_instance, rebuild):
     """
     1. Deploy application which succeeds.
     2. Redeploy application with an import path that fails.
@@ -338,7 +342,7 @@ def test_redeploy_old_config_after_failed_deployment(
 
     Verify that step 3 succeeds and the application returns to running state.
     """
-
+    client = serve_instance
     app_config = {
         "name": "default",
         "import_path": "ray.serve.tests.test_config_files.world.DagNode",
@@ -381,7 +385,7 @@ def test_redeploy_old_config_after_failed_deployment(
     wait_for_condition(check_application_running)
 
 
-def test_deploy_does_not_affect_dynamic_apps(client: ServeControllerClient):
+def test_deploy_does_not_affect_dynamic_apps(serve_instance):
     """
     Deploy a set of apps via the declarative API (REST API) and then a dynamic
     app via the imperative API (`serve.run`).
@@ -389,7 +393,7 @@ def test_deploy_does_not_affect_dynamic_apps(client: ServeControllerClient):
     Check that applying a new config via the declarative API does not affect
     the app deployed using the imperative API.
     """
-
+    client = serve_instance
     config = ServeDeploySchema(
         applications=[
             ServeApplicationSchema(
@@ -542,8 +546,9 @@ def test_deploy_does_not_affect_dynamic_apps(client: ServeControllerClient):
     wait_for_condition(lambda: "declarative-app-2" not in serve.status().applications)
 
 
-def test_change_route_prefix(client: ServeControllerClient):
+def test_change_route_prefix(serve_instance):
     # Deploy application with route prefix /old
+    client = serve_instance
     app_config = {
         "name": "default",
         "route_prefix": "/old",
@@ -573,9 +578,9 @@ def test_change_route_prefix(client: ServeControllerClient):
     wait_for_condition(check_switched)
 
 
-def test_num_replicas_auto_api(client: ServeControllerClient):
+def test_num_replicas_auto_api(serve_instance):
     """Test setting only `num_replicas="auto"`."""
-
+    client = serve_instance
     config_template = {
         "import_path": "ray.serve.tests.test_config_files.pid.node",
         "deployments": [{"name": "f", "num_replicas": "auto"}],
@@ -609,9 +614,9 @@ def test_num_replicas_auto_api(client: ServeControllerClient):
     }
 
 
-def test_num_replicas_auto_basic(client: ServeControllerClient):
+def test_num_replicas_auto_basic(serve_instance):
     """Test `num_replicas="auto"` and the default values are used in autoscaling."""
-
+    client = serve_instance
     signal = SignalActor.options(name="signal123").remote()
 
     config_template = {
@@ -676,9 +681,9 @@ def test_num_replicas_auto_basic(client: ServeControllerClient):
     signal.send.remote()
 
 
-def test_deploy_one_app_failed(client: ServeControllerClient):
+def test_deploy_one_app_failed(serve_instance):
     """Deploy two applications with separate runtime envs."""
-
+    client = serve_instance
     world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
     fail_import_path = "ray.serve.tests.test_config_files.fail.node"
     config_template = {
@@ -715,9 +720,10 @@ def test_deploy_one_app_failed(client: ServeControllerClient):
     assert r.status_code == 503 and "unavailable" in r.text
 
 
-def test_deploy_with_route_prefix_conflict(client: ServeControllerClient):
+def test_deploy_with_route_prefix_conflict(serve_instance):
     world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
     pizza_import_path = "ray.serve.tests.test_config_files.pizza.serve_dag"
+    client = serve_instance
     test_config = {
         "applications": [
             {
@@ -780,40 +786,42 @@ def test_deploy_with_route_prefix_conflict(client: ServeControllerClient):
     )
 
 
-def test_controller_recover_and_deploy(client: ServeControllerClient):
-    """Ensure that in-progress deploy can finish even after controller dies."""
+def test_update_config_graceful_shutdown_timeout(serve_instance):
+    """Check that replicas stay alive when graceful_shutdown_timeout_s is updated"""
+    client = serve_instance
 
-    signal = SignalActor.options(name="signal123").remote()
-
-    config_json = {
-        "applications": [
-            {
-                "name": SERVE_DEFAULT_APP_NAME,
-                "import_path": "ray.serve.tests.test_config_files.hangs.app",
-            }
-        ]
+    config_template = {
+        "import_path": "ray.serve.tests.test_config_files.pid.node",
+        "deployments": [{"name": "f", "graceful_shutdown_timeout_s": 1000}],
     }
-    config = ServeDeploySchema.parse_obj(config_json)
-    client.deploy_apps(config)
 
-    wait_for_condition(
-        lambda: serve.status().applications["default"].status == "DEPLOYING"
-    )
-    ray.kill(client._controller, no_restart=False)
+    # Deploy first time
+    client.deploy_apps(ServeDeploySchema.parse_obj({"applications": [config_template]}))
+    wait_for_condition(check_running, timeout=15)
+    handle = serve.get_app_handle(SERVE_DEFAULT_APP_NAME)
 
-    signal.send.remote()
+    # Start off with signal ready, and send query
+    handle.send.remote().result()
+    pid1 = handle.remote().result()[0]
+    print("PID of replica after first deployment:", pid1)
 
-    # When controller restarts, it should redeploy config automatically
-    wait_for_condition(
-        lambda: httpx.get("http://localhost:8000/").text == "hello world"
-    )
+    # Redeploy with shutdown timeout set to 5 seconds
+    config_template["deployments"][0]["graceful_shutdown_timeout_s"] = 5
+    client.deploy_apps(ServeDeploySchema.parse_obj({"applications": [config_template]}))
+    wait_for_condition(check_running, timeout=15)
 
-    serve.shutdown()
-    serve.start()
-    client = _get_global_client()
+    pid2 = handle.remote().result()[0]
+    assert pid1 == pid2
+    print("PID of replica after redeployment:", pid2)
 
-    # Ensure config checkpoint has been deleted
-    assert SERVE_DEFAULT_APP_NAME not in serve.status().applications
+    # Send blocking query
+    handle.send.remote(clear=True)
+    handle.remote()
+    # Try to delete deployment, should be blocked until the timeout at 5 seconds
+    client.delete_apps([SERVE_DEFAULT_APP_NAME], blocking=False)
+    # Replica should be dead within 10 second timeout, which means
+    # graceful_shutdown_timeout_s was successfully updated lightweightly
+    wait_for_condition(partial(check_deployments_dead, [DeploymentID(name="f")]))
 
 
 if __name__ == "__main__":
