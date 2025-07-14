@@ -246,7 +246,6 @@ class ResourceRequestUtil(ProtobufUtil):
                             label_values=label_values,
                         )
                     )
-                print(f"Adding selector: {selector_proto}")
                 request.label_selectors.append(selector_proto)
 
         return request
