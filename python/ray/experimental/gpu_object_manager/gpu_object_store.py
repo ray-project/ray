@@ -106,13 +106,11 @@ def __ray_recv__(
 
         state = nixl_agent.transfer(xfer_handle)
         if state == "ERR":
-            print("Posting transfer failed.")
-            assert False
+            raise RuntimeError("NIXL transfer got to Error state.")
         while True:
             state = nixl_agent.check_xfer_state(xfer_handle)
             if state == "ERR":
-                print("Transfer got to Error state.")
-                assert False
+                raise RuntimeError("NIXL transfer got to Error state.")
             elif state == "DONE":
                 break
 
