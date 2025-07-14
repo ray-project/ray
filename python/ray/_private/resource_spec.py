@@ -7,12 +7,11 @@ from typing import Dict, Optional
 
 import ray
 import ray._private.ray_constants as ray_constants
+from ray._common.constants import HEAD_NODE_RESOURCE_NAME, NODE_ID_PREFIX
 from ray._private.accelerators.utils import (
     get_current_node_accelerator_type,
     resolve_and_update_accelerator_resources,
 )
-from ray._common.constants import HEAD_NODE_RESOURCE_NAME, NODE_ID_PREFIX
-from ray._common.utils import RESOURCE_CONSTRAINT_PREFIX
 
 logger = logging.getLogger(__name__)
 
