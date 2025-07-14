@@ -371,8 +371,7 @@ def test_working_dir_applies_for_conda_creation(start_cluster, tmp_working_dir):
 
 
 def test_pip_install_options(shutdown_only):
-    # Test that this successfully builds a ray runtime environment using
-    # pip_install_options
+    # Test that this successfully builds a ray runtime environment using pip_install_options
     @ray.remote(
         runtime_env={
             "pip": {

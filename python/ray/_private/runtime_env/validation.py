@@ -280,8 +280,6 @@ def parse_and_validate_pip(pip: Union[str, List[str], Dict]) -> Optional[Dict]:
     assert pip is not None
     result = None
 
-    default_pip_install_options = ["--disable-pip-version-check", "--no-cache-dir"]
-
     if sys.platform == "win32":
         logger.warning(
             "runtime environment support is experimental on Windows. "
@@ -294,14 +292,9 @@ def parse_and_validate_pip(pip: Union[str, List[str], Dict]) -> Optional[Dict]:
         result = dict(
             packages=pip_list,
             pip_check=False,
-            pip_install_options=default_pip_install_options,
         )
     elif isinstance(pip, list) and all(isinstance(dep, str) for dep in pip):
-        result = dict(
-            packages=pip,
-            pip_check=False,
-            pip_install_options=default_pip_install_options,
-        )
+        result = dict(packages=pip, pip_check=False)
     elif isinstance(pip, dict):
         if set(pip.keys()) - {
             "packages",
@@ -341,10 +334,9 @@ def parse_and_validate_pip(pip: Union[str, List[str], Dict]) -> Optional[Dict]:
                     )
 
         result = pip.copy()
+        # Contrary to pip_check, we do not insert the default value of pip_install_options.
+        # This is to maintain backwards compatibility with ray==2.0.1
         result["pip_check"] = pip.get("pip_check", False)
-        result["pip_install_options"] = pip.get(
-            "pip_install_options", default_pip_install_options
-        )
 
         if "packages" not in pip:
             raise ValueError(
