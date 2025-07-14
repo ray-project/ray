@@ -76,7 +76,6 @@ class DependencySetManager:
                 name=depset.name,
                 output=depset.output,
             )
-            click.echo(f"Dependency set {depset.name} compiled successfully")
         elif depset.operation == "subset":
             self.subset(
                 source_depset=depset.source_depset,
@@ -84,6 +83,7 @@ class DependencySetManager:
                 name=depset.name,
                 output=depset.output,
             )
+        click.echo(f"Dependency set {depset.name} compiled successfully")
 
     def compile(
         self,
