@@ -34,6 +34,9 @@ class _SerializationContext:
         # reaches 0, remove the data from the buffer.
         self.channel_id_to_num_readers: Dict[str, int] = {}
 
+        from ray.experimental.channel.torch_tensor_type import TorchTensorType
+        TorchTensorType().register_custom_serializer()
+
     def set_target_device(self, device: Device) -> None:
         self._target_device = device
 
@@ -97,7 +100,7 @@ class _SerializationContext:
         from ray.experimental.channel import ChannelContext
 
         ctx = ChannelContext.get_current()
-        
+
         if self._use_external_transport and tensor.device == ctx.torch_device:
             # External transport is enabled and we found a tensor that matches
             # our device.  Add the actual tensor to a buffer. The buffer of
