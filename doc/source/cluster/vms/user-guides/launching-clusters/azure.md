@@ -21,7 +21,7 @@ The Ray cluster launcher is part of the `ray` CLI. Use the CLI to start, stop an
 
 ```bash
 # install ray
-pip install -U ray[default]
+pip install -U "ray[default]"
 ```
 
 ### Install and Configure Azure CLI
