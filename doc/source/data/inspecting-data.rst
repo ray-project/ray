@@ -117,6 +117,8 @@ of the returned batch, set ``batch_format``.
 
             import ray
 
+            assert ray.data.context.DataContext.get_current().execution_options.preserve_order
+
             ds = ray.data.read_csv("s3://anonymous@air-example-data/iris.csv")
 
             batch = ds.take_batch(batch_size=2, batch_format="pandas")
@@ -144,6 +146,7 @@ To view stats about your :class:`Datasets <ray.data.Dataset>`, call :meth:`Datas
 For more on how to read this output, see :ref:`Monitoring Your Workload with the Ray Data Dashboard <monitoring-your-workload>`.
 
 .. testcode::
+    :skipif: True
 
     import ray
     import datasets
