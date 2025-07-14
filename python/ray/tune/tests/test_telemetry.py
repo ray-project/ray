@@ -5,7 +5,7 @@ import pytest
 import ray
 import ray._private.usage.usage_lib as ray_usage_lib
 from ray import tune
-from ray._private.test_utils import TelemetryCallsite, check_library_usage_telemetry
+from ray._common.test_utils import TelemetryCallsite, check_library_usage_telemetry
 
 
 @pytest.fixture
