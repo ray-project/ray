@@ -281,12 +281,12 @@ SERVE_LLM_GRAFANA_PANELS = [
         unit="Tokens",
         targets=[
             Target(
-                expr='(sum by (model_id) (delta(ray_serve_llm_tokens_input{{WorkerId=~"$workerid", model_id !~ ".+--.+", {global_filters}}}[1d])))',
-                legend="Input: {{model_id}}",
+                expr='(sum by (model_name) (delta(ray_vllm:prompt_tokens_total{{WorkerId=~"$workerid", {global_filters}}}[1d])))',
+                legend="Input: {{model_name}}",
             ),
             Target(
-                expr='(sum by (model_id) (delta(ray_serve_llm_tokens_generated{{WorkerId=~"$workerid", model_id !~ ".+--.+", {global_filters}}}[1d])))',
-                legend="Generated: {{model_id}}",
+                expr='(sum by (model_name) (delta(ray_vllm:generation_tokens_total{{WorkerId=~"$workerid", {global_filters}}}[1d])))',
+                legend="Generated: {{model_name}}",
             ),
         ],
         fill=1,
@@ -302,12 +302,12 @@ SERVE_LLM_GRAFANA_PANELS = [
         unit="Tokens",
         targets=[
             Target(
-                expr='delta(ray_serve_llm_tokens_input{{WorkerId=~"$workerid", {global_filters}}}[1h])',
-                legend="Input: {{model_id}}",
+                expr='delta(ray_vllm:prompt_tokens_total{{WorkerId=~"$workerid", {global_filters}}}[1h])',
+                legend="Input: {{model_name}}",
             ),
             Target(
-                expr='delta(ray_serve_llm_tokens_generated{{WorkerId=~"$workerid", {global_filters}}}[1h])',
-                legend="Generated: {{model_id}}",
+                expr='delta(ray_vllm:generation_tokens_total{{WorkerId=~"$workerid", {global_filters}}}[1h])',
+                legend="Generated: {{model_name}}",
             ),
         ],
         fill=1,
@@ -318,37 +318,13 @@ SERVE_LLM_GRAFANA_PANELS = [
     ),
     Panel(
         id=16,
-        title="Requests Last Hour",
-        description="",
-        unit="Requests",
-        targets=[
-            Target(
-                expr='(sum by (WorkerId) (delta(ray_serve_llm_requests_errored{{WorkerId=~"$workerid", {global_filters}}}[1h])))',
-                legend="Errored",
-            ),
-            Target(
-                expr='(sum by (WorkerId) (delta(ray_serve_llm_requests_finished{{WorkerId=~"$workerid", {global_filters}}}[1h])))',
-                legend="Finished",
-            ),
-            Target(
-                expr='(sum by (WorkerId) (delta(ray_serve_llm_requests_started{{WorkerId=~"$workerid", {global_filters}}}[1h])))',
-                legend="Started",
-            ),
-        ],
-        fill=1,
-        linewidth=2,
-        stack=False,
-        grid_pos=GridPos(0, 56, 12, 8),
-    ),
-    Panel(
-        id=17,
         title="Distribution of Requests Per Model Last 24 Hours",
         description="",
         unit="Requests",
         targets=[
             Target(
-                expr='sum by (model_id) (delta(ray_serve_llm_requests_started{{WorkerId=~"$workerid", model_id !~ ".+--.+", {global_filters}}}[1d]))',
-                legend="{{model_id}}",
+                expr='sum by (model_name) (delta(ray_vllm:request_success_total{{WorkerId=~"$workerid", {global_filters}}}[1d]))',
+                legend="{{model_name}}",
             ),
         ],
         fill=1,
@@ -364,8 +340,8 @@ SERVE_LLM_GRAFANA_PANELS = [
         unit="none",
         targets=[
             Target(
-                expr='sum by (model_id) (delta(ray_serve_llm_tokens_input{{WorkerId=~"$workerid", {global_filters}}}[1d])) / sum by (model_id) (delta(ray_serve_llm_tokens_generated{{WorkerId=~"$workerid", {global_filters}}}[1d]))',
-                legend="{{model_id}}",
+                expr='sum by (model_name) (delta(ray_vllm:prompt_tokens_total{{WorkerId=~"$workerid", {global_filters}}}[1d])) / sum by (model_name) (delta(ray_vllm:generation_tokens_total{{WorkerId=~"$workerid", {global_filters}}}[1d]))',
+                legend="{{model_name}}",
             ),
         ],
         fill=1,
@@ -381,8 +357,8 @@ SERVE_LLM_GRAFANA_PANELS = [
         unit="Tokens",
         targets=[
             Target(
-                expr='sum by (model_id) (delta(ray_serve_llm_tokens_input{{WorkerId=~"$workerid", {global_filters}}}[1d])) + sum by (model_id) (delta(ray_serve_llm_tokens_generated{{WorkerId=~"$workerid", {global_filters}}}[1d]))',
-                legend="{{model_id}}",
+                expr='sum by (model_name) (delta(ray_vllm:prompt_tokens_total{{WorkerId=~"$workerid", {global_filters}}}[1d])) + sum by (model_name) (delta(ray_vllm:generation_tokens_total{{WorkerId=~"$workerid", {global_filters}}}[1d]))',
+                legend="{{model_name}}",
             ),
         ],
         fill=1,
@@ -398,8 +374,8 @@ SERVE_LLM_GRAFANA_PANELS = [
         unit="Tokens/s",
         targets=[
             Target(
-                expr='max_over_time(sum by (model_id) (rate(ray_serve_llm_tokens_generated{{WorkerId=~"$workerid", {global_filters}}}[2m]))[24h:])',
-                legend="{{model_id}}",
+                expr='max_over_time(sum by (model_name) (rate(ray_vllm:generation_tokens_total{{WorkerId=~"$workerid", {global_filters}}}[2m]))[24h:])',
+                legend="{{model_name}}",
             ),
         ],
         fill=1,
@@ -415,8 +391,8 @@ SERVE_LLM_GRAFANA_PANELS = [
         unit="Requests",
         targets=[
             Target(
-                expr='sum by (model_id) (delta(ray_serve_llm_requests_started{{WorkerId=~"$workerid",model_id !~ ".+--.+", {global_filters}}}[1w]))',
-                legend="{{ model_id}}",
+                expr='sum by (model_name) (delta(ray_vllm:request_success_total{{WorkerId=~"$workerid", {global_filters}}}[1w]))',
+                legend="{{ model_name}}",
             ),
         ],
         fill=1,
@@ -432,8 +408,8 @@ SERVE_LLM_GRAFANA_PANELS = [
         unit="Requests",
         targets=[
             Target(
-                expr='(sum by (model_id) (delta(ray_serve_llm_tokens_input{{WorkerId=~"$workerid",model_id !~ ".+--.+", model_id=~"$ray_llm_model_id", {global_filters}}}[1w])) +\nsum by (model_id) (delta(ray_serve_llm_tokens_generated{{WorkerId=~"$workerid",model_id !~ ".+--.+", model_id=~"$ray_llm_model_id", {global_filters}}}[1w]))) / sum by (model_id) (delta(ray_serve_llm_requests_started{{WorkerId=~"$workerid",model_id !~ ".+--.+", model_id=~"$ray_llm_model_id", {global_filters}}}[1w]))',
-                legend="{{ model_id}}",
+                expr='(sum by (model_name) (delta(ray_vllm:prompt_tokens_total{{WorkerId=~"$workerid", {global_filters}}}[1w])) +\nsum by (model_name) (delta(ray_vllm:generation_tokens_total{{WorkerId=~"$workerid", {global_filters}}}[1w]))) / sum by (model_name) (delta(ray_vllm:request_success_total{{WorkerId=~"$workerid", {global_filters}}}[1w]))',
+                legend="{{ model_name}}",
             ),
         ],
         fill=1,
@@ -449,8 +425,8 @@ SERVE_LLM_GRAFANA_PANELS = [
         unit="Requests",
         targets=[
             Target(
-                expr='(sum by (model_id) (delta(ray_serve_llm_tokens_input{{WorkerId=~"$workerid",model_id !~ ".+--.+", {global_filters}}}[1w])) + sum by (model_id) (delta(ray_serve_llm_tokens_generated{{WorkerId=~"$workerid",model_id !~ ".+--.+", {global_filters}}}[1w])))/ sum by (model_id) (delta(ray_serve_llm_requests_started{{WorkerId=~"$workerid",model_id !~ ".+--.+", {global_filters}}}[1w]))',
-                legend="{{ model_id}}",
+                expr='(sum by (model_name) (delta(ray_vllm:prompt_tokens_total{{WorkerId=~"$workerid", {global_filters}}}[1w])) + sum by (model_name) (delta(ray_vllm:generation_tokens_total{{WorkerId=~"$workerid", {global_filters}}}[1w])))/ sum by (model_name) (delta(ray_vllm:request_success_total{{WorkerId=~"$workerid", {global_filters}}}[1w]))',
+                legend="{{ model_name}}",
             ),
         ],
         fill=1,
@@ -466,12 +442,12 @@ SERVE_LLM_GRAFANA_PANELS = [
         unit="Tokens",
         targets=[
             Target(
-                expr='sum by (model_id) (delta(ray_serve_llm_tokens_input{{WorkerId=~"$workerid",model_id !~ ".+--.+", {global_filters}}}[1w]))',
-                legend="In: {{ model_id}}",
+                expr='sum by (model_name) (delta(ray_vllm:prompt_tokens_total{{WorkerId=~"$workerid", {global_filters}}}[1w]))',
+                legend="In: {{ model_name}}",
             ),
             Target(
-                expr='sum by (model_id) (delta(ray_serve_llm_tokens_generated{{WorkerId=~"$workerid",model_id !~ ".+--.+", {global_filters}}}[1w]))',
-                legend="Out: {{ model_id }}",
+                expr='sum by (model_name) (delta(ray_vllm:generation_tokens_total{{WorkerId=~"$workerid", {global_filters}}}[1w]))',
+                legend="Out: {{ model_name }}",
             ),
         ],
         fill=1,
@@ -487,12 +463,12 @@ SERVE_LLM_GRAFANA_PANELS = [
         unit="Tokens",
         targets=[
             Target(
-                expr='sum by (model_id) (delta(ray_serve_llm_tokens_input{{WorkerId=~"$workerid",model_id !~ ".+--.+", {global_filters}}}[1w])) / sum by (model_id) (delta(ray_serve_llm_requests_started{{WorkerId=~"$workerid",model_id !~ ".+--.+", {global_filters}}}[1w]))',
-                legend="In: {{ model_id}}",
+                expr='sum by (model_name) (delta(ray_vllm:prompt_tokens_total{{WorkerId=~"$workerid", {global_filters}}}[1w])) / sum by (model_name) (delta(ray_vllm:request_success_total{{WorkerId=~"$workerid", {global_filters}}}[1w]))',
+                legend="In: {{ model_name}}",
             ),
             Target(
-                expr='sum by (model_id) (delta(ray_serve_llm_tokens_generated{{WorkerId=~"$workerid",model_id !~ ".+--.+", {global_filters}}}[1w])) / sum by (model_id) (delta(ray_serve_llm_requests_started{{WorkerId=~"$workerid",model_id !~ ".+--.+", {global_filters}}}[1w]))',
-                legend="Out: {{ model_id}}",
+                expr='sum by (model_name) (delta(ray_vllm:generation_tokens_total{{WorkerId=~"$workerid", {global_filters}}}[1w])) / sum by (model_name) (delta(ray_vllm:request_success_total{{WorkerId=~"$workerid", {global_filters}}}[1w]))',
+                legend="Out: {{ model_name}}",
             ),
         ],
         fill=1,
