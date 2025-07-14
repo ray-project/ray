@@ -1899,7 +1899,7 @@ def test_write_partition_cols_with_max_rows_per_file(
     pd.testing.assert_frame_equal(actual_df, expected_df, check_dtype=False)
 
 
-@dataclass(kw_only=True)
+@dataclass
 class RowGroupLimitCase:
     row_group_size: Optional[int]
     min_rows_per_file: Optional[int]
