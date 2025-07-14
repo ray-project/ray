@@ -7,9 +7,8 @@ import pytest
 
 import ray
 from ray import serve
-from ray._common.test_utils import SignalActor
+from ray._common.test_utils import SignalActor, wait_for_condition
 from ray._common.utils import get_or_create_event_loop
-from ray._private.test_utils import wait_for_condition
 from ray.serve._private.common import DeploymentID, ReplicaID
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import SERVE_MULTIPLEXED_MODEL_ID
@@ -536,8 +535,8 @@ def test_replica_upgrade_to_cleanup_resource(serve_instance):
             self.model_id = model_id
             self.record_handle = record_handle
 
-        def __del__(self):
-            self.record_handle.add.remote(self.model_id)
+        async def __del__(self):
+            await self.record_handle.add.remote(self.model_id)
 
         def __eq__(self, model):
             return model.model_id == self.model_id

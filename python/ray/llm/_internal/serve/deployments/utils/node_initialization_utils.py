@@ -7,11 +7,11 @@ from ray.llm._internal.common.utils.download_utils import (
     NodeModelDownloadable,
     download_model_files,
 )
+from ray.llm._internal.common.utils.import_utils import try_import
 from ray.llm._internal.serve.configs.server_models import LLMConfig
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import VLLMEngineConfig
 from ray.llm._internal.serve.deployments.utils.server_utils import make_async
 from ray.llm._internal.serve.observability.logging import get_logger
-from ray.llm._internal.utils import try_import
 from ray.util.placement_group import PlacementGroup
 
 torch = try_import("torch")
@@ -115,11 +115,6 @@ async def initialize_node(llm_config: LLMConfig) -> InitializeNodeOutput:
             download_model=worker_node_download_model,
             download_extra_files=True,
         )
-
-    llm_config.apply_checkpoint_info(
-        engine_config.actual_hf_model_id,
-        trust_remote_code=engine_config.trust_remote_code,
-    )
 
     return InitializeNodeOutput(
         placement_group=pg, runtime_env=runtime_env, extra_init_kwargs=extra_init_kwargs

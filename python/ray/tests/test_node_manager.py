@@ -11,12 +11,12 @@ from typing import List, Optional
 import pytest
 
 import ray
+from ray._common.test_utils import wait_for_condition
 from ray.util.state import list_workers
 from ray._private.test_utils import (
     get_load_metrics_report,
     run_string_as_driver,
     run_string_as_driver_nonblocking,
-    wait_for_condition,
     get_resource_usage,
 )
 from ray.util.state import list_objects

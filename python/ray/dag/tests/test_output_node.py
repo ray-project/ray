@@ -4,7 +4,7 @@ import ray
 from ray.dag.input_node import InputNode
 from ray.dag.output_node import MultiOutputNode
 from ray.util.state import list_tasks
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import wait_for_condition
 
 
 def test_output_node(shared_ray_instance):
@@ -177,18 +177,24 @@ def test_shared_output(shared_ray_instance):
     wait_for_condition(verify)
 
 
-def test_bind_failure(shared_ray_instance):
-    """Verify if an actor loses a reference,
-    it fails with correct error messages.
-    """
+def test_bind_survives_handle_deletion(shared_ray_instance):
+    """Verify that .bind().execute() still works even if the original handle was dropped."""
 
     @ray.remote
     class A:
         def f(self):
-            pass
+            return 1
 
-    with pytest.raises(RuntimeError):
-        ray.get(A.remote().f.bind().execute())
+    # Grab the handle and the bound method node
+    actor = A.remote()
+    method_node = actor.f.bind()
+
+    # Destroy the only Python variable reference and force collection
+    del actor
+
+    # Executing should now succeed because the node holds the ref
+    result = ray.get(method_node.execute())
+    assert result == 1
 
 
 if __name__ == "__main__":

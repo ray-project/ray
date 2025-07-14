@@ -41,6 +41,7 @@
 #include "ray/rpc/client_call.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
 #include "ray/rpc/node_manager/node_manager_client_pool.h"
+#include "ray/rpc/worker/core_worker_client_pool.h"
 #include "ray/util/throttler.h"
 
 namespace ray {
@@ -231,6 +232,8 @@ class GcsServer {
   rpc::ClientCallManager client_call_manager_;
   /// Node manager client pool.
   std::unique_ptr<rpc::NodeManagerClientPool> raylet_client_pool_;
+  // Core worker client pool.
+  rpc::CoreWorkerClientPool worker_client_pool_;
   /// The cluster resource scheduler.
   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
   /// Local task manager.
@@ -260,7 +263,7 @@ class GcsServer {
   /// [gcs_placement_group_scheduler_] depends on [raylet_client_pool_].
   std::unique_ptr<GcsPlacementGroupScheduler> gcs_placement_group_scheduler_;
   /// Function table manager.
-  std::unique_ptr<GcsFunctionManager> function_manager_;
+  std::unique_ptr<GCSFunctionManager> function_manager_;
   /// Stores references to URIs stored by the GCS for runtime envs.
   std::unique_ptr<ray::RuntimeEnvManager> runtime_env_manager_;
   /// Global KV storage handler.

@@ -21,6 +21,7 @@ import pytest
 import copy
 
 import ray
+from ray._common.test_utils import wait_for_condition
 import ray._private.ray_constants as ray_constants
 from ray._private.conftest_utils import set_override_dashboard_url  # noqa: F401
 from ray._private.runtime_env import virtualenv_utils
@@ -37,7 +38,6 @@ from ray._private.test_utils import (
     start_redis_instance,
     start_redis_sentinel_instance,
     redis_sentinel_replicas,
-    wait_for_condition,
     find_free_port,
     reset_autoscaler_v2_enabled_cache,
     RayletKiller,
@@ -282,7 +282,7 @@ def _find_available_ports(start: int, end: int, *, num: int = 1) -> List[int]:
 
 
 def start_redis_with_sentinel(db_dir):
-    temp_dir = ray._private.utils.get_ray_temp_dir()
+    temp_dir = ray._common.utils.get_ray_temp_dir()
 
     redis_ports = _find_available_ports(49159, 55535, num=redis_sentinel_replicas() + 1)
     sentinel_port = redis_ports[0]
@@ -319,7 +319,7 @@ def start_redis(db_dir):
         leader_id = None
         redis_ports = []
         while len(redis_ports) != redis_replicas():
-            temp_dir = ray._private.utils.get_ray_temp_dir()
+            temp_dir = ray._common.utils.get_ray_temp_dir()
             port, free_port = _find_available_ports(49159, 55535, num=2)
             try:
                 node_id = None
@@ -507,7 +507,7 @@ def shutdown_only(maybe_setup_external_redis):
     # The code after the yield will run as teardown code.
     ray.shutdown()
     # Delete the cluster address just in case.
-    ray._private.utils.reset_ray_address()
+    ray._common.utils.reset_ray_address()
 
 
 @pytest.fixture
@@ -528,7 +528,7 @@ def class_ray_instance():
     yield ray.init()
     ray.shutdown()
     # Delete the cluster address just in case.
-    ray._private.utils.reset_ray_address()
+    ray._common.utils.reset_ray_address()
 
 
 @contextmanager
@@ -542,7 +542,7 @@ def _ray_start(**kwargs):
     # The code after the yield will run as teardown code.
     ray.shutdown()
     # Delete the cluster address just in case.
-    ray._private.utils.reset_ray_address()
+    ray._common.utils.reset_ray_address()
 
 
 @pytest.fixture
@@ -789,7 +789,7 @@ def call_ray_start_context(request):
     command_args = parameter.split(" ")
 
     try:
-        out = ray._private.utils.decode(
+        out = ray._common.utils.decode(
             subprocess.check_output(command_args, stderr=subprocess.STDOUT, env=env)
         )
     except Exception as e:
@@ -813,7 +813,7 @@ def call_ray_start_context(request):
     # Kill the Ray cluster.
     subprocess.check_call(["ray", "stop"], env=env)
     # Delete the cluster address just in case.
-    ray._private.utils.reset_ray_address()
+    ray._common.utils.reset_ray_address()
 
 
 @pytest.fixture
@@ -821,7 +821,7 @@ def call_ray_start_with_external_redis(request):
     ports = getattr(request, "param", "6379")
     port_list = ports.split(",")
     for port in port_list:
-        temp_dir = ray._private.utils.get_ray_temp_dir()
+        temp_dir = ray._common.utils.get_ray_temp_dir()
         start_redis_instance(temp_dir, int(port), password="123")
     address_str = ",".join(map(lambda x: "localhost:" + x, port_list))
     cmd = f"ray start --head --address={address_str} --redis-password=123"
@@ -834,7 +834,7 @@ def call_ray_start_with_external_redis(request):
     # Kill the Ray cluster.
     subprocess.check_call(["ray", "stop"])
     # Delete the cluster address just in case.
-    ray._private.utils.reset_ray_address()
+    ray._common.utils.reset_ray_address()
 
 
 @pytest.fixture
@@ -852,32 +852,19 @@ def call_ray_stop_only():
     yield
     subprocess.check_call(["ray", "stop"])
     # Delete the cluster address just in case.
-    ray._private.utils.reset_ray_address()
+    ray._common.utils.reset_ray_address()
 
 
 def _start_cluster(cluster, request):
-    assert request.param in {"ray_client", "no_ray_client"}
-    use_ray_client: bool = request.param == "ray_client"
-    if os.environ.get("RAY_MINIMAL") == "1" and use_ray_client:
-        pytest.skip("Skipping due to we don't have ray client in minimal.")
-
     cluster.add_node(num_cpus=4, dashboard_agent_listen_port=find_free_port())
-    if use_ray_client:
-        cluster.head_node._ray_params.ray_client_server_port = "10004"
-        cluster.head_node.start_ray_client_server()
-        address = "ray://localhost:10004"
-    else:
-        address = cluster.address
-
-    return cluster, address
+    return cluster, cluster.address
 
 
 # Used to enforce that `start_cluster` and `start_cluster_shared` fixtures aren't mixed.
 _START_CLUSTER_SHARED_USED = False
 
-# Used to test both Ray Client and non-Ray Client codepaths.
-# Usage: In your test, call `ray.init(address)`.
-@pytest.fixture(scope="function", params=["ray_client", "no_ray_client"])
+
+@pytest.fixture
 def start_cluster(ray_start_cluster_enabled, request):
     if _START_CLUSTER_SHARED_USED:
         pytest.fail(
@@ -887,7 +874,7 @@ def start_cluster(ray_start_cluster_enabled, request):
     yield _start_cluster(ray_start_cluster_enabled, request)
 
 
-@pytest.fixture(scope="module", params=["ray_client", "no_ray_client"])
+@pytest.fixture(scope="module")
 def _start_cluster_shared(ray_start_cluster_enabled_shared, request):
     global _START_CLUSTER_SHARED_USED
     _START_CLUSTER_SHARED_USED = True
@@ -1032,12 +1019,6 @@ smart_open_object_spilling_config = {
     "type": "smart_open",
     "params": {"uri": f"s3://{bucket_name}/"},
 }
-ray_storage_object_spilling_config = {
-    "type": "ray_storage",
-    # Force the storage config so we don't need to patch each test to separately
-    # configure the storage param under this.
-    "params": {"_force_storage_for_testing": spill_local_path},
-}
 buffer_open_object_spilling_config = {
     "type": "smart_open",
     "params": {"uri": f"s3://{bucket_name}/", "buffer_size": 1000},
@@ -1086,9 +1067,6 @@ def fs_only_object_spilling_config(request, tmp_path):
     scope="function",
     params=[
         file_system_object_spilling_config,
-        ray_storage_object_spilling_config,
-        # TODO(sang): Add a mock dependency to test S3.
-        # smart_open_object_spilling_config,
     ],
 )
 def object_spilling_config(request, tmp_path):

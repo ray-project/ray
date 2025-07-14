@@ -139,14 +139,17 @@ class StreamingExecutor(Executor, threading.Thread):
             lambda: self._autoscaler.get_total_resources(),
             self._data_context,
         )
-        self._backpressure_policies = get_backpressure_policies(self._topology)
+        self._backpressure_policies = get_backpressure_policies(
+            self._data_context, self._topology, self._resource_manager
+        )
         self._autoscaler = create_autoscaler(
             self._topology,
             self._resource_manager,
-            self._dataset_id,
+            config=self._data_context.autoscaling_config,
+            execution_id=self._dataset_id,
         )
 
-        self._has_op_completed = {op: False for op in self._topology}
+        self._has_op_completed = dict.fromkeys(self._topology, False)
 
         self._output_node = dag, self._topology[dag]
 
@@ -157,6 +160,7 @@ class StreamingExecutor(Executor, threading.Thread):
             self._dataset_id,
             self._get_operator_tags(),
             TopologyMetadata.create_topology_metadata(dag, op_to_id),
+            self._data_context,
         )
         for callback in get_execution_callbacks(self._data_context):
             callback.before_execution_starts(self)
@@ -335,7 +339,7 @@ class StreamingExecutor(Executor, threading.Thread):
         # greater parallelism.
         num_errored_blocks = process_completed_tasks(
             topology,
-            self._resource_manager,
+            self._backpressure_policies,
             self._max_errored_blocks,
         )
         if self._max_errored_blocks > 0:

@@ -32,6 +32,7 @@ from ray.llm._internal.common.utils.cloud_utils import (
     CloudMirrorConfig,
     is_remote_path,
 )
+from ray.llm._internal.common.utils.import_utils import try_import
 from ray.llm._internal.serve.configs.constants import (
     DEFAULT_MULTIPLEX_DOWNLOAD_TIMEOUT_S,
     DEFAULT_MULTIPLEX_DOWNLOAD_TRIES,
@@ -45,11 +46,9 @@ from ray.llm._internal.serve.configs.openai_api_models_patch import (
     ResponseFormatType,
 )
 from ray.llm._internal.serve.configs.prompt_formats import (
-    HuggingFacePromptFormat,
     Prompt,
 )
 from ray.llm._internal.serve.observability.logging import get_logger
-from ray.llm._internal.utils import try_import
 from ray.serve._private.config import DeploymentConfig
 
 transformers = try_import("transformers")
@@ -236,14 +235,11 @@ class LLMConfig(BaseModelExtended):
 
     log_engine_metrics: Optional[bool] = Field(
         False,
-        description="Enable additional engine metrics via Ray Prometheus port. Only compatible with V1 vLLM engine.",
+        description="Enable additional engine metrics via Ray Prometheus port. Only compatible with V1 vLLM engine. NOTE: once v1 is fully rolled out, we will remove this flag and turn it on by default.",
     )
 
     _supports_vision: bool = PrivateAttr(False)
-    _model_architecture: str = PrivateAttr("")
-    _prompt_format: HuggingFacePromptFormat = PrivateAttr(
-        default_factory=HuggingFacePromptFormat
-    )
+    _model_architecture: str = PrivateAttr("UNSPECIFIED")
     _engine_config: EngineConfigType = PrivateAttr(None)
 
     def _infer_supports_vision(self, model_id_or_path: str) -> None:
@@ -266,7 +262,7 @@ class LLMConfig(BaseModelExtended):
         """
         if model_id_or_path:
             hf_config = transformers.PretrainedConfig.from_pretrained(model_id_or_path)
-            if hasattr(hf_config, "architectures"):
+            if hasattr(hf_config, "architectures") and hf_config.architectures:
                 self._model_architecture = hf_config.architectures[0]
 
         if model_architecture:
@@ -278,10 +274,6 @@ class LLMConfig(BaseModelExtended):
         """Apply the checkpoint info to the model config."""
         self._infer_supports_vision(model_id_or_path)
         self._set_model_architecture(model_id_or_path)
-        self._prompt_format.set_processor(
-            model_id_or_path,
-            trust_remote_code=trust_remote_code,
-        )
 
     @property
     def supports_vision(self) -> bool:
@@ -290,10 +282,6 @@ class LLMConfig(BaseModelExtended):
     @property
     def model_architecture(self) -> str:
         return self._model_architecture
-
-    @property
-    def prompt_format(self) -> HuggingFacePromptFormat:
-        return self._prompt_format
 
     @property
     def input_modality(self) -> str:
@@ -408,14 +396,8 @@ class LLMConfig(BaseModelExtended):
                 "Use scaling_config to configure replica placement group."
             )
 
-        # TODO (Kourosh): There is some test code leakage happening here that should be removed.
         try:
-            # resources.mock_resource is a special key we used in tests to skip placement
-            # group on the gpu nodes.
-            if "mock_resource" in ray_actor_options.get("resources", {}):
-                bundles = []
-            else:
-                bundles = engine_config.placement_bundles
+            bundles = engine_config.placement_bundles
         except ValueError:
             # May happen if all bundles are empty.
             bundles = []
