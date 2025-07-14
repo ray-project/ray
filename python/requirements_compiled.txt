@@ -2270,7 +2270,7 @@ tornado==6.1 ; python_version < "3.12"
     #   notebook
     #   pymars
     #   terminado
-tqdm==4.64.1
+tqdm==4.66.3
     # via
     #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements/test-requirements.txt
