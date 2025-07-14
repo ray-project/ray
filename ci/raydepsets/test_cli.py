@@ -67,6 +67,16 @@ class TestCli(unittest.TestCase):
             with self.assertRaises(KeyError):
                 manager.get_depset("fake_depset")
 
+    def test_dependency_set_manager_get_depset(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _copy_data_to_tmpdir(tmpdir)
+            manager = DependencySetManager(
+                config_path="test.config.yaml",
+                workspace_dir=tmpdir,
+            )
+            with self.assertRaises(KeyError):
+                manager.get_depset("fake_depset")
+
     def test_uv_binary_exists(self):
         assert uv_binary() is not None
 
@@ -453,6 +463,14 @@ def _uv_binary():
     if system != "Linux" or platform.processor() != "x86_64":
         raise ValueError(f"Unsupported platform: {system}")
     return _runfiles.Rlocation("uv_x86_64/uv-x86_64-unknown-linux-gnu/uv")
+
+
+def _copy_data_to_tmpdir(tmpdir):
+    shutil.copytree(
+        _runfiles.Rlocation(f"{_REPO_NAME}/ci/raydepsets/test_data"),
+        tmpdir,
+        dirs_exist_ok=True,
+    )
 
 
 if __name__ == "__main__":
