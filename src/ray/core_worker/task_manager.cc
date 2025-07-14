@@ -277,9 +277,33 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
 
     return_ids.push_back(return_id);
     rpc::ObjectReference ref;
-    ref.set_object_id(spec.ReturnId(i).Binary());
+    auto object_id = spec.ReturnId(i);
+    ref.set_object_id(object_id.Binary());
     ref.mutable_owner_address()->CopyFrom(caller_address);
     ref.set_call_site(call_site);
+
+    // Register the callback to free the GPU object when it is out of scope.
+    auto tensor_transport = reference_counter_.GetTensorTransport(object_id);
+    if (tensor_transport.value_or(rpc::TensorTransport::OBJECT_STORE) !=
+        rpc::TensorTransport::OBJECT_STORE) {
+      reference_counter_.AddObjectOutOfScopeOrFreedCallback(
+          object_id, [this](const ObjectID &object_id) {
+            auto actor_id = ObjectID::ToActorID(object_id);
+            auto rpc_client = get_actor_rpc_client_callback_(actor_id);
+            auto request = rpc::FreeActorObjectRequest();
+            request.set_object_id(object_id.Binary());
+            rpc_client->FreeActorObject(
+                request,
+                [object_id, actor_id](Status status,
+                                      const rpc::FreeActorObjectReply &reply) {
+                  if (!status.ok()) {
+                    RAY_LOG(ERROR).WithField(object_id).WithField(actor_id)
+                        << "Failed to free actor object: " << status;
+                  }
+                });
+          });
+    }
+
     returned_refs.push_back(std::move(ref));
   }
 
@@ -1291,22 +1315,7 @@ void TaskManager::RemoveFinishedTaskReferences(
     const ReferenceCounter::ReferenceTableProto &borrowed_refs) {
   RAY_LOG(DEBUG) << "[RemoveFinishedTaskReferences] release_lineage=" << release_lineage
                  << ", borrower_addr=" << borrower_addr.DebugString();
-  std::vector<ObjectID> plasma_dependencies;
-  for (size_t i = 0; i < spec.NumArgs(); i++) {
-    if (spec.ArgByRef(i)) {
-      plasma_dependencies.push_back(spec.ArgObjectId(i));
-    } else {
-      const auto &inlined_refs = spec.ArgInlinedRefs(i);
-      for (const auto &inlined_ref : inlined_refs) {
-        plasma_dependencies.push_back(ObjectID::FromBinary(inlined_ref.object_id()));
-      }
-    }
-  }
-  if (spec.IsActorTask()) {
-    const auto actor_creation_return_id = spec.ActorCreationDummyObjectId();
-    plasma_dependencies.push_back(actor_creation_return_id);
-  }
-
+  std::vector<ObjectID> plasma_dependencies = ExtractPlasmaDependencies(spec);
   std::vector<ObjectID> return_ids;
   size_t num_returns = spec.NumReturns();
   return_ids.reserve(num_returns);
@@ -1693,6 +1702,30 @@ ObjectID TaskManager::TaskGeneratorId(const TaskID &task_id) const {
     return ObjectID::Nil();
   }
   return it->second.spec.ReturnId(0);
+}
+
+std::vector<ObjectID> ExtractPlasmaDependencies(const TaskSpecification &spec) {
+  std::vector<ObjectID> plasma_dependencies;
+  for (size_t i = 0; i < spec.NumArgs(); i++) {
+    if (spec.ArgByRef(i)) {
+      plasma_dependencies.push_back(spec.ArgObjectId(i));
+    } else if (spec.ArgTensorTransport(i) != rpc::TensorTransport::OBJECT_STORE) {
+      // GPU objects are inlined but the actual data lives on the remote actor.
+      // Therefore, we apply the reference counting protocol used for plasma objects
+      // instead of decrementing the ref count upon inlining.
+      plasma_dependencies.push_back(spec.ArgObjectId(i));
+    } else {
+      const auto &inlined_refs = spec.ArgInlinedRefs(i);
+      for (const auto &inlined_ref : inlined_refs) {
+        plasma_dependencies.push_back(ObjectID::FromBinary(inlined_ref.object_id()));
+      }
+    }
+  }
+  if (spec.IsActorTask()) {
+    const auto actor_creation_return_id = spec.ActorCreationDummyObjectId();
+    plasma_dependencies.push_back(actor_creation_return_id);
+  }
+  return plasma_dependencies;
 }
 
 }  // namespace core

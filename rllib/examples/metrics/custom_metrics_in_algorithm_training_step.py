@@ -86,7 +86,7 @@ class MyVPGWithExtraMetrics(VPG):
 
 
 parser = add_rllib_example_script_args(default_reward=50.0)
-parser.set_defaults(enable_new_api_stack=True)
+parser.set_defaults(enable_new_api_stack=True, default_timesteps=50000)
 
 
 if __name__ == "__main__":
