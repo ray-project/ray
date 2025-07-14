@@ -134,8 +134,7 @@ import ray
 import unittest.mock
 
 # Patch methods that makes calls to AcceleratorManager in Node init
-with unittest.mock.patch("ray._private.accelerators.accelerator_utils.resolve_and_update_accelerator_resources", return_value=0), \\
-     unittest.mock.patch("ray._private.accelerators.get_all_accelerator_resource_names", return_value=[]):
+with unittest.mock.patch("ray._private.accelerators.utils.get_current_node_accelerator", return_value=None):
 
     @ray.remote
     class A:

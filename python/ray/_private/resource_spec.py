@@ -1,7 +1,9 @@
+import json
 import logging
+import os
 import sys
 from collections import namedtuple
-from typing import Optional
+from typing import Dict, Optional
 
 import ray
 import ray._private.ray_constants as ray_constants
@@ -11,22 +13,23 @@ from ray._common.utils import RESOURCE_CONSTRAINT_PREFIX
 logger = logging.getLogger(__name__)
 
 
-class ResourceSpec(
+class ResourceAndLabelSpec(
     namedtuple(
-        "ResourceSpec",
+        "ResourceAndLabelSpec",
         [
             "num_cpus",
             "num_gpus",
             "memory",
             "object_store_memory",
             "resources",
+            "labels",
         ],
     )
 ):
     """Represents the resource configuration passed to a raylet.
 
     All fields can be None. Before starting services, resolve() should be
-    called to return a ResourceSpec with unknown values filled in with
+    called to return a ResourceAndLabelSpec with unknown values filled in with
     defaults based on the local machine specifications.
 
     Attributes:
@@ -37,6 +40,8 @@ class ResourceSpec(
             Note that when calling to_resource_dict(), this will be scaled down
             by 30% to account for the global plasma LRU reserve.
         resources: The custom resources allocated for this raylet.
+        labels: The labels associated with this node. Labels can be used along
+            with resources for scheduling.
     """
 
     def __new__(
@@ -46,18 +51,20 @@ class ResourceSpec(
         memory=None,
         object_store_memory=None,
         resources=None,
+        labels=None,
     ):
-        return super(ResourceSpec, cls).__new__(
+        return super(ResourceAndLabelSpec, cls).__new__(
             cls,
             num_cpus,
             num_gpus,
             memory,
             object_store_memory,
             resources,
+            labels,
         )
 
     def resolved(self):
-        """Returns if this ResourceSpec has default values filled out."""
+        """Returns if this ResourceAndLabelSpec has default values filled out."""
         for v in self._asdict().values():
             if v is None:
                 return False
@@ -122,6 +129,8 @@ class ResourceSpec(
             is_head: Whether this is the head node.
             node_ip_address: The IP address of the node that we are on.
                 This is used to automatically create a node id resource.
+        Returns:
+            A new ResourceAndLabelSpec with resolved fields (e.g., CPU, GPU, memory).
         """
 
         resources = (self.resources or {}).copy()
@@ -272,12 +281,83 @@ class ResourceSpec(
                     )
                 )
 
-        spec = ResourceSpec(
+        spec = ResourceAndLabelSpec(
             num_cpus,
             num_gpus,
             memory,
             object_store_memory,
             resources,
+            self.get_resolved_labels(),
         )
         assert spec.resolved()
         return spec
+
+    def _load_env_labels(self) -> Dict[str, str]:
+        env_override_labels = {}
+        env_override_labels_string = os.getenv(
+            ray_constants.LABELS_ENVIRONMENT_VARIABLE
+        )
+        if env_override_labels_string:
+            try:
+                env_override_labels = json.loads(env_override_labels_string)
+            except Exception:
+                logger.exception(f"Failed to load {env_override_labels_string}")
+                raise
+            logger.info(f"Autoscaler overriding labels: {env_override_labels}.")
+
+        return env_override_labels
+
+    def _get_default_labels(self) -> Dict[str, str]:
+        default_labels = {}
+
+        # Get environment variables populated from K8s Pod Spec
+        node_group = os.environ.get(ray._raylet.NODE_TYPE_NAME_ENV, "")
+        market_type = os.environ.get(ray._raylet.NODE_MARKET_TYPE_ENV, "")
+        availability_region = os.environ.get(ray._raylet.NODE_REGION_ENV, "")
+        availability_zone = os.environ.get(ray._raylet.NODE_ZONE_ENV, "")
+
+        # Map environment variables to default ray node labels
+        if market_type:
+            default_labels[ray._raylet.RAY_NODE_MARKET_TYPE_KEY] = market_type
+        if node_group:
+            default_labels[ray._raylet.RAY_NODE_GROUP_KEY] = node_group
+        if availability_zone:
+            default_labels[ray._raylet.RAY_NODE_ZONE_KEY] = availability_zone
+        if availability_region:
+            default_labels[ray._raylet.RAY_NODE_REGION_KEY] = availability_region
+
+        # Get accelerator type from AcceleratorManager
+        accelerator_type = get_current_node_accelerator_type(self.resources)
+        if accelerator_type:
+            default_labels[ray._raylet.RAY_NODE_ACCELERATOR_TYPE_KEY] = accelerator_type
+
+        return default_labels
+
+    def get_resolved_labels(self) -> Dict[str, str]:
+        """Merge environment override, user-input from params, and Ray default labels in
+        that order of precedence."""
+
+        env_labels = self._load_env_labels()
+        merged = dict(self._get_default_labels() or {})
+
+        # Merge user-specified labels from Ray params
+        for key, val in (self.labels or {}).items():
+            if key in merged and merged[key] != val:
+                logger.warning(
+                    f"User label is overriding Ray default label: {key}: "
+                    f"{key}: {merged[key]} to "
+                    f"{key}: {self.labels[key]}."
+                )
+            merged[key] = val
+
+        # Merge autoscaler override labels from environment
+        for key, val in (env_labels or {}).items():
+            if key in merged and merged[key] != val:
+                logger.warning(
+                    "Autoscaler is overriding your label:"
+                    f"{key}: {merged[key]} to "
+                    f"{key}: {env_labels[key]}."
+                )
+            merged[key] = val
+
+        return merged
