@@ -36,10 +36,6 @@
 namespace ray {
 namespace core {
 namespace {
-std::shared_ptr<LeaseRequestRateLimiter> kOneRateLimiter =
-    std::make_shared<StaticLeaseRequestRateLimiter>(1);
-std::shared_ptr<LeaseRequestRateLimiter> kTwoRateLimiter =
-    std::make_shared<StaticLeaseRequestRateLimiter>(2);
 
 class DynamicRateLimiter : public LeaseRequestRateLimiter {
  public:
@@ -469,9 +465,9 @@ TaskSpecification WithRandomTaskId(const TaskSpecification &task_spec) {
   return TaskSpecification(std::move(copied_proto));
 }
 
-class NormalTaskSubmitterFTest : public testing::Test {
+class NormalTaskSubmitterTest : public testing::Test {
  public:
-  NormalTaskSubmitterFTest()
+  NormalTaskSubmitterTest()
       : raylet_client(std::make_shared<MockRayletClient>()),
         worker_client(std::make_shared<MockWorkerClient>()),
         store(DefaultCoreWorkerMemoryStoreWithThread::CreateShared()),
@@ -524,8 +520,9 @@ class NormalTaskSubmitterFTest : public testing::Test {
   instrumented_io_context io_context;
 };
 
-TEST_F(NormalTaskSubmitterFTest, TestLocalityAwareSubmitOneTask) {
-  auto submitter = CreateNormalTaskSubmitter(kOneRateLimiter);
+TEST_F(NormalTaskSubmitterTest, TestLocalityAwareSubmitOneTask) {
+  auto submitter =
+      CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(1));
   lease_policy_ptr->is_locality_aware = true;
 
   TaskSpecification task = BuildEmptyTaskSpec();
@@ -556,8 +553,9 @@ TEST_F(NormalTaskSubmitterFTest, TestLocalityAwareSubmitOneTask) {
   ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntriesPublic());
 }
 
-TEST_F(NormalTaskSubmitterFTest, TestSubmitOneTask) {
-  auto submitter = CreateNormalTaskSubmitter(kOneRateLimiter);
+TEST_F(NormalTaskSubmitterTest, TestSubmitOneTask) {
+  auto submitter =
+      CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(1));
   TaskSpecification task = BuildEmptyTaskSpec();
 
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
@@ -586,8 +584,9 @@ TEST_F(NormalTaskSubmitterFTest, TestSubmitOneTask) {
   ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntriesPublic());
 }
 
-TEST_F(NormalTaskSubmitterFTest, TestRetryTaskApplicationLevelError) {
-  auto submitter = CreateNormalTaskSubmitter(kOneRateLimiter);
+TEST_F(NormalTaskSubmitterTest, TestRetryTaskApplicationLevelError) {
+  auto submitter =
+      CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(1));
   TaskSpecification task = BuildEmptyTaskSpec();
   task.GetMutableMessage().set_retry_exceptions(true);
 
@@ -622,8 +621,9 @@ TEST_F(NormalTaskSubmitterFTest, TestRetryTaskApplicationLevelError) {
   ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntriesPublic());
 }
 
-TEST_F(NormalTaskSubmitterFTest, TestHandleTaskFailure) {
-  auto submitter = CreateNormalTaskSubmitter(kOneRateLimiter);
+TEST_F(NormalTaskSubmitterTest, TestHandleTaskFailure) {
+  auto submitter =
+      CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(1));
   TaskSpecification task = BuildEmptyTaskSpec();
 
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
@@ -644,8 +644,9 @@ TEST_F(NormalTaskSubmitterFTest, TestHandleTaskFailure) {
   ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntriesPublic());
 }
 
-TEST_F(NormalTaskSubmitterFTest, TestHandleUnschedulableTask) {
-  auto submitter = CreateNormalTaskSubmitter(kTwoRateLimiter);
+TEST_F(NormalTaskSubmitterTest, TestHandleUnschedulableTask) {
+  auto submitter =
+      CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(2));
   TaskSpecification task1 = BuildEmptyTaskSpec();
   TaskSpecification task2 = BuildEmptyTaskSpec();
   TaskSpecification task3 = BuildEmptyTaskSpec();
@@ -692,8 +693,9 @@ TEST_F(NormalTaskSubmitterFTest, TestHandleUnschedulableTask) {
   ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntriesPublic());
 }
 
-TEST_F(NormalTaskSubmitterFTest, TestHandleRuntimeEnvSetupFailed) {
-  auto submitter = CreateNormalTaskSubmitter(kTwoRateLimiter);
+TEST_F(NormalTaskSubmitterTest, TestHandleRuntimeEnvSetupFailed) {
+  auto submitter =
+      CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(2));
 
   TaskSpecification task1 = BuildEmptyTaskSpec();
   TaskSpecification task2 = BuildEmptyTaskSpec();
@@ -741,16 +743,18 @@ TEST_F(NormalTaskSubmitterFTest, TestHandleRuntimeEnvSetupFailed) {
   ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntriesPublic());
 }
 
-TEST_F(NormalTaskSubmitterFTest, TestWorkerHandleLocalRayletDied) {
-  auto submitter = CreateNormalTaskSubmitter(kTwoRateLimiter);
+TEST_F(NormalTaskSubmitterTest, TestWorkerHandleLocalRayletDied) {
+  auto submitter =
+      CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(2));
 
   TaskSpecification task1 = BuildEmptyTaskSpec();
   ASSERT_TRUE(submitter.SubmitTask(task1).ok());
   ASSERT_DEATH(raylet_client->FailWorkerLeaseDueToGrpcUnavailable(), "");
 }
 
-TEST_F(NormalTaskSubmitterFTest, TestDriverHandleLocalRayletDied) {
-  auto submitter = CreateNormalTaskSubmitter(kTwoRateLimiter, WorkerType::DRIVER);
+TEST_F(NormalTaskSubmitterTest, TestDriverHandleLocalRayletDied) {
+  auto submitter = CreateNormalTaskSubmitter(
+      std::make_shared<StaticLeaseRequestRateLimiter>(2), WorkerType::DRIVER);
 
   TaskSpecification task1 = BuildEmptyTaskSpec();
   TaskSpecification task2 = BuildEmptyTaskSpec();
@@ -782,7 +786,7 @@ TEST_F(NormalTaskSubmitterFTest, TestDriverHandleLocalRayletDied) {
   ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntriesPublic());
 }
 
-TEST_F(NormalTaskSubmitterFTest, TestConcurrentWorkerLeases) {
+TEST_F(NormalTaskSubmitterTest, TestConcurrentWorkerLeases) {
   int64_t concurrency = 10;
   auto rateLimiter = std::make_shared<StaticLeaseRequestRateLimiter>(concurrency);
   auto submitter = CreateNormalTaskSubmitter(rateLimiter);
@@ -838,7 +842,7 @@ TEST_F(NormalTaskSubmitterFTest, TestConcurrentWorkerLeases) {
   ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntriesPublic());
 }
 
-TEST_F(NormalTaskSubmitterFTest, TestConcurrentWorkerLeasesDynamic) {
+TEST_F(NormalTaskSubmitterTest, TestConcurrentWorkerLeasesDynamic) {
   int64_t concurrency = 10;
   auto rateLimiter = std::make_shared<DynamicRateLimiter>(1);
   auto submitter = CreateNormalTaskSubmitter(rateLimiter);
@@ -920,7 +924,7 @@ TEST_F(NormalTaskSubmitterFTest, TestConcurrentWorkerLeasesDynamic) {
   ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntriesPublic());
 }
 
-TEST_F(NormalTaskSubmitterFTest, TestConcurrentWorkerLeasesDynamicWithSpillback) {
+TEST_F(NormalTaskSubmitterTest, TestConcurrentWorkerLeasesDynamicWithSpillback) {
   int64_t concurrency = 10;
   auto rateLimiter = std::make_shared<DynamicRateLimiter>(1);
   auto submitter = CreateNormalTaskSubmitter(
@@ -1008,8 +1012,9 @@ TEST_F(NormalTaskSubmitterFTest, TestConcurrentWorkerLeasesDynamicWithSpillback)
   ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntriesPublic());
 }
 
-TEST_F(NormalTaskSubmitterFTest, TestSubmitMultipleTasks) {
-  auto submitter = CreateNormalTaskSubmitter(kOneRateLimiter);
+TEST_F(NormalTaskSubmitterTest, TestSubmitMultipleTasks) {
+  auto submitter =
+      CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(1));
   TaskSpecification task1 = BuildEmptyTaskSpec();
   TaskSpecification task2 = BuildEmptyTaskSpec();
   TaskSpecification task3 = BuildEmptyTaskSpec();
@@ -1058,8 +1063,9 @@ TEST_F(NormalTaskSubmitterFTest, TestSubmitMultipleTasks) {
   ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntriesPublic());
 }
 
-TEST_F(NormalTaskSubmitterFTest, TestReuseWorkerLease) {
-  auto submitter = CreateNormalTaskSubmitter(kOneRateLimiter);
+TEST_F(NormalTaskSubmitterTest, TestReuseWorkerLease) {
+  auto submitter =
+      CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(1));
   TaskSpecification task1 = BuildEmptyTaskSpec();
   TaskSpecification task2 = BuildEmptyTaskSpec();
   TaskSpecification task3 = BuildEmptyTaskSpec();
@@ -1109,8 +1115,9 @@ TEST_F(NormalTaskSubmitterFTest, TestReuseWorkerLease) {
   ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntriesPublic());
 }
 
-TEST_F(NormalTaskSubmitterFTest, TestRetryLeaseCancellation) {
-  auto submitter = CreateNormalTaskSubmitter(kOneRateLimiter);
+TEST_F(NormalTaskSubmitterTest, TestRetryLeaseCancellation) {
+  auto submitter =
+      CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(1));
   TaskSpecification task1 = BuildEmptyTaskSpec();
   TaskSpecification task2 = BuildEmptyTaskSpec();
   TaskSpecification task3 = BuildEmptyTaskSpec();
@@ -1156,8 +1163,9 @@ TEST_F(NormalTaskSubmitterFTest, TestRetryLeaseCancellation) {
   ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntriesPublic());
 }
 
-TEST_F(NormalTaskSubmitterFTest, TestConcurrentCancellationAndSubmission) {
-  auto submitter = CreateNormalTaskSubmitter(kOneRateLimiter);
+TEST_F(NormalTaskSubmitterTest, TestConcurrentCancellationAndSubmission) {
+  auto submitter =
+      CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(1));
   TaskSpecification task1 = BuildEmptyTaskSpec();
   TaskSpecification task2 = BuildEmptyTaskSpec();
   TaskSpecification task3 = BuildEmptyTaskSpec();
@@ -1200,8 +1208,9 @@ TEST_F(NormalTaskSubmitterFTest, TestConcurrentCancellationAndSubmission) {
   ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntriesPublic());
 }
 
-TEST_F(NormalTaskSubmitterFTest, TestWorkerNotReusedOnError) {
-  auto submitter = CreateNormalTaskSubmitter(kOneRateLimiter);
+TEST_F(NormalTaskSubmitterTest, TestWorkerNotReusedOnError) {
+  auto submitter =
+      CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(1));
   TaskSpecification task1 = BuildEmptyTaskSpec();
   TaskSpecification task2 = BuildEmptyTaskSpec();
 
@@ -1235,8 +1244,9 @@ TEST_F(NormalTaskSubmitterFTest, TestWorkerNotReusedOnError) {
   ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntriesPublic());
 }
 
-TEST_F(NormalTaskSubmitterFTest, TestWorkerNotReturnedOnExit) {
-  auto submitter = CreateNormalTaskSubmitter(kOneRateLimiter);
+TEST_F(NormalTaskSubmitterTest, TestWorkerNotReturnedOnExit) {
+  auto submitter =
+      CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(1));
   TaskSpecification task1 = BuildEmptyTaskSpec();
 
   ASSERT_TRUE(submitter.SubmitTask(task1).ok());
@@ -1261,7 +1271,7 @@ TEST_F(NormalTaskSubmitterFTest, TestWorkerNotReturnedOnExit) {
   ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntriesPublic());
 }
 
-TEST_F(NormalTaskSubmitterFTest, TestSpillback) {
+TEST_F(NormalTaskSubmitterTest, TestSpillback) {
   absl::flat_hash_map<int, std::shared_ptr<MockRayletClient>> remote_lease_clients;
   LeaseClientFactoryFn lease_client_factory = [&remote_lease_clients](
                                                   const std::string &ip, int port) {
@@ -1270,8 +1280,10 @@ TEST_F(NormalTaskSubmitterFTest, TestSpillback) {
     remote_lease_clients[port] = client;
     return client;
   };
-  auto submitter = CreateNormalTaskSubmitter(
-      kOneRateLimiter, WorkerType::WORKER, lease_client_factory);
+  auto submitter =
+      CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(1),
+                                WorkerType::WORKER,
+                                lease_client_factory);
   TaskSpecification task = BuildEmptyTaskSpec();
 
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
@@ -1313,7 +1325,7 @@ TEST_F(NormalTaskSubmitterFTest, TestSpillback) {
   ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntriesPublic());
 }
 
-TEST_F(NormalTaskSubmitterFTest, TestSpillbackRoundTrip) {
+TEST_F(NormalTaskSubmitterTest, TestSpillbackRoundTrip) {
   absl::flat_hash_map<int, std::shared_ptr<MockRayletClient>> remote_lease_clients;
   auto lease_client_factory = [&](const std::string &ip, int port) {
     // We should not create a connection to the same raylet more than once.
@@ -1325,12 +1337,13 @@ TEST_F(NormalTaskSubmitterFTest, TestSpillbackRoundTrip) {
   auto local_raylet_id = NodeID::FromRandom();
   lease_policy_ptr->SetNodeID(local_raylet_id);
   auto store = DefaultCoreWorkerMemoryStoreWithThread::CreateShared();
-  auto submitter = CreateNormalTaskSubmitter(kOneRateLimiter,
-                                             WorkerType::WORKER,
-                                             lease_client_factory,
-                                             store,
-                                             kLongTimeout,
-                                             local_raylet_id);
+  auto submitter =
+      CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(1),
+                                WorkerType::WORKER,
+                                lease_client_factory,
+                                store,
+                                kLongTimeout,
+                                local_raylet_id);
   TaskSpecification task = BuildEmptyTaskSpec();
 
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
@@ -1410,7 +1423,7 @@ void TestSchedulingKey(const std::shared_ptr<CoreWorkerMemoryStore> store,
       kLongTimeout,
       actor_creator,
       JobID::Nil(),
-      kOneRateLimiter,
+      std::make_shared<StaticLeaseRequestRateLimiter>(1),
       [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; },
       boost::asio::steady_timer(io_context));
 
@@ -1464,7 +1477,7 @@ void TestSchedulingKey(const std::shared_ptr<CoreWorkerMemoryStore> store,
   ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntriesPublic());
 }
 
-TEST(NormalTaskSubmitterTest, TestSchedulingKeys) {
+TEST(NormalTaskSubmitterSchedulingKeyTest, TestSchedulingKeys) {
   InstrumentedIOContextWithThread io_context("TestSchedulingKeys");
   auto store = std::make_shared<CoreWorkerMemoryStore>(io_context.GetIoService());
 
@@ -1547,11 +1560,14 @@ TEST(NormalTaskSubmitterTest, TestSchedulingKeys) {
   TestSchedulingKey(store, same_deps_1, same_deps_2, different_deps);
 }
 
-TEST_F(NormalTaskSubmitterFTest, TestBacklogReport) {
+TEST_F(NormalTaskSubmitterTest, TestBacklogReport) {
   InstrumentedIOContextWithThread store_io_context("TestBacklogReport");
   auto store = std::make_shared<CoreWorkerMemoryStore>(store_io_context.GetIoService());
-  auto submitter = CreateNormalTaskSubmitter(
-      kOneRateLimiter, WorkerType::WORKER, /*lease_client_factory=*/nullptr, store);
+  auto submitter =
+      CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(1),
+                                WorkerType::WORKER,
+                                /*lease_client_factory=*/nullptr,
+                                store);
 
   TaskSpecification task1 = BuildEmptyTaskSpec();
 
@@ -1606,13 +1622,14 @@ TEST_F(NormalTaskSubmitterFTest, TestBacklogReport) {
   ASSERT_EQ(raylet_client->reported_backlogs[task4.GetSchedulingClass()], 1);
 }
 
-TEST_F(NormalTaskSubmitterFTest, TestWorkerLeaseTimeout) {
+TEST_F(NormalTaskSubmitterTest, TestWorkerLeaseTimeout) {
   auto store = DefaultCoreWorkerMemoryStoreWithThread::CreateShared();
-  auto submitter = CreateNormalTaskSubmitter(kOneRateLimiter,
-                                             WorkerType::WORKER,
-                                             /*lease_client_factory=*/nullptr,
-                                             store,
-                                             /*lease_timeout_ms=*/5);
+  auto submitter =
+      CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(1),
+                                WorkerType::WORKER,
+                                /*lease_client_factory=*/nullptr,
+                                store,
+                                /*lease_timeout_ms=*/5);
   TaskSpecification task1 = BuildEmptyTaskSpec();
   TaskSpecification task2 = BuildEmptyTaskSpec();
   TaskSpecification task3 = BuildEmptyTaskSpec();
@@ -1656,8 +1673,9 @@ TEST_F(NormalTaskSubmitterFTest, TestWorkerLeaseTimeout) {
   ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntriesPublic());
 }
 
-TEST_F(NormalTaskSubmitterFTest, TestKillExecutingTask) {
-  auto submitter = CreateNormalTaskSubmitter(kOneRateLimiter);
+TEST_F(NormalTaskSubmitterTest, TestKillExecutingTask) {
+  auto submitter =
+      CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(1));
   TaskSpecification task = BuildEmptyTaskSpec();
 
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
@@ -1695,8 +1713,9 @@ TEST_F(NormalTaskSubmitterFTest, TestKillExecutingTask) {
   ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntriesPublic());
 }
 
-TEST_F(NormalTaskSubmitterFTest, TestKillPendingTask) {
-  auto submitter = CreateNormalTaskSubmitter(kOneRateLimiter);
+TEST_F(NormalTaskSubmitterTest, TestKillPendingTask) {
+  auto submitter =
+      CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(1));
   TaskSpecification task = BuildEmptyTaskSpec();
 
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
@@ -1719,8 +1738,9 @@ TEST_F(NormalTaskSubmitterFTest, TestKillPendingTask) {
   ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntriesPublic());
 }
 
-TEST_F(NormalTaskSubmitterFTest, TestKillResolvingTask) {
-  auto submitter = CreateNormalTaskSubmitter(kOneRateLimiter);
+TEST_F(NormalTaskSubmitterTest, TestKillResolvingTask) {
+  auto submitter =
+      CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(1));
   TaskSpecification task = BuildEmptyTaskSpec();
   ObjectID obj1 = ObjectID::FromRandom();
   task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj1.Binary());
@@ -1742,9 +1762,10 @@ TEST_F(NormalTaskSubmitterFTest, TestKillResolvingTask) {
   ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntriesPublic());
 }
 
-TEST_F(NormalTaskSubmitterFTest, TestQueueGeneratorForResubmit) {
+TEST_F(NormalTaskSubmitterTest, TestQueueGeneratorForResubmit) {
   // Executing generator -> Resubmit queued -> execution finishes -> resubmit happens.
-  auto submitter = CreateNormalTaskSubmitter(kOneRateLimiter);
+  auto submitter =
+      CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(1));
   TaskSpecification task = BuildEmptyTaskSpec();
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, NodeID::Nil()));
@@ -1755,10 +1776,11 @@ TEST_F(NormalTaskSubmitterFTest, TestQueueGeneratorForResubmit) {
   ASSERT_EQ(task_manager->num_generator_failed_and_resubmitted, 1);
 }
 
-TEST_F(NormalTaskSubmitterFTest, TestCancelBeforeAfterQueueGeneratorForResubmit) {
+TEST_F(NormalTaskSubmitterTest, TestCancelBeforeAfterQueueGeneratorForResubmit) {
   // Cancel -> failed queue generator for resubmit -> cancel reply -> successful queue for
   // resubmit -> push task reply -> honor the cancel not the queued resubmit.
-  auto submitter = CreateNormalTaskSubmitter(kOneRateLimiter);
+  auto submitter =
+      CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(1));
   TaskSpecification task = BuildEmptyTaskSpec();
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, NodeID::Nil()));
