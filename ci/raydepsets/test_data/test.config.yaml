@@ -17,3 +17,10 @@ depsets:
     requirements:
       - cloud-requirements.txt
     output: requirements_compiled_subset_general.txt
+  - name: expand_general_depset
+    operation: expand
+    depsets:
+      - general_depset
+    constraints:
+      - cloud-requirements.txt
+    output: requirements_compiled_expand_general.txt

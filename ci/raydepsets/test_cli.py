@@ -141,6 +141,43 @@ class TestCli(unittest.TestCase):
                 in result.output
             )
 
+    def test_expand_by_depset_name(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _copy_data_to_tmpdir(tmpdir)
+            result = CliRunner().invoke(
+                load,
+                [
+                    "test.config.yaml",
+                    "--workspace-dir",
+                    tmpdir,
+                    "--name",
+                    "general_depset",
+                ],
+            )
+
+            output_fp = Path(tmpdir) / "requirements_compiled_general.txt"
+            assert result.exit_code == 0
+            assert Path(output_fp).is_file()
+
+            result = CliRunner().invoke(
+                load,
+                [
+                    "test.config.yaml",
+                    "--workspace-dir",
+                    tmpdir,
+                    "--name",
+                    "expand_general_depset",
+                ],
+            )
+
+            output_fp = Path(tmpdir) / "requirements_compiled_expand_general.txt"
+            assert result.exit_code == 0
+            assert Path(output_fp).is_file()
+            assert (
+                "Dependency set expand_general_depset compiled successfully"
+                in result.output
+            )
+
 
 def _copy_data_to_tmpdir(tmpdir):
     shutil.copytree(
