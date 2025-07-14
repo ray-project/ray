@@ -88,9 +88,9 @@ def build_mcp_deployment(
     env: Optional[Dict[str, str]] = None,
 ) -> serve.Deployment:
     """
-    - If autoscaling_config is provided, Ray Serve will autoscale between
+    - If autoscaling_config is provided, Ray Serve autoscales between
       autoscaling_config['min_replicas'] and ['max_replicas'].
-    - Otherwise it will launch `num_replicas` fixed replicas.
+    - Otherwise it launches `num_replicas` fixed replicas.
     """
     deployment_env = env or {}
     podman_args = _podman_args(

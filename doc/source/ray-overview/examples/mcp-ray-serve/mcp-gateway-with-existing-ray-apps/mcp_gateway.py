@@ -16,7 +16,7 @@ mcp = FastMCP("Image-N-Translate", stateless_http=True)
 @mcp.tool()
 async def classify(image_url: str) -> str:
     """Return the top-1 label for an image URL."""
-    # these remote calls are already async, so no extra thread executor needed
+    # These remote calls are already async, so no extra thread executor needed.
     clf = serve.get_deployment_handle(
         "image_classifier", app_name="image_classifier_app"
     )

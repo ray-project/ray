@@ -39,7 +39,7 @@ async def get_alerts(state: str) -> str:
     """Get weather alerts for a US state.
 
     Args:
-        state: Two-letter US state code (e.g. CA, NY)
+        state: Two-letter US state code (e.g., CA, NY)
     """
     url = f"{NWS_API_BASE}/alerts/active/area/{state}"
     data = await make_nws_request(url)

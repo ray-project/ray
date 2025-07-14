@@ -1,13 +1,13 @@
 #!/bin/bash
 
-# don't use nbconvert or jupytext unless you're willing
+# Don't use nbconvert or jupytext unless you're willing
 # to check each subprocess unit and validate that errors
-# aren't being consumed/hidden
+# aren't being consumed/hidden.
 
 set -exo pipefail
 
-# Use the AWS CLI to fetch BRAVE_API_KEY from Secrets Manager
-# Replace 'my-brave-api-key-secret' with the actual secret name
+# Use the AWS CLI to fetch BRAVE_API_KEY from Secrets Manager.
+# Replace 'my-brave-api-key-secret' with the actual secret name.
 BRAVE_API_KEY=$(aws secretsmanager get-secret-value \
   --secret-id brave-search-api-key \
   --query SecretString \
