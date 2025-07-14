@@ -14,7 +14,6 @@ from ray._common.test_utils import SignalActor, wait_for_condition
 from ray._common.utils import reset_ray_address
 from ray._private.usage import usage_lib
 from ray.cluster_utils import AutoscalingCluster, Cluster
-from ray.serve._private.constants import SERVE_NAMESPACE
 from ray.serve._private.test_utils import (
     TELEMETRY_ROUTE_PREFIX,
     check_ray_started,
@@ -53,7 +52,7 @@ def ray_shutdown():
 @pytest.fixture
 def ray_cluster():
     cluster = Cluster()
-    yield Cluster()
+    yield cluster
     serve.shutdown()
     ray.shutdown()
     cluster.shutdown()
@@ -116,18 +115,6 @@ def start_and_shutdown_ray_cli():
 def start_and_shutdown_ray_cli_module():
     with start_and_shutdown_ray_cli():
         yield
-
-
-# Used for `test_deploy_app` tests.
-@pytest.fixture(scope="function")
-def client(start_and_shutdown_ray_cli_module, ray_shutdown):
-    wait_for_condition(
-        lambda: httpx.get("http://localhost:8265/api/ray/version").status_code == 200,
-        timeout=15,
-    )
-    ray.init(address="auto", namespace=SERVE_NAMESPACE)
-    serve.start()
-    yield _get_global_client()
 
 
 @pytest.fixture

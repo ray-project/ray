@@ -116,11 +116,6 @@ async def initialize_node(llm_config: LLMConfig) -> InitializeNodeOutput:
             download_extra_files=True,
         )
 
-    llm_config.apply_checkpoint_info(
-        engine_config.actual_hf_model_id,
-        trust_remote_code=engine_config.trust_remote_code,
-    )
-
     return InitializeNodeOutput(
         placement_group=pg, runtime_env=runtime_env, extra_init_kwargs=extra_init_kwargs
     )
