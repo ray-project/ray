@@ -186,6 +186,11 @@ SLOW_STARTUP_WARNING_PERIOD_S = int(
 
 ALL_REPLICA_STATES = list(ReplicaState)
 _SCALING_LOG_ENABLED = os.environ.get("SERVE_ENABLE_SCALING_LOG", "0") != "0"
+# Feature flag to disable forcibly shutting down replicas.
+RAY_SERVE_DISABLE_SHUTTING_DOWN_INGRESS_REPLICAS_FORCEFULLY = (
+    os.environ.get("RAY_SERVE_DISABLE_SHUTTING_DOWN_INGRESS_REPLICAS_FORCEFULLY", "0")
+    == "1"
+)
 
 
 def print_verbose_scaling_log():
@@ -265,6 +270,7 @@ class ActorReplicaWrapper:
         self._routing_stats: Dict[str, Any] = {}
         self._record_routing_stats_ref: Optional[ObjectRef] = None
         self._last_record_routing_stats_time: float = 0.0
+        self._ingress: bool = False
 
     @property
     def replica_id(self) -> str:
@@ -353,11 +359,15 @@ class ActorReplicaWrapper:
 
     @property
     def request_routing_stats_period_s(self) -> float:
-        return self.deployment_config.request_routing_stats_period_s
+        return (
+            self.deployment_config.request_router_config.request_routing_stats_period_s
+        )
 
     @property
     def request_routing_stats_timeout_s(self) -> float:
-        return self.deployment_config.request_routing_stats_timeout_s
+        return (
+            self.deployment_config.request_router_config.request_routing_stats_timeout_s
+        )
 
     @property
     def pid(self) -> Optional[int]:
@@ -413,6 +423,7 @@ class ActorReplicaWrapper:
         until the deployment scheduler schedules the underlying actor.
         """
         self._actor_resources = deployment_info.replica_config.resource_dict
+        self._ingress = deployment_info.ingress
         # it is currently not possible to create a placement group
         # with no resources (https://github.com/ray-project/ray/issues/20401)
         self._deployment_is_cross_language = (
@@ -969,8 +980,20 @@ class ActorReplicaWrapper:
 
         return self._routing_stats
 
-    def force_stop(self):
+    def force_stop(self, log_shutdown_message: bool = False):
         """Force the actor to exit without shutting down gracefully."""
+        if (
+            self._ingress
+            and RAY_SERVE_DISABLE_SHUTTING_DOWN_INGRESS_REPLICAS_FORCEFULLY
+        ):
+            if log_shutdown_message:
+                logger.info(
+                    f"{self.replica_id} did not shut down because it had not finished draining requests. "
+                    "Going to wait until the draining is complete. You can force-stop the replica by "
+                    "setting RAY_SERVE_DISABLE_SHUTTING_DOWN_INGRESS_REPLICAS_FORCEFULLY to 0."
+                )
+            return
+
         try:
             ray.kill(ray.get_actor(self._actor_name, namespace=SERVE_NAMESPACE))
         except ValueError:
@@ -999,6 +1022,7 @@ class DeploymentReplica:
         )
         self._multiplexed_model_ids: List[str] = []
         self._routing_stats: Dict[str, Any] = {}
+        self._logged_shutdown_message = False
 
     def get_running_replica_info(
         self, cluster_node_info_cache: ClusterNodeInfoCache
@@ -1091,6 +1115,7 @@ class DeploymentReplica:
         """
         replica_scheduling_request = self._actor.start(deployment_info)
         self._start_time = time.time()
+        self._logged_shutdown_message = False
         self.update_actor_details(start_time_s=self._start_time)
         return replica_scheduling_request
 
@@ -1165,14 +1190,19 @@ class DeploymentReplica:
 
         timeout_passed = time.time() >= self._shutdown_deadline
         if timeout_passed:
-            # Graceful period passed, kill it forcefully.
-            # This will be called repeatedly until the replica shuts down.
-            logger.info(
-                f"{self.replica_id} did not shut down after grace "
-                "period, force-killing it. "
-            )
+            if (
+                not self._logged_shutdown_message
+                and not RAY_SERVE_DISABLE_SHUTTING_DOWN_INGRESS_REPLICAS_FORCEFULLY
+            ):
+                logger.info(
+                    f"{self.replica_id} did not shut down after grace "
+                    "period, force-killing it. "
+                )
 
-            self._actor.force_stop()
+            self._actor.force_stop(
+                log_shutdown_message=not self._logged_shutdown_message
+            )
+            self._logged_shutdown_message = True
         return False
 
     def check_health(self) -> bool:
@@ -2498,6 +2528,7 @@ class DeploymentStateManager:
         self._shutting_down = False
 
         self._deployment_states: Dict[DeploymentID, DeploymentState] = {}
+        self._app_deployment_mapping: Dict[str, Set[str]] = defaultdict(set)
 
         self._recover_from_checkpoint(
             all_current_actor_names, all_current_placement_group_names
@@ -2622,6 +2653,9 @@ class DeploymentStateManager:
                         deployment_to_current_replicas[deployment_id]
                     )
                 self._deployment_states[deployment_id] = deployment_state
+                self._app_deployment_mapping[deployment_id.app_name].add(
+                    deployment_id.name
+                )
 
     def shutdown(self):
         """
@@ -2771,19 +2805,14 @@ class DeploymentStateManager:
             self._deployment_states[deployment_id] = self._create_deployment_state(
                 deployment_id
             )
+            self._app_deployment_mapping[deployment_id.app_name].add(deployment_id.name)
             self._record_deployment_usage()
 
         return self._deployment_states[deployment_id].deploy(deployment_info)
 
     def get_deployments_in_application(self, app_name: str) -> List[str]:
         """Return list of deployment names in application."""
-
-        deployments = []
-        for deployment_id in self._deployment_states:
-            if deployment_id.app_name == app_name:
-                deployments.append(deployment_id.name)
-
-        return deployments
+        return list(self._app_deployment_mapping[app_name])
 
     def delete_deployment(self, id: DeploymentID):
         # This method must be idempotent. We should validate that the
@@ -2885,6 +2914,17 @@ class DeploymentStateManager:
             self._deployment_scheduler.on_deployment_deleted(deployment_id)
             self._autoscaling_state_manager.deregister_deployment(deployment_id)
             del self._deployment_states[deployment_id]
+            if (
+                deployment_id.app_name in self._app_deployment_mapping
+                and deployment_id.name
+                in self._app_deployment_mapping[deployment_id.app_name]
+            ):
+                self._app_deployment_mapping[deployment_id.app_name].remove(
+                    deployment_id.name
+                )
+                # Clean up the app_name entry if no deployments are left
+                if not self._app_deployment_mapping[deployment_id.app_name]:
+                    del self._app_deployment_mapping[deployment_id.app_name]
 
         if len(deleted_ids):
             self._record_deployment_usage()

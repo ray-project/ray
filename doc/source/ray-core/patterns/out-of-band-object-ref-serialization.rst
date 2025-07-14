@@ -10,7 +10,7 @@ When all references are the pinned object gone,  Ray garbage collects the pinned
 However, if user code serializes ``ray.objectRef``, Ray can't keep track of the reference.
 
 To avoid incorrect behavior, if ``ray.cloudpickle`` serializes``ray.ObjectRef``, Ray pins the object for the lifetime of a worker. "Pin" means that object can't be evicted from the object store
-until the corresponding owner worker dies. It's prone to Ray object leaks, which can lead disk spilling. See :ref:`thjs page <serialize-object-ref>` for more details.
+until the corresponding owner worker dies. It's prone to Ray object leaks, which can lead disk spilling. See :ref:`this page <serialize-object-ref>` for more details.
 
 To detect if this pattern exists in your code, you can set an environment variable ``RAY_allow_out_of_band_object_ref_serialization=0``. If Ray detects
 that ``ray.cloudpickle`` serialized``ray.ObjectRef``, it raises an exception with helpful messages.

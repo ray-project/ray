@@ -35,7 +35,7 @@ async def test_tokenize_udf_basic(mock_tokenizer_setup):
 
     results = []
     async for result in udf(batch):
-        results.append(result["__data"][0])
+        results.extend(result["__data"])
 
     assert len(results) == 2
     assert all(result["tokenized_prompt"] == [1, 2, 3] for result in results)
@@ -64,7 +64,7 @@ async def test_detokenize_udf_basic(mock_tokenizer_setup):
 
     results = []
     async for result in udf(batch):
-        results.append(result["__data"][0])
+        results.extend(result["__data"])
 
     assert len(results) == 2
     assert results[0]["generated_text"] == "Hello"

@@ -159,13 +159,16 @@ void GcsJobManager::MarkJobAsFinished(rpc::JobTableData job_table_data,
     WriteDriverJobExportEvent(job_table_data);
 
     // Update running job status.
+    // Note: This operation must be idempotent since MarkJobFinished can be called
+    // multiple times due to network retries (see issue #53645).
     auto iter = running_job_start_times_.find(job_id);
-    RAY_CHECK(iter != running_job_start_times_.end());
-    running_job_start_times_.erase(iter);
-    ray::stats::STATS_job_duration_s.Record(
-        (job_table_data.end_time() - job_table_data.start_time()) / 1000.0,
-        {{"JobId", job_id.Hex()}});
-    ++finished_jobs_count_;
+    if (iter != running_job_start_times_.end()) {
+      running_job_start_times_.erase(iter);
+      ray::stats::STATS_job_duration_s.Record(
+          (job_table_data.end_time() - job_table_data.start_time()) / 1000.0,
+          {{"JobId", job_id.Hex()}});
+      ++finished_jobs_count_;
+    }
 
     done_callback(status);
   };
@@ -362,8 +365,6 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
     } else {
       for (int jj = 0; jj < reply->job_info_list_size(); jj++) {
         const auto &data = reply->job_info_list(jj);
-        auto job_id = JobID::FromBinary(data.job_id());
-        WorkerID worker_id = WorkerID::FromBinary(data.driver_address().worker_id());
 
         // If job is dead, no need to get.
         if (data.is_dead()) {
@@ -372,6 +373,8 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
           try_send_reply(updated_finished_tasks);
         } else {
           // Get is_running_tasks from the core worker for the driver.
+          auto job_id = JobID::FromBinary(data.job_id());
+          WorkerID worker_id = WorkerID::FromBinary(data.driver_address().worker_id());
           auto client = worker_client_pool_.GetOrConnect(data.driver_address());
           auto pending_task_req = std::make_unique<rpc::NumPendingTasksRequest>();
           constexpr int64_t kNumPendingTasksRequestTimeoutMs = 1000;

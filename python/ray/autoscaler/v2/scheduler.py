@@ -325,6 +325,7 @@ class SchedulingNode:
             SchedulingNodeStatus.SCHEDULABLE,
             node_kind=instance.im_instance.node_kind,
             im_instance_id=instance.im_instance.instance_id,
+            im_instance_status=instance.im_instance.status,
         )
 
     @staticmethod
@@ -364,6 +365,7 @@ class SchedulingNode:
         status: SchedulingNodeStatus,
         node_kind: NodeKind,
         im_instance_id: Optional[str] = None,
+        im_instance_status: Optional[str] = None,
     ) -> "SchedulingNode":
         """
         Create a scheduling node from a node config.
@@ -373,6 +375,7 @@ class SchedulingNode:
             status: The status of the node.
             node_kind: The node kind.
             im_instance_id: The instance id of the im instance.
+            im_instance_status: The instance status of the im instance.
             node_kind: The node kind.
         """
         return SchedulingNode(
@@ -382,6 +385,7 @@ class SchedulingNode:
             labels=dict(node_config.labels),
             status=status,
             im_instance_id=im_instance_id,
+            im_instance_status=im_instance_status,
             node_kind=node_kind,
         )
 
@@ -585,6 +589,7 @@ class SchedulingNode:
             "SchedulingNode(node_type={node_type}, "
             "node_kind={node_kind}, "
             "instance_id={instance_id},"
+            "instance_status={instance_status},"
             "ray_node_id={ray_node_id},"
             "idle_duration_ms={idle_duration_ms},"
             "termination_request={termination_request},"
@@ -601,6 +606,7 @@ class SchedulingNode:
             node_type=self.node_type,
             node_kind=self.node_kind,
             instance_id=self.im_instance_id,
+            instance_status=self.im_instance_status,
             ray_node_id=self.ray_node_id,
             idle_duration_ms=self.idle_duration_ms,
             termination_request=str(message_to_dict(self.termination_request))

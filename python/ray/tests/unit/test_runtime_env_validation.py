@@ -500,6 +500,48 @@ class TestValidatePip:
         assert not result["pip_check"]
         assert "pip_version" not in result
 
+    def test_validate_pip_install_options(self):
+        # Happy path for non-empty pip_install_options
+        opts = ["--no-cache-dir", "--no-build-isolation", "--disable-pip-version-check"]
+        result = validation.parse_and_validate_pip(
+            {
+                "packages": ["pkg1", "ray", "pkg2"],
+                "pip_install_options": list(opts),
+            }
+        )
+        assert result["packages"] == ["pkg1", "ray", "pkg2"]
+        assert not result["pip_check"]
+        assert "pip_version" not in result
+        assert result["pip_install_options"] == opts
+
+        # Happy path for missing pip_install_options. No default value for field
+        # to maintain backwards compatibility with ray==2.0.1
+        result = validation.parse_and_validate_pip(
+            {
+                "packages": ["pkg1", "ray", "pkg2"],
+            }
+        )
+        assert "pip_install_options" not in result
+
+        with pytest.raises(TypeError) as e:
+            validation.parse_and_validate_pip(
+                {
+                    "packages": ["pkg1", "ray", "pkg2"],
+                    "pip_install_options": [False],
+                }
+            )
+        assert "pip_install_options" in str(e) and "must be of type list[str]" in str(e)
+
+        with pytest.raises(TypeError) as e:
+            validation.parse_and_validate_pip(
+                {
+                    "packages": ["pkg1", "ray", "pkg2"],
+                    "pip_install_options": None,
+                }
+            )
+
+        assert "pip_install_options" in str(e) and "must be of type list[str]" in str(e)
+
 
 class TestValidateEnvVars:
     def test_type_validation(self):

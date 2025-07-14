@@ -20,7 +20,7 @@ DEFAULT_HTTP_HOST = os.environ.get("RAY_SERVE_DEFAULT_HTTP_HOST", "127.0.0.1")
 DEFAULT_HTTP_PORT = int(os.environ.get("RAY_SERVE_DEFAULT_HTTP_PORT", 8000))
 
 #: Uvicorn timeout_keep_alive Config
-DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S = 5
+DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S = 90
 
 #: gRPC Port
 DEFAULT_GRPC_PORT = int(os.environ.get("RAY_SERVE_DEFAULT_GRPC_PORT", 9000))
@@ -254,6 +254,16 @@ SERVE_LOG_UNWANTED_ATTRS = {
     "job_id",
 }
 
+RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S = int(
+    os.environ.get("RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S", 0)
+)
+
+RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S = (
+    float(os.environ.get("RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S", 0))
+    or float(os.environ.get("SERVE_REQUEST_PROCESSING_TIMEOUT_S", 0))
+    or None
+)
+
 SERVE_LOG_EXTRA_FIELDS = "ray_serve_extra_fields"
 
 # Serve HTTP request header key for routing requests.
@@ -445,3 +455,18 @@ DEFAULT_REQUEST_ROUTING_STATS_TIMEOUT_S = 30
 
 # Name of deployment request routing stats method implemented by user.
 REQUEST_ROUTING_STATS_METHOD = "record_routing_stats"
+
+# By default, we run user code in a separate event loop.
+# This flag can be set to 0 to run user code in the same event loop as the
+# replica's main event loop.
+RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD = (
+    os.environ.get("RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD", "1") == "1"
+)
+
+# The default buffer size for request path logs. Setting to 1 will ensure
+# logs are flushed to file handler immediately, otherwise it will be buffered
+# and flushed to file handler when the buffer is full or when there is a log
+# line with level ERROR.
+RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE = int(
+    os.environ.get("RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE", "1")
+)

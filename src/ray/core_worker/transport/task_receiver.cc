@@ -19,23 +19,12 @@
 #include <utility>
 #include <vector>
 
-#include "ray/common/task/task.h"
-
 namespace ray {
 namespace core {
-
-void TaskReceiver::Init(std::shared_ptr<rpc::CoreWorkerClientPool> client_pool,
-                        rpc::Address rpc_address,
-                        DependencyWaiter *dependency_waiter) {
-  waiter_ = dependency_waiter;
-  rpc_address_ = std::move(rpc_address);
-  client_pool_ = std::move(client_pool);
-}
 
 void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
                               rpc::PushTaskReply *reply,
                               rpc::SendReplyCallback send_reply_callback) {
-  RAY_CHECK(waiter_ != nullptr) << "Must call init() prior to use";
   TaskSpecification task_spec(std::move(*request.mutable_task_spec()));
 
   if (task_spec.IsActorCreationTask()) {
@@ -142,22 +131,18 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
       }
 
       if (task_spec.IsActorCreationTask()) {
-        if (task_spec.IsAsyncioActor()) {
+        concurrency_groups_ = task_spec.ConcurrencyGroups();
+        if (is_asyncio_) {
           fiber_state_manager_ = std::make_shared<ConcurrencyGroupManager<FiberState>>(
-              task_spec.ConcurrencyGroups(),
-              fiber_max_concurrency_,
-              initialize_thread_callback_);
+              concurrency_groups_, fiber_max_concurrency_, initialize_thread_callback_);
         } else {
           // If the actor is an asyncio actor, then this concurrency group manager
           // for BoundedExecutor will never be used, so we don't need to initialize it.
           const int default_max_concurrency = task_spec.MaxActorConcurrency();
           pool_manager_ = std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(
-              task_spec.ConcurrencyGroups(),
-              default_max_concurrency,
-              initialize_thread_callback_);
+              concurrency_groups_, default_max_concurrency, initialize_thread_callback_);
         }
-        concurrency_groups_cache_[task_spec.TaskId().ActorId()] =
-            task_spec.ConcurrencyGroups();
+
         // Tell raylet that an actor creation task has finished execution, so that
         // raylet can publish actor creation event to GCS, and mark this worker as
         // actor, thus if this worker dies later raylet will restart the actor.
@@ -211,35 +196,29 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
   if (task_spec.IsActorTask()) {
     auto it = actor_scheduling_queues_.find(task_spec.CallerWorkerId());
     if (it == actor_scheduling_queues_.end()) {
-      auto cg_it = concurrency_groups_cache_.find(task_spec.ActorId());
-      RAY_CHECK(cg_it != concurrency_groups_cache_.end());
-      if (execute_out_of_order_) {
-        it = actor_scheduling_queues_
-                 .emplace(task_spec.CallerWorkerId(),
-                          std::unique_ptr<SchedulingQueue>(
-                              new OutOfOrderActorSchedulingQueue(task_execution_service_,
-                                                                 *waiter_,
-                                                                 task_event_buffer_,
-                                                                 pool_manager_,
-                                                                 fiber_state_manager_,
-                                                                 is_asyncio_,
-                                                                 fiber_max_concurrency_,
-                                                                 cg_it->second)))
-                 .first;
-      } else {
-        it = actor_scheduling_queues_
-                 .emplace(task_spec.CallerWorkerId(),
-                          std::unique_ptr<SchedulingQueue>(
-                              new ActorSchedulingQueue(task_execution_service_,
-                                                       *waiter_,
-                                                       task_event_buffer_,
-                                                       pool_manager_,
-                                                       fiber_state_manager_,
-                                                       is_asyncio_,
-                                                       fiber_max_concurrency_,
-                                                       cg_it->second)))
-                 .first;
-      }
+      it = actor_scheduling_queues_
+               .emplace(
+                   task_spec.CallerWorkerId(),
+                   execute_out_of_order_
+                       ? std::unique_ptr<SchedulingQueue>(
+                             std::make_unique<OutOfOrderActorSchedulingQueue>(
+                                 task_execution_service_,
+                                 waiter_,
+                                 task_event_buffer_,
+                                 pool_manager_,
+                                 fiber_state_manager_,
+                                 is_asyncio_,
+                                 fiber_max_concurrency_,
+                                 concurrency_groups_))
+                       : std::unique_ptr<SchedulingQueue>(
+                             std::make_unique<ActorSchedulingQueue>(
+                                 task_execution_service_,
+                                 waiter_,
+                                 task_event_buffer_,
+                                 pool_manager_,
+                                 RayConfig::instance()
+                                     .actor_scheduling_queue_max_reorder_wait_seconds())))
+               .first;
     }
 
     it->second->Add(request.sequence_number(),
@@ -291,12 +270,15 @@ bool TaskReceiver::CancelQueuedNormalTask(TaskID task_id) {
   return normal_scheduling_queue_->CancelTaskIfFound(task_id);
 }
 
-/// Note that this method is only used for asyncio actor.
 void TaskReceiver::SetupActor(bool is_asyncio,
                               int fiber_max_concurrency,
                               bool execute_out_of_order) {
   RAY_CHECK(fiber_max_concurrency_ == 0)
       << "SetupActor should only be called at most once.";
+  // Note: It's possible to have execute_out_of_order as false but max_concurrency > 1,
+  // from the C++ / Java API's.
+  RAY_CHECK(is_asyncio ? execute_out_of_order : true)
+      << "execute_out_of_order must be true if is_asyncio is true";
   is_asyncio_ = is_asyncio;
   fiber_max_concurrency_ = fiber_max_concurrency;
   execute_out_of_order_ = execute_out_of_order;
