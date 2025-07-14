@@ -8,6 +8,7 @@ from ray.rllib.algorithms.rl_algorithm_apis.online_sampling_api import (
     SyncOnlineSamplingAPI,
 )
 from ray.rllib.core.learner.training_data import TrainingData
+from ray.rllib.utils.metrics import ENV_RUNNER_RESULTS, LEARNER_RESULTS
 
 
 class PPOAlgorithm(SyncOnlineSamplingAPI, SimpleLearnerGroupAPI, RLAlgorithm):
@@ -32,7 +33,7 @@ class PPOAlgorithm(SyncOnlineSamplingAPI, SimpleLearnerGroupAPI, RLAlgorithm):
         # Implement the PPO training logic.
 
         # Sample from the `EnvRunner`s (synchronously).
-        episodes = self.sample(
+        episodes, env_runner_metrics = self.sample(
             env_steps=(
                 self.config.total_train_batch_size
                 if self.config.count_steps_by == "env_steps"
@@ -43,6 +44,7 @@ class PPOAlgorithm(SyncOnlineSamplingAPI, SimpleLearnerGroupAPI, RLAlgorithm):
                 if self.config.count_steps_by == "agent_steps"
                 else None
             ),
+            _return_metrics=True,
         )
 
         # TODO (simon): Implement Metrics collection via Mixin in base algo.
@@ -51,7 +53,7 @@ class PPOAlgorithm(SyncOnlineSamplingAPI, SimpleLearnerGroupAPI, RLAlgorithm):
         #       2. MetricsActorConcreteMixin
 
         # TODO (simon): Maybe returning from EnvRunnerGroup(s) already a TrainingData?
-        self.update(
+        learner_metrics = self.update(
             training_data=TrainingData(episodes=tree.flatten(episodes)),
             num_epochs=self.config.num_epochs,
             minibatch_size=self.config.minibatch_size,
@@ -61,7 +63,10 @@ class PPOAlgorithm(SyncOnlineSamplingAPI, SimpleLearnerGroupAPI, RLAlgorithm):
         # state = self._provide_sync_state({})
         self.sync()
 
-        return None
+        return {
+            ENV_RUNNER_RESULTS: env_runner_metrics,
+            LEARNER_RESULTS: learner_metrics,
+        }
 
     def sync(self, state: Optional[Dict[str, Any]] = None, **kwargs):
         # Synchronize the `EnvRunner`s via the learner group.

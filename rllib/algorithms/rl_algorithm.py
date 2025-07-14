@@ -33,6 +33,7 @@ class RLAlgorithm(Trainable):
     ):
         # Setup the logger.
         self.logger = logging.getLogger(__name__)
+        # Set the logger level.
         self.logger.setLevel(config.log_level)
         # Initialize the super class.
         super().__init__(config=config, logger_creator=logger_creator, **kwargs)
@@ -42,8 +43,10 @@ class RLAlgorithm(Trainable):
         """Sets up all components of this `RLAlgorithm`."""
         if not self.is_setup:
             self.logger.info(f"Setup RLAlgorithm ... ")
-            super()._setup(config=config)
+            # Set the setup flag to `True` to not reloop.
             self.is_setup = True
+            # Set up the `super`.
+            super()._setup(config=config)
 
     def training_step(self) -> None:
         """Implements the training logic."""

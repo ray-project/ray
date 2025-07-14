@@ -1,7 +1,6 @@
 import abc
 import functools
 import gymnasium as gym
-import logging
 import ray
 
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
@@ -90,6 +89,7 @@ class OnlineSamplingAPI(abc.ABC):
         self,
         env_steps: Optional[int] = None,
         agent_steps: Optional[int] = None,
+        **kwargs: Dict[str, Any],
     ) -> Tuple[List[Union[MultiAgentEpisode, SingleAgentEpisode]], ResultDict]:
         """Samples experiences from `EnvRunner`s."""
         pass
@@ -248,7 +248,7 @@ class SyncOnlineSamplingAPI(OnlineSamplingAPI):
         ):
             # TODO (simon, sven): As described above, this goes at best into
             # the EnvRunnerGroup itself.
-            _, env_creator = OnlineSamplingAPI._get_env_id_and_creator(
+            _, env_creator = SyncOnlineSamplingAPI._get_env_id_and_creator(
                 env_specifier=config.env,
                 config=config,
             )
@@ -256,7 +256,7 @@ class SyncOnlineSamplingAPI(OnlineSamplingAPI):
             # Initialiaze the `EnvRunnerGroup`.
             super().__init__(
                 env_creator=env_creator,
-                validate_env=OnlineSamplingAPI.validate_env,
+                validate_env=SyncOnlineSamplingAPI.validate_env,
                 # TODO (simon, sven): Will be deprecated with the old stack.
                 default_policy_class=None,
                 config=config,
@@ -267,7 +267,7 @@ class SyncOnlineSamplingAPI(OnlineSamplingAPI):
             self,
             env_steps: Optional[int] = None,
             agent_steps: Optional[int] = None,
-            **kwargs,
+            **kwargs: Dict[str, Any],
         ) -> Tuple[List[Union[MultiAgentEpisode, SingleAgentEpisode]], ResultDict]:
             """Samples synchronously from `EnvRunner`s."""
             # TODO (simon): Move logic from function to here.
@@ -276,13 +276,16 @@ class SyncOnlineSamplingAPI(OnlineSamplingAPI):
                 max_agent_steps=agent_steps,
                 max_env_steps=env_steps,
                 sample_timeout_s=self._local_config.sample_timeout_s,
+                # TODO (should be kwargs).
                 concat=False,
                 _uses_new_env_runners=True,
+                **kwargs,
                 # TODO (simon): Maybe in kwargs. If a MetricsMixin is there
                 # it should set this in the algorithm to always False and
                 # collect metrics extra. Otherwise collecting metrics via
                 # Actors would not work.
-                _return_metrics=True,
+                #   Maybe we set a config parameter `config._return_metrics`.
+                # _return_metrics=True,
             )
 
     def __init__(self, config: AlgorithmConfig, **kwargs):
@@ -293,12 +296,12 @@ class SyncOnlineSamplingAPI(OnlineSamplingAPI):
     @override(OnlineSamplingAPI)
     def _setup(self, config: AlgorithmConfig):
         """Sets up a `SyncOnlineSamplingAPI`."""
+        # Note, the logger is defined in the `RLAlgorithm`.
         self.logger.info(f"Setup SyncOnlineSamplingAPI ... ")
         # Setup here the customized `SyncEnvRunnerGroup`.
         self._env_runner_group = self.SyncEnvRunnerGroup(config)
 
-        # TODO (simon): Check, if we need to call this here.
-        super()._setup(config=config)
+        # Define the spaces.
         if self._env_runner_group.local_env_runner:
             self._local_env_runner = self._env_runner_group.local_env_runner
             # TODO (sven): Get these spaces from a central location (RLAlgorithm)
@@ -306,7 +309,7 @@ class SyncOnlineSamplingAPI(OnlineSamplingAPI):
             self._spaces = self._local_env_runner.get_spaces()
         else:
             self._spaces = self._env_runner_group.get_spaces()
-
+        # Setup the connectors (needed for synching states).
         if self._local_env_runner is None and self._spaces is not None:
             self._env_to_module = self.config.build_env_to_module_connector(
                 spaces=self._spaces
@@ -314,6 +317,8 @@ class SyncOnlineSamplingAPI(OnlineSamplingAPI):
             self._module_to_env = self.config.build_module_to_env_connector(
                 spaces=self._spaces
             )
+        # Setup the `super`.
+        super()._setup(config=config)
         # ...
 
     @override(OnlineSamplingAPI)
@@ -321,11 +326,25 @@ class SyncOnlineSamplingAPI(OnlineSamplingAPI):
         self,
         env_steps: Optional[int] = None,
         agent_steps: Optional[int] = None,
+        **kwargs: Dict[str, Any],
     ) -> Tuple[List[Union[MultiAgentEpisode, SingleAgentEpisode]], ResultDict]:
+        # TODO (sven, simon): Maybe turn to class attribute set by config.
+        _return_metrics = kwargs.get("_return_metrics", True)
+        # TODO (sven, simon): Either
+        #   (1) we pull the metrics here already and just store them locally (will
+        #       be more correpsonding to the sample).
+        #   (2) Or, we pull the metrics extra when the MetricsAPI calls `get_metrics`.
+        #   Here I implement the first (might be more performant).
         episodes, self._env_runner_metrics = self._env_runner_group.sample(
-            env_steps, agent_steps
+            env_steps,
+            agent_steps,
+            **kwargs,
         )
-        return episodes
+
+        if _return_metrics:
+            return episodes, self._env_runner_metrics
+        else:
+            return episodes
 
     @override(OnlineSamplingAPI)
     def get_metrics(self, metrics: ResultDict, **kwargs):
@@ -335,7 +354,10 @@ class SyncOnlineSamplingAPI(OnlineSamplingAPI):
 class AsyncOnlineSamplingAPI(OnlineSamplingAPI):
     class AsyncEnvRunnerGroup(EnvRunnerGroup):
         def sample(
-            self, env_steps: int, agent_steps: int
+            self,
+            env_steps: int,
+            agent_steps: int,
+            **kwargs: Dict[str, Any],
         ) -> Tuple[List[ObjectRef], Dict[str, Any], Dict[str, Any], Set[int]]:
 
             env_runner_indices_to_update = set()
@@ -398,5 +420,7 @@ class AsyncOnlineSamplingAPI(OnlineSamplingAPI):
         # ...
 
     @override(OnlineSamplingAPI)
-    def sample(self, env_steps: int, agent_steps: int) -> List[SingleAgentEpisode]:
+    def sample(
+        self, env_steps: int, agent_steps: int, **kwargs: Dict[str, Any]
+    ) -> List[SingleAgentEpisode]:
         return self._env_runner_group.sample(env_steps, agent_steps)

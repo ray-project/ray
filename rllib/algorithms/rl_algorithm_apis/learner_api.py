@@ -51,7 +51,9 @@ class LearnerGroupAPI(abc.ABC):
     abc.abstractmethod
 
     def update(
-        self, training_data: Union[Dict[str, Any], TrainingData], **kwargs
+        self,
+        training_data: Union[Dict[str, Any], TrainingData],
+        **kwargs: Dict[str, Any],
     ) -> Tuple[ParamDict, Union[ResultDict, List[ResultDict]]]:
         """Updates the RLModule(s)."""
         pass
@@ -119,8 +121,12 @@ class SimpleLearnerGroupAPI(LearnerGroupAPI):
         super()._setup(config=config)
 
     def update(
-        self, training_data: TrainingData, **kwargs
+        self,
+        training_data: TrainingData,
+        **kwargs: Dict[str, Any],
     ) -> Tuple[ParamDict, Union[ResultDict, List[ResultDict]]]:
+        # TODO (sven, simon): Maybe turn to class attribute set by config.
+        _return_metrics = kwargs.get("_return_metrics", True)
         # Call update via the `LearnerGroup`.
         # TODO (simon): Maybe deprecate with v1 also any other data
         #   but `TrainingData`.
@@ -129,6 +135,9 @@ class SimpleLearnerGroupAPI(LearnerGroupAPI):
             timesteps=None,
             **kwargs,
         )
+
+        if _return_metrics:
+            return self._learner_metrics
 
     # TODO (simon, sven): Maybe turn `Any` into `Stats`.
     def get_metrics(self, metrics: ResultDict, **kwargs):
