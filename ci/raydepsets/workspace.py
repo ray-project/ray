@@ -40,7 +40,7 @@ class Workspace:
             dir if dir is not None else os.getenv("BUILD_WORKSPACE_DIRECTORY", None)
         )
         if self.dir is None:
-            raise Exception("BUILD_WORKSPACE_DIRECTORY is not set")
+            raise RuntimeError("BUILD_WORKSPACE_DIRECTORY is not set")
 
     def load_config(self, path: str) -> Config:
         with open(os.path.join(self.dir, path), "r") as f:
