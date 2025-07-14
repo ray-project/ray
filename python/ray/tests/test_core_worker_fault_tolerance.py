@@ -8,6 +8,8 @@ def test_get_object_status_rpc_retry_and_idempotency(
 ):
     """Test that GetObjectStatus RPC retries work correctly.
     Verify that the RPC is idempotent when network failures occur.
+    Cross_worker_access_task triggers GetObjectStatus because it does
+    not own objects and needs to request it from the driver.
     """
 
     monkeypatch.setenv(
@@ -24,24 +26,13 @@ def test_get_object_status_rpc_retry_and_idempotency(
 
     @ray.remote
     def cross_worker_access_task(objects):
-        """Task that accesses objects from other workers - triggers GetObjectStatus RPC"""
         data = ray.get(objects)
         return data
 
-    futures = [test_task.remote(i) for i in range(5)]
-
-    # This triggers GetObjectStatus RPC calls when cross_worker_access_task
-    # tries to get objects from other workers
-    result_future = cross_worker_access_task.remote(futures)
-
-    # Wait for the cross-worker object access to complete
-    # This exercises the retry logic when RPC failures occur
-    final_result = ray.get(result_future)
-
-    # Verify the results are correct despite network failures
+    object_refs = [test_task.remote(i) for i in range(5)]
+    result_object_ref = cross_worker_access_task.remote(object_refs)
+    final_result = ray.get(result_object_ref)
     assert final_result == [0, 2, 4, 6, 8]
-
-    ray.shutdown()
 
 
 if __name__ == "__main__":
