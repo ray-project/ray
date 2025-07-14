@@ -5,7 +5,6 @@ from typing import Generator, Tuple
 from unittest.mock import MagicMock, patch
 
 import pytest
-import pytest_asyncio
 from starlette.middleware import Middleware
 from starlette.middleware.base import BaseHTTPMiddleware
 
@@ -146,8 +145,9 @@ async def test_message_queue_wait_error():
             await queue.get_one_message()
 
 
-@pytest_asyncio.fixture
-async def setup_receive_proxy(
+@pytest.fixture
+@pytest.mark.asyncio
+def setup_receive_proxy(
     request,
 ) -> Generator[Tuple[ASGIReceiveProxy, MessageQueue], None, None]:
     # Param can be 'http' (default) or 'websocket' (ASGI scope type).
@@ -165,12 +165,7 @@ async def setup_receive_proxy(
         return pickle.dumps(messages)
 
     loop = get_or_create_event_loop()
-    asgi_receive_proxy = ASGIReceiveProxy(
-        {"type": type},
-        "",
-        receive_asgi_messages,
-        asyncio.get_running_loop(),
-    )
+    asgi_receive_proxy = ASGIReceiveProxy({"type": type}, "", receive_asgi_messages)
     receiver_task = loop.create_task(asgi_receive_proxy.fetch_until_disconnect())
     try:
         yield asgi_receive_proxy, queue
@@ -252,7 +247,7 @@ class TestASGIReceiveProxy:
 
         loop = get_or_create_event_loop()
         asgi_receive_proxy = ASGIReceiveProxy(
-            {"type": "http"}, "", receive_asgi_messages, asyncio.get_running_loop()
+            {"type": "http"}, "", receive_asgi_messages
         )
         receiver_task = loop.create_task(asgi_receive_proxy.fetch_until_disconnect())
 
