@@ -868,7 +868,6 @@ class _ActorPool(AutoscalingActorPool):
         logical_actor_id = str(uuid.uuid4())
         labels = {self.get_logical_id_label_key(): logical_actor_id}
         actor, ready_ref = self._create_actor_fn(labels, logical_actor_id)
-        actor, ready_ref = self._create_actor_fn(labels)
         self._actor_to_logical_id[actor] = logical_actor_id
         return actor, ready_ref
 
