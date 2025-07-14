@@ -69,12 +69,13 @@ readable by neural network models right before the model forward pass.
     provided episodes, add any data from these episodes to the batch, or change the data that's already in the batch.
     The pipeline then returns the output batch of the last piece.
 
-Note that the batch output of the pipeline lives only as long as the succeeding
-:py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` forward pass or `Env.step()` call. RLlib discards the data afterwards.
-The list of episodes, however, may persist longer. For example, if a env-to-module pipeline reads an observation from an episode,
-mutates that observation, and then writes it back into the episode, the subsequent module-to-env pipeline is able to see the changed observation.
-Also, the Learner pipeline operates on the same episodes that have already passed through both env-to-module and module-to-env pipelines
-and thus might have undergone changes.
+.. note::
+    Note that the batch output of the pipeline lives only as long as the succeeding
+    :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` forward pass or `Env.step()` call. RLlib discards the data afterwards.
+    The list of episodes, however, may persist longer. For example, if a env-to-module pipeline reads an observation from an episode,
+    mutates that observation, and then writes it back into the episode, the subsequent module-to-env pipeline is able to see the changed observation.
+    Also, the Learner pipeline operates on the same episodes that have already passed through both env-to-module and module-to-env pipelines
+    and thus might have undergone changes.
 
 
 Three ConnectorV2 pipeline types
@@ -95,8 +96,9 @@ nature and shape of the tensor batches that RLlib feeds into your models for com
     :width: 900
     :align: left
 
-    **ConnectorV2 Pipelines**: Connector pipelines convert episodes into batched data, which a neural network can process
-    (env-to-module and Learner) or convert your model's output into actions, which your RL environment needs for stepping (module-to-env).
+    **ConnectorV2 Pipelines**: Connector pipelines convert episodes into batched data, which your model can process
+    (env-to-module and Learner) or convert your model's output into action batches, which your possibly vectorized RL environment needs for
+    stepping (module-to-env).
     The env-to-module pipeline, located on an :py:class:`~ray.rllib.env.env_runner.EnvRunner`, takes a list of
     episodes as input and outputs a batch for an :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` forward pass
     that computes the next action. The module-to-env pipeline on the same :py:class:`~ray.rllib.env.env_runner.EnvRunner`
@@ -109,7 +111,7 @@ The succeeding pages discuss the three pipeline types in more detail, however, a
 
 * All connector pipelines are sequences of one or more :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` pieces. You can nest these as well, meaning some of the pieces may be connector pipelines themselves.
 * All connector pieces and -pipelines are Python callables, overriding the :py:meth:`~ray.rllib.connectors.connector_v2.ConnectorV2.__call__` method.
-* The call signatures are uniform across the different pipeline types. The main arguments are the list of episodes, the batch to-be-built, and the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` instance. See the :py:meth:`~ray.rllib.connectors.connector_v2.ConnectorV2.__call__` method for more details.
+* The call signatures are uniform across the different pipeline types. The main, mandatory arguments are the list of episodes, the batch to-be-built, and the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` instance. See the :py:meth:`~ray.rllib.connectors.connector_v2.ConnectorV2.__call__` method for more details.
 * All connector pipelines can read from and write to the provided list of episodes as well as the batch and thereby perform data transforms as required.
 
 
