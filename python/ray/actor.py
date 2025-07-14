@@ -26,7 +26,7 @@ import ray._private.ray_constants as ray_constants
 import ray._common.signature as signature
 import ray._raylet
 from ray import ActorClassID, Language, cross_language, ObjectRef
-from ray._private import ray_option_utils
+from ray._common import ray_option_utils
 from ray._private.async_compat import has_async_methods
 from ray._private.auto_init_hook import wrap_auto_init
 from ray._private.client_mode_hook import (
@@ -39,7 +39,7 @@ from ray._private.inspect_util import (
     is_function_or_method,
     is_static_method,
 )
-from ray._private.ray_option_utils import _warn_if_using_deprecated_placement_group
+from ray._common.ray_option_utils import _warn_if_using_deprecated_placement_group
 from ray._private.utils import get_runtime_env_info, parse_runtime_env_for_task_or_actor
 from ray._raylet import (
     STREAMING_GENERATOR_RETURN,

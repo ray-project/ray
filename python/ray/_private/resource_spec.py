@@ -5,15 +5,10 @@ from typing import Optional
 
 import ray
 import ray._private.ray_constants as ray_constants
+from ray._common.constants import HEAD_NODE_RESOURCE_NAME, NODE_ID_PREFIX
 from ray._common.utils import RESOURCE_CONSTRAINT_PREFIX
 
 logger = logging.getLogger(__name__)
-
-# Prefix for the node id resource that is automatically added to each node.
-# For example, a node may have id `node:172.23.42.1`.
-NODE_ID_PREFIX = "node:"
-# The system resource that head node has.
-HEAD_NODE_RESOURCE_NAME = NODE_ID_PREFIX + "__internal_head__"
 
 
 class ResourceSpec(

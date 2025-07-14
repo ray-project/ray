@@ -17,7 +17,7 @@ from ray._private.test_utils import (
     wait_for_pid_to_exit,
     client_test_enabled,
 )
-from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
+from ray._common.constants import HEAD_NODE_RESOURCE_NAME
 
 logger = logging.getLogger(__name__)
 
