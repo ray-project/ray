@@ -223,6 +223,7 @@ DEFAULT_ACTOR_POOL_UTIL_DOWNSCALING_THRESHOLD: float = env_float(
     0.5,
 )
 
+DEFAULT_EXECUTE_OUT_OF_ORDER = True
 
 @DeveloperAPI
 @dataclass
@@ -518,6 +519,10 @@ class DataContext:
     # I.E., after the hook is triggered and the UDF is deleted, another
     # retry task may still be scheduled to this actor and it will fail.
     _enable_actor_pool_on_exit_hook: bool = False
+
+    # Whether to allow tasks to be executed out of order to address
+    # block issues caused by dependencies during serial execution.
+    execute_out_of_order: bool = DEFAULT_EXECUTE_OUT_OF_ORDER
 
     def __post_init__(self):
         # The additonal ray remote args that should be added to
