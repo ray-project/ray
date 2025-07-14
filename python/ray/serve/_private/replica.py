@@ -991,10 +991,12 @@ class ReplicaActor:
     ) -> ReplicaMetadata:
         """Handles initializing the replica.
 
-        Returns: 3-tuple containing
+        Returns: 5-tuple containing
             1. DeploymentConfig of the replica
             2. DeploymentVersion of the replica
             3. Initialization duration in seconds
+            4. Port
+            5. FastAPI `docs_path`, if relevant (i.e. this is an ingress deployment integrated with FastAPI).
         """
         # Unused `_after` argument is for scheduling: passing an ObjectRef
         # allows delaying this call until after the `_after` call has returned.
@@ -1663,7 +1665,9 @@ class UserCallableWrapper:
 
         receive_task = None
         try:
-            receive_task = asyncio.create_task(receive.fetch_until_disconnect())
+            if hasattr(receive, "fetch_until_disconnect"):
+                receive_task = asyncio.create_task(receive.fetch_until_disconnect())
+
             result, sync_gen_consumed = await self._call_func_or_gen(
                 user_method_info.callable,
                 args=request_args,

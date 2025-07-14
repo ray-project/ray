@@ -8,7 +8,7 @@ from ray.util.collective.types import Backend
 if TYPE_CHECKING:
     import torch
     from ray.experimental.gpu_object_manager.gpu_object_store import GPUObjectStore
-    from nixl._api import nixl_agent, nixl_agent_config
+    from nixl._api import nixl_agent
 
 
 # GPUObjectMeta is a named tuple containing the source actor, tensor transport
@@ -22,7 +22,9 @@ class GPUObjectMeta(NamedTuple):
     # Must be a valid backend name as defined in
     # `ray.util.collective.types.Backend`.
     tensor_transport_backend: str
-    tensor_meta:  Tuple[List[Tuple["torch.Size", "torch.dtype"]], Optional[bytes], Optional[bytes]]
+    tensor_meta: Tuple[
+        List[Tuple["torch.Size", "torch.dtype"]], Optional[bytes], Optional[bytes]
+    ]
 
 
 def __ray_get_tensor_meta__(self, obj_id: str, use_nixl: bool):
@@ -38,10 +40,13 @@ def __ray_get_tensor_meta__(self, obj_id: str, use_nixl: bool):
         agent = global_worker.gpu_object_manager.nixl_agent
         reg_descs = agent.register_memory(tensors)
         xfer_descs = reg_descs.trim()
-        return [(t.shape, t.dtype) for t in tensors], agent.get_serialized_descs(xfer_descs), agent.get_agent_metadata()
+        return (
+            [(t.shape, t.dtype) for t in tensors],
+            agent.get_serialized_descs(xfer_descs),
+            agent.get_agent_metadata(),
+        )
     else:
         return [(t.shape, t.dtype) for t in tensors], None, None
-
 
 
 def __ray_fetch_gpu_object__(self, obj_id: str):
@@ -53,10 +58,6 @@ def __ray_fetch_gpu_object__(self, obj_id: str):
         obj_id
     ), f"obj_id={obj_id} not found in GPU object store"
     tensors = gpu_object_store.get_gpu_object(obj_id)
-    # TODO(kevin85421): The current garbage collection implementation for the
-    # in-actor object store is naive. We garbage collect each object after it
-    # is consumed once.
-    gpu_object_store.remove_gpu_object(obj_id)
     return tensors
 
 
@@ -171,7 +172,9 @@ class GPUObjectManager:
         dst_actor: "ray.actor.ActorHandle",
         obj_id: str,
         src_rank: int,
-        tensor_meta:  Tuple[List[Tuple["torch.Size", "torch.dtype"]], Optional[bytes], Optional[bytes]],
+        tensor_meta: Tuple[
+            List[Tuple["torch.Size", "torch.dtype"]], Optional[bytes], Optional[bytes]
+        ],
     ):
         from ray.experimental.gpu_object_manager.gpu_object_store import __ray_recv__
 

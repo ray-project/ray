@@ -292,8 +292,6 @@ class SerializationContext:
                 gpu_object_manager.fetch_gpu_object(object_id)
             tensors = gpu_object_manager.gpu_object_store.get_gpu_object(object_id)
             ctx.reset_out_of_band_tensors(tensors)
-            # TODO(kevin85421): The current garbage collection implementation for the in-actor object store
-            # is naive. We garbage collect each object after it is consumed once.
             gpu_object_manager.gpu_object_store.remove_gpu_object(object_id)
 
         try:
@@ -674,6 +672,7 @@ class SerializationContext:
         # to use the created collective for communication between actors, instead of
         # the normal serialize -> object store -> deserialize codepath.
         from ray.experimental.channel.torch_tensor_type import TorchTensorType
+
         # FIXME(Qiaolin-Yu): This is a hack to register the custom serializer for torch.Tensor.
         TorchTensorType().register_custom_serializer()
         try:

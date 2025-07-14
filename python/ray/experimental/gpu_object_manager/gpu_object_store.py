@@ -64,23 +64,19 @@ def __ray_send__(self, communicator_name: str, obj_id: str, dst_rank: int):
         if backend != Backend.NIXL:
             collective.send(tensor, dst_rank, group_name=communicator_name)
 
-    if backend == Backend.NIXL:
-        return
-    # TODO(kevin85421): The current garbage collection implementation for the
-    # in-actor object store is naive. We garbage collect each object after it
-    # is consumed once.
-    gpu_object_store.remove_gpu_object(obj_id)
-
 
 def __ray_recv__(
     self,
     communicator_name: str,
     obj_id: str,
     src_rank: int,
-    tensor_meta: Tuple[List[Tuple["torch.Size", "torch.dtype"]], Optional[bytes], Optional[bytes]],
+    tensor_meta: Tuple[
+        List[Tuple["torch.Size", "torch.dtype"]], Optional[bytes], Optional[bytes]
+    ],
 ):
     """Helper function that runs on the dst actor to receive tensors from the src actor."""
     from ray._private.worker import global_worker
+
     if communicator_name != "nixl":
         backend = collective.get_group_handle(communicator_name).backend()
     else:
@@ -132,10 +128,6 @@ def __ray_fetch_gpu_object__(self, obj_id: str):
         obj_id
     ), f"obj_id={obj_id} not found in GPU object store"
     tensors = gpu_object_store.get_gpu_object(obj_id)
-    # TODO(kevin85421): The current garbage collection implementation for the
-    # in-actor object store is naive. We garbage collect each object after it
-    # is consumed once.
-    gpu_object_store.remove_gpu_object(obj_id)
     return tensors
 
 
