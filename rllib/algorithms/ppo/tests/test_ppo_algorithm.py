@@ -18,12 +18,13 @@ config = (
 
 algo = PPOAlgorithm(config)
 
+i = 0
 while True:
     results = algo.training_step()
     return_mean = sum(
         res[EPISODE_RETURN_MEAN].peek() for res in results[ENV_RUNNER_RESULTS]
     ) / len(results[ENV_RUNNER_RESULTS])
-    print(f"R={return_mean}")
+    print(f"{i + 1}: R={return_mean}")
 
     if return_mean >= 500.0:
         break
