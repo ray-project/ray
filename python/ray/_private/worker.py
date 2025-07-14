@@ -55,8 +55,8 @@ import ray.cloudpickle as pickle  # noqa
 import ray.job_config
 import ray.remote_function
 from ray import ActorID, JobID, Language, ObjectRef
+from ray._common import ray_option_utils
 from ray._common.utils import load_class
-from ray._private import ray_option_utils
 from ray._private.client_mode_hook import client_mode_hook
 from ray._private.function_manager import FunctionActorManager
 from ray._private.inspect_util import is_cython

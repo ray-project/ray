@@ -107,7 +107,7 @@ class TelemetryAgent:
                 LLM_BATCH_TELEMETRY_ACTOR_NAME, namespace=LLM_BATCH_TELEMETRY_NAMESPACE
             )
         except ValueError:
-            from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
+            from ray._common.constants import HEAD_NODE_RESOURCE_NAME
             from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
             self.remote_telemetry_agent = _TelemetryAgent.options(

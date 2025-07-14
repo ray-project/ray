@@ -5,10 +5,10 @@ from collections import defaultdict
 from typing import Dict, Optional
 
 import ray
+from ray._common.constants import HEAD_NODE_RESOURCE_NAME, NODE_ID_PREFIX
 from ray._common.utils import binary_to_hex, decode, hex_to_binary
 from ray._private.client_mode_hook import client_mode_hook
 from ray._private.protobuf_compat import message_to_dict
-from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME, NODE_ID_PREFIX
 from ray._private.utils import (
     validate_actor_state_name,
 )

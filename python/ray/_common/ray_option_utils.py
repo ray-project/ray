@@ -49,6 +49,9 @@ def _counting_option(name: str, infinite: bool = True, default_value: Any = None
         name: The name of the option keyword.
         infinite: If True, user could use -1 to represent infinity.
         default_value: The default value for this option.
+
+    Returns:
+        An Option object.
     """
     if infinite:
         return Option(

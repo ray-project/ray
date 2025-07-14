@@ -466,7 +466,7 @@ def test_invalid_arguments():
 
 def test_options():
     """General test of option keywords in Ray."""
-    from ray._private import ray_option_utils
+    from ray._common import ray_option_utils
 
     def f():
         return 1
