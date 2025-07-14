@@ -441,20 +441,20 @@ class SchedulingNode:
         current scheduled resource requests.
 
         The score is a tuple of 5 values:
-            1. Whether this node is a GPU node and the current resource request has
+            1. Whether this node has labels matching the current resource request's
+                label_selector requirements:
+                    0: if this node does not satisfy the label_selector requirements.
+                    1: if this node satisfies the label_selector requirements (or no
+                        requirements provided).
+            2. Whether this node is a GPU node and the current resource request has
                 GPU requirements:
                     0: if this node is a GPU node and the current resource request
                     placed onto the node has no GPU requirements.
                     1: if this node is not a GPU node or the current resource request
                     placed onto the node has GPU requirements.
-            2. The number of resource types being scheduled.
-            3. The minimum utilization rate across all resource types.
-            4. The average utilization rate across all resource types.
-            5. Whether this node has labels matching the current resource request's
-                label_selector requirements:
-                    0: if this node does not satisfy the label_selector requirements.
-                    1: if this node satisfies the label_selector requirements (or no
-                        requirements provided).
+            3. The number of resource types being scheduled.
+            4. The minimum utilization rate across all resource types.
+            5. The average utilization rate across all resource types.
 
         NOTE:
             This function is adapted from  _resource_based_utilization_scorer from
@@ -515,13 +515,13 @@ class SchedulingNode:
         # then prioritize using all resources,
         # then prioritize overall balance of multiple resources.
         return (
+            matches_labels,
             gpu_ok,
             num_matching_resource_types,
             min(util_by_resources) if util_by_resources else 0,
             float(sum(util_by_resources)) / len(util_by_resources)
             if util_by_resources
             else 0,
-            matches_labels,
         )
 
     def _satisfies_label_constraints(
