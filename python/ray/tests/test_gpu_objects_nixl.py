@@ -2,7 +2,8 @@ import sys
 import torch
 import pytest
 import ray
-
+import random
+import time
 
 @ray.remote(num_gpus=1, num_cpus=0)
 class GPUTestActor:
@@ -28,7 +29,19 @@ def test_p2p(ray_start_regular):
     # Trigger tensor transfer from src to dst actor
     result = dst_actor.sum.remote(ref)
     assert tensor.sum().item() == ray.get(result)
+    time.sleep(5)
 
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 1}], indirect=True)
+def test_intra_gpu_tensor_transfer(ray_start_regular):
+    actor = GPUTestActor.remote()
+
+    tensor = torch.tensor([1, 2, 3])
+
+    # Intra-actor communication for pure GPU tensors
+    ref = actor.echo.remote(tensor)
+    result = actor.sum.remote(ref)
+    assert tensor.sum().item() == ray.get(result)
+    time.sleep(5)
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))

@@ -253,6 +253,9 @@ class GPUObjectManager:
             src_actor = gpu_object_meta.src_actor
             tensor_meta = gpu_object_meta.tensor_meta
             if gpu_object_meta.tensor_transport_backend == Backend.NIXL:
+                if src_actor == dst_actor:
+                    # Intra-actor communication
+                    continue
                 self._send_gpu_object("nixl", src_actor, arg.hex(), 0)
                 self._recv_gpu_object(
                     "nixl",
