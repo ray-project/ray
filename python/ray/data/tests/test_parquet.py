@@ -1996,10 +1996,16 @@ def test_choose_row_group_limits_parameterized(case):
 def test_write_parquet_large_min_rows_per_file_exceeds_arrow_default(
     tmp_path, ray_start_regular_shared
 ):
+    from ray.data._internal.datasource.parquet_datasink import (
+        ARROW_DEFAULT_MAX_ROWS_PER_GROUP,
+    )
+
     """Test that min_rows_per_file > ARROW_DEFAULT_MAX_ROWS_PER_GROUP triggers max_rows_per_group setting."""
     # ARROW_DEFAULT_MAX_ROWS_PER_GROUP = 1024 * 1024 = 1048576
     # We'll use a min_rows_per_file that exceeds this threshold
-    min_rows_per_file = 2 * 1024 * 1024  # 2097152, which is > 1048576
+    min_rows_per_file = (
+        2 * ARROW_DEFAULT_MAX_ROWS_PER_GROUP
+    )  # 2097152, which is > 1048576
 
     # Create a dataset with the required number of rows
     ds = ray.data.range(min_rows_per_file, override_num_blocks=1)
