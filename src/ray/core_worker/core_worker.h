@@ -1303,6 +1303,11 @@ class CoreWorker {
   /// Mark this worker is exiting.
   void SetIsExiting();
 
+  /// Set the callback to cleanup actor instance before shutdown.
+  /// This callback will be invoked for actor workers before the shutdown begins.
+  /// \param callback The cleanup callback function.
+  void SetActorCleanupCallback(std::function<void()> callback);
+
   /// Add task log info for a task when it starts executing.
   ///
   /// It's an no-op in local mode.
@@ -1899,6 +1904,9 @@ class CoreWorker {
 
   /// Worker's PID
   uint32_t pid_;
+
+  /// Callback to cleanup actor instance before shutdown
+  std::function<void()> actor_cleanup_callback_;
 
   // Guards generator_ids_pending_deletion_.
   absl::Mutex generator_ids_pending_deletion_mutex_;

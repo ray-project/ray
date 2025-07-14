@@ -492,6 +492,22 @@ CoreWorker::CoreWorker(
 CoreWorker::~CoreWorker() { RAY_LOG(INFO) << "Core worker is destructed"; }
 
 void CoreWorker::Shutdown() {
+  // For actors, perform cleanup before shutdown starts
+  {
+    absl::MutexLock lock(&mutex_);
+    if (options_.worker_type == WorkerType::WORKER && 
+        !actor_id_.IsNil() && 
+        actor_cleanup_callback_ && 
+        !is_shutdown_.load()) {
+      try {
+        RAY_LOG(INFO) << "Calling actor cleanup callback before shutdown";
+        actor_cleanup_callback_();
+      } catch (const std::exception& e) {
+        RAY_LOG(ERROR) << "Actor cleanup callback failed: " << e.what();
+      }
+    }
+  }
+  
   // Ensure that the shutdown logic runs at most once.
   bool expected = false;
   if (!is_shutdown_.compare_exchange_strong(expected, /*desired=*/true)) {
@@ -4677,6 +4693,10 @@ void ClusterSizeBasedLeaseRequestRateLimiter::OnNodeChanges(
     num_alive_nodes_++;
   }
   RAY_LOG_EVERY_MS(INFO, 60000) << "Number of alive nodes:" << num_alive_nodes_.load();
+}
+
+void CoreWorker::SetActorCleanupCallback(std::function<void()> callback) {
+  actor_cleanup_callback_ = std::move(callback);
 }
 
 }  // namespace ray::core
