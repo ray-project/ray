@@ -2265,16 +2265,6 @@ py_test(
     ],
 )
 
-py_test(
-    name = "env/wrappers/tests/test_unity3d_env",
-    size = "small",
-    srcs = ["env/wrappers/tests/test_unity3d_env.py"],
-    tags = [
-        "env",
-        "team:rllib",
-    ],
-)
-
 # --------------------------------------------------------------------
 # Evaluation components
 # rllib/evaluation/
