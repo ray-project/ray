@@ -174,6 +174,12 @@ class DataParallelTrainer:
                 or any(a.startswith(argv_markers) for a in sys.argv)
             )
 
+        def _get_devices() -> List[torch.device]:
+            if torch.cuda.is_available():
+                return [torch.device(f"cuda:{torch.cuda.current_device()}")]
+            else:
+                return [torch.device("cpu")]
+
         assert self.local_test_mode
         if launched_by_torchrun():
             torch_dist.init_process_group(
@@ -195,6 +201,7 @@ class DataParallelTrainer:
                     world_rank=world_rank,
                     local_rank=world_rank,
                     local_world_size=world_size,
+                    devices=_get_devices(),
                 )
             )
         else:

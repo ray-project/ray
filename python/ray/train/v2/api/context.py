@@ -1,4 +1,6 @@
-from typing import Any, Dict
+from typing import Any, Dict, List
+
+import torch
 
 from ray.train.v2._internal.execution.context import (
     get_train_context as get_internal_train_context,
@@ -211,6 +213,10 @@ class TrainContext:
         without notice between minor versions.
         """
         return get_internal_train_context().get_storage()
+
+    def get_devices(self) -> List[torch.device]:
+        """Get the devices for this worker."""
+        return get_internal_train_context().get_devices()
 
     def is_local_testing_context(self) -> bool:
         """Returns True if the current TrainContext is a LocalTestingContext."""

@@ -1,7 +1,9 @@
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
+
+import torch
 
 from ray.data import DataIterator
-from ray.data.checkpoint import Checkpoint
+from ray.train import Checkpoint
 from ray.train.v2.api.base_context import TrainContext
 from ray.util.annotations import DeveloperAPI
 
@@ -26,12 +28,16 @@ class LocalTestingContext(TrainContext):
         world_rank: int = 0,
         local_rank: int = 0,
         local_world_size: int = 1,
+        devices: List[torch.device] = [torch.device("cuda:0")]
+        if torch.cuda.is_available()
+        else [torch.device("cpu")],
     ):
         self.dataset_shards = dataset_shards
         self.world_size = world_size
         self.world_rank = world_rank
         self.local_rank = local_rank
         self.local_world_size = local_world_size
+        self.devices = devices
 
     def get_experiment_name(self) -> str:
         """Get the experiment name for testing.
@@ -105,3 +111,6 @@ class LocalTestingContext(TrainContext):
     ):
         """Report the metrics and checkpoint to the controller."""
         print(f"Reporting metrics: {metrics}")
+
+    def get_devices(self) -> List[torch.device]:
+        return self.devices

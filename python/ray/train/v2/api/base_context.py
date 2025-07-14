@@ -1,8 +1,10 @@
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
+
+import torch
 
 from ray.data import DataIterator
-from ray.data.checkpoint import Checkpoint
+from ray.train import Checkpoint
 from ray.util.annotations import PublicAPI
 
 
@@ -94,4 +96,8 @@ class TrainContext(ABC):
         checkpoint_dir_name: Optional[str] = None,
     ):
         """Report the metrics and checkpoint to the controller."""
+        pass
+
+    @abstractmethod
+    def get_devices(self) -> List[torch.device]:
         pass
