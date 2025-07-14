@@ -159,6 +159,7 @@ class ActorPoolMapOperator(MapOperator):
             ),
             _enable_actor_pool_on_exit_hook=self.data_context._enable_actor_pool_on_exit_hook,
         )
+
         self._actor_task_selector = self._create_task_selector(self._actor_pool)
         # A queue of bundles awaiting dispatch to actors.
         self._bundle_queue = create_bundle_queue()
@@ -866,6 +867,7 @@ class _ActorPool(AutoscalingActorPool):
     def _create_actor(self) -> Tuple[ray.actor.ActorHandle, ObjectRef]:
         logical_actor_id = str(uuid.uuid4())
         labels = {self.get_logical_id_label_key(): logical_actor_id}
+        actor, ready_ref = self._create_actor_fn(labels, logical_actor_id)
         actor, ready_ref = self._create_actor_fn(labels)
         self._actor_to_logical_id[actor] = logical_actor_id
         return actor, ready_ref
