@@ -22,12 +22,12 @@ from ray.serve._private.test_utils import (
 )
 
 
-def request_with_retries(endpoint, timeout=30):
+def request_with_retries(endpoint, timeout=30, app_name=SERVE_DEFAULT_APP_NAME):
     start = time.time()
     while True:
         try:
             return httpx.get(
-                get_application_url("HTTP") + endpoint,
+                get_application_url("HTTP", app_name=app_name) + endpoint,
                 timeout=timeout,
             )
         except (httpx.RequestError, IndexError):
