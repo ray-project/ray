@@ -470,3 +470,6 @@ RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD = (
 RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE = int(
     os.environ.get("RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE", "1")
 )
+
+# The message to return when the replica is healthy.
+HEALTHY_MESSAGE = "success"

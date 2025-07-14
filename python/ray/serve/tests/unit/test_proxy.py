@@ -8,9 +8,9 @@ import grpc
 import pytest
 
 from ray.serve._private.common import DeploymentID, EndpointInfo, RequestMetadata
+from ray.serve._private.constants import HEALTHY_MESSAGE
 from ray.serve._private.proxy import (
     DRAINING_MESSAGE,
-    HEALTHY_MESSAGE,
     HTTPProxy,
     ResponseGenerator,
     ResponseStatus,
