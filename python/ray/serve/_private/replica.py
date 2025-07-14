@@ -1665,7 +1665,9 @@ class UserCallableWrapper:
 
         receive_task = None
         try:
-            receive_task = asyncio.create_task(receive.fetch_until_disconnect())
+            if hasattr(receive, "fetch_until_disconnect"):
+                receive_task = asyncio.create_task(receive.fetch_until_disconnect())
+
             result, sync_gen_consumed = await self._call_func_or_gen(
                 user_method_info.callable,
                 args=request_args,
