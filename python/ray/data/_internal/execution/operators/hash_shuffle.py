@@ -1160,7 +1160,8 @@ class AggregatorPool:
 
     def log_once_if_all_healthy(self):
         """Checks if all aggregators are healthy and logs a message if so.
-        This is intended to be called only once from a non-hot path."""
+        Logging should only happen once all aggregators are deemed healthy.
+        """
         if self._healthy_logged:
             return
 
