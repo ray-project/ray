@@ -573,10 +573,7 @@ class ReplicaBase(ABC):
             request: StreamingHTTPRequest = request_args[0]
             scope = request.asgi_scope
             receive = ASGIReceiveProxy(
-                scope,
-                request_metadata,
-                request.receive_asgi_messages,
-                self._user_callable_wrapper.event_loop,
+                scope, request_metadata, request.receive_asgi_messages
             )
 
             request_metadata._http_method = scope.get("method", "WS")
@@ -624,13 +621,11 @@ class ReplicaBase(ABC):
             async with self._start_request(request_metadata):
                 if request_metadata.is_http_request:
                     scope, receive = request_args
-                    receive_task = receive.fetch_until_disconnect_task()
                     async for msgs in self._user_callable_wrapper.call_http_entrypoint(
                         request_metadata,
                         status_code_callback,
                         scope,
                         receive,
-                        receive_task,
                     ):
                         yield pickle.dumps(msgs)
                 else:
@@ -669,13 +664,11 @@ class ReplicaBase(ABC):
 
                 if request_metadata.is_http_request:
                     scope, receive = request_args
-                    receive_task = receive.fetch_until_disconnect_task()
                     async for msgs in self._user_callable_wrapper.call_http_entrypoint(
                         request_metadata,
                         status_code_callback,
                         scope,
                         receive,
-                        receive_task,
                     ):
                         yield pickle.dumps(msgs)
                 elif request_metadata.is_streaming:
@@ -1597,68 +1590,46 @@ class UserCallableWrapper:
         status_code_callback: StatusCodeCallback,
         scope: Scope,
         receive: Receive,
-        receive_task: Union[asyncio.Task, concurrent.futures.Future],
     ) -> Any:
         result_queue = MessageQueue()
         user_method_info = self.get_user_method_info(request_metadata.call_method)
 
-        try:
-            if self._run_user_code_in_separate_thread:
-                # `asyncio.Event`s are not thread safe, so `call_soon_threadsafe` must be
-                # used to interact with the result queue from the user callable thread.
-                system_event_loop = asyncio.get_running_loop()
+        if self._run_user_code_in_separate_thread:
+            # `asyncio.Event`s are not thread safe, so `call_soon_threadsafe` must be
+            # used to interact with the result queue from the user callable thread.
+            system_event_loop = asyncio.get_running_loop()
 
-                async def enqueue(item: Any):
-                    system_event_loop.call_soon_threadsafe(
-                        result_queue.put_nowait, item
-                    )
+            async def enqueue(item: Any):
+                system_event_loop.call_soon_threadsafe(result_queue.put_nowait, item)
 
-                call_future = self._call_http_entrypoint(
-                    user_method_info, scope, receive, enqueue
-                )
-            else:
+            call_future = self._call_http_entrypoint(
+                user_method_info, scope, receive, enqueue
+            )
+        else:
 
-                async def enqueue(item: Any):
-                    result_queue.put_nowait(item)
+            async def enqueue(item: Any):
+                result_queue.put_nowait(item)
 
-                call_future = asyncio.create_task(
-                    self._call_http_entrypoint(
-                        user_method_info, scope, receive, enqueue
-                    )
-                )
+            call_future = asyncio.create_task(
+                self._call_http_entrypoint(user_method_info, scope, receive, enqueue)
+            )
 
-            first_message_peeked = False
-            async for messages in result_queue.fetch_messages_from_queue(call_future):
-                # HTTP (ASGI) messages are only consumed by the proxy so batch them
-                # and use vanilla pickle (we know it's safe because these messages
-                # only contain primitive Python types).
-                # Peek the first ASGI message to determine the status code.
-                if not first_message_peeked:
-                    msg = messages[0]
-                    first_message_peeked = True
-                    if msg["type"] == "http.response.start":
-                        # HTTP responses begin with exactly one
-                        # "http.response.start" message containing the "status"
-                        # field. Other response types like WebSockets may not.
-                        status_code_callback(str(msg["status"]))
+        first_message_peeked = False
+        async for messages in result_queue.fetch_messages_from_queue(call_future):
+            # HTTP (ASGI) messages are only consumed by the proxy so batch them
+            # and use vanilla pickle (we know it's safe because these messages
+            # only contain primitive Python types).
+            # Peek the first ASGI message to determine the status code.
+            if not first_message_peeked:
+                msg = messages[0]
+                first_message_peeked = True
+                if msg["type"] == "http.response.start":
+                    # HTTP responses begin with exactly one
+                    # "http.response.start" message containing the "status"
+                    # field. Other response types like WebSockets may not.
+                    status_code_callback(str(msg["status"]))
 
-                yield messages
-        except Exception:
-            if not receive_task.done():
-                receive_task.cancel()
-
-            raise
-        except asyncio.CancelledError:
-            if not receive_task.done():
-                # Do NOT cancel the receive task if the request has been
-                # cancelled, but the call is a batched call. This is
-                # because we cannot guarantee cancelling the batched
-                # call, so in the case that the call continues executing
-                # we should continue fetching data from the client.
-                if not hasattr(user_method_info.callable, "set_max_batch_size"):
-                    receive_task.cancel()
-
-            raise
+            yield messages
 
     @_run_user_code
     async def _call_http_entrypoint(
@@ -1692,7 +1663,9 @@ class UserCallableWrapper:
             # Non-FastAPI HTTP handlers take only the starlette `Request`.
             request_args = (starlette.requests.Request(scope, receive, send),)
 
+        receive_task = None
         try:
+            receive_task = asyncio.create_task(receive.fetch_until_disconnect())
             result, sync_gen_consumed = await self._call_func_or_gen(
                 user_method_info.callable,
                 args=request_args,
@@ -1710,6 +1683,9 @@ class UserCallableWrapper:
                 asgi_args=ASGIArgs(scope, receive, send),
             )
 
+            if receive_task is not None and not receive_task.done():
+                receive_task.cancel()
+
             return final_result
         except Exception as e:
             if not user_method_info.is_asgi_app:
@@ -1717,6 +1693,20 @@ class UserCallableWrapper:
                 await self._send_user_result_over_asgi(
                     response, ASGIArgs(scope, receive, send)
                 )
+
+            if receive_task is not None and not receive_task.done():
+                receive_task.cancel()
+
+            raise
+        except asyncio.CancelledError:
+            if receive_task is not None and not receive_task.done():
+                # Do NOT cancel the receive task if the request has been
+                # cancelled, but the call is a batched call. This is
+                # because we cannot guarantee cancelling the batched
+                # call, so in the case that the call continues executing
+                # we should continue fetching data from the client.
+                if not hasattr(user_method_info.callable, "set_max_batch_size"):
+                    receive_task.cancel()
 
             raise
 
