@@ -94,14 +94,6 @@ def method(method=None, **kwargs):
 
 if __name__ == "__main__":
 
-    # This is an example of how to use the ActorMesh
-
-    # def broadcast(actor_mesh: ActorMesh, method: str, args: List[int]) -> List[int]:
-    #     results = []
-    #     for i, actor in enumerate(actor_mesh.actors):
-    #         results.append(getattr(actor, method).remote(args[i]))
-    #     return ray.get(results)
-
     class Test:
 
         @method
