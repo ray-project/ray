@@ -6,7 +6,6 @@ import runfiles
 import subprocess
 import platform
 import shutil
-import os
 from ci.raydepsets.cli import load, DependencySetManager
 from ci.raydepsets.workspace import Workspace
 from click.testing import CliRunner
