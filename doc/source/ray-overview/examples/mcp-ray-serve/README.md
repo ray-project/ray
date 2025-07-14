@@ -10,14 +10,14 @@ This tutorial demonstrates how to build and deploy **custom Model Control Plane 
 - [**`01-Deploy_custom_mcp_in_streamable_http_with_ray_serve.ipynb`**](https://github.com/ray-project/ray/blob/master/doc/source/ray-overview/examples/mcp-ray-serve/01%20Deploy_custom_mcp_in_streamable_http_with_ray_serve.ipynb): Deploy a single MCP server in **HTTP streaming mode**, using Ray Serve and FastAPI.
 - [**`02-Build_mcp_gateway_with_existing_ray_serve_apps.ipynb`**](https://github.com/ray-project/ray/blob/master/doc/source/ray-overview/examples/mcp-ray-serve/02%20Build_mcp_gateway_with_existing_ray_serve_apps.ipynb): Route traffic to existing Ray Serve applications through an MCP gateway.
 - [**`03-Deploy_single_mcp_stdio_docker_image_with_ray_serve.ipynb`**](https://github.com/ray-project/ray/blob/master/doc/source/ray-overview/examples/mcp-ray-serve/03%20Deploy_single_mcp_stdio_docker_image_with_ray_serve.ipynb): Deploy an MCP Server with standard input/output stream as a scalable HTTP service managed by Ray Serve.
-- [**`04-Deploy_multiple_mcp_stdio_docker_images_with_ray_serve.ipynb`**](https://github.com/ray-project/ray/blob/master/doc/source/ray-overview/examples/mcp-ray-serve/04%20Deploy_multiple_mcp_stdio_docker_images_with_ray_serve.ipynb): Run multiple MCP servers using a shared deployment.
+- [**`04-Deploy_multiple_mcp_stdio_docker_images_with_ray_serve.ipynb`**](https://github.com/ray-project/ray/blob/master/doc/source/ray-overview/examples/mcp-ray-serve/04%20Deploy_multiple_mcp_stdio_docker_images_with_ray_serve.ipynb): Run multiple MCP servers using a shared service.
 - [**`05-(Optional)_Build_docker_image_for_mcp_server.ipynb`**](https://github.com/ray-project/ray/blob/master/doc/source/ray-overview/examples/mcp-ray-serve/05%20(Optional)%20Build_docker_image_for_mcp_server.ipynb): Guide to building and customizing a Docker image for a standalone MCP server.
 
 
 ## Prerequisites
 
 - Ray [Serve], already included in the base Docker image
-- Pod-man
+- Podman (notebooks 3-5 - to deploy MCP tools with existing docker images)
 - A Brave API key set in your environment (`BRAVE_API_KEY`)
 - MCP Python library
 
