@@ -723,7 +723,7 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
         other non-serve actors on the same node. See more at
         https://github.com/ray-project/ray/issues/20599.
         """
-        replicas_to_stop = set()
+        replicas_to_stop = []
 
         # Replicas not in running state don't have node id.
         # We will prioritize those first.
@@ -767,8 +767,8 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
             ]:
                 if len(replicas_to_stop) == max_num_to_stop:
                     return replicas_to_stop
-                else:
-                    replicas_to_stop.add(running_replica)
+                if running_replica not in replicas_to_stop:
+                    replicas_to_stop.append(running_replica)
 
         return replicas_to_stop
 
