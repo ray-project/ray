@@ -522,9 +522,7 @@ class Node:
             try_to_symlink(tpu_logs_symlink, tpu_log_dir)
 
     def get_resource_and_label_spec(self):
-        """Resolve and return the current resource spec for the node. Also resolve and return
-        the merged user-input, Ray default, and autoscaler environment override labels from
-        the LabelSpec for this node."""
+        """Resolve and return the current ResourceAndLabelSpec for the node."""
 
         def merge_resources(env_dict, params_dict):
             """Separates special case params and merges two dictionaries, picking from the
