@@ -72,16 +72,6 @@ class LLMEngine(str, Enum):
     vLLM = "vLLM"
 
 
-class JSONModeOptions(BaseModelExtended):
-    num_processes: int = Field(
-        default=8,
-        description="The number of background processes for each replica.",
-    )
-    recreate_failed_actors: bool = Field(
-        default=True, description="Whether to restart failed JSON mode actors."
-    )
-
-
 class LoraConfig(BaseModelExtended):
     dynamic_lora_loading_path: Optional[str] = Field(
         default=None,
@@ -558,30 +548,6 @@ class LLMServingArgs(BaseModel):
         return LLMServingArgs(llm_configs=llm_configs)
 
 
-class FinishReason(str, Enum):
-    LENGTH = "length"
-    STOP = "stop"
-    ERROR = "error"
-    CANCELLED = "cancelled"
-
-    def __str__(self) -> str:
-        return self.value
-
-    @classmethod
-    def from_vllm_finish_reason(
-        cls, finish_reason: Optional[str]
-    ) -> Optional["FinishReason"]:
-        if finish_reason is None:
-            return None
-        if finish_reason == "stop":
-            return cls.STOP
-        if finish_reason == "length":
-            return cls.LENGTH
-        if finish_reason == "abort":
-            return cls.CANCELLED
-        return cls.STOP
-
-
 class DiskMultiplexConfig(BaseModelExtended):
     model_id: str
     max_total_tokens: Optional[int]
@@ -589,54 +555,3 @@ class DiskMultiplexConfig(BaseModelExtended):
 
     # this is a per process id assigned to the model
     lora_assigned_int_id: int
-
-
-class ComputedPropertyMixin:
-    """
-    Include properties in the dict and json representations of the model.
-    """
-
-    # Replace with pydantic.computed_field once it's available
-    @classmethod
-    def get_properties(cls):
-        return [prop for prop in dir(cls) if isinstance(getattr(cls, prop), property)]
-
-    def model_dump(self, *args, **kwargs):
-        self.__dict__.update(
-            {prop: getattr(self, prop) for prop in self.get_properties()}
-        )
-        return super().model_dump(*args, **kwargs)  # type: ignore
-
-    def model_dump_json(
-        self,
-        *args,
-        **kwargs,
-    ) -> str:
-        self.__dict__.update(
-            {prop: getattr(self, prop) for prop in self.get_properties()}
-        )
-
-        return super().model_dump_json(*args, **kwargs)  # type: ignore
-
-
-class LogProb(BaseModel):
-    logprob: float
-    token: str
-    bytes: List[int]
-
-
-class LogProbs(BaseModel):
-    token: str
-    logprob: float
-    bytes: List[int]
-    top_logprobs: List[LogProb]
-
-    @classmethod
-    def create(cls, logprobs: List[LogProb], top_logprobs: Optional[int] = None):
-        assert len(logprobs) > 0, "logprobs must be a non-empty list"
-        token = logprobs[0].token
-        logprob = logprobs[0].logprob
-        bytes = logprobs[0].bytes
-        all_logprobs = logprobs if top_logprobs else []
-        ret = cls(token=token, logprob=logprob, bytes=bytes, top_logprobs=all_logprobs)
-        return ret
