@@ -7,7 +7,9 @@ py_library(
         "cli.py",
         "workspace.py",
     ],
+    data = ["@uv_x86_64//:file"],
     deps = [
+        ci_require("bazel-runfiles"),
         ci_require("click"),
         ci_require("pyyaml"),
     ],
@@ -27,7 +29,6 @@ py_test(
         "test_data/requirement_constraints_test.txt",
         "test_data/requirements_test.txt",
         "test_data/test.config.yaml",
-        "@uv_x86_64//:file",
     ],
     exec_compatible_with = ["//:hermetic_python"],
     tags = [
@@ -35,7 +36,6 @@ py_test(
         "team:ci",
     ],
     deps = [
-        ci_require("bazel-runfiles"),
         ci_require("pytest"),
         ":raydepsets_lib",
     ],

@@ -1,13 +1,13 @@
 depsets:
   - name: ray_base_test_depset
     requirements:
-      - ci/raydepsets/test_data/requirements_test.txt
+      - requirements_test.txt
     constraints:
-      - ci/raydepsets/test_data/requirement_constraints_test.txt
-    output: ci/raydepsets/test_data/requirements_compiled.txt
+      - requirement_constraints_test.txt
+    output: requirements_compiled.txt
     operation: compile
   - name: general_depset
     operation: compile
     requirements:
-      - ci/raydepsets/test_data/requirements_test.txt
-    output: ci/raydepsets/test_data/requirements_compiled_general.txt
+      - requirements_test.txt
+    output: requirements_compiled_general.txt

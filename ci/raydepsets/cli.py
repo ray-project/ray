@@ -51,14 +51,14 @@ class DependencySetManager:
         for depset in self.config.depsets:
             if depset.name == name:
                 return depset
-        raise Exception(f"Dependency set {name} not found")
+        raise KeyError(f"Dependency set {name} not found")
 
     def exec_uv_cmd(self, cmd: str, args: List[str]) -> str:
         cmd = f"uv pip {cmd} {' '.join(args)}"
         click.echo(f"Executing command: {cmd}")
         status = subprocess.run(cmd, shell=True)
         if status.returncode != 0:
-            raise Exception(f"Failed to execute command: {cmd}")
+            raise RuntimeError(f"Failed to execute command: {cmd}")
         return status.stdout
 
     def execute_all(self):
@@ -94,8 +94,8 @@ class DependencySetManager:
         args.extend(["-o", self.get_path(output)])
         try:
             self.exec_uv_cmd("compile", args)
-        except Exception as e:
-            raise Exception(f"Error: {str(e)}")
+        except RuntimeError as e:
+            raise RuntimeError(f"Error: {str(e)}")
 
     def get_path(self, path: str) -> str:
         return (Path(self.workspace.dir) / path).as_posix()

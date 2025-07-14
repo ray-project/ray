@@ -3,11 +3,13 @@ import sys
 import unittest
 import tempfile
 import runfiles
-import platform
 import subprocess
-from pathlib import Path
+import platform
+import shutil
+from ci.raydepsets.cli import load, DependencySetManager
+from ci.raydepsets.workspace import Workspace
 from click.testing import CliRunner
-from ci.raydepsets.cli import load
+from pathlib import Path
 import os
 
 _REPO_NAME = "com_github_ray_project_ray"
@@ -23,6 +25,51 @@ class TestCli(unittest.TestCase):
             if uv_dir not in current_path:
                 os.environ["PATH"] = f"{uv_dir}:{current_path}"
 
+    def test_workspace_init(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace = Workspace(tmpdir)
+            assert workspace.dir is not None
+
+    def test_cli_load_fail_no_config(self):
+        result = CliRunner().invoke(
+            load,
+            [
+                "fake_path/test.config.yaml",
+                "--workspace-dir",
+                "/ci/raydepsets/test_data",
+            ],
+        )
+        assert result.exit_code == 1
+        assert isinstance(result.exception, FileNotFoundError)
+        assert "No such file or directory" in str(result.exception)
+
+    def test_dependency_set_manager_init(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _copy_data_to_tmpdir(tmpdir)
+            manager = DependencySetManager(
+                config_path="test.config.yaml",
+                workspace_dir=tmpdir,
+            )
+            assert manager is not None
+            assert manager.workspace.dir == tmpdir
+            assert manager.config.depsets[0].name == "ray_base_test_depset"
+            assert manager.config.depsets[0].operation == "compile"
+            assert manager.config.depsets[0].requirements == ["requirements_test.txt"]
+            assert manager.config.depsets[0].constraints == [
+                "requirement_constraints_test.txt"
+            ]
+            assert manager.config.depsets[0].output == "requirements_compiled.txt"
+
+    def test_dependency_set_manager_get_depset(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _copy_data_to_tmpdir(tmpdir)
+            manager = DependencySetManager(
+                config_path="test.config.yaml",
+                workspace_dir=tmpdir,
+            )
+            with self.assertRaises(KeyError):
+                manager.get_depset("fake_depset")
+
     def test_uv_binary_exists(self):
         assert _uv_binary() is not None
 
@@ -36,29 +83,27 @@ class TestCli(unittest.TestCase):
         assert "uv 0.7.20" in result.stdout.decode("utf-8")
         assert result.stderr.decode("utf-8") == ""
 
-    def test_compile_by_depset_name_happy(self):
-        # with tempfile.TemporaryDirectory() as tmpdir:
-        result = CliRunner().invoke(
-            load,
-            [
-                _runfiles.Rlocation(
-                    f"{_REPO_NAME}/ci/raydepsets/test_data/test.config.yaml"
-                ),
-                "--workspace-dir",
-                _runfiles.Rlocation(f"{_REPO_NAME}"),
-                "--name",
-                "ray_base_test_depset",
-            ],
-        )
+    def test_compile_by_depset_name(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _copy_data_to_tmpdir(tmpdir)
+            result = CliRunner().invoke(
+                load,
+                [
+                    "test.config.yaml",
+                    "--workspace-dir",
+                    tmpdir,
+                    "--name",
+                    "ray_base_test_depset",
+                ],
+            )
 
-        output_fp = _runfiles.Rlocation(
-            f"{_REPO_NAME}/ci/raydepsets/test_data/requirements_compiled.txt"
-        )
-        assert result.exit_code == 0
-        assert Path(output_fp).is_file()
-        assert (
-            "Dependency set ray_base_test_depset compiled successfully" in result.output
-        )
+            output_fp = Path(tmpdir) / "requirements_compiled.txt"
+            assert result.exit_code == 0
+            assert Path(output_fp).is_file()
+            assert (
+                "Dependency set ray_base_test_depset compiled successfully"
+                in result.output
+            )
 
 
 def _uv_binary():
@@ -68,6 +113,14 @@ def _uv_binary():
             f"Unsupported platform/processor: {system}/{platform.processor()}"
         )
     return _runfiles.Rlocation("uv_x86_64/uv-x86_64-unknown-linux-gnu/uv")
+
+
+def _copy_data_to_tmpdir(tmpdir):
+    shutil.copytree(
+        _runfiles.Rlocation(f"{_REPO_NAME}/ci/raydepsets/test_data"),
+        tmpdir,
+        dirs_exist_ok=True,
+    )
 
 
 if __name__ == "__main__":
