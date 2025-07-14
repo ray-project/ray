@@ -66,7 +66,7 @@ The following examples uses Weights & Biases (W&B) and MLflow but it's adaptable
 
                 # Step 3
                 if train.get_context().get_world_rank() == 0:
-                    # Only report the results from the first worker to W&B to avoid duplication.
+                    # Only report the results from the rank 0 worker to W&B to avoid duplication.
                     wandb.log(metrics)
 
                 # ...
@@ -103,7 +103,7 @@ The following examples uses Weights & Biases (W&B) and MLflow but it's adaptable
 
                 # Step 3
                 if train.get_context().get_world_rank() == 0:
-                    # Only report the results from the first worker to MLflow to avoid duplication.
+                    # Only report the results from the rank 0 worker to MLflow to avoid duplication.
                     mlflow.log_metrics(metrics)
 
 .. tip::
