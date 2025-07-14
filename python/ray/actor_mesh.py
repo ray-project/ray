@@ -109,6 +109,9 @@ if __name__ == "__main__":
             return [x + y for x in values]
 
     mesh = ActorMesh(Test, (), {}, shape=(3,))
+    # Note: In the future we could have the alternative syntax
+    # similar to what Stephanie suggested:
+    # mesh = Test.mesh(shape=(3,)).remote()
     result = mesh.methods.f.all(1)
     assert ray.get(result) == [1, 1, 1]
     result = mesh.methods.f.choose(1)
