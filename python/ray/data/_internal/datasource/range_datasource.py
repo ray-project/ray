@@ -50,10 +50,9 @@ class RangeDatasource(Datasource):
         ctx = DataContext.get_current()
         if self._n == 0:
             target_rows_per_block = 0
-
-        # Derive rows-per-block.  If target_max_block_size is ``None``,
-        # treat it as unlimited and avoid further splitting.
-        if ctx.target_max_block_size is None:
+        elif ctx.target_max_block_size is None:
+            # If target_max_block_size is ``None``, treat it as unlimited and
+            # avoid further splitting.
             target_rows_per_block = n  # whole block in one shot
         else:
             row_size_bytes = self.estimate_inmemory_data_size() // self._n
