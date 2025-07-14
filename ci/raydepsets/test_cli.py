@@ -5,6 +5,8 @@ import tempfile
 import runfiles
 import subprocess
 import platform
+import shutil
+import os
 from ci.raydepsets.cli import load, DependencySetManager
 from ci.raydepsets.workspace import Workspace
 from click.testing import CliRunner
@@ -14,7 +16,7 @@ _runfiles = runfiles.Create()
 
 
 class TestCli(unittest.TestCase):
-    def test_workspace_init_happy(self):
+    def test_workspace_init(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             workspace = Workspace(tmpdir)
             assert workspace.dir is not None
@@ -23,23 +25,20 @@ class TestCli(unittest.TestCase):
         result = CliRunner().invoke(
             load,
             [
-                _runfiles.Rlocation(
-                    f"{_REPO_NAME}/ci/raydepsets/test_data/fake_path/test.config.yaml"
-                ),
+                "fake_path/test.config.yaml",
                 "--workspace-dir",
-                _runfiles.Rlocation(f"{_REPO_NAME}/ci/raydepsets/"),
+                "/ci/raydepsets/test_data",
             ],
         )
         assert result.exit_code == 1
         assert isinstance(result.exception, FileNotFoundError)
         assert "No such file or directory" in str(result.exception)
 
-    def test_dependency_set_manager_init_happy(self):
+    def test_dependency_set_manager_init(self):
         with tempfile.TemporaryDirectory() as tmpdir:
+            _copy_data_to_tmpdir(tmpdir)
             manager = DependencySetManager(
-                config_path=_runfiles.Rlocation(
-                    f"{_REPO_NAME}/ci/raydepsets/test_data/test.config.yaml"
-                ),
+                config_path="test.config.yaml",
                 workspace_dir=tmpdir,
             )
             assert manager is not None
@@ -54,6 +53,16 @@ class TestCli(unittest.TestCase):
                 manager.config.depsets[0].output
                 == "tests/requirements_compiled_test.txt"
             )
+
+    def test_dependency_set_manager_get_depset(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _copy_data_to_tmpdir(tmpdir)
+            manager = DependencySetManager(
+                config_path="test.config.yaml",
+                workspace_dir=tmpdir,
+            )
+            with self.assertRaises(KeyError):
+                manager.get_depset("fake_depset")
 
     def test_uv_binary_exists(self):
         assert _uv_binary() is not None
@@ -76,6 +85,14 @@ def _uv_binary():
             f"Unsupported platform/processor: {system}/{platform.processor()}"
         )
     return _runfiles.Rlocation("uv_x86_64/uv-x86_64-unknown-linux-gnu/uv")
+
+
+def _copy_data_to_tmpdir(tmpdir):
+    shutil.copytree(
+        _runfiles.Rlocation(f"{_REPO_NAME}/ci/raydepsets/test_data"),
+        tmpdir,
+        dirs_exist_ok=True,
+    )
 
 
 if __name__ == "__main__":

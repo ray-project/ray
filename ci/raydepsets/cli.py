@@ -29,4 +29,4 @@ class DependencySetManager:
         for depset in self.config.depsets:
             if depset.name == name:
                 return depset
-        raise Exception(f"Dependency set {name} not found")
+        raise KeyError(f"Dependency set {name} not found")
