@@ -36,6 +36,9 @@ class RangeDatasource(Datasource):
         self,
         parallelism: int,
     ) -> List[ReadTask]:
+        if self._n == 0:
+            return []
+
         read_tasks: List[ReadTask] = []
         n = self._n
         block_format = self._block_format
