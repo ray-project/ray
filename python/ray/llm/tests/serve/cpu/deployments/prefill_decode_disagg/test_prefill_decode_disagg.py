@@ -66,6 +66,7 @@ class FakePlatform(UnspecifiedPlatform):
         return True
 
 
+@pytest.mark.parametrize("kv_connector", ["NixlConnector", "LMCacheConnectorV1"])
 class TestPDDisaggLLMServer:
     """Test PD-disaggregated LLM server.
 
@@ -81,6 +82,7 @@ class TestPDDisaggLLMServer:
         create_server,
         # model_pixtral_12b is a fixture that only contains config files without weights
         model_pixtral_12b,
+        kv_connector,
     ):
         """This is smoke testing that normal chat completion works."""
         llm_config = LLMConfig(
@@ -95,7 +97,7 @@ class TestPDDisaggLLMServer:
             ),
             engine_kwargs={
                 "kv_transfer_config": KVTransferConfig(
-                    kv_connector="NixlConnector",
+                    kv_connector=kv_connector,
                     kv_role="kv_both",
                 ),
             },
@@ -132,6 +134,7 @@ class TestPDDisaggLLMServer:
         create_server,
         # model_pixtral_12b is a fixture that only contains config files without weights
         model_pixtral_12b,
+        kv_connector,
     ):
         """Test non-streaming predict."""
         llm_config = LLMConfig(
@@ -146,7 +149,7 @@ class TestPDDisaggLLMServer:
             ),
             engine_kwargs={
                 "kv_transfer_config": KVTransferConfig(
-                    kv_connector="NixlConnector",
+                    kv_connector=kv_connector,
                     kv_role="kv_both",
                 ),
             },

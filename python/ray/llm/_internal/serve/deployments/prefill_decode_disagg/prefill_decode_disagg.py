@@ -1,11 +1,9 @@
 """Using Ray Serve to deploy LLM models with P/D disaggregation.
 """
 import logging
-import uuid
 from typing import Any, AsyncGenerator, Dict, Union
 
 from pydantic import BaseModel, Field
-from vllm.config import KVTransferConfig
 
 from ray import serve
 from ray.llm._internal.serve.configs.prompt_formats import Prompt
@@ -140,11 +138,12 @@ class PDProxyServer(LLMServer):
             yield prefill_response
             return
 
-        kv_transfer_params = prefill_response.metadata[KV_TRANSFER_PARAMS_KEY]
-        logger.debug(
-            f"Prefill metadata[{KV_TRANSFER_PARAMS_KEY}]: {kv_transfer_params}"
-        )
-        prompt.parameters[KV_TRANSFER_PARAMS_KEY] = kv_transfer_params
+        if KV_TRANSFER_PARAMS_KEY in prefill_response.metadata:
+            kv_transfer_params = prefill_response.metadata[KV_TRANSFER_PARAMS_KEY]
+            logger.debug(
+                f"Prefill metadata[{KV_TRANSFER_PARAMS_KEY}]: {kv_transfer_params}"
+            )
+            prompt.parameters[KV_TRANSFER_PARAMS_KEY] = kv_transfer_params
 
         async for chunk in self.decode_server.options(stream=True)._predict.remote(
             request_id=request_id, prompt=prompt, stream=stream
@@ -167,14 +166,8 @@ def build_app(pd_serving_args: dict) -> Application:
 
     for config in [pd_config.prefill_config, pd_config.decode_config]:
         if "kv_transfer_config" not in config.engine_kwargs:
-            config.engine_kwargs.update(
-                {
-                    "kv_transfer_config": KVTransferConfig(
-                        kv_connector="NixlConnector",
-                        kv_role="kv_both",
-                        engine_id=str(uuid.uuid4()),
-                    )
-                }
+            raise ValueError(
+                "kv_transfer_config must be set for both prefill and decode configurations."
             )
 
     prefill_deployment = build_llm_deployment(
