@@ -233,14 +233,19 @@ class VLLMEngine(LLMEngine):
                 "oai_serving_chat must have a create_chat_completion attribute"
             )
 
-    def _prepare_engine_config(self, node_initialization: InitializeNodeOutput):
+    def _prepare_engine_config(
+        self, node_initialization: InitializeNodeOutput
+    ) -> Tuple["AsyncEngineArgs", "FrontendArgs", "VllmConfig"]:
         """Prepare the engine config to start the engine.
 
+        Args:
+            node_initialization: The node initialization output.
+
         Returns:
-            engine_args: The vLLM's internal engine arguments that is flattened.
-            frontend_args: The vLLM's internal frontend arguments that is
-                flattened.
-            engine_config: The vLLM's internal engine config that is nested.
+            A tuple of:
+                engine_args: The vLLM's internal engine arguments that is flattened.
+                frontend_args: The vLLM's internal frontend arguments that is flattened.
+                engine_config: The vLLM's internal engine config that is nested.
         """
 
         engine_config: VLLMEngineConfig = self.llm_config.get_engine_config()
@@ -479,7 +484,7 @@ class VLLMEngine(LLMEngine):
             request: An EmbeddingRequest object.
 
         Yields:
-            An EmbeddingResponse or ErrorResponse object.
+            Union[EmbeddingResponse, ErrorResponse]: An EmbeddingResponse or ErrorResponse object.
         """
 
         if self._oai_serving_embedding is None:
