@@ -77,10 +77,6 @@ def _do_init_collective_group(
     ray.util.collective.init_collective_group(
         world_size, rank, backend, group_name=name
     )
-    # Register a custom serializer for torch.Tensor. This allows torch.Tensors
-    # to use the created collective for communication between actors, instead of
-    # the normal serialize -> object store -> deserialize codepath.
-    TorchTensorType().register_custom_serializer()
 
 
 def _do_destroy_collective_group(self, name):

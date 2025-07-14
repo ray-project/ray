@@ -1010,6 +1010,14 @@ class _ActorClassMethodMetadata(object):
 
         # Update cache.
         cls._cache[actor_creation_function_descriptor] = self
+
+        # FIXME(Qiaolin-Yu): Check the tensor_transport option after #54256 is merged.
+        # Register a custom serializer for torch.Tensor. This allows torch.Tensors
+        # to use the created collective for communication between actors, instead of
+        # the normal serialize -> object store -> deserialize codepath.
+        from ray.experimental.channel.torch_tensor_type import TorchTensorType
+        TorchTensorType().register_custom_serializer()
+
         return self
 
 
