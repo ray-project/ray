@@ -580,13 +580,10 @@ class TaskManager : public TaskManagerInterface {
     //    pending tasks and tasks that finished execution but that may be
     //    retried in the future.
     absl::flat_hash_set<ObjectID> reconstructable_return_ids;
-    // NOTE: Used in Streaming Generators only.
-    // This set is used to track ObjectIDs that are returned a streaming
-    // generator before successful execution. These need to be stored to propagate an
-    // error to the user if lineage reconstruction is triggered and fails without a
-    // successful execution.
-    // For each item in the set, the bool is true if the object was in plasma and
-    // false if it was inlined.
+    // NOTE: used only for streaming generators.
+    // Tracks ObjectIDs return from a streaming generator before its first successful
+    // execution. Used to propagate errors to the user if lineage reconstruction
+    // happens after the first successful execution and fails.
     absl::flat_hash_set<ObjectID> recon_ret_ids_before_first_successful_exec;
     // The size of this (serialized) task spec in bytes, if the task spec is
     // not pending, i.e. it is being pinned because it's in another object's
@@ -634,11 +631,8 @@ class TaskManager : public TaskManagerInterface {
       const rpc::Address &worker_addr,
       const ReferenceCounter::ReferenceTableProto &borrowed_refs);
 
-  /// If the task returns a streaming generator, return all objects that have
-  /// been reported by the executor so far. If the task does not return a streaming
-  /// generator return the objects that were stored in plasma upon the first successful
-  /// execution of this task.
-  /// If the task is re-executed, these objects should
+  /// Get the objects that were stored in plasma upon the first successful
+  /// execution of this task. If the task is re-executed, these objects should
   /// get stored in plasma again, even if they are small and were returned
   /// directly in the worker's reply. This ensures that any reference holders
   /// that are already scheduled at the raylet can retrieve these objects

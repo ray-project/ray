@@ -822,8 +822,8 @@ bool TaskManager::HandleReportGeneratorItemReturns(
                      /*store_in_plasma=*/in_plasma);
   }
 
-  // If the task has not been executed successfully before, then we need to add metadata
-  // to track which objects will need to be in plasma in subsequent attempts.
+  // If the task has not been executed successfully before, we need to add metadata
+  // to track which objects will need to be in plasma in subsequent executions.
   if (!has_executed_successfully_before) {
     absl::MutexLock lock(&mu_);
     auto it = submissible_tasks_.find(task_id);
@@ -1038,9 +1038,9 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     }
   }
 
-  // If it is a streaming generator, mark the end of stream since the task is
-  // finished. We handle this logic here because the lock shouldn't be held while
-  // calling HandleTaskReturn.
+  // If it is a streaming generator, mark the end of stream since the task is finished.
+  // We handle this logic here because the lock shouldn't be held while calling
+  // HandleTaskReturn.
   if (spec.IsStreamingGenerator()) {
     const auto generator_id = ObjectID::FromBinary(reply.return_objects(0).object_id());
     if (first_successful_execution) {
