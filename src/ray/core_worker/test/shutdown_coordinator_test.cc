@@ -63,7 +63,8 @@ class NoOpShutdownExecutor : public ShutdownExecutorInterface {
   void ExecuteGracefulShutdown(std::string_view exit_type,
                                std::string_view detail,
                                std::chrono::milliseconds timeout_ms) override {}
-  void ExecuteForceShutdown(std::string_view exit_type, std::string_view detail) override {}
+  void ExecuteForceShutdown(std::string_view exit_type,
+                            std::string_view detail) override {}
   void ExecuteWorkerExit(std::string_view exit_type,
                          std::string_view detail,
                          std::chrono::milliseconds timeout_ms) override {}

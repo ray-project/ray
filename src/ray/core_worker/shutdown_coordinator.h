@@ -75,10 +75,10 @@ enum class ShutdownReason : std::uint8_t {
 
 /// Shutdown state representing the current lifecycle phase of worker shutdown.
 /// The state machine supports two paths with only forward transitions:
-/// 
+///
 /// Normal shutdown:  kRunning -> kShuttingDown -> kDisconnecting -> kShutdown
 /// Force shutdown:   kRunning -> kShuttingDown -> kShutdown (bypasses kDisconnecting)
-/// 
+///
 /// State semantics:
 /// - kRunning: Normal operation, accepting new work
 /// - kShuttingDown: Shutdown initiated, draining existing work, no new work accepted
