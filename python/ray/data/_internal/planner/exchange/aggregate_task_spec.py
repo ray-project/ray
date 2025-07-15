@@ -65,7 +65,12 @@ class SortAggregateTaskSpec(ExchangeTaskSpec):
         ]
         from ray.data.block import BlockMetadataWithSchema
 
-        assert len(parts) > 0
+        if len(parts) == 0:
+            # If no partitions were created, return an empty block with metadata.
+            empty_schema = BlockAccessor.for_block(block).empty_schema()
+            meta = BlockAccessor.for_block(block).get_metadata()
+            return [] + BlockMetadataWithSchema(schema=empty_schema, metadata=meta)
+
         # Look at the first non-empty block for the schema
         for b in parts:
             if BlockAccessor.for_block(b).num_rows() > 0:
