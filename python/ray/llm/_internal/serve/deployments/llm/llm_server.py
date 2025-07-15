@@ -1,7 +1,6 @@
 import asyncio
 import os
 from abc import ABC, abstractmethod
-<<<<<<< HEAD
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -13,9 +12,6 @@ from typing import (
     TypeVar,
     Union,
 )
-=======
-from typing import TYPE_CHECKING, Any, AsyncGenerator, Dict, List, Optional, Type, Union
->>>>>>> a067e8c0b1ddeb67d3bf61b0e6760c789ec89d1f
 
 from ray import serve
 from ray._common.utils import import_attr
