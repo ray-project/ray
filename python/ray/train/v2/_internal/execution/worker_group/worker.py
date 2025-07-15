@@ -191,6 +191,7 @@ class RayTrainWorker:
         dataset_shards: Dict[str, DataIterator] = None,
         checkpoint: Optional[Checkpoint] = None,
     ):
+
         self._callbacks = [c for c in worker_callbacks if isinstance(c, WorkerCallback)]
         context_callbacks_to_propagate = [
             c for c in worker_callbacks if isinstance(c, TrainContextCallback)
