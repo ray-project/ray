@@ -2356,16 +2356,18 @@ class Dataset:
             # group_batch is already a pandas DataFrame
             df = group_batch
             n = len(df)
-            test_count = max(1, int(n * test_size))
+            test_count = int(n * test_size)
             df["is_train"] = [True] * (n - test_count) + [False] * test_count
             return pa.Table.from_pandas(df)
         
         # Lazy pipeline: group -> transform -> split
         split_ds = ds.groupby(stratify).map_groups(add_train_flag)
-        train_ds = split_ds.filter(lambda row: row["is_train"]).drop_columns(["is_train"])
-        test_ds = split_ds.filter(lambda row: not row["is_train"]).drop_columns(["is_train"])
-        
-        return train_ds.materialize(), test_ds.materialize()
+        partitioned = split_ds.repartition(keys="is_train")
+
+        train_ds = partitioned.filter(lambda row: row["is_train"]).drop_columns(["is_train"])
+        test_ds = partitioned.filter(lambda row: not row["is_train"]).drop_columns(["is_train"])
+
+        return train_ds, test_ds
 
     @PublicAPI(api_group=SMJ_API_GROUP)
     def union(self, *other: List["Dataset"]) -> "Dataset":
