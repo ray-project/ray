@@ -131,7 +131,7 @@ the constructed output batch maps module IDs to the respective module's forward 
     :align: left
 
     **Batch construction for multi-agent**: In a multi-agent setup, the default :py:class:`~ray.rllib.connectors.common.agent_to_module_mapping.AgentToModuleMapping`
-    connector piece reorganizes the batch by ``ModuleID``s, then column names, such that a
+    connector piece reorganizes the batch by ``ModuleID``, then column names, such that a
     :py:class:`~ray.rllib.core.rl_module.multi_rl_module.MultiRLModule` can loop through its sub-modules and provide each with a batch
     for the forward pass.
 
