@@ -2063,7 +2063,11 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
                       depth,
                       task_options.serialized_runtime_env_info,
                       call_site,
+<<<<<<< HEAD
                       worker_context_->GetMainThreadOrActorCreationTaskID(),
+=======
+                      worker_context_.GetMainThreadOrActorCreationTaskID(),
+>>>>>>> af5c220b7f (fix comment)
                       /*concurrency_group_name=*/"",
                       /*include_job_config=*/true,
                       /*generator_backpressure_num_objects=*/
