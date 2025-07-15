@@ -404,15 +404,15 @@ void GcsActorManager::HandleRegisterActor(rpc::RegisterActorRequest request,
 
   RAY_LOG(INFO).WithField(actor_id.JobId()).WithField(actor_id) << "Registering actor";
   Status status = RegisterActor(
-      request, [reply, send_reply_callback, actor_id](const Status &_status) {
-        if (_status.ok()) {
+      request, [reply, send_reply_callback, actor_id](const Status &register_status) {
+        if (register_status.ok()) {
           RAY_LOG(INFO).WithField(actor_id.JobId()).WithField(actor_id)
               << "Registered actor";
         } else {
           RAY_LOG(WARNING).WithField(actor_id.JobId()).WithField(actor_id)
-              << "Failed to register actor: " << _status.ToString();
+              << "Failed to register actor: " << register_status.ToString();
         }
-        GCS_RPC_SEND_REPLY(send_reply_callback, reply, _status);
+        GCS_RPC_SEND_REPLY(send_reply_callback, reply, register_status);
       });
   if (!status.ok()) {
     RAY_LOG(WARNING).WithField(actor_id.JobId()).WithField(actor_id)
@@ -844,11 +844,11 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
          RAY_CHECK_OK(gcs_table_storage_->ActorTable().Put(
              actor->GetActorID(),
              *actor->GetMutableActorTableData(),
-             {[this, actor](Status _status) {
+             {[this, actor](Status put_status) {
                 RAY_CHECK(thread_checker_.IsOnSameThread());
                 // The backend storage is supposed to be reliable, so the status must be
                 // ok.
-                RAY_CHECK_OK(_status);
+                RAY_CHECK_OK(put_status);
                 actor->WriteActorExportEvent();
                 auto registered_actor_it = registered_actors_.find(actor->GetActorID());
                 auto callback_iter =
@@ -1885,8 +1885,8 @@ bool GcsActorManager::RemovePendingActor(std::shared_ptr<GcsActor> actor) {
   const auto &actor_id = actor->GetActorID();
   auto pending_it = std::find_if(pending_actors_.begin(),
                                  pending_actors_.end(),
-                                 [actor_id](const std::shared_ptr<GcsActor> &_actor) {
-                                   return _actor->GetActorID() == actor_id;
+                                 [actor_id](const std::shared_ptr<GcsActor> &this_actor) {
+                                   return this_actor->GetActorID() == actor_id;
                                  });
 
   // The actor was pending scheduling. Remove it from the queue.

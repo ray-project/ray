@@ -49,9 +49,10 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
   }
 
   auto accept_callback = [this, reply, resource_ids = std::move(resource_ids)](
-                             const TaskSpecification &_task_spec,
-                             const rpc::SendReplyCallback &_send_reply_callback) mutable {
-    auto num_returns = _task_spec.NumReturns();
+                             const TaskSpecification &accepted_task_spec,
+                             const rpc::SendReplyCallback
+                                 &accepted_send_reply_callback) mutable {
+    auto num_returns = accepted_task_spec.NumReturns();
     RAY_CHECK(num_returns >= 0);
 
     std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> return_objects;
@@ -59,7 +60,7 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
     std::vector<std::pair<ObjectID, bool>> streaming_generator_returns;
     bool is_retryable_error = false;
     std::string application_error;
-    auto status = task_handler_(_task_spec,
+    auto status = task_handler_(accepted_task_spec,
                                 std::move(resource_ids),
                                 &return_objects,
                                 &dynamic_return_objects,
@@ -106,8 +107,9 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
     }
 
     if (objects_valid) {
-      if (_task_spec.ReturnsDynamic()) {
-        size_t num_dynamic_returns_expected = _task_spec.DynamicReturnIds().size();
+      if (accepted_task_spec.ReturnsDynamic()) {
+        size_t num_dynamic_returns_expected =
+            accepted_task_spec.DynamicReturnIds().size();
         if (num_dynamic_returns_expected > 0) {
           RAY_CHECK(dynamic_return_objects.size() == num_dynamic_returns_expected)
               << "Expected " << num_dynamic_returns_expected
@@ -130,15 +132,15 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
             return_object.first, return_object.second, return_object_proto);
       }
 
-      if (_task_spec.IsActorCreationTask()) {
-        concurrency_groups_ = _task_spec.ConcurrencyGroups();
+      if (accepted_task_spec.IsActorCreationTask()) {
+        concurrency_groups_ = accepted_task_spec.ConcurrencyGroups();
         if (is_asyncio_) {
           fiber_state_manager_ = std::make_shared<ConcurrencyGroupManager<FiberState>>(
               concurrency_groups_, fiber_max_concurrency_, initialize_thread_callback_);
         } else {
           // If the actor is an asyncio actor, then this concurrency group manager
           // for BoundedExecutor will never be used, so we don't need to initialize it.
-          const int default_max_concurrency = _task_spec.MaxActorConcurrency();
+          const int default_max_concurrency = accepted_task_spec.MaxActorConcurrency();
           pool_manager_ = std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(
               concurrency_groups_, default_max_concurrency, initialize_thread_callback_);
         }
@@ -149,8 +151,8 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
         RAY_CHECK_OK(actor_creation_task_done_());
         if (status.IsCreationTaskError()) {
           RAY_LOG(WARNING) << "Actor creation task finished with errors, task_id: "
-                           << _task_spec.TaskId()
-                           << ", actor_id: " << _task_spec.ActorCreationId()
+                           << accepted_task_spec.TaskId()
+                           << ", actor_id: " << accepted_task_spec.ActorCreationId()
                            << ", status: " << status;
         } else {
           // Set the actor repr name if it's customized by the actor.
@@ -158,8 +160,8 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
             reply->set_actor_repr_name(actor_repr_name_);
           }
           RAY_LOG(INFO) << "Actor creation task finished, task_id: "
-                        << _task_spec.TaskId()
-                        << ", actor_id: " << _task_spec.ActorCreationId()
+                        << accepted_task_spec.TaskId()
+                        << ", actor_id: " << accepted_task_spec.ActorCreationId()
                         << ", actor_repr_name: " << actor_repr_name_;
         }
       }
@@ -170,27 +172,28 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
       reply->set_worker_exiting(true);
       if (objects_valid) {
         // This happens when max_calls is hit. We still need to return the objects.
-        _send_reply_callback(Status::OK(), nullptr, nullptr);
+        accepted_send_reply_callback(Status::OK(), nullptr, nullptr);
       } else {
-        _send_reply_callback(status, nullptr, nullptr);
+        accepted_send_reply_callback(status, nullptr, nullptr);
       }
     } else {
       RAY_CHECK(objects_valid);
-      _send_reply_callback(status, nullptr, nullptr);
+      accepted_send_reply_callback(status, nullptr, nullptr);
     }
   };
 
-  auto cancel_callback = [reply](const TaskSpecification &_task_spec,
-                                 const Status &status,
-                                 const rpc::SendReplyCallback &_send_reply_callback) {
-    if (_task_spec.IsActorTask()) {
+  auto cancel_callback = [reply](
+                             const TaskSpecification &canceled_task_spec,
+                             const Status &status,
+                             const rpc::SendReplyCallback &canceled_send_reply_callback) {
+    if (canceled_task_spec.IsActorTask()) {
       // We consider cancellation of actor tasks to be a push task RPC failure.
-      _send_reply_callback(status, nullptr, nullptr);
+      canceled_send_reply_callback(status, nullptr, nullptr);
     } else {
       // We consider cancellation of normal tasks to be an in-band cancellation of a
       // successful RPC.
       reply->set_was_cancelled_before_running(true);
-      _send_reply_callback(status, nullptr, nullptr);
+      canceled_send_reply_callback(status, nullptr, nullptr);
     }
   };
 

@@ -1164,10 +1164,12 @@ void ReferenceCounter::WaitForRefRemoved(const ReferenceTable::iterator &ref_it,
                                                       const Status &) {
     // When the request is failed, there's no new borrowers ref published from this
     // borrower.
-    const auto _object_id = ObjectID::FromBinary(object_id_binary);
-    RAY_LOG(DEBUG).WithField(_object_id).WithField(WorkerID::FromBinary(addr.worker_id()))
+    const auto failed_borrower_object_id = ObjectID::FromBinary(object_id_binary);
+    RAY_LOG(DEBUG)
+            .WithField(failed_borrower_object_id)
+            .WithField(WorkerID::FromBinary(addr.worker_id()))
         << "WaitForRefRemoved failed for object, dest worker";
-    CleanupBorrowersOnRefRemoved({}, _object_id, addr);
+    CleanupBorrowersOnRefRemoved({}, failed_borrower_object_id, addr);
   };
 
   RAY_CHECK(

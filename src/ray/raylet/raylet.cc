@@ -156,8 +156,8 @@ void Raylet::HandleAccept(const boost::system::error_code &error) {
   if (!error) {
     ConnectionErrorHandler error_handler = [this](
                                                std::shared_ptr<ClientConnection> client,
-                                               const boost::system::error_code &_error) {
-      node_manager_.HandleClientConnectionError(client, _error);
+                                               const boost::system::error_code &err) {
+      node_manager_.HandleClientConnectionError(client, err);
     };
 
     MessageHandler message_handler = [this](std::shared_ptr<ClientConnection> client,

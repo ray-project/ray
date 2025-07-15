@@ -678,11 +678,11 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
       [this](const NodeID &node_id, rpc::ClientCallManager &client_call_manager) {
         auto node_info = gcs_client_->Nodes().Get(node_id);
         RAY_CHECK(node_info) << "No GCS info for node " << node_id;
-        auto _grpc_client =
+        auto node_mgr_worker_client =
             rpc::NodeManagerWorkerClient::make(node_info->node_manager_address(),
                                                node_info->node_manager_port(),
                                                client_call_manager);
-        return std::make_shared<raylet::RayletClient>(std::move(_grpc_client));
+        return std::make_shared<raylet::RayletClient>(std::move(node_mgr_worker_client));
       };
   experimental_mutable_object_provider_ =
       std::make_shared<experimental::MutableObjectProvider>(
@@ -779,9 +779,9 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
   }
 
   auto raylet_client_factory = [this](const std::string &ip_address, int port) {
-    auto _grpc_client =
+    auto node_mgr_worker_client =
         rpc::NodeManagerWorkerClient::make(ip_address, port, *client_call_manager_);
-    return std::make_shared<raylet::RayletClient>(std::move(_grpc_client));
+    return std::make_shared<raylet::RayletClient>(std::move(node_mgr_worker_client));
   };
 
   auto on_excess_queueing = [this](const ActorID &actor_id, uint64_t num_queued) {
@@ -1837,7 +1837,7 @@ Status CoreWorker::ExperimentalRegisterMutableObjectReaderRemote(
     conn->RegisterMutableObjectReader(
         req,
         [&promise, num_replied, num_requests, addr](
-            const Status &status, const rpc::RegisterMutableObjectReaderReply &_reply) {
+            const Status &status, const rpc::RegisterMutableObjectReaderReply &) {
           RAY_CHECK_OK(status);
           *num_replied += 1;
           if (*num_replied == num_requests) {
@@ -2349,8 +2349,8 @@ json CoreWorker::OverrideRuntimeEnv(const json &child,
 
 std::shared_ptr<rpc::RuntimeEnvInfo> CoreWorker::OverrideTaskOrActorRuntimeEnvInfo(
     const std::string &serialized_runtime_env_info) const {
-  auto factory = [this](const std::string &_serialized_runtime_env_info) {
-    return OverrideTaskOrActorRuntimeEnvInfoImpl(_serialized_runtime_env_info);
+  auto factory = [this](const std::string &runtime_env_info_str) {
+    return OverrideTaskOrActorRuntimeEnvInfoImpl(runtime_env_info_str);
   };
   return runtime_env_json_serialization_cache_.GetOrCreate(serialized_runtime_env_info,
                                                            std::move(factory));
@@ -3627,12 +3627,12 @@ bool CoreWorker::PinExistingReturnObject(const ObjectID &return_id,
         owner_address,
         {return_id},
         generator_id,
-        [return_id, pinned_return_object](const Status &_status,
+        [return_id, pinned_return_object](const Status &pin_object_status,
                                           const rpc::PinObjectIDsReply &reply) {
           // RPC to the local raylet should never fail.
-          if (!_status.ok()) {
+          if (!pin_object_status.ok()) {
             RAY_LOG(ERROR) << "Request to local raylet to pin object failed: "
-                           << _status.ToString();
+                           << pin_object_status.ToString();
             return;
           }
           if (!reply.successes(0)) {

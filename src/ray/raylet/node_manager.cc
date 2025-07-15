@@ -1136,14 +1136,14 @@ Status NodeManager::ProcessRegisterClientRequestMessageImpl(
           static_cast<int64_t>(protocol::MessageType::RegisterClientReply),
           fbb.GetSize(),
           fbb.GetBufferPointer(),
-          [this, client](const ray::Status &_status) {
-            if (!_status.ok()) {
+          [this, client](const ray::Status &write_msg_status) {
+            if (!write_msg_status.ok()) {
               DisconnectClient(client,
                                /*graceful=*/false,
                                rpc::WorkerExitType::SYSTEM_ERROR,
                                "Worker is failed because the raylet couldn't reply the "
                                "registration request: " +
-                                   _status.ToString());
+                                   write_msg_status.ToString());
             }
           });
     };
@@ -1267,13 +1267,13 @@ void NodeManager::SendPortAnnouncementResponse(
       static_cast<int64_t>(protocol::MessageType::AnnounceWorkerPortReply),
       fbb.GetSize(),
       fbb.GetBufferPointer(),
-      [this, client](const ray::Status &_status) {
-        if (!_status.ok()) {
-          DisconnectClient(
-              client,
-              /*graceful=*/false,
-              rpc::WorkerExitType::SYSTEM_ERROR,
-              "Failed to send AnnounceWorkerPortReply to client: " + _status.ToString());
+      [this, client](const ray::Status &write_msg_status) {
+        if (!write_msg_status.ok()) {
+          DisconnectClient(client,
+                           /*graceful=*/false,
+                           rpc::WorkerExitType::SYSTEM_ERROR,
+                           "Failed to send AnnounceWorkerPortReply to client: " +
+                               write_msg_status.ToString());
         }
       });
 }
@@ -1308,13 +1308,13 @@ void NodeManager::SendRegisterClientAndAnnouncePortResponse(
       static_cast<int64_t>(protocol::MessageType::RegisterWorkerWithPortReply),
       fbb.GetSize(),
       fbb.GetBufferPointer(),
-      [this, client](const ray::Status &_status) {
-        if (!_status.ok()) {
+      [this, client](const ray::Status &write_msg_status) {
+        if (!write_msg_status.ok()) {
           DisconnectClient(client,
                            /*graceful=*/false,
                            rpc::WorkerExitType::SYSTEM_ERROR,
                            "Failed to send RegisterWorkerWithPortReply to client: " +
-                               _status.ToString());
+                               write_msg_status.ToString());
         }
       });
 }
@@ -2687,8 +2687,8 @@ void NodeManager::HandleFormatGlobalMemoryInfo(
 
   auto store_reply =
       [replies, reply, num_nodes, send_reply_callback, include_memory_info](
-          const rpc::GetNodeStatsReply &_local_reply) {
-        replies->push_back(_local_reply);
+          const rpc::GetNodeStatsReply &get_node_status_reply) {
+        replies->push_back(get_node_status_reply);
         if (replies->size() >= num_nodes) {
           if (include_memory_info) {
             reply->set_memory_summary(FormatMemoryInfo(*replies));

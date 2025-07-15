@@ -76,14 +76,14 @@ Status JobInfoAccessor::AsyncSubscribeAll(
     const SubscribeCallback<JobID, rpc::JobTableData> &subscribe,
     const StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr);
-  fetch_all_data_operation_ = [this, subscribe](const StatusCallback &_done) {
-    auto callback = [subscribe, _done](const Status &status,
+  fetch_all_data_operation_ = [this, subscribe](const StatusCallback &done_callback) {
+    auto callback = [subscribe, done_callback](const Status &status,
                                        std::vector<rpc::JobTableData> &&job_info_list) {
       for (auto &job_info : job_info_list) {
         subscribe(JobID::FromBinary(job_info.job_id()), std::move(job_info));
       }
-      if (_done) {
-        _done(status);
+      if (done_callback) {
+        done_callback(status);
       }
     };
     RAY_CHECK_OK(AsyncGetAll(/*job_or_submission_id=*/std::nullopt,
@@ -92,8 +92,8 @@ Status JobInfoAccessor::AsyncSubscribeAll(
                              callback,
                              /*timeout_ms=*/-1));
   };
-  subscribe_operation_ = [this, subscribe](const StatusCallback &_done) {
-    return client_impl_->GetGcsSubscriber().SubscribeAllJobs(subscribe, _done);
+  subscribe_operation_ = [this, subscribe](const StatusCallback &done_callback) {
+    return client_impl_->GetGcsSubscriber().SubscribeAllJobs(subscribe, done_callback);
   };
   return subscribe_operation_(
       [this, done](const Status &status) { fetch_all_data_operation_(done); });
@@ -668,24 +668,26 @@ Status NodeInfoAccessor::AsyncSubscribeToNodeChange(
   RAY_CHECK(node_change_callback_ == nullptr);
   node_change_callback_ = subscribe;
 
-  fetch_node_data_operation_ = [this](const StatusCallback &_done) {
-    auto callback = [this, _done](const Status &status,
-                                  std::vector<rpc::GcsNodeInfo> &&node_info_list) {
+  fetch_node_data_operation_ = [this](const StatusCallback &done_callback) {
+    auto callback = [this, done_callback](
+                        const Status &status,
+                        std::vector<rpc::GcsNodeInfo> &&node_info_list) {
       for (auto &node_info : node_info_list) {
         HandleNotification(std::move(node_info));
       }
-      if (_done) {
-        _done(status);
+      if (done_callback) {
+        done_callback(status);
       }
     };
     RAY_CHECK_OK(AsyncGetAll(callback, /*timeout_ms=*/-1));
   };
 
-  subscribe_node_operation_ = [this](const StatusCallback &_done) {
+  subscribe_node_operation_ = [this](const StatusCallback &done_callback) {
     auto on_subscribe = [this](rpc::GcsNodeInfo &&data) {
       HandleNotification(std::move(data));
     };
-    return client_impl_->GetGcsSubscriber().SubscribeAllNodeInfo(on_subscribe, _done);
+    return client_impl_->GetGcsSubscriber().SubscribeAllNodeInfo(on_subscribe,
+                                                                 done_callback);
   };
 
   return subscribe_node_operation_([this, subscribe, done](const Status &status) {
@@ -950,8 +952,9 @@ WorkerInfoAccessor::WorkerInfoAccessor(GcsClient *client_impl)
 Status WorkerInfoAccessor::AsyncSubscribeToWorkerFailures(
     const ItemCallback<rpc::WorkerDeltaData> &subscribe, const StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr);
-  subscribe_operation_ = [this, subscribe](const StatusCallback &_done) {
-    return client_impl_->GetGcsSubscriber().SubscribeAllWorkerFailures(subscribe, _done);
+  subscribe_operation_ = [this, subscribe](const StatusCallback &done_callback) {
+    return client_impl_->GetGcsSubscriber().SubscribeAllWorkerFailures(subscribe,
+                                                                       done_callback);
   };
   return subscribe_operation_(done);
 }

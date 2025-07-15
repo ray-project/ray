@@ -115,16 +115,17 @@ Status ActorTaskSubmitter::SubmitActorCreationTask(TaskSpecification task_spec) 
     RAY_LOG(DEBUG).WithField(actor_id).WithField(task_id) << "Creating actor via GCS";
     RAY_CHECK_OK(actor_creator_.AsyncCreateActor(
         task_spec,
-        [this, actor_id, task_id](Status _status, const rpc::CreateActorReply &reply) {
-          if (_status.ok() || _status.IsCreationTaskError()) {
+        [this, actor_id, task_id](Status create_actor_status,
+                                  const rpc::CreateActorReply &reply) {
+          if (create_actor_status.ok() || create_actor_status.IsCreationTaskError()) {
             rpc::PushTaskReply push_task_reply;
             push_task_reply.mutable_borrowed_refs()->CopyFrom(reply.borrowed_refs());
-            if (_status.IsCreationTaskError()) {
+            if (create_actor_status.IsCreationTaskError()) {
               RAY_LOG(INFO).WithField(actor_id).WithField(task_id)
                   << "Actor creation failed and we will not be retrying the "
                      "creation task";
               // Update the task execution error to be CreationTaskError.
-              push_task_reply.set_task_execution_error(_status.ToString());
+              push_task_reply.set_task_execution_error(create_actor_status.ToString());
             } else {
               RAY_LOG(DEBUG).WithField(actor_id).WithField(task_id) << "Created actor";
             }
@@ -134,11 +135,11 @@ Status ActorTaskSubmitter::SubmitActorCreationTask(TaskSpecification task_spec) 
                 task_id,
                 push_task_reply,
                 reply.actor_address(),
-                /*is_application_error=*/_status.IsCreationTaskError());
+                /*is_application_error=*/create_actor_status.IsCreationTaskError());
           } else {
             // Either fails the rpc call or actor scheduling cancelled.
             rpc::RayErrorInfo ray_error_info;
-            if (_status.IsSchedulingCancelled()) {
+            if (create_actor_status.IsSchedulingCancelled()) {
               RAY_LOG(DEBUG).WithField(actor_id).WithField(task_id)
                   << "Actor creation cancelled";
               task_manager_.MarkTaskCanceled(task_id);
@@ -147,7 +148,7 @@ Status ActorTaskSubmitter::SubmitActorCreationTask(TaskSpecification task_spec) 
               }
             } else {
               RAY_LOG(INFO).WithField(actor_id).WithField(task_id)
-                  << "Failed to create actor with status: " << _status;
+                  << "Failed to create actor with status: " << create_actor_status;
             }
             // Actor creation task retry happens in GCS
             // and transient rpc errors are retried in gcs client
@@ -155,7 +156,7 @@ Status ActorTaskSubmitter::SubmitActorCreationTask(TaskSpecification task_spec) 
             RAY_UNUSED(task_manager_.FailPendingTask(
                 task_id,
                 rpc::ErrorType::ACTOR_CREATION_FAILED,
-                &_status,
+                &create_actor_status,
                 ray_error_info.has_actor_died_error() ? &ray_error_info : nullptr));
           }
         }));

@@ -192,11 +192,11 @@ void GcsJobManager::HandleMarkJobFinished(rpc::MarkJobFinishedRequest request,
 
   Status status = gcs_table_storage_.JobTable().Get(
       job_id,
-      {[this, job_id, send_reply](Status _status,
+      {[this, job_id, send_reply](Status get_status,
                                   std::optional<rpc::JobTableData> result) {
          RAY_CHECK(thread_checker_.IsOnSameThread());
 
-         if (_status.ok() && result) {
+         if (get_status.ok() && result) {
            MarkJobAsFinished(*result, send_reply);
            return;
          }
@@ -204,11 +204,11 @@ void GcsJobManager::HandleMarkJobFinished(rpc::MarkJobFinishedRequest request,
          if (!result.has_value()) {
            RAY_LOG(ERROR) << "Tried to mark job " << job_id
                           << " as finished, but there was no record of it starting!";
-         } else if (!_status.ok()) {
+         } else if (!get_status.ok()) {
            RAY_LOG(ERROR) << "Fails to mark job " << job_id << " as finished due to "
-                          << _status;
+                          << get_status;
          }
-         send_reply(_status);
+         send_reply(get_status);
        },
        io_context_});
   if (!status.ok()) {
@@ -416,8 +416,8 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
            send_reply_callback,
            job_data_key_to_indices,
            num_finished_tasks,
-           try_send_reply](const auto &_result) {
-            for (const auto &data : _result) {
+           try_send_reply](const auto &job_info_result) {
+            for (const auto &data : job_info_result) {
               const std::string &job_data_key = data.first;
               // The JobInfo stored by the Ray Job API.
               const std::string &job_info_json = data.second;

@@ -78,11 +78,11 @@ struct SchedulingClassDescriptor {
   explicit SchedulingClassDescriptor(ResourceSet rs,
                                      FunctionDescriptor fd,
                                      int64_t d,
-                                     rpc::SchedulingStrategy _scheduling_strategy)
+                                     rpc::SchedulingStrategy sched_strategy)
       : resource_set(std::move(rs)),
         function_descriptor(std::move(fd)),
         depth(d),
-        scheduling_strategy(std::move(_scheduling_strategy)) {}
+        scheduling_strategy(std::move(sched_strategy)) {}
   ResourceSet resource_set;
   FunctionDescriptor function_descriptor;
   int64_t depth;

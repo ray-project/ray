@@ -118,12 +118,12 @@ void ActorSchedulingQueue::Add(
       }
 
       if (inbound_req != nullptr) {
-        const auto &_task_spec = inbound_req->TaskSpec();
+        const auto &inbound_req_task_spec = inbound_req->TaskSpec();
         RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
-            _task_spec.TaskId(),
-            _task_spec.JobId(),
-            _task_spec.AttemptNumber(),
-            _task_spec,
+            inbound_req_task_spec.TaskId(),
+            inbound_req_task_spec.JobId(),
+            inbound_req_task_spec.AttemptNumber(),
+            inbound_req_task_spec,
             rpc::TaskStatus::PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY,
             /* include_task_info */ false));
         inbound_req->MarkDependenciesResolved();
