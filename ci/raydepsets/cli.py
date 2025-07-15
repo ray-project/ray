@@ -19,6 +19,7 @@ DEFAULT_UV_FLAGS = [
     "--index-url https://pypi.org/simple",
     "--extra-index-url https://download.pytorch.org/whl/cpu",
     "--index-strategy unsafe-best-match",
+    "--generate-hashes",
     "--quiet",
 ]
 
@@ -132,10 +133,7 @@ class DependencySetManager:
             for requirement in requirements:
                 args.extend([self.get_path(requirement)])
         args.extend(["-o", self.get_path(output)])
-        try:
-            self.exec_uv_cmd("compile", args)
-        except RuntimeError as e:
-            raise RuntimeError(f"Error: {str(e)}")
+        self.exec_uv_cmd("compile", args)
 
     def subset(
         self,
@@ -162,13 +160,13 @@ class DependencySetManager:
         output: str = None,
     ):
         """Expand a dependency set."""
-        depset_list = []
+        depset_req_list = []
         for depset_name in depsets:
             depset = self.get_depset(depset_name)
-            depset_list.append(depset)
+            depset_req_list.extend(depset.requirements)
         self.compile(
             constraints=constraints,
-            requirements=[depset.output for depset in depset_list],
+            requirements=depset_req_list,
             args=DEFAULT_UV_FLAGS.copy(),
             name=name,
             output=output,
