@@ -3,6 +3,7 @@ import threading
 from typing import Optional
 
 import ray
+import torch
 import ray._private.ray_constants as ray_constants
 from ray.air._internal.device_manager.cpu import CPUTorchDeviceManager
 from ray.air._internal.device_manager.hpu import HPUTorchDeviceManager
@@ -12,7 +13,7 @@ from ray.air._internal.device_manager.torch_device_manager import TorchDeviceMan
 
 logger = logging.getLogger(__name__)
 
-
+torch.cuda.is_available()
 DEFAULT_TORCH_DEVICE_MANAGER_CLS = CPUTorchDeviceManager
 
 
