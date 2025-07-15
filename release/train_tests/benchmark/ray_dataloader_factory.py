@@ -34,7 +34,7 @@ class RayDataLoaderFactory(BaseDataLoaderFactory):
             dataloader_config.actor_locality_enabled
         )
         data_context.execution_options.preserve_order = (
-            dataloader_config.preserve_order == "preserve_order"
+            dataloader_config.preserve_order
         )
 
     @abstractmethod
