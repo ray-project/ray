@@ -67,9 +67,12 @@ class SortAggregateTaskSpec(ExchangeTaskSpec):
 
         if len(parts) == 0:
             # If no partitions were created, return an empty block with metadata.
-            empty_schema = BlockAccessor.for_block(block).empty_schema()
-            meta = BlockAccessor.for_block(block).get_metadata()
-            return [] + BlockMetadataWithSchema(schema=empty_schema, metadata=meta)
+            acc = BlockAccessor.for_block(block)
+            assert isinstance(acc, TableBlockAccessor)
+            empty_block = acc._empty_table()
+            schema = BlockAccessor.for_block(empty_block).schema()
+            meta = BlockAccessor.for_block(empty_block).get_metadata()
+            return [] + BlockMetadataWithSchema(schema=schema, metadata=meta)
 
         # Look at the first non-empty block for the schema
         for b in parts:

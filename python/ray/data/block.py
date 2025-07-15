@@ -376,10 +376,6 @@ class BlockAccessor:
         """Return the Python type or pyarrow schema of this block."""
         raise NotImplementedError
 
-    def empty_schema(self) -> Union[Schema]:
-        """Return an empty schema for this block"""
-        raise NotImplementedError
-
     def get_metadata(
         self,
         input_files: Optional[List[str]] = None,
