@@ -8,7 +8,6 @@ from ray.util.collective.types import Backend
 if TYPE_CHECKING:
     import torch
     from ray.experimental.gpu_object_manager.gpu_object_store import GPUObjectStore
-    from nixl._api import nixl_agent
 
 
 # GPUObjectMeta is a named tuple containing the source actor, tensor transport
@@ -72,19 +71,6 @@ class GPUObjectManager:
         # avoid circular import and because it imports third-party dependencies
         # like PyTorch.
         self._gpu_object_store: Optional["GPUObjectStore"] = None
-        # The agent when using nixl for transfer.
-        self._nixl_agent: Optional["nixl_agent"] = None
-
-    @property
-    def nixl_agent(self) -> "nixl_agent":
-        from nixl._api import nixl_agent, nixl_agent_config
-
-        if self._nixl_agent is None:
-            agent_config = nixl_agent_config(backends=["UCX"])
-            ctx = ray.get_runtime_context()
-            actor_id = ctx.get_actor_id()
-            self._nixl_agent = nixl_agent(actor_id, agent_config)
-        return self._nixl_agent
 
     @property
     def gpu_object_store(self) -> "ray.experimental.GPUObjectStore":
@@ -256,7 +242,7 @@ class GPUObjectManager:
                 if src_actor == dst_actor:
                     # Intra-actor communication
                     continue
-                self._send_gpu_object("nixl", src_actor, arg.hex(), 0)
+                # self._send_gpu_object("nixl", src_actor, arg.hex(), 0)
                 self._recv_gpu_object(
                     "nixl",
                     dst_actor,

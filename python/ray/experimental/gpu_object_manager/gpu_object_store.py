@@ -2,7 +2,7 @@ from typing import Dict, List, Optional, Tuple
 
 import ray.util.collective as collective
 from ray._private.custom_types import TensorTransportEnum
-from ray.util.collective.types import Backend
+from ray.util.collective.types import Backend, TensorTransportMetadata
 
 
 try:
@@ -48,10 +48,7 @@ def __ray_send__(self, communicator_name: str, obj_id: str, dst_rank: int):
 
     tensors = gpu_object_store.get_gpu_object(obj_id)
 
-    if communicator_name != "nixl":
-        backend = collective.get_group_handle(communicator_name).backend()
-    else:
-        backend = Backend.NIXL
+    backend = collective.get_group_handle(communicator_name).backend()
     device = COLLECTIVE_BACKEND_TO_TORCH_DEVICE[backend]
 
     for tensor in tensors:
@@ -61,8 +58,7 @@ def __ray_send__(self, communicator_name: str, obj_id: str, dst_rank: int):
             raise ValueError(
                 f"tensor device {tensor.device} does not match device {device}"
             )
-        if backend != Backend.NIXL:
-            collective.send(tensor, dst_rank, group_name=communicator_name)
+        collective.send(tensor, dst_rank, group_name=communicator_name)
 
 
 def __ray_recv__(
@@ -90,29 +86,15 @@ def __ray_recv__(
     for meta in tensor_basic_meta:
         shape, dtype = meta
         tensor = torch.zeros(shape, dtype=dtype, device=device)
-        if backend != Backend.NIXL:
-            collective.recv(tensor, src_rank, group_name=communicator_name)
         tensors.append(tensor)
 
-    if backend == Backend.NIXL:
-        nixl_agent = global_worker.gpu_object_manager.nixl_agent
-        remote_descs = nixl_agent.deserialize_descs(nixl_serialized_descs)
-        local_descs = nixl_agent.register_memory(tensors)
-        remote_name = nixl_agent.add_remote_agent(nixl_agent_meta)
+    metadata = TensorTransportMetadata(
+        src_rank=src_rank,
+        nixl_serialized_descs=nixl_serialized_descs,
+        nixl_agent_meta=nixl_agent_meta,
+    )
 
-        xfer_handle = nixl_agent.initialize_xfer(
-            "READ", local_descs.trim(), remote_descs, remote_name, b"UUID1"
-        )
-
-        state = nixl_agent.transfer(xfer_handle)
-        if state == "ERR":
-            raise RuntimeError("NIXL transfer got to Error state.")
-        while True:
-            state = nixl_agent.check_xfer_state(xfer_handle)
-            if state == "ERR":
-                raise RuntimeError("NIXL transfer got to Error state.")
-            elif state == "DONE":
-                break
+    collective.recv_multiple_tensors(tensors, metadata, group_name=communicator_name)
 
     gpu_object_store.add_gpu_object(obj_id, tensors)
 

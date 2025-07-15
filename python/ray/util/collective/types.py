@@ -1,7 +1,9 @@
 """Types conversion between different backends."""
+
 from enum import Enum
 from dataclasses import dataclass
 from datetime import timedelta
+from typing import Optional
 
 _NUMPY_AVAILABLE = True
 _TORCH_AVAILABLE = True
@@ -46,6 +48,18 @@ class Backend(object):
         if backend == Backend.MPI:
             raise RuntimeError("Ray does not support MPI backend.")
         return backend
+
+
+class TensorTransportMetadata:
+    def __init__(
+        self,
+        src_rank: Optional[int] = None,
+        nixl_serialized_descs: Optional[bytes] = None,
+        nixl_agent_meta: Optional[bytes] = None,
+    ):
+        self.src_rank = src_rank
+        self.nixl_serialized_descs = nixl_serialized_descs
+        self.nixl_agent_meta = nixl_agent_meta
 
 
 class ReduceOp(Enum):
