@@ -1,11 +1,185 @@
-TODO (sven): weave this in here from env-to-module. It should go here as it requires a learner connector equivalent piece.
+.. include:: /_includes/rllib/we_are_hiring.rst
+
+.. include:: /_includes/rllib/new_api_stack.rst
+
+.. _learner-pipeline-docs:
+
+Learner connector pipelines
+===========================
+
+One learner pipeline resides on each :py:class:`~ray.rllib.core.learner.learner.Learner` worker (see figure below) and is responsible for
+compiling the train batch for the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` from a list of episodes.
+
+.. figure:: images/connector_v2/learner_connector_pipeline.svg
+    :width: 1000
+    :align: left
+
+    **Learner ConnectorV2 Pipelines**: A learner connector pipeline sits between the input training data into the
+    :py:class:`~ray.rllib.core.learner.learner.Learner` worker and its :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`.
+    It translates the input data, lists of episodes, into a train batch, tensor data, readable by the RLModule's
+    :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_train` method.
+
+When calling the Learner connector pipeline, a transformation from a list of :ref:`Episode objects <single-agent-episode-docs>` to an
+RLModule-readable tensor batch, the train batch, takes place and the output of the pipeline is directly sent into the
+:py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_train` method of the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`.
+
+
+.. _default-learner-pipeline:
+
+Default Learner pipeline behavior
+---------------------------------
+
+By default RLlib populates an Learner connector pipeline with the following built-in connector pieces.
+
+* :py:class:`~ray.rllib.connectors.common.add_observations_from_episodes_to_batch.AddObservationsFromEpisodesToBatch`: Places all observations from the incoming episodes into the batch. The column name is ``obs``. For example, if you have 2 incoming episodes of length 10 and 20, your resulting train batch size is 30.
+* :py:class:`~ray.rllib.connectors.learner.add_columns_from_episodes_to_batch.AddColumnsFromEpisodesToBatch`: Places all other columns, like rewards, actions, and termination flags, from the incoming episodes into the batch.
+* *Relevant for stateful models only:* :py:class:`~ray.rllib.connectors.common.add_time_dim_to_batch_and_zero_pad.AddTimeDimToBatchAndZeroPad`: If the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` is stateful, adds a time-dimension of size `max_seq_len` at axis=1 to all data in the batch and (right) zero-pads in cases where episodes end at timesteps non-dividable by `max_seq_len`. You can change `max_seq_len` through your RLModule's `model_config_dict` (call `config.rl_module(model_config_dict={'max_seq_len': ...})` on your :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig` object). Also places every `max_seq_len`th state output of your module from the incoming episodes into the train batch as new state inputs.
+* *Relevant for stateful models only:* :py:class:`~ray.rllib.connectors.common.add_states_from_episodes_to_batch.AddStatesFromEpisodesToBatch`: If the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` is stateful, places the most recent state outputs of the module as new state inputs into the batch. The column name is ``state_in``.
+* *For multi-agent only:* :py:class:`~ray.rllib.connectors.common.agent_to_module_mapping.AgentToModuleMapping`: Maps per-agent data to the respective per-module data depending on the already determined agent-to-module mapping stored in each (multi-agent) episode.
+* :py:class:`~ray.rllib.connectors.common.batch_individual_items.BatchIndividualItems`: Converts all data in the batch, which thus far are lists of individual items, into batched structures meaning NumPy arrays, whose 0th axis is the batch axis.
+* :py:class:`~ray.rllib.connectors.common.numpy_to_tensor.NumpyToTensor`: Converts all NumPy arrays in the batch into framework specific tensors and moves these to the GPU, if required.
+
+You can disable the preceding default connector pieces by setting `config.learners(add_default_connectors_to_learner_pipeline=False)`
+in your :ref:`algorithm config <rllib-algo-configuration-docs>`.
+
+Note that the order of these transforms is very relevant for the functionality of the pipeline.
+See :ref:`here on how to write and add your own connector pieces <writing_custom_learner_connectors>` to the pipeline.
+
+
+.. _writing_custom_learner_connectors:
+
+Writing custom Learner connectors
+---------------------------------
+
+You can customize the default Learner connector pipeline that RLlib creates through specifying a function in your
+:py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`, which returns a single :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2`
+piece or a list thereof.
+RLlib prepends these :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` instances to the
+:ref:`default Learner pipeline <default-learner-pipeline>` in the order returned,
+unless you set `add_default_connectors_to_learner_pipeline=False` in your config, in which case RLlib exclusively uses the provided
+:py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` pieces without any automatically added default behavior.
+
+For example, to prepend a custom ConnectorV2 piece to the Learner pipeline, you can do this in your config:
+
+.. testcode::
+    :skipif: True
+
+    config.learners(
+        learner_connector=lambda input_obs_space, input_act_space: MyLearnerConnector(..),
+    )
+
+If you want to add multiple custom pieces to the pipeline, return them as a list:
+
+.. testcode::
+    :skipif: True
+
+    # Return a list of connector pieces to make RLlib add all of them to your
+    # Learner pipeline.
+    config.learners(
+        learner_connector=lambda input_obs_space, input_act_space: [
+            MyLearnerConnector(..),
+            MyOtherLearnerConnector(..),
+            AndOneMoreConnector(..),
+        ],
+    )
+
+RLlib adds the connector pieces returned by your function to the beginning of the Learner pipeline,
+before the previously described default connector pieces that RLlib provides automatically:
+
+.. figure:: images/connector_v2/custom_pieces_in_learner_pipeline.svg
+    :width: 1000
+    :align: left
+
+    **Inserting custom ConnectorV2 pieces into the Learner pipeline**: RLlib inserts custom connector pieces, such
+    as intrinsic reward computation, before the default pieces. This way, if your custom connectors alter the input episodes
+    in any way, for example by changing the rewards as in the below example,
+    the tailing default pieces automatically add these changed rewards to the batch, instead of the original ones
+    from the environment.
+
+
+Example: Reward shaping prior to loss computation
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+If you would like to perform any kind of reward shaping on the episode data you receive before computing a loss,
+the Learner connector pipeline is the right place to do so. Here you have full access to the entire episode data, including
+observations, actions, other agents' data in multi-agent scenarios, and all rewards, of course.
+
+The following are the most important code snippets for setting up a count-based, intrinsic reward signal.
+Your connector tracks discrete observations that the agent already visited and computes an intrinsic reward based on the
+inverse frequency of the visited observation. Thus, the more often the agent has already seen the observation, the lower the
+computed intrinsic reward. The agent is then motivated to visit new states and observations leading to better exploratory behavior.
+
+See `here for the full count-based intrinsic reward example script <https://github.com/ray-project/ray/blob/master/rllib/examples/curiosity/count_based_curiosity.py>`__.
+
+You can write the custom Learner connector by subclassing `ConnectorV2` and overriding the `__call__` method:
+
+.. testcode::
+
+    from collections import Counter
+    from ray.rllib.connectors.connector_v2 import ConnectorV2
+
+    class CountBasedIntrinsicRewards(ConnectorV2):
+
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs)
+
+            # Observation counter.
+            self._counts = Counter()
+
+        def __call__(
+            self,
+            *,
+            rl_module,
+            batch,
+            episodes,
+            explore=None,
+            shared_data=None,
+            **kwargs,
+        ) -> Any:
+            # Loop through all episodes and change the reward to: reward + intrinsic_reward
+            for sa_episode in self.single_agent_episode_iterator(
+                episodes=episodes, agents_that_stepped_only=False
+            ):
+                # Loop through all observations, except the last one.
+                observations = sa_episode.get_observations(slice(None, -1))
+                # Get all respective extrinsic rewards.
+                rewards = sa_episode.get_rewards()
+
+                for i, (obs, rew) in enumerate(zip(observations, rewards)):
+                    # Add 1 to obs counter.
+                    obs = tuple(obs)
+                    self._counts[obs] += 1
+                    # Compute the count-based intrinsic reward and add it to the extrinsic
+                    # reward.
+                    rew += 1 / self._counts[obs]
+                    # Store the new reward back to the episode (under the correct
+                    # timestep/index).
+                    sa_episode.set_rewards(new_data=rew, at_indices=i)
+
+            return batch
+
+
+If you plug in this custom :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` class into your algorithm config
+(`config.learners(learner_connector=lambda env: CountBasedIntrinsicRewards())`),
+your loss function should receive the altered reward signals, which are the sums of the
+extrinsic reward from the environment and the computed intrinsic reward based on visitation frequencies, in the ``rewards`` column of the batch.
+
+Notice that your custom logic writes the new rewards right back into the given episodes
+instead of placing them into the `batch`. This strategy of writing back those data you pulled from episodes right back
+into the same episodes makes sure that from this point on, only the changed data is visible to the subsequent connector pieces.
+The batch remains unchanged at first. However, knowing that one of the subsequent
+:ref:`default Learner connector pieces <default-learner-pipeline>` performs the task of filling the batch with data from the episodes,
+you can rely on the information you changed in the episode to end up in the batch in the end.
+
+The succeeding example, however, demonstrates a specific case, observation stacking, where this strategy fails and in
+which you should instead manipulate the `batch` directly.
+
 
 Stacking the N most recent observations
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 If you would like to write a custom env-to-module connector that stacks the `N` most recent observations and feeds
-this stack of observations into your RLModule (for example in an attention/transformer architecture), you can
-achieve this, too, by subclassing `ConnectorV2` and overriding the `__call__` method.
+this stack of observations into your RLModule (for example in an attention/transformer architecture).
 
 However, in this case, the implementation shouldn't write back the stacked observations into the episode
 (as updated observation), because doing so would make the next call to the same ConnectorV2 piece to look back onto
@@ -20,7 +194,7 @@ an already stacked previous observation. Instead, you should manipulate the `bat
     from ray.rllib.core.columns import Columns
 
 
-    class StackLast10Observations(ConnectorV2):
+    class StackTenObservations(ConnectorV2):
 
         def recompute_output_observation_space(self, in_obs_space, in_act_space):
             # Assume the input observation space is a Box of shape (N,).
@@ -39,20 +213,18 @@ an already stacked previous observation. Instead, you should manipulate the `bat
             )
 
         def __call__(self, *, rl_module, batch, episodes, **kwargs):
-            # Assume that the input `batch` is empty. Note that this may not be the case
-            # if you have other custom connector pieces before this one.
-            assert not batch
 
             # Loop through all (single-agent) episodes.
             for single_agent_episode in self.single_agent_episode_iterator(episodes):
                 # Get the 10 most recent observations from the episodes.
                 last_10_obs = single_agent_episode.get_observations(
-                    indices=[-10, -9, -8, -7, -6, -5, -4, -3, -2, -1], fill=0.0
+                    indices=[-10, -9, -8, -7, -6, -5, -4, -3, -2, -1],
+                    fill=0.0,  # Left-zero-fill in case you reach beginning of episode.
                 )
-                # Concatenate the two observations.
+                # Concatenate all stacked observations.
                 new_obs = np.concatenate(last_10_obs, axis=0)
 
-                # Add the new observation to the `batch` using the
+                # Add the stacked observations to the `batch` using the
                 # `ConnectorV2.add_batch_item()` utility.
                 self.add_batch_item(
                     batch=batch,
@@ -61,13 +233,13 @@ an already stacked previous observation. Instead, you should manipulate the `bat
                     single_agent_episode=single_agent_episode,
                 )
 
-                # Note that we do not write the stacked observations back into the episode
-                # as this would interfere with the next call of this same connector (it
-                # would try to stack already stacked observations and thus produce a shape error).
-
             # Return batch (with stacked observations).
             return batch
 
+
+# Note that we do not write the stacked observations back into the episode
+# as this would interfere with the next call of this same connector (it
+# would try to stack already stacked observations and thus produce a shape error).
 
 Since the returned `batch` in the preceding env-to-module piece is discarded after the model forward pass
 and not stored in the episodes, you have to make sure to perform the framestacking again on the Learner
@@ -93,139 +265,3 @@ side of things.
 
 
 END (sven)
-
-
-
-
-
-
-
-
-
-.. _learner-pipeline-docs:
-
-Learner Pipeline
-++++++++++++++++
-
-One learner pipeline is located on each :py:class:`~ray.rllib.core.learner.learner.Learner` worker (see figure below) and is responsible for
-compiling the train batch for the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` from a list of episodes (trajectory data).
-
-
-.. figure:: images/connector_v2/learner_connector_pipeline.svg
-    :width: 1000
-    :align: left
-
-    **Learner ConnectorV2 Pipelines**: A learner connector pipeline sits between the input training data into the
-    :py:class:`~ray.rllib.core.learner.learner.Learner` worker and its :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`.
-    It translates the input data, lists of episodes, into a train batch, tensor data, readable by the RLModule's
-    :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_train` method.
-
-When calling the Learner connector pipeline, a translation from a list of :ref:`Episode objects <single-agent-episode-docs>` to an
-RLModule-readable tensor batch (the "train batch") takes place and the output of the pipeline is directly sent into the
-:py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_train` method of the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`.
-
-.. _default-learner-pipeline:
-
-**Default Learner Pipeline Behavior:** By default (if you don't configure anything else), a Learner connector pipeline is
-populated with the following built-in connector pieces, which perform the following tasks:
-
-* :py:class:`~ray.rllib.connectors.common.add_observations_from_episodes_to_batch.AddObservationsFromEpisodesToBatch`: Places all observations from the incoming episodes into the batch. For example, if you have 2 incoming episodes of length 10 and 20, your resulting train batch size is 30 (10 + 20).
-* :py:class:`~ray.rllib.connectors.learner.add_columns_from_episodes_to_batch.AddColumnsFromEpisodesToBatch`: Places all other columns (rewards, actions, terminated flags, etc..) from the incoming episodes into the batch.
-* *For stateful models only:* :py:class:`~ray.rllib.connectors.common.add_states_from_episodes_to_batch.AddStatesFromEpisodesToBatch`: Adds a time-dimension of size `max_seq_len` at axis=1 to all data in the batch and (right) zero-pads in cases where episodes end at timesteps non-dividable by `max_seq_len`. You can change `max_seq_len` through your RLModule's `model_config_dict` (call `config.rl_module(model_config_dict={'max_seq_len': ...})` on your :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig` object). Also places every `max_seq_len`th state output of your module from the incoming episodes into the train batch (as new state inputs).
-* *For multi-agent only:* :py:class:`~ray.rllib.connectors.common.agent_to_module_mapping.AgentToModuleMapping`: Maps per-agent data to the respective per-module data depending on the already determined agent-to-module mapping stored in each (multi-agent) episode.
-* :py:class:`~ray.rllib.connectors.common.batch_individual_items.BatchIndividualItems`: Now that all data has been placed in the batch, convert the individual batch items into batched data structures (lists of individual items are converted to NumPy arrays).
-* :py:class:`~ray.rllib.connectors.common.numpy_to_tensor.NumpyToTensor`: Converts all NumPy arrays in the batch into actual framework specific tensors and moves these to the GPU if required.
-
-It's discussed further below :ref:`how you can customize the behavior of the Learner pipeline <customizing-connector-v2-pipelines>` by adding any number of `ConnectorV2` pieces to it.
-
-
-Adding custom Learner connectors
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-To add custom Learner connector pieces, you need to call the
-:py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.learners` method of the algorithm config:
-
-.. testcode::
-    :skipif: True
-
-    # Add a Learner connector piece to the default Learner pipeline.
-    # Note that the lambda takes the input observation- and input action spaces as
-    # arguments.
-    config.learners(
-        learner_connector=lambda obs_space, act_space: MyLearnerConnector(..),
-    )
-    # Return a list of Learner instances from the `lambda`, if you would like to add more
-    # than one connector piece to the custom pipeline.
-
-
-Adding past rewards to the Model's input
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-If you want to add the most recent reward to be part of the next observation going into your
-:py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`, you can write a custom
-env-to-module :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` piece like so:
-
-
-.. testcode::
-
-    import gymnasium as gym
-    import numpy as np
-    from ray.rllib.connectors.connector_v2 import ConnectorV2
-
-
-    class AddLastRewardToObservations(ConnectorV2):
-
-        # Define how the observation space will change because of this connector piece.
-        def recompute_output_observation_space(self, in_obs_space, in_act_space):
-            # For simplicity, assert input obs space is a 1D Box
-            assert isinstance(in_obs_space, gym.spaces.Box) and len(in_obs_space.shape) == 1
-            return gym.spaces.Box(
-                low=list(in_obs_space.low) + [float("-inf")],
-                high=list(in_obs_space.high) + [float("inf")],
-                shape=(in_obs_space.shape[0] + 1,),
-                dtype=in_obs_space.dtype,
-            )
-
-        # Define the actual transformation.
-        def __call__(self, *, rl_module, batch, episodes, **kwargs):
-            # Loop through all `episodes`.
-            for single_agent_episode in self.single_agent_episode_iterator(episodes):
-                # Get last reward (or 0.0 if right after `env.reset`).
-                reward = single_agent_episode.get_reward(-1, fill=0.0)
-                # Get last observation.
-                obs = single_agent_episode.get_observation(-1)
-                # Append reward to obs array.
-                new_obs = np.append(obs, reward)
-
-                # Write new observation back into the episode.
-                single_agent_episode.set_observation(new_value=new_obs, at_index=-1)
-
-            return batch
-
-
-.. tip::
-    There is already an off-the-shelf ConnectorV2 piece available for you, which performs the task of
-    adding the `N` most recent rewards and/or `M` most recent actions to the observations:
-
-    .. code-block:: python
-
-        from ray.rllib.connectors.env_to_module.prev_actions_prev_rewards import PrevActionsPrevRewards
-
-        config.env_runners(
-            env_to_module_connector=lambda env: PrevActionsPrevRewards(n_prev_rewards=N, n_prev_actions=M),
-        )
-
-
-If you plug in this custom :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` class into your algorithm config
-(`config.env_runners(env_to_module_connector=lambda env: AddLastRewardToObservations())`),
-your model should receive observations that have the most recent reward "attached" to it.
-
-Notice that in the example here, the transformed observations were written right back into the given episodes
-and not placed into the `batch`. This strategy of writing back those data that was pulled from episodes right back
-into the same episodes makes sure that from this point on, only the changed data is visible to all subsequent components (for example
-other ConnectorV2 pieces in the same pipeline or other ConnectorV2 pipelines). It does not touch the `batch`.
-However, knowing that one of the subsequent :ref:`default env-to-module pieces <default-env-to-module-pipeline>`
-is going to do exactly that, we can defer this task (of populating the batch with your changed data) to these default pieces.
-
-The next example, however, demonstrates a specific case - observation stacking - where this strategy fails and in
-which you should instead manipulate the `batch` directly.
