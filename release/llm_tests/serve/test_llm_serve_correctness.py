@@ -107,7 +107,7 @@ class VllmServer:
             "--tensor-parallel-size",
             str(self.tensor_parallel_size),
             "--pipeline-parallel-size",
-            str(self.pipeline_parallel_size)
+            str(self.pipeline_parallel_size),
         ]
         self.process = subprocess.Popen(cmd)
         return f"http://localhost:{vllm_port}"
