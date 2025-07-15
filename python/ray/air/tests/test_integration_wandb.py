@@ -491,7 +491,10 @@ class TestWandbLogger:
             logger.log_trial_result(4, trial, result={"training_iteration": 4})
             logger.log_trial_result(5, trial, result={"training_iteration": 5})
 
-            queue.put(_QueueItem.END)
+            queue.put((_QueueItem.END, None))
+
+            # Wait for the actor's run method to complete
+            ray.get(logger._trial_logging_futures[trial])
 
             state = ray.get(actor.get_state.remote())
             assert [metrics["training_iteration"] for metrics in state.logs] == [4, 5]

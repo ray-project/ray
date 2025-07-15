@@ -1,21 +1,22 @@
 """Util class to install packages via uv.
 """
 
-from typing import Dict, List, Optional
-import os
-import hashlib
-from ray._private.runtime_env import virtualenv_utils
-from ray._private.runtime_env import dependency_utils
-from ray._private.runtime_env.utils import check_output_cmd
-from ray._private.runtime_env.plugin import RuntimeEnvPlugin
-from ray._private.runtime_env.packaging import Protocol, parse_uri
-from asyncio import create_task, get_running_loop
-import shutil
-import logging
-import json
 import asyncio
+import hashlib
+import json
+import logging
+import os
+import shutil
 import sys
-from ray._private.utils import try_to_create_directory, get_directory_size_bytes
+from asyncio import create_task, get_running_loop
+from typing import Dict, List, Optional
+
+from ray._common.utils import try_to_create_directory
+from ray._private.runtime_env import dependency_utils, virtualenv_utils
+from ray._private.runtime_env.packaging import Protocol, parse_uri
+from ray._private.runtime_env.plugin import RuntimeEnvPlugin
+from ray._private.runtime_env.utils import check_output_cmd
+from ray._private.utils import get_directory_size_bytes
 
 default_logger = logging.getLogger(__name__)
 
@@ -150,7 +151,7 @@ class UvProcessor:
         requirements_file = dependency_utils.get_requirements_file(path, uv_packages)
 
         # Check existence for `uv` and see if we could skip `uv` installation.
-        uv_exists = await self._check_uv_existence(python, cwd, pip_env, logger)
+        uv_exists = await self._check_uv_existence(path, cwd, pip_env, logger)
 
         # Install uv, which acts as the default package manager.
         if (not uv_exists) or (self._uv_config.get("uv_version", None) is not None):
@@ -166,7 +167,6 @@ class UvProcessor:
         #
         # Difference with pip:
         # 1. `--disable-pip-version-check` has no effect for uv.
-        # 2. Allow user to specify their own options to install packages via `uv`.
         uv_install_cmd = [
             python,
             "-m",

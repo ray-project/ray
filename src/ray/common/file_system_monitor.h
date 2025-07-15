@@ -25,7 +25,6 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/util/event.h"
-#include "ray/util/event_label.h"
 
 namespace ray {
 /// Monitor the filesystem capacity ray is using.
@@ -68,7 +67,8 @@ class FileSystemMonitor {
   const std::vector<std::string> paths_;
   const double capacity_threshold_;
   std::atomic<bool> over_capacity_;
-  instrumented_io_context io_context_;
+  instrumented_io_context io_context_{/*enable_lag_probe=*/false,
+                                      /*running_on_single_thread=*/true};
   std::thread monitor_thread_;
   std::shared_ptr<PeriodicalRunner> runner_;
 };

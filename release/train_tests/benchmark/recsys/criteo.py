@@ -1,6 +1,6 @@
 import logging
 import os
-from typing import Dict, List, Tuple
+from typing import TYPE_CHECKING, Dict, List, Tuple
 
 import boto3
 import json
@@ -11,10 +11,13 @@ import ray.data
 
 from constants import DatasetKey
 
+if TYPE_CHECKING:
+    from torchrec.datasets.utils import Batch
+
 logger = logging.getLogger(__name__)
 
 
-S3_BUCKET = "ray-benchmark-data-internal"
+S3_BUCKET = "ray-benchmark-data-internal-us-west-2"
 CRITEO_S3_URI = f"s3://{S3_BUCKET}/criteo/tsv.gz"
 CAT_FEATURE_VALUE_COUNT_JSON_PATH_PATTERN = (
     "criteo/tsv.gz/categorical_feature_value_counts/{}-value_counts.json"
@@ -120,7 +123,7 @@ def mock_dataloader(num_batches: int, batch_size: int):
         yield batch
 
 
-def convert_to_torchrec_batch_format(batch: Dict[str, np.ndarray]):
+def convert_to_torchrec_batch_format(batch: Dict[str, np.ndarray]) -> "Batch":
     """Convert to a Batch, packaging sparse features as a KJT."""
     import torch
 

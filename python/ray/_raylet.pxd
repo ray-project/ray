@@ -31,6 +31,7 @@ from ray.includes.common cimport (
     CConcurrencyGroup,
     CSchedulingStrategy,
     CLabelMatchExpressions,
+    CTensorTransport,
 )
 from ray.includes.libcoreworker cimport (
     ActorHandleSharedPtr,
@@ -125,7 +126,6 @@ cdef class CoreWorker:
         c_bool is_driver
         object async_thread
         object async_event_loop
-        object plasma_event_handler
         object job_config
         object current_runtime_env
         c_bool is_local_mode
@@ -161,6 +161,7 @@ cdef class CoreWorker:
             const CAddress &caller_address,
             c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *returns,
             ref_generator_id=*, # CObjectID
+            CTensorTransport c_tensor_transport=*,
         )
     cdef make_actor_handle(self, ActorHandleSharedPtr c_actor_handle,
                            c_bool weak_ref)

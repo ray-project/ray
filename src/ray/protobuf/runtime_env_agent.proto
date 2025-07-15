@@ -18,7 +18,12 @@ package ray.rpc;
 
 import "src/ray/protobuf/runtime_env_common.proto";
 
-import "src/ray/protobuf/agent_manager.proto";
+enum AgentRpcStatus {
+  // OK.
+  AGENT_RPC_STATUS_OK = 0;
+  // Failed.
+  AGENT_RPC_STATUS_FAILED = 1;
+}
 
 message GetOrCreateRuntimeEnvRequest {
   /// Json serialized [RuntimeEnv].

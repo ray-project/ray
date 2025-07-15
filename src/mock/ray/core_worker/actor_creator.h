@@ -33,7 +33,7 @@ class MockActorCreatorInterface : public ActorCreatorInterface {
                const rpc::ClientCallback<rpc::CreateActorReply> &callback),
               (override));
   MOCK_METHOD(Status,
-              AsyncRestartActor,
+              AsyncRestartActorForLineageReconstruction,
               (const ActorID &actor_id,
                uint64_t num_restarts,
                gcs::StatusCallback callback),

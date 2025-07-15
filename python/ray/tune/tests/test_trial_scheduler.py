@@ -15,11 +15,10 @@ import pytest
 import ray
 from ray import tune
 from ray.air.constants import TRAINING_ITERATION
-from ray.tune import Checkpoint, CheckpointConfig
 from ray.train._internal.checkpoint_manager import _CheckpointManager
 from ray.train._internal.session import _FutureTrainingResult, _TrainingResult
 from ray.train._internal.storage import StorageContext
-from ray.tune import PlacementGroupFactory, Trainable
+from ray.tune import Checkpoint, CheckpointConfig, PlacementGroupFactory, Trainable
 from ray.tune.experiment import Trial
 from ray.tune.experiment.trial import _TemporaryTrialState
 from ray.tune.schedulers import (

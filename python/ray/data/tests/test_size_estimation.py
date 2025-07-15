@@ -59,11 +59,11 @@ def test_arrow_size_diff_values(ray_start_regular_shared):
     for _ in range(13000):
         b.add(ARROW_LARGE_VALUE)
     assert_close(b.get_estimated_memory_usage(), 130131680)
-    assert b._num_compactions == 2
+    assert b._num_compactions == 0
     for _ in range(4000):
         b.add(ARROW_LARGE_VALUE)
     assert_close(b.get_estimated_memory_usage(), 170129189)
-    assert b._num_compactions == 3
+    assert b._num_compactions == 1
     assert b.build().num_rows == 17112
 
 

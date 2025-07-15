@@ -8,11 +8,10 @@ import pytest
 import ray
 from ray.air.constants import TRAINING_ITERATION
 from ray.air.execution import FixedResourceManager
-from ray.tune import CheckpointConfig
 from ray.train import ScalingConfig
 from ray.train._internal.storage import StorageContext
 from ray.train.tests.util import mock_storage_context
-from ray.tune import Trainable, register_trainable
+from ray.tune import CheckpointConfig, Trainable, register_trainable
 from ray.tune.execution.tune_controller import TuneController
 from ray.tune.experiment import Trial
 
