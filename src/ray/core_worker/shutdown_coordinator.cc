@@ -236,7 +236,6 @@ void ShutdownCoordinator::ExecuteWorkerShutdown(bool force_shutdown,
   }
 }
 
-
 std::string ShutdownCoordinator::GetExitTypeString() const {
   switch (GetReason()) {
   case ShutdownReason::kIdleTimeout:

@@ -243,7 +243,7 @@ bool CoreWorkerShutdownExecutor::ShouldWorkerIdleExit() const {
 }
 
 void CoreWorkerShutdownExecutor::DisconnectServices(const std::string &exit_type,
-                                                        const std::string &detail) {
+                                                    const std::string &detail) {
   core_worker_->RecordMetrics();
 
   if (core_worker_->options_.worker_type == WorkerType::DRIVER &&
