@@ -6,6 +6,7 @@ from google.protobuf.descriptor import FieldDescriptor
 from google.protobuf.message import Message
 
 from ray import cloudpickle
+from ray._common import ray_option_utils
 from ray._common.pydantic_compat import (
     BaseModel,
     Field,
@@ -16,7 +17,6 @@ from ray._common.pydantic_compat import (
     validator,
 )
 from ray._common.utils import resources_from_ray_options
-from ray._private import ray_option_utils
 from ray._private.serialization import pickle_dumps
 from ray.serve._private.constants import (
     DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S,
