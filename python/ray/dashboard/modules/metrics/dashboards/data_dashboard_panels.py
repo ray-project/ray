@@ -659,6 +659,20 @@ DATA_GRAFANA_PANELS = [
         stack=False,
     ),
     # Ray Data Metrics (Miscellaneous)
+    Panel(
+        id=47,
+        title="Scheduling Loop Duration",
+        description=("Duration of the scheduling loop in seconds."),
+        unit="seconds",
+        targets=[
+            Target(
+                expr="sum(ray_data_sched_loop_duration_s{{{global_filters}}}) by (dataset)",
+                legend="Scheduling Loop Duration: {{dataset}}",
+            )
+        ],
+        fill=0,
+        stack=False,
+    ),
 ]
 
 ids = []
