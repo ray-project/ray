@@ -734,7 +734,13 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
       },
       push_error_callback,
       RayConfig::instance().max_lineage_bytes(),
-      *task_event_buffer_);
+      *task_event_buffer_,
+      /*get_actor_rpc_client_callback=*/
+      [this](const ActorID &actor_id) {
+        auto addr = actor_task_submitter_->GetActorAddress(actor_id);
+        RAY_CHECK(addr.has_value()) << "Actor address not found for actor " << actor_id;
+        return core_worker_client_pool_->GetOrConnect(addr.value());
+      });
 
   // Create an entry for the driver task in the task table. This task is
   // added immediately with status RUNNING. This allows us to push errors
@@ -3839,8 +3845,12 @@ Status CoreWorker::GetAndPinArgsForExecutor(const TaskSpecification &task,
       // Python workers need this copy to pass test case
       // test_inline_arg_memory_corruption.
       bool copy_data = options_.language == Language::PYTHON;
-      args->push_back(std::make_shared<RayObject>(
-          std::move(data), std::move(metadata), task.ArgInlinedRefs(i), copy_data));
+      rpc::TensorTransport tensor_transport = task.ArgTensorTransport(i);
+      args->push_back(std::make_shared<RayObject>(std::move(data),
+                                                  std::move(metadata),
+                                                  task.ArgInlinedRefs(i),
+                                                  copy_data,
+                                                  tensor_transport));
       auto &arg_ref = arg_refs->emplace_back();
       arg_ref.set_object_id(task.ArgObjectIdBinary(i));
       // The task borrows all ObjectIDs that were serialized in the inlined
@@ -4945,6 +4955,14 @@ void CoreWorker::HandlePlasmaObjectReady(rpc::PlasmaObjectReadyRequest request,
     // to be ready).
     callback();
   }
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
+void CoreWorker::HandleFreeActorObject(rpc::FreeActorObjectRequest request,
+                                       rpc::FreeActorObjectReply *reply,
+                                       rpc::SendReplyCallback send_reply_callback) {
+  ObjectID object_id = ObjectID::FromBinary(request.object_id());
+  options_.free_actor_object_callback(object_id);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 

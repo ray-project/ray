@@ -1679,6 +1679,86 @@ py_test(
 )
 
 # SAC
+# MountainCar
+py_test(
+    name = "learning_tests_mountaincar_sac",
+    size = "large",
+    srcs = ["tuned_examples/sac/mountaincar_sac.py"],
+    args = [
+        "--as-test",
+        "--enable-new-api-stack",
+    ],
+    main = "tuned_examples/sac/mountaincar_sac.py",
+    tags = [
+        "exclusive",
+        "learning_tests",
+        "learning_tests_discrete",
+        "team:rllib",
+        "torch_only",
+    ],
+)
+
+py_test(
+    name = "learning_tests_mountaincar_sac_gpu",
+    size = "large",
+    srcs = ["tuned_examples/sac/mountaincar_sac.py"],
+    args = [
+        "--as-test",
+        "--enable-new-api-stack",
+        "--num-learners=1",
+        "--num-gpus-per-learner=1",
+    ],
+    main = "tuned_examples/sac/mountaincar_sac.py",
+    tags = [
+        "exclusive",
+        "gpu",
+        "learning_tests",
+        "learning_tests_discrete",
+        "team:rllib",
+        "torch_only",
+    ],
+)
+
+py_test(
+    name = "learning_tests_mountaincar_sac_multi_cpu",
+    size = "large",
+    srcs = ["tuned_examples/sac/mountaincar_sac.py"],
+    args = [
+        "--as-test",
+        "--enable-new-api-stack",
+        "--num-learners=2",
+    ],
+    main = "tuned_examples/sac/mountaincar_sac.py",
+    tags = [
+        "exclusive",
+        "learning_tests",
+        "learning_tests_discrete",
+        "team:rllib",
+        "torch_only",
+    ],
+)
+
+py_test(
+    name = "learning_tests_mountaincar_sac_multi_gpu",
+    size = "large",
+    srcs = ["tuned_examples/sac/mountaincar_sac.py"],
+    args = [
+        "--as-test",
+        "--enable-new-api-stack",
+        "--num-learners=2",
+        "--num-gpus-per-learner=1",
+    ],
+    main = "tuned_examples/sac/mountaincar_sac.py",
+    tags = [
+        "exclusive",
+        "learning_tests",
+        "learning_tests_discrete",
+        "multi_gpu",
+        "team:rllib",
+        "torch_only",
+    ],
+)
+
 # Pendulum
 py_test(
     name = "learning_tests_pendulum_sac",
@@ -2259,16 +2339,6 @@ py_test(
     name = "env/wrappers/tests/test_group_agents_wrapper",
     size = "small",
     srcs = ["env/wrappers/tests/test_group_agents_wrapper.py"],
-    tags = [
-        "env",
-        "team:rllib",
-    ],
-)
-
-py_test(
-    name = "env/wrappers/tests/test_unity3d_env",
-    size = "small",
-    srcs = ["env/wrappers/tests/test_unity3d_env.py"],
     tags = [
         "env",
         "team:rllib",
@@ -3857,14 +3927,31 @@ py_test(
 )
 
 py_test(
-    name = "examples/connectors/multi_agent_with_different_observation_spaces",
+    name = "examples/connectors/multi_agent_observation_preprocessor",
     size = "medium",
-    srcs = ["examples/connectors/multi_agent_with_different_observation_spaces.py"],
+    srcs = ["examples/connectors/multi_agent_observation_preprocessor.py"],
     args = [
         "--enable-new-api-stack",
         "--num-agents=2",
+        "--algo=PPO",
     ],
-    main = "examples/connectors/multi_agent_with_different_observation_spaces.py",
+    main = "examples/connectors/multi_agent_observation_preprocessor.py",
+    tags = [
+        "examples",
+        "exclusive",
+        "team:rllib",
+    ],
+)
+
+py_test(
+    name = "examples/connectors/single_agent_observation_preprocessor",
+    size = "medium",
+    srcs = ["examples/connectors/single_agent_observation_preprocessor.py"],
+    args = [
+        "--enable-new-api-stack",
+        "--algo=PPO",
+    ],
+    main = "examples/connectors/single_agent_observation_preprocessor.py",
     tags = [
         "examples",
         "exclusive",

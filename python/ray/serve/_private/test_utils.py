@@ -295,11 +295,20 @@ def check_num_replicas_gte(
 
 
 def check_num_replicas_eq(
-    name: str, target: int, app_name: str = SERVE_DEFAULT_APP_NAME
+    name: str,
+    target: int,
+    app_name: str = SERVE_DEFAULT_APP_NAME,
+    use_controller: bool = False,
 ) -> int:
     """Check if num replicas is == target."""
 
-    assert get_num_alive_replicas(name, app_name) == target
+    if use_controller:
+        dep = serve.status().applications[app_name].deployments[name]
+        num_running_replicas = dep.replica_states.get(ReplicaState.RUNNING, 0)
+        assert num_running_replicas == target
+    else:
+        assert get_num_alive_replicas(name, app_name) == target
+
     return True
 
 
@@ -709,6 +718,8 @@ def get_application_urls(
     protocol: Union[str, RequestProtocol] = RequestProtocol.HTTP,
     app_name: str = SERVE_DEFAULT_APP_NAME,
     use_localhost: bool = False,
+    is_websocket: bool = False,
+    exclude_route_prefix: bool = False,
 ) -> List[str]:
     """Get the URL of the application.
 
@@ -718,13 +729,18 @@ def get_application_urls(
         use_localhost: Whether to use localhost instead of the IP address.
             Set to True if Serve deployments are not exposed publicly or
             for low latency benchmarking.
-
+        is_websocket: Whether the url should be served as a websocket.
+        exclude_route_prefix: The route prefix to exclude from the application.
     Returns:
         The URLs of the application.
     """
     client = _get_global_client()
     serve_details = client.get_serve_details()
+    if app_name not in serve_details["applications"]:
+        return [client.root_url]
     route_prefix = serve_details["applications"][app_name]["route_prefix"]
+    if exclude_route_prefix:
+        route_prefix = ""
     if isinstance(protocol, str):
         protocol = RequestProtocol(protocol)
     target_groups: List[TargetGroup] = ray.get(
@@ -735,6 +751,7 @@ def get_application_urls(
         for target_group in target_groups
         if target_group.protocol == protocol
     ]
+
     if len(target_groups) == 0:
         raise ValueError(
             f"No target group found for app {app_name} with protocol {protocol} and route prefix {route_prefix}"
@@ -744,8 +761,13 @@ def get_application_urls(
         for target in target_group.targets:
             ip = "localhost" if use_localhost else target.ip
             if protocol == RequestProtocol.HTTP:
-                url = f"http://{ip}:{target.port}{route_prefix}"
+                scheme = "ws" if is_websocket else "http"
+                url = f"{scheme}://{ip}:{target.port}{route_prefix}"
             elif protocol == RequestProtocol.GRPC:
+                if is_websocket:
+                    raise ValueError(
+                        "is_websocket=True is not supported with gRPC protocol."
+                    )
                 url = f"{ip}:{target.port}"
             else:
                 raise ValueError(f"Unsupported protocol: {protocol}")
@@ -758,6 +780,8 @@ def get_application_url(
     protocol: Union[str, RequestProtocol] = RequestProtocol.HTTP,
     app_name: str = SERVE_DEFAULT_APP_NAME,
     use_localhost: bool = False,
+    is_websocket: bool = False,
+    exclude_route_prefix: bool = False,
 ) -> str:
     """Get the URL of the application.
 
@@ -767,8 +791,13 @@ def get_application_url(
         use_localhost: Whether to use localhost instead of the IP address.
             Set to True if Serve deployments are not exposed publicly or
             for low latency benchmarking.
-
+        is_websocket: Whether the url should be served as a websocket.
+        exclude_route_prefix: The route prefix to exclude from the application.
     Returns:
         The URL of the application. If there are multiple URLs, a random one is returned.
     """
-    return random.choice(get_application_urls(protocol, app_name, use_localhost))
+    return random.choice(
+        get_application_urls(
+            protocol, app_name, use_localhost, is_websocket, exclude_route_prefix
+        )
+    )
