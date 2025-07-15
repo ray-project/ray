@@ -466,23 +466,3 @@ Content-Type: application/json
    serve.llm.LLMServer
    serve.llm.LLMRouter
 ```
-
-### OpenAI API Models
-
-```{eval-rst}
-
-.. autosummary::
-   :nosignatures:
-   :toctree: doc/
-   :template: autosummary/autopydantic_show_json.rst
-
-   serve.llm.openai_api_models.ChatCompletionRequest
-   serve.llm.openai_api_models.CompletionRequest
-   serve.llm.openai_api_models.EmbeddingRequest
-   serve.llm.openai_api_models.ChatCompletionStreamResponse
-   serve.llm.openai_api_models.ChatCompletionResponse
-   serve.llm.openai_api_models.CompletionStreamResponse
-   serve.llm.openai_api_models.CompletionResponse
-   serve.llm.openai_api_models.EmbeddingResponse
-   serve.llm.openai_api_models.ErrorResponse
-```

@@ -11,6 +11,11 @@ import yaml
 
 import ray
 from ray import serve
+from ray.llm._internal.serve.configs.openai_api_models import (
+    ChatCompletionRequest,
+    CompletionRequest,
+    EmbeddingCompletionRequest,
+)
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import (
     VLLMEngineConfig,
 )
@@ -21,6 +26,8 @@ from ray.serve.llm import (
     ModelLoadingConfig,
     build_openai_app,
 )
+
+MOCK_MODEL_ID = "mock-model"
 
 
 @pytest.fixture
@@ -60,6 +67,50 @@ def llm_config(model_pixtral_12b, disable_placement_bundles):
         runtime_env={},
         log_engine_metrics=False,
     )
+
+
+@pytest.fixture
+def mock_llm_config():
+    """LLM config for mock engine testing."""
+    return LLMConfig(
+        model_loading_config=ModelLoadingConfig(model_id="mock-model"),
+        runtime_env={},
+        log_engine_metrics=False,
+    )
+
+
+@pytest.fixture
+def mock_chat_request(stream, max_tokens):
+    """Fixture for creating chat completion requests for mock testing."""
+    return ChatCompletionRequest(
+        model=MOCK_MODEL_ID,
+        messages=[{"role": "user", "content": "Hello, world!"}],
+        max_tokens=max_tokens,
+        stream=stream,
+    )
+
+
+@pytest.fixture
+def mock_completion_request(stream, max_tokens):
+    """Fixture for creating text completion requests for mock testing."""
+    return CompletionRequest(
+        model=MOCK_MODEL_ID,
+        prompt="Complete this text:",
+        max_tokens=max_tokens,
+        stream=stream,
+    )
+
+
+@pytest.fixture
+def mock_embedding_request(dimensions):
+    """Fixture for creating embedding requests for mock testing."""
+    request = EmbeddingCompletionRequest(
+        model=MOCK_MODEL_ID,
+        input="Text to embed",
+    )
+    if dimensions:
+        request.dimensions = dimensions
+    return request
 
 
 def get_test_model_path(yaml_file: str) -> pathlib.Path:

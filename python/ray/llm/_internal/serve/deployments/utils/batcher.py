@@ -4,10 +4,6 @@ from typing import AsyncGenerator, Generic, Iterable, List, Optional, TypeVar
 from ray.llm._internal.serve.configs.constants import (
     MODEL_RESPONSE_BATCH_TIMEOUT_MS,
 )
-from ray.llm._internal.serve.configs.server_models import (
-    BatchedLLMRawResponse,
-    LLMRawResponse,
-)
 from ray.llm._internal.serve.observability.logging import get_logger
 
 logger = get_logger(__name__)
@@ -16,11 +12,11 @@ T = TypeVar("T")
 
 
 class Batcher(Generic[T]):
-    """This class batches multiple LLMRawResponses from a generator into a
-    single response, at some time interval.
+    """This class batches multiple responses from a generator into a list of
+    single responses, at some time interval.
 
     Args:
-        generator: the async generator that this class pulls LLMRawResponses
+        generator: the async generator that this class pulls responses
             from.
         interval_ms: the interval at which this class yields the current batch.
             If None, this class will batch all responses from the generator
@@ -103,15 +99,3 @@ class Batcher(Generic[T]):
         except asyncio.QueueEmpty:
             pass
         return results
-
-
-class LLMRawResponseBatcher(Batcher):
-    """This class batches multiple LLMRawResponses into a single BatchedLLMRawResponse."""
-
-    def _merge_results(self, results: List[LLMRawResponse]) -> BatchedLLMRawResponse:
-        output: BatchedLLMRawResponse = BatchedLLMRawResponse.merge_stream(*results)  # type: ignore
-        return output
-
-
-class OpenAIResponseBatcher(Batcher):
-    """This class batches multiple OpenAI responses into a single OpenAI response."""

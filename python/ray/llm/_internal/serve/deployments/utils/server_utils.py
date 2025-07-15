@@ -1,21 +1,16 @@
 import asyncio
-import base64
-import struct
 import traceback
 from functools import partial
-from typing import Awaitable, Callable, List, TypeVar
+from typing import Awaitable, Callable, TypeVar
 
 from fastapi import HTTPException, status
 from httpx import HTTPStatusError as HTTPXHTTPStatusError
 from pydantic import ValidationError as PydanticValidationError
 
 from ray import serve
-from ray.llm._internal.serve.configs.openai_api_models import OpenAIHTTPException
-from ray.llm._internal.serve.configs.openai_api_models_patch import (
+from ray.llm._internal.serve.configs.openai_api_models import (
     ErrorResponse,
-)
-from ray.llm._internal.serve.configs.server_models import (
-    LLMRawResponse,
+    OpenAIHTTPException,
 )
 from ray.llm._internal.serve.observability.logging import get_logger
 
@@ -78,7 +73,7 @@ def _extract_message(e):
 def get_response_for_error(
     e: Exception,
     request_id: str,
-) -> LLMRawResponse:
+) -> ErrorResponse:
     if isinstance(e, HTTPException):
         status_code = e.status_code
     elif isinstance(e, OpenAIHTTPException):
@@ -116,13 +111,11 @@ def get_response_for_error(
         internal_message += f" (Request ID: {request_id})"
 
     error_response = ErrorResponse(
-        message=message,
+        message=f"Message: {message}, Internal exception: {internal_message}, original exception: {str(e)}",
         code=status_code,
-        internal_message=internal_message,
         type=exc_type,
-        original_exception=e,
     )
-    return LLMRawResponse(error=error_response)
+    return error_response
 
 
 def get_serve_request_id() -> str:
@@ -140,10 +133,3 @@ def get_model_request_id(model: str):
 def replace_prefix(model: str) -> str:
     """Replace -- with / in model name to handle slashes within the URL path segment"""
     return model.replace("--", "/")
-
-
-def floats_to_base64(float_list: List[float]) -> str:
-    """Encode a list of floats as base64 as needed for the embedding API response."""
-    binary = struct.pack(f"{len(float_list)}f", *float_list)
-    encoded = base64.b64encode(binary).decode("utf-8")
-    return encoded

@@ -86,7 +86,7 @@ class TestRouter:
             role = response.choices[0].message.role
 
         assert role == "assistant"
-        assert text == "".join([f"test_{i} " for i in range(n_tokens)])
+        assert text.strip() == " ".join([f"test_{i}" for i in range(n_tokens)])
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("stream_batching_interval_ms", [None, 0, 10000])
@@ -112,8 +112,8 @@ class TestRouter:
             text = response.choices[0].text
 
         # The mock engine produces "test_0 test_1 test_2 ..." pattern
-        expected_text = "".join([f"test_{i} " for i in range(n_tokens)])
-        assert text == expected_text
+        expected_text = " ".join([f"test_{i}" for i in range(n_tokens)])
+        assert text.strip() == expected_text
 
     def test_router_with_num_router_replicas_config(self):
         """Test the router with num_router_replicas config."""
