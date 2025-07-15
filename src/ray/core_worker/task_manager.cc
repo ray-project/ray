@@ -1185,10 +1185,11 @@ void TaskManager::FailPendingTask(const TaskID &task_id,
     RAY_CHECK(it->second.IsPending())
         << "Tried to fail task that was not pending " << task_id;
 
+    spec = it->second.spec;
+
     // For streaming generators, we need to handle the case where the task
     // can fail without ever succeeding and have yielded intermediate
     // objects to the user.
-    spec = it->second.spec;
     if (spec.IsStreamingGenerator() && first_execution) {
       store_in_plasma_ids = it->second.recon_ret_ids_before_first_successful_exec;
     }
@@ -1438,9 +1439,9 @@ void TaskManager::MarkTaskReturnObjectsFailed(
     const absl::flat_hash_set<ObjectID> &store_in_plasma_ids) {
   const TaskID task_id = spec.TaskId();
   RayObject error(error_type, ray_error_info);
-  int64_t num_returns = spec.NumReturns();
   RAY_LOG(DEBUG) << "Treat task as failed. task_id: " << task_id
                  << ", error_type: " << ErrorType_Name(error_type);
+  int64_t num_returns = spec.NumReturns();
   for (int i = 0; i < num_returns; i++) {
     const auto object_id = ObjectID::FromIndex(task_id, /*index=*/i + 1);
     if (store_in_plasma_ids.contains(object_id)) {
@@ -1475,18 +1476,19 @@ void TaskManager::MarkTaskReturnObjectsFailed(
     // for more details.
     auto num_streaming_generator_returns = spec.NumStreamingGeneratorReturns();
 
-    // If there has not been a successful execution yet and we've lost the node that was
-    // executing the streaming task, we at least need to add errors
-    // to the correct store to unblock pending ray.get and pull manager calls.
     {
       absl::MutexLock object_ref_stream_mutex(&object_ref_stream_ops_mu_);
       auto object_ref_stream_it = object_ref_streams_.find(generator_id);
       if (object_ref_stream_it != object_ref_streams_.end()) {
+        // If there isn't a successful execution yet, num_streaming_generator_returns is 0
+        // so we want to mark the object that have been consumed by the user but could not
+        // be recovered as failed.
         num_streaming_generator_returns = std::max(
             num_streaming_generator_returns,
             static_cast<size_t>(object_ref_stream_it->second.LastConsumedIndex()) + 1);
       }
     }
+
     for (size_t i = 0; i < num_streaming_generator_returns; i++) {
       const ObjectID generator_return_id = spec.StreamingGeneratorReturnId(i);
       if (store_in_plasma_ids.contains(generator_return_id)) {
