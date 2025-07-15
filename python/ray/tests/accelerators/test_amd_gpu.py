@@ -87,8 +87,10 @@ def test_hip_cuda_env_var_get_current_process_visible_accelerator_ids(monkeypatc
         "1",
         "2",
     ]
-    del os.environ["HIP_VISIBLE_DEVICES"]
-    del os.environ["CUDA_VISIBLE_DEVICES"]
+
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "0,1,3")
+    with pytest.raises(ValueError):
+        AMDGPUAcceleratorManager.get_current_process_visible_accelerator_ids()
 
 
 def test_set_current_process_visible_accelerator_ids():
