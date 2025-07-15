@@ -324,7 +324,7 @@ class AlgorithmConfig(_Config):
         self.num_env_runners = 0
         self.create_local_env_runner = True
         self.num_envs_per_env_runner = 1
-        # TODO (sven): Once new ormsgpack system in place, reaplce the string
+        # TODO (sven): Once new ormsgpack system in place, replace the string
         #  with proper `gym.envs.registration.VectorizeMode.SYNC`.
         self.gym_env_vectorize_mode = "SYNC"
         self.num_cpus_per_env_runner = 1
@@ -1058,9 +1058,10 @@ class AlgorithmConfig(_Config):
 
         if env is not None:
             obs_space = getattr(env, "single_observation_space", env.observation_space)
-        else:
-            assert spaces is not None
+        elif spaces is not None and INPUT_ENV_SINGLE_SPACES in spaces:
             obs_space = spaces[INPUT_ENV_SINGLE_SPACES][0]
+        else:
+            obs_space = self.observation_space
         if obs_space is None and self.is_multi_agent:
             obs_space = gym.spaces.Dict(
                 {
@@ -1070,9 +1071,10 @@ class AlgorithmConfig(_Config):
             )
         if env is not None:
             act_space = getattr(env, "single_action_space", env.action_space)
-        else:
-            assert spaces is not None
+        elif spaces is not None and INPUT_ENV_SINGLE_SPACES in spaces:
             act_space = spaces[INPUT_ENV_SINGLE_SPACES][1]
+        else:
+            act_space = self.action_space
         if act_space is None and self.is_multi_agent:
             act_space = gym.spaces.Dict(
                 {
@@ -1162,9 +1164,10 @@ class AlgorithmConfig(_Config):
 
         if env is not None:
             obs_space = getattr(env, "single_observation_space", env.observation_space)
-        else:
-            assert spaces is not None
+        elif spaces is not None and INPUT_ENV_SINGLE_SPACES in spaces:
             obs_space = spaces[INPUT_ENV_SINGLE_SPACES][0]
+        else:
+            obs_space = self.observation_space
         if obs_space is None and self.is_multi_agent:
             obs_space = gym.spaces.Dict(
                 {
@@ -1174,9 +1177,10 @@ class AlgorithmConfig(_Config):
             )
         if env is not None:
             act_space = getattr(env, "single_action_space", env.action_space)
-        else:
-            assert spaces is not None
+        elif spaces is not None and INPUT_ENV_SINGLE_SPACES in spaces:
             act_space = spaces[INPUT_ENV_SINGLE_SPACES][1]
+        else:
+            act_space = self.action_space
         if act_space is None and self.is_multi_agent:
             act_space = gym.spaces.Dict(
                 {
@@ -4417,13 +4421,25 @@ class AlgorithmConfig(_Config):
                 )
             rl_module_spec = rl_module_spec[DEFAULT_MODULE_ID]
 
-        if spaces is not None:
-            rl_module_spec.observation_space = spaces[DEFAULT_MODULE_ID][0]
-            rl_module_spec.action_space = spaces[DEFAULT_MODULE_ID][1]
-        elif env is not None:
-            if isinstance(env, gym.vector.VectorEnv):
-                rl_module_spec.observation_space = env.single_observation_space
-            rl_module_spec.action_space = env.single_action_space
+        if rl_module_spec.observation_space is None:
+            if spaces is not None:
+                rl_module_spec.observation_space = spaces[DEFAULT_MODULE_ID][0]
+            elif env is not None and isinstance(env, gym.Env):
+                rl_module_spec.observation_space = getattr(
+                    env, "single_observation_space", env.observation_space
+                )
+            else:
+                rl_module_spec.observation_space = self.observation_space
+
+        if rl_module_spec.action_space is None:
+            if spaces is not None:
+                rl_module_spec.action_space = spaces[DEFAULT_MODULE_ID][1]
+            elif env is not None and isinstance(env, gym.Env):
+                rl_module_spec.action_space = getattr(
+                    env, "single_action_space", env.action_space
+                )
+            else:
+                rl_module_spec.action_space = self.action_space
 
         # If module_config_dict is not defined, set to our generic one.
         if rl_module_spec.model_config is None:
