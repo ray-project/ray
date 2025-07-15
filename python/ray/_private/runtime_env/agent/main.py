@@ -1,7 +1,6 @@
 import argparse
 import logging
 import os
-import random
 import sys
 import time
 from typing import Optional
@@ -229,10 +228,10 @@ if __name__ == "__main__":
 
     last_exception: Optional[OSError] = None
 
-    # When starting the server, you can get an OS error for port conflicts.
-    # This usually happens in testing. The retries with exponential backoff
-    # eliminate false positives caused by a delay in ports being freed
-    # between tests.
+    # There can be a port conflict when starting the server. This raises an
+    # OSError. In CI testing, there are false positives when the port hasn't
+    # been freed from the previous test. Retries with exponential backoff
+    # can eliminate this.
     max_retries: int = 5
     base_delay: float = 0.1
     started: bool = False
@@ -249,7 +248,7 @@ if __name__ == "__main__":
         except OSError as e:
             last_exception = e
             if attempt < max_retries:
-                delay = base_delay * (2**attempt) + random.uniform(0, 0.1)
+                delay = base_delay * (2**attempt)
                 logger.warning(
                     f"Failed to bind to port {args.runtime_env_agent_port} (attempt {attempt + 1}/"
                     f"{max_retries + 1}). Retrying in {delay:.2f}s. Error: {e}"
