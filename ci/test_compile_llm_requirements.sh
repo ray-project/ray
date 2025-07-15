@@ -18,9 +18,12 @@ trap cleanup EXIT
 echo "Created temporary directory: $TEMP_DIR"
 
 # Create backup copies of req files to reference to
-for TYPE in rayllm_test ray_test ray rayllm; do
-    for VARIANT in cpu cu121 cu128; do
-        cp ./python/requirements_compiled_${TYPE}_py311_${VARIANT}.txt "$TEMP_DIR/requirements_compiled_${TYPE}_py311_${VARIANT}_backup.txt"
+LOCK_TYPES=(rayllm_test ray_test ray rayllm)
+VARIANTS=(cpu cu121 cu128)
+
+for LOCK_TYPE in "${LOCK_TYPES[@]}"; do
+    for VARIANT in "${VARIANTS[@]}"; do
+        cp ./python/requirements_compiled_${LOCK_TYPE}_py311_${VARIANT}.txt "$TEMP_DIR/requirements_compiled_${LOCK_TYPE}_py311_${VARIANT}_backup.txt"
     done
 done
 
