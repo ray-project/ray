@@ -3,13 +3,15 @@ import json
 import sys
 from types import SimpleNamespace
 from typing import List
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import pytest
 
+from ray.llm._internal.serve.configs.openai_api_models import ChatCompletionRequest
 from ray.llm._internal.serve.configs.server_models import (
     FinishReason,
     LLMConfig,
+    ModelLoadingConfig,
 )
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_engine import (
     VLLMEngine,
@@ -18,6 +20,8 @@ from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import (
     VLLMGenerationRequest,
     VLLMSamplingParams,
 )
+from ray.llm.tests.serve.mocks.mock_vllm_engine import MockPDDisaggVLLMEngine
+from ray.serve.llm.openai_api_models import CompletionRequest
 
 
 class FakeVLLMEngine:
@@ -94,6 +98,14 @@ def get_fake_engine_and_request(llm_config: LLMConfig, expected_out: List[str]):
 
 class TestVLLMEngine:
     """Test the VLLMEngine."""
+
+    # Here we
+    # 1. want to skip GPU placement in cpu test cases (https://github.com/ray-project/ray/blob/945b9d5dd55c9215d0aeb94a66cfda3b71c2fd43/python/ray/llm/_internal/serve/deployments/llm/vllm/vllm_engine.py#L330)
+    # 2. cannot set it to None, otherwise it defaults to use_gpu=True (https://github.com/ray-project/ray/blob/c7e07328c9efbd0d67bf2da4fa098d6492478ef4/python/ray/llm/_internal/serve/deployments/llm/vllm/vllm_models.py#L159)
+    # 3. cannot use "CPU" or anything random, which violates the check (https://github.com/ray-project/ray/blob/945b9d5dd55c9215d0aeb94a66cfda3b71c2fd43/python/ray/llm/_internal/serve/configs/server_models.py#L325)
+    # so we select a non-NVIDIA type here: Intel-GAUDI.
+    # Use str() such that it's not a literal string which violates pydantic check.
+    accelerator_type = str("Intel-GAUDI")
 
     @pytest.mark.asyncio
     async def test_generate(self, llm_config):
@@ -193,6 +205,213 @@ class TestVLLMEngine:
         guided_json = json.loads(parsed_params.guided_decoding.json)
         assert guided_json == sampling_params.response_format.json_schema
         assert getattr(parsed_params, "response_format", None) is None
+
+    @pytest.mark.asyncio
+    async def test_chat_streaming(
+        self,
+        # create_server is a fixture defined in llm.tests.serve.conftest.py
+        create_server,
+        # model_pixtral_12b is a fixture that only contains config files without weights
+        model_pixtral_12b,
+        vllm_cpu_platform,
+    ):
+        """Test chat completion in streaming mode."""
+        with patch("vllm.platforms.current_platform", vllm_cpu_platform()):  # type: ignore
+            llm_config = LLMConfig(
+                accelerator_type=self.accelerator_type,
+                model_loading_config=ModelLoadingConfig(
+                    model_id=model_pixtral_12b,
+                ),
+                experimental_configs={
+                    # Maximum batching
+                    "stream_batching_interval_ms": 10000,
+                },
+            )
+
+            server = await create_server(llm_config, engine_cls=MockPDDisaggVLLMEngine)
+
+        # Create a chat completion request
+        request = ChatCompletionRequest(
+            model=model_pixtral_12b,
+            messages=[dict(role="user", content="Hello")],
+            stream=True,
+            max_tokens=5,
+        )
+
+        # Get the response stream
+        response_stream = await server.chat(request)
+
+        # Collect responses from the stream
+        responses = []
+        async for response in response_stream:
+            responses.append(response)
+
+        # Each response should be an iterator over ChatCompletionStreamResponse
+        # Check that we got responses
+        assert len(responses) > 0
+
+        text = ""
+        role = None
+        for response in responses:
+            assert isinstance(response, list)
+            for chunk in response:
+                if chunk.choices[0].delta.role is not None and role is None:
+                    role = chunk.choices[0].delta.role
+
+                text += chunk.choices[0].delta.content
+
+        assert role == "assistant"
+        # What mock vllm engine returns
+        assert (
+            text
+            == "mock_pd_client_response_0 mock_pd_client_response_1 mock_pd_client_response_2 mock_pd_client_response_3 mock_pd_client_response_4 "
+        )
+
+    @pytest.mark.asyncio
+    async def test_chat_non_streaming(
+        self,
+        # create_server is a fixture defined in llm.tests.serve.conftest.py
+        create_server,
+        # model_pixtral_12b is a fixture that only contains config files without weights
+        model_pixtral_12b,
+        vllm_cpu_platform,
+    ):
+        """Test non-streaming chat completion."""
+        with patch("vllm.platforms.current_platform", vllm_cpu_platform()):  # type: ignore
+            llm_config = LLMConfig(
+                accelerator_type=self.accelerator_type,
+                model_loading_config=ModelLoadingConfig(
+                    model_id=model_pixtral_12b,
+                ),
+            )
+
+            server = await create_server(llm_config, engine_cls=MockPDDisaggVLLMEngine)
+
+        # Create a chat completion request
+        request = ChatCompletionRequest(
+            model=model_pixtral_12b,
+            messages=[dict(role="user", content="Hello")],
+            stream=False,
+            max_tokens=5,
+        )
+
+        # Get the response
+        response_stream = await server.chat(request)
+
+        # Collect responses (should be just one)
+        responses = []
+        async for response in response_stream:
+            responses.append(response)
+
+        # Check that we got one response
+        assert len(responses) == 1
+        assert responses[0].choices[0].message.role == "assistant"
+        assert (
+            responses[0].choices[0].message.content
+            == "mock_pd_client_response_0 mock_pd_client_response_1 mock_pd_client_response_2 mock_pd_client_response_3 mock_pd_client_response_4 "
+        )
+        assert responses[0].choices[0].finish_reason == "stop"
+
+    @pytest.mark.parametrize("prompt", ["Hello", [1, 2, 3]])
+    @pytest.mark.asyncio
+    async def test_completions_streaming(
+        self,
+        # create_server is a fixture defined in llm.tests.serve.conftest.py
+        create_server,
+        # model_pixtral_12b is a fixture that only contains config files without weights
+        model_pixtral_12b,
+        vllm_cpu_platform,
+        prompt,
+    ):
+        """Test streaming text completion."""
+        with patch("vllm.platforms.current_platform", vllm_cpu_platform()):  # type: ignore
+            llm_config = LLMConfig(
+                accelerator_type=self.accelerator_type,
+                model_loading_config=ModelLoadingConfig(
+                    model_id=model_pixtral_12b,
+                ),
+                experimental_configs={
+                    # Maximum batching
+                    "stream_batching_interval_ms": 10000,
+                },
+            )
+
+            server = await create_server(llm_config, engine_cls=MockPDDisaggVLLMEngine)
+
+        # Create a completion request
+        request = CompletionRequest(
+            model=model_pixtral_12b,
+            prompt=prompt,
+            stream=True,
+            max_tokens=5,
+        )
+
+        # Get the response stream
+        response_stream = await server.completions(request)
+
+        # Collect responses from the stream
+        responses = []
+        async for response in response_stream:
+            responses.append(response)
+
+        # Check that we got responses
+        assert len(responses) > 0
+
+        text = ""
+        for response in responses:
+            assert isinstance(response, list)
+            for chunk in response:
+                text += chunk.choices[0].text
+
+        assert (
+            text
+            == "mock_pd_client_response_0 mock_pd_client_response_1 mock_pd_client_response_2 mock_pd_client_response_3 mock_pd_client_response_4 "
+        )
+
+    @pytest.mark.parametrize("prompt", ["Hello", [1, 2, 3]])
+    @pytest.mark.asyncio
+    async def test_completions_non_streaming(
+        self,
+        # create_server is a fixture defined in llm.tests.serve.conftest.py
+        create_server,
+        # model_pixtral_12b is a fixture that only contains config files without weights
+        model_pixtral_12b,
+        vllm_cpu_platform,
+        prompt,
+    ):
+        """Test non-streaming text completion."""
+        with patch("vllm.platforms.current_platform", vllm_cpu_platform()):  # type: ignore
+            llm_config = LLMConfig(
+                accelerator_type=self.accelerator_type,
+                model_loading_config=ModelLoadingConfig(
+                    model_id=model_pixtral_12b,
+                ),
+            )
+
+            server = await create_server(llm_config, engine_cls=MockPDDisaggVLLMEngine)
+
+        # Create a completion request
+        request = CompletionRequest(
+            model=model_pixtral_12b,
+            prompt=prompt,
+            stream=False,
+            max_tokens=5,
+        )
+
+        # Get the response
+        response_stream = await server.completions(request)
+
+        # Collect responses (should be just one)
+        responses = []
+        async for response in response_stream:
+            responses.append(response)
+
+        # Check that we got one response
+        assert len(responses) == 1
+        assert (
+            responses[0].choices[0].text
+            == "mock_pd_client_response_0 mock_pd_client_response_1 mock_pd_client_response_2 mock_pd_client_response_3 mock_pd_client_response_4 "
+        )
 
 
 if __name__ == "__main__":

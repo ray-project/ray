@@ -7,6 +7,7 @@ COPY python/requirements_*.txt ./
 
 ARG KVER="5.15.0-139-generic"
 ARG ROOT_DIR="/usr/local"
+ARG GDR_COPY_VER="2.4.1"
 ARG GDR_HOME="${ROOT_DIR}/gdrcopy"
 ARG UCX_HOME="${ROOT_DIR}/ucx"
 ARG NIXL_HOME="${ROOT_DIR}/nixl"
@@ -28,6 +29,9 @@ fi
 
 pip install --no-deps -r "requirements_compiled_rayllm_${PYTHON_CODE}_${CUDA_CODE}.txt"
 
+# https://buildkite.com/vllm/release/builds/6330
+pip install "vllm@https://wheels.vllm.ai/f56d2996ca89989f9d80cde60650684c53e4caae/vllm-1.0.0.dev-cp38-abi3-manylinux1_x86_64.whl"
+
 # Export installed packages
 $HOME/anaconda3/bin/pip freeze > /home/ray/pip-freeze.txt
 
@@ -48,7 +52,7 @@ sudo apt-get install -y kmod pkg-config librdmacm-dev
     echo "Installing GDRCopy"
     cd "${TEMP_DIR}"
     [[ -d "/lib/modules/${KVER}" ]] || sudo apt-get install linux-headers-${KVER} -y
-    NV_DRIVER_VERSION="570.153.02"
+    NV_DRIVER_VERSION="550.163.01"
     wget "https://us.download.nvidia.com/XFree86/Linux-x86_64/${NV_DRIVER_VERSION}/NVIDIA-Linux-x86_64-${NV_DRIVER_VERSION}.run" -q
     sh NVIDIA-Linux-x86_64-${NV_DRIVER_VERSION}.run -x
     sudo NVIDIA-Linux-x86_64-${NV_DRIVER_VERSION}/nvidia-installer \
@@ -59,9 +63,9 @@ sudo apt-get install -y kmod pkg-config librdmacm-dev
         --utility-prefix="/usr"
 
     (
-        wget "https://github.com/NVIDIA/gdrcopy/archive/refs/tags/v2.5.tar.gz" -q
-        tar xzf v2.5.tar.gz; rm v2.5.tar.gz
-        cd gdrcopy-2.5
+        wget "https://github.com/NVIDIA/gdrcopy/archive/refs/tags/v${GDR_COPY_VER}.tar.gz" -q
+        tar xzf v${GDR_COPY_VER}.tar.gz; rm v${GDR_COPY_VER}.tar.gz
+        cd gdrcopy-${GDR_COPY_VER}
         sudo make prefix=$GDR_HOME CUDA=$CUDA_HOME KVER=${KVER} all install
     )
 
@@ -106,16 +110,52 @@ sudo apt-get install -y kmod pkg-config librdmacm-dev
 
 (
     echo "Installing NIXL"
+    NIXL_VERSION="0.3.1"
     # NIXL needs meson pybind11 ninja, but should have been included in requirements_*.txt
     cd "${TEMP_DIR}"
-    wget "https://github.com/ai-dynamo/nixl/archive/refs/tags/0.2.0.tar.gz" -q
-    tar xzf 0.2.0.tar.gz; rm 0.2.0.tar.gz
-    cd nixl-0.2.0
-    meson setup build --prefix=${NIXL_HOME} -Ducx_path=${UCX_HOME}
-    cd build
-    ninja
-    sudo env "PATH=$PATH" ninja install
-    pip install --no-cache-dir nixl==0.2.0
+    wget "https://github.com/ai-dynamo/nixl/archive/refs/tags/${NIXL_VERSION}.tar.gz" -q
+    tar xzf ${NIXL_VERSION}.tar.gz; rm ${NIXL_VERSION}.tar.gz
+    (
+        cd nixl-${NIXL_VERSION}
+        meson setup build --prefix=${NIXL_HOME} -Ducx_path=${UCX_HOME}
+        cd build
+        ninja
+        sudo env "PATH=$PATH" ninja install
+        pip install --no-cache-dir nixl==${NIXL_VERSION}
+    )
+
+    echo "Installing NIXL benchmark"
+    sudo apt-get install -y libgflags-dev cmake
+    # ETCD c++
+    sudo apt-get install -y libboost-all-dev libssl-dev
+    sudo apt-get install -y libgrpc-dev \
+        libgrpc++-dev \
+        libprotobuf-dev \
+        protobuf-compiler-grpc
+    (
+        git clone https://github.com/microsoft/cpprestsdk.git
+        cd cpprestsdk
+        mkdir build && cd build
+        cmake .. -DCPPREST_EXCLUDE_WEBSOCKETS=ON
+        make -j$(nproc)
+        sudo env "PATH=$PATH" make install
+    )
+    (
+        git clone https://github.com/etcd-cpp-apiv3/etcd-cpp-apiv3.git
+        cd etcd-cpp-apiv3
+        mkdir build && cd build
+        cmake ..
+        make -j$(nproc)
+        sudo env "PATH=$PATH" make install
+    )
+    # End ETCD c++
+    (
+        cd nixl-${NIXL_VERSION}/benchmark/nixlbench
+        meson setup build -Dnixl_path=${NIXL_HOME}
+        cd build
+        sudo env "PATH=$PATH" ninja
+        sudo cp nixlbench "${NIXL_HOME}/bin/"
+    )
 )
 sudo rm -rf "${TEMP_DIR}"
 
@@ -124,3 +164,4 @@ EOF
 ENV PATH="${UCX_HOME}/bin:${NIXL_HOME}/bin:${PATH}"
 ENV LD_LIBRARY_PATH="${UCX_HOME}/lib:${NIXL_HOME}/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH}"
 ENV NIXL_PLUGIN_DIR="${NIXL_HOME}/lib/x86_64-linux-gnu/plugins/"
+ENV PKG_CONFIG_PATH="${UCX_HOME}/lib/pkgconfig:${PKG_CONFIG_PATH}"

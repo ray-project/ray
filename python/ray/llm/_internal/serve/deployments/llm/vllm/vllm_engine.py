@@ -19,6 +19,7 @@ from ray.llm._internal.serve.configs.error_handling import (
     InputTooLong,
     ValidationError,
 )
+from ray.llm._internal.serve.configs.prompt_formats import Message
 from ray.llm._internal.serve.configs.server_models import (
     DiskMultiplexConfig,
     FinishReason,
@@ -63,6 +64,7 @@ if TYPE_CHECKING:
     from vllm.engine.arg_utils import AsyncEngineArgs
     from vllm.engine.protocol import EngineClient
     from vllm.outputs import PoolingRequestOutput, RequestOutput
+    from vllm.transformers_utils.tokenizer import AnyTokenizer
 
 vllm = try_import("vllm")
 logger = get_logger(__name__)
@@ -193,18 +195,26 @@ class VLLMEngine(LLMEngine):
         # Chat template content format (openai or string)
         self._resolved_content_format = None
         # Also need local instance of the tokenizer to manage prompt formatting.
-        self._tokenizer = None
+        self._tokenizer: Optional["AnyTokenizer"] = None
 
         self._tokenizer_executor = ThreadPoolExecutor(max_workers=1)
         self._atokenize = vllm_utils.make_async(
             self._tokenize, executor=self._tokenizer_executor
         )
+        self._adetokenize = vllm_utils.make_async(
+            self._detokenize, executor=self._tokenizer_executor
+        )
 
     def _tokenize(
         self, prompt_text: str, add_special_tokens: bool = False
     ) -> List[int]:
+        assert self._tokenizer is not None
         encoded = self._tokenizer(prompt_text, add_special_tokens=add_special_tokens)
         return encoded.input_ids
+
+    def _detokenize(self, token_ids: List[int]) -> str:
+        assert self._tokenizer is not None
+        return self._tokenizer.decode(token_ids)
 
     async def start(self) -> None:
         """Start the vLLM engine.
@@ -395,7 +405,9 @@ class VLLMEngine(LLMEngine):
         model_config = self.model_config
         mm_data = None
 
-        if isinstance(prompt.prompt, list):
+        if isinstance(prompt.prompt, list) and all(
+            isinstance(m, Message) for m in prompt.prompt
+        ):
             messages = [m.model_dump() for m in prompt.prompt]
             conversation, mm_futures = parse_chat_messages_futures(
                 messages=messages,
@@ -427,10 +439,17 @@ class VLLMEngine(LLMEngine):
                 add_generation_prompt=True,
                 continue_final_message=False,
             )
-        else:
+            prompt_token_ids = await self._atokenize(prompt_text)
+        elif isinstance(prompt.prompt, list) and all(
+            isinstance(m, int) for m in prompt.prompt
+        ):
+            prompt_token_ids: list[int] = prompt.prompt
+            prompt_text = await self._adetokenize(prompt_token_ids)
+        elif isinstance(prompt.prompt, str):
             prompt_text = prompt.prompt
-
-        prompt_token_ids = await self._atokenize(prompt_text)
+            prompt_token_ids = await self._atokenize(prompt_text)
+        else:
+            raise ValueError(f"Unsupported prompt type: {type(prompt.prompt)}")
 
         request_params = {
             "prompt": prompt_text,
