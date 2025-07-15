@@ -221,7 +221,9 @@ class LLMServer(_LLMServerBase):
             disk_lora_model = await self._load_model(multiplexed_model_id)
             await self.engine.resolve_lora(disk_lora_model)
 
-    def _batch_output_stream(self, generator: AsyncGenerator[T, None]) -> AsyncGenerator[List[T], None]:
+    def _batch_output_stream(
+        self, generator: AsyncGenerator[T, None]
+    ) -> AsyncGenerator[List[T], None]:
         return Batcher(
             generator,
             interval_ms=self._get_batch_interval_ms(),
