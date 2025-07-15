@@ -3,7 +3,6 @@ import threading
 import uuid
 
 import ray
-from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray.experimental.collective.communicator import CommunicatorHandle
 from ray.experimental.collective.util import get_address_and_port
 import ray.experimental.internal_kv as internal_kv
