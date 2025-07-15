@@ -177,6 +177,7 @@ ray_files += [
     "ray/autoscaler/aws/cloudwatch/ray_prometheus_waiter.sh",
     "ray/autoscaler/azure/defaults.yaml",
     "ray/autoscaler/spark/defaults.yaml",
+    "ray/autoscaler/_private/readonly/defaults.yaml",
     "ray/autoscaler/_private/_azure/azure-vm-template.json",
     "ray/autoscaler/_private/_azure/azure-config-template.json",
     "ray/autoscaler/gcp/defaults.yaml",
@@ -250,7 +251,7 @@ if setup_spec.type == SetupType.RAY:
             "grpcio >= 1.32.0; python_version < '3.10'",  # noqa:E501
             "grpcio >= 1.42.0; python_version >= '3.10'",  # noqa:E501
             "opencensus",
-            "opentelemetry-sdk",
+            "opentelemetry-sdk >= 1.30.0",
             "opentelemetry-exporter-prometheus",
             "opentelemetry-proto",
             pydantic_dep,
@@ -259,9 +260,6 @@ if setup_spec.type == SetupType.RAY:
             "virtualenv >=20.0.24, !=20.21.1",  # For pip runtime env.
         ],
         "observability": [
-            "opentelemetry-api",
-            "opentelemetry-sdk",
-            "opentelemetry-exporter-otlp",
             "memray; sys_platform != 'win32'",
         ],
         "serve": [
