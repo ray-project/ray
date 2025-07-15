@@ -57,13 +57,11 @@ def test_get_current_process_visible_accelerator_ids(
     visible_devices_env_var, monkeypatch
 ):
     monkeypatch.setenv(visible_devices_env_var, "0,1,2")
-    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "0,1,2")
     assert AMDGPUAcceleratorManager.get_current_process_visible_accelerator_ids() == [
         "0",
         "1",
         "2",
     ]
-    del os.environ["CUDA_VISIBLE_DEVICES"]
 
     monkeypatch.setenv(visible_devices_env_var, "0,2,7")
     assert AMDGPUAcceleratorManager.get_current_process_visible_accelerator_ids() == [
@@ -79,6 +77,18 @@ def test_get_current_process_visible_accelerator_ids(
     assert (
         AMDGPUAcceleratorManager.get_current_process_visible_accelerator_ids() is None
     )
+
+
+def test_hip_cuda_env_var_get_current_process_visible_accelerator_ids(monkeypatch):
+    monkeypatch.setenv("HIP_VISIBLE_DEVICES", "0,1,2")
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "0,1,2")
+    assert AMDGPUAcceleratorManager.get_current_process_visible_accelerator_ids() == [
+        "0",
+        "1",
+        "2",
+    ]
+    del os.environ["HIP_VISIBLE_DEVICES"]
+    del os.environ["CUDA_VISIBLE_DEVICES"]
 
 
 def test_set_current_process_visible_accelerator_ids():
