@@ -38,6 +38,7 @@ GcsTaskManager::GcsTaskManager(instrumented_io_context &io_service)
           RayConfig::instance().task_events_max_num_task_in_gcs(),
           stats_counter_,
           std::make_unique<FinishedTaskActorTaskGcPolicy>())),
+      ray_event_converter_(std::make_unique<GcsRayEventConverter>()),
       periodical_runner_(PeriodicalRunner::Create(io_service_)) {
   periodical_runner_->RunFnPeriodically([this] { task_event_storage_->GcJobSummary(); },
                                         5 * 1000,
@@ -648,37 +649,6 @@ void GcsTaskManager::RecordTaskEventData(rpc::AddTaskEventDataRequest &request) 
   }
 }
 
-void GcsTaskManager::ConvertTaskDefinitionEventToTaskEvent(const rpc::events::TaskDefinitionEvent &event, rpc::TaskEvents &task_event) {
-  task_event.set_task_id(event.task_id());
-}
-
-void GcsTaskManager::ConvertAddEventRequestToAddTaskEventDataRequest(
-    rpc::events::AddEventRequest &request, rpc::AddTaskEventDataRequest &data) {
-  // Convert RayEventsData to TaskEventData
-  auto *task_event_data = data.mutable_data();
-  
-  // Copy dropped task attempts from the metadata
-  for (const auto &dropped_attempt :
-       request.events_data().task_events_metadata().dropped_task_attempts()) {
-    *task_event_data->add_dropped_task_attempts() = dropped_attempt;
-  }
-
-  // Convert RayEvents to TaskEvents
-  for (const auto &event : request.events_data().events()) {
-    rpc::TaskEvents task_event;
-    switch (event.event_type()) {
-      case rpc::events::RayEvent::TASK_DEFINITION_EVENT: {
-        ConvertTaskDefinitionEventToTaskEvent(event.task_definition_event(), task_event);
-        break;
-      }
-      default:
-        // TODO(can-anyscale): Handle other event types
-        break;
-    }
-    *task_event_data->add_events_by_task() = task_event;
-  }
-}
-
 void GcsTaskManager::HandleAddTaskEventData(rpc::AddTaskEventDataRequest request,
                                             rpc::AddTaskEventDataReply *reply,
                                             rpc::SendReplyCallback send_reply_callback) {
@@ -688,12 +658,13 @@ void GcsTaskManager::HandleAddTaskEventData(rpc::AddTaskEventDataRequest request
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
 }
 
-void GcsTaskManager::HandleAddEvents(rpc::events::AddEventRequest request,
-                                    rpc::events::AddEventReply *reply,
-                                    rpc::SendReplyCallback send_reply_callback) {
-  rpc::AddTaskEventDataRequest data;
-  ConvertAddEventRequestToAddTaskEventDataRequest(request, data);
-  RecordTaskEventData(data);
+void GcsTaskManager::HandleAddEvents(rpc::events::AddEventsRequest request,
+                                     rpc::events::AddEventsReply *reply,
+                                     rpc::SendReplyCallback send_reply_callback) {
+  rpc::AddTaskEventDataRequest task_event_data;
+  ray_event_converter_->ConvertToTaskEventDataRequest(std::move(request),
+                                                      task_event_data);
+  RecordTaskEventData(task_event_data);
 
   // Processed all the task events
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
