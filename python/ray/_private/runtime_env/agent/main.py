@@ -16,8 +16,6 @@ from ray.core.generated import (
     runtime_env_agent_pb2,
 )
 
-logger = logging.getLogger(__name__)
-
 
 def import_libs():
     my_dir = os.path.abspath(os.path.dirname(__file__))
@@ -249,7 +247,7 @@ if __name__ == "__main__":
             last_exception = e
             if attempt < max_retries:
                 delay = base_delay * (2**attempt)
-                logger.warning(
+                agent._logger.warning(
                     f"Failed to bind to port {args.runtime_env_agent_port} (attempt {attempt + 1}/"
                     f"{max_retries + 1}). Retrying in {delay:.2f}s. Error: {e}"
                 )
