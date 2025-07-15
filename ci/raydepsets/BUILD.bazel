@@ -12,6 +12,7 @@ py_library(
         ci_require("bazel-runfiles"),
         ci_require("click"),
         ci_require("pyyaml"),
+        ci_require("networkx"),
     ],
 )
 
