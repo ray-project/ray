@@ -271,14 +271,14 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // Init usage stats client.
   InitUsageStatsClient();
 
+  // Start RPC server when all tables have finished loading initial
+  // data.
+  rpc_server_.Run();
+
   periodical_runner_->RunFnPeriodically(
       [this] { RecordMetrics(); },
       /*ms*/ RayConfig::instance().metrics_report_interval_ms() / 2,
       "GCSServer.deadline_timer.metrics_report");
-
-  // Start RPC server when all tables have finished loading initial
-  // data.
-  rpc_server_.Run();
 
   periodical_runner_->RunFnPeriodically(
       [this] {
