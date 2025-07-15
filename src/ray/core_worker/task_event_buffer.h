@@ -27,7 +27,6 @@
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/common/id.h"
 #include "ray/common/task/task_spec.h"
-#include "ray/core_worker/event_aggregator_exporter.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/gcs/pb_util.h"
 #include "ray/rpc/event_aggregator_client.h"
@@ -536,9 +535,6 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   instrumented_io_context io_service_{/*enable_lag_probe=*/false,
                                       /*running_on_single_thread=*/true};
 
-  /// Work guard to prevent the io_context from exiting when no work.
-  boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work_guard_;
-
   /// Dedicated io thread for running the periodical runner and the GCS client.
   std::thread io_thread_;
 
@@ -550,9 +546,6 @@ class TaskEventBufferImpl : public TaskEventBuffer {
 
   /// Client to the event aggregator used to push ray events to it.
   std::unique_ptr<rpc::EventAggregatorClient> event_aggregator_client_;
-
-  /// Client to the event aggregator used to push ray events to it.
-  std::unique_ptr<EventAggregatorExporter> event_aggregator_exporter_;
 
   /// True if the TaskEventBuffer is enabled.
   std::atomic<bool> enabled_ = false;
