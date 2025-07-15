@@ -2289,7 +2289,7 @@ void CoreWorker::TriggerGlobalGC() {
       });
 }
 
-Status CoreWorker::GetObjectStoreMemoryUsage(std::string &output) {
+Status CoreWorker::GetPlasmaUsage(std::string &output) {
   StatusOr<std::string> response = plasma_store_provider_->GetMemoryUsage();
   if (response.ok()) {
     output = response.value();

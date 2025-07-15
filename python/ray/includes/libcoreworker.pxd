@@ -319,9 +319,9 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             uint64_t attempt_number,
             shared_ptr[CGeneratorBackpressureWaiter] waiter)
 
-        # The parameter output contains the memory usage string if successful.
+        # Param output contains the usage string if successful.
         # Returns an error status if unable to communicate with the plasma store.
-        CRayStatus GetObjectStoreMemoryUsage(c_string &output)
+        CRayStatus GetPlasmaUsage(c_string &output)
 
         int GetMemoryStoreSize()
 

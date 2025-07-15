@@ -953,7 +953,7 @@ class Worker:
             for i, value in enumerate(values):
                 if isinstance(value, RayError):
                     if isinstance(value, ray.exceptions.ObjectLostError):
-                        global_worker.core_worker.log_object_store_memory_usage()
+                        global_worker.core_worker.log_plasma_usage()
                     if isinstance(value, RayTaskError):
                         raise value.as_instanceof_cause()
                     else:
@@ -2858,7 +2858,7 @@ def get(
         for i, value in enumerate(values):
             if isinstance(value, RayError):
                 if isinstance(value, ray.exceptions.ObjectLostError):
-                    worker.core_worker.log_object_store_memory_usage()
+                    worker.core_worker.log_plasma_usage()
                 if isinstance(value, RayTaskError):
                     raise value.as_instanceof_cause()
                 else:
