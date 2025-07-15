@@ -125,6 +125,28 @@ std::optional<ObjectLocation> TryGetLocalObjectLocation(
   return CreateObjectLocation(object_info);
 }
 
+/// Converts rpc::WorkerExitType to ShutdownReason
+/// @param exit_type The worker exit type to convert
+/// @param is_force_exit If true, INTENDED_USER_EXIT maps to kForcedExit; otherwise
+/// kGracefulExit
+ShutdownReason ConvertExitTypeToShutdownReason(rpc::WorkerExitType exit_type,
+                                               bool is_force_exit = false) {
+  switch (exit_type) {
+  case rpc::WorkerExitType::INTENDED_SYSTEM_EXIT:
+    return ShutdownReason::kIntentionalShutdown;
+  case rpc::WorkerExitType::INTENDED_USER_EXIT:
+    return is_force_exit ? ShutdownReason::kForcedExit : ShutdownReason::kGracefulExit;
+  case rpc::WorkerExitType::USER_ERROR:
+    return ShutdownReason::kUserError;
+  case rpc::WorkerExitType::SYSTEM_ERROR:
+    return ShutdownReason::kUnexpectedError;
+  case rpc::WorkerExitType::NODE_OUT_OF_MEMORY:
+    return ShutdownReason::kOutOfMemory;
+  default:
+    return ShutdownReason::kUnexpectedError;
+  }
+}
+
 }  // namespace
 
 JobID GetProcessJobID(const CoreWorkerOptions &options) {
@@ -1017,9 +1039,9 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
 
   // Initialize shutdown coordinator last - after all services are ready
   // Create concrete shutdown executor that implements real shutdown operations
-  auto shutdown_executor = std::make_shared<CoreWorkerShutdownExecutor>(this);
-  shutdown_coordinator_ =
-      std::make_shared<ShutdownCoordinator>(shutdown_executor, options_.worker_type);
+  auto shutdown_executor = std::make_unique<CoreWorkerShutdownExecutor>(this);
+  shutdown_coordinator_ = std::make_unique<ShutdownCoordinator>(
+      std::move(shutdown_executor), options_.worker_type);
 
   RAY_LOG(DEBUG) << "Initialized unified shutdown coordinator with concrete executor for "
                     "worker type: "
@@ -1142,22 +1164,7 @@ void CoreWorker::Exit(
     const rpc::WorkerExitType exit_type,
     const std::string &detail,
     const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes) {
-  ShutdownReason reason = [exit_type]() {
-    switch (exit_type) {
-    case rpc::WorkerExitType::INTENDED_SYSTEM_EXIT:
-      return ShutdownReason::kIntentionalShutdown;
-    case rpc::WorkerExitType::INTENDED_USER_EXIT:
-      return ShutdownReason::kGracefulExit;
-    case rpc::WorkerExitType::USER_ERROR:
-      return ShutdownReason::kUserError;
-    case rpc::WorkerExitType::SYSTEM_ERROR:
-      return ShutdownReason::kUnexpectedError;
-    case rpc::WorkerExitType::NODE_OUT_OF_MEMORY:
-      return ShutdownReason::kOutOfMemory;
-    default:
-      return ShutdownReason::kUnexpectedError;
-    }
-  }();
+  ShutdownReason reason = ConvertExitTypeToShutdownReason(exit_type);
 
   shutdown_coordinator_->RequestShutdown(
       false,  // graceful shutdown
@@ -1172,22 +1179,7 @@ void CoreWorker::ForceExit(const rpc::WorkerExitType exit_type,
   RAY_LOG(WARNING) << "ForceExit called: exit_type=" << static_cast<int>(exit_type)
                    << ", detail=" << detail;
 
-  ShutdownReason reason = [exit_type]() {
-    switch (exit_type) {
-    case rpc::WorkerExitType::INTENDED_SYSTEM_EXIT:
-      return ShutdownReason::kIntentionalShutdown;
-    case rpc::WorkerExitType::INTENDED_USER_EXIT:
-      return ShutdownReason::kForcedExit;
-    case rpc::WorkerExitType::USER_ERROR:
-      return ShutdownReason::kUserError;
-    case rpc::WorkerExitType::SYSTEM_ERROR:
-      return ShutdownReason::kUnexpectedError;
-    case rpc::WorkerExitType::NODE_OUT_OF_MEMORY:
-      return ShutdownReason::kOutOfMemory;
-    default:
-      return ShutdownReason::kUnexpectedError;
-    }
-  }();
+  ShutdownReason reason = ConvertExitTypeToShutdownReason(exit_type, true);
 
   RAY_LOG(WARNING) << "ForceExit: calling shutdown_coordinator_->RequestShutdown with "
                       "force=true, reason="

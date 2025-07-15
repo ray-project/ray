@@ -116,7 +116,7 @@ class ShutdownCoordinator {
   ///
   /// \param dependencies External service dependencies (can be mock for testing)
   /// \param worker_type Type of worker for shutdown behavior customization
-  explicit ShutdownCoordinator(std::shared_ptr<ShutdownDependencies> dependencies,
+  explicit ShutdownCoordinator(std::unique_ptr<ShutdownDependencies> dependencies,
                                WorkerType worker_type = WorkerType::WORKER);
 
   ~ShutdownCoordinator() = default;
@@ -262,7 +262,7 @@ class ShutdownCoordinator {
   static bool IsValidTransition(ShutdownState from, ShutdownState to);
 
   // Dependencies and configuration
-  std::shared_ptr<ShutdownDependencies> dependencies_;
+  std::unique_ptr<ShutdownDependencies> dependencies_;
   WorkerType worker_type_;
 
   /// Single atomic variable holding both state and reason.

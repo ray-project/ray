@@ -22,7 +22,7 @@ namespace ray {
 namespace core {
 
 ShutdownCoordinator::ShutdownCoordinator(
-    std::shared_ptr<ShutdownDependencies> dependencies, WorkerType worker_type)
+    std::unique_ptr<ShutdownDependencies> dependencies, WorkerType worker_type)
     : dependencies_(std::move(dependencies)), worker_type_(worker_type) {
   state_and_reason_.store(PackStateReason(ShutdownState::kRunning, ShutdownReason::kNone),
                           std::memory_order_release);

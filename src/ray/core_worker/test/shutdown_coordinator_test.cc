@@ -21,6 +21,7 @@
 #include <memory>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 namespace ray {
@@ -57,10 +58,12 @@ class MockShutdownDependencies : public ShutdownDependencies {
 
 class ShutdownCoordinatorTest : public ::testing::Test {
  protected:
-  void SetUp() override {
-    auto mock = std::make_shared<MockShutdownDependencies>();
+  // Helper to create coordinator with specific worker type
+  std::unique_ptr<ShutdownCoordinator> CreateCoordinator(
+      WorkerType worker_type = WorkerType::WORKER) {
+    auto mock = std::make_unique<MockShutdownDependencies>();
 
-    // Set up default behavior for all mock methods to return immediately
+    // Set up default behavior for the mock
     ON_CALL(*mock, ExecuteGracefulShutdown(::testing::_, ::testing::_, ::testing::_))
         .WillByDefault(::testing::Return());
     ON_CALL(*mock, ExecuteForceShutdown(::testing::_, ::testing::_))
@@ -72,16 +75,8 @@ class ShutdownCoordinatorTest : public ::testing::Test {
     ON_CALL(*mock, KillChildProcesses()).WillByDefault(::testing::Return());
     ON_CALL(*mock, ShouldWorkerExit()).WillByDefault(::testing::Return(false));
 
-    mock_deps_ = mock;
+    return std::make_unique<ShutdownCoordinator>(std::move(mock), worker_type);
   }
-
-  // Helper to create coordinator with specific worker type
-  std::unique_ptr<ShutdownCoordinator> CreateCoordinator(
-      WorkerType worker_type = WorkerType::WORKER) {
-    return std::make_unique<ShutdownCoordinator>(mock_deps_, worker_type);
-  }
-
-  std::shared_ptr<MockShutdownDependencies> mock_deps_;
 };
 
 // Test 1: Basic State Machine Tests
@@ -123,7 +118,7 @@ TEST_F(ShutdownCoordinatorTest, LegacyTryInitiateShutdown) {
   EXPECT_EQ(coordinator->GetReason(), ShutdownReason::kUserError);
 
   // Second call should fail
-  EXPECT_FALSE(coordinator->TryInitiateShutdown(ShutdownReason::kSystemShutdown));
+  EXPECT_FALSE(coordinator->TryInitiateShutdown(ShutdownReason::kForcedExit));
   EXPECT_EQ(coordinator->GetReason(), ShutdownReason::kUserError);  // unchanged
 }
 

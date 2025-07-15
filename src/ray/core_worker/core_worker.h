@@ -1929,7 +1929,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Unified shutdown coordinator that manages all shutdown operations.
   /// This replaces the fragmented is_exited_/is_shutdown_ atomics with a
   /// single state machine that coordinates all shutdown entry points.
-  std::shared_ptr<ShutdownCoordinator> shutdown_coordinator_;
+  std::unique_ptr<ShutdownCoordinator> shutdown_coordinator_;
 
   /// ELIMINATED: Legacy atomics removed as per unified shutdown design.
   /// All shutdown state now managed by shutdown_coordinator_ with no race conditions.
