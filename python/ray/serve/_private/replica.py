@@ -77,7 +77,6 @@ from ray.serve._private.http_util import (
 )
 from ray.serve._private.logging_utils import (
     access_log_msg,
-    configure_component_cpu_profiler,
     configure_component_logger,
     configure_component_memory_profiler,
     get_component_logger_file_path,
@@ -448,11 +447,6 @@ class ReplicaBase(ABC):
             buffer_size=RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE,
         )
         configure_component_memory_profiler(
-            component_type=ServeComponentType.REPLICA,
-            component_name=self._component_name,
-            component_id=self._component_id,
-        )
-        self.cpu_profiler, self.cpu_profiler_log = configure_component_cpu_profiler(
             component_type=ServeComponentType.REPLICA,
             component_name=self._component_name,
             component_id=self._component_id,
@@ -1117,27 +1111,6 @@ class ReplicaActor:
     async def perform_graceful_shutdown(self):
         await self._replica_impl.perform_graceful_shutdown()
 
-    def _save_cpu_profile_data(self) -> str:
-        """Saves CPU profiling data, if CPU profiling is enabled.
-
-        Logs a warning if CPU profiling is disabled.
-        """
-
-        if self.cpu_profiler is not None:
-            import marshal
-
-            self.cpu_profiler.snapshot_stats()
-            with open(self.cpu_profiler_log, "wb") as f:
-                marshal.dump(self.cpu_profiler.stats, f)
-            logger.info(f'Saved CPU profile data to file "{self.cpu_profiler_log}"')
-            return self.cpu_profiler_log
-        else:
-            logger.error(
-                "Attempted to save CPU profile data, but failed because no "
-                "CPU profiler was running! Enable CPU profiling by enabling "
-                "the RAY_SERVE_ENABLE_CPU_PROFILING env var."
-            )
-
 
 @dataclass
 class UserMethodInfo:
@@ -1665,7 +1638,9 @@ class UserCallableWrapper:
 
         receive_task = None
         try:
-            receive_task = asyncio.create_task(receive.fetch_until_disconnect())
+            if hasattr(receive, "fetch_until_disconnect"):
+                receive_task = asyncio.create_task(receive.fetch_until_disconnect())
+
             result, sync_gen_consumed = await self._call_func_or_gen(
                 user_method_info.callable,
                 args=request_args,
