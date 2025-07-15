@@ -211,9 +211,9 @@ void TaskStatusEvent::PopulateRpcRayTaskDefinitionEvent(T &definition_event_data
   }
 }
 
-template <typename T>
 void TaskStatusEvent::PopulateRpcRayTaskExecutionEvent(
-    T &execution_event_data, google::protobuf::Timestamp timestamp) {
+    rpc::events::TaskExecutionEvent &execution_event_data,
+    google::protobuf::Timestamp timestamp) {
   // Task identifier
   execution_event_data.set_task_id(task_id_.Binary());
   execution_event_data.set_task_attempt(attempt_number_);
@@ -299,20 +299,12 @@ void TaskStatusEvent::ToRpcRayEvents(RayEventsPair &ray_events_pair) {
   }
 
   // Populate the task execution event
-  PopulateRpcRayEventBaseFields(task_execution_event_rpc.has_value()
-                                    ? task_execution_event_rpc.value()
-                                    : task_execution_event_rpc.emplace(),
-                                false,
-                                timestamp);
-  if (is_actor_task_event_) {
-    auto actor_task_execution_event =
-        task_execution_event_rpc.value().mutable_actor_task_execution_event();
-    PopulateRpcRayTaskExecutionEvent(*actor_task_execution_event, timestamp);
-  } else {
-    auto task_execution_event =
-        task_execution_event_rpc.value().mutable_task_execution_event();
-    PopulateRpcRayTaskExecutionEvent(*task_execution_event, timestamp);
-  }
+  PopulateRpcRayEventBaseFields(
+      ray_events.second.has_value() ? *ray_events.second : ray_events.second.emplace(),
+      false,
+      timestamp);
+  auto task_execution_event = ray_events.second.value().mutable_task_execution_event();
+  PopulateRpcRayTaskExecutionEvent(*task_execution_event, timestamp);
 }
 
 void TaskProfileEvent::ToRpcTaskEvents(rpc::TaskEvents *rpc_task_events) {
@@ -424,11 +416,16 @@ TaskEventBufferImpl::~TaskEventBufferImpl() { Stop(); }
 
 Status TaskEventBufferImpl::Start(bool auto_flush) {
   absl::MutexLock lock(&mutex_);
-  export_event_write_enabled_ = TaskEventBufferImpl::IsExportAPIEnabledTask();
   send_task_events_to_gcs_enabled_ =
       RayConfig::instance().enable_core_worker_task_event_to_gcs();
   send_ray_events_to_aggregator_enabled_ =
       RayConfig::instance().enable_core_worker_ray_event_to_aggregator();
+
+  // We want to make sure that only one of the event export mechanism is enables. And
+  // if both are enables, we will use the event aggregator instead of the export API.
+  // This code will be removed when we deprecate the export API implementation.
+  export_event_write_enabled_ = !send_ray_events_to_aggregator_enabled_ &&
+                                TaskEventBufferImpl::IsExportAPIEnabledTask();
   auto report_interval_ms = RayConfig::instance().task_events_report_interval_ms();
   RAY_CHECK(report_interval_ms > 0)
       << "RAY_task_events_report_interval_ms should be > 0 to use TaskEventBuffer.";

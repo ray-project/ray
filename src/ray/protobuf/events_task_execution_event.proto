@@ -28,6 +28,7 @@ message TaskExecutionEvent {
 
   // The task execution information
 
+  // The map of task state to the time when the state was last updated.
   // Key is the integer value of TaskStatus enum (protobuf doesn't support Enum as key).
   // Value is the timestamp when status changes to the target status indicated by the key.
   map<int32, google.protobuf.Timestamp> task_state = 3;
