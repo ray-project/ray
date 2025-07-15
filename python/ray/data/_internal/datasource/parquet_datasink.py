@@ -33,6 +33,9 @@ FILE_FORMAT = "parquet"
 # and are not supported by ParquetDatasink.
 UNSUPPORTED_OPEN_STREAM_ARGS = {"path", "buffer", "metadata"}
 
+# https://arrow.apache.org/docs/python/generated/pyarrow.dataset.write_dataset.html
+ARROW_DEFAULT_MAX_ROWS_PER_GROUP = 1024 * 1024
+
 logger = logging.getLogger(__name__)
 
 
@@ -60,7 +63,26 @@ def choose_row_group_limits(
         # No explicit row group size provided. We are defaulting to
         # either the caller's min_rows_per_file or max_rows_per_file limits
         # or Arrow's defaults
-        return min_rows_per_file, max_rows_per_file, max_rows_per_file
+        min_rows_per_group, max_rows_per_group, max_rows_per_file = (
+            min_rows_per_file,
+            max_rows_per_file,
+            max_rows_per_file,
+        )
+
+        # If min_rows_per_group is provided and max_rows_per_group is not,
+        # and min_rows_per_group is greater than Arrow's default max_rows_per_group,
+        # we set max_rows_per_group to min_rows_per_group to avoid creating too many row groups.
+        if (
+            min_rows_per_group is not None
+            and max_rows_per_group is None
+            and min_rows_per_group > ARROW_DEFAULT_MAX_ROWS_PER_GROUP
+        ):
+            max_rows_per_group, max_rows_per_file = (
+                min_rows_per_group,
+                min_rows_per_group,
+            )
+
+        return min_rows_per_group, max_rows_per_group, max_rows_per_file
 
     elif row_group_size is not None and (
         min_rows_per_file is None or max_rows_per_file is None
