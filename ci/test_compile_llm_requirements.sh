@@ -30,9 +30,9 @@ done
 ./ci/compile_llm_requirements.sh
 
 # Copy files to artifact mount on Buildkite
-for TYPE in rayllm_test ray_test ray rayllm; do
-    for VARIANT in cpu cu121 cu128; do
-        cp ./python/requirements_compiled_${TYPE}_py311_${VARIANT}.txt /artifact-mount/
+for LOCK_TYPE in "${LOCK_TYPES[@]}"; do
+    for VARIANT in "${VARIANTS[@]}"; do
+        cp ./python/requirements_compiled_${LOCK_TYPE}_py311_${VARIANT}.txt /artifact-mount/
     done
 done
 
