@@ -26,11 +26,11 @@ namespace ray {
 
 namespace core {
 
-/// Interface for executing shutdown operations and provides the actual shutdown
-/// execution that the coordinator invokes. ShutdownDependencies execute real work.
-class ShutdownDependencies {
+/// Interface for executing shutdown operations and provides the shutdown executor
+/// that the coordinator invokes. CoreWorkerShutdownExecutor executes real work.
+class ShutdownExecutorInterface {
  public:
-  virtual ~ShutdownDependencies() = default;
+  virtual ~ShutdownExecutorInterface() = default;
 
   /// Execute complete graceful shutdown sequence
   virtual void ExecuteGracefulShutdown(const std::string &exit_type,
@@ -77,7 +77,8 @@ enum class ShutdownReason : std::uint8_t {
 };
 
 /// Shutdown state representing the current lifecycle phase of worker shutdown.
-/// States are ordered by progression, transitions must be monotonic.
+/// The state machine executes in order with only forward transitions possible:
+/// kRunning -> kShuttingDown -> kDisconnecting -> kShutdown
 enum class ShutdownState : std::uint8_t {
   kRunning = 0,
   kShuttingDown = 1,
@@ -112,11 +113,11 @@ enum class ShutdownState : std::uint8_t {
 ///   }
 class ShutdownCoordinator {
  public:
-  /// Constructor with dependency injection for testability
+  /// Constructor
   ///
-  /// \param dependencies External service dependencies (can be mock for testing)
+  /// \param executor Shutdown executor implementation
   /// \param worker_type Type of worker for shutdown behavior customization
-  explicit ShutdownCoordinator(std::unique_ptr<ShutdownDependencies> dependencies,
+  explicit ShutdownCoordinator(std::unique_ptr<ShutdownExecutorInterface> executor,
                                WorkerType worker_type = WorkerType::WORKER);
 
   ~ShutdownCoordinator() = default;
@@ -261,8 +262,8 @@ class ShutdownCoordinator {
   /// Validate state transition is allowed.
   static bool IsValidTransition(ShutdownState from, ShutdownState to);
 
-  // Dependencies and configuration
-  std::unique_ptr<ShutdownDependencies> dependencies_;
+  // Executor and configuration
+  std::unique_ptr<ShutdownExecutorInterface> executor_;
   WorkerType worker_type_;
 
   /// Single atomic variable holding both state and reason.

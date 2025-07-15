@@ -22,8 +22,8 @@ namespace ray {
 namespace core {
 
 ShutdownCoordinator::ShutdownCoordinator(
-    std::unique_ptr<ShutdownDependencies> dependencies, WorkerType worker_type)
-    : dependencies_(std::move(dependencies)), worker_type_(worker_type) {
+    std::unique_ptr<ShutdownExecutorInterface> executor, WorkerType worker_type)
+    : executor_(std::move(executor)), worker_type_(worker_type) {
   state_and_reason_.store(PackStateReason(ShutdownState::kRunning, ShutdownReason::kNone),
                           std::memory_order_release);
 }
@@ -175,29 +175,28 @@ void ShutdownCoordinator::ExecuteShutdownSequence(bool force_shutdown,
 
 void ShutdownCoordinator::ExecuteGracefulShutdown(const std::string &detail,
                                                   std::chrono::milliseconds timeout_ms) {
-  if (!dependencies_) {
+  if (!executor_) {
     return;
   }
 
   TryTransitionToDisconnecting();
-  dependencies_->ExecuteGracefulShutdown(GetExitTypeString(), detail, timeout_ms);
+  executor_->ExecuteGracefulShutdown(GetExitTypeString(), detail, timeout_ms);
   TryTransitionToShutdown();
 }
 
 void ShutdownCoordinator::ExecuteForceShutdown(const std::string &detail) {
   RAY_LOG(WARNING) << "ExecuteForceShutdown called: detail=" << detail;
 
-  if (!dependencies_) {
+  if (!executor_) {
     RAY_LOG(WARNING) << "ExecuteForceShutdown: no dependencies, exiting";
     return;
   }
 
   // Force shutdown bypasses normal state transitions and terminates immediately
   // This ensures that force shutdowns can interrupt hanging graceful shutdowns
-  RAY_LOG(WARNING) << "ExecuteForceShutdown: calling dependencies_->ExecuteForceShutdown";
-  dependencies_->ExecuteForceShutdown(GetExitTypeString(), detail);
-  RAY_LOG(WARNING)
-      << "ExecuteForceShutdown: dependencies_->ExecuteForceShutdown completed";
+  RAY_LOG(WARNING) << "ExecuteForceShutdown: calling executor_->ExecuteForceShutdown";
+  executor_->ExecuteForceShutdown(GetExitTypeString(), detail);
+  RAY_LOG(WARNING) << "ExecuteForceShutdown: executor_->ExecuteForceShutdown completed";
 
   // Only update state if we're not already in final state
   // (force shutdown should have terminated the process by now)
@@ -237,15 +236,15 @@ void ShutdownCoordinator::ExecuteWorkerShutdown(bool force_shutdown,
       reason == ShutdownReason::kActorCreationFailed ||
       reason == ShutdownReason::kActorKilled) {
     TryTransitionToDisconnecting();
-    if (dependencies_) {
-      dependencies_->ExecuteWorkerExit(GetExitTypeString(), detail, timeout_ms);
+    if (executor_) {
+      executor_->ExecuteWorkerExit(GetExitTypeString(), detail, timeout_ms);
     }
     TryTransitionToShutdown();
   } else if (reason == ShutdownReason::kIdleTimeout ||
              reason == ShutdownReason::kJobFinished) {
     TryTransitionToDisconnecting();
-    if (dependencies_) {
-      dependencies_->ExecuteHandleExit(GetExitTypeString(), detail, timeout_ms);
+    if (executor_) {
+      executor_->ExecuteHandleExit(GetExitTypeString(), detail, timeout_ms);
     }
     TryTransitionToShutdown();
   } else {

@@ -27,8 +27,8 @@
 namespace ray {
 namespace core {
 
-// Mock implementation of ShutdownDependencies for testing
-class MockShutdownDependencies : public ShutdownDependencies {
+// Mock implementation of ShutdownExecutorInterface for testing
+class MockShutdownExecutor : public ShutdownExecutorInterface {
  public:
   MOCK_METHOD(void,
               ExecuteGracefulShutdown,
@@ -61,7 +61,7 @@ class ShutdownCoordinatorTest : public ::testing::Test {
   // Helper to create coordinator with specific worker type
   std::unique_ptr<ShutdownCoordinator> CreateCoordinator(
       WorkerType worker_type = WorkerType::WORKER) {
-    auto mock = std::make_unique<MockShutdownDependencies>();
+    auto mock = std::make_unique<MockShutdownExecutor>();
 
     // Set up default behavior for the mock
     ON_CALL(*mock, ExecuteGracefulShutdown(::testing::_, ::testing::_, ::testing::_))

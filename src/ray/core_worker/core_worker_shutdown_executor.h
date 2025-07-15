@@ -24,9 +24,9 @@ namespace core {
 
 class CoreWorker;
 
-/// Concrete implementation of ShutdownDependencies that executes actual
+/// Concrete implementation of ShutdownExecutorInterface that executes actual
 /// shutdown operations for CoreWorker.
-class CoreWorkerShutdownExecutor : public ShutdownDependencies {
+class CoreWorkerShutdownExecutor : public ShutdownExecutorInterface {
  public:
   /// Constructor with CoreWorker reference for accessing internals
   /// \param core_worker Reference to the CoreWorker instance
