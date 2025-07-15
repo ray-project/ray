@@ -563,7 +563,7 @@ void CoreWorker::Disconnect(
     auto task_event = std::make_unique<worker::TaskStatusEvent>(
         worker_context_->GetCurrentTaskID(),
         worker_context_->GetCurrentJobID(),
-        /* attempt_number */ 0,
+        /*attempt_number=*/0,
         rpc::TaskStatus::FINISHED,
         /*timestamp=*/absl::GetCurrentTimeNanos(),
         /*is_actor_task_event=*/worker_context_->GetCurrentActorID().IsNil());
@@ -2061,10 +2061,10 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
                       depth,
                       task_options.serialized_runtime_env_info,
                       call_site,
-                      worker_context_->GetMainThreadOrActorCreationTaskID(),
-                      /*concurrency_group_name*/ "",
-                      /*include_job_config*/ true,
-                      /*generator_backpressure_num_objects*/
+                      worker_context_.GetMainThreadOrActorCreationTaskID(),
+                      /*concurrency_group_name=*/"",
+                      /*include_job_config=*/true,
+                      /*generator_backpressure_num_objects=*/
                       task_options.generator_backpressure_num_objects,
                       /*enable_task_event=*/task_options.enable_task_events,
                       task_options.labels,
@@ -2158,11 +2158,11 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                       depth,
                       actor_creation_options.serialized_runtime_env_info,
                       call_site,
-                      worker_context_->GetMainThreadOrActorCreationTaskID(),
-                      /*concurrency_group_name*/ "",
-                      /*include_job_config*/ true,
-                      /*generator_backpressure_num_objects*/ -1,
-                      /*enable_task_events*/ actor_creation_options.enable_task_events,
+                      worker_context_.GetMainThreadOrActorCreationTaskID(),
+                      /*concurrency_group_name=*/"",
+                      /*include_job_config=*/true,
+                      /*generator_backpressure_num_objects=*/-1,
+                      /*enable_task_events=*/actor_creation_options.enable_task_events,
                       actor_creation_options.labels,
                       actor_creation_options.label_selector);
 

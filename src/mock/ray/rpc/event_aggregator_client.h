@@ -14,11 +14,12 @@
 
 #pragma once
 #include "gmock/gmock.h"
-#include "ray/core_worker/event_aggregator_exporter.h"
+#include "ray/rpc/event_aggregator_client.h"
 
 namespace ray {
+namespace rpc {
 
-class MockEventAggregatorExporter : public EventAggregatorExporter {
+class MockEventAggregatorClient : public EventAggregatorClient {
  public:
   MOCK_METHOD(Status,
               AsyncAddRayEventData,
@@ -27,4 +28,5 @@ class MockEventAggregatorExporter : public EventAggregatorExporter {
               (override));
 };
 
+}  // namespace rpc
 }  // namespace ray
