@@ -100,9 +100,11 @@ The succeeding pages discuss the three pipeline types in more detail, however, a
 Batch construction phases and formats
 -------------------------------------
 
-When you push a list of input episodes through a connector pipeline, the batch the pipeline constructs, which is always a python dictionary,
-undergoes different formats and phases while passing the different pieces of the pipeline. The following applies to all
-:ref:`env-to-module <env-to-module-pipeline-docs>` and learner connector pipelines.
+When you push a list of input episodes through a connector pipeline, the pipeline constructs a batch from the given data.
+This batch always starts as an empty python dictionary and undergoes different formats and phases while passing through the different
+pieces of the pipeline.
+
+The following applies to all :ref:`env-to-module <env-to-module-pipeline-docs>` and learner connector pipelines (documentation in progress).
 
 .. figure:: images/connector_v2/pipeline_batch_phases_single_agent.svg
     :width: 1000
@@ -114,36 +116,41 @@ undergoes different formats and phases while passing the different pieces of the
     the item.
     In most cases, your custom connector pieces operate during this phase. Once all custom pieces have performed their data insertions and transforms,
     the :py:class:`~ray.rllib.connectors.common.agent_to_module_mapping.AgentToModuleMapping` default piece performs a
-    "reorganize by ModuleID" operation, during which the batch's dictionary hierarchy changes to having the ModuleID (``DEFAULT_MODULE_ID``) at
-    the top level and the column names thereunder. On the lowest level in the batch, data items still reside in python lists (middle).
+    "reorganize by ModuleID" operation (center), during which the batch's dictionary hierarchy changes to having the ModuleID (``DEFAULT_MODULE_ID``) at
+    the top level and the column names thereunder. On the lowest level in the batch, data items still reside in python lists.
     Finally, the :py:class:`~ray.rllib.connectors.common.batch_individual_items.BatchIndividualItems`  default piece creates NumPy arrays
     out of the python lists, thereby batching all data (right).
 
 
-For multi-agent setups, where there are more than one ModuleIDs, note that the
+For multi-agent setups, where there are more than one ModuleIDs the
 :py:class:`~ray.rllib.connectors.common.agent_to_module_mapping.AgentToModuleMapping` default connector piece makes sure that
 the constructed output batch maps module IDs to the respective module's forward batch:
 
 .. figure:: images/connector_v2/pipeline_batch_phases_multi_agent.svg
-    :width: 1000
+    :width: 1100
     :align: left
 
-This way, RLlib's :py:class:`~ray.rllib.core.rl_module.multi_rl_module.MultiRLModule` can split up the forward passes into
+    **Batch construction for multi-agent**: In a multi-agent setup, the default :py:class:`~ray.rllib.connectors.common.agent_to_module_mapping.AgentToModuleMapping`
+    connector piece reorganizes the batch by ``ModuleID``s, then column names, such that a
+    :py:class:`~ray.rllib.core.rl_module.multi_rl_module.MultiRLModule` can loop through its sub-modules and provide each with a batch
+    for the forward pass.
+
+RLlib's :py:class:`~ray.rllib.core.rl_module.multi_rl_module.MultiRLModule` can split up the forward passes into
 individual submodules' forward passes using the individual batches under the respective ``ModuleIDs``.
 See :ref:`here for how to write your own multi-module or multi-agent forward logic <implementing-custom-multi-rl-modules>`
 and override this default behavior of :py:class:`~ray.rllib.core.rl_module.multi_rl_module.MultiRLModule`.
 
 
-In case you have a stateful :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`, for example an LSTM, RLlib adds two additional
+Finally, if you have a stateful :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`, for example an LSTM, RLlib adds two additional
 default connector pieces to the pipeline, :py:class:`~ray.rllib.connectors.common.add_time_dim_to_batch_and_zero_pad.AddTimeDimToBatchAndZeroPad`
 and :py:class:`~ray.rllib.connectors.common.add_states_from_episodes_to_batch.AddStatesFromEpisodesToBatch`:
 
 
 .. figure:: images/connector_v2/pipeline_batch_phases_single_agent_w_states.svg
-    :width: 1000
+    :width: 1200
     :align: left
 
-    **Batch construction phases and formats for stateful models**: For stateful :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` instances,
+    **Batch construction for stateful models**: For stateful :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` instances,
     RLlib automatically adds additional two default connector pieces to the pipeline. The
     :py:class:`~ray.rllib.connectors.common.add_time_dim_to_batch_and_zero_pad.AddTimeDimToBatchAndZeroPad` piece converts all lists of individual data
     items on the lowest batch level into sequences of a fixed length (``max_seq_len``, see note below for how to set this) and automatically zero-pads
@@ -168,6 +175,7 @@ and :py:class:`~ray.rllib.connectors.common.add_states_from_episodes_to_batch.Ad
     .. code-block:: python
 
         from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
+
         config.rl_module(model_config=DefaultModelConfig(max_seq_len=...))
 
 
