@@ -64,7 +64,6 @@ steps:
     depends_on: windowsbuild
 
   - label: ":ray-serve: serve: :windows: tests"
-    key: windows-serve-tests
     tags: serve
     job_env: WINDOWS
     instance_type: windows
@@ -88,7 +87,7 @@ steps:
     instance_type: windows
     commands:
       - bash ci/ray_ci/windows/install_tools.sh
-      - bazel run //ci/ray_ci:test_in_docker -- "//python/ray/serve/tests:test_deploy_app" serve
+      - RAYCI_DISABLE_TEST_DB=1 bazel run //ci/ray_ci:test_in_docker -- "//python/ray/serve/tests:test_deploy_app" serve
         --build-name windowsbuild
         --operating-system windows
         --only-tags use_all_core_windows
