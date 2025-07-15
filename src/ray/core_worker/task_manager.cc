@@ -984,6 +984,10 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
             }
           }
         }
+        // After the first execution is complete and we've stored metadata
+        // for returned objects, we no longer need to track which objects
+        // were produced as intermediate results.
+        it->second.recon_ret_ids_before_first_successful_exec.clear();
       }
     }
 

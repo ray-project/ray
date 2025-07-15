@@ -539,7 +539,7 @@ def test_all_lost_objects_return_errors_if_reconstruction_fails_without_successf
     # 2. The streaming generator runs on Node A with backpressure=1.
     # 4. The user consumes the first yielded object.
     # 5. The streaming generator yields up to 1 more object and waits.
-    # 6. Node A dies and the primary copy of all 5 yielded objects are lost.
+    # 6. Node A dies and the primary copy of all yielded objects are lost.
     # 7. There are 0 actor restarts, but there are infinite task retries.
     # 8. Reconstruction will fail.
     # 9. The user will get an ActorDiedError when they call ray.get for some number of objects greater than 0 and less than 2
@@ -566,7 +566,7 @@ def test_all_lost_objects_return_errors_if_reconstruction_fails_without_successf
 
     @ray.remote(max_restarts=0, max_task_retries=-1, num_cpus=1)
     class UnrestartableActor:
-        @ray.method(_generator_backpressure_num_objects=4)
+        @ray.method(_generator_backpressure_num_objects=1)
         def func(self):
             for _ in range(10):
                 yield np.ones(1024**2, dtype=np.int8)
