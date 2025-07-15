@@ -77,8 +77,9 @@ Status JobInfoAccessor::AsyncSubscribeAll(
     const StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr);
   fetch_all_data_operation_ = [this, subscribe](const StatusCallback &done_callback) {
-    auto callback = [subscribe, done_callback](const Status &status,
-                                       std::vector<rpc::JobTableData> &&job_info_list) {
+    auto callback = [subscribe, done_callback](
+                        const Status &status,
+                        std::vector<rpc::JobTableData> &&job_info_list) {
       for (auto &job_info : job_info_list) {
         subscribe(JobID::FromBinary(job_info.job_id()), std::move(job_info));
       }
