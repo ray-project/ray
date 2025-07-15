@@ -1467,8 +1467,6 @@ class StandardAutoscaler:
 
             node_type_mapping[ip] = node_type
 
-            # TODO (Alex): If a node's raylet has died, it shouldn't be marked
-            # as active.
             is_active = self.heartbeat_on_time(node_id, now)
             if is_active:
                 active_nodes[node_type] += 1
