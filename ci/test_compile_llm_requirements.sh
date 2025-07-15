@@ -38,10 +38,10 @@ done
 
 # Check all files and print if files are not up to date
 FAILED=0
-for TYPE in rayllm_test ray_test ray rayllm; do
-    for VARIANT in cpu cu121 cu128; do
-        diff --color -u ./python/requirements_compiled_${TYPE}_py311_${VARIANT}.txt "$TEMP_DIR/requirements_compiled_${TYPE}_py311_${VARIANT}_backup.txt" || {
-            echo "requirements_compiled_${TYPE}_py311_${VARIANT}.txt is not up to date. Please download it from Artifacts tab and git push the changes."
+for LOCK_TYPE in "${LOCK_TYPES[@]}"; do
+    for VARIANT in "${VARIANTS[@]}"; do
+        diff --color -u ./python/requirements_compiled_${LOCK_TYPE}_py311_${VARIANT}.txt "$TEMP_DIR/requirements_compiled_${LOCK_TYPE}_py311_${VARIANT}_backup.txt" || {
+            echo "requirements_compiled_${LOCK_TYPE}_py311_${VARIANT}.txt is not up to date. Please download it from Artifacts tab and git push the changes."
             FAILED=1
         }
     done
