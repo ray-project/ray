@@ -242,7 +242,7 @@ class NodeHead(SubprocessModule):
         ):
             if self._registered_head_node_id is not None:
                 logger.warning(
-                    "Head newly became ALIVE is different from previous, current: %s, previous: %s. Internal states: %s",
+                    "A new head node has become ALIVE. New head node ID: %s, old head node ID: %s, internal states: %s",
                     node_id,
                     self._registered_head_node_id,
                     self.get_internal_states(),
