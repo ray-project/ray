@@ -111,7 +111,7 @@ NIXL_VERSION="0.3.1"
     # NIXL needs meson pybind11 ninja, but should have been included in requirements_*.txt
     cd "${TEMP_DIR}"
     wget "https://github.com/ai-dynamo/nixl/archive/refs/tags/${NIXL_VERSION}.tar.gz" -q
-    tar xzf "nixl-${NIXL_VERSION}.tar.gz"; rm "nixl-${NIXL_VERSION}.tar.gz"
+    tar xzf "${NIXL_VERSION}.tar.gz"; rm "${NIXL_VERSION}.tar.gz"
     cd "nixl-${NIXL_VERSION}"
     meson setup build --prefix=${NIXL_HOME} -Ducx_path=${UCX_HOME}
     cd build
