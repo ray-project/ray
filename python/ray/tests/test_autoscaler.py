@@ -3852,31 +3852,21 @@ class AutoscalingTest(unittest.TestCase):
 
         autoscaler.update()
         self.waitForNodes(1, tag_filters=WORKER_FILTER)
-
-        new_config = copy.deepcopy(SMALL_CLUSTER)
-        new_config["available_node_types"]["worker"]["min_workers"] = 0
-        self.write_config(new_config)
         autoscaler.update()
 
         worker_ip = self.provider.non_terminated_node_ips(WORKER_FILTER)[0]
-        fill_in_raylet_ids(self.provider, lm)
-        lm.update(worker_ip, mock_raylet_id(), {"CPU": 1}, {"CPU": 1}, 0)
+
+        lm.update(worker_ip, mock_raylet_id(), {"CPU": 1}, {"CPU": 1}, 20)
         autoscaler.update()
-        now = time.time()
-        assert (
-            now - lm.last_heartbeat_time_by_ip[worker_ip]
-            < AUTOSCALER_HEARTBEAT_TIMEOUT_S
-        ), "Initial heartbeat should be within timeout threshold"
         assert self.provider.internal_ip("1") == worker_ip
 
+        now = time.time()
         past_heartbeat = now - AUTOSCALER_HEARTBEAT_TIMEOUT_S - 1
         lm.last_heartbeat_time_by_ip[worker_ip] = past_heartbeat
-        autoscaler.update()
 
-        assert not (
-            now - lm.last_heartbeat_time_by_ip[worker_ip]
-            < AUTOSCALER_HEARTBEAT_TIMEOUT_S
-        ), "Initial heartbeat should be within timeout threshold"
+        autoscaler.update()
+        events = autoscaler.summary()
+        assert events.failed_nodes == [("172.0.0.1", "worker")]
 
 
 def test_import():
