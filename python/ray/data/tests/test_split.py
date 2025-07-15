@@ -776,6 +776,37 @@ def test_train_test_split(ray_start_regular_shared):
         ds.train_test_split(test_size=9)
 
 
+def test_train_test_split_stratified(ray_start_regular_shared):
+    # Test basic stratification with simple dataset
+    data = [
+        {"id": 0, "label": "A"},
+        {"id": 1, "label": "A"},
+        {"id": 2, "label": "B"},
+        {"id": 3, "label": "B"},
+        {"id": 4, "label": "C"},
+        {"id": 5, "label": "C"},
+    ]
+    ds = ray.data.from_items(data)
+    
+    # Test stratified split
+    train, test = ds.train_test_split(test_size=0.5, stratify="label")
+    
+    # Check that we have the right number of samples
+    assert train.count() == 3
+    assert test.count() == 3
+    
+    # Check that class proportions are preserved
+    train_labels = [row["label"] for row in train.take()]
+    test_labels = [row["label"] for row in test.take()]
+    
+    train_label_counts = {label: train_labels.count(label) for label in ["A", "B", "C"]}
+    test_label_counts = {label: test_labels.count(label) for label in ["A", "B", "C"]}
+    
+    # Each class should have exactly 1 sample in each split
+    assert train_label_counts == {"A": 1, "B": 1, "C": 1}
+    assert test_label_counts == {"A": 1, "B": 1, "C": 1}
+
+
 def test_split_is_not_disruptive(ray_start_cluster):
     ray.shutdown()
     ds = ray.data.range(100, override_num_blocks=10).map_batches(lambda x: x)
