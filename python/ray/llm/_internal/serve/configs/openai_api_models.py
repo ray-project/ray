@@ -42,7 +42,7 @@ class ErrorResponse(vLLMErrorResponse):
 # TODO (Kourosh): Upstream
 class CompletionRequest(vLLMCompletionRequest):
     model_config = ConfigDict(arbitrary_types_allowed=True)
-    
+
     request_id: str = Field(
         default_factory=lambda: f"{random_uuid()}",
         description=(
@@ -64,7 +64,7 @@ class CompletionStreamResponse(vLLMCompletionStreamResponse):
 # TODO (Kourosh): Upstream
 class EmbeddingCompletionRequest(vLLMEmbeddingCompletionRequest):
     model_config = ConfigDict(arbitrary_types_allowed=True)
-    
+
     request_id: str = Field(
         default_factory=lambda: f"{random_uuid()}",
         description=(
@@ -90,9 +90,7 @@ LLMEmbeddingsResponse = Union[
 ]
 
 LLMChatResponse = Union[
-    AsyncGenerator[
-        Union[ChatCompletionStreamResponse, ChatCompletionResponse, ErrorResponse], None
-    ],
+    AsyncGenerator[Union[str, ChatCompletionResponse, ErrorResponse], None],
 ]
 
 LLMCompletionsResponse = Union[
@@ -119,7 +117,9 @@ class OpenAIHTTPException(Exception):
 # TODO: upstream metadata for ModelData
 # Compared to vLLM this has a metadata field.
 class ModelCard(BaseModel):
-    model_config = ConfigDict(protected_namespaces=tuple(), arbitrary_types_allowed=True)
+    model_config = ConfigDict(
+        protected_namespaces=tuple(), arbitrary_types_allowed=True
+    )
 
     id: str
     object: str

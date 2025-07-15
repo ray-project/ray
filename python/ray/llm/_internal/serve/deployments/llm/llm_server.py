@@ -1,7 +1,17 @@
 import asyncio
 import os
 from abc import ABC, abstractmethod
-from typing import Any, AsyncGenerator, Dict, List, Optional, Type, Union, TYPE_CHECKING
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    AsyncGenerator,
+    Dict,
+    List,
+    Optional,
+    Type,
+    TypeVar,
+    Union,
+)
 
 from ray import serve
 from ray._common.utils import import_attr
@@ -38,11 +48,11 @@ if TYPE_CHECKING:
         CompletionResponse,
         EmbeddingRequest,
         EmbeddingResponse,
-        LLMChatResponse,
-        LLMCompletionsResponse,
+        ErrorResponse,
     )
 
 logger = get_logger(__name__)
+T = TypeVar("T")
 
 
 class _LLMServerBase(ABC):
@@ -58,26 +68,30 @@ class _LLMServerBase(ABC):
         """
 
     @abstractmethod
-    async def chat(self, request: "ChatCompletionRequest") -> "LLMChatResponse":
+    async def chat(
+        self, request: "ChatCompletionRequest"
+    ) -> AsyncGenerator[Union[str, "ChatCompletionResponse", "ErrorResponse"], None]:
         """
-        Inferencing to the engine for chat, and return the response as LLMChatResponse.
+        Inferencing to the engine for chat, and return the response.
         """
         ...
 
     @abstractmethod
     async def completions(
         self, request: "CompletionRequest"
-    ) -> "LLMCompletionsResponse":
+    ) -> AsyncGenerator[
+        Union[List[Union[str, "ErrorResponse"]], "CompletionResponse"], None
+    ]:
         """
-        Inferencing to the engine for completion api, and return the response as LLMCompletionsResponse.
+        Inferencing to the engine for completion api, and return the response.
         """
         ...
 
     @abstractmethod
     async def check_health(self) -> None:
         """
-        Check the health of the replica. Does not return anything. Raise error when
-        the engine is dead and needs to be restarted.
+        Check the health of the replica. Does not return anything.
+        Raise error when the engine is dead and needs to be restarted.
         """
         ...
 
@@ -207,7 +221,9 @@ class LLMServer(_LLMServerBase):
             disk_lora_model = await self._load_model(multiplexed_model_id)
             await self.engine.resolve_lora(disk_lora_model)
 
-    def _batch_output_stream(self, generator):
+    def _batch_output_stream(
+        self, generator: AsyncGenerator[T, None]
+    ) -> AsyncGenerator[List[T], None]:
         return OpenAIResponseBatcher(
             generator,
             interval_ms=self._get_batch_interval_ms(),
@@ -247,7 +263,9 @@ class LLMServer(_LLMServerBase):
 
     async def chat(
         self, request: "ChatCompletionRequest"
-    ) -> AsyncGenerator[Union[List[str], "ChatCompletionResponse"], None]:
+    ) -> AsyncGenerator[
+        Union[List[Union[str, "ErrorResponse"]], "ChatCompletionResponse"], None
+    ]:
         """Runs a chat request to the LLM engine and returns the response.
 
         Args:
@@ -262,7 +280,9 @@ class LLMServer(_LLMServerBase):
 
     async def completions(
         self, request: "CompletionRequest"
-    ) -> AsyncGenerator[Union[List[str], "CompletionResponse"], None]:
+    ) -> AsyncGenerator[
+        Union[List[Union[str, "ErrorResponse"]], "CompletionResponse"], None
+    ]:
         """Runs a completion request to the LLM engine and returns the response.
 
         Args:
@@ -277,7 +297,7 @@ class LLMServer(_LLMServerBase):
 
     async def embeddings(
         self, request: "EmbeddingRequest"
-    ) -> AsyncGenerator["EmbeddingResponse", None]:
+    ) -> AsyncGenerator[Union[List["ErrorResponse"], "EmbeddingResponse"], None]:
         """Runs an embeddings request to the engine and returns the response.
 
         Returns an AsyncGenerator over the EmbeddingResponse object. This is so that the caller can have a consistent interface across all the methods of chat, completions, and embeddings.
