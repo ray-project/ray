@@ -1016,6 +1016,7 @@ class _ActorClassMethodMetadata(object):
         # to use the created collective for communication between actors, instead of
         # the normal serialize -> object store -> deserialize codepath.
         from ray.experimental.channel.torch_tensor_type import TorchTensorType
+
         TorchTensorType().register_custom_serializer()
 
         return self
