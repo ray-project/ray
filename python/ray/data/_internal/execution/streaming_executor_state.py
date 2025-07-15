@@ -758,8 +758,8 @@ def dedupe_schemas_with_validation(
     diverged = True
     if warn:
         logger.warning(
-            f"Operator produced a RefBundle with a different schema "
-            f"than the previous one."
+            "Operator produced a RefBundle with a different schema "
+            "than the previous one."
         )
     if allow_divergent:
         old_schema = unify_schemas_with_validation([old_schema, bundle.schema])
