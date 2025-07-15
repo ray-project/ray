@@ -312,7 +312,7 @@ class LocalRouter(Router):
                 request_meta,
                 request_args,
                 request_kwargs,
-                generator_result_callback=generator_result_callback,
+                enqueue=generator_result_callback,
             )
         else:
             fut = self._user_callable_wrapper.call_user_method(
