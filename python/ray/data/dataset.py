@@ -2353,14 +2353,13 @@ class Dataset:
         
         def add_train_flag(group_batch):
             import pyarrow as pa
-            # group_batch is already a pandas DataFrame
+
             df = group_batch
             n = len(df)
             test_count = int(n * test_size)
             df["is_train"] = [True] * (n - test_count) + [False] * test_count
             return pa.Table.from_pandas(df)
         
-        # Lazy pipeline: group -> transform -> split
         split_ds = ds.groupby(stratify).map_groups(add_train_flag)
         partitioned = split_ds.repartition(keys="is_train")
 
