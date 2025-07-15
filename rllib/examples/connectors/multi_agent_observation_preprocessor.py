@@ -103,7 +103,9 @@ if __name__ == "__main__":
             num_envs_per_env_runner=20,
             # Define a list of two connector piece to be prepended to the env-to-module
             # connector pipeline:
-            # 1) The custom connector piece (a MultiAgentObservationPreprocessor).
+            # 1) The custom connector piece: A MultiAgentObservationPreprocessor, which
+            # enhances each agents' individual observations through adding the
+            # respective other agent's row index to the observation.
             # 2) A FlattenObservations connector to flatten the integer observations
             # for `agent_0`, which the AddOtherAgentsRowIndexToXYPos outputs.
             env_to_module_connector=lambda env, spaces, device: [
