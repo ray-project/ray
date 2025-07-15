@@ -52,7 +52,6 @@ aiohttp==3.11.16
     #   -r python/requirements/test-requirements.txt
     #   aiobotocore
     #   aiohttp-cors
-    #   datasets
     #   delta-sharing
     #   fsspec
     #   google-auth
@@ -381,7 +380,7 @@ dask==2023.6.1 ; python_version < "3.12"
     #   distributed
 databricks-sdk==0.52.0
     # via mlflow-skinny
-datasets==2.19.1
+datasets==3.6.0
     # via
     #   -r python/requirements/ml/data-test-requirements.txt
     #   -r python/requirements/ml/train-requirements.txt
@@ -1237,7 +1236,6 @@ numpy==1.26.4
     #   patsy
     #   pettingzoo
     #   prophet
-    #   pyarrow
     #   pylance
     #   pymars
     #   pyro-ppl
@@ -1546,7 +1544,7 @@ py-spy==0.4.0 ; python_version < "3.12"
     # via -r python/requirements.txt
 py4j==0.10.9.7
     # via pyspark
-pyarrow==14.0.2
+pyarrow==19.0.1
     # via
     #   -r python/requirements.txt
     #   dask
@@ -1561,9 +1559,7 @@ pyarrow==14.0.2
     #   raydp
     #   triad
 pyarrow-hotfix==0.7
-    # via
-    #   datasets
-    #   hudi
+    # via hudi
 pyasn1==0.5.1
     # via
     #   oauth2client
@@ -2270,7 +2266,7 @@ tornado==6.1 ; python_version < "3.12"
     #   notebook
     #   pymars
     #   terminado
-tqdm==4.64.1
+tqdm==4.67.1
     # via
     #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements/test-requirements.txt
