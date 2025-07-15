@@ -1,5 +1,7 @@
+import copy
+import os
 import random
-from typing import Any, Callable, Concatenate, Dict, Generic, List, Tuple, TypeVar, ParamSpec, Union
+from typing import Any, Callable, Concatenate, Dict, Generic, List, Optional, Tuple, TypeVar, ParamSpec, Union
 from typing import overload
 
 import ray
@@ -68,10 +70,36 @@ class ActorMethodProxy:
 
 class ActorMesh(Generic[T]):
 
-    def __init__(self, actor_cls: Callable[..., T], args: Any, kwargs: Any, shape: Union[int, Tuple[int], Dict[str, int]]):
+    def __init__(
+            self,
+            actor_cls: Callable[..., T],
+            args: Any,
+            kwargs: Any,
+            shape: Union[int, Tuple[int], Dict[str, int]],
+            # TODO: Not used yet
+            resources_per_actor: Optional[Dict[str, float]] = None,
+            runtime_env: Optional[Dict[str, Any]] = None,
+        ):
+
+        if isinstance(shape, int):
+            shape = (shape,)
+
         self.shape = shape
-        self._num_actors = sum(shape)
-        self._actors = [ray.remote(actor_cls).remote(*args, **kwargs) for i in range(self._num_actors)]
+
+        if isinstance(shape, dict):
+            self._num_actors = sum(shape.values())
+        else:
+            self._num_actors = sum(shape)
+
+        self._actors = []
+        runtime_env = copy.deepcopy(runtime_env) or {}
+        for i in range(self._num_actors):
+            env_vars = {**runtime_env.get("env_vars", {}), "RAY_ACTOR_MESH_RANK": str(i)}
+            ray_actor_cls = ray.remote(
+                runtime_env={**runtime_env, "env_vars": env_vars},
+            )(actor_cls)
+            actor = ray_actor_cls.remote(*args, **kwargs)
+            self._actors.append(actor)
     
     @property
     def methods(self) -> type[T]:
@@ -95,6 +123,9 @@ def method(method=None, **kwargs):
 if __name__ == "__main__":
 
     class Test:
+
+        def __init__(self):
+            print("actor rank = ", os.environ["RAY_ACTOR_MESH_RANK"])
 
         @method
         def f(self, x: int) -> int:
