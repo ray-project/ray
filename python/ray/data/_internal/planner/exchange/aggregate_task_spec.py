@@ -72,7 +72,7 @@ class SortAggregateTaskSpec(ExchangeTaskSpec):
             empty_block = acc._empty_table()
             schema = BlockAccessor.for_block(empty_block).schema()
             meta = BlockAccessor.for_block(empty_block).get_metadata()
-            return [] + [BlockMetadataWithSchema(schema=schema, metadata=meta)]
+            return [empty_block] + [BlockMetadataWithSchema(schema=schema, metadata=meta)]
 
         # Look at the first non-empty block for the schema
         for b in parts:
