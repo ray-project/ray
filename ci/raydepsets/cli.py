@@ -84,7 +84,7 @@ class DependencySetManager:
         requirements: List[str],
         args: List[str],
         name: str,
-        output: str = None,
+        output: str,
     ):
         """Compile a dependency set."""
         if constraints:

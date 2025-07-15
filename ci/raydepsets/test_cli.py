@@ -9,7 +9,6 @@ from ci.raydepsets.cli import load, DependencySetManager
 from ci.raydepsets.workspace import Workspace
 from click.testing import CliRunner
 from pathlib import Path
-import os
 from ci.raydepsets.cli import uv_binary
 
 _REPO_NAME = "com_github_ray_project_ray"
@@ -17,14 +16,6 @@ _runfiles = runfiles.Create()
 
 
 class TestCli(unittest.TestCase):
-    def setUp(self):
-        uv_path = uv_binary()
-        if uv_path:
-            uv_dir = str(Path(uv_path).parent)
-            current_path = os.environ.get("PATH", "")
-            if uv_dir not in current_path:
-                os.environ["PATH"] = f"{uv_dir}:{current_path}"
-
     def test_workspace_init(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             workspace = Workspace(tmpdir)
@@ -114,13 +105,5 @@ def _copy_data_to_tmpdir(tmpdir):
     )
 
 
-def _copy_data_to_tmpdir(tmpdir):
-    shutil.copytree(
-        _runfiles.Rlocation(f"{_REPO_NAME}/ci/raydepsets/test_data"),
-        tmpdir,
-        dirs_exist_ok=True,
-    )
-
-
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-vv", __file__]))
+    sys.exit(pytest.main(["-v", __file__]))
