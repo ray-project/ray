@@ -11,6 +11,7 @@ https://arxiv.org/pdf/2010.02193.pdf
 import gc
 import logging
 from typing import Any, Dict, Optional, Union
+from typing_extensions import Self
 
 import gymnasium as gym
 
@@ -191,7 +192,7 @@ class DreamerV3Config(AlgorithmConfig):
         replay_buffer_config: Optional[dict] = NotProvided,
         use_curiosity: Optional[bool] = NotProvided,
         **kwargs,
-    ) -> "DreamerV3Config":
+    ) -> Self:
         """Sets the training related configuration.
 
         Args:
@@ -480,7 +481,7 @@ class DreamerV3(Algorithm):
 
     @classmethod
     @override(Algorithm)
-    def get_default_config(cls) -> AlgorithmConfig:
+    def get_default_config(cls) -> DreamerV3Config:
         return DreamerV3Config()
 
     @override(Algorithm)

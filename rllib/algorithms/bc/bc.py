@@ -116,5 +116,5 @@ class BC(MARWIL):
 
     @classmethod
     @override(MARWIL)
-    def get_default_config(cls) -> AlgorithmConfig:
+    def get_default_config(cls) -> BCConfig:
         return BCConfig()
