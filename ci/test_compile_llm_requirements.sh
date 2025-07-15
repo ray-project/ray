@@ -18,27 +18,27 @@ trap cleanup EXIT
 echo "Created temporary directory: $TEMP_DIR"
 
 # Create backup copies of req files to reference to
-for LOCK_TYPE in rayllm_test ray_test ray rayllm; do
+for TYPE in rayllm_test ray_test ray rayllm; do
     for VARIANT in cpu cu121 cu128; do
-        cp ./python/requirements_compiled_${LOCK_TYPE}_py311_${VARIANT}.txt "$TEMP_DIR/requirements_compiled_${LOCK_TYPE}_py311_${VARIANT}_backup.txt"
+        cp ./python/requirements_compiled_${TYPE}_py311_${VARIANT}.txt "$TEMP_DIR/requirements_compiled_${TYPE}_py311_${VARIANT}_backup.txt"
     done
 done
 
 ./ci/compile_llm_requirements.sh
 
 # Copy files to artifact mount on Buildkite
-for LOCK_TYPE in rayllm_test ray_test ray rayllm; do
+for TYPE in rayllm_test ray_test ray rayllm; do
     for VARIANT in cpu cu121 cu128; do
-        cp ./python/requirements_compiled_${LOCK_TYPE}_py311_${VARIANT}.txt /artifact-mount/
+        cp ./python/requirements_compiled_${TYPE}_py311_${VARIANT}.txt /artifact-mount/
     done
 done
 
 # Check all files and print if files are not up to date
 FAILED=0
-for LOCK_TYPE in rayllm_test ray_test ray rayllm; do
+for TYPE in rayllm_test ray_test ray rayllm; do
     for VARIANT in cpu cu121 cu128; do
-        diff --color -u ./python/requirements_compiled_${LOCK_TYPE}_py311_${VARIANT}.txt "$TEMP_DIR/requirements_compiled_${LOCK_TYPE}_py311_${VARIANT}_backup.txt" || {
-            echo "requirements_compiled_${LOCK_TYPE}_py311_${VARIANT}.txt is not up to date. Please download it from Artifacts tab and git push the changes."
+        diff --color -u ./python/requirements_compiled_${TYPE}_py311_${VARIANT}.txt "$TEMP_DIR/requirements_compiled_${TYPE}_py311_${VARIANT}_backup.txt" || {
+            echo "requirements_compiled_${TYPE}_py311_${VARIANT}.txt is not up to date. Please download it from Artifacts tab and git push the changes."
             FAILED=1
         }
     done
