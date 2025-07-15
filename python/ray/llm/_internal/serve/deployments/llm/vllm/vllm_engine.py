@@ -407,6 +407,7 @@ class VLLMEngine(LLMEngine):
         self._validate_openai_serving_chat()
 
         # TODO (Kourosh): Remove when we upstream request_id attribute to vLLM.
+        # PR: https://github.com/vllm-project/vllm/pull/21009
         # Create a fake starlette.Request object with the x-request-id header
         # so that the create_chat_completion API can assign the request_id properly.
         raw_request = self._create_raw_request(request, "/chat/completions")
@@ -434,6 +435,7 @@ class VLLMEngine(LLMEngine):
         self._validate_openai_serving_completion()
 
         # TODO (Kourosh): Remove when we upstream request_id attribute to vLLM.
+        # PR: https://github.com/vllm-project/vllm/pull/21009
         # Create a fake starlette.Request object with the x-request-id header
         # so that the create_completion API can assign the request_id properly.
         raw_request = self._create_raw_request(request, "/completions")
