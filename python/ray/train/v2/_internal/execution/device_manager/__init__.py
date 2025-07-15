@@ -3,13 +3,18 @@ import threading
 from typing import Optional
 
 import torch
+
 import ray
 import ray._private.ray_constants as ray_constants
-from ray.air._internal.device_manager.cpu import CPUTorchDeviceManager
-from ray.air._internal.device_manager.hpu import HPUTorchDeviceManager
-from ray.air._internal.device_manager.npu import NPUTorchDeviceManager
-from ray.air._internal.device_manager.nvidia_gpu import CUDATorchDeviceManager
-from ray.air._internal.device_manager.torch_device_manager import TorchDeviceManager
+from ray.train.v2._internal.execution.device_manager.cpu import CPUTorchDeviceManager
+from ray.train.v2._internal.execution.device_manager.hpu import HPUTorchDeviceManager
+from ray.train.v2._internal.execution.device_manager.npu import NPUTorchDeviceManager
+from ray.train.v2._internal.execution.device_manager.nvidia_gpu import (
+    CUDATorchDeviceManager,
+)
+from ray.train.v2._internal.execution.device_manager.torch_device_manager import (
+    TorchDeviceManager,
+)
 
 logger = logging.getLogger(__name__)
 

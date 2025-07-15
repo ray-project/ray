@@ -194,6 +194,7 @@ class TorchTrainer(DataParallelTrainer):
         # TODO: [Deprecated]
         metadata: Optional[Dict[str, Any]] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
+        local_test_mode: bool = False,
     ):
         from ray.train.torch.config import TorchConfig
 
@@ -212,4 +213,5 @@ class TorchTrainer(DataParallelTrainer):
             datasets=datasets,
             resume_from_checkpoint=resume_from_checkpoint,
             metadata=metadata,
+            local_test_mode=local_test_mode,
         )

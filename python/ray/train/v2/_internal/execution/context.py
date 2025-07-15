@@ -6,14 +6,20 @@ from dataclasses import dataclass, field
 from queue import Queue
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
+import torch
+
 import ray
 from ray.data import DataIterator, Dataset
 from ray.train import BackendConfig, Checkpoint, DataConfig
 from ray.train._internal import session
 from ray.train._internal.session import _TrainingResult
 from ray.train.v2._internal.execution.checkpoint.sync_actor import SynchronizationActor
+from ray.train.v2._internal.execution.device_manager import (
+    get_torch_device_manager_by_context,
+)
 from ray.train.v2._internal.execution.storage import StorageContext
 from ray.train.v2._internal.util import _copy_doc, invoke_context_managers
+from ray.train.v2.api.base_context import TrainContext
 from ray.train.v2.api.config import RunConfig, ScalingConfig
 
 if TYPE_CHECKING:
@@ -87,7 +93,9 @@ class ExecutionContext:
 
 
 @dataclass
-class TrainContext:
+class RayTrainContext(TrainContext):
+    """Ray Train specific implementation of TrainContext."""
+
     train_run_context: TrainRunContext
     distributed_context: DistributedContext
     execution_context: ExecutionContext
@@ -268,8 +276,12 @@ class TrainContext:
             # training result to be consumed by the controller.
             self.get_result_queue().put(training_result)
 
+    def get_devices(self) -> List[torch.device]:
+        return get_torch_device_manager_by_context().get_devices()
+
 
 # The global variable holding the current TrainContext
+# Might be RayTrainContext or LocalTestingContext
 _train_context: Optional[TrainContext] = None
 
 # Thread lock to protect the global TrainContext

@@ -24,7 +24,7 @@ from ray.train.v2._internal.execution.checkpoint.sync_actor import Synchronizati
 from ray.train.v2._internal.execution.context import (
     DistributedContext,
     ExecutionContext,
-    TrainContext,
+    RayTrainContext,
     TrainRunContext,
     get_train_context,
     set_train_context,
@@ -195,7 +195,7 @@ class RayTrainWorker:
         context_callbacks_to_propagate = [
             c for c in worker_callbacks if isinstance(c, TrainContextCallback)
         ]
-        context = TrainContext(
+        context = RayTrainContext(
             train_run_context=train_run_context,
             distributed_context=distributed_context,
             execution_context=ExecutionContext(

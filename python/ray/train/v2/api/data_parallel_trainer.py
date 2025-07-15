@@ -1,8 +1,12 @@
 import asyncio
 import logging
+import os
 import signal
 import sys
 from typing import Any, Callable, Dict, List, Optional, Union
+
+import torch
+import torch.distributed as torch_dist
 
 import ray
 from ray._private.ray_constants import env_bool
@@ -44,12 +48,13 @@ from ray.train.v2._internal.constants import (
     get_env_vars_to_propagate,
 )
 from ray.train.v2._internal.execution.callback import RayTrainCallback
-from ray.train.v2._internal.execution.context import TrainRunContext
+from ray.train.v2._internal.execution.context import TrainRunContext, set_train_context
 from ray.train.v2._internal.execution.controller import TrainController
 from ray.train.v2._internal.execution.failure_handling import create_failure_policy
 from ray.train.v2._internal.execution.scaling_policy import create_scaling_policy
 from ray.train.v2._internal.util import ObjectRefWrapper, construct_train_func
 from ray.train.v2.api.callback import UserCallback
+from ray.train.v2.api.local_testing_context import LocalTestingContext
 from ray.util.annotations import Deprecated, DeveloperAPI
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
@@ -78,6 +83,7 @@ class DataParallelTrainer:
         # TODO: [Deprecated] Remove in future release
         resume_from_checkpoint: Optional[Checkpoint] = None,
         metadata: Optional[Dict[str, Any]] = None,
+        local_test_mode: bool = False,
     ):
         self.run_config = run_config or RunConfig()
         self.train_loop_per_worker = train_loop_per_worker
@@ -86,6 +92,7 @@ class DataParallelTrainer:
         self.backend_config = backend_config or BackendConfig()
         self.datasets = datasets or {}
         self.data_config = dataset_config or DataConfig()
+        self.local_test_mode = local_test_mode
 
         self.train_run_context = TrainRunContext(
             run_config=self.run_config,
@@ -122,25 +129,83 @@ class DataParallelTrainer:
             train_func_context=self.backend_config.train_func_context,
             fn_arg_name="train_loop_per_worker",
         )
-        train_fn_ref = ObjectRefWrapper(train_fn)
+        if self.local_test_mode:
+            self._set_local_testing_train_context()
+            train_fn()
+            return Result(checkpoint=None, error=None, metrics={}, path=None)
+        else:
+            train_fn_ref = ObjectRefWrapper(train_fn)
+            result = self._initialize_and_run_controller(
+                train_fn_ref=train_fn_ref,
+                scaling_policy=create_scaling_policy(self.scaling_config),
+                failure_policy=create_failure_policy(self.run_config.failure_config),
+                train_run_context=self.train_run_context,
+                callbacks=self._create_default_callbacks(),
+            )
 
-        result = self._initialize_and_run_controller(
-            train_fn_ref=train_fn_ref,
-            scaling_policy=create_scaling_policy(self.scaling_config),
-            failure_policy=create_failure_policy(self.run_config.failure_config),
-            train_run_context=self.train_run_context,
-            callbacks=self._create_default_callbacks(),
-        )
+            if result.error:
+                # NOTE: If the training run errored out, raise an error back to the
+                # user's driver script.
+                # For example, if the Train `FailurePolicy` runs out of retries,
+                # and one of the workers errors. The controller will exit, and
+                # the error will be raised here.
+                raise result.error
 
-        if result.error:
-            # NOTE: If the training run errored out, raise an error back to the
-            # user's driver script.
-            # For example, if the Train `FailurePolicy` runs out of retries,
-            # and one of the workers errors. The controller will exit, and
-            # the error will be raised here.
-            raise result.error
+            return result
 
-        return result
+    def _set_local_testing_train_context(self) -> None:
+        # TODO: warning that all configs might be overridden by default values
+        def launched_by_torchrun() -> bool:
+            """Return True if this process looks like it came from `torchrun`."""
+            env_markers = {
+                "LOCAL_RANK",
+                "LOCAL_WORLD_SIZE",
+                "WORLD_SIZE",
+                "TORCHELASTIC_RUN_ID",
+            }  # torchrun ≥1.10
+            argv_markers = (
+                "--local-rank",
+                "--local_rank",
+            )  # torchrun always passes one of these
+
+            # Any of the env vars *or* the CLI flag counts as evidence
+            return bool(
+                (env_markers & os.environ.keys())
+                or any(a.startswith(argv_markers) for a in sys.argv)
+            )
+
+        def _get_devices() -> List[torch.device]:
+            if torch.cuda.is_available():
+                return [torch.device(f"cuda:{torch.cuda.current_device()}")]
+            else:
+                return [torch.device("cpu")]
+
+        assert self.local_test_mode
+        if launched_by_torchrun():
+            torch_dist.init_process_group(
+                backend="nccl" if torch.cuda.is_available() else "gloo"
+            )
+            world_size = torch_dist.get_world_size()
+            world_rank = torch_dist.get_rank()
+            dataset_shards = DataConfig().configure(
+                datasets=self.datasets,
+                world_size=world_size,
+                worker_handles=None,
+                worker_node_ids=None,
+            )
+            # We are only using 1 node for local testing, so world_size == local_world_size
+            set_train_context(
+                LocalTestingContext(
+                    dataset_shards=dataset_shards[world_rank],
+                    world_size=world_size,
+                    world_rank=world_rank,
+                    local_rank=world_rank,
+                    local_world_size=world_size,
+                    devices=_get_devices(),
+                )
+            )
+        else:
+            set_train_context(LocalTestingContext(dataset_shards=self.datasets))
 
     def _create_default_callbacks(self) -> List[RayTrainCallback]:
         # Initialize callbacks from environment variable
