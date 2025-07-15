@@ -151,7 +151,7 @@ class UvProcessor:
         requirements_file = dependency_utils.get_requirements_file(path, uv_packages)
 
         # Check existence for `uv` and see if we could skip `uv` installation.
-        uv_exists = await self._check_uv_existence(python, cwd, pip_env, logger)
+        uv_exists = await self._check_uv_existence(path, cwd, pip_env, logger)
 
         # Install uv, which acts as the default package manager.
         if (not uv_exists) or (self._uv_config.get("uv_version", None) is not None):
@@ -167,7 +167,6 @@ class UvProcessor:
         #
         # Difference with pip:
         # 1. `--disable-pip-version-check` has no effect for uv.
-        # 2. Allow user to specify their own options to install packages via `uv`.
         uv_install_cmd = [
             python,
             "-m",
