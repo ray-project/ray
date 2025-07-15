@@ -612,7 +612,7 @@ def test_check_cluster_resources_and_raise_if_insufficient(monkeypatch):
     monkeypatch.setattr(
         ray_state,
         "get_max_resources_from_cluster_config",
-        lambda: {"CPU": 8.0, "GPU": None},
+        lambda: {"CPU": 8.0, "GPU": 0},
     )
 
     with pytest.raises(

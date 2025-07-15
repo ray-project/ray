@@ -218,7 +218,6 @@ class WorkerGroup:
             resources_per_worker: The resources per worker.
             num_workers: The number of workers.
         """
-        # Check if the cluster has enough resources before waiting for placement group
         max_cluster_resources = ray_state.get_max_resources_from_cluster_config()
         if max_cluster_resources and isinstance(max_cluster_resources, dict):
             for (
@@ -227,7 +226,7 @@ class WorkerGroup:
             ) in resources_per_worker.items():
                 total_required_amount = required_amount * num_workers
                 available_amount = max_cluster_resources.get(resource_name, 0)
-                if available_amount is None or total_required_amount > available_amount:
+                if total_required_amount > available_amount:
                     error_msg = (
                         f"Insufficient cluster resources. Worker requires {total_required_amount} "
                         f"{resource_name}, but cluster only has {available_amount} available."
@@ -251,6 +250,11 @@ class WorkerGroup:
         self._assert_inactive()
         worker_group_context = self._worker_group_context
 
+        self._check_cluster_resources_and_raise_if_insufficient(
+            worker_group_context.resources_per_worker,
+            worker_group_context.num_workers,
+        )
+
         # TODO: Review the order of `on_xyz_start` and `after_xyz_start` callbacks.
         # The current execution order is as follows:`on_worker_group_start` callbacks
         # are triggered before the `after_worker_group_start` callbacks.
@@ -259,11 +263,6 @@ class WorkerGroup:
         ):
             for callback in self._callbacks:
                 callback.before_worker_group_start(worker_group_context)
-
-            self._check_cluster_resources_and_raise_if_insufficient(
-                worker_group_context.resources_per_worker,
-                worker_group_context.num_workers,
-            )
 
             pg = placement_group(
                 bundles=[worker_group_context.resources_per_worker]
