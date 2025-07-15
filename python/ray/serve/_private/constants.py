@@ -312,11 +312,6 @@ RAY_SERVE_ENABLE_MEMORY_PROFILING = (
     os.environ.get("RAY_SERVE_ENABLE_MEMORY_PROFILING", "0") == "1"
 )
 
-# Enable cProfile in all Serve actors.
-RAY_SERVE_ENABLE_CPU_PROFILING = (
-    os.environ.get("RAY_SERVE_ENABLE_CPU_PROFILING", "0") == "1"
-)
-
 # Max value allowed for max_replicas_per_node option.
 # TODO(jjyao) the <= 100 limitation is an artificial one
 # and is due to the fact that Ray core only supports resource

@@ -54,7 +54,6 @@ from ray.serve._private.http_util import (
 )
 from ray.serve._private.logging_utils import (
     access_log_msg,
-    configure_component_cpu_profiler,
     configure_component_logger,
     configure_component_memory_profiler,
     get_component_logger_file_path,
@@ -1054,9 +1053,6 @@ class ProxyActor:
         configure_component_memory_profiler(
             component_name="proxy", component_id=node_ip_address
         )
-        self.cpu_profiler, self.cpu_profiler_log = configure_component_cpu_profiler(
-            component_name="proxy", component_id=node_ip_address
-        )
 
         is_head = self._node_id == get_head_node_id()
         self.proxy_router = ProxyRouter(get_proxy_handle)
@@ -1210,27 +1206,6 @@ class ProxyActor:
         return pickle.dumps(
             await self.http_proxy.receive_asgi_messages(request_metadata)
         )
-
-    def _save_cpu_profile_data(self) -> str:
-        """Saves CPU profiling data, if CPU profiling is enabled.
-
-        Logs a warning if CPU profiling is disabled.
-        """
-
-        if self.cpu_profiler is not None:
-            import marshal
-
-            self.cpu_profiler.snapshot_stats()
-            with open(self.cpu_profiler_log, "wb") as f:
-                marshal.dump(self.cpu_profiler.stats, f)
-            logger.info(f'Saved CPU profile data to file "{self.cpu_profiler_log}"')
-            return self.cpu_profiler_log
-        else:
-            logger.error(
-                "Attempted to save CPU profile data, but failed because no "
-                "CPU profiler was running! Enable CPU profiling by enabling "
-                "the RAY_SERVE_ENABLE_CPU_PROFILING env var."
-            )
 
     def _get_http_options(self) -> HTTPOptions:
         """Internal method to get HTTP options used by the proxy."""
