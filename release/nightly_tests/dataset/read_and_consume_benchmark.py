@@ -89,7 +89,9 @@ def get_consume_fn(args: argparse.Namespace) -> Callable[[ray.data.Dataset], Non
             count = ds.count()
 
             if args.expected_count is not None:
-                assert count == args.expected_count
+                assert (
+                    count == args.expected_count
+                ), f"Expected {args.expected_count} rows, got {count}."
 
     elif args.iter_bundles:
 
@@ -100,7 +102,9 @@ def get_consume_fn(args: argparse.Namespace) -> Callable[[ray.data.Dataset], Non
                 count += bundle.num_rows()
 
             if args.expected_count is not None:
-                assert count == args.expected_count
+                assert (
+                    count == args.expected_count
+                ), f"Expected {args.expected_count} bundles, got {count}."
 
     elif args.iter_batches:
 
