@@ -124,6 +124,13 @@ http_archive(
     ],
 )
 
+http_archive(
+    name = "rules_cc",
+    urls = ["https://github.com/bazelbuild/rules_cc/releases/download/0.1.2/rules_cc-0.1.2.tar.gz"],
+    sha256 = "d62624b45e0912713dcd3b8e30ba6ae55418ed6bf99e6d135cd61b8addae312b",
+    strip_prefix = "rules_cc-0.1.2",
+)
+
 load("@com_github_storypku_bazel_iwyu//bazel:dependencies.bzl", "bazel_iwyu_dependencies")
 
 bazel_iwyu_dependencies()
