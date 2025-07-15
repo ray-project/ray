@@ -135,7 +135,7 @@ class TextGenerationProbeResponse:
 
     def finish_reason(self):
         # This should be set on the last response.
-        for chunk in self.response:
+        for chunk in reversed(self.response):
             if len(chunk.choices) > 0:
                 if chunk.choices[0].finish_reason:
                     return chunk.choices[0].finish_reason
