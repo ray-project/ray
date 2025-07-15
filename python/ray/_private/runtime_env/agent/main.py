@@ -243,6 +243,7 @@ if __name__ == "__main__":
                 loop=loop,
             )
             started = True
+            break
         except OSError as e:
             last_exception = e
             if attempt < max_retries:
