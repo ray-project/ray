@@ -589,9 +589,6 @@ class HashShufflingOperatorBase(PhysicalOperator):
         #   - All input sequences have been ingested
         #   - All outstanding shuffling tasks have completed
         if not self._is_shuffling_done():
-            # While shuffling is in progress, check aggregator health and log once
-            # when they are all ready.
-            self._aggregator_pool.log_once_if_all_healthy()
             return
 
         logger.debug(
@@ -1152,31 +1149,22 @@ class AggregatorPool:
                 )
                 self._last_health_warning_time = current_time
             elif not unready_refs and self._last_health_warning_time is not None:
-                # All aggregators are ready
+                # All aggregators are ready – clear warning timer and, if this is
+                # the first time, emit a single DEBUG log.
                 self._last_health_warning_time = None
+                if not self._healthy_logged:
+                    logger.debug(
+                        f"All {self._num_aggregators} hash shuffle aggregators "
+                        f"are now healthy"
+                    )
+                    # NOTE: `log_once_if_all_healthy` has been removed – the one-time DEBUG log is
+                    # now emitted directly from `_check_aggregator_health` once all aggregators
+                    # report ready.
+
+                    self._healthy_logged = True
 
         except Exception as e:
             logger.warning(f"Failed to check aggregator health: {e}")
-
-    def log_once_if_all_healthy(self):
-        """Checks if all aggregators are healthy and logs a message if so.
-        Logging should only happen once all aggregators are deemed healthy.
-        """
-        if self._healthy_logged:
-            return
-
-        # Use the existing readiness refs if they have been created.
-        if self._pending_aggregators_refs is None:
-            # This will be initialized by the first call to _check_aggregator_health
-            return
-
-        # If all aggregators are healthy, the list of pending refs will be empty.
-        if not self._pending_aggregators_refs:
-            logger.debug(
-                f"All {self._num_aggregators} hash shuffle aggregators "
-                f"are now healthy"
-            )
-            self._healthy_logged = True
 
     @property
     def num_partitions(self):
