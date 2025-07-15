@@ -1,6 +1,6 @@
+import sys
 from typing import Optional
 
-import sys
 import pytest
 
 from ray.llm._internal.serve.config_generator.utils.gpu import ALL_GPU_TYPES, GPUType
@@ -51,7 +51,6 @@ class TestTextCompletionModelConverter:
         assert model.gpu_type.value == gpu_type.value
         assert model.tensor_parallelism == tensor_parallelism
         assert model.reference_model_id == reference_model_id
-
 
 
 if __name__ == "__main__":

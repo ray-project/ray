@@ -1,6 +1,6 @@
+import sys
 from typing import Any, Dict, Optional
 
-import sys
 import pytest
 
 from ray.llm._internal.serve.config_generator.generator import (
@@ -136,8 +136,6 @@ class TestTextCompletionModelConfig:
             .get("HF_TOKEN", None)
             == input_model_config.hf_token
         )
-
-
 
 
 if __name__ == "__main__":
