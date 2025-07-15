@@ -3808,7 +3808,6 @@ def test_get_actor_timeout_multiplier(shutdown_only):
     the actual operation takes less than 1 second, because GetApiOptions doesn't
     apply the 0.8 server timeout multiplier that ListApiOptions uses.
     """
-    from ray.util.state.common import GetApiOptions, ListApiOptions
 
     ray.init()
 
