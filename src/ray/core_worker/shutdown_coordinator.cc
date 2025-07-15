@@ -197,7 +197,8 @@ void ShutdownCoordinator::ExecuteDriverShutdown(bool force_shutdown,
     ExecuteGracefulShutdown(detail, timeout_ms);
     // Handle timeout fallback if needed
     if (force_on_timeout && GetState() != ShutdownState::kShutdown) {
-      ExecuteForceShutdown(std::string("Graceful shutdown timeout: ") + std::string(detail));
+      ExecuteForceShutdown(std::string("Graceful shutdown timeout: ") +
+                           std::string(detail));
     }
   }
 }
@@ -236,7 +237,8 @@ void ShutdownCoordinator::ExecuteWorkerShutdown(bool force_shutdown,
   }
 
   if (force_on_timeout && GetState() != ShutdownState::kShutdown) {
-    ExecuteForceShutdown(std::string("Graceful shutdown timeout: ") + std::string(detail));
+    ExecuteForceShutdown(std::string("Graceful shutdown timeout: ") +
+                         std::string(detail));
   }
 }
 

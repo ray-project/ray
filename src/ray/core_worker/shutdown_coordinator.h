@@ -135,10 +135,10 @@ class ShutdownCoordinator {
   /// \param force_shutdown If true, force immediate shutdown; if false, graceful shutdown
   /// \param reason The reason for shutdown initiation
   /// \param detail Optional detailed explanation
-  /// \param timeout_ms Timeout for graceful shutdown (-1 = no timeout, 0 = immediate force
-  /// fallback) \param force_on_timeout If true, fallback to force shutdown on timeout; if
-  /// false, wait indefinitely
-  /// \return true if this call initiated shutdown, false if already shutting down
+  /// \param timeout_ms Timeout for graceful shutdown (-1 = no timeout, 0 = immediate
+  /// force fallback) \param force_on_timeout If true, fallback to force shutdown on
+  /// timeout; if false, wait indefinitely \return true if this call initiated shutdown,
+  /// false if already shutting down
   bool RequestShutdown(
       bool force_shutdown,
       ShutdownReason reason,

@@ -108,7 +108,9 @@ void CoreWorkerShutdownExecutor::ExecuteWorkerExit(std::string_view exit_type,
     core_worker_->exiting_detail_ = std::optional<std::string>{detail};
   }
 
-  auto shutdown_callback = [this, exit_type = std::string(exit_type), detail = std::string(detail)]() {
+  auto shutdown_callback = [this,
+                            exit_type = std::string(exit_type),
+                            detail = std::string(detail)]() {
     // To avoid problems, make sure shutdown is always called from the same
     // event loop each time.
     core_worker_->task_execution_service_.post(
@@ -244,7 +246,7 @@ bool CoreWorkerShutdownExecutor::ShouldWorkerIdleExit() const {
 }
 
 void CoreWorkerShutdownExecutor::DisconnectServices(std::string_view exit_type,
-                                                        std::string_view detail) {
+                                                    std::string_view detail) {
   core_worker_->RecordMetrics();
 
   if (core_worker_->options_.worker_type == WorkerType::DRIVER &&

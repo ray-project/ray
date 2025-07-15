@@ -41,8 +41,7 @@ class CoreWorkerShutdownExecutor : public ShutdownExecutorInterface {
                                std::chrono::milliseconds timeout_ms) override;
 
   /// Execute complete force shutdown sequence
-  void ExecuteForceShutdown(std::string_view exit_type,
-                            std::string_view detail) override;
+  void ExecuteForceShutdown(std::string_view exit_type, std::string_view detail) override;
 
   /// Execute worker exit sequence with task draining
   void ExecuteWorkerExit(std::string_view exit_type,
