@@ -26,9 +26,6 @@ namespace ray {
 
 namespace core {
 
-class TaskManager;
-class ObjectRecoveryManager;
-
 /// Interface for executing shutdown operations and provides the actual shutdown
 /// execution that the coordinator invokes. ShutdownDependencies execute real work.
 class ShutdownDependencies {
@@ -69,28 +66,14 @@ enum class ShutdownReason : std::uint8_t {
   kNone = 0,
   kIntentionalShutdown = 1,
   kUnexpectedError = 2,
-  kSystemShutdown = 3,
-  kIdleTimeout = 4,
-  kWorkerExitRequestReceived = 5,
-  kActorExitRequestReceived = 6,
-  kGracefulExit = 7,
-  kForcedExit = 8,
-  kRayletFailure = 9,
-  kNodeFailure = 10,
-  kUserError = 11,
-  kOutOfMemory = 12,
-  kJobFinished = 13,
-  kActorDiedError = 14,
-  kActorKilled = 15,
-  kTaskCancelled = 16,
-  kRuntimeEnvFailed = 17,
-  kWorkerRestartDueToUserCodeCrash = 18,
-  kWorkerUnexpectedExit = 19,
-  kActorCreationFailed = 20,
-  kActorRestartError = 21,
-  kDriverShutdown = 22,
-  kLocalRayletDied = 23,
-  kCreationTaskError = 24
+  kIdleTimeout = 3,
+  kGracefulExit = 4,
+  kForcedExit = 5,
+  kUserError = 6,
+  kOutOfMemory = 7,
+  kJobFinished = 8,
+  kActorKilled = 9,
+  kActorCreationFailed = 10
 };
 
 /// Shutdown state representing the current lifecycle phase of worker shutdown.

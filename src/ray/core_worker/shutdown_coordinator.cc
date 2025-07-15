@@ -300,50 +300,22 @@ std::string ShutdownCoordinator::GetReasonString() const {
     return "IntentionalShutdown";
   case ShutdownReason::kUnexpectedError:
     return "UnexpectedError";
-  case ShutdownReason::kSystemShutdown:
-    return "SystemShutdown";
   case ShutdownReason::kIdleTimeout:
     return "IdleTimeout";
-  case ShutdownReason::kWorkerExitRequestReceived:
-    return "WorkerExitRequestReceived";
-  case ShutdownReason::kActorExitRequestReceived:
-    return "ActorExitRequestReceived";
   case ShutdownReason::kGracefulExit:
     return "GracefulExit";
   case ShutdownReason::kForcedExit:
     return "ForcedExit";
-  case ShutdownReason::kRayletFailure:
-    return "RayletFailure";
-  case ShutdownReason::kNodeFailure:
-    return "NodeFailure";
   case ShutdownReason::kUserError:
     return "UserError";
   case ShutdownReason::kOutOfMemory:
     return "OutOfMemory";
   case ShutdownReason::kJobFinished:
     return "JobFinished";
-  case ShutdownReason::kActorDiedError:
-    return "ActorDiedError";
   case ShutdownReason::kActorKilled:
     return "ActorKilled";
-  case ShutdownReason::kTaskCancelled:
-    return "TaskCancelled";
-  case ShutdownReason::kRuntimeEnvFailed:
-    return "RuntimeEnvFailed";
-  case ShutdownReason::kWorkerRestartDueToUserCodeCrash:
-    return "WorkerRestartDueToUserCodeCrash";
-  case ShutdownReason::kWorkerUnexpectedExit:
-    return "WorkerUnexpectedExit";
   case ShutdownReason::kActorCreationFailed:
     return "ActorCreationFailed";
-  case ShutdownReason::kActorRestartError:
-    return "ActorRestartError";
-  case ShutdownReason::kDriverShutdown:
-    return "DriverShutdown";
-  case ShutdownReason::kLocalRayletDied:
-    return "LocalRayletDied";
-  case ShutdownReason::kCreationTaskError:
-    return "CreationTaskError";
   default:
     return "Unknown";
   }
