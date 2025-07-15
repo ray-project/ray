@@ -1,4 +1,4 @@
-# Deploy custom Model Context Protocol (MCP) servers
+# Deploy custom MCP servers
 
 <div align="left">
 <a target="_blank" href="https://console.anyscale.com/"><img src="https://img.shields.io/badge/🚀 Run_on-Anyscale-9hf"></a>&nbsp;
@@ -59,10 +59,10 @@ If you're running on a Kubernetes cloud (EKS, GKE, etc.), you can still access t
 ```{toctree}
 :hidden:
 
-01 Deploy_custom_mcp_in_streamable_http_with_ray_serve.ipynb
-02 Build_mcp_gateway_with_existing_ray_serve_apps.ipynb
-03 Deploy_single_mcp_stdio_docker_image_with_ray_serve.ipynb
-04 Deploy_multiple_mcp_stdio_docker_images_with_ray_serve.ipynb
-05 (Optional) Build_docker_image_for_mcp_server.ipynb
+01 Deploy_custom_mcp_in_streamable_http_with_ray_serve
+02 Build_mcp_gateway_with_existing_ray_serve_apps
+03 Deploy_single_mcp_stdio_docker_image_with_ray_serve
+04 Deploy_multiple_mcp_stdio_docker_images_with_ray_serve
+05 (Optional) Build_docker_image_for_mcp_server
 
 ```
