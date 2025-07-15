@@ -249,5 +249,13 @@ def _copy_data_to_tmpdir(tmpdir):
     )
 
 
+def _copy_data_to_tmpdir(tmpdir):
+    shutil.copytree(
+        _runfiles.Rlocation(f"{_REPO_NAME}/ci/raydepsets/test_data"),
+        tmpdir,
+        dirs_exist_ok=True,
+    )
+
+
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-vv", __file__]))
+    sys.exit(pytest.main(["-v", __file__]))
