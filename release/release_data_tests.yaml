@@ -58,7 +58,7 @@
       s3://ray-benchmark-data-internal-us-west-2/imagenet/tfrecords --format tfrecords
       --iter-bundles
 
-- name: read_jsonl
+- name: read_jsonl_fixed_size
   run:
     timeout: 3600
     script: >
