@@ -101,7 +101,7 @@ class _LLMServerBase(ABC):
 
 
 class LLMServer(_LLMServerBase):
-    """This is a shm layer to decouple the LLM engine from the ingress
+    """This is a shim layer to decouple the LLM engine from the ingress
     deployment.
 
     It has a very similar API as the engine. Almost all of the abstractions are

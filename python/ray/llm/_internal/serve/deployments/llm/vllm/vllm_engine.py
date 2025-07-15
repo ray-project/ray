@@ -196,6 +196,7 @@ class VLLMEngine(LLMEngine):
         )
 
         state = State()
+        # TODO (Kourosh): There might be some variables that needs protection?
         args = argparse.Namespace(
             **vllm_frontend_args.__dict__,
             **vllm_engine_args.__dict__,
@@ -361,7 +362,8 @@ class VLLMEngine(LLMEngine):
         from vllm.entrypoints.openai.protocol import LoadLoRAAdapterRequest
 
         # TODO (Kourosh): We should uncomment this logic when
-        # https://github.com/vllm-project/vllm/pull/20636 is merged.
+        # https://github.com/vllm-project/vllm/pull/20636 is
+        # included in our vLLM release.
         # if disk_lora_model.model_id in self._oai_models.lora_requests:
         #     # Lora is already loaded, return
         #     return
@@ -404,7 +406,7 @@ class VLLMEngine(LLMEngine):
     ) -> AsyncGenerator[Union[str, ChatCompletionResponse, ErrorResponse], None]:
         self._validate_openai_serving_chat()
 
-        # TODO (Kourosh): Remove when upstream is fixed to accept req_id.
+        # TODO (Kourosh): Remove when we upstream request_id attribute to vLLM.
         # Create a fake starlette.Request object with the x-request-id header
         # so that the create_chat_completion API can assign the request_id properly.
         raw_request = self._create_raw_request(request, "/chat/completions")
@@ -431,7 +433,7 @@ class VLLMEngine(LLMEngine):
     ) -> AsyncGenerator[Union[str, CompletionResponse, ErrorResponse], None]:
         self._validate_openai_serving_completion()
 
-        # TODO (Kourosh): Remove when upstream is fixed to accept req_id.
+        # TODO (Kourosh): Remove when we upstream request_id attribute to vLLM.
         # Create a fake starlette.Request object with the x-request-id header
         # so that the create_completion API can assign the request_id properly.
         raw_request = self._create_raw_request(request, "/completions")
