@@ -37,7 +37,7 @@ class GPUObjectManager:
         self._gpu_object_store: Optional["GPUObjectStore"] = None
         # Lock to synchronize access to the GPU object store. This is needed
         # because the GPU object store is accessed by both user threads, to
-        # put/getobjects into the object store from user tasks, and by a
+        # put/get objects into the object store from user tasks, and by a
         # background system thread, which handles data transfers and GC.
         self.gpu_object_store_lock = threading.RLock()
 
