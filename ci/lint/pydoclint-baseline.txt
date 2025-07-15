@@ -204,16 +204,6 @@ python/ray/_private/services.py
     DOC111: Function `start_ray_client_server`: The option `--arg-type-hints-in-docstring` is `False` but there are type hints in the docstring arg list
     DOC103: Function `start_ray_client_server`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [fate_share: Optional[bool]].
 --------------------
-python/ray/_private/signature.py
-    DOC106: Function `get_signature`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
-    DOC107: Function `get_signature`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
-    DOC106: Function `extract_signature`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
-    DOC107: Function `extract_signature`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
-    DOC107: Function `validate_args`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
-    DOC107: Function `flatten_args`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
-    DOC106: Function `recover_args`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
-    DOC107: Function `recover_args`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
---------------------
 python/ray/_private/state.py
     DOC106: Method `GlobalState._initialize_global_state`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
     DOC107: Method `GlobalState._initialize_global_state`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
@@ -1742,8 +1732,6 @@ python/ray/serve/_private/logging_utils.py
     DOC102: Method `ServeFormatter.format`: Docstring contains more arguments than in function signature.
     DOC103: Method `ServeFormatter.format`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the docstring but not in the function signature: [Returns: ].
     DOC201: Method `ServeFormatter.format` does not have a return section in docstring
-    DOC101: Function `configure_component_cpu_profiler`: Docstring contains fewer arguments than in function signature.
-    DOC103: Function `configure_component_cpu_profiler`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [component_id: str, component_name: str, component_type: Optional[ServeComponentType]].
 --------------------
 python/ray/serve/_private/long_poll.py
     DOC107: Method `LongPollClient.__init__`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
