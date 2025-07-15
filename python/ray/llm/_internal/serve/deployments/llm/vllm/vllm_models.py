@@ -1,8 +1,9 @@
 import dataclasses
 import os
-from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Union
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional
 
-from pydantic import ConfigDict, Field, ValidationError, field_validator
+from pydantic import ConfigDict, Field
 from vllm.engine.arg_utils import AsyncEngineArgs
 
 from ray.llm._internal.common.base_pydantic import BaseModelExtended
@@ -11,15 +12,10 @@ from ray.llm._internal.common.utils.import_utils import try_import
 from ray.llm._internal.serve.configs.constants import (
     ALLOW_NEW_PLACEMENT_GROUPS_IN_DEPLOYMENT,
     ENV_VARS_TO_PROPAGATE,
-    RAYLLM_GUIDED_DECODING_BACKEND,
 )
-from ray.llm._internal.serve.configs.prompt_formats import Prompt
 from ray.llm._internal.serve.configs.server_models import (
-    DiskMultiplexConfig,
-    GenerationRequest,
     GPUType,
     LLMConfig,
-    SamplingParams,
 )
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.util.placement_group import (
@@ -29,14 +25,52 @@ from ray.util.placement_group import (
     placement_group_table,
 )
 
+
+# TODO (Kourosh): Temprary until this abstraction lands in vllm upstream.
+# https://github.com/vllm-project/vllm/pull/20206
+@dataclass
+class FrontendArgs:
+    """Mirror of default values for FrontendArgs in vllm."""
+
+    host: Optional[str] = None
+    port: int = 8000
+    uvicorn_log_level: str = "info"
+    disable_uvicorn_access_log: bool = False
+    allow_credentials: bool = False
+    allowed_origins: list[str] = field(default_factory=lambda: ["*"])
+    allowed_methods: list[str] = field(default_factory=lambda: ["*"])
+    allowed_headers: list[str] = field(default_factory=lambda: ["*"])
+    api_key: Optional[str] = None
+    lora_modules: Optional[list[str]] = None
+    prompt_adapters: Optional[list[str]] = None
+    chat_template: Optional[str] = None
+    chat_template_content_format: str = "auto"
+    response_role: str = "assistant"
+    ssl_keyfile: Optional[str] = None
+    ssl_certfile: Optional[str] = None
+    ssl_ca_certs: Optional[str] = None
+    enable_ssl_refresh: bool = False
+    ssl_cert_reqs: int = 0
+    root_path: Optional[str] = None
+    middleware: list[str] = field(default_factory=lambda: [])
+    return_tokens_as_token_ids: bool = False
+    disable_frontend_multiprocessing: bool = False
+    enable_request_id_headers: bool = False
+    enable_auto_tool_choice: bool = False
+    tool_call_parser: Optional[str] = None
+    tool_parser_plugin: str = ""
+    log_config_file: Optional[str] = None
+    max_log_len: Optional[int] = None
+    disable_fastapi_docs: bool = False
+    enable_prompt_tokens_details: bool = False
+    enable_server_load_tracking: bool = False
+    enable_force_include_usage: bool = False
+    expand_tools_even_if_tool_choice_none: bool = False
+
+
 # The key for the kv_transfer_params in the internal metadata.
 KV_TRANSFER_PARAMS_KEY = "kv_transfer_params"
-
 vllm = try_import("vllm")
-
-if TYPE_CHECKING:
-    from vllm.lora.request import LoRARequest
-
 logger = get_logger(__name__)
 
 
@@ -77,10 +111,6 @@ class VLLMEngineConfig(BaseModelExtended):
     def trust_remote_code(self) -> bool:
         return self.engine_kwargs.get("trust_remote_code", False)
 
-    @property
-    def sampling_params_model(self):
-        return VLLMSamplingParams
-
     def get_initialization_kwargs(self) -> dict:
         """
         Get kwargs that will be actually passed to the LLMInitializer
@@ -106,14 +136,14 @@ class VLLMEngineConfig(BaseModelExtended):
         else:
             engine_kwargs["distributed_executor_backend"] = "ray"
 
-        if "disable_log_stats" in engine_kwargs and engine_kwargs["disable_log_stats"]:
+        if (
+            "disable_log_stats" in engine_kwargs
+            and not engine_kwargs["disable_log_stats"]
+        ):
             logger.warning(
-                "disable_log_stats = True is not allowed in engine_kwargs when using Ray Serve LLM Configs. Setting it to False."
+                "disable_log_stats = False is not allowed in engine_kwargs when using Ray Serve LLM Configs. Setting it to True."
             )
-        engine_kwargs["disable_log_stats"] = False
-
-        if "guided_decoding_backend" not in engine_kwargs:
-            engine_kwargs["guided_decoding_backend"] = RAYLLM_GUIDED_DECODING_BACKEND
+        engine_kwargs["disable_log_stats"] = True
 
         return engine_kwargs
 
@@ -145,17 +175,20 @@ class VLLMEngineConfig(BaseModelExtended):
         frontend_kwargs = {}
 
         # Get field names from dataclasses
+        frontend_field_names = {
+            field.name for field in dataclasses.fields(FrontendArgs)
+        }
         async_engine_field_names = {
             field.name for field in dataclasses.fields(AsyncEngineArgs)
         }
 
         for key, value in all_engine_kwargs.items():
-            if key in async_engine_field_names:
+            if key in frontend_field_names:
+                frontend_kwargs[key] = value
+            elif key in async_engine_field_names:
                 engine_kwargs[key] = value
             else:
-                # Assume anything that is not an engine argument is a frontend
-                # argument.
-                frontend_kwargs[key] = value
+                raise ValueError(f"Unknown engine argument: {key}")
 
         return VLLMEngineConfig(
             model_id=llm_config.model_id,
@@ -257,92 +290,3 @@ class VLLMEngineConfig(BaseModelExtended):
 
             logger.info(f"Using new placement group {pg}. {placement_group_table(pg)}")
         return pg
-
-
-class VLLMSamplingParams(SamplingParams):
-    """Sampling parameters specific to vLLM engine.
-
-    Args:
-        top_k: The number of highest probability vocabulary tokens to keep for top-k-filtering.
-        seed: Seed for deterministic sampling with temperature>0.
-        repetition_penalty: Float that penalizes new tokens based on whether they
-            appear in the prompt and the generated text so far. Values > 1 encourage
-            the model to use new tokens, while values < 1 encourage the model to repeat
-            tokens.
-    """
-
-    _ignored_fields = {"best_of", "n", "logit_bias"}
-
-    top_k: Optional[int] = None
-    repetition_penalty: Optional[float] = None
-    seed: Optional[int] = None
-    kv_transfer_params: Optional[Dict[str, Any]] = None
-
-    @field_validator("n", mode="before")
-    @classmethod
-    def validate_n(cls, values):
-        if values != 1:
-            raise ValidationError("n>1 is not supported yet in rayllm.")
-        return values
-
-    @classmethod
-    def _get_model_validate_kwargs(cls, prompt: Prompt) -> Dict[str, Any]:
-        """
-        Extend the base class's `_get_model_validate_kwargs` to include vllm-specific parameters.
-        """
-        generate_kwargs = super()._get_model_validate_kwargs(prompt)
-        if (
-            prompt.parameters is not None
-            and KV_TRANSFER_PARAMS_KEY in prompt.parameters
-        ):
-            generate_kwargs[KV_TRANSFER_PARAMS_KEY] = prompt.parameters[
-                KV_TRANSFER_PARAMS_KEY
-            ]
-        return generate_kwargs
-
-
-class VLLMGenerationRequest(GenerationRequest):
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-
-    # Intentionally override the base class's `sampling_params` field.
-    sampling_params: Optional[
-        Union[
-            VLLMSamplingParams,
-            List[VLLMSamplingParams],
-        ]
-    ] = None
-    multi_modal_data: Optional[Dict[str, Any]] = None
-    disk_multiplex_config: Optional[DiskMultiplexConfig] = None
-
-    @property
-    def lora_request(self) -> "LoRARequest":
-        disk_vllm_config = self.disk_multiplex_config
-        if not disk_vllm_config:
-            return None
-        else:
-            return vllm.lora.request.LoRARequest(
-                lora_name=disk_vllm_config.model_id,
-                lora_int_id=disk_vllm_config.lora_assigned_int_id,
-                lora_local_path=disk_vllm_config.local_path,
-                long_lora_max_len=disk_vllm_config.max_total_tokens,
-            )
-
-
-class VLLMEmbeddingRequest(GenerationRequest):
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-    encoding_format: Optional[Literal["float", "base64"]] = "float"
-    dimensions: Optional[int] = None
-    disk_multiplex_config: Optional[DiskMultiplexConfig] = None
-
-    @property
-    def lora_request(self) -> "LoRARequest":
-        disk_vllm_config = self.disk_multiplex_config
-        if not disk_vllm_config:
-            return None
-        else:
-            return vllm.lora.request.LoRARequest(
-                lora_name=disk_vllm_config.model_id,
-                lora_int_id=disk_vllm_config.lora_assigned_int_id,
-                lora_local_path=disk_vllm_config.local_path,
-                long_lora_max_len=disk_vllm_config.max_total_tokens,
-            )

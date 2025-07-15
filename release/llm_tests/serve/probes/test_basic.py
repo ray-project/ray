@@ -160,7 +160,7 @@ async def test_too_long_completion_request(
     )
 
     # XXX: AE-686 hack, should read model data instead
-    length = 20000
+    length = 200000
     if "8x22" in model:
         length = 70000
 

@@ -1574,22 +1574,8 @@ python/ray/llm/_internal/common/utils/download_utils.py
     DOC201: Function `get_model_location_on_disk` does not have a return section in docstring
     DOC201: Method `CloudModelDownloader.get_model` does not have a return section in docstring
 --------------------
-python/ray/llm/_internal/serve/configs/json_mode_utils.py
-    DOC201: Method `JSONSchemaValidator.try_load_json_schema` does not have a return section in docstring
---------------------
 python/ray/llm/_internal/serve/configs/openai_api_models.py
     DOC201: Function `to_model_metadata` does not have a return section in docstring
---------------------
-python/ray/llm/_internal/serve/configs/prompt_formats.py
-    DOC101: Method `Image.check_image_url`: Docstring contains fewer arguments than in function signature.
-    DOC106: Method `Image.check_image_url`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
-    DOC107: Method `Image.check_image_url`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
-    DOC103: Method `Image.check_image_url`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [value: ].
-    DOC201: Method `Image.check_image_url` does not have a return section in docstring
---------------------
-python/ray/llm/_internal/serve/deployments/llm/llm_server.py
-    DOC402: Method `LLMServer.embeddings` has "yield" statements, but the docstring does not have a "Yields" section
-    DOC404: Method `LLMServer.embeddings` yield type(s) in docstring not consistent with the return annotation. Return annotation exists, but docstring "yields" section does not exist or has 0 type(s).
 --------------------
 python/ray/llm/_internal/serve/deployments/llm/multiplex/utils.py
     DOC201: Function `retry_with_exponential_backoff` does not have a return section in docstring
