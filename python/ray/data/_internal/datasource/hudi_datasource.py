@@ -1,5 +1,6 @@
 import logging
 import os
+from enum import Enum
 from typing import Dict, Iterator, List, Optional
 
 from ray.data._internal.util import _check_import
@@ -7,6 +8,11 @@ from ray.data.block import BlockMetadata
 from ray.data.datasource.datasource import Datasource, ReadTask
 
 logger = logging.getLogger(__name__)
+
+
+class HudiQueryType(Enum):
+    SNAPSHOT = "snapshot"
+    INCREMENTAL = "incremental"
 
 
 class HudiDatasource(Datasource):
@@ -22,7 +28,12 @@ class HudiDatasource(Datasource):
         _check_import(self, module="hudi", package="hudi-python")
 
         self._table_uri = table_uri
-        self._mode = mode
+        try:
+            self._mode = HudiQueryType(mode.lower())
+        except ValueError:
+            raise ValueError(
+                f"Unsupported mode: {mode}. Supported modes are 'snapshot' and 'incremental'."
+            )
         self._hudi_options = hudi_options or {}
         self._storage_options = storage_options or {}
 
@@ -46,6 +57,11 @@ class HudiDatasource(Datasource):
             HudiTableBuilder.from_base_uri(self._table_uri)
             .with_hudi_options(self._hudi_options)
             .with_storage_options(self._storage_options)
+            # Although hudi-rs supports MOR snapshot, we need to add an API in
+            # the next release to allow file group reader to take in a list of
+            # files. Hence, setting this config for now to restrain reading
+            # only on parquet files (read optimized mode).
+            # This won't affect reading COW.
             .with_hudi_option("hoodie.read.use.read_optimized.mode", "true")
             .build()
         )
@@ -57,20 +73,16 @@ class HudiDatasource(Datasource):
 
         schema = hudi_table.get_schema()
         read_tasks = []
-        if self._mode == "snapshot":
+        if self._mode == HudiQueryType.SNAPSHOT:
             file_slices_splits = hudi_table.get_file_slices_splits(parallelism)
-        elif self._mode == "incremental":
+        elif self._mode == HudiQueryType.INCREMENTAL:
             start_ts = self._hudi_options.get("hoodie.read.file_group.start_timestamp")
             end_ts = self._hudi_options.get("hoodie.read.file_group.end_timestamp")
             # TODO(xushiyan): add table API to return splits of file slices
-            def _split_into_chunks(data, num_chunks):
-                chunk_size = max(1, len(data) // num_chunks)
-                return [
-                    data[i : i + chunk_size] for i in range(0, len(data), chunk_size)
-                ]
-
             file_slices = hudi_table.get_file_slices_between(start_ts, end_ts)
-            file_slices_splits = _split_into_chunks(file_slices, parallelism)
+            import numpy as np
+
+            file_slices_splits = np.array_split(file_slices, parallelism)
         else:
             raise ValueError(
                 f"Unsupported mode: {self._mode}. Supported modes are 'snapshot' and 'incremental'."
