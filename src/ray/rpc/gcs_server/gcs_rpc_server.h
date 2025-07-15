@@ -681,7 +681,6 @@ class TaskInfoGrpcService : public GrpcService {
       const ClusterID &cluster_id) override {
     TASK_INFO_SERVICE_RPC_HANDLER(AddTaskEventData);
     TASK_INFO_SERVICE_RPC_HANDLER(GetTaskEvents);
-    TASK_INFO_SERVICE_RPC_HANDLER(AddEvent);
   }
 
  private:

@@ -309,6 +309,34 @@ struct Mocker {
     return data;
   }
 
+  static rpc::events::RayEventsData GenRayEventsData(
+      const std::vector<rpc::TaskEvents> &task_events,
+      const std::vector<TaskAttempt> &drop_tasks) {
+    rpc::events::RayEventsData data;
+    rpc::events::TaskEventsMetadata metadata;
+    for (const auto &task_attempt : drop_tasks) {
+      rpc::TaskAttempt rpc_task_attempt;
+      rpc_task_attempt.set_task_id(task_attempt.first.Binary());
+      rpc_task_attempt.set_attempt_number(task_attempt.second);
+      *(metadata.add_dropped_task_attempts()) = rpc_task_attempt;
+    }
+    data.mutable_task_events_metadata()->CopyFrom(metadata);
+    for (const auto &task_event : task_events) {
+      rpc::events::RayEvent ray_event;
+      rpc::events::TaskDefinitionEvent task_definition_event;
+      task_definition_event.set_task_id(task_event.task_id());
+      task_definition_event.set_task_attempt(task_event.attempt_number());
+      task_definition_event.set_job_id(JobID::FromInt(0).Binary());
+      ray_event.set_event_id(task_event.task_id());
+      ray_event.set_event_type(rpc::events::RayEvent::TASK_DEFINITION_EVENT);
+      ray_event.set_message("test");
+      ray_event.mutable_task_definition_event()->CopyFrom(task_definition_event);
+      *(data.add_events()) = ray_event;
+    }
+
+    return data;
+  }
+
   static rpc::TaskEventData GenTaskEventsDataLoss(
       const std::vector<TaskAttempt> &drop_tasks, int job_id = 0) {
     rpc::TaskEventData data;
