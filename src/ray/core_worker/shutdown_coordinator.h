@@ -85,8 +85,8 @@ enum class ShutdownState : std::uint8_t {
 ///
 /// This class provides atomic state management for shutdown operations using a
 /// single 64-bit atomic variable that packs both state and reason information.
-/// This design minimizes cache line contention and ensures consistent state
-/// transitions across multiple threads.
+/// This design ensures consistent reads of both state and reason together,
+/// eliminating race conditions in multi-threaded shutdown scenarios.
 ///
 /// Key features:
 /// - Atomic state transitions with integrated reason tracking
@@ -135,12 +135,12 @@ class ShutdownCoordinator {
   /// \param detail Optional detailed explanation
   /// \param timeout_ms Timeout for graceful shutdown (0 = no timeout, immediate force
   /// fallback) \param force_on_timeout If true, fallback to force shutdown on timeout; if
-  /// false, wait indefinitely \return true if this call initiated shutdown, false if
-  /// already shutting down
+  /// false, wait indefinitely
+  /// \return true if this call initiated shutdown, false if already shutting down
   bool RequestShutdown(
       bool force_shutdown,
       ShutdownReason reason,
-      const std::string &detail = "",
+      std::string_view detail = "",
       std::chrono::milliseconds timeout_ms = std::chrono::milliseconds{0},
       bool force_on_timeout = false);
 
@@ -255,8 +255,8 @@ class ShutdownCoordinator {
   WorkerType worker_type_;
 
   /// Single atomic variable holding both state and reason.
-  /// This design minimizes memory overhead and ensures atomic updates
-  /// of both fields together, preventing inconsistent intermediate states.
+  /// This ensures atomic updates of both fields together, preventing
+  /// inconsistent intermediate states during concurrent shutdown requests.
   std::atomic<uint64_t> state_and_reason_;
 
   /// Shutdown detail for observability (set once during shutdown initiation)
