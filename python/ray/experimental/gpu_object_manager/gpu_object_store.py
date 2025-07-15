@@ -57,10 +57,6 @@ def __ray_send__(self, communicator_name: str, obj_id: str, dst_rank: int):
                 f"tensor device {tensor.device} does not match device {device}"
             )
         collective.send(tensor, dst_rank, group_name=communicator_name)
-    # TODO(kevin85421): The current garbage collection implementation for the
-    # in-actor object store is naive. We garbage collect each object after it
-    # is consumed once.
-    gpu_object_store.pop_object(obj_id)
 
 
 def __ray_recv__(
@@ -108,10 +104,6 @@ def __ray_fetch_gpu_object__(self, obj_id: str):
         obj_id
     ), f"obj_id={obj_id} not found in GPU object store"
     tensors = gpu_object_store.get_object(obj_id)
-    # TODO(kevin85421): The current garbage collection implementation for the
-    # in-actor object store is naive. We garbage collect each object after it
-    # is consumed once.
-    gpu_object_store.pop_object(obj_id)
     return tensors
 
 

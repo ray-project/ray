@@ -377,16 +377,7 @@ class ASGIReceiveProxy:
                 pickled_messages = await self._receive_asgi_messages(
                     self._request_metadata
                 )
-                if isinstance(pickled_messages, bytes):
-                    messages = pickle.loads(pickled_messages)
-                else:
-                    messages = (
-                        pickled_messages
-                        if isinstance(pickled_messages, list)
-                        else [pickled_messages]
-                    )
-
-                for message in messages:
+                for message in pickle.loads(pickled_messages):
                     self.queue.put_nowait(message)
 
                     if message["type"] in {"http.disconnect", "websocket.disconnect"}:
@@ -657,11 +648,11 @@ class RequestIdMiddleware:
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send):
         headers = MutableHeaders(scope=scope)
-        if SERVE_HTTP_REQUEST_ID_HEADER not in headers:
+        request_id = headers.get(SERVE_HTTP_REQUEST_ID_HEADER)
+
+        if request_id is None:
             request_id = generate_request_id()
             headers.append(SERVE_HTTP_REQUEST_ID_HEADER, request_id)
-        elif SERVE_HTTP_REQUEST_ID_HEADER in headers:
-            request_id = headers[SERVE_HTTP_REQUEST_ID_HEADER]
 
         async def send_with_request_id(message: Message):
             if message["type"] == "http.response.start":

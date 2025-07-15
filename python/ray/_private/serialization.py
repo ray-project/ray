@@ -299,6 +299,10 @@ class SerializationContext:
             tensors = gpu_object_manager.gpu_object_store.wait_and_pop_object(object_id, timeout=ray_constants.FETCH_WARN_TIMEOUT_SECONDS)
             global_worker.function_actor_manager.lock.acquire()
             ctx.reset_out_of_band_tensors(tensors)
+<<<<<<< HEAD
+=======
+            gpu_object_manager.gpu_object_store.remove_gpu_object(object_id)
+>>>>>>> 38f6ba8633fb5be47aecec47b146f8d54849a5a0
 
         try:
             in_band, buffers = unpack_pickle5_buffers(data)
