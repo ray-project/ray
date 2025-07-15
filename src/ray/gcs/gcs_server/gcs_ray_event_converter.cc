@@ -35,6 +35,10 @@ void GcsRayEventConverter::ConvertToTaskEventDataRequest(
       ConvertToTaskEvents(std::move(*event.mutable_task_definition_event()), task_event);
       break;
     }
+    case rpc::events::RayEvent::TASK_EXECUTION_EVENT: {
+      ConvertToTaskEvents(std::move(*event.mutable_task_execution_event()), task_event);
+      break;
+    }
     default:
       // TODO(can-anyscale): Handle other event types
       break;
@@ -70,6 +74,24 @@ void GcsRayEventConverter::ConvertToTaskEvents(rpc::events::TaskDefinitionEvent 
         function_descriptor.java_function_descriptor().function_name());
   }
   *task_info->mutable_required_resources() = std::move(event.required_resources());
+}
+
+void GcsRayEventConverter::ConvertToTaskEvents(rpc::events::TaskExecutionEvent &&event,
+                                               rpc::TaskEvents &task_event) {
+  task_event.set_task_id(event.task_id());
+  task_event.set_attempt_number(event.task_attempt());
+  task_event.set_job_id(event.job_id());
+                                              
+  rpc::TaskStateUpdate *task_state_update = task_event.mutable_state_updates();
+  task_state_update->set_node_id(event.node_id());
+  task_state_update->set_worker_id(event.worker_id());
+  task_state_update->set_worker_pid(event.worker_pid());
+  *task_state_update->mutable_error_info() = std::move(event.ray_error_info());
+
+  for (const auto &[state, timestamp] : event.task_state()) {
+    int64_t ns = timestamp.seconds() * 1000000000LL + timestamp.nanos();
+    (*task_state_update->mutable_state_ts_ns())[state] = ns;
+  }
 }
 
 }  // namespace gcs
