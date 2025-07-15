@@ -3,7 +3,7 @@
 
 python-snappy
 tensorflow-datasets==4.9.3
-datasets
+datasets>=3.0.2
 pytest-repeat
 soundfile
 fastavro
