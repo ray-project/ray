@@ -14,9 +14,7 @@ from ray.air._internal.device_manager.torch_device_manager import TorchDeviceMan
 logger = logging.getLogger(__name__)
 
 
-DEFAULT_TORCH_DEVICE_MANAGER_CLS = (
-    CUDATorchDeviceManager if torch.cuda.is_available() else CPUTorchDeviceManager
-)
+DEFAULT_TORCH_DEVICE_MANAGER_CLS = CPUTorchDeviceManager
 
 
 SUPPORTED_ACCELERATOR_TORCH_DEVICE_MANAGER = {
