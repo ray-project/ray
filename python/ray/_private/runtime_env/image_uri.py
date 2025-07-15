@@ -32,10 +32,10 @@ async def _create_impl(image_uri: str, logger: logging.Logger):
             *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
         )
 
-        _, stderr = await process.communicate()
+        stdout, stderr = await process.communicate()
 
         if process.returncode != 0:
-            logger.error(f"Podman failed: {stderr.decode()}")
+            logger.error(f"Podman failed: stdout={stdout.decode()}, stderr={stderr.decode()}")
             raise RuntimeError(
                 f"Podman command failed with return code {process.returncode}"
             )
