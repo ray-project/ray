@@ -28,8 +28,9 @@ namespace core {
 ShutdownCoordinator::ShutdownCoordinator(
     std::unique_ptr<ShutdownExecutorInterface> executor, WorkerType worker_type)
     : executor_(std::move(executor)), worker_type_(worker_type) {
+  RAY_CHECK(executor_) << "ShutdownExecutor cannot be null";
   state_and_reason_.store(PackStateReason(ShutdownState::kRunning, ShutdownReason::kNone),
-                          std::memory_order_release);
+                          std::memory_order_relaxed);
 }
 
 bool ShutdownCoordinator::RequestShutdown(bool force_shutdown,
@@ -41,8 +42,8 @@ bool ShutdownCoordinator::RequestShutdown(bool force_shutdown,
                    << ", reason=" << static_cast<int>(reason) << ", detail=" << detail;
 
   // For graceful shutdown, only proceed if currently running
-  uint64_t expected = PackStateReason(ShutdownState::kRunning, ShutdownReason::kNone);
-  uint64_t desired = PackStateReason(ShutdownState::kShuttingDown, reason);
+  uint16_t expected = PackStateReason(ShutdownState::kRunning, ShutdownReason::kNone);
+  uint16_t desired = PackStateReason(ShutdownState::kShuttingDown, reason);
 
   bool initiated = state_and_reason_.compare_exchange_strong(
       expected, desired, std::memory_order_acq_rel, std::memory_order_acquire);
@@ -61,7 +62,7 @@ bool ShutdownCoordinator::TryInitiateShutdown(ShutdownReason reason) {
 }
 
 bool ShutdownCoordinator::TryTransitionToDisconnecting() {
-  uint64_t current = state_and_reason_.load(std::memory_order_acquire);
+  uint16_t current = state_and_reason_.load(std::memory_order_acquire);
   ShutdownState current_state = UnpackState(current);
   ShutdownReason current_reason = UnpackReason(current);
 
@@ -69,26 +70,26 @@ bool ShutdownCoordinator::TryTransitionToDisconnecting() {
     return false;
   }
 
-  uint64_t expected = current;
-  uint64_t desired = PackStateReason(ShutdownState::kDisconnecting, current_reason);
+  uint16_t expected = current;
+  uint16_t desired = PackStateReason(ShutdownState::kDisconnecting, current_reason);
 
   return state_and_reason_.compare_exchange_strong(
       expected, desired, std::memory_order_acq_rel, std::memory_order_acquire);
 }
 
 bool ShutdownCoordinator::TryTransitionToShutdown() {
-  uint64_t current = state_and_reason_.load(std::memory_order_acquire);
+  uint16_t current = state_and_reason_.load(std::memory_order_acquire);
   ShutdownState current_state = UnpackState(current);
   ShutdownReason current_reason = UnpackReason(current);
 
-  // Can transition from either kShuttingDown or kDisconnecting
+  // Can transition from kDisconnecting (normal flow) or kShuttingDown (force shutdown)
   if (current_state != ShutdownState::kShuttingDown &&
       current_state != ShutdownState::kDisconnecting) {
     return false;
   }
 
-  uint64_t expected = current;
-  uint64_t desired = PackStateReason(ShutdownState::kShutdown, current_reason);
+  uint16_t expected = current;
+  uint16_t desired = PackStateReason(ShutdownState::kShutdown, current_reason);
 
   return state_and_reason_.compare_exchange_strong(
       expected, desired, std::memory_order_acq_rel, std::memory_order_acquire);
@@ -103,7 +104,7 @@ ShutdownReason ShutdownCoordinator::GetReason() const {
 }
 
 bool ShutdownCoordinator::ShouldEarlyExit() const {
-  return UnpackState(state_and_reason_.load(std::memory_order_relaxed)) !=
+  return UnpackState(state_and_reason_.load(std::memory_order_acquire)) !=
          ShutdownState::kRunning;
 }
 
@@ -145,24 +146,18 @@ void ShutdownCoordinator::ExecuteShutdownSequence(bool force_shutdown,
     ExecuteDriverShutdown(force_shutdown, detail, timeout_ms, force_on_timeout);
     break;
   case WorkerType::WORKER:
-    ExecuteWorkerShutdown(force_shutdown, detail, timeout_ms, force_on_timeout);
-    break;
   case WorkerType::SPILL_WORKER:
   case WorkerType::RESTORE_WORKER:
     ExecuteWorkerShutdown(force_shutdown, detail, timeout_ms, force_on_timeout);
     break;
   default:
-    ExecuteWorkerShutdown(force_shutdown, detail, timeout_ms, force_on_timeout);
+    RAY_LOG(FATAL) << "Unknown worker type: " << static_cast<int>(worker_type_);
     break;
   }
 }
 
 void ShutdownCoordinator::ExecuteGracefulShutdown(std::string_view detail,
                                                   std::chrono::milliseconds timeout_ms) {
-  if (!executor_) {
-    return;
-  }
-
   TryTransitionToDisconnecting();
   executor_->ExecuteGracefulShutdown(GetExitTypeString(), detail, timeout_ms);
   TryTransitionToShutdown();
@@ -170,11 +165,6 @@ void ShutdownCoordinator::ExecuteGracefulShutdown(std::string_view detail,
 
 void ShutdownCoordinator::ExecuteForceShutdown(std::string_view detail) {
   RAY_LOG(WARNING) << "ExecuteForceShutdown called: detail=" << detail;
-
-  if (!executor_) {
-    RAY_LOG(WARNING) << "ExecuteForceShutdown: no dependencies, exiting";
-    return;
-  }
 
   // Force shutdown bypasses normal state transitions and terminates immediately
   // This ensures that force shutdowns can interrupt hanging graceful shutdowns
@@ -221,16 +211,12 @@ void ShutdownCoordinator::ExecuteWorkerShutdown(bool force_shutdown,
       reason == ShutdownReason::kActorCreationFailed ||
       reason == ShutdownReason::kActorKilled) {
     TryTransitionToDisconnecting();
-    if (executor_) {
-      executor_->ExecuteWorkerExit(GetExitTypeString(), detail, timeout_ms);
-    }
+    executor_->ExecuteWorkerExit(GetExitTypeString(), detail, timeout_ms);
     TryTransitionToShutdown();
   } else if (reason == ShutdownReason::kIdleTimeout ||
              reason == ShutdownReason::kJobFinished) {
     TryTransitionToDisconnecting();
-    if (executor_) {
-      executor_->ExecuteHandleExit(GetExitTypeString(), detail, timeout_ms);
-    }
+    executor_->ExecuteHandleExit(GetExitTypeString(), detail, timeout_ms);
     TryTransitionToShutdown();
   } else {
     ExecuteGracefulShutdown(detail, timeout_ms);
@@ -291,21 +277,21 @@ std::string ShutdownCoordinator::GetReasonString() const {
 
 // Private helper methods
 
-uint64_t ShutdownCoordinator::PackStateReason(ShutdownState state,
+uint16_t ShutdownCoordinator::PackStateReason(ShutdownState state,
                                               ShutdownReason reason) {
   StateReasonPacked packed;
-  packed.fields.state = static_cast<uint32_t>(state);
-  packed.fields.reason = static_cast<uint32_t>(reason);
+  packed.fields.state = static_cast<uint8_t>(state);
+  packed.fields.reason = static_cast<uint8_t>(reason);
   return packed.packed;
 }
 
-ShutdownState ShutdownCoordinator::UnpackState(uint64_t packed_value) const {
+ShutdownState ShutdownCoordinator::UnpackState(uint16_t packed_value) const {
   StateReasonPacked packed;
   packed.packed = packed_value;
   return static_cast<ShutdownState>(packed.fields.state);
 }
 
-ShutdownReason ShutdownCoordinator::UnpackReason(uint64_t packed_value) const {
+ShutdownReason ShutdownCoordinator::UnpackReason(uint16_t packed_value) const {
   StateReasonPacked packed;
   packed.packed = packed_value;
   return static_cast<ShutdownReason>(packed.fields.reason);

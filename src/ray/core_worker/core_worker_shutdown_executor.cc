@@ -27,8 +27,6 @@ namespace core {
 
 CoreWorkerShutdownExecutor::CoreWorkerShutdownExecutor(CoreWorker *core_worker)
     : core_worker_(core_worker) {
-  // Note: core_worker_ is used as an opaque pointer - methods will be called via
-  // interface
 }
 
 void CoreWorkerShutdownExecutor::ExecuteGracefulShutdown(

@@ -57,6 +57,23 @@ class MockShutdownExecutor : public ShutdownExecutorInterface {
   MOCK_METHOD(bool, ShouldWorkerIdleExit, (), (const, override));
 };
 
+// No-op implementation for tests that don't need actual shutdown behavior
+class NoOpShutdownExecutor : public ShutdownExecutorInterface {
+ public:
+  void ExecuteGracefulShutdown(std::string_view exit_type,
+                               std::string_view detail,
+                               std::chrono::milliseconds timeout_ms) override {}
+  void ExecuteForceShutdown(std::string_view exit_type, std::string_view detail) override {}
+  void ExecuteWorkerExit(std::string_view exit_type,
+                         std::string_view detail,
+                         std::chrono::milliseconds timeout_ms) override {}
+  void ExecuteHandleExit(std::string_view exit_type,
+                         std::string_view detail,
+                         std::chrono::milliseconds timeout_ms) override {}
+  void KillChildProcessesImmediately() override {}
+  bool ShouldWorkerIdleExit() const override { return false; }
+};
+
 class ShutdownCoordinatorTest : public ::testing::Test {
  protected:
   // Helper to create coordinator with specific worker type
@@ -299,20 +316,22 @@ TEST_F(ShutdownCoordinatorTest, ExitTypeStringMapping_IdleTimeout) {
 
 // Test 8: Edge Cases
 TEST_F(ShutdownCoordinatorTest, DISABLED_NullDependencies) {
-  // Test behavior with null dependencies (should not crash)
-  auto coordinator = std::make_unique<ShutdownCoordinator>(nullptr, WorkerType::WORKER);
+  // Test behavior with no-op dependencies (should not crash)
+  auto coordinator = std::make_unique<ShutdownCoordinator>(
+      std::make_unique<NoOpShutdownExecutor>(), WorkerType::WORKER);
 
   EXPECT_TRUE(coordinator->RequestShutdown(false,  // graceful
                                            ShutdownReason::kGracefulExit));
 
-  // With null dependencies, should stay in shutting down state
+  // With no-op dependencies, should stay in shutting down state
   EXPECT_EQ(coordinator->GetState(), ShutdownState::kShuttingDown);
 }
 
-// Test manual state transitions with null dependencies
+// Test manual state transitions with no-op dependencies
 TEST_F(ShutdownCoordinatorTest, DISABLED_ManualStateTransitions) {
-  // Use null dependencies to manually control transitions
-  auto coordinator = std::make_unique<ShutdownCoordinator>(nullptr, WorkerType::WORKER);
+  // Use no-op dependencies to manually control transitions
+  auto coordinator = std::make_unique<ShutdownCoordinator>(
+      std::make_unique<NoOpShutdownExecutor>(), WorkerType::WORKER);
 
   // Initial state
   EXPECT_EQ(coordinator->GetState(), ShutdownState::kRunning);

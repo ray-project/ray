@@ -74,8 +74,16 @@ enum class ShutdownReason : std::uint8_t {
 };
 
 /// Shutdown state representing the current lifecycle phase of worker shutdown.
-/// The state machine executes in order with only forward transitions possible:
-/// kRunning -> kShuttingDown -> kDisconnecting -> kShutdown
+/// The state machine supports two paths with only forward transitions:
+/// 
+/// Normal shutdown:  kRunning -> kShuttingDown -> kDisconnecting -> kShutdown
+/// Force shutdown:   kRunning -> kShuttingDown -> kShutdown (bypasses kDisconnecting)
+/// 
+/// State semantics:
+/// - kRunning: Normal operation, accepting new work
+/// - kShuttingDown: Shutdown initiated, draining existing work, no new work accepted
+/// - kDisconnecting: Disconnecting from services (raylet, GCS), cleanup phase
+/// - kShutdown: Final state, all cleanup complete, ready for process termination
 enum class ShutdownState : std::uint8_t {
   kRunning = 0,
   kShuttingDown = 1,
@@ -154,7 +162,7 @@ class ShutdownCoordinator {
   /// Attempt to transition to disconnecting state.
   ///
   /// This should be called when beginning disconnection from raylet/GCS.
-  /// Can only succeed if currently in kShuttingDown state.
+  /// Can only succeed if currently in kShuttingDown state (linear progression).
   ///
   /// \return true if transition succeeded, false if invalid state
   bool TryTransitionToDisconnecting();
@@ -162,7 +170,7 @@ class ShutdownCoordinator {
   /// Attempt to transition to final shutdown state.
   ///
   /// This should be called when shutdown sequence is complete.
-  /// Can succeed from either kShuttingDown or kDisconnecting states.
+  /// Can succeed from kDisconnecting (normal shutdown) or kShuttingDown (force shutdown).
   ///
   /// \return true if transition succeeded, false if invalid state
   bool TryTransitionToShutdown();
@@ -186,6 +194,11 @@ class ShutdownCoordinator {
   ///
   /// This is the recommended way to check shutdown status in performance-critical
   /// paths. Returns true for any state other than kRunning.
+  ///
+  /// Note: Uses acquire ordering to ensure consistent observation of shutdown
+  /// initiation. While there's still a race where shutdown could be initiated
+  /// immediately after this check, the acquire ordering ensures we don't miss
+  /// shutdowns that were initiated before the load.
   ///
   /// \return true if operations should be aborted, false if normal operation
   bool ShouldEarlyExit() const;
@@ -242,14 +255,14 @@ class ShutdownCoordinator {
                              std::chrono::milliseconds timeout_ms,
                              bool force_on_timeout);
 
-  /// Pack state and reason into a single 64-bit value for atomic operations.
-  uint64_t PackStateReason(ShutdownState state, ShutdownReason reason);
+  /// Pack state and reason into a single 16-bit value for atomic operations.
+  uint16_t PackStateReason(ShutdownState state, ShutdownReason reason);
 
-  /// Extract state from packed 64-bit value.
-  ShutdownState UnpackState(uint64_t packed) const;
+  /// Extract state from packed 16-bit value.
+  ShutdownState UnpackState(uint16_t packed) const;
 
-  /// Extract reason from packed 64-bit value.
-  ShutdownReason UnpackReason(uint64_t packed) const;
+  /// Extract reason from packed 16-bit value.
+  ShutdownReason UnpackReason(uint16_t packed) const;
 
   // Executor and configuration
   std::unique_ptr<ShutdownExecutorInterface> executor_;
@@ -257,17 +270,16 @@ class ShutdownCoordinator {
 
   /// Portable state and reason packing structure
   union StateReasonPacked {
-    uint64_t packed;
+    uint16_t packed;
     struct {
-      uint32_t state;
-      uint32_t reason;
+      uint8_t state;
+      uint8_t reason;
     } fields;
   };
 
   /// Single atomic variable holding both state and reason.
-  /// This ensures atomic updates of both fields together, preventing
-  /// inconsistent intermediate states during concurrent shutdown requests.
-  std::atomic<uint64_t> state_and_reason_;
+  /// Uses uint16_t since we only need 2 bytes of data.
+  std::atomic<uint16_t> state_and_reason_;
 
   /// Shutdown detail for observability (set once during shutdown initiation)
   std::string shutdown_detail_;
