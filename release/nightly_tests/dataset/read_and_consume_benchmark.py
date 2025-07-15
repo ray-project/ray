@@ -16,9 +16,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("path", type=str)
     parser.add_argument(
         "--format",
-        choices=["image", "parquet", "tfrecords"],
+        choices=["image", "parquet", "tfrecords", "jsonl"],
         required=True,
     )
+    parser.add_argument("--expected-count", type=int)
 
     consume_group = parser.add_mutually_exclusive_group()
     consume_group.add_argument("--count", action="store_true")
@@ -36,6 +37,8 @@ def parse_args() -> argparse.Namespace:
 
 
 def main(args):
+    _validate_expected_count(args)
+
     benchmark = Benchmark()
 
     def benchmark_fn():
@@ -52,6 +55,15 @@ def main(args):
     benchmark.write_result()
 
 
+def _validate_expected_count(args: argparse.Namespace):
+    for attr in ["iter_batches", "iter_torch_batches", "to_tf", "write"]:
+        if getattr(args, attr) is not None and args.expected_count is not None:
+            raise NotImplementedError(
+                "`--expected-count` isn't supported for `--iter-batches`, "
+                "`--iter-torch-batches`, `--to-tf`, and `--write`."
+            )
+
+
 def get_read_fn(args: argparse.Namespace) -> Callable[[str], ray.data.Dataset]:
     if args.format == "image":
         # FIXME: We specify the mode as a workaround for
@@ -61,6 +73,8 @@ def get_read_fn(args: argparse.Namespace) -> Callable[[str], ray.data.Dataset]:
         read_fn = ray.data.read_parquet
     elif args.format == "tfrecords":
         read_fn = ray.data.read_tfrecords
+    elif args.format == "jsonl":
+        read_fn = functools.partial(ray.data.read_json, lines=True)
     else:
         assert False, f"Invalid data format argument: {args}"
 
@@ -71,13 +85,21 @@ def get_consume_fn(args: argparse.Namespace) -> Callable[[ray.data.Dataset], Non
     if args.count:
 
         def consume_fn(ds):
-            ds.count()
+            count = ds.count()
+
+            if args.expected_count is not None:
+                assert count == args.expected_count
 
     elif args.iter_bundles:
 
         def consume_fn(ds):
-            for _ in ds.iter_internal_ref_bundles():
-                pass
+            count = 0
+            for bundle in ds.iter_internal_ref_bundles():
+                assert bundle.num_rows() is not None
+                count += bundle.num_rows()
+
+            if args.expected_count is not None:
+                assert count == args.expected_count
 
     elif args.iter_batches:
 

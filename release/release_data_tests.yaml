@@ -58,6 +58,14 @@
       s3://ray-benchmark-data-internal-us-west-2/imagenet/tfrecords --format tfrecords
       --iter-bundles
 
+- name: read_jsonl
+  run:
+    timeout: 3600
+    script: >
+      python read_and_consume_benchmark.py
+      s3://ray-benchmark-data-internal/10TiB-jsonl-images --format jsonl
+      --iter-bundles --expected-count 7168000
+
 - name: "read_from_uris_{{scaling}}"
 
   cluster:
