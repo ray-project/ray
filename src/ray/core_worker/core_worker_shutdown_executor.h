@@ -53,21 +53,15 @@ class CoreWorkerShutdownExecutor : public ShutdownExecutorInterface {
                          const std::string &detail,
                          std::chrono::milliseconds timeout_ms) override;
 
-  /// Kill child processes immediately
-  void KillChildProcesses() override;
+  void KillChildProcessesImmediately() override;
 
-  /// Check if worker should idle-exit
-  bool ShouldWorkerExit() const override;
+  bool ShouldWorkerIdleExit() const override;
 
  private:
   /// Reference to CoreWorker for accessing shutdown operations
   CoreWorker *core_worker_;
 
-  /// Common shutdown sequence operations
-  void ExecuteCommonShutdownSequence(bool force);
-  void DrainTasks(std::chrono::milliseconds timeout_ms);
-  void DisconnectFromServices(const std::string &exit_type, const std::string &detail);
-  void ShutdownIoServices();
+  void DisconnectServices(const std::string &exit_type, const std::string &detail);
   void QuickExit();
 };
 }  // namespace core

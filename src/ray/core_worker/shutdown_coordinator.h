@@ -51,15 +51,10 @@ class ShutdownExecutorInterface {
                                  const std::string &detail,
                                  std::chrono::milliseconds timeout_ms) = 0;
 
-  /// Kill child processes immediately
-  virtual void KillChildProcesses() = 0;
+  virtual void KillChildProcessesImmediately() = 0;
 
-  /// Check if worker should idle-exit (for HandleExit timeout logic)
-  virtual bool ShouldWorkerExit() const = 0;
+  virtual bool ShouldWorkerIdleExit() const = 0;
 };
-
-// Forward declaration to use existing WorkerType
-struct CoreWorkerOptions;
 
 /// Reasons for worker shutdown. Used for observability and debugging.
 enum class ShutdownReason : std::uint8_t {
@@ -102,7 +97,7 @@ enum class ShutdownState : std::uint8_t {
 /// Usage:
 ///   auto coordinator = std::make_unique<ShutdownCoordinator>();
 ///
-///   // Try to initiate shutdown (only first caller succeeds)
+///   // Try to initiate shutdown (only the first caller succeeds)
 ///   if (coordinator->TryInitiateShutdown(ShutdownReason::kGracefulExit)) {
 ///     // This thread should execute shutdown sequence
 ///   }
@@ -244,10 +239,6 @@ class ShutdownCoordinator {
                              const std::string &detail,
                              std::chrono::milliseconds timeout_ms,
                              bool force_on_timeout);
-  void ExecuteActorShutdown(bool force_shutdown,
-                            const std::string &detail,
-                            std::chrono::milliseconds timeout_ms,
-                            bool force_on_timeout);
 
   /// Pack state and reason into a single 64-bit value for atomic operations.
   /// Layout: [32-bit state][32-bit reason]
@@ -258,9 +249,6 @@ class ShutdownCoordinator {
 
   /// Extract reason from packed 64-bit value.
   static ShutdownReason UnpackReason(uint64_t packed);
-
-  /// Validate state transition is allowed.
-  static bool IsValidTransition(ShutdownState from, ShutdownState to);
 
   // Executor and configuration
   std::unique_ptr<ShutdownExecutorInterface> executor_;

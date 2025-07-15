@@ -36,26 +36,6 @@ bool ShutdownCoordinator::RequestShutdown(bool force_shutdown,
   RAY_LOG(WARNING) << "RequestShutdown called: force_shutdown=" << force_shutdown
                    << ", reason=" << static_cast<int>(reason) << ", detail=" << detail;
 
-  // if (force_shutdown) {
-  //   // Force shutdown can override any current state and interrupt graceful shutdown
-  //   uint64_t current = state_and_reason_.load(std::memory_order_acquire);
-  //   ShutdownState current_state = UnpackState(current);
-
-  //   RAY_LOG(WARNING) << "Force shutdown: current_state=" <<
-  //   static_cast<int>(current_state);
-
-  //   // Force shutdown always executes - even if graceful shutdown is in progress
-  //   // or completed. This ensures immediate termination.
-  //   uint64_t desired = PackStateReason(ShutdownState::kShuttingDown, reason);
-  //   state_and_reason_.store(desired, std::memory_order_release);
-
-  //   shutdown_detail_ = detail;
-  //   RAY_LOG(WARNING) << "Force shutdown: calling ExecuteShutdownSequence";
-  //   ExecuteShutdownSequence(force_shutdown, detail, timeout_ms, force_on_timeout);
-  //   RAY_LOG(WARNING) << "Force shutdown: ExecuteShutdownSequence completed";
-  //   return true;
-  // }
-
   // For graceful shutdown, only proceed if currently running
   uint64_t expected = PackStateReason(ShutdownState::kRunning, ShutdownReason::kNone);
   uint64_t desired = PackStateReason(ShutdownState::kShuttingDown, reason);
@@ -256,22 +236,6 @@ void ShutdownCoordinator::ExecuteWorkerShutdown(bool force_shutdown,
   }
 }
 
-void ShutdownCoordinator::ExecuteActorShutdown(bool force_shutdown,
-                                               const std::string &detail,
-                                               std::chrono::milliseconds timeout_ms,
-                                               bool force_on_timeout) {
-  // For actors, delegate the entire shutdown to the executor which knows how to handle
-  // actor cleanup
-  if (force_shutdown) {
-    ExecuteForceShutdown(detail);
-  } else {
-    ExecuteGracefulShutdown(detail, timeout_ms);
-    // Handle timeout fallback if needed
-    if (force_on_timeout && GetState() != ShutdownState::kShutdown) {
-      ExecuteForceShutdown("Graceful shutdown timeout: " + detail);
-    }
-  }
-}
 
 std::string ShutdownCoordinator::GetExitTypeString() const {
   switch (GetReason()) {
@@ -335,11 +299,6 @@ ShutdownState ShutdownCoordinator::UnpackState(uint64_t packed) {
 
 ShutdownReason ShutdownCoordinator::UnpackReason(uint64_t packed) {
   return static_cast<ShutdownReason>((packed >> REASON_SHIFT) & REASON_MASK);
-}
-
-bool ShutdownCoordinator::IsValidTransition(ShutdownState from, ShutdownState to) {
-  // Only allow monotonic forward transitions
-  return static_cast<uint32_t>(to) > static_cast<uint32_t>(from);
 }
 }  // namespace core
 }  // namespace ray

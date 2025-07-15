@@ -52,8 +52,8 @@ class MockShutdownExecutor : public ShutdownExecutorInterface {
                const std::string &detail,
                std::chrono::milliseconds timeout_ms),
               (override));
-  MOCK_METHOD(void, KillChildProcesses, (), (override));
-  MOCK_METHOD(bool, ShouldWorkerExit, (), (const, override));
+  MOCK_METHOD(void, KillChildProcessesImmediately, (), (override));
+  MOCK_METHOD(bool, ShouldWorkerIdleExit, (), (const, override));
 };
 
 class ShutdownCoordinatorTest : public ::testing::Test {
@@ -72,8 +72,8 @@ class ShutdownCoordinatorTest : public ::testing::Test {
         .WillByDefault(::testing::Return());
     ON_CALL(*mock, ExecuteHandleExit(::testing::_, ::testing::_, ::testing::_))
         .WillByDefault(::testing::Return());
-    ON_CALL(*mock, KillChildProcesses()).WillByDefault(::testing::Return());
-    ON_CALL(*mock, ShouldWorkerExit()).WillByDefault(::testing::Return(false));
+    ON_CALL(*mock, KillChildProcessesImmediately()).WillByDefault(::testing::Return());
+    ON_CALL(*mock, ShouldWorkerIdleExit()).WillByDefault(::testing::Return(false));
 
     return std::make_unique<ShutdownCoordinator>(std::move(mock), worker_type);
   }

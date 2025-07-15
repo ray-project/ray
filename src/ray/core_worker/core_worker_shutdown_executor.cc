@@ -86,9 +86,9 @@ void CoreWorkerShutdownExecutor::ExecuteForceShutdown(const std::string &exit_ty
   RAY_LOG(WARNING) << "Executing force shutdown: " << exit_type << " - " << detail;
 
   RAY_LOG(WARNING) << "Force shutdown: About to kill child processes";
-  KillChildProcesses();
+  KillChildProcessesImmediately();
   RAY_LOG(WARNING) << "Force shutdown: About to disconnect from services";
-  DisconnectFromServices(exit_type, detail);
+  DisconnectServices(exit_type, detail);
   RAY_LOG(WARNING) << "Force shutdown: About to call QuickExit()";
   QuickExit();
   RAY_LOG(WARNING)
@@ -113,10 +113,10 @@ void CoreWorkerShutdownExecutor::ExecuteWorkerExit(const std::string &exit_type,
     core_worker_->task_execution_service_.post(
         [this, exit_type, detail]() {
           rpc::DrainServerCallExecutor();
-          KillChildProcesses();
+          KillChildProcessesImmediately();
           // Disconnect should be put close to Shutdown
           // https://github.com/ray-project/ray/pull/34883
-          DisconnectFromServices(exit_type, detail);
+          DisconnectServices(exit_type, detail);
           ExecuteGracefulShutdown(
               exit_type, "Post-exit graceful shutdown", std::chrono::milliseconds{30000});
         },
@@ -190,7 +190,7 @@ void CoreWorkerShutdownExecutor::ExecuteHandleExit(const std::string &exit_type,
   RAY_LOG(INFO) << "Executing handle exit: " << exit_type << " - " << detail
                 << " (timeout: " << timeout_ms.count() << "ms)";
 
-  if (ShouldWorkerExit()) {
+  if (ShouldWorkerIdleExit()) {
     auto actual_timeout = timeout_ms;
     if (actual_timeout.count() == 0) {
       actual_timeout = std::chrono::milliseconds{10000};  // 10s default
@@ -202,7 +202,7 @@ void CoreWorkerShutdownExecutor::ExecuteHandleExit(const std::string &exit_type,
   }
 }
 
-void CoreWorkerShutdownExecutor::KillChildProcesses() {
+void CoreWorkerShutdownExecutor::KillChildProcessesImmediately() {
   if (!RayConfig::instance().kill_child_processes_on_worker_exit()) {
     RAY_LOG(DEBUG)
         << "kill_child_processes_on_worker_exit is not true, skipping KillChildProcs";
@@ -238,11 +238,11 @@ void CoreWorkerShutdownExecutor::KillChildProcesses() {
   }
 }
 
-bool CoreWorkerShutdownExecutor::ShouldWorkerExit() const {
+bool CoreWorkerShutdownExecutor::ShouldWorkerIdleExit() const {
   return core_worker_->ShouldWorkerExit();
 }
 
-void CoreWorkerShutdownExecutor::DisconnectFromServices(const std::string &exit_type,
+void CoreWorkerShutdownExecutor::DisconnectServices(const std::string &exit_type,
                                                         const std::string &detail) {
   core_worker_->RecordMetrics();
 
