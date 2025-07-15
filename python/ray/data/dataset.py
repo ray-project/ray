@@ -2301,64 +2301,7 @@ class Dataset:
         
         # Handle stratified splitting
         if stratify is not None:
-            if isinstance(test_size, int):
-                ds_length = ds.count()
-                if test_size <= 0 or test_size >= ds_length:
-                    raise ValueError(
-                        "If `test_size` is an int, it must be bigger than 0 and smaller "
-                        f"than the size of the dataset ({ds_length}). "
-                        f"Got {test_size}."
-                    )
-                test_size = test_size / ds_length
-            
-            if test_size <= 0 or test_size >= 1:
-                raise ValueError(
-                    "For stratified splitting, test_size must be between 0 and 1 "
-                    f"(or equivalent int). Got {test_size}."
-                )
-            
-            # Group by stratify column and perform stratified sampling
-            grouped_ds = ds.groupby(stratify)
-            
-            # Create a function to split each group
-            def stratified_split_group(group_batch):
-                import pyarrow as pa
-                import numpy as np
-                
-                # Convert to pandas for easier manipulation
-                group_df = group_batch.to_pandas()
-                group_size = len(group_df)
-                
-                if group_size == 0:
-                    # Return empty batch with split indicator
-                    empty_df = group_df.copy()
-                    empty_df["_split_indicator"] = []
-                    return pa.Table.from_pandas(empty_df)
-                
-                # Calculate test size for this group
-                test_count = max(1, int(group_size * test_size))
-                train_count = group_size - test_count
-                
-                # Create split indicators
-                split_indicators = ["train"] * train_count + ["test"] * test_count
-                
-                # Add split indicator column
-                group_df["_split_indicator"] = split_indicators
-                
-                return pa.Table.from_pandas(group_df)
-            
-            # Apply stratified splitting to each group
-            split_ds = grouped_ds.map_groups(stratified_split_group, batch_format="pyarrow")
-            
-            # Filter train and test sets based on split indicator
-            train_ds = split_ds.filter(lambda row: row["_split_indicator"] == "train")
-            test_ds = split_ds.filter(lambda row: row["_split_indicator"] == "test")
-            
-            # Remove the split indicator column
-            train_ds = train_ds.drop_columns(["_split_indicator"])
-            test_ds = test_ds.drop_columns(["_split_indicator"])
-            
-            return train_ds.materialize(), test_ds.materialize()
+            return self._stratified_split(ds, test_size, stratify)
         
         # Handle non-stratified splitting (existing logic)
         if isinstance(test_size, float):
@@ -2377,6 +2320,52 @@ class Dataset:
                     f"Got {test_size}."
                 )
             return ds.split_at_indices([ds_length - test_size])
+
+    def _stratified_split(
+        self, ds: "Dataset", test_size: Union[int, float], stratify: str
+    ) -> Tuple["MaterializedDataset", "MaterializedDataset"]:
+        """Perform stratified train-test split on the dataset.
+        
+        Args:
+            ds: The dataset to split.
+            test_size: Test size as int or float.
+            stratify: Column name to use for stratified sampling.
+            
+        Returns:
+            Train and test subsets as two MaterializedDatasets.
+        """
+        # Normalize test_size to float (only materialize if needed)
+        if isinstance(test_size, int):
+            ds_length = ds.count()
+            if test_size <= 0 or test_size >= ds_length:
+                raise ValueError(
+                    "If `test_size` is an int, it must be bigger than 0 and smaller "
+                    f"than the size of the dataset ({ds_length}). "
+                    f"Got {test_size}."
+                )
+            test_size = test_size / ds_length
+        
+        if test_size <= 0 or test_size >= 1:
+            raise ValueError(
+                "For stratified splitting, test_size must be between 0 and 1 "
+                f"(or equivalent int). Got {test_size}."
+            )
+        
+        def add_train_flag(group_batch):
+            import pyarrow as pa
+            # group_batch is already a pandas DataFrame
+            df = group_batch
+            n = len(df)
+            test_count = max(1, int(n * test_size))
+            df["is_train"] = [True] * (n - test_count) + [False] * test_count
+            return pa.Table.from_pandas(df)
+        
+        # Lazy pipeline: group -> transform -> split
+        split_ds = ds.groupby(stratify).map_groups(add_train_flag)
+        train_ds = split_ds.filter(lambda row: row["is_train"]).drop_columns(["is_train"])
+        test_ds = split_ds.filter(lambda row: not row["is_train"]).drop_columns(["is_train"])
+        
+        return train_ds.materialize(), test_ds.materialize()
 
     @PublicAPI(api_group=SMJ_API_GROUP)
     def union(self, *other: List["Dataset"]) -> "Dataset":
