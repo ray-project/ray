@@ -20,9 +20,7 @@ the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`.
     workers. The env-to-module pipeline sits between the RL environment, a `gymnasium.Env <https://gymnasium.farama.org/api/env/>`__, and the
     :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`, and translates ongoing episodes into batches for the model's `forward_...()` methods.
 
-    .. The module-to-env pipeline serves the other direction, converting the output of the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`, such as
-    action logits and action distribution parameters, to actual actions understandable by the `gymnasium.Env <https://gymnasium.farama.org/api/env/>`__
-    and used in the env's next `step()` call.
+.. The module-to-env pipeline serves the other direction, converting the output of the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`, such as action logits and action distribution parameters, to actual actions understandable by the `gymnasium.Env <https://gymnasium.farama.org/api/env/>`__ and used in the env's next `step()` call.
 
 The env-to-module pipeline, when called, performs transformations from a list of ongoing :ref:`Episode objects <single-agent-episode-docs>` to an
 RLModule-readable tensor batch and RLlib passes this generated batch as the first argument into the
@@ -558,5 +556,3 @@ You should see the new column in the batch, after running through this connector
 Note, though, that if your :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` also requires the new information
 in the train batch, you would also need to add the same custom connector piece to your Algorithm's
 :py:class:`~ray.rllib.connectors.learner.learner_connector_pipeline.LearnerConnectorPipeline`.
-
-See :ref:`this page here for more details on how to customize the Learner connector pipeline <learner-pipeline-docs>`.

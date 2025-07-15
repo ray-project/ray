@@ -102,7 +102,7 @@ Batch construction phases and formats
 
 When you push a list of input episodes through a connector pipeline, the batch the pipeline constructs, which is always a python dictionary,
 undergoes different formats and phases while passing the different pieces of the pipeline. The following applies to all
-:ref:`env-to-module <env-to-module-pipeline-docs>` and :ref:`learner connector <learner-pipeline-docs>` pipelines.
+:ref:`env-to-module <env-to-module-pipeline-docs>` and learner connector pipelines.
 
 .. figure:: images/connector_v2/pipeline_batch_phases_single_agent.svg
     :width: 1000
