@@ -1115,6 +1115,13 @@ def _process_option_dict(actor_options):
         _filled_options["runtime_env"]
     )
 
+    # Ray GPU objects requires a background thread for data transfer. However,
+    # currently by default the background thread will be blocked if the main
+    # thread does not yield. For now, we explicitly create the background
+    # thread, which forces Ray to execute all tasks on background threads
+    # instead of the main thread.
+    # TODO(swang): Remove this code once
+    # https://github.com/ray-project/ray/issues/54639 is fixed.
     if _filled_options.get("enable_tensor_transport", False):
         if _filled_options.get("concurrency_groups", None) is None:
             _filled_options["concurrency_groups"] = {}
