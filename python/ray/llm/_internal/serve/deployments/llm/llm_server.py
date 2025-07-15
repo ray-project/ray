@@ -1,6 +1,7 @@
 import asyncio
 import os
 from abc import ABC, abstractmethod
+<<<<<<< HEAD
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -12,6 +13,9 @@ from typing import (
     TypeVar,
     Union,
 )
+=======
+from typing import TYPE_CHECKING, Any, AsyncGenerator, Dict, List, Optional, Type, Union
+>>>>>>> a067e8c0b1ddeb67d3bf61b0e6760c789ec89d1f
 
 from ray import serve
 from ray._common.utils import import_attr
@@ -31,7 +35,7 @@ from ray.llm._internal.serve.deployments.llm.multiplex.lora_model_loader import 
     LoraModelLoader,
 )
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_engine import VLLMEngine
-from ray.llm._internal.serve.deployments.utils.batcher import OpenAIResponseBatcher
+from ray.llm._internal.serve.deployments.utils.batcher import Batcher
 from ray.llm._internal.serve.deployments.utils.server_utils import (
     get_serve_request_id,
 )
@@ -221,10 +225,8 @@ class LLMServer(_LLMServerBase):
             disk_lora_model = await self._load_model(multiplexed_model_id)
             await self.engine.resolve_lora(disk_lora_model)
 
-    def _batch_output_stream(
-        self, generator: AsyncGenerator[T, None]
-    ) -> AsyncGenerator[List[T], None]:
-        return OpenAIResponseBatcher(
+    def _batch_output_stream(self, generator: AsyncGenerator[T, None]) -> AsyncGenerator[List[T], None]:
+        return Batcher(
             generator,
             interval_ms=self._get_batch_interval_ms(),
         ).stream()

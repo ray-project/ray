@@ -151,7 +151,7 @@ class PDProxyServer(LLMServer):
         prefill_request = self._prepare_prefill_request(request)
         prefill_gen = getattr(self.prefill_server, method).remote(prefill_request)
 
-        prefill_chunk = await anext(prefill_gen)
+        prefill_chunk = await prefill_gen.__anext__()
 
         if isinstance(prefill_chunk, ErrorResponse):
             logger.error(f"Prefill returned error: {prefill_chunk}")

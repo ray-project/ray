@@ -1,3 +1,9 @@
+"""This module contains the wrapper classes for vLLM's OpenAI implementation.
+
+If there are any major differences in the interface, the expectation is that 
+they will be upstreamed to vLLM.
+"""
+
 from typing import TYPE_CHECKING, Any, AsyncGenerator, Dict, List, Optional, Union
 
 from pydantic import (

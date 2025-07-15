@@ -135,7 +135,13 @@ def _apply_openai_json_format(
         first_response = next(iter(response))
         if isinstance(first_response, str):
             return "".join(response)
-        return "".join(f"data: {r.model_dump_json()}\n\n" for r in response)
+        if isinstance(first_response, dict):
+            return "".join(f"data: {json.dumps(r)}\n\n" for r in response)
+        if hasattr(first_response, "model_dump_json"):
+            return "".join(f"data: {r.model_dump_json()}\n\n" for r in response)
+        raise ValueError(
+            f"Unexpected response type: {type(first_response)}, {first_response=}"
+        )
     if hasattr(response, "model_dump_json"):
         return f"data: {response.model_dump_json()}\n\n"
     if isinstance(response, str):
