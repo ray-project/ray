@@ -446,7 +446,7 @@ class TaskManager : public TaskManagerInterface {
 
   bool IsTaskPending(const TaskID &task_id) const override;
 
-  /// Return whether the task is scheduled adn waiting for execution.
+  /// Return whether the task is scheduled and waiting for execution.
   ///
   /// \param[in] task_id ID of the task to query.
   /// \return Whether the task is waiting for execution.
@@ -580,6 +580,14 @@ class TaskManager : public TaskManagerInterface {
     //    pending tasks and tasks that finished execution but that may be
     //    retried in the future.
     absl::flat_hash_set<ObjectID> reconstructable_return_ids;
+    // NOTE: Used in Streaming Generators only.
+    // This set is used to track ObjectIDs that are returned a streaming
+    // generator before successful execution. These need to be stored to propagate an
+    // error to the user if lineage reconstruction is triggered and fails without a
+    // successful execution.
+    // For each item in the set, the bool is true if the object was in plasma and
+    // false if it was inlined.
+    absl::flat_hash_set<ObjectID> recon_ret_ids_before_first_successful_exec;
     // The size of this (serialized) task spec in bytes, if the task spec is
     // not pending, i.e. it is being pinned because it's in another object's
     // lineage. We cache this because the task spec protobuf can mutate

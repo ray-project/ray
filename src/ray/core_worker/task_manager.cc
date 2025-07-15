@@ -765,14 +765,12 @@ bool TaskManager::HandleReportGeneratorItemReturns(
                  << " generator_id: " << generator_id;
   auto backpressure_threshold = -1;
   bool has_executed_successfully_before = false;
-  bool executed_for_reconstruction = false;
 
   {
     absl::MutexLock lock(&mu_);
     auto it = submissible_tasks_.find(task_id);
     if (it != submissible_tasks_.end()) {
       has_executed_successfully_before = it->second.num_successful_executions > 0;
-      executed_for_reconstruction = it->second.num_successful_executions > 0;
       backpressure_threshold = it->second.spec.GeneratorBackpressureNumObjects();
       if (it->second.spec.AttemptNumber() > attempt_number) {
         // Generator task reports can arrive at any time. If the first attempt
@@ -821,7 +819,7 @@ bool TaskManager::HandleReportGeneratorItemReturns(
     HandleTaskReturn(object_id,
                      return_object,
                      NodeID::FromBinary(request.worker_addr().raylet_id()),
-                     /*store_in_plasma=*/in_plasma && !executed_for_reconstruction);
+                     /*store_in_plasma=*/in_plasma);
   }
 
   // If the task has not been executed successfully before, then we need to add metadata
@@ -830,13 +828,8 @@ bool TaskManager::HandleReportGeneratorItemReturns(
     absl::MutexLock lock(&mu_);
     auto it = submissible_tasks_.find(task_id);
     if (it != submissible_tasks_.end()) {
-      auto &task_spec = it->second.spec;
       for (const auto &object_id : store_in_plasma_ids) {
-        auto inserted = it->second.reconstructable_return_ids.insert(object_id);
-        if (inserted.second) {
-          task_spec.SetNumStreamingGeneratorReturns(
-              task_spec.NumStreamingGeneratorReturns() + num_objects_written);
-        }
+        it->second.recon_ret_ids_before_first_successful_exec.insert(object_id);
       }
     }
   }
@@ -904,11 +897,12 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
                                       const rpc::PushTaskReply &reply,
                                       const rpc::Address &worker_addr,
                                       bool is_application_error) {
-  RAY_LOG(DEBUG) << "Completing task " << task_id;
+  RAY_LOG(DEBUG).WithField(task_id) << "Completing task ";
 
   bool first_successful_execution = false;
   const auto store_in_plasma_ids =
       GetTaskReturnObjectsToStoreInPlasma(task_id, &first_successful_execution);
+
   std::vector<ObjectID> dynamic_return_ids;
   std::vector<ObjectID> dynamic_returns_in_plasma;
   std::vector<ObjectID> direct_return_ids;
@@ -968,8 +962,29 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
         it->second.reconstructable_return_ids.insert(dynamic_return_id);
       }
 
-      RAY_LOG(DEBUG) << "Completed streaming generator task " << spec.TaskId() << " has "
-                     << spec.NumStreamingGeneratorReturns() << " return objects.";
+      if (spec.IsStreamingGenerator()) {
+        // Upon the first complete execution, set the number of streaming
+        // generator returns.
+        auto num_streaming_generator_returns =
+            reply.streaming_generator_return_ids_size();
+        if (num_streaming_generator_returns > 0) {
+          spec.SetNumStreamingGeneratorReturns(num_streaming_generator_returns);
+          RAY_LOG(DEBUG) << "Completed streaming generator task " << spec.TaskId()
+                         << " has " << spec.NumStreamingGeneratorReturns()
+                         << " return objects.";
+          for (const auto &return_id_info : reply.streaming_generator_return_ids()) {
+            if (return_id_info.is_plasma_object()) {
+              // TODO(swang): It is possible that the dynamically returned refs
+              // have already been consumed by the caller and deleted. This can
+              // cause a memory leak of the task metadata, because we will
+              // never receive a callback from the ReferenceCounter to erase
+              // the task.
+              it->second.reconstructable_return_ids.insert(
+                  ObjectID::FromBinary(return_id_info.object_id()));
+            }
+          }
+        }
+      }
     }
 
     // Release the lineage for any non-plasma return objects.
@@ -1156,7 +1171,7 @@ void TaskManager::FailPendingTask(const TaskID &task_id,
   TaskSpecification spec;
   // Check whether the error should be stored in plasma or not.
   bool first_execution = false;
-  const auto store_in_plasma_ids =
+  absl::flat_hash_set<ObjectID> store_in_plasma_ids =
       GetTaskReturnObjectsToStoreInPlasma(task_id, &first_execution);
   {
     absl::MutexLock lock(&mu_);
@@ -1165,7 +1180,14 @@ void TaskManager::FailPendingTask(const TaskID &task_id,
         << "Tried to fail task that was not pending " << task_id;
     RAY_CHECK(it->second.IsPending())
         << "Tried to fail task that was not pending " << task_id;
+
+    // For streaming generators, we need to handle the case where the task
+    // can fail without ever succeeding and have yielded intermediate
+    // objects to the user.
     spec = it->second.spec;
+    if (spec.IsStreamingGenerator() && first_execution) {
+      store_in_plasma_ids = it->second.recon_ret_ids_before_first_successful_exec;
+    }
 
     if ((status != nullptr) && status->IsIntentionalSystemExit()) {
       // We don't mark intentional system exit as failures, such as tasks that
@@ -1396,9 +1418,7 @@ absl::flat_hash_set<ObjectID> TaskManager::GetTaskReturnObjectsToStoreInPlasma(
     return {};
   }
   first_execution = it->second.num_successful_executions == 0;
-  // For a streaming generator, we track which objects reconstructible
-  // even if there has not been a successful first execution.
-  if (!first_execution || it->second.spec.IsStreamingGenerator()) {
+  if (!first_execution) {
     store_in_plasma_ids = it->second.reconstructable_return_ids;
   }
   if (first_execution_out != nullptr) {
@@ -1450,6 +1470,19 @@ void TaskManager::MarkTaskReturnObjectsFailed(
     // can overwrite them. See the test test_dynamic_generator_reconstruction_fails
     // for more details.
     auto num_streaming_generator_returns = spec.NumStreamingGeneratorReturns();
+
+    // If there has not been a successful execution yet and we've lost the node that was
+    // executing the streaming task, we at least need to add errors
+    // to the correct store to unblock pending ray.get and pull manager calls.
+    {
+      absl::MutexLock object_ref_stream_mutex(&object_ref_stream_ops_mu_);
+      auto object_ref_stream_it = object_ref_streams_.find(generator_id);
+      if (object_ref_stream_it != object_ref_streams_.end()) {
+        num_streaming_generator_returns = std::max(
+            num_streaming_generator_returns,
+            static_cast<size_t>(object_ref_stream_it->second.LastConsumedIndex()) + 1);
+      }
+    }
     for (size_t i = 0; i < num_streaming_generator_returns; i++) {
       const ObjectID generator_return_id = spec.StreamingGeneratorReturnId(i);
       if (store_in_plasma_ids.contains(generator_return_id)) {
