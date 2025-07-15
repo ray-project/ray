@@ -56,6 +56,7 @@ def main(args):
 
 
 def _validate_expected_count(args: argparse.Namespace):
+    # TODO: Add support for `--expected-count` for the other consume options.
     for attr in ["iter_batches", "iter_torch_batches", "to_tf", "write"]:
         if getattr(args, attr) is not None and args.expected_count is not None:
             raise NotImplementedError(
