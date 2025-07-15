@@ -46,6 +46,7 @@ class WorkerInterface {
   virtual rpc::WorkerType GetWorkerType() const = 0;
   virtual void MarkDead() = 0;
   virtual bool IsDead() const = 0;
+  virtual void KillAsync(instrumented_io_context &io_service, bool force = false) = 0;
   virtual void MarkBlocked() = 0;
   virtual void MarkUnblocked() = 0;
   virtual bool IsBlocked() const = 0;
@@ -136,7 +137,7 @@ class WorkerInterface {
 /// Worker class encapsulates the implementation details of a worker. A worker
 /// is the execution container around a unit of Ray work, such as a task or an
 /// actor. Ray units of work execute in the context of a Worker.
-class Worker : public WorkerInterface {
+class Worker : public std::enable_shared_from_this<Worker>, public WorkerInterface {
  public:
   /// A constructor that initializes a worker object.
   /// NOTE: You MUST manually set the worker process.
@@ -154,6 +155,12 @@ class Worker : public WorkerInterface {
   rpc::WorkerType GetWorkerType() const;
   void MarkDead();
   bool IsDead() const;
+  /// Kill the worker process. This is idempotent.
+  /// \param io_service for scheduling the graceful period timer.
+  /// \param force true to kill immediately, false to give time for the worker to clean up
+  /// and exit gracefully.
+  /// \return Void.
+  void KillAsync(instrumented_io_context &io_service, bool force = false);
   void MarkBlocked();
   void MarkUnblocked();
   bool IsBlocked() const;
@@ -297,6 +304,8 @@ class Worker : public WorkerInterface {
   BundleID bundle_id_;
   /// Whether the worker is dead.
   bool dead_;
+  /// Whether the worker is killed by the Kill method.
+  std::atomic<bool> killing_;
   /// Whether the worker is blocked. Workers become blocked in a `ray.get`, if
   /// they require a data dependency while executing a task.
   bool blocked_;
