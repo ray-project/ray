@@ -4,6 +4,7 @@ load("//bazel:python.bzl", "py_test_module_list")
 py_test_module_list(
     size = "small",
     files = [
+        "test_ray_option_utils.py",
         "test_signal_semaphore_utils.py",
         "test_signature.py",
         "test_utils.py",
