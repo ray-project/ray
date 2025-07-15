@@ -246,14 +246,14 @@ def _autodetect_parallelism(
             reason = (
                 "output blocks of size at least "
                 "DataContext.get_current().target_min_block_size="
-                f"{ctx.target_min_block_size / (1024 * 1024)}MiB"
+                f"{ctx.target_min_block_size / MiB} MiB"
             )
         elif parallelism == min_safe_parallelism:
             # Handle ``None`` (unlimited) gracefully in the log message.
             if ctx.target_max_block_size is None:
                 display_val = "unlimited"
             else:
-                display_val = f"{ctx.target_max_block_size / (1024 * 1024)}MiB"
+                display_val = f"{ctx.target_max_block_size / MiB} MiB"
             reason = (
                 "output blocks of size at most "
                 "DataContext.get_current().target_max_block_size="

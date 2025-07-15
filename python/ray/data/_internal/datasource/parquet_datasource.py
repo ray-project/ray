@@ -94,6 +94,10 @@ PARQUET_ENCODING_RATIO_ESTIMATE_MAX_NUM_SAMPLES = 10
 # reading too much data into memory.
 PARQUET_ENCODING_RATIO_ESTIMATE_NUM_ROWS = 1024
 
+# Use a large batch size to avoid splitting within a single block
+# This should be large enough for most reasonable files. Used in the event, target_max_block_size is set to `None`
+LARGE_BATCH_SIZE = 100 * PARQUET_READER_ROW_BATCH_SIZE  # 1,000,000 rows
+
 
 @dataclass(frozen=True)
 class _SampleInfo:
@@ -605,7 +609,7 @@ def estimate_default_read_batch_size_rows(sample_infos: List[_SampleInfo]) -> in
             if ctx.target_max_block_size is None:
                 # Use a large batch size to avoid splitting within a single block
                 # This should be large enough for most reasonable files
-                return 100 * PARQUET_READER_ROW_BATCH_SIZE  # 1,000,000 rows
+                return LARGE_BATCH_SIZE
             else:
                 max_parquet_reader_row_batch_size_bytes = (
                     ctx.target_max_block_size // 10
