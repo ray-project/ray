@@ -2655,7 +2655,8 @@ def read_databricks_tables(
 def read_hudi(
     table_uri: str,
     *,
-    mode: str = "snapshot",
+    query_type: str = "snapshot",
+    filters: Optional[List[Tuple[str, str, str]]] = None,
     hudi_options: Optional[Dict[str, str]] = None,
     storage_options: Optional[Dict[str, str]] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
@@ -2670,11 +2671,13 @@ def read_hudi(
         >>> import ray
         >>> ds = ray.data.read_hudi( # doctest: +SKIP
         ...     table_uri="/hudi/trips",
+        ...     query_type="snapshot",
+        ...     filters=[("city", "==", "san_francisco")],
         ... )
 
         >>> ds = ray.data.read_hudi( # doctest: +SKIP
         ...     table_uri="/hudi/trips",
-        ...     mode="incremental",
+        ...     query_type="incremental",
         ...     hudi_options={
         ...         "hoodie.read.file_group.start_timestamp": "2023-01-01T12:34:56.789Z",
         ...         "hoodie.read.file_group.end_timestamp": "2023-02-01T12:34:56.789Z",
@@ -2682,9 +2685,13 @@ def read_hudi(
         ... )
 
     Args:
-        table_uri: The URI of the Hudi table to read from. Local file paths, S3, and GCS
-            are supported.
-        mode: The Hudi read mode to use. Supported modes are "snapshot" and "incremental".
+        table_uri: The URI of the Hudi table to read from. Local file paths, S3, and GCS are supported.
+        query_type: The Hudi query type to use. Supported values are ``snapshot`` and ``incremental``.
+        filters: Optional list of filters to apply to the Hudi table when the
+            ``query_type`` is ``snapshot``. Each filter is a tuple of the form
+            ``(column_name, operator, value)``. The operator can be
+            one of ``"=="``, ``"!="``, ``"<"``, ``"<="``, ``">"``, ``">="``.
+            Currently, only filters on partition columns will be effective.
         hudi_options: A dictionary of Hudi options to pass to the Hudi reader.
         storage_options: Extra options that make sense for a particular storage
             connection. This is used to store connection parameters like credentials,
@@ -2705,7 +2712,8 @@ def read_hudi(
     """  # noqa: E501
     datasource = HudiDatasource(
         table_uri=table_uri,
-        mode=mode,
+        query_type=query_type,
+        filters=filters,
         hudi_options=hudi_options,
         storage_options=storage_options,
     )

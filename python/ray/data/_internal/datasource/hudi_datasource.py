@@ -1,7 +1,7 @@
 import logging
 import os
 from enum import Enum
-from typing import Dict, Iterator, List, Optional
+from typing import Dict, Iterator, List, Optional, Tuple
 
 from ray.data._internal.util import _check_import
 from ray.data.block import BlockMetadata
@@ -14,6 +14,10 @@ class HudiQueryType(Enum):
     SNAPSHOT = "snapshot"
     INCREMENTAL = "incremental"
 
+    @classmethod
+    def supported_types(cls) -> List[str]:
+        return [e.value for e in cls]
+
 
 class HudiDatasource(Datasource):
     """Hudi datasource, for reading Apache Hudi table."""
@@ -21,23 +25,21 @@ class HudiDatasource(Datasource):
     def __init__(
         self,
         table_uri: str,
-        mode: str,
+        query_type: str,
+        filters: Optional[List[Tuple[str, str, str]]] = None,
         hudi_options: Optional[Dict[str, str]] = None,
         storage_options: Optional[Dict[str, str]] = None,
     ):
         _check_import(self, module="hudi", package="hudi-python")
 
         self._table_uri = table_uri
-        try:
-            self._mode = HudiQueryType(mode.lower())
-        except ValueError:
-            raise ValueError(
-                f"Unsupported mode: {mode}. Supported modes are 'snapshot' and 'incremental'."
-            )
+        self._query_type = HudiQueryType(query_type.lower())
+        self._filters = filters or []
         self._hudi_options = hudi_options or {}
         self._storage_options = storage_options or {}
 
     def get_read_tasks(self, parallelism: int) -> List["ReadTask"]:
+        import numpy as np
         import pyarrow
         from hudi import HudiTableBuilder
 
@@ -73,19 +75,19 @@ class HudiDatasource(Datasource):
 
         schema = hudi_table.get_schema()
         read_tasks = []
-        if self._mode == HudiQueryType.SNAPSHOT:
-            file_slices_splits = hudi_table.get_file_slices_splits(parallelism)
-        elif self._mode == HudiQueryType.INCREMENTAL:
+        if self._query_type == HudiQueryType.SNAPSHOT:
+            file_slices_splits = hudi_table.get_file_slices_splits(
+                parallelism, self._filters
+            )
+        elif self._query_type == HudiQueryType.INCREMENTAL:
             start_ts = self._hudi_options.get("hoodie.read.file_group.start_timestamp")
             end_ts = self._hudi_options.get("hoodie.read.file_group.end_timestamp")
             # TODO(xushiyan): add table API to return splits of file slices
             file_slices = hudi_table.get_file_slices_between(start_ts, end_ts)
-            import numpy as np
-
             file_slices_splits = np.array_split(file_slices, parallelism)
         else:
             raise ValueError(
-                f"Unsupported mode: {self._mode}. Supported modes are 'snapshot' and 'incremental'."
+                f"Unsupported query type: {self._query_type}. Supported types are: {HudiQueryType.supported_types()}."
             )
 
         for file_slices_split in file_slices_splits:
