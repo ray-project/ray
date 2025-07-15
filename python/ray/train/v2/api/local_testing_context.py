@@ -23,14 +23,12 @@ class LocalTestingContext(TrainContext):
 
     def __init__(
         self,
+        devices: List[torch.device],
         dataset_shards: Dict[str, DataIterator],
         world_size: int = 1,
         world_rank: int = 0,
         local_rank: int = 0,
         local_world_size: int = 1,
-        devices: List[torch.device] = [torch.device("cuda:0")]
-        if torch.cuda.is_available()
-        else [torch.device("cpu")],
     ):
         self.dataset_shards = dataset_shards
         self.world_size = world_size

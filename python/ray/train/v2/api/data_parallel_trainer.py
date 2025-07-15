@@ -205,7 +205,14 @@ class DataParallelTrainer:
                 )
             )
         else:
-            set_train_context(LocalTestingContext(dataset_shards=self.datasets))
+            set_train_context(
+                LocalTestingContext(
+                    [torch.device("cuda:0")]
+                    if torch.cuda.is_available()
+                    else [torch.device("cpu")],
+                    dataset_shards=self.datasets,
+                )
+            )
 
     def _create_default_callbacks(self) -> List[RayTrainCallback]:
         # Initialize callbacks from environment variable
