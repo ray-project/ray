@@ -14,8 +14,12 @@
 
 #include "ray/core_worker/shutdown_coordinator.h"
 
+#include <atomic>
+#include <chrono>
+#include <cstdint>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <utility>
 namespace ray {
 
@@ -30,7 +34,7 @@ ShutdownCoordinator::ShutdownCoordinator(
 
 bool ShutdownCoordinator::RequestShutdown(bool force_shutdown,
                                           ShutdownReason reason,
-                                          const std::string &detail,
+                                          std::string_view detail,
                                           std::chrono::milliseconds timeout_ms,
                                           bool force_on_timeout) {
   RAY_LOG(WARNING) << "RequestShutdown called: force_shutdown=" << force_shutdown
@@ -133,7 +137,7 @@ std::string ShutdownCoordinator::GetStateString() const {
 // Shutdown execution methods
 
 void ShutdownCoordinator::ExecuteShutdownSequence(bool force_shutdown,
-                                                  const std::string &detail,
+                                                  std::string_view detail,
                                                   std::chrono::milliseconds timeout_ms,
                                                   bool force_on_timeout) {
   switch (worker_type_) {
@@ -153,7 +157,7 @@ void ShutdownCoordinator::ExecuteShutdownSequence(bool force_shutdown,
   }
 }
 
-void ShutdownCoordinator::ExecuteGracefulShutdown(const std::string &detail,
+void ShutdownCoordinator::ExecuteGracefulShutdown(std::string_view detail,
                                                   std::chrono::milliseconds timeout_ms) {
   if (!executor_) {
     return;
@@ -164,7 +168,7 @@ void ShutdownCoordinator::ExecuteGracefulShutdown(const std::string &detail,
   TryTransitionToShutdown();
 }
 
-void ShutdownCoordinator::ExecuteForceShutdown(const std::string &detail) {
+void ShutdownCoordinator::ExecuteForceShutdown(std::string_view detail) {
   RAY_LOG(WARNING) << "ExecuteForceShutdown called: detail=" << detail;
 
   if (!executor_) {
@@ -184,7 +188,7 @@ void ShutdownCoordinator::ExecuteForceShutdown(const std::string &detail) {
 }
 
 void ShutdownCoordinator::ExecuteDriverShutdown(bool force_shutdown,
-                                                const std::string &detail,
+                                                std::string_view detail,
                                                 std::chrono::milliseconds timeout_ms,
                                                 bool force_on_timeout) {
   if (force_shutdown) {
@@ -193,13 +197,13 @@ void ShutdownCoordinator::ExecuteDriverShutdown(bool force_shutdown,
     ExecuteGracefulShutdown(detail, timeout_ms);
     // Handle timeout fallback if needed
     if (force_on_timeout && GetState() != ShutdownState::kShutdown) {
-      ExecuteForceShutdown("Graceful shutdown timeout: " + detail);
+      ExecuteForceShutdown(std::string("Graceful shutdown timeout: ") + std::string(detail));
     }
   }
 }
 
 void ShutdownCoordinator::ExecuteWorkerShutdown(bool force_shutdown,
-                                                const std::string &detail,
+                                                std::string_view detail,
                                                 std::chrono::milliseconds timeout_ms,
                                                 bool force_on_timeout) {
   if (force_shutdown) {
@@ -232,7 +236,7 @@ void ShutdownCoordinator::ExecuteWorkerShutdown(bool force_shutdown,
   }
 
   if (force_on_timeout && GetState() != ShutdownState::kShutdown) {
-    ExecuteForceShutdown("Graceful shutdown timeout: " + detail);
+    ExecuteForceShutdown(std::string("Graceful shutdown timeout: ") + std::string(detail));
   }
 }
 
@@ -287,17 +291,22 @@ std::string ShutdownCoordinator::GetReasonString() const {
 
 uint64_t ShutdownCoordinator::PackStateReason(ShutdownState state,
                                               ShutdownReason reason) {
-  uint64_t packed_state = static_cast<uint64_t>(static_cast<uint32_t>(state));
-  uint64_t packed_reason = static_cast<uint64_t>(static_cast<uint32_t>(reason));
-  return (packed_reason << REASON_SHIFT) | (packed_state << STATE_SHIFT);
+  StateReasonPacked packed;
+  packed.fields.state = static_cast<uint32_t>(state);
+  packed.fields.reason = static_cast<uint32_t>(reason);
+  return packed.packed;
 }
 
-ShutdownState ShutdownCoordinator::UnpackState(uint64_t packed) {
-  return static_cast<ShutdownState>((packed >> STATE_SHIFT) & STATE_MASK);
+ShutdownState ShutdownCoordinator::UnpackState(uint64_t packed_value) const {
+  StateReasonPacked packed;
+  packed.packed = packed_value;
+  return static_cast<ShutdownState>(packed.fields.state);
 }
 
-ShutdownReason ShutdownCoordinator::UnpackReason(uint64_t packed) {
-  return static_cast<ShutdownReason>((packed >> REASON_SHIFT) & REASON_MASK);
+ShutdownReason ShutdownCoordinator::UnpackReason(uint64_t packed_value) const {
+  StateReasonPacked packed;
+  packed.packed = packed_value;
+  return static_cast<ShutdownReason>(packed.fields.reason);
 }
 }  // namespace core
 }  // namespace ray

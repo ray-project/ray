@@ -16,6 +16,7 @@
 
 #include <memory>
 #include <string>
+#include <string_view>
 #include <utility>
 
 #include "ray/core_worker/core_worker.h"
@@ -31,8 +32,8 @@ CoreWorkerShutdownExecutor::CoreWorkerShutdownExecutor(CoreWorker *core_worker)
 }
 
 void CoreWorkerShutdownExecutor::ExecuteGracefulShutdown(
-    const std::string &exit_type,
-    const std::string &detail,
+    std::string_view exit_type,
+    std::string_view detail,
     std::chrono::milliseconds timeout_ms) {
   RAY_LOG(INFO) << "Executing graceful shutdown: " << exit_type << " - " << detail
                 << " (timeout: " << timeout_ms.count() << "ms)";
@@ -81,8 +82,8 @@ void CoreWorkerShutdownExecutor::ExecuteGracefulShutdown(
   RAY_LOG(INFO) << "Core worker ready to be deallocated.";
 }
 
-void CoreWorkerShutdownExecutor::ExecuteForceShutdown(const std::string &exit_type,
-                                                      const std::string &detail) {
+void CoreWorkerShutdownExecutor::ExecuteForceShutdown(std::string_view exit_type,
+                                                      std::string_view detail) {
   RAY_LOG(WARNING) << "Executing force shutdown: " << exit_type << " - " << detail;
 
   RAY_LOG(WARNING) << "Force shutdown: About to kill child processes";
@@ -95,8 +96,8 @@ void CoreWorkerShutdownExecutor::ExecuteForceShutdown(const std::string &exit_ty
       << "Force shutdown: This line should never be reached after QuickExit()";
 }
 
-void CoreWorkerShutdownExecutor::ExecuteWorkerExit(const std::string &exit_type,
-                                                   const std::string &detail,
+void CoreWorkerShutdownExecutor::ExecuteWorkerExit(std::string_view exit_type,
+                                                   std::string_view detail,
                                                    std::chrono::milliseconds timeout_ms) {
   RAY_LOG(INFO) << "Executing worker exit: " << exit_type << " - " << detail
                 << " (timeout: " << timeout_ms.count() << "ms)";
@@ -107,7 +108,7 @@ void CoreWorkerShutdownExecutor::ExecuteWorkerExit(const std::string &exit_type,
     core_worker_->exiting_detail_ = std::optional<std::string>{detail};
   }
 
-  auto shutdown_callback = [this, exit_type, detail]() {
+  auto shutdown_callback = [this, exit_type = std::string(exit_type), detail = std::string(detail)]() {
     // To avoid problems, make sure shutdown is always called from the same
     // event loop each time.
     core_worker_->task_execution_service_.post(
@@ -184,15 +185,15 @@ void CoreWorkerShutdownExecutor::ExecuteWorkerExit(const std::string &exit_type,
   core_worker_->task_manager_->DrainAndShutdown(drain_references_callback);
 }
 
-void CoreWorkerShutdownExecutor::ExecuteHandleExit(const std::string &exit_type,
-                                                   const std::string &detail,
+void CoreWorkerShutdownExecutor::ExecuteHandleExit(std::string_view exit_type,
+                                                   std::string_view detail,
                                                    std::chrono::milliseconds timeout_ms) {
   RAY_LOG(INFO) << "Executing handle exit: " << exit_type << " - " << detail
                 << " (timeout: " << timeout_ms.count() << "ms)";
 
   if (ShouldWorkerIdleExit()) {
     auto actual_timeout = timeout_ms;
-    if (actual_timeout.count() == 0) {
+    if (actual_timeout.count() == -1) {
       actual_timeout = std::chrono::milliseconds{10000};  // 10s default
     }
 
@@ -242,8 +243,8 @@ bool CoreWorkerShutdownExecutor::ShouldWorkerIdleExit() const {
   return core_worker_->ShouldWorkerExit();
 }
 
-void CoreWorkerShutdownExecutor::DisconnectServices(const std::string &exit_type,
-                                                    const std::string &detail) {
+void CoreWorkerShutdownExecutor::DisconnectServices(std::string_view exit_type,
+                                                        std::string_view detail) {
   core_worker_->RecordMetrics();
 
   if (core_worker_->options_.worker_type == WorkerType::DRIVER &&
@@ -275,7 +276,7 @@ void CoreWorkerShutdownExecutor::DisconnectServices(const std::string &exit_type
       }
 
       Status status = core_worker_->local_raylet_client_->Disconnect(
-          worker_exit_type, detail, nullptr);
+          worker_exit_type, std::string(detail), nullptr);
       if (status.ok()) {
         RAY_LOG(INFO) << "Disconnected from the local raylet.";
       } else {

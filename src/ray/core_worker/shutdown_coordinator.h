@@ -16,8 +16,10 @@
 
 #include <atomic>
 #include <chrono>
+#include <cstdint>
 #include <memory>
 #include <string>
+#include <string_view>
 
 #include "ray/core_worker/common.h"
 #include "src/ray/protobuf/common.pb.h"
@@ -33,22 +35,22 @@ class ShutdownExecutorInterface {
   virtual ~ShutdownExecutorInterface() = default;
 
   /// Execute complete graceful shutdown sequence
-  virtual void ExecuteGracefulShutdown(const std::string &exit_type,
-                                       const std::string &detail,
+  virtual void ExecuteGracefulShutdown(std::string_view exit_type,
+                                       std::string_view detail,
                                        std::chrono::milliseconds timeout_ms) = 0;
 
   /// Execute complete force shutdown sequence
-  virtual void ExecuteForceShutdown(const std::string &exit_type,
-                                    const std::string &detail) = 0;
+  virtual void ExecuteForceShutdown(std::string_view exit_type,
+                                    std::string_view detail) = 0;
 
   /// Execute worker exit sequence with task draining
-  virtual void ExecuteWorkerExit(const std::string &exit_type,
-                                 const std::string &detail,
+  virtual void ExecuteWorkerExit(std::string_view exit_type,
+                                 std::string_view detail,
                                  std::chrono::milliseconds timeout_ms) = 0;
 
   /// Execute handle exit sequence with idle checking
-  virtual void ExecuteHandleExit(const std::string &exit_type,
-                                 const std::string &detail,
+  virtual void ExecuteHandleExit(std::string_view exit_type,
+                                 std::string_view detail,
                                  std::chrono::milliseconds timeout_ms) = 0;
 
   virtual void KillChildProcessesImmediately() = 0;
@@ -133,7 +135,7 @@ class ShutdownCoordinator {
   /// \param force_shutdown If true, force immediate shutdown; if false, graceful shutdown
   /// \param reason The reason for shutdown initiation
   /// \param detail Optional detailed explanation
-  /// \param timeout_ms Timeout for graceful shutdown (0 = no timeout, immediate force
+  /// \param timeout_ms Timeout for graceful shutdown (-1 = no timeout, 0 = immediate force
   /// fallback) \param force_on_timeout If true, fallback to force shutdown on timeout; if
   /// false, wait indefinitely
   /// \return true if this call initiated shutdown, false if already shutting down
@@ -141,7 +143,7 @@ class ShutdownCoordinator {
       bool force_shutdown,
       ShutdownReason reason,
       std::string_view detail = "",
-      std::chrono::milliseconds timeout_ms = std::chrono::milliseconds{0},
+      std::chrono::milliseconds timeout_ms = std::chrono::milliseconds{-1},
       bool force_on_timeout = false);
 
   /// Legacy method for compatibility - delegates to RequestShutdown
@@ -219,40 +221,48 @@ class ShutdownCoordinator {
  private:
   /// Execute shutdown sequence based on worker type and mode
   void ExecuteShutdownSequence(bool force_shutdown,
-                               const std::string &detail,
+                               std::string_view detail,
                                std::chrono::milliseconds timeout_ms,
                                bool force_on_timeout);
 
   /// Execute graceful shutdown with timeout
-  void ExecuteGracefulShutdown(const std::string &detail,
+  void ExecuteGracefulShutdown(std::string_view detail,
                                std::chrono::milliseconds timeout_ms);
 
   /// Execute force shutdown immediately
-  void ExecuteForceShutdown(const std::string &detail);
+  void ExecuteForceShutdown(std::string_view detail);
 
   /// Worker-type specific shutdown behavior
   void ExecuteDriverShutdown(bool force_shutdown,
-                             const std::string &detail,
+                             std::string_view detail,
                              std::chrono::milliseconds timeout_ms,
                              bool force_on_timeout);
   void ExecuteWorkerShutdown(bool force_shutdown,
-                             const std::string &detail,
+                             std::string_view detail,
                              std::chrono::milliseconds timeout_ms,
                              bool force_on_timeout);
 
   /// Pack state and reason into a single 64-bit value for atomic operations.
-  /// Layout: [32-bit state][32-bit reason]
-  static uint64_t PackStateReason(ShutdownState state, ShutdownReason reason);
+  uint64_t PackStateReason(ShutdownState state, ShutdownReason reason);
 
   /// Extract state from packed 64-bit value.
-  static ShutdownState UnpackState(uint64_t packed);
+  ShutdownState UnpackState(uint64_t packed) const;
 
   /// Extract reason from packed 64-bit value.
-  static ShutdownReason UnpackReason(uint64_t packed);
+  ShutdownReason UnpackReason(uint64_t packed) const;
 
   // Executor and configuration
   std::unique_ptr<ShutdownExecutorInterface> executor_;
   WorkerType worker_type_;
+
+  /// Portable state and reason packing structure
+  union StateReasonPacked {
+    uint64_t packed;
+    struct {
+      uint32_t state;
+      uint32_t reason;
+    } fields;
+  };
 
   /// Single atomic variable holding both state and reason.
   /// This ensures atomic updates of both fields together, preventing
@@ -261,12 +271,6 @@ class ShutdownCoordinator {
 
   /// Shutdown detail for observability (set once during shutdown initiation)
   std::string shutdown_detail_;
-
-  // Constants for bit manipulation
-  static constexpr uint32_t STATE_MASK = 0xFFFFFFFF;
-  static constexpr uint32_t REASON_MASK = 0xFFFFFFFF;
-  static constexpr uint32_t STATE_SHIFT = 0;
-  static constexpr uint32_t REASON_SHIFT = 32;
 };
 }  // namespace core
 }  // namespace ray

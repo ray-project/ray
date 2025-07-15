@@ -20,6 +20,7 @@
 #include <chrono>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <utility>
 #include <vector>
@@ -32,24 +33,24 @@ class MockShutdownExecutor : public ShutdownExecutorInterface {
  public:
   MOCK_METHOD(void,
               ExecuteGracefulShutdown,
-              (const std::string &exit_type,
-               const std::string &detail,
+              (std::string_view exit_type,
+               std::string_view detail,
                std::chrono::milliseconds timeout_ms),
               (override));
   MOCK_METHOD(void,
               ExecuteForceShutdown,
-              (const std::string &exit_type, const std::string &detail),
+              (std::string_view exit_type, std::string_view detail),
               (override));
   MOCK_METHOD(void,
               ExecuteWorkerExit,
-              (const std::string &exit_type,
-               const std::string &detail,
+              (std::string_view exit_type,
+               std::string_view detail,
                std::chrono::milliseconds timeout_ms),
               (override));
   MOCK_METHOD(void,
               ExecuteHandleExit,
-              (const std::string &exit_type,
-               const std::string &detail,
+              (std::string_view exit_type,
+               std::string_view detail,
                std::chrono::milliseconds timeout_ms),
               (override));
   MOCK_METHOD(void, KillChildProcessesImmediately, (), (override));

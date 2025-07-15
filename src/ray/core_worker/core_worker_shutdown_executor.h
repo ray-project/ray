@@ -15,6 +15,7 @@
 #pragma once
 
 #include <string>
+#include <string_view>
 
 #include "ray/core_worker/shutdown_coordinator.h"
 
@@ -35,22 +36,22 @@ class CoreWorkerShutdownExecutor : public ShutdownExecutorInterface {
   ~CoreWorkerShutdownExecutor() override = default;
 
   /// Execute complete graceful shutdown sequence
-  void ExecuteGracefulShutdown(const std::string &exit_type,
-                               const std::string &detail,
+  void ExecuteGracefulShutdown(std::string_view exit_type,
+                               std::string_view detail,
                                std::chrono::milliseconds timeout_ms) override;
 
   /// Execute complete force shutdown sequence
-  void ExecuteForceShutdown(const std::string &exit_type,
-                            const std::string &detail) override;
+  void ExecuteForceShutdown(std::string_view exit_type,
+                            std::string_view detail) override;
 
   /// Execute worker exit sequence with task draining
-  void ExecuteWorkerExit(const std::string &exit_type,
-                         const std::string &detail,
+  void ExecuteWorkerExit(std::string_view exit_type,
+                         std::string_view detail,
                          std::chrono::milliseconds timeout_ms) override;
 
   /// Execute handle exit sequence with idle checking
-  void ExecuteHandleExit(const std::string &exit_type,
-                         const std::string &detail,
+  void ExecuteHandleExit(std::string_view exit_type,
+                         std::string_view detail,
                          std::chrono::milliseconds timeout_ms) override;
 
   void KillChildProcessesImmediately() override;
@@ -61,7 +62,7 @@ class CoreWorkerShutdownExecutor : public ShutdownExecutorInterface {
   /// Reference to CoreWorker for accessing shutdown operations
   CoreWorker *core_worker_;
 
-  void DisconnectServices(const std::string &exit_type, const std::string &detail);
+  void DisconnectServices(std::string_view exit_type, std::string_view detail);
   void QuickExit();
 };
 }  // namespace core
