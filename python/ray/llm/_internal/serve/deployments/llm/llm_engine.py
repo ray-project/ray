@@ -99,8 +99,8 @@ class LLMEngine(abc.ABC):
         """Run an Embedding with the engine.
 
         This method is different from chat and completion in that it does not
-        have streaming, but still it is an async generator that yields chunks
-        of response and when it is done, it returns None. We have the following
+        have streaming, but still it is an async generator that yields response
+        objects and when it is done, it returns None. We have the following
         convention:
 
         * yield a single object of type EmbeddingResponse.
@@ -109,12 +109,8 @@ class LLMEngine(abc.ABC):
         Args:
             request: The embedding request.
 
-        Yields:
-            Union[EmbeddingResponse, ErrorResponse]: An EmbeddingResponse
-            object, or an ErrorResponse object.
-
         Returns:
-            None when the generator is done.
+            An async generator that yields EmbeddingResponse objects or ErrorResponse objects, and returns None when the generator is done.
         """
         pass
 
