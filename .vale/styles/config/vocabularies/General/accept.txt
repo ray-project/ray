@@ -60,6 +60,7 @@ Kubernetes
 Kueue
 LMs
 LSH
+MCP
 Megatron
 MLflow
 MLOps
@@ -70,6 +71,7 @@ NumPy
 OOM
 open-source
 pipelining
+Podman
 NVIDIA
 pretraining
 productionize
@@ -103,4 +105,3 @@ uv
 VS Code
 ETDataset
 DLinear
-Podman
