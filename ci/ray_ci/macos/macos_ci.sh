@@ -43,6 +43,12 @@ run_flaky_tests() {
 }
 
 run_small_test() {
+  echo "---- Print out env info again"
+  which python
+  python --version
+  ray --version
+  python -m pip freeze
+
   # shellcheck disable=SC2046
   # 42 is the universal rayci exit code for test failures
   (bazel query 'attr(tags, "ray_client|small_size_python_tests", tests(//python/ray/tests/...))' | filter_out_flaky_tests |
