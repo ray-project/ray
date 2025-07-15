@@ -2353,7 +2353,7 @@ class Dataset:
         
         def add_train_flag(group_batch):
             import pyarrow as pa
-
+            # group_batch is already a pandas DataFrame
             df = group_batch
             n = len(df)
             test_count = int(n * test_size)
@@ -2361,10 +2361,9 @@ class Dataset:
             return pa.Table.from_pandas(df)
         
         split_ds = ds.groupby(stratify).map_groups(add_train_flag)
-        partitioned = split_ds.repartition(keys="is_train")
-
-        train_ds = partitioned.filter(lambda row: row["is_train"]).drop_columns(["is_train"])
-        test_ds = partitioned.filter(lambda row: not row["is_train"]).drop_columns(["is_train"])
+        
+        train_ds = split_ds.filter(lambda row: row["is_train"]).drop_columns(["is_train"])
+        test_ds = split_ds.filter(lambda row: not row["is_train"]).drop_columns(["is_train"])
 
         return train_ds, test_ds
 
