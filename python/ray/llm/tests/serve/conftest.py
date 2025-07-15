@@ -27,6 +27,8 @@ from ray.serve.llm import (
     build_openai_app,
 )
 
+MOCK_MODEL_ID = "mock-model"
+
 
 @pytest.fixture
 def disable_placement_bundles():
@@ -81,7 +83,7 @@ def mock_llm_config():
 def mock_chat_request(stream, max_tokens):
     """Fixture for creating chat completion requests for mock testing."""
     return ChatCompletionRequest(
-        model="mock-model",
+        model=MOCK_MODEL_ID,
         messages=[{"role": "user", "content": "Hello, world!"}],
         max_tokens=max_tokens,
         stream=stream,
@@ -92,7 +94,7 @@ def mock_chat_request(stream, max_tokens):
 def mock_completion_request(stream, max_tokens):
     """Fixture for creating text completion requests for mock testing."""
     return CompletionRequest(
-        model="mock-model",
+        model=MOCK_MODEL_ID,
         prompt="Complete this text:",
         max_tokens=max_tokens,
         stream=stream,
@@ -103,7 +105,7 @@ def mock_completion_request(stream, max_tokens):
 def mock_embedding_request(dimensions):
     """Fixture for creating embedding requests for mock testing."""
     request = EmbeddingCompletionRequest(
-        model="mock-model",
+        model=MOCK_MODEL_ID,
         input="Text to embed",
     )
     if dimensions:
