@@ -72,7 +72,7 @@ class SortAggregateTaskSpec(ExchangeTaskSpec):
             empty_block = acc._empty_table()
             schema = BlockAccessor.for_block(empty_block).schema()
             meta = BlockAccessor.for_block(empty_block).get_metadata()
-            return [] + BlockMetadataWithSchema(schema=schema, metadata=meta)
+            return [] + [BlockMetadataWithSchema(schema=schema, metadata=meta)]
 
         # Look at the first non-empty block for the schema
         for b in parts:
@@ -82,9 +82,10 @@ class SortAggregateTaskSpec(ExchangeTaskSpec):
                 )
                 return parts + [meta_with_schema]
 
-        empty_schema = BlockAccessor.for_block(parts[0]).empty_schema()
+        # no block found with rows, return first block with metadata.
+        schema = BlockAccessor.for_block(parts[0]).schema()
         meta = BlockAccessor.for_block(parts[0]).get_metadata()
-        return parts + [BlockMetadataWithSchema(schema=empty_schema, metadata=meta)]
+        return parts + [BlockMetadataWithSchema(schema=schema, metadata=meta)]
 
     @staticmethod
     def reduce(
