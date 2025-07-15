@@ -1,6 +1,5 @@
 import logging
 import math
-import sys
 from typing import Optional, Tuple, Union
 
 from ray import available_resources as ray_available_resources
@@ -24,11 +23,6 @@ def compute_additional_split_factor(
 ) -> Tuple[int, str, int, Optional[int]]:
     """Returns parallelism to use and the min safe parallelism to avoid OOMs."""
 
-    # If the caller supplied ``None`` treat it as “no upper-limit”.
-    # Use ``sys.maxsize`` so that any arithmetic (/, //, *) works safely.
-    if target_max_block_size is None:
-        target_max_block_size = sys.maxsize
-
     ctx = DataContext.get_current()
     detected_parallelism, reason, _ = _autodetect_parallelism(
         parallelism, target_max_block_size, ctx, datasource_or_legacy_reader, mem_size
@@ -42,7 +36,13 @@ def compute_additional_split_factor(
         logger.debug(
             f"Expected in-memory size {mem_size}," f" block size {expected_block_size}"
         )
-        size_based_splits = round(max(1, expected_block_size / target_max_block_size))
+        if target_max_block_size is None:
+            # Unlimited block size -> no extra splits
+            size_based_splits = 1
+        else:
+            size_based_splits = round(
+                max(1, expected_block_size / target_max_block_size)
+            )
     else:
         size_based_splits = 1
     if cur_additional_split_factor:

@@ -94,9 +94,8 @@ PARQUET_ENCODING_RATIO_ESTIMATE_MAX_NUM_SAMPLES = 10
 # reading too much data into memory.
 PARQUET_ENCODING_RATIO_ESTIMATE_NUM_ROWS = 1024
 
-# Use a large batch size to avoid splitting within a single block
-# This should be large enough for most reasonable files. Used in the event, target_max_block_size is set to `None`
-LARGE_BATCH_SIZE = 100 * PARQUET_READER_ROW_BATCH_SIZE  # 1,000,000 rows
+# Pyarrow only allows 32-bit int for batch size.
+ARROW_ALLOWABLE_MAX_BATCH_SIZE = 1 << 31 - 1
 
 
 @dataclass(frozen=True)
@@ -486,7 +485,8 @@ def read_fragments(
                 use_threads=use_threads,
                 columns=data_columns,
                 schema=schema,
-                batch_size=batch_size,
+                batch_size=batch_size
+                or ARROW_ALLOWABLE_MAX_BATCH_SIZE,  # By default, Pyarrow batch size is 131_072 and this parameter is not nullable. https://arrow.apache.org/docs/python/generated/pyarrow.dataset.Fragment.html#pyarrow.dataset.Fragment.to_batches
                 **to_batches_kwargs,
             )
 
@@ -598,30 +598,28 @@ def estimate_files_encoding_ratio(sample_infos: List[_SampleInfo]) -> float:
     return max(ratio, PARQUET_ENCODING_RATIO_ESTIMATE_LOWER_BOUND)
 
 
-def estimate_default_read_batch_size_rows(sample_infos: List[_SampleInfo]) -> int:
+def estimate_default_read_batch_size_rows(
+    sample_infos: List[_SampleInfo],
+) -> Optional[int]:
+    ctx = DataContext.get_current()
+    if ctx.target_max_block_size is None:
+        return None
+
     def compute_batch_size_rows(sample_info: _SampleInfo) -> int:
         # 'actual_bytes_per_row' is None if the sampled file was empty and 0 if the data
         # was all null.
         if not sample_info.actual_bytes_per_row:
             return PARQUET_READER_ROW_BATCH_SIZE
         else:
-            ctx = DataContext.get_current()
-            if ctx.target_max_block_size is None:
-                # Use a large batch size to avoid splitting within a single block
-                # This should be large enough for most reasonable files
-                return LARGE_BATCH_SIZE
-            else:
-                max_parquet_reader_row_batch_size_bytes = (
-                    ctx.target_max_block_size // 10
-                )
-                return max(
-                    1,
-                    min(
-                        PARQUET_READER_ROW_BATCH_SIZE,
-                        max_parquet_reader_row_batch_size_bytes
-                        // sample_info.actual_bytes_per_row,
-                    ),
-                )
+            max_parquet_reader_row_batch_size_bytes = ctx.target_max_block_size // 10
+            return max(
+                1,
+                min(
+                    PARQUET_READER_ROW_BATCH_SIZE,
+                    max_parquet_reader_row_batch_size_bytes
+                    // sample_info.actual_bytes_per_row,
+                ),
+            )
 
     return np.mean(list(map(compute_batch_size_rows, sample_infos)))
 
