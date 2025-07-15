@@ -10,6 +10,7 @@ from pathlib import Path
 import os
 from ci.raydepsets.cli import uv_binary
 import subprocess
+from networkx import topological_sort
 
 _REPO_NAME = "com_github_ray_project_ray"
 _runfiles = runfiles.Create()
@@ -177,6 +178,67 @@ class TestCli(unittest.TestCase):
                 "Dependency set expand_general_depset compiled successfully"
                 in result.output
             )
+
+    def test_build_graph(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _copy_data_to_tmpdir(tmpdir)
+            manager = DependencySetManager(
+                config_path="test.config.yaml",
+                workspace_dir=tmpdir,
+            )
+            assert manager.build_graph is not None
+            assert len(manager.build_graph.nodes()) == 4
+            assert len(manager.build_graph.edges()) == 2
+            assert manager.build_graph.nodes["general_depset"]["operation"] == "compile"
+            assert (
+                manager.build_graph.nodes["subset_general_depset"]["operation"]
+                == "subset"
+            )
+            assert (
+                manager.build_graph.nodes["expand_general_depset"]["operation"]
+                == "expand"
+            )
+
+            sorted_nodes = list(topological_sort(manager.build_graph))
+            print(f"type of sorted_nodes: {type(sorted_nodes)}")
+            print("sorted_nodes", sorted_nodes)
+            print(f"first node: {sorted_nodes[0]}")
+            assert "general_depset" in sorted_nodes[:2]
+            assert sorted_nodes[2] == "subset_general_depset"
+            assert sorted_nodes[3] == "expand_general_depset"
+
+    def test_build_graph_bad_operation(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _copy_data_to_tmpdir(tmpdir)
+            with open(Path(tmpdir) / "test.config.yaml", "w") as f:
+                f.write(
+                    """
+depsets:
+    - name: invalid_op_depset
+      operation: invalid_op
+      requirements:
+          - requirements_test.txt
+      output: requirements_compiled_invalid_op.txt
+                """
+                )
+            with self.assertRaises(ValueError):
+                DependencySetManager(
+                    config_path="test.config.yaml",
+                    workspace_dir=tmpdir,
+                )
+
+    def test_execute(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _copy_data_to_tmpdir(tmpdir)
+            manager = DependencySetManager(
+                config_path="test.config.yaml",
+                workspace_dir=tmpdir,
+            )
+            manager.execute()
+            assert Path(tmpdir) / "requirements_compiled_general.txt"
+            assert Path(tmpdir) / "requirements_compiled_subset_general.txt"
+            assert Path(tmpdir) / "requirements_compiled_expand_general.txt"
+            assert Path(tmpdir) / "requirements_compiled_ray_test_py311_cpu.txt"
 
 
 def _copy_data_to_tmpdir(tmpdir):

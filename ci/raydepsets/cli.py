@@ -69,6 +69,8 @@ class DependencySetManager:
                 )
                 for depset_name in depset.depsets:
                     self.build_graph.add_edge(depset_name, depset.name)
+            else:
+                raise ValueError(f"Invalid operation: {depset.operation}")
 
     def execute(self):
         for node in topological_sort(self.build_graph):
