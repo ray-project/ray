@@ -1,12 +1,48 @@
 .. include:: /_includes/rllib/we_are_hiring.rst
 
-.. include:: /_includes/rllib/new_api_stack.rst
-
-
 .. _env-to-module-pipeline-docs:
 
 Env-to-module pipelines
 =======================
+
+.. include:: /_includes/rllib/new_api_stack.rst
+
+.. grid:: 1 2 3 4
+    :gutter: 1
+    :class-container: container pb-3
+
+    .. grid-item-card::
+        :img-top: /rllib/images/connector_v2/connector_generic.svg
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: connector-v2-docs
+
+            ConnectorV2 overview
+
+    .. grid-item-card::
+        :img-top: /rllib/images/connector_v2/env_to_module_connector.svg
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: env-to-module-pipeline-docs
+
+            Env-to-module pipelines (this page)
+
+    .. grid-item-card::
+        :img-top: /rllib/images/connector_v2/module_to_env_connector.svg
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: module-to-env-pipeline-docs
+
+            Module-to-env pipelines
+
+    .. grid-item-card::
+        :img-top: /rllib/images/connector_v2/learner_connector.svg
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: learner-pipeline-docs
+
+            Learner pipelines
+
 
 One env-to-module pipeline resides on each :py:class:`~ray.rllib.env.env_runner.EnvRunner` and is responsible
 for handling the data flow from the `gymnasium.Env <https://gymnasium.farama.org/api/env/>`__ to

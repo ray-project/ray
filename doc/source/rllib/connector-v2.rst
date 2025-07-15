@@ -46,7 +46,7 @@ ConnectorV2 and ConnectorV2 pipelines
         :img-top: /rllib/images/connector_v2/learner_connector.svg
         :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-        .. button-ref:: learner-connector-docs
+        .. button-ref:: learner-pipeline-docs
 
             Learner connector pipelines
 
