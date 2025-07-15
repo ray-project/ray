@@ -36,7 +36,17 @@ class RandomIntRowDatasource(Datasource):
         block_size = max(1, n // parallelism)
         row = np.random.bytes(row_size_bytes)
 
-        def make_block(count: int, row_size_bytes: int) -> Block:
+        schema = pyarrow.schema(
+            [
+                pyarrow.field("c_0", pyarrow.int64()),
+                # NOTE: We use fixed-size binary type to avoid Arrow (list) offsets
+                #       overflows when using non-fixed-size data-types (like string,
+                #       binary, list, etc) whose size exceeds int32 limit (of 2^31-1)
+                pyarrow.field("c_1", pyarrow.binary(row_size_bytes)),
+            ]
+        )
+
+        def make_block(count: int) -> Block:
             return pyarrow.Table.from_arrays(
                 [
                     np.random.randint(
@@ -44,15 +54,8 @@ class RandomIntRowDatasource(Datasource):
                     ),
                     [row for _ in range(count)],
                 ],
-                names=["c_0", "c_1"],
+                schema=schema,
             )
-
-        schema = pyarrow.Table.from_pydict(
-            {
-                "c_0": [0],
-                "c_1": [row],
-            }
-        ).schema
 
         i = 0
         while i < n:
@@ -60,16 +63,14 @@ class RandomIntRowDatasource(Datasource):
             meta = BlockMetadata(
                 num_rows=count,
                 size_bytes=count * (8 + row_size_bytes),
-                schema=schema,
                 input_files=None,
                 exec_stats=None,
             )
             read_tasks.append(
                 ReadTask(
-                    lambda count=count, row_size_bytes=row_size_bytes: [
-                        make_block(count, row_size_bytes)
-                    ],
+                    lambda count=count: [make_block(count)],
                     meta,
+                    schema=schema,
                 )
             )
             i += block_size
@@ -100,15 +101,15 @@ if __name__ == "__main__":
         default=100,
         type=int,
     )
-    parser.add_argument("--use-polars", action="store_true")
+    parser.add_argument("--use-polars-sort", action="store_true")
     parser.add_argument("--limit-num-blocks", type=int, default=None)
 
     args = parser.parse_args()
 
-    if args.use_polars and not args.shuffle:
+    if args.use_polars_sort and not args.shuffle:
         print("Using polars for sort")
         ctx = DataContext.get_current()
-        ctx.use_polars = True
+        ctx.use_polars_sort = True
     ctx = DataContext.get_current()
     if args.limit_num_blocks is not None:
         DataContext.get_current().set_config(

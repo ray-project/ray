@@ -13,8 +13,10 @@ from ray.llm._internal.serve.configs.server_models import (
 class LLMEngine(abc.ABC):
     """Base class for all LLM engines"""
 
+    @abc.abstractmethod
     def __init__(self, llm_config: LLMConfig):
-        self._llm_config = llm_config
+        """Initialize the engine with the llm config"""
+        pass
 
     @abc.abstractmethod
     async def start(self):

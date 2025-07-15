@@ -1,7 +1,8 @@
 import os
 import shutil
 import time
-from typing import Any
+from dataclasses import dataclass
+from typing import Any, Optional
 
 import numpy as np
 import pandas as pd
@@ -28,7 +29,8 @@ from ray.data._internal.datasource.parquet_datasource import (
 from ray.data._internal.execution.interfaces.ref_bundle import (
     _ref_bundles_iterator_to_block_refs_list,
 )
-from ray.data.block import BlockAccessor
+from ray.data._internal.util import rows_same
+from ray.data.block import BlockAccessor, BlockMetadata
 from ray.data.context import DataContext
 from ray.data.datasource import DefaultFileMetadataProvider, ParquetMetadataProvider
 from ray.data.datasource.parquet_meta_provider import PARALLELIZE_META_FETCH_THRESHOLD
@@ -248,17 +250,99 @@ def test_parquet_read_basic(ray_start_regular_shared, fs, data_path):
     ],
 )
 def test_parquet_read_meta_provider(ray_start_regular_shared, fs, data_path):
-    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    df1 = pd.DataFrame({"one": range(30_000), "two": ["a", "b", "c"] * 10_000})
     table = pa.Table.from_pandas(df1)
     setup_data_path = _unwrap_protocol(data_path)
     path1 = os.path.join(setup_data_path, "test1.parquet")
     pq.write_table(table, path1, filesystem=fs)
-    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    df2 = pd.DataFrame({"one": range(30_000, 60_000), "two": ["e", "f", "g"] * 10000})
     table = pa.Table.from_pandas(df2)
     path2 = os.path.join(setup_data_path, "test2.parquet")
     pq.write_table(table, path2, filesystem=fs)
 
-    class TestMetadataProvider(ParquetMetadataProvider):
+    expected_num_rows = len(df1) + len(df2)
+    expected_byte_size = 787500
+
+    #
+    # Case 1: Test metadata fetching happy path (obtaining, caching and propagating
+    #         metadata)
+    #
+
+    class AssertingMetadataProvider(ParquetMetadataProvider):
+        def prefetch_file_metadata(self, fragments, **ray_remote_args):
+            assert ray_remote_args["num_cpus"] == NUM_CPUS_FOR_META_FETCH_TASK
+            assert (
+                ray_remote_args["scheduling_strategy"]
+                == DataContext.get_current().scheduling_strategy
+            )
+            return super().prefetch_file_metadata(fragments, **ray_remote_args)
+
+    ds = ray.data.read_parquet(
+        data_path,
+        filesystem=fs,
+        meta_provider=AssertingMetadataProvider(),
+    )
+
+    # Expect precomputed row counts and block sizes to be missing.
+    assert ds._meta_count() == expected_num_rows
+
+    read_op = ds._plan._logical_plan.dag
+
+    # Assert Read op metadata propagation
+    assert read_op.infer_metadata() == BlockMetadata(
+        num_rows=expected_num_rows,
+        size_bytes=expected_byte_size,
+        exec_stats=None,
+        input_files=[path1, path2],
+    )
+
+    expected_schema = pa.schema({"one": pa.int64(), "two": pa.string()})
+
+    assert read_op.infer_schema().equals(expected_schema)
+
+    # Expected
+    #   - Fetched Parquet metadata to be reused
+    #   - *No* dataset execution performed
+    assert ds.count() == expected_num_rows
+    assert ds.size_bytes() == expected_byte_size
+    assert ds.schema() == Schema(expected_schema)
+    assert set(ds.input_files()) == {path1, path2}
+
+    assert not ds._plan.has_computed_output()
+
+    expected_values = list(
+        zip(range(60_000), ["a", "b", "c"] * 10_000 + ["e", "f", "g"] * 10_000)
+    )
+
+    values = [(s["one"], s["two"]) for s in ds.take(60000)]
+
+    exec_stats = ds._plan._snapshot_stats
+    read_stats = exec_stats.parents[0]
+
+    # Assert that ref-bundles
+    #   - Passed to ReadParquet hold metadata matching actual bundle
+    #   - Produced by ReadParquet reflects actual amount of bytes read
+    assert read_stats.base_name == "ReadParquet"
+    # NOTE: Size of the task should be ~5kb, but could vary from platform to platform
+    #       alas for different Python versions. However, it is substantially smaller
+    #       than the dataset itself (~750kb)
+    assert read_stats.extra_metrics["average_bytes_inputs_per_task"] < 10_000
+
+    # TODO stats are broken for iteration-based executions due to the fact
+    #      that returned stats object is obtained before iteration completes,
+    #      hence not capturing the final state of the pipeline
+    # assert (
+    #     read_stats.extra_metrics["bytes_task_outputs_generated"] == expected_byte_size
+    # )
+
+    assert sorted(values) == expected_values
+
+    #
+    # Case 2: Test metadata fetching *failing* (falling back to actually
+    #         executing the dataset)
+    #
+
+    class FailingMetadataProvider(ParquetMetadataProvider):
         def prefetch_file_metadata(self, fragments, **ray_remote_args):
             assert ray_remote_args["num_cpus"] == NUM_CPUS_FOR_META_FETCH_TASK
             assert (
@@ -270,31 +354,18 @@ def test_parquet_read_meta_provider(ray_start_regular_shared, fs, data_path):
     ds = ray.data.read_parquet(
         data_path,
         filesystem=fs,
-        meta_provider=TestMetadataProvider(),
+        meta_provider=FailingMetadataProvider(),
     )
 
-    # Expect precomputed row counts and block sizes to be missing.
-    assert ds._meta_count() is None
+    # Expected
+    #   - Fetched Parquet metadata is not used (returns null), hence
+    #   - Dataset execution has to be performed
+    assert ds.count() == expected_num_rows
+    assert ds.size_bytes() == expected_byte_size
+    assert ds.schema() == Schema(expected_schema)
+    assert set(ds.input_files()) == {path1, path2}
 
-    # Expect to lazily compute all metadata correctly.
-    assert ds.count() == 6
-    assert ds.size_bytes() > 0
-    assert ds.schema() == Schema(pa.schema({"one": pa.int64(), "two": pa.string()}))
-    input_files = ds.input_files()
-    assert len(input_files) == 2, input_files
-    assert "test1.parquet" in str(input_files)
-    assert "test2.parquet" in str(input_files)
-
-    # Forces a data read.
-    values = [[s["one"], s["two"]] for s in ds.take()]
-    assert sorted(values) == [
-        [1, "a"],
-        [2, "b"],
-        [3, "c"],
-        [4, "e"],
-        [5, "f"],
-        [6, "g"],
-    ]
+    assert ds._plan.has_computed_output()
 
 
 @pytest.mark.parametrize(
@@ -870,43 +941,19 @@ def test_parquet_reader_estimate_data_size(shutdown_only, tmp_path):
         ctx.decoding_size_estimation = old_decoding_size_estimation
 
 
-@pytest.mark.parametrize(
-    "fs,data_path,endpoint_url",
-    [
-        (None, lazy_fixture("local_path"), None),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
-    ],
-)
-def test_parquet_write(ray_start_regular_shared, fs, data_path, endpoint_url):
-    if endpoint_url is None:
-        storage_options = {}
-    else:
-        storage_options = dict(client_kwargs=dict(endpoint_url=endpoint_url))
-    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
-    df = pd.concat([df1, df2])
-    ds = ray.data.from_blocks([df1, df2])
-    path = os.path.join(data_path, "test_parquet_dir")
-    if fs is None:
-        os.mkdir(path)
-    else:
-        fs.create_dir(_unwrap_protocol(path))
-    ds._set_uuid("data")
-    ds.write_parquet(path, filesystem=fs)
-    path1 = os.path.join(path, "data_000000_000000.parquet")
-    path2 = os.path.join(path, "data_000001_000000.parquet")
-    dfds = pd.concat(
+def test_parquet_write(ray_start_regular_shared, tmp_path):
+    input_df = pd.DataFrame({"id": [0]})
+    ds = ray.data.from_blocks([input_df])
+
+    ds.write_parquet(tmp_path)
+
+    output_df = pd.concat(
         [
-            pd.read_parquet(path1, storage_options=storage_options),
-            pd.read_parquet(path2, storage_options=storage_options),
+            pd.read_parquet(os.path.join(tmp_path, filename))
+            for filename in os.listdir(tmp_path)
         ]
     )
-    assert df.equals(dfds)
-    if fs is None:
-        shutil.rmtree(path)
-    else:
-        fs.delete_dir(_unwrap_protocol(path))
+    assert rows_same(input_df, output_df)
 
 
 def test_parquet_write_ignore_save_mode(ray_start_regular_shared, local_path):
@@ -974,6 +1021,94 @@ def test_parquet_write_append_save_mode(ray_start_regular_shared, local_path):
         assert count_of_files == 2
 
 
+@pytest.mark.parametrize(
+    "filename_template,should_raise_error",
+    [
+        # Case 1: No UUID, no extension - should raise error in append mode
+        ("myfile", True),
+        # Case 2: No UUID, has extension - should raise error in append mode
+        ("myfile.parquet", True),
+        # Case 3: No UUID, different extension - should raise error in append mode
+        ("myfile.txt", True),
+        # Case 4: Already has UUID - should not raise error
+        ("myfile_{write_uuid}", False),
+        # Case 5: Already has UUID with extension - should not raise error
+        ("myfile_{write_uuid}.parquet", False),
+        # Case 6: Templated filename without UUID - should raise error in append mode
+        ("myfile-{i}", True),
+        # Case 7: Templated filename with extension but no UUID - should raise error in append mode
+        ("myfile-{i}.parquet", True),
+        # Case 8: Templated filename with UUID already present - should not raise error
+        ("myfile_{write_uuid}-{i}.parquet", False),
+    ],
+    ids=[
+        "no_uuid_no_ext",
+        "no_uuid_with_parquet_ext",
+        "no_uuid_with_other_ext",
+        "has_uuid_no_ext",
+        "has_uuid_with_ext",
+        "templated_no_uuid_no_ext",
+        "templated_no_uuid_with_ext",
+        "templated_has_uuid",
+    ],
+)
+def test_parquet_write_uuid_handling_with_custom_filename_provider(
+    ray_start_regular_shared, tmp_path, filename_template, should_raise_error
+):
+    """Test that write_parquet correctly handles UUID validation in filenames when using custom filename providers in append mode."""
+    import re
+
+    from ray.data.datasource.filename_provider import FilenameProvider
+
+    class CustomFilenameProvider(FilenameProvider):
+        def __init__(self, filename_template, should_include_uuid):
+            self.filename_template = filename_template
+            self.should_include_uuid = should_include_uuid
+
+        def get_filename_for_block(self, block, write_uuid, task_index, block_index):
+            if self.should_include_uuid:
+                # Replace {write_uuid} placeholder with actual write_uuid
+                return self.filename_template.format(write_uuid=write_uuid, i="{i}")
+            else:
+                # Don't include UUID - this simulates the problematic case
+                return self.filename_template
+
+    # Create a simple dataset
+    ds = ray.data.range(10).repartition(1)
+
+    # Create custom filename provider
+    custom_provider = CustomFilenameProvider(filename_template, not should_raise_error)
+
+    if should_raise_error:
+        # Should raise ValueError when UUID is missing in append mode
+        # Updated regex to match the actual error message
+        with pytest.raises(
+            ValueError,
+            match=r"Write UUID.*missing from filename template.*This could result in files being overwritten.*Modify your FileNameProvider implementation",
+        ):
+            ds.write_parquet(tmp_path, filename_provider=custom_provider, mode="append")
+    else:
+        # Should succeed when UUID is present
+        ds.write_parquet(tmp_path, filename_provider=custom_provider, mode="append")
+
+        # Check that files were created
+        written_files = os.listdir(tmp_path)
+        assert len(written_files) == 1
+
+        written_file = written_files[0]
+
+        # Verify UUID is present in filename (should be the actual write_uuid)
+        uuid_pattern = r"[a-f0-9]{32}"  # 32 hex characters (UUID without dashes)
+        assert re.search(
+            uuid_pattern, written_file
+        ), f"File '{written_file}' should contain UUID"
+
+        # Verify the content is correct by reading back
+        ds_read = ray.data.read_parquet(tmp_path)
+        assert ds_read.count() == 10
+        assert sorted([row["id"] for row in ds_read.take_all()]) == list(range(10))
+
+
 def test_parquet_write_overwrite_save_mode(ray_start_regular_shared, local_path):
     data_path = local_path
     path = os.path.join(data_path, "test_parquet_dir")
@@ -1011,131 +1146,41 @@ def test_parquet_file_extensions(ray_start_regular_shared, tmp_path):
     assert ds.count() == 3
 
 
-@pytest.mark.parametrize(
-    "fs,data_path,endpoint_url",
-    [
-        (None, lazy_fixture("local_path"), None),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
-    ],
-)
-def test_parquet_write_create_dir(
-    ray_start_regular_shared, fs, data_path, endpoint_url
+def test_parquet_write_creates_dir_if_not_exists(ray_start_regular_shared, tmp_path):
+    ds = ray.data.range(1)
+    path = os.path.join(tmp_path, "does_not_exist")
+
+    ds.write_parquet(path)
+
+    assert os.path.isdir(path)
+    expected_df = pd.DataFrame({"id": [0]})
+    actual_df = pd.concat(
+        [pd.read_parquet(os.path.join(path, filename)) for filename in os.listdir(path)]
+    )
+    assert rows_same(actual_df, expected_df)
+
+
+def test_parquet_write_does_not_create_dir_for_empty_dataset(
+    ray_start_regular_shared, tmp_path
 ):
-    if endpoint_url is None:
-        storage_options = {}
-    else:
-        storage_options = dict(client_kwargs=dict(endpoint_url=endpoint_url))
-    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
-    df = pd.concat([df1, df2])
-    ds = ray.data.from_blocks([df1, df2])
-    path = os.path.join(data_path, "test_parquet_dir")
-    # Set the uuid to a known value so that we can easily get the parquet file names.
-    data_key = "data"
-    ds._set_uuid(data_key)
-    ds.write_parquet(path, filesystem=fs)
+    ds = ray.data.from_blocks([pd.DataFrame({})])
+    path = os.path.join(tmp_path, "does_not_exist")
 
-    # Ensure that directory was created.
-    if fs is None:
-        assert os.path.isdir(path)
-    else:
-        assert fs.get_file_info(_unwrap_protocol(path)).type == pa.fs.FileType.Directory
+    ds.write_parquet(path)
 
-    # Check that data was properly written to the directory.
-    path1 = os.path.join(path, f"{data_key}_000000_000000.parquet")
-    path2 = os.path.join(path, f"{data_key}_000001_000000.parquet")
-    dfds = pd.concat(
-        [
-            pd.read_parquet(path1, storage_options=storage_options),
-            pd.read_parquet(path2, storage_options=storage_options),
-        ]
-    )
-    assert df.equals(dfds)
+    assert not os.path.isdir(path)
 
-    # Ensure that directories that already exist are left alone and that the
-    # attempted creation still succeeds.
-    path3 = os.path.join(path, f"{data_key}_0000002_000000.parquet")
-    path4 = os.path.join(path, f"{data_key}_0000003_000000.parquet")
-    if fs is None:
-        os.rename(path1, path3)
-        os.rename(path2, path4)
-    else:
-        fs.move(_unwrap_protocol(path1), _unwrap_protocol(path3))
-        fs.move(_unwrap_protocol(path2), _unwrap_protocol(path4))
-    ds.write_parquet(path, filesystem=fs)
 
-    # Check that the original Parquet files were left untouched and that the
-    # new ones were added.
-    dfds = pd.concat(
-        [
-            pd.read_parquet(path1, storage_options=storage_options),
-            pd.read_parquet(path2, storage_options=storage_options),
-            pd.read_parquet(path3, storage_options=storage_options),
-            pd.read_parquet(path4, storage_options=storage_options),
-        ]
-    )
-    assert pd.concat([df, df]).equals(dfds)
-    if fs is None:
-        shutil.rmtree(path)
-    else:
-        fs.delete_dir(_unwrap_protocol(path))
+def test_parquet_write_does_not_write_empty_blocks(ray_start_regular_shared, tmp_path):
+    ds = ray.data.from_blocks([pd.DataFrame({}), pd.DataFrame({"id": [0]})])
+    path = os.path.join(tmp_path, "does_not_exist")
 
-    # Test that writing empty blocks does not create empty parquet files,
-    # nor does it create empty directories when no files are created.
-    ds_all_empty = ds.filter(lambda x: x["one"] > 10).materialize()
-    assert ds_all_empty._plan.initial_num_blocks() == 2
-    assert ds_all_empty.count() == 0
+    ds.write_parquet(path)
 
-    all_empty_key = "all_empty"
-    all_empty_path = os.path.join(data_path, f"test_parquet_dir_{all_empty_key}")
-    ds_all_empty.write_parquet(all_empty_path, filesystem=fs)
-
-    ds_contains_some_empty = ds.union(ds_all_empty)
-    # 2 blocks from original ds with 6 rows total, 2 empty blocks from ds_all_empty.
-    assert ds_contains_some_empty._plan.initial_num_blocks() == 4
-    assert ds_contains_some_empty.count() == 6
-
-    some_empty_key = "some_empty"
-    # Set the uuid to a known value so that we can easily get the parquet file names.
-    ds_contains_some_empty._set_uuid(some_empty_key)
-    some_empty_path = os.path.join(path, f"test_parquet_dir_{some_empty_key}")
-    ds_contains_some_empty.write_parquet(some_empty_path, filesystem=fs)
-
-    # Ensure that directory was created for only the non-empty dataset.
-    if fs is None:
-        assert not os.path.isdir(all_empty_path)
-        assert os.path.isdir(some_empty_path)
-        # Only files for the non-empty blocks should be created.
-        file_list = os.listdir(some_empty_path)
-        file_list.sort()
-        assert file_list == [
-            f"{some_empty_key}_00000{i}_000000.parquet" for i in range(2)
-        ]
-    else:
-        assert (
-            fs.get_file_info(_unwrap_protocol(all_empty_path)).type
-            == pa.fs.FileType.NotFound
-        )
-        assert (
-            fs.get_file_info(_unwrap_protocol(some_empty_path)).type
-            == pa.fs.FileType.Directory
-        )
-
-    # Check that data was properly written to the directory.
-    dfds = pd.concat(
-        [
-            pd.read_parquet(
-                os.path.join(
-                    some_empty_path,
-                    f"{some_empty_key}_00000{i}_000000.parquet",
-                ),
-                storage_options=storage_options,
-            )
-            for i in range(2)
-        ]
-    )
-    assert df.equals(dfds)
+    assert len(os.listdir(path)) == 1
+    expected_df = pd.DataFrame({"id": [0]})
+    actual_df = pd.read_parquet(os.path.join(path, os.listdir(path)[0]))
+    assert rows_same(actual_df, expected_df)
 
 
 @pytest.mark.parametrize(
@@ -1303,19 +1348,6 @@ def test_parquet_bulk_columns(ray_start_regular_shared):
     ds = ray.data.read_parquet_bulk("example://iris.parquet", columns=["variety"])
 
     assert ds.columns() == ["variety"]
-
-
-@pytest.mark.parametrize("min_rows_per_file", [5, 10, 50])
-def test_write_min_rows_per_file(tmp_path, ray_start_regular_shared, min_rows_per_file):
-    import pyarrow.parquet as pq
-
-    ray.data.range(100, override_num_blocks=20).write_parquet(
-        tmp_path, min_rows_per_file=min_rows_per_file
-    )
-
-    for filename in os.listdir(tmp_path):
-        table = pq.read_table(os.path.join(tmp_path, filename))
-        assert len(table) == min_rows_per_file
 
 
 @pytest.mark.parametrize("shuffle", [True, False, "file"])
@@ -1606,6 +1638,390 @@ def test_parquet_row_group_size_002(ray_start_regular_shared, tmp_path):
             use_legacy_dataset=False,
         )
     assert ds.fragments[0].num_row_groups == 10
+
+
+@pytest.mark.parametrize("min_rows_per_file", [5, 10])
+def test_write_partition_cols_with_min_rows_per_file(
+    tmp_path, ray_start_regular_shared, min_rows_per_file
+):
+    """Test write_parquet with both partition_cols and min_rows_per_file."""
+
+    # Create dataset with 2 partitions, each having 20 rows
+    df = pd.DataFrame(
+        {
+            "partition_col": [0] * 20 + [1] * 20,  # 2 partitions with 20 rows each
+            "data": list(range(40)),
+        }
+    )
+
+    ds = ray.data.from_pandas(df)
+    ds.write_parquet(
+        tmp_path, partition_cols=["partition_col"], min_rows_per_file=min_rows_per_file
+    )
+
+    # Check partition directories exist
+    partition_0_dir = tmp_path / "partition_col=0"
+    partition_1_dir = tmp_path / "partition_col=1"
+    assert partition_0_dir.exists()
+    assert partition_1_dir.exists()
+
+    # With the new implementation that tries to minimize file count,
+    # each partition (20 rows) should be written as a single file
+    # since 20 >= min_rows_per_file for both test cases (5 and 10)
+    for partition_dir in [partition_0_dir, partition_1_dir]:
+        parquet_files = list(partition_dir.glob("*.parquet"))
+
+        # Verify total rows across all files in partition
+        total_rows = 0
+        file_sizes = []
+        for file_path in parquet_files:
+            table = pq.read_table(file_path)
+            file_size = len(table)
+            file_sizes.append(file_size)
+            total_rows += file_size
+
+        assert total_rows == 20  # Each partition should have 20 rows total
+
+        # Add explicit assertion about individual file sizes for clarity
+        print(
+            f"Partition {partition_dir.name} file sizes with min_rows_per_file={min_rows_per_file}: {file_sizes}"
+        )
+
+        # With the new optimization logic, we expect fewer files with larger sizes
+        # Each file should have at least min_rows_per_file rows
+        for file_size in file_sizes:
+            assert (
+                file_size >= min_rows_per_file
+            ), f"File size {file_size} is less than min_rows_per_file {min_rows_per_file}"
+
+    # Verify we can read back the data correctly
+    ds_read = ray.data.read_parquet(tmp_path)
+    assert ds_read.count() == 40
+    assert set(ds_read.schema().names) == {"partition_col", "data"}
+
+    # ------------------------------------------------------------------
+    # Verify that the data written and read back are identical
+    # ------------------------------------------------------------------
+    expected_df = df.sort_values("data").reset_index(drop=True)
+    actual_df = ds_read.to_pandas().sort_values("data").reset_index(drop=True)
+
+    # Parquet partition values are read back as strings; cast both sides.
+    actual_df["partition_col"] = actual_df["partition_col"].astype(str)
+    expected_df["partition_col"] = expected_df["partition_col"].astype(str)
+
+    # Align column order and compare.
+    actual_df = actual_df[expected_df.columns]
+    pd.testing.assert_frame_equal(actual_df, expected_df, check_dtype=False)
+
+
+@pytest.mark.parametrize("max_rows_per_file", [5, 10, 25])
+def test_write_max_rows_per_file(tmp_path, ray_start_regular_shared, max_rows_per_file):
+    ray.data.range(100, override_num_blocks=1).write_parquet(
+        tmp_path, max_rows_per_file=max_rows_per_file
+    )
+
+    total_rows = 0
+    file_sizes = []
+    for filename in os.listdir(tmp_path):
+        table = pq.read_table(os.path.join(tmp_path, filename))
+        file_size = len(table)
+        file_sizes.append(file_size)
+        assert file_size <= max_rows_per_file
+        total_rows += file_size
+
+    # Verify all rows were written
+    assert total_rows == 100
+
+    # Add explicit assertion about individual file sizes for clarity
+    print(f"File sizes with max_rows_per_file={max_rows_per_file}: {file_sizes}")
+    for size in file_sizes:
+        assert (
+            size <= max_rows_per_file
+        ), f"File size {size} exceeds max_rows_per_file {max_rows_per_file}"
+
+    # ------------------------------------------------------------------
+    # Verify the parquet round-trip: written data == read-back data
+    # ------------------------------------------------------------------
+    ds_reloaded = ray.data.read_parquet(tmp_path)
+    assert ds_reloaded.count() == 100
+
+    expected_df = (
+        pd.DataFrame({"id": list(range(100))}).sort_values("id").reset_index(drop=True)
+    )
+    actual_df = ds_reloaded.to_pandas().sort_values("id").reset_index(drop=True)
+
+    pd.testing.assert_frame_equal(actual_df, expected_df, check_dtype=False)
+
+
+@pytest.mark.parametrize(
+    "min_rows_per_file,max_rows_per_file", [(5, 10), (10, 20), (15, 30)]
+)
+def test_write_min_max_rows_per_file(
+    tmp_path, ray_start_regular_shared, min_rows_per_file, max_rows_per_file
+):
+    ray.data.range(100, override_num_blocks=1).write_parquet(
+        tmp_path,
+        min_rows_per_file=min_rows_per_file,
+        max_rows_per_file=max_rows_per_file,
+    )
+
+    total_rows = 0
+    file_sizes = []
+    for filename in os.listdir(tmp_path):
+        table = pq.read_table(os.path.join(tmp_path, filename))
+        file_size = len(table)
+        file_sizes.append(file_size)
+        total_rows += file_size
+
+    # Verify all rows were written
+    assert total_rows == 100
+
+    # Add explicit assertion about individual file sizes for clarity
+    print(
+        f"File sizes with min={min_rows_per_file}, max={max_rows_per_file}: {file_sizes}"
+    )
+    for size in file_sizes:
+        if size < min_rows_per_file:
+            print(
+                f"File size {size} is less than min_rows_per_file {min_rows_per_file}"
+            )
+        assert (
+            size <= max_rows_per_file
+        ), f"File size {size} not less than {max_rows_per_file}"
+
+    # ------------------------------------------------------------------
+    # Verify the parquet round-trip: written data == read-back data
+    # ------------------------------------------------------------------
+    ds_reloaded = ray.data.read_parquet(tmp_path)
+    assert ds_reloaded.count() == 100
+
+    expected_df = (
+        pd.DataFrame({"id": list(range(100))}).sort_values("id").reset_index(drop=True)
+    )
+    actual_df = ds_reloaded.to_pandas().sort_values("id").reset_index(drop=True)
+
+    pd.testing.assert_frame_equal(actual_df, expected_df, check_dtype=False)
+
+
+def test_write_max_rows_per_file_validation(tmp_path, ray_start_regular_shared):
+    """Test validation of max_rows_per_file parameter."""
+
+    # Test negative value
+    with pytest.raises(
+        ValueError, match="max_rows_per_file must be a positive integer"
+    ):
+        ray.data.range(100).write_parquet(tmp_path, max_rows_per_file=-1)
+
+    # Test zero value
+    with pytest.raises(
+        ValueError, match="max_rows_per_file must be a positive integer"
+    ):
+        ray.data.range(100).write_parquet(tmp_path, max_rows_per_file=0)
+
+
+def test_write_min_max_rows_per_file_validation(tmp_path, ray_start_regular_shared):
+    """Test validation when both min and max are specified."""
+
+    # Test min > max
+    with pytest.raises(
+        ValueError,
+        match="min_rows_per_file .* cannot be greater than max_rows_per_file",
+    ):
+        ray.data.range(100).write_parquet(
+            tmp_path, min_rows_per_file=20, max_rows_per_file=10
+        )
+
+
+@pytest.mark.parametrize("max_rows_per_file", [5, 10])
+def test_write_partition_cols_with_max_rows_per_file(
+    tmp_path, ray_start_regular_shared, max_rows_per_file
+):
+    """Test max_rows_per_file with partition columns."""
+    import pyarrow.parquet as pq
+
+    # Create data with partition column
+    def create_row(row):
+        i = row["id"]
+        return {"id": i, "partition": i % 3, "value": f"value_{i}"}
+
+    ds = ray.data.range(30).map(create_row)
+    ds.write_parquet(
+        tmp_path, partition_cols=["partition"], max_rows_per_file=max_rows_per_file
+    )
+
+    # Check each partition directory
+    total_rows = 0
+    all_file_sizes = []
+    for partition_dir in os.listdir(tmp_path):
+        partition_path = os.path.join(tmp_path, partition_dir)
+        if os.path.isdir(partition_path):
+            partition_file_sizes = []
+            for filename in os.listdir(partition_path):
+                if filename.endswith(".parquet"):
+                    table = pq.read_table(os.path.join(partition_path, filename))
+                    file_size = len(table)
+                    partition_file_sizes.append(file_size)
+                    assert file_size <= max_rows_per_file
+                    total_rows += file_size
+            all_file_sizes.extend(partition_file_sizes)
+            print(
+                f"Partition {partition_dir} file sizes with max_rows_per_file={max_rows_per_file}: {partition_file_sizes}"
+            )
+
+    # Verify all rows were written
+    assert total_rows == 30
+
+    # Add explicit assertion about individual file sizes for clarity
+    for size in all_file_sizes:
+        assert (
+            size <= max_rows_per_file
+        ), f"File size {size} exceeds max_rows_per_file {max_rows_per_file}"
+
+    # ------------------------------------------------------------------
+    # Verify the parquet round-trip: data read back must equal original
+    # ------------------------------------------------------------------
+    ds_reloaded = ray.data.read_parquet(tmp_path)
+    assert ds_reloaded.count() == 30
+
+    expected_rows = [
+        {"id": i, "partition": i % 3, "value": f"value_{i}"} for i in range(30)
+    ]
+    expected_df = pd.DataFrame(expected_rows).sort_values("id").reset_index(drop=True)
+    actual_df = ds_reloaded.to_pandas().sort_values("id").reset_index(drop=True)
+
+    # Align column order for a strict equality check.
+    actual_df = actual_df[expected_df.columns]
+    # Parquet partition values are read back as strings; make both sides `str`
+    # so the value-level comparison succeeds (dtype may still differ).
+    actual_df["partition"] = actual_df["partition"].astype(str)
+    expected_df["partition"] = expected_df["partition"].astype(str)
+
+    pd.testing.assert_frame_equal(actual_df, expected_df, check_dtype=False)
+
+
+@dataclass
+class RowGroupLimitCase:
+    row_group_size: Optional[int]
+    min_rows_per_file: Optional[int]
+    max_rows_per_file: Optional[int]
+    expected_min: Optional[int]
+    expected_max: Optional[int]
+    expected_max_file: Optional[int]
+
+
+ROW_GROUP_LIMIT_CASES = [
+    RowGroupLimitCase(
+        row_group_size=None,
+        min_rows_per_file=None,
+        max_rows_per_file=None,
+        expected_min=None,
+        expected_max=None,
+        expected_max_file=None,
+    ),
+    RowGroupLimitCase(
+        row_group_size=1000,
+        min_rows_per_file=None,
+        max_rows_per_file=None,
+        expected_min=1000,
+        expected_max=1000,
+        expected_max_file=None,
+    ),
+    RowGroupLimitCase(
+        row_group_size=None,
+        min_rows_per_file=500,
+        max_rows_per_file=None,
+        expected_min=500,
+        expected_max=None,
+        expected_max_file=None,
+    ),
+    RowGroupLimitCase(
+        row_group_size=None,
+        min_rows_per_file=None,
+        max_rows_per_file=2000,
+        expected_min=None,
+        expected_max=2000,
+        expected_max_file=2000,
+    ),
+    RowGroupLimitCase(
+        row_group_size=1000,
+        min_rows_per_file=500,
+        max_rows_per_file=2000,
+        expected_min=1000,
+        expected_max=1000,
+        expected_max_file=2000,
+    ),
+    RowGroupLimitCase(
+        row_group_size=3000,
+        min_rows_per_file=500,
+        max_rows_per_file=2000,
+        expected_min=2000,
+        expected_max=2000,
+        expected_max_file=2000,
+    ),
+    RowGroupLimitCase(
+        row_group_size=None,
+        min_rows_per_file=2000000,  # Greater than 1024 * 1024 (1048576)
+        max_rows_per_file=None,
+        expected_min=2000000,
+        expected_max=2000000,
+        expected_max_file=2000000,
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    "case",
+    ROW_GROUP_LIMIT_CASES,
+    ids=[f"case_{i}" for i in range(len(ROW_GROUP_LIMIT_CASES))],
+)
+def test_choose_row_group_limits_parameterized(case):
+    """Validate the helper across representative inputs."""
+    from ray.data._internal.datasource.parquet_datasink import choose_row_group_limits
+
+    result = choose_row_group_limits(
+        case.row_group_size, case.min_rows_per_file, case.max_rows_per_file
+    )
+    assert result == (
+        case.expected_min,
+        case.expected_max,
+        case.expected_max_file,
+    ), f"Unexpected result for {case}"
+
+    # Invariants when both bounds are known.
+    min_rows, max_rows, _ = result
+    if min_rows is not None and max_rows is not None:
+        assert min_rows <= max_rows
+
+
+def test_write_parquet_large_min_rows_per_file_exceeds_arrow_default(
+    tmp_path, ray_start_regular_shared
+):
+    from ray.data._internal.datasource.parquet_datasink import (
+        ARROW_DEFAULT_MAX_ROWS_PER_GROUP,
+    )
+
+    """Test that min_rows_per_file > ARROW_DEFAULT_MAX_ROWS_PER_GROUP triggers max_rows_per_group setting."""
+    # ARROW_DEFAULT_MAX_ROWS_PER_GROUP = 1024 * 1024 = 1048576
+    # We'll use a min_rows_per_file that exceeds this threshold
+    min_rows_per_file = (
+        2 * ARROW_DEFAULT_MAX_ROWS_PER_GROUP
+    )  # 2097152, which is > 1048576
+
+    # Create a dataset with the required number of rows
+    ds = ray.data.range(min_rows_per_file, override_num_blocks=1)
+
+    # Write with min_rows_per_file > ARROW_DEFAULT_MAX_ROWS_PER_GROUP
+    # This should trigger the condition where max_rows_per_group and max_rows_per_file
+    # are set to min_rows_per_group (which comes from min_rows_per_file)
+    ds.write_parquet(tmp_path, min_rows_per_file=min_rows_per_file)
+
+    # Verify that the parquet files were written correctly
+    written_files = [f for f in os.listdir(tmp_path) if f.endswith(".parquet")]
+    assert len(written_files) == 1
+
+    # Read back the data to verify correctness
+    ds_read = ray.data.read_parquet(tmp_path)
+    assert ds_read.count() == min_rows_per_file
 
 
 if __name__ == "__main__":

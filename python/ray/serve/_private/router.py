@@ -151,6 +151,22 @@ class RouterMetricsManager:
             max_queued_requests != -1
             and self.num_queued_requests >= max_queued_requests
         ):
+            # Due to the async nature of request handling, we may reject more requests
+            # than strictly necessary. This is more likely to happen during
+            # high concurrency. Here's why:
+            #
+            # When multiple requests arrive simultaneously with max_queued_requests=1:
+            # 1. First request increments num_queued_requests to 1
+            # 2. Before that request gets assigned to a replica and decrements the counter,
+            #    we yield to the event loop
+            # 3. Other requests see num_queued_requests=1 and get rejected, even though
+            #    the first request will soon free up the queue slot
+            #
+            # For example, with max_queued_requests=1 and 4 simultaneous requests:
+            # - Request 1 gets queued (num_queued_requests=1)
+            # - Requests 2,3,4 get rejected since queue appears full
+            # - Request 1 gets assigned and frees queue slot (num_queued_requests=0)
+            # - But we already rejected Request 2 which could have been queued
             e = BackPressureError(
                 num_queued_requests=self.num_queued_requests,
                 max_queued_requests=max_queued_requests,
@@ -377,6 +393,7 @@ class AsyncioRouter:
         prefer_local_node_routing: bool,
         resolve_request_arg_func: Coroutine = resolve_deployment_response,
         request_router_class: Optional[Callable] = None,
+        request_router_kwargs: Optional[Dict[str, Any]] = None,
         request_router: Optional[RequestRouter] = None,
         _request_router_initialized_event: Optional[asyncio.Event] = None,
     ):
@@ -391,6 +408,9 @@ class AsyncioRouter:
         self._handle_source = handle_source
         self._event_loop = event_loop
         self._request_router_class = request_router_class
+        self._request_router_kwargs = (
+            request_router_kwargs if request_router_kwargs else {}
+        )
         self._enable_strict_max_ongoing_requests = enable_strict_max_ongoing_requests
         self._node_id = node_id
         self._availability_zone = availability_zone
@@ -503,6 +523,7 @@ class AsyncioRouter:
                 prefer_local_az_routing=RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
                 self_availability_zone=self._availability_zone,
             )
+            request_router.initialize_state(**(self._request_router_kwargs))
 
             # Populate the running replicas if they are already available.
             if self._running_replicas is not None:
@@ -537,7 +558,12 @@ class AsyncioRouter:
             self._running_replicas_populated = True
 
     def update_deployment_config(self, deployment_config: DeploymentConfig):
-        self._request_router_class = deployment_config.get_request_router_class()
+        self._request_router_class = (
+            deployment_config.request_router_config.get_request_router_class()
+        )
+        self._request_router_kwargs = (
+            deployment_config.request_router_config.request_router_kwargs
+        )
         self._metrics_manager.update_deployment_config(
             deployment_config,
             curr_num_replicas=len(self.request_router.curr_replicas),
@@ -854,6 +880,7 @@ class SingletonThreadRouter(Router):
 class SharedRouterLongPollClient:
     def __init__(self, controller_handle: ActorHandle, event_loop: AbstractEventLoop):
         self.controller_handler = controller_handle
+        self.event_loop = event_loop
 
         # We use a WeakSet to store the Routers so that we don't prevent them
         # from being garbage-collected.
@@ -865,7 +892,7 @@ class SharedRouterLongPollClient:
         self.long_poll_client = LongPollClient(
             controller_handle,
             key_listeners={},
-            call_in_event_loop=event_loop,
+            call_in_event_loop=self.event_loop,
         )
 
     @classmethod
@@ -894,6 +921,15 @@ class SharedRouterLongPollClient:
             router.long_poll_client.stop()
 
     def register(self, router: AsyncioRouter) -> None:
+        # We need to run the underlying method in the same event loop that runs
+        # the long poll loop, because we need to mutate the mapping of routers,
+        # which are also being iterated over by the key listener callbacks.
+        # If those happened concurrently in different threads,
+        # we could get a `RuntimeError: Set changed size during iteration`.
+        # See https://github.com/ray-project/ray/pull/53613 for more details.
+        self.event_loop.call_soon_threadsafe(self._register, router)
+
+    def _register(self, router: AsyncioRouter) -> None:
         self.routers[router.deployment_id].add(router)
 
         # Remove the entries for any deployment ids that no longer have any routers.

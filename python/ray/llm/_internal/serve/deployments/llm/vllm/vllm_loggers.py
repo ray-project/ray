@@ -427,6 +427,8 @@ class RayMetrics(Metrics):
         pass
 
 
+# TODO(seiji): remove this whole file once we bump to vLLM that includes
+# https://github.com/vllm-project/vllm/pull/19113
 class PrometheusStatLogger(StatLoggerBase):
     _metrics_cls = Metrics
 
@@ -434,7 +436,7 @@ class PrometheusStatLogger(StatLoggerBase):
         self.metrics = self._metrics_cls(
             vllm_config=vllm_config, engine_index=engine_index
         )
-
+        self.vllm_config = vllm_config
         #
         # Cache config info metric
         #
@@ -452,7 +454,7 @@ class PrometheusStatLogger(StatLoggerBase):
         # Info type metrics are syntactic sugar for a gauge permanently set to 1
         # Since prometheus multiprocessing mode does not support Info, emulate
         # info here with a gauge.
-        info_gauge = prometheus_client.Gauge(
+        info_gauge = self._metrics_cls._gauge_cls(
             name=name, documentation=documentation, labelnames=metrics_info.keys()
         ).labels(**metrics_info)
         info_gauge.set(1)
@@ -464,7 +466,14 @@ class PrometheusStatLogger(StatLoggerBase):
         self.metrics.gauge_scheduler_running.set(scheduler_stats.num_running_reqs)
         self.metrics.gauge_scheduler_waiting.set(scheduler_stats.num_waiting_reqs)
 
-        self.metrics.gauge_gpu_cache_usage.set(scheduler_stats.gpu_cache_usage)
+        # https://github.com/vllm-project/vllm/pull/18354 (part of vllm 0.9.2)
+        # renamed gpu_cache_usage to kv_cache_usage.
+        kv_cache_usage = (
+            scheduler_stats.kv_cache_usage
+            if hasattr(scheduler_stats, "kv_cache_usage")
+            else scheduler_stats.gpu_cache_usage
+        )
+        self.metrics.gauge_gpu_cache_usage.set(kv_cache_usage)
 
         self.metrics.counter_gpu_prefix_cache_queries.inc(
             scheduler_stats.prefix_cache_stats.queries
@@ -541,6 +550,9 @@ class PrometheusStatLogger(StatLoggerBase):
             self.metrics.gauge_lora_info.labels(
                 **lora_info_labels
             ).set_to_current_time()
+
+    def log_engine_initialized(self):
+        self.log_metrics_info("cache_config", self.vllm_config.cache_config)
 
 
 class RayPrometheusStatLogger(PrometheusStatLogger):

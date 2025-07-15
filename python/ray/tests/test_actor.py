@@ -1,4 +1,3 @@
-import datetime
 import os
 import random
 import sys
@@ -6,28 +5,22 @@ import tempfile
 
 import numpy as np
 import pytest
+import psutil
 
 import ray
 from ray import cloudpickle as pickle
 from ray._private import ray_constants
 from ray._private.test_utils import (
     client_test_enabled,
-    wait_for_condition,
     wait_for_pid_to_exit,
 )
 from ray.actor import ActorClassInheritanceException
 from ray.tests.client_test_utils import create_remote_signal_actor
-from ray._common.test_utils import SignalActor
+from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.core.generated import gcs_pb2
 from ray._common.utils import hex_to_binary
 from ray._private.state_api_test_utils import invoke_state_api, invoke_state_api_n
-
 from ray.util.state import list_actors
-
-
-# NOTE: We have to import setproctitle after ray because we bundle setproctitle
-# with ray.
-import setproctitle  # noqa
 
 
 @pytest.mark.parametrize("set_enable_auto_connect", [True, False], indirect=True)
@@ -853,11 +846,14 @@ def test_options_num_returns(ray_start_regular_shared):
     assert ray.get([obj1, obj2]) == [1, 2]
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="Windows doesn't support changing process title."
+)
 def test_options_name(ray_start_regular_shared):
     @ray.remote
     class Foo:
         def method(self, name):
-            assert setproctitle.getproctitle() == f"ray::{name}"
+            assert psutil.Process().cmdline()[0] == f"ray::{name}"
 
     f = Foo.remote()
 
@@ -1133,27 +1129,6 @@ def test_wrapped_actor_handle(ray_start_regular_shared):
     a = A.remote()
     b_list = ray.get(a.get_actor_ref.remote())
     assert ray.get(b_list[0].doit.remote()) == 2
-
-
-@pytest.mark.skip("This test is just used to print the latency of creating 100 actors.")
-def test_actor_creation_latency(ray_start_regular_shared):
-    # This test is just used to test the latency of actor creation.
-    @ray.remote
-    class Actor:
-        def get_value(self):
-            return 1
-
-    start = datetime.datetime.now()
-    actor_handles = [Actor.remote() for _ in range(100)]
-    actor_create_time = datetime.datetime.now()
-    for actor_handle in actor_handles:
-        ray.get(actor_handle.get_value.remote())
-    end = datetime.datetime.now()
-    print(
-        "actor_create_time_consume = {}, total_time_consume = {}".format(
-            actor_create_time - start, end - start
-        )
-    )
 
 
 @pytest.mark.parametrize("enable_concurrency_group", [True, False])

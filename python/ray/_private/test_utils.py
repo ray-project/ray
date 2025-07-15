@@ -1,10 +1,8 @@
 import asyncio
 import fnmatch
-import inspect
 import io
 import json
 import logging
-import math
 import os
 import pathlib
 import random
@@ -21,7 +19,6 @@ from collections import defaultdict
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from dataclasses import dataclass
 from datetime import datetime
-from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 import requests
@@ -32,8 +29,8 @@ import ray._private.gcs_utils as gcs_utils
 import ray._private.memory_monitor as memory_monitor
 import ray._private.services
 import ray._private.services as services
-import ray._private.usage.usage_lib as ray_usage_lib
 import ray._private.utils
+from ray._common.test_utils import wait_for_condition
 from ray._common.utils import get_or_create_event_loop
 from ray._private import (
     ray_constants,
@@ -578,43 +575,6 @@ def kill_actor_and_wait_for_failure(actor, timeout=10, retry_interval_ms=100):
     raise RuntimeError("It took too much time to kill an actor: {}".format(actor_id))
 
 
-def wait_for_condition(
-    condition_predictor,
-    timeout=10,
-    retry_interval_ms=100,
-    raise_exceptions=False,
-    **kwargs: Any,
-):
-    """Wait until a condition is met or time out with an exception.
-
-    Args:
-        condition_predictor: A function that predicts the condition.
-        timeout: Maximum timeout in seconds.
-        retry_interval_ms: Retry interval in milliseconds.
-        raise_exceptions: If true, exceptions that occur while executing
-            condition_predictor won't be caught and instead will be raised.
-        **kwargs: Arguments to pass to the condition_predictor.
-
-    Raises:
-        RuntimeError: If the condition is not met before the timeout expires.
-    """
-    start = time.time()
-    last_ex = None
-    while time.time() - start <= timeout:
-        try:
-            if condition_predictor(**kwargs):
-                return
-        except Exception:
-            if raise_exceptions:
-                raise
-            last_ex = ray._private.utils.format_error_message(traceback.format_exc())
-        time.sleep(retry_interval_ms / 1000.0)
-    message = "The condition wasn't met before the timeout expired."
-    if last_ex is not None:
-        message += f" Last exception: {last_ex}"
-    raise RuntimeError(message)
-
-
 def wait_for_assertion(
     assertion_predictor: Callable,
     timeout: int = 10,
@@ -653,38 +613,6 @@ def wait_for_assertion(
         )
     except RuntimeError:
         assertion_predictor(**kwargs)  # Should fail assert
-
-
-async def async_wait_for_condition(
-    condition_predictor, timeout=10, retry_interval_ms=100, **kwargs: Any
-):
-    """Wait until a condition is met or time out with an exception.
-
-    Args:
-        condition_predictor: A function that predicts the condition.
-        timeout: Maximum timeout in seconds.
-        retry_interval_ms: Retry interval in milliseconds.
-
-    Raises:
-        RuntimeError: If the condition is not met before the timeout expires.
-    """
-    start = time.time()
-    last_ex = None
-    while time.time() - start <= timeout:
-        try:
-            if inspect.iscoroutinefunction(condition_predictor):
-                if await condition_predictor(**kwargs):
-                    return
-            else:
-                if condition_predictor(**kwargs):
-                    return
-        except Exception as ex:
-            last_ex = ex
-        await asyncio.sleep(retry_interval_ms / 1000.0)
-    message = "The condition wasn't met before the timeout expired."
-    if last_ex is not None:
-        message += f" Last exception: {last_ex}"
-    raise RuntimeError(message)
 
 
 @dataclass
@@ -808,36 +736,6 @@ def generate_system_config_map(**kwargs):
         "_system_config": kwargs,
     }
     return ray_kwargs
-
-
-@ray.remote
-class Collector:
-    def __init__(self):
-        self.items = []
-
-    def add(self, item):
-        self.items.append(item)
-
-    def get(self):
-        return self.items
-
-
-def dicts_equal(dict1, dict2, abs_tol=1e-4):
-    """Compares to dicts whose values may be floating point numbers."""
-
-    if dict1.keys() != dict2.keys():
-        return False
-
-    for k, v in dict1.items():
-        if (
-            isinstance(v, float)
-            and isinstance(dict2[k], float)
-            and math.isclose(v, dict2[k], abs_tol=abs_tol)
-        ):
-            continue
-        if v != dict2[k]:
-            return False
-    return True
 
 
 def same_elements(elems_a, elems_b):
@@ -1843,50 +1741,6 @@ def no_resource_leaks_excluding_node_resources():
     return cluster_resources == available_resources
 
 
-@contextmanager
-def simulate_storage(
-    storage_type: str,
-    root: Optional[str] = None,
-    port: int = 5002,
-    region: str = "us-west-2",
-):
-    """Context that simulates a given storage type and yields the URI.
-
-    Args:
-        storage_type: The storage type to simiulate ("fs" or "s3")
-        root: Root directory of the URI to return (e.g., s3 bucket name)
-        port: The port of the localhost endpoint where s3 is being served (s3 only)
-        region: The s3 region (s3 only)
-    """
-    if storage_type == "fs":
-        if root is None:
-            with tempfile.TemporaryDirectory() as d:
-                yield "file://" + d
-        else:
-            yield "file://" + root
-    elif storage_type == "s3":
-        from moto.server import ThreadedMotoServer
-
-        old_env = os.environ
-        os.environ["AWS_ACCESS_KEY_ID"] = "testing"
-        os.environ["AWS_SECRET_ACCESS_KEY"] = "testing"
-        os.environ["AWS_SECURITY_TOKEN"] = "testing"
-        os.environ["AWS_SESSION_TOKEN"] = "testing"
-
-        root = root or uuid.uuid4().hex
-        s3_server = f"http://localhost:{port}"
-        server = ThreadedMotoServer(port=port)
-        server.start()
-        url = f"s3://{root}?region={region}&endpoint_override={s3_server}"
-        yield url
-        server.stop()
-
-        os.environ = old_env
-
-    else:
-        raise NotImplementedError(f"Unknown storage type: {storage_type}")
-
-
 def job_hook(**kwargs):
     """Function called by reflection by test_cli_integration."""
     cmd = " ".join(kwargs["entrypoint"])
@@ -1894,7 +1748,7 @@ def job_hook(**kwargs):
     sys.exit(0)
 
 
-def find_free_port():
+def find_free_port() -> int:
     sock = socket.socket()
     sock.bind(("", 0))
     port = sock.getsockname()[1]
@@ -2118,89 +1972,6 @@ def reset_autoscaler_v2_enabled_cache():
     import ray.autoscaler.v2.utils as u
 
     u.cached_is_autoscaler_v2 = None
-
-
-def skip_flaky_core_test_premerge(reason: str):
-    """
-    Decorator to skip a test if it is flaky (e.g. in premerge)
-
-    Default we will skip the flaky test if not specified otherwise in
-    CI with CI_SKIP_FLAKY_TEST="0"
-    """
-    import pytest
-
-    def wrapper(func):
-        return pytest.mark.skipif(
-            os.environ.get("CI_SKIP_FLAKY_TEST", "1") == "1", reason=reason
-        )(func)
-
-    return wrapper
-
-
-def _get_library_usages() -> Set[str]:
-    return set(
-        ray_usage_lib.get_library_usages_to_report(
-            ray.experimental.internal_kv.internal_kv_get_gcs_client()
-        )
-    )
-
-
-def _get_extra_usage_tags() -> Dict[str, str]:
-    return ray_usage_lib.get_extra_usage_tags_to_report(
-        ray.experimental.internal_kv.internal_kv_get_gcs_client()
-    )
-
-
-class TelemetryCallsite(Enum):
-    DRIVER = "driver"
-    ACTOR = "actor"
-    TASK = "task"
-
-
-def check_library_usage_telemetry(
-    use_lib_fn: Callable[[], None],
-    *,
-    callsite: TelemetryCallsite,
-    expected_library_usages: List[Set[str]],
-    expected_extra_usage_tags: Optional[Dict[str, str]] = None,
-):
-    """Helper for writing tests to validate library usage telemetry.
-
-    `use_lib_fn` is a callable that will be called from the provided callsite.
-    After calling it, the telemetry data to export will be validated against
-    expected_library_usages and expected_extra_usage_tags.
-    """
-    assert len(_get_library_usages()) == 0, _get_library_usages()
-
-    if callsite == TelemetryCallsite.DRIVER:
-        use_lib_fn()
-    elif callsite == TelemetryCallsite.ACTOR:
-
-        @ray.remote
-        class A:
-            def __init__(self):
-                use_lib_fn()
-
-        a = A.remote()
-        ray.get(a.__ray_ready__.remote())
-    elif callsite == TelemetryCallsite.TASK:
-
-        @ray.remote
-        def f():
-            use_lib_fn()
-
-        ray.get(f.remote())
-    else:
-        assert False, f"Unrecognized callsite: {callsite}"
-
-    library_usages = _get_library_usages()
-    extra_usage_tags = _get_extra_usage_tags()
-
-    assert library_usages in expected_library_usages, library_usages
-    if expected_extra_usage_tags:
-        assert all(
-            [extra_usage_tags[k] == v for k, v in expected_extra_usage_tags.items()]
-        ), extra_usage_tags
 
 
 def _terminate_ec2_instance(ip):

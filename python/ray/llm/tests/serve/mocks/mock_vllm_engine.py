@@ -7,7 +7,7 @@ from typing import AsyncGenerator, Dict, Optional
 from PIL import Image
 from transformers import AutoTokenizer
 from vllm import CompletionOutput, PromptType, RequestOutput
-from vllm.config import KVTransferConfig, ModelConfig, VllmConfig
+from vllm.config import DeviceConfig, KVTransferConfig, ModelConfig, VllmConfig
 from vllm.engine.protocol import EngineClient
 from vllm.sampling_params import SamplingParams as VLLMInternalSamplingParams
 
@@ -25,6 +25,9 @@ from ray.llm._internal.serve.configs.server_models import (
     Prompt,
 )
 from ray.llm._internal.serve.deployments.llm.llm_engine import LLMEngine
+from ray.llm._internal.serve.deployments.llm.multiplex.lora_model_loader import (
+    LoraModelLoader,
+)
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_engine import VLLMEngine
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_engine_stats import (
     VLLMEngineStats,
@@ -34,9 +37,6 @@ from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import (
     KV_TRANSFER_PARAMS_KEY,
     VLLMGenerationRequest,
     VLLMSamplingParams,
-)
-from ray.llm._internal.serve.deployments.utils.node_initialization_utils import (
-    InitializeNodeOutput,
 )
 
 
@@ -52,23 +52,7 @@ class MockVLLMEngine(LLMEngine):
         ), f"Got invalid config {llm_config} of type {type(llm_config)}"
         self.llm_config = llm_config
 
-        # Try to set up prompt_format when applied.
-        try:
-            self.llm_config.prompt_format.set_processor(
-                self.llm_config.model_loading_config.model_source
-            )
-        except OSError:
-            pass
-
         self._stats = VLLMEngineStatTracker()
-
-    @staticmethod
-    async def initialize_node(llm_config: LLMConfig) -> InitializeNodeOutput:
-        return InitializeNodeOutput(
-            placement_group=None,
-            runtime_env={},
-            extra_init_kwargs={},
-        )
 
     async def start(self):
         """No-Op"""
@@ -275,14 +259,6 @@ class MockMultiplexEngine(LLMEngine):
     def __init__(self, *args, **kwargs):
         self.started = False
 
-    @staticmethod
-    async def initialize_node(llm_config: LLMConfig) -> InitializeNodeOutput:
-        return InitializeNodeOutput(
-            placement_group=None,
-            runtime_env={},
-            extra_init_kwargs={},
-        )
-
     async def prepare_request(
         self,
         request_id: str,
@@ -319,17 +295,18 @@ class MockMultiplexEngine(LLMEngine):
         return True
 
 
-class FakeLoraModelLoader:
+class FakeLoraModelLoader(LoraModelLoader):
+    """Fake LoRA model loader for testing."""
+
     async def load_model(
         self, lora_model_id: str, llm_config: LLMConfig
     ) -> DiskMultiplexConfig:
-        return DiskMultiplexConfig.model_validate(
-            {
-                "model_id": lora_model_id,
-                "max_total_tokens": llm_config.max_request_context_length,
-                "local_path": "/local/path",
-                "lora_assigned_int_id": 1,
-            }
+        """Load a fake LoRA model."""
+        return DiskMultiplexConfig(
+            model_id=lora_model_id,
+            max_total_tokens=llm_config.max_request_context_length,
+            local_path="/fake/local/path",
+            lora_assigned_int_id=random.randint(1, 100),
         )
 
 
@@ -488,10 +465,7 @@ class MockPDDisaggVLLMEngineClient(EngineClient):
                             logprobs=None,
                         )
                     ],
-                    # In vllm==0.8.5, RequestOutput does not accept kv_transfer_params
-                    # which will raise exception. see https://github.com/vllm-project/vllm/pull/18513
-                    # TODO(lk-chen): uncomment this once we bump vllm version in test env.
-                    # kv_transfer_params=kv_transfer_params,
+                    kv_transfer_params=kv_transfer_params,
                 )
 
         return generate_response()
@@ -579,6 +553,10 @@ class MockPDDisaggVLLMEngineClient(EngineClient):
         """Load a new LoRA adapter into the engine for future requests."""
         raise NotImplementedError("Not expected to be reached")
 
+    async def reset_mm_cache(self) -> None:
+        """Reset the multi-modal cache"""
+        raise NotImplementedError("Not expected to be reached")
+
 
 class MockPDDisaggVLLMEngine(VLLMEngine):
     async def _start_engine(self) -> EngineClient:
@@ -592,7 +570,10 @@ class MockPDDisaggVLLMEngine(VLLMEngine):
                     trust_remote_code=False,
                     dtype="auto",
                     seed=0,
-                )
+                ),
+                device_config=DeviceConfig(
+                    device="cpu",
+                ),
             )
         )
 
