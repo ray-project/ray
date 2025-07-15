@@ -175,12 +175,13 @@ class TaskStatusEvent : public TaskEvent {
  private:
   // Helper functions to populate the task definition event of rpc::events::RayEvent
   // This function assumes task_spec_ is not null.
-  // Helper functions to populate the task execution event of rpc::events::RayEvent
-  // This function checks T must be one of rpc::events::ActorTaskExecutionEvent or
-  // rpc::events::TaskExecutionEvent
   template <typename T>
-  void PopulateRpcRayTaskExecutionEvent(T &execution_event_data,
-                                        google::protobuf::Timestamp timestamp);
+  void PopulateRpcRayTaskDefinitionEvent(T &definition_event_data);
+
+  // Helper functions to populate the task execution event of rpc::events::RayEvent
+  void PopulateRpcRayTaskExecutionEvent(
+      rpc::events::TaskExecutionEvent &execution_event_data,
+      google::protobuf::Timestamp timestamp);
 
   // Helper functions to populate the base fields of rpc::events::RayEvent
   void PopulateRpcRayEventBaseFields(rpc::events::RayEvent &ray_event,
