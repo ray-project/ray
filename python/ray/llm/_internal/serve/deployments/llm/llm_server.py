@@ -101,9 +101,11 @@ class _LLMServerBase(ABC):
 
 
 class LLMServer(_LLMServerBase):
-    """This is a shm layer to decouple the LLM engine from the ingress deployment.
+    """This is a shm layer to decouple the LLM engine from the ingress
+    deployment.
 
-    It has a very similar API as the engine. Almost all of the abstractions are implemented by the engine. This class just a little bit more logic on top:
+    It has a very similar API as the engine. Almost all of the abstractions are
+    implemented by the engine. This class just a little bit more logic on top:
 
     1. Logic for serve multiplexing (e.g. LoRA loading).
     2. Request id handing from serve context.

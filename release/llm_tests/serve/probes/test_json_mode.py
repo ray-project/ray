@@ -121,7 +121,6 @@ def get_response_formats():
         {"type": "json_object", "schema": json.dumps({})},
         {"type": "json_object", "schema": json.loads(BasicResponse.schema_json())},
         {"type": "json_object", "schema": BasicResponse.schema_json()},
-        # {"type": "grammar", "grammar": JSON_GRAMMAR_EBNF_STR},
     ]
 
 
