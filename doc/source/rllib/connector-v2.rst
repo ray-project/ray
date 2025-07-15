@@ -147,7 +147,7 @@ and :py:class:`~ray.rllib.connectors.common.add_states_from_episodes_to_batch.Ad
 
 
 .. figure:: images/connector_v2/pipeline_batch_phases_single_agent_w_states.svg
-    :width: 1200
+    :width: 900
     :align: left
 
     **Batch construction for stateful models**: For stateful :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` instances,
