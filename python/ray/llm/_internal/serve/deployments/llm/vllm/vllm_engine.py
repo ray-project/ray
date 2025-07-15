@@ -653,7 +653,9 @@ class VLLMEngine(LLMEngine):
                 prompt=vllm.TextPrompt(
                     prompt=prompt,
                 ),
-                pooling_params=vllm.PoolingParams(),
+                pooling_params=vllm.PoolingParams(
+                    dimensions=vllm_embedding_request.dimensions
+                ),
                 request_id=request_id,
                 lora_request=vllm_embedding_request.lora_request,  # type: ignore
             )
