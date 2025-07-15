@@ -25,6 +25,7 @@ from ray.serve._private.common import (
     RequestProtocol,
 )
 from ray.serve._private.constants import (
+    HEALTHY_MESSAGE,
     PROXY_MIN_DRAINING_PERIOD_S,
     RAY_SERVE_ENABLE_PROXY_GC_OPTIMIZATIONS,
     RAY_SERVE_PROXY_GC_THRESHOLD,
@@ -104,7 +105,6 @@ if os.environ.get("SERVE_REQUEST_PROCESSING_TIMEOUT_S") is not None:
 INITIAL_BACKOFF_PERIOD_SEC = 0.05
 MAX_BACKOFF_PERIOD_SEC = 5
 
-HEALTHY_MESSAGE = "success"
 DRAINING_MESSAGE = "This node is being drained."
 
 

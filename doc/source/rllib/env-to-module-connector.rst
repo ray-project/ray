@@ -105,7 +105,7 @@ use the following code snippet as a starting point:
 
 Alternatively, in case there is no ``env`` object available, you should pass in the ``spaces`` argument instead.
 RLlib requires either of these pieces of information to compute the correct output observation space of the pipeline, so that the
-:py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` can receive its own correct input space for its setup procedure.
+:py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` can receive the correct input space for its own setup procedure.
 The structure of the `spaces` argument should ideally be:
 
 .. code-block:: python
