@@ -152,6 +152,7 @@ class NodeHead(SubprocessModule):
         # The time it takes until the head node is registered. None means
         # head node hasn't been registered.
         self._head_node_registration_time_s = None
+        # The node ID of the current head node
         self._registered_head_node_id = None
         # Queue of dead nodes to be removed, up to MAX_DEAD_NODES_TO_CACHE
         self._dead_node_queue = deque()
