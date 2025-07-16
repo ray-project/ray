@@ -125,6 +125,7 @@ class OnlineSamplingAPI(abc.ABC):
         self._spaces = None
         self._env_to_module = None
         self._module_to_env = None
+        super().cleanup()
 
     # TODO (simon, sven): If this is a static method we could also move this
     #   for better readability into a non-class function and import.
