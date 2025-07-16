@@ -89,9 +89,22 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
         return _DATABRICKS_DEFAULT_TMP_ROOT_DIR
 
     def on_ray_dashboard_created(self, port):
+        import ray.util.spark.cluster_init
         display_databricks_driver_proxy_url(
             get_spark_session().sparkContext, port, "Ray Cluster Dashboard"
         )
+
+        if ray.util.spark.cluster_init._ray_metrics_monitor is not None:
+            mlflow_exp_id = ray.util.spark.cluster_init._ray_metrics_monitor._mlflow_experiment_id
+            mlflow_run_id = ray.util.spark.cluster_init._ray_metrics_monitor._run_id
+            link_url = f"ml/experiments/{mlflow_exp_id}/runs/{mlflow_run_id}/system-metrics",
+            get_databricks_display_html_function()(f"""
+              <div style="margin-top: 16px;margin-bottom: 16px">
+                  <a href="{link_url}">
+                      View Ray system metrics in a new tab
+                  </a>
+              </div>
+            """)
 
     def on_cluster_created(self, ray_cluster_handler):
         db_api_entry = get_db_entry_point()
