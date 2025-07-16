@@ -240,16 +240,16 @@ class GPUObjectManager:
 
             src_actor = gpu_object_meta.src_actor
             tensor_meta = gpu_object_meta.tensor_meta
+            if src_actor == dst_actor:
+                # Intra-actor communication
+                continue
             if gpu_object_meta.tensor_transport_backend == Backend.NIXL:
-                if src_actor == dst_actor:
-                    # Intra-actor communication
-                    continue
-                # self._send_gpu_object("nixl", src_actor, arg.hex(), 0)
                 self._recv_gpu_object(
                     "nixl",
                     dst_actor,
                     arg.hex(),
-                    0,
+                    # Placeholder for src_rank, NIXL does not actually use it.
+                    -1,
                     tensor_meta,
                 )
                 continue

@@ -22,6 +22,7 @@ TENSOR_TRANSPORT_TO_COLLECTIVE_BACKEND = {
 COLLECTIVE_BACKEND_TO_TORCH_DEVICE = {
     Backend.NCCL: torch.device("cuda"),
     Backend.TORCH_GLOO: torch.device("cpu"),
+    # TODO(Qiaolin-Yu): NIXL could transfer tensors from CPU to GPU.
     Backend.NIXL: torch.device("cuda"),
 }
 
@@ -73,10 +74,12 @@ def __ray_recv__(
     """Helper function that runs on the dst actor to receive tensors from the src actor."""
     from ray._private.worker import global_worker
 
-    if communicator_name != "nixl":
-        backend = collective.get_group_handle(communicator_name).backend()
-    else:
+    if communicator_name == "nixl":
         backend = Backend.NIXL
+
+    else:
+        backend = collective.get_group_handle(communicator_name).backend()
+
     device = COLLECTIVE_BACKEND_TO_TORCH_DEVICE[backend]
 
     tensor_basic_meta, nixl_serialized_descs, nixl_agent_meta = tensor_meta

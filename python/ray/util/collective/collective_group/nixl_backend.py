@@ -10,16 +10,17 @@ class NixlBackend(metaclass=ABCMeta):
         ctx = ray.get_runtime_context()
         actor_id = ctx.get_actor_id()
         self._nixl_agent = nixl_agent(actor_id, agent_config)
+        self._agent_meta = self._nixl_agent.get_agent_metadata()
 
     @property
     def nixl_agent(self) -> "nixl_agent":
         return self._nixl_agent
 
-    def recv(self, tensors, nixl_serialized_descs, nixl_agent_meta):
+    def recv(self, tensors, nixl_serialized_descs, remote_nixl_agent_meta):
         nixl_agent = self.nixl_agent
         remote_descs = nixl_agent.deserialize_descs(nixl_serialized_descs)
         local_descs = nixl_agent.register_memory(tensors)
-        remote_name = nixl_agent.add_remote_agent(nixl_agent_meta)
+        remote_name = nixl_agent.add_remote_agent(remote_nixl_agent_meta)
 
         xfer_handle = nixl_agent.initialize_xfer(
             "READ", local_descs.trim(), remote_descs, remote_name, b"UUID1"
@@ -41,5 +42,5 @@ class NixlBackend(metaclass=ABCMeta):
         xfer_descs = reg_descs.trim()
         return (
             nixl_agent.get_serialized_descs(xfer_descs),
-            nixl_agent.get_agent_metadata(),
+            self._agent_meta,
         )

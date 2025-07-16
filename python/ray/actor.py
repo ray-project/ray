@@ -923,7 +923,12 @@ class _ActorClassMethodMetadata(object):
         cls._cache.clear()
 
     @classmethod
-    def create(cls, modified_class, actor_creation_function_descriptor):
+    def create(
+        cls,
+        modified_class,
+        actor_creation_function_descriptor,
+        enable_tensor_transport: bool = True,
+    ):
         # Try to create an instance from cache.
         cached_meta = cls._cache.get(actor_creation_function_descriptor)
         if cached_meta is not None:
@@ -1011,13 +1016,13 @@ class _ActorClassMethodMetadata(object):
         # Update cache.
         cls._cache[actor_creation_function_descriptor] = self
 
-        # FIXME(Qiaolin-Yu): Check the tensor_transport option after #54256 is merged.
         # Register a custom serializer for torch.Tensor. This allows torch.Tensors
         # to use the created collective for communication between actors, instead of
         # the normal serialize -> object store -> deserialize codepath.
-        from ray.experimental.channel.torch_tensor_type import TorchTensorType
+        if enable_tensor_transport:
+            from ray.experimental.channel.torch_tensor_type import TorchTensorType
 
-        TorchTensorType().register_custom_serializer()
+            TorchTensorType().register_custom_serializer()
 
         return self
 
