@@ -1386,6 +1386,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                                         const StartupToken &startup_token,
                                         int port);
 
+  /// Used to lazily subscribe to node_changes only if the worker takes any owner actions.
+  void SubscribeToNodeChanges();
+
   std::shared_ptr<rpc::RuntimeEnvInfo> OverrideTaskOrActorRuntimeEnvInfo(
       const std::string &serialized_runtime_env_info) const;
 
@@ -1963,6 +1966,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Maps serialized runtime env info to **immutable** deserialized protobuf.
   mutable utils::container::ThreadSafeSharedLruCache<std::string, rpc::RuntimeEnvInfo>
       runtime_env_json_serialization_cache_;
+
+  /// Used to ensure we only subscribe to node changes once.
+  std::once_flag subscribe_to_node_changes_flag_;
 };
 
 // Lease request rate-limiter based on cluster node size.

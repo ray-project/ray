@@ -33,9 +33,26 @@ std::function<void()> CoreWorkerClientPool::GetDefaultUnavailableTimeoutCallback
           raylet_client_factory = std::move(raylet_client_factory)]() {
     const NodeID node_id = NodeID::FromBinary(addr.raylet_id());
     const WorkerID worker_id = WorkerID::FromBinary(addr.worker_id());
-    RAY_CHECK(gcs_client->Nodes().IsSubscribedToNodeChange());
-    const rpc::GcsNodeInfo *node_info =
-        gcs_client->Nodes().Get(node_id, /*filter_dead_nodes=*/true);
+
+    // TODO(dayshah): test_caller_death - streaming gen
+    // RAY_CHECK(gcs_client->Nodes().IsSubscribedToNodeChange());
+
+    // rpc::GcsNodeInfo keep_node_info_ptr_alive;  // To copy out to keep the pointer
+    // alive
+    //                                             // in the not subscribed case.
+    // const rpc::GcsNodeInfo *node_info = nullptr;
+    // if (gcs_client->Nodes().IsSubscribedToNodeChange()) {
+    auto node_info = gcs_client->Nodes().Get(node_id, /*filter_dead_nodes=*/true);
+    // } else {
+    //   rpc::GetAllNodeInfoRequest_Filters filters;
+    //   filters.set_node_id(node_id.Binary());
+    //   filters.set_state(rpc::GcsNodeInfo::ALIVE);
+    //   auto nodes = gcs_client->Nodes().GetAllNoCacheWithFilters(-1,
+    //   std::move(filters)); if (nodes.ok() && nodes->size() > 0) {
+    //     keep_node_info_ptr_alive = std::move((*nodes)[0]);
+    //     node_info = &keep_node_info_ptr_alive;
+    //   }
+    // }
     if (node_info == nullptr) {
       RAY_LOG(INFO).WithField(worker_id).WithField(node_id)
           << "Disconnect core worker client since its node is dead";
