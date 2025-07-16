@@ -43,7 +43,7 @@ async def _create_impl(image_uri: str, logger: logging.Logger):
             )
 
         if not os.path.exists(result_file):
-            raise FileNotFoundError("Worker path file not created")
+            raise FileNotFoundError("Worker path file not created when getting worker path for image {image_uri}")
 
         with open(result_file, "r") as f:
             worker_path = f.read().strip()
