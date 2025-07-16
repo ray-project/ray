@@ -2,6 +2,7 @@ from abc import ABCMeta
 
 from nixl._api import nixl_agent, nixl_agent_config
 import ray
+from ray.util.collective.types import Backend
 
 
 class NixlBackend(metaclass=ABCMeta):
@@ -14,6 +15,10 @@ class NixlBackend(metaclass=ABCMeta):
     @property
     def nixl_agent(self) -> "nixl_agent":
         return self._nixl_agent
+
+    @classmethod
+    def backend(cls):
+        return Backend.NIXL
 
     def recv(self, tensors, nixl_serialized_descs, remote_nixl_agent_meta):
         nixl_agent = self.nixl_agent

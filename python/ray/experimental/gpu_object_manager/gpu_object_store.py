@@ -74,11 +74,7 @@ def __ray_recv__(
     """Helper function that runs on the dst actor to receive tensors from the src actor."""
     from ray._private.worker import global_worker
 
-    if communicator_name == "nixl":
-        backend = Backend.NIXL
-
-    else:
-        backend = collective.get_group_handle(communicator_name).backend()
+    backend = collective.get_group_handle(communicator_name).backend()
 
     device = COLLECTIVE_BACKEND_TO_TORCH_DEVICE[backend]
 
