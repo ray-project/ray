@@ -6,6 +6,7 @@ import re
 import string
 import sys
 import time
+import uuid
 from contextlib import redirect_stderr
 from pathlib import Path
 from typing import List, Tuple
@@ -452,14 +453,13 @@ def test_http_access_log_in_proxy_logs_file(serve_instance):
 
     url = get_application_url(use_localhost=True)
 
-    request_id = "0cd9c491-6921-4e59-b8a3-f42865481806"
+    request_id = str(uuid.uuid4())
     response = httpx.get(url, headers={"X-Request-ID": request_id})
     assert response.status_code == 200
 
     def verify_request_id_in_logs(proxy_log_path, request_id):
         with open(proxy_log_path, "r") as f:
             for line in f:
-                print("ns ,i m in line :::", line)
                 if request_id in line:
                     return True
         return False
