@@ -433,9 +433,6 @@ def test_http_access_log_in_proxy_logs_file(serve_instance):
     @serve.deployment(name=name)
     @serve.ingress(fastapi_app)
     class Handler:
-        def __init__(self):
-            self._replica_unique_id = serve.get_replica_context().replica_id.unique_id
-
         @fastapi_app.get("/")
         def get_root(self):
             return "Hello World!"
