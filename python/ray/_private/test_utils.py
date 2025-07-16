@@ -37,7 +37,6 @@ from ray._private.internal_api import memory_summary
 # from here.
 from ray._private.node_killers import (  # noqa: F401
     EC2InstanceTerminator,
-    EC2InstanceTerminatorWithGracePeriod,
     RayletKiller,
     ResourceKillerActor,
     WorkerKillerActor,
