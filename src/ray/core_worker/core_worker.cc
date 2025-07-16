@@ -4001,11 +4001,6 @@ void CoreWorker::HandleGetObjectStatus(rpc::GetObjectStatusRequest request,
 
   ObjectID object_id = ObjectID::FromBinary(request.object_id());
   RAY_LOG(DEBUG).WithField(object_id) << "Received GetObjectStatus";
-  // Acquire a reference to the object. This prevents the object from being
-  // evicted out from under us while we check the object status and start the
-  // Get. If the object ref count drops to 0 and memory store Delete is called before
-  // GetAsync stores the callback, the callback would never get called.
-  AddLocalReference(object_id, "<temporary (get object status)>");
 
   rpc::Address owner_address;
   auto has_owner = reference_counter_->GetOwner(object_id, &owner_address);
@@ -4025,7 +4020,6 @@ void CoreWorker::HandleGetObjectStatus(rpc::GetObjectStatusRequest request,
                               send_reply_callback(Status::OK(), nullptr, nullptr);
                             });
   }
-  RemoveLocalReference(object_id);
 }
 
 void CoreWorker::PopulateObjectStatus(const ObjectID &object_id,
