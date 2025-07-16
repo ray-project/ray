@@ -1162,6 +1162,33 @@ halo==0.0.31 \
     # via
     #   -c python/requirements_compiled_ray_test_py311_cu128.txt
     #   -r python/requirements/cloud-requirements.txt
+hf-transfer==0.1.9 \
+    --hash=sha256:035572865dab29d17e783fbf1e84cf1cb24f3fcf8f1b17db1cfc7fdf139f02bf \
+    --hash=sha256:0d991376f0eac70a60f0cbc95602aa708a6f7c8617f28b4945c1431d67b8e3c8 \
+    --hash=sha256:16f208fc678911c37e11aa7b586bc66a37d02e636208f18b6bc53d29b5df40ad \
+    --hash=sha256:1a6bd16c667ebe89a069ca163060127a794fa3a3525292c900b8c8cc47985b0d \
+    --hash=sha256:2c7fc1b85f4d0f76e452765d7648c9f4bfd0aedb9ced2ae1ebfece2d8cfaf8e2 \
+    --hash=sha256:3a736dfbb2c84f5a2c975478ad200c0c8bfcb58a25a35db402678fb87ce17fa4 \
+    --hash=sha256:3ebc4ab9023414880c8b1d3c38174d1c9989eb5022d37e814fa91a3060123eb0 \
+    --hash=sha256:435cc3cdc8524ce57b074032b8fd76eed70a4224d2091232fa6a8cef8fd6803e \
+    --hash=sha256:504b8427fd785dd8546d53b9fafe6e436bd7a3adf76b9dce556507650a7b4567 \
+    --hash=sha256:57fd9880da1ee0f47250f735f791fab788f0aa1ee36afc49f761349869c8b4d9 \
+    --hash=sha256:5828057e313de59300dd1abb489444bc452efe3f479d3c55b31a8f680936ba42 \
+    --hash=sha256:5d561f0520f493c66b016d99ceabe69c23289aa90be38dd802d2aef279f15751 \
+    --hash=sha256:6e94e8822da79573c9b6ae4d6b2f847c59a7a06c5327d7db20751b68538dc4f6 \
+    --hash=sha256:8669dbcc7a3e2e8d61d42cd24da9c50d57770bd74b445c65123291ca842a7e7a \
+    --hash=sha256:8674026f21ed369aa2a0a4b46000aca850fc44cd2b54af33a172ce5325b4fc82 \
+    --hash=sha256:89a23f58b7b7effbc047b8ca286f131b17728c99a9f972723323003ffd1bb916 \
+    --hash=sha256:8fd0167c4407a3bc4cdd0307e65ada2294ec04f1813d8a69a5243e379b22e9d8 \
+    --hash=sha256:a5b366d34cd449fe9b20ef25941e6eef0460a2f74e7389f02e673e1f88ebd538 \
+    --hash=sha256:cdca9bfb89e6f8f281890cc61a8aff2d3cecaff7e1a4d275574d96ca70098557 \
+    --hash=sha256:d2fde99d502093ade3ab1b53f80da18480e9902aa960dab7f74fb1b9e5bc5746 \
+    --hash=sha256:dc7fff1345980d6c0ebb92c811d24afa4b98b3e07ed070c8e38cc91fd80478c5 \
+    --hash=sha256:e66acf91df4a8b72f60223059df3003062a5ae111757187ed1a06750a30e911b \
+    --hash=sha256:e6ac4eddcd99575ed3735ed911ddf9d1697e2bd13aa3f0ad7e3904dd4863842e \
+    --hash=sha256:ee8b10afedcb75f71091bcc197c526a6ebf5c58bbbadb34fdeee6160f55f619f \
+    --hash=sha256:fc6bd19e1cc177c66bdef15ef8636ad3bde79d5a4f608c158021153b4573509d
+    # via -r python/requirements/llm/llm-requirements.txt
 hf-xet==1.1.3 \
     --hash=sha256:30c575a5306f8e6fda37edb866762140a435037365eba7a17ce7bd0bc0216a8b \
     --hash=sha256:7c1a6aa6abed1f696f8099aa9796ca04c9ee778a58728a115607de9cc4638ff1 \
