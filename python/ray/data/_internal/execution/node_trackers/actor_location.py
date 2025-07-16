@@ -2,6 +2,7 @@ import threading
 from typing import List
 
 import ray
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 
 @ray.remote(num_cpus=0, max_restarts=-1, max_task_retries=-1)
@@ -22,8 +23,6 @@ class ActorLocationTracker:
 
 
 def get_or_create_actor_location_tracker():
-
-    from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
     # Pin the actor location tracker to the local node so it fate-shares with the driver.
     # NOTE: for Ray Client, the ray.get_runtime_context().get_node_id() should
