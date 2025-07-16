@@ -388,10 +388,12 @@ def test_reconfigure_does_not_run_while_there_are_active_queries(serve_instance)
     handle = serve.run(A.options(version="1", user_config={"a": 1}).bind())
     responses = [handle.remote() for _ in range(10)]
 
+    def check():
+        assert ray.get(signal.cur_num_waiters.remote()) == len(responses)
+        return True
+
     # Give the queries time to get to the replicas before the reconfigure.
-    wait_for_condition(
-        lambda: ray.get(signal.cur_num_waiters.remote()) == len(responses)
-    )
+    wait_for_condition(check)
 
     @ray.remote(num_cpus=0)
     def reconfigure():
@@ -716,9 +718,10 @@ def test_deploy_multiple_apps_batched(serve_instance):
     assert serve.get_app_handle("a").remote().result() == "a"
     assert serve.get_app_handle("b").remote().result() == "b"
 
-    url = get_application_url("HTTP")
-    assert httpx.get(f"{url}/a").text == "a"
-    assert httpx.get(f"{url}/b").text == "b"
+    urla = get_application_url("HTTP", app_name="a", use_localhost=True)
+    urlb = get_application_url("HTTP", app_name="b", use_localhost=True)
+    assert httpx.get(urla).text == "a"
+    assert httpx.get(urlb).text == "b"
 
 
 def test_redeploy_multiple_apps_batched(serve_instance):
