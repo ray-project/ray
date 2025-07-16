@@ -83,7 +83,7 @@ The aggregation process follows these steps:
 4. **Finalization**: The `_finalize` method transforms the final accumulator into the desired output
 
 Example: Creating a Custom Mean Aggregator
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Here's an example of creating a custom aggregator that calculates the Mean of values in a column:
 
