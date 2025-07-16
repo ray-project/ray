@@ -239,8 +239,9 @@ Java_io_ray_runtime_object_NativeObjectStore_nativeGetOwnershipInfo(JNIEnv *env,
   rpc::Address address;
   // TODO(ekl) send serialized object status to Java land.
   std::string serialized_object_status;
-  CoreWorkerProcess::GetCoreWorker().GetOwnershipInfoOrDie(
+  auto status = CoreWorkerProcess::GetCoreWorker().GetOwnershipInfo(
       object_id, &address, &serialized_object_status);
+  RAY_CHECK_OK(status);
   auto address_str = address.SerializeAsString();
   auto arr = NativeStringToJavaByteArray(env, address_str);
   return arr;

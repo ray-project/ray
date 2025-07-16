@@ -1482,13 +1482,6 @@ std::vector<rpc::ObjectReference> CoreWorker::GetObjectRefs(
   return refs;
 }
 
-void CoreWorker::GetOwnershipInfoOrDie(const ObjectID &object_id,
-                                       rpc::Address *owner_address,
-                                       std::string *serialized_object_status) {
-  auto status = GetOwnershipInfo(object_id, owner_address, serialized_object_status);
-  RAY_CHECK_OK(status);
-}
-
 Status CoreWorker::GetOwnershipInfo(const ObjectID &object_id,
                                     rpc::Address *owner_address,
                                     std::string *serialized_object_status) {
@@ -4010,7 +4003,8 @@ void CoreWorker::HandleGetObjectStatus(rpc::GetObjectStatusRequest request,
   RAY_LOG(DEBUG).WithField(object_id) << "Received GetObjectStatus";
   // Acquire a reference to the object. This prevents the object from being
   // evicted out from under us while we check the object status and start the
-  // Get.
+  // Get. If the object ref count drops to 0 and memory store Delete is called before
+  // GetAsync stores the callback, the callback would never get called.
   AddLocalReference(object_id, "<temporary (get object status)>");
 
   rpc::Address owner_address;
@@ -4021,23 +4015,16 @@ void CoreWorker::HandleGetObjectStatus(rpc::GetObjectStatusRequest request,
     send_reply_callback(Status::OK(), nullptr, nullptr);
   } else {
     RAY_CHECK(owner_address.worker_id() == request.owner_worker_id());
-    bool is_freed = reference_counter_->IsPlasmaObjectFreed(object_id);
-
     // Send the reply once the value has become available. The value is
     // guaranteed to become available eventually because we own the object and
     // its ref count is > 0.
     memory_store_->GetAsync(object_id,
-                            [this, object_id, reply, send_reply_callback, is_freed](
+                            [this, object_id, reply, send_reply_callback](
                                 const std::shared_ptr<RayObject> &obj) {
-                              if (is_freed) {
-                                reply->set_status(rpc::GetObjectStatusReply::FREED);
-                              } else {
-                                PopulateObjectStatus(object_id, obj, reply);
-                              }
+                              PopulateObjectStatus(object_id, obj, reply);
                               send_reply_callback(Status::OK(), nullptr, nullptr);
                             });
   }
-
   RemoveLocalReference(object_id);
 }
 
