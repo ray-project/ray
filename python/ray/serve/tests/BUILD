@@ -128,6 +128,7 @@ py_test_module_list(
 # Large tests.
 py_test_module_list(
     size = "large",
+    timeout = "eternal",
     files = [
         "test_autoscaling_policy.py",
         "test_deploy.py",
@@ -361,6 +362,7 @@ py_test_module_list(
 # Large tests with compact scheduling
 py_test_module_list(
     size = "large",
+    timeout = "eternal",
     env = {"RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY": "1"},
     files = [
         "test_standalone.py",
