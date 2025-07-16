@@ -35,6 +35,14 @@ from ray._private.internal_api import memory_summary
 
 # Import node killers for backwards-compatibility with other modules that import them
 # from here.
+from ray._private.node_killers import (  # noqa: F401
+    EC2InstanceTerminator,
+    EC2InstanceTerminatorWithGracePeriod,
+    RayletKiller,
+    ResourceKillerActor,
+    WorkerKillerActor,
+    get_and_run_resource_killer,
+)
 from ray._private.tls_utils import generate_self_signed_tls_certs
 from ray._private.worker import RayContext
 from ray._raylet import Config, GcsClientOptions, GlobalStateAccessor
