@@ -49,6 +49,9 @@ run_small_test() {
   ray --version
   python -m pip freeze
 
+  echo "---- Run a single test of test_tqdm.py"
+  pytest -v python/ray/tests/test_tqdm.py
+
   # shellcheck disable=SC2046
   # 42 is the universal rayci exit code for test failures
   echo "---- List tests"
