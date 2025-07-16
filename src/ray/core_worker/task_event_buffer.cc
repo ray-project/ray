@@ -268,7 +268,7 @@ void TaskStatusEvent::PopulateRpcRayEventBaseFields(
     if (is_definition_event) {
       ray_event.set_event_type(rpc::events::RayEvent::ACTOR_TASK_DEFINITION_EVENT);
     } else {
-      ray_event.set_event_type(rpc::events::RayEvent::ACTOR_TASK_EXECUTION_EVENT);
+      ray_event.set_event_type(rpc::events::RayEvent::TASK_EXECUTION_EVENT);
     }
   } else {
     if (is_definition_event) {
