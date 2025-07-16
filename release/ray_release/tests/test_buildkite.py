@@ -414,6 +414,14 @@ class BuildkiteSettingsTest(unittest.TestCase):
             ),
             MockTest({"name": "other_3", "frequency": "manual", "team": "team_2"}),
             MockTest({"name": "test_3", "frequency": "nightly", "team": "team_2"}),
+            MockTest(
+                {
+                    "name": "test_4.kuberay",
+                    "frequency": "nightly",
+                    "env": "kuberay",
+                    "team": "team_2",
+                }
+            ),
         ]
 
         filtered = self._filter_names_smoke(tests, frequency=Frequency.ANY)
