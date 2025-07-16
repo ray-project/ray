@@ -108,6 +108,9 @@ _prelude() {
   . ./ci/ci.sh init && source ~/.zshenv
   source ~/.zshrc
 
+  which python
+  which python3
+  ls -al /opt/homebrew/opt/miniforge/bin
   if [[ -d /opt/homebrew/opt/miniforge/bin && ! -e /opt/homebrew/opt/miniforge/bin/python3 ]]; then
     # Point python3 to python in miniforge
     # Miniforge's installation does not install python3.
@@ -115,6 +118,8 @@ _prelude() {
     echo "python3 not exists in miniforge; point it to python"
     ln -sf python /opt/homebrew/opt/miniforge/bin/python3
   fi
+  which python
+  which python3
 
   ./ci/ci.sh build
   ./ci/env/env_info.sh
