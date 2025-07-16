@@ -48,9 +48,7 @@ class RangeDatasource(Datasource):
         # context if it was overridden. Set target max block size during
         # optimizer stage to fix this.
         ctx = DataContext.get_current()
-        if self._n == 0:
-            target_rows_per_block = 0
-        elif ctx.target_max_block_size is None:
+        if ctx.target_max_block_size is None:
             # If target_max_block_size is ``None``, treat it as unlimited and
             # avoid further splitting.
             target_rows_per_block = n  # whole block in one shot
