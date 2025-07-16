@@ -140,6 +140,7 @@ class SortTaskSpec(ExchangeTaskSpec):
         from ray.data.block import BlockMetadataWithSchema
 
         if len(out) == 0:
+            # TODO: Need to fix handling empty blocks.
             # return an empty block with metadata.
             return []
 

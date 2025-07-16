@@ -66,6 +66,7 @@ class SortAggregateTaskSpec(ExchangeTaskSpec):
         from ray.data.block import BlockMetadataWithSchema
 
         if len(parts) == 0:
+            # TODO: Need to fix handling empty blocks.
             # If no partitions were created, return an empty block with metadata.
             return []
 
