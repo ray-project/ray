@@ -2128,6 +2128,11 @@
         timeout: 2000
         script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --dataloader_type=ray_data --num_workers=16 --image_classification_data_format=parquet
 
+    - __suffix__: full_training.parquet.preserve_order
+      run:
+        timeout: 2000
+        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --dataloader_type=ray_data --num_workers=16 --image_classification_data_format=parquet --preserve_order
+
     - __suffix__: full_training.parquet.torch_dataloader
       run:
         timeout: 2000
@@ -2137,6 +2142,11 @@
       run:
         timeout: 1200
         script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --dataloader_type=ray_data --num_workers=16 --skip_train_step --skip_validation_at_epoch_end --image_classification_data_format=parquet
+
+    - __suffix__: skip_training.parquet.preserve_order
+      run:
+        timeout: 1200
+        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --dataloader_type=ray_data --num_workers=16 --skip_train_step --skip_validation_at_epoch_end --image_classification_data_format=parquet --preserve_order
 
     - __suffix__: skip_training.parquet.torch_dataloader
       run:
@@ -2151,10 +2161,23 @@
       cluster:
         cluster_compute: compute_configs/compute_mock_gpu_4x4_aws.yaml
 
+    - __suffix__: skip_training.parquet.fault_tolerance.preserve_order
+      run:
+        timeout: 2700
+        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --dataloader_type=ray_data --num_workers=16 --mock_gpu --skip_train_step --skip_validation_step --num_epochs=5 --max_failures=4 --image_classification_data_format=parquet --preserve_order
+        prepare: python setup_chaos.py --kill-interval 480 --max-to-kill 2 --kill-delay 360
+      cluster:
+        cluster_compute: compute_configs/compute_mock_gpu_4x4_aws.yaml
+
     - __suffix__: full_training.jpeg
       run:
         timeout: 2000
         script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --image_classification_data_format=jpeg --dataloader_type=ray_data --num_workers=16
+
+    - __suffix__: full_training.jpeg.preserve_order
+      run:
+        timeout: 2000
+        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --image_classification_data_format=jpeg --dataloader_type=ray_data --num_workers=16 --preserve_order
 
     - __suffix__: full_training.jpeg.torch_dataloader
       run:
@@ -2166,6 +2189,11 @@
         timeout: 1200
         script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --image_classification_data_format=jpeg --dataloader_type=ray_data --num_workers=16 --skip_train_step --skip_validation_at_epoch_end
 
+    - __suffix__: skip_training.jpeg.preserve_order
+      run:
+        timeout: 1200
+        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --image_classification_data_format=jpeg --dataloader_type=ray_data --num_workers=16 --skip_train_step --skip_validation_at_epoch_end --preserve_order
+
     - __suffix__: skip_training.jpeg.torch_dataloader
       run:
         timeout: 1200
@@ -2175,6 +2203,13 @@
       run:
         timeout: 1200
         script: bash image_classification/jpeg/download_input_data_from_s3.sh && RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --image_classification_data_format=jpeg --image_classification_local_dataset --dataloader_type=ray_data --num_workers=1 --skip_train_step --skip_validation_at_epoch_end
+      cluster:
+        cluster_compute: compute_configs/compute_gpu_1x1_aws.yaml
+
+    - __suffix__: skip_training.jpeg.local_fs.preserve_order
+      run:
+        timeout: 1200
+        script: bash image_classification/jpeg/download_input_data_from_s3.sh && RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --image_classification_data_format=jpeg --image_classification_local_dataset --dataloader_type=ray_data --num_workers=1 --skip_train_step --skip_validation_at_epoch_end --preserve_order
       cluster:
         cluster_compute: compute_configs/compute_gpu_1x1_aws.yaml
 
@@ -2189,6 +2224,13 @@
       run:
         timeout: 1200
         script: bash image_classification/jpeg/download_input_data_from_s3.sh && RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --image_classification_data_format=jpeg --image_classification_local_dataset --dataloader_type=ray_data --num_workers=4 --skip_train_step --skip_validation_at_epoch_end
+      cluster:
+        cluster_compute: compute_configs/compute_gpu_1x1_multi_gpus_aws.yaml
+
+    - __suffix__: skip_training.jpeg.local_fs_multi_gpus.preserve_order
+      run:
+        timeout: 1200
+        script: bash image_classification/jpeg/download_input_data_from_s3.sh && RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --image_classification_data_format=jpeg --image_classification_local_dataset --dataloader_type=ray_data --num_workers=4 --skip_train_step --skip_validation_at_epoch_end --preserve_order
       cluster:
         cluster_compute: compute_configs/compute_gpu_1x1_multi_gpus_aws.yaml
 
