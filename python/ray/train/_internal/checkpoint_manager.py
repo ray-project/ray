@@ -2,12 +2,14 @@ import logging
 import numbers
 from typing import Any, Callable, List, Optional, Tuple
 
+from ray._private import ray_constants
 from ray._private.dict import flatten_dict
 from ray.air._internal.util import is_nan
 from ray.air.config import MAX
 from ray.train import CheckpointConfig
 from ray.train._internal.session import _TrainingResult
 from ray.train._internal.storage import _delete_fs_path
+from ray.train.constants import RAY_TRAIN_ONLY_STORE_CHECKPOINT_SCORE_ATTRIBUTE
 
 logger = logging.getLogger(__name__)
 
@@ -90,7 +92,16 @@ class _CheckpointManager:
         """
         self._latest_checkpoint_result = checkpoint_result
 
-        if self._checkpoint_config.checkpoint_score_attribute is not None:
+        score_attr = self._checkpoint_config.checkpoint_score_attribute
+        only_store_score_attr = ray_constants.env_bool(
+            RAY_TRAIN_ONLY_STORE_CHECKPOINT_SCORE_ATTRIBUTE, False
+        )
+        if score_attr is not None and score_attr in checkpoint_result.metrics:
+            if only_store_score_attr:
+                checkpoint_result = _TrainingResult(
+                    checkpoint=checkpoint_result.checkpoint,
+                    metrics={score_attr: checkpoint_result.metrics[score_attr]},
+                )
             # If we're ordering by a score, insert the checkpoint
             # so that the list remains sorted.
             _insert_into_sorted_list(
@@ -99,6 +110,10 @@ class _CheckpointManager:
                 key=self._get_checkpoint_score,
             )
         else:
+            if only_store_score_attr:
+                checkpoint_result = _TrainingResult(
+                    checkpoint=checkpoint_result.checkpoint, metrics={}
+                )
             # If no metric is provided, just append (ordering by time of registration).
             self._checkpoint_results.append(checkpoint_result)
 

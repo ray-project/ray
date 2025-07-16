@@ -112,6 +112,13 @@ RAY_TRAIN_COUNT_PREEMPTION_AS_FAILURE = "RAY_TRAIN_COUNT_PREEMPTION_AS_FAILURE"
 # Defaults to 0
 RAY_TRAIN_ENABLE_STATE_TRACKING = "RAY_TRAIN_ENABLE_STATE_TRACKING"
 
+# Set this to 1 to only store the checkpoint score attribute with the Checkpoint.
+# Defaults to 0.
+# TODO: this is a temporary solution to avoid CheckpointManager OOM.
+RAY_TRAIN_ONLY_STORE_CHECKPOINT_SCORE_ATTRIBUTE = (
+    "RAY_TRAIN_ONLY_STORE_CHECKPOINT_SCORE_ATTRIBUTE"
+)
+
 
 # NOTE: When adding a new environment variable, please track it in this list.
 TRAIN_ENV_VARS = {
@@ -123,6 +130,7 @@ TRAIN_ENV_VARS = {
     RAY_CHDIR_TO_TRIAL_DIR,
     RAY_TRAIN_COUNT_PREEMPTION_AS_FAILURE,
     RAY_TRAIN_ENABLE_STATE_TRACKING,
+    RAY_TRAIN_ONLY_STORE_CHECKPOINT_SCORE_ATTRIBUTE,
 }
 
 # Key for AIR Checkpoint metadata in TrainingResult metadata

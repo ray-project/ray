@@ -181,6 +181,72 @@ def test_nested_get_checkpoint_score(metrics):
     assert manager._get_checkpoint_score(tracked_checkpoint) == (True, 5.0)
 
 
+@pytest.mark.parametrize("has_score_attr", [True, False])
+def test_only_store_score_attr(has_score_attr, checkpoint_paths, monkeypatch):
+    monkeypatch.setenv("RAY_TRAIN_ONLY_STORE_CHECKPOINT_SCORE_ATTRIBUTE", "1")
+
+    # Set up CheckpointManager with 1 checkpoint.
+    if has_score_attr:
+        checkpoint_config = CheckpointConfig(
+            num_to_keep=None,
+            checkpoint_score_attribute="score",
+            checkpoint_score_order="max",
+        )
+    else:
+        checkpoint_config = CheckpointConfig(num_to_keep=None)
+    manager = _CheckpointManager(checkpoint_config=checkpoint_config)
+    tr1 = _TrainingResult(
+        checkpoint=Checkpoint.from_directory(checkpoint_paths[0]),
+        metrics={"score": 3.0},
+    )
+    manager.register_checkpoint(tr1)
+
+    # Ensure can push _TrainingResult with and without score attribute
+    manager.register_checkpoint(
+        _TrainingResult(
+            checkpoint=Checkpoint.from_directory(checkpoint_paths[1]),
+            metrics={"score": 1.0, "another_unsaved_metric": 6.0},
+        )
+    )
+    manager.register_checkpoint(
+        _TrainingResult(
+            checkpoint=Checkpoint.from_directory(checkpoint_paths[2]),
+            metrics={"another_unsaved_metric": 1.0},
+        )
+    )
+    expected_tr3 = _TrainingResult(
+        checkpoint=Checkpoint.from_directory(checkpoint_paths[2]),
+        metrics={},
+    )
+    if has_score_attr:
+        assert [str(tr) for tr in manager.best_checkpoint_results] == [
+            str(
+                _TrainingResult(
+                    checkpoint=Checkpoint.from_directory(checkpoint_paths[1]),
+                    metrics={"score": 1.0},
+                )
+            ),
+            str(tr1),
+            str(expected_tr3),
+        ]
+    else:
+        assert [str(tr) for tr in manager.best_checkpoint_results] == [
+            str(
+                _TrainingResult(
+                    checkpoint=Checkpoint.from_directory(checkpoint_paths[0]),
+                    metrics={},
+                )
+            ),
+            str(
+                _TrainingResult(
+                    checkpoint=Checkpoint.from_directory(checkpoint_paths[1]),
+                    metrics={},
+                )
+            ),
+            str(expected_tr3),
+        ]
+
+
 if __name__ == "__main__":
     import sys
 
