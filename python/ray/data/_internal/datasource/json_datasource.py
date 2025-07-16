@@ -167,7 +167,7 @@ class PandasJSONDatasource(FileBasedDatasource):
     # small read requests when accessing cloud storage. To reduce overhead and
     # improve performance, we wrap the file in a larger buffered reader that
     # reads bigger blocks at once.
-    _BUFFER_SIZE = 128 * 1024
+    _BUFFER_SIZE = 1024**2
 
     def __init__(
         self,
@@ -187,6 +187,10 @@ class PandasJSONDatasource(FileBasedDatasource):
                 yield _cast_range_index_to_string(df)
 
     def _estimate_chunksize(self, f: "pyarrow.NativeFile") -> int:
+        """Estimate the chunksize by sampling the first row.
+
+        This is necessary to avoid OOMs while reading the file.
+        """
         assert f.tell() == 0, "File pointer must be at the beginning"
 
         stream = StrictBufferedReader(f, buffer_size=self._BUFFER_SIZE)
@@ -235,9 +239,9 @@ class StrictBufferedReader(io.RawIOBase):
        closing the buffer.
 
     2. pandas wraps the file in a TextIOWrapper to decode bytes into text. TextIOWrapper
-       prefers calling read1(), which doesn't prefetch for random-access files (e.g.,
-       from PyArrow), resulting in slow reads. This wrapper ensures that all reads go
-       through the full buffer and avoids read1().
+       prefers calling read1(), which doesn't prefetch for random-access files
+       (e.g., from PyArrow). This wrapper forces all reads through the full buffer to
+       avoid inefficient small-range S3 GETs.
     """
 
     def __init__(self, file, buffer_size: int):
