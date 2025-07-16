@@ -10,7 +10,6 @@ class NixlBackend(metaclass=ABCMeta):
         ctx = ray.get_runtime_context()
         actor_id = ctx.get_actor_id()
         self._nixl_agent = nixl_agent(actor_id, agent_config)
-        self._agent_meta = self._nixl_agent.get_agent_metadata()
 
     @property
     def nixl_agent(self) -> "nixl_agent":
@@ -42,5 +41,5 @@ class NixlBackend(metaclass=ABCMeta):
         xfer_descs = reg_descs.trim()
         return (
             nixl_agent.get_serialized_descs(xfer_descs),
-            self._agent_meta,
+            nixl_agent.get_agent_metadata(),
         )
