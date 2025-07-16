@@ -3227,10 +3227,10 @@ cdef class CoreWorker:
         return has_object and (not memory_store_only or not is_in_plasma)
 
     cdef _create_put_buffer(self, shared_ptr[CBuffer] &metadata,
-                            size_t data_size, ObjectRef object_ref,
+                            size_t data_size,
                             c_vector[CObjectID] contained_ids,
-                            CObjectID *c_object_id, shared_ptr[CBuffer] *data,
-                            c_bool created_by_worker,
+                            CObjectID *c_object_id,
+                            shared_ptr[CBuffer] *data,
                             owner_address=None,
                             c_bool inline_small_object=True,
                             c_bool is_experimental_channel=False,
@@ -3240,27 +3240,17 @@ cdef class CoreWorker:
 
         c_owner_address = move(self._convert_python_address(owner_address))
 
-        if object_ref is None:
-            with nogil:
-                check_status(CCoreWorkerProcess.GetCoreWorker()
-                             .CreateOwnedAndIncrementLocalRef(
-                             is_experimental_channel, metadata,
-                             data_size, contained_ids,
-                             c_object_id, data, created_by_worker,
-                             move(c_owner_address),
-                             inline_small_object))
-        else:
-            c_object_id[0] = object_ref.native()
-            if owner_address is None:
-                c_owner_address = make_unique[CAddress]()
-                dereference(
-                    c_owner_address
-                ).CopyFrom(CCoreWorkerProcess.GetCoreWorker().GetRpcAddress())
-            with nogil:
-                check_status(CCoreWorkerProcess.GetCoreWorker().CreateExisting(
-                            metadata, data_size, c_object_id[0],
-                            dereference(c_owner_address), data,
-                            created_by_worker))
+        with nogil:
+            check_status(CCoreWorkerProcess.GetCoreWorker()
+                            .CreateOwnedAndIncrementLocalRef(
+                                is_experimental_channel,
+                                metadata,
+                                data_size,
+                                contained_ids,
+                                c_object_id,
+                                data,
+                                move(c_owner_address),
+                                inline_small_object))
 
         # If data is nullptr, that means the ObjectRef already existed,
         # which we ignore.
@@ -3422,7 +3412,6 @@ cdef class CoreWorker:
 
     def put_serialized_object_and_increment_local_ref(
             self, serialized_object,
-            ObjectRef object_ref=None,
             c_bool pin_object=True,
             owner_address=None,
             c_bool inline_small_object=True,
@@ -3441,9 +3430,12 @@ cdef class CoreWorker:
         contained_object_ids = ObjectRefsToVector(
                 serialized_object.contained_object_refs)
         object_already_exists = self._create_put_buffer(
-            metadata, total_bytes, object_ref,
+            metadata, total_bytes,
             contained_object_ids,
-            &c_object_id, &data, True, owner_address, inline_small_object,
+            &c_object_id,
+            &data,
+            owner_address,
+            inline_small_object,
             _is_experimental_channel)
 
         logger.debug(
@@ -3468,22 +3460,11 @@ cdef class CoreWorker:
                 c_owner_address = move(self._convert_python_address(
                     owner_address))
                 with nogil:
-                    if object_ref is None:
-                        check_status(
-                            CCoreWorkerProcess.GetCoreWorker().SealOwned(
-                                        c_object_id,
-                                        pin_object,
-                                        move(c_owner_address)))
-                    else:
-                        # Using custom object refs is not supported because we
-                        # can't track their lifecycle, so we don't pin the
-                        # object in this case.
-                        check_status(
-                            CCoreWorkerProcess.GetCoreWorker().SealExisting(
-                                        c_object_id, pin_object=False,
-                                        generator_id=CObjectID.Nil(),
-                                        owner_address=move(c_owner_address)))
-
+                    check_status(
+                        CCoreWorkerProcess.GetCoreWorker().SealOwned(
+                                    c_object_id,
+                                    pin_object,
+                                    move(c_owner_address)))
         return c_object_id.Binary()
 
     def wait(self,

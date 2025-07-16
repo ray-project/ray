@@ -139,10 +139,10 @@ cdef class CoreWorker:
         object event_loop_executor
 
     cdef _create_put_buffer(self, shared_ptr[CBuffer] &metadata,
-                            size_t data_size, ObjectRef object_ref,
+                            size_t data_size,
                             c_vector[CObjectID] contained_ids,
-                            CObjectID *c_object_id, shared_ptr[CBuffer] *data,
-                            c_bool created_by_worker,
+                            CObjectID *c_object_id,
+                            shared_ptr[CBuffer] *data,
                             owner_address=*,
                             c_bool inline_small_object=*,
                             c_bool is_experimental_channel=*)
