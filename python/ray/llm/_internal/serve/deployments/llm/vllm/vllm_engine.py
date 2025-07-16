@@ -159,10 +159,6 @@ class VLLMEngine(LLMEngine):
         self._oai_serving_completion: Optional["OpenAIServingCompletion"] = None
         self._oai_serving_embedding: Optional["OpenAIServingEmbedding"] = None
 
-    def _detokenize(self, token_ids: List[int]) -> str:
-        assert self._tokenizer is not None
-        return self._tokenizer.decode(token_ids)
-
     async def start(self) -> None:
         """Start the vLLM engine.
 

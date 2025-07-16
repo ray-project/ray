@@ -6,11 +6,13 @@ from typing import (
     Any,
     AsyncGenerator,
     Dict,
-    List,
+    Iterable,
+    Literal,
     Optional,
     Type,
     TypeVar,
     Union,
+    overload,
 )
 
 from ray import serve
@@ -53,6 +55,9 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 T = TypeVar("T")
+CompletionResponseType = Union[str, "ErrorResponse", "CompletionResponse"]
+ChatResponseType = Union[str, "ErrorResponse", "ChatCompletionResponse"]
+EmbeddingResponseType = Union[str, "ErrorResponse", "EmbeddingResponse"]
 
 
 class _LLMServerBase(ABC):
@@ -70,7 +75,7 @@ class _LLMServerBase(ABC):
     @abstractmethod
     async def chat(
         self, request: "ChatCompletionRequest"
-    ) -> AsyncGenerator[Union[str, "ChatCompletionResponse", "ErrorResponse"], None]:
+    ) -> AsyncGenerator[Union[ChatResponseType, Iterable[ChatResponseType]], None]:
         """
         Inferencing to the engine for chat, and return the response.
         """
@@ -80,10 +85,21 @@ class _LLMServerBase(ABC):
     async def completions(
         self, request: "CompletionRequest"
     ) -> AsyncGenerator[
-        Union[List[Union[str, "ErrorResponse"]], "CompletionResponse"], None
+        Union[CompletionResponseType, Iterable[CompletionResponseType]], None
     ]:
         """
         Inferencing to the engine for completion api, and return the response.
+        """
+        ...
+
+    @abstractmethod
+    async def embeddings(
+        self, request: "EmbeddingRequest"
+    ) -> AsyncGenerator[
+        Union[EmbeddingResponseType, Iterable[EmbeddingResponseType]], None
+    ]:
+        """
+        Inferencing to the engine for embedding api, and return the response.
         """
         ...
 
@@ -225,11 +241,41 @@ class LLMServer(_LLMServerBase):
 
     def _batch_output_stream(
         self, generator: AsyncGenerator[T, None]
-    ) -> AsyncGenerator[List[T], None]:
+    ) -> AsyncGenerator[Iterable[T], None]:
         return Batcher(
             generator,
             interval_ms=self._get_batch_interval_ms(),
         ).stream()
+
+    @overload
+    async def _run_request(
+        self,
+        request: "ChatCompletionRequest",
+        *,
+        engine_method: Literal["chat"],
+        batch_output_stream: bool = False,
+    ) -> AsyncGenerator[Union["ChatResponseType", Iterable], None]:
+        ...
+
+    @overload
+    async def _run_request(
+        self,
+        request: "CompletionRequest",
+        *,
+        engine_method: Literal["completions"],
+        batch_output_stream: bool = False,
+    ) -> AsyncGenerator[Union["CompletionResponseType", Iterable], None]:
+        ...
+
+    @overload
+    async def _run_request(
+        self,
+        request: "EmbeddingRequest",
+        *,
+        engine_method: Literal["embeddings"],
+        batch_output_stream: bool = False,
+    ) -> AsyncGenerator[Union["EmbeddingResponseType", Iterable], None]:
+        ...
 
     async def _run_request(
         self,
@@ -239,7 +285,21 @@ class LLMServer(_LLMServerBase):
         *,
         engine_method: str,
         batch_output_stream: bool = False,
-    ) -> AsyncGenerator[Any, None]:
+    ) -> AsyncGenerator[
+        Union[
+            "ChatResponseType",
+            "CompletionResponseType",
+            "EmbeddingResponseType",
+            Iterable[
+                Union[
+                    "ChatResponseType",
+                    "CompletionResponseType",
+                    "EmbeddingResponseType",
+                ]
+            ],
+        ],
+        None,
+    ]:
         """Run the engine method on the request + perform batching when stream=True.
 
         Args:
@@ -255,19 +315,23 @@ class LLMServer(_LLMServerBase):
 
         is_stream = hasattr(request, "stream") and request.stream
         if is_stream and batch_output_stream:
-            stream = self._batch_output_stream(
-                getattr(self.engine, engine_method)(request)
-            )
+            engine_stream: AsyncGenerator[
+                Union[
+                    "ChatCompletionResponse",
+                    "CompletionResponse",
+                    "EmbeddingResponse",
+                    str,
+                    "ErrorResponse",
+                ],
+                None,
+            ] = getattr(self.engine, engine_method)(request)
+            return self._batch_output_stream(engine_stream)
         else:
-            stream = getattr(self.engine, engine_method)(request)
-
-        return stream
+            return getattr(self.engine, engine_method)(request)
 
     async def chat(
         self, request: "ChatCompletionRequest"
-    ) -> AsyncGenerator[
-        Union[List[Union[str, "ErrorResponse"]], "ChatCompletionResponse"], None
-    ]:
+    ) -> AsyncGenerator[Union[ChatResponseType, Iterable[ChatResponseType]], None]:
         """Runs a chat request to the LLM engine and returns the response.
 
         Args:
@@ -283,7 +347,7 @@ class LLMServer(_LLMServerBase):
     async def completions(
         self, request: "CompletionRequest"
     ) -> AsyncGenerator[
-        Union[List[Union[str, "ErrorResponse"]], "CompletionResponse"], None
+        Union[CompletionResponseType, Iterable[CompletionResponseType]], None
     ]:
         """Runs a completion request to the LLM engine and returns the response.
 
@@ -299,7 +363,9 @@ class LLMServer(_LLMServerBase):
 
     async def embeddings(
         self, request: "EmbeddingRequest"
-    ) -> AsyncGenerator[Union[List["ErrorResponse"], "EmbeddingResponse"], None]:
+    ) -> AsyncGenerator[
+        Union[EmbeddingResponseType, Iterable[EmbeddingResponseType]], None
+    ]:
         """Runs an embeddings request to the engine and returns the response.
 
         Returns an AsyncGenerator over the EmbeddingResponse object. This is so that the caller can have a consistent interface across all the methods of chat, completions, and embeddings.

@@ -2,7 +2,7 @@ import contextlib
 import pathlib
 import tempfile
 import time
-from typing import Dict
+from typing import Callable, Dict
 from unittest.mock import patch
 
 import openai
@@ -178,10 +178,10 @@ def testing_model_no_accelerator(shutdown_ray_and_serve, disable_placement_bundl
 
 
 @pytest.fixture
-def create_server():
+def create_server() -> Callable[[], LLMServer]:
     """Asynchronously create an LLMServer instance."""
 
-    async def creator(*args, **kwargs):
+    async def creator(*args, **kwargs) -> LLMServer:
         # _ = LLMServer(...) will raise TypeError("__init__() should return None")
         # so we do __new__ then __init__
         server = LLMServer.__new__(LLMServer)
