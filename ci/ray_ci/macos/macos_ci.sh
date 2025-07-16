@@ -50,14 +50,14 @@ run_small_test() {
   python -m pip freeze
   export
 
-  echo "---- Run a single test of test_tqdm.py"
-  pytest -v python/ray/tests/test_tqdm.py
+  echo "---- Run a single test of test_mini.py"
+  pytest -v python/ray/tests/test_mini.py
 
   echo "---- Run the repsective single bazel test"
   bazel test --config=ci $(./ci/run/bazel_export_options) \
     --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX \
     --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER --test_env=CI \
-    //python/ray/tests:test_tqdm
+    //python/ray/tests:test_mini
 
   # shellcheck disable=SC2046
   # 42 is the universal rayci exit code for test failures
