@@ -873,7 +873,7 @@ class HashShufflingOperatorBase(PhysicalOperator):
 
 
 @ray.remote(num_cpus=0)
-def _wait_until_healthy(aggregators: List[ray.ActorHandle]):
+def _wait_until_healthy(aggregators: List[ray.actor.ActorHandle]):
     """Background health monitor. Exits once every actor's constructor has run."""
     pending = [aggregator.__ray_ready__.remote() for aggregator in aggregators]
 
@@ -1001,7 +1001,7 @@ class AggregatorPool:
             num_partitions=num_partitions,
         )
 
-        self._aggregators: List[ray.ActorHandle] = []
+        self._aggregators: List[ray.actor.ActorHandle] = []
 
         self._aggregation_factory_ref: ObjectRef[
             StatefulShuffleAggregationFactory
