@@ -45,9 +45,11 @@ run_flaky_tests() {
 run_small_test() {
   echo "---- Print out env info again"
   which python
+  which python3
   python --version
+  python3 --version
   ray --version
-  python -m pip freeze
+  python3 -m pip freeze
   export
 
   echo "---- Run a single test of test_mini.py"
