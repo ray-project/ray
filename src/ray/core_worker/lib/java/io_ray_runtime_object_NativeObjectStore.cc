@@ -53,7 +53,6 @@ Status PutSerializedObject(JNIEnv *env,
         nested_ids,
         out_object_id,
         &data,
-        /*created_by_worker=*/true,
         /*owner_address=*/owner_address);
   } else {
     status = CoreWorkerProcess::GetCoreWorker().CreateExisting(
