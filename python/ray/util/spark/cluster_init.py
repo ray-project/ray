@@ -130,7 +130,7 @@ class RayClusterOnSpark:
             ray.init(address=self.address)
 
             if self.ray_dashboard_port is not None and _wait_service_up(
-                self.address.split(":")[0],
+                self.address.rsplit(":", 1)[0],
                 self.ray_dashboard_port,
                 _RAY_DASHBOARD_STARTUP_TIMEOUT,
             ):
@@ -1206,7 +1206,7 @@ def _setup_ray_cluster_internal(
                 pass
             raise RuntimeError("Launch Ray-on-Spark cluster failed") from e
 
-    head_ip = cluster.address.split(":")[0]
+    head_ip = cluster.address.rsplit(":", 1)[0]
     remote_connection_address = f"ray://{head_ip}:{cluster.ray_client_server_port}"
     return cluster.address, remote_connection_address
 

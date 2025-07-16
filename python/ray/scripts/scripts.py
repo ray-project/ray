@@ -34,6 +34,7 @@ from ray._private.label_utils import (
 from ray._private.utils import (
     check_ray_client_dependencies_installed,
     parse_resources_json,
+    is_ipv6_address,
 )
 from ray._private.internal_api import memory_summary
 from ray._private.usage import usage_lib
@@ -196,7 +197,7 @@ def continue_debug_session(live_jobs: Set[str]):
                             key, namespace=ray_constants.KV_NAMESPACE_PDB
                         )
                         return
-                    host, port = session["pdb_address"].split(":")
+                    host, port = session["pdb_address"].rsplit(":", 1)
                     ray.util.rpdb._connect_pdb_client(host, int(port))
                     ray.experimental.internal_kv._internal_kv_del(
                         key, namespace=ray_constants.KV_NAMESPACE_PDB
@@ -337,7 +338,7 @@ def debug(address: str, verbose: bool):
                     active_sessions[index], namespace=ray_constants.KV_NAMESPACE_PDB
                 )
             )
-            host, port = session["pdb_address"].split(":")
+            host, port = session["pdb_address"].rsplit(":", 1)
             ray.util.rpdb._connect_pdb_client(host, int(port))
 
 
@@ -725,6 +726,12 @@ def start(
 
     # Whether the original arguments include node_ip_address.
     include_node_ip_address = False
+
+    if node_ip_address is None and is_ipv6_address(node_ip_address):
+        if not node_ip_address.startswith("["):
+            node_ip_address = "[" + node_ip_address + "]"
+        os.environ.update({"RAY_POD_IPV6": node_ip_address})
+        os.environ.update({"RAY_PREFER_IPV6": "true"})
     if node_ip_address is not None:
         include_node_ip_address = True
         node_ip_address = services.resolve_ip_for_localhost(node_ip_address)

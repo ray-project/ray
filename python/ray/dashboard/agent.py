@@ -109,6 +109,8 @@ class DashboardAgent:
             )  # noqa
         )
         grpc_ip = "127.0.0.1" if self.ip == "127.0.0.1" else "0.0.0.0"
+        if os.environ.get("RAY_PREFER_IPV6") is not None and grpc_ip == "0.0.0.0":
+            grpc_ip = "[::]"
         try:
             self.grpc_port = add_port_to_grpc_server(
                 self.server, f"{grpc_ip}:{self.dashboard_agent_port}"

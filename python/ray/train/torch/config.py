@@ -167,6 +167,7 @@ class _TorchBackend(Backend):
             master_addr, master_port = worker_group.execute_single(
                 0, get_address_and_port
             )
+            master_addr = master_addr.strip("[]")
             if backend_config.init_method == "env":
 
                 def set_env_vars(addr, port):
