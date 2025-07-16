@@ -39,7 +39,7 @@ async def _create_impl(image_uri: str, logger: logging.Logger):
                 f"Podman command failed: cmd={cmd}, stdout={stdout.decode()}, stderr={stderr.decode()}"
             )
             raise RuntimeError(
-                f"Podman command failed with return code {process.returncode}"
+                f"Podman command failed: cmd={cmd}, returncode={process.returncode}"
             )
 
         if not os.path.exists(result_file):
