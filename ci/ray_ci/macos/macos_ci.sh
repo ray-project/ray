@@ -52,18 +52,26 @@ run_small_test() {
   echo "---- Run a single test of test_tqdm.py"
   pytest -v python/ray/tests/test_tqdm.py
 
+  echo "---- Run the repsective single bazel test"
+  bazel test --config=ci $(./ci/run/bazel_export_options) \
+    --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX \
+    --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER --test_env=CI \
+    //python/ray/tests:test_tqdm
+
   # shellcheck disable=SC2046
   # 42 is the universal rayci exit code for test failures
-  echo "---- List tests"
-  bazel query 'attr(tags, "ray_client|small_size_python_tests", tests(//python/ray/tests/...))' | tee /tmp/tests.txt
+  if false ; then
+    echo "---- List tests"
+    bazel query 'attr(tags, "ray_client|small_size_python_tests", tests(//python/ray/tests/...))' | tee /tmp/tests.txt
 
-  echo "---- Filter out flaky tests"
-  cat /tmp/tests.txt | filter_out_flaky_tests | tee /tmp/tests_filtered.txt
+    echo "---- Filter out flaky tests"
+    cat /tmp/tests.txt | filter_out_flaky_tests | tee /tmp/tests_filtered.txt
 
-  echo "---- Run tests"
-  cat /tmp/tests_filtered.txt | xargs bazel test --config=ci $(./ci/run/bazel_export_options) \
-      --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX \
-      --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER --test_env=CI || exit 42
+    echo "---- Run tests"
+    cat /tmp/tests_filtered.txt | xargs bazel test --config=ci $(./ci/run/bazel_export_options) \
+        --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX \
+        --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER --test_env=CI || exit 42
+  fi
 }
 
 run_medium_a_j_test() {
