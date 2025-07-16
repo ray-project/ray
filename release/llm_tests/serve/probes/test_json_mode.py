@@ -101,8 +101,11 @@ def get_params_and_expected_type(response_type: str, test_id: str):
     params.update(
         {
             "response_format": {
-                "type": "json_object",
-                "schema": expected_type.schema_json(),
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "expected_schema",
+                    "schema": expected_type.model_json_schema(),
+                },
             }
         }
     )
@@ -118,7 +121,6 @@ def get_response_formats():
         {"type": "json_object", "schema": json.dumps({})},
         {"type": "json_object", "schema": json.loads(BasicResponse.schema_json())},
         {"type": "json_object", "schema": BasicResponse.schema_json()},
-        {"type": "grammar", "grammar": JSON_GRAMMAR_EBNF_STR},
     ]
 
 
@@ -201,8 +203,11 @@ async def test_response_format_options(
 async def test_invalid_schema(model: str, openai_async_client):
     querier = TextGenerationProbeQuerier(openai_async_client, {"temperature": 0.0})
     response_format = {
-        "type": "json_object",
-        "schema": {"type": "object", "properties": {"name": {"type": "str"}}},
+        "type": "json_schema",
+        "json_schema": {
+            "name": "expected_schema",
+            "schema": {"type": "object", "properties": {"name": {"type": "str"}}},
+        },
     }
 
     params = {
