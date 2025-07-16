@@ -73,12 +73,13 @@ sudo apt-get install -y kmod pkg-config librdmacm-dev
         --no-questions
 )
 
+UCX_VERSION="1.18.1"
 (
-    echo "Installing UCX"
+    echo "Installing UCX ${UCX_VERSION}"
     cd "${TEMP_DIR}"
-    wget "https://github.com/openucx/ucx/releases/download/v1.18.0/ucx-1.18.0.tar.gz" -q
-    tar xzf ucx-1.18.0.tar.gz; rm ucx-1.18.0.tar.gz
-    cd ucx-1.18.0
+    wget "https://github.com/openucx/ucx/releases/download/v${UCX_VERSION}/ucx-${UCX_VERSION}.tar.gz" -q
+    tar xzf "ucx-${UCX_VERSION}.tar.gz"; rm "ucx-${UCX_VERSION}.tar.gz"
+    cd "ucx-${UCX_VERSION}"
 
     # Additional options for Mellanox NICs, install by default
     MLX_OPTS="--with-rdmacm \
@@ -104,18 +105,19 @@ sudo apt-get install -y kmod pkg-config librdmacm-dev
     sudo ldconfig
 )
 
+NIXL_VERSION="0.3.1"
 (
-    echo "Installing NIXL"
+    echo "Installing NIXL ${NIXL_VERSION}"
     # NIXL needs meson pybind11 ninja, but should have been included in requirements_*.txt
     cd "${TEMP_DIR}"
-    wget "https://github.com/ai-dynamo/nixl/archive/refs/tags/0.2.0.tar.gz" -q
-    tar xzf 0.2.0.tar.gz; rm 0.2.0.tar.gz
-    cd nixl-0.2.0
+    wget "https://github.com/ai-dynamo/nixl/archive/refs/tags/${NIXL_VERSION}.tar.gz" -q
+    tar xzf "${NIXL_VERSION}.tar.gz"; rm "${NIXL_VERSION}.tar.gz"
+    cd "nixl-${NIXL_VERSION}"
     meson setup build --prefix=${NIXL_HOME} -Ducx_path=${UCX_HOME}
     cd build
     ninja
     sudo env "PATH=$PATH" ninja install
-    pip install --no-cache-dir nixl==0.2.0
+    pip install --no-cache-dir "nixl==${NIXL_VERSION}"
 )
 sudo rm -rf "${TEMP_DIR}"
 
