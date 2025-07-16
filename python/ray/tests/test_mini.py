@@ -1,4 +1,10 @@
 import sys
+import os
+
+print("python bin", sys.executable)
+
+for k, v in os.environ.items():
+    print(f"{k}={v}")
 
 import pytest
 
