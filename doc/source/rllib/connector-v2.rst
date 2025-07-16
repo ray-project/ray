@@ -75,7 +75,7 @@ Three ConnectorV2 pipeline types
 There are three different types of connector pipelines in RLlib:
 
 1) :ref:`Env-to-module pipeline <env-to-module-pipeline-docs>`, which creates tensor batches for action computing forward passes.
-2) :ref:`Module-to-env pipeline <module-to-env-pipeline-docs>`, which translates a model's output into RL environment actions.
+2) Module-to-env pipeline (documentation pending), which translates a model's output into RL environment actions.
 3) :ref:`Learner connector pipeline <learner-pipeline-docs>`, which creates the train batch for a model update.
 
 The :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` API is an extremely powerful tool for
