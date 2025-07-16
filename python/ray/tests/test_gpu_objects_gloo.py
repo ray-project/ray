@@ -125,8 +125,7 @@ def test_gc_del_ref_before_recv_finish(ray_start_regular, data_size_bytes):
     )
 
 
-@pytest.mark.parametrize("data_size_bytes", [100])
-def test_gc_intra_actor_gpu_object(ray_start_regular, data_size_bytes):
+def test_gc_intra_actor_gpu_object(ray_start_regular):
     """
     This test checks that passes a GPU object ref to the same actor multiple times.
     """
@@ -151,8 +150,7 @@ def test_gc_intra_actor_gpu_object(ray_start_regular, data_size_bytes):
     )
 
 
-@pytest.mark.parametrize("data_size_bytes", [100])
-def test_gc_pass_ref_to_same_and_different_actors(ray_start_regular, data_size_bytes):
+def test_gc_pass_ref_to_same_and_different_actors(ray_start_regular):
     """
     This test checks that passes a GPU object ref to the same actor and a different actor.
     """

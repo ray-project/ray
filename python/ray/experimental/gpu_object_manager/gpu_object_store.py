@@ -99,8 +99,8 @@ class GPUObjectStore:
         #
         # Note: Currently, `gpu_object_store` is only supported for Ray Actors.
         self.gpu_object_store: Dict[str, List["torch.Tensor"]] = {}
-        # A set of object IDs that have been created by the current actor.
-        self.created_gpu_objects: Set[str] = set()
+        # A set of object IDs that are the primary copy.
+        self.primary_gpu_object_ids: Set[str] = set()
 
     def has_gpu_object(self, obj_id: str) -> bool:
         return obj_id in self.gpu_object_store
@@ -112,7 +112,7 @@ class GPUObjectStore:
         self,
         obj_id: str,
         gpu_object: List["torch.Tensor"],
-        self_created: bool = False,
+        is_primary: bool = False,
     ):
         """
         Add a GPU object to the GPU object store.
@@ -120,15 +120,14 @@ class GPUObjectStore:
         Args:
             obj_id: The object ID of the GPU object.
             gpu_object: A list of tensors representing the GPU object.
-            self_created: Whether the GPU object is created by the current actor.
-                Whether the GPU object is created by the current actor.
+            is_primary: Whether the GPU object is the primary copy.
         """
-        if self_created:
-            self.created_gpu_objects.add(obj_id)
+        if is_primary:
+            self.primary_gpu_object_ids.add(obj_id)
         self.gpu_object_store[obj_id] = gpu_object
 
-    def is_self_created_gpu_object(self, obj_id: str) -> bool:
-        return obj_id in self.created_gpu_objects
+    def is_primary_copy(self, obj_id: str) -> bool:
+        return obj_id in self.primary_gpu_object_ids
 
     def remove_gpu_object(self, obj_id: str):
         """
@@ -141,5 +140,5 @@ class GPUObjectStore:
             obj_id in self.gpu_object_store
         ), f"obj_id={obj_id} not found in GPU object store"
         del self.gpu_object_store[obj_id]
-        if obj_id in self.created_gpu_objects:
-            self.created_gpu_objects.remove(obj_id)
+        if obj_id in self.primary_gpu_object_ids:
+            self.primary_gpu_object_ids.remove(obj_id)
