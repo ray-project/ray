@@ -93,7 +93,7 @@ class NormalTaskSubmitter {
       const JobID &job_id,
       std::shared_ptr<LeaseRequestRateLimiter> lease_request_rate_limiter,
       const TensorTransportGetter &tensor_transport_getter,
-      std::optional<boost::asio::steady_timer> cancel_timer = absl::nullopt)
+      boost::asio::steady_timer cancel_timer)
       : rpc_address_(std::move(rpc_address)),
         local_lease_client_(std::move(lease_client)),
         lease_client_factory_(std::move(lease_client_factory)),
@@ -218,7 +218,7 @@ class NormalTaskSubmitter {
   /// \param[in] error_detail The reason why it was errored.
   /// it is unused if was_error is false.
   /// \param[in] worker_exiting Whether the worker is exiting.
-  void ReturnWorker(const rpc::Address addr,
+  void ReturnWorker(const rpc::Address &addr,
                     bool was_error,
                     const std::string &error_detail,
                     bool worker_exiting,
@@ -298,24 +298,10 @@ class NormalTaskSubmitter {
   struct LeaseEntry {
     std::shared_ptr<WorkerLeaseInterface> lease_client;
     int64_t lease_expiration_time;
-    bool is_busy = false;
     google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> assigned_resources;
     SchedulingKey scheduling_key;
     TaskID task_id;
-
-    LeaseEntry(
-        std::shared_ptr<WorkerLeaseInterface> lease_client_p = nullptr,
-        int64_t lease_expiration_time_p = 0,
-        google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> assigned_resources_p =
-            google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry>(),
-        SchedulingKey scheduling_key_p =
-            std::make_tuple(0, std::vector<ObjectID>(), ActorID::Nil(), 0),
-        TaskID task_id_p = TaskID::Nil())
-        : lease_client(std::move(lease_client_p)),
-          lease_expiration_time(lease_expiration_time_p),
-          assigned_resources(std::move(assigned_resources_p)),
-          scheduling_key(std::move(scheduling_key_p)),
-          task_id(std::move(task_id_p)) {}
+    bool is_busy = false;
   };
 
   // Map from worker address to a LeaseEntry struct containing the lease's metadata.
@@ -325,21 +311,20 @@ class NormalTaskSubmitter {
   struct SchedulingKeyEntry {
     // Keep track of pending worker lease requests to the raylet.
     absl::flat_hash_map<TaskID, rpc::Address> pending_lease_requests;
-    TaskSpecification resource_spec = TaskSpecification();
+    TaskSpecification resource_spec;
     // Tasks that are queued for execution. We keep an individual queue per
     // scheduling class to ensure fairness.
-    std::deque<TaskSpecification> task_queue = std::deque<TaskSpecification>();
+    std::deque<TaskSpecification> task_queue;
     // Keep track of the active workers, so that we can quickly check if one of them has
     // room for more tasks in flight
-    absl::flat_hash_set<rpc::Address> active_workers =
-        absl::flat_hash_set<rpc::Address>();
+    absl::flat_hash_set<rpc::Address> active_workers;
     // Keep track of how many workers have tasks to do.
     uint32_t num_busy_workers = 0;
     int64_t last_reported_backlog_size = 0;
 
     // Check whether it's safe to delete this SchedulingKeyEntry from the
     // scheduling_key_entries_ hashmap.
-    inline bool CanDelete() const {
+    bool CanDelete() const {
       if (pending_lease_requests.empty() && task_queue.empty() &&
           active_workers.size() == 0 && num_busy_workers == 0) {
         return true;
@@ -349,13 +334,13 @@ class NormalTaskSubmitter {
     }
 
     // Check whether all workers are busy.
-    inline bool AllWorkersBusy() const {
+    bool AllWorkersBusy() const {
       RAY_CHECK_LE(num_busy_workers, active_workers.size());
       return num_busy_workers == active_workers.size();
     }
 
     // Get the current backlog size for this scheduling key
-    [[nodiscard]] inline int64_t BacklogSize() const {
+    int64_t BacklogSize() const {
       if (task_queue.size() < pending_lease_requests.size()) {
         // This can happen if worker is reused.
         return 0;
@@ -385,7 +370,7 @@ class NormalTaskSubmitter {
   std::shared_ptr<LeaseRequestRateLimiter> lease_request_rate_limiter_;
 
   // Retries cancelation requests if they were not successful.
-  std::optional<boost::asio::steady_timer> cancel_retry_timer_ ABSL_GUARDED_BY(mu_);
+  boost::asio::steady_timer cancel_retry_timer_ ABSL_GUARDED_BY(mu_);
 
   std::atomic<int64_t> num_tasks_submitted_ = 0;
   int64_t num_leases_requested_ ABSL_GUARDED_BY(mu_) = 0;
