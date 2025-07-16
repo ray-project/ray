@@ -139,8 +139,9 @@ class GPUObjectStore:
 
         Args:
             obj_id: The object ID to wait for.
-            timeout: The maximum time to wait for the object to be present in the GPU object store.
-            If not specified, wait indefinitely.
+            timeout: The maximum time in seconds to wait for the object to be
+            present in the GPU object store. If not specified, wait
+            indefinitely.
 
         Returns:
             The tensors in the GPU object.
@@ -156,8 +157,9 @@ class GPUObjectStore:
 
         Args:
             obj_id: The object ID to wait for.
-            timeout: The maximum time to wait for the object to be present in the GPU object store.
-            If not specified, wait indefinitely.
+            timeout: The maximum time in seconds to wait for the object to be
+            present in the GPU object store. If not specified, wait
+            indefinitely.
         """
         with self.object_present_cv:
             present = self.object_present_cv.wait_for(

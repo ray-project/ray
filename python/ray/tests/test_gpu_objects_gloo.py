@@ -27,10 +27,12 @@ class GPUTestActor:
             return data.apply(lambda x: x * 2)
         return data * 2
 
-    def get_gpu_object(self, obj_id: str):
+    def get_gpu_object(self, obj_id: str, timeout=None):
         gpu_object_store = (
             ray._private.worker.global_worker.gpu_object_manager.gpu_object_store
         )
+        if timeout is not None:
+            gpu_object_store.wait_object(obj_id, timeout)
         if gpu_object_store.has_object(obj_id):
             gpu_object = gpu_object_store.get_object(obj_id)
             return gpu_object
@@ -253,7 +255,7 @@ def test_trigger_out_of_band_tensor_transfer(ray_start_regular):
     gpu_object_manager.trigger_out_of_band_tensor_transfer(dst_actor, task_args)
 
     # Check dst_actor has the GPU object
-    ret_val_dst = ray.get(dst_actor.get_gpu_object.remote(gpu_obj_id))
+    ret_val_dst = ray.get(dst_actor.get_gpu_object.remote(gpu_obj_id, timeout=10))
     assert ret_val_dst is not None
     assert len(ret_val_dst) == 1
     assert torch.equal(ret_val_dst[0], tensor)
