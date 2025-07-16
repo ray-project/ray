@@ -29,11 +29,19 @@ class TestEnv(gym.Env):
         self.action_space = gym.spaces.Discrete(200)
         self.t = 0
 
+    def _obs(self):
+        if isinstance(self.observation_space, gym.spaces.Dict):
+            return {f"obs_{i}": self.t for i in range(5)}
+        elif isinstance(self.observation_space, gym.spaces.Tuple):
+            return tuple(self.t for _ in range(5))
+        else:
+            return self.t
+
     def reset(
         self, *, seed: Optional[int] = None, options=Optional[Dict[str, Any]]
     ) -> Tuple[ObsType, Dict[str, Any]]:
         self.t = 0
-        return 0, {}
+        return self.obs(), {}
 
     def step(
         self, action: ActType
@@ -44,7 +52,7 @@ class TestEnv(gym.Env):
         else:
             is_terminated = False
 
-        return self.t, self.t, is_terminated, False, {}
+        return self.obs(), self.t, is_terminated, False, {}
 
 
 class TestSingelAgentEpisode(unittest.TestCase):
