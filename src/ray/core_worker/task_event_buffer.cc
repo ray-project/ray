@@ -178,13 +178,6 @@ void TaskStatusEvent::ToRpcTaskExportEvents(
 // populate the TaskDefinitionEvent or ActorTaskDefinitionEvent
 template <typename T>
 void TaskStatusEvent::PopulateRpcRayTaskDefinitionEvent(T &definition_event_data) {
-  // Make sure T is one of rpc::events::ActorTaskDefinitionEvent or
-  // rpc::events::TaskDefinitionEvent
-  static_assert(std::is_same_v<T, rpc::events::ActorTaskDefinitionEvent> ||
-                    std::is_same_v<T, rpc::events::TaskDefinitionEvent>,
-                "T must be one of rpc::events::ActorTaskDefinitionEvent or "
-                "rpc::events::TaskDefinitionEvent");
-
   // Task identifier
   definition_event_data.set_task_id(task_id_.Binary());
   definition_event_data.set_task_attempt(attempt_number_);
@@ -218,16 +211,9 @@ void TaskStatusEvent::PopulateRpcRayTaskDefinitionEvent(T &definition_event_data
   }
 }
 
-template <typename T>
 void TaskStatusEvent::PopulateRpcRayTaskExecutionEvent(
-    T &execution_event_data, google::protobuf::Timestamp timestamp) {
-  // Make sure T is one of rpc::events::ActorTaskExecutionEvent or
-  // rpc::events::TaskExecutionEvent
-  static_assert(std::is_same_v<T, rpc::events::ActorTaskExecutionEvent> ||
-                    std::is_same_v<T, rpc::events::TaskExecutionEvent>,
-                "T must be one of rpc::events::ActorTaskExecutionEvent or "
-                "rpc::events::TaskExecutionEvent");
-
+    rpc::events::TaskExecutionEvent &execution_event_data,
+    google::protobuf::Timestamp timestamp) {
   // Task identifier
   execution_event_data.set_task_id(task_id_.Binary());
   execution_event_data.set_task_attempt(attempt_number_);
@@ -280,18 +266,14 @@ void TaskStatusEvent::PopulateRpcRayEventBaseFields(
 
   if (is_actor_task_event_) {
     if (is_definition_event) {
-      ray_event.set_message("Actor task definition event");
       ray_event.set_event_type(rpc::events::RayEvent::ACTOR_TASK_DEFINITION_EVENT);
     } else {
-      ray_event.set_message("Actor task execution event");
       ray_event.set_event_type(rpc::events::RayEvent::ACTOR_TASK_EXECUTION_EVENT);
     }
   } else {
     if (is_definition_event) {
-      ray_event.set_message("Task definition event");
       ray_event.set_event_type(rpc::events::RayEvent::TASK_DEFINITION_EVENT);
     } else {
-      ray_event.set_message("Task execution event");
       ray_event.set_event_type(rpc::events::RayEvent::TASK_EXECUTION_EVENT);
     }
   }
@@ -321,14 +303,8 @@ void TaskStatusEvent::ToRpcRayEvents(
       ray_events.second.has_value() ? *ray_events.second : ray_events.second.emplace(),
       false,
       timestamp);
-  if (is_actor_task_event_) {
-    auto actor_task_execution_event =
-        ray_events.second.value().mutable_actor_task_execution_event();
-    PopulateRpcRayTaskExecutionEvent(*actor_task_execution_event, timestamp);
-  } else {
-    auto task_execution_event = ray_events.second.value().mutable_task_execution_event();
-    PopulateRpcRayTaskExecutionEvent(*task_execution_event, timestamp);
-  }
+  auto task_execution_event = ray_events.second.value().mutable_task_execution_event();
+  PopulateRpcRayTaskExecutionEvent(*task_execution_event, timestamp);
 }
 
 void TaskProfileEvent::ToRpcTaskEvents(rpc::TaskEvents *rpc_task_events) {
@@ -371,32 +347,9 @@ void TaskProfileEvent::ToRpcTaskExportEvents(
 void TaskProfileEvent::ToRpcRayEvents(
     std::pair<std::optional<rpc::events::RayEvent>, std::optional<rpc::events::RayEvent>>
         &ray_events) {
-  // TODO(myan): need to further figure out how to migrate the task profile event to
-  // the new ray event format.
+  // TODO(myan): #54515 need to further figure out how to migrate the task profile event
+  // to the new ray event format.
 }
-
-TaskEventBufferImpl::TaskEventBufferImpl(
-    std::shared_ptr<gcs::GcsClient> gcs_client,
-    std::unique_ptr<rpc::EventAggregatorClientImpl> event_aggregator_client,
-    std::string session_name)
-    : work_guard_(boost::asio::make_work_guard(io_service_)),
-      periodical_runner_(PeriodicalRunner::Create(io_service_)),
-      gcs_client_(std::move(gcs_client)),
-      event_aggregator_exporter_(
-          std::make_unique<EventAggregatorExporter>(std::move(event_aggregator_client))),
-      session_name_(session_name) {}
-
-TaskEventBufferImpl::TaskEventBufferImpl(
-    std::shared_ptr<gcs::GcsClient> gcs_client,
-    std::unique_ptr<EventAggregatorExporter> event_aggregator_exporter,
-    std::string session_name)
-    : work_guard_(boost::asio::make_work_guard(io_service_)),
-      periodical_runner_(PeriodicalRunner::Create(io_service_)),
-      gcs_client_(std::move(gcs_client)),
-      event_aggregator_exporter_(std::move(event_aggregator_exporter)),
-      session_name_(session_name) {}
-
-TaskEventBufferImpl::~TaskEventBufferImpl() { Stop(); }
 
 bool TaskEventBufferImpl::RecordTaskStatusEventIfNeeded(
     const TaskID &task_id,
@@ -428,13 +381,27 @@ bool TaskEventBufferImpl::RecordTaskStatusEventIfNeeded(
   return true;
 }
 
+TaskEventBufferImpl::TaskEventBufferImpl(
+    std::unique_ptr<gcs::GcsClient> gcs_client,
+    std::unique_ptr<rpc::EventAggregatorClient> event_aggregator_client)
+    : periodical_runner_(PeriodicalRunner::Create(io_service_)),
+      gcs_client_(std::move(gcs_client)),
+      event_aggregator_client_(std::move(event_aggregator_client)) {}
+
+TaskEventBufferImpl::~TaskEventBufferImpl() { Stop(); }
+
 Status TaskEventBufferImpl::Start(bool auto_flush) {
   absl::MutexLock lock(&mutex_);
-  export_event_write_enabled_ = TaskEventBufferImpl::IsExportAPIEnabledTask();
   send_task_events_to_gcs_enabled_ =
       RayConfig::instance().enable_core_worker_task_event_to_gcs();
   send_ray_events_to_aggregator_enabled_ =
       RayConfig::instance().enable_core_worker_ray_event_to_aggregator();
+
+  // We want to make sure that only one of the event export mechanism is enables. And
+  // if both are enables, we will use the event aggregator instead of the export API.
+  // This code will be removed when we deprecate the export API implementation.
+  export_event_write_enabled_ = !send_ray_events_to_aggregator_enabled_ &&
+                                TaskEventBufferImpl::IsExportAPIEnabledTask();
   auto report_interval_ms = RayConfig::instance().task_events_report_interval_ms();
   RAY_CHECK(report_interval_ms > 0)
       << "RAY_task_events_report_interval_ms should be > 0 to use TaskEventBuffer.";
@@ -817,7 +784,7 @@ void TaskEventBufferImpl::SendRayEventsToAggregator(
   };
 
   auto status =
-      event_aggregator_exporter_->AsyncAddRayEventData(std::move(data), on_complete);
+      event_aggregator_client_->AsyncAddRayEventData(std::move(data), on_complete);
   RAY_CHECK_OK(status);
 }
 
@@ -869,11 +836,9 @@ void TaskEventBufferImpl::FlushEvents(bool forced) {
     WriteExportData(status_events_to_write_for_export, profile_events_to_send);
   }
   if (send_task_events_to_gcs_enabled_) {
-    RAY_CHECK(data.task_event_data);
     SendTaskEventsToGCS(std::move(data.task_event_data));
   }
   if (send_ray_events_to_aggregator_enabled_) {
-    RAY_CHECK(data.ray_event_data);
     SendRayEventsToAggregator(std::move(data.ray_event_data));
   }
 }

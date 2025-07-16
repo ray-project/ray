@@ -27,7 +27,6 @@
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/common/id.h"
 #include "ray/common/task/task_spec.h"
-#include "ray/core_worker/event_aggregator_exporter.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/gcs/pb_util.h"
 #include "ray/rpc/event_aggregator_client.h"
@@ -52,7 +51,7 @@ using TaskAttempt = std::pair<TaskID, int32_t>;
 /// will be converted to rpc::TaskEvents.
 /// 2. Flushing to the event aggregator: the flush to the event aggregator will be
 /// periodic and it will be converted to rpc::events::RayEventData.
-/// 3. Export API (will be deprecated): Priodically flush to the file system. When
+/// 3. Export API (will be deprecated): Periodically flush to the file system. When
 /// flushing, it will be converted to rpc::ExportTaskEventData.
 ///
 /// This is an optimization so that converting to protobuf (which is costly)
@@ -170,17 +169,13 @@ class TaskStatusEvent : public TaskEvent {
  private:
   // Helper functions to populate the task definition event of rpc::events::RayEvent
   // This function assumes task_spec_ is not null.
-  // This function also checks T must be one of rpc::events::ActorTaskDefinitionEvent or
-  // rpc::events::TaskDefinitionEvent
   template <typename T>
   void PopulateRpcRayTaskDefinitionEvent(T &definition_event_data);
 
   // Helper functions to populate the task execution event of rpc::events::RayEvent
-  // This function checks T must be one of rpc::events::ActorTaskExecutionEvent or
-  // rpc::events::TaskExecutionEvent
-  template <typename T>
-  void PopulateRpcRayTaskExecutionEvent(T &execution_event_data,
-                                        google::protobuf::Timestamp timestamp);
+  void PopulateRpcRayTaskExecutionEvent(
+      rpc::events::TaskExecutionEvent &execution_event_data,
+      google::protobuf::Timestamp timestamp);
 
   // Helper functions to populate the base fields of rpc::events::RayEvent
   void PopulateRpcRayEventBaseFields(rpc::events::RayEvent &ray_event,
@@ -365,15 +360,8 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   /// \param gcs_client GCS client
   /// \param event_aggregator_client Event aggregator client
   explicit TaskEventBufferImpl(
-      std::shared_ptr<gcs::GcsClient> gcs_client,
-      std::unique_ptr<rpc::EventAggregatorClientImpl> event_aggregator_client,
-      std::string session_name);
-
-  /// Constructor for test only
-  explicit TaskEventBufferImpl(
-      std::shared_ptr<gcs::GcsClient> gcs_client,
-      std::unique_ptr<EventAggregatorExporter> event_aggregator_exporter,
-      std::string session_name);
+      std::unique_ptr<gcs::GcsClient> gcs_client,
+      std::unique_ptr<rpc::EventAggregatorClient> event_aggregator_client);
 
   TaskEventBufferImpl(const TaskEventBufferImpl &) = delete;
   TaskEventBufferImpl &operator=(const TaskEventBufferImpl &) = delete;
@@ -530,9 +518,6 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   instrumented_io_context io_service_{/*enable_lag_probe=*/false,
                                       /*running_on_single_thread=*/true};
 
-  /// Work guard to prevent the io_context from exiting when no work.
-  boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work_guard_;
-
   /// Dedicated io thread for running the periodical runner and the GCS client.
   std::thread io_thread_;
 
@@ -540,10 +525,10 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   std::shared_ptr<PeriodicalRunner> periodical_runner_;
 
   /// Client to the GCS used to push profile events to it.
-  std::shared_ptr<gcs::GcsClient> gcs_client_ ABSL_GUARDED_BY(mutex_);
+  std::unique_ptr<gcs::GcsClient> gcs_client_ ABSL_GUARDED_BY(mutex_);
 
   /// Client to the event aggregator used to push ray events to it.
-  std::unique_ptr<EventAggregatorExporter> event_aggregator_exporter_;
+  std::unique_ptr<rpc::EventAggregatorClient> event_aggregator_client_;
 
   /// True if the TaskEventBuffer is enabled.
   std::atomic<bool> enabled_ = false;

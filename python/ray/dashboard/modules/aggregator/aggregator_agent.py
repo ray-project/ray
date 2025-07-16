@@ -66,11 +66,9 @@ REQUEST_BACKOFF_FACTOR = ray_constants.env_float(
     f"{env_var_prefix}_REQUEST_BACKOFF_FACTOR", 1.0
 )
 # Address of the external service to send events
-EVENT_SEND_ADDR = os.environ.get(
-    f"{env_var_prefix}_EVENT_SEND_ADDR", "http://127.0.0.1"
-)
+EVENT_EXPORT_ADDR = os.environ.get(f"{env_var_prefix}_EVENT_EXPORT_ADDR", "")
 # Port of the external service to send events
-EVENT_SEND_PORT = ray_constants.env_integer(f"{env_var_prefix}_EVENT_SEND_PORT", 12345)
+EVENT_EXPORT_PORT = ray_constants.env_integer(f"{env_var_prefix}_EVENT_EXPORT_PORT", -1)
 # Interval to update metrics
 METRICS_UPDATE_INTERVAL_SECONDS = ray_constants.env_float(
     f"{env_var_prefix}_METRICS_UPDATE_INTERVAL_SECONDS", 0.1
@@ -115,7 +113,6 @@ class AggregatorAgent(
     external service with HTTP POST requests for further processing or storage
     """
 
-
     def __init__(self, dashboard_agent):
         super().__init__(dashboard_agent)
         self._ip = dashboard_agent.ip
@@ -144,6 +141,32 @@ class AggregatorAgent(
         self._events_dropped_at_core_worker_since_last_metrics_update = 0
         self._events_dropped_at_event_aggregator_since_last_metrics_update = 0
         self._events_published_since_last_metrics_update = 0
+        self._event_export_addr = (
+            dashboard_agent.events_export_addr
+            if dashboard_agent.events_export_addr
+            else EVENT_EXPORT_ADDR
+        )
+        self._event_export_port = (
+            dashboard_agent.events_export_port
+            if dashboard_agent.events_export_port
+            else EVENT_EXPORT_PORT
+        )
+
+        if self._event_export_addr == "" or self._event_export_port == -1:
+            logger.info(
+                "Event HTTP target not set, skipping sending events to "
+                f"external http service. event_export_addr: {self._event_export_addr}, "
+                f"event_export_port: {self._event_export_port}"
+            )
+            self._event_http_target_enabled = False
+        else:
+            self._event_http_target_enabled = True
+
+        self._event_processing_enabled = self._event_http_target_enabled
+        if self._event_processing_enabled:
+            logger.info("Event processing enabled")
+        else:
+            logger.info("Event processing disabled")
 
         self._orig_sigterm_handler = signal.signal(
             signal.SIGTERM, self._sigterm_handler
@@ -166,6 +189,13 @@ class AggregatorAgent(
         """
         Receives events from the request, adds them to the event buffer,
         """
+        if not self._event_processing_enabled:
+            return events_event_aggregator_service_pb2.AddEventReply(
+                status=events_event_aggregator_service_pb2.AddEventStatus(
+                    status_code=0, status_message="Event processing disabled"
+                )
+            )
+
         events_data = request.events_data
         with self._lock:
             self._events_dropped_at_core_worker_since_last_metrics_update += len(
@@ -223,11 +253,11 @@ class AggregatorAgent(
         """
         Sends a batch of events to the external service via HTTP POST request
         """
-        if not event_batch:
+        if not event_batch or not self._event_http_target_enabled:
             return
         try:
             response = self._http_session.post(
-                f"{EVENT_SEND_ADDR}:{EVENT_SEND_PORT}", json=event_batch
+                f"{self._event_export_addr}:{self._event_export_port}", json=event_batch
             )
             response.raise_for_status()
             with self._lock:
@@ -246,7 +276,13 @@ class AggregatorAgent(
             while len(event_batch) < MAX_EVENT_SEND_BATCH_SIZE:
                 try:
                     event_proto = self._event_buffer.get(block=False)
-                    event_batch.append(json.loads(MessageToJson((event_proto))))
+                    event_batch.append(
+                        json.loads(
+                            MessageToJson(
+                                event_proto, including_default_value_fields=True
+                            )
+                        )
+                    )
                 except queue.Empty:
                     break
 
@@ -346,6 +382,8 @@ class AggregatorAgent(
 
         # Update metrics immediately
         self._update_metrics()
+        self._cleanup_finished_event.set()
+
         self._cleanup_finished_event.set()
 
     def _sigterm_handler(self, signum, frame):

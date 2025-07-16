@@ -2,6 +2,7 @@ import sys
 import json
 import time
 import base64
+from unittest.mock import MagicMock
 
 import pytest
 from google.protobuf.timestamp_pb2 import Timestamp
@@ -27,6 +28,8 @@ from ray.core.generated.events_event_aggregator_service_pb2 import (
 )
 from ray.core.generated.events_base_event_pb2 import RayEvent
 from ray.core.generated.common_pb2 import TaskAttempt
+
+from ray.dashboard.modules.aggregator.aggregator_agent import AggregatorAgent
 
 
 @pytest.fixture(scope="session")
@@ -56,10 +59,50 @@ def get_event_aggregator_grpc_stub(webui_url, gcs_address, head_node_id):
     return EventAggregatorServiceStub(channel)
 
 
-def test_aggregator_agent_receive_publish_events_normally(
-    ray_start_cluster_head, httpserver
+@pytest.mark.parametrize(
+    (
+        "export_addr",
+        "export_port",
+        "expected_http_target_enabled",
+        "expected_event_processing_enabled",
+    ),
+    [
+        ("", -1, False, False),
+        ("http://127.0.0.1", -1, False, False),
+        ("", 12345, False, False),
+        ("http://127.0.0.1", 12345, True, True),
+    ],
+)
+def test_aggregator_agent_http_target_not_enabled(
+    export_addr,
+    export_port,
+    expected_http_target_enabled,
+    expected_event_processing_enabled,
 ):
-    cluster = ray_start_cluster_head
+    dashboard_agent = MagicMock()
+    dashboard_agent.events_export_addr = export_addr
+    dashboard_agent.events_export_port = export_port
+    agent = AggregatorAgent(dashboard_agent)
+    assert agent._event_http_target_enabled == expected_http_target_enabled
+    assert agent._event_processing_enabled == expected_event_processing_enabled
+
+
+@pytest.mark.parametrize(
+    "ray_start_cluster_head_with_env_vars",
+    [
+        {
+            "env_vars": {
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_EXPORT_ADDR": "http://127.0.0.1",
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_EXPORT_PORT": "12345",
+            },
+        },
+    ],
+    indirect=True,
+)
+def test_aggregator_agent_receive_publish_events_normally(
+    ray_start_cluster_head_with_env_vars, httpserver
+):
+    cluster = ray_start_cluster_head_with_env_vars
     stub = get_event_aggregator_grpc_stub(
         cluster.webui_url, cluster.gcs_address, cluster.head_node.node_id
     )
@@ -112,6 +155,8 @@ def test_aggregator_agent_receive_publish_events_normally(
         {
             "env_vars": {
                 "RAY_DASHBOARD_AGGREGATOR_AGENT_MAX_EVENT_BUFFER_SIZE": 1,
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_EXPORT_ADDR": "http://127.0.0.1",
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_EXPORT_PORT": "12345",
             },
         },
     ],
@@ -158,10 +203,22 @@ def test_aggregator_agent_receive_event_full(
     assert reply.status.status_message == "event 1 dropped because event buffer full"
 
 
+@pytest.mark.parametrize(
+    "ray_start_cluster_head_with_env_vars",
+    [
+        {
+            "env_vars": {
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_EXPORT_ADDR": "http://127.0.0.1",
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_EXPORT_PORT": "12345",
+            },
+        },
+    ],
+    indirect=True,
+)
 def test_aggregator_agent_receive_dropped_at_core_worker(
-    ray_start_cluster_head, httpserver
+    ray_start_cluster_head_with_env_vars, httpserver
 ):
-    cluster = ray_start_cluster_head
+    cluster = ray_start_cluster_head_with_env_vars
     stub = get_event_aggregator_grpc_stub(
         cluster.webui_url, cluster.gcs_address, cluster.head_node.node_id
     )
@@ -210,8 +267,22 @@ def test_aggregator_agent_receive_dropped_at_core_worker(
     assert req_json[0]["message"] == "core worker event"
 
 
-def test_aggregator_agent_receive_multiple_events(ray_start_cluster_head, httpserver):
-    cluster = ray_start_cluster_head
+@pytest.mark.parametrize(
+    "ray_start_cluster_head_with_env_vars",
+    [
+        {
+            "env_vars": {
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_EXPORT_ADDR": "http://127.0.0.1",
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_EXPORT_PORT": "12345",
+            },
+        },
+    ],
+    indirect=True,
+)
+def test_aggregator_agent_receive_multiple_events(
+    ray_start_cluster_head_with_env_vars, httpserver
+):
+    cluster = ray_start_cluster_head_with_env_vars
     stub = get_event_aggregator_grpc_stub(
         cluster.webui_url, cluster.gcs_address, cluster.head_node.node_id
     )
@@ -261,6 +332,8 @@ def test_aggregator_agent_receive_multiple_events(ray_start_cluster_head, httpse
         {
             "env_vars": {
                 "RAY_DASHBOARD_AGGREGATOR_AGENT_MAX_EVENT_BUFFER_SIZE": 1,
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_EXPORT_ADDR": "http://127.0.0.1",
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_EXPORT_PORT": "12345",
             },
         },
     ],
@@ -315,8 +388,22 @@ def test_aggregator_agent_receive_multiple_events_failures(
     )
 
 
-def test_aggregator_agent_receive_empty_events(ray_start_cluster_head, httpserver):
-    cluster = ray_start_cluster_head
+@pytest.mark.parametrize(
+    "ray_start_cluster_head_with_env_vars",
+    [
+        {
+            "env_vars": {
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_EXPORT_ADDR": "http://127.0.0.1",
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_EXPORT_PORT": "12345",
+            },
+        },
+    ],
+    indirect=True,
+)
+def test_aggregator_agent_receive_empty_events(
+    ray_start_cluster_head_with_env_vars, httpserver
+):
+    cluster = ray_start_cluster_head_with_env_vars
     stub = get_event_aggregator_grpc_stub(
         cluster.webui_url, cluster.gcs_address, cluster.head_node.node_id
     )

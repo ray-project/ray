@@ -232,9 +232,12 @@ inline grpc::ChannelArguments CreateDefaultChannelArguments() {
   return arguments;
 }
 
-// Convert an epoch time in nanoseconds to a protobuf timestamp.
+// Convert an epoch time in nanoseconds to a protobuf timestamp
+// Ref: https://protobuf.dev/reference/php/api-docs/Google/Protobuf/Timestamp.html
 inline google::protobuf::Timestamp AbslTimeNanosToProtoTimestamp(int64_t nanos) {
   google::protobuf::Timestamp timestamp;
+
+  // Extract the seconds and the fractional nanoseconds from the epoch time
   timestamp.set_seconds(nanos / 1000000000);
   timestamp.set_nanos(nanos % 1000000000);
   return timestamp;

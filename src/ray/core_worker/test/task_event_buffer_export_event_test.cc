@@ -61,7 +61,7 @@ class TaskEventTestWriteExport : public ::testing::Test {
 
     task_event_buffer_ = std::make_unique<TaskEventBufferImpl>(
         std::make_unique<ray::gcs::MockGcsClient>(),
-        std::make_unique<ray::MockEventAggregatorExporter>());
+        std::make_unique<ray::MockEventAggregatorClient>());
   }
 
   virtual void SetUp() { RAY_CHECK_OK(task_event_buffer_->Start(/*auto_flush*/ false)); }
