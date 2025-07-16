@@ -872,6 +872,28 @@ class HashShufflingOperatorBase(PhysicalOperator):
         raise NotImplementedError()
 
 
+@ray.remote(num_cpus=0)
+def _wait_until_healthy(aggregators: List[ray.ActorHandle]):
+    """Background health monitor. Exits once every actor's constructor has run."""
+    pending = [aggregator.__ray_ready__.remote() for aggregator in aggregators]
+
+    while pending:
+        # Non-blocking poll
+        _, unready_refs = ray.wait(
+            pending,
+            num_returns=len(pending),
+            timeout=0,
+        )
+
+        pending = unready_refs
+
+    num_aggregators = len(aggregators)
+
+    # All futures resolved → every aggregator is ready.
+    logger.debug("All %s hash-shuffle aggregators are now healthy", num_aggregators)
+    # Task ends here; nothing to clean up.
+
+
 class HashShuffleOperator(HashShufflingOperatorBase):
     def __init__(
         self,
@@ -1000,7 +1022,6 @@ class AggregatorPool:
         self._health_warning_interval_s: float = (
             self._data_context.hash_shuffle_aggregator_health_warning_interval_s
         )
-        self._healthy_logged: bool = False
         # Track readiness refs for non-blocking health checks
         self._pending_aggregators_refs: Optional[List[ObjectRef]] = None
 
@@ -1021,6 +1042,10 @@ class AggregatorPool:
             ).remote(aggregator_id, target_partition_ids, self._aggregation_factory_ref)
 
             self._aggregators.append(aggregator)
+
+        _ = _wait_until_healthy.remote(
+            self._aggregators,
+        )
 
     def _check_cluster_resources(self) -> None:
         """Check if cluster has enough resources to schedule all aggregators.
@@ -1152,16 +1177,6 @@ class AggregatorPool:
                 # All aggregators are ready – clear warning timer and, if this is
                 # the first time, emit a single DEBUG log.
                 self._last_health_warning_time = None
-                if not self._healthy_logged:
-                    logger.debug(
-                        f"All {self._num_aggregators} hash shuffle aggregators "
-                        f"are now healthy"
-                    )
-                    # NOTE: `log_once_if_all_healthy` has been removed – the one-time DEBUG log is
-                    # now emitted directly from `_check_aggregator_health` once all aggregators
-                    # report ready.
-
-                    self._healthy_logged = True
 
         except Exception as e:
             logger.warning(f"Failed to check aggregator health: {e}")
