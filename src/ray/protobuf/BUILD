@@ -161,6 +161,7 @@ proto_library(
     srcs = ["gcs_service.proto"],
     deps = [
         ":common_proto",
+        ":events_event_aggregator_service_proto",
         ":gcs_proto",
         ":pubsub_proto",
     ],

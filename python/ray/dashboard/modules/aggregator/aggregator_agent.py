@@ -214,7 +214,7 @@ class AggregatorAgent(
                     f", and {len(error_messages) - truncate_num} more events dropped"
                 )
         status = events_event_aggregator_service_pb2.AddEventStatus(
-            status_code=status_code, status_message=status_message
+            code=status_code, message=status_message
         )
         return events_event_aggregator_service_pb2.AddEventReply(status=status)
 
