@@ -98,6 +98,7 @@ class RayClusterOnSpark:
         spark_job_server,
         global_cluster_lock_fd,
         ray_client_server_port,
+        ray_metrics_monitor=None,
     ):
         self.address = address
         self.head_proc = head_proc
@@ -110,6 +111,7 @@ class RayClusterOnSpark:
         self.spark_job_server = spark_job_server
         self.global_cluster_lock_fd = global_cluster_lock_fd
         self.ray_client_server_port = ray_client_server_port
+        self.ray_metrics_monitor = ray_metrics_monitor
 
         self.is_shutdown = False
         self.spark_job_is_canceled = False
@@ -255,6 +257,9 @@ class RayClusterOnSpark:
                 _logger.warning(
                     "An Error occurred during shutdown of ray head node: " f"{repr(e)}"
                 )
+
+            if self.ray_metrics_monitor is not None:
+                self.ray_metrics_monitor.finish()
             self.is_shutdown = True
 
     def __enter__(self):
@@ -696,6 +701,10 @@ def _setup_ray_cluster(
     # Set RAY_ADDRESS environment variable to the cluster address.
     os.environ["RAY_ADDRESS"] = cluster_address
 
+    if log_system_metrics:
+        from ray.util.spark.ray_metrics_monitor import RayMetricsMonitor
+        ray_metrics_monitor = RayMetricsMonitor()
+        ray_metrics_monitor.start()
     ray_cluster_handler = RayClusterOnSpark(
         address=cluster_address,
         head_proc=ray_head_proc,
@@ -708,6 +717,7 @@ def _setup_ray_cluster(
         spark_job_server=spark_job_server,
         global_cluster_lock_fd=global_cluster_lock_fd,
         ray_client_server_port=ray_client_server_port,
+        ray_metrics_monitor=ray_metrics_monitor
     )
 
     start_hook.on_cluster_created(ray_cluster_handler)
@@ -717,7 +727,6 @@ def _setup_ray_cluster(
 
 _active_ray_cluster = None
 _active_ray_cluster_rwlock = threading.RLock()
-_ray_metrics_monitor = None
 
 
 def _create_resource_profile(num_cpus_per_node, num_gpus_per_node):
@@ -1208,14 +1217,6 @@ def _setup_ray_cluster_internal(
             except Exception:
                 pass
             raise RuntimeError("Launch Ray-on-Spark cluster failed") from e
-
-        if log_system_metrics:
-            from ray.util.spark.ray_metrics_monitor import RayMetricsMonitor
-
-            global _ray_metrics_monitor
-
-            _ray_metrics_monitor = RayMetricsMonitor()
-            _ray_metrics_monitor.start()
 
     head_ip = cluster.address.split(":")[0]
     remote_connection_address = f"ray://{head_ip}:{cluster.ray_client_server_port}"
@@ -1721,9 +1722,6 @@ def shutdown_ray_cluster() -> None:
 
         _active_ray_cluster.shutdown()
         _active_ray_cluster = None
-
-        if _ray_metrics_monitor is not None:
-            _ray_metrics_monitor.finish()
 
 
 _global_ray_cluster_cancel_event = None

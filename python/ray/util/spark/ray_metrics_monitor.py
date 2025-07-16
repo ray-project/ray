@@ -124,12 +124,20 @@ class RayMetricsMonitor:
         from mlflow.utils.autologging_utils import BatchMetricsLogger
 
         self._mlflow_experiment_id = mlflow.tracking.fluent._get_experiment_id()
-        self._run_id = MlflowClient().create_run(self._mlflow_experiment_id)
+        self._run_id = MlflowClient().create_run(self._mlflow_experiment_id).info.run_id
         self._sampling_interval = sampling_interval
         self._logging_step = 0
         self.mlflow_logger = BatchMetricsLogger(self._run_id)
         self._shutdown_event = threading.Event()
         self._process = None
+
+    @property
+    def mlflow_experiment_id(self):
+        return self._mlflow_experiment_id
+
+    @property
+    def run_id(self):
+        return self._run_id
 
     def start(self):
         """Start monitoring system metrics."""
@@ -141,23 +149,22 @@ class RayMetricsMonitor:
             )
             self._process.start()
         except Exception as e:
+            _logger.error(f"Failed to start RayMetricsMonitor thread: {e}")
             self._process = None
 
     def collect_metrics(self):
         try:
             return collect_ray_metrics()
-        except Exception:
+        except Exception as e:
+            _logger.warning(f"Failed to collect Ray metrics: {e}")
             return {}
 
     def monitor(self):
         """Main monitoring loop, which consistently collect and log system metrics."""
         from mlflow.tracking.fluent import get_run
 
-        # wait for Ray server to spin up.
-        time.sleep(5)
         while not self._shutdown_event.is_set():
             metrics = self.collect_metrics()
-            self._shutdown_event.wait(self._sampling_interval)
             try:
                 # Get the MLflow run to check if the run is not RUNNING.
                 run = get_run(self._run_id)
@@ -176,6 +183,7 @@ class RayMetricsMonitor:
                     "already terminated."
                 )
                 return
+            self._shutdown_event.wait(self._sampling_interval)
 
     def publish_metrics(self, metrics):
         """Log collected metrics to MLflow."""

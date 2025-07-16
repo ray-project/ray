@@ -94,10 +94,11 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
             get_spark_session().sparkContext, port, "Ray Cluster Dashboard"
         )
 
-        if ray.util.spark.cluster_init._ray_metrics_monitor is not None:
-            mlflow_exp_id = ray.util.spark.cluster_init._ray_metrics_monitor._mlflow_experiment_id
-            mlflow_run_id = ray.util.spark.cluster_init._ray_metrics_monitor._run_id
-            link_url = f"ml/experiments/{mlflow_exp_id}/runs/{mlflow_run_id}/system-metrics",
+        ray_metrics_monitor = ray.util.spark.cluster_init._active_ray_cluster.ray_metrics_monitor
+        if ray_metrics_monitor is not None:
+            mlflow_exp_id = ray_metrics_monitor.mlflow_experiment_id
+            mlflow_run_id = ray_metrics_monitor.run_id
+            link_url = f"ml/experiments/{mlflow_exp_id}/runs/{mlflow_run_id}/system-metrics"
             get_databricks_display_html_function()(f"""
               <div style="margin-top: 16px;margin-bottom: 16px">
                   <a href="{link_url}">
