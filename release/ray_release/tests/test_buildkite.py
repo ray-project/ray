@@ -434,6 +434,7 @@ class BuildkiteSettingsTest(unittest.TestCase):
                 ("other_2", False),
                 ("other_3", False),
                 ("test_3", False),
+                ("test_4.kuberay", False),
             ],
         )
         assert not test.get("update_from_s3")
