@@ -149,5 +149,33 @@ class TestRemoteCode:
         wait_for_condition(self._is_default_app_running, timeout=300)
 
 
+def test_mistral_tokenizer_download():
+    """
+    Test that the Mistral tokenizer can be downloaded successfully.
+    Regression for https://github.com/ray-project/ray/issues/53873
+    """
+    llm_config = LLMConfig(
+        model_loading_config=dict(
+            model_id="mistralai/Devstral-Small-2505",
+            model_source="mistralai/Devstral-Small-2505",
+        ),
+        runtime_env=dict(env_vars={"VLLM_USE_V1": "1"}),
+        engine_kwargs=dict(
+            enforce_eager=True,
+            tokenizer_mode="mistral",
+            tensor_parallel_size=2,
+            pipeline_parallel_size=1,
+        ),
+    )
+
+    app = build_openai_app({"llm_configs": [llm_config]})
+    serve.run(app, blocking=False)
+    wait_for_condition(
+        lambda: serve.status().applications[SERVE_DEFAULT_APP_NAME].status
+        == ApplicationStatus.RUNNING,
+        timeout=300,
+    )
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

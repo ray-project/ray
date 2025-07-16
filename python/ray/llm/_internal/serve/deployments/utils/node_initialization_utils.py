@@ -143,9 +143,12 @@ def _initialize_local_node(
     if not isinstance(local_path, str) or not os.path.exists(local_path):
         logger.info(f"Downloading the tokenizer for {engine_config.actual_hf_model_id}")
 
-    # TODO (Kourosh): commented out since for Mistral models that don't support
-    # tekken this code does not work (e.g. mistralai/Devstral-Small-2505)
-    # _ = transformers.AutoTokenizer.from_pretrained(
-    #     engine_config.actual_hf_model_id,
-    #     trust_remote_code=engine_config.trust_remote_code,
-    # )
+    if engine_config.engine_kwargs.get("tokenizer_mode", None) == "mistral":
+        from vllm.transformers_utils.tokenizers.mistral import MistralTokenizer
+
+        _ = MistralTokenizer.from_pretrained(engine_config.actual_hf_model_id)
+    else:
+        _ = transformers.AutoTokenizer.from_pretrained(
+            engine_config.actual_hf_model_id,
+            trust_remote_code=engine_config.trust_remote_code,
+        )
