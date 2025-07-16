@@ -341,6 +341,18 @@ class DeploymentStatusInfo:
                     status=DeploymentStatus.UPSCALING, message=message
                 )
 
+            # Manually upscale replicas with config update before previous upscaling/downscaling has finished
+            elif (
+                self.status_trigger == DeploymentStatusTrigger.AUTOSCALING
+                and trigger
+                == DeploymentStatusInternalTrigger.MANUALLY_INCREASE_NUM_REPLICAS
+            ):
+                return self._updated_copy(
+                    status=DeploymentStatus.UPSCALING,
+                    status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
+                    message=message,
+                )
+
             # Downscale replicas before previous upscaling/downscaling has finished
             elif (
                 self.status_trigger == DeploymentStatusTrigger.AUTOSCALING
@@ -352,6 +364,18 @@ class DeploymentStatusInfo:
             ):
                 return self._updated_copy(
                     status=DeploymentStatus.DOWNSCALING, message=message
+                )
+
+            # Manually decrease replicas with config update before previous upscaling/downscaling has finished
+            elif (
+                self.status_trigger == DeploymentStatusTrigger.AUTOSCALING
+                and trigger
+                == DeploymentStatusInternalTrigger.MANUALLY_DECREASE_NUM_REPLICAS
+            ):
+                return self._updated_copy(
+                    status=DeploymentStatus.DOWNSCALING,
+                    status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
+                    message=message,
                 )
 
             # Failures occurred while upscaling/downscaling
