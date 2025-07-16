@@ -316,6 +316,13 @@ const rpc::ObjectReference &TaskSpecification::ArgRef(size_t arg_index) const {
   return message_->args(arg_index).object_ref();
 }
 
+rpc::TensorTransport TaskSpecification::ArgTensorTransport(size_t arg_index) const {
+  if (message_->args(arg_index).has_tensor_transport()) {
+    return message_->args(arg_index).tensor_transport();
+  }
+  return rpc::TensorTransport::OBJECT_STORE;
+}
+
 const uint8_t *TaskSpecification::ArgData(size_t arg_index) const {
   return reinterpret_cast<const uint8_t *>(message_->args(arg_index).data().data());
 }
@@ -473,6 +480,10 @@ bool TaskSpecification::ShouldRetryExceptions() const {
 
 WorkerID TaskSpecification::CallerWorkerId() const {
   return WorkerID::FromBinary(message_->caller_address().worker_id());
+}
+
+std::string TaskSpecification::CallerWorkerIdBinary() const {
+  return message_->caller_address().worker_id();
 }
 
 NodeID TaskSpecification::CallerNodeId() const {

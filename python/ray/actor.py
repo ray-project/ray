@@ -1,12 +1,32 @@
 import inspect
 import logging
-from typing import Any, Dict, List, Literal, Optional, Tuple, Union, TYPE_CHECKING
+from typing import (
+    Any,
+    Dict,
+    List,
+    Literal,
+    Optional,
+    Tuple,
+    Union,
+    TYPE_CHECKING,
+    TypeVar,
+    Generic,
+    Callable,
+    overload,
+)
+
+try:
+    from typing import ParamSpec
+    from typing import Concatenate
+except ImportError:
+    from typing_extensions import ParamSpec
+    from typing_extensions import Concatenate
 
 import ray._private.ray_constants as ray_constants
-import ray._private.signature as signature
+import ray._common.signature as signature
 import ray._raylet
-from ray import ActorClassID, Language, cross_language
-from ray._private import ray_option_utils
+from ray import ActorClassID, Language, cross_language, ObjectRef
+from ray._common import ray_option_utils
 from ray._private.async_compat import has_async_methods
 from ray._private.auto_init_hook import wrap_auto_init
 from ray._private.client_mode_hook import (
@@ -19,7 +39,7 @@ from ray._private.inspect_util import (
     is_function_or_method,
     is_static_method,
 )
-from ray._private.ray_option_utils import _warn_if_using_deprecated_placement_group
+from ray._common.ray_option_utils import _warn_if_using_deprecated_placement_group
 from ray._private.utils import get_runtime_env_info, parse_runtime_env_for_task_or_actor
 from ray._raylet import (
     STREAMING_GENERATOR_RETURN,
@@ -50,6 +70,326 @@ logger = logging.getLogger(__name__)
 
 # Hook to call with (actor, resources, strategy) on each local actor creation.
 _actor_launch_hook = None
+
+# TypeVar for generic ActorHandle
+T = TypeVar("T")
+
+# return type of ActorClass[T].remote()
+ActorProxy = Union["ActorHandle[T]", type[T]]
+
+_Ret = TypeVar("_Ret")
+_P = ParamSpec("_P")
+_T0 = TypeVar("_T0")
+_T1 = TypeVar("_T1")
+_T2 = TypeVar("_T2")
+_T3 = TypeVar("_T3")
+_T4 = TypeVar("_T4")
+_T5 = TypeVar("_T5")
+_T6 = TypeVar("_T6")
+_T7 = TypeVar("_T7")
+_T8 = TypeVar("_T8")
+_T9 = TypeVar("_T9")
+
+
+class _RemoteMethodNoArgs(Generic[_Ret]):
+    def remote(self) -> "ObjectRef[_Ret]":
+        ...
+
+    def bind(self) -> Any:
+        ...
+
+
+class _RemoteMethod0(Generic[_Ret, _T0]):
+    def remote(self, __arg0: "Union[_T0, ObjectRef[_T0]]") -> "ObjectRef[_Ret]":
+        ...
+
+    def bind(self, __arg0: _T0) -> Any:
+        ...
+
+
+class _RemoteMethod1(Generic[_Ret, _T0, _T1]):
+    def remote(
+        self, __arg0: "Union[_T0, ObjectRef[_T0]]", __arg1: "Union[_T1, ObjectRef[_T1]]"
+    ) -> "ObjectRef[_Ret]":
+        ...
+
+    def bind(self, __arg0: _T0, __arg1: _T1) -> Any:
+        ...
+
+
+class _RemoteMethod2(Generic[_Ret, _T0, _T1, _T2]):
+    def remote(
+        self,
+        __arg0: "Union[_T0, ObjectRef[_T0]]",
+        __arg1: "Union[_T1, ObjectRef[_T1]]",
+        __arg2: "Union[_T2, ObjectRef[_T2]]",
+    ) -> "ObjectRef[_Ret]":
+        ...
+
+    def bind(self, __arg0: _T0, __arg1: _T1, __arg2: _T2) -> Any:
+        ...
+
+
+class _RemoteMethod3(Generic[_Ret, _T0, _T1, _T2, _T3]):
+    def remote(
+        self,
+        __arg0: "Union[_T0, ObjectRef[_T0]]",
+        __arg1: "Union[_T1, ObjectRef[_T1]]",
+        __arg2: "Union[_T2, ObjectRef[_T2]]",
+        __arg3: "Union[_T3, ObjectRef[_T3]]",
+    ) -> "ObjectRef[_Ret]":
+        ...
+
+    def bind(self, __arg0: _T0, __arg1: _T1, __arg2: _T2, __arg3: _T3) -> Any:
+        ...
+
+
+class _RemoteMethod4(Generic[_Ret, _T0, _T1, _T2, _T3, _T4]):
+    def remote(
+        self,
+        __arg0: "Union[_T0, ObjectRef[_T0]]",
+        __arg1: "Union[_T1, ObjectRef[_T1]]",
+        __arg2: "Union[_T2, ObjectRef[_T2]]",
+        __arg3: "Union[_T3, ObjectRef[_T3]]",
+        __arg4: "Union[_T4, ObjectRef[_T4]]",
+    ) -> "ObjectRef[_Ret]":
+        ...
+
+    def bind(
+        self, __arg0: _T0, __arg1: _T1, __arg2: _T2, __arg3: _T3, __arg4: _T4
+    ) -> Any:
+        ...
+
+
+class _RemoteMethod5(Generic[_Ret, _T0, _T1, _T2, _T3, _T4, _T5]):
+    def remote(
+        self,
+        __arg0: "Union[_T0, ObjectRef[_T0]]",
+        __arg1: "Union[_T1, ObjectRef[_T1]]",
+        __arg2: "Union[_T2, ObjectRef[_T2]]",
+        __arg3: "Union[_T3, ObjectRef[_T3]]",
+        __arg4: "Union[_T4, ObjectRef[_T4]]",
+        __arg5: "Union[_T5, ObjectRef[_T5]]",
+    ) -> "ObjectRef[_Ret]":
+        ...
+
+    def bind(
+        self,
+        __arg0: _T0,
+        __arg1: _T1,
+        __arg2: _T2,
+        __arg3: _T3,
+        __arg4: _T4,
+        __arg5: _T5,
+    ) -> Any:
+        ...
+
+
+class _RemoteMethod6(Generic[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6]):
+    def remote(
+        self,
+        __arg0: "Union[_T0, ObjectRef[_T0]]",
+        __arg1: "Union[_T1, ObjectRef[_T1]]",
+        __arg2: "Union[_T2, ObjectRef[_T2]]",
+        __arg3: "Union[_T3, ObjectRef[_T3]]",
+        __arg4: "Union[_T4, ObjectRef[_T4]]",
+        __arg5: "Union[_T5, ObjectRef[_T5]]",
+        __arg6: "Union[_T6, ObjectRef[_T6]]",
+    ) -> "ObjectRef[_Ret]":
+        ...
+
+    def bind(
+        self,
+        __arg0: _T0,
+        __arg1: _T1,
+        __arg2: _T2,
+        __arg3: _T3,
+        __arg4: _T4,
+        __arg5: _T5,
+        __arg6: _T6,
+    ) -> Any:
+        ...
+
+
+class _RemoteMethod7(Generic[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7]):
+    def remote(
+        self,
+        __arg0: "Union[_T0, ObjectRef[_T0]]",
+        __arg1: "Union[_T1, ObjectRef[_T1]]",
+        __arg2: "Union[_T2, ObjectRef[_T2]]",
+        __arg3: "Union[_T3, ObjectRef[_T3]]",
+        __arg4: "Union[_T4, ObjectRef[_T4]]",
+        __arg5: "Union[_T5, ObjectRef[_T5]]",
+        __arg6: "Union[_T6, ObjectRef[_T6]]",
+        __arg7: "Union[_T7, ObjectRef[_T7]]",
+    ) -> "ObjectRef[_Ret]":
+        ...
+
+    def bind(
+        self,
+        __arg0: _T0,
+        __arg1: _T1,
+        __arg2: _T2,
+        __arg3: _T3,
+        __arg4: _T4,
+        __arg5: _T5,
+        __arg6: _T6,
+        __arg7: _T7,
+    ) -> Any:
+        ...
+
+
+class _RemoteMethod8(Generic[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8]):
+    def remote(
+        self,
+        __arg0: "Union[_T0, ObjectRef[_T0]]",
+        __arg1: "Union[_T1, ObjectRef[_T1]]",
+        __arg2: "Union[_T2, ObjectRef[_T2]]",
+        __arg3: "Union[_T3, ObjectRef[_T3]]",
+        __arg4: "Union[_T4, ObjectRef[_T4]]",
+        __arg5: "Union[_T5, ObjectRef[_T5]]",
+        __arg6: "Union[_T6, ObjectRef[_T6]]",
+        __arg7: "Union[_T7, ObjectRef[_T7]]",
+        __arg8: "Union[_T8, ObjectRef[_T8]]",
+    ) -> "ObjectRef[_Ret]":
+        ...
+
+    def bind(
+        self,
+        __arg0: _T0,
+        __arg1: _T1,
+        __arg2: _T2,
+        __arg3: _T3,
+        __arg4: _T4,
+        __arg5: _T5,
+        __arg6: _T6,
+        __arg7: _T7,
+        __arg8: _T8,
+    ) -> Any:
+        ...
+
+
+class _RemoteMethod9(Generic[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, _T9]):
+    def remote(
+        self,
+        __arg0: "Union[_T0, ObjectRef[_T0]]",
+        __arg1: "Union[_T1, ObjectRef[_T1]]",
+        __arg2: "Union[_T2, ObjectRef[_T2]]",
+        __arg3: "Union[_T3, ObjectRef[_T3]]",
+        __arg4: "Union[_T4, ObjectRef[_T4]]",
+        __arg5: "Union[_T5, ObjectRef[_T5]]",
+        __arg6: "Union[_T6, ObjectRef[_T6]]",
+        __arg7: "Union[_T7, ObjectRef[_T7]]",
+        __arg8: "Union[_T8, ObjectRef[_T8]]",
+        __arg9: "Union[_T9, ObjectRef[_T9]]",
+    ) -> "ObjectRef[_Ret]":
+        ...
+
+    def bind(
+        self,
+        __arg0: _T0,
+        __arg1: _T1,
+        __arg2: _T2,
+        __arg3: _T3,
+        __arg4: _T4,
+        __arg5: _T5,
+        __arg6: _T6,
+        __arg7: _T7,
+        __arg8: _T8,
+        __arg9: _T9,
+    ) -> Any:
+        ...
+
+
+@overload
+def method(
+    __method: Callable[[Any], _Ret],
+) -> _RemoteMethodNoArgs[_Ret]:
+    ...
+
+
+@overload
+def method(
+    __method: Callable[[Any, _T0], _Ret],
+) -> _RemoteMethod0[_Ret, _T0]:
+    ...
+
+
+@overload
+def method(
+    __method: Callable[[Any, _T0, _T1], _Ret],
+) -> _RemoteMethod1[_Ret, _T0, _T1]:
+    ...
+
+
+@overload
+def method(
+    __method: Callable[[Any, _T0, _T1, _T2], _Ret],
+) -> _RemoteMethod2[_Ret, _T0, _T1, _T2]:
+    ...
+
+
+@overload
+def method(
+    __method: Callable[[Any, _T0, _T1, _T2, _T3], _Ret],
+) -> _RemoteMethod3[_Ret, _T0, _T1, _T2, _T3]:
+    ...
+
+
+@overload
+def method(
+    __method: Callable[[Any, _T0, _T1, _T2, _T3, _T4], _Ret],
+) -> _RemoteMethod4[_Ret, _T0, _T1, _T2, _T3, _T4]:
+    ...
+
+
+@overload
+def method(
+    __method: Callable[[Any, _T0, _T1, _T2, _T3, _T4, _T5], _Ret],
+) -> _RemoteMethod5[_Ret, _T0, _T1, _T2, _T3, _T4, _T5]:
+    ...
+
+
+@overload
+def method(
+    __method: Callable[[Any, _T0, _T1, _T2, _T3, _T4, _T5, _T6], _Ret],
+) -> _RemoteMethod6[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6]:
+    ...
+
+
+@overload
+def method(
+    __method: Callable[[Any, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7], _Ret],
+) -> _RemoteMethod7[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7]:
+    ...
+
+
+@overload
+def method(
+    __method: Callable[[Any, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8], _Ret],
+) -> _RemoteMethod8[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8]:
+    ...
+
+
+@overload
+def method(
+    __method: Callable[[Any, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, _T9], _Ret],
+) -> _RemoteMethod9[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, _T9]:
+    ...
+
+
+@overload
+def method(
+    *,
+    num_returns: Optional[Union[int, Literal["streaming"]]] = None,
+    concurrency_group: Optional[str] = None,
+    max_task_retries: Optional[int] = None,
+    retry_exceptions: Optional[Union[bool, list, tuple]] = None,
+    _generator_backpressure_num_objects: Optional[int] = None,
+    enable_task_events: Optional[bool] = None,
+    tensor_transport: Optional[TensorTransportEnum] = None,
+) -> Callable[[Callable[Concatenate[Any, _P], _Ret]], Any]:
+    ...
 
 
 @PublicAPI
@@ -112,20 +452,8 @@ def method(*args, **kwargs):
         "enable_task_events",
         "tensor_transport",
     ]
-    error_string = (
-        "The @ray.method decorator must be applied using at least one of "
-        f"the arguments in the list {valid_kwargs}, for example "
-        "'@ray.method(num_returns=2)'."
-    )
-    assert len(args) == 0 and len(kwargs) > 0, error_string
-    for key in kwargs:
-        key_error_string = (
-            f"Unexpected keyword argument to @ray.method: '{key}'. The "
-            f"supported keyword arguments are {valid_kwargs}"
-        )
-        assert key in valid_kwargs, key_error_string
 
-    def annotate_method(method):
+    def annotate_method(method: Callable[_P, _Ret]):
         if "num_returns" in kwargs:
             method.__ray_num_returns__ = kwargs["num_returns"]
         if "max_task_retries" in kwargs:
@@ -145,6 +473,25 @@ def method(*args, **kwargs):
                 kwargs["tensor_transport"]
             )
         return method
+
+    # Check if decorator is called without parentheses (args[0] would be the function)
+    if len(args) == 1 and callable(args[0]) and len(kwargs) == 0:
+        # Called as @ray.method (without parentheses)
+        return annotate_method(args[0])
+
+    # Called as @ray.method() or @ray.method(options...)
+    error_string = (
+        "The @ray.method decorator must be applied using no arguments or at "
+        f"least one of the arguments in the list {valid_kwargs}, for example "
+        "'@ray.method(num_returns=2)'."
+    )
+    assert len(args) == 0, error_string
+    for key in kwargs:
+        key_error_string = (
+            f"Unexpected keyword argument to @ray.method: '{key}'. The "
+            f"supported keyword arguments are {valid_kwargs}"
+        )
+        assert key in valid_kwargs, key_error_string
 
     return annotate_method
 
@@ -761,7 +1108,7 @@ def _process_option_dict(actor_options):
 
 
 @PublicAPI
-class ActorClass:
+class ActorClass(Generic[T]):
     """An actor class.
 
     This is a decorated class. It can be used to create actors.
@@ -901,7 +1248,7 @@ class ActorClass:
             self._default_options["runtime_env"] = self.__ray_metadata__.runtime_env
         return self
 
-    def remote(self, *args, **kwargs):
+    def remote(self, *args, **kwargs) -> ActorProxy[T]:
         """Create an actor.
 
         Args:
@@ -1052,7 +1399,7 @@ class ActorClass:
 
     @wrap_auto_init
     @_tracing_actor_creation
-    def _remote(self, args=None, kwargs=None, **actor_options):
+    def _remote(self, args=None, kwargs=None, **actor_options) -> ActorProxy[T]:
         """Create an actor.
 
         This method allows more flexibility than the remote method because
@@ -1434,7 +1781,7 @@ class ActorClass:
 
 
 @PublicAPI
-class ActorHandle:
+class ActorHandle(Generic[T]):
     """A handle to an actor.
 
     The fields in this class are prefixed with _ray_ to hide them from the user

@@ -1,4 +1,5 @@
 import asyncio
+import collections
 import concurrent.futures
 import copy
 import importlib
@@ -19,8 +20,8 @@ import requests
 
 import ray
 import ray.util.serialization_addons
+from ray._common.constants import HEAD_NODE_RESOURCE_NAME
 from ray._common.utils import get_random_alphanumeric_string, import_attr
-from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
 from ray._private.worker import LOCAL_MODE, SCRIPT_MODE
 from ray._raylet import MessagePackSerializer
 from ray.actor import ActorHandle
@@ -644,3 +645,95 @@ def run_coroutine_or_future_threadsafe(coro_or_future, loop):
 
     loop.call_soon_threadsafe(callback)
     return future
+
+
+class Semaphore:
+    """Based on asyncio.Semaphore.
+
+    This is a semaphore that can be used to limit the number of concurrent requests.
+    Its maximum value is dynamic and is determined by the `get_value_fn` function.
+    """
+
+    def __init__(self, get_value_fn: Callable[[], int]):
+        self._waiters = None
+        self._value = 0
+        self._get_value_fn = get_value_fn
+
+    def __repr__(self):
+        res = super().__repr__()
+        extra = "locked" if self.locked() else f"unlocked, value:{self._value}"
+        if self._waiters:
+            extra = f"{extra}, waiters:{len(self._waiters)}"
+        return f"<{res[1:-1]} [{extra}]>"
+
+    async def __aenter__(self):
+        await self.acquire()
+        # We have no use for the "as ..."  clause in the with
+        # statement for locks.
+        return None
+
+    async def __aexit__(self, exc_type, exc, tb):
+        self.release()
+
+    def get_max_value(self):
+        return self._get_value_fn()
+
+    def locked(self):
+        """Returns True if semaphore cannot be acquired immediately."""
+        return self._value >= self.get_max_value() or (
+            any(not w.cancelled() for w in (self._waiters or ()))
+        )
+
+    async def acquire(self):
+        """Acquire a semaphore.
+        If the internal counter is larger than zero on entry,
+        decrement it by one and return True immediately.  If it is
+        zero on entry, block, waiting until some other coroutine has
+        called release() to make it larger than 0, and then return
+        True.
+        """
+        if not self.locked():
+            self._value += 1
+            return True
+
+        if self._waiters is None:
+            self._waiters = collections.deque()
+        fut = asyncio.Future()
+        self._waiters.append(fut)
+
+        # Finally block should be called before the CancelledError
+        # handling as we don't want CancelledError to call
+        # _wake_up_first() and attempt to wake up itself.
+        try:
+            try:
+                await fut
+            finally:
+                self._waiters.remove(fut)
+        except asyncio.CancelledError:
+            if not fut.cancelled():
+                self._value -= 1
+                self._wake_up_next()
+            raise
+
+        if self._value > 0:
+            self._wake_up_next()
+        return True
+
+    def release(self):
+        """Release a semaphore, incrementing the internal counter by one.
+        When it was zero on entry and another coroutine is waiting for it to
+        become larger than zero again, wake up that coroutine.
+        """
+        self._value -= 1
+        self._wake_up_next()
+
+    def _wake_up_next(self):
+        """Wake up the first waiter that isn't done."""
+        if not self._waiters:
+            return
+
+        for fut in self._waiters:
+            if not fut.done():
+                self._value += 1
+                fut.set_result(True)
+                return
