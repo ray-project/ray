@@ -1,24 +1,12 @@
 .. _aggregations:
 
-==============
 Aggregations
-==============
+============
 
 Ray Data provides a flexible and performant API for performing aggregations on :class:`~ray.data.dataset.Dataset`. 
-Internally, aggregations are powered by the :ref:`hash-shuffle backend <hash-shuffle>`.
-
-.. note::
-    To use the hash-shuffle algorithm for aggregations, you need to set the shuffle strategy explicitly:
-    
-    .. testcode::
-        
-        from ray.data.context import DataContext, ShuffleStrategy
-        
-        # Set hash-shuffle as the shuffle strategy
-        DataContext.get_current().shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
 
 Basic Aggregations
------------------
+------------------
 
 Ray Data provides several built-in aggregation functions like 
 * :class:`~ray.data.aggregate.Count`, * :class:`~ray.data.aggregate.Sum`, * :class:`~ray.data.aggregate.Mean`,
@@ -51,9 +39,10 @@ These can be used directly with datasets like shown below:
 
 
 Using Multiple Aggregations
--------------------------
+---------------------------
 
-You can pass multiple aggregation functions to compute several metrics at once:
+Each of the preceding methods also has a corresponding :ref:`AggregateFnV2 <aggregations_api_ref>` object. These objects can be used in
+:meth:`~ray.data.Dataset.aggregate()` or :meth:`Dataset.groupby().aggregate() <ray.data.grouped_data.GroupedData.aggregate>` to compute multiple aggregations at once.
 
 .. testcode::
 
@@ -74,10 +63,10 @@ You can pass multiple aggregation functions to compute several metrics at once:
     # result: [{'group_key': 0, 'count(id)': 34, 'mean(id)': ..., 'min(id)': ..., 'max(id)': ..., 'std(id)': ...},
     #          {'group_key': 1, 'count(id)': 33, 'mean(id)': ..., 'min(id)': ..., 'max(id)': ..., 'std(id)': ...},
     #          {'group_key': 2, 'count(id)': 33, 'mean(id)': ..., 'min(id)': ..., 'max(id)': ..., 'std(id)': ...}]
-
+    
 
 Custom Aggregations
-------------------
+--------------------
 
 For more complex aggregation needs, Ray Data allows you to create custom aggregations by implementing the :class:`~ray.data.aggregate.AggregateFnV2` interface. The AggregateFnV2 interface provides a framework for implementing distributed aggregations with three key methods:
 
@@ -92,10 +81,10 @@ The aggregation process follows these steps:
 3. **Combination**: The `combine` method merges partial results into a single accumulator
 4. **Finalization**: The `_finalize` method transforms the final accumulator into the desired output
 
-Example: Creating a Missing Value Percentage Aggregator
+Example: Creating a Custom Mean Aggregator
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Here's an example of creating a custom aggregator that calculates the percentage of null values in a column:
+Here's an example of creating a custom aggregator that calculates the Mean of values in a column:
 
 .. testcode::
 
@@ -104,45 +93,55 @@ Here's an example of creating a custom aggregator that calculates the percentage
     import pyarrow.compute as pc
     from typing import List, Optional
 
-    class MissingValuePercentage(AggregateFnV2):
-        def __init__(self, on: str):
-            # Initialize with a list accumulator [null_count, total_count]
+    class Mean(AggregateFnV2):
+        """Defines mean aggregation."""
+
+        def __init__(
+            self,
+            on: Optional[str] = None,
+            ignore_nulls: bool = True,
+            alias_name: Optional[str] = None,
+        ):
             super().__init__(
-                f"missing_pct({on})",
+                alias_name if alias_name else f"mean({str(on)})",
                 on=on,
-                ignore_nulls=False,
-                zero_factory=lambda: [0, 0]
+                ignore_nulls=ignore_nulls,
+                # NOTE: We've to copy returned list here, as some
+                #       aggregations might be modifying elements in-place
+                zero_factory=lambda: list([0, 0]),  # noqa: C410
             )
 
-        def aggregate_block(self, block: Block) -> List[int]:
-            # Process a single block of data
+        def aggregate_block(self, block: Block) -> AggType:
             block_acc = BlockAccessor.for_block(block)
-            table = block_acc.to_arrow()
-            column = table.column(self._target_col_name)
-            
-            total_count = len(column)
-            null_count = pc.sum(pc.is_null(column, nan_is_null=True).cast("int32")).as_py()
-            
-            return [null_count, total_count]
+            count = block_acc.count(self._target_col_name, self._ignore_nulls)
 
-        def combine(self, current_accumulator: List[int], new: List[int]) -> List[int]:
-            # Merge two partial results
-            return [
-                current_accumulator[0] + new[0],  # Sum null counts
-                current_accumulator[1] + new[1],  # Sum total counts
-            ]
-
-        def _finalize(self, accumulator: List[int]) -> Optional[float]:
-            # Transform final result into percentage
-            if accumulator[1] == 0:
+            if count == 0 or count is None:
+                # Empty or all null.
                 return None
-            return (accumulator[0] / accumulator[1]) * 100.0
 
-    # Usage example
-    ds = ray.data.from_items([
-        {"value": 1}, {"value": None}, {"value": 3}, {"value": None}
-    ])
-    result = ds.aggregate(MissingValuePercentage(on="value"))
-    # result: {'missing_pct(value)': 50.0}
+            sum_ = block_acc.sum(self._target_col_name, self._ignore_nulls)
+
+            if is_null(sum_):
+                # In case of ignore_nulls=False and column containing 'null'
+                # return as is (to prevent unnecessary type conversions, when, for ex,
+                # using Pandas and returning None)
+                return sum_
+
+            return [sum_, count]
+
+        def combine(self, current_accumulator: AggType, new: AggType) -> AggType:
+            return [current_accumulator[0] + new[0], current_accumulator[1] + new[1]]
+
+        def _finalize(self, accumulator: AggType) -> Optional[U]:
+            if accumulator[1] == 0:
+                return np.nan
+
+            return accumulator[0] / accumulator[1]
 
 
+.. note::
+    Internally, aggregations support both the :ref:`hash-shuffle backend <hash-shuffle>` and the :ref:`range based backend <range-partitioning-shuffle>`.
+
+    To use the hash-shuffle algorithm for aggregations, you need to set the shuffle strategy explicitly:    
+    ``ray.data.DataContext.get_current().shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE`` before creating a ``Dataset``
+    

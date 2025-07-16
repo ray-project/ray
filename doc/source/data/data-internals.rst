@@ -120,6 +120,7 @@ ensuring that rows with the same key-values are being placed into the same parti
 .. note:: To use hash-shuffling in your aggregations and repartitioning operations, you need to currently specify
     ``ray.data.DataContext.get_current().shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE`` before creating a ``Dataset``.
 
+.. _range-partitioning-shuffle:
 
 Range-partitioning shuffle
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
