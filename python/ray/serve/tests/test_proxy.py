@@ -8,7 +8,6 @@ import ray
 from ray import serve
 from ray._common.test_utils import wait_for_condition
 from ray.actor import ActorHandle
-from ray.cluster_utils import Cluster
 from ray.serve._private.constants import (
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
     SERVE_NAMESPACE,
@@ -19,17 +18,15 @@ from ray.serve._private.test_utils import (
 )
 from ray.serve.config import gRPCOptions
 from ray.serve.generated import serve_pb2
+from ray.util.state import list_actors
 
 
 class TestTimeoutKeepAliveConfig:
     """Test setting keep_alive_timeout_s in config and env."""
 
     def get_proxy_actor(self) -> ActorHandle:
-        proxy_actor_name = None
-        for actor in ray._private.state.actors().values():
-            if actor["ActorClassName"] == "ProxyActor":
-                proxy_actor_name = actor["Name"]
-        return ray.get_actor(proxy_actor_name, namespace=SERVE_NAMESPACE)
+        [proxy_actor] = list_actors(filters=[("class_name", "=", "ProxyActor")])
+        return ray.get_actor(proxy_actor.name, namespace=SERVE_NAMESPACE)
 
     def test_default_keep_alive_timeout_s(self, ray_shutdown):
         """Test when no keep_alive_timeout_s is set.
@@ -120,7 +117,7 @@ def test_grpc_proxy_on_draining_nodes(ray_cluster):
     os.environ["TEST_WORKER_NODE_GRPC_PORT"] = str(worker_node_grpc_port)
 
     # Set up a cluster with 2 nodes.
-    cluster = Cluster()
+    cluster = ray_cluster
     cluster.add_node(num_cpus=0)
     cluster.add_node(num_cpus=2)
     cluster.wait_for_nodes()
@@ -151,18 +148,21 @@ def test_grpc_proxy_on_draining_nodes(ray_cluster):
 
     # Ensure worker node has both replicas.
     def check_replicas_on_worker_nodes():
-        _actors = ray._private.state.actors().values()
-        replica_nodes = [
-            a["Address"]["NodeID"]
-            for a in _actors
-            if a["ActorClassName"].startswith("ServeReplica")
-        ]
-        return len(set(replica_nodes)) == 1
+        return (
+            len(
+                {
+                    a.node_id
+                    for a in list_actors(address=cluster.address)
+                    if a.class_name.startswith("ServeReplica")
+                }
+            )
+            == 1
+        )
 
     wait_for_condition(check_replicas_on_worker_nodes)
 
     # Ensure total actors of 2 proxies, 1 controller, and 2 replicas, and 2 nodes exist.
-    wait_for_condition(lambda: len(ray._private.state.actors()) == 5)
+    wait_for_condition(lambda: len(list_actors(address=cluster.address)) == 5)
     assert len(ray.nodes()) == 2
 
     # Set up gRPC channels.
@@ -192,21 +192,12 @@ def test_grpc_proxy_on_draining_nodes(ray_cluster):
     # replicas on all nodes.
     serve.delete(name=app_name)
 
-    def _check():
-        _actors = ray._private.state.actors().values()
-        return (
-            len(
-                list(
-                    filter(
-                        lambda a: a["State"] == "ALIVE",
-                        _actors,
-                    )
-                )
-            )
-            == 3
+    wait_for_condition(
+        lambda: len(
+            list_actors(address=cluster.address, filters=[("STATE", "=", "ALIVE")])
         )
-
-    wait_for_condition(_check)
+        == 3,
+    )
 
     # Ensures ListApplications method on the head node is succeeding.
     wait_for_condition(

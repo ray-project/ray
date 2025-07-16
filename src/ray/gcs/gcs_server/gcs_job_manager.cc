@@ -159,13 +159,16 @@ void GcsJobManager::MarkJobAsFinished(rpc::JobTableData job_table_data,
     WriteDriverJobExportEvent(job_table_data);
 
     // Update running job status.
+    // Note: This operation must be idempotent since MarkJobFinished can be called
+    // multiple times due to network retries (see issue #53645).
     auto iter = running_job_start_times_.find(job_id);
-    RAY_CHECK(iter != running_job_start_times_.end());
-    running_job_start_times_.erase(iter);
-    ray::stats::STATS_job_duration_s.Record(
-        (job_table_data.end_time() - job_table_data.start_time()) / 1000.0,
-        {{"JobId", job_id.Hex()}});
-    ++finished_jobs_count_;
+    if (iter != running_job_start_times_.end()) {
+      running_job_start_times_.erase(iter);
+      ray::stats::STATS_job_duration_s.Record(
+          (job_table_data.end_time() - job_table_data.start_time()) / 1000.0,
+          {{"JobId", job_id.Hex()}});
+      ++finished_jobs_count_;
+    }
 
     done_callback(status);
   };
@@ -362,18 +365,17 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
     } else {
       for (int jj = 0; jj < reply->job_info_list_size(); jj++) {
         const auto &data = reply->job_info_list(jj);
-        auto job_id = JobID::FromBinary(data.job_id());
-        WorkerID worker_id = WorkerID::FromBinary(data.driver_address().worker_id());
 
         // If job is dead, no need to get.
         if (data.is_dead()) {
           reply->mutable_job_info_list(jj)->set_is_running_tasks(false);
-          core_worker_clients_.Disconnect(worker_id);
           size_t updated_finished_tasks = num_finished_tasks->fetch_add(1) + 1;
           try_send_reply(updated_finished_tasks);
         } else {
           // Get is_running_tasks from the core worker for the driver.
-          auto client = core_worker_clients_.GetOrConnect(data.driver_address());
+          auto job_id = JobID::FromBinary(data.job_id());
+          WorkerID worker_id = WorkerID::FromBinary(data.driver_address().worker_id());
+          auto client = worker_client_pool_.GetOrConnect(data.driver_address());
           auto pending_task_req = std::make_unique<rpc::NumPendingTasksRequest>();
           constexpr int64_t kNumPendingTasksRequestTimeoutMs = 1000;
           RAY_LOG(DEBUG) << "Send NumPendingTasksRequest to worker " << worker_id
@@ -414,7 +416,7 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
            send_reply_callback,
            job_data_key_to_indices,
            num_finished_tasks,
-           try_send_reply](auto result) {
+           try_send_reply](const auto &result) {
             for (const auto &data : result) {
               const std::string &job_data_key = data.first;
               // The JobInfo stored by the Ray Job API.

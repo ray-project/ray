@@ -33,6 +33,7 @@ from typing import (
     Optional,
     Tuple,
     Union,
+    NamedTuple,
 )
 
 import contextvars
@@ -67,6 +68,7 @@ from libcpp.unordered_map cimport unordered_map
 from libcpp.vector cimport vector as c_vector
 from libcpp.pair cimport pair as c_pair
 
+from cpython.object cimport PyTypeObject
 from cython.operator import dereference, postincrement
 from cpython.pystate cimport (
     PyGILState_Ensure,
@@ -229,6 +231,7 @@ from ray._common.utils import decode
 from ray._private.utils import DeferSigint
 from ray._private.object_ref_generator import DynamicObjectRefGenerator
 from ray.util.annotations import PublicAPI
+from ray._private.custom_types import TensorTransportEnum
 
 cimport cpython
 
@@ -281,6 +284,7 @@ async_task_name = contextvars.ContextVar('async_task_name', default=None)
 async_task_function_name = contextvars.ContextVar('async_task_function_name',
                                                   default=None)
 
+@PublicAPI
 class ObjectRefGenerator:
     """A generator to obtain object references
     from a task in a streaming manner.
@@ -562,6 +566,16 @@ class ObjectRefGenerator:
             "Serializing a ObjectRefGenerator is not allowed.")
 
 
+# Update the type names of the extension type so they are
+# ray.{ObjectRef, ObjectRefGenerator} instead of ray._raylet.*
+# For ObjectRefGenerator that can be done directly since it is
+# a full Python class. For ObjectRef we need to update the
+# tp_name since it is a C extension class and not a full class.
+cdef PyTypeObject* object_ref_py_type = <PyTypeObject*>ObjectRef
+object_ref_py_type.tp_name = "ray.ObjectRef"
+ObjectRefGenerator.__module__ = "ray"
+
+
 # For backward compatibility.
 StreamingObjectRefGenerator = ObjectRefGenerator
 
@@ -574,14 +588,22 @@ cdef c_bool is_plasma_object(shared_ptr[CRayObject] obj):
     return False
 
 
-cdef RayObjectsToDataMetadataPairs(
+class SerializedRayObject(NamedTuple):
+    data: Optional[Buffer]
+    metadata: Optional[Buffer]
+    # If set to None, use the default object store transport. Data will be
+    # either inlined in `data` or found in the plasma object store.
+    tensor_transport: Optional[TensorTransportEnum]
+
+
+cdef RayObjectsToSerializedRayObjects(
         const c_vector[shared_ptr[CRayObject]] objects):
-    data_metadata_pairs = []
+    serialized_ray_objects = []
     for i in range(objects.size()):
         # core_worker will return a nullptr for objects that couldn't be
         # retrieved from the store or if an object was an exception.
         if not objects[i].get():
-            data_metadata_pairs.append((None, None))
+            serialized_ray_objects.append(SerializedRayObject(None, None, None))
         else:
             data = None
             metadata = None
@@ -590,8 +612,9 @@ cdef RayObjectsToDataMetadataPairs(
             if objects[i].get().HasMetadata():
                 metadata = Buffer.make(
                     objects[i].get().GetMetadata()).to_pybytes()
-            data_metadata_pairs.append((data, metadata))
-    return data_metadata_pairs
+            tensor_transport = TensorTransportEnum(<int>(objects[i].get().GetTensorTransport()))
+            serialized_ray_objects.append(SerializedRayObject(data, metadata, tensor_transport))
+    return serialized_ray_objects
 
 
 cdef VectorToObjectRefs(const c_vector[CObjectReference] &object_refs,
@@ -1849,7 +1872,7 @@ cdef void execute_task(
                 if c_args.empty():
                     args, kwargs = [], {}
                 else:
-                    metadata_pairs = RayObjectsToDataMetadataPairs(c_args)
+                    metadata_pairs = RayObjectsToSerializedRayObjects(c_args)
                     object_refs = VectorToObjectRefs(
                             c_arg_refs,
                             skip_adding_local_ref=False)
@@ -1880,7 +1903,7 @@ cdef void execute_task(
 
                     for arg in args:
                         raise_if_dependency_failed(arg)
-                    args, kwargs = ray._private.signature.recover_args(args)
+                    args, kwargs = ray._common.signature.recover_args(args)
 
             if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK):
                 actor_id = core_worker.get_actor_id()
@@ -2264,6 +2287,12 @@ cdef execute_task_with_cancellation_handler(
                 f"Exited because worker reached max_calls={execution_info.max_calls}"
                 " for this method.")
 
+cdef void free_actor_object_callback(const CObjectID &c_object_id) nogil:
+    with gil:
+        object_id = c_object_id.Hex().decode()
+        gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
+        gpu_object_manager.gpu_object_store.remove_gpu_object(object_id)
+
 cdef shared_ptr[LocalMemoryBuffer] ray_error_to_memory_buf(ray_error):
     cdef bytes py_bytes = ray_error.to_bytes()
     return make_shared[LocalMemoryBuffer](
@@ -2594,7 +2623,7 @@ cdef void unhandled_exception_handler(const CRayObject& error) nogil:
             metadata = Buffer.make(error.GetMetadata()).to_pybytes()
         # TODO(ekl) why does passing a ObjectRef.nil() lead to shutdown errors?
         object_ids = [None]
-        worker.raise_errors([(data, metadata)], object_ids)
+        worker.raise_errors([SerializedRayObject(data, metadata, TensorTransportEnum.OBJECT_STORE)], object_ids)
 
 
 def maybe_initialize_job_config():
@@ -2975,6 +3004,7 @@ cdef class CoreWorker:
         options.driver_name = driver_name
         options.initialize_thread_callback = initialize_pygilstate_for_thread
         options.task_execution_callback = task_execution_handler
+        options.free_actor_object_callback = free_actor_object_callback
         options.check_signals = check_signals
         options.gc_collect = gc_collect
         options.spill_objects = spill_objects_handler
@@ -3161,9 +3191,6 @@ cdef class CoreWorker:
     def set_actor_repr_name(self, repr_name):
         CCoreWorkerProcess.GetCoreWorker().SetActorReprName(repr_name)
 
-    def get_plasma_event_handler(self):
-        return self.plasma_event_handler
-
     def get_objects(self, object_refs, int64_t timeout_ms=-1):
         cdef:
             c_vector[shared_ptr[CRayObject]] results
@@ -3173,7 +3200,7 @@ cdef class CoreWorker:
                 c_object_ids, timeout_ms, results)
         check_status(op_status)
 
-        return RayObjectsToDataMetadataPairs(results)
+        return RayObjectsToSerializedRayObjects(results)
 
     def get_if_local(self, object_refs):
         """Get objects from local plasma store directly
@@ -3185,7 +3212,7 @@ cdef class CoreWorker:
             check_status(
                 CCoreWorkerProcess.GetCoreWorker().GetIfLocal(
                     c_object_ids, &results))
-        return RayObjectsToDataMetadataPairs(results)
+        return RayObjectsToSerializedRayObjects(results)
 
     def object_exists(self, ObjectRef object_ref, memory_store_only=False):
         cdef:
@@ -3833,7 +3860,7 @@ cdef class CoreWorker:
                         c_scheduling_strategy,
                         serialized_runtime_env_info,
                         c_concurrency_groups,
-                        # execute out of order for
+                        # execute_out_of_order for
                         # async or threaded actors.
                         is_asyncio or max_concurrency > 1,
                         max_pending_calls,
@@ -4916,11 +4943,11 @@ cdef void async_callback(shared_ptr[CRayObject] obj,
         # Object is retrieved from in memory store.
         # Here we go through the code path used to deserialize objects.
         objects_to_deserialize.push_back(obj)
-        data_metadata_pairs = RayObjectsToDataMetadataPairs(
+        serialized_ray_objects = RayObjectsToSerializedRayObjects(
             objects_to_deserialize)
         ids_to_deserialize = [ObjectRef(object_ref.Binary())]
         result = ray._private.worker.global_worker.deserialize_objects(
-            data_metadata_pairs, ids_to_deserialize)[0]
+            serialized_ray_objects, ids_to_deserialize)[0]
 
         user_callback = <object>user_callback_ptr
         user_callback(result)
