@@ -49,7 +49,7 @@ def _make_http_request(
         url = get_application_url()
 
     full_url = f"{url}{path}"
-    return httpx.get(full_url)
+    return httpx.get(full_url, timeout=30.0)
 
 
 def _get_request_context_route() -> str:
