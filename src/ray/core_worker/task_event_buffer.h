@@ -51,7 +51,7 @@ using TaskAttempt = std::pair<TaskID, int32_t>;
 /// will be converted to rpc::TaskEvents.
 /// 2. Flushing to the event aggregator: the flush to the event aggregator will be
 /// periodic and it will be converted to rpc::events::RayEventData.
-/// 3. Export API (will be deprecated): Periodically flush to the file system. When
+/// 3. Export API (will be deprecated #54515): Periodically flush to the file system. When
 /// flushing, it will be converted to rpc::ExportTaskEventData.
 ///
 /// This is an optimization so that converting to protobuf (which is costly)
