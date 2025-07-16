@@ -88,9 +88,12 @@ class ImageClassificationJpegRayDataLoaderFactory(
         # TODO: The validation dataset directory is not partitioned by class.
         val_dir = train_dir
 
-        filesystem = (
-            self.get_s3fs_with_boto_creds() if train_dir.startswith("s3://") else None
-        )
+        if train_dir.startswith("s3://"):
+            s3_filesystem = True
+        else:
+            s3_filesystem = False
+
+        filesystem = self.get_s3fs_with_boto_creds() if s3_filesystem else None
 
         # Create training dataset with class-based partitioning
         train_partitioning = Partitioning(
@@ -103,9 +106,9 @@ class ImageClassificationJpegRayDataLoaderFactory(
                 include_paths=False,
                 partitioning=train_partitioning,
                 filesystem=filesystem,
-            )
-            .limit(self.get_dataloader_config().limit_training_rows)
-            .map(get_preprocess_map_fn(random_transforms=True))
+            ).limit(self.get_dataloader_config().limit_training_rows)
+            if s3_filesystem
+            else None.map(get_preprocess_map_fn(random_transforms=True))
         )
 
         # Create validation dataset with same partitioning
@@ -117,9 +120,9 @@ class ImageClassificationJpegRayDataLoaderFactory(
                 include_paths=False,
                 partitioning=val_partitioning,
                 filesystem=filesystem,
-            )
-            .limit(self.get_dataloader_config().limit_validation_rows)
-            .map(get_preprocess_map_fn(random_transforms=False))
+            ).limit(self.get_dataloader_config().limit_validation_rows)
+            if s3_filesystem
+            else None.map(get_preprocess_map_fn(random_transforms=False))
         )
 
         return {
