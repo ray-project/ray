@@ -52,7 +52,7 @@ async def _create_impl(image_uri: str, logger: logging.Logger):
             logger.error(f"Invalid worker path: {worker_path}")
             raise ValueError("Invalid worker path inferred in image {image_uri}: {worker_path}")
 
-        logger.info(f"Extracted worker path: {worker_path}")
+        logger.info(f"Inferred worker path in image {image_uri}: {worker_path}")
         return worker_path
 
 
