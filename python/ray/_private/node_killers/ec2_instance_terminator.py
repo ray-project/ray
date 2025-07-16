@@ -22,14 +22,17 @@ logger.addHandler(file_handler)
 
 @ray.remote(num_cpus=0)
 class EC2InstanceTerminator(NodeKillerBase):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, grace_period_s: int = 0, **kwargs):
         super().__init__(*args, **kwargs)
+
+        self._grace_period_s = grace_period_s
 
         region_name = self._get_region_name()
         self._ec2 = boto3.client("ec2", region_name=region_name)
+        self._kill_threads: Set[threading.Thread] = set()
 
     def _get_region_name(self):
-        """Get the name of the region that the instance is in."""
+        """Get the name of the region that this actor is in."""
         try:
             token = requests.put(
                 "http://169.254.169.254/latest/api/token",
@@ -50,49 +53,6 @@ class EC2InstanceTerminator(NodeKillerBase):
             )
 
     def _kill_resource(self, node_id, node_to_kill_ip, _):
-        if node_to_kill_ip is not None:
-            self._terminate_ec2_instance(node_to_kill_ip)
-            self.killed.add(node_id)
-
-    def _terminate_ec2_instance(self, private_ip: str) -> None:
-        logger.debug(f"Terminating instance, {private_ip=}")
-        instance_id = self._get_instance_id(private_ip)
-        response = self._ec2.terminate_instances(InstanceIds=[instance_id])
-
-        if response["ResponseMetadata"]["HTTPStatusCode"] != 200:
-            logger.error(f"Failed to terminate instance, {private_ip=}, {response=}")
-        else:
-            logger.info(f"Terminated instance, {private_ip=}")
-
-    def _get_instance_id(self, private_ip: str) -> str:
-        """Get the instance ID for a given private IP address."""
-        response = self._ec2.describe_instances(
-            Filters=[
-                {"Name": "private-ip-address", "Values": [private_ip]},
-            ]
-        )
-
-        instance_ids = [
-            instance["InstanceId"]
-            for reservation in response["Reservations"]
-            for instance in reservation["Instances"]
-        ]
-        assert (
-            len(instance_ids) == 1
-        ), f"Expected 1 instance with {private_ip=}, got {len(instance_ids)}"
-
-        return instance_ids[0]
-
-
-@ray.remote(num_cpus=0)
-class EC2InstanceTerminatorWithGracePeriod(EC2InstanceTerminator):
-    def __init__(self, *args, grace_period_s: int = 30, **kwargs):
-        super().__init__(*args, **kwargs)
-
-        self._grace_period_s = grace_period_s
-        self._kill_threads: Set[threading.Thread] = set()
-
-    def _kill_resource(self, node_id, node_to_kill_ip, _):
         assert node_id not in self.killed
 
         # Clean up any completed threads.
@@ -102,8 +62,9 @@ class EC2InstanceTerminatorWithGracePeriod(EC2InstanceTerminator):
                 self._kill_threads.remove(thread)
 
         def _kill_node_with_grace_period(node_id, node_to_kill_ip):
-            self._drain_node(node_id)
-            time.sleep(self._grace_period_s)
+            if self._grace_period_s > 0:
+                self._drain_node(node_id)
+                time.sleep(self._grace_period_s)
             self._terminate_ec2_instance(node_to_kill_ip)
 
         logger.info(f"Starting killing thread {node_id=}, {node_to_kill_ip=}")
@@ -140,6 +101,35 @@ class EC2InstanceTerminatorWithGracePeriod(EC2InstanceTerminator):
             raise e
 
         assert is_accepted, "Drain node request was rejected"
+
+    def _terminate_ec2_instance(self, private_ip: str) -> None:
+        logger.debug(f"Terminating instance, {private_ip=}")
+        instance_id = self._get_instance_id(private_ip)
+        response = self._ec2.terminate_instances(InstanceIds=[instance_id])
+
+        if response["ResponseMetadata"]["HTTPStatusCode"] != 200:
+            logger.error(f"Failed to terminate instance, {private_ip=}, {response=}")
+        else:
+            logger.info(f"Terminated instance, {private_ip=}")
+
+    def _get_instance_id(self, private_ip: str) -> str:
+        """Get the instance ID for a given private IP address."""
+        response = self._ec2.describe_instances(
+            Filters=[
+                {"Name": "private-ip-address", "Values": [private_ip]},
+            ]
+        )
+
+        instance_ids = [
+            instance["InstanceId"]
+            for reservation in response["Reservations"]
+            for instance in reservation["Instances"]
+        ]
+        assert (
+            len(instance_ids) == 1
+        ), f"Expected 1 instance with {private_ip=}, got {len(instance_ids)}"
+
+        return instance_ids[0]
 
     def _cleanup(self):
         for thread in self._kill_threads.copy():
