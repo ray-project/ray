@@ -18,12 +18,12 @@ filter_out_flaky_tests() {
     # Test DB is disabled, so simply passthrough and run everything.
     cat
   else
-    bazel run ci/ray_ci/automation:filter_tests -- --state_filter=-flaky --prefix=darwin:
+    bazel run --config=ci ci/ray_ci/automation:filter_tests -- --state_filter=-flaky --prefix=darwin:
   fi
 }
 
 select_flaky_tests() {
-  bazel run ci/ray_ci/automation:filter_tests -- --state_filter=flaky --prefix=darwin:
+  bazel run --config=ci ci/ray_ci/automation:filter_tests -- --state_filter=flaky --prefix=darwin:
 }
 
 run_tests() {
@@ -51,10 +51,16 @@ run_small_test() {
 
   # shellcheck disable=SC2046
   # 42 is the universal rayci exit code for test failures
-  (bazel query 'attr(tags, "ray_client|small_size_python_tests", tests(//python/ray/tests/...))' | filter_out_flaky_tests |
-    xargs bazel test --config=ci $(./ci/run/bazel_export_options) \
+  echo "---- List tests"
+  bazel query 'attr(tags, "ray_client|small_size_python_tests", tests(//python/ray/tests/...))' | tee /tmp/tests.txt
+
+  echo "---- Filter out flaky tests"
+  cat /tmp/tests.txt | filter_out_flaky_tests | tee /tmp/tests_filtered.txt
+
+  echo "---- Run tests"
+  cat /tmp/tests_filtered.txt | xargs bazel test --config=ci $(./ci/run/bazel_export_options) \
       --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX \
-      --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER --test_env=CI) || exit 42
+      --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER --test_env=CI || exit 42
 }
 
 run_medium_a_j_test() {
