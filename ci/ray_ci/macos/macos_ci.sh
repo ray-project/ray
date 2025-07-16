@@ -48,6 +48,7 @@ run_small_test() {
   python --version
   ray --version
   python -m pip freeze
+  export
 
   echo "---- Run a single test of test_tqdm.py"
   pytest -v python/ray/tests/test_tqdm.py
