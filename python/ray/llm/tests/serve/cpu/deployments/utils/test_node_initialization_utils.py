@@ -43,3 +43,7 @@ async def test_tokenizer_download(model_id, tokenizer_mode, trust_remote_code):
         download_model=NodeModelDownloadable.TOKENIZER_ONLY,
         download_extra_files=False,
     )
+
+
+if __name__ == "__main__":
+    pytest.main([__file__])
