@@ -53,7 +53,7 @@ run_small_test() {
   export
 
   echo "---- Run a single test of test_mini.py"
-  pytest -v python/ray/tests/test_mini.py
+  python3 -m pytest -v python/ray/tests/test_mini.py
 
   echo "---- Run the repsective single bazel test"
   bazel test --config=ci $(./ci/run/bazel_export_options) \
