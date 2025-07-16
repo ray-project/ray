@@ -99,31 +99,29 @@ class ImageClassificationJpegRayDataLoaderFactory(
         train_partitioning = Partitioning(
             "dir", base_dir=train_dir, field_names=["class"]
         )
-        train_ds = (
-            ray.data.read_images(
-                train_dir,
-                mode="RGB",
-                include_paths=False,
-                partitioning=train_partitioning,
-                filesystem=filesystem,
-            ).limit(self.get_dataloader_config().limit_training_rows)
-            if s3_filesystem
-            else None.map(get_preprocess_map_fn(random_transforms=True))
+        train_ds = ray.data.read_images(
+            train_dir,
+            mode="RGB",
+            include_paths=False,
+            partitioning=train_partitioning,
+            filesystem=filesystem,
         )
+        if s3_filesystem:
+            train_ds = train_ds.limit(self.get_dataloader_config().limit_training_rows)
+        train_ds = train_ds.map(get_preprocess_map_fn(random_transforms=True))
 
         # Create validation dataset with same partitioning
         val_partitioning = Partitioning("dir", base_dir=val_dir, field_names=["class"])
-        val_ds = (
-            ray.data.read_images(
-                val_dir,
-                mode="RGB",
-                include_paths=False,
-                partitioning=val_partitioning,
-                filesystem=filesystem,
-            ).limit(self.get_dataloader_config().limit_validation_rows)
-            if s3_filesystem
-            else None.map(get_preprocess_map_fn(random_transforms=False))
+        val_ds = ray.data.read_images(
+            val_dir,
+            mode="RGB",
+            include_paths=False,
+            partitioning=val_partitioning,
+            filesystem=filesystem,
         )
+        if s3_filesystem:
+            val_ds = val_ds.limit(self.get_dataloader_config().limit_validation_rows)
+        val_ds = val_ds.map(get_preprocess_map_fn(random_transforms=False))
 
         return {
             DatasetKey.TRAIN: train_ds,
