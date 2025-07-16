@@ -74,6 +74,40 @@ class TestCli(unittest.TestCase):
         assert "uv 0.7.20" in result.stdout.decode("utf-8")
         assert result.stderr.decode("utf-8") == ""
 
+    def test_compile(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _copy_data_to_tmpdir(tmpdir)
+            manager = DependencySetManager(
+                config_path="test.config.yaml",
+                workspace_dir=tmpdir,
+            )
+            manager.compile(
+                constraints=[],
+                requirements=["requirements_test.txt"],
+                args=[],
+                name="ray_base_test_depset",
+                output="requirements_compiled.txt",
+            )
+            output_file = Path(tmpdir) / "requirements_compiled.txt"
+            assert output_file.is_file()
+
+            output_text = output_file.read_text()
+            expected_packages = [
+                "aiorwlock==1.5.0",
+                "colorful==0.5.7",
+                "numpy==2.3.1",
+                "filelock==3.18.0",
+                "lz4==4.4.4",
+                "markdown-it-py==3.0.0",
+                "mdurl==0.1.2",
+                "pygments==2.19.2",
+                "rich==14.0.0",
+                "scipy==1.16.0",
+            ]
+
+            for package in expected_packages:
+                assert package in output_text, f"Missing expected package: {package}"
+
     def test_compile_by_depset_name(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             _copy_data_to_tmpdir(tmpdir)
@@ -89,11 +123,40 @@ class TestCli(unittest.TestCase):
             )
 
             output_fp = Path(tmpdir) / "requirements_compiled.txt"
+            assert output_fp.is_file()
             assert result.exit_code == 0
-            assert Path(output_fp).is_file()
+
             assert (
                 "Dependency set ray_base_test_depset compiled successfully"
                 in result.output
+            )
+
+    def test_compile_bad_requirements(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _copy_data_to_tmpdir(tmpdir)
+            manager = DependencySetManager(
+                config_path="test.config.yaml",
+                workspace_dir=tmpdir,
+            )
+            with self.assertRaises(RuntimeError):
+                manager.compile(
+                    constraints=[],
+                    requirements=["requirements_test_bad.txt"],
+                    args=[],
+                    name="general_depset",
+                    output="requirements_compiled_general.txt",
+                )
+
+    def test_get_path(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _copy_data_to_tmpdir(tmpdir)
+            manager = DependencySetManager(
+                config_path="test.config.yaml",
+                workspace_dir=tmpdir,
+            )
+            assert (
+                manager.get_path("requirements_test.txt")
+                == f"{tmpdir}/requirements_test.txt"
             )
 
 

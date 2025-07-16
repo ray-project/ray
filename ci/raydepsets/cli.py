@@ -85,7 +85,7 @@ class DependencySetManager:
         args: List[str],
         name: str,
         output: str,
-    ):
+    ) -> str:
         """Compile a dependency set."""
         if constraints:
             for constraint in constraints:
@@ -93,11 +93,9 @@ class DependencySetManager:
         if requirements:
             for requirement in requirements:
                 args.extend([self.get_path(requirement)])
-        args.extend(["-o", self.get_path(output)])
-        try:
-            self.exec_uv_cmd("compile", args)
-        except RuntimeError as e:
-            raise RuntimeError(f"Error: {str(e)}")
+        if output:
+            args.extend(["-o", self.get_path(output)])
+        self.exec_uv_cmd("compile", args)
 
     def get_path(self, path: str) -> str:
         return (Path(self.workspace.dir) / path).as_posix()
