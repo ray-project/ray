@@ -40,7 +40,6 @@ message RayEvent {
     TASK_DEFINITION_EVENT = 1;
     TASK_EXECUTION_EVENT = 2;
     ACTOR_TASK_DEFINITION_EVENT = 3;
-    ACTOR_TASK_EXECUTION_EVENT = 4;
   }
 
   // The severities of events that can be generated.
