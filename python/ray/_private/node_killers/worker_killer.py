@@ -2,7 +2,7 @@ import asyncio
 import logging
 
 import ray
-from ray._private.test_utils import ResourceKillerActor
+from .resource_killer import ResourceKillerActor
 
 
 @ray.remote(num_cpus=0)
