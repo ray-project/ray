@@ -443,9 +443,10 @@ class SchedulingNode:
         The score is a tuple of 5 values:
             1. Whether this node has labels matching the current resource request's
                 label_selector requirements:
-                    0: if this node does not satisfy the label_selector requirements.
-                    1: if this node satisfies the label_selector requirements (or no
-                        requirements provided).
+                    0: if this node does not satisfy any label selector requirements or
+                       no label selectors are provided.
+                    len(label_selectors)-i: a score based on the priority of the label
+                        selector in the resource request that this node satisfies.
             2. Whether this node is a GPU node and the current resource request has
                 GPU requirements:
                     0: if this node is a GPU node and the current resource request
