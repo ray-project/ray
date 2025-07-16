@@ -292,7 +292,13 @@ class SerializationContext:
                 gpu_object_manager.fetch_gpu_object(object_id)
             tensors = gpu_object_manager.gpu_object_store.get_gpu_object(object_id)
             ctx.reset_out_of_band_tensors(tensors)
-            gpu_object_manager.gpu_object_store.remove_gpu_object(object_id)
+            gpu_object_store = gpu_object_manager.gpu_object_store
+            # If the GPU object is self-created, it means the transfer is intra-actor.
+            # In this case, we should not remove the GPU object after it is consumed once,
+            # to avoid the GPU object reference being used more than once. Instead, we should
+            # wait for the GC callback to clean it up.
+            if not gpu_object_store.is_self_created_gpu_object(object_id):
+                gpu_object_store.remove_gpu_object(object_id)
 
         try:
             in_band, buffers = unpack_pickle5_buffers(data)
@@ -633,7 +639,9 @@ class SerializationContext:
             obj_id = obj_id.decode("ascii")
             worker = ray._private.worker.global_worker
             gpu_object_manager = worker.gpu_object_manager
-            gpu_object_manager.gpu_object_store.add_gpu_object(obj_id, tensors)
+            gpu_object_manager.gpu_object_store.add_gpu_object(
+                obj_id, tensors, self_created=True
+            )
 
         return serialized_val
 
