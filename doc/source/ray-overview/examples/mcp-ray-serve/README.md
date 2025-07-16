@@ -9,19 +9,19 @@ This repository provides end-to-end examples for deploying and scaling Model Con
 
 - [**`01-Deploy_custom_mcp_in_streamable_http_with_ray_serve.ipynb`**](https://github.com/ray-project/ray/blob/master/doc/source/ray-overview/examples/mcp-ray-serve/01%20Deploy_custom_mcp_in_streamable_http_with_ray_serve.ipynb): Deploys a custom Weather MCP server in streamable HTTP mode behind FastAPI + Ray Serve, illustrating autoscaling, load‑balancing, and end‑to‑end testing on Anyscale.
 - [**`02-Build_mcp_gateway_with_existing_ray_serve_apps.ipynb`**](https://github.com/ray-project/ray/blob/master/doc/source/ray-overview/examples/mcp-ray-serve/02%20Build_mcp_gateway_with_existing_ray_serve_apps.ipynb): Shows how to stand up a single MCP gateway that multiplexes requests to multiple pre‑existing Ray Serve apps under one unified `/mcp` endpoint, requiring no code changes in the underlying services.
-- [**`03-Deploy_single_mcp_stdio_docker_image_with_ray_serve.ipynb`**](https://github.com/ray-project/ray/blob/master/doc/source/ray-overview/examples/mcp-ray-serve/03%20Deploy_single_mcp_stdio_docker_image_with_ray_serve.ipynb): Wraps a stdio‑only MCP Docker image (foe example, Brave Search) with Ray Serve so it exposes `/tools` and `/call` HTTP endpoints and scales horizontally without rebuilding the image. 
+- [**`03-Deploy_single_mcp_stdio_docker_image_with_ray_serve.ipynb`**](https://github.com/ray-project/ray/blob/master/doc/source/ray-overview/examples/mcp-ray-serve/03%20Deploy_single_mcp_stdio_docker_image_with_ray_serve.ipynb): Wraps a stdio‑only MCP Docker image, for example Brave Search, with Ray Serve so it exposes `/tools` and `/call` HTTP endpoints and scales horizontally without rebuilding the image. 
 - [**`04-Deploy_multiple_mcp_stdio_docker_images_with_ray_serve.ipynb`**](https://github.com/ray-project/ray/blob/master/doc/source/ray-overview/examples/mcp-ray-serve/04%20Deploy_multiple_mcp_stdio_docker_images_with_ray_serve.ipynb): Extends the previous pattern to run several stdio‑based MCP images side‑by‑side, using fractional‑CPU deployments and a router to direct traffic to the right service. 
-- [**`05-(Optional)_Build_docker_image_for_mcp_server.ipynb`**](https://github.com/ray-project/ray/blob/master/doc/source/ray-overview/examples/mcp-ray-serve/05%20(Optional)%20Build_docker_image_for_mcp_server.ipynb): Walks through building and pushing a lightweight Podman‑based Docker image for a Weather MCP server with uv in Anyscale workspace.
+- [**`05-(Optional)_Build_docker_image_for_mcp_server.ipynb`**](https://github.com/ray-project/ray/blob/master/doc/source/ray-overview/examples/mcp-ray-serve/05%20(Optional)%20Build_docker_image_for_mcp_server.ipynb): Builds and pushes a lightweight Podman‑based Docker image for a Weather MCP server with uv in an Anyscale workspace.
 
 ## Why Ray Serve for MCP
 - **Autoscaling:** Dynamically adjusts replica count to match traffic peaks and maintain responsiveness
 - **Load balancing:**  Intelligently distributes incoming requests across all replicas for steady throughput
 - **Observability:** Exposes real‑time metrics on request rates, resource usage & system health
 - **Fault tolerance:** Detects failures, restarts components, and reroutes traffic to healthy replicas for continuous availability
-- **Composition:**  Chains deployments—pre‑process, infer, post‑process & custom logic—into a single seamless pipeline
+- **Composition:**  Chains deployments—pre‑process, infer, post‑process, and custom logic—into a single seamless pipeline
 
 
-## Anyscale Service Benefits
+## Anyscale service benefits
 - **Production ready:**  Enterprise‑grade infrastructure management and automated deployments for real‑world MCP traffic
 - **[High availability](https://docs.anyscale.com/platform/services/faq#does-services-support-multiple-availability-zones-for-high-availability):**  Availability‑Zone‑aware scheduling and zero‑downtime rolling updates to maximize uptime
 - **[Logging](https://docs.anyscale.com/monitoring/accessing-logs) and [tracing](https://docs.anyscale.com/monitoring/tracing):**  Comprehensive logs, distributed tracing, and real‑time dashboards for end‑to‑end observability
