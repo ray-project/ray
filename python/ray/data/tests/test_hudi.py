@@ -76,6 +76,7 @@ def test_hudi_snapshot_query_v6_trips_table(ray_start_regular_shared, fs, data_p
         .take_all()
     )
     first_commit = "20250715043008154"
+    second_commit = "20250715043011090"
     assert rows == [
         {
             "_hoodie_commit_time": first_commit,
@@ -84,16 +85,16 @@ def test_hudi_snapshot_query_v6_trips_table(ray_start_regular_shared, fs, data_p
             "fare": 19.10,
         },
         {
+            "_hoodie_commit_time": second_commit,
+            "ts": 1695046462179,
+            "rider": "rider-D",
+            "fare": 25.0,
+        },
+        {
             "_hoodie_commit_time": first_commit,
             "ts": 1695091554788,
             "rider": "rider-C",
             "fare": 27.70,
-        },
-        {
-            "_hoodie_commit_time": first_commit,
-            "ts": 1695046462179,
-            "rider": "rider-D",
-            "fare": 33.90,
         },
         {
             "_hoodie_commit_time": first_commit,
