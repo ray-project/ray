@@ -41,9 +41,9 @@ message AddEventRequest {
 message AddEventStatus {
   // Status code of the add event request result. The codes follow the codes in
   // `src/ray/common/status.h`
-  int32 status_code = 1;
+  int32 code = 1;
   // Status message of the add event request result.
-  string status_message = 2;
+  string message = 2;
 }
 
 message AddEventReply {
