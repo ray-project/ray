@@ -90,10 +90,10 @@ class ImageClassificationJpegRayDataLoaderFactory(
 
         if train_dir.startswith("s3://"):
             s3_filesystem = True
+            filesystem = self.get_s3fs_with_boto_creds()
         else:
             s3_filesystem = False
-
-        filesystem = self.get_s3fs_with_boto_creds() if s3_filesystem else None
+            filesystem = None
 
         # Create training dataset with class-based partitioning
         train_partitioning = Partitioning(
