@@ -80,7 +80,7 @@ RLlib Feature Guides
 
         .. button-ref:: connector-v2
 
-            How To Use Connectors and Connector pipelines (new API stack)?
+            How To Use Connectors and Connector pipelines?
 
     .. grid-item-card::
         :img-top: /rllib/images/rllib-logo.svg
