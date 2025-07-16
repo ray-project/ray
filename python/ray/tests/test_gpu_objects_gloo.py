@@ -135,7 +135,6 @@ def test_gc_intra_actor_gpu_object(ray_start_regular, data_size_bytes):
 
     small_tensor = torch.randn((1,))
 
-    # Intra-actor communication for pure GPU tensors
     ref = actor.echo.remote(small_tensor)
     result = actor.double.remote(ref)
     assert ray.get(result) == pytest.approx(small_tensor * 2)
@@ -163,7 +162,6 @@ def test_gc_pass_ref_to_same_and_different_actors(ray_start_regular, data_size_b
 
     small_tensor = torch.randn((1,))
 
-    # Intra-actor communication for pure GPU tensors
     ref = actor1.echo.remote(small_tensor)
     result1 = actor1.double.remote(ref)
     result2 = actor2.double.remote(ref)
