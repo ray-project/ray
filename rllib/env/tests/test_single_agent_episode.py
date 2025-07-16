@@ -1,5 +1,5 @@
 from collections import defaultdict
-from typing import Any, Dict, Optional, SupportsFloat, Tuple
+from typing import Any, Dict, Optional, SupportsFloat, Tuple, Union
 import unittest
 
 import gymnasium as gym
@@ -9,13 +9,23 @@ import numpy as np
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.utils.test_utils import check
 
+
 # TODO (simon): Add to the tests `info` and `extra_model_outputs`
 #  as soon as #39732 is merged.
 
+WrappingSpaceT = Union[gym.spaces.Tuple, gym.spaces.Dict, None]
 
 class TestEnv(gym.Env):
-    def __init__(self):
+    def __init__(self, wrapper_space: WrappingSpaceT = None):
         self.observation_space = gym.spaces.Discrete(201)
+        if wrapper_space == gym.spaces.Dict:
+            self.observation_space = {f"obs_{i}": self.observation_space
+                                      for i in range(5)}
+        elif wrapper_space == gym.spaces.Tuple:
+            self.observation_space = gym.spaces.Tuple(
+                [self.observation_space for _ in range(5)]
+            )
+
         self.action_space = gym.spaces.Discrete(200)
         self.t = 0
 
@@ -228,7 +238,8 @@ class TestSingelAgentEpisode(unittest.TestCase):
         self.assertTrue(episode_1.t == episode_2.t == episode_2.t_started)
         # Assert that the last observation of `episode_1` is the first of
         # `episode_2`.
-        self.assertTrue(episode_1.observations[-1] == episode_2.observations[0])
+        self.assertTrue(
+            episode_1.observations[-1] == episode_2.observations[0])
         # Assert that the last info of `episode_1` is the first of episode_2`.
         self.assertTrue(episode_1.infos[-1] == episode_2.infos[0])
 
@@ -245,7 +256,8 @@ class TestSingelAgentEpisode(unittest.TestCase):
             extra_model_outputs={"extra": np.random.random(1)},
         )
         # Assert that this does not change also the predecessor's data.
-        self.assertFalse(len(episode_1.observations) == len(episode_2.observations))
+        self.assertFalse(
+            len(episode_1.observations) == len(episode_2.observations))
 
     def test_slice(self):
         """Tests whether slicing with the []-operator works as expected."""
@@ -551,9 +563,15 @@ class TestSingelAgentEpisode(unittest.TestCase):
         they have the same `id_` and one should be the successor of the other.
         It is also tested that concatenation fails, if timesteps do not match or
         the episode to which we want to concatenate is already terminated.
+
+        We use subtests for testing different wrapping spaces such as dicts and tuples.
         """
-        # Create two episodes and fill them with 100 timesteps each.
-        env = TestEnv()
+        for wrapper_space in [None, gym.spaces.Dict, gym.spaces.Tuple]:
+            with self.subTest(wrapper_space=wrapper_space):
+                self._test_concat_episode(wrapper_space)
+
+    def _test_concat_episode(self, wrapper_space: WrappingSpaceT):
+        env = TestEnv(wrapper_space=wrapper_space)
         init_obs, init_info = env.reset()
         episode_1 = SingleAgentEpisode()
         episode_1.add_env_reset(observation=init_obs, infos=init_info)
@@ -631,7 +649,8 @@ class TestSingelAgentEpisode(unittest.TestCase):
             == 200
         )
         # Assert that specific observations in the two episodes match.
-        self.assertEqual(episode_2.observations[5], episode_1.observations[105])
+        self.assertEqual(episode_2.observations[5],
+                         episode_1.observations[105])
         # Assert that they are not the same object.
         # TODO (sven): Do we really need a deepcopy here?
         # self.assertNotEqual(id(episode_2.observations[5]),
@@ -664,13 +683,16 @@ class TestSingelAgentEpisode(unittest.TestCase):
         check(episode_2.is_terminated, episode.is_terminated)
         check(episode_2.is_truncated, episode.is_truncated)
         self.assertEqual(
-            type(episode_2._observation_space), type(episode._observation_space)
+            type(episode_2._observation_space),
+            type(episode._observation_space)
         )
-        self.assertEqual(type(episode_2._action_space), type(episode._action_space))
+        self.assertEqual(type(episode_2._action_space),
+                         type(episode._action_space))
         check(episode_2._start_time, episode._start_time)
         check(episode_2._last_step_time, episode._last_step_time)
         check(episode_2.custom_data, episode.custom_data)
-        self.assertDictEqual(episode_2.extra_model_outputs, episode.extra_model_outputs)
+        self.assertDictEqual(episode_2.extra_model_outputs,
+                             episode.extra_model_outputs)
 
     def _create_episode(self, num_data, t_started=None, len_lookback_buffer=0):
         # Sample 100 values and initialize episode with observations and infos.
