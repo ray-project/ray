@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-VARIANTS=("$@")
+
 
 PYTHON_CODE="$(python -c "import sys; v=sys.version_info; print(f'py{v.major}{v.minor}')")"
 if [[ "${PYTHON_CODE}" != "py311" ]]; then
@@ -11,7 +11,7 @@ if [[ "${PYTHON_CODE}" != "py311" ]]; then
 	exit 1
 fi
 
-for CUDA_CODE in "${VARIANTS[@]}"; do
+for CUDA_CODE in cpu cu121 cu128; do
 	PYTHON_CUDA_CODE="${PYTHON_CODE}_${CUDA_CODE}"
 
 	echo "--- Compile dependencies for ${PYTHON_CODE}_${CUDA_CODE}"
