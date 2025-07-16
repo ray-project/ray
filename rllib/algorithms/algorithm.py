@@ -2987,6 +2987,8 @@ class Algorithm(Checkpointable, Trainable):
                 inference_only=True,
             )
 
+        # If we have remote `EnvRunner`s but no local `EnvRunner` we have to restore states
+        # from path.
         if self.env_runner_group.num_remote_env_runners() > 0 and not self.env_runner:
             if (
                 path / COMPONENT_ENV_RUNNER / COMPONENT_ENV_TO_MODULE_CONNECTOR
@@ -3012,7 +3014,6 @@ class Algorithm(Checkpointable, Trainable):
             )
         # Otherwise get the connector states from the local `EnvRunner`.
         elif self.env_runner_group.num_remote_env_runners() > 0 and self.env_runner:
-            # connector_states = self.env_runner.get_state(not_components[COMPONENT_RL_MODULE])
             self.env_runner_group.sync_env_runner_states(
                 config=self.config,
                 from_worker=self.env_runner,
