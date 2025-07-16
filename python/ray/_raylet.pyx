@@ -2287,6 +2287,12 @@ cdef execute_task_with_cancellation_handler(
                 f"Exited because worker reached max_calls={execution_info.max_calls}"
                 " for this method.")
 
+cdef void free_actor_object_callback(const CObjectID &c_object_id) nogil:
+    with gil:
+        object_id = c_object_id.Hex().decode()
+        gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
+        gpu_object_manager.gpu_object_store.remove_gpu_object(object_id)
+
 cdef shared_ptr[LocalMemoryBuffer] ray_error_to_memory_buf(ray_error):
     cdef bytes py_bytes = ray_error.to_bytes()
     return make_shared[LocalMemoryBuffer](
@@ -2998,6 +3004,7 @@ cdef class CoreWorker:
         options.driver_name = driver_name
         options.initialize_thread_callback = initialize_pygilstate_for_thread
         options.task_execution_callback = task_execution_handler
+        options.free_actor_object_callback = free_actor_object_callback
         options.check_signals = check_signals
         options.gc_collect = gc_collect
         options.spill_objects = spill_objects_handler
@@ -3595,10 +3602,19 @@ cdef class CoreWorker:
         with nogil:
             CCoreWorkerProcess.GetCoreWorker().TriggerGlobalGC()
 
-    def dump_object_store_memory_usage(self):
-        message = CCoreWorkerProcess.GetCoreWorker().MemoryUsageString()
-        logger.warning("Local object store memory usage:\n{}\n".format(
-            message.decode("utf-8")))
+    def log_plasma_usage(self):
+        """Logs the current usage of the Plasma Store.
+        Makes an unretriable blocking IPC to the Plasma Store.
+
+        Raises an error if cannot connect to the Plasma Store. This should
+        be fatal for the worker.
+        """
+        cdef:
+            c_string result
+        status = CCoreWorkerProcess.GetCoreWorker().GetPlasmaUsage(result)
+        check_status(status)
+        logger.warning("Plasma Store Usage:\n{}\n".format(
+            result.decode("utf-8")))
 
     def get_memory_store_size(self):
         return CCoreWorkerProcess.GetCoreWorker().GetMemoryStoreSize()

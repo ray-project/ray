@@ -127,7 +127,13 @@ def get_grpc_response_status(
             is_error=True,
             message=message,
         )
-    elif isinstance(exc, (BackPressureError, DeploymentUnavailableError)):
+    elif isinstance(exc, BackPressureError):
+        return ResponseStatus(
+            code=grpc.StatusCode.RESOURCE_EXHAUSTED,
+            is_error=True,
+            message=exc.message,
+        )
+    elif isinstance(exc, DeploymentUnavailableError):
         if isinstance(exc, RayTaskError):
             logger.warning(f"Request failed: {exc}", extra={"log_to_stderr": False})
         return ResponseStatus(
