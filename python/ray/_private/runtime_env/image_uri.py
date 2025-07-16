@@ -36,7 +36,7 @@ async def _create_impl(image_uri: str, logger: logging.Logger):
 
         if process.returncode != 0:
             logger.error(
-                f"Podman failed: stdout={stdout.decode()}, stderr={stderr.decode()}"
+                f"Podman command failed: cmd={cmd}, stdout={stdout.decode()}, stderr={stderr.decode()}"
             )
             raise RuntimeError(
                 f"Podman command failed with return code {process.returncode}"
