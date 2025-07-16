@@ -56,16 +56,10 @@ class ActorMethodProxy:
         return method.remote(*args, **kwargs)
     
     def shard(self, *args, **kwargs):
-        import numpy as np
-        # This method is very much overly simplistic at the moment:
-        # Currently hard coding the sharding strategy (sharding of the first argument, only support Python lists)
-        # In the future, most of this will be user defined since there are many reasonable sharding methods
-        sharded_args0 = np.array_split(args[0], self.actor_mesh.num_actors)
-        results = []
-        for i, actor in enumerate(self.actor_mesh.actors):
-            method = getattr(actor, self.actor_method)
-            results.append(method.remote(*(sharded_args0[i], *args[1:]), **kwargs))
-        return sum(ray.get(results), [])
+        orig_func = getattr(self.actor_mesh._actor_cls, self.actor_method)
+        dispatch_fn = getattr(orig_func, "_dispatch_fn", None)
+        assert dispatch_fn, "Sharding only supported if dispatch_fn is specified (later we will have a good default one)"
+        return dispatch_fn(self.actor_mesh, self.actor_method, *args, **kwargs)
 
 
 class ActorMesh(Generic[T]):
@@ -91,6 +85,7 @@ class ActorMesh(Generic[T]):
         else:
             self._num_actors = sum(shape)
 
+        self._actor_cls = actor_cls
         self._actors = []
         runtime_env = copy.deepcopy(runtime_env) or {}
         for i in range(self._num_actors):
@@ -117,10 +112,45 @@ class ActorMesh(Generic[T]):
 def method(method: Callable[Concatenate[Any, P], R]) -> ActorMethod[P, R]:
     ...
 
-def method(method=None, **kwargs):
-    return ray.method(method)
+@overload
+def method(dispatch_fn: Optional[Callable] = None,) -> Callable[[Callable[Concatenate[Any, P], R]], ActorMethod[P, R]]:
+    ...
+
+def method(method=None, dispatch_fn=None, **kwargs):
+
+    def decorator(f):
+        method = ray.method(**kwargs)(f)
+        method._dispatch_fn = dispatch_fn
+        return method
+
+    if method is not None:
+        return decorator(method)
+    return decorator
 
 if __name__ == "__main__":
+
+    import torch
+
+    # The following is an example for the usage of the actor pool:
+
+    def python_dispatch_fn(actor_mesh: ActorMesh, actor_method: str, *args, **kwargs):
+        # This method only shards the first argument, but similarly other
+        # arguments could be sharded as well.
+        import numpy as np
+        sharded_args0 = np.array_split(args[0], actor_mesh.num_actors)
+        results = []
+        for i, actor in enumerate(actor_mesh.actors):
+            method = getattr(actor, actor_method)
+            results.append(method.remote(*(sharded_args0[i], *args[1:]), **kwargs))
+        return sum(ray.get(results), [])
+
+    def torch_dispatch_fn(actor_mesh: ActorMesh, actor_method: str, *args, **kwargs):
+        sharded_args0 = torch.tensor_split(args[0], actor_mesh.num_actors)
+        results = []
+        for i, actor in enumerate(actor_mesh.actors):
+            method = getattr(actor, actor_method)
+            results.append(method.remote(*(sharded_args0[i], *args[1:]), **kwargs))
+        return torch.concat(ray.get(results))
 
     class Test:
 
@@ -135,9 +165,14 @@ if __name__ == "__main__":
         def add(self, x: int, y: int) -> int:
             return x + y
         
-        @method
+        @method(dispatch_fn=python_dispatch_fn)
         def process(self, values: List[int], y: int) -> List[int]:
             return [x + y for x in values]
+
+        @method(dispatch_fn=torch_dispatch_fn)
+        def torch_process(self, batch: torch.Tensor, val: int) -> torch.Tensor:
+            return batch + val
+
 
     mesh = ActorMesh(Test, (), {}, shape=(3,))
     # Note: In the future we could have the alternative syntax
@@ -149,3 +184,6 @@ if __name__ == "__main__":
     assert ray.get(result) == 1
     result = mesh.methods.process.shard([1, 2, 3, 4, 5, 6], 5)
     assert result == [6, 7, 8, 9, 10, 11]
+    batch = torch.eye(6)
+    result = mesh.methods.torch_process.shard(batch, 1)
+    assert (result == torch.eye(6) + 1).all()
