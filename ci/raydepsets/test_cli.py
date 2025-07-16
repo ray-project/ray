@@ -2,14 +2,13 @@ import pytest
 import sys
 import unittest
 import tempfile
-import runfiles
 import subprocess
 import shutil
-from ci.raydepsets.cli import load, DependencySetManager
+import runfiles
+from ci.raydepsets.cli import load, DependencySetManager, uv_binary
 from ci.raydepsets.workspace import Workspace
 from click.testing import CliRunner
 from pathlib import Path
-from ci.raydepsets.cli import uv_binary
 
 _REPO_NAME = "com_github_ray_project_ray"
 _runfiles = runfiles.Create()

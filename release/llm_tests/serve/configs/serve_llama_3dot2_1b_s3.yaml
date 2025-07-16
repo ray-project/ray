@@ -9,6 +9,7 @@ applications:
           engine_kwargs:
             max_model_len: 8192
             tensor_parallel_size: 1
+            enforce_eager: true
     import_path: ray.serve.llm:build_openai_app
     name: llm-endpoint
     route_prefix: /

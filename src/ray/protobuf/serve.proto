@@ -207,7 +207,7 @@ message EndpointSet {
   map<string, EndpointInfo> endpoints = 1;
 }
 
-// Now Actor handle can be transfered across language through ray call, but the list of
+// Now Actor handle can be transferred across language through ray call, but the list of
 // Actor handles can't. So we use this message wrapped a Actor name list to pass actor
 // list across language. When Actor handle list supports across language, this message can
 // be replaced.
