@@ -11,6 +11,8 @@ default_logger = logging.getLogger(__name__)
 
 
 async def _create_impl(image_uri: str, logger: logging.Logger):
+    # Pull image if it doesn't exist
+    # Also get path to `default_worker.py` inside the image.
     with tempfile.TemporaryDirectory() as tmpdir:
         result_file = os.path.join(tmpdir, "worker_path.txt")
 
@@ -43,14 +45,17 @@ async def _create_impl(image_uri: str, logger: logging.Logger):
             )
 
         if not os.path.exists(result_file):
-            raise FileNotFoundError("Worker path file not created when getting worker path for image {image_uri}")
+            raise FileNotFoundError(
+                "Worker path file not created when getting worker path for image {image_uri}"
+            )
 
         with open(result_file, "r") as f:
             worker_path = f.read().strip()
 
         if not worker_path.endswith(".py"):
-            logger.error(f"Invalid worker path: {worker_path}")
-            raise ValueError("Invalid worker path inferred in image {image_uri}: {worker_path}")
+            raise ValueError(
+                "Invalid worker path inferred in image {image_uri}: {worker_path}"
+            )
 
         logger.info(f"Inferred worker path in image {image_uri}: {worker_path}")
         return worker_path
