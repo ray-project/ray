@@ -23,9 +23,6 @@ from ray.serve._private.test_utils import (
 
 
 def request_with_retries(endpoint, timeout=30, app_name=SERVE_DEFAULT_APP_NAME):
-    wait_for_condition(
-        lambda: get_application_url("HTTP", app_name, use_localhost=True) is not None
-    )
     start = time.time()
     while True:
         try:
