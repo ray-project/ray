@@ -43,38 +43,12 @@ run_flaky_tests() {
 }
 
 run_small_test() {
-  echo "---- Print out env info again"
-  which python
-  which python3
-  python --version
-  python3 --version
-  ray --version
-  python3 -m pip freeze
-  export
-
-  echo "---- Run a single test of test_mini.py"
-  python3 -m pytest -v python/ray/tests/test_mini.py
-
-  echo "---- Run the repsective single bazel test"
-  bazel test --config=ci $(./ci/run/bazel_export_options) \
-    --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX \
-    --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER --test_env=CI \
-    //python/ray/tests:test_mini
-
   # shellcheck disable=SC2046
   # 42 is the universal rayci exit code for test failures
-  if false ; then
-    echo "---- List tests"
-    bazel query 'attr(tags, "ray_client|small_size_python_tests", tests(//python/ray/tests/...))' | tee /tmp/tests.txt
-
-    echo "---- Filter out flaky tests"
-    cat /tmp/tests.txt | filter_out_flaky_tests | tee /tmp/tests_filtered.txt
-
-    echo "---- Run tests"
-    cat /tmp/tests_filtered.txt | xargs bazel test --config=ci $(./ci/run/bazel_export_options) \
-        --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX \
-        --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER --test_env=CI || exit 42
-  fi
+  (bazel query 'attr(tags, "ray_client|small_size_python_tests", tests(//python/ray/tests/...))' | filter_out_flaky_tests |
+    xargs bazel test --config=ci $(./ci/run/bazel_export_options) \
+      --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX \
+      --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER --test_env=CI) || exit 42
 }
 
 run_medium_a_j_test() {
@@ -134,18 +108,13 @@ _prelude() {
   . ./ci/ci.sh init && source ~/.zshenv
   source ~/.zshrc
 
-  ls -al /opt/homebrew/opt/miniforge/bin
-  if [[ ! -e /opt/homebrew/opt/miniforge/bin/python3 ]]; then
+  if [[ -d /opt/homebrew/opt/miniforge/bin && ! -e /opt/homebrew/opt/miniforge/bin/python3 ]]; then
     # Point python3 to python in miniforge
     # Miniforge's installation does not install python3.
-    echo "python3 not exists in minoforge; point it to python"
+    # This is required for bazel tests to work; bazel prefers python3.
+    echo "python3 not exists in miniforge; point it to python"
     ln -sf python /opt/homebrew/opt/miniforge/bin/python3
   fi
-
-  which python
-  python --version
-  which python3
-  python3 --version
 
   ./ci/ci.sh build
   ./ci/env/env_info.sh
