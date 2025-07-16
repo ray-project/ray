@@ -26,9 +26,11 @@ from ray.data._internal.execution.interfaces import (
     TaskContext,
 )
 from ray.data._internal.execution.interfaces.physical_operator import _ActorPoolInfo
+from ray.data._internal.execution.node_trackers import (
+    get_or_create_actor_location_tracker,
+)
 from ray.data._internal.execution.node_trackers.actor_location import (
     ActorLocationTracker,
-    get_or_create_actor_location_tracker,
 )
 from ray.data._internal.execution.operators.map_operator import MapOperator, _map_task
 from ray.data._internal.execution.operators.map_transformer import MapTransformer
