@@ -204,12 +204,13 @@ def _autodetect_parallelism(
 
     if mem_size is None and datasource_or_legacy_reader:
         mem_size = datasource_or_legacy_reader.estimate_inmemory_data_size()
-    if mem_size is not None and not np.isnan(mem_size):
-        if target_max_block_size is not None:
-            min_safe_parallelism = max(1, int(mem_size / target_max_block_size))
-            max_reasonable_parallelism = max(
-                1, int(mem_size / ctx.target_min_block_size)
-            )
+    if (
+        mem_size is not None
+        and not np.isnan(mem_size)
+        and target_max_block_size is not None
+    ):
+        min_safe_parallelism = max(1, int(mem_size / target_max_block_size))
+        max_reasonable_parallelism = max(1, int(mem_size / ctx.target_min_block_size))
 
     reason = ""
     if parallelism < 0:
