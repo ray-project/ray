@@ -146,12 +146,8 @@ class Monitor:
         # TODO: eventually plumb ClusterID through to here
         self.gcs_client = GcsClient(address=self.gcs_address)
 
-        if monitor_ip:
-            monitor_addr = f"{monitor_ip}:{AUTOSCALER_METRIC_PORT}"
-            self.gcs_client.internal_kv_put(
-                b"AutoscalerMetricsAddress", monitor_addr.encode(), True, None
-            )
         _initialize_internal_kv(self.gcs_client)
+
         if monitor_ip:
             monitor_addr = f"{monitor_ip}:{AUTOSCALER_METRIC_PORT}"
             self.gcs_client.internal_kv_put(
