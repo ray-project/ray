@@ -1,6 +1,8 @@
 import tempfile
 import unittest
 
+from typing import Tuple
+
 import ray
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.ppo import PPOConfig
@@ -114,7 +116,7 @@ class TestAlgorithmWithLearnerSaveAndRestore(unittest.TestCase):
         ray.init()
 
     @classmethod
-    def tearDowClass(cls) -> None:
+    def tearDownClass(cls) -> None:
         ray.shutdown()
 
     def test_save_and_restore_w_remote_env_runners(self):
@@ -135,44 +137,15 @@ class TestAlgorithmWithLearnerSaveAndRestore(unittest.TestCase):
                     )
                 )
 
-                running_stats_states_algo_1 = [
-                    state[COMPONENT_ENV_TO_MODULE_CONNECTOR]["MeanStdFilter"][None][
-                        "running_stats"
-                    ]
-                    for state in connector_states_algo_1
-                ]
-                running_stats_states_algo_2 = [
-                    state[COMPONENT_ENV_TO_MODULE_CONNECTOR]["MeanStdFilter"][None][
-                        "running_stats"
-                    ]
-                    for state in connector_states_algo_2
-                ]
+                # Extract the `RunningStat` states from the connector states.
+                (
+                    running_stats_states_algo_1,
+                    running_stats_states_algo_2,
+                ) = self._extract_running_stats_from_states(
+                    connector_states_algo_1,
+                    connector_states_algo_2,
+                )
 
-                running_stats_states_algo_1 = [
-                    [RunningStat.from_state(s) for s in running_stats_state]
-                    for running_stats_state in running_stats_states_algo_1
-                ]
-                running_stats_states_algo_2 = [
-                    [RunningStat.from_state(s) for s in running_stats_state]
-                    for running_stats_state in running_stats_states_algo_2
-                ]
-
-                running_stats_states_algo_1 = [
-                    (
-                        running_stat[0].n,
-                        running_stat[0].mean_array,
-                        running_stat[0].sum_sq_diff_array,
-                    )
-                    for running_stat in running_stats_states_algo_1
-                ]
-                running_stats_states_algo_2 = [
-                    (
-                        running_stat[0].n,
-                        running_stat[0].mean_array,
-                        running_stat[0].sum_sq_diff_array,
-                    )
-                    for running_stat in running_stats_states_algo_2
-                ]
                 # Assert that all running stats in algo-1 are the same (for consistency).
                 self.assertEqual(num_env_runners, 2)
                 check(
@@ -209,44 +182,15 @@ class TestAlgorithmWithLearnerSaveAndRestore(unittest.TestCase):
                     )
                 )
 
-                running_stats_states_algo_1 = [
-                    state[COMPONENT_ENV_TO_MODULE_CONNECTOR]["MeanStdFilter"][None][
-                        "running_stats"
-                    ]
-                    for state in connector_states_algo_1
-                ]
-                running_stats_states_algo_2 = [
-                    state[COMPONENT_ENV_TO_MODULE_CONNECTOR]["MeanStdFilter"][None][
-                        "running_stats"
-                    ]
-                    for state in connector_states_algo_2
-                ]
+                # Extract the `RunningStat` states from the connector states.
+                (
+                    running_stats_states_algo_1,
+                    running_stats_states_algo_2,
+                ) = self._extract_running_stats_from_states(
+                    connector_states_algo_1,
+                    connector_states_algo_2,
+                )
 
-                running_stats_states_algo_1 = [
-                    [RunningStat.from_state(s) for s in running_stats_state]
-                    for running_stats_state in running_stats_states_algo_1
-                ]
-                running_stats_states_algo_2 = [
-                    [RunningStat.from_state(s) for s in running_stats_state]
-                    for running_stats_state in running_stats_states_algo_2
-                ]
-
-                running_stats_states_algo_1 = [
-                    (
-                        running_stat[0].n,
-                        running_stat[0].mean_array,
-                        running_stat[0].sum_sq_diff_array,
-                    )
-                    for running_stat in running_stats_states_algo_1
-                ]
-                running_stats_states_algo_2 = [
-                    (
-                        running_stat[0].n,
-                        running_stat[0].mean_array,
-                        running_stat[0].sum_sq_diff_array,
-                    )
-                    for running_stat in running_stats_states_algo_2
-                ]
                 # Assert that all running stats in algo-1 are the same (for consistency).
                 self.assertEqual(num_env_runners, 2)
                 check(
@@ -262,6 +206,51 @@ class TestAlgorithmWithLearnerSaveAndRestore(unittest.TestCase):
                 check(
                     running_stats_states_algo_2[0][0], running_stats_states_algo_2[1][0]
                 )
+
+    def _extract_running_stats_from_states(
+        connector_states_algo_1: list, connector_states_algo_2: list
+    ) -> Tuple[list, list]:
+
+        running_stats_states_algo_1 = [
+            state[COMPONENT_ENV_TO_MODULE_CONNECTOR]["MeanStdFilter"][None][
+                "running_stats"
+            ]
+            for state in connector_states_algo_1
+        ]
+        running_stats_states_algo_2 = [
+            state[COMPONENT_ENV_TO_MODULE_CONNECTOR]["MeanStdFilter"][None][
+                "running_stats"
+            ]
+            for state in connector_states_algo_2
+        ]
+
+        running_stats_states_algo_1 = [
+            [RunningStat.from_state(s) for s in running_stats_state]
+            for running_stats_state in running_stats_states_algo_1
+        ]
+        running_stats_states_algo_2 = [
+            [RunningStat.from_state(s) for s in running_stats_state]
+            for running_stats_state in running_stats_states_algo_2
+        ]
+
+        running_stats_states_algo_1 = [
+            (
+                running_stat[0].n,
+                running_stat[0].mean_array,
+                running_stat[0].sum_sq_diff_array,
+            )
+            for running_stat in running_stats_states_algo_1
+        ]
+        running_stats_states_algo_2 = [
+            (
+                running_stat[0].n,
+                running_stat[0].mean_array,
+                running_stat[0].sum_sq_diff_array,
+            )
+            for running_stat in running_stats_states_algo_2
+        ]
+
+        return running_stats_states_algo_1, running_stats_states_algo_2
 
 
 if __name__ == "__main__":
