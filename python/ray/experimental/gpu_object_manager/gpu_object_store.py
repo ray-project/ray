@@ -110,4 +110,5 @@ class GPUObjectStore:
         self.gpu_object_store[obj_id] = gpu_object
 
     def remove_gpu_object(self, obj_id: str):
-        del self.gpu_object_store[obj_id]
+        if obj_id in self.gpu_object_store:
+            del self.gpu_object_store[obj_id]
