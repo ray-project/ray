@@ -14,6 +14,7 @@ Ray Data provides several built-in aggregation functions like
 * :class:`~ray.data.aggregate.Quantile`
  
 These can be used directly with datasets like shown below:
+
 .. testcode::
 
     import ray
