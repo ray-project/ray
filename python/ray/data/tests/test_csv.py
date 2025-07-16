@@ -67,7 +67,9 @@ def test_csv_read_partitioning(ray_start_regular_shared, tmp_path):
         ),
     ],
 )
-def test_csv_read(ray_start_regular_shared, fs, data_path, endpoint_url):
+def test_csv_read(
+    ray_start_regular_shared, fs, data_path, endpoint_url, target_max_block_size_none
+):
     if endpoint_url is None:
         storage_options = {}
     else:
@@ -651,7 +653,7 @@ def test_csv_read_partitioned_with_filter_multikey(
     assert_base_partitioned_ds(ds, num_input_files=6)
 
 
-def test_csv_write(ray_start_regular_shared, tmp_path):
+def test_csv_write(ray_start_regular_shared, tmp_path, target_max_block_size_none):
     input_df = pd.DataFrame({"id": [0]})
     ds = ray.data.from_blocks([input_df])
 
@@ -667,7 +669,9 @@ def test_csv_write(ray_start_regular_shared, tmp_path):
 
 
 @pytest.mark.parametrize("override_num_blocks", [None, 2])
-def test_csv_roundtrip(ray_start_regular_shared, tmp_path, override_num_blocks):
+def test_csv_roundtrip(
+    ray_start_regular_shared, tmp_path, override_num_blocks, target_max_block_size_none
+):
     df = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
 
     ds = ray.data.from_pandas([df], override_num_blocks=override_num_blocks)

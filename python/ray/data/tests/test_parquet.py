@@ -190,7 +190,9 @@ def test_parquet_deserialize_fragments_with_retry(
         ),
     ],
 )
-def test_parquet_read_basic(ray_start_regular_shared, fs, data_path):
+def test_parquet_read_basic(
+    ray_start_regular_shared, fs, data_path, target_max_block_size_none
+):
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     table = pa.Table.from_pandas(df1)
     setup_data_path = _unwrap_protocol(data_path)
@@ -1195,7 +1197,9 @@ def test_parquet_write_does_not_write_empty_blocks(ray_start_regular_shared, tmp
         ),
     ],
 )
-def test_parquet_roundtrip(ray_start_regular_shared, fs, data_path):
+def test_parquet_roundtrip(
+    ray_start_regular_shared, fs, data_path, target_max_block_size_none
+):
     path = os.path.join(data_path, "test_parquet_dir")
     if fs is None:
         os.mkdir(path)
@@ -1642,7 +1646,7 @@ def test_parquet_row_group_size_002(ray_start_regular_shared, tmp_path):
 
 @pytest.mark.parametrize("override_num_blocks", [1, 2, 3])
 def test_max_block_size_none_respects_override_num_blocks(
-    ray_start_regular_shared, tmp_path, override_num_blocks
+    ray_start_regular_shared, tmp_path, override_num_blocks, target_max_block_size_none
 ):
     """
     When `DataContext.target_max_block_size` is explicitly set to ``None``,
@@ -1654,68 +1658,53 @@ def test_max_block_size_none_respects_override_num_blocks(
 
     import pandas as pd
 
-    from ray.data.context import DataContext
+    # Build a >10 k-row Parquet file.
+    num_rows = 10_005
+    df = pd.DataFrame(
+        {
+            "ID": ["A"] * num_rows,
+            "values": range(num_rows),
+            "dttm": pd.date_range("2024-01-01", periods=num_rows, freq="h").astype(str),
+        }
+    )
+    file_path = os.path.join(tmp_path, "maxblock_none.parquet")
+    df.to_parquet(file_path)
 
-    ctx = DataContext.get_current()
-    original_tmbs = ctx.target_max_block_size
+    # Read with the specified number of blocks enforced.
+    ds = ray.data.read_parquet(file_path, override_num_blocks=override_num_blocks)
 
-    try:
-        # Disable block-splitting.
-        ctx.target_max_block_size = None
+    def _pivot_data(batch: pd.DataFrame) -> pd.DataFrame:  # noqa: WPS430
+        return batch.pivot(index="ID", columns="dttm", values="values")
 
-        # Build a >10 k-row Parquet file.
-        num_rows = 10_005
-        df = pd.DataFrame(
-            {
-                "ID": ["A"] * num_rows,
-                "values": range(num_rows),
-                "dttm": pd.date_range("2024-01-01", periods=num_rows, freq="h").astype(
-                    str
-                ),
-            }
-        )
-        file_path = os.path.join(tmp_path, "maxblock_none.parquet")
-        df.to_parquet(file_path)
+    out_ds = ds.map_batches(
+        _pivot_data,
+        batch_size=None,
+        batch_format="pandas",
+    )
+    out_df = out_ds.to_pandas()
 
-        # Read with the specified number of blocks enforced.
-        ds = ray.data.read_parquet(file_path, override_num_blocks=override_num_blocks)
+    # Create expected result using pandas pivot on original data
+    expected_df = df.pivot(index="ID", columns="dttm", values="values")
 
-        def _pivot_data(batch: pd.DataFrame) -> pd.DataFrame:  # noqa: WPS430
-            return batch.pivot(index="ID", columns="dttm", values="values")
+    # Verify the schemas match (same columns)
+    assert set(out_df.columns) == set(expected_df.columns)
 
-        out_ds = ds.map_batches(
-            _pivot_data,
-            batch_size=None,
-            batch_format="pandas",
-        )
-        out_df = out_ds.to_pandas()
+    # Verify we have the expected number of rows (one per block)
+    assert len(out_df) == override_num_blocks
 
-        # Create expected result using pandas pivot on original data
-        expected_df = df.pivot(index="ID", columns="dttm", values="values")
+    # Verify that all original values are present by comparing with expected result
+    # Only sum non-null values to avoid counting NaN as -1
+    expected_sum = expected_df.sum(skipna=True).sum()
+    actual_sum = out_df.sum(skipna=True).sum()
+    assert actual_sum == expected_sum
 
-        # Verify the schemas match (same columns)
-        assert set(out_df.columns) == set(expected_df.columns)
-
-        # Verify we have the expected number of rows (one per block)
-        assert len(out_df) == override_num_blocks
-
-        # Verify that all original values are present by comparing with expected result
-        # Only sum non-null values to avoid counting NaN as -1
-        expected_sum = expected_df.sum(skipna=True).sum()
-        actual_sum = out_df.sum(skipna=True).sum()
-        assert actual_sum == expected_sum
-
-        # Verify that the combined result contains the same data as the expected result
-        # by checking that each column's non-null values match
-        for col in expected_df.columns:
-            expected_values = expected_df[col].dropna()
-            actual_values = out_df[col].dropna()
-            assert len(expected_values) == len(actual_values)
-            assert set(expected_values) == set(actual_values)
-
-    finally:
-        # Always restore the original setting.
-        ctx.target_max_block_size = original_tmbs
+    # Verify that the combined result contains the same data as the expected result
+    # by checking that each column's non-null values match
+    for col in expected_df.columns:
+        expected_values = expected_df[col].dropna()
+        actual_values = out_df[col].dropna()
+        assert len(expected_values) == len(actual_values)
+        assert set(expected_values) == set(actual_values)
 
 
 @pytest.mark.parametrize("min_rows_per_file", [5, 10])

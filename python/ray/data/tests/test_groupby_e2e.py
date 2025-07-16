@@ -48,7 +48,9 @@ def _sort_series_of_lists_elements(s: pd.Series):
 
 
 def test_grouped_dataset_repr(
-    ray_start_regular_shared_2_cpus, disable_fallback_to_object_extension
+    ray_start_regular_shared_2_cpus,
+    disable_fallback_to_object_extension,
+    target_max_block_size_none,
 ):
     ds = ray.data.from_items([{"key": "spam"}, {"key": "ham"}, {"key": "spam"}])
     assert repr(ds.groupby("key")) == f"GroupedData(dataset={ds!r}, key='key')"
@@ -75,7 +77,9 @@ def test_groupby_none(
 
 
 def test_groupby_errors(
-    ray_start_regular_shared_2_cpus, disable_fallback_to_object_extension
+    ray_start_regular_shared_2_cpus,
+    disable_fallback_to_object_extension,
+    target_max_block_size_none,
 ):
     ds = ray.data.range(100)
     ds.groupby(None).count().show()  # OK
@@ -1096,7 +1100,9 @@ def test_groupby_map_groups_multicolumn_with_nan(
     )
 
 
-def test_groupby_map_groups_with_partial(disable_fallback_to_object_extension):
+def test_groupby_map_groups_with_partial(
+    disable_fallback_to_object_extension, target_max_block_size_none
+):
     """
     The partial function name should show up as
     +- Sort

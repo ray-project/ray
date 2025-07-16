@@ -205,7 +205,10 @@ def test_json_read(ray_start_regular_shared, fs, data_path, endpoint_url):
 
 @pytest.mark.parametrize("ignore_missing_paths", [True, False])
 def test_read_json_ignore_missing_paths(
-    ray_start_regular_shared, local_path, ignore_missing_paths
+    ray_start_regular_shared,
+    local_path,
+    ignore_missing_paths,
+    target_max_block_size_none,
 ):
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     path1 = os.path.join(local_path, "test1.json")

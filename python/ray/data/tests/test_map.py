@@ -750,7 +750,9 @@ def test_filter_mutex(ray_start_regular_shared, tmp_path):
         parquet_ds.filter(fn="sepal.length > 5.0")
 
 
-def test_filter_with_expressions(ray_start_regular_shared, tmp_path):
+def test_filter_with_expressions(
+    ray_start_regular_shared, tmp_path, target_max_block_size_none
+):
     """Test filtering with expressions."""
 
     # Generate sample data
@@ -868,7 +870,7 @@ def test_select_rename_columns(ray_start_regular_shared):
     assert result == [{"a": "b"}]
 
 
-def test_select_columns(ray_start_regular_shared):
+def test_select_columns(ray_start_regular_shared, target_max_block_size_none):
     # Test pandas and arrow
     df = pd.DataFrame({"col1": [1, 2, 3], "col2": [2, 3, 4], "col3": [3, 4, 5]})
     ds1 = ray.data.from_pandas(df)
@@ -925,7 +927,9 @@ def test_select_columns_validation(
         ds1.select_columns(cols=cols)
 
 
-def test_map_batches_basic(ray_start_regular_shared, tmp_path, restore_data_context):
+def test_map_batches_basic(
+    ray_start_regular_shared, tmp_path, restore_data_context, target_max_block_size_none
+):
     ctx = DataContext.get_current()
     ctx.execution_options.preserve_order = True
 
