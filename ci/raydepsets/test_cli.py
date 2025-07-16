@@ -82,7 +82,7 @@ class TestCli(unittest.TestCase):
                 workspace_dir=tmpdir,
             )
             manager.compile(
-                constraints=[],
+                constraints=["requirement_constraints_test.txt"],
                 requirements=["requirements_test.txt"],
                 args=[],
                 name="ray_base_test_depset",
@@ -93,16 +93,13 @@ class TestCli(unittest.TestCase):
 
             output_text = output_file.read_text()
             expected_packages = [
-                "aiorwlock==1.5.0",
-                "colorful==0.5.7",
-                "numpy==2.3.1",
-                "filelock==3.18.0",
-                "lz4==4.4.4",
-                "markdown-it-py==3.0.0",
-                "mdurl==0.1.2",
-                "pygments==2.19.2",
-                "rich==14.0.0",
-                "scipy==1.16.0",
+                "aiorwlock==1.3.0",
+                "colorful==0.5.5",
+                "numpy==1.26.4",
+                "filelock==3.17.0",
+                "lz4==4.3.3",
+                "rich==13.3.2",
+                "scipy==1.11.4",
             ]
 
             for package in expected_packages:
