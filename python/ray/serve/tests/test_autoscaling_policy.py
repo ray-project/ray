@@ -180,6 +180,10 @@ class TestAutoscalingMetrics:
         wait_for_condition(check_num_requests_eq, client=client, id=dep_id, expected=0)
         tlog("Queued and ongoing requests dropped to 0.")
 
+    @pytest.mark.skipif(
+        not RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
+        reason="Needs metric collection at handle.",
+    )
     @pytest.mark.parametrize("use_generator", [True, False])
     def test_replicas_die(self, serve_instance_with_signal, use_generator):
         """If replicas die while requests are still executing, that
@@ -957,12 +961,13 @@ def test_e2e_preserve_prev_replicas(serve_instance_with_signal):
 
     handle = serve.run(scaler.bind())
     dep_id = DeploymentID(name="scaler")
-    responses = [handle.remote() for _ in range(10)]
+    responses = [handle.remote() for _ in range(20)]
 
     wait_for_condition(
         check_num_replicas_eq,
         name="scaler",
         target=2,
+        use_controller=True,
         retry_interval_ms=1000,
         timeout=20,
     )
