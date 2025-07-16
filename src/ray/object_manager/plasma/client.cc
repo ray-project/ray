@@ -30,6 +30,8 @@
 #include "absl/container/flat_hash_map.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/ray_config.h"
+#include "ray/common/status.h"
+#include "ray/common/status_or.h"
 #include "ray/object_manager/plasma/connection.h"
 #include "ray/object_manager/plasma/plasma.h"
 #include "ray/object_manager/plasma/protocol.h"
@@ -71,7 +73,7 @@ class RAY_NO_EXPORT PlasmaMutableBuffer : public SharedMemoryBuffer {
   PlasmaMutableBuffer(std::shared_ptr<PlasmaClient::Impl> client,
                       uint8_t *mutable_data,
                       int64_t data_size)
-      : SharedMemoryBuffer(mutable_data, data_size), client_(client) {}
+      : SharedMemoryBuffer(mutable_data, data_size), client_(std::move(client)) {}
 
  private:
   std::shared_ptr<PlasmaClient::Impl> client_;
@@ -162,7 +164,7 @@ class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Imp
 
   Status Disconnect();
 
-  std::string DebugString();
+  StatusOr<std::string> GetMemoryUsage();
 
   bool IsInUse(const ObjectID &object_id);
 
@@ -898,20 +900,25 @@ Status PlasmaClient::Impl::Disconnect() {
   return Status::OK();
 }
 
-std::string PlasmaClient::Impl::DebugString() {
+StatusOr<std::string> PlasmaClient::Impl::GetMemoryUsage() {
   std::lock_guard<std::recursive_mutex> guard(client_mutex_);
-  if (!SendGetDebugStringRequest(store_conn_).ok()) {
-    return "error sending request";
+  auto request_status = SendGetDebugStringRequest(store_conn_);
+  if (!request_status.ok()) {
+    return StatusOr<std::string>(request_status);
   }
   std::vector<uint8_t> buffer;
-  if (!PlasmaReceive(store_conn_, MessageType::PlasmaGetDebugStringReply, &buffer).ok()) {
-    return "error receiving reply";
+  auto recv_status =
+      PlasmaReceive(store_conn_, MessageType::PlasmaGetDebugStringReply, &buffer);
+  if (!recv_status.ok()) {
+    return StatusOr<std::string>(recv_status);
   }
   std::string debug_string;
-  if (!ReadGetDebugStringReply(buffer.data(), buffer.size(), &debug_string).ok()) {
-    return "error parsing reply";
+  auto response_status =
+      ReadGetDebugStringReply(buffer.data(), buffer.size(), &debug_string);
+  if (!response_status.ok()) {
+    return StatusOr<std::string>(response_status);
   }
-  return debug_string;
+  return StatusOr<std::string>(debug_string);
 }
 
 // ----------------------------------------------------------------------
@@ -1013,7 +1020,7 @@ Status PlasmaClient::Delete(const std::vector<ObjectID> &object_ids) {
 
 Status PlasmaClient::Disconnect() { return impl_->Disconnect(); }
 
-std::string PlasmaClient::DebugString() { return impl_->DebugString(); }
+StatusOr<std::string> PlasmaClient::GetMemoryUsage() { return impl_->GetMemoryUsage(); }
 
 bool PlasmaClient::IsInUse(const ObjectID &object_id) {
   return impl_->IsInUse(object_id);

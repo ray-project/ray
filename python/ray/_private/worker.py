@@ -953,7 +953,7 @@ class Worker:
             for i, value in enumerate(values):
                 if isinstance(value, RayError):
                     if isinstance(value, ray.exceptions.ObjectLostError):
-                        global_worker.core_worker.dump_object_store_memory_usage()
+                        global_worker.core_worker.log_plasma_usage()
                     if isinstance(value, RayTaskError):
                         raise value.as_instanceof_cause()
                     else:
@@ -2854,12 +2854,11 @@ def get(
                 "'object_refs' must either be an ObjectRef or a list of ObjectRefs. "
             )
 
-        # TODO(ujvl): Consider how to allow user to retrieve the ready objects.
         values, debugger_breakpoint = worker.get_objects(object_refs, timeout=timeout)
         for i, value in enumerate(values):
             if isinstance(value, RayError):
                 if isinstance(value, ray.exceptions.ObjectLostError):
-                    worker.core_worker.dump_object_store_memory_usage()
+                    worker.core_worker.log_plasma_usage()
                 if isinstance(value, RayTaskError):
                     raise value.as_instanceof_cause()
                 else:
