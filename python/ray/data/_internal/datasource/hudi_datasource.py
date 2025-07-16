@@ -68,13 +68,8 @@ class HudiDatasource(Datasource):
             .build()
         )
 
-        reader_options = {
-            **hudi_table.storage_options(),
-            **hudi_table.hudi_options(),
-        }
+        logger.info("Collecting file slices for Hudi table at: %s", self._table_uri)
 
-        schema = hudi_table.get_schema()
-        read_tasks = []
         if self._query_type == HudiQueryType.SNAPSHOT:
             file_slices_splits = hudi_table.get_file_slices_splits(
                 parallelism, self._filters
@@ -89,6 +84,16 @@ class HudiDatasource(Datasource):
             raise ValueError(
                 f"Unsupported query type: {self._query_type}. Supported types are: {HudiQueryType.supported_types()}."
             )
+
+        logger.info("Creating read tasks for Hudi table at: %s", self._table_uri)
+
+        reader_options = {
+            **hudi_table.storage_options(),
+            **hudi_table.hudi_options(),
+        }
+
+        schema = hudi_table.get_schema()
+        read_tasks = []
 
         for file_slices_split in file_slices_splits:
             num_rows = 0
@@ -107,12 +112,20 @@ class HudiDatasource(Datasource):
                 input_files.append(full_path)
                 size_bytes += file_slice.base_file_size
 
-            metadata = BlockMetadata(
-                num_rows=num_rows,
-                input_files=input_files,
-                size_bytes=size_bytes,
-                exec_stats=None,
-            )
+            if self._query_type == HudiQueryType.SNAPSHOT:
+                metadata = BlockMetadata(
+                    num_rows=num_rows,
+                    input_files=input_files,
+                    size_bytes=size_bytes,
+                    exec_stats=None,
+                )
+            elif self._query_type == HudiQueryType.INCREMENTAL:
+                metadata = BlockMetadata(
+                    num_rows=None,
+                    input_files=input_files,
+                    size_bytes=None,
+                    exec_stats=None,
+                )
 
             read_task = ReadTask(
                 read_fn=lambda paths=relative_paths: _perform_read(

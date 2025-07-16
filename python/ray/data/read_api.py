@@ -2679,8 +2679,8 @@ def read_hudi(
         ...     table_uri="/hudi/trips",
         ...     query_type="incremental",
         ...     hudi_options={
-        ...         "hoodie.read.file_group.start_timestamp": "2023-01-01T12:34:56.789Z",
-        ...         "hoodie.read.file_group.end_timestamp": "2023-02-01T12:34:56.789Z",
+        ...         "hoodie.read.file_group.start_timestamp": "20230101123456789",
+        ...         "hoodie.read.file_group.end_timestamp": "20230201123456789",
         ...     },
         ... )
 
