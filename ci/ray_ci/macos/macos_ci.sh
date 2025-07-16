@@ -142,6 +142,11 @@ _prelude() {
     ln -sf python /opt/homebrew/opt/miniforge/bin/python3
   fi
 
+  which python
+  python --version
+  which python3
+  python3 --version
+
   ./ci/ci.sh build
   ./ci/env/env_info.sh
 }
