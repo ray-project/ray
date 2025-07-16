@@ -89,8 +89,8 @@ def test_aggregator_agent_receive_publish_events_normally(
     )
 
     reply = stub.AddEvents(request)
-    assert reply.status.status_code == 0
-    assert reply.status.status_message == "all events received"
+    assert reply.status.code == 0
+    assert reply.status.message == "all events received"
 
     wait_for_condition(lambda: len(httpserver.log) == 1)
 
@@ -150,12 +150,12 @@ def test_aggregator_agent_receive_event_full(
     )
 
     reply = stub.AddEvents(request)
-    assert reply.status.status_code == 0
-    assert reply.status.status_message == "all events received"
+    assert reply.status.code == 0
+    assert reply.status.message == "all events received"
 
     reply = stub.AddEvents(request)
-    assert reply.status.status_code == 5
-    assert reply.status.status_message == "event 1 dropped because event buffer full"
+    assert reply.status.code == 5
+    assert reply.status.message == "event 1 dropped because event buffer full"
 
 
 def test_aggregator_agent_receive_dropped_at_core_worker(
@@ -200,8 +200,8 @@ def test_aggregator_agent_receive_dropped_at_core_worker(
     )
 
     reply = stub.AddEvents(request)
-    assert reply.status.status_code == 0
-    assert reply.status.status_message == "all events received"
+    assert reply.status.code == 0
+    assert reply.status.message == "all events received"
 
     wait_for_condition(lambda: len(httpserver.log) == 1)
 
@@ -245,8 +245,8 @@ def test_aggregator_agent_receive_multiple_events(ray_start_cluster_head, httpse
         )
     )
     reply = stub.AddEvents(request)
-    assert reply.status.status_code == 0
-    assert reply.status.status_message == "all events received"
+    assert reply.status.code == 0
+    assert reply.status.message == "all events received"
     wait_for_condition(lambda: len(httpserver.log) == 1)
     req, _ = httpserver.log[0]
     req_json = json.loads(req.data)
@@ -308,9 +308,9 @@ def test_aggregator_agent_receive_multiple_events_failures(
         )
     )
     reply = stub.AddEvents(request)
-    assert reply.status.status_code == 5
+    assert reply.status.code == 5
     assert (
-        reply.status.status_message
+        reply.status.message
         == "event 1 dropped because event buffer full, event 2 dropped because event buffer full"
     )
 
@@ -330,8 +330,8 @@ def test_aggregator_agent_receive_empty_events(ray_start_cluster_head, httpserve
         )
     )
     reply = stub.AddEvents(request)
-    assert reply.status.status_code == 0
-    assert reply.status.status_message == "all events received"
+    assert reply.status.code == 0
+    assert reply.status.message == "all events received"
 
 
 if __name__ == "__main__":
