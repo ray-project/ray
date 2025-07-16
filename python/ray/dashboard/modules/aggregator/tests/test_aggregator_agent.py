@@ -1,6 +1,7 @@
 import sys
 import json
 import base64
+from unittest.mock import MagicMock
 
 import pytest
 from google.protobuf.timestamp_pb2 import Timestamp
@@ -30,6 +31,8 @@ from ray.core.generated.events_base_event_pb2 import RayEvent
 from ray.core.generated.profile_events_pb2 import ProfileEvents, ProfileEventEntry
 from ray.core.generated.events_task_profile_events_pb2 import TaskProfileEvents
 
+from ray.dashboard.modules.aggregator.aggregator_agent import AggregatorAgent
+
 
 _EVENT_AGGREGATOR_AGENT_TARGET_PORT = find_free_port()
 
@@ -54,9 +57,10 @@ _with_aggregator_port = pytest.mark.parametrize(
     [
         {
             "env_vars": {
-                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_SEND_PORT": str(
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_EXPORT_PORT": str(
                     _EVENT_AGGREGATOR_AGENT_TARGET_PORT
                 ),
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_EXPORT_ADDR": "http://127.0.0.1",
             },
         },
     ],
@@ -84,6 +88,34 @@ def get_event_aggregator_grpc_stub(webui_url, gcs_address, head_node_id):
     options = ray_constants.GLOBAL_GRPC_OPTIONS
     channel = init_grpc_channel(f"{ip}:{grpc_port}", options=options)
     return EventAggregatorServiceStub(channel)
+
+
+@pytest.mark.parametrize(
+    (
+        "export_addr",
+        "export_port",
+        "expected_http_target_enabled",
+        "expected_event_processing_enabled",
+    ),
+    [
+        ("", -1, False, False),
+        ("http://127.0.0.1", -1, False, False),
+        ("", 12345, False, False),
+        ("http://127.0.0.1", 12345, True, True),
+    ],
+)
+def test_aggregator_agent_http_target_not_enabled(
+    export_addr,
+    export_port,
+    expected_http_target_enabled,
+    expected_event_processing_enabled,
+):
+    dashboard_agent = MagicMock()
+    dashboard_agent.events_export_addr = export_addr
+    dashboard_agent.events_export_port = export_port
+    agent = AggregatorAgent(dashboard_agent)
+    assert agent._event_http_target_enabled == expected_http_target_enabled
+    assert agent._event_processing_enabled == expected_event_processing_enabled
 
 
 @_with_aggregator_port
@@ -136,9 +168,14 @@ def test_aggregator_agent_receive_publish_events_normally(
         {
             "env_vars": {
                 "RAY_DASHBOARD_AGGREGATOR_AGENT_MAX_EVENT_BUFFER_SIZE": 1,
+<<<<<<< HEAD
                 "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_SEND_PORT": str(
                     _EVENT_AGGREGATOR_AGENT_TARGET_PORT
                 ),
+=======
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_EXPORT_PORT": _EVENT_AGGREGATOR_AGENT_TARGET_PORT,
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_EXPORT_ADDR": "http://127.0.0.1",
+>>>>>>> 646884b0c2 (update the configuration in aggregation agent)
             },
         },
     ],
@@ -181,7 +218,13 @@ def test_aggregator_agent_receive_event_full(
         )
     )
 
+<<<<<<< HEAD
     stub.AddEvents(request)
+=======
+    reply = stub.AddEvents(request)
+    assert reply is not None
+
+>>>>>>> 646884b0c2 (update the configuration in aggregation agent)
     wait_for_condition(lambda: len(httpserver.log) == 1)
 
     req, _ = httpserver.log[0]
@@ -243,9 +286,14 @@ def test_aggregator_agent_receive_multiple_events(
         {
             "env_vars": {
                 "RAY_DASHBOARD_AGGREGATOR_AGENT_MAX_EVENT_BUFFER_SIZE": 1,
+<<<<<<< HEAD
                 "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_SEND_PORT": str(
                     _EVENT_AGGREGATOR_AGENT_TARGET_PORT
                 ),
+=======
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_EXPORT_ADDR": "http://127.0.0.1",
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_EXPORT_PORT": _EVENT_AGGREGATOR_AGENT_TARGET_PORT,
+>>>>>>> 646884b0c2 (update the configuration in aggregation agent)
             },
         },
     ],

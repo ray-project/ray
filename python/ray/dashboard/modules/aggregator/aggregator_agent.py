@@ -67,11 +67,9 @@ REQUEST_BACKOFF_FACTOR = ray_constants.env_float(
     f"{env_var_prefix}_REQUEST_BACKOFF_FACTOR", 1.0
 )
 # Address of the external service to send events
-EVENT_SEND_ADDR = os.environ.get(
-    f"{env_var_prefix}_EVENT_SEND_ADDR", "http://127.0.0.1"
-)
+EVENT_EXPORT_ADDR = os.environ.get(f"{env_var_prefix}_EVENT_EXPORT_ADDR", "")
 # Port of the external service to send events
-EVENT_SEND_PORT = ray_constants.env_integer(f"{env_var_prefix}_EVENT_SEND_PORT", 12345)
+EVENT_EXPORT_PORT = ray_constants.env_integer(f"{env_var_prefix}_EVENT_EXPORT_PORT", -1)
 # Interval to update metrics
 METRICS_UPDATE_INTERVAL_SECONDS = ray_constants.env_float(
     f"{env_var_prefix}_METRICS_UPDATE_INTERVAL_SECONDS", 0.1
@@ -163,7 +161,32 @@ class AggregatorAgent(
         self._events_failed_to_add_to_aggregator_since_last_metrics_update = 0
         self._events_dropped_at_event_aggregator_since_last_metrics_update = 0
         self._events_published_since_last_metrics_update = 0
-        self._events_filtered_out_since_last_metrics_update = 0
+        self._event_export_addr = (
+            dashboard_agent.events_export_addr
+            if dashboard_agent.events_export_addr
+            else EVENT_EXPORT_ADDR
+        )
+        self._event_export_port = (
+            dashboard_agent.events_export_port
+            if dashboard_agent.events_export_port
+            else EVENT_EXPORT_PORT
+        )
+
+        if self._event_export_addr == "" or self._event_export_port == -1:
+            logger.info(
+                "Event HTTP target not set, skipping sending events to "
+                f"external http service. event_export_addr: {self._event_export_addr}, "
+                f"event_export_port: {self._event_export_port}"
+            )
+            self._event_http_target_enabled = False
+        else:
+            self._event_http_target_enabled = True
+
+        self._event_processing_enabled = self._event_http_target_enabled
+        if self._event_processing_enabled:
+            logger.info("Event processing enabled")
+        else:
+            logger.info("Event processing disabled")
 
         self._orig_sigterm_handler = signal.signal(
             signal.SIGTERM, self._sigterm_handler
@@ -192,6 +215,14 @@ class AggregatorAgent(
         """
         Receives events from the request, adds them to the event buffer,
         """
+        # TODO(myan): Improve the status code
+        if not self._event_processing_enabled:
+            return events_event_aggregator_service_pb2.AddEventReply(
+                status=events_event_aggregator_service_pb2.AddEventStatus(
+                    status_code=0, status_message="Event processing disabled"
+                )
+            )
+        
         # TODO(myan) #54515: Considering adding a mechanism to also send out the events
         # metadata (e.g. dropped task attempts) to help with event processing at the
         # downstream
@@ -235,7 +266,7 @@ class AggregatorAgent(
         """
         Sends a batch of events to the external service via HTTP POST request
         """
-        if not event_batch:
+        if not event_batch or not self._event_http_target_enabled:
             return
 
         filtered_event_batch = [
@@ -255,7 +286,7 @@ class AggregatorAgent(
 
         try:
             response = self._http_session.post(
-                f"{EVENT_SEND_ADDR}:{EVENT_SEND_PORT}", json=filtered_event_batch_json
+                f"{self._event_export_addr}:{self._event_export_port}", json=event_batch
             )
             response.raise_for_status()
             with self._lock:
