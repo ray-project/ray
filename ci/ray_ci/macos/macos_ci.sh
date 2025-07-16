@@ -133,6 +133,13 @@ _prelude() {
   fi
   . ./ci/ci.sh init && source ~/.zshenv
   source ~/.zshrc
+
+  if [[ ! -e /opt/homebrew/opt/miniforge/bin/python3 && -e /opt/homebrew/opt/miniforge/bin/python ]]; then
+    # Point python3 to python in miniforge
+    # Miniforge's installation does not install python3.
+    ln -s /opt/homebrew/opt/miniforge/bin/python3 /opt/homebrew/opt/miniforge/bin/python
+  fi
+
   ./ci/ci.sh build
   ./ci/env/env_info.sh
 }
