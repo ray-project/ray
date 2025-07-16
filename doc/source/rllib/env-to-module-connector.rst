@@ -28,14 +28,6 @@ Env-to-module pipelines
             Env-to-module pipelines (this page)
 
     .. grid-item-card::
-        :img-top: /rllib/images/connector_v2/module_to_env_connector.svg
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
-        .. button-ref:: module-to-env-pipeline-docs
-
-            Module-to-env pipelines
-
-    .. grid-item-card::
         :img-top: /rllib/images/connector_v2/learner_connector.svg
         :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 

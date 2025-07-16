@@ -28,14 +28,6 @@ Learner connector pipelines
             Env-to-module pipelines
 
     .. grid-item-card::
-        :img-top: /rllib/images/connector_v2/module_to_env_connector.svg
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
-        .. button-ref:: module-to-env-connector-docs
-
-            Module-to-env pipelines
-
-    .. grid-item-card::
         :img-top: /rllib/images/connector_v2/learner_connector.svg
         :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
@@ -89,8 +81,8 @@ Writing custom Learner connectors
 ---------------------------------
 
 You can customize the default Learner connector pipeline that RLlib creates through specifying a function in your
-:py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`, which returns a single :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2`
-piece or a list thereof.
+:py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`, which takes the observation- and action spaces as input arguments and
+returns a single :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` piece or a list thereof.
 RLlib prepends these :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` instances to the
 :ref:`default Learner pipeline <default-learner-pipeline>` in the order returned,
 unless you set `add_default_connectors_to_learner_pipeline=False` in your config, in which case RLlib exclusively uses the provided
@@ -102,7 +94,7 @@ For example, to prepend a custom ConnectorV2 piece to the Learner pipeline, you 
     :skipif: True
 
     config.learners(
-        learner_connector=lambda input_obs_space, input_act_space: MyLearnerConnector(..),
+        learner_connector=lambda obs_space, act_space: MyLearnerConnector(..),
     )
 
 If you want to add multiple custom pieces to the pipeline, return them as a list:
@@ -113,7 +105,7 @@ If you want to add multiple custom pieces to the pipeline, return them as a list
     # Return a list of connector pieces to make RLlib add all of them to your
     # Learner pipeline.
     config.learners(
-        learner_connector=lambda input_obs_space, input_act_space: [
+        learner_connector=lambda obs_space, act_space: [
             MyLearnerConnector(..),
             MyOtherLearnerConnector(..),
             AndOneMoreConnector(..),
@@ -137,14 +129,14 @@ before the previously described default connector pieces that RLlib provides aut
 Example: Reward shaping prior to loss computation
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-If you would like to perform any kind of reward shaping on the episode data you receive before computing a loss,
-the Learner connector pipeline is the right place to do so. Here you have full access to the entire episode data, including
-observations, actions, other agents' data in multi-agent scenarios, and all rewards, of course.
+You can use the Learner connector API to perform reward shaping on the episode data before computing a loss.
+Inside a Learner connector's :py:meth:`~ray.rllib.connectors.connector_v2.ConnectorV2.__call__` has full access to the
+entire episode data, including observations, actions, other agents' data in multi-agent scenarios, and all rewards.
 
-The following are the most important code snippets for setting up a count-based, intrinsic reward signal.
-Your connector tracks discrete observations that the agent already visited and computes an intrinsic reward based on the
-inverse frequency of the visited observation. Thus, the more often the agent has already seen the observation, the lower the
-computed intrinsic reward. The agent is then motivated to visit new states and observations leading to better exploratory behavior.
+The following are the most important code snippets for setting up a count-based, intrinsic reward signal based on the
+(discrete) observations that the agent already visited. The intrinsic reward is computed as the
+inverse number of times an agent has already seen a specific observation. Thus, the more the agent visits a state, the lower the
+computed intrinsic reward for that state, motivating the agent to visit new states and show better exploratory behavior.
 
 See `here for the full count-based intrinsic reward example script <https://github.com/ray-project/ray/blob/master/rllib/examples/curiosity/count_based_curiosity.py>`__.
 
@@ -160,8 +152,15 @@ You can write the custom Learner connector by subclassing `ConnectorV2` and over
         def __init__(self, **kwargs):
             super().__init__(**kwargs)
 
-            # Observation counter.
+            # Observation counter to compute state visitation frequencies.
             self._counts = Counter()
+
+
+In the ``__call`` method, you loop through all single-agent episodes and change the reward
+stored in these to: ``extrinsic_reward + intrinsic_reward``. Thereby, you keep track
+of how many times the agent has already seen a particular observation.
+
+.. testcode::
 
         def __call__(
             self,
@@ -173,7 +172,6 @@ You can write the custom Learner connector by subclassing `ConnectorV2` and over
             shared_data=None,
             **kwargs,
         ) -> Any:
-            # Loop through all episodes and change the reward to: reward + intrinsic_reward
             for sa_episode in self.single_agent_episode_iterator(
                 episodes=episodes, agents_that_stepped_only=False
             ):
@@ -196,24 +194,37 @@ You can write the custom Learner connector by subclassing `ConnectorV2` and over
             return batch
 
 
-If you plug in this custom :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` class into your algorithm config
+If you plug in this custom :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` piece into the pipeline through
+the algorithm config
 (`config.learners(learner_connector=lambda env: CountBasedIntrinsicRewards())`),
-your loss function should receive the altered reward signals, which are the sums of the
-extrinsic reward from the environment and the computed intrinsic reward based on visitation frequencies, in the ``rewards`` column of the batch.
+your loss function should receive the altered reward signals in the ``rewards`` column of the batch.
 
-Notice that your custom logic writes the new rewards right back into the given episodes
-instead of placing them into the `batch`. This strategy of writing back those data you pulled from episodes right back
-into the same episodes makes sure that from this point on, only the changed data is visible to the subsequent connector pieces.
-The batch remains unchanged at first. However, knowing that one of the subsequent
-:ref:`default Learner connector pieces <default-learner-pipeline>` performs the task of filling the batch with data from the episodes,
-you can rely on the information you changed in the episode to end up in the batch in the end.
-
-The succeeding example, however, demonstrates a specific case, observation stacking, where this strategy fails and in
-which you should instead manipulate the `batch` directly.
+.. note::
+    Your custom logic writes the new rewards right back into the given episodes
+    instead of placing them into the `batch`. This strategy of writing back those data you pulled from episodes right back
+    into the same episodes makes sure that from this point on, only the changed data is visible to the subsequent connector pieces.
+    The batch remains unchanged at first. However, knowing that one of the subsequent
+    :ref:`default Learner connector pieces <default-learner-pipeline>` performs the task of filling the batch with data from the episodes,
+    you can rely on the information you changed in the episode to end up in the batch in the end.
 
 
-Stacking the N most recent observations
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Example: Stacking the N most recent observations
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+You can use the Learner connector API, in combination with an env-to-module custom connector piece, to efficiently perform
+observation frame stacking, without having to deduplicate the stacked, overlapping data and without having to store additional,
+overlapping observations in your episodes or send them through the network for inter-actor communication:
+
+.. figure:: images/connector_v2/frame_stacking_connector_setup.svg
+    :width: 700
+    :align: left
+
+    **ConnectorV2 setup for observation frame-stacking**: An env-to-module, inside an EnvRunner, and a Learner connector pipeline, inside
+    a Learner actor, both of which contain a ConnectorV2 piece, which stacks the last four observations from the still ongoing (EnvRunner)
+    or already collected episodes and places them in the batch.  RLlib inserts custom connector pieces, such
+    as intrinsic reward computation, before the default pieces. This way, if your custom connectors alter the input episodes
+
+
 
 If you would like to write a custom env-to-module connector that stacks the `N` most recent observations and feeds
 this stack of observations into your RLModule (for example in an attention/transformer architecture).
@@ -299,6 +310,3 @@ side of things.
         config.training(
             learner_connector=lambda obs_space, act_space: FrameStacking(num_frames=N, as_learner_conector=True),
         )
-
-
-END (sven)
