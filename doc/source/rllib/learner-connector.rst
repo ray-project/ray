@@ -58,7 +58,7 @@ RLModule-readable tensor batch, the train batch, takes place and the output of t
 Default Learner pipeline behavior
 ---------------------------------
 
-By default RLlib populates an Learner connector pipeline with the following built-in connector pieces.
+By default RLlib populates a Learner connector pipeline with the following built-in connector pieces.
 
 * :py:class:`~ray.rllib.connectors.common.add_observations_from_episodes_to_batch.AddObservationsFromEpisodesToBatch`: Places all observations from the incoming episodes into the batch. The column name is ``obs``. For example, if you have 2 incoming episodes of length 10 and 20, your resulting train batch size is 30.
 * :py:class:`~ray.rllib.connectors.learner.add_columns_from_episodes_to_batch.AddColumnsFromEpisodesToBatch`: Places all other columns, like rewards, actions, and termination flags, from the incoming episodes into the batch.
@@ -258,7 +258,11 @@ the Learner custom connector part:
         Works both as Learner connector as well as env-to-module connector.
         """
 
-        def recompute_output_observation_space(self, in_obs_space, in_act_space):
+        def recompute_output_observation_space(
+            self,
+            input_observation_space,
+            input_action_space,
+        ):
             # Assume the input observation space is a Box of shape (x,).
             assert (
                 isinstance(input_observation_space, gym.spaces.Box)
