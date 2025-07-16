@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional, Tuple
 import ray
 from ray._private.custom_types import TensorTransportEnum
 from ray._raylet import ObjectRef
+import ray.util.collective as collective
 from ray.util.collective.types import Backend
 
 if TYPE_CHECKING:
@@ -36,13 +37,14 @@ def __ray_get_tensor_meta__(self, obj_id: str, use_nixl: bool):
     ), f"obj_id={obj_id} not found in GPU object store"
     tensors = gpu_object_store.get_gpu_object(obj_id)
     if use_nixl:
-        agent = global_worker.gpu_object_manager.nixl_agent
-        reg_descs = agent.register_memory(tensors)
-        xfer_descs = reg_descs.trim()
+        from ray.util.collective.collective_group.nixl_backend import NixlBackend
+
+        nixl_backend: NixlBackend = collective.get_group_handle("nixl")
+        serialized_descs, agent_meta = nixl_backend.get_nixl_metadata(tensors)
         return (
             [(t.shape, t.dtype) for t in tensors],
-            agent.get_serialized_descs(xfer_descs),
-            agent.get_agent_metadata(),
+            serialized_descs,
+            agent_meta,
         )
     else:
         return [(t.shape, t.dtype) for t in tensors], None, None

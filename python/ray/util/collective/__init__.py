@@ -21,6 +21,7 @@ from ray.util.collective.collective import (
     send,
     send_multigpu,
     recv,
+    recv_multiple_tensors,
     recv_multigpu,
     get_group_handle,
 )
@@ -48,6 +49,7 @@ __all__ = [
     "send",
     "send_multigpu",
     "recv",
+    "recv_multiple_tensors",
     "recv_multigpu",
     "get_group_handle",
 ]

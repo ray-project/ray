@@ -34,3 +34,12 @@ class NixlBackend(metaclass=ABCMeta):
                 raise RuntimeError("NIXL transfer got to Error state.")
             elif state == "DONE":
                 break
+
+    def get_nixl_metadata(self, tensors):
+        nixl_agent = self.nixl_agent
+        reg_descs = nixl_agent.register_memory(tensors)
+        xfer_descs = reg_descs.trim()
+        return (
+            nixl_agent.get_serialized_descs(xfer_descs),
+            nixl_agent.get_agent_metadata(),
+        )

@@ -756,19 +756,24 @@ def get_group_handle(group_name: str = "default"):
     if not is_group_initialized(group_name):
         # try loading from remote info store
         try:
-            # if the information is stored in an Info object,
-            # get and create the group.
-            name = "info_" + group_name
-            mgr = ray.get_actor(name=name)
-            ids, world_size, rank, backend, gloo_timeout = ray.get(
-                mgr.get_info.remote()
-            )
-            worker = ray._private.worker.global_worker
-            id_ = worker.core_worker.get_actor_id()
-            r = rank[ids.index(id_)]
-            _group_mgr.create_collective_group(
-                backend, world_size, r, group_name, gloo_timeout
-            )
+            if group_name == "nixl":
+                _group_mgr.create_collective_group(
+                    types.Backend.NIXL, None, None, group_name, None
+                )
+            else:
+                # if the information is stored in an Info object,
+                # get and create the group.
+                name = "info_" + group_name
+                mgr = ray.get_actor(name=name)
+                ids, world_size, rank, backend, gloo_timeout = ray.get(
+                    mgr.get_info.remote()
+                )
+                worker = ray._private.worker.global_worker
+                id_ = worker.core_worker.get_actor_id()
+                r = rank[ids.index(id_)]
+                _group_mgr.create_collective_group(
+                    backend, world_size, r, group_name, gloo_timeout
+                )
         except ValueError as exc:
             # check if this group is initialized using options()
             if (
