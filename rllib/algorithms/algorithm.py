@@ -2987,6 +2987,37 @@ class Algorithm(Checkpointable, Trainable):
                 inference_only=True,
             )
 
+        if self.env_runner_group.num_remote_env_runners() > 0 and not self.env_runner:
+            if (
+                path / COMPONENT_ENV_RUNNER / COMPONENT_ENV_TO_MODULE_CONNECTOR
+            ).is_dir():
+                self.env_to_module_connector.restore_from_path(path, *args, **kwargs)
+
+            if (
+                path / COMPONENT_ENV_RUNNER / COMPONENT_MODULE_TO_ENV_CONNECTOR
+            ).is_dir():
+                self.module_to_env_connector.restore_from_path(path, *args, **kwargs)
+
+            connector_states = {
+                COMPONENT_ENV_TO_MODULE_CONNECTOR: self.env_to_module_connector.get_state(),
+                COMPONENT_MODULE_TO_ENV_CONNECTOR: self.module_to_env_connector.get_state(),
+            }
+            self.env_runner_group.sync_env_runner_states(
+                config=self.config,
+                from_worker=None,
+                num_env_steps_sampled=self.metrics.peek(
+                    (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED)
+                ),
+                connector_states=connector_states,
+            )
+        # Otherwise get the connector states from the local `EnvRunner`.
+        elif self.env_runner_group.num_remote_env_runners() > 0 and self.env_runner:
+            # connector_states = self.env_runner.get_state(not_components[COMPONENT_RL_MODULE])
+            self.env_runner_group.sync_env_runner_states(
+                config=self.config,
+                from_worker=self.env_runner,
+            )
+
     @override(Trainable)
     def log_result(self, result: ResultDict) -> None:
         # Log after the callback is invoked, so that the user has a chance
