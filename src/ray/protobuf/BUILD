@@ -163,6 +163,7 @@ proto_library(
         ":common_proto",
         ":gcs_proto",
         ":pubsub_proto",
+        ":events_event_aggregator_service_proto",
     ],
 )
 

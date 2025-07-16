@@ -638,16 +638,48 @@ void GcsTaskManager::GcsTaskManagerStorage::RecordDataLossFromWorker(
   }
 }
 
-void GcsTaskManager::HandleAddTaskEventData(rpc::AddTaskEventDataRequest request,
-                                            rpc::AddTaskEventDataReply *reply,
-                                            rpc::SendReplyCallback send_reply_callback) {
-  auto data = std::move(*request.mutable_data());
-  task_event_storage_->RecordDataLossFromWorker(data);
+void GcsTaskManager::StoreTaskEvent(const rpc::AddTaskEventDataRequest &request) {
+  task_event_storage_->RecordDataLossFromWorker(request.data());
 
-  for (auto events_by_task : *data.mutable_events_by_task()) {
+  for (auto events_by_task : request.data().events_by_task()) {
     stats_counter_.Increment(kTotalNumTaskEventsReported);
     task_event_storage_->AddOrReplaceTaskEvent(std::move(events_by_task));
   }
+}
+
+rpc::AddTaskEventDataRequest GcsTaskManager::ToAddTaskEventDataRequest(
+    const AddEventRequest &request) {
+  rpc::AddTaskEventDataRequest add_task_event_data_request;
+
+  // Convert RayEventsData to TaskEventData
+  auto *task_event_data = add_task_event_data_request.mutable_data();
+
+  // Copy dropped task attempts
+  for (const auto &dropped_attempt :
+       request.events_data().task_events_metadata().dropped_task_attempts()) {
+    *task_event_data->add_dropped_task_attempts() = dropped_attempt;
+  }
+
+  // Set job_id if available (this would need to be extracted from the events)
+  // For now, we'll leave it empty as it's not clear how to extract it from RayEventsData
+
+  return add_task_event_data_request;
+}
+
+void GcsTaskManager::HandleAddTaskEventData(rpc::AddTaskEventDataRequest request,
+                                            rpc::AddTaskEventDataReply *reply,
+                                            rpc::SendReplyCallback send_reply_callback) {
+  StoreTaskEvent(request);
+
+  // Processed all the task events
+  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+}
+
+void GcsTaskManager::HandleAddEvent(AddEventRequest request,
+                                    AddEventReply *reply,
+                                    rpc::SendReplyCallback send_reply_callback) {
+  auto data = ToAddTaskEventDataRequest(request);
+  StoreTaskEvent(data);
 
   // Processed all the task events
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());

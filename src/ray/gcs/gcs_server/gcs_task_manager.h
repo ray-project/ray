@@ -27,9 +27,11 @@
 #include "ray/gcs/gcs_server/usage_stats_client.h"
 #include "ray/gcs/pb_util.h"
 #include "ray/util/counter_map.h"
+#include "src/ray/protobuf/events_event_aggregator_service.pb.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
+using namespace rpc::events;
 
 // Forward declaration.
 class PeriodicalRunner;
@@ -104,6 +106,15 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
   void HandleAddTaskEventData(rpc::AddTaskEventDataRequest request,
                               rpc::AddTaskEventDataReply *reply,
                               rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Handles a AddEvent request.
+  ///
+  /// \param request gRPC Request.
+  /// \param reply gRPC Reply.
+  /// \param send_reply_callback Callback to invoke when sending reply.
+  void HandleAddEvent(AddEventRequest request,
+                      AddEventReply *reply,
+                      rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle GetTaskEvent request.
   ///
@@ -476,6 +487,18 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
   ///
   /// \param data The task event data.
   void RecordDataLossFromWorker(const rpc::TaskEventData &data);
+
+  /// Store task events from a AddTaskEventDataRequest.
+  ///
+  /// \param data The task event data.
+  void StoreTaskEvent(const rpc::AddTaskEventDataRequest &data);
+
+  /// Convert an AddEventRequest to an AddTaskEventDataRequest.
+  ///
+  /// \param request The AddEventRequest.
+  /// \return The AddTaskEventDataRequest.
+  rpc::AddTaskEventDataRequest ToAddTaskEventDataRequest(
+      const rpc::events::AddEventRequest &request);
 
   /// Test only
   size_t GetTotalNumTaskAttemptsDropped() {

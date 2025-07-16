@@ -19,6 +19,7 @@ package ray.rpc;
 import "src/ray/protobuf/common.proto";
 import "src/ray/protobuf/gcs.proto";
 import "src/ray/protobuf/pubsub.proto";
+import "src/ray/protobuf/events_event_aggregator_service.proto";
 
 message AddJobRequest {
   JobTableData data = 1;
@@ -860,6 +861,9 @@ message GetTaskEventsReply {
 service TaskInfoGcsService {
   // Add task event data to GCS.
   rpc AddTaskEventData(AddTaskEventDataRequest) returns (AddTaskEventDataReply);
+
+  // Add one event data to GCS.
+  rpc AddEvent(events.AddEventRequest) returns (events.AddEventReply);
 
   // Get task events.
   rpc GetTaskEvents(GetTaskEventsRequest) returns (GetTaskEventsReply);
