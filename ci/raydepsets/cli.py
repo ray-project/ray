@@ -1,6 +1,8 @@
 import click
 from pathlib import Path
 from ci.raydepsets.workspace import Workspace, Depset
+import platform
+import runfiles
 
 
 @click.group(name="raydepsets")
@@ -30,3 +32,13 @@ class DependencySetManager:
             if depset.name == name:
                 return depset
         raise KeyError(f"Dependency set {name} not found")
+
+
+def uv_binary():
+    r = runfiles.Create()
+    system = platform.system()
+    if system != "Linux" or platform.processor() != "x86_64":
+        raise RuntimeError(
+            f"Unsupported platform/processor: {system}/{platform.processor()}"
+        )
+    return r.Rlocation("uv_x86_64/uv-x86_64-unknown-linux-gnu/uv")
