@@ -370,6 +370,8 @@ def configure_component_logger(
 
     if logging_config.enable_access_log is False:
         file_handler.addFilter(log_access_log_filter)
+    else:
+        file_handler.addFilter(ServeContextFilter())
 
     # Remove unwanted attributes from the log record.
     file_handler.addFilter(ServeLogAttributeRemovalFilter())

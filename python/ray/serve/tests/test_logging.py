@@ -425,6 +425,50 @@ def test_http_access_log_in_logs_file(serve_instance, log_format):
         )
 
 
+def test_http_access_log_in_proxy_logs_file(serve_instance):
+    name = "deployment_name"
+    fastapi_app = FastAPI()
+
+    @serve.deployment(name=name)
+    @serve.ingress(fastapi_app)
+    class Handler:
+        def __init__(self):
+            self._replica_unique_id = serve.get_replica_context().replica_id.unique_id
+
+        @fastapi_app.get("/")
+        def get_root(self):
+            return "Hello World!"
+
+    serve.run(Handler.bind(), logging_config={"encoding": "TEXT"})
+
+    # Get log file information
+    nodes = state_api.list_nodes()
+    serve_log_dir = get_serve_logs_dir()
+    node_ip_address = nodes[0].node_ip
+    proxy_log_file_name = get_component_file_name(
+        "proxy", node_ip_address, component_type=None, suffix=".log"
+    )
+    proxy_log_path = os.path.join(serve_log_dir, proxy_log_file_name)
+
+    url = get_application_url(use_localhost=True)
+
+    request_id = "0cd9c491-6921-4e59-b8a3-f42865481806"
+    response = httpx.get(url, headers={"X-Request-ID": request_id})
+    assert response.status_code == 200
+
+    def verify_request_id_in_logs(proxy_log_path, request_id):
+        with open(proxy_log_path, "r") as f:
+            for line in f:
+                print("ns ,i m in line :::", line)
+                if request_id in line:
+                    return True
+        return False
+
+    wait_for_condition(
+        verify_request_id_in_logs, proxy_log_path=proxy_log_path, request_id=request_id
+    )
+
+
 def test_handle_access_log(serve_instance):
     name = "handler"
 
