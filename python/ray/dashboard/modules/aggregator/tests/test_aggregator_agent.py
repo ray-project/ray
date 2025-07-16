@@ -57,6 +57,8 @@ from ray.core.generated.common_pb2 import (
 
 from ray.dashboard.modules.aggregator.aggregator_agent import AggregatorAgent
 
+from ray.dashboard.modules.aggregator.aggregator_agent import AggregatorAgent
+
 
 _EVENT_AGGREGATOR_AGENT_TARGET_PORT = find_free_port()
 _EVENT_AGGREGATOR_AGENT_TARGET_IP = "127.0.0.1"
