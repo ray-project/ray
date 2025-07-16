@@ -1,9 +1,11 @@
 """Using Ray Serve to deploy LLM models with P/D disaggregation.
 """
 import logging
+import uuid
 from typing import Any, AsyncGenerator, Dict, Union
 
 from pydantic import BaseModel, Field
+from vllm.config import KVTransferConfig
 
 from ray import serve
 from ray.llm._internal.serve.configs.openai_api_models import (
@@ -188,8 +190,14 @@ def build_app(pd_serving_args: dict) -> Application:
 
     for config in [pd_config.prefill_config, pd_config.decode_config]:
         if "kv_transfer_config" not in config.engine_kwargs:
-            raise ValueError(
-                "kv_transfer_config must be set for both prefill and decode configurations."
+            config.engine_kwargs.update(
+                {
+                    "kv_transfer_config": KVTransferConfig(
+                        kv_connector="NixlConnector",
+                        kv_role="kv_both",
+                        engine_id=str(uuid.uuid4()),
+                    )
+                }
             )
 
     prefill_deployment = build_llm_deployment(

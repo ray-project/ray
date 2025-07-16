@@ -24,10 +24,6 @@ class TestServingArgsParsing:
             ),
             engine_kwargs=dict(
                 tensor_parallel_size=1,
-                kv_transfer_config=dict(
-                    kv_connector=kv_connector,
-                    kv_role="kv_both",
-                ),
             ),
         )
 
@@ -44,10 +40,6 @@ class TestServingArgsParsing:
             ),
             engine_kwargs=dict(
                 tensor_parallel_size=1,
-                kv_transfer_config=dict(
-                    kv_connector=kv_connector,
-                    kv_role="kv_both",
-                ),
             ),
         )
 
