@@ -111,6 +111,7 @@ class GroupManager(object):
             )
             g = TorchGLOOGroup(world_size, rank, group_name)
         elif backend == types.Backend.NIXL:
+            _check_backend_availability(backend)
             logger.debug("Creating NIXL Backend: '{}'...".format(group_name))
             g = NixlBackend()
         else:
@@ -823,6 +824,9 @@ def _check_backend_availability(backend: types.Backend):
     elif backend == types.Backend.TORCH_GLOO:
         if not torch_distributed_available():
             raise RuntimeError("torch.distributed is not available.")
+    elif backend == types.Backend.NIXL:
+        if not nixl_available():
+            raise RuntimeError("NIXL is not available.")
 
 
 def _check_inside_actor():
