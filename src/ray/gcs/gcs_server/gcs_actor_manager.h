@@ -54,9 +54,9 @@ class GcsActor {
       rpc::ActorTableData actor_table_data,
       std::shared_ptr<CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>>
           counter)
-      : actor_table_data_(std::move(actor_table_data)), counter_(counter) {
+      : actor_table_data_(std::move(actor_table_data)), counter_(std::move(counter)), export_event_write_enabled_(IsExportAPIEnabledActor()) {
     RefreshMetrics();
-    export_event_write_enabled_ = IsExportAPIEnabledActor();
+
   }
 
   /// Create a GcsActor by actor_table_data and task_spec.
@@ -72,10 +72,10 @@ class GcsActor {
           counter)
       : actor_table_data_(std::move(actor_table_data)),
         task_spec_(std::make_unique<rpc::TaskSpec>(task_spec)),
-        counter_(counter) {
+        counter_(std::move(counter)), export_event_write_enabled_(IsExportAPIEnabledActor()) {
     RAY_CHECK(actor_table_data_.state() != rpc::ActorTableData::DEAD);
     RefreshMetrics();
-    export_event_write_enabled_ = IsExportAPIEnabledActor();
+
   }
 
   /// Create a GcsActor by TaskSpec.
@@ -88,7 +88,7 @@ class GcsActor {
       std::string ray_namespace,
       std::shared_ptr<CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>>
           counter)
-      : task_spec_(std::make_unique<rpc::TaskSpec>(task_spec)), counter_(counter) {
+      : task_spec_(std::make_unique<rpc::TaskSpec>(task_spec)), counter_(std::move(counter)), export_event_write_enabled_(IsExportAPIEnabledActor()) {
     RAY_CHECK(task_spec.type() == TaskType::ACTOR_CREATION_TASK);
     const auto &actor_creation_task_spec = task_spec.actor_creation_task_spec();
     actor_table_data_.set_actor_id(actor_creation_task_spec.actor_id());
@@ -150,7 +150,6 @@ class GcsActor {
           task_spec.label_selector().begin(), task_spec.label_selector().end());
     }
     RefreshMetrics();
-    export_event_write_enabled_ = IsExportAPIEnabledActor();
   }
 
   ~GcsActor() {
