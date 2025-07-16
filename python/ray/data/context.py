@@ -398,7 +398,7 @@ class DataContext:
             map tasks won't record memory stats.
     """
 
-    target_max_block_size: Optional[int] = field(default=DEFAULT_TARGET_MAX_BLOCK_SIZE)
+    target_max_block_size: Optional[int] = DEFAULT_TARGET_MAX_BLOCK_SIZE
     target_shuffle_max_block_size: int = DEFAULT_SHUFFLE_TARGET_MAX_BLOCK_SIZE
     target_min_block_size: int = DEFAULT_TARGET_MIN_BLOCK_SIZE
     streaming_read_buffer_size: int = DEFAULT_STREAMING_READ_BUFFER_SIZE

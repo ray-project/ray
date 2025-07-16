@@ -94,9 +94,6 @@ PARQUET_ENCODING_RATIO_ESTIMATE_MAX_NUM_SAMPLES = 10
 # reading too much data into memory.
 PARQUET_ENCODING_RATIO_ESTIMATE_NUM_ROWS = 1024
 
-# Pyarrow only allows 32-bit int for batch size.
-ARROW_ALLOWABLE_MAX_BATCH_SIZE = 1 << 31 - 1
-
 
 @dataclass(frozen=True)
 class _SampleInfo:
@@ -481,14 +478,16 @@ def read_fragments(
             }
 
         def get_batch_iterable():
-            return fragment.to_batches(
-                use_threads=use_threads,
-                columns=data_columns,
-                schema=schema,
-                batch_size=batch_size
-                or ARROW_ALLOWABLE_MAX_BATCH_SIZE,  # By default, Pyarrow batch size is 131_072 and this parameter is not nullable. https://arrow.apache.org/docs/python/generated/pyarrow.dataset.Fragment.html#pyarrow.dataset.Fragment.to_batches
+            kwargs = {
+                "use_threads": use_threads,
+                "columns": data_columns,
+                "schema": schema,
                 **to_batches_kwargs,
-            )
+            }
+            if batch_size is not None:
+                kwargs["batch_size"] = batch_size
+
+            return fragment.to_batches(**kwargs)
 
         # S3 can raise transient errors during iteration, and PyArrow doesn't expose a
         # way to retry specific batches.
