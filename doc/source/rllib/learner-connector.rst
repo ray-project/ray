@@ -232,7 +232,9 @@ pipeline and Learner connector pipelines):
     :py:class:`~ray.rllib.env.env_runner.EnvRunner`, and a Learner connector pipeline, inside
     a :py:class:`~ray.rllib.core.learner.learner.Learner` actor, both of which contain a
     custom :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` piece, which stacks the last four
-    observations from either the ongoing (``EnvRunner``) or already collected episodes (``Learner``) and places them in the batch.
+    observations from either the ongoing (``EnvRunner``) or already collected episodes (``Learner``) and places these
+    in the batch. Note that in cases where the stacking happens close to the beginning of the episode, dummy, zero-filled
+    observations (in the batch, in red) should be used.
 
 The following is an example for implementing such a frame-stacking mechanism using
 the :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` APIs with an RL environment, in which observations are plain 1D tensors.
