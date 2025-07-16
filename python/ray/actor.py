@@ -926,7 +926,12 @@ class _ActorClassMethodMetadata(object):
         cls._cache.clear()
 
     @classmethod
-    def create(cls, modified_class, actor_creation_function_descriptor, enable_tensor_transport: bool):
+    def create(
+        cls,
+        modified_class,
+        actor_creation_function_descriptor,
+        enable_tensor_transport: bool,
+    ):
         # Try to create an instance from cache.
         cached_meta = cls._cache.get(actor_creation_function_descriptor)
         if cached_meta is not None:
@@ -1011,10 +1016,14 @@ class _ActorClassMethodMetadata(object):
                     method_name
                 ] = method.__ray_tensor_transport__
 
-            method_tensor_transport = self.method_name_to_tensor_transport.get(method_name, None)
+            method_tensor_transport = self.method_name_to_tensor_transport.get(
+                method_name, None
+            )
             if not enable_tensor_transport and method_tensor_transport is not None:
                 if method_tensor_transport != TensorTransportEnum.OBJECT_STORE:
-                    raise ValueError(f"Method {method_name} has tensor_transport={method_tensor_transport.name} but enable_tensor_transport is False")
+                    raise ValueError(
+                        f"Method {method_name} has tensor_transport={method_tensor_transport.name} but enable_tensor_transport is False"
+                    )
 
         # Update cache.
         cls._cache[actor_creation_function_descriptor] = self
@@ -1096,7 +1105,9 @@ class _ActorClassMetadata:
         self.enable_tensor_transport = enable_tensor_transport
         self.last_export_cluster_and_job = None
         self.method_meta = _ActorClassMethodMetadata.create(
-            modified_class, actor_creation_function_descriptor, self.enable_tensor_transport
+            modified_class,
+            actor_creation_function_descriptor,
+            self.enable_tensor_transport,
         )
 
 

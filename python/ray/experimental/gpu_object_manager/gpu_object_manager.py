@@ -48,20 +48,26 @@ class GPUObjectManager:
                 from ray.experimental.gpu_object_manager.gpu_object_store import (
                     GPUObjectStore,
                 )
+
                 self._gpu_object_store = GPUObjectStore(self.gpu_object_store_lock)
         return self._gpu_object_store
 
     def _get_tensor_meta(
         self, src_actor: "ray.actor.ActorHandle", obj_id: str
     ) -> ObjectRef:
-        from ray.experimental.gpu_object_manager.gpu_object_store import __ray_get_tensor_meta__
+        from ray.experimental.gpu_object_manager.gpu_object_store import (
+            __ray_get_tensor_meta__,
+        )
+
         # Submit a Ray actor task to the source actor to get the tensor metadata.
         # The metadata is a list of tuples, where each tuple contains the shape and dtype
         # of a tensor in the GPU object store. This function returns an ObjectRef that
         # points to the tensor metadata.
         # NOTE(swang): We put this task on the background thread to avoid tasks
         # executing on the main thread blocking this task.
-        return src_actor.__ray_call__.options(concurrency_group="_ray_system").remote(__ray_get_tensor_meta__, obj_id)
+        return src_actor.__ray_call__.options(concurrency_group="_ray_system").remote(
+            __ray_get_tensor_meta__, obj_id
+        )
 
     def is_managed_object(self, obj_id: str) -> bool:
         """
@@ -123,7 +129,9 @@ class GPUObjectManager:
         # destination rank `dst_rank`.
         # NOTE(swang): We put this task on the background thread to avoid tasks
         # executing on the main thread blocking the data transfer.
-        src_actor.__ray_call__.options(concurrency_group="_ray_system").remote(__ray_send__, communicator_name, obj_id, dst_rank)
+        src_actor.__ray_call__.options(concurrency_group="_ray_system").remote(
+            __ray_send__, communicator_name, obj_id, dst_rank
+        )
 
     def _recv_object(
         self,
@@ -161,7 +169,9 @@ class GPUObjectManager:
         Returns:
             None
         """
-        from ray.experimental.gpu_object_manager.gpu_object_store import __ray_fetch_gpu_object__
+        from ray.experimental.gpu_object_manager.gpu_object_store import (
+            __ray_fetch_gpu_object__,
+        )
 
         if self.gpu_object_store.has_object(obj_id):
             return
@@ -169,7 +179,9 @@ class GPUObjectManager:
         gpu_object_meta = self.managed_gpu_object_metadata[obj_id]
         src_actor = gpu_object_meta.src_actor
         tensors = ray.get(
-            src_actor.__ray_call__.options(concurrency_group="_ray_system").remote(__ray_fetch_gpu_object__, obj_id)
+            src_actor.__ray_call__.options(concurrency_group="_ray_system").remote(
+                __ray_fetch_gpu_object__, obj_id
+            )
         )
         self.gpu_object_store.add_object(obj_id, tensors)
 

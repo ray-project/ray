@@ -296,7 +296,9 @@ class SerializationContext:
             # tensors into the GPU object store. Releasing the lock should be
             # safe because we should not be in the middle of an import.
             global_worker.function_actor_manager.lock.release()
-            tensors = gpu_object_manager.gpu_object_store.wait_and_pop_object(object_id, timeout=ray_constants.FETCH_WARN_TIMEOUT_SECONDS)
+            tensors = gpu_object_manager.gpu_object_store.wait_and_pop_object(
+                object_id, timeout=ray_constants.FETCH_WARN_TIMEOUT_SECONDS
+            )
             global_worker.function_actor_manager.lock.acquire()
             ctx.reset_out_of_band_tensors(tensors)
 

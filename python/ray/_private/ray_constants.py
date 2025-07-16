@@ -597,6 +597,6 @@ RAY_EXPERIMENTAL_ENABLE_OPEN_TELEMETRY_ON_CORE = env_bool(
 # user.
 # NOTE: This must be kept in sync with the C++ definition of
 # `RayConfig::fetch_warn_timeout_milliseconds`.
-FETCH_WARN_TIMEOUT_SECONDS = env_integer(
-    "RAY_fetch_warn_timeout_milliseconds", 60000
-) / 1000
+FETCH_WARN_TIMEOUT_SECONDS = (
+    env_integer("RAY_fetch_warn_timeout_milliseconds", 60000) / 1000
+)

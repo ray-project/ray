@@ -130,7 +130,9 @@ class GPUObjectStore:
             self.gpu_object_store[obj_id] = tensors
             self.object_present_cv.notify_all()
 
-    def wait_and_pop_object(self, obj_id: str, timeout: Optional[float] = None) -> List["torch.Tensor"]:
+    def wait_and_pop_object(
+        self, obj_id: str, timeout: Optional[float] = None
+    ) -> List["torch.Tensor"]:
         """Atomically waits for the GPU object to be present in the GPU object
         store, then pops it.  If the object is not present after the optional
         timeout, raise a TimeoutError.
@@ -139,7 +141,7 @@ class GPUObjectStore:
             obj_id: The object ID to wait for.
             timeout: The maximum time to wait for the object to be present in the GPU object store.
             If not specified, wait indefinitely.
-        
+
         Returns:
             The tensors in the GPU object.
         """
