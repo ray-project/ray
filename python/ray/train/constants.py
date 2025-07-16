@@ -112,9 +112,12 @@ RAY_TRAIN_COUNT_PREEMPTION_AS_FAILURE = "RAY_TRAIN_COUNT_PREEMPTION_AS_FAILURE"
 # Defaults to 0
 RAY_TRAIN_ENABLE_STATE_TRACKING = "RAY_TRAIN_ENABLE_STATE_TRACKING"
 
-# Set this to 1 to only store the checkpoint score attribute with the Checkpoint.
+# Set this to 1 to only store the checkpoint score attribute with the Checkpoint
+# in the CheckpointManager. The Result will only have the checkpoint score attribute
+# but files written to disk like result.json will still have all the metrics.
 # Defaults to 0.
 # TODO: this is a temporary solution to avoid CheckpointManager OOM.
+# See https://github.com/ray-project/ray/pull/54642#issue-3234029360 for more details.
 RAY_TRAIN_ONLY_STORE_CHECKPOINT_SCORE_ATTRIBUTE = (
     "RAY_TRAIN_ONLY_STORE_CHECKPOINT_SCORE_ATTRIBUTE"
 )
