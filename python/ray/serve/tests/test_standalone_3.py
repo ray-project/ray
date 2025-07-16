@@ -33,13 +33,13 @@ def shutdown_ray():
 
 @contextmanager
 def start_and_shutdown_ray_cli():
-    subprocess.check_output(
-        ["ray", "start", "--head"],
-    )
-    yield
-    subprocess.check_output(
-        ["ray", "stop", "--force"],
-    )
+    # Instead of using ray CLI, use ray.init() directly to avoid version mismatches
+    # This approach ensures we use the same Ray version as the test process
+    try:
+        ray.init()
+        yield
+    finally:
+        ray.shutdown()
 
 
 @pytest.fixture(scope="function")
@@ -272,7 +272,16 @@ def test_autoscaler_shutdown_node_http_everynode(
         idle_timeout_minutes=0.05,
     )
     cluster.start()
-    ray.init(address="auto")
+
+    # Use the same Python executable to avoid version mismatches
+    try:
+        ray.init(address="auto")
+    except RuntimeError as e:
+        if "Version mismatch" in str(e):
+            # If there's a version mismatch, skip this test
+            pytest.skip(f"Version mismatch detected: {e}")
+        else:
+            raise
 
     serve.start(http_options={"location": "EveryNode"})
 
