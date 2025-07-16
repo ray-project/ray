@@ -9,7 +9,12 @@ import pyarrow.csv
 
 import ray.data
 
-from constants import DatasetKey
+
+class DatasetKey:
+    TRAIN = "train"
+    VALID = "val"
+    TEST = "test"
+
 
 if TYPE_CHECKING:
     from torchrec.datasets.utils import Batch
@@ -17,7 +22,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-S3_BUCKET = "ray-benchmark-data-internal-us-west-2"
+S3_BUCKET = "ray-benchmark-data-internal"
 CRITEO_S3_URI = f"s3://{S3_BUCKET}/criteo/tsv.gz"
 CAT_FEATURE_VALUE_COUNT_JSON_PATH_PATTERN = (
     "criteo/tsv.gz/categorical_feature_value_counts/{}-value_counts.json"
@@ -179,6 +184,21 @@ def read_json_from_s3(bucket_name, key):
     return data
 
 
+def upload_file_to_s3(local_file_path, bucket_name, s3_key):
+    """Upload a local file to S3."""
+    s3 = boto3.client("s3")
+
+    try:
+        s3.upload_file(local_file_path, bucket_name, s3_key)
+        logger.info(
+            f"Successfully uploaded {local_file_path} to s3://{bucket_name}/{s3_key}"
+        )
+        return True
+    except Exception as e:
+        logger.error(f"Failed to upload {local_file_path} to S3: {e}")
+        return False
+
+
 def _get_base_dataset(stage: DatasetKey = DatasetKey.TRAIN):
     ds_path = DATASET_PATHS[stage]
 
@@ -283,10 +303,16 @@ if __name__ == "__main__":
     os.makedirs(save_dir, exist_ok=True)
 
     for cat_feature in DEFAULT_CAT_NAMES:
+        logger.info(f"Computing value counts for: {cat_feature}")
         value_counts = _compute_value_counts(ds, cat_feature)
 
-        json_filepath = os.path.join(save_dir, f"{cat_feature}-value_counts.json")
+        json_filename = f"{cat_feature}-value_counts.json"
+        json_filepath = os.path.join(save_dir, json_filename)
         logger.info(f"Writing value counts to: {json_filepath}")
 
         with open(json_filepath, "w") as f:
             json.dump(value_counts, f)
+
+        # Upload the JSON file to S3
+        s3_key = f"criteo/tsv.gz/full_categorical_feature_value_counts/{json_filename}"
+        upload_file_to_s3(json_filepath, S3_BUCKET, s3_key)
