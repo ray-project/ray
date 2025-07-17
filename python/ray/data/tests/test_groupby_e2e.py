@@ -182,7 +182,6 @@ def test_groupby_agg_name_conflict(
     num_parts,
     configure_shuffle_method,
     disable_fallback_to_object_extension,
-    target_max_block_size_none,
 ):
     # Test aggregation name conflict.
     xs = list(range(100))
@@ -316,7 +315,6 @@ def test_groupby_tabular_sum(
     num_parts,
     configure_shuffle_method,
     disable_fallback_to_object_extension,
-    target_max_block_size_none,
 ):
     ctx = DataContext.get_current()
 
@@ -407,7 +405,6 @@ def test_groupby_arrow_multi_agg(
     configure_shuffle_method,
     ds_format,
     disable_fallback_to_object_extension,
-    target_max_block_size_none,
 ):
     using_pyarrow = (
         ds_format == "pyarrow"
@@ -541,7 +538,6 @@ def test_groupby_multi_agg_with_nans(
     ds_format,
     ignore_nulls,
     disable_fallback_to_object_extension,
-    target_max_block_size_none,
 ):
     using_pyarrow = ds_format == "pyarrow"
 
@@ -664,7 +660,6 @@ def test_groupby_aggregations_are_associative(
     ignore_nulls,
     null,
     disable_fallback_to_object_extension,
-    target_max_block_size_none,
 ):
     # NOTE: This test verifies that combining is an properly
     #       associative operation by combining all possible permutations
@@ -786,7 +781,6 @@ def test_groupby_map_groups_for_none_groupkey(
     num_parts,
     configure_shuffle_method,
     disable_fallback_to_object_extension,
-    target_max_block_size_none,
 ):
     ds = ray.data.from_items(list(range(100)))
     mapped = (
@@ -820,7 +814,6 @@ def test_groupby_map_groups_for_pandas(
     num_parts,
     configure_shuffle_method,
     disable_fallback_to_object_extension,
-    target_max_block_size_none,
 ):
     df = pd.DataFrame({"A": "a a b".split(), "B": [1, 1, 3], "C": [4, 6, 5]})
     grouped = ray.data.from_pandas(df).repartition(num_parts).groupby("A")
@@ -850,7 +843,6 @@ def test_groupby_map_groups_for_arrow(
     num_parts,
     configure_shuffle_method,
     disable_fallback_to_object_extension,
-    target_max_block_size_none,
 ):
     at = pa.Table.from_pydict({"A": "a a b".split(), "B": [1, 1, 3], "C": [4, 6, 5]})
     grouped = ray.data.from_arrow(at).repartition(num_parts).groupby("A")
@@ -882,7 +874,6 @@ def test_groupby_map_groups_for_numpy(
     ray_start_regular_shared_2_cpus,
     configure_shuffle_method,
     disable_fallback_to_object_extension,
-    target_max_block_size_none,
 ):
     ds = ray.data.from_items(
         [
@@ -910,7 +901,6 @@ def test_groupby_map_groups_with_different_types(
     ray_start_regular_shared_2_cpus,
     configure_shuffle_method,
     disable_fallback_to_object_extension,
-    target_max_block_size_none,
 ):
     ds = ray.data.from_items(
         [
@@ -936,7 +926,6 @@ def test_groupby_map_groups_multiple_batch_formats(
     num_parts,
     configure_shuffle_method,
     disable_fallback_to_object_extension,
-    target_max_block_size_none,
 ):
     # Reproduces https://github.com/ray-project/ray/issues/39206
     def identity(batch):
@@ -1025,7 +1014,6 @@ def test_groupby_map_groups_multicolumn(
     num_parts,
     configure_shuffle_method,
     disable_fallback_to_object_extension,
-    target_max_block_size_none,
 ):
     # Test built-in count aggregation
     random.seed(RANDOM_SEED)
@@ -1073,7 +1061,6 @@ def test_groupby_map_groups_multicolumn_with_nan(
     num_parts,
     configure_shuffle_method,
     disable_fallback_to_object_extension,
-    target_max_block_size_none,
 ):
     # Test with some NaN values
     rng = np.random.default_rng(RANDOM_SEED)
@@ -1128,9 +1115,7 @@ def test_groupby_map_groups_multicolumn_with_nan(
     )
 
 
-def test_groupby_map_groups_with_partial(
-    disable_fallback_to_object_extension, target_max_block_size_none
-):
+def test_groupby_map_groups_with_partial(disable_fallback_to_object_extension):
     """
     The partial function name should show up as
     +- Sort
