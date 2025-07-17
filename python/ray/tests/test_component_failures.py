@@ -3,7 +3,6 @@ import signal
 import sys
 import time
 
-import numpy as np
 import pytest
 
 import ray
@@ -51,10 +50,6 @@ def test_dying_worker_get(ray_start_2_cpus):
     # Make sure the sleep task hasn't finished.
     ready_ids, _ = ray.wait([x_id], timeout=0)
     assert len(ready_ids) == 0
-    # Seal the object so the store attempts to notify the worker that the
-    # get has been fulfilled.
-    obj = np.ones(200 * 1024, dtype=np.uint8)
-    ray._private.worker.global_worker.put_object(obj, x_id)
     time.sleep(0.1)
 
     # Make sure that nothing has died.
@@ -94,10 +89,6 @@ ray.get(ray.ObjectRef(ray._common.utils.hex_to_binary("{}")))
     # Make sure the original task hasn't finished.
     ready_ids, _ = ray.wait([x_id], timeout=0)
     assert len(ready_ids) == 0
-    # Seal the object so the store attempts to notify the worker that the
-    # get has been fulfilled.
-    obj = np.ones(200 * 1024, dtype=np.uint8)
-    ray._private.worker.global_worker.put_object(obj, x_id)
     time.sleep(0.1)
 
     # Make sure that nothing has died.
@@ -131,11 +122,6 @@ def test_dying_worker_wait(ray_start_2_cpus):
 
     # Kill the worker.
     os.kill(worker_pid, SIGKILL)
-    time.sleep(0.1)
-
-    # Create the object.
-    obj = np.ones(200 * 1024, dtype=np.uint8)
-    ray._private.worker.global_worker.put_object(obj, x_id)
     time.sleep(0.1)
 
     # Make sure that nothing has died.
@@ -175,10 +161,6 @@ ray.wait([ray.ObjectRef(ray._common.utils.hex_to_binary("{}"))])
     # Make sure the original task hasn't finished.
     ready_ids, _ = ray.wait([x_id], timeout=0)
     assert len(ready_ids) == 0
-    # Seal the object so the store attempts to notify the worker that the
-    # wait can return.
-    obj = np.ones(200 * 1024, dtype=np.uint8)
-    ray._private.worker.global_worker.put_object(obj, x_id)
     time.sleep(0.1)
 
     # Make sure that nothing has died.

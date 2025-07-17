@@ -155,7 +155,7 @@ void CoreWorkerMemoryStore::GetAsync(
     object_async_get_requests_[object_id].push_back(std::move(callback));
     return;
   }
-  auto object_ptr = iter->second;
+  auto &object_ptr = iter->second;
   object_ptr->SetAccessed();
   io_context_.post(
       [callback = std::move(callback), object_ptr]() { callback(object_ptr); },

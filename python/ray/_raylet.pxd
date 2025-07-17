@@ -138,14 +138,6 @@ cdef class CoreWorker:
         dict _task_id_to_future
         object event_loop_executor
 
-    cdef _create_put_buffer(self, shared_ptr[CBuffer] &metadata,
-                            size_t data_size,
-                            c_vector[CObjectID] contained_ids,
-                            CObjectID *c_object_id,
-                            shared_ptr[CBuffer] *data,
-                            owner_address=*,
-                            c_bool inline_small_object=*,
-                            c_bool is_experimental_channel=*)
     cdef unique_ptr[CAddress] _convert_python_address(self, address=*)
     cdef store_task_output(
             self, serialized_object,
