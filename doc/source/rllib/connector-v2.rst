@@ -2,17 +2,6 @@
 
 .. _connector-v2-docs:
 
-ConnectorV2 and ConnectorV2 pipelines
-=====================================
-
-.. toctree::
-    :hidden:
-
-    env-to-module-connector
-    learner-connector
-
-.. include:: /_includes/rllib/new_api_stack.rst
-
 .. grid:: 1 2 3 4
     :gutter: 1
     :class-container: container pb-3
@@ -41,6 +30,16 @@ ConnectorV2 and ConnectorV2 pipelines
 
             Learner connector pipelines
 
+ConnectorV2 and ConnectorV2 pipelines
+=====================================
+
+.. toctree::
+    :hidden:
+
+    env-to-module-connector
+    learner-connector
+
+.. include:: /_includes/rllib/new_api_stack.rst
 
 RLlib stores and transports all trajectory data in the form of :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode`
 or :py:class:`~ray.rllib.env.multi_agent_episode.MultiAgentEpisode` objects.

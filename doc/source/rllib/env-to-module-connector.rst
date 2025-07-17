@@ -2,11 +2,6 @@
 
 .. _env-to-module-pipeline-docs:
 
-Env-to-module pipelines
-=======================
-
-.. include:: /_includes/rllib/new_api_stack.rst
-
 .. grid:: 1 2 3 4
     :gutter: 1
     :class-container: container pb-3
@@ -35,6 +30,10 @@ Env-to-module pipelines
 
             Learner pipelines
 
+Env-to-module pipelines
+=======================
+
+.. include:: /_includes/rllib/new_api_stack.rst
 
 One env-to-module pipeline resides on each :py:class:`~ray.rllib.env.env_runner.EnvRunner` and is responsible
 for handling the data flow from the `gymnasium.Env <https://gymnasium.farama.org/api/env/>`__ to
@@ -69,7 +68,7 @@ methods of the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`, dependi
 Default env-to-module behavior
 ------------------------------
 
-By default RLlib populates an env-to-module pipeline with the following built-in connector pieces.
+By default RLlib populates every env-to-module pipeline with the following built-in connector pieces.
 
 * :py:class:`~ray.rllib.connectors.common.add_observations_from_episodes_to_batch.AddObservationsFromEpisodesToBatch`: Places the most recent observation from each ongoing episode into the batch. The column name is ``obs``. Note that if you have a vector of ``N`` environments per :py:class:`~ray.rllib.env.env_runner.EnvRunner`, your batch size is also ``N``.
 * *Relevant for stateful models only:* :py:class:`~ray.rllib.connectors.common.add_time_dim_to_batch_and_zero_pad.AddTimeDimToBatchAndZeroPad`: If the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` is stateful, adds a single timestep, second axis to all data to make it sequential.
@@ -78,7 +77,7 @@ By default RLlib populates an env-to-module pipeline with the following built-in
 * :py:class:`~ray.rllib.connectors.common.batch_individual_items.BatchIndividualItems`: Converts all data in the batch, which thus far are lists of individual items, into batched structures meaning NumPy arrays, whose 0th axis is the batch axis.
 * :py:class:`~ray.rllib.connectors.common.numpy_to_tensor.NumpyToTensor`: Converts all NumPy arrays in the batch into framework specific tensors and moves these to the GPU, if required.
 
-You can disable the preceding default connector pieces by setting `config.env_runners(add_default_connectors_to_env_to_module_pipeline=False)`
+You can disable all the preceding default connector pieces by setting `config.env_runners(add_default_connectors_to_env_to_module_pipeline=False)`
 in your :ref:`algorithm config <rllib-algo-configuration-docs>`.
 
 Note that the order of these transforms is very relevant for the functionality of the pipeline.

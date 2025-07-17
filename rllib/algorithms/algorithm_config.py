@@ -1052,8 +1052,8 @@ class AlgorithmConfig(_Config):
             else:
                 raise ValueError(
                     "`AlgorithmConfig.env_runners(env_to_module_connector=..)` must "
-                    "return a ConnectorV2 object or a list thereof (to be added to a "
-                    f"pipeline)! Your function returned {val_}."
+                    "return a ConnectorV2 object or a list thereof to be added to a "
+                    f"connector pipeline! Your function returned {val_}."
                 )
 
         if env is not None:
@@ -1158,8 +1158,8 @@ class AlgorithmConfig(_Config):
             else:
                 raise ValueError(
                     "`AlgorithmConfig.env_runners(module_to_env_connector=..)` must "
-                    "return a ConnectorV2 object or a list thereof (to be added to a "
-                    f"pipeline)! Your function returned {val_}."
+                    "return a ConnectorV2 object or a list thereof to be added to a "
+                    f"connector pipeline! Your function returned {val_}."
                 )
 
         if env is not None:
@@ -1265,9 +1265,9 @@ class AlgorithmConfig(_Config):
             # Unsupported return value.
             else:
                 raise ValueError(
-                    "`AlgorithmConfig.training(learner_connector=..)` must return "
-                    "a ConnectorV2 object or a list thereof (to be added to a "
-                    f"pipeline)! Your function returned {val_}."
+                    "`AlgorithmConfig.learners(learner_connector=..)` must return "
+                    "a ConnectorV2 object or a list thereof to be added to a connector "
+                    f"pipeline! Your function returned {val_}."
                 )
 
         pipeline = LearnerConnectorPipeline(
