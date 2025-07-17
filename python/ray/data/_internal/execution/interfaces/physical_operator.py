@@ -317,7 +317,7 @@ class PhysicalOperator(Operator):
             return self._output_block_size_option.target_max_block_size
 
     @property
-    def actual_target_max_block_size(self) -> int:
+    def actual_target_max_block_size(self) -> Optional[int]:
         """
         The actual target max block size output by this operator.
         """

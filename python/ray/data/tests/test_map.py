@@ -45,7 +45,7 @@ from ray.tests.conftest import *  # noqa
 
 
 def test_specifying_num_cpus_and_num_gpus_logs_warning(
-    shutdown_only, propagate_logs, caplog
+    shutdown_only, propagate_logs, caplog, target_max_block_size_none
 ):
     ray.init(num_cpus=1, num_gpus=1)
 
@@ -58,7 +58,7 @@ def test_specifying_num_cpus_and_num_gpus_logs_warning(
         ), caplog.text
 
 
-def test_basic_actors(shutdown_only):
+def test_basic_actors(shutdown_only, target_max_block_size_none):
     ray.init(num_cpus=6)
     n = 5
     ds = ray.data.range(n)
@@ -127,7 +127,7 @@ def test_basic_actors(shutdown_only):
     wait_for_condition(_all_actors_dead)
 
 
-def test_callable_classes(shutdown_only):
+def test_callable_classes(shutdown_only, target_max_block_size_none):
     ray.init(num_cpus=2)
     ds = ray.data.range(10, override_num_blocks=10)
 
@@ -254,7 +254,7 @@ def test_callable_classes(shutdown_only):
     assert sorted(extract_values("id", result)) == list(range(10)), result
 
 
-def test_concurrent_callable_classes(shutdown_only):
+def test_concurrent_callable_classes(shutdown_only, target_max_block_size_none):
     """Test that concurrenct actor pool runs user UDF in a separate thread."""
     ray.init(num_cpus=2)
     ds = ray.data.range(10, override_num_blocks=10)
@@ -280,7 +280,7 @@ def test_concurrent_callable_classes(shutdown_only):
         ds.map_batches(ErrorFn, concurrency=1, max_concurrency=2).take_all()
 
 
-def test_transform_failure(shutdown_only):
+def test_transform_failure(shutdown_only, target_max_block_size_none):
     ray.init(num_cpus=2)
     ds = ray.data.from_items([0, 10], override_num_blocks=2)
 
@@ -293,7 +293,9 @@ def test_transform_failure(shutdown_only):
         ds.map(mapper).materialize()
 
 
-def test_actor_task_failure(shutdown_only, restore_data_context):
+def test_actor_task_failure(
+    shutdown_only, restore_data_context, target_max_block_size_none
+):
     ray.init(num_cpus=2)
 
     ctx = DataContext.get_current()
@@ -314,7 +316,7 @@ def test_actor_task_failure(shutdown_only, restore_data_context):
     ds.map_batches(Mapper, concurrency=1).materialize()
 
 
-def test_gpu_workers_not_reused(shutdown_only):
+def test_gpu_workers_not_reused(shutdown_only, target_max_block_size_none):
     """By default, in Ray Core if `num_gpus` is specified workers will not be reused
     for tasks invocation.
 
@@ -333,7 +335,7 @@ def test_gpu_workers_not_reused(shutdown_only):
     assert len(unique_worker_ids) == total_blocks
 
 
-def test_concurrency(shutdown_only):
+def test_concurrency(shutdown_only, target_max_block_size_none):
     ray.init(num_cpus=6)
     ds = ray.data.range(10, override_num_blocks=10)
 
@@ -371,7 +373,7 @@ def test_concurrency(shutdown_only):
 
 
 @pytest.mark.parametrize("udf_kind", ["gen", "func"])
-def test_flat_map(ray_start_regular_shared, udf_kind):
+def test_flat_map(ray_start_regular_shared, udf_kind, target_max_block_size_none):
     ds = ray.data.range(3)
 
     if udf_kind == "gen":
@@ -468,7 +470,9 @@ def process_timestamp_data_batch_pandas(batch: pd.DataFrame) -> pd.DataFrame:
         )
     ],
 )
-def test_map_batches_timestamp_nanosecs(df, expected_df, ray_start_regular_shared):
+def test_map_batches_timestamp_nanosecs(
+    df, expected_df, ray_start_regular_shared, target_max_block_size_none
+):
     """Verify handling timestamp with nanosecs in map_batches"""
     ray_data = ray.data.from_pandas(df)
 
@@ -527,7 +531,9 @@ def test_map_batches_timestamp_nanosecs(df, expected_df, ray_start_regular_share
         )
     ],
 )
-def test_map_timestamp_nanosecs(df, expected_df, ray_start_regular_shared):
+def test_map_timestamp_nanosecs(
+    df, expected_df, ray_start_regular_shared, target_max_block_size_none
+):
     """Verify handling timestamp with nanosecs in map"""
     ray_data = ray.data.from_pandas(df)
     result = ray_data.map(process_timestamp_data)
@@ -630,7 +636,9 @@ def test_add_column(ray_start_regular_shared):
         (["foo", "bar"], ["foo", "bar"]),
     ],
 )
-def test_rename_columns(ray_start_regular_shared, names, expected_schema):
+def test_rename_columns(
+    ray_start_regular_shared, names, expected_schema, target_max_block_size_none
+):
     ds = ray.data.from_items([{"spam": 0, "ham": 0}])
 
     renamed_ds = ds.rename_columns(names)
@@ -639,7 +647,9 @@ def test_rename_columns(ray_start_regular_shared, names, expected_schema):
     assert sorted(renamed_schema_names) == sorted(expected_schema)
 
 
-def test_default_batch_size_emits_deprecation_warning(ray_start_regular_shared):
+def test_default_batch_size_emits_deprecation_warning(
+    ray_start_regular_shared, target_max_block_size_none
+):
     with pytest.warns(
         DeprecationWarning,
         match="Passing 'default' to `map_batches` is deprecated and won't be "
@@ -705,7 +715,11 @@ def test_default_batch_size_emits_deprecation_warning(ray_start_regular_shared):
     ],
 )
 def test_rename_columns_error_cases(
-    ray_start_regular_shared, names, expected_exception, expected_message
+    ray_start_regular_shared,
+    names,
+    expected_exception,
+    expected_message,
+    target_max_block_size_none,
 ):
     # Simulate a dataset with two columns: "spam" and "ham"
     ds = ray.data.from_items([{"spam": 0, "ham": 0}])
@@ -718,7 +732,7 @@ def test_rename_columns_error_cases(
     assert str(exc_info.value) == expected_message
 
 
-def test_filter_mutex(ray_start_regular_shared, tmp_path):
+def test_filter_mutex(ray_start_regular_shared, tmp_path, target_max_block_size_none):
     """Test filter op."""
 
     # Generate sample data
@@ -797,7 +811,9 @@ def test_filter_with_expressions(
     ), "UDF-filtered data contains rows with 'sepal.length' <= 5.0"
 
 
-def test_filter_with_invalid_expression(ray_start_regular_shared, tmp_path):
+def test_filter_with_invalid_expression(
+    ray_start_regular_shared, tmp_path, target_max_block_size_none
+):
     """Test filtering with invalid expressions."""
 
     # Generate sample data
@@ -827,7 +843,7 @@ def test_filter_with_invalid_expression(ray_start_regular_shared, tmp_path):
         fake_column_ds.to_pandas()
 
 
-def test_drop_columns(ray_start_regular_shared, tmp_path):
+def test_drop_columns(ray_start_regular_shared, tmp_path, target_max_block_size_none):
     df = pd.DataFrame({"col1": [1, 2, 3], "col2": [2, 3, 4], "col3": [3, 4, 5]})
     ds1 = ray.data.from_pandas(df)
     ds1.write_parquet(str(tmp_path))
@@ -847,7 +863,7 @@ def test_drop_columns(ray_start_regular_shared, tmp_path):
         ds1.drop_columns(["col1", "col2", "col2"])
 
 
-def test_select_rename_columns(ray_start_regular_shared):
+def test_select_rename_columns(ray_start_regular_shared, target_max_block_size_none):
     ds = ray.data.range(1)
 
     def map_fn(row):
@@ -918,7 +934,11 @@ def test_select_columns(ray_start_regular_shared, target_max_block_size_none):
     ],
 )
 def test_select_columns_validation(
-    ray_start_regular_shared, cols, expected_exception, expected_error
+    ray_start_regular_shared,
+    cols,
+    expected_exception,
+    expected_error,
+    target_max_block_size_none,
 ):
     df = pd.DataFrame({"col1": [1, 2, 3], "col2": [2, 3, 4], "col3": [3, 4, 5]})
     ds1 = ray.data.from_pandas(df)
@@ -1000,7 +1020,7 @@ def test_map_batches_basic(
         ).take()
 
 
-def test_map_batches_extra_args(shutdown_only, tmp_path):
+def test_map_batches_extra_args(shutdown_only, tmp_path, target_max_block_size_none):
     ray.shutdown()
     ray.init(num_cpus=3)
 
@@ -1219,7 +1239,7 @@ def test_map_batches_extra_args(shutdown_only, tmp_path):
 
 
 @pytest.mark.parametrize("method", [Dataset.map, Dataset.map_batches, Dataset.flat_map])
-def test_map_with_memory_resources(method, shutdown_only):
+def test_map_with_memory_resources(method, shutdown_only, target_max_block_size_none):
     """Test that we can use memory resource to limit the concurrency."""
     num_blocks = 50
     memory_per_task = 100 * 1024**2
@@ -1263,7 +1283,9 @@ def test_map_with_memory_resources(method, shutdown_only):
     assert actual_max_concurrency <= max_concurrency
 
 
-def test_map_batches_generator(ray_start_regular_shared, tmp_path):
+def test_map_batches_generator(
+    ray_start_regular_shared, tmp_path, target_max_block_size_none
+):
     # Set up.
     df = pd.DataFrame({"one": [1, 2, 3], "two": [2, 3, 4]})
     table = pa.Table.from_pandas(df)
@@ -1293,7 +1315,7 @@ def test_map_batches_generator(ray_start_regular_shared, tmp_path):
         ).take()
 
 
-def test_map_batches_actors_preserves_order(shutdown_only):
+def test_map_batches_actors_preserves_order(shutdown_only, target_max_block_size_none):
     class UDFClass:
         def __call__(self, x):
             return x
@@ -1316,7 +1338,12 @@ def test_map_batches_actors_preserves_order(shutdown_only):
     ],
 )
 def test_map_batches_batch_mutation(
-    ray_start_regular_shared, num_rows, num_blocks, batch_size, restore_data_context
+    ray_start_regular_shared,
+    num_rows,
+    num_blocks,
+    batch_size,
+    restore_data_context,
+    target_max_block_size_none,
 ):
     ctx = DataContext.get_current()
     ctx.execution_options.preserve_order = True
@@ -1347,7 +1374,11 @@ def test_map_batches_batch_mutation(
     ],
 )
 def test_map_batches_batch_zero_copy(
-    ray_start_regular_shared, num_rows, num_blocks, batch_size
+    ray_start_regular_shared,
+    num_rows,
+    num_blocks,
+    batch_size,
+    target_max_block_size_none,
 ):
     # Test that batches are zero-copy read-only views when zero_copy_batch=True.
     def mutate(df):
@@ -1387,7 +1418,7 @@ BLOCK_BUNDLING_TEST_CASES = [
 
 @pytest.mark.parametrize("block_size,batch_size", BLOCK_BUNDLING_TEST_CASES)
 def test_map_batches_block_bundling_auto(
-    ray_start_regular_shared, block_size, batch_size
+    ray_start_regular_shared, block_size, batch_size, target_max_block_size_none
 ):
     # Ensure that we test at least 2 batches worth of blocks.
     num_blocks = max(10, 2 * batch_size // block_size)
@@ -1426,7 +1457,11 @@ def test_map_batches_block_bundling_auto(
     ],
 )
 def test_map_batches_block_bundling_skewed_manual(
-    ray_start_regular_shared, block_sizes, batch_size, expected_num_blocks
+    ray_start_regular_shared,
+    block_sizes,
+    batch_size,
+    expected_num_blocks,
+    target_max_block_size_none,
 ):
     num_blocks = len(block_sizes)
     ds = ray.data.from_blocks(
@@ -1452,7 +1487,7 @@ BLOCK_BUNDLING_SKEWED_TEST_CASES = [
 
 @pytest.mark.parametrize("block_sizes,batch_size", BLOCK_BUNDLING_SKEWED_TEST_CASES)
 def test_map_batches_block_bundling_skewed_auto(
-    ray_start_regular_shared, block_sizes, batch_size
+    ray_start_regular_shared, block_sizes, batch_size, target_max_block_size_none
 ):
     num_blocks = len(block_sizes)
     ds = ray.data.from_blocks(
@@ -1476,14 +1511,18 @@ def test_map_batches_block_bundling_skewed_auto(
     assert ds._plan.initial_num_blocks() == num_out_blocks
 
 
-def test_map_batches_preserve_empty_blocks(ray_start_regular_shared):
+def test_map_batches_preserve_empty_blocks(
+    ray_start_regular_shared, target_max_block_size_none
+):
     ds = ray.data.range(10, override_num_blocks=10)
     ds = ds.map_batches(lambda x: [])
     ds = ds.map_batches(lambda x: x)
     assert ds._plan.initial_num_blocks() == 10, ds
 
 
-def test_map_batches_combine_empty_blocks(ray_start_regular_shared):
+def test_map_batches_combine_empty_blocks(
+    ray_start_regular_shared, target_max_block_size_none
+):
     xs = [x % 3 for x in list(range(100))]
 
     # ds1 has 1 block which contains 100 rows.
@@ -1505,7 +1544,9 @@ def test_map_batches_combine_empty_blocks(ray_start_regular_shared):
     assert ds1.take_all() == ds2.take_all()
 
 
-def test_map_batches_preserves_empty_block_format(ray_start_regular_shared):
+def test_map_batches_preserves_empty_block_format(
+    ray_start_regular_shared, target_max_block_size_none
+):
     """Tests that the block format for empty blocks are not modified."""
 
     def empty_pandas(batch):
@@ -1528,7 +1569,9 @@ def test_map_batches_preserves_empty_block_format(ray_start_regular_shared):
     assert type(ray.get(block_refs[0])) is pd.DataFrame
 
 
-def test_map_with_objects_and_tensors(ray_start_regular_shared):
+def test_map_with_objects_and_tensors(
+    ray_start_regular_shared, target_max_block_size_none
+):
     # Tests https://github.com/ray-project/ray/issues/45235
 
     class UnsupportedType:
@@ -1544,7 +1587,7 @@ def test_map_with_objects_and_tensors(ray_start_regular_shared):
     ray.data.range(1).map_batches(f).materialize()
 
 
-def test_random_sample(ray_start_regular_shared):
+def test_random_sample(ray_start_regular_shared, target_max_block_size_none):
     import math
 
     def ensure_sample_size_close(dataset, sample_percent=0.5):
@@ -1571,7 +1614,7 @@ def test_random_sample(ray_start_regular_shared):
     ensure_sample_size_close(ds1)
 
 
-def test_random_sample_checks(ray_start_regular_shared):
+def test_random_sample_checks(ray_start_regular_shared, target_max_block_size_none):
     with pytest.raises(ValueError):
         # Cannot sample -1
         ray.data.range(1).random_sample(-1)
@@ -1583,7 +1626,9 @@ def test_random_sample_checks(ray_start_regular_shared):
         ray.data.range(1).random_sample(10)
 
 
-def test_random_sample_fixed_seed_0001(ray_start_regular_shared):
+def test_random_sample_fixed_seed_0001(
+    ray_start_regular_shared, target_max_block_size_none
+):
     """Tests random_sample() with a fixed seed.
 
     https://github.com/ray-project/ray/pull/51401
@@ -1611,7 +1656,13 @@ def test_random_sample_fixed_seed_0001(ray_start_regular_shared):
 @pytest.mark.parametrize("fraction", [0.1, 0.5, 1.0])
 @pytest.mark.parametrize("seed", [1234, 4321, 0])
 def test_random_sample_fixed_seed_0002(
-    ray_start_regular_shared, dtype, num_blocks, num_rows_per_block, fraction, seed
+    ray_start_regular_shared,
+    dtype,
+    num_blocks,
+    num_rows_per_block,
+    fraction,
+    seed,
+    target_max_block_size_none,
 ):
     """Checks if random_sample() gives the same result across different parameters. This is to
     test whether the result from random_sample() can be computed explicitly using numpy functions.
@@ -1658,7 +1709,9 @@ def test_random_sample_fixed_seed_0002(
     assert set(ds.to_pandas()["item"].to_list()) == set(expected.tolist())
 
 
-def test_actor_udf_cleanup(ray_start_regular_shared, tmp_path, restore_data_context):
+def test_actor_udf_cleanup(
+    ray_start_regular_shared, tmp_path, restore_data_context, target_max_block_size_none
+):
     """Test that for the actor map operator, the UDF object is deleted properly."""
     ctx = DataContext.get_current()
     ctx._enable_actor_pool_on_exit_hook = True
@@ -1686,7 +1739,7 @@ def test_actor_udf_cleanup(ray_start_regular_shared, tmp_path, restore_data_cont
     wait_for_condition(lambda: not os.path.exists(test_file))
 
 
-def test_warn_large_udfs(ray_start_regular_shared):
+def test_warn_large_udfs(ray_start_regular_shared, target_max_block_size_none):
     driver = """
 import ray
 import numpy as np
@@ -1711,7 +1764,9 @@ assert ds.take_all() == [{"id": 0}]
 
 # NOTE: All tests above share a Ray cluster, while the tests below do not. These
 # tests should only be carefully reordered to retain this invariant!
-def test_actor_pool_strategy_default_num_actors(shutdown_only):
+def test_actor_pool_strategy_default_num_actors(
+    shutdown_only, target_max_block_size_none
+):
     import time
 
     class UDFClass:
@@ -1728,7 +1783,9 @@ def test_actor_pool_strategy_default_num_actors(shutdown_only):
     ).materialize()
 
 
-def test_actor_pool_strategy_bundles_to_max_actors(shutdown_only):
+def test_actor_pool_strategy_bundles_to_max_actors(
+    shutdown_only, target_max_block_size_none
+):
     """Tests that blocks are bundled up to the specified max number of actors."""
 
     class UDFClass:
@@ -1752,7 +1809,7 @@ def test_actor_pool_strategy_bundles_to_max_actors(shutdown_only):
     assert "1 blocks" in ds.stats()
 
 
-def test_nonserializable_map_batches(shutdown_only):
+def test_nonserializable_map_batches(shutdown_only, target_max_block_size_none):
     import threading
 
     lock = threading.Lock()
@@ -1764,7 +1821,7 @@ def test_nonserializable_map_batches(shutdown_only):
 
 
 @pytest.mark.parametrize("udf_kind", ["coroutine", "async_gen"])
-def test_async_map_batches(shutdown_only, udf_kind):
+def test_async_map_batches(shutdown_only, udf_kind, target_max_block_size_none):
     ray.shutdown()
     ray.init(num_cpus=10)
 
@@ -1809,7 +1866,7 @@ def test_async_map_batches(shutdown_only, udf_kind):
 
 
 @pytest.mark.parametrize("udf_kind", ["coroutine", "async_gen"])
-def test_async_flat_map(shutdown_only, udf_kind):
+def test_async_flat_map(shutdown_only, udf_kind, target_max_block_size_none):
     class AsyncActor:
         def __init__(self):
             pass
@@ -1839,7 +1896,9 @@ def test_async_flat_map(shutdown_only, udf_kind):
     assert sorted(extract_values("id", output)) == list(range(n))
 
 
-def test_map_batches_async_exception_propagation(shutdown_only):
+def test_map_batches_async_exception_propagation(
+    shutdown_only, target_max_block_size_none
+):
     ray.shutdown()
     ray.init(num_cpus=2)
 
@@ -1862,7 +1921,9 @@ def test_map_batches_async_exception_propagation(shutdown_only):
     assert "assert False" in str(exc_info.value)
 
 
-def test_map_batches_async_generator_fast_yield(shutdown_only):
+def test_map_batches_async_generator_fast_yield(
+    shutdown_only, target_max_block_size_none
+):
     # Tests the case where the async generator yields immediately,
     # with a high number of tasks in flight, which results in
     # the internal queue being almost instantaneously filled.
@@ -1916,7 +1977,7 @@ class TestGenerateTransformFnForAsyncMap:
             loop.call_soon_threadsafe(loop.stop)
             _map_actor_ctx.udf_map_asyncio_thread.join()
 
-    def test_non_coroutine_function_assertion(self):
+    def test_non_coroutine_function_assertion(self, target_max_block_size_none):
         """Test that non-coroutine function raises assertion error."""
 
         def sync_fn(x):
@@ -1929,7 +1990,7 @@ class TestGenerateTransformFnForAsyncMap:
                 sync_fn, validate_fn, max_concurrency=1
             )
 
-    def test_zero_max_concurrent_batches_assertion(self):
+    def test_zero_max_concurrent_batches_assertion(self, target_max_block_size_none):
         """Test that zero max_concurrent_batches raises assertion error."""
 
         async def async_fn(x):
@@ -1942,7 +2003,7 @@ class TestGenerateTransformFnForAsyncMap:
                 async_fn, validate_fn, max_concurrency=0
             )
 
-    def test_empty_input(self, mock_actor_async_ctx):
+    def test_empty_input(self, mock_actor_async_ctx, target_max_block_size_none):
         """Test with empty input iterator."""
 
         async def async_fn(x):
@@ -1959,7 +2020,9 @@ class TestGenerateTransformFnForAsyncMap:
         validate_fn.assert_not_called()
 
     @pytest.mark.parametrize("udf_kind", ["coroutine", "async_gen"])
-    def test_basic_async_processing(self, udf_kind, mock_actor_async_ctx):
+    def test_basic_async_processing(
+        self, udf_kind, mock_actor_async_ctx, target_max_block_size_none
+    ):
         """Test basic async processing with order preservation."""
 
         if udf_kind == "async_gen":
@@ -2000,6 +2063,7 @@ class TestGenerateTransformFnForAsyncMap:
         self,
         result_len: int,
         mock_actor_async_ctx,
+        target_max_block_size_none,
     ):
         """Test UDF that yields multiple items per input."""
 
@@ -2022,7 +2086,9 @@ class TestGenerateTransformFnForAsyncMap:
 
         assert list(transform_fn(input_seq, task_context)) == expected
 
-    def test_concurrency_limiting(self, mock_actor_async_ctx, restore_data_context):
+    def test_concurrency_limiting(
+        self, mock_actor_async_ctx, restore_data_context, target_max_block_size_none
+    ):
         """Test that concurrency is properly limited."""
         max_concurrency = 10
 
@@ -2059,6 +2125,7 @@ class TestGenerateTransformFnForAsyncMap:
         self,
         failure_kind: str,
         mock_actor_async_ctx,
+        target_max_block_size_none,
     ):
         """Test exception handling in UDF."""
 
@@ -2093,7 +2160,7 @@ class TestGenerateTransformFnForAsyncMap:
 
 @pytest.mark.parametrize("fn_type", ["func", "class"])
 def test_map_operator_warns_on_few_inputs(
-    fn_type: Literal["func", "class"], shutdown_only
+    fn_type: Literal["func", "class"], shutdown_only, target_max_block_size_none
 ):
     if fn_type == "func":
 
@@ -2114,7 +2181,7 @@ def test_map_operator_warns_on_few_inputs(
         ray.data.range(2, override_num_blocks=1).map(fn, concurrency=2).materialize()
 
 
-def test_map_op_backpressure_configured_properly():
+def test_map_op_backpressure_configured_properly(target_max_block_size_none):
     """This test asserts that configuration of the MapOperator generator's back-pressure is
     propagated appropriately to the Ray Core
     """
@@ -2171,7 +2238,7 @@ def test_map_op_backpressure_configured_properly():
     get_pyarrow_version() < MIN_PYARROW_VERSION_TYPE_PROMOTION,
     reason="Requires pyarrow>=14 for unify_schemas in OneHotEncoder",
 )
-def test_map_names():
+def test_map_names(target_max_block_size_none):
     """To test different UDF format such that the operator
     has the correct representation.
 
@@ -2242,7 +2309,9 @@ def test_map_names():
         ({"result": lit(10) / (col("id") + 1)}, 10.0),  # 10 / (0 + 1) = 10.0
     ],
 )
-def test_with_columns(ray_start_regular_shared, exprs, expected_value):
+def test_with_columns(
+    ray_start_regular_shared, exprs, expected_value, target_max_block_size_none
+):
     """Verify that `with_columns` works with various operations."""
     ds = ray.data.range(5).with_columns(exprs)
     result = ds.take(1)[0]
@@ -2254,7 +2323,9 @@ def test_with_columns(ray_start_regular_shared, exprs, expected_value):
     get_pyarrow_version() < parse_version("20.0.0"),
     reason="with_columns requires PyArrow >= 20.0.0",
 )
-def test_with_columns_nonexistent_column(ray_start_regular_shared):
+def test_with_columns_nonexistent_column(
+    ray_start_regular_shared, target_max_block_size_none
+):
     """Verify that referencing a non-existent column with col() raises an exception."""
     # Create a dataset with known column "id"
     ds = ray.data.range(5)
@@ -2268,7 +2339,9 @@ def test_with_columns_nonexistent_column(ray_start_regular_shared):
     get_pyarrow_version() < parse_version("20.0.0"),
     reason="with_columns requires PyArrow >= 20.0.0",
 )
-def test_with_columns_multiple_expressions(ray_start_regular_shared):
+def test_with_columns_multiple_expressions(
+    ray_start_regular_shared, target_max_block_size_none
+):
     """Verify that `with_columns` correctly handles multiple expressions at once."""
     ds = ray.data.range(5)
 

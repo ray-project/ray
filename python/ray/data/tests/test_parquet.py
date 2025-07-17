@@ -55,7 +55,9 @@ def test_write_parquet_supports_gzip(ray_start_regular_shared, tmp_path):
     assert pq.read_table(tmp_path).to_pydict() == {"id": [0]}
 
 
-def test_write_parquet_partition_cols(ray_start_regular_shared, tmp_path):
+def test_write_parquet_partition_cols(
+    ray_start_regular_shared, tmp_path, target_max_block_size_none
+):
     num_partitions = 10
     rows_per_partition = 10
     num_rows = num_partitions * rows_per_partition
@@ -99,7 +101,7 @@ def test_write_parquet_partition_cols(ray_start_regular_shared, tmp_path):
         assert row1_dict["d"] == row2_dict["d"]
 
 
-def test_include_paths(ray_start_regular_shared, tmp_path):
+def test_include_paths(ray_start_regular_shared, tmp_path, target_max_block_size_none):
     path = os.path.join(tmp_path, "test.txt")
     table = pa.Table.from_pydict({"animals": ["cat", "dog"]})
     pq.write_table(table, path)
@@ -387,7 +389,11 @@ def test_parquet_read_meta_provider(ray_start_regular_shared, fs, data_path):
     ],
 )
 def test_parquet_read_random_shuffle(
-    ray_start_regular_shared, restore_data_context, fs, data_path
+    ray_start_regular_shared,
+    restore_data_context,
+    fs,
+    data_path,
+    target_max_block_size_none,
 ):
     # NOTE: set preserve_order to True to allow consistent output behavior.
     context = ray.data.DataContext.get_current()
@@ -436,7 +442,9 @@ def test_parquet_read_random_shuffle(
         ),
     ],
 )
-def test_parquet_read_bulk(ray_start_regular_shared, fs, data_path):
+def test_parquet_read_bulk(
+    ray_start_regular_shared, fs, data_path, target_max_block_size_none
+):
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     table = pa.Table.from_pandas(df1)
     setup_data_path = _unwrap_protocol(data_path)
@@ -521,7 +529,9 @@ def test_parquet_read_bulk(ray_start_regular_shared, fs, data_path):
         ),
     ],
 )
-def test_parquet_read_bulk_meta_provider(ray_start_regular_shared, fs, data_path):
+def test_parquet_read_bulk_meta_provider(
+    ray_start_regular_shared, fs, data_path, target_max_block_size_none
+):
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     table = pa.Table.from_pandas(df1)
     setup_data_path = _unwrap_protocol(data_path)
@@ -575,7 +585,9 @@ def test_parquet_read_bulk_meta_provider(ray_start_regular_shared, fs, data_path
         ),
     ],
 )
-def test_parquet_read_partitioned(ray_start_regular_shared, fs, data_path):
+def test_parquet_read_partitioned(
+    ray_start_regular_shared, fs, data_path, target_max_block_size_none
+):
     df = pd.DataFrame(
         {"one": [1, 1, 1, 3, 3, 3], "two": ["a", "b", "c", "e", "f", "g"]}
     )
@@ -615,7 +627,9 @@ def test_parquet_read_partitioned(ray_start_regular_shared, fs, data_path):
     assert sorted(values) == ["1", "1", "1", "3", "3", "3"]
 
 
-def test_parquet_read_partitioned_with_filter(ray_start_regular_shared, tmp_path):
+def test_parquet_read_partitioned_with_filter(
+    ray_start_regular_shared, tmp_path, target_max_block_size_none
+):
     df = pd.DataFrame(
         {"one": [1, 1, 1, 3, 3, 3], "two": ["a", "a", "b", "b", "c", "c"]}
     )
@@ -659,7 +673,9 @@ def test_parquet_read_partitioned_with_filter(ray_start_regular_shared, tmp_path
         ),
     ],
 )
-def test_parquet_read_partitioned_with_columns(ray_start_regular_shared, fs, data_path):
+def test_parquet_read_partitioned_with_columns(
+    ray_start_regular_shared, fs, data_path, target_max_block_size_none
+):
     data = {
         "x": [0, 0, 1, 1, 2, 2],
         "y": ["a", "b", "a", "b", "a", "b"],
@@ -704,7 +720,7 @@ def test_parquet_read_partitioned_with_columns(ray_start_regular_shared, fs, dat
     ],
 )
 def test_parquet_read_partitioned_with_partition_filter(
-    ray_start_regular_shared, fs, data_path
+    ray_start_regular_shared, fs, data_path, target_max_block_size_none
 ):
     # This test is to make sure when only one file remains
     # after partition filtering, Ray data can still parse the
@@ -745,7 +761,9 @@ def test_parquet_read_partitioned_with_partition_filter(
     assert sorted(values) == [["0", "a", 0.1]]
 
 
-def test_parquet_read_partitioned_explicit(ray_start_regular_shared, tmp_path):
+def test_parquet_read_partitioned_explicit(
+    ray_start_regular_shared, tmp_path, target_max_block_size_none
+):
     df = pd.DataFrame(
         {"one": [1, 1, 1, 3, 3, 3], "two": ["a", "b", "c", "e", "f", "g"]}
     )
@@ -780,7 +798,9 @@ def test_parquet_read_partitioned_explicit(ray_start_regular_shared, tmp_path):
     ]
 
 
-def test_parquet_read_with_udf(ray_start_regular_shared, tmp_path):
+def test_parquet_read_with_udf(
+    ray_start_regular_shared, tmp_path, target_max_block_size_none
+):
     one_data = list(range(6))
     df = pd.DataFrame({"one": one_data, "two": 2 * ["a"] + 2 * ["b"] + 2 * ["c"]})
     table = pa.Table.from_pandas(df)
@@ -841,7 +861,9 @@ def test_parquet_read_with_udf(ray_start_regular_shared, tmp_path):
         ),
     ],
 )
-def test_parquet_read_parallel_meta_fetch(ray_start_regular_shared, fs, data_path):
+def test_parquet_read_parallel_meta_fetch(
+    ray_start_regular_shared, fs, data_path, target_max_block_size_none
+):
     setup_data_path = _unwrap_protocol(data_path)
     num_dfs = PARALLELIZE_META_FETCH_THRESHOLD + 1
     for idx in range(num_dfs):
@@ -869,7 +891,9 @@ def test_parquet_read_parallel_meta_fetch(ray_start_regular_shared, fs, data_pat
     assert sorted(values) == list(range(3 * num_dfs))
 
 
-def test_parquet_reader_estimate_data_size(shutdown_only, tmp_path):
+def test_parquet_reader_estimate_data_size(
+    shutdown_only, tmp_path, target_max_block_size_none
+):
     ctx = ray.data.context.DataContext.get_current()
     old_decoding_size_estimation = ctx.decoding_size_estimation
     ctx.decoding_size_estimation = True
@@ -893,7 +917,7 @@ def test_parquet_reader_estimate_data_size(shutdown_only, tmp_path):
             tensor_output_path, meta_provider=ParquetMetadataProvider()
         )
         assert (
-            datasource._encoding_ratio >= 300 and datasource._encoding_ratio <= 600
+            datasource._encoding_ratio >= 200 and datasource._encoding_ratio <= 600
         ), "encoding ratio is out of expected bound"
         data_size = datasource.estimate_inmemory_data_size()
         assert (
@@ -927,7 +951,7 @@ def test_parquet_reader_estimate_data_size(shutdown_only, tmp_path):
             text_output_path, meta_provider=ParquetMetadataProvider()
         )
         assert (
-            datasource._encoding_ratio >= 150 and datasource._encoding_ratio <= 300
+            datasource._encoding_ratio >= 1 and datasource._encoding_ratio <= 5
         ), "encoding ratio is out of expected bound"
         data_size = datasource.estimate_inmemory_data_size()
         assert (
@@ -1055,7 +1079,11 @@ def test_parquet_write_append_save_mode(ray_start_regular_shared, local_path):
     ],
 )
 def test_parquet_write_uuid_handling_with_custom_filename_provider(
-    ray_start_regular_shared, tmp_path, filename_template, should_raise_error
+    ray_start_regular_shared,
+    tmp_path,
+    filename_template,
+    should_raise_error,
+    target_max_block_size_none,
 ):
     """Test that write_parquet correctly handles UUID validation in filenames when using custom filename providers in append mode."""
     import re
@@ -1136,7 +1164,9 @@ def test_parquet_write_overwrite_save_mode(ray_start_regular_shared, local_path)
     assert on_disk_table.equals(overwritten_in_memory_table)
 
 
-def test_parquet_file_extensions(ray_start_regular_shared, tmp_path):
+def test_parquet_file_extensions(
+    ray_start_regular_shared, tmp_path, target_max_block_size_none
+):
     table = pa.table({"food": ["spam", "ham", "eggs"]})
     pq.write_table(table, tmp_path / "table.parquet")
     # `spam` should be filtered out.
@@ -1227,7 +1257,9 @@ def test_parquet_roundtrip(
         fs.delete_dir(_unwrap_protocol(path))
 
 
-def test_parquet_read_empty_file(ray_start_regular_shared, tmp_path):
+def test_parquet_read_empty_file(
+    ray_start_regular_shared, tmp_path, target_max_block_size_none
+):
     path = os.path.join(tmp_path, "data.parquet")
     table = pa.table({})
     pq.write_table(table, path)
@@ -1237,7 +1269,9 @@ def test_parquet_read_empty_file(ray_start_regular_shared, tmp_path):
     assert ds.take_all() == []
 
 
-def test_parquet_reader_batch_size(ray_start_regular_shared, tmp_path):
+def test_parquet_reader_batch_size(
+    ray_start_regular_shared, tmp_path, target_max_block_size_none
+):
     path = os.path.join(tmp_path, "data.parquet")
     ray.data.range_tensor(1000, shape=(1000,)).write_parquet(path)
     ds = ray.data.read_parquet(path, batch_size=10)
@@ -1259,7 +1293,9 @@ def test_parquet_datasource_names(ray_start_regular_shared, tmp_path):
         (lazy_fixture("local_fs"), lazy_fixture("local_path")),
     ],
 )
-def test_parquet_concurrency(ray_start_regular_shared, fs, data_path):
+def test_parquet_concurrency(
+    ray_start_regular_shared, fs, data_path, target_max_block_size_none
+):
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     table = pa.Table.from_pandas(df1)
     setup_data_path = _unwrap_protocol(data_path)
@@ -1348,25 +1384,31 @@ def test_parquet_read_spread(ray_start_cluster, tmp_path, restore_data_context):
     assert set(locations) == {node1_id, node2_id}, set(locations)
 
 
-def test_parquet_bulk_columns(ray_start_regular_shared):
+def test_parquet_bulk_columns(ray_start_regular_shared, target_max_block_size_none):
     ds = ray.data.read_parquet_bulk("example://iris.parquet", columns=["variety"])
 
     assert ds.columns() == ["variety"]
 
 
 @pytest.mark.parametrize("shuffle", [True, False, "file"])
-def test_invalid_shuffle_arg_raises_error(ray_start_regular_shared, shuffle):
+def test_invalid_shuffle_arg_raises_error(
+    ray_start_regular_shared, shuffle, target_max_block_size_none
+):
 
     with pytest.raises(ValueError):
         ray.data.read_parquet("example://iris.parquet", shuffle=shuffle)
 
 
 @pytest.mark.parametrize("shuffle", [None, "files"])
-def test_valid_shuffle_arg_does_not_raise_error(ray_start_regular_shared, shuffle):
+def test_valid_shuffle_arg_does_not_raise_error(
+    ray_start_regular_shared, shuffle, target_max_block_size_none
+):
     ray.data.read_parquet("example://iris.parquet", shuffle=shuffle)
 
 
-def test_partitioning_in_dataset_kwargs_raises_error(ray_start_regular_shared):
+def test_partitioning_in_dataset_kwargs_raises_error(
+    ray_start_regular_shared, target_max_block_size_none
+):
     with pytest.raises(ValueError):
         ray.data.read_parquet(
             "example://iris.parquet", dataset_kwargs=dict(partitioning="hive")
@@ -1374,7 +1416,10 @@ def test_partitioning_in_dataset_kwargs_raises_error(ray_start_regular_shared):
 
 
 def test_tensors_in_tables_parquet(
-    ray_start_regular_shared, tmp_path, restore_data_context
+    ray_start_regular_shared,
+    tmp_path,
+    restore_data_context,
+    target_max_block_size_none,
 ):
     """This test verifies both V1 and V2 Tensor Type extensions of
     Arrow Array types
@@ -1460,7 +1505,9 @@ def test_tensors_in_tables_parquet(
     _assert_equal(ds.take_all(), expected_tuples)
 
 
-def test_multiple_files_with_ragged_arrays(ray_start_regular_shared, tmp_path):
+def test_multiple_files_with_ragged_arrays(
+    ray_start_regular_shared, tmp_path, target_max_block_size_none
+):
     # Test reading multiple parquet files, each of which has different-shaped
     # ndarrays in the same column.
     # See https://github.com/ray-project/ray/issues/47960 for more context.
@@ -1486,7 +1533,7 @@ def test_multiple_files_with_ragged_arrays(ray_start_regular_shared, tmp_path):
         assert item["data"].shape == (100 * (index + 1), 100 * (index + 1))
 
 
-def test_count_with_filter(ray_start_regular_shared):
+def test_count_with_filter(ray_start_regular_shared, target_max_block_size_none):
     ds = ray.data.read_parquet(
         "example://iris.parquet", filter=(pds.field("sepal.length") < pds.scalar(0))
     )
@@ -1527,7 +1574,7 @@ def test_write_auto_infer_nullable_fields(
     ds.write_parquet(tmp_path, min_rows_per_file=2)
 
 
-def test_seed_file_shuffle(restore_data_context, tmp_path):
+def test_seed_file_shuffle(restore_data_context, tmp_path, target_max_block_size_none):
     def write_parquet_file(path, file_index):
         """Write a dummy Parquet file with test data."""
         # Create a dummy dataset with unique data for each file
@@ -1556,7 +1603,9 @@ def test_seed_file_shuffle(restore_data_context, tmp_path):
     assert ds1.take_all() == ds2.take_all()
 
 
-def test_read_file_with_partition_values(ray_start_regular_shared, tmp_path):
+def test_read_file_with_partition_values(
+    ray_start_regular_shared, tmp_path, target_max_block_size_none
+):
     # Typically, partition values are excluded from the Parquet file and are instead
     # encoded in the directory structure. However, in some cases, partition values
     # are also included in the Parquet file. This test verifies that case.
@@ -1569,7 +1618,9 @@ def test_read_file_with_partition_values(ray_start_regular_shared, tmp_path):
     assert ds.take_all() == [{"data": 0, "year": 2024}]
 
 
-def test_read_null_data_in_first_file(tmp_path, ray_start_regular_shared):
+def test_read_null_data_in_first_file(
+    tmp_path, ray_start_regular_shared, target_max_block_size_none
+):
     # The `read_parquet` implementation might infer the schema from the first file.
     # This test ensures that implementation handles the case where the first file has no
     # data and the inferred type is `null`.
@@ -1588,7 +1639,9 @@ def test_read_null_data_in_first_file(tmp_path, ray_start_regular_shared):
     ]
 
 
-def test_read_invalid_file_extensions_emits_warning(tmp_path, ray_start_regular_shared):
+def test_read_invalid_file_extensions_emits_warning(
+    tmp_path, ray_start_regular_shared, target_max_block_size_none
+):
     table = pa.Table.from_pydict({})
     pq.write_table(table, tmp_path / "no_extension")
 
@@ -1709,7 +1762,7 @@ def test_max_block_size_none_respects_override_num_blocks(
 
 @pytest.mark.parametrize("min_rows_per_file", [5, 10])
 def test_write_partition_cols_with_min_rows_per_file(
-    tmp_path, ray_start_regular_shared, min_rows_per_file
+    tmp_path, ray_start_regular_shared, min_rows_per_file, target_max_block_size_none
 ):
     """Test write_parquet with both partition_cols and min_rows_per_file."""
 
@@ -1782,7 +1835,9 @@ def test_write_partition_cols_with_min_rows_per_file(
 
 
 @pytest.mark.parametrize("max_rows_per_file", [5, 10, 25])
-def test_write_max_rows_per_file(tmp_path, ray_start_regular_shared, max_rows_per_file):
+def test_write_max_rows_per_file(
+    tmp_path, ray_start_regular_shared, max_rows_per_file, target_max_block_size_none
+):
     ray.data.range(100, override_num_blocks=1).write_parquet(
         tmp_path, max_rows_per_file=max_rows_per_file
     )
@@ -1824,7 +1879,11 @@ def test_write_max_rows_per_file(tmp_path, ray_start_regular_shared, max_rows_pe
     "min_rows_per_file,max_rows_per_file", [(5, 10), (10, 20), (15, 30)]
 )
 def test_write_min_max_rows_per_file(
-    tmp_path, ray_start_regular_shared, min_rows_per_file, max_rows_per_file
+    tmp_path,
+    ray_start_regular_shared,
+    min_rows_per_file,
+    max_rows_per_file,
+    target_max_block_size_none,
 ):
     ray.data.range(100, override_num_blocks=1).write_parquet(
         tmp_path,
@@ -1901,7 +1960,7 @@ def test_write_min_max_rows_per_file_validation(tmp_path, ray_start_regular_shar
 
 @pytest.mark.parametrize("max_rows_per_file", [5, 10])
 def test_write_partition_cols_with_max_rows_per_file(
-    tmp_path, ray_start_regular_shared, max_rows_per_file
+    tmp_path, ray_start_regular_shared, max_rows_per_file, target_max_block_size_none
 ):
     """Test max_rows_per_file with partition columns."""
     import pyarrow.parquet as pq
