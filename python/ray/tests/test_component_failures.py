@@ -16,7 +16,7 @@ SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
 # This test checks that when a worker dies in the middle of a get, the raylet will not die.
 def test_dying_worker_get(ray_start_2_cpus):
     @ray.remote
-    def sleep_forever(signal_1, signal_2):
+    def wait_on_signal(signal_1, signal_2):
         ray.get(signal_1.send.remote())
         ray.get(signal_2.wait.remote())
         return np.ones(200 * 1024, dtype=np.uint8)
@@ -28,7 +28,7 @@ def test_dying_worker_get(ray_start_2_cpus):
     signal_1 = SignalActor.remote()
     signal_2 = SignalActor.remote()
 
-    x_id = sleep_forever.remote(signal_1, signal_2)
+    x_id = wait_on_signal.remote(signal_1, signal_2)
     ray.get(signal_1.send.remote())
     # Get the PID of the other worker.
     worker_pid = ray.get(get_worker_pid.remote())
@@ -68,12 +68,12 @@ def test_dying_driver_get(ray_start_regular):
     address_info = ray_start_regular
 
     @ray.remote
-    def sleep_forever(signal):
+    def wait_on_signal(signal):
         ray.get(signal.wait.remote())
         return np.ones(200 * 1024, dtype=np.uint8)
 
     signal = SignalActor.remote()
-    x_id = sleep_forever.remote(signal)
+    x_id = wait_on_signal.remote(signal)
 
     driver = """
 import ray
@@ -108,7 +108,7 @@ ray.get(ray.ObjectRef(ray._common.utils.hex_to_binary("{}")))
 # This test checks that when a worker dies in the middle of a wait, the raylet will not die.
 def test_dying_worker_wait(ray_start_2_cpus):
     @ray.remote
-    def sleep_forever(signal):
+    def wait_on_signal(signal):
         ray.get(signal.wait.remote())
         return np.ones(200 * 1024, dtype=np.uint8)
 
@@ -117,9 +117,9 @@ def test_dying_worker_wait(ray_start_2_cpus):
         return os.getpid()
 
     signal = SignalActor.remote()
-    x_id = sleep_forever.remote(signal)
+    x_id = wait_on_signal.remote(signal)
     # Get the PID of the worker that block_in_wait will run on (sleep a little
-    # to make sure that sleep_forever has already started).
+    # to make sure that wait_on_signal has already started).
     time.sleep(0.1)
     worker_pid = ray.get(get_pid.remote())
 
@@ -150,12 +150,12 @@ def test_dying_driver_wait(ray_start_regular):
     address_info = ray_start_regular
 
     @ray.remote
-    def sleep_forever(signal):
+    def wait_on_signal(signal):
         ray.get(signal.wait.remote())
         return np.ones(200 * 1024, dtype=np.uint8)
 
     signal = SignalActor.remote()
-    x_id = sleep_forever.remote(signal)
+    x_id = wait_on_signal.remote(signal)
 
     driver = """
 import ray
