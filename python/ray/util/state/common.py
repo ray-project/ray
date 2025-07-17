@@ -594,6 +594,7 @@ class NodeState(StateSchema):
 # NOTE: `JobDetails` will be `None` in the minimal install because Pydantic is not
 #       installed. Inheriting from `None` raises an exception.
 if JobDetails is not None:
+
     class JobState(StateSchema, JobDetails):
         """The state of the job that's submitted by Ray's Job APIs or driver jobs"""
 
@@ -645,9 +646,13 @@ if JobDetails is not None:
             schema_types = cls.schema()["properties"]
             # Get type name to actual type mapping.
             return {
-                k: v["type"] for k, v in schema_types.items() if v.get("type") is not None
+                k: v["type"]
+                for k, v in schema_types.items()
+                if v.get("type") is not None
             }
+
 else:
+
     class JobState(StateSchema):
         """The state of the job that's submitted by Ray's Job APIs or driver jobs"""
 
