@@ -535,6 +535,9 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   instrumented_io_context io_service_{/*enable_lag_probe=*/false,
                                       /*running_on_single_thread=*/true};
 
+  /// Work guard to prevent the io_context from exiting when no work.
+  boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work_guard_;
+
   /// Dedicated io thread for running the periodical runner and the GCS client.
   std::thread io_thread_;
 
