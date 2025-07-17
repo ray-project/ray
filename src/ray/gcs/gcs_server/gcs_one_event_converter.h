@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include "gtest/gtest_prod.h"
 #include "src/ray/protobuf/events_event_aggregator_service.pb.h"
 #include "src/ray/protobuf/gcs_service.pb.h"
 
@@ -40,6 +41,15 @@ class GcsOneEventConverter {
   /// \param task_event The output TaskEvents to populate.
   void ConvertTaskDefinitionEventToTaskEvent(
       const rpc::events::TaskDefinitionEvent &event, rpc::TaskEvents &task_event);
+
+  /// Convert a TaskExecutionEvent to a TaskEvents.
+  ///
+  /// \param event The TaskExecutionEvent to convert.
+  /// \param task_event The output TaskEvents to populate.
+  void ConvertTaskExecutionEventToTaskEvent(const rpc::events::TaskExecutionEvent &event,
+                                            rpc::TaskEvents &task_event);
+
+  FRIEND_TEST(GcsOneEventConverterTest, TestConvertTaskExecutionEvent);
 };
 
 }  // namespace gcs
