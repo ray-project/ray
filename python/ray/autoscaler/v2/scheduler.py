@@ -9,10 +9,7 @@ from enum import Enum
 from typing import Dict, List, Optional, Tuple
 
 from ray._private.protobuf_compat import message_to_dict
-from ray.autoscaler._private.constants import (
-    AUTOSCALER_CONSERVE_GPU_NODES,
-    AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
-)
+from ray.autoscaler._private.constants import AUTOSCALER_CONSERVE_GPU_NODES
 from ray.autoscaler._private.resource_demand_scheduler import (
     UtilizationScore,
     _fits,
@@ -1409,12 +1406,7 @@ class ResourceDemandScheduler(IResourceScheduler):
         while len(requests_to_sched) > 0 and len(node_pools) > 0:
             # Max number of nodes reached.
             max_num_nodes = ctx.get_max_num_nodes()
-            current_target_nodes = [
-                n for n in target_nodes if n.status == SchedulingNodeStatus.TO_LAUNCH
-            ]
-            if (
-                max_num_nodes is not None and len(target_nodes) >= max_num_nodes
-            ) or len(current_target_nodes) >= AUTOSCALER_MAX_CONCURRENT_LAUNCHES:
+            if max_num_nodes is not None and len(target_nodes) >= max_num_nodes:
                 logger.debug(
                     "Max number of nodes reached: {}, "
                     "cannot launch more nodes.".format(max_num_nodes)
