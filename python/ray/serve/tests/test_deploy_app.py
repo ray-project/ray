@@ -417,10 +417,10 @@ def test_deploy_multi_app_overwrite_apps2(serve_instance):
     # Deployments from app1 and app2 should be deleted
     wait_for_condition(check_dead)
 
-    # App1 and App2 should be gone
-    url1 = get_application_url("HTTP", app_name="app1")
+    # App1 and App2 should be gone. We check with proxy url as the app is not running.
+    url1 = "http://localhost:8000/app1"
     assert httpx.get(f"{url1}").status_code != 200
-    url2 = get_application_url("HTTP", app_name="app2")
+    url2 = "http://localhost:8000/app2"
     assert httpx.post(f"{url2}", json=["ADD", 2]).status_code != 200
 
     # App3 should be up and running

@@ -668,15 +668,8 @@ def ray_address_to_api_server_url(address: Optional[str]) -> str:
     Returns:
         API server HTTP URL.
     """
-    # Prefer to connect to the same Ray instance that this worker is connected to
-    # by default.
-    if address is None or address == "auto":
-        worker = ray._private.worker.global_worker
-        if worker.connected:
-            address = worker.node.address_info["address"]
 
     address = services.canonicalize_bootstrap_address_or_die(address)
-
     gcs_client = GcsClient(address=address)
 
     ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
