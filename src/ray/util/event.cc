@@ -517,9 +517,9 @@ void RayEventInit(const std::vector<SourceTypeVariant> source_types,
 }
 
 bool IsExportAPIEnabledSourceType(
-    std::string source_type,
+    std::string_view source_type,
     bool enable_export_api_write_global,
-    std::vector<std::string> enable_export_api_write_config) {
+    const std::vector<std::string> &enable_export_api_write_config) {
   if (enable_export_api_write_global) {
     return true;
   }

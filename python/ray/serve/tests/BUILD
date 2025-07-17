@@ -193,6 +193,7 @@ py_test_module_list(
 # Run serially on Windows.
 py_test_module_list(
     size = "medium",
+    timeout = "long",
     files = [
         "test_deploy_app.py",
         "test_deploy_app_2.py",
