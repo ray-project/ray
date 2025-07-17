@@ -1458,3 +1458,8 @@ def random_ascii_file(request):
         fp.flush()
 
         yield fp
+
+
+def pytest_sessionfinish(session, exitstatus):
+    # Make sure to shutdown Ray after whole test run finished.
+    ray.shutdown()
