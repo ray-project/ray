@@ -101,7 +101,7 @@ class GcsActor {
     actor_table_data_.set_num_restarts_due_to_lineage_reconstruction(0);
 
     actor_table_data_.mutable_function_descriptor()->CopyFrom(
-      task_spec_->function_descriptor());
+        task_spec_->function_descriptor());
 
     actor_table_data_.set_is_detached(actor_creation_task_spec.is_detached());
     actor_table_data_.set_name(actor_creation_task_spec.name());
@@ -144,7 +144,7 @@ class GcsActor {
     }
 
     actor_table_data_.set_serialized_runtime_env(
-      task_spec_->runtime_env_info().serialized_runtime_env());
+        task_spec_->runtime_env_info().serialized_runtime_env());
     if (task_spec_->call_site().size() > 0) {
       actor_table_data_.set_call_site(task_spec_->call_site());
     }
