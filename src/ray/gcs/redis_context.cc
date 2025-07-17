@@ -38,6 +38,14 @@ namespace ray {
 
 namespace gcs {
 
+std::string RedisHashTag::ToString() const {
+  return absl::StrCat("{", external_storage_namespace, "}");
+}
+
+std::string RedisHashTag::ToString(const std::string &key) const {
+  return absl::StrCat(ToString(), ".", key);
+}
+
 CallbackReply::CallbackReply(const redisReply &redis_reply)
     : reply_type_(redis_reply.type) {
   switch (reply_type_) {
@@ -411,70 +419,22 @@ std::optional<std::pair<std::string, int>> ParseIffMovedError(
 }
 }  // namespace
 
-void RedisContext::ValidateRedisDB() {
-  auto reply = RunArgvSync(std::vector<std::string>{"INFO", "CLUSTER"});
-  // cluster_state:ok
-  // cluster_slots_assigned:16384
-  // cluster_slots_ok:16384
-  // cluster_slots_pfail:0
-  // cluster_size:1
-  RAY_CHECK(reply && !reply->IsNil()) << "Failed to get Redis cluster info";
-  auto cluster_info = reply->ReadAsString();
-
-  std::vector<std::string> parts = absl::StrSplit(cluster_info, "\r\n");
-  bool cluster_mode = false;
-  int cluster_size = 0;
-
-  // Check the cluster status first
-  for (const auto &part : parts) {
-    if (part.empty() || part[0] == '#') {
-      // it's a comment
-      continue;
-    }
-    std::vector<std::string> kv = absl::StrSplit(part, ":");
-    RAY_CHECK(kv.size() == 2);
-    if (kv[0] == "cluster_state") {
-      if (kv[1] == "ok") {
-        cluster_mode = true;
-      } else if (kv[1] == "fail") {
-        RAY_LOG(FATAL)
-            << "The Redis cluster is not healthy. cluster_state shows failed status: "
-            << cluster_info << "."
-            << " Please check Redis cluster used.";
-      }
-    }
-    if (kv[0] == "cluster_size") {
-      cluster_size = std::stoi(kv[1]);
-    }
-  }
-
-  if (cluster_mode) {
-    RAY_CHECK(cluster_size == 1)
-        << "Ray currently doesn't support Redis Cluster with more than one shard. ";
-  }
-}
-
-bool RedisContext::IsRedisSentinel() {
-  auto reply = RunArgvSync(std::vector<std::string>{"INFO", "SENTINEL"});
-  if (reply->IsNil() || reply->IsError() || reply->ReadAsString().length() == 0) {
-    return false;
-  } else {
-    return true;
-  }
-}
-
 Status RedisContext::ConnectRedisCluster(const std::string &username,
                                          const std::string &password,
                                          bool enable_ssl,
-                                         const std::string &redis_address) {
+                                         const std::string &redis_address,
+                                         const RedisHashTag &redis_hash_tag,
+                                         bool is_multi_shard_redis_cluster_mode = false) {
   RAY_LOG(INFO) << "Connect to Redis Cluster";
-  // Ray has some restrictions for RedisDB. Validate it here.
-  ValidateRedisDB();
 
+  std::string value = "DUMMY";
+  if (is_multi_shard_redis_cluster_mode) {
+    value = redis_hash_tag.ToString(value);
+  }
   // Find the true leader
   std::vector<const char *> argv;
   std::vector<size_t> argc;
-  std::vector<std::string> cmds = {"DEL", "DUMMY"};
+  std::vector<std::string> cmds = {"DEL", value};
   for (const auto &arg : cmds) {
     argv.push_back(arg.data());
     argc.push_back(arg.size());
@@ -608,8 +568,20 @@ Status RedisContext::Connect(const std::string &address,
 
   RAY_LOG(INFO) << "Resolve Redis address to " << absl::StrJoin(ip_addresses, ", ");
 
+  int target_port = port;
+  std::string target_host = ip_addresses[0];
+  RedisClusterKeyLocator locator(ip_addresses[0] + ":" + std::to_string(port));
+
+  const bool is_multi_shard_redis_cluster_mode = locator.isMultiShardRedisCluster();
+  const RedisHashTag redis_hash_tag{};
+  if (is_multi_shard_redis_cluster_mode) {
+    RAY_CHECK(redis_hash_tag.enabled()) << "RAY_redis_cluster_hash_tag_mode should be enabled";
+    RAY_CHECK(locator.locateKeyNode(redis_hash_tag.ToString(), target_host, target_port));
+    RAY_LOG(INFO) << "Connecting to Redis Cluster Hashtag Shard to " << target_host + ":" + std::to_string(target_port);
+  }
+
   {
-    auto resp = ConnectWithRetries<redisContext>(ip_addresses[0], port, redisConnect);
+    auto resp = ConnectWithRetries<redisContext>(target_host, target_port, redisConnect);
     RAY_CHECK_OK(resp.first /* status */);
     context_ = std::move(resp.second /* redisContext */);
   }
@@ -625,7 +597,7 @@ Status RedisContext::Connect(const std::string &address,
   std::unique_ptr<redisAsyncContext, RedisContextDeleter> async_context;
   {
     auto resp =
-        ConnectWithRetries<redisAsyncContext>(ip_addresses[0], port, redisAsyncConnect);
+        ConnectWithRetries<redisAsyncContext>(target_host, target_port, redisAsyncConnect);
     RAY_CHECK_OK(resp.first);
     async_context = std::move(resp.second);
   }
@@ -640,11 +612,15 @@ Status RedisContext::Connect(const std::string &address,
   SetDisconnectCallback(redis_async_context_.get());
 
   // handle validation and primary connection for different types of redis
-  if (IsRedisSentinel()) {
+  if (locator.isRedisSentinel()) {
     return ConnectRedisSentinel(*this, username, password, enable_ssl);
   } else {
-    return ConnectRedisCluster(
-        username, password, enable_ssl, ip_addresses[0] + ":" + std::to_string(port));
+    return ConnectRedisCluster(username,
+                               password,
+                               enable_ssl,
+                               target_host + ":" + std::to_string(target_port),
+                               redis_hash_tag,
+                               is_multi_shard_redis_cluster_mode);
   }
 }
 

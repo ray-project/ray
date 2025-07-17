@@ -24,6 +24,9 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/status.h"
 #include "ray/gcs/redis_async_context.h"
+#include "ray/gcs/redis_cluster_key_locator.h"
+#include "ray/util/logging.h"
+#include "ray/util/util.h"
 #include "ray/util/exponential_backoff.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
@@ -36,6 +39,16 @@ struct redisAsyncContext;
 struct redisSSLContext;
 
 namespace ray::gcs {
+
+// Typed key to avoid forgetting to prepend external_storage_namespace.
+struct RedisHashTag {
+  const bool redis_hash_tag_mode = RayConfig::instance().redis_cluster_hash_tag_mode();
+  const std::string external_storage_namespace = RayConfig::instance().external_storage_namespace();
+  std::string ToString() const;
+  bool enabled() const {return redis_hash_tag_mode;}
+  std::string ToString(const std::string &key) const;
+};
+
 
 /// A simple reply wrapper for redis reply.
 class CallbackReply {
@@ -170,14 +183,12 @@ class RedisContext {
   /// \return CallbackReply(The reply from redis).
   std::unique_ptr<CallbackReply> RunArgvSync(const std::vector<std::string> &args);
 
-  void ValidateRedisDB();
-
-  bool IsRedisSentinel();
-
   Status ConnectRedisCluster(const std::string &username,
                              const std::string &password,
                              bool enable_ssl,
-                             const std::string &redis_address);
+                             const std::string &redis_address,
+                             const RedisHashTag &redis_hash_tag,
+                             bool is_multi_shard_redis_cluster_mode);
 
   instrumented_io_context &io_service_;
 

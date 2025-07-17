@@ -814,6 +814,10 @@ RAY_CONFIG(bool, runtime_env_skip_local_gc, false)
 
 /// The namespace for the storage.
 /// This fields is used to isolate data stored in DB.
+RAY_CONFIG(bool, redis_cluster_hash_tag_mode, false)
+
+/// The namespace for the storage.
+/// This fields is used to isolate data stored in DB.
 RAY_CONFIG(std::string, external_storage_namespace, "default")
 
 /// Whether or not use TLS.

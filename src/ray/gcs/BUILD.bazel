@@ -5,11 +5,13 @@ ray_cc_library(
     srcs = [
         "redis_async_context.cc",
         "redis_client.cc",
+        "redis_cluster_key_locator.cc",
         "redis_context.cc",
     ],
     hdrs = [
         "redis_async_context.h",
         "redis_client.h",
+        "redis_cluster_key_locator.h",
         "redis_context.h",
     ],
     deps = [
