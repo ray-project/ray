@@ -120,11 +120,29 @@ filegroup(
     visibility = ["//visibility:private"],
 )
 
+filegroup(
+    name = "ray_cpp_hdrs",
+    srcs = ["include/ray/api.h"] + glob([
+        "include/ray/api/*.h",
+    ]),
+    visibility = ["//visibility:private"],
+)
+
+filegroup(
+    name = "example_files",
+    srcs = glob(["example/**"]),
+    visibility = ["//visibility:private"],
+)
+
 genrule(
     name = "ray_cpp_pkg",
     srcs = [
+        ":ray_cpp_hdrs",
+        ":example_files",
         "default_worker",
         "libray_api.so",
+        "@msgpack//:msgpack_hdrs",
+        "@nlohmann_json//:nlohmann_json_hdrs",
     ],
     outs = ["ray_cpp_pkg.out"],
     cmd = """
@@ -166,6 +184,9 @@ genrule(
         cp -f $(locations libray_api.so) "$$PY_CPP_DIR/lib/" &&
         cp -f -r "$$WORK_DIR/cpp/include/ray" "$$PY_CPP_DIR/include" &&
         cp -f -r "$$WORK_DIR/cpp/example" "$$PY_CPP_DIR" &&
+        mv "$$PY_CPP_DIR/example/_WORKSPACE" "$$PY_CPP_DIR/example/WORKSPACE" &&
+        mv "$$PY_CPP_DIR/example/_BUILD.bazel" "$$PY_CPP_DIR/example/BUILD.bazel" &&
+        mv "$$PY_CPP_DIR/example/_.bazelrc" "$$PY_CPP_DIR/example/.bazelrc" &&
         echo "$$WORK_DIR" > $@
     """,
     local = 1,
