@@ -1,5 +1,6 @@
 """Metadata exporter API for Ray Data datasets."""
 
+import enum
 import json
 import logging
 import os
@@ -13,6 +14,7 @@ from ray._private.event.export_event_logger import (
     check_export_api_enabled,
     get_export_event_logger,
 )
+# from ray.data._internal.stats import DatasetState
 from ray.data.context import DataContext
 
 if TYPE_CHECKING:
@@ -56,11 +58,17 @@ class Operator:
         sub_stages: List of sub-stages contained within this operator.
         args: User-specified arguments associated with the operator, which may
             include configuration settings, options, or other relevant data for the operator.
+        execution_time: The timestamp when the opertor execution begins.
+        end_time: The timestamp when the opertor execution ends.
+        state: The state of the opertor.
     """
 
     name: str
     id: str
     uuid: str
+    execution_time: Optional[float]
+    end_time: Optional[float]
+    state: str
     input_dependencies: List[str] = field(default_factory=list)
     sub_stages: List[SubStage] = field(default_factory=list)
     args: Dict[str, Any] = field(default_factory=dict)
@@ -104,6 +112,9 @@ class Topology:
                     op_to_id[dep] for dep in op.input_dependencies if dep in op_to_id
                 ],
                 args=sanitize_for_struct(op._get_logical_args()),
+                execution_time=None,
+                end_time=None,
+                state=DatasetState.PENDING.name,
             )
 
             # Add sub-stages if they exist
@@ -127,8 +138,11 @@ class DatasetMetadata:
         job_id: The ID of the job running this dataset.
         topology: The structure of the dataset's operator DAG.
         dataset_id: The unique ID of the dataset.
-        start_time: The timestamp when the dataset execution started.
+        start_time: The timestamp when the dataset is registered.
         data_context: The DataContext attached to the dataset.
+        execution_time: The timestamp when the dataset execution starts.
+        end_time: The timestamp when the dataset execution ends.
+        state: The state of the dataset.
     """
 
     job_id: str
@@ -136,6 +150,31 @@ class DatasetMetadata:
     dataset_id: str
     start_time: float
     data_context: DataContext
+    execution_time: Optional[float]
+    end_time: Optional[float]
+    state: str
+
+
+class DatasetState(enum.IntEnum):
+    """Enum representing the possible states of a dataset during execution."""
+
+    UNKNOWN = 0
+    RUNNING = 1
+    FINISHED = 2
+    FAILED = 3
+    PENDING = 4
+    CANCELLED = 5
+
+    def __str__(self):
+        return self.name
+
+    @classmethod
+    def from_string(cls, text):
+        """Get enum by name."""
+        try:
+            return cls[text]  # This uses the name to lookup the enum
+        except KeyError:
+            return cls.UNKNOWN
 
 
 def sanitize_for_struct(obj):
@@ -189,7 +228,11 @@ def dataset_metadata_to_proto(dataset_metadata: DatasetMetadata) -> Any:
             name=op.name,
             id=op.id,
             uuid=op.uuid,
-            args=args,
+            # args=args,
+            args=None,
+            execution_time=op.execution_time,
+            end_time=op.end_time,
+            state=op.state,
         )
 
         # Add input dependencies
@@ -214,7 +257,11 @@ def dataset_metadata_to_proto(dataset_metadata: DatasetMetadata) -> Any:
         dataset_id=dataset_metadata.dataset_id,
         job_id=dataset_metadata.job_id,
         start_time=dataset_metadata.start_time,
-        data_context=data_context,
+        # data_context=data_context,
+        data_context=None,
+        execution_time=dataset_metadata.execution_time,
+        end_time=dataset_metadata.end_time,
+        state=dataset_metadata.state,
     )
     proto_dataset_metadata.topology.CopyFrom(proto_topology)
 

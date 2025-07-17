@@ -31,9 +31,11 @@ from ray.data._internal.logging import (
     register_dataset_logger,
     unregister_dataset_logger,
 )
+from ray.data._internal.metadata_exporter import DatasetState
 from ray.data._internal.metadata_exporter import Topology as TopologyMetadata
 from ray.data._internal.progress_bar import ProgressBar
-from ray.data._internal.stats import DatasetState, DatasetStats, StatsManager, Timer
+# from ray.data._internal.stats import DatasetState, DatasetStats, StatsManager, Timer
+from ray.data._internal.stats import DatasetStats, StatsManager, Timer
 from ray.data.context import OK_PREFIX, WARN_PREFIX, DataContext
 from ray.util.metrics import Gauge
 
@@ -369,6 +371,7 @@ class StreamingExecutor(Executor, threading.Thread):
         self._report_current_usage()
 
         i = 0
+        operators_to_run = []
         while True:
             op = select_operator_to_run(
                 topology,
@@ -382,6 +385,7 @@ class StreamingExecutor(Executor, threading.Thread):
             if op is None:
                 break
 
+            operators_to_run.append(op)
             topology[op].dispatch_next_task()
 
             self._resource_manager.update_usages()
@@ -396,6 +400,10 @@ class StreamingExecutor(Executor, threading.Thread):
         update_operator_states(topology)
         self._refresh_progress_bars(topology)
 
+        # Update dataset metadata and operator metadata
+        StatsManager.update_export_dataset_state(self._dataset_id, DatasetState.RUNNING.name)
+        for op in operators_to_run:
+            StatsManager.update_export_operator_state(self._dataset_id, op.id, DatasetState.RUNNING.name)
         self._update_stats_metrics(state=DatasetState.RUNNING.name)
         if time.time() - self._last_debug_log_time >= DEBUG_LOG_INTERVAL_SECONDS:
             _log_op_metrics(topology)
@@ -411,6 +419,7 @@ class StreamingExecutor(Executor, threading.Thread):
                 )
                 logger.debug(log_str)
                 self._has_op_completed[op] = True
+                StatsManager.update_export_operator_state(self._dataset_id, op.id, DatasetState.FINISHED.name)
 
         # Keep going until all operators run to completion.
         return not all(op.completed() for op in topology)
@@ -478,7 +487,7 @@ class StreamingExecutor(Executor, threading.Thread):
             "progress": last_state.num_completed_tasks,
             "total": last_op.num_outputs_total(),
             "total_rows": last_op.num_output_rows_total(),
-            "end_time": time.time() if state != DatasetState.RUNNING.name else None,
+            "end_time": time.time() if state in (DatasetState.FINISHED.name, DatasetState.FAILED.name) else None,
             "operators": {
                 f"{self._get_operator_id(op, i)}": {
                     "name": op.name,
