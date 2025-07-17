@@ -315,8 +315,21 @@ class DeploymentStatusInfo:
                 )
 
         elif self.status in {DeploymentStatus.UPSCALING, DeploymentStatus.DOWNSCALING}:
+            # Failures occurred while upscaling/downscaling
+            if trigger == DeploymentStatusInternalTrigger.HEALTH_CHECK_FAILED:
+                return self._updated_copy(
+                    status=DeploymentStatus.UNHEALTHY,
+                    status_trigger=DeploymentStatusTrigger.HEALTH_CHECK_FAILED,
+                    message=message,
+                )
+            elif trigger == DeploymentStatusInternalTrigger.REPLICA_STARTUP_FAILED:
+                return self._updated_copy(
+                    status=DeploymentStatus.UNHEALTHY,
+                    status_trigger=DeploymentStatusTrigger.REPLICA_STARTUP_FAILED,
+                    message=message,
+                )
             # Deployment transitions to healthy
-            if trigger == DeploymentStatusInternalTrigger.HEALTHY:
+            elif trigger == DeploymentStatusInternalTrigger.HEALTHY:
                 return self._updated_copy(
                     status=DeploymentStatus.HEALTHY,
                     status_trigger=DeploymentStatusTrigger.UPSCALE_COMPLETED
@@ -385,20 +398,6 @@ class DeploymentStatusInfo:
                     return self._updated_copy(
                         status=DeploymentStatus.DOWNSCALING, message=message
                     )
-
-            # Failures occurred while upscaling/downscaling
-            elif trigger == DeploymentStatusInternalTrigger.HEALTH_CHECK_FAILED:
-                return self._updated_copy(
-                    status=DeploymentStatus.UNHEALTHY,
-                    status_trigger=DeploymentStatusTrigger.HEALTH_CHECK_FAILED,
-                    message=message,
-                )
-            elif trigger == DeploymentStatusInternalTrigger.REPLICA_STARTUP_FAILED:
-                return self._updated_copy(
-                    status=DeploymentStatus.UNHEALTHY,
-                    status_trigger=DeploymentStatusTrigger.REPLICA_STARTUP_FAILED,
-                    message=message,
-                )
 
         elif self.status == DeploymentStatus.HEALTHY:
             # Deployment remains healthy
