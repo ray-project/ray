@@ -233,6 +233,7 @@ class ActorPoolMapOperator(MapOperator):
 
         Args:
             labels: The key-value labels to launch the actor with.
+            logical_actor_id: The logical id of the actor.
 
         Returns:
             A tuple of the actor handle and the object ref to the actor's location.

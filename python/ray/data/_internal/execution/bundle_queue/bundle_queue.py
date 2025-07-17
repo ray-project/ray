@@ -27,6 +27,9 @@ class BundleQueue(abc.ABC):
 
         Raises:
             IndexError: If the queue is empty.
+
+        Returns:
+            A Refbundle if has_next() is True
         """
         ...
 
