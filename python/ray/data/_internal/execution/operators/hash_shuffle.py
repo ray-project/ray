@@ -872,28 +872,6 @@ class HashShufflingOperatorBase(PhysicalOperator):
         raise NotImplementedError()
 
 
-@ray.remote(num_cpus=0)
-def _wait_until_healthy(aggregators: List[ray.actor.ActorHandle]):
-    """Background health monitor. Exits once every actor's constructor has run."""
-    pending = [aggregator.__ray_ready__.remote() for aggregator in aggregators]
-
-    while pending:
-        # Non-blocking poll
-        _, unready_refs = ray.wait(
-            pending,
-            num_returns=len(pending),
-            timeout=1,
-        )
-
-        pending = unready_refs
-
-    num_aggregators = len(aggregators)
-
-    # All futures resolved → every aggregator is ready.
-    logger.debug("All %s hash-shuffle aggregators are now healthy", num_aggregators)
-    # Task ends here; nothing to clean up.
-
-
 class HashShuffleOperator(HashShufflingOperatorBase):
     def __init__(
         self,
@@ -979,6 +957,123 @@ class HashShuffleOperator(HashShufflingOperatorBase):
         return aggregator_total_memory_required
 
 
+@ray.remote
+class IssueDetector:
+    """Actor that continuously detects issues with hash shuffle aggregators until all are healthy."""
+
+    def __init__(
+        self,
+        aggregators: List[ActorHandle],
+        aggregator_ray_remote_args: Dict[str, Any],
+        num_aggregators: int,
+        min_wait_time: float,
+        health_warning_interval_s: float,
+        polling_interval_s: float = 1.0,
+    ):
+        self._aggregators = aggregators
+        self._aggregator_ray_remote_args = aggregator_ray_remote_args
+        self._num_aggregators = num_aggregators
+        self._min_wait_time = min_wait_time
+        self._health_warning_interval_s = health_warning_interval_s
+        self._polling_interval_s = polling_interval_s
+
+        # State tracking
+        self._started_at: Optional[float] = None
+        self._last_health_warning_time: Optional[float] = None
+        self._pending_aggregators_refs: Optional[List[ObjectRef]] = None
+        self._monitoring_active: bool = False
+
+    def start_monitoring(self):
+        """Start the health monitoring process."""
+        self._started_at = time.time()
+        self._monitoring_active = True
+
+        # Start the monitoring loop
+        try:
+            while self._monitoring_active:
+                self._check_health()
+                time.sleep(self._polling_interval_s)
+        except Exception as e:
+            logger.debug(f"Health monitoring loop ended: {e}")
+
+    def stop_monitoring(self):
+        """Stop the health monitoring process."""
+        self._monitoring_active = False
+
+    def _check_health(self):
+        """Perform a single health check."""
+        if (
+            self._started_at is None
+            or time.time() - self._started_at < self._min_wait_time
+        ):
+            return
+
+        try:
+            # Initialize readiness refs the first time.
+            if self._pending_aggregators_refs is None:
+                self._pending_aggregators_refs = [
+                    aggregator.__ray_ready__.remote()
+                    for aggregator in self._aggregators
+                ]
+
+            if len(self._pending_aggregators_refs) == 0:
+                self._last_health_warning_time = None
+                return
+
+            # Use ray.wait to check readiness in non-blocking fashion
+            _, unready_refs = ray.wait(
+                self._pending_aggregators_refs,
+                num_returns=len(self._pending_aggregators_refs),
+                timeout=0,  # Short timeout to avoid blocking
+            )
+
+            # Update readiness refs to only track the unready ones
+            self._pending_aggregators_refs = unready_refs
+
+            current_time = time.time()
+            should_warn = unready_refs and (  # If any refs are not ready
+                self._last_health_warning_time is None
+                or current_time - self._last_health_warning_time
+                >= self._health_warning_interval_s
+            )
+
+            if should_warn:
+                # Get cluster resource information for better diagnostics
+                available_resources = ray.available_resources()
+                available_cpus = available_resources.get("CPU", 0)
+                cluster_resources = ray.cluster_resources()
+                total_memory = cluster_resources.get("memory", 0)
+                available_memory = available_resources.get("memory", 0)
+
+                required_cpus = (
+                    self._aggregator_ray_remote_args.get("num_cpus", 1)
+                    * self._num_aggregators
+                )
+
+                ready_aggregators = self._num_aggregators - len(unready_refs)
+
+                logger.warning(
+                    f"Only {ready_aggregators} out of {self._num_aggregators} hash-shuffle aggregators are ready after {self._min_wait_time:.1f} secs. "
+                    f"This might indicate resource contention for cluster resources (available CPUs: {available_cpus}, required CPUs: {required_cpus}). "
+                    f"Cluster only has {available_memory / GiB:.2f} GiB available memory, {total_memory / GiB:.2f} GiB total memory. "
+                    f"Consider increasing cluster size or reducing the number of aggregators via `DataContext.max_hash_shuffle_aggregators`. "
+                    f"Will continue checking every {self._health_warning_interval_s}s."
+                )
+                self._last_health_warning_time = current_time
+            elif not unready_refs and self._last_health_warning_time is not None:
+                # All aggregators are ready – clear warning timer and, if this is
+                # the first time, emit a single DEBUG log.
+                self._last_health_warning_time = None
+                logger.debug(
+                    f"All {self._num_aggregators} hash shuffle aggregators "
+                    f"are now healthy"
+                )
+                self._monitoring_active = False
+
+        except Exception as e:
+            logger.warning(f"Failed to check aggregator health: {e}")
+
+
 class AggregatorPool:
     def __init__(
         self,
@@ -1014,21 +1109,10 @@ class AggregatorPool:
             self._aggregator_partition_map,
         )
 
-        # Resource monitoring state
-        self._started_at: Optional[float] = None
-
-        # Add last warning timestamp for health checks
-        self._last_health_warning_time: Optional[float] = None
-        self._health_warning_interval_s: float = (
-            self._data_context.hash_shuffle_aggregator_health_warning_interval_s
-        )
-        # Track readiness refs for non-blocking health checks
-        self._pending_aggregators_refs: Optional[List[ObjectRef]] = None
+        # Issue detector actor
+        self._issue_detector: Optional[ActorHandle] = None
 
     def start(self):
-        # Record start time for monitoring
-        self._started_at = time.time()
-
         # Check cluster resources before starting aggregators
         self._check_cluster_resources()
 
@@ -1043,9 +1127,17 @@ class AggregatorPool:
 
             self._aggregators.append(aggregator)
 
-        _ = _wait_until_healthy.remote(
+        # Start issue detector actor
+        self._issue_detector = IssueDetector.remote(
             self._aggregators,
+            self._aggregator_ray_remote_args,
+            self._num_aggregators,
+            self._data_context.min_hash_shuffle_aggregator_wait_time_in_s,
+            self._data_context.hash_shuffle_aggregator_health_warning_interval_s,
         )
+
+        # Start monitoring (this will run the polling loop)
+        self._issue_detector.start_monitoring.remote()
 
     def _check_cluster_resources(self) -> None:
         """Check if cluster has enough resources to schedule all aggregators.
@@ -1112,75 +1204,6 @@ class AggregatorPool:
                 f"required memory={required_memory / GiB:.2f} GiB, available memory={available_memory / GiB:.2f} GiB"
             )
 
-    def _check_aggregator_health(self) -> None:
-        """Check if all aggregators are up and running after a timeout period.
-        Uses non-blocking ray.wait to check actor readiness.
-        Will warn every 10 seconds (configurable via `DataContext.hash_shuffle_aggregator_health_warning_interval_s`) if aggregators remain unhealthy.
-        """
-        min_wait_time = self._data_context.min_hash_shuffle_aggregator_wait_time_in_s
-        if self._started_at is None or time.time() - self._started_at < min_wait_time:
-            return
-
-        try:
-            # Initialize readiness refs the first time.
-            if self._pending_aggregators_refs is None:
-                self._pending_aggregators_refs = [
-                    aggregator.__ray_ready__.remote()
-                    for aggregator in self._aggregators
-                ]
-
-            if len(self._pending_aggregators_refs) == 0:
-                self._last_health_warning_time = None
-                return
-
-            # Use ray.wait to check readiness in non-blocking fashion
-            _, unready_refs = ray.wait(
-                self._pending_aggregators_refs,
-                num_returns=len(self._pending_aggregators_refs),
-                timeout=0,  # Short timeout to avoid blocking
-            )
-
-            # Update readiness refs to only track the unready ones
-            self._pending_aggregators_refs = unready_refs
-
-            current_time = time.time()
-            should_warn = unready_refs and (  # If any refs are not ready
-                self._last_health_warning_time is None
-                or current_time - self._last_health_warning_time
-                >= self._health_warning_interval_s
-            )
-
-            if should_warn:
-                # Get cluster resource information for better diagnostics
-                available_resources = ray.available_resources()
-                available_cpus = available_resources.get("CPU", 0)
-                cluster_resources = ray.cluster_resources()
-                total_memory = cluster_resources.get("memory", 0)
-                available_memory = available_resources.get("memory", 0)
-
-                required_cpus = (
-                    self._aggregator_ray_remote_args.get("num_cpus", 1)
-                    * self._num_aggregators
-                )
-
-                ready_aggregators = self._num_aggregators - len(unready_refs)
-
-                logger.warning(
-                    f"Only {ready_aggregators} out of {self._num_aggregators} hash-shuffle aggregators are ready after {min_wait_time:.1f} secs. "
-                    f"This might indicate resource contention for cluster resources (available CPUs: {available_cpus}, required CPUs: {required_cpus}). "
-                    f"Cluster only has {available_memory / GiB:.2f} GiB available memory, {total_memory / GiB:.2f} GiB total memory. "
-                    f"Consider increasing cluster size or reducing the number of aggregators via `DataContext.max_hash_shuffle_aggregators`. "
-                    f"Will continue checking every {self._health_warning_interval_s}s."
-                )
-                self._last_health_warning_time = current_time
-            elif not unready_refs and self._last_health_warning_time is not None:
-                # All aggregators are ready – clear warning timer and, if this is
-                # the first time, emit a single DEBUG log.
-                self._last_health_warning_time = None
-
-        except Exception as e:
-            logger.warning(f"Failed to check aggregator health: {e}")
-
     @property
     def num_partitions(self):
         return self._num_partitions
@@ -1190,7 +1213,6 @@ class AggregatorPool:
         return self._num_aggregators
 
     def get_aggregator_for_partition(self, partition_id: int) -> ActorHandle:
-        self._check_aggregator_health()
         return self._aggregators[self._get_aggregator_id_for_partition(partition_id)]
 
     def _allocate_partitions(self, *, num_partitions: int):
@@ -1241,6 +1263,19 @@ class AggregatorPool:
         return finalized_remote_args
 
     def shutdown(self, force: bool):
+        # Stop health monitoring actor
+        if self._issue_detector is not None:
+            try:
+                # Tell the actor to stop monitoring
+                self._issue_detector.stop_monitoring.remote()
+            except Exception:
+                pass  # Actor might already be dead
+
+            if force:
+                ray.kill(self._issue_detector)
+            self._issue_detector = None
+
+        # Shutdown aggregators
         if force:
             for actor in self._aggregators:
                 # NOTE: Actors can't be brought back after being ``ray.kill``-ed,
