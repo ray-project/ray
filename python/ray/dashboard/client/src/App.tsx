@@ -56,7 +56,8 @@ import {
 } from "./pages/serve/ServeSystemDetailPage";
 import { TaskPage } from "./pages/task/TaskPage";
 import { getNodeList } from "./service/node";
-import { lightTheme } from "./theme";
+import { lightTheme, darkTheme } from "./theme";
+import { ThemeProvider as CustomThemeProvider, useTheme } from "./contexts/ThemeContext";
 
 dayjs.extend(duration);
 
@@ -124,7 +125,7 @@ export const GlobalContext = React.createContext<GlobalContextType>({
   currentTimeZone: undefined,
 });
 
-const App = () => {
+const AppContent = () => {
   const [currentTimeZone, setCurrentTimeZone] = useState<string>();
   const [context, setContext] = useState<
     Omit<GlobalContextType, "currentTimeZone">
@@ -141,6 +142,10 @@ const App = () => {
     dashboardDatasource: undefined,
     serverTimeZone: undefined,
   });
+  
+  const { mode } = useTheme();
+  const currentTheme = mode === 'dark' ? darkTheme : lightTheme;
+
   useEffect(() => {
     getNodeList().then((res) => {
       if (res?.data?.data?.summary) {
@@ -212,7 +217,7 @@ const App = () => {
 
   return (
     <StyledEngineProvider injectFirst>
-      <ThemeProvider theme={lightTheme}>
+      <ThemeProvider theme={currentTheme}>
         <Suspense fallback={Loading}>
           <GlobalContext.Provider value={{ ...context, currentTimeZone }}>
             <CssBaseline />
@@ -359,6 +364,14 @@ const App = () => {
         </Suspense>
       </ThemeProvider>
     </StyledEngineProvider>
+  );
+};
+
+const App = () => {
+  return (
+    <CustomThemeProvider>
+      <AppContent />
+    </CustomThemeProvider>
   );
 };
 
