@@ -125,6 +125,62 @@ def test_gc_del_ref_before_recv_finish(ray_start_regular, data_size_bytes):
     )
 
 
+def test_gc_intra_actor_gpu_object(ray_start_regular):
+    """
+    This test checks that passes a GPU object ref to the same actor multiple times.
+    """
+    actor = GPUTestActor.remote()
+    create_collective_group([actor], backend="torch_gloo")
+
+    small_tensor = torch.randn((1,))
+
+    ref = actor.echo.remote(small_tensor)
+    result = actor.double.remote(ref)
+    assert ray.get(result) == pytest.approx(small_tensor * 2)
+
+    result = actor.double.remote(ref)
+    assert ray.get(result) == pytest.approx(small_tensor * 2)
+
+    del ref
+
+    wait_for_condition(
+        lambda: ray.get(actor.get_num_gpu_objects.remote()) == 0,
+        timeout=10,
+        retry_interval_ms=100,
+    )
+
+
+def test_gc_pass_ref_to_same_and_different_actors(ray_start_regular):
+    """
+    This test checks that passes a GPU object ref to the same actor and a different actor.
+    """
+    actor1 = GPUTestActor.remote()
+    actor2 = GPUTestActor.remote()
+    create_collective_group([actor1, actor2], backend="torch_gloo")
+
+    small_tensor = torch.randn((1,))
+
+    ref = actor1.echo.remote(small_tensor)
+    result1 = actor1.double.remote(ref)
+    result2 = actor2.double.remote(ref)
+    assert ray.get(result1) == pytest.approx(small_tensor * 2)
+    assert ray.get(result2) == pytest.approx(small_tensor * 2)
+
+    wait_for_condition(
+        lambda: ray.get(actor2.get_num_gpu_objects.remote()) == 0,
+        timeout=10,
+        retry_interval_ms=100,
+    )
+
+    del ref
+
+    wait_for_condition(
+        lambda: ray.get(actor1.get_num_gpu_objects.remote()) == 0,
+        timeout=10,
+        retry_interval_ms=100,
+    )
+
+
 def test_p2p(ray_start_regular):
     world_size = 2
     actors = [GPUTestActor.remote() for _ in range(world_size)]
