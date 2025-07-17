@@ -15,7 +15,7 @@ This example:
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack`
+`python [script file name].py`
 
 For debugging, use the following additional command line options
 `--no-tune --num-env-runners=0`
@@ -127,7 +127,7 @@ if __name__ == "__main__":
 
     # Get the best checkpoints from the trial, based on different metrics.
     # Checkpoint with the lowest policy loss value:
-    if args.enable_new_api_stack:
+    if not args.old_api_stack:
         policy_loss_key = f"{LEARNER_RESULTS}/{DEFAULT_MODULE_ID}/policy_loss"
     else:
         policy_loss_key = "info/learner/default_policy/learner_stats/policy_loss"
@@ -137,7 +137,7 @@ if __name__ == "__main__":
     print(f"Checkpoint w/ lowest policy loss ({lowest_policy_loss}): {ckpt}")
 
     # Checkpoint with the highest value-function loss:
-    if args.enable_new_api_stack:
+    if not args.old_api_stack:
         vf_loss_key = f"{LEARNER_RESULTS}/{DEFAULT_MODULE_ID}/vf_loss"
     else:
         vf_loss_key = "info/learner/default_policy/learner_stats/vf_loss"

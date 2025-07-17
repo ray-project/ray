@@ -19,7 +19,7 @@ This example:
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack `
+`python [script file name].py `
 
 Use the `--vectorize-mode=BOTH` option to run both modes (SYNC and ASYNC)
 through Tune at the same time and get a better comparison of the throughputs

@@ -23,7 +23,7 @@ able to learn properly as it's forced to keep the weights small.
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack --regularizer-coeff=0.02
+`python [script file name].py --regularizer-coeff=0.02
 --lr=0.01`
 
 Use the `--regularizer-coeff` option to set the value of the coefficient with which

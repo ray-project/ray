@@ -21,7 +21,7 @@ This example:
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack --port 5555
+`python [script file name].py --port 5555
 
 Use the `--port` option to change the default port (5555) to some other value.
 Make sure that you do the same on the client side.

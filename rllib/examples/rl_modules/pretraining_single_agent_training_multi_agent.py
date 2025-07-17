@@ -9,7 +9,7 @@ The environment is MultiAgentCartPole, in which there are n agents both policies
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack --num-agents=2`
+`python [script file name].py --num-agents=2`
 
 For debugging, use the following additional command line options
 `--no-tune --num-env-runners=0`
@@ -25,8 +25,8 @@ Results to expect
 -----------------
 In the console output, you can see that the single-agent policy is first trained until
 the specified `--stop-reward-pretraining` value. For example, with the command line:
-`--enable-new-api-stack --num-agents=2 --stop-reward-pretraining=250.0
---stop-reward=250.0 --stop-iters=3 --as-test`, you should get something like:
+`--num-agents=2 --stop-reward-pretraining=250.0 --stop-reward=250.0
+--stop-iters=3 --as-test`, you should get something like:
 +-----------------------+------------+------+----------------+---------------------+
 | Trial name            | status     | iter | total time (s) | episode_return_mean |
 |                       |            |      |                |                     |

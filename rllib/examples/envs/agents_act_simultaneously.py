@@ -12,7 +12,7 @@ This example:
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack --sheldon-cooper-mode`
+`python [script file name].py --sheldon-cooper-mode`
 
 For debugging, use the following additional command line options
 `--no-tune --num-env-runners=0`

@@ -116,7 +116,7 @@ if __name__ == "__main__":
             functools.partial(
                 (
                     SelfPlayCallback
-                    if args.enable_new_api_stack
+                    if not args.old_api_stack
                     else SelfPlayCallbackOldAPIStack
                 ),
                 win_rate_threshold=args.win_rate_threshold,
@@ -124,7 +124,7 @@ if __name__ == "__main__":
         )
         .env_runners(
             num_env_runners=(args.num_env_runners or 2),
-            num_envs_per_env_runner=1 if args.enable_new_api_stack else 5,
+            num_envs_per_env_runner=1 if not args.old_api_stack else 5,
         )
         .multi_agent(
             # Initial policy map: Random and default algo one. This will be expanded
@@ -138,7 +138,7 @@ if __name__ == "__main__":
                     # An initial random opponent to play against.
                     "random": PolicySpec(policy_class=RandomPolicy),
                 }
-                if not args.enable_new_api_stack
+                if args.old_api_stack
                 else {"main", "random"}
             ),
             # Assign agent 0 and 1 randomly to the "main" policy or
@@ -147,7 +147,7 @@ if __name__ == "__main__":
             # another "main").
             policy_mapping_fn=(
                 agent_to_module_mapping_fn
-                if args.enable_new_api_stack
+                if not args.old_api_stack
                 else policy_mapping_fn
             ),
             # Always just train the "main" policy.
@@ -195,7 +195,7 @@ if __name__ == "__main__":
                 raise ValueError("No last checkpoint found in results!")
             algo.restore(checkpoint)
 
-        if args.enable_new_api_stack:
+        if not args.old_api_stack:
             rl_module = algo.get_module("main")
 
         # Play from the command line against the trained agent
@@ -212,7 +212,7 @@ if __name__ == "__main__":
                     action = ask_user_for_action(time_step)
                 else:
                     obs = np.array(time_step.observations["info_state"][player_id])
-                    if args.enable_new_api_stack:
+                    if not args.old_api_stack:
                         action = np.argmax(
                             rl_module.forward_inference(
                                 {"obs": torch.from_numpy(obs).unsqueeze(0).float()}

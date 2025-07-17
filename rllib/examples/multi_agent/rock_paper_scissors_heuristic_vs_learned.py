@@ -8,7 +8,7 @@ This demonstrates running the following policies in competition:
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack --num-agents=2 [--use-lstm]?`
+`python [script file name].py --num-agents=2 [--use-lstm]?`
 
 Without `--use-lstm`, Agent 2 should quickly reach a reward of ~7.0, always
 beating the `always_same` policy, but only 50% of the time beating the `beat_last`

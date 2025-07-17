@@ -11,7 +11,7 @@ This example:
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack --num-learners=
+`python [script file name].py --num-learners=
 [number of Learners, e.g. 1] --num-gpus-per-learner [some fraction <1.0]`
 
 The following command line combinations been tested on a 4 NVIDIA T4 GPUs (16 vCPU)

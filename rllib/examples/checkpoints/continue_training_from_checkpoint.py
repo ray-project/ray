@@ -18,7 +18,7 @@ This example:
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack --num-agents=[0 or 2]
+`python [script file name].py --num-agents=[0 or 2]
 --stop-reward-crash=[the episode return after which the algo should crash]
 --stop-reward=[the final episode return to achieve after(!) restoration from the
 checkpoint]
@@ -151,10 +151,6 @@ if __name__ == "__main__":
     config = (
         get_trainable_cls(args.algo)
         .get_default_config()
-        .api_stack(
-            enable_rl_module_and_learner=args.enable_new_api_stack,
-            enable_env_runner_and_connector_v2=args.enable_new_api_stack,
-        )
         .environment("CartPole-v1" if args.num_agents == 0 else "ma_cart")
         .env_runners(create_env_on_local_worker=True)
         .training(lr=0.0001)

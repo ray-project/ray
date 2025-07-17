@@ -18,7 +18,7 @@ This example:
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack --stop-reward=200.0`
+`python [script file name].py --stop-reward=200.0`
 
 Use the `--use-onnx-for-inference` option to perform action computations after training
 through an ONNX runtime session.

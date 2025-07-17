@@ -12,7 +12,7 @@ This example:
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack --num-env_runners=
+`python [script file name].py --num-env_runners=
 [number of EnvRunners, e.g. 2] --num-gpus-per-env-runner [int or some fraction <1.0]`
 
 The following command line combinations been tested on a 4 NVIDIA T4 GPUs (16 vCPU)

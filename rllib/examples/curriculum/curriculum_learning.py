@@ -17,7 +17,7 @@ limit of 16 to make it almost impossible for a non-curriculum policy to learn.
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack`
+`python [script file name].py`
 
 Use the `--no-curriculum` flag to disable curriculum learning and force your policy
 to be trained on the hardest task right away. With this option, the algorithm should NOT

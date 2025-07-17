@@ -21,7 +21,7 @@ Use this option only if you face problems with the first option
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack
+`python [script file name].py
 
 You can switch on the fault tolerant behavior (1) (restart_failed_sub_environments)
 through the `--restart-failed-envs` flag. If this flag is not set, the script will

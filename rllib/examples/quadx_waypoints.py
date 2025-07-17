@@ -13,7 +13,7 @@ This example
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack`
+`python [script file name].py`
 
 Control the number of environments per `EnvRunner` via `--num-envs-per-env-runner`.
 This will increase sampling speed.

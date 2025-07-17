@@ -20,7 +20,7 @@ the following:
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack
+`python [script file name].py
 
 You can switch off custom evaluation (and use RLlib's default evaluation procedure)
 with the `--no-custom-eval` flag.

@@ -2,7 +2,7 @@
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack --num-agents=2`
+`python [script file name].py --num-agents=2`
 
 Control the number of agents and policies (RLModules) via --num-agents and
 --num-policies.

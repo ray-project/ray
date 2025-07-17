@@ -39,7 +39,7 @@ directory and run the script as-is with python:
 .. code-block:: bash
 
     $ cd ray/rllib/examples/multi_agent
-    $ python multi_agent_pendulum.py --enable-new-api-stack --num-agents=2
+    $ python multi_agent_pendulum.py --num-agents=2
 
 
 Use the `--help` command line argument to have each script print out its supported command line options.

@@ -14,7 +14,7 @@ This example:
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack --env [env name e.g. 'ALE/Pong-v5']
+`python [script file name].py --env [env name e.g. 'ALE/Pong-v5']
 --wandb-key=[your WandB API key] --wandb-project=[some WandB project name]
 --wandb-run-name=[optional: WandB run name within --wandb-project]`
 

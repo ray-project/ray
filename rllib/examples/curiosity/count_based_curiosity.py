@@ -16,7 +16,7 @@ limit of 14 to make it almost impossible for a non-curiosity based policy to lea
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack`
+`python [script file name].py`
 
 Use the `--no-curiosity` flag to disable curiosity learning and force your policy
 to be trained on the task w/o the use of intrinsic rewards. With this option, the

@@ -14,7 +14,7 @@ This example:
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack --stop-reward=200.0`
+`python [script file name].py --stop-reward=200.0`
 
 Use the `--stop-iters`, `--stop-reward`, and/or `--stop-timesteps` options to
 determine how long to train the policy for. Use the `--serve-episodes` option to

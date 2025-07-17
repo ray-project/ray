@@ -29,7 +29,7 @@ learn any useful policy anymore.
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack --lr-vf=0.001 --lr-policy=0.0005`
+`python [script file name].py --lr-vf=0.001 --lr-policy=0.0005`
 
 Use the `--lr-policy` option to set the policy learning rate (used by the policy
 optimizer) and the `--lr-vf` option to set the value function learning rate (used by the

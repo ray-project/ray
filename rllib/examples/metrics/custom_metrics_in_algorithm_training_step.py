@@ -16,7 +16,7 @@ result dict and how to assert, the new metrics has been properly logged.
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack --wandb-key [your WandB key]
+`python [script file name].py --wandb-key [your WandB key]
 --wandb-project [some project name]`
 
 For debugging, use the following additional command line options
