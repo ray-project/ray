@@ -365,10 +365,14 @@ class ExecutionOptions:
                     f" both be set for {attr} resource."
                 )
 
+
 def safe_or(value: Optional[Any], alt: Any) -> Any:
     return value if value is not None else alt
 
-def safe_round(value: Optional[float], ndigits: Optional[int] = None) -> Optional[float]:
+
+def safe_round(
+    value: Optional[float], ndigits: Optional[int] = None
+) -> Optional[float]:
     if value is None:
         return None
     elif math.isinf(value):
