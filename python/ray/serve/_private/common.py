@@ -143,6 +143,9 @@ class DeploymentStatusInternalTrigger(str, Enum):
     CONFIG_UPDATE = "CONFIG_UPDATE"
     AUTOSCALE_UP = "AUTOSCALE_UP"
     AUTOSCALE_DOWN = "AUTOSCALE_DOWN"
+    # MANUALLY_INCREASE_NUM_REPLICAS and MANUALLY_DECREASE_NUM_REPLICAS are used
+    # instead of CONFIG_UPDATE when "only the replica scale" is triggered
+    # by the config update.
     MANUALLY_INCREASE_NUM_REPLICAS = "MANUALLY_INCREASE_NUM_REPLICAS"
     MANUALLY_DECREASE_NUM_REPLICAS = "MANUALLY_DECREASE_NUM_REPLICAS"
     REPLICA_STARTUP_FAILED = "REPLICA_STARTUP_FAILED"
@@ -236,6 +239,8 @@ class DeploymentStatusInfo:
             New instance of DeploymentStatusInfo representing the
             next state to transition to.
         """
+        # 'self.status_trigger' is the trigger that caused the current status.
+        # 'trigger' is the new incoming trigger causing the transition.
 
         # If there was an unexpected internal error during reconciliation, set
         # status to unhealthy immediately and return
