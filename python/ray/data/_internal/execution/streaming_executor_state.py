@@ -10,6 +10,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
+from python.ray.data._internal.pandas_block import PandasBlockSchema
 import ray
 from ray.data._internal.execution.backpressure_policy import BackpressurePolicy
 from ray.data._internal.execution.bundle_queue import create_bundle_queue
@@ -748,7 +749,12 @@ def dedupe_schemas_with_validation(
     # Note, often times the refbundles correspond to only one schema. We can reduce the
     # memory footprint of multiple schemas by keeping only one copy.
     diverged = False
-    if not old_schema:
+    has_empty_schema = old_schema is None or (
+        not old_schema.names
+        if isinstance(old_schema, PandasBlockSchema)
+        else not old_schema  # pyarrow schema check
+    )
+    if has_empty_schema:
         return bundle, diverged
 
     # This check is fast assuming pyarrow schemas
@@ -758,8 +764,9 @@ def dedupe_schemas_with_validation(
     diverged = True
     if warn:
         logger.warning(
-            "Operator produced a RefBundle with a different schema "
-            "than the previous one."
+            f"Operator produced a RefBundle with a different schema "
+            f"than the previous one. Previous schema: {old_schema}, "
+            f"new schema: {bundle.schema}. This may lead to unexpected behavior."
         )
     if allow_divergent:
         old_schema = unify_schemas_with_validation([old_schema, bundle.schema])
