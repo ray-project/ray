@@ -3833,7 +3833,6 @@ class AutoscalingTest(unittest.TestCase):
 
         config_path = self.write_config(cluster_config)
 
-        AUTOSCALER_HEARTBEAT_TIMEOUT_S = 30
         self.provider = MockProvider()
         runner = MockProcessRunner()
         lm = LoadMetrics()
