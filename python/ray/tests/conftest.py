@@ -1463,3 +1463,7 @@ def random_ascii_file(request):
 def pytest_sessionfinish(session, exitstatus):
     # Make sure to shutdown Ray after whole test run finished.
     ray.shutdown()
+    # Kill the Ray cluster.
+    subprocess.check_call(["ray", "stop"])
+    # Delete the cluster address just in case.
+    ray._common.utils.reset_ray_address()
