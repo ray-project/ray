@@ -1896,9 +1896,7 @@ def test_async_flat_map(shutdown_only, udf_kind, target_max_block_size_none):
     assert sorted(extract_values("id", output)) == list(range(n))
 
 
-def test_map_batches_async_exception_propagation(
-    shutdown_only, target_max_block_size_none
-):
+def test_map_batches_async_exception_propagation(shutdown_only):
     ray.shutdown()
     ray.init(num_cpus=2)
 
