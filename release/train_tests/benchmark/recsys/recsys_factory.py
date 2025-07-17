@@ -12,7 +12,7 @@ import ray.train.torch
 
 from constants import DatasetKey
 from config import DataloaderType, BenchmarkConfig
-from benchmark_factory import BenchmarkFactory
+from factory import BenchmarkFactory
 from dataloader_factory import (
     BaseDataLoaderFactory,
 )
@@ -44,10 +44,9 @@ class RecsysMockDataLoaderFactory(BaseDataLoaderFactory):
 class RecsysRayDataLoaderFactory(RayDataLoaderFactory):
     def get_ray_datasets(self) -> Dict[str, ray.data.Dataset]:
         # TODO: Use the train dataset for validation as well.
-        ds = get_ray_dataset(DatasetKey.VALID)
         return {
-            DatasetKey.TRAIN: ds,
-            DatasetKey.VALID: ds,
+            DatasetKey.TRAIN: get_ray_dataset(DatasetKey.TRAIN),
+            DatasetKey.VALID: get_ray_dataset(DatasetKey.VALID),
         }
 
     def _get_collate_fn(self) -> Optional[CollateFn]:

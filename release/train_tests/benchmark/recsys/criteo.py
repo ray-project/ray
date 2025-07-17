@@ -9,7 +9,12 @@ import pyarrow.csv
 
 import ray.data
 
-from constants import DatasetKey
+
+class DatasetKey:
+    TRAIN = "train"
+    VALID = "val"
+    TEST = "test"
+
 
 if TYPE_CHECKING:
     from torchrec.datasets.utils import Batch
@@ -17,11 +22,13 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-S3_BUCKET = "ray-benchmark-data-internal-us-west-2"
+S3_BUCKET = "ray-benchmark-data-internal"
 CRITEO_S3_URI = f"s3://{S3_BUCKET}/criteo/tsv.gz"
-CAT_FEATURE_VALUE_COUNT_JSON_PATH_PATTERN = (
-    "criteo/tsv.gz/categorical_feature_value_counts/{}-value_counts.json"
-)
+
+CACHED_FEATURE_VALUE_COUNT_PATH_PATTER = {
+    "train": "criteo/tsv.gz/full_categorical_feature_value_counts/{}-value_counts.json",
+    "valid": "criteo/tsv.gz/categorical_feature_value_counts/{}-value_counts.json",
+}
 
 
 INT_FEATURE_COUNT = 13
@@ -208,7 +215,7 @@ def get_ray_dataset(stage: DatasetKey = DatasetKey.TRAIN):
         if COMPUTE_VALUE_COUNTS_FROM_SCRATCH:
             value_counts = _compute_value_counts(ds, cat_feature)
         else:
-            json_filepath = CAT_FEATURE_VALUE_COUNT_JSON_PATH_PATTERN.format(
+            json_filepath = CACHED_FEATURE_VALUE_COUNT_PATH_PATTER[stage].format(
                 cat_feature
             )
             logger.info(f"Downloading value counts file: {json_filepath}")
