@@ -402,7 +402,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         5000.0,
     ]
 
-    task_completion_time: float = metric_field(
+    mean_task_completion_time: float = metric_field(
         default=0,
         description="Time spent running tasks to completion.",
         metrics_group=MetricsGroup.TASKS,
@@ -826,7 +826,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
 
         task_time_delta = time.perf_counter() - task_info.start_time
         self._op_task_duration_stats.add_duration(task_time_delta)
-        self.task_completion_time = task_time_delta
+        self.mean_task_completion_time = self._op_task_duration_stats.mean()
         inputs = self._running_tasks[task_index].inputs
         self.num_task_inputs_processed += len(inputs)
         total_input_size = inputs.size_bytes()
