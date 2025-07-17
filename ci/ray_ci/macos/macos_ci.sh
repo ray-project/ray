@@ -108,17 +108,12 @@ _prelude() {
   . ./ci/ci.sh init && source ~/.zshenv
   source ~/.zshrc
 
-  which python
-  which python3
-  ls -al /opt/homebrew/opt/miniforge/bin
-  if [[ -d /opt/homebrew/opt/miniforge/bin && ! -e /opt/homebrew/opt/miniforge/bin/python3 ]]; then
-    # Point python3 to python in miniforge
-    # Miniforge's installation does not install python3.
-    # This is required for bazel tests to work; bazel prefers python3.
-    echo "python3 not exists in miniforge; point it to python"
-    ln -sf python /opt/homebrew/opt/miniforge/bin/python3
+  if [[ -d /opt/homebrew/opt/miniforge/bin ]]; then
+    # Makes sure that miniforge's bin directory is the first one in PATH
+    export PATH="/opt/homebrew/opt/miniforge/bin:$PATH"
   fi
-  which python
+
+  export
   which python3
 
   ./ci/ci.sh build
