@@ -4000,6 +4000,10 @@ void CoreWorker::HandleGetObjectStatus(rpc::GetObjectStatusRequest request,
 
   ObjectID object_id = ObjectID::FromBinary(request.object_id());
   RAY_LOG(DEBUG).WithField(object_id) << "Received GetObjectStatus";
+  // Acquire a reference to the object. This prevents the object from being
+  // evicted out from under us while we check the object status and start the
+  // Get.
+  AddLocalReference(object_id, "<temporary (get object status)>");
 
   rpc::Address owner_address;
   auto has_owner = reference_counter_->GetOwner(object_id, &owner_address);
@@ -4009,16 +4013,24 @@ void CoreWorker::HandleGetObjectStatus(rpc::GetObjectStatusRequest request,
     send_reply_callback(Status::OK(), nullptr, nullptr);
   } else {
     RAY_CHECK(owner_address.worker_id() == request.owner_worker_id());
+    bool is_freed = reference_counter_->IsPlasmaObjectFreed(object_id);
+
     // Send the reply once the value has become available. The value is
     // guaranteed to become available eventually because we own the object and
     // its ref count is > 0.
     memory_store_->GetAsync(object_id,
-                            [this, object_id, reply, send_reply_callback](
+                            [this, object_id, reply, send_reply_callback, is_freed](
                                 const std::shared_ptr<RayObject> &obj) {
-                              PopulateObjectStatus(object_id, obj, reply);
+                              if (is_freed) {
+                                reply->set_status(rpc::GetObjectStatusReply::FREED);
+                              } else {
+                                PopulateObjectStatus(object_id, obj, reply);
+                              }
                               send_reply_callback(Status::OK(), nullptr, nullptr);
                             });
   }
+
+  RemoveLocalReference(object_id);
 }
 
 void CoreWorker::PopulateObjectStatus(const ObjectID &object_id,
