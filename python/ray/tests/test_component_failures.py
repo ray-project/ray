@@ -29,7 +29,7 @@ def test_dying_worker_get(ray_start_2_cpus):
     signal_2 = SignalActor.remote()
 
     x_id = wait_on_signal.remote(signal_1, signal_2)
-    ray.get(signal_1.send.remote())
+    ray.get(signal_1.wait.remote())
     # Get the PID of the other worker.
     worker_pid = ray.get(get_worker_pid.remote())
 
