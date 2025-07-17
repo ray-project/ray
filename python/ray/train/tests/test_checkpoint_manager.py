@@ -6,7 +6,7 @@ import pytest
 
 from ray.train import Checkpoint, CheckpointConfig
 from ray.train._internal.checkpoint_manager import _CheckpointManager, _TrainingResult
-from ray.train.constants import RAY_TUNE_ONLY_STORE_CHECKPOINT_SCORE_ATTRIBUTE
+from ray.train.constants import TUNE_ONLY_STORE_CHECKPOINT_SCORE_ATTRIBUTE
 
 
 @pytest.fixture
@@ -184,7 +184,7 @@ def test_nested_get_checkpoint_score(metrics):
 
 @pytest.mark.parametrize("has_score_attr", [True, False])
 def test_only_store_score_attr(has_score_attr, checkpoint_paths, monkeypatch):
-    monkeypatch.setenv(RAY_TUNE_ONLY_STORE_CHECKPOINT_SCORE_ATTRIBUTE, "1")
+    monkeypatch.setenv(TUNE_ONLY_STORE_CHECKPOINT_SCORE_ATTRIBUTE, "1")
 
     # Set up CheckpointManager.
     if has_score_attr:

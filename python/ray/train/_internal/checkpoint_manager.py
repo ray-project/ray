@@ -9,7 +9,7 @@ from ray.air.config import MAX
 from ray.train import CheckpointConfig
 from ray.train._internal.session import _TrainingResult
 from ray.train._internal.storage import _delete_fs_path
-from ray.train.constants import RAY_TUNE_ONLY_STORE_CHECKPOINT_SCORE_ATTRIBUTE
+from ray.train.constants import TUNE_ONLY_STORE_CHECKPOINT_SCORE_ATTRIBUTE
 
 logger = logging.getLogger(__name__)
 
@@ -93,9 +93,7 @@ class _CheckpointManager:
         self._latest_checkpoint_result = checkpoint_result
 
         score_attr = self._checkpoint_config.checkpoint_score_attribute
-        if ray_constants.env_bool(
-            RAY_TUNE_ONLY_STORE_CHECKPOINT_SCORE_ATTRIBUTE, False
-        ):
+        if ray_constants.env_bool(TUNE_ONLY_STORE_CHECKPOINT_SCORE_ATTRIBUTE, False):
             metrics = (
                 {score_attr: checkpoint_result.metrics[score_attr]}
                 if score_attr in checkpoint_result.metrics
