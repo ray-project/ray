@@ -12,8 +12,7 @@ from ray._private.test_utils import run_string_as_driver_nonblocking
 SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
 
 
-# This test checks that when a worker dies in the middle of a get, the plasma
-# store and raylet will not die.
+# This test checks that when a worker dies in the middle of a get, the raylet will not die.
 def test_dying_worker_get(ray_start_2_cpus):
     @ray.remote
     def sleep_forever(signal):
@@ -56,8 +55,7 @@ def test_dying_worker_get(ray_start_2_cpus):
     assert ray._private.services.remaining_processes_alive()
 
 
-# This test checks that when a driver dies in the middle of a get, the plasma
-# store and raylet will not die.
+# This test checks that when a driver dies in the middle of a get, the raylet will not die.
 def test_dying_driver_get(ray_start_regular):
     # Start the Ray processes.
     address_info = ray_start_regular
@@ -95,8 +93,7 @@ ray.get(ray.ObjectRef(ray._common.utils.hex_to_binary("{}")))
     assert ray._private.services.remaining_processes_alive()
 
 
-# This test checks that when a worker dies in the middle of a wait, the plasma
-# store and raylet will not die.
+# This test checks that when a worker dies in the middle of a wait, the raylet will not die.
 def test_dying_worker_wait(ray_start_2_cpus):
     @ray.remote
     def sleep_forever():
@@ -128,8 +125,7 @@ def test_dying_worker_wait(ray_start_2_cpus):
     assert ray._private.services.remaining_processes_alive()
 
 
-# This test checks that when a driver dies in the middle of a wait, the plasma
-# store and raylet will not die.
+# This test checks that when a driver dies in the middle of a wait, the raylet will not die.
 def test_dying_driver_wait(ray_start_regular):
     # Start the Ray processes.
     address_info = ray_start_regular
