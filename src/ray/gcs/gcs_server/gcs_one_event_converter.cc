@@ -72,6 +72,17 @@ void GcsOneEventConverter::ConvertTaskExecutionEventToTaskEvent(
   }
 }
 
+void GcsOneEventConverter::ConvertActorTaskDefinitionEventToTaskEvent(
+    const rpc::events::ActorTaskDefinitionEvent &event, rpc::TaskEvents &task_event) {
+  task_event.set_task_id(event.task_id());
+  task_event.set_attempt_number(event.task_attempt());
+  task_event.set_job_id(event.job_id());
+
+  rpc::TaskInfoEntry *task_info = task_event.mutable_task_info();
+  GenerateTaskInfoEntry(event.runtime_env_info(), event.actor_func(),
+                        event.required_resources(), task_info);
+}
+
 void GcsOneEventConverter::ConvertTaskDefinitionEventToTaskEvent(
     const rpc::events::TaskDefinitionEvent &event, rpc::TaskEvents &task_event) {
   task_event.set_task_id(event.task_id());
@@ -80,8 +91,16 @@ void GcsOneEventConverter::ConvertTaskDefinitionEventToTaskEvent(
 
   rpc::TaskInfoEntry *task_info = task_event.mutable_task_info();
   task_info->set_name(event.task_name());
-  task_info->mutable_runtime_env_info()->CopyFrom(event.runtime_env_info());
-  auto function_descriptor = event.task_func();
+  GenerateTaskInfoEntry(event.runtime_env_info(), event.task_func(),
+                        event.required_resources(), task_info);
+}
+
+void GcsOneEventConverter::GenerateTaskInfoEntry(
+    const rpc::RuntimeEnvInfo &runtime_env_info,
+    const rpc::FunctionDescriptor &function_descriptor,
+    const ::google::protobuf::Map<std::string, std::string> &required_resources,
+    rpc::TaskInfoEntry *task_info) {
+  task_info->mutable_runtime_env_info()->CopyFrom(runtime_env_info);
   if (function_descriptor.has_cpp_function_descriptor()) {
     task_info->set_language(rpc::Language::CPP);
     task_info->set_func_or_class_name(
@@ -97,7 +116,7 @@ void GcsOneEventConverter::ConvertTaskDefinitionEventToTaskEvent(
   }
 
   // Copy required resources map
-  for (const auto &resource : event.required_resources()) {
+  for (const auto &resource : required_resources) {
     try {
       double value = std::stod(resource.second);
       (*task_info->mutable_required_resources())[resource.first] = value;

@@ -49,6 +49,25 @@ class GcsOneEventConverter {
   void ConvertTaskExecutionEventToTaskEvent(const rpc::events::TaskExecutionEvent &event,
                                             rpc::TaskEvents &task_event);
 
+  /// Convert an ActorTaskDefinitionEvent to a TaskEvents.
+  ///
+  /// \param event The ActorTaskDefinitionEvent to convert.
+  /// \param task_event The output TaskEvents to populate.
+  void ConvertActorTaskDefinitionEventToTaskEvent(
+      const rpc::events::ActorTaskDefinitionEvent &event, rpc::TaskEvents &task_event);
+
+  /// Generate a TaskInfoEntry from the given runtime env info, function descriptor,
+  /// and required resources.
+  ///
+  /// \param runtime_env_info The runtime env info.
+  /// \param function_descriptor The function descriptor.
+  /// \param required_resources The required resources.
+  /// \param task_info The output TaskInfoEntry to populate.
+  void GenerateTaskInfoEntry(const rpc::RuntimeEnvInfo &runtime_env_info,
+                             const rpc::FunctionDescriptor &function_descriptor,
+                             const ::google::protobuf::Map<std::string, std::string> &required_resources,
+                             rpc::TaskInfoEntry *task_info);
+
   FRIEND_TEST(GcsOneEventConverterTest, TestConvertTaskExecutionEvent);
 };
 
