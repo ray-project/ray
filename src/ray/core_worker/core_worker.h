@@ -189,6 +189,12 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Public methods used by `CoreWorkerProcess` and `CoreWorker` itself.
   ///
 
+  /// Get the Plasma Store Usage.
+  ///
+  /// \param output[out] memory usage from the plasma store
+  /// \return error status if unable to get response from the plasma store
+  Status GetPlasmaUsage(std::string &output);
+
   /// Gracefully disconnect the worker from Raylet.
   /// Once the method is returned, it is guaranteed that raylet is
   /// notified that this worker is disconnected from a raylet.
@@ -789,11 +795,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       rpc::ReportGeneratorItemReturnsRequest request,
       rpc::ReportGeneratorItemReturnsReply *reply,
       rpc::SendReplyCallback send_reply_callback) override;
-
-  /// Get a string describing object store memory usage for debugging purposes.
-  ///
-  /// \return std::string The string describing memory usage.
-  std::string MemoryUsageString();
 
   ///
   /// Public methods related to task submission.
