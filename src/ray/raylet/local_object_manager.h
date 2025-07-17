@@ -78,25 +78,22 @@ class LocalObjectManager : public LocalObjectManagerInterface {
         core_worker_subscriber_(core_worker_subscriber),
         object_directory_(object_directory) {}
 
-  /// Pin objects.
+  /// Pin object and wait for object's owner to free the object. The object
+  /// will be marked for free when the owner fails or sends an eviction message.
   ///
-  /// Also wait for the objects' owner to free the object.  The objects will be
-  /// released when the owner at the given address fails or replies that the
-  /// object can be evicted.
-  ///
-  /// \param object_ids The objects to be pinned.
+  /// \param object_to_pin The object to be pinned.
   /// \param objects Pointers to the objects to be pinned. The pointer should
   /// be kept in scope until the object can be released.
-  /// \param owner_address The owner of the objects to be pinned.
+  /// \param owner_address The owner of the object to be pinned.
   /// \param generator_id When it's set, this means that it was a dynamically
   /// created ObjectID, so we need to notify the owner of the outer ObjectID
   /// that should already be owned by the same worker. If the outer ObjectID is
   /// still in scope, then the owner can add the dynamically created ObjectID
   /// to its ref count. Set to nil for statically allocated ObjectIDs.
-  void PinObjectsAndWaitForFree(const std::vector<ObjectID> &object_ids,
-                                std::vector<std::unique_ptr<RayObject>> &&objects,
-                                const rpc::Address &owner_address,
-                                const ObjectID &generator_id = ObjectID::Nil()) override;
+  Status PinObjectAndWaitForFree(const ObjectID &object_to_pin,
+                                 std::unique_ptr<RayObject> object,
+                                 const rpc::Address &owner_address,
+                                 const ObjectID &generator_id = ObjectID::Nil()) override;
 
   /// Spill objects as much as possible as fast as possible up to the max throughput.
   ///
@@ -131,10 +128,6 @@ class LocalObjectManager : public LocalObjectManagerInterface {
   /// Clear any freed objects. This will trigger the callback for freed
   /// objects.
   void FlushFreeObjects() override;
-
-  /// Returns true if the object has been marked for deletion through the
-  /// eviction notification.
-  bool ObjectPendingDeletion(const ObjectID &object_id) override;
 
   /// Judge if objects are deletable from pending_delete_queue and delete them if
   /// necessary.
