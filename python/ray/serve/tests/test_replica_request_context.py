@@ -29,11 +29,11 @@ def fast_api_deployment():
     @serve.ingress(fastapi_app)
     class FastAPIDeployment:
         @fastapi_app.get("/fastapi-path")
-        def root(self) -> str:
+        def root(self) -> PlainTextResponse:
             return PlainTextResponse(_get_request_context_route())
 
         @fastapi_app.get("/dynamic/{user_id}")
-        def dynamic(self) -> str:
+        def dynamic(self) -> PlainTextResponse:
             return PlainTextResponse(_get_request_context_route())
 
     return FastAPIDeployment
@@ -41,8 +41,8 @@ def fast_api_deployment():
 
 def _make_http_request(
     path: str, is_prefixed_route: bool = False, expected_status: int = 200
-) -> str:
-    """Make an HTTP request and return the response text."""
+) -> httpx.Response:
+    """Make an HTTP request and return the response."""
     if is_prefixed_route:
         url = get_application_url(exclude_route_prefix=True)
     else:
@@ -54,21 +54,12 @@ def _make_http_request(
 
 def _get_request_context_route() -> str:
     """Get the current request route from the serve context."""
-    return _get_serve_request_context().route
+    context = _get_serve_request_context()
+    return context.route if context else ""
 
 
 class TestHTTPRoute:
     """Test HTTP route handling in Ray Serve deployments."""
-
-    @staticmethod
-    def setup_method(self):
-        """Clean up any existing deployments before each test."""
-        serve.shutdown()
-
-    @staticmethod
-    def teardown_method():
-        """Clean up deployments after each test."""
-        serve.shutdown()
 
     @pytest.mark.parametrize(
         "deployment_func,route_prefix,test_path,expected_route",
@@ -94,7 +85,7 @@ class TestHTTPRoute:
         ],
     )
     def test_route_prefix(
-        self, deployment_func, route_prefix, test_path, expected_route
+        self, serve_instance, deployment_func, route_prefix, test_path, expected_route
     ):
         """Test deployment route prefix handling for both basic and FastAPI deployments."""
         deployment = deployment_func()
@@ -106,12 +97,12 @@ class TestHTTPRoute:
             serve.run(deployment.bind())
 
         # Test the path
-        response_text = _make_http_request(
+        response = _make_http_request(
             test_path, is_prefixed_route=(route_prefix is not None)
         )
 
-        assert response_text.text == expected_route, (
-            f"Expected '{expected_route}', got '{response_text}' "
+        assert response.text == expected_route, (
+            f"Expected '{expected_route}', got '{response.text}' "
             f"for path '{test_path}' with route_prefix='{route_prefix}'"
         )
 
