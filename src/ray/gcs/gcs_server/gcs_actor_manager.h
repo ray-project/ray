@@ -68,7 +68,7 @@ class GcsActor {
   /// \param counter The counter to report metrics to.
   explicit GcsActor(
       rpc::ActorTableData actor_table_data,
-      rpc::TaskSpec task_spec,
+      const rpc::TaskSpec &task_spec,
       std::shared_ptr<CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>>
           counter)
       : actor_table_data_(std::move(actor_table_data)),
