@@ -110,6 +110,7 @@ _prelude() {
 
   if [[ -d /opt/homebrew/opt/miniforge/bin ]]; then
     # Makes sure that miniforge's bin directory is the first one in PATH
+    # Otherwise, python/python3 might point to ones under /opt/homebrew/bin/
     export PATH="/opt/homebrew/opt/miniforge/bin:$PATH"
   fi
 
