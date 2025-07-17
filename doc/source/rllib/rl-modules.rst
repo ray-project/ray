@@ -791,6 +791,8 @@ You implement the main action sampling logic in the ``_forward_...()`` methods:
 
 
 
+.. _implementing-custom-multi-rl-modules:
+
 Implementing custom MultiRLModules
 ----------------------------------
 
