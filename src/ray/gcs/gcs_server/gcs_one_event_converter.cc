@@ -38,6 +38,10 @@ void GcsOneEventConverter::ConvertToTaskEventData(
       ConvertTaskDefinitionEventToTaskEvent(event.task_definition_event(), task_event);
       break;
     }
+    case rpc::events::RayEvent::TASK_EXECUTION_EVENT: {
+      ConvertTaskExecutionEventToTaskEvent(event.task_execution_event(), task_event);
+      break;
+    }
     default:
       // TODO(can-anyscale): Handle other event types
       break;
@@ -46,6 +50,25 @@ void GcsOneEventConverter::ConvertToTaskEventData(
   }
   if (task_event_data->events_by_task_size() > 0) {
     task_event_data->set_job_id(task_event_data->events_by_task(0).job_id());
+  }
+}
+
+void GcsOneEventConverter::ConvertTaskExecutionEventToTaskEvent(
+    const rpc::events::TaskExecutionEvent &event, rpc::TaskEvents &task_event) {
+  task_event.set_task_id(event.task_id());
+  task_event.set_attempt_number(event.task_attempt());
+  task_event.set_job_id(event.job_id());
+
+  rpc::TaskStateUpdate *task_state_update = task_event.mutable_state_updates();
+  task_state_update->set_node_id(event.node_id());
+  task_state_update->set_worker_id(event.worker_id());
+  task_state_update->mutable_error_info()->CopyFrom(event.ray_error_info());
+  task_state_update->set_worker_pid(event.worker_pid());
+
+  // Copy task state
+  for (const auto &[state, timestamp] : event.task_state()) {
+    int64_t ns = timestamp.seconds() * 1000000000LL + timestamp.nanos();
+    (*task_state_update->mutable_state_ts_ns())[state] = ns;
   }
 }
 

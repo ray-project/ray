@@ -40,4 +40,5 @@ message TaskExecutionEvent {
   int32 worker_pid = 8;
   bytes parent_task_id = 9;
   bytes placement_group_id = 10;
+  bytes job_id = 11;
 }
