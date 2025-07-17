@@ -3866,7 +3866,7 @@ class AutoscalingTest(unittest.TestCase):
 
         autoscaler.update()
         events = autoscaler.summary()
-        assert events.failed_nodes == [("172.0.0.1", "worker")]
+        assert events.pending_launches == {"worker": 1}
 
 
 def test_import():
