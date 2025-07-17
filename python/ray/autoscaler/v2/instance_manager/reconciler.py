@@ -848,7 +848,7 @@ class Reconciler:
             # Enforce the max allowed pending nodes based on current running nodes
             num_desired_to_upscale = max(
                 1,
-                math.ceil(upscaling_speed * len(running_instances_for_type)),
+                math.ceil(upscaling_speed * max(len(running_instances_for_type), 1)),
             )
 
             # Enforce global limit, at most we can launch `max_concurrent_launches`
