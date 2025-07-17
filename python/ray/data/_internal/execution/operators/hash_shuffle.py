@@ -882,7 +882,7 @@ def _wait_until_healthy(aggregators: List[ray.actor.ActorHandle]):
         _, unready_refs = ray.wait(
             pending,
             num_returns=len(pending),
-            timeout=0,
+            timeout=1,
         )
 
         pending = unready_refs
