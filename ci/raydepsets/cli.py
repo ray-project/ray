@@ -7,6 +7,7 @@ import platform
 import runfiles
 
 DEFAULT_UV_FLAGS = [
+    "--generate-hashes",
     "--strip-extras",
     "--python-version=3.11",
     "--no-strip-markers",

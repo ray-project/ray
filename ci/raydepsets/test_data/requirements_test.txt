@@ -1,7 +1,2 @@
-filelock
-lz4
-numpy>=1.20
-aiorwlock
-scipy
-colorful
-rich
+emoji
+pyperclip
