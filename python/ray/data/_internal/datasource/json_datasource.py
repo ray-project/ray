@@ -90,7 +90,10 @@ class ArrowJSONDatasource(FileBasedDatasource):
                 break
             except pa.ArrowInvalid as e:
                 if "straddling object straddles two block boundaries" in str(e):
-                    if self.read_options.block_size < max_block_size:
+                    if (
+                        max_block_size is None
+                        or self.read_options.block_size < max_block_size
+                    ):
                         # Increase the block size in case it was too small.
                         logger.debug(
                             f"JSONDatasource read failed with "
@@ -171,12 +174,23 @@ class PandasJSONDatasource(FileBasedDatasource):
 
     def _read_stream(self, f: "pyarrow.NativeFile", path: str):
         chunksize = self._estimate_chunksize(f)
-        with pd.read_json(f, chunksize=chunksize, lines=True) as reader:
-            for df in reader:
-                yield _cast_range_index_to_string(df)
 
-    def _estimate_chunksize(self, f: "pyarrow.NativeFile") -> int:
+        if chunksize is None:
+            # When chunksize=None, pandas returns DataFrame directly (no context manager)
+            df = pd.read_json(f, chunksize=chunksize, lines=True)
+            yield _cast_range_index_to_string(df)
+        else:
+            # When chunksize is a number, pandas returns JsonReader (supports context manager)
+            with pd.read_json(f, chunksize=chunksize, lines=True) as reader:
+                for df in reader:
+                    yield _cast_range_index_to_string(df)
+
+    def _estimate_chunksize(self, f: "pyarrow.NativeFile") -> Optional[int]:
         assert f.tell() == 0, "File pointer must be at the beginning"
+
+        # If target_output_size_bytes is None, read entire file in one chunk
+        if self._target_output_size_bytes is None:
+            return None  # pandas reads entire file when chunksize=None
 
         with pd.read_json(f, chunksize=1, lines=True) as reader:
             df = _cast_range_index_to_string(next(reader))
