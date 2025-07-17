@@ -27,7 +27,7 @@ CRITEO_S3_URI = f"s3://{S3_BUCKET}/criteo/tsv.gz"
 
 CACHED_FEATURE_VALUE_COUNT_PATH_PATTER = {
     "train": "criteo/tsv.gz/full_categorical_feature_value_counts/{}-value_counts.json",
-    "valid": "criteo/tsv.gz/categorical_feature_value_counts/{}-value_counts.json",
+    "val": "criteo/tsv.gz/categorical_feature_value_counts/{}-value_counts.json",
 }
 
 
