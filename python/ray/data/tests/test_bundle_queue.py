@@ -33,7 +33,7 @@ def test_pop():
     bundle2 = _create_bundle("test2")
     queue.add(bundle2)
 
-    popped_bundle = queue.pop()
+    popped_bundle = queue.get_next()
     assert popped_bundle is bundle1
     assert len(queue) == 1
 
@@ -45,7 +45,7 @@ def test_peek():
     bundle2 = _create_bundle("test2")
     queue.add(bundle2)
 
-    peeked_bundle = queue.peek()
+    peeked_bundle = queue.peek_next()
     assert peeked_bundle is bundle1
     assert len(queue) == 2  # Length should remain unchanged
 
@@ -53,20 +53,20 @@ def test_peek():
 def test_pop_empty_queue():
     queue = create_bundle_queue()
     with pytest.raises(IndexError):
-        queue.pop()
+        queue.get_next()
 
 
 def test_pop_does_not_leak_objects():
     queue = create_bundle_queue()
     bundle1 = _create_bundle("test1")
     queue.add(bundle1)
-    queue.pop()
+    queue.get_next()
     assert queue.is_empty()
 
 
 def test_peek_empty_queue():
     queue = create_bundle_queue()
-    assert queue.peek() is None
+    assert queue.peek_next() is None
     assert queue.is_empty()
 
 
@@ -79,7 +79,7 @@ def test_remove():
 
     queue.remove(bundle1)
     assert len(queue) == 1
-    assert queue.peek() is bundle2
+    assert queue.peek_next() is bundle2
 
 
 def test_remove_does_not_leak_objects():
@@ -101,7 +101,7 @@ def test_add_and_remove_duplicates():
     assert len(queue) == 3
     queue.remove(bundle1)
     assert len(queue) == 2
-    assert queue.peek() is bundle2
+    assert queue.peek_next() is bundle2
 
 
 def test_clear():
