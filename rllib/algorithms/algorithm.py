@@ -2847,16 +2847,15 @@ class Algorithm(Checkpointable, Trainable):
                         + [COMPONENT_RL_MODULE],
                         **kwargs,
                     )
-                else:
-                    state[COMPONENT_ENV_RUNNER] = {
-                        COMPONENT_ENV_TO_MODULE_CONNECTOR: (
-                            self.env_to_module_connector.get_state()
-                        ),
-                        COMPONENT_MODULE_TO_ENV_CONNECTOR: (
-                            self.module_to_env_connector.get_state()
-                        ),
-                    }
-
+            else: 
+                if self._check_component(COMPONENT_ENV_TO_MODULE_CONNECTOR, components, not_components):                
+                    state[COMPONENT_ENV_TO_MODULE_CONNECTOR] = (
+                        self.env_to_module_connector.get_state()
+                    )
+                if self._check_component(COMPONENT_MODULE_TO_ENV_CONNECTOR, components, not_components):
+                    state[COMPONENT_MODULE_TO_ENV_CONNECTOR] = (
+                        self.module_to_env_connector.get_state()
+                    )                    
                 # Get (local) evaluation EnvRunner state (w/o RLModule).
         if self.eval_env_runner and self._check_component(
             COMPONENT_EVAL_ENV_RUNNER, components, not_components
@@ -2948,10 +2947,21 @@ class Algorithm(Checkpointable, Trainable):
         components = [
             (COMPONENT_LEARNER_GROUP, self.learner_group),
         ]
-        if self.config.is_online:
+        if self.config.is_online and self.env_runner:
             components.append(
                 (COMPONENT_ENV_RUNNER, self.env_runner),
             )
+        elif self.config.is_online and not self.env_runner:
+            if self.env_to_module_connector:
+                components.append(
+                    (COMPONENT_ENV_TO_MODULE_CONNECTOR,
+                    self.env_to_module_connector),
+                )
+            if self.module_to_env_connector:
+                components.append(
+                    (COMPONENT_MODULE_TO_ENV_CONNECTOR,
+                    self.module_to_env_connector),
+                )
         if self.eval_env_runner:
             components.append(
                 (
@@ -3007,7 +3017,7 @@ class Algorithm(Checkpointable, Trainable):
             self.env_runner_group.sync_env_runner_states(
                 config=self.config,
                 from_worker=None,
-                num_env_steps_sampled=self.metrics.peek(
+                env_steps_sampled=self.metrics.peek(
                     (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED)
                 ),
                 connector_states=connector_states,

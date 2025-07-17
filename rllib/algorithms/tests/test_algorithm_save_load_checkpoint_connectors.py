@@ -113,7 +113,7 @@ def load_and_get_states(
 class TestAlgorithmWithLearnerSaveAndRestore(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init()
+        ray.init(local_mode=True)
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -125,7 +125,7 @@ class TestAlgorithmWithLearnerSaveAndRestore(unittest.TestCase):
             config = algorithms_and_configs[algo_name]
             with tempfile.TemporaryDirectory() as tmpdir:
                 # create an algorithm, checkpoint it, then train for 2 iterations
-                connector_states_algo_1 = ray.get(
+                connector_states_algo_1 = ray.get(  
                     save_train_and_get_states.remote(
                         config, num_env_runners, "CartPole-v1", tmpdir
                     )
@@ -208,7 +208,7 @@ class TestAlgorithmWithLearnerSaveAndRestore(unittest.TestCase):
                 )
 
     def _extract_running_stats_from_states(
-        connector_states_algo_1: list, connector_states_algo_2: list
+        self, connector_states_algo_1: list, connector_states_algo_2: list
     ) -> Tuple[list, list]:
 
         running_stats_states_algo_1 = [
