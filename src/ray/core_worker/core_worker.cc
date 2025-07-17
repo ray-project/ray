@@ -495,19 +495,17 @@ void CoreWorker::Shutdown() {
   // For actors, perform cleanup before shutdown starts
   {
     absl::MutexLock lock(&mutex_);
-    if (options_.worker_type == WorkerType::WORKER && 
-        !actor_id_.IsNil() && 
-        actor_cleanup_callback_ && 
-        !is_shutdown_.load()) {
+    if (options_.worker_type == WorkerType::WORKER && !actor_id_.IsNil() &&
+        actor_cleanup_callback_ && !is_shutdown_.load()) {
       try {
         RAY_LOG(INFO) << "Calling actor cleanup callback before shutdown";
         actor_cleanup_callback_();
-      } catch (const std::exception& e) {
+      } catch (const std::exception &e) {
         RAY_LOG(ERROR) << "Actor cleanup callback failed: " << e.what();
       }
     }
   }
-  
+
   // Ensure that the shutdown logic runs at most once.
   bool expected = false;
   if (!is_shutdown_.compare_exchange_strong(expected, /*desired=*/true)) {
