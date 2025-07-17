@@ -35,6 +35,10 @@ def _compatibility_script_path(file_name: str) -> str:
 
 
 class TestBackwardsCompatibility:
+    @pytest.mark.skipif(
+        sys.platform == "darwin",
+        reason="ray 2.0.1 runs differently on apple silicon than today's.",
+    )
     def test_cli(self):
         """
         Test that the current commit's CLI works with old server-side Ray versions.
