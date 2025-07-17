@@ -1249,32 +1249,427 @@ def test_actor_restart_and_partial_task_not_completed(shutdown_only):
 
 
 def test_actor_cleanup_behavior(ray_start_regular):
-    """Test actor cleanup behavior: __del__ is called, atexit is not."""
+    """Test actor cleanup behavior: __ray_cleanup__ method is called, atexit is not."""
     import atexit
+    import tempfile
+    import os
+    
+    cleanup_file = tempfile.NamedTemporaryFile(delete=False)
+    cleanup_file.close()
+    
+    atexit_file = tempfile.NamedTemporaryFile(delete=False)
+    atexit_file.close()
     
     @ray.remote
     class CleanupActor:
         def __init__(self):
-            self.del_called = False
+            self.cleanup_file = cleanup_file.name
+            self.atexit_file = atexit_file.name
             atexit.register(self._atexit_handler)
             
-        def __del__(self):
-            print(">>> CleanupActor.__del__ - cleanup mechanism working!")
+        def __ray_cleanup__(self):
+            # Write to file to prove cleanup was called
+            with open(self.cleanup_file, 'w') as f:
+                f.write("ray_cleanup_called")
             
         def _atexit_handler(self):
-            print(">>> CleanupActor._atexit_handler - should NOT be called")
+            # Write to file to prove atexit was called (should NOT happen)
+            with open(self.atexit_file, 'w') as f:
+                f.write("atexit_called")
             
         def get_ready(self):
             return "ready"
     
-    # Test normal actor destruction
-    actor = CleanupActor.remote()
-    ray.get(actor.get_ready.remote())
+    try:
+        # Test normal actor destruction
+        actor = CleanupActor.remote()
+        ray.get(actor.get_ready.remote())
+        del actor
+        
+        # Wait for cleanup
+        time.sleep(1)
+        
+        # Check that cleanup was called
+        assert os.path.exists(cleanup_file.name)
+        with open(cleanup_file.name, 'r') as f:
+            assert f.read() == "ray_cleanup_called"
+        
+        # Check that atexit was NOT called
+        assert not os.path.exists(atexit_file.name) or os.path.getsize(atexit_file.name) == 0
+        
+    finally:
+        # Clean up temp files
+        try:
+            os.unlink(cleanup_file.name)
+        except:
+            pass
+        try:
+            os.unlink(atexit_file.name)
+        except:
+            pass
+
+
+def test_actor_ray_cleanup_method_not_required(ray_start_regular):
+    """Test that actors without __ray_cleanup__ method work normally."""
+    @ray.remote
+    class NoCleanupActor:
+        def __init__(self):
+            self.value = 42
+            
+        def get_value(self):
+            return self.value
+    
+    # Should work without __ray_cleanup__ method
+    actor = NoCleanupActor.remote()
+    result = ray.get(actor.get_value.remote())
+    assert result == 42
+    
+    # Should destroy without errors
     del actor
-    
     time.sleep(0.1)
+
+
+def test_actor_ray_cleanup_method_exception_handling(ray_start_regular):
+    """Test that exceptions in __ray_cleanup__ method are handled properly."""
+    import tempfile
+    import os
     
-    assert True  # Pass if no errors - __del__ visible in output, atexit not called
+    cleanup_file = tempfile.NamedTemporaryFile(delete=False)
+    cleanup_file.close()
+    
+    @ray.remote
+    class FailingCleanupActor:
+        def __init__(self):
+            self.cleanup_file = cleanup_file.name
+            
+        def __ray_cleanup__(self):
+            # Write success marker first
+            with open(self.cleanup_file, 'w') as f:
+                f.write("cleanup_started")
+            # Then raise an exception
+            raise ValueError("Cleanup failed!")
+            
+        def get_ready(self):
+            return "ready"
+    
+    try:
+        actor = FailingCleanupActor.remote()
+        ray.get(actor.get_ready.remote())
+        del actor
+        
+        # Wait for cleanup attempt
+        time.sleep(1)
+        
+        # Verify cleanup was attempted (file should exist)
+        assert os.path.exists(cleanup_file.name)
+        with open(cleanup_file.name, 'r') as f:
+            content = f.read()
+            assert content == "cleanup_started"
+            
+    finally:
+        try:
+            os.unlink(cleanup_file.name)
+        except:
+            pass
+
+
+def test_actor_ray_cleanup_with_ray_kill(ray_start_regular):
+    """Test __ray_cleanup__ behavior with ray.kill()."""
+    import tempfile
+    import os
+    
+    cleanup_file = tempfile.NamedTemporaryFile(delete=False)
+    cleanup_file.close()
+    
+    @ray.remote
+    class KillableActor:
+        def __init__(self):
+            self.cleanup_file = cleanup_file.name
+            
+        def __ray_cleanup__(self):
+            with open(self.cleanup_file, 'w') as f:
+                f.write("cleanup_called")
+                
+        def get_ready(self):
+            return "ready"
+            
+        def sleep_forever(self):
+            time.sleep(3600)  # Sleep for a long time
+    
+    try:
+        actor = KillableActor.remote()
+        ray.get(actor.get_ready.remote())
+        
+        # Start a long-running task
+        sleep_task = actor.sleep_forever.remote()
+        time.sleep(0.1)  # Let task start
+        
+        # Kill the actor
+        ray.kill(actor)
+        
+        # Wait for cleanup
+        time.sleep(1)
+        
+        # Verify cleanup was called even with ray.kill
+        assert os.path.exists(cleanup_file.name)
+        with open(cleanup_file.name, 'r') as f:
+            assert f.read() == "cleanup_called"
+            
+    finally:
+        try:
+            os.unlink(cleanup_file.name)
+        except:
+            pass
+
+
+def test_actor_ray_cleanup_with_terminate(ray_start_regular):
+    """Test __ray_cleanup__ behavior with __ray_terminate__."""
+    import tempfile
+    import os
+    
+    cleanup_file = tempfile.NamedTemporaryFile(delete=False)
+    cleanup_file.close()
+    
+    @ray.remote
+    class TerminableActor:
+        def __init__(self):
+            self.cleanup_file = cleanup_file.name
+            
+        def __ray_cleanup__(self):
+            with open(self.cleanup_file, 'w') as f:
+                f.write("cleanup_called")
+                
+        def get_ready(self):
+            return "ready"
+    
+    try:
+        actor = TerminableActor.remote()
+        ray.get(actor.get_ready.remote())
+        
+        # Terminate the actor
+        ray.get(actor.__ray_terminate__.remote())
+        
+        # Wait for cleanup
+        time.sleep(1)
+        
+        # Verify cleanup was called
+        assert os.path.exists(cleanup_file.name)
+        with open(cleanup_file.name, 'r') as f:
+            assert f.read() == "cleanup_called"
+            
+    finally:
+        try:
+            os.unlink(cleanup_file.name)
+        except:
+            pass
+
+
+def test_actor_ray_cleanup_method_must_be_callable(ray_start_regular):
+    """Test that __ray_cleanup__ attribute must be callable."""
+    import tempfile
+    import os
+    
+    cleanup_file = tempfile.NamedTemporaryFile(delete=False)
+    cleanup_file.close()
+    
+    @ray.remote
+    class NonCallableCleanupActor:
+        def __init__(self):
+            self.cleanup_file = cleanup_file.name
+            # Set __ray_cleanup__ to a non-callable value
+            self.__ray_cleanup__ = "not_callable"
+            
+        def get_ready(self):
+            return "ready"
+    
+    try:
+        actor = NonCallableCleanupActor.remote()
+        ray.get(actor.get_ready.remote())
+        del actor
+        
+        # Wait for cleanup attempt
+        time.sleep(1)
+        
+        # Verify no cleanup file was created (cleanup wasn't called)
+        assert not os.path.exists(cleanup_file.name) or os.path.getsize(cleanup_file.name) == 0
+            
+    finally:
+        try:
+            os.unlink(cleanup_file.name)
+        except:
+            pass
+
+
+def test_actor_ray_cleanup_with_complex_resources(ray_start_regular):
+    """Test __ray_cleanup__ with complex resource management."""
+    import tempfile
+    import os
+    
+    cleanup_file = tempfile.NamedTemporaryFile(delete=False)
+    cleanup_file.close()
+    
+    @ray.remote
+    class ComplexResourceActor:
+        def __init__(self):
+            self.cleanup_file = cleanup_file.name
+            self.db_connection = "mock_db_connection"
+            self.file_handle = "mock_file_handle"
+            self.thread_pool = "mock_thread_pool"
+            
+        def __ray_cleanup__(self):
+            # Simulate complex cleanup
+            cleanup_actions = []
+            
+            if hasattr(self, 'db_connection') and self.db_connection:
+                cleanup_actions.append("closed_db")
+                
+            if hasattr(self, 'file_handle') and self.file_handle:
+                cleanup_actions.append("closed_file")
+                
+            if hasattr(self, 'thread_pool') and self.thread_pool:
+                cleanup_actions.append("shutdown_threads")
+            
+            with open(self.cleanup_file, 'w') as f:
+                f.write(",".join(cleanup_actions))
+                
+        def get_ready(self):
+            return "ready"
+    
+    try:
+        actor = ComplexResourceActor.remote()
+        ray.get(actor.get_ready.remote())
+        del actor
+        
+        # Wait for cleanup
+        time.sleep(1)
+        
+        # Verify all cleanup actions were performed
+        assert os.path.exists(cleanup_file.name)
+        with open(cleanup_file.name, 'r') as f:
+            content = f.read()
+            actions = content.split(",")
+            assert "closed_db" in actions
+            assert "closed_file" in actions
+            assert "shutdown_threads" in actions
+            
+    finally:
+        try:
+            os.unlink(cleanup_file.name)
+        except:
+            pass
+
+
+def test_actor_ray_cleanup_explicit_override_required(ray_start_regular):
+    """Test that __ray_cleanup__ must be explicitly overridden to be called."""
+    import tempfile
+    import os
+    
+    cleanup_file = tempfile.NamedTemporaryFile(delete=False)
+    cleanup_file.close()
+    
+    @ray.remote
+    class BaseActor:
+        def __init__(self):
+            self.cleanup_file = cleanup_file.name
+            
+        def get_ready(self):
+            return "ready"
+    
+    @ray.remote
+    class ExplicitOverrideActor(BaseActor):
+        def __ray_cleanup__(self):
+            # Must explicitly override to get cleanup behavior
+            with open(self.cleanup_file, 'w') as f:
+                f.write("explicit_override_cleanup")
+    
+    try:
+        # Test that base actor without override doesn't call cleanup
+        base_actor = BaseActor.remote()
+        ray.get(base_actor.get_ready.remote())
+        del base_actor
+        time.sleep(0.5)
+        
+        # Should not have created cleanup file
+        assert not os.path.exists(cleanup_file.name) or os.path.getsize(cleanup_file.name) == 0
+        
+        # Test that explicit override does call cleanup
+        override_actor = ExplicitOverrideActor.remote()
+        ray.get(override_actor.get_ready.remote())
+        del override_actor
+        time.sleep(1)
+        
+        # Should have created cleanup file
+        assert os.path.exists(cleanup_file.name)
+        with open(cleanup_file.name, 'r') as f:
+            assert f.read() == "explicit_override_cleanup"
+            
+    finally:
+        try:
+            os.unlink(cleanup_file.name)
+        except:
+            pass
+
+
+def test_actor_ray_cleanup_user_defined_cleanup_no_conflict(ray_start_regular):
+    """Test that user-defined cleanup method doesn't conflict with __ray_cleanup__."""
+    import tempfile
+    import os
+    
+    ray_cleanup_file = tempfile.NamedTemporaryFile(delete=False)
+    ray_cleanup_file.close()
+    
+    user_cleanup_file = tempfile.NamedTemporaryFile(delete=False)
+    user_cleanup_file.close()
+    
+    @ray.remote
+    class NoConflictActor:
+        def __init__(self):
+            self.ray_cleanup_file = ray_cleanup_file.name
+            self.user_cleanup_file = user_cleanup_file.name
+            
+        def __ray_cleanup__(self):
+            # Ray's cleanup method
+            with open(self.ray_cleanup_file, 'w') as f:
+                f.write("ray_cleanup_called")
+                
+        def cleanup(self):
+            # User's cleanup method - should not conflict
+            with open(self.user_cleanup_file, 'w') as f:
+                f.write("user_cleanup_called")
+                
+        def get_ready(self):
+            return "ready"
+    
+    try:
+        actor = NoConflictActor.remote()
+        ray.get(actor.get_ready.remote())
+        
+        # Call user's cleanup method manually
+        ray.get(actor.cleanup.remote())
+        
+        # Check user cleanup was called
+        assert os.path.exists(user_cleanup_file.name)
+        with open(user_cleanup_file.name, 'r') as f:
+            assert f.read() == "user_cleanup_called"
+        
+        # Destroy actor - should call Ray's cleanup
+        del actor
+        time.sleep(1)
+        
+        # Check Ray cleanup was called
+        assert os.path.exists(ray_cleanup_file.name)
+        with open(ray_cleanup_file.name, 'r') as f:
+            assert f.read() == "ray_cleanup_called"
+            
+    finally:
+        try:
+            os.unlink(ray_cleanup_file.name)
+        except:
+            pass
+        try:
+            os.unlink(user_cleanup_file.name)
+        except:
+            pass
 
 
 if __name__ == "__main__":
