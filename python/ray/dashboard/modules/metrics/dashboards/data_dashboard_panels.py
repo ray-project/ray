@@ -29,7 +29,7 @@ DATA_GRAFANA_PANELS = [
     Panel(
         id=1,
         title="Bytes Spilled",
-        description="Amount spilled by dataset operators. DataContext.enable_get_object_locations_for_metrics must be set to True to report this metric",
+        description="Amount spilled by dataset operators.",
         unit="bytes",
         targets=[
             Target(
