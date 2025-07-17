@@ -603,7 +603,7 @@ def test_using_grpc_context_bad_function_signature(
     app_name = "app1"
     serve.run(model, name=app_name)
 
-    url = get_application_url("gRPC", app_name=app_name)
+    url = get_application_url("gRPC", app_name=app_name, use_localhost=True)
     channel = grpc.insecure_channel(url)
     stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
     request = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
@@ -646,7 +646,7 @@ def test_grpc_client_sending_large_payload(ray_instance, ray_shutdown):
     options = [
         ("grpc.max_receive_message_length", 1024 * 1024 * 1024),
     ]
-    url = get_application_url("gRPC")
+    url = get_application_url("gRPC", use_localhost=True)
     channel = grpc.insecure_channel(url, options=options)
     stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
 
