@@ -177,6 +177,7 @@ ray_files += [
     "ray/autoscaler/aws/cloudwatch/ray_prometheus_waiter.sh",
     "ray/autoscaler/azure/defaults.yaml",
     "ray/autoscaler/spark/defaults.yaml",
+    "ray/autoscaler/_private/readonly/defaults.yaml",
     "ray/autoscaler/_private/_azure/azure-vm-template.json",
     "ray/autoscaler/_private/_azure/azure-config-template.json",
     "ray/autoscaler/gcp/defaults.yaml",
@@ -361,6 +362,7 @@ if setup_spec.type == SetupType.RAY:
                 # async-timeout is a backport of asyncio.timeout for python < 3.11
                 "async-timeout; python_version < '3.11'",
                 "typer",
+                "hf_transfer",
             ]
             + setup_spec.extras["data"]
             + setup_spec.extras["serve"]

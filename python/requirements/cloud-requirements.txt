@@ -2,7 +2,7 @@ jupyterlab==3.6.1
 ipywidgets
 google-cloud-storage
 grpcio>=1.66.1
-grpcio-tools
+grpcio-tools>=1.62.3
 pyyaml
 pyopenssl
 certifi
