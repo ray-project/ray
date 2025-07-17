@@ -959,7 +959,7 @@ class HashShuffleOperator(HashShufflingOperatorBase):
 
 @ray.remote
 class IssueDetector:
-    """Actor that continuously detects issues with hash shuffle aggregators until all are healthy."""
+    """Actor that continuously detects issues with hash shuffle aggregators."""
 
     def __init__(
         self,
@@ -982,6 +982,7 @@ class IssueDetector:
         self._last_health_warning_time: Optional[float] = None
         self._pending_aggregators_refs: Optional[List[ObjectRef]] = None
         self._monitoring_active: bool = False
+        self._healthy_message_logged: bool = False
 
     def start_monitoring(self):
         """Start the health monitoring process."""
@@ -1064,11 +1065,12 @@ class IssueDetector:
                 # All aggregators are ready – clear warning timer and, if this is
                 # the first time, emit a single DEBUG log.
                 self._last_health_warning_time = None
-                logger.debug(
-                    f"All {self._num_aggregators} hash shuffle aggregators "
-                    f"are now healthy"
-                )
-                self._monitoring_active = False
+                if not self._healthy_message_logged:
+                    logger.debug(
+                        f"All {self._num_aggregators} hash shuffle aggregators "
+                        f"are now healthy"
+                    )
+                    self._healthy_message_logged = True
 
         except Exception as e:
             logger.warning(f"Failed to check aggregator health: {e}")
