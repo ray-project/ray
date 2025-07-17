@@ -1,6 +1,5 @@
 import io
 import logging
-from io import BufferedReader, BytesIO
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 import pandas as pd
@@ -83,7 +82,7 @@ class ArrowJSONDatasource(FileBasedDatasource):
         while True:
             try:
                 yield pajson.read_json(
-                    BytesIO(buffer),
+                    io.BytesIO(buffer),
                     read_options=self.read_options,
                     **self.arrow_json_args,
                 )
@@ -125,7 +124,7 @@ class ArrowJSONDatasource(FileBasedDatasource):
         if buffer.size == 0:
             return
 
-        parsed_json = json.load(BytesIO(buffer))
+        parsed_json = json.load(io.BytesIO(buffer))
         try:
             yield pa.Table.from_pylist(parsed_json)
         except AttributeError as e:
@@ -161,7 +160,7 @@ class ArrowJSONDatasource(FileBasedDatasource):
 
 class PandasJSONDatasource(FileBasedDatasource):
 
-    # Buffer size in bytes for reading files.
+    # Buffer size in bytes for reading files. Default is 1MB.
     #
     # pandas reads data in small chunks (~8 KiB), which leads to many costly
     # small read requests when accessing cloud storage. To reduce overhead and
@@ -195,7 +194,10 @@ class PandasJSONDatasource(FileBasedDatasource):
 
         stream = StrictBufferedReader(f, buffer_size=self._BUFFER_SIZE)
         with pd.read_json(stream, chunksize=1, lines=True) as reader:
-            df = _cast_range_index_to_string(next(reader))
+            try:
+                df = _cast_range_index_to_string(next(reader))
+            except StopIteration:
+                return 1
 
         block_accessor = PandasBlockAccessor.for_block(df)
         if block_accessor.num_rows() == 0:
@@ -244,8 +246,8 @@ class StrictBufferedReader(io.RawIOBase):
        avoid inefficient small-range S3 GETs.
     """
 
-    def __init__(self, file, buffer_size: int):
-        self._file = BufferedReader(file, buffer_size=buffer_size)
+    def __init__(self, file: io.RawIOBase, buffer_size: int):
+        self._file = io.BufferedReader(file, buffer_size=buffer_size)
 
     def read(self, size=-1, /):
         return self._file.read(size)
