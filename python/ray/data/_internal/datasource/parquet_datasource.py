@@ -478,16 +478,13 @@ def read_fragments(
             }
 
         def get_batch_iterable():
-            kwargs = {
-                "use_threads": use_threads,
-                "columns": data_columns,
-                "schema": schema,
-                **to_batches_kwargs,
-            }
+            kwargs = {**to_batches_kwargs}
             if batch_size is not None:
                 kwargs["batch_size"] = batch_size
 
-            return fragment.to_batches(**kwargs)
+            return fragment.to_batches(
+                use_threads=use_threads, columns=data_columns, schema=schema, **kwargs
+            )
 
         # S3 can raise transient errors during iteration, and PyArrow doesn't expose a
         # way to retry specific batches.
