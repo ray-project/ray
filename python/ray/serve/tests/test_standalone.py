@@ -80,7 +80,7 @@ def lower_slow_startup_threshold_and_reset():
 
 
 def test_shutdown(ray_shutdown):
-    ray.init(num_cpus=16)
+    ray.init(num_cpus=8)
     serve.start(http_options=dict(port=8003))
     gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
     cluster_node_info_cache = create_cluster_node_info_cache(gcs_client)
@@ -131,7 +131,7 @@ def test_single_app_shutdown_actors(ray_shutdown):
     Ensures that after deploying a (nameless) app using serve.run(), serve.shutdown()
     deletes all actors (controller, http proxy, all replicas) in the "serve" namespace.
     """
-    address = ray.init(num_cpus=16)["address"]
+    address = ray.init(num_cpus=8)["address"]
     serve.start(http_options=dict(port=8003))
 
     @serve.deployment
@@ -171,7 +171,7 @@ def test_multi_app_shutdown_actors(ray_shutdown):
     Ensures that after deploying multiple distinct applications, serve.shutdown()
     deletes all actors (controller, http proxy, all replicas) in the "serve" namespace.
     """
-    address = ray.init(num_cpus=16)["address"]
+    address = ray.init(num_cpus=8)["address"]
     serve.start(http_options=dict(port=8003))
 
     @serve.deployment
@@ -245,7 +245,7 @@ def test_deployment(ray_cluster):
 
 def test_connect(ray_shutdown):
     # Check that you can make API calls from within a deployment.
-    ray.init(num_cpus=16, namespace="serve")
+    ray.init(num_cpus=8, namespace="serve")
     serve.start()
 
     @serve.deployment
@@ -454,7 +454,7 @@ def test_no_http(ray_shutdown):
         {"http_options": {"location": "NoServer"}},
     ]
 
-    address = ray.init(num_cpus=16)["address"]
+    address = ray.init(num_cpus=8)["address"]
     for i, option in enumerate(options):
         print(f"[{i+1}/{len(options)}] Running with {option}")
         serve.start(**option)
