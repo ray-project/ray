@@ -1,6 +1,5 @@
 import asyncio
 import json
-import os
 import sys
 from typing import (
     Any,
@@ -22,12 +21,13 @@ from starlette.responses import JSONResponse, Response, StreamingResponse
 from ray import serve
 from ray._common.utils import get_or_create_event_loop
 from ray.llm._internal.serve.configs.constants import (
-    RAYLLM_ROUTER_HTTP_TIMEOUT,
-    RAYLLM_ROUTER_INITIAL_REPLICAS,
-    RAYLLM_ROUTER_MAX_REPLICAS,
-    RAYLLM_ROUTER_MIN_REPLICAS,
-    RAYLLM_ROUTER_TARGET_ONGOING_REQUESTS,
-    ROUTER_TO_MODEL_REPLICA_RATIO,
+    DEFAULT_LLM_ROUTER_HTTP_TIMEOUT,
+    DEFAULT_LLM_ROUTER_INITIAL_REPLICAS,
+    DEFAULT_LLM_ROUTER_MAX_REPLICAS,
+    DEFAULT_LLM_ROUTER_MIN_REPLICAS,
+    DEFAULT_LLM_ROUTER_TARGET_ONGOING_REQUESTS,
+    DEFAULT_MAX_ONGOING_REQUESTS,
+    DEFAULT_ROUTER_TO_MODEL_REPLICA_RATIO,
 )
 from ray.llm._internal.serve.configs.openai_api_models import (
     ChatCompletionRequest,
@@ -38,20 +38,16 @@ from ray.llm._internal.serve.configs.openai_api_models import (
     CompletionStreamResponse,
     EmbeddingRequest,
     EmbeddingResponse,
+    ErrorResponse,
     LLMChatResponse,
     LLMCompletionsResponse,
     LLMEmbeddingsResponse,
+    ModelCard,
+    ModelList,
     OpenAIHTTPException,
     to_model_metadata,
 )
-from ray.llm._internal.serve.configs.openai_api_models_patch import (
-    ErrorResponse,
-)
-from ray.llm._internal.serve.configs.server_models import (
-    LLMConfig,
-    Model,
-    ModelData,
-)
+from ray.llm._internal.serve.configs.server_models import LLMConfig
 from ray.llm._internal.serve.deployments.llm.multiplex.utils import (
     get_base_model_id,
     get_lora_model_ids,
@@ -136,10 +132,21 @@ def _apply_openai_json_format(
         data: <response-json1>\n\ndata: <response-json2>\n\n...
     """
     if isinstance(response, list):
-        return "".join(f"data: {r.model_dump_json()}\n\n" for r in response)
+        first_response = next(iter(response))
+        if isinstance(first_response, str):
+            return "".join(response)
+        if isinstance(first_response, dict):
+            return "".join(f"data: {json.dumps(r)}\n\n" for r in response)
+        if hasattr(first_response, "model_dump_json"):
+            return "".join(f"data: {r.model_dump_json()}\n\n" for r in response)
+        raise ValueError(
+            f"Unexpected response type: {type(first_response)}, {first_response=}"
+        )
     if hasattr(response, "model_dump_json"):
         return f"data: {response.model_dump_json()}\n\n"
-    raise ValueError(f"Unexpected response type: {type(response)}")
+    if isinstance(response, str):
+        return response
+    raise ValueError(f"Unexpected response type: {type(response)}, {response=}")
 
 
 async def _peek_at_generator(
@@ -296,7 +303,7 @@ class LLMRouter:
         async for response in getattr(model_handle, call_method).remote(body):
             yield response
 
-    async def model(self, model_id: str) -> Optional[ModelData]:
+    async def model(self, model_id: str) -> Optional[ModelCard]:
         if model_id in self._llm_configs:
             return to_model_metadata(model_id, self._llm_configs[model_id])
 
@@ -322,8 +329,8 @@ class LLMRouter:
                     "Check that adapter config file exists in cloud bucket."
                 )
 
-    @fastapi_router_app.get("/v1/models", response_model=Model)
-    async def models(self) -> Model:
+    @fastapi_router_app.get("/v1/models", response_model=ModelList)
+    async def models(self) -> ModelList:
         """OpenAI API-compliant endpoint to get all rayllm models."""
         all_models = dict()
         for base_model_id, llm_config in self._llm_configs.items():
@@ -341,11 +348,11 @@ class LLMRouter:
                     if model_data is not None:
                         all_models[lora_id] = model_data
 
-        return Model(data=list(all_models.values()))
+        return ModelList(data=list(all_models.values()))
 
     # :path allows us to have slashes in the model name
-    @fastapi_router_app.get("/v1/models/{model:path}", response_model=ModelData)
-    async def model_data(self, model: str) -> ModelData:
+    @fastapi_router_app.get("/v1/models/{model:path}", response_model=ModelCard)
+    async def model_data(self, model: str) -> ModelCard:
         """OpenAI API-compliant endpoint to get one rayllm model.
 
         :param model: The model ID (e.g. "amazon/LightGPT")
@@ -368,7 +375,7 @@ class LLMRouter:
         )
         call_method = "chat" if is_chat else "completions"
 
-        async with timeout(RAYLLM_ROUTER_HTTP_TIMEOUT):
+        async with timeout(DEFAULT_LLM_ROUTER_HTTP_TIMEOUT):
 
             gen = self._get_response(body=body, call_method=call_method)
 
@@ -426,7 +433,7 @@ class LLMRouter:
         Returns:
             A response object with embeddings.
         """
-        async with timeout(RAYLLM_ROUTER_HTTP_TIMEOUT):
+        async with timeout(DEFAULT_LLM_ROUTER_HTTP_TIMEOUT):
             results = self._get_response(body=body, call_method="embeddings")
             result = await results.__anext__()
             if isinstance(result, ErrorResponse):
@@ -448,9 +455,9 @@ class LLMRouter:
         Returns:
             A Ray Serve deployment.
         """
-        min_replicas = RAYLLM_ROUTER_MIN_REPLICAS
-        initial_replicas = RAYLLM_ROUTER_INITIAL_REPLICAS
-        max_replicas = RAYLLM_ROUTER_MAX_REPLICAS
+        min_replicas = DEFAULT_LLM_ROUTER_MIN_REPLICAS
+        initial_replicas = DEFAULT_LLM_ROUTER_INITIAL_REPLICAS
+        max_replicas = DEFAULT_LLM_ROUTER_MAX_REPLICAS
         num_router_replicas = 0
 
         # Note (genesu): Based on our internal benchmark, we are currently bottleneck
@@ -484,13 +491,13 @@ class LLMRouter:
                 )
                 model_max_replicas += autoscaling_config.max_replicas
             min_replicas = num_router_replicas or int(
-                model_min_replicas * ROUTER_TO_MODEL_REPLICA_RATIO
+                model_min_replicas * DEFAULT_ROUTER_TO_MODEL_REPLICA_RATIO
             )
             initial_replicas = num_router_replicas or int(
-                model_initial_replicas * ROUTER_TO_MODEL_REPLICA_RATIO
+                model_initial_replicas * DEFAULT_ROUTER_TO_MODEL_REPLICA_RATIO
             )
             max_replicas = num_router_replicas or int(
-                model_max_replicas * ROUTER_TO_MODEL_REPLICA_RATIO
+                model_max_replicas * DEFAULT_ROUTER_TO_MODEL_REPLICA_RATIO
             )
 
         ingress_cls = serve.ingress(fastapi_router_app)(cls)
@@ -499,12 +506,9 @@ class LLMRouter:
                 "min_replicas": min_replicas,
                 "initial_replicas": initial_replicas,
                 "max_replicas": max_replicas,
-                "target_ongoing_requests": RAYLLM_ROUTER_TARGET_ONGOING_REQUESTS,
+                "target_ongoing_requests": DEFAULT_LLM_ROUTER_TARGET_ONGOING_REQUESTS,
             },
-            ray_actor_options=json.loads(
-                os.environ.get("RAYLLM_ROUTER_RAY_ACTOR_OPTIONS", "{}")
-            ),
-            max_ongoing_requests=1000,  # Maximum backlog for a single replica
+            max_ongoing_requests=DEFAULT_MAX_ONGOING_REQUESTS,
         )
 
         deployment_cls = deployment_decorator(ingress_cls)

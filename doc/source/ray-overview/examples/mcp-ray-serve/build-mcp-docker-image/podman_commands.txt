@@ -1,0 +1,10 @@
+podman build \
+  --events-backend=file \
+  -t anyscale/weather-mcp:latest .
+
+
+podman \
+  --events-backend=file \
+  push anyscale/weather-mcp:latest
+
+
