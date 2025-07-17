@@ -328,55 +328,58 @@ class DeploymentStatusInfo:
                     message=message,
                 )
 
-            # Upscale replicas before previous upscaling/downscaling has finished
-            elif (
-                self.status_trigger == DeploymentStatusTrigger.AUTOSCALING
-                and trigger == DeploymentStatusInternalTrigger.AUTOSCALE_UP
-            ) or (
-                self.status_trigger == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
-                and trigger
-                == DeploymentStatusInternalTrigger.MANUALLY_INCREASE_NUM_REPLICAS
-            ):
-                return self._updated_copy(
-                    status=DeploymentStatus.UPSCALING, message=message
-                )
+            elif self.status_trigger == DeploymentStatusTrigger.AUTOSCALING:
+                # Upscale replicas before previous autoscaling has finished
+                if trigger == DeploymentStatusInternalTrigger.AUTOSCALE_UP:
+                    return self._updated_copy(
+                        status=DeploymentStatus.UPSCALING,
+                        message=message,
+                    )
+                # Downscale replicas before previous autoscaling has finished
+                elif trigger == DeploymentStatusInternalTrigger.AUTOSCALE_DOWN:
+                    return self._updated_copy(
+                        status=DeploymentStatus.DOWNSCALING,
+                        message=message,
+                    )
+                # Manually upscale replicas with config update before previous autoscaling has finished
+                elif (
+                    trigger
+                    == DeploymentStatusInternalTrigger.MANUALLY_INCREASE_NUM_REPLICAS
+                ):
+                    return self._updated_copy(
+                        status=DeploymentStatus.UPSCALING,
+                        status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
+                        message=message,
+                    )
+                # Manually downscale replicas with config update before previous autoscaling has finished
+                elif (
+                    trigger
+                    == DeploymentStatusInternalTrigger.MANUALLY_DECREASE_NUM_REPLICAS
+                ):
+                    return self._updated_copy(
+                        status=DeploymentStatus.DOWNSCALING,
+                        status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
+                        message=message,
+                    )
 
-            # Manually upscale replicas with config update before previous upscaling/downscaling has finished
-            elif (
-                self.status_trigger == DeploymentStatusTrigger.AUTOSCALING
-                and trigger
-                == DeploymentStatusInternalTrigger.MANUALLY_INCREASE_NUM_REPLICAS
-            ):
-                return self._updated_copy(
-                    status=DeploymentStatus.UPSCALING,
-                    status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
-                    message=message,
-                )
+            elif self.status_trigger == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED:
+                # Upscale replicas before previous config update has finished
+                if (
+                    trigger
+                    == DeploymentStatusInternalTrigger.MANUALLY_INCREASE_NUM_REPLICAS
+                ):
+                    return self._updated_copy(
+                        status=DeploymentStatus.UPSCALING, message=message
+                    )
 
-            # Downscale replicas before previous upscaling/downscaling has finished
-            elif (
-                self.status_trigger == DeploymentStatusTrigger.AUTOSCALING
-                and trigger == DeploymentStatusInternalTrigger.AUTOSCALE_DOWN
-            ) or (
-                self.status_trigger == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
-                and trigger
-                == DeploymentStatusInternalTrigger.MANUALLY_DECREASE_NUM_REPLICAS
-            ):
-                return self._updated_copy(
-                    status=DeploymentStatus.DOWNSCALING, message=message
-                )
-
-            # Manually decrease replicas with config update before previous upscaling/downscaling has finished
-            elif (
-                self.status_trigger == DeploymentStatusTrigger.AUTOSCALING
-                and trigger
-                == DeploymentStatusInternalTrigger.MANUALLY_DECREASE_NUM_REPLICAS
-            ):
-                return self._updated_copy(
-                    status=DeploymentStatus.DOWNSCALING,
-                    status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
-                    message=message,
-                )
+                # Downscale replicas before previous config update has finished
+                elif (
+                    trigger
+                    == DeploymentStatusInternalTrigger.MANUALLY_DECREASE_NUM_REPLICAS
+                ):
+                    return self._updated_copy(
+                        status=DeploymentStatus.DOWNSCALING, message=message
+                    )
 
             # Failures occurred while upscaling/downscaling
             elif trigger == DeploymentStatusInternalTrigger.HEALTH_CHECK_FAILED:
