@@ -33,6 +33,7 @@ py_test(
         "test_data/requirements_compiled_test_update.txt",
         "test_data/requirements_test.txt",
         "test_data/test.config.yaml",
+        "test_data/requirements_compiled_test.txt",
     ],
     exec_compatible_with = ["//:hermetic_python"],
     tags = [
