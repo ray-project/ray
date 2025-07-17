@@ -9,7 +9,6 @@ from networkx import DiGraph, topological_sort
 
 DEFAULT_UV_FLAGS = [
     "--strip-extras",
-    "--python-version=3.11",
     "--no-strip-markers",
     "--emit-index-url",
     "--emit-find-links",
@@ -35,6 +34,9 @@ def cli():
 @click.option("--name", default=None)
 def load(config_path: str, workspace_dir: str, name: str):
     """Load a dependency sets from a config file."""
+    # install and pin python 3.11
+    subprocess.run(["uv", "python", "install", "3.11"])
+    subprocess.run(["uv", "python", "pin", "3.11"])
     manager = DependencySetManager(config_path=config_path, workspace_dir=workspace_dir)
     if name:
         manager.execute_single(manager.get_depset(name))
