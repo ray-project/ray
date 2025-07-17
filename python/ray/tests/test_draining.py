@@ -5,7 +5,7 @@ import ray
 import time
 from ray._raylet import GcsClient
 from ray.core.generated import autoscaler_pb2, common_pb2
-from ray._common.test_utils import wait_for_condition
+from ray._common.test_utils import wait_for_condition, SignalActor
 from ray.util.scheduling_strategies import (
     NodeAffinitySchedulingStrategy,
     PlacementGroupSchedulingStrategy,
@@ -432,6 +432,91 @@ def test_draining_reason(ray_start_cluster, graceful):
         if graceful:
             assert "The actor died because its node has died." in str(e)
             assert "the actor's node was preempted: " + drain_reason_message in str(e)
+
+
+@pytest.mark.parametrize(
+    "num_retry,should_drain_node,num_node_removal,expect_success",
+    [
+        # If num_retry is 0, no matter whether the node is drained before removal
+        # or not, the task will always fail after the first node removal.
+        (0, False, 1, False),
+        (0, True, 1, False),
+        # If num_retry is positive and the node is not drained before removal,
+        # the task will fail after the (num_retry + 1)th node removal.
+        (1, False, 1, True),
+        (1, False, 2, False),
+        (3, False, 3, True),
+        (3, False, 4, False),
+        # If num_retry is positive and the node is drained before removal,
+        # the task will succeed even after (num_retry + 1) node removals.
+        (1, True, 1, True),
+        (1, True, 2, True),
+        (3, True, 3, True),
+        (3, True, 4, True),
+    ],
+)
+def test_drain_node_task_retry(
+    ray_start_cluster, num_retry, should_drain_node, num_node_removal, expect_success
+):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=1, resources={"head": 100})
+    ray.init(address=cluster.address)
+
+    cur_worker = cluster.add_node(num_cpus=1, resources={"worker": 1})
+    cluster.wait_for_nodes()
+
+    gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
+
+    @ray.remote(resources={"head": 1})
+    class NodeTracker:
+        def __init__(self):
+            self._node_ids = set()
+
+        def add_node(self, node_id):
+            self._node_ids.add(node_id)
+
+        def num_nodes(self):
+            return len(self._node_ids)
+
+    @ray.remote(max_retries=num_retry, resources={"worker": 1})
+    def func(signal, nodes):
+        node_id = ray.get_runtime_context().get_node_id()
+        ray.get(nodes.add_node.remote(node_id))
+        ray.get(signal.wait.remote())
+        return node_id
+
+    signal = SignalActor.options(resources={"head": 1}).remote()
+    node_tracker = NodeTracker.remote()
+    r1 = func.remote(signal, node_tracker)
+
+    for i in range(num_node_removal):
+        wait_for_condition(lambda: ray.get(node_tracker.num_nodes.remote()) == i + 1)
+        new_worker = cluster.add_node(num_cpus=1, resources={"worker": 1})
+        cluster.wait_for_nodes()
+
+        if should_drain_node:
+            # Preemption is always accepted.
+            is_accepted, _ = gcs_client.drain_node(
+                cur_worker.node_id,
+                autoscaler_pb2.DrainNodeReason.Value("DRAIN_NODE_REASON_PREEMPTION"),
+                "preemption",
+                1,
+            )
+            assert is_accepted
+
+        # Simulate autoscaler terminates the worker node after the draining deadline.
+        cluster.remove_node(cur_worker, True)
+
+        cur_worker = new_worker
+
+    ray.get(signal.send.remote())
+    if expect_success:
+        assert ray.get(r1) == cur_worker.node_id
+        assert ray.get(node_tracker.num_nodes.remote()) == num_node_removal + 1
+    else:
+        with pytest.raises(ray.exceptions.NodeDiedError):
+            ray.get(r1)
+        assert ray.get(node_tracker.num_nodes.remote()) == num_node_removal
 
 
 if __name__ == "__main__":
