@@ -89,8 +89,10 @@ Here's an example of creating a custom aggregator that calculates the Mean of va
 
 .. testcode::
 
+    import numpy as np
     from ray.data.aggregate import AggregateFnV2
-    from ray.data.block import Block, BlockAccessor, AggType
+    from ray.data._internal.util import is_null
+    from ray.data.block import Block, BlockAccessor, AggType, U
     import pyarrow.compute as pc
     from typing import List, Optional
 
