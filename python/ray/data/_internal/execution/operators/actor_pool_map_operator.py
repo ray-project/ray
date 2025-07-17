@@ -26,7 +26,7 @@ from ray.data._internal.execution.interfaces import (
     TaskContext,
 )
 from ray.data._internal.execution.interfaces.physical_operator import _ActorPoolInfo
-from ray.data._internal.execution.node_trackers.actor_location import (
+from ray.data._internal.execution.node_trackers import (
     ActorLocationTracker,
     get_or_create_actor_location_tracker,
 )
