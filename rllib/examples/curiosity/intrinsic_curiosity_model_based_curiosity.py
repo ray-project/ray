@@ -107,7 +107,6 @@ parser = add_rllib_example_script_args(
     default_timesteps=10000000,
     default_reward=0.9,
 )
-parser.set_defaults(enable_new_api_stack=True)
 
 
 class MeasureMaxDistanceToStart(RLlibCallback):

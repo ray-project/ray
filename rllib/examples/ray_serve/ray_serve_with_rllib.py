@@ -93,7 +93,6 @@ from ray.rllib.utils.test_utils import (
 
 parser = add_rllib_example_script_args()
 parser.set_defaults(
-    enable_new_api_stack=True,
     checkpoint_freq=1,
     checkpoint_at_and=True,
 )

@@ -73,7 +73,6 @@ parser = add_rllib_example_script_args(
 )
 parser.set_defaults(
     algo="PPO",
-    enable_new_api_stack=True,
 )
 
 
@@ -135,9 +134,6 @@ class PPOTorchMixedPrecisionLearner(PPOTorchLearner):
 if __name__ == "__main__":
     args = parser.parse_args()
 
-    assert (
-        args.enable_new_api_stack
-    ), "Must set --enable-new-api-stack when running this script!"
     assert args.algo == "PPO", "Must set --algo=PPO when running this script!"
 
     base_config = (

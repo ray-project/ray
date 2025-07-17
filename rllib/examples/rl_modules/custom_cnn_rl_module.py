@@ -65,17 +65,12 @@ from ray.tune.registry import get_trainable_cls, register_env
 
 parser = add_rllib_example_script_args(default_iters=100, default_timesteps=600000)
 parser.set_defaults(
-    enable_new_api_stack=True,
     env="ale_py:ALE/Pong-v5",
 )
 
 
 if __name__ == "__main__":
     args = parser.parse_args()
-
-    assert (
-        args.enable_new_api_stack
-    ), "Must set --enable-new-api-stack when running this script!"
 
     register_env(
         "env",

@@ -302,7 +302,6 @@ class MsPacmanHeatmapCallback(RLlibCallback):
 
 
 parser = add_rllib_example_script_args(default_reward=450.0)
-parser.set_defaults(enable_new_api_stack=True)
 
 
 if __name__ == "__main__":

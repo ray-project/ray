@@ -97,7 +97,6 @@ from ray.rllib.utils.test_utils import (
 
 parser = add_rllib_example_script_args()
 parser.set_defaults(
-    enable_new_api_stack=True,
     env="CartPole-v1",
     checkpoint_freq=1,
 )

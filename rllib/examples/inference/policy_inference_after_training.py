@@ -125,8 +125,6 @@ parser.set_defaults(
     checkpoint_at_end=True,
     # Use CartPole-v1 by default.
     env="CartPole-v1",
-    # Script only runs on new API stack.
-    enable_new_api_stack=True,
 )
 
 

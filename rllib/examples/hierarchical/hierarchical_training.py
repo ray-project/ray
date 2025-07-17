@@ -121,7 +121,6 @@ parser.add_argument(
     default=3,
     help="The number of low-level agents/policies to use.",
 )
-parser.set_defaults(enable_new_api_stack=True)
 
 
 if __name__ == "__main__":

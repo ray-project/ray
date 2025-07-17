@@ -74,7 +74,6 @@ from ray import tune
 
 parser = add_rllib_example_script_args(default_reward=60.0)
 parser.set_defaults(
-    enable_new_api_stack=True,
     env="CartPole-v1",
     num_envs_per_env_runner=6,
 )

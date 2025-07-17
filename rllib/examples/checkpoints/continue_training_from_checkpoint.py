@@ -111,7 +111,10 @@ parser.add_argument(
     help="Mean episode return after which the Algorithm should crash.",
 )
 # By default, set `args.checkpoint_freq` to 1 and `args.checkpoint_at_end` to True.
-parser.set_defaults(checkpoint_freq=1, checkpoint_at_end=True)
+parser.set_defaults(
+    checkpoint_freq=1,
+    checkpoint_at_end=True,
+)
 
 
 class CrashAfterNIters(RLlibCallback):

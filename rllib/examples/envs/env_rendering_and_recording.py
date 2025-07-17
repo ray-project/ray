@@ -75,7 +75,6 @@ from ray import tune
 
 parser = add_rllib_example_script_args(default_reward=20.0)
 parser.set_defaults(
-    enable_new_api_stack=True,
     env="ale_py:ALE/Pong-v5",
 )
 

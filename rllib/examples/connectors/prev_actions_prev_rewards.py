@@ -99,7 +99,6 @@ torch, nn = try_import_torch()
 parser = add_rllib_example_script_args(
     default_reward=200.0, default_timesteps=1000000, default_iters=2000
 )
-parser.set_defaults(enable_new_api_stack=True)
 parser.add_argument("--n-prev-rewards", type=int, default=1)
 parser.add_argument("--n-prev-actions", type=int, default=1)
 

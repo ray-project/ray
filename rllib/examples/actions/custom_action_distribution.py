@@ -83,7 +83,6 @@ parser.add_argument(
     "Set this to <<1.0 to approximate greedy behavior and to >>1.0 to approximate "
     "random behavior.",
 )
-parser.set_defaults(enable_new_api_stack=True)
 
 
 if __name__ == "__main__":

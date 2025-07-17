@@ -95,9 +95,6 @@ parser.add_argument(
     action="store_true",
     help="Run w/o a mean/std env-to-module connector piece (filter).",
 )
-parser.set_defaults(
-    enable_new_api_stack=True,
-)
 
 
 class LopsidedObs(gym.ObservationWrapper):

@@ -111,7 +111,6 @@ parser.add_argument(
 )
 # By default, set `args.checkpoint_freq` to 1 and `args.checkpoint_at_end` to True.
 parser.set_defaults(
-    enable_new_api_stack=True,
     checkpoint_freq=1,
     checkpoint_at_end=True,
 )

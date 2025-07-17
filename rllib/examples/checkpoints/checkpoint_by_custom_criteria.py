@@ -71,7 +71,9 @@ from ray.rllib.utils.test_utils import (
 from ray.tune.registry import get_trainable_cls
 
 parser = add_rllib_example_script_args(
-    default_reward=450.0, default_timesteps=100000, default_iters=200
+    default_reward=450.0,
+    default_timesteps=100000,
+    default_iters=200,
 )
 
 

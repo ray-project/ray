@@ -68,7 +68,6 @@ from ray.tune.registry import get_trainable_cls
 parser = add_rllib_example_script_args(
     default_reward=0.99, default_iters=200, default_timesteps=1000000
 )
-parser.set_defaults(enable_new_api_stack=True)
 parser.add_argument(
     "--intrinsic-reward-coeff",
     type=float,
