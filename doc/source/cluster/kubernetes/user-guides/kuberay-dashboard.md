@@ -35,7 +35,7 @@ kubectl port-forward kuberay-dashboard 3000:3000
 Go to `http://localhost:3000/ray/jobs` to see the list of Ray jobs. It's empty for now. You can create a RayJob custom resource to see how it works.
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/refs/heads/v1.4.2/ray-operator/config/samples/ray-job.sample.yaml
+kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/v1.4.2/ray-operator/config/samples/ray-job.sample.yaml
 ```
 
 The KubeRay dashboard only shows RayJob custom resources that the KubeRay API server creates. This guide simulates the API server by labeling the RayJob.
