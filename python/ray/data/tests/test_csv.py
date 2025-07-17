@@ -771,7 +771,9 @@ def test_csv_read_with_column_type_specified(ray_start_regular_shared, tmp_path)
     Version(pa.__version__) < Version("7.0.0"),
     reason="invalid_row_handler was added in pyarrow 7.0.0",
 )
-def test_csv_invalid_file_handler(ray_start_regular_shared, tmp_path):
+def test_csv_invalid_file_handler(
+    ray_start_regular_shared, tmp_path, target_max_block_size_none
+):
     from pyarrow import csv
 
     invalid_txt = "f1,f2\n2,3\nx\n4,5"
@@ -788,7 +790,9 @@ def test_csv_invalid_file_handler(ray_start_regular_shared, tmp_path):
 
 
 @pytest.mark.parametrize("min_rows_per_file", [5, 10, 50])
-def test_write_min_rows_per_file(tmp_path, ray_start_regular_shared, min_rows_per_file):
+def test_write_min_rows_per_file(
+    tmp_path, ray_start_regular_shared, min_rows_per_file, target_max_block_size_none
+):
     ray.data.range(100, override_num_blocks=20).write_csv(
         tmp_path, min_rows_per_file=min_rows_per_file
     )

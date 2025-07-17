@@ -808,19 +808,18 @@ class HashShufflingOperatorBase(PhysicalOperator):
     ):
         assert num_partitions >= num_aggregators
         assert partition_size_hint is None or partition_size_hint > 0
-        from ray.data.context import DEFAULT_TARGET_MAX_BLOCK_SIZE
 
-        aggregator_total_memory_required = self._estimate_aggregator_memory_allocation(
-            num_aggregators=num_aggregators,
-            num_partitions=num_partitions,
-            # NOTE: If no partition size hint is provided we simply assume target
-            #       max block size specified as the best partition size estimate
-            partition_byte_size_estimate=(
-                partition_size_hint
-                or self.data_context.target_max_block_size
-                or DEFAULT_TARGET_MAX_BLOCK_SIZE
-            ),
-        )
+        aggregator_total_memory_required = 0
+        if self.data_context.target_max_block_size is not None:
+            aggregator_total_memory_required = self._estimate_aggregator_memory_allocation(
+                num_aggregators=num_aggregators,
+                num_partitions=num_partitions,
+                # NOTE: If no partition size hint is provided we simply assume target
+                #       max block size specified as the best partition size estimate
+                partition_byte_size_estimate=(
+                    partition_size_hint or self.data_context.target_max_block_size
+                ),
+            )
 
         # Since aggregators can handle multiple individual partitions,
         # CPU allocation is proportionately scaled with the number of partitions
