@@ -737,13 +737,6 @@ def get_application_urls(
     client = _get_global_client()
     serve_details = client.get_serve_details()
     if app_name not in serve_details["applications"]:
-        # If the application isn't found, fall back to the root URL.  When running
-        # locally the Serve HTTP host is often set to "0.0.0.0" which is valid for
-        # binding but **not** for connecting on some operating systems (e.g.
-        # Windows).  If `use_localhost` is requested, swap the wildcard address
-        # with "localhost" to make the URL universally routable.
-        if use_localhost and client.root_url.startswith("http://0.0.0.0"):
-            return [client.root_url.replace("http://0.0.0.0", "http://localhost", 1)]
         return [client.root_url]
     route_prefix = serve_details["applications"][app_name]["route_prefix"]
     if exclude_route_prefix:
