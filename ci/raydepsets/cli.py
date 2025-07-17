@@ -24,6 +24,7 @@ DEFAULT_UV_FLAGS = [
 ]
 
 DEFAULT_UV_FLAGS = [
+    "--generate-hashes",
     "--strip-extras",
     "--python-version=3.11",
     "--no-strip-markers",

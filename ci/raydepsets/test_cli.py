@@ -465,5 +465,15 @@ def _copy_data_to_tmpdir(tmpdir):
     )
 
 
+def _replace_in_file(filepath, old, new):
+    with open(filepath, "r") as f:
+        contents = f.read()
+
+    contents = contents.replace(old, new)
+
+    with open(filepath, "w") as f:
+        f.write(contents)
+
+
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-vv", __file__]))
