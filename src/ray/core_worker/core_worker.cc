@@ -1343,7 +1343,7 @@ void CoreWorker::RegisterToGcs(int64_t worker_launch_time_ms,
   worker_data->set_worker_launch_time_ms(worker_launch_time_ms);
   worker_data->set_worker_launched_time_ms(worker_launched_time_ms);
 
-  RAY_CHECK_OK(gcs_client_->Workers().AsyncAdd(worker_data, nullptr));
+  gcs_client_->Workers().AsyncAdd(worker_data, nullptr);
 }
 
 void CoreWorker::ExitIfParentRayletDies() {
@@ -2759,17 +2759,16 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   if (actor_name.empty()) {
     io_service_.post(
         [this, task_spec = std::move(task_spec)]() {
-          RAY_UNUSED(actor_creator_->AsyncRegisterActor(
-              task_spec, [this, task_spec](Status status) {
-                if (!status.ok()) {
-                  RAY_LOG(ERROR).WithField(task_spec.ActorCreationId())
-                      << "Failed to register actor. Error message: " << status;
-                  task_manager_->FailPendingTask(
-                      task_spec.TaskId(), rpc::ErrorType::ACTOR_CREATION_FAILED, &status);
-                } else {
-                  RAY_UNUSED(actor_task_submitter_->SubmitActorCreationTask(task_spec));
-                }
-              }));
+          actor_creator_->AsyncRegisterActor(task_spec, [this, task_spec](Status status) {
+            if (!status.ok()) {
+              RAY_LOG(ERROR).WithField(task_spec.ActorCreationId())
+                  << "Failed to register actor. Error message: " << status;
+              task_manager_->FailPendingTask(
+                  task_spec.TaskId(), rpc::ErrorType::ACTOR_CREATION_FAILED, &status);
+            } else {
+              RAY_UNUSED(actor_task_submitter_->SubmitActorCreationTask(task_spec));
+            }
+          });
         },
         "ActorCreator.AsyncRegisterActor");
   } else {
@@ -3071,8 +3070,8 @@ Status CoreWorker::KillActor(const ActorID &actor_id, bool force_kill, bool no_r
       [this, p = &p, actor_id, force_kill, no_restart]() {
         auto cb = [this, p, actor_id, force_kill, no_restart](Status status) mutable {
           if (status.ok()) {
-            RAY_CHECK_OK(gcs_client_->Actors().AsyncKillActor(
-                actor_id, force_kill, no_restart, nullptr));
+            gcs_client_->Actors().AsyncKillActor(
+                actor_id, force_kill, no_restart, nullptr);
           }
           p->set_value(std::move(status));
         };

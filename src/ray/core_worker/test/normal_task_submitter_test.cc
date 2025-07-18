@@ -395,29 +395,21 @@ class MockActorCreator : public ActorCreatorInterface {
     return Status::OK();
   };
 
-  Status AsyncRegisterActor(const TaskSpecification &task_spec,
-                            gcs::StatusCallback callback) override {
-    return Status::OK();
-  }
+  void AsyncRegisterActor(const TaskSpecification &task_spec,
+                          gcs::StatusCallback callback) override {}
 
-  Status AsyncRestartActorForLineageReconstruction(
+  void AsyncRestartActorForLineageReconstruction(
       const ActorID &actor_id,
       uint64_t num_restarts_due_to_lineage_reconstructions,
-      gcs::StatusCallback callback) override {
-    return Status::OK();
-  }
+      gcs::StatusCallback callback) override {}
 
-  Status AsyncReportActorOutOfScope(const ActorID &actor_id,
-                                    uint64_t num_restarts_due_to_lineage_reconstruction,
-                                    gcs::StatusCallback callback) override {
-    return Status::OK();
-  }
+  void AsyncReportActorOutOfScope(const ActorID &actor_id,
+                                  uint64_t num_restarts_due_to_lineage_reconstruction,
+                                  gcs::StatusCallback callback) override {}
 
-  Status AsyncCreateActor(
+  void AsyncCreateActor(
       const TaskSpecification &task_spec,
-      const rpc::ClientCallback<rpc::CreateActorReply> &callback) override {
-    return Status::OK();
-  }
+      const rpc::ClientCallback<rpc::CreateActorReply> &callback) override {}
 
   void AsyncWaitForActorRegisterFinish(const ActorID &,
                                        gcs::StatusCallback callback) override {
