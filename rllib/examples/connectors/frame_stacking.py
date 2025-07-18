@@ -31,7 +31,7 @@ This example:
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack --num-frames=4 --env=ALE/Pong-v5`
+`python [script file name].py --num-frames=4 --env=ALE/Pong-v5`
 
 Use the `--num-frames` option to define the number of observations to framestack.
 If you don't want to use Connectors to perform the framestacking, set the
@@ -96,7 +96,6 @@ parser = add_rllib_example_script_args(
 )
 # Use Pong by default.
 parser.set_defaults(
-    enable_new_api_stack=True,
     env="ale_py:ALE/Pong-v5",
 )
 parser.add_argument(
