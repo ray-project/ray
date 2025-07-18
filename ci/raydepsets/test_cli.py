@@ -10,6 +10,7 @@ from ci.raydepsets.workspace import Workspace
 from click.testing import CliRunner
 from pathlib import Path
 from ci.raydepsets.cli import DEFAULT_UV_FLAGS
+import os
 
 _REPO_NAME = "com_github_ray_project_ray"
 _runfiles = runfiles.Create()
@@ -185,6 +186,44 @@ class TestCli(unittest.TestCase):
                 == f"{tmpdir}/requirements_test.txt"
             )
 
+    def test_env_substitution(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _copy_data_to_tmpdir(tmpdir)
+            output_fp = Path(tmpdir) / "test.config.yaml"
+            _replace_in_file(
+                output_fp,
+                "requirements_compiled_general_py311.txt",
+                "requirements_compiled_general_$PY_VERSION.txt",
+            )
+            manager = DependencySetManager(
+                config_path="test.config.yaml",
+                workspace_dir=tmpdir,
+            )
+            assert os.getenv("PY_VERSION") == "py311"
+            assert (
+                "requirements_compiled_general_py311.txt"
+                == manager.get_depset("general_depset").output
+            )
+
+    def test_env_substitution_with_brackets(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _copy_data_to_tmpdir(tmpdir)
+            output_fp = Path(tmpdir) / "test.config.yaml"
+            _replace_in_file(
+                output_fp,
+                "requirements_compiled_general_py311.txt",
+                "requirements_compiled_general_${PY_VERSION}.txt",
+            )
+            manager = DependencySetManager(
+                config_path="test.config.yaml",
+                workspace_dir=tmpdir,
+            )
+            assert os.getenv("PY_VERSION") == "py311"
+            assert (
+                "requirements_compiled_general_py311.txt"
+                == manager.get_depset("general_depset").output
+            )
+
 
 def _copy_data_to_tmpdir(tmpdir):
     shutil.copytree(
@@ -192,6 +231,16 @@ def _copy_data_to_tmpdir(tmpdir):
         tmpdir,
         dirs_exist_ok=True,
     )
+
+
+def _replace_in_file(filepath, old, new):
+    with open(filepath, "r") as f:
+        contents = f.read()
+
+    contents = contents.replace(old, new)
+
+    with open(filepath, "w") as f:
+        f.write(contents)
 
 
 def _replace_in_file(filepath, old, new):
