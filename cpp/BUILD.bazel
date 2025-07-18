@@ -143,6 +143,7 @@ genrule(
         "libray_api.so",
         "@msgpack//:msgpack_hdrs",
         "@nlohmann_json//:nlohmann_json_hdrs",
+        "@boost//:boost_ray_hdrs",
     ],
     outs = ["ray_cpp_pkg.out"],
     cmd = """
