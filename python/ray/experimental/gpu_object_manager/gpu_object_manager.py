@@ -35,11 +35,8 @@ class GPUObjectManager:
         # avoid circular import and because it imports third-party dependencies
         # like PyTorch.
         self._gpu_object_store: Optional["GPUObjectStore"] = None
-        # Lock to synchronize access to the GPU object store. This is needed
-        # because the GPU object store is accessed by both user threads, to
-        # put/get objects into the object store from user tasks, and by a
-        # background system thread, which handles data transfers and GC.
-        self.gpu_object_store_lock = threading.RLock()
+        # Lock to ensure we only create the GPU object store once.
+        self.gpu_object_store_lock = threading.Lock()
 
     @property
     def gpu_object_store(self) -> "ray.experimental.GPUObjectStore":
