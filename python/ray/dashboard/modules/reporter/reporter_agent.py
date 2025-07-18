@@ -349,8 +349,8 @@ METRICS_GAUGES = {
         "count",
         CLUSTER_TAG_KEYS,
     ),
-    "component_gpu_utilization": Gauge(
-        "component_gpu_utilization",
+    "component_gpu_percentage": Gauge(
+        "component_gpu_percentage",
         "GPU usage of all components on the node.",
         "percentage",
         COMPONENT_GPU_TAG_KEYS,
@@ -1415,7 +1415,7 @@ class ReporterAgent(
             ]:  # Only report utilization if it's not 0
                 records.append(
                     Record(
-                        gauge=METRICS_GAUGES["component_gpu_utilization"],
+                        gauge=METRICS_GAUGES["component_gpu_percentage"],
                         value=component_2_utilization[proc_name],
                         tags={"Component": proc_name},
                     )
@@ -1435,7 +1435,7 @@ class ReporterAgent(
             )
             records.append(
                 Record(
-                    gauge=METRICS_GAUGES["component_gpu_utilization"],
+                    gauge=METRICS_GAUGES["component_gpu_percentage"],
                     value=0,
                     tags={
                         "Component": stale_proc,

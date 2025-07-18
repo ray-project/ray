@@ -515,7 +515,7 @@ DEFAULT_GRAFANA_PANELS = [
         unit="GPUs",
         targets=[
             Target(
-                expr="sum(ray_component_gpu_utilization{{{global_filters}}} / 100) by (Component)",
+                expr="sum(ray_component_gpu_percentage{{{global_filters}}} / 100) by (Component)",
                 legend="{{Component}}",
             ),
         ],
@@ -527,7 +527,7 @@ DEFAULT_GRAFANA_PANELS = [
         unit="bytes",
         targets=[
             Target(
-                expr="sum(ray_component_gpu_memory_usage{{{global_filters}}}) by (Component)",
+                expr="sum(ray_component_gpu_memory_mb{{{global_filters}}}) by (Component)",
                 legend="{{Component}}",
             ),
             Target(
