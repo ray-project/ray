@@ -304,11 +304,11 @@ class SerializationContext:
             pop_object = not gpu_object_store.is_primary_copy(object_id):
             if pop_object:
                 tensors = gpu_object_manager.gpu_object_store.wait_and_pop_object(
-                    object_id, timeout=ray_constants.FETCH_WARN_TIMEOUT_SECONDS
+                    object_id, timeout=ray_constants.FETCH_FAIL_TIMEOUT_SECONDS
                 )
             else:
                 tensors = gpu_object_manager.gpu_object_store.wait_object(
-                    object_id, timeout=ray_constants.FETCH_WARN_TIMEOUT_SECONDS
+                    object_id, timeout=ray_constants.FETCH_FAIL_TIMEOUT_SECONDS
                 )
             global_worker.function_actor_manager.lock.acquire()
             ctx.reset_out_of_band_tensors(tensors)
