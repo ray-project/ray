@@ -750,12 +750,12 @@ def dedupe_schemas_with_validation(
     diverged = False
     from ray.data._internal.pandas_block import PandasBlockSchema
 
-    has_empty_schema = old_schema is None or (
+    old_schema_is_empty = old_schema is None or (
         not old_schema.names
         if isinstance(old_schema, PandasBlockSchema)
         else not old_schema  # pyarrow schema check
     )
-    if has_empty_schema:
+    if old_schema_is_empty:
         return bundle, diverged
 
     # This check is fast assuming pyarrow schemas
