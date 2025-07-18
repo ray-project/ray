@@ -94,7 +94,7 @@ class DefaultFailurePolicy(FailurePolicy):
                 self._controller_failures += 1
                 if self.failure_config.controller_failure_limit == -1:
                     self._log_infinite_controller_retry_enabled(controller_failed_error)
-                    return FailureDecision.RETRY
+                    return FailureDecision.RESCHEDULE
                 elif (
                     self._controller_failures
                     > self.failure_config.controller_failure_limit
@@ -105,20 +105,23 @@ class DefaultFailurePolicy(FailurePolicy):
                     self._log_controller_error_limit_not_exceeded(
                         controller_failed_error
                     )
-                    return FailureDecision.RETRY
+                    return FailureDecision.RESCHEDULE
+            else:
+                self._log_non_retryable_controller_error(controller_failed_error)
+                return FailureDecision.RAISE
 
         if training_failed_error is not None:
 
             self._running_failures += 1
             if self.failure_config.max_failures == -1:
                 self._log_infinite_training_retry_enabled(training_failed_error)
-                return FailureDecision.RETRY
+                return FailureDecision.RESTART
             elif self._running_failures > self.failure_config.max_failures:
                 self._log_max_training_error_exceeded(training_failed_error)
                 return FailureDecision.RAISE
             else:
                 self._log_max_training_error_not_exceeded(training_failed_error)
-                return FailureDecision.RETRY
+                return FailureDecision.RESTART
 
         assert (
             False

@@ -188,11 +188,13 @@ class TrainController:
         )
 
         if scheduling_status.has_error:
+            controller_error = ControllerError(scheduling_status.error)
             failure_decision = self._failure_policy.make_decision(
-                scheduling_status.error
+                controller_failed_error=controller_error,
             )
             return self._execute_failure_decision(
-                failure_decision, scheduling_status.error
+                failure_decision,
+                controller_failed_error=controller_error,
             )
         else:
             return TrainControllerLoopIterationResult(
@@ -227,17 +229,27 @@ class TrainController:
                 controller_failed_error=controller_failed_error,
             )
 
-        if failure_decision == FailureDecision.RETRY:
-            assert isinstance(controller_state, (RunningState, SchedulingState))
+        if failure_decision == FailureDecision.RESTART:
+            assert training_failed_error is not None
             return TrainControllerLoopIterationResult(
                 run_attempt_id=self._get_run_attempt_id(),
                 previous_state=controller_state,
-                next_state=RestartingState(training_failed_error=training_failed_error)
-                if isinstance(controller_state, RunningState)
-                else ReschedulingState(),
+                next_state=RestartingState(training_failed_error=training_failed_error),
+            )
+        elif failure_decision == FailureDecision.RESCHEDULE:
+            assert controller_failed_error is not None
+            return TrainControllerLoopIterationResult(
+                run_attempt_id=self._get_run_attempt_id(),
+                previous_state=controller_state,
+                next_state=ReschedulingState(
+                    controller_failed_error=controller_failed_error
+                ),
             )
         elif failure_decision == FailureDecision.RAISE:
-            next_state = ErroredState(training_failed_error=training_failed_error)
+            next_state = ErroredState(
+                training_failed_error=training_failed_error,
+                controller_failed_error=controller_failed_error,
+            )
             return TrainControllerLoopIterationResult(
                 run_attempt_id=self._get_run_attempt_id(),
                 previous_state=controller_state,
@@ -382,11 +394,15 @@ class TrainController:
                     next_state=FinishedState(),
                 )
             if worker_group_status.errors:
+                training_failed_error = TrainingFailedError(
+                    error_message=worker_group_status.get_error_string(),
+                    worker_failures=worker_group_status.errors,
+                )
                 failure_decision = self._failure_policy.make_decision(
-                    worker_group_status.errors
+                    training_failed_error=training_failed_error,
                 )
                 return self._execute_failure_decision(
-                    failure_decision, worker_group_status.errors
+                    failure_decision, training_failed_error
                 )
             else:
                 scaling_decision = self._scaling_policy.make_decision_for_running_worker_group(

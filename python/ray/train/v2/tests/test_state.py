@@ -38,7 +38,7 @@ from ray.train.v2._internal.state.state_actor import (
 )
 from ray.train.v2._internal.state.state_manager import TrainStateManager
 from ray.train.v2._internal.state.util import _DEAD_CONTROLLER_ABORT_STATUS_DETAIL
-from ray.train.v2.api.exceptions import TrainingFailedError
+from ray.train.v2.api.exceptions import ControllerError, TrainingFailedError
 from ray.train.v2.tests.util import (
     create_dummy_run_context,
     create_mock_train_run,
@@ -499,7 +499,7 @@ def test_callback_controller_state_transitions(ray_start_regular, callback):
         SchedulingState(
             scaling_decision=ResizeDecision(num_workers=4, resources_per_worker={})
         ),
-        ReschedulingState(),
+        ReschedulingState(controller_failed_error=ControllerError(Exception("test"))),
         SchedulingState(
             scaling_decision=ResizeDecision(num_workers=2, resources_per_worker={})
         ),
@@ -532,7 +532,7 @@ def test_callback_controller_state_transitions(ray_start_regular, callback):
 
 def test_callback_error_state_transition(ray_start_regular, callback):
     error_msg = "Test error"
-    error_state = ErroredState(Exception(error_msg))
+    error_state = ErroredState(training_failed_error=Exception(error_msg))
     callback.after_controller_state_update(RunningState(), error_state)
 
     state_actor = get_state_actor()

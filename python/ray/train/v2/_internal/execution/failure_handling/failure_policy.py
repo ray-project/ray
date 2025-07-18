@@ -7,9 +7,11 @@ from ray.train.v2.api.exceptions import ControllerError, TrainingFailedError
 
 
 class FailureDecision(Enum):
-    RETRY = "RETRY"
+    RESTART = "RESTART"
+    RESCHEDULE = "RESCHEDULE"
     RAISE = "RAISE"
     NOOP = "NOOP"
+    ABORT = "ABORT"
 
 
 class FailurePolicy(abc.ABC):
