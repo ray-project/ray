@@ -17,7 +17,6 @@ from ray.tune.registry import get_trainable_cls
 
 # Read in common example script command line arguments.
 parser = add_rllib_example_script_args(default_timesteps=200000, default_reward=-500.0)
-parser.set_defaults(enable_new_api_stack=True)
 
 
 if __name__ == "__main__":
