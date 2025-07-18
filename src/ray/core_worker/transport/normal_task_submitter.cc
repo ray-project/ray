@@ -595,6 +595,7 @@ void NormalTaskSubmitter::PushNormalTask(
           scheduling_key_entry.num_busy_workers--;
 
           if (!status.ok()) {
+            failed_tasks_pending_failure_cause_.insert(task_id);
             RAY_LOG(DEBUG) << "Getting error from raylet for task " << task_id;
             const ray::rpc::ClientCallback<ray::rpc::GetTaskFailureCauseReply> callback =
                 [this, status, task_id, addr](
@@ -605,6 +606,8 @@ void NormalTaskSubmitter::PushNormalTask(
                                             addr,
                                             get_task_failure_cause_reply_status,
                                             get_task_failure_cause_reply);
+                  absl::MutexLock lock(&mu_);
+                  failed_tasks_pending_failure_cause_.erase(task_id);
                 };
             auto &cur_lease_entry = worker_to_lease_entry_[addr];
             RAY_CHECK(cur_lease_entry.lease_client);
@@ -710,6 +713,24 @@ Status NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
   std::shared_ptr<rpc::CoreWorkerClientInterface> client = nullptr;
   {
     absl::MutexLock lock(&mu_);
+    if (failed_tasks_pending_failure_cause_.contains(task_spec.TaskId())) {
+      // The task is in a critical phase between completing execution and determining
+      // whether to retry. Cancellation can cause races during this phase.  Give the
+      // precedence to that critical session and retry the cancellation request at the
+      // next tick.
+      if (cancel_retry_timer_.expiry().time_since_epoch() <=
+          std::chrono::high_resolution_clock::now().time_since_epoch()) {
+        cancel_retry_timer_.expires_after(boost::asio::chrono::milliseconds(
+            RayConfig::instance().cancellation_retry_ms()));
+      }
+      cancel_retry_timer_.async_wait(boost::bind(&NormalTaskSubmitter::CancelTask,
+                                                 this,
+                                                 std::move(task_spec),
+                                                 force_kill,
+                                                 recursive));
+      return Status::OK();
+    }
+
     auto task_id = task_spec.TaskId();
     generators_to_resubmit_.erase(task_id);
 
