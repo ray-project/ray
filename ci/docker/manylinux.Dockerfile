@@ -9,6 +9,8 @@ ENV BUILD_JAR=1
 ENV RAY_INSTALL_JAVA=1
 ENV BUILDKITE_BAZEL_CACHE_URL=$BUILDKITE_BAZEL_CACHE_URL
 
+RUN yum -y install sudo
+
 COPY ci/build/build-manylinux-forge.sh /tmp/build-manylinux-forge.sh
 
 RUN ./tmp/build-manylinux-forge.sh
