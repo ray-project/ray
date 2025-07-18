@@ -105,6 +105,8 @@ DEFAULT_BATCH_FORMAT = "numpy"
 
 
 def _is_empty_schema(schema: Optional[Schema]) -> bool:
+    from ray.data._internal.pandas_block import PandasBlockSchema
+
     return schema is None or (
         not schema.names
         if isinstance(schema, PandasBlockSchema)
