@@ -10,8 +10,6 @@ from collections import defaultdict
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
-from python.ray.data._internal.pandas_block import PandasBlockSchema
-
 import ray
 from ray.data._internal.execution.backpressure_policy import BackpressurePolicy
 from ray.data._internal.execution.bundle_queue import create_bundle_queue
@@ -750,6 +748,8 @@ def dedupe_schemas_with_validation(
     # Note, often times the refbundles correspond to only one schema. We can reduce the
     # memory footprint of multiple schemas by keeping only one copy.
     diverged = False
+    from ray.data._internal.pandas_block import PandasBlockSchema
+
     has_empty_schema = old_schema is None or (
         not old_schema.names
         if isinstance(old_schema, PandasBlockSchema)
