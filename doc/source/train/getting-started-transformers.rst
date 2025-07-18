@@ -98,7 +98,7 @@ Compare a standard Hugging Face Transformers script with its Ray Train equivalen
 
             # Hugging Face Trainer
             training_args = TrainingArguments(
-                output_dir="test_trainer", evaluation_strategy="epoch", report_to="none"
+                output_dir="test_trainer", eval_strategy="epoch", report_to="none"
             )
 
             trainer = Trainer(
@@ -170,7 +170,7 @@ Compare a standard Hugging Face Transformers script with its Ray Train equivalen
                 # Hugging Face Trainer
                 training_args = TrainingArguments(
                     output_dir="test_trainer",
-                    evaluation_strategy="epoch",
+                    eval_strategy="epoch",
                     save_strategy="epoch",
                     report_to="none",
                 )
@@ -337,7 +337,7 @@ training code.
                 model = AutoModelForCausalLM.from_config(model_config)
                 args = transformers.TrainingArguments(
                     output_dir=f"{MODEL_NAME}-wikitext2",
-                    evaluation_strategy="epoch",
+                    eval_strategy="epoch",
                     save_strategy="epoch",
                     logging_strategy="epoch",
                     learning_rate=2e-5,
@@ -405,7 +405,7 @@ training code.
 
                 args = transformers.TrainingArguments(
                     output_dir=f"{MODEL_NAME}-wikitext2",
-                    evaluation_strategy="epoch",
+                    eval_strategy="epoch",
                     save_strategy="epoch",
                     logging_strategy="epoch",
                     learning_rate=2e-5,
