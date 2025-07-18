@@ -2,6 +2,28 @@
 
 set -exuo pipefail
 
+# Host user UID/GID
+HOST_UID=${HOST_UID:-$(id -u)}
+HOST_GID=${HOST_GID:-$(id -g)}
+
+if [ "$EUID" -eq 0 ]; then
+
+  # Install sudo
+  yum -y install sudo
+
+  # Create group and user
+  groupadd -g "$HOST_GID" builduser
+  useradd -m -u "$HOST_UID" -g "$HOST_GID" -d /ray builduser
+
+  # Give sudo access
+  echo "builduser ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+
+  exec sudo -E -u builduser HOME="$HOME" bash "$0" "$@"
+
+  exit 0
+
+fi
+
 export RAY_INSTALL_JAVA="${RAY_INSTALL_JAVA:-0}"
 
 # Python version key, interpreter version code
@@ -12,11 +34,6 @@ PYTHON_VERSIONS=(
   "py312 cp312-cp312"
   "py313 cp313-cp313"
 )
-
-# Add the repo folder to the safe.directory global variable to avoid the failure
-# because of security check from git, when executing the following command
-# `git clean ...`,  while building wheel locally.
-git config --global --add safe.directory /ray
 
 # Setup runtime environment
 ./ci/build/build-manylinux-forge.sh
