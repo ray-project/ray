@@ -167,9 +167,37 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
  public:
   /// Construct a CoreWorker instance.
   ///
-  /// \param[in] options The various initialization options.
-  /// \param[in] worker_id ID of this worker.
-  CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id);
+  /// All member variables are injected either from CoreWorkerProcess or test code
+
+  CoreWorker(CoreWorkerOptions options,
+             std::unique_ptr<WorkerContext> worker_context,
+             instrumented_io_context& io_service,
+             std::unique_ptr<rpc::ClientCallManager> client_call_manager,
+             std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool,
+             std::shared_ptr<PeriodicalRunner> periodical_runner,
+             std::unique_ptr<rpc::GrpcServer> core_worker_server,
+             rpc::Address rpc_address,
+             bool connected,
+             std::shared_ptr<gcs::GcsClient> gcs_client,
+             std::shared_ptr<raylet::RayletClient> local_raylet_client,
+             boost::thread& io_thread,
+             std::shared_ptr<ReferenceCounter> reference_counter,
+             std::shared_ptr<CoreWorkerMemoryStore> memory_store,
+             std::shared_ptr<CoreWorkerPlasmaStoreProvider> plasma_store_provider,
+             std::shared_ptr<experimental::MutableObjectProvider> experimental_mutable_object_provider,
+             std::unique_ptr<FutureResolver> future_resolver,
+             std::shared_ptr<TaskManager> task_manager,
+             std::shared_ptr<ActorCreatorInterface> actor_creator,
+             std::unique_ptr<ActorTaskSubmitter> actor_task_submitter,
+             std::unique_ptr<pubsub::Publisher> object_info_publisher,
+             std::unique_ptr<pubsub::Subscriber> object_info_subscriber,
+             std::shared_ptr<LeaseRequestRateLimiter> lease_request_rate_limiter,
+             std::unique_ptr<NormalTaskSubmitter> normal_task_submitter,
+             std::unique_ptr<ObjectRecoveryManager> object_recovery_manager,
+             std::unique_ptr<ActorManager> actor_manager,
+             instrumented_io_context& task_execution_service,
+             std::unique_ptr<worker::TaskEventBuffer> task_event_buffer,
+             uint32_t pid);
 
   CoreWorker(CoreWorker const &) = delete;
 
@@ -227,20 +255,20 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   Language GetLanguage() const { return options_.language; }
 
-  WorkerContext &GetWorkerContext() { return worker_context_; }
+  WorkerContext &GetWorkerContext() { return *worker_context_; }
 
-  const TaskID &GetCurrentTaskId() const { return worker_context_.GetCurrentTaskID(); }
+  const TaskID &GetCurrentTaskId() const { return worker_context_->GetCurrentTaskID(); }
 
   const std::string GetCurrentTaskName() const {
-    return worker_context_.GetCurrentTask() != nullptr
-               ? worker_context_.GetCurrentTask()->GetName()
+    return worker_context_->GetCurrentTask() != nullptr
+               ? worker_context_->GetCurrentTask()->GetName()
                : "";
   }
 
   const std::string GetCurrentTaskFunctionName() const {
-    return (worker_context_.GetCurrentTask() != nullptr &&
-            worker_context_.GetCurrentTask()->FunctionDescriptor() != nullptr)
-               ? worker_context_.GetCurrentTask()->FunctionDescriptor()->CallSiteString()
+    return (worker_context_->GetCurrentTask() != nullptr &&
+            worker_context_->GetCurrentTask()->FunctionDescriptor() != nullptr)
+               ? worker_context_->GetCurrentTask()->FunctionDescriptor()->CallSiteString()
                : "";
   }
 
@@ -251,14 +279,14 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void UpdateTaskIsDebuggerPaused(const TaskID &task_id, const bool is_debugger_paused);
 
   int64_t GetCurrentTaskAttemptNumber() const {
-    return worker_context_.GetCurrentTask() != nullptr
-               ? worker_context_.GetCurrentTask()->AttemptNumber()
+    return worker_context_->GetCurrentTask() != nullptr
+               ? worker_context_->GetCurrentTask()->AttemptNumber()
                : 0;
   }
 
-  JobID GetCurrentJobId() const { return worker_context_.GetCurrentJobID(); }
+  JobID GetCurrentJobId() const { return worker_context_->GetCurrentJobID(); }
 
-  int64_t GetTaskDepth() const { return worker_context_.GetTaskDepth(); }
+  int64_t GetTaskDepth() const { return worker_context_->GetTaskDepth(); }
 
   NodeID GetCurrentNodeId() const { return NodeID::FromBinary(rpc_address_.raylet_id()); }
 
@@ -306,18 +334,18 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void TryDelPendingObjectRefStreams();
 
   PlacementGroupID GetCurrentPlacementGroupId() const {
-    return worker_context_.GetCurrentPlacementGroupId();
+    return worker_context_->GetCurrentPlacementGroupId();
   }
 
   bool ShouldCaptureChildTasksInPlacementGroup() const {
-    return worker_context_.ShouldCaptureChildTasksInPlacementGroup();
+    return worker_context_->ShouldCaptureChildTasksInPlacementGroup();
   }
 
   bool GetCurrentTaskRetryExceptions() const {
     if (options_.is_local_mode) {
       return false;
     }
-    return worker_context_.GetCurrentTask()->ShouldRetryExceptions();
+    return worker_context_->GetCurrentTask()->ShouldRetryExceptions();
   }
 
   void SetWebuiDisplay(const std::string &key, const std::string &message);
@@ -1003,6 +1031,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   }
 
  public:
+  friend class CoreWorkerProcessImpl;
+
   /// Allocate the return object for an executing task. The caller should write into the
   /// data buffer of the allocated buffer, then call SealReturnObject() to seal it.
   /// To avoid deadlock, the caller should allocate and seal a single object at a time.
@@ -1326,6 +1356,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
             const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes =
                 nullptr);
 
+  void TaskManagerRetryTask(TaskSpecification &spec, bool object_recovery, uint32_t delay_ms);
+
  private:
   static nlohmann::json OverrideRuntimeEnv(const nlohmann::json &child,
                                            const std::shared_ptr<nlohmann::json> &parent);
@@ -1340,7 +1372,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   FRIEND_TEST(TestOverrideRuntimeEnv, TestCondaOverride);
 
   /// Register core worker to worker pool.
-  Status RegisterWorkerToRaylet(raylet::RayletConnection &conn,
+  static Status RegisterWorkerToRaylet(raylet::RayletConnection &conn,
                                 const WorkerID &worker_id,
                                 rpc::WorkerType worker_type,
                                 const JobID &job_id,
@@ -1402,9 +1434,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                         const std::string &task_name);
 
   void SetActorId(const ActorID &actor_id);
-
-  /// Run the io_service_ event loop. This should be called in a background thread.
-  void RunIOService();
 
   /// Forcefully exit the worker. `Force` means it will exit actor without draining
   /// or cleaning any resources.
@@ -1594,11 +1623,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// the new worker to reject messages meant for the old one.
   bool HandleWrongRecipient(const WorkerID &intended_worker_id,
                             const rpc::SendReplyCallback &send_reply_callback) {
-    if (intended_worker_id != worker_context_.GetWorkerID()) {
+    if (intended_worker_id != worker_context_->GetWorkerID()) {
       std::ostringstream stream;
       stream << "Mismatched WorkerID: ignoring RPC for previous worker "
              << intended_worker_id
-             << ", current worker ID: " << worker_context_.GetWorkerID();
+             << ", current worker ID: " << worker_context_->GetWorkerID();
       auto msg = stream.str();
       RAY_LOG(ERROR) << msg;
       send_reply_callback(Status::Invalid(msg), nullptr, nullptr);
@@ -1714,7 +1743,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Shared state of the worker. Includes process-level and thread-level state.
   /// TODO(edoakes): we should move process-level state into this class and make
   /// this a ThreadContext.
-  WorkerContext worker_context_;
+  std::unique_ptr<WorkerContext> worker_context_;
 
   /// The ID of the current task being executed by the main thread. If there
   /// are multiple threads, they will have a thread-local task ID stored in the
@@ -1729,11 +1758,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   bool initialized_ ABSL_GUARDED_BY(initialize_mutex_) = false;
 
   /// Event loop where the IO events are handled. e.g. async GCS operations.
-  instrumented_io_context io_service_{/*enable_lag_probe=*/false,
-                                      /*running_on_single_thread=*/true};
-
-  /// Keeps the io_service_ alive.
-  boost::asio::executor_work_guard<boost::asio::io_context::executor_type> io_work_;
+  instrumented_io_context& io_service_;
 
   /// Shared client call manager.
   std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
@@ -1763,7 +1788,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   std::shared_ptr<raylet::RayletClient> local_raylet_client_;
 
   // Thread that runs a boost::asio service to process IO events.
-  boost::thread io_thread_;
+  boost::thread &io_thread_;
 
   // Keeps track of object ID reference counts.
   std::shared_ptr<ReferenceCounter> reference_counter_;
@@ -1868,11 +1893,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Event loop where tasks are processed.
   /// task_execution_service_ should be destructed first to avoid
   /// issues like https://github.com/ray-project/ray/issues/18857
-  instrumented_io_context task_execution_service_;
-
-  /// The asio work to keep task_execution_service_ alive.
-  boost::asio::executor_work_guard<boost::asio::io_context::executor_type>
-      task_execution_service_work_;
+  instrumented_io_context& task_execution_service_;
 
   // Queue of tasks to resubmit when the specified time passes.
   std::priority_queue<TaskToRetry, std::deque<TaskToRetry>, TaskToRetryDescComparator>
