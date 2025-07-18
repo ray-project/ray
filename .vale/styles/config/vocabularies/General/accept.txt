@@ -1,3 +1,4 @@
+# Use 'API' judiciously: https://developers.google.com/style/word-list#api.
 [Aa]pplication
 [Aa]sync
 [Cc]odec
@@ -21,7 +22,6 @@
 [Ss]ubclassing
 [Tt][Ll][Ss]
 [Vv]ision LMs
-# Use 'API' judiciously: https://developers.google.com/style/word-list#api.
 admin
 Alibaba
 Alpaca
@@ -94,6 +94,7 @@ SageMaker
 serverless
 SFT
 ShareGPT
+streamable
 Softmax
 streamable
 subprocess
