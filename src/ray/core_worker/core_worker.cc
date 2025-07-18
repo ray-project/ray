@@ -671,24 +671,9 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
       });
 
 #if defined(__APPLE__) || defined(__linux__)
-  // TODO(jhumphri): Combine with implementation in NodeManager.
-  // TODO(jhumphri): Pool these connections with the other clients in CoreWorker connected
-  // to the raylet.
-  auto raylet_channel_client_factory =
-      [this](const NodeID &node_id, rpc::ClientCallManager &client_call_manager) {
-        auto node_info = gcs_client_->Nodes().Get(node_id);
-        RAY_CHECK(node_info) << "No GCS info for node " << node_id;
-        auto grpc_client =
-            rpc::NodeManagerWorkerClient::make(node_info->node_manager_address(),
-                                               node_info->node_manager_port(),
-                                               client_call_manager);
-        return std::make_shared<raylet::RayletClient>(std::move(grpc_client));
-      };
   experimental_mutable_object_provider_ =
       std::make_shared<experimental::MutableObjectProvider>(
-          *plasma_store_provider_->store_client(),
-          raylet_channel_client_factory,
-          options_.check_signals);
+          *plasma_store_provider_->store_client(), nullptr, options_.check_signals);
 #endif
 
   auto push_error_callback = [this](const JobID &job_id,

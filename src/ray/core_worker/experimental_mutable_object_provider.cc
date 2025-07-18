@@ -71,6 +71,7 @@ void MutableObjectProvider::RegisterWriterChannel(
           io_context.get_executor()));
 
   // Find remote readers.
+  RAY_CHECK(raylet_client_factory_ != nullptr);
   for (const auto &node_id : remote_reader_node_ids) {
     client_call_managers_.push_back(
         std::make_unique<rpc::ClientCallManager>(io_context, /*record_stats=*/false));
