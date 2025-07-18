@@ -505,16 +505,44 @@ class TorchMultiCategorical(Distribution):
         return cls(categoricals=categoricals)
 
     def to_deterministic(self) -> "TorchDeterministic":
-        if self._cats[0].probs is not None:
-            probs_or_logits = nn.utils.rnn.pad_sequence(
-                [cat.logits.t() for cat in self._cats], padding_value=-torch.inf
-            )
-        else:
-            probs_or_logits = nn.utils.rnn.pad_sequence(
-                [cat.logits.t() for cat in self._cats], padding_value=-torch.inf
-            )
+        """Converts `TorchMultiCategorical` into `TorchDeterministic`."""
+        logits_list = [cat.logits for cat in self._cats]
+        # Check, if the module is recurrent.
+        is_recurrent = logits_list[0].dim() == 3  # (B, T, K_i)
 
-        return TorchDeterministic(loc=torch.argmax(probs_or_logits, dim=0))
+        # Determine max number of categories across all categorical distributions
+        max_K = max(logits.shape[-1] for logits in logits_list)
+
+        padded_logits = []
+        for logits in logits_list:
+            # Pad last dimension (category dim) to max_K
+            pad_width = max_K - logits.shape[-1]
+            # If the distributions have different number of categories, pad.
+            if pad_width > 0:
+                # Pad only last dimension
+                pad_dims = (0, pad_width)
+                logits = nn.functional.pad(logits, pad_dims, value=-float("inf"))
+            padded_logits.append(logits)
+
+        # Stack along new dim=0 (categorical dimension).
+        # Shape: (num_components, B, T, max_K) or (num_components, B, max_K)
+        stacked = torch.stack(padded_logits, dim=0)
+
+        # Move categorical dim (0) to last if needed, and take argmax.
+        if is_recurrent:
+            # Current shape is (num_components, B, T, K) and we want to have
+            # (B, T, num_components) via argmax over last dimension. So take
+            # argmax over last dim (K), then permute.
+            argmax = torch.argmax(stacked, dim=-1)  # shape: (num_components, B, T)
+            loc = argmax.permute(1, 2, 0)  # (B, T, num_components)
+        else:
+            # stacked: (num_components, B, K)
+            # → argmax over last dim (K), shape: (num_components, B)
+            # → transpose to (B, num_components)
+            argmax = torch.argmax(stacked, dim=-1)  # (num_components, B)
+            loc = argmax.transpose(0, 1)  # (B, num_components)
+
+        return TorchDeterministic(loc=loc)
 
 
 @DeveloperAPI
