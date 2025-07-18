@@ -868,14 +868,45 @@ class Worker:
         for e in out:
             _unhandled_error_handler(e)
 
+    def _deserialize_out_of_band_tensors(self, obj_id: str) -> List[torch.Tensor]:
+        gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
+        gpu_object_store = gpu_object_manager.gpu_object_store
+        if gpu_object_manager.is_managed_object(object_id):
+            gpu_object_manager.fetch_object(object_id)
+
+        # If the GPU object is the primary copy, it means the transfer is intra-actor.
+        # In this case, we should not remove the GPU object after it is consumed once,
+        # because the GPU object reference may be used again.
+        # Instead, we should wait for the GC callback to clean it up.
+        pop_object = not gpu_object_store.is_primary_copy(object_id):
+        if pop_object:
+            tensors = gpu_object_manager.gpu_object_store.wait_and_pop_object(
+                object_id, timeout=ray_constants.FETCH_FAIL_TIMEOUT_SECONDS
+            )
+        else:
+            tensors = gpu_object_manager.gpu_object_store.wait_object(
+                object_id, timeout=ray_constants.FETCH_FAIL_TIMEOUT_SECONDS
+            )
+        return tensors
+
     def deserialize_objects(self, serialized_objects, object_refs):
+        out_of_band_tensors : Dict[str, List[torch.Tensor]] = {}
+        for obj_ref, (_, _, tensor_transport) in zip(object_refs, serialized_objects):
+            # If using a non-object store transport, then tensors will be sent
+            # out-of-band. Get them before deserializing the object store data.
+            if tensor_transport is None or tensor_transport == TensorTransportEnum.OBJECT_STORE:
+                continue
+
+            object_id = obj_ref.hex()
+            out_of_band_tensors[object_id] = self._deserialize_out_of_band_tensors(object_id)
+
         # Function actor manager or the import thread may call pickle.loads
         # at the same time which can lead to failed imports
         # TODO: We may be better off locking on all imports or injecting a lock
         # into pickle.loads (https://github.com/ray-project/ray/issues/16304)
         with self.function_actor_manager.lock:
             context = self.get_serialization_context()
-            return context.deserialize_objects(serialized_objects, object_refs)
+            return context.deserialize_objects(serialized_objects, object_refs, out_of_band_tensors)
 
     def get_objects(
         self,
