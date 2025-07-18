@@ -98,6 +98,7 @@ class RayClusterOnSpark:
         spark_job_server,
         global_cluster_lock_fd,
         ray_client_server_port,
+        ray_metrics_monitor=None,
     ):
         self.address = address
         self.head_proc = head_proc
@@ -110,6 +111,7 @@ class RayClusterOnSpark:
         self.spark_job_server = spark_job_server
         self.global_cluster_lock_fd = global_cluster_lock_fd
         self.ray_client_server_port = ray_client_server_port
+        self.ray_metrics_monitor = ray_metrics_monitor
 
         self.is_shutdown = False
         self.spark_job_is_canceled = False
@@ -255,6 +257,9 @@ class RayClusterOnSpark:
                 _logger.warning(
                     "An Error occurred during shutdown of ray head node: " f"{repr(e)}"
                 )
+
+            if self.ray_metrics_monitor is not None:
+                self.ray_metrics_monitor.finish()
             self.is_shutdown = True
 
     def __enter__(self):
@@ -484,6 +489,7 @@ def _setup_ray_cluster(
     autoscale_upscaling_speed: float,
     autoscale_idle_timeout_minutes: float,
     is_global: bool,
+    log_system_metrics: bool
 ) -> Type[RayClusterOnSpark]:
     """
     The public API `ray.util.spark.setup_ray_cluster` does some argument
@@ -695,6 +701,10 @@ def _setup_ray_cluster(
     # Set RAY_ADDRESS environment variable to the cluster address.
     os.environ["RAY_ADDRESS"] = cluster_address
 
+    if log_system_metrics:
+        from ray.util.spark.ray_metrics_monitor import RayMetricsMonitor
+        ray_metrics_monitor = RayMetricsMonitor()
+        ray_metrics_monitor.start()
     ray_cluster_handler = RayClusterOnSpark(
         address=cluster_address,
         head_proc=ray_head_proc,
@@ -707,6 +717,7 @@ def _setup_ray_cluster(
         spark_job_server=spark_job_server,
         global_cluster_lock_fd=global_cluster_lock_fd,
         ray_client_server_port=ray_client_server_port,
+        ray_metrics_monitor=ray_metrics_monitor
     )
 
     start_hook.on_cluster_created(ray_cluster_handler)
@@ -800,6 +811,7 @@ def _setup_ray_cluster_internal(
     autoscale_upscaling_speed: Optional[float],
     autoscale_idle_timeout_minutes: Optional[float],
     is_global: bool,
+    log_system_metrics: bool,
     **kwargs,
 ) -> Tuple[str, str]:
     global _active_ray_cluster
@@ -1231,6 +1243,7 @@ def setup_ray_cluster(
     collect_log_to_path: Optional[str] = None,
     autoscale_upscaling_speed: Optional[float] = 1.0,
     autoscale_idle_timeout_minutes: Optional[float] = 1.0,
+    log_system_metrics=False,
     **kwargs,
 ) -> Tuple[str, str]:
     """
@@ -1344,6 +1357,9 @@ def setup_ray_cluster(
             or referenced objects (either in-memory or spilled to disk). This parameter
             does not affect the head node.
             Default value is 1.0, minimum value is 0
+        log_system_metrics: If true, a MLflow run will be created, and the Ray system
+            metrics are logged to the MLflow run.
+
     Returns:
         returns a tuple of (address, remote_connection_address)
         "address" is in format of "<ray_head_node_ip>:<port>"
@@ -1374,6 +1390,7 @@ def setup_ray_cluster(
         autoscale_upscaling_speed=autoscale_upscaling_speed,
         autoscale_idle_timeout_minutes=autoscale_idle_timeout_minutes,
         is_global=False,
+        log_system_metrics=log_system_metrics,
         **kwargs,
     )
 
@@ -1398,6 +1415,7 @@ def setup_global_ray_cluster(
     collect_log_to_path: Optional[str] = None,
     autoscale_upscaling_speed: Optional[float] = 1.0,
     autoscale_idle_timeout_minutes: Optional[float] = 1.0,
+    log_system_metrics=False,
 ):
     """
     Set up a global mode cluster.
@@ -1447,6 +1465,7 @@ def setup_global_ray_cluster(
         autoscale_upscaling_speed=autoscale_upscaling_speed,
         autoscale_idle_timeout_minutes=autoscale_idle_timeout_minutes,
         is_global=True,
+        log_system_metrics=log_system_metrics,
     )
 
     if not is_blocking:
