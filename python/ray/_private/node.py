@@ -24,8 +24,8 @@ import ray._private.ray_constants as ray_constants
 import ray._private.services
 from ray._common.ray_constants import LOGGING_ROTATE_BACKUP_COUNT, LOGGING_ROTATE_BYTES
 from ray._common.utils import try_to_create_directory
+from ray._private.resource_and_label_spec import ResourceAndLabelSpec
 from ray._private.resource_isolation_config import ResourceIsolationConfig
-from ray._private.resource_spec import ResourceAndLabelSpec
 from ray._private.services import get_address, serialize_config
 from ray._private.utils import (
     is_in_test,
@@ -286,8 +286,6 @@ class Node:
             self._raylet_socket_name = self._prepare_socket_file(
                 self._ray_params.raylet_socket_name, default_prefix="raylet"
             )
-            # Set node labels from RayParams or environment override variables.
-            # self._node_labels = self._get_node_labels()
             if (
                 self._ray_params.env_vars is not None
                 and "RAY_OVERRIDE_NODE_ID_FOR_TESTING" in self._ray_params.env_vars

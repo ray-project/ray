@@ -1656,9 +1656,9 @@ def start_raylet(
     if use_valgrind and use_profiler:
         raise ValueError("Cannot use valgrind and profiler at the same time.")
 
-    assert resource_and_label_spec.resolved()
+    # Get the static resources and labels from the resolved ResourceAndLabelSpec
     static_resources = resource_and_label_spec.to_resource_dict()
-    labels = resource_and_label_spec.get_resolved_labels()
+    labels = resource_and_label_spec.labels
 
     # Limit the number of workers that can be started in parallel by the
     # raylet. However, make sure it is at least 1.
