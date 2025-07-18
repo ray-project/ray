@@ -20,7 +20,7 @@ config = (
     DQNConfig()
     .environment(StatelessCartPole)
     .env_runners(
-        env_to_module_connector=lambda env: MeanStdFilter(),
+        env_to_module_connector=lambda env, spaces, device: MeanStdFilter(),
     )
     .training(
         lr=0.0005,

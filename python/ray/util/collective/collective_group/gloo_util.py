@@ -166,7 +166,7 @@ def get_tensor_n_elements(tensor):
 
 
 def get_gloo_store_path(store_name):
-    from ray._private.utils import get_ray_temp_dir
+    from ray._common.utils import get_ray_temp_dir
 
     store_path = f"{get_ray_temp_dir()}_collective/gloo/{store_name}"
     return store_path

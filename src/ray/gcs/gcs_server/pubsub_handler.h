@@ -49,9 +49,9 @@ class InternalPubSubHandler : public rpc::InternalPubSubHandler {
                                      rpc::GcsUnregisterSubscriberReply *reply,
                                      rpc::SendReplyCallback send_reply_callback) final;
 
-  std::string DebugString() const;
-
-  void RemoveSubscriberFrom(const std::string &sender_id);
+  /// This function is only for external callers. Internally, can just erase from
+  /// sender_to_subscribers_ and everything should be on the Publisher's io_service_.
+  void AsyncRemoveSubscriberFrom(const std::string &sender_id);
 
  private:
   /// Not owning the io service, to allow sharing it with pubsub::Publisher.

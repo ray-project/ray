@@ -2,10 +2,12 @@ load("@rules_python//python:defs.bzl", "py_library", "py_test")
 load("//bazel:python.bzl", "doctest")
 
 doctest(
+    name = "py_doctest[train]",
     size = "large",
     files = glob(
         ["**/*.py"],
         exclude = [
+            "collective/**",  # Only works on v2
             "examples/**",
             "tests/**",
             "horovod/**",  # CI do not have horovod installed
@@ -20,6 +22,7 @@ doctest(
 )
 
 doctest(
+    name = "py_doctest[train-gpu]",
     size = "large",
     files = [
         "_internal/session.py",
@@ -494,6 +497,21 @@ py_test(
 )
 
 py_test(
+    name = "test_iter_torch_batches_gpu",
+    size = "medium",
+    srcs = ["tests/test_iter_torch_batches_gpu.py"],
+    tags = [
+        "exclusive",
+        "gpu_only",
+        "team:ml",
+    ],
+    deps = [
+        ":conftest",
+        ":train_lib",
+    ],
+)
+
+py_test(
     name = "test_gpu_auto_transfer",
     size = "medium",
     srcs = ["tests/test_gpu_auto_transfer.py"],
@@ -847,7 +865,7 @@ py_test(
 
 py_test(
     name = "test_torch_device_manager",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_torch_device_manager.py"],
     tags = [
         "exclusive",

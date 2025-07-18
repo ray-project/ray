@@ -18,10 +18,10 @@ import itertools
 from typing import List
 import string
 import random
+import time
 
-BUCKET = "anyscale-imagenet"
 WRITE_PATH = f"s3://ray-data-write-benchmark/{uuid.uuid4().hex}"
-BUCKET = "ray-benchmark-data-internal"
+BUCKET = "ray-benchmark-data-internal-us-west-2"
 
 # Assumptions: homogenously shaped images, homogenous images
 # Each iamge is 2048 * 2048 * 3 = 12.58 MB -> 11 images / block. 8 blocks per task, so ~88 images per task.
@@ -34,6 +34,10 @@ PATCH_SIZE = 256
 
 # Largest batch that can fit on a T4.
 BATCH_SIZE = 1200
+
+# On a T4 GPU, it takes ~11.3s to perform inference on 1200 images. So, the time per
+# image is 11.3s / 1200 ~= 0.0094s.
+INFERENCE_LATENCY_PER_IMAGE_S = 0.0094
 
 
 def parse_args() -> argparse.Namespace:
@@ -150,10 +154,25 @@ class EmbedPatches:
         self._device = device
 
     def __call__(self, batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
+        inputs = torch.as_tensor(batch.pop("patch"), device=self._device)
         with torch.inference_mode():
-            output = self._model(
-                torch.as_tensor(batch.pop("patch"), device=self._device)
-            )
+            output = self._model(inputs)
+            batch["embedding"] = output.cpu().numpy()
+            return batch
+
+
+class FakeEmbedPatches:
+    def __init__(self, model, device):
+        self._model = ray.get(model)
+        self._model.eval()
+
+    def __call__(self, batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
+        inputs = torch.as_tensor(batch.pop("patch"))
+        with torch.inference_mode():
+            # Simulate inference latency with a sleep
+            time.sleep(INFERENCE_LATENCY_PER_IMAGE_S * len(inputs))
+            # Generate fake embeddings
+            output = torch.rand((len(inputs), 1000), dtype=torch.float)
             batch["embedding"] = output.cpu().numpy()
             return batch
 
@@ -189,10 +208,9 @@ def main(scale_factor: int):
             .flat_map(patch_image)
             .map_batches(ProcessPatches(transform))
             .map_batches(
-                EmbedPatches,
+                FakeEmbedPatches,
                 batch_size=BATCH_SIZE,
                 compute=ActorPoolStrategy(min_size=1, max_size=100),
-                num_gpus=1,
                 fn_constructor_kwargs={"model": model_ref, "device": "cuda"},
             )
             .write_parquet(WRITE_PATH)

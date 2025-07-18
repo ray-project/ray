@@ -8,7 +8,7 @@ import threading
 import time
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 import ray
 from ray.data._internal.execution.backpressure_policy import BackpressurePolicy
@@ -23,14 +23,22 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     MetadataOpTask,
     OpTask,
     Waitable,
+    _ActorPoolInfo,
 )
 from ray.data._internal.execution.operators.base_physical_operator import (
     AllToAllOperator,
+    InternalQueueOperatorMixin,
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.resource_manager import ResourceManager
 from ray.data._internal.progress_bar import ProgressBar
+from ray.data._internal.util import (
+    unify_schemas_with_validation,
+)
 from ray.data.context import DataContext
+
+if TYPE_CHECKING:
+    from ray.data.block import Schema
 
 logger = logging.getLogger(__name__)
 
@@ -192,6 +200,8 @@ class OpState:
         self._finished: bool = False
         self._exception: Optional[Exception] = None
         self._scheduling_status = OpSchedulingStatus()
+        self._schema: Optional["Schema"] = None
+        self._warned_on_schema_divergence: bool = False
 
     def __repr__(self):
         return f"OpState({self.op.name})"
@@ -231,27 +241,47 @@ class OpState:
             if isinstance(self.op, AllToAllOperator):
                 self.op.close_sub_progress_bars()
 
-    def total_input_enqueued(self) -> int:
-        """Return the number of enqueued bundles across all input queues."""
-        return sum(len(q) for q in self.input_queues)
+    def total_enqueued_input_bundles(self) -> int:
+        """Total number of input bundles currently enqueued among:
+        1. Input queue(s) pending dispatching (``OpState.input_queues``)
+        2. Operator's internal queues (like ``MapOperator``s ref-bundler, etc)
+        """
+        internal_queue_size = (
+            self.op.internal_queue_size()
+            if isinstance(self.op, InternalQueueOperatorMixin)
+            else 0
+        )
 
-    def total_output_enqueued(self) -> int:
-        """Return the number of enqueued bundles across all input queues."""
-        return len(self.output_queue)
+        return self._pending_dispatch_input_bundles_count() + internal_queue_size
+
+    def _pending_dispatch_input_bundles_count(self) -> int:
+        """Return the number of input bundles that are pending dispatching to the
+        operator across (external) input queues"""
+        return sum(len(q) for q in self.input_queues)
 
     def add_output(self, ref: RefBundle) -> None:
         """Move a bundle produced by the operator to its outqueue."""
+
+        ref, diverged = dedupe_schemas_with_validation(
+            self._schema, ref, warn=not self._warned_on_schema_divergence
+        )
+        self._schema = ref.schema
+        self._warned_on_schema_divergence |= diverged
+
         self.output_queue.append(ref)
         self.num_completed_tasks += 1
+
         if self.progress_bar:
             assert (
                 ref.num_rows() is not None
             ), "RefBundle must have a valid number of rows"
             self.progress_bar.update(ref.num_rows(), self.op.num_output_rows_total())
-        active, restarting, pending = self.op.actor_info_counts()
-        self.op.metrics.num_alive_actors = active
-        self.op.metrics.num_restarting_actors = restarting
-        self.op.metrics.num_pending_actors = pending
+
+        actor_info = self.op.get_actor_info()
+
+        self.op.metrics.num_alive_actors = actor_info.running
+        self.op.metrics.num_restarting_actors = actor_info.restarting
+        self.op.metrics.num_pending_actors = actor_info.pending
 
     def refresh_progress_bar(self, resource_manager: ResourceManager) -> None:
         """Update the console with the latest operator progress."""
@@ -277,11 +307,10 @@ class OpState:
             desc += f" [backpressured:{','.join(backpressure_types)}]"
 
         # Actors info
-        desc += self.op.actor_info_progress_str()
+        desc += f"; {_actor_info_summary_str(self.op.get_actor_info())}"
 
         # Queued blocks
-        queued = self.total_input_enqueued() + self.op.internal_queue_size()
-        desc += f"; Queued blocks: {queued}"
+        desc += f"; Queued blocks: {self.total_enqueued_input_bundles()}"
         desc += f"; Resources: {resource_manager.get_op_usage_str(self.op)}"
 
         # Any additional operator specific information.
@@ -298,6 +327,7 @@ class OpState:
             if ref is not None:
                 self.op.add_input(ref, input_index=i)
                 return
+
         assert False, "Nothing to dispatch"
 
     def get_output_blocking(self, output_split_idx: Optional[int]) -> RefBundle:
@@ -398,7 +428,7 @@ def build_streaming_topology(
 
 def process_completed_tasks(
     topology: Topology,
-    resource_manager: ResourceManager,
+    backpressure_policies: List[BackpressurePolicy],
     max_errored_blocks: int,
 ) -> int:
     """Process any newly completed tasks. To update operator
@@ -420,14 +450,18 @@ def process_completed_tasks(
             active_tasks[task.get_waitable()] = (state, task)
 
     max_bytes_to_read_per_op: Dict[OpState, int] = {}
-    if resource_manager.op_resource_allocator_enabled():
-        for op, state in topology.items():
-            max_bytes_to_read = (
-                resource_manager.op_resource_allocator.max_task_output_bytes_to_read(op)
-            )
-            op._in_task_output_backpressure = max_bytes_to_read == 0
-            if max_bytes_to_read is not None:
-                max_bytes_to_read_per_op[state] = max_bytes_to_read
+    for op, state in topology.items():
+        max_bytes_to_read = min(
+            (
+                limit
+                for policy in backpressure_policies
+                if (limit := policy.max_task_output_bytes_to_read(op)) is not None
+            ),
+            default=None,
+        )
+        op.notify_in_task_output_backpressure(max_bytes_to_read == 0)
+        if max_bytes_to_read is not None:
+            max_bytes_to_read_per_op[state] = max_bytes_to_read
 
     # Process completed Ray tasks and notify operators.
     num_errored_blocks = 0
@@ -441,7 +475,7 @@ def process_completed_tasks(
 
         # Organize tasks by the operator they belong to, and sort them by task index.
         # So that we'll process them in a deterministic order.
-        # This is because OpResourceAllocator may limit the number of blocks to read
+        # This is because backpressure policies may limit the number of blocks to read
         # per operator. In this case, we want to have fewer tasks finish quickly and
         # yield resources, instead of having all tasks output blocks together.
         ready_tasks_by_op = defaultdict(list)
@@ -537,7 +571,6 @@ def update_operator_states(topology: Topology) -> None:
 def get_eligible_operators(
     topology: Topology,
     backpressure_policies: List[BackpressurePolicy],
-    resource_manager: ResourceManager,
     *,
     ensure_liveness: bool,
 ) -> List[PhysicalOperator]:
@@ -553,23 +586,16 @@ def get_eligible_operators(
 
     """
 
-    # Filter to ops that are eligible for execution.
+    dispatchable_ops: List[PhysicalOperator] = []
+    # Filter to ops that are eligible for execution, ie ones that are
+    #   - Dispatchable
+    #   - Not throttled
     eligible_ops: List[PhysicalOperator] = []
-    for op, state in topology.items():
-        assert resource_manager.op_resource_allocator_enabled(), topology
 
-        # Check whether the operator is under its limits imposed by the
-        # resource manager
-        under_resource_limits = (
-            resource_manager.op_resource_allocator.can_submit_new_task(op)
-        )
-        # Operator is considered being in task-submission back-pressure if
-        # both of the following holds true:
-        #   - It's exceeding its resource limits
-        #   - At least one of the back-pressure policies are violated
-        in_backpressure = not under_resource_limits or not all(
-            p.can_add_input(op) for p in backpressure_policies
-        )
+    for op, state in topology.items():
+        # Operator is considered being in task-submission back-pressure if any
+        # back-pressure policy is violated
+        in_backpressure = any(not p.can_add_input(op) for p in backpressure_policies)
 
         op_runnable = False
 
@@ -580,19 +606,22 @@ def get_eligible_operators(
         if (
             not op.completed()
             and op.should_add_input()
-            and state.total_input_enqueued() > 0
-            and not in_backpressure
+            and state._pending_dispatch_input_bundles_count() > 0
         ):
-            op_runnable = True
-            eligible_ops.append(op)
+            if not in_backpressure:
+                op_runnable = True
+                eligible_ops.append(op)
+            else:
+                dispatchable_ops.append(op)
 
         # Update scheduling status
         state._scheduling_status = OpSchedulingStatus(
             runnable=op_runnable,
-            under_resource_limits=under_resource_limits,
+            under_resource_limits=not in_backpressure,
         )
 
         # Signal whether op in backpressure for stats collections
+        # TODO(hchen): also report which policy triggers backpressure.
         op.notify_in_task_submission_backpressure(in_backpressure)
 
     # To ensure liveness, allow at least 1 operator to schedule tasks regardless of
@@ -602,12 +631,7 @@ def get_eligible_operators(
         and ensure_liveness
         and all(op.num_active_tasks() == 0 for op in topology)
     ):
-        eligible_ops = [
-            op
-            for op, state in topology.items()
-            # Pick only operators that have a non-empty input queue
-            if state.total_input_enqueued() > 0 and not op.completed()
-        ]
+        return dispatchable_ops
 
     return eligible_ops
 
@@ -634,7 +658,6 @@ def select_operator_to_run(
     eligible_ops = get_eligible_operators(
         topology,
         backpressure_policies,
-        resource_manager,
         ensure_liveness=ensure_liveness,
     )
 
@@ -690,3 +713,66 @@ def _rank_operators(
         )
 
     return [_ranker(op) for op in ops]
+
+
+def _actor_info_summary_str(info: _ActorPoolInfo) -> str:
+    total = info.running + info.pending + info.restarting
+    base = f"Actors: {total}"
+
+    if total == info.running:
+        return base
+    else:
+        return f"{base} ({info})"
+
+
+def dedupe_schemas_with_validation(
+    old_schema: Optional["Schema"],
+    bundle: "RefBundle",
+    warn: bool = True,
+    allow_divergent: bool = False,
+) -> Tuple["RefBundle", bool]:
+    """Unify/Dedupe two schemas, warning if warn=True
+
+    Args:
+        old_schema: The old schema to unify. This can be `None`, in which case
+            the new schema will be used as the old schema.
+        bundle: The new `RefBundle` to unify with the old schema.
+        warn: Raise a warning if the schemas diverge.
+        allow_divergent: If `True`, allow the schemas to diverge and return unified schema.
+            If `False`, but keep the old schema.
+
+    Returns:
+        A ref bundle with the unified schema of the two input schemas.
+    """
+
+    # Note, often times the refbundles correspond to only one schema. We can reduce the
+    # memory footprint of multiple schemas by keeping only one copy.
+    diverged = False
+    if not old_schema:
+        return bundle, diverged
+
+    # This check is fast assuming pyarrow schemas
+    if old_schema == bundle.schema:
+        return bundle, diverged
+
+    diverged = True
+    if warn:
+        logger.warning(
+            f"Operator produced a RefBundle with a different schema "
+            f"than the previous one. Previous schema: {old_schema}, "
+            f"new schema: {bundle.schema}. This may lead to unexpected behavior."
+        )
+    if allow_divergent:
+        old_schema = unify_schemas_with_validation([old_schema, bundle.schema])
+
+    return (
+        RefBundle(
+            bundle.blocks,
+            schema=old_schema,
+            owns_blocks=bundle.owns_blocks,
+            output_split_idx=bundle.output_split_idx,
+            _cached_object_meta=bundle._cached_object_meta,
+            _cached_preferred_locations=bundle._cached_preferred_locations,
+        ),
+        diverged,
+    )

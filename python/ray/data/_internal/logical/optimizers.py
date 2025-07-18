@@ -1,5 +1,6 @@
 from typing import List
 
+from .ruleset import Ruleset
 from ray.data._internal.logical.interfaces import (
     LogicalPlan,
     Optimizer,
@@ -20,8 +21,6 @@ from ray.data._internal.logical.rules.zero_copy_map_fusion import (
     EliminateBuildOutputBlocks,
 )
 from ray.util.annotations import DeveloperAPI
-
-from .ruleset import Ruleset
 
 _LOGICAL_RULESET = Ruleset(
     [
@@ -76,9 +75,9 @@ def get_execution_plan(logical_plan: LogicalPlan) -> PhysicalPlan:
     (2) planning: convert logical to physical operators.
     (3) physical optimization: optimize physical operators.
     """
-    from ray.data._internal.planner.planner import Planner
+    from ray.data._internal.planner import create_planner
 
     optimized_logical_plan = LogicalOptimizer().optimize(logical_plan)
     logical_plan._dag = optimized_logical_plan.dag
-    physical_plan = Planner().plan(optimized_logical_plan)
+    physical_plan = create_planner().plan(optimized_logical_plan)
     return PhysicalOptimizer().optimize(physical_plan)

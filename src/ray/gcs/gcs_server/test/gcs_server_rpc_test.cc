@@ -55,7 +55,7 @@ class GcsServerTest : public ::testing::Test {
     }
 
     // Create gcs rpc client
-    client_call_manager_.reset(new rpc::ClientCallManager(io_service_));
+    client_call_manager_.reset(new rpc::ClientCallManager(io_service_, false));
     client_.reset(
         new rpc::GcsRpcClient("0.0.0.0", gcs_server_->GetPort(), *client_call_manager_));
   }

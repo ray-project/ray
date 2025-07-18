@@ -1,21 +1,22 @@
 import asyncio
+import json
 import logging
 import os
-from pathlib import Path
-import time
-from unittest import mock
-
+import sys
 import tempfile
-import json
+import time
+from pathlib import Path
 from typing import List
+from unittest import mock
 
 import pytest
 
 import ray
+from ray._common.test_utils import wait_for_condition
 from ray._private import ray_constants
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
-from ray._private.test_utils import enable_external_redis, wait_for_condition
+from ray._private.test_utils import external_redis_test_enabled
 from ray.exceptions import RuntimeEnvSetupError
 from ray.runtime_env.runtime_env import RuntimeEnv
 
@@ -210,7 +211,7 @@ class HangPlugin(DummyPlugin):
     ],
     indirect=True,
 )
-@pytest.mark.skipif(enable_external_redis(), reason="Failing in redis mode.")
+@pytest.mark.skipif(external_redis_test_enabled(), reason="Failing in redis mode.")
 def test_plugin_timeout(set_runtime_env_plugins, start_cluster):
     @ray.remote(num_cpus=0.1)
     def f():
@@ -770,9 +771,4 @@ class TestGC:
 
 
 if __name__ == "__main__":
-    import sys
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

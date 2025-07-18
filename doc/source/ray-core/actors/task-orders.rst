@@ -80,7 +80,7 @@ task. In this case, the actor can still execute tasks submitted by a different w
             # Simulate delayed result resolution.
             @ray.remote
             def delayed_resolution(value):
-                time.sleep(5)
+                time.sleep(1)
                 return value
 
             # Submit tasks from different workers, with
@@ -129,7 +129,7 @@ even though previously submitted tasks are pending execution.
             # Simulate delayed result resolution.
             @ray.remote
             def delayed_resolution(value):
-                time.sleep(5)
+                time.sleep(1)
                 return value
 
             # Submit tasks from the driver, with

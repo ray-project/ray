@@ -3,8 +3,8 @@ import sys
 import threading
 
 import pytest
-import ray
 
+import ray
 from ray.exceptions import RayTaskError, RayActorError
 
 """This module tests stacktrace of Ray.
@@ -304,7 +304,7 @@ The above exception was the direct cause of the following exception:
 
 Traceback (most recent call last):
   File "FILE", line ZZ, in deserialize_objects
-    obj = self._deserialize_object(data, metadata, object_ref)
+    obj = self._deserialize_object(
   File "FILE", line ZZ, in _deserialize_object
     return RayError.from_bytes(obj)
   File "FILE", line ZZ, in from_bytes
@@ -404,11 +404,4 @@ def test_serialization_error_message(shutdown_only):
 
 
 if __name__ == "__main__":
-    import pytest
-    import os
-    import sys
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

@@ -230,7 +230,11 @@ if __name__ == "__main__":
         .experimental(_torch_grad_scaler_class=Float16GradScaler)
         # Plug in our custom env-to-module ConnectorV2 piece to convert all observations
         # and reward in the episodes (permanently) to float16.
-        .env_runners(env_to_module_connector=lambda env: WriteObsAndRewardsAsFloat16())
+        .env_runners(
+            env_to_module_connector=(
+                lambda env, spaces, device: WriteObsAndRewardsAsFloat16()
+            ),
+        )
         .training(
             # Plug in our custom TorchLearner (using a much larger, stabilizing epsilon
             # on the Adam optimizer).

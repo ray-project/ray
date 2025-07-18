@@ -23,6 +23,7 @@ from packaging import version
 
 import ray
 from ray.rllib.callbacks.callbacks import RLlibCallback
+from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.differentiable_learner_config import (
@@ -80,15 +81,15 @@ from ray.tune.registry import get_trainable_cls
 from ray.tune.result import TRIAL_INFO
 from ray.tune.tune import _Config
 from ray.util import log_once
-
-Space = gym.Space
+from ray.util.placement_group import PlacementGroup
 
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm import Algorithm
-    from ray.rllib.connectors.connector_v2 import ConnectorV2
     from ray.rllib.core.learner import Learner
+    from ray.rllib.core.learner.differentiable_learner import DifferentiableLearner
     from ray.rllib.core.learner.learner_group import LearnerGroup
+    from ray.rllib.core.learner.torch.torch_meta_learner import TorchMetaLearner
     from ray.rllib.core.rl_module.rl_module import RLModule
     from ray.rllib.utils.typing import EpisodeType
 
@@ -323,7 +324,7 @@ class AlgorithmConfig(_Config):
         self.num_env_runners = 0
         self.create_local_env_runner = True
         self.num_envs_per_env_runner = 1
-        # TODO (sven): Once new ormsgpack system in place, reaplce the string
+        # TODO (sven): Once new ormsgpack system in place, replace the string
         #  with proper `gym.envs.registration.VectorizeMode.SYNC`.
         self.gym_env_vectorize_mode = "SYNC"
         self.num_cpus_per_env_runner = 1
@@ -358,6 +359,7 @@ class AlgorithmConfig(_Config):
         self.update_worker_filter_stats = True
         self.use_worker_filter_stats = True
         self.sampler_perf_stats_ema_coef = None
+        self._is_online = True
 
         # `self.learners()`
         self.num_learners = 0
@@ -531,6 +533,8 @@ class AlgorithmConfig(_Config):
         # Offline evaluation.
         self.offline_evaluation_interval = None
         self.num_offline_eval_runners = 0
+        self.offline_evaluation_type: str = None
+        self.offline_eval_runner_class = None
         # TODO (simon): Only `_offline_evaluate_with_fixed_duration` works. Also,
         # decide, if we use `offline_evaluation_duration` or
         # `dataset_num_iters_per_offline_eval_runner`. Should the user decide here?
@@ -999,7 +1003,12 @@ class AlgorithmConfig(_Config):
             logger_creator=self.logger_creator,
         )
 
-    def build_env_to_module_connector(self, env=None, spaces=None, device=None):
+    def build_env_to_module_connector(
+        self,
+        env=None,
+        spaces=None,
+        device=None,
+    ) -> ConnectorV2:
         from ray.rllib.connectors.env_to_module import (
             AddObservationsFromEpisodesToBatch,
             AddStatesFromEpisodesToBatch,
@@ -1014,9 +1023,24 @@ class AlgorithmConfig(_Config):
         # Create an env-to-module connector pipeline (including RLlib's default
         # env->module connector piece) and return it.
         if self._env_to_module_connector is not None:
-            val_ = self._env_to_module_connector(env)
-
-            from ray.rllib.connectors.connector_v2 import ConnectorV2
+            try:
+                val_ = self._env_to_module_connector(env, spaces, device)
+            # Try deprecated signature, if necessary.
+            except TypeError as e:
+                if "positional argument" in e.args[0]:
+                    if log_once("env-to-module-wrong-signature"):
+                        logger.error(
+                            "Your `config.env_to_module_connector` function seems to "
+                            "have a wrong or outdated signature! It should be: "
+                            "`def myfunc(env, spaces, device): ...`, where any of "
+                            "these arguments are optional and may be None.\n"
+                            "`env` is the (vectorized) gym env.\n"
+                            "`spaces` is a dict of structure `{'__env__': (["
+                            "vectorized env obs. space, vectorized env act. space]),"
+                            "'__env_single__': ([env obs. space, env act. space])}`.\n"
+                            "`device` is a (torch) device.\n"
+                        )
+                    val_ = self._env_to_module_connector(env)
 
             # ConnectorV2 (piece or pipeline).
             if isinstance(val_, ConnectorV2):
@@ -1034,9 +1058,10 @@ class AlgorithmConfig(_Config):
 
         if env is not None:
             obs_space = getattr(env, "single_observation_space", env.observation_space)
-        else:
-            assert spaces is not None
+        elif spaces is not None and INPUT_ENV_SINGLE_SPACES in spaces:
             obs_space = spaces[INPUT_ENV_SINGLE_SPACES][0]
+        else:
+            obs_space = self.observation_space
         if obs_space is None and self.is_multi_agent:
             obs_space = gym.spaces.Dict(
                 {
@@ -1046,9 +1071,10 @@ class AlgorithmConfig(_Config):
             )
         if env is not None:
             act_space = getattr(env, "single_action_space", env.action_space)
-        else:
-            assert spaces is not None
+        elif spaces is not None and INPUT_ENV_SINGLE_SPACES in spaces:
             act_space = spaces[INPUT_ENV_SINGLE_SPACES][1]
+        else:
+            act_space = self.action_space
         if act_space is None and self.is_multi_agent:
             act_space = gym.spaces.Dict(
                 {
@@ -1088,7 +1114,7 @@ class AlgorithmConfig(_Config):
 
         return pipeline
 
-    def build_module_to_env_connector(self, env=None, spaces=None):
+    def build_module_to_env_connector(self, env=None, spaces=None) -> ConnectorV2:
         from ray.rllib.connectors.module_to_env import (
             GetActions,
             ListifyDataForVectorEnv,
@@ -1104,9 +1130,23 @@ class AlgorithmConfig(_Config):
         # Create a module-to-env connector pipeline (including RLlib's default
         # module->env connector piece) and return it.
         if self._module_to_env_connector is not None:
-            val_ = self._module_to_env_connector(env)
-
-            from ray.rllib.connectors.connector_v2 import ConnectorV2
+            try:
+                val_ = self._module_to_env_connector(env, spaces)
+            # Try deprecated signature, if necessary.
+            except TypeError as e:
+                if "positional argument" in e.args[0]:
+                    if log_once("module-to-env-wrong-signature"):
+                        logger.error(
+                            "Your `config.module_to_env_connector` function seems to "
+                            "have a wrong or outdated signature! It should be: "
+                            "`def myfunc(env, spaces): ...`, where any of "
+                            "these arguments are optional and may be None.\n"
+                            "`env` is the (vectorized) gym env.\n"
+                            "`spaces` is a dict of structure `{'__env__': (["
+                            "vectorized env obs. space, vectorized env act. space]),"
+                            "'__env_single__': ([env obs. space, env act. space])}`.\n"
+                        )
+                    val_ = self._module_to_env_connector(env)
 
             # ConnectorV2 (piece or pipeline).
             if isinstance(val_, ConnectorV2):
@@ -1124,9 +1164,10 @@ class AlgorithmConfig(_Config):
 
         if env is not None:
             obs_space = getattr(env, "single_observation_space", env.observation_space)
-        else:
-            assert spaces is not None
+        elif spaces is not None and INPUT_ENV_SINGLE_SPACES in spaces:
             obs_space = spaces[INPUT_ENV_SINGLE_SPACES][0]
+        else:
+            obs_space = self.observation_space
         if obs_space is None and self.is_multi_agent:
             obs_space = gym.spaces.Dict(
                 {
@@ -1136,9 +1177,10 @@ class AlgorithmConfig(_Config):
             )
         if env is not None:
             act_space = getattr(env, "single_action_space", env.action_space)
-        else:
-            assert spaces is not None
+        elif spaces is not None and INPUT_ENV_SINGLE_SPACES in spaces:
             act_space = spaces[INPUT_ENV_SINGLE_SPACES][1]
+        else:
+            act_space = self.action_space
         if act_space is None and self.is_multi_agent:
             act_space = gym.spaces.Dict(
                 {
@@ -1192,7 +1234,7 @@ class AlgorithmConfig(_Config):
         input_observation_space,
         input_action_space,
         device=None,
-    ):
+    ) -> ConnectorV2:
         from ray.rllib.connectors.learner import (
             AddColumnsFromEpisodesToTrainBatch,
             AddObservationsFromEpisodesToBatch,
@@ -1213,8 +1255,6 @@ class AlgorithmConfig(_Config):
                 input_action_space,
                 # device,  # TODO (sven): Also pass device into custom builder.
             )
-
-            from ray.rllib.connectors.connector_v2 import ConnectorV2
 
             # ConnectorV2 (piece or pipeline).
             if isinstance(val_, ConnectorV2):
@@ -1270,6 +1310,7 @@ class AlgorithmConfig(_Config):
         env: Optional[EnvType] = None,
         spaces: Optional[Dict[ModuleID, Tuple[gym.Space, gym.Space]]] = None,
         rl_module_spec: Optional[RLModuleSpecType] = None,
+        placement_group: Optional["PlacementGroup"] = None,
     ) -> "LearnerGroup":
         """Builds and returns a new LearnerGroup object based on settings in `self`.
 
@@ -1301,7 +1342,11 @@ class AlgorithmConfig(_Config):
             rl_module_spec = self.get_multi_rl_module_spec(env=env, spaces=spaces)
 
         # Construct the actual LearnerGroup.
-        learner_group = LearnerGroup(config=self.copy(), module_spec=rl_module_spec)
+        learner_group = LearnerGroup(
+            config=self.copy(),
+            module_spec=rl_module_spec,
+            placement_group=placement_group,
+        )
 
         return learner_group
 
@@ -1697,8 +1742,8 @@ class AlgorithmConfig(_Config):
         env: Optional[Union[str, EnvType]] = NotProvided,
         *,
         env_config: Optional[EnvConfigDict] = NotProvided,
-        observation_space: Optional[gym.spaces.Space] = NotProvided,
-        action_space: Optional[gym.spaces.Space] = NotProvided,
+        observation_space: Optional[gym.Space] = NotProvided,
+        action_space: Optional[gym.Space] = NotProvided,
         render_env: Optional[bool] = NotProvided,
         clip_rewards: Optional[Union[bool, float]] = NotProvided,
         normalize_actions: Optional[bool] = NotProvided,
@@ -2666,11 +2711,14 @@ class AlgorithmConfig(_Config):
         # Offline evaluation.
         offline_evaluation_interval: Optional[int] = NotProvided,
         num_offline_eval_runners: Optional[int] = NotProvided,
+        offline_evaluation_type: Optional[Callable] = NotProvided,
+        offline_eval_runner_class: Optional[Callable] = NotProvided,
         offline_loss_for_module_fn: Optional[Callable] = NotProvided,
         offline_eval_batch_size_per_runner: Optional[int] = NotProvided,
         dataset_num_iters_per_offline_eval_runner: Optional[int] = NotProvided,
         offline_eval_rl_module_inference_only: Optional[bool] = NotProvided,
         num_cpus_per_offline_eval_runner: Optional[int] = NotProvided,
+        num_gpus_per_offline_eval_runner: Optional[int] = NotProvided,
         custom_resources_per_offline_eval_runner: Optional[
             Dict[str, Any]
         ] = NotProvided,
@@ -2789,6 +2837,13 @@ class AlgorithmConfig(_Config):
                 for parallel evaluation. Setting this to 0 forces sampling to be done in the
                 local OfflineEvaluationRunner (main process or the Algorithm's actor when
                 using Tune).
+            offline_evaluation_type: Type of offline evaluation to run. Either `"eval_loss"`
+                for evaluating the validation loss of the policy, `"is"` for importance
+                sampling, or `"pdis"` for per-decision importance sampling. If you want to
+                implement your own offline evaluation method write an `OfflineEvaluationRunner`
+                and use the `AlgorithmConfig.offline_eval_runner_class`.
+            offline_eval_runner_class: An `OfflineEvaluationRunner` class that implements
+                custom offline evaluation logic.
             offline_loss_for_module_fn: A callable to compute the loss per `RLModule` in
                 offline evaluation. If not provided the training loss function (
                 `Learner.compute_loss_for_module`) is used. The signature must be (
@@ -2813,6 +2868,10 @@ class AlgorithmConfig(_Config):
                 their `learner_only` flag set to True.
             num_cpus_per_offline_eval_runner: Number of CPUs to allocate per
                 OfflineEvaluationRunner.
+            num_gpus_per_offline_eval_runner: Number of GPUs to allocate per
+                OfflineEvaluationRunner. This can be fractional. This is usually needed only if
+                your (custom) loss function itself requires a GPU (i.e., it contains GPU-
+                intensive computations), or model inference is unusually expensive.
             custom_resources_per_eval_runner: Any custom Ray resources to allocate per
                 OfflineEvaluationRunner.
             offline_evaluation_timeout_s: The timeout in seconds for calling `run()` on remote
@@ -2931,6 +2990,10 @@ class AlgorithmConfig(_Config):
             self.offline_evaluation_interval = offline_evaluation_interval
         if num_offline_eval_runners is not NotProvided:
             self.num_offline_eval_runners = num_offline_eval_runners
+        if offline_evaluation_type is not NotProvided:
+            self.offline_evaluation_type = offline_evaluation_type
+        if offline_eval_runner_class is not NotProvided:
+            self.offline_eval_runner_cls = offline_eval_runner_class
         if offline_loss_for_module_fn is not NotProvided:
             self.offline_loss_for_module_fn = offline_loss_for_module_fn
         if offline_eval_batch_size_per_runner is not NotProvided:
@@ -2945,6 +3008,8 @@ class AlgorithmConfig(_Config):
             )
         if num_cpus_per_offline_eval_runner is not NotProvided:
             self.num_cpus_per_offline_eval_runner = num_cpus_per_offline_eval_runner
+        if num_gpus_per_offline_eval_runner is not NotProvided:
+            self.num_gpus_per_offline_eval_runner = num_gpus_per_offline_eval_runner
         if custom_resources_per_offline_eval_runner is not NotProvided:
             self.custom_resources_per_offline_eval_runner = (
                 custom_resources_per_offline_eval_runner
@@ -3170,7 +3235,7 @@ class AlgorithmConfig(_Config):
                 purposes: (a) to store intermediate data in memory, and (b) to ensure
                 that RLlib samples exactly `train_batch_size_per_learner` experiences
                 per batch. The default is RLlib's `EpisodeReplayBuffer`.
-            prelearner_buffer_kwargs: Optional keyword arguments for intializing the
+            prelearner_buffer_kwargs: Optional keyword arguments for initializing the
                 `EpisodeReplayBuffer`. In most cases this value is simply the `capacity`
                 for the default buffer that RLlib uses (`EpisodeReplayBuffer`), but it
                 may differ if the `prelearner_buffer_class` uses a custom buffer.
@@ -4303,10 +4368,10 @@ class AlgorithmConfig(_Config):
     def get_rl_module_spec(
         self,
         env: Optional[EnvType] = None,
-        spaces: Optional[Dict[str, gym.Space]] = None,
+        spaces: Optional[Dict[str, Tuple[gym.Space, gym.Space]]] = None,
         inference_only: Optional[bool] = None,
     ) -> RLModuleSpec:
-        """Returns the RLModuleSpec based on the given env/spaces.
+        """Returns the RLModuleSpec based on the given env/spaces and this config.
 
         Args:
             env: An optional environment instance, from which to infer the observation-
@@ -4317,10 +4382,10 @@ class AlgorithmConfig(_Config):
             spaces: Optional dict mapping ModuleIDs to 2-tuples of observation- and
                 action space that should be used for the respective RLModule.
                 These spaces are usually provided by an already instantiated remote
-                EnvRunner (call `EnvRunner.get_spaces()`). If not provided, tries
-                to infer from `env`, otherwise from `self.observation_space` and
-                `self.action_space`. Raises an error, if no information on spaces can be
-                inferred.
+                EnvRunner (call `EnvRunner.get_spaces()` to receive this dict). If not
+                provided, RLlib tries to infer this from `env`, if provided, otherwise
+                from `self.observation_space` and `self.action_space`. Raises an error,
+                if no information on spaces can be inferred.
             inference_only: If `True`, the returned module spec is used in an
                 inference-only setting (sampling) and the RLModule can thus be built in
                 its light version (if available). For example, the `inference_only`
@@ -4356,13 +4421,25 @@ class AlgorithmConfig(_Config):
                 )
             rl_module_spec = rl_module_spec[DEFAULT_MODULE_ID]
 
-        if spaces is not None:
-            rl_module_spec.observation_space = spaces[DEFAULT_MODULE_ID][0]
-            rl_module_spec.action_space = spaces[DEFAULT_MODULE_ID][1]
-        elif env is not None:
-            if isinstance(env, gym.vector.VectorEnv):
-                rl_module_spec.observation_space = env.single_observation_space
-            rl_module_spec.action_space = env.single_action_space
+        if rl_module_spec.observation_space is None:
+            if spaces is not None:
+                rl_module_spec.observation_space = spaces[DEFAULT_MODULE_ID][0]
+            elif env is not None and isinstance(env, gym.Env):
+                rl_module_spec.observation_space = getattr(
+                    env, "single_observation_space", env.observation_space
+                )
+            else:
+                rl_module_spec.observation_space = self.observation_space
+
+        if rl_module_spec.action_space is None:
+            if spaces is not None:
+                rl_module_spec.action_space = spaces[DEFAULT_MODULE_ID][1]
+            elif env is not None and isinstance(env, gym.Env):
+                rl_module_spec.action_space = getattr(
+                    env, "single_action_space", env.action_space
+                )
+            else:
+                rl_module_spec.action_space = self.action_space
 
         # If module_config_dict is not defined, set to our generic one.
         if rl_module_spec.model_config is None:
@@ -4377,7 +4454,7 @@ class AlgorithmConfig(_Config):
         self,
         *,
         env: Optional[EnvType] = None,
-        spaces: Optional[Dict[PolicyID, Tuple[Space, Space]]] = None,
+        spaces: Optional[Dict[PolicyID, Tuple[gym.Space, gym.Space]]] = None,
         inference_only: bool = False,
         # @HybridAPIStack
         policy_dict: Optional[Dict[str, PolicySpec]] = None,
@@ -4464,7 +4541,7 @@ class AlgorithmConfig(_Config):
 
                 # The individual (single-agent) module specs have not been configured
                 # via this AlgorithmConfig object -> Use provided single-agent spec or
-                # the the default spec (which is also a RLModuleSpec in this
+                # the default spec (which is also a RLModuleSpec in this
                 # case).
                 else:
                     single_agent_spec = (
@@ -4546,10 +4623,6 @@ class AlgorithmConfig(_Config):
                 multi_rl_module_spec.remove_modules(module_id)
                 continue
 
-            policy_spec = policy_dict.get(module_id)
-            if policy_spec is None:
-                policy_spec = policy_dict[DEFAULT_MODULE_ID]
-
             if module_spec.module_class is None:
                 if isinstance(default_rl_module_spec, RLModuleSpec):
                     module_spec.module_class = default_rl_module_spec.module_class
@@ -4593,10 +4666,18 @@ class AlgorithmConfig(_Config):
                     )
             # TODO (sven): Find a good way to pack module specific parameters from
             # the algorithms into the `model_config_dict`.
-            if module_spec.observation_space is None:
-                module_spec.observation_space = policy_spec.observation_space
-            if module_spec.action_space is None:
-                module_spec.action_space = policy_spec.action_space
+            if (
+                module_spec.observation_space is None
+                or module_spec.action_space is None
+            ):
+                policy_spec = policy_dict.get(
+                    module_id, policy_dict.get(DEFAULT_MODULE_ID)
+                )
+                if policy_spec is not None:
+                    if module_spec.observation_space is None:
+                        module_spec.observation_space = policy_spec.observation_space
+                    if module_spec.action_space is None:
+                        module_spec.action_space = policy_spec.action_space
             # In case the `RLModuleSpec` does not have a model config dict, we use the
             # the one defined by the auto keys and the `model_config_dict` arguments in
             # `self.rl_module()`.
@@ -5157,9 +5238,13 @@ class AlgorithmConfig(_Config):
         # action and observation spaces. Note, we require here the spaces,
         # i.e. a user cannot provide an environment instead because we do
         # not want to create the environment to receive spaces.
-        if self.is_offline and (
-            not (self.evaluation_num_env_runners > 0 or self.evaluation_interval)
-            and (self.action_space is None or self.observation_space is None)
+        if (
+            self.is_offline
+            and not self.is_online
+            and (
+                not (self.evaluation_num_env_runners > 0 or self.evaluation_interval)
+                and (self.action_space is None or self.observation_space is None)
+            )
         ):
             self._value_error(
                 "If no evaluation should be run, `action_space` and "
@@ -5227,6 +5312,41 @@ class AlgorithmConfig(_Config):
                 "recorded (i.e. `batch_mode=='complete_episodes'`). Otherwise "
                 "recorded episodes cannot be read in for training."
             )
+
+        # Offline evaluation.
+        from ray.rllib.offline.offline_policy_evaluation_runner import (
+            OfflinePolicyEvaluationTypes,
+        )
+
+        offline_eval_types = list(OfflinePolicyEvaluationTypes)
+        if (
+            self.offline_evaluation_type
+            and self.offline_evaluation_type != "eval_loss"
+            and self.offline_evaluation_type not in OfflinePolicyEvaluationTypes
+        ):
+            self._value_error(
+                f"Unknown offline evaluation type: {self.offline_evaluation_type}."
+                "Available types of offline evaluation are either `'eval_loss' to evaluate "
+                f"the training loss on a validation dataset or {offline_eval_types}."
+            )
+
+        from ray.rllib.offline.offline_evaluation_runner import OfflineEvaluationRunner
+
+        if self.prelearner_class and not issubclass(
+            self.prelearner_class, OfflineEvaluationRunner
+        ):
+            self._value_error(
+                "Unknown `offline_eval_runner_class`. OfflineEvaluationRunner class needs to inherit "
+                "from `OfflineEvaluationRunner` class."
+            )
+
+    @property
+    def is_online(self) -> bool:
+        """Defines if this config is for online RL.
+
+        Note, a config can be for on- and offline training at the same time.
+        """
+        return self._is_online
 
     @property
     def is_offline(self) -> bool:
@@ -5426,7 +5546,7 @@ class AlgorithmConfig(_Config):
         *,
         policies: Optional[MultiAgentPolicyConfigDict] = None,
         env: Optional[EnvType] = None,
-        spaces: Optional[Dict[PolicyID, Tuple[Space, Space]]] = None,
+        spaces: Optional[Dict[PolicyID, Tuple[gym.Space, gym.Space]]] = None,
         default_policy_class: Optional[Type[Policy]] = None,
     ) -> Tuple[MultiAgentPolicyConfigDict, Callable[[PolicyID, SampleBatchType], bool]]:
         r"""Compiles complete multi-agent config (dict) from the information in `self`.
@@ -6045,6 +6165,7 @@ class DifferentiableAlgorithmConfig(AlgorithmConfig):
         self,
         *,
         differentiable_learner_configs: List[DifferentiableLearnerConfig] = NotProvided,
+        **kwargs,
     ) -> "DifferentiableAlgorithmConfig":
         """Sets the configurations for differentiable learners.
 
@@ -6053,6 +6174,8 @@ class DifferentiableAlgorithmConfig(AlgorithmConfig):
                 defining the `DifferentiableLearner` classes used for the nested updates in
                 `Algorithm`'s learner.
         """
+        super().learners(**kwargs)
+
         if differentiable_learner_configs is not NotProvided:
             self.differentiable_learner_configs = differentiable_learner_configs
 
@@ -6092,8 +6215,8 @@ class DifferentiableAlgorithmConfig(AlgorithmConfig):
                 "one instance is not a `DifferentiableLearnerConfig`."
             )
 
-    def get_default_learner_class(self):
-        """Returns the Learner class to use for this algorithm.
+    def get_default_learner_class(self) -> Union[Type["TorchMetaLearner"], str]:
+        """Returns the `MetaLearner` class to use for this algorithm.
 
         Override this method in the sub-class to return the `MetaLearner`.
 
@@ -6101,9 +6224,31 @@ class DifferentiableAlgorithmConfig(AlgorithmConfig):
             The `MetaLearner` class to use for this algorithm either as a class
             type or as a string. (e.g. "ray.rllib.core.learner.torch.torch_meta_learner.TorchMetaLearner")
         """
-        from ray.rllib.core.learner.torch.torch_meta_learner import TorchMetaLearner
+        return NotImplemented
 
-        return TorchMetaLearner
+    def get_differentiable_learner_classes(
+        self,
+    ) -> List[Union[Type["DifferentiableLearner"], str]]:
+        """Returns the `DifferentiableLearner` classes to use for this algorithm.
+
+        Override this method in the sub-class to return the `DifferentiableLearner`.
+
+        Returns:
+            The `DifferentiableLearner` class to use for this algorithm either as a class
+            type or as a string. (e.g.
+            "ray.rllib.core.learner.torch.torch_meta_learner.TorchDifferentiableLearner").
+        """
+        return NotImplemented
+
+    def get_differentiable_learner_configs(self) -> List[DifferentiableLearnerConfig]:
+        """Returns the `DifferentiableLearnerConfigs` for all `DifferentiableLearner`s.
+
+        Override this method in the sub-class to return the `DifferentiableLearnerConfig`s.
+
+        Returns:
+            The `DifferentiableLearnerConfig` instances to use for this algorithm.
+        """
+        return self.differentiable_learner_configs
 
 
 class TorchCompileWhatToCompile(str, Enum):

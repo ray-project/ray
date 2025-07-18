@@ -373,7 +373,6 @@ class ParquetDatasource(Datasource):
 
             meta = self._meta_provider(
                 paths,
-                self._inferred_schema,
                 num_fragments=len(fragments),
                 prefetched_metadata=metadata,
             )
@@ -404,6 +403,7 @@ class ParquetDatasource(Datasource):
                 self._include_paths,
                 self._partitioning,
             )
+
             read_tasks.append(
                 ReadTask(
                     lambda f=fragments: read_fragments(
@@ -418,6 +418,7 @@ class ParquetDatasource(Datasource):
                         partitioning,
                     ),
                     meta,
+                    schema=self._inferred_schema,
                 )
             )
 
@@ -726,7 +727,10 @@ def _add_partition_fields_to_schema(
             field_type = pa.from_numpy_dtype(partitioning.field_types[field_name])
         else:
             field_type = pa.string()
-        schema = schema.append(pa.field(field_name, field_type))
+        if field_name not in schema.names:
+            # Without this check, we would add the same partition field multiple times,
+            # which silently fails when asking for `pa.field()`.
+            schema = schema.append(pa.field(field_name, field_type))
 
     return schema
 

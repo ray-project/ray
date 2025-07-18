@@ -88,7 +88,6 @@ class RandomBytesDatasource(Datasource):
                     size_bytes=self.num_batches_per_task
                     * self.num_rows_per_batch
                     * self.row_size,
-                    schema=None,
                     input_files=None,
                     exec_stats=None,
                 ),

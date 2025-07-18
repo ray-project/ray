@@ -1,9 +1,8 @@
 import json
 from typing import Dict, Optional
-from urllib.parse import urlencode, unquote, urlparse, parse_qsl, urlunparse
+from urllib.parse import parse_qsl, unquote, urlencode, urlparse, urlunparse
 
-from packaging.version import Version
-from packaging.version import parse as parse_version
+from packaging.version import Version, parse as parse_version
 
 _PYARROW_INSTALLED: Optional[bool] = None
 _PYARROW_VERSION: Optional[Version] = None

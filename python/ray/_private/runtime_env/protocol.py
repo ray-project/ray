@@ -1,4 +1,6 @@
 import enum
+import os
+
 from ray._private.runtime_env.default_impl import get_protocols_provider
 
 
@@ -26,20 +28,116 @@ class ProtocolsProvider:
             "s3",
             # Remote google storage path, assumes everything packed in one zip file.
             "gs",
+            # Remote azure blob storage path, assumes everything packed in one zip file.
+            "azure",
             # File storage path, assumes everything packed in one zip file.
             "file",
         }
 
     @classmethod
     def get_remote_protocols(cls):
-        return {"https", "s3", "gs", "file"}
+        return {"https", "s3", "gs", "azure", "file"}
+
+    @classmethod
+    def _handle_s3_protocol(cls):
+        """Set up S3 protocol handling.
+
+        Returns:
+            tuple: (open_file function, transport_params)
+
+        Raises:
+            ImportError: If required dependencies are not installed.
+        """
+        try:
+            import boto3
+            from smart_open import open as open_file
+        except ImportError:
+            raise ImportError(
+                "You must `pip install smart_open[s3]` "
+                "to fetch URIs in s3 bucket. " + cls._MISSING_DEPENDENCIES_WARNING
+            )
+
+        transport_params = {"client": boto3.client("s3")}
+        return open_file, transport_params
+
+    @classmethod
+    def _handle_gs_protocol(cls):
+        """Set up Google Cloud Storage protocol handling.
+
+        Returns:
+            tuple: (open_file function, transport_params)
+
+        Raises:
+            ImportError: If required dependencies are not installed.
+        """
+        try:
+            from google.cloud import storage  # noqa: F401
+            from smart_open import open as open_file
+        except ImportError:
+            raise ImportError(
+                "You must `pip install smart_open[gcs]` "
+                "to fetch URIs in Google Cloud Storage bucket."
+                + cls._MISSING_DEPENDENCIES_WARNING
+            )
+
+        return open_file, None
+
+    @classmethod
+    def _handle_azure_protocol(cls):
+        """Set up Azure blob storage protocol handling.
+
+        Returns:
+            tuple: (open_file function, transport_params)
+
+        Raises:
+            ImportError: If required dependencies are not installed.
+            ValueError: If required environment variables are not set.
+        """
+        try:
+            from azure.identity import DefaultAzureCredential
+            from azure.storage.blob import BlobServiceClient  # noqa: F401
+            from smart_open import open as open_file
+        except ImportError:
+            raise ImportError(
+                "You must `pip install azure-storage-blob azure-identity smart_open[azure]` "
+                "to fetch URIs in Azure Blob Storage. "
+                + cls._MISSING_DEPENDENCIES_WARNING
+            )
+
+        # Define authentication variable
+        azure_storage_account_name = os.getenv("AZURE_STORAGE_ACCOUNT")
+
+        if not azure_storage_account_name:
+            raise ValueError(
+                "Azure Blob Storage authentication requires "
+                "AZURE_STORAGE_ACCOUNT environment variable to be set."
+            )
+
+        account_url = f"https://{azure_storage_account_name}.blob.core.windows.net/"
+        transport_params = {
+            "client": BlobServiceClient(
+                account_url=account_url, credential=DefaultAzureCredential()
+            )
+        }
+
+        return open_file, transport_params
 
     @classmethod
     def download_remote_uri(cls, protocol: str, source_uri: str, dest_file: str):
-        """Download file from remote URI to dest file"""
+        """Download file from remote URI to destination file.
+
+        Args:
+            protocol: The protocol to use for downloading (e.g., 's3', 'https').
+            source_uri: The source URI to download from.
+            dest_file: The destination file path to save to.
+
+        Raises:
+            ImportError: If required dependencies for the protocol are not installed.
+        """
         assert protocol in cls.get_remote_protocols()
 
         tp = None
+        open_file = None
 
         if protocol == "file":
             source_uri = source_uri[len("file://") :]
@@ -48,25 +146,11 @@ class ProtocolsProvider:
                 return open(uri, mode)
 
         elif protocol == "s3":
-            try:
-                import boto3
-                from smart_open import open as open_file
-            except ImportError:
-                raise ImportError(
-                    "You must `pip install smart_open[s3]` "
-                    "to fetch URIs in s3 bucket. " + cls._MISSING_DEPENDENCIES_WARNING
-                )
-            tp = {"client": boto3.client("s3")}
+            open_file, tp = cls._handle_s3_protocol()
         elif protocol == "gs":
-            try:
-                from google.cloud import storage  # noqa: F401
-                from smart_open import open as open_file
-            except ImportError:
-                raise ImportError(
-                    "You must `pip install smart_open[gcs]` "
-                    "to fetch URIs in Google Cloud Storage bucket."
-                    + cls._MISSING_DEPENDENCIES_WARNING
-                )
+            open_file, tp = cls._handle_gs_protocol()
+        elif protocol == "azure":
+            open_file, tp = cls._handle_azure_protocol()
         else:
             try:
                 from smart_open import open as open_file

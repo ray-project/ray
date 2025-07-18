@@ -66,7 +66,6 @@ class HudiDatasource(Datasource):
 
             metadata = BlockMetadata(
                 num_rows=num_rows,
-                schema=schema,
                 input_files=input_files,
                 size_bytes=size_bytes,
                 exec_stats=None,
@@ -77,6 +76,7 @@ class HudiDatasource(Datasource):
                     self._table_uri, paths, reader_options
                 ),
                 metadata=metadata,
+                schema=schema,
             )
             read_tasks.append(read_task)
 

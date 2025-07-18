@@ -1,16 +1,14 @@
 import os
 import subprocess
 import sys
-
-import pytest
 from pathlib import Path
 
-import ray
+import pytest
 
+import ray
 import ray._private.services as services
 import ray._private.ray_constants as ray_constants
-
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import wait_for_condition
 
 
 @pytest.fixture
@@ -133,12 +131,7 @@ def test_memory_profile_dashboard_and_agent(monkeypatch, shutdown_only):
 
 
 if __name__ == "__main__":
-    import pytest
-
     # Make subprocess happy in bazel.
     os.environ["LC_ALL"] = "en_US.UTF-8"
     os.environ["LANG"] = "en_US.UTF-8"
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

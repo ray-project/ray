@@ -97,7 +97,7 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
                        int min_worker_port,
                        int max_worker_port,
                        const std::vector<int> &worker_ports,
-                       std::shared_ptr<gcs::GcsClient> gcs_client,
+                       gcs::GcsClient &gcs_client,
                        const WorkerCommandMap &worker_commands,
                        std::string native_library_path,
                        std::function<void()> starting_worker_timeout_callback,
@@ -115,7 +115,7 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
               // Overwrite the maximum concurrency.
               RayConfig::instance().worker_maximum_startup_concurrency()
               : maximum_startup_concurrency),
-      gcs_client_(std::move(gcs_client)),
+      gcs_client_(gcs_client),
       native_library_path_(std::move(native_library_path)),
       starting_worker_timeout_callback_(std::move(starting_worker_timeout_callback)),
       ray_debugger_external(ray_debugger_external),
@@ -1629,7 +1629,7 @@ inline bool WorkerPool::IsIOWorkerType(const rpc::WorkerType &worker_type) const
          worker_type == rpc::WorkerType::RESTORE_WORKER;
 }
 
-const std::vector<std::shared_ptr<WorkerInterface>> WorkerPool::GetAllRegisteredWorkers(
+std::vector<std::shared_ptr<WorkerInterface>> WorkerPool::GetAllRegisteredWorkers(
     bool filter_dead_workers, bool filter_io_workers) const {
   std::vector<std::shared_ptr<WorkerInterface>> workers;
 
@@ -1653,7 +1653,21 @@ const std::vector<std::shared_ptr<WorkerInterface>> WorkerPool::GetAllRegistered
   return workers;
 }
 
-const std::vector<std::shared_ptr<WorkerInterface>> WorkerPool::GetAllRegisteredDrivers(
+bool WorkerPool::IsWorkerAvailableForScheduling() const {
+  for (const auto &entry : states_by_lang_) {
+    for (const auto &worker : entry.second.registered_workers) {
+      if (!worker->IsRegistered()) {
+        continue;
+      }
+      if (worker->IsAvailableForScheduling()) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+std::vector<std::shared_ptr<WorkerInterface>> WorkerPool::GetAllRegisteredDrivers(
     bool filter_dead_drivers) const {
   std::vector<std::shared_ptr<WorkerInterface>> drivers;
 
@@ -1705,7 +1719,7 @@ void WorkerPool::WarnAboutSize() {
 
       auto error_data_ptr = gcs::CreateErrorTableData(
           "worker_pool_large", warning_message_str, get_time_());
-      RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
+      RAY_CHECK_OK(gcs_client_.Errors().AsyncReportJobError(error_data_ptr, nullptr));
     }
   }
 }

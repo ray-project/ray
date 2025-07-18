@@ -19,13 +19,14 @@
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
-#include "ray/common/ray_object.h"
 #include "ray/common/task/task.h"
-#include "ray/common/task/task_common.h"
 #include "ray/raylet/scheduling/internal.h"
 
 namespace ray {
 namespace raylet {
+
+// Forward declaration
+class WorkerInterface;
 
 /// Manages the lifetime of a task on the local node. It receives request from
 /// cluster_task_manager and tries to execute the task locally.
@@ -65,10 +66,22 @@ class ILocalTaskManager {
 
   virtual void ClearWorkerBacklog(const WorkerID &worker_id) = 0;
 
-  virtual bool AnyPendingTasksForResourceAcquisition(RayTask *example,
-                                                     bool *any_pending,
-                                                     int *num_pending_actor_creation,
-                                                     int *num_pending_tasks) const = 0;
+  virtual const RayTask *AnyPendingTasksForResourceAcquisition(
+      int *num_pending_actor_creation, int *num_pending_tasks) const = 0;
+
+  virtual void TasksUnblocked(const std::vector<TaskID> &ready_ids) = 0;
+
+  virtual void TaskFinished(std::shared_ptr<WorkerInterface> worker, RayTask *task) = 0;
+
+  virtual void ReleaseWorkerResources(std::shared_ptr<WorkerInterface> worker) = 0;
+
+  virtual bool ReleaseCpuResourcesFromBlockedWorker(
+      std::shared_ptr<WorkerInterface> worker) = 0;
+
+  virtual bool ReturnCpuResourcesToUnblockedWorker(
+      std::shared_ptr<WorkerInterface> worker) = 0;
+
+  virtual ResourceSet CalcNormalTaskResources() const = 0;
 
   virtual void RecordMetrics() const = 0;
 
@@ -84,7 +97,7 @@ class ILocalTaskManager {
 /// we should make `ClusterTaskManager` not aware of `LocalTaskManager`.
 class NoopLocalTaskManager : public ILocalTaskManager {
  public:
-  NoopLocalTaskManager() {}
+  NoopLocalTaskManager() = default;
 
   /// Queue task and schedule.
   void QueueAndScheduleTask(std::shared_ptr<internal::Work> work) override {
@@ -123,12 +136,28 @@ class NoopLocalTaskManager : public ILocalTaskManager {
 
   void ClearWorkerBacklog(const WorkerID &worker_id) override {}
 
-  bool AnyPendingTasksForResourceAcquisition(RayTask *example,
-                                             bool *any_pending,
-                                             int *num_pending_actor_creation,
-                                             int *num_pending_tasks) const override {
+  const RayTask *AnyPendingTasksForResourceAcquisition(
+      int *num_pending_actor_creation, int *num_pending_tasks) const override {
+    return nullptr;
+  }
+
+  void TasksUnblocked(const std::vector<TaskID> &ready_ids) override {}
+
+  void TaskFinished(std::shared_ptr<WorkerInterface> worker, RayTask *task) override {}
+
+  void ReleaseWorkerResources(std::shared_ptr<WorkerInterface> worker) override {}
+
+  bool ReleaseCpuResourcesFromBlockedWorker(
+      std::shared_ptr<WorkerInterface> worker) override {
     return false;
   }
+
+  bool ReturnCpuResourcesToUnblockedWorker(
+      std::shared_ptr<WorkerInterface> worker) override {
+    return false;
+  }
+
+  ResourceSet CalcNormalTaskResources() const override { return ResourceSet(); }
 
   void RecordMetrics() const override{};
 

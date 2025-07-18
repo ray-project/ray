@@ -1,3 +1,4 @@
+import sys
 from typing import Any, Dict, Optional
 
 import pytest
@@ -6,9 +7,9 @@ from ray.llm._internal.serve.config_generator.generator import (
     get_serve_config,
 )
 from ray.llm._internal.serve.config_generator.utils.gpu import (
-    GPUType,
-    DEFAULT_MODEL_ID_TO_GPU,
     ALL_GPU_TYPES,
+    DEFAULT_MODEL_ID_TO_GPU,
+    GPUType,
 )
 from ray.llm._internal.serve.config_generator.utils.models import (
     TextCompletionLoraModelConfig,
@@ -101,7 +102,7 @@ class TestTextCompletionModelConfig:
         model_config = populate_text_completion_model_config(input_model_config)
         self._assert_models(model_config, input_model_config)
 
-        serve_config = get_serve_config(input_model_config, "./file.yaml")
+        serve_config = get_serve_config("./file.yaml")
         assert len(serve_config["applications"][0]["args"]["llm_configs"]) == 1
 
     def _assert_models(
@@ -135,3 +136,7 @@ class TestTextCompletionModelConfig:
             .get("HF_TOKEN", None)
             == input_model_config.hf_token
         )
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))

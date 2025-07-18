@@ -73,10 +73,10 @@ def test_dataset_logging_concurrent(ray_start_regular_shared, reset_logging):
         time.sleep(1)
         return x
 
-    ds01 = ray.data.range(100, override_num_blocks=20).map_batches(_short)
+    ds01 = ray.data.range(1).map_batches(_short)
     ds01.set_name("test_dataset_logging_concurrent_01")
 
-    ds02 = ray.data.range(100, override_num_blocks=20).map_batches(_long)
+    ds02 = ray.data.range(1).map_batches(_long)
     ds02.set_name("test_dataset_logging_concurrent_02")
 
     with ThreadPoolExecutor() as executor:
@@ -106,11 +106,11 @@ def test_dataset_logging_sequential(ray_start_regular_shared, reset_logging):
         time.sleep(1)
         return x
 
-    ds01 = ray.data.range(100, override_num_blocks=20).map_batches(_short)
+    ds01 = ray.data.range(1).map_batches(_short)
     ds01.set_name("test_dataset_logging_sequential_01")
     ds01.materialize()
 
-    ds02 = ray.data.range(100, override_num_blocks=20).map_batches(_long)
+    ds02 = ray.data.range(1).map_batches(_long)
     ds02.set_name("test_dataset_logging_sequential_02")
     ds02.materialize()
 

@@ -57,9 +57,6 @@ enum MessageType:long {
   // Get information for a newly connecting client.
   PlasmaConnectRequest,
   PlasmaConnectReply,
-  // Make room for new objects in the plasma store.
-  PlasmaEvictRequest,
-  PlasmaEvictReply,
   // Get debugging information from the store.
   PlasmaGetDebugStringRequest,
   PlasmaGetDebugStringReply,
@@ -296,14 +293,4 @@ table PlasmaConnectRequest {
 table PlasmaConnectReply {
   // The memory capacity of the store.
   memory_capacity: long;
-}
-
-table PlasmaEvictRequest {
-  // Number of bytes that shall be freed.
-  num_bytes: ulong;
-}
-
-table PlasmaEvictReply {
-  // Number of bytes that have been freed.
-  num_bytes: ulong;
 }

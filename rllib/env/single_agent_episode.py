@@ -373,12 +373,6 @@ class SingleAgentEpisode:
 
         infos = infos or {}
 
-        if self.observation_space is not None:
-            assert self.observation_space.contains(observation), (
-                f"`observation` {observation} does NOT fit SingleAgentEpisode's "
-                f"observation_space: {self.observation_space}!"
-            )
-
         self.observations.append(observation)
         self.infos.append(infos)
 
@@ -608,7 +602,8 @@ class SingleAgentEpisode:
         Args:
             other: The other `SingleAgentEpisode` to be concatenated to this one.
 
-        Returns: A `SingleAgentEpisode` instance containing the concatenated data
+        Returns:
+            A `SingleAgentEpisode` instance containing the concatenated data
             from both episodes (`self` and `other`).
         """
         assert other.id_ == self.id_

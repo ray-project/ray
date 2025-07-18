@@ -1,18 +1,20 @@
 import asyncio
-from collections import deque
 import logging
 import random
-from typing import Tuple, List
+from collections import deque
+from typing import List, Tuple
 
 import grpc
-from ray._common.utils import get_or_create_event_loop
-
 from grpc import aio as aiogrpc
+
 import ray._private.gcs_utils as gcs_utils
-from ray.core.generated import gcs_service_pb2_grpc
-from ray.core.generated import gcs_service_pb2
-from ray.core.generated import gcs_pb2
-from ray.core.generated import pubsub_pb2
+from ray._common.utils import get_or_create_event_loop
+from ray.core.generated import (
+    gcs_pb2,
+    gcs_service_pb2,
+    gcs_service_pb2_grpc,
+    pubsub_pb2,
+)
 
 logger = logging.getLogger(__name__)
 

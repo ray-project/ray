@@ -12,7 +12,7 @@ import numpy as np
 import pytest
 
 import ray
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import wait_for_condition
 from ray.cluster_utils import Cluster, cluster_not_supported
 from ray.tests.test_object_spilling import assert_no_thrashing, is_dir_empty
 
@@ -395,9 +395,5 @@ def test_evict_secondary_copies_before_spill(ray_start_cluster, object_spilling_
 
 
 if __name__ == "__main__":
-    import os
 
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

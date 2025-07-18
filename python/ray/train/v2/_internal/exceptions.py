@@ -41,6 +41,9 @@ class WorkerHealthCheckFailedError(RayTrainError):
     def __reduce__(self):
         return (self.__class__, (self._message, self.health_check_failure))
 
+    def __str__(self):
+        return self._message + "\n" + str(self.health_check_failure)
+
 
 class WorkerGroupStartupTimeoutError(RayTrainError):
     """Exception raised when the worker group startup times out.
