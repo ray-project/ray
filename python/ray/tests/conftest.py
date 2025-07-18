@@ -9,6 +9,7 @@ import platform
 import shutil
 import socket
 import subprocess
+import signal
 import tempfile
 import time
 from contextlib import contextmanager
@@ -1461,7 +1462,15 @@ def random_ascii_file(request):
 
 
 def pytest_sessionfinish(session, exitstatus):
-    # Make sure to shutdown Ray after whole test run finished.
+    """Called after the Session object has been created and before performing collection and entering the run test loop."""
+
+    def handle_sigterm(signum, frame):
+        print("[pytest] Caught SIGTERM! Cleaning up...")
+        session.shouldstop = True  # Gracefully stop pytest
+
+    signal.signal(signal.SIGTERM, handle_sigterm)
+
+    # Shutdown Ray.
     ray.shutdown()
     # Kill the Ray cluster.
     subprocess.check_call(["ray", "stop"])
