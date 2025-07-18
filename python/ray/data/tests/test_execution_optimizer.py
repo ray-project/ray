@@ -1406,9 +1406,12 @@ def test_limit_pushdown_multiple_unions(ray_start_regular_shared_2_cpus):
         .limit(5)
     )
 
-    # 4 limits expected: 3 branch limits + 1 global.
-    assert ds._plan._logical_plan.dag.dag_str.count("Limit[limit=5]") == 4
-    assert ds.take() == {"id": 0}  # Correctness smoke-check.
+    expected_plan = (
+        "Read[ReadRange] -> Limit[limit=5], "
+        "Read[ReadRange] -> Limit[limit=5] -> Union[Union] -> Limit[limit=5], "
+        "Read[ReadRange] -> Limit[limit=5] -> Union[Union] -> Limit[limit=5]"
+    )
+    _check_valid_plan_and_result(ds, expected_plan, [{"id": i} for i in range(5)])
 
 
 def test_limit_pushdown_union_with_groupby(ray_start_regular_shared_2_cpus):
@@ -1459,6 +1462,47 @@ def test_limit_pushdown_complex_chain(ray_start_regular_shared_2_cpus):
         {"id": 1008, "count()": 1},
         {"id": 1007, "count()": 1},
     ]
+
+    _check_valid_plan_and_result(ds, expected_plan, expected_result)
+
+
+def test_limit_pushdown_union_maps_projects(ray_start_regular_shared_2_cpus):
+    """
+    Read -> MapBatches -> MapRows -> Project
+         \                               /
+          --------   Union   -------------   → Limit
+    The limit should be pushed in front of each branch
+    (past MapBatches, MapRows, Project) while the original
+    global Limit is preserved after the Union.
+    """
+    # Left branch.
+    left = (
+        ray.data.range(30)
+        .map_batches(lambda b: b)
+        .map(lambda r: {"id": r["id"]})
+        .select_columns(["id"])
+    )
+
+    # Right branch with shifted ids.
+    right = (
+        ray.data.range(30)
+        .map_batches(lambda b: b)
+        .map(lambda r: {"id": r["id"] + 100})
+        .select_columns(["id"])
+    )
+
+    ds = left.union(right).limit(3)
+
+    expected_plan = (
+        "Read[ReadRange] -> Limit[limit=3] -> "
+        "MapBatches[MapBatches(<lambda>)] -> MapRows[Map(<lambda>)] -> "
+        "Project[Project], "
+        "Read[ReadRange] -> Limit[limit=3] -> "
+        "MapBatches[MapBatches(<lambda>)] -> MapRows[Map(<lambda>)] -> "
+        "Project[Project] -> Union[Union] -> Limit[limit=3]"
+    )
+
+    expected_result = [{"id": i} for i in range(3)]  # First 3 rows from left branch.
 
     _check_valid_plan_and_result(ds, expected_plan, expected_result)
 

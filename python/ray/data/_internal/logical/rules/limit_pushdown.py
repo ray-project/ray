@@ -77,17 +77,20 @@ class LimitPushdownRule(Rule):
             if union_op in child._output_dependencies:
                 child._output_dependencies.remove(union_op)
 
-        # 2. Create a new Limit for each branch and wire it to the child.
-        branch_limits: List[LogicalOperator] = []
+        # 2. Insert a branch-local Limit and push it further upstream.
+        branch_tails: List[LogicalOperator] = []
         for child in original_children:
-            branch_limit = Limit(child, limit_op._limit)  # child -> branch_limit
-            branch_limit._output_dependencies = []  # will be set below
-            branch_limits.append(branch_limit)
+            raw_limit = Limit(child, limit_op._limit)  # child → limit
+            if isinstance(child, Union):
+                pushed_tail = self._push_limit_into_union(raw_limit)
+            else:
+                pushed_tail = self._push_limit_down(raw_limit)
+            branch_tails.append(pushed_tail)
 
-        # 3. Re-attach the Union so that each branch_limit feeds into it.
-        new_union = Union(*branch_limits)  # limits -> new_union
-        for bl in branch_limits:
-            bl._output_dependencies.append(new_union)
+        # 3. Re-attach the Union so that it consumes the *tails*.
+        new_union = Union(*branch_tails)
+        for tail in branch_tails:
+            tail._output_dependencies.append(new_union)
 
         # 4. Re-wire the original (global) Limit to consume the *new* Union.
         limit_op._input_dependencies = [new_union]
@@ -124,23 +127,19 @@ class LimitPushdownRule(Rule):
         limit_op_copy._input_dependencies = [new_input_into_limit]
         new_input_into_limit._output_dependencies = [limit_op_copy]
 
-        # Build the chain of operator dependencies between the new
-        # input and the Limit operator, using copies of traversed operators.
-        ops_between_new_input_and_limit.append(limit_op_copy)
-        for idx in range(len(ops_between_new_input_and_limit) - 1):
-            curr_op, up_op = (
-                ops_between_new_input_and_limit[idx],
-                ops_between_new_input_and_limit[idx + 1],
-            )
-            curr_op._input_dependencies = [up_op]
-            up_op._output_dependencies = [curr_op]
+        chain_ops = [limit_op_copy] + list(reversed(ops_between_new_input_and_limit))
 
-        # Link the first operator in the chain to the limit's original output
-        for limit_output_op in limit_op.output_dependencies:
-            limit_output_op._input_dependencies = [ops_between_new_input_and_limit[0]]
-        last_op = ops_between_new_input_and_limit[0]
+        limit_op_copy._input_dependencies = [new_input_into_limit]
+        new_input_into_limit._output_dependencies = [limit_op_copy]
+
+        for head, tail in zip(chain_ops, chain_ops[1:]):
+            head._output_dependencies = [tail]
+            tail._input_dependencies = [head]
+
+        last_op = chain_ops[-1]
+        for down_op in limit_op.output_dependencies:
+            down_op._input_dependencies = [last_op]
         last_op._output_dependencies = limit_op.output_dependencies
-
         return last_op
 
     def _apply_limit_fusion(self, op: LogicalOperator) -> LogicalOperator:
