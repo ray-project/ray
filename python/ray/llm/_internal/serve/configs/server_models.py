@@ -34,6 +34,9 @@ from ray.llm._internal.serve.configs.constants import (
     ENABLE_WORKER_PROCESS_SETUP_HOOK,
     MODEL_RESPONSE_BATCH_TIMEOUT_MS,
 )
+from ray.llm._internal.serve.deployments.llm.vllm.kv_transfer_backends import (
+    SUPPORTED_BACKENDS as SUPPORTED_KV_CONNECTOR_BACKENDS,
+)
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.serve._private.config import DeploymentConfig
 
@@ -448,6 +451,29 @@ class LLMConfig(BaseModelExtended):
             deployment_config["name"] = name_prefix + deployment_config["name"]
 
         return deployment_config
+
+    def setup_engine_backend(self):
+        self._setup_kv_connector_backend()
+
+    def _setup_kv_connector_backend(self):
+        """Private method to setup kv connector dependning on the local deployment state"""
+        # 1. validate that the backend is one of the backends supported (Nixl or LMCache)
+        kv_transfer_config = self.engine_kwargs.get("kv_transfer_config")
+        if not kv_transfer_config:
+            return
+
+        kv_connector = kv_transfer_config.get("kv_connector")
+        if not kv_connector:
+            raise ValueError("Connector type is not specified.")
+
+        if kv_connector not in SUPPORTED_KV_CONNECTOR_BACKENDS:
+            raise ValueError(f"Unsupported connector type: {kv_connector}")
+
+        # 2. Setup the backend
+        kv_connector_backend = SUPPORTED_KV_CONNECTOR_BACKENDS[kv_connector](
+            kv_transfer_config
+        )
+        kv_connector_backend.setup()
 
 
 def _is_yaml_file(filename: str) -> bool:

@@ -15,17 +15,19 @@ class TestPDDisaggVLLMEngine:
     """Test vLLM engine under PD disagg."""
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("kv_connector", ["NixlConnector", "LMCacheConnectorV1"])
     async def test_pd_disagg_vllm_engine(
         self,
         # llm_config is a fixture defined in serve.tests.conftest.py
         llm_config: LLMConfig,
+        kv_connector: str,
     ):
         """Test vLLM engine under PD disagg."""
         llm_config = llm_config.model_copy(deep=True)
         llm_config.engine_kwargs.update(
             {
                 "kv_transfer_config": KVTransferConfig(
-                    kv_connector="NixlConnector",
+                    kv_connector=kv_connector,
                     kv_role="kv_both",
                 ),
             }
