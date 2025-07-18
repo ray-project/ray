@@ -224,9 +224,7 @@ def sample_task(batch_size=10, noise_std=0.1, training_data=False, return_params
 
 
 # Define arguments.
-parser = add_rllib_example_script_args(
-    default_iters=70_000,
-)
+parser = add_rllib_example_script_args(default_iters=70_000)
 
 parser.add_argument(
     "--meta-train-batch-size",

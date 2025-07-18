@@ -23,22 +23,22 @@ class MockActorCreatorInterface : public ActorCreatorInterface {
               RegisterActor,
               (const TaskSpecification &task_spec),
               (const, override));
-  MOCK_METHOD(Status,
+  MOCK_METHOD(void,
               AsyncRegisterActor,
               (const TaskSpecification &task_spec, gcs::StatusCallback callback),
               (override));
-  MOCK_METHOD(Status,
+  MOCK_METHOD(void,
               AsyncCreateActor,
               (const TaskSpecification &task_spec,
                const rpc::ClientCallback<rpc::CreateActorReply> &callback),
               (override));
-  MOCK_METHOD(Status,
+  MOCK_METHOD(void,
               AsyncRestartActorForLineageReconstruction,
               (const ActorID &actor_id,
                uint64_t num_restarts,
                gcs::StatusCallback callback),
               (override));
-  MOCK_METHOD(Status,
+  MOCK_METHOD(void,
               AsyncReportActorOutOfScope,
               (const ActorID &actor_id,
                uint64_t num_restarts_due_to_lineage_reconstruction,

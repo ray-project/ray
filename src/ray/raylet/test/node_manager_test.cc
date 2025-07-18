@@ -544,10 +544,7 @@ TEST_F(NodeManagerTest, TestRegisterGcsAndCheckSelfAlive) {
       .WillRepeatedly(Return(false));
   std::promise<void> promise;
   EXPECT_CALL(*mock_gcs_client_->mock_node_accessor, AsyncCheckSelfAlive(_, _))
-      .WillOnce([&promise](const auto &, const auto &) {
-        promise.set_value();
-        return Status::OK();
-      });
+      .WillOnce([&promise](const auto &, const auto &) { promise.set_value(); });
   RAY_CHECK_OK(node_manager_->RegisterGcs());
   std::thread thread{[this] {
     // Run the io_service in a separate thread to avoid blocking the main thread.
@@ -565,8 +562,6 @@ TEST_F(NodeManagerTest, TestDetachedWorkerIsKilledByFailedWorker) {
       .WillOnce(Return(Status::OK()));
   EXPECT_CALL(*mock_gcs_client_->mock_job_accessor, AsyncSubscribeAll(_, _))
       .WillOnce(Return(Status::OK()));
-  EXPECT_CALL(*mock_gcs_client_->mock_node_accessor, AsyncCheckSelfAlive(_, _))
-      .WillRepeatedly(Return(Status::OK()));
   EXPECT_CALL(mock_worker_pool_, GetAllRegisteredWorkers(_, _))
       .WillRepeatedly(Return(std::vector<std::shared_ptr<WorkerInterface>>{}));
   EXPECT_CALL(mock_worker_pool_, GetAllRegisteredDrivers(_))
@@ -646,8 +641,6 @@ TEST_F(NodeManagerTest, TestDetachedWorkerIsKilledByFailedNode) {
       .WillOnce(Return(Status::OK()));
   EXPECT_CALL(*mock_gcs_client_->mock_job_accessor, AsyncSubscribeAll(_, _))
       .WillOnce(Return(Status::OK()));
-  EXPECT_CALL(*mock_gcs_client_->mock_node_accessor, AsyncCheckSelfAlive(_, _))
-      .WillRepeatedly(Return(Status::OK()));
   EXPECT_CALL(mock_worker_pool_, GetAllRegisteredWorkers(_, _))
       .WillRepeatedly(Return(std::vector<std::shared_ptr<WorkerInterface>>{}));
   EXPECT_CALL(mock_worker_pool_, GetAllRegisteredDrivers(_))

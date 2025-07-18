@@ -12,7 +12,11 @@ from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 torch, _ = try_import_torch()
 
 parser = add_rllib_example_script_args()
-parser.set_defaults(num_env_runners=1)
+parser.set_defaults(
+    num_env_runners=1,
+    # ONNX is not supported by RLModule API yet.
+    old_api_stack=True,
+)
 
 
 class ONNXCompatibleWrapper(torch.nn.Module):
@@ -32,20 +36,11 @@ class ONNXCompatibleWrapper(torch.nn.Module):
 if __name__ == "__main__":
     args = parser.parse_args()
 
-    assert (
-        not args.enable_new_api_stack
-    ), "Must NOT set --enable-new-api-stack when running this script!"
-
     ray.init(local_mode=args.local_mode)
 
     # Configure our PPO Algorithm.
     config = (
         ppo.PPOConfig()
-        # ONNX is not supported by RLModule API yet.
-        .api_stack(
-            enable_rl_module_and_learner=args.enable_new_api_stack,
-            enable_env_runner_and_connector_v2=args.enable_new_api_stack,
-        )
         .environment("CartPole-v1")
         .env_runners(num_env_runners=args.num_env_runners)
         .training(model={"use_lstm": True})

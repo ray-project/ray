@@ -41,8 +41,8 @@ ray_cc_test(
     srcs = ["test/integration_test.cc"],
     tags = ["team:core"],
     deps = [
-        "//:pubsub_cc_grpc",
         ":pubsub_lib",
+        "//:pubsub_cc_grpc",
         "//src/ray/protobuf:pubsub_cc_proto",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",

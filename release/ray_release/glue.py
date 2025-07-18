@@ -440,6 +440,8 @@ def run_release_test_kuberay(
     random_suffix = "".join(random.choices(string.digits, k=8))
     job_name = f"{test['name'][:20]}-{test_name_hash}-{random_suffix}".replace("_", "-")
     logger.info(f"Job name: {job_name}")
+    logger.info(f"KubeRay compute config: {kuberay_compute_config}")
+    logger.info(f"KubeRay autoscaler config: {kuberay_autoscaler_config}")
     kuberay_job_manager = KubeRayJobManager()
     retcode, duration = kuberay_job_manager.run_and_wait(
         job_name=job_name,
