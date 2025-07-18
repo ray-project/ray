@@ -2,6 +2,7 @@ import logging
 import sys
 import threading
 import uuid
+from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from queue import Queue
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
@@ -86,8 +87,53 @@ class ExecutionContext:
     train_context_callbacks: List["TrainContextCallback"]
 
 
+class TrainContext(ABC):
+    @abstractmethod
+    def get_experiment_name(self) -> str:
+        pass
+
+    @abstractmethod
+    def get_world_size(self) -> int:
+        pass
+
+    @abstractmethod
+    def get_world_rank(self) -> int:
+        pass
+
+    @abstractmethod
+    def get_local_rank(self) -> int:
+        pass
+
+    @abstractmethod
+    def get_local_world_size(self) -> int:
+        pass
+
+    @abstractmethod
+    def get_node_rank(self) -> int:
+        pass
+
+    @abstractmethod
+    def get_storage(self):
+        pass
+
+    @abstractmethod
+    def get_dataset_shard(self, dataset_name: str) -> DataIterator:
+        pass
+
+    @abstractmethod
+    def report(
+        self,
+        metrics: Dict[str, Any],
+        checkpoint: Optional[Checkpoint] = None,
+        checkpoint_dir_name: Optional[str] = None,
+    ):
+        pass
+
+
 @dataclass
-class TrainContext:
+class RayTrainContext(TrainContext):
+    """The TrainContext for the training run with Ray Train."""
+
     train_run_context: TrainRunContext
     distributed_context: DistributedContext
     execution_context: ExecutionContext
@@ -195,6 +241,11 @@ class TrainContext:
     ) -> _TrainingResult:
         """Save the checkpoint to remote storage.
 
+        Args:
+            checkpoint_dir_name: The directory name for saving the checkpoint.
+            metrics: The training metrics to include in the result.
+            checkpoint: The checkpoint object to persist. If None, no checkpoint is saved.
+
         Returns:
             The training result object containing the persisted checkpoint.
         """
@@ -269,6 +320,53 @@ class TrainContext:
             self.get_result_queue().put(training_result)
 
 
+class LocalTestingTrainContext(TrainContext):
+    """The TrainContext for the training run without local testing (python running locally, torchrun, etc.)"""
+
+    def __init__(
+        self, world_size: int, world_rank: int, dataset_shards: Dict[str, DataIterator]
+    ):
+        self.world_size = world_size
+        self.world_rank = world_rank
+        self.dataset_shards = dataset_shards
+
+    def get_experiment_name(self) -> str:
+        return "local_testing_experiment"
+
+    def get_world_size(self) -> int:
+        return self.world_size
+
+    def get_world_rank(self) -> int:
+        return self.world_rank
+
+    def get_local_rank(self) -> int:
+        return self.world_rank
+
+    def get_local_world_size(self) -> int:
+        return self.world_size
+
+    def get_node_rank(self) -> int:
+        return 0
+
+    def get_storage(self):
+        raise NotImplementedError(
+            "LocalTestingTrainContext does not support get_storage"
+        )
+
+    def get_dataset_shard(self, dataset_name: str) -> DataIterator:
+        return self.dataset_shards[dataset_name]
+
+    def report(
+        self,
+        metrics: Dict[str, Any],
+        checkpoint: Optional[Checkpoint] = None,
+        checkpoint_dir_name: Optional[str] = None,
+    ):
+        print(
+            f"Report metrics: {metrics}, checkpoint: {checkpoint}, checkpoint_dir_name: {checkpoint_dir_name}"
+        )
+
+
 # The global variable holding the current TrainContext
 _train_context: Optional[TrainContext] = None
 
@@ -287,3 +385,7 @@ def set_train_context(context) -> None:
     global _train_context
     with _context_lock:
         _train_context = context
+
+
+def is_running_local_testing() -> bool:
+    return isinstance(get_train_context(), LocalTestingTrainContext)
