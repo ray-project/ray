@@ -44,11 +44,11 @@ compiling the train batch for the :py:class:`~ray.rllib.core.rl_module.rl_module
 
     **Learner ConnectorV2 Pipelines**: A learner connector pipeline sits between the input training data, a list of episodes,
     and the :py:class:`~ray.rllib.core.learner.learner.Learner` actor's :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`.
-    The pipeline tramsforms this input data into a train batch readable by the
+    The pipeline transforms this input data into a train batch readable by the
     :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_train` method of the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`.
 
 When calling the Learner connector pipeline, a transformation from a list of :ref:`Episode objects <single-agent-episode-docs>` to an
-RLModule-readable tensor batch, also referred to as the "train batch", takes place and the :py:class:`~ray.rllib.core.learner.learner.Learner` actor
+``RLModule``-readable tensor batch, also referred to as the "train batch", takes place and the :py:class:`~ray.rllib.core.learner.learner.Learner` actor
 sends the output of the pipeline directly into the
 :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_train` method of the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`.
 
@@ -63,7 +63,7 @@ By default RLlib populates every Learner connector pipeline with the following b
 * :py:class:`~ray.rllib.connectors.common.add_observations_from_episodes_to_batch.AddObservationsFromEpisodesToBatch`: Places all observations from the incoming episodes into the batch. The column name is ``obs``. For example, if you have two incoming episodes of length 10 and 20, your resulting train batch size is 30.
 * :py:class:`~ray.rllib.connectors.learner.add_columns_from_episodes_to_batch.AddColumnsFromEpisodesToBatch`: Places all other columns, like rewards, actions, and termination flags, from the incoming episodes into the batch.
 * *Relevant for stateful models only:* :py:class:`~ray.rllib.connectors.common.add_time_dim_to_batch_and_zero_pad.AddTimeDimToBatchAndZeroPad`: If the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` is stateful, adds a time-dimension of size `max_seq_len` at axis=1 to all data in the batch and (right) zero-pads in cases where episodes end at timesteps non-dividable by `max_seq_len`. You can change `max_seq_len` through your RLModule's `model_config_dict` (call `config.rl_module(model_config_dict={'max_seq_len': ...})` on your :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig` object).
-* *Relevant for stateful models only:* :py:class:`~ray.rllib.connectors.common.add_states_from_episodes_to_batch.AddStatesFromEpisodesToBatch`: If the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` is stateful, places the most recent state outputs of the module as new state inputs into the batch. The column name is ``state_in``.
+* *Relevant for stateful models only:* :py:class:`~ray.rllib.connectors.common.add_states_from_episodes_to_batch.AddStatesFromEpisodesToBatch`: If the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` is stateful, places the most recent state outputs of the module as new state inputs into the batch. The column name is ``state_in`` and the values don't have a time-dimension.
 * *For multi-agent only:* :py:class:`~ray.rllib.connectors.common.agent_to_module_mapping.AgentToModuleMapping`: Maps per-agent data to the respective per-module data depending on the already determined agent-to-module mapping stored in each multi-agent episode.
 * :py:class:`~ray.rllib.connectors.common.batch_individual_items.BatchIndividualItems`: Converts all data in the batch, which thus far are lists of individual items, into batched structures meaning NumPy arrays, whose 0th axis is the batch axis.
 * :py:class:`~ray.rllib.connectors.common.numpy_to_tensor.NumpyToTensor`: Converts all NumPy arrays in the batch into framework specific tensors and moves these to the GPU, if required.
@@ -129,7 +129,7 @@ before the previously described default connector pieces that RLlib provides aut
 Example: Reward shaping prior to loss computation
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-A good example of when to write a custom Learner VonnectorV2 piece is reward shaping before computing your algorithm's loss.
+A good example of when to write a custom Learner ConnectorV2 piece is reward shaping before computing your algorithm's loss.
 The Learner connector's :py:meth:`~ray.rllib.connectors.connector_v2.ConnectorV2.__call__` has full access to the
 entire episode data, including observations, actions, other agents' data in multi-agent scenarios, and all rewards.
 
@@ -207,7 +207,7 @@ your loss function should receive the altered reward signals in the ``rewards`` 
     The batch remains unchanged at first. However, one of the subsequent
     :ref:`default Learner connector pieces <default-learner-pipeline>`, :py:class:`~ray.rllib.connectors.learner.add_columns_from_episodes_to_batch.AddColumnsFromEpisodesToBatch`,
     fills the batch with rewards data from the episodes.
-    Thus, you can rely on the information you changed in the episode to automatically end up in the train batch in the end.
+    Therefore, RLlib automatically adds to the train batch any changes you make to the episode objects.
 
 
 Example: Stacking the N most recent observations
@@ -238,7 +238,7 @@ on the :py:class:`~ray.rllib.env.env_runner.EnvRunner` actors and also for the l
 For better clarity, it may help to remember that batches produced by a connector pipeline are ephemeral and RLlib discards them right
 after the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` forward pass. Thus, if frame stacking happens directly on
 the batch under construction, because you don't want to overload the episodes with deduplicated, stacked observations,
-you have to apply the stacking logic twice (in env-to-module pipeline and Learner connector pipelines):
+you have to apply the stacking logic twice (in the :ref:`env-to-module pipeline <env-to-module-pipeline-docs>` and the Learner connector pipeline):
 
 The following is an example for implementing such a frame-stacking mechanism using
 the :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` APIs with an RL environment, in which observations are plain 1D tensors.
@@ -353,7 +353,7 @@ conveniently compute this information for you through the :py:meth:`~ray.rllib.c
 methods.
 Make sure your :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` supports stacked observations rather than individual ones.
 
-Note that you don't have to stack through concatenating into the same original observation dimension as you did in the preceding
+Note that you don't have to concatenate observations into the same original dimension as you did in the preceding
 implementation of the :py:meth:`~ray.rllib.connectors.connector_v2.ConnectorV2.__call__` method, but you may also stack into a new
 observation dimension as long as your :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` knows how to handle the
 altered observation shape.
