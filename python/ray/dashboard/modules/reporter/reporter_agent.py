@@ -453,7 +453,7 @@ class ReporterAgent(
         self._open_telemetry_metric_recorder = None
         self._session_name = dashboard_agent.session_name
         if not self._metrics_collection_disabled:
-            http_address="127.0.0.1" if self._ip == "127.0.0.1" else "",
+            http_address = ("127.0.0.1" if self._ip == "127.0.0.1" else "")
             if os.environ.get("RAY_PREFER_IPV6") is not None:
                 http_address = "::"
             try:
