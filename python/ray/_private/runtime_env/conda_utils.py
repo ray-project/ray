@@ -195,6 +195,47 @@ def get_conda_info_json() -> dict:
     return json.loads(stdout)
 
 
+def validate_ray_installed_in_conda_env(env: str):
+    """
+    Get `conda list -n env --json`
+
+    Check if ray is installed in the conda env.
+    """
+    conda_path = get_conda_bin_executable("conda")
+    try:
+        exec_cmd([conda_path, "--help"], throw_on_error=False)
+    except EnvironmentError:
+        raise ValueError(f"Could not find Conda executable at {conda_path}.")
+
+    _, stdout, _ = exec_cmd(
+        [conda_path, "list", "-n", env, "--full-name", "ray", "--json"]
+    )
+    result = json.loads(stdout)
+    if len(result) != 0:
+        return
+    # when ray is installed by `conda install -c conda-forge 'ray-default'`, we
+    # need to check if ray-default is installed.
+    # # conda list --full-name ray-default --json
+    # [
+    #   {
+    #     "base_url": "https://conda.anaconda.org/conda-forge",
+    #     "build_number": 0,
+    #     "build_string": "py310ha1e06c9_0",
+    #     "channel": "conda-forge",
+    #     "dist_name": "ray-default-2.47.1-py310ha1e06c9_0",
+    #     "name": "ray-default",
+    #     "platform": "linux-64",
+    #     "version": "2.47.1"
+    #   }
+    # ]
+    _, stdout, _ = exec_cmd(
+        [conda_path, "list", "-n", env, "--full-name", "ray-default", "--json"]
+    )
+    result = json.loads(stdout)
+    if len(result) == 0:
+        raise ValueError(f"Ray and RayDefault is not installed in conda_env {env}.")
+
+
 def get_conda_envs(conda_info: dict) -> List[Tuple[str, str]]:
     """
     Gets the conda environments, as a list of (name, path) tuples.
