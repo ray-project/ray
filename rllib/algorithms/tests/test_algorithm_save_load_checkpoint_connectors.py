@@ -110,7 +110,7 @@ def load_and_get_states(
     return states
 
 
-class TestAlgorithmWithLearnerSaveAndRestore(unittest.TestCase):
+class TestAlgorithmWithConnectorsSaveAndRestore(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         ray.init()
