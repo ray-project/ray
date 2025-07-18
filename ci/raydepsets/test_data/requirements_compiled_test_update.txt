@@ -1,0 +1,11 @@
+--index-url https://pypi.org/simple
+--extra-index-url https://download.pytorch.org/whl/cpu
+
+emoji==2.12.0 \
+    --hash=sha256:0ae2dc891101313bc7c275bc29371180e95a05ccf3029791413d364d3f830911 \
+    --hash=sha256:8f0a3907f1235810a3e9f0880230d6c519f3c0e649a9285867e19a2feec3721e
+pyperclip==1.6.0 \
+    --hash=sha256:ce829433a9af640e08ee89b20f7c62132714bcc5d77df114044d0fccb8c3b3b8
+typing-extensions==4.14.1 \
+    --hash=sha256:38b39f4aeeab64884ce9f74c94263ef78f3c22467c8724005483154c26648d36 \
+    --hash=sha256:d1e1e3b58374dc93031d6eda2420a48ea44a36c2b4766a4fdeb3710755731d76
