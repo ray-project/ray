@@ -507,7 +507,9 @@ class ApplicationState:
                     self._target_state.deployment_infos,
                     config,
                 )
-                self._check_routes(overrided_infos)
+                self._route_prefix, self._docs_path = self._check_routes(
+                    overrided_infos
+                )
                 self._set_target_state(
                     # Code version doesn't change.
                     code_version=self._target_state.code_version,

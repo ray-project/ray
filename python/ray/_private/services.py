@@ -485,14 +485,6 @@ def get_webui_url_from_internal_kv():
     return ray._common.utils.decode(webui_url) if webui_url is not None else None
 
 
-def get_storage_uri_from_internal_kv():
-    assert ray.experimental.internal_kv._internal_kv_initialized()
-    storage_uri = ray.experimental.internal_kv._internal_kv_get(
-        "storage", namespace=ray_constants.KV_NAMESPACE_SESSION
-    )
-    return ray._common.utils.decode(storage_uri) if storage_uri is not None else None
-
-
 def remaining_processes_alive():
     """See if the remaining processes are alive or not.
 
@@ -1542,7 +1534,6 @@ def start_raylet(
     cluster_id: str,
     worker_path: str,
     setup_worker_path: str,
-    storage: str,
     temp_dir: str,
     session_dir: str,
     resource_dir: str,
@@ -1599,7 +1590,6 @@ def start_raylet(
             processes will execute.
         setup_worker_path: The path of the Python file that will set up
             the environment for the worker process.
-        storage: The persistent storage URI.
         temp_dir: The path of the temporary directory Ray will use.
         session_dir: The path of this session.
         resource_dir: The path of resource of this session .
@@ -1765,9 +1755,6 @@ def start_raylet(
         # start_worker_command.append(f"--cgroup-path={resource_isolation_config.cgroup_path}")
         # start_worker_command.append(f"--system-reserved-cpu={resource_isolation_config.system_reserved_cpu_weight}")
         # start_worker_command.append(f"--system-reserved-memory={resource_isolation_config.system_reserved_memory}")
-
-    if storage is not None:
-        start_worker_command.append(f"--storage={storage}")
 
     start_worker_command.append("RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER")
 

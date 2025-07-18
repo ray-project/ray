@@ -113,17 +113,6 @@ steps:
         --test-env=TEST_EXTERNAL_REDIS=1
         --except-tags debug_tests,asan_tests,post_wheel_build,ha_integration,mem_pressure,tmpfs,container,manual,multi_gpu,spark_on_ray,ray_client,dask
 
-  - label: ":ray: core: open telemetry tests"
-    tags:
-      - python
-      - dashboard
-    instance_type: medium
-    commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests:test_metrics_agent core
-        --install-mask all-ray-libraries
-        --test-env=RAY_experimental_enable_open_telemetry_on_agent=1
-        --test-env=RAY_experimental_enable_open_telemetry_on_core=1
-
   - label: ":ray: core: memory pressure tests"
     tags:
       - python
@@ -157,24 +146,6 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core
         --test-env=TEST_EXTERNAL_REDIS=1
         --only-tags=tmpfs --tmp-filesystem=tmpfs
-
-  - label: ":ray: core: workflow tests"
-    tags:
-      - python
-      - workflow
-      - oss
-      - skip-on-premerge
-    instance_type: medium
-    parallelism: 2
-    commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/workflow/... core
-        --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}"
-        --except-tags use_all_core
-        --parallelism-per-worker 2
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/workflow/... core
-        --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}"
-        --skip-ray-installation
-        --only-tags use_all_core
 
   - label: ":ray: core: doc tests"
     tags:
@@ -256,7 +227,7 @@ steps:
 
   - label: ":ray: core: wheel tests"
     tags: linux_wheels
-    instance_type: medium
+    instance_type: large
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //doc/... core
         --install-mask all-ray-libraries
@@ -436,7 +407,7 @@ steps:
     tags:
       - python
       - docker
-    instance_type: medium
+    instance_type: large
     commands:
       - bazel run //ci/ray_ci:build_in_docker -- docker --platform cpu --canonical-tag ha_integration
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core --only-tags ha_integration
@@ -457,7 +428,8 @@ steps:
         --canonical-tag test_container
       - docker build --progress=plain --build-arg BASE_IMAGE="rayproject/ray:test_container"
         -t rayproject/ray:runtime_env_container -f ci/docker/runtime_env_container/Dockerfile .
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core
+      # Disable test DB, these tests will never succeed if run in the flaky step.
+      - RAYCI_DISABLE_TEST_DB=1 bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core
         --install-mask all-ray-libraries
         --only-tags container
     depends_on:

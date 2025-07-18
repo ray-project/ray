@@ -21,6 +21,7 @@ import pytest
 import copy
 
 import ray
+from ray._common.test_utils import wait_for_condition
 import ray._private.ray_constants as ray_constants
 from ray._private.conftest_utils import set_override_dashboard_url  # noqa: F401
 from ray._private.runtime_env import virtualenv_utils
@@ -37,7 +38,6 @@ from ray._private.test_utils import (
     start_redis_instance,
     start_redis_sentinel_instance,
     redis_sentinel_replicas,
-    wait_for_condition,
     find_free_port,
     reset_autoscaler_v2_enabled_cache,
     RayletKiller,
@@ -1019,12 +1019,6 @@ smart_open_object_spilling_config = {
     "type": "smart_open",
     "params": {"uri": f"s3://{bucket_name}/"},
 }
-ray_storage_object_spilling_config = {
-    "type": "ray_storage",
-    # Force the storage config so we don't need to patch each test to separately
-    # configure the storage param under this.
-    "params": {"_force_storage_for_testing": spill_local_path},
-}
 buffer_open_object_spilling_config = {
     "type": "smart_open",
     "params": {"uri": f"s3://{bucket_name}/", "buffer_size": 1000},
@@ -1073,9 +1067,6 @@ def fs_only_object_spilling_config(request, tmp_path):
     scope="function",
     params=[
         file_system_object_spilling_config,
-        ray_storage_object_spilling_config,
-        # TODO(sang): Add a mock dependency to test S3.
-        # smart_open_object_spilling_config,
     ],
 )
 def object_spilling_config(request, tmp_path):

@@ -26,12 +26,13 @@ from ray.train.v2._internal.execution.scaling_policy import (
     NoopDecision,
     ResizeDecision,
 )
-from ray.train.v2.api.config import RunConfig, ScalingConfig
+from ray.train.v2.api.config import ScalingConfig
 from ray.train.v2.tests.util import (
     DummyObjectRefWrapper,
     DummyWorkerGroup,
     MockFailurePolicy,
     MockScalingPolicy,
+    create_dummy_run_context,
 )
 
 
@@ -52,7 +53,7 @@ def ray_start():
 
 def test_resize():
     scaling_policy = MockScalingPolicy(scaling_config=ScalingConfig())
-    train_run_context = TrainRunContext(run_config=RunConfig())
+    train_run_context = create_dummy_run_context()
     controller = TrainController(
         train_fn_ref=DummyObjectRefWrapper(lambda: None),
         train_run_context=train_run_context,
@@ -131,7 +132,7 @@ def test_resize():
 def test_failure_handling():
     scaling_policy = MockScalingPolicy(scaling_config=ScalingConfig())
     failure_policy = MockFailurePolicy(failure_config=None)
-    train_run_context = TrainRunContext(run_config=RunConfig())
+    train_run_context = create_dummy_run_context()
     controller = TrainController(
         train_fn_ref=DummyObjectRefWrapper(lambda: None),
         train_run_context=train_run_context,
@@ -174,7 +175,7 @@ def test_worker_group_start_failure(monkeypatch, error_type):
     """Check that controller can gracefully handle worker group start failures."""
     scaling_policy = MockScalingPolicy(scaling_config=ScalingConfig())
     failure_policy = MockFailurePolicy(failure_config=None)
-    train_run_context = TrainRunContext(run_config=RunConfig())
+    train_run_context = create_dummy_run_context()
     controller = TrainController(
         train_fn_ref=DummyObjectRefWrapper(lambda: None),
         train_run_context=train_run_context,
@@ -217,7 +218,7 @@ def test_poll_frequency(monkeypatch):
 
     sleep_calls = []
     monkeypatch.setattr("time.sleep", lambda t: sleep_calls.append(t))
-    train_run_context = TrainRunContext(run_config=RunConfig())
+    train_run_context = create_dummy_run_context()
 
     controller = TrainController(
         train_fn_ref=DummyObjectRefWrapper(lambda: None),
@@ -247,7 +248,7 @@ def test_controller_callback():
             self.resize_decision_called = False
             self.shutdown_called = False
 
-        def after_controller_start(self):
+        def after_controller_start(self, train_run_context: TrainRunContext):
             self.start_called = True
 
         def after_controller_state_update(
@@ -276,7 +277,7 @@ def test_controller_callback():
 
     scaling_policy = MockScalingPolicy(scaling_config=ScalingConfig())
     failure_policy = MockFailurePolicy(failure_config=None)
-    train_run_context = TrainRunContext(run_config=RunConfig())
+    train_run_context = create_dummy_run_context()
 
     controller = TrainController(
         train_fn_ref=DummyObjectRefWrapper(lambda: None),

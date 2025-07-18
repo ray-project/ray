@@ -15,7 +15,6 @@ from ray.llm._internal.serve.deployments.llm.llm_server import LLMDeployment
 from ray.llm._internal.serve.deployments.routers.router import (
     LLMRouter,
 )
-from ray.llm.tests.serve.mocks.fake_image_retriever import FakeImageRetriever
 from ray.llm.tests.serve.mocks.mock_vllm_engine import MockEchoVLLMEngine
 from ray.serve.handle import DeploymentHandle
 
@@ -68,7 +67,6 @@ def get_mocked_llm_deployments(llm_configs) -> List[DeploymentHandle]:
             deployment.bind(
                 llm_config=llm_config,
                 engine_cls=MockEchoVLLMEngine,
-                image_retriever_cls=FakeImageRetriever,
             )
         )
     return llm_deployments

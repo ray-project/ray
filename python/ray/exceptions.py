@@ -19,7 +19,6 @@ from ray.core.generated.common_pb2 import (
 )
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
-import setproctitle
 
 logger = logging.getLogger(__name__)
 
@@ -121,7 +120,7 @@ class RayTaskError(RayError):
         if proctitle:
             self.proctitle = proctitle
         else:
-            self.proctitle = setproctitle.getproctitle()
+            self.proctitle = ray._raylet.getproctitle()
         self.pid = pid or os.getpid()
         self.ip = ip or ray.util.get_node_ip_address()
         self.function_name = function_name

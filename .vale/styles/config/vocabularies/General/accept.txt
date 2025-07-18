@@ -24,6 +24,7 @@ async
 autoscales
 breakpoint
 BTS
+chatbot
 CLI
 CPU(s)?
 [Aa]sync
@@ -76,6 +77,7 @@ QPS
 retrigger
 RISECamp
 rollouts
+SageMaker
 serverless
 SFT
 ShareGPT

@@ -184,14 +184,19 @@ def delete_torch_compile_cache_on_worker():
     [
         # LLaVA model with TP=1, PP=1, concurrency=1
         ("llava-hf/llava-1.5-7b-hf", 1, 1, 1, 60),
-        # Qwen2.5 VL model with TP=2, PP=1, concurrency=2
-        ("Qwen/Qwen2.5-VL-3B-Instruct", 2, 1, 2, 60),
+        # Pixtral model with TP=2, PP=1, concurrency=2
+        ("mistral-community/pixtral-12b", 2, 1, 2, 60),
     ],
 )
 def test_vllm_vision_language_models(
     model_source, tp_size, pp_size, concurrency, sample_size
 ):
     """Test vLLM with vision language models using different configurations."""
+
+    # todo(seiji): Commenting out due to https://github.com/ray-project/ray/issues/53824
+    # Need to follow up once torch_compile_cache issue is fixed or PyTorch 2.8
+    if model_source == "mistral-community/pixtral-12b":
+        pytest.skip("Skipping test due to torch_compile_cache issue")
 
     ray.get(delete_torch_compile_cache_on_worker.remote())
 

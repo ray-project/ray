@@ -29,9 +29,9 @@ namespace gcs {
 ///    - function/actor exporting
 ///    - function/actor importing
 ///    - function/actor code life cycle management.
-class GcsFunctionManager {
+class GCSFunctionManager {
  public:
-  explicit GcsFunctionManager(InternalKVInterface &kv,
+  explicit GCSFunctionManager(InternalKVInterface &kv,
                               instrumented_io_context &io_context)
       : kv_(kv), io_context_(io_context) {}
 

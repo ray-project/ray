@@ -5,7 +5,7 @@ from typing import List, Optional
 import pytest
 
 from ray import serve
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import wait_for_condition
 from ray.serve._private.request_router.common import (
     PendingRequest,
 )

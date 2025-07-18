@@ -22,8 +22,6 @@ from ray.dashboard.subprocesses.utils import (
     module_logging_filename,
 )
 
-import setproctitle
-
 logger = logging.getLogger(__name__)
 
 
@@ -240,8 +238,8 @@ def run_module(
     Entrypoint for a subprocess module.
     """
     module_name = cls.__name__
-    current_proctitle = setproctitle.getproctitle()
-    setproctitle.setproctitle(
+    current_proctitle = ray._raylet.getproctitle()
+    ray._raylet.setproctitle(
         f"ray-dashboard-{module_name}-{incarnation} ({current_proctitle})"
     )
     logging_filename = module_logging_filename(module_name, config.logging_filename)

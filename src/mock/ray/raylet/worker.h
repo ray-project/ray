@@ -51,7 +51,6 @@ class MockWorkerInterface : public WorkerInterface {
   MOCK_METHOD(int, GetRuntimeEnvHash, (), (const, override));
   MOCK_METHOD(void, AssignActorId, (const ActorID &actor_id), (override));
   MOCK_METHOD(const ActorID &, GetActorId, (), (const, override));
-  MOCK_METHOD(void, MarkDetachedActor, (), (override));
   MOCK_METHOD(bool, IsDetachedActor, (), (const, override));
   MOCK_METHOD(const std::shared_ptr<ClientConnection>, Connection, (), (const, override));
   MOCK_METHOD(void, SetOwnerAddress, (const rpc::Address &address), (override));

@@ -88,7 +88,7 @@ steps:
     tags:
       - serve
       - linux_wheels
-    instance_type: medium
+    instance_type: large
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/... //doc/... serve
         --build-type wheel
@@ -156,7 +156,7 @@ steps:
     tags:
       - serve
       - python
-    instance_type: medium
+    instance_type: large
     commands:
       - bazel run //ci/ray_ci:build_in_docker -- docker --platform cpu --canonical-tag ha_integration
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/tests/... serve

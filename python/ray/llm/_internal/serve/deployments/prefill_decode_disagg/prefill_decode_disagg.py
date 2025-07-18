@@ -1,11 +1,10 @@
 """Using Ray Serve to deploy LLM models with P/D disaggregation.
 """
-import asyncio
 import logging
 import uuid
-from typing import AsyncGenerator, Union
+from typing import Any, AsyncGenerator, Dict, Union
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from vllm.config import KVTransferConfig
 
 from ray import serve
@@ -36,6 +35,12 @@ class PDServingArgs(BaseModel):
 
     prefill_config: Union[str, LLMConfig]
     decode_config: Union[str, LLMConfig]
+    proxy_deployment_config: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="""
+            The Ray @server.deployment options for the proxy server.
+        """,
+    )
 
     def parse_args(self) -> "PDServingArgs":
         """Converts this LLMServingArgs object into an DeployArgs object."""
@@ -52,10 +57,12 @@ class PDServingArgs(BaseModel):
             # Parse string file path into LLMConfig
             prefill_config=parse_configs_and_cast_type(self.prefill_config),
             decode_config=parse_configs_and_cast_type(self.decode_config),
+            proxy_deployment_config=self.proxy_deployment_config,
         )
 
 
 class PDProxyServer(LLMServer):
+    _default_engine_cls = None
     """
     Proxy between P/D LLM servers.
 
@@ -76,14 +83,6 @@ class PDProxyServer(LLMServer):
         prefill_server: DeploymentHandle,
         decode_server: DeploymentHandle,
     ):
-        class FakeEngine:
-            """Provide a fake engine such that proxy don't really start any engine."""
-
-            def __init__(self, *args, **kwargs):
-                pass
-
-            async def start(self, *args, **kwargs):
-                pass
 
         # We pass `llm_config` here to let super() extract the model_id, such that /v1/models
         # endpoint can work correctly.
@@ -91,7 +90,6 @@ class PDProxyServer(LLMServer):
         # API, instead of passing it in as an argument.
         await super().__init__(
             llm_config,
-            engine_cls=FakeEngine,
         )
 
         self.prefill_server = prefill_server
@@ -136,6 +134,7 @@ class PDProxyServer(LLMServer):
         prefill_response = await ResponsePostprocessor.merge_stream(
             prefill_response_gen
         )
+
         if prefill_response.error:
             logger.error(f"Prefill server returned error: {prefill_response.error}")
             yield prefill_response
@@ -151,13 +150,6 @@ class PDProxyServer(LLMServer):
             request_id=request_id, prompt=prompt, stream=stream
         ):
             yield chunk
-
-    async def check_health(self) -> None:
-        """Check the health of the llm engine."""
-        await asyncio.gather(
-            self.prefill_server.check_health.remote(),
-            self.decode_server.check_health.remote(),
-        )
 
     @classmethod
     def as_deployment(cls) -> serve.Deployment:
@@ -192,12 +184,16 @@ def build_app(pd_serving_args: dict) -> Application:
         pd_config.decode_config, name_prefix="Decode:"
     )
 
-    proxy_server_deployment = PDProxyServer.as_deployment().bind(
-        llm_config=LLMConfig(
-            model_loading_config=ModelLoadingConfig(model_id=model_id)
-        ),
-        prefill_server=prefill_deployment,
-        decode_server=decode_deployment,
+    proxy_server_deployment = (
+        PDProxyServer.as_deployment()
+        .options(**pd_config.proxy_deployment_config)
+        .bind(
+            llm_config=LLMConfig(
+                model_loading_config=ModelLoadingConfig(model_id=model_id)
+            ),
+            prefill_server=prefill_deployment,
+            decode_server=decode_deployment,
+        )
     )
 
     return LLMRouter.as_deployment().bind(llm_deployments=[proxy_server_deployment])

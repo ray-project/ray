@@ -6,6 +6,7 @@ import sys
 import time
 
 import pytest
+from ray._common.test_utils import async_wait_for_condition
 import redis
 
 import ray
@@ -15,7 +16,6 @@ from ray._private.test_utils import (
     external_redis_test_enabled,
     find_free_port,
     generate_system_config_map,
-    async_wait_for_condition,
 )
 import ray._private.ray_constants as ray_constants
 

@@ -3,8 +3,8 @@ import sys
 import pytest
 
 from ray import cloudpickle
+from ray._common.pydantic_compat import ValidationError
 from ray._common.utils import import_attr
-from ray._private.pydantic_compat import ValidationError
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig, _proto_to_dict
 from ray.serve._private.constants import DEFAULT_AUTOSCALING_POLICY, DEFAULT_GRPC_PORT
 from ray.serve._private.request_router import PowerOfTwoChoicesRequestRouter

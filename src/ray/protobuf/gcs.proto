@@ -157,6 +157,8 @@ message ActorTableData {
   // format depends on the language. Only populated if
   // `RAY_record_task_actor_creation_sites` is set to `true`.
   optional string call_site = 34;
+  // The label selector of the actor.
+  map<string, string> label_selector = 35;
 }
 
 message ErrorTableData {

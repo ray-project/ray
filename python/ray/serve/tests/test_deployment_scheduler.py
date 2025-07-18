@@ -4,7 +4,7 @@ import pytest
 
 import ray
 from ray import serve
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import wait_for_condition
 from ray._raylet import GcsClient
 from ray.serve._private import default_impl
 from ray.serve._private.common import DeploymentID, ReplicaID

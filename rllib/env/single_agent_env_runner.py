@@ -76,10 +76,8 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
             config: An `AlgorithmConfig` object containing all settings needed to
                 build this `EnvRunner` class.
         """
-        super().__init__(config=config)
+        super().__init__(config=config, **kwargs)
 
-        self.worker_index: int = kwargs.get("worker_index")
-        self.num_workers: int = kwargs.get("num_workers", self.config.num_env_runners)
         self.tune_trial_id: str = kwargs.get("tune_trial_id")
         self.spaces = kwargs.get("spaces", {})
 
@@ -742,8 +740,12 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         self._ongoing_episodes_for_metrics.clear()
 
         # Try resetting the environment.
-        # TODO (simon): Check, if we need here the seed from the config.
-        observations, infos = self._try_env_reset()
+        observations, infos = self._try_env_reset(
+            # Only seed (if seed provided) upon initial reset.
+            seed=self._seed if self._needs_initial_reset else None,
+            # TODO (sven): Support options?
+            options=None,
+        )
         observations = unbatch(observations)
 
         # Set initial obs and infos in the episodes.

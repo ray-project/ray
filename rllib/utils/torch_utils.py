@@ -717,11 +717,20 @@ def set_torch_seed(seed: Optional[int] = None) -> None:
         cuda_version = torch.version.cuda
         if cuda_version is not None and float(torch.version.cuda) >= 10.2:
             os.environ["CUBLAS_WORKSPACE_CONFIG"] = "4096:8"
+            torch.cuda.manual_seed(seed)
+            torch.cuda.manual_seed_all(seed)  # if using multi-GPU
         else:
-            # Not all Operations support this.
-            torch.use_deterministic_algorithms(True)
+            if version.Version(torch.__version__) >= version.Version("1.8.0"):
+                # Not all Operations support this.
+                torch.use_deterministic_algorithms(True)
+            else:
+                torch.set_deterministic(True)
         # This is only for Convolution no problem.
         torch.backends.cudnn.deterministic = True
+        # For benchmark=True, CuDNN may choose different algorithms depending on runtime
+        # conditions or slight differences in input sizes, even if the seed is fixed,
+        # which breaks determinism.
+        torch.backends.cudnn.benchmark = False
 
 
 @PublicAPI

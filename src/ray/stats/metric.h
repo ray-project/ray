@@ -266,9 +266,15 @@ void RegisterView(const std::string &name,
                              .set_description(description)
                              .set_measure(name)
                              .set_aggregation(I::Aggregation(buckets));
-  if (T == GAUGE &&
-      ::RayConfig::instance().experimental_enable_open_telemetry_on_core()) {
-    OpenTelemetryMetricRecorder::GetInstance().RegisterGaugeMetric(name, description);
+
+  if (::RayConfig::instance().experimental_enable_open_telemetry_on_core()) {
+    if (T == GAUGE) {
+      OpenTelemetryMetricRecorder::GetInstance().RegisterGaugeMetric(name, description);
+    } else if (T == COUNT) {
+      OpenTelemetryMetricRecorder::GetInstance().RegisterCounterMetric(name, description);
+    } else {
+      internal::RegisterAsView(view_descriptor, tag_keys);
+    }
   } else {
     internal::RegisterAsView(view_descriptor, tag_keys);
   }

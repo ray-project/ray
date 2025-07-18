@@ -17,7 +17,7 @@ from ray.exceptions import (
 )
 from ray._private.utils import DeferSigint
 from ray._common.test_utils import SignalActor
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import wait_for_condition
 from ray.util.state import list_tasks
 
 

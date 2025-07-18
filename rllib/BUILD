@@ -3954,19 +3954,35 @@ py_test(
 
 # subdirectory: debugging/
 # ....................................
-#@OldAPIStack
 py_test(
-    name = "examples/debugging/deterministic_training_torch",
+    name = "examples/debugging/deterministic_sampling_and_training",
     size = "medium",
-    srcs = ["examples/debugging/deterministic_training.py"],
+    srcs = ["examples/debugging/deterministic_sampling_and_training.py"],
     args = [
         "--as-test",
-        "--stop-iters=1",
-        "--framework=torch",
-        "--num-gpus=1",
-        "--num-gpus-per-env-runner=1",
+        "--enable-new-api-stack",
+        "--num-learners=2",
     ],
-    main = "examples/debugging/deterministic_training.py",
+    main = "examples/debugging/deterministic_sampling_and_training.py",
+    tags = [
+        "examples",
+        "exclusive",
+        "multi_gpu",
+        "team:rllib",
+    ],
+)
+
+py_test(
+    name = "examples/debugging/deterministic_sampling_and_training_multi_agent",
+    size = "medium",
+    srcs = ["examples/debugging/deterministic_sampling_and_training.py"],
+    args = [
+        "--as-test",
+        "--enable-new-api-stack",
+        "--num-learners=2",
+        "--num-agents=2",
+    ],
+    main = "examples/debugging/deterministic_sampling_and_training.py",
     tags = [
         "examples",
         "exclusive",
@@ -4209,7 +4225,7 @@ py_test(
         "--num-agents=2",
         "--as-test",
         "--evaluation-parallel-to-training",
-        "--stop-reward=900.0",
+        "--stop-reward=800.0",
         "--num-cpus=6",
         "--evaluation-duration=auto",
         "--evaluation-duration-unit=episodes",

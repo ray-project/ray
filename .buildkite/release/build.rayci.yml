@@ -31,7 +31,7 @@ steps:
     instance_type: release-medium
     commands:
       - bazel run //ci/ray_ci:build_in_docker -- anyscale --python-version {{matrix}}
-        --platform cu12.4.1-cudnn --image-type ray-llm --upload
+        --platform cu12.8.1-cudnn --image-type ray-llm --upload
     depends_on:
       - manylinux
       - forge

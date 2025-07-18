@@ -166,6 +166,22 @@ const METRICS_CONFIG: MetricsSectionConfig[] = [
         pathParams: "theme=light&panelId=18",
       },
       {
+        title: "Node TPU (tensorcore utilization)",
+        pathParams: "theme=light&panelId=50",
+      },
+      {
+        title: "Node TPU (high bandwidth memory utilization)",
+        pathParams: "theme=light&panelId=51",
+      },
+      {
+        title: "Node TPU (duty cycle)",
+        pathParams: "theme=light&panelId=52",
+      },
+      {
+        title: "Node TPU (memory used)",
+        pathParams: "theme=light&panelId=53",
+      },
+      {
         title: "Node Disk",
         pathParams: "theme=light&panelId=6",
       },

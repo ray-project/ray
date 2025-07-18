@@ -11,7 +11,6 @@ import ray._private.gcs_utils as gcs_utils
 import ray.experimental.internal_kv as internal_kv
 from ray._private.test_utils import (
     make_global_state_accessor,
-    wait_for_condition,
     get_metric_check_condition,
     MetricSamplePattern,
 )
@@ -20,7 +19,7 @@ from ray.util.scheduling_strategies import (
     NodeAffinitySchedulingStrategy,
     PlacementGroupSchedulingStrategy,
 )
-from ray._common.test_utils import SignalActor
+from ray._common.test_utils import SignalActor, wait_for_condition
 
 
 @pytest.mark.skipif(

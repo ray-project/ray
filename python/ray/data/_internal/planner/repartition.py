@@ -5,6 +5,9 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
     TaskContext,
 )
+from ray.data._internal.execution.interfaces.transform_fn import (
+    AllToAllTransformFnResult,
+)
 from ray.data._internal.execution.operators.map_transformer import MapTransformer
 from ray.data._internal.planner.exchange.pull_based_shuffle_task_scheduler import (
     PullBasedShuffleTaskScheduler,
@@ -73,7 +76,7 @@ def generate_repartition_fn(
     def split_repartition_fn(
         refs: List[RefBundle],
         ctx: TaskContext,
-    ) -> Tuple[List[RefBundle], StatsDict]:
+    ) -> AllToAllTransformFnResult:
         shuffle_spec = ShuffleTaskSpec(ctx.target_max_block_size, random_shuffle=False)
         scheduler = SplitRepartitionTaskScheduler(shuffle_spec)
         return scheduler.execute(refs, num_outputs, ctx)

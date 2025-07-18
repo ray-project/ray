@@ -77,6 +77,7 @@ class LimitOperator(OneToOneOperator):
         out_refs = RefBundle(
             list(zip(out_blocks, out_metadata)),
             owns_blocks=refs.owns_blocks,
+            schema=refs.schema,
         )
         self._buffer.append(out_refs)
         self._metrics.on_output_queued(out_refs)

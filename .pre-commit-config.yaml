@@ -10,6 +10,7 @@ exclude: |
     release/release_logs/|
     rllib/tests/data|
     thirdparty/patches/|
+    src/ray/thirdparty/|
     doc/external/|
     doc/source/
   )
@@ -52,7 +53,7 @@ repos:
         args: [
           --style=google,
           --baseline=ci/lint/pydoclint-baseline.txt,
-          --exclude=thirdparty|^python/ray/serve/tests/test_config_files/syntax_error\.py$,
+          --exclude=thirdparty|^python/ray/serve/tests/test_config_files/syntax_error\.py$|^python/ray/_private/parameter\.py$,
           # --generate-baseline=True, # Not generally needed, but documenting since this is how we generate the initial baseline
           --auto-regenerate-baseline=True,
           # Current settings (not because we think they're right, but because we
@@ -173,6 +174,12 @@ repos:
         entry: ci/lint/check-docstyle.sh
         language: system
         types: [python]
+
+  - repo: https://github.com/errata-ai/vale
+    rev: v3.4.1
+    hooks:
+      - id: vale
+        files: ^doc/source/data/.*\.(md|rst)$
 
   - repo: local
     hooks:

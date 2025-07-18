@@ -23,7 +23,6 @@ import ray
 import ray._private.ray_constants as ray_constants
 import ray._private.services
 from ray._common.utils import try_to_create_directory
-from ray._private import storage
 from ray._private.resource_isolation_config import ResourceIsolationConfig
 from ray._private.resource_spec import ResourceSpec
 from ray._private.services import get_address, serialize_config
@@ -236,16 +235,6 @@ class Node:
                 "head=False and connect_only=True."
             )
         self._raylet_ip_address = raylet_ip_address
-
-        # Validate and initialize the persistent storage API.
-        if head:
-            storage._init_storage(ray_params.storage, is_head=True)
-        else:
-            if not self._default_worker:
-                storage_uri = ray._private.services.get_storage_uri_from_internal_kv()
-            else:
-                storage_uri = ray_params.storage
-            storage._init_storage(storage_uri, is_head=False)
 
         self._object_spilling_config = self._get_object_spilling_config()
         logger.debug(
@@ -672,11 +661,6 @@ class Node:
     def redis_password(self):
         """Get the cluster Redis password."""
         return self._ray_params.redis_password
-
-    @property
-    def object_ref_seed(self):
-        """Get the seed for deterministic generation of object refs"""
-        return self._ray_params.object_ref_seed
 
     @property
     def plasma_store_socket_name(self):
@@ -1297,7 +1281,6 @@ class Node:
             self.cluster_id.hex(),
             self._ray_params.worker_path,
             self._ray_params.setup_worker_path,
-            self._ray_params.storage,
             self._temp_dir,
             self._session_dir,
             self._runtime_env_dir,
@@ -1430,13 +1413,6 @@ class Node:
             True,
             ray_constants.KV_NAMESPACE_SESSION,
         )
-        if self._ray_params.storage is not None:
-            self.get_gcs_client().internal_kv_put(
-                b"storage",
-                self._ray_params.storage.encode(),
-                True,
-                ray_constants.KV_NAMESPACE_SESSION,
-            )
         # Add tracing_startup_hook to redis / internal kv manually
         # since internal kv is not yet initialized.
         if self._ray_params.tracing_startup_hook:

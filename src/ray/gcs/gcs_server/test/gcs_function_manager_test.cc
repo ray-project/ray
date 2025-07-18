@@ -24,37 +24,57 @@ using namespace ::testing;  // NOLINT
 using namespace ray::gcs;   // NOLINT
 using namespace ray;        // NOLINT
 
-class GcsFunctionManagerTest : public Test {
+class GCSFunctionManagerTest : public Test {
  public:
   void SetUp() override {
-    kv = std::make_unique<MockInternalKVInterface>();
-    function_manager = std::make_unique<GcsFunctionManager>(*kv, io_context);
+    kv = std::make_unique<FakeInternalKVInterface>();
+    function_manager = std::make_unique<GCSFunctionManager>(*kv, io_context);
   }
-  std::unique_ptr<GcsFunctionManager> function_manager;
-  std::unique_ptr<MockInternalKVInterface> kv;
+  std::unique_ptr<GCSFunctionManager> function_manager;
+  std::unique_ptr<FakeInternalKVInterface> kv;
   instrumented_io_context io_context;
+
+  // Helper method to check if a key exists in the fake KV store
+  bool HasKey(const std::string &ns, const std::string &key) {
+    std::string full_key = ns + key;
+    return kv->kv_store_.find(full_key) != kv->kv_store_.end();
+  }
 };
 
-TEST_F(GcsFunctionManagerTest, TestFunctionManagerGC) {
+TEST_F(GCSFunctionManagerTest, TestFunctionManagerGC) {
   JobID job_id = BaseID<JobID>::FromRandom();
-  int num_del_called = 0;
-  auto f = [&num_del_called]() mutable { ++num_del_called; };
-  EXPECT_CALL(*kv, Del(StrEq("fun"), StartsWith("RemoteFunction:"), true, _))
-      .WillOnce(InvokeWithoutArgs(f));
-  EXPECT_CALL(*kv, Del(StrEq("fun"), StartsWith("ActorClass:"), true, _))
-      .WillOnce(InvokeWithoutArgs(f));
-  EXPECT_CALL(*kv, Del(StrEq("fun"), StartsWith("FunctionsToRun:"), true, _))
-      .WillOnce(InvokeWithoutArgs(f));
+  std::string job_id_hex = job_id.Hex();
+
+  // Pre-populate KV store with function/actor data for this job
+  kv->kv_store_["funRemoteFunction:" + job_id_hex + ":key1"] = "value1";
+  kv->kv_store_["funActorClass:" + job_id_hex + ":key1"] = "value1";
+  kv->kv_store_["funFunctionsToRun:" + job_id_hex + ":key1"] = "value1";
+
   function_manager->AddJobReference(job_id);
-  EXPECT_EQ(0, num_del_called);
+  // Keys should still exist (job not finished)
+  EXPECT_TRUE(HasKey("fun", "RemoteFunction:" + job_id_hex + ":key1"));
+  EXPECT_TRUE(HasKey("fun", "ActorClass:" + job_id_hex + ":key1"));
+  EXPECT_TRUE(HasKey("fun", "FunctionsToRun:" + job_id_hex + ":key1"));
+
   function_manager->AddJobReference(job_id);
-  EXPECT_EQ(0, num_del_called);
+  // Keys should still exist (job not finished)
+  EXPECT_TRUE(HasKey("fun", "RemoteFunction:" + job_id_hex + ":key1"));
+
   function_manager->AddJobReference(job_id);
-  EXPECT_EQ(0, num_del_called);
+  // Keys should still exist (job not finished)
+  EXPECT_TRUE(HasKey("fun", "RemoteFunction:" + job_id_hex + ":key1"));
+
   function_manager->RemoveJobReference(job_id);
-  EXPECT_EQ(0, num_del_called);
+  // Keys should still exist (job not finished)
+  EXPECT_TRUE(HasKey("fun", "RemoteFunction:" + job_id_hex + ":key1"));
+
   function_manager->RemoveJobReference(job_id);
-  EXPECT_EQ(0, num_del_called);
+  // Keys should still exist (job not finished)
+  EXPECT_TRUE(HasKey("fun", "RemoteFunction:" + job_id_hex + ":key1"));
+
   function_manager->RemoveJobReference(job_id);
-  EXPECT_EQ(3, num_del_called);
+  // Now all keys should be deleted (job finished)
+  EXPECT_FALSE(HasKey("fun", "RemoteFunction:" + job_id_hex + ":key1"));
+  EXPECT_FALSE(HasKey("fun", "ActorClass:" + job_id_hex + ":key1"));
+  EXPECT_FALSE(HasKey("fun", "FunctionsToRun:" + job_id_hex + ":key1"));
 }

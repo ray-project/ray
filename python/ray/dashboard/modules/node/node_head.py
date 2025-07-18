@@ -115,6 +115,7 @@ def _actor_table_data_to_dict(message):
         "reprName",
         "placementGroupId",
         "callSite",
+        "labelSelector",
     }
     light_message = {k: v for (k, v) in orig_message.items() if k in fields}
     light_message["actorClass"] = orig_message["className"]
@@ -135,7 +136,7 @@ def _actor_table_data_to_dict(message):
     light_message["startTime"] = int(light_message["startTime"])
     light_message["endTime"] = int(light_message["endTime"])
     light_message["requiredResources"] = dict(message.required_resources)
-
+    light_message["labelSelector"] = dict(message.label_selector)
     return light_message
 
 

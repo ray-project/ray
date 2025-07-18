@@ -6,9 +6,12 @@ import sys
 from datetime import datetime, timedelta
 from unittest.mock import patch
 from pathlib import Path
+import os
+
+import psutil
 import numpy as np
 import pytest
-import os
+
 
 import ray
 from ray._private.external_storage import (
@@ -19,7 +22,7 @@ from ray._private.external_storage import (
     ExternalStorageSmartOpenImpl,
 )
 from ray._private.internal_api import memory_summary
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import wait_for_condition
 from ray._raylet import GcsClientOptions
 import ray.remote_function
 from ray.tests.conftest import (
@@ -743,25 +746,16 @@ async def test_spill_during_get(object_spilling_config, shutdown_only, is_async)
     ],
     indirect=True,
 )
-def test_spill_worker_failure(ray_start_regular):
-    def run_workload():
-        @ray.remote
-        def f():
-            return np.zeros(50 * 1024 * 1024, dtype=np.uint8)
+def test_recover_from_spill_worker_failure(ray_start_regular):
+    @ray.remote
+    def f():
+        return np.zeros(50 * 1024 * 1024, dtype=np.uint8)
 
-        ids = []
-        for _ in range(5):
-            x = f.remote()
-            ids.append(x)
-        for id in ids:
-            ray.get(id)
-        del ids
-
-    run_workload()
+    def _run_spilling_workload():
+        for obj_ref in [f.remote() for _ in range(5)]:
+            ray.get(obj_ref)
 
     def get_spill_worker():
-        import psutil
-
         for proc in psutil.process_iter():
             try:
                 name = ray._private.ray_constants.WORKER_PROCESS_TYPE_SPILL_WORKER_IDLE
@@ -778,20 +772,25 @@ def test_spill_worker_failure(ray_start_regular):
             except psutil.NoSuchProcess:
                 pass
 
-    # Spilling occurred. Get the PID of the spill worker.
+    # Run a workload that forces spilling to occur.
+    _run_spilling_workload()
+
+    # Get the PID of the spill worker that was created and kill it.
     spill_worker_proc = get_spill_worker()
     assert spill_worker_proc
-
-    # Kill the spill worker
     spill_worker_proc.kill()
     spill_worker_proc.wait()
 
-    # Now we trigger spilling again
-    run_workload()
+    # Run the workload again and ensure that it succeeds.
+    _run_spilling_workload()
 
-    # A new spill worker should be created
-    spill_worker_proc = get_spill_worker()
-    assert spill_worker_proc
+    # Check that the spilled files are cleaned up after the workload finishes.
+    wait_for_condition(
+        lambda: is_dir_empty(
+            Path(ray._private.worker._global_node._session_dir),
+            ray.get_runtime_context().get_node_id(),
+        )
+    )
 
 
 if __name__ == "__main__":

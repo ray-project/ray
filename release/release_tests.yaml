@@ -935,6 +935,11 @@
       frequency: manual
       cluster:
         cluster_compute: tpl_gce_1x16.yaml
+    - __suffix__: kuberay
+      env: kuberay
+      frequency: manual
+      cluster:
+        cluster_compute: kuberay.yaml
 
 - name: tune_scalability_durable_trainable
   group: Tune scalability tests
@@ -2116,27 +2121,27 @@
     - __suffix__: full_training.parquet
       run:
         timeout: 2000
-        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification_parquet --dataloader_type=ray_data --num_workers=16
+        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --dataloader_type=ray_data --num_workers=16 --image_classification_data_format=parquet
 
     - __suffix__: full_training.parquet.torch_dataloader
       run:
         timeout: 2000
-        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification_parquet --dataloader_type=torch --num_workers=16
+        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --dataloader_type=torch --num_workers=16 --image_classification_data_format=parquet
 
     - __suffix__: skip_training.parquet
       run:
         timeout: 1200
-        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification_parquet --dataloader_type=ray_data --num_workers=16 --skip_train_step --skip_validation_at_epoch_end
+        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --dataloader_type=ray_data --num_workers=16 --skip_train_step --skip_validation_at_epoch_end --image_classification_data_format=parquet
 
     - __suffix__: skip_training.parquet.torch_dataloader
       run:
         timeout: 1200
-        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification_parquet --dataloader_type=torch --num_workers=16 --skip_train_step --skip_validation_at_epoch_end
+        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --dataloader_type=torch --num_workers=16 --skip_train_step --skip_validation_at_epoch_end --image_classification_data_format=parquet
 
     - __suffix__: skip_training.parquet.fault_tolerance
       run:
         timeout: 2700
-        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification_parquet --dataloader_type=ray_data --num_workers=16 --mock_gpu --skip_train_step --skip_validation_step --num_epochs=5 --max_failures=4
+        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --dataloader_type=ray_data --num_workers=16 --mock_gpu --skip_train_step --skip_validation_step --num_epochs=5 --max_failures=4 --image_classification_data_format=parquet
         prepare: python setup_chaos.py --kill-interval 480 --max-to-kill 2 --kill-delay 360
       cluster:
         cluster_compute: compute_configs/compute_mock_gpu_4x4_aws.yaml
@@ -2144,48 +2149,48 @@
     - __suffix__: full_training.jpeg
       run:
         timeout: 2000
-        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification_jpeg --dataloader_type=ray_data --num_workers=16
+        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --image_classification_data_format=jpeg --dataloader_type=ray_data --num_workers=16
 
     - __suffix__: full_training.jpeg.torch_dataloader
       run:
         timeout: 2000
-        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification_jpeg --dataloader_type=torch --num_workers=16 --num_torch_workers=16
+        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --image_classification_data_format=jpeg --dataloader_type=torch --num_workers=16 --num_torch_workers=16
 
     - __suffix__: skip_training.jpeg
       run:
         timeout: 1200
-        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification_jpeg --dataloader_type=ray_data --num_workers=16 --skip_train_step --skip_validation_at_epoch_end
+        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --image_classification_data_format=jpeg --dataloader_type=ray_data --num_workers=16 --skip_train_step --skip_validation_at_epoch_end
 
     - __suffix__: skip_training.jpeg.torch_dataloader
       run:
         timeout: 1200
-        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification_jpeg --dataloader_type=torch --num_workers=16 --num_torch_workers=16 --skip_train_step --skip_validation_at_epoch_end
+        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --image_classification_data_format=jpeg --dataloader_type=torch --num_workers=16 --num_torch_workers=16 --skip_train_step --skip_validation_at_epoch_end
 
     - __suffix__: skip_training.jpeg.local_fs
       run:
         timeout: 1200
-        script: bash image_classification/localfs_image_classification_jpeg/download_input_data_from_s3.sh && RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=localfs_image_classification_jpeg --dataloader_type=ray_data --num_workers=1 --skip_train_step --skip_validation_at_epoch_end
+        script: bash image_classification/jpeg/download_input_data_from_s3.sh && RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --image_classification_data_format=jpeg --image_classification_local_dataset --dataloader_type=ray_data --num_workers=1 --skip_train_step --skip_validation_at_epoch_end
       cluster:
         cluster_compute: compute_configs/compute_gpu_1x1_aws.yaml
 
     - __suffix__: skip_training.jpeg.local_fs.torch_dataloader
       run:
         timeout: 1200
-        script: bash image_classification/localfs_image_classification_jpeg/download_input_data_from_s3.sh && RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=localfs_image_classification_jpeg --dataloader_type=torch --num_workers=1 --num_torch_workers=32 --skip_train_step --skip_validation_at_epoch_end
+        script: bash image_classification/jpeg/download_input_data_from_s3.sh && RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --image_classification_data_format=jpeg --image_classification_local_dataset --dataloader_type=torch --num_workers=1 --num_torch_workers=32 --skip_train_step --skip_validation_at_epoch_end
       cluster:
         cluster_compute: compute_configs/compute_gpu_1x1_aws.yaml
 
     - __suffix__: skip_training.jpeg.local_fs_multi_gpus
       run:
         timeout: 1200
-        script: bash image_classification/localfs_image_classification_jpeg/download_input_data_from_s3.sh && RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=localfs_image_classification_jpeg --dataloader_type=ray_data --num_workers=4 --skip_train_step --skip_validation_at_epoch_end
+        script: bash image_classification/jpeg/download_input_data_from_s3.sh && RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --image_classification_data_format=jpeg --image_classification_local_dataset --dataloader_type=ray_data --num_workers=4 --skip_train_step --skip_validation_at_epoch_end
       cluster:
         cluster_compute: compute_configs/compute_gpu_1x1_multi_gpus_aws.yaml
 
     - __suffix__: skip_training.jpeg.local_fs_multi_gpus.torch_dataloader
       run:
         timeout: 1200
-        script: bash image_classification/localfs_image_classification_jpeg/download_input_data_from_s3.sh && RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=localfs_image_classification_jpeg --dataloader_type=torch --num_workers=4 --num_torch_workers=9 --skip_train_step --skip_validation_at_epoch_end
+        script: bash image_classification/jpeg/download_input_data_from_s3.sh && RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --image_classification_data_format=jpeg --image_classification_local_dataset --dataloader_type=torch --num_workers=4 --num_torch_workers=9 --skip_train_step --skip_validation_at_epoch_end
       cluster:
         cluster_compute: compute_configs/compute_gpu_1x1_multi_gpus_aws.yaml
 
@@ -4169,7 +4174,7 @@
 
   cluster:
     byod:
-      type: llm-cu124
+      type: llm-cu128
     cluster_compute: llm_auto_select_worker.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -4190,7 +4195,7 @@
 
   cluster:
     byod:
-      type: llm-cu124
+      type: llm-cu128
     cluster_compute: llm_auto_select_worker.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -4210,7 +4215,7 @@
 
   cluster:
     byod:
-      type: llm-cu124
+      type: llm-cu128
     cluster_compute: llm_g5-4xlarge.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -4231,7 +4236,7 @@
 
   cluster:
     byod:
-      type: llm-cu124
+      type: llm-cu128
     cluster_compute: llm_auto_select_worker.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -4251,7 +4256,7 @@
 
   cluster:
     byod:
-      type: llm-cu124
+      type: llm-cu128
     cluster_compute: llm_auto_select_worker.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -4271,7 +4276,7 @@
 
   cluster:
     byod:
-      type: llm-cu124
+      type: llm-cu128
       runtime_env:
         - VLLM_USE_V1=1
     cluster_compute: llm_four_L4_gpu_head_node.yaml
@@ -4283,7 +4288,7 @@
     long_running: false
     script: pytest -vs test_llm_serve_correctness.py
 
-- name: llm_serve_integration
+- name: llm_serve_vllm_integration_tests
   frequency: nightly
   python: "3.11"
   group: llm-serve
@@ -4292,17 +4297,17 @@
 
   cluster:
     byod:
-      type: llm-cu124
+      type: llm-cu128
       runtime_env:
         - VLLM_USE_V1=1
-    cluster_compute: llm_g5-4xlarge.yaml
+    cluster_compute: llm_four_L4_gpu_head_node.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
     project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
   run:
     timeout: 3600
     long_running: false
-    script: pytest -vs test_llm_serve_integration.py
+    script: pytest -vs test_llm_serve_integration.py test_llm_serve_fault_tolerance.py
 
 - name: llm_serve_llama_3dot1_8B_quantized_tp1_1p1d
   frequency: nightly
@@ -4313,7 +4318,7 @@
 
   cluster:
     byod:
-      type: llm-cu124
+      type: llm-cu128
     cluster_compute: llm_auto_select_worker.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -4333,7 +4338,7 @@
 
   cluster:
     byod:
-      type: llm-cu124
+      type: llm-cu128
     cluster_compute: llm_auto_select_worker.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -4358,7 +4363,7 @@
 
   cluster:
     byod:
-      type: llm-cu124
+      type: llm-cu128
     cluster_compute: llm_4xl4.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -4378,7 +4383,7 @@
 
   cluster:
     byod:
-      type: llm-cu124
+      type: llm-cu128
       post_build_script: byod_llm_sglang_test.sh
     cluster_compute: llm_4xl4.yaml
 
@@ -4428,7 +4433,7 @@
 
   cluster:
     byod:
-      type: llm-cu124  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu124
+      type: llm-cu128  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu128
       post_build_script: byod_llm_ner.sh  # release/ray_release/byod/
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
@@ -4444,6 +4449,29 @@
       cluster:
         cluster_compute: ci/gce.yaml  # relative to working_dir
 
+- name: distributing_pytorch  # do not use dashes (regex sensitive)
+  frequency: weekly
+  group: ray-examples
+  team: ml
+  working_dir: //doc/source/train/examples/pytorch/distributing-pytorch
+
+  cluster:
+    byod:
+      type: gpu
+    cluster_compute: ci/aws.yaml  # relative to working_dir
+
+  run:
+    timeout: 3600
+    script: bash ci/tests.sh  # relative to working_dir
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: ci/gce.yaml  # relative to working_dir
+
 - name: e2e_audio
   frequency: weekly
   python: "3.11"
@@ -4453,7 +4481,7 @@
 
   cluster:
     byod:
-      type: llm-cu124
+      type: llm-cu128
       post_build_script: byod_e2e_audio.sh
     cluster_compute: ci/aws.yaml
 
@@ -4483,8 +4511,10 @@
     cluster_compute: ci/aws.yaml
 
   run:
+    prepare: pip install -e .
+    prepare_timeout: 300
+    script: bash ci/run_tests.sh
     timeout: 3600
-    script: python ci/tests.py
 
   variations:
     - __suffix__: aws
@@ -4523,7 +4553,7 @@
 
   cluster:
     byod:
-      type: llm-cu124  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu124
+      type: llm-cu128  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu128
       post_build_script: byod_object_detection.sh # release/ray_release/byod/
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
@@ -4533,6 +4563,31 @@
 
   variations:
     - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: ci/gce.yaml  # relative to working_dir
+
+- name: e2e_rag  # do not use dashes (regex sensitive)
+  frequency: weekly
+  python: "3.11"
+  group: ray-examples
+  team: ml
+  working_dir: //doc/source/ray-overview/examples/e2e-rag  # use // to access from repo's root
+
+  cluster:
+    byod:
+      type: llm-cu128  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu128
+      post_build_script: byod_e2e_rag.sh  # release/ray_release/byod/
+    cluster_compute: ci/aws.yaml  # relative to working_dir
+
+  run:
+    timeout: 3600
+    script: bash ci/tests.sh  # relative to working_dir
+
+  variations:
+    - __suffix__: aws  # uses default specs above
     - __suffix__: gce
       env: gce
       frequency: manual

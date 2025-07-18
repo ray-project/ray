@@ -12,6 +12,7 @@ from typing import Dict, List, Optional, Union
 from unittest.mock import patch
 
 import pytest
+from ray._common.test_utils import wait_for_condition
 import requests
 import yaml
 
@@ -26,7 +27,6 @@ from ray._private.test_utils import (
     chdir,
     format_web_url,
     ray_constants,
-    wait_for_condition,
     wait_until_server_available,
 )
 from ray.dashboard.consts import (

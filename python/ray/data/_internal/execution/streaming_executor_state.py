@@ -8,7 +8,7 @@ import threading
 import time
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 import ray
 from ray.data._internal.execution.backpressure_policy import BackpressurePolicy
@@ -32,7 +32,13 @@ from ray.data._internal.execution.operators.base_physical_operator import (
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.resource_manager import ResourceManager
 from ray.data._internal.progress_bar import ProgressBar
+from ray.data._internal.util import (
+    unify_schemas_with_validation,
+)
 from ray.data.context import DataContext
+
+if TYPE_CHECKING:
+    from ray.data.block import Schema
 
 logger = logging.getLogger(__name__)
 
@@ -194,6 +200,8 @@ class OpState:
         self._finished: bool = False
         self._exception: Optional[Exception] = None
         self._scheduling_status = OpSchedulingStatus()
+        self._schema: Optional["Schema"] = None
+        self._warned_on_schema_divergence: bool = False
 
     def __repr__(self):
         return f"OpState({self.op.name})"
@@ -253,6 +261,13 @@ class OpState:
 
     def add_output(self, ref: RefBundle) -> None:
         """Move a bundle produced by the operator to its outqueue."""
+
+        ref, diverged = dedupe_schemas_with_validation(
+            self._schema, ref, warn=not self._warned_on_schema_divergence
+        )
+        self._schema = ref.schema
+        self._warned_on_schema_divergence |= diverged
+
         self.output_queue.append(ref)
         self.num_completed_tasks += 1
 
@@ -716,3 +731,56 @@ def _actor_info_summary_str(info: _ActorPoolInfo) -> str:
         return base
     else:
         return f"{base} ({info})"
+
+
+def dedupe_schemas_with_validation(
+    old_schema: Optional["Schema"],
+    bundle: "RefBundle",
+    warn: bool = True,
+    allow_divergent: bool = False,
+) -> Tuple["RefBundle", bool]:
+    """Unify/Dedupe two schemas, warning if warn=True
+
+    Args:
+        old_schema: The old schema to unify. This can be `None`, in which case
+            the new schema will be used as the old schema.
+        bundle: The new `RefBundle` to unify with the old schema.
+        warn: Raise a warning if the schemas diverge.
+        allow_divergent: If `True`, allow the schemas to diverge and return unified schema.
+            If `False`, but keep the old schema.
+
+    Returns:
+        A ref bundle with the unified schema of the two input schemas.
+    """
+
+    # Note, often times the refbundles correspond to only one schema. We can reduce the
+    # memory footprint of multiple schemas by keeping only one copy.
+    diverged = False
+    if not old_schema:
+        return bundle, diverged
+
+    # This check is fast assuming pyarrow schemas
+    if old_schema == bundle.schema:
+        return bundle, diverged
+
+    diverged = True
+    if warn:
+        logger.warning(
+            f"Operator produced a RefBundle with a different schema "
+            f"than the previous one. Previous schema: {old_schema}, "
+            f"new schema: {bundle.schema}. This may lead to unexpected behavior."
+        )
+    if allow_divergent:
+        old_schema = unify_schemas_with_validation([old_schema, bundle.schema])
+
+    return (
+        RefBundle(
+            bundle.blocks,
+            schema=old_schema,
+            owns_blocks=bundle.owns_blocks,
+            output_split_idx=bundle.output_split_idx,
+            _cached_object_meta=bundle._cached_object_meta,
+            _cached_preferred_locations=bundle._cached_preferred_locations,
+        ),
+        diverged,
+    )

@@ -95,8 +95,6 @@ class RLModuleSpec:
             raise ValueError("RLModule class is not set.")
         if self.observation_space is None:
             raise ValueError("Observation space is not set.")
-        if self.action_space is None:
-            raise ValueError("Action space is not set.")
 
         try:
             module = self.module_class(

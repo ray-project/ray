@@ -11,8 +11,7 @@ from starlette.requests import Request
 
 import ray
 from ray import serve
-from ray._common.test_utils import SignalActor
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.serve.exceptions import BackPressureError
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
 
@@ -67,7 +66,9 @@ def test_http_backpressure(serve_instance):
 
     @ray.remote(num_cpus=0)
     def do_request(msg: str) -> Tuple[int, str]:
-        r = httpx.request("GET", "http://localhost:8000/", json={"msg": msg})
+        r = httpx.request(
+            "GET", "http://localhost:8000/", json={"msg": msg}, timeout=30.0
+        )
         return r.status_code, r.text
 
     # First response should block. Until the signal is sent, all subsequent requests

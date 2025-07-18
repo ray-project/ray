@@ -130,20 +130,28 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \param config Configuration of node manager, e.g. initial resources, ports, etc.
   /// \param object_manager_config Configuration of object manager, e.g. initial memory
   /// allocation.
-  NodeManager(instrumented_io_context &io_service,
-              const NodeID &self_node_id,
-              std::string self_node_name,
-              const NodeManagerConfig &config,
-              std::shared_ptr<gcs::GcsClient> gcs_client,
-              rpc::ClientCallManager &client_call_manager,
-              rpc::CoreWorkerClientPool &worker_rpc_pool,
-              std::unique_ptr<pubsub::SubscriberInterface> core_worker_subscriber,
-              std::unique_ptr<IObjectDirectory> object_directory,
-              std::unique_ptr<ObjectManagerInterface> object_manager,
-              plasma::PlasmaClientInterface &store_client,
-              std::unique_ptr<core::experimental::MutableObjectProviderInterface>
-                  mutable_object_provider,
-              std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully);
+  NodeManager(
+      instrumented_io_context &io_service,
+      const NodeID &self_node_id,
+      std::string self_node_name,
+      const NodeManagerConfig &config,
+      std::shared_ptr<gcs::GcsClient> gcs_client,
+      rpc::ClientCallManager &client_call_manager,
+      rpc::CoreWorkerClientPool &worker_rpc_pool,
+      std::shared_ptr<pubsub::SubscriberInterface> core_worker_subscriber,
+      std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler,
+      std::shared_ptr<ILocalTaskManager> local_task_manager,
+      std::shared_ptr<ClusterTaskManagerInterface> cluster_task_manager,
+      std::shared_ptr<IObjectDirectory> object_directory,
+      std::shared_ptr<ObjectManagerInterface> object_manager,
+      LocalObjectManager &local_object_manager,
+      DependencyManager &dependency_manager,
+      WorkerPoolInterface &worker_pool,
+      absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers,
+      plasma::PlasmaClientInterface &store_client,
+      std::unique_ptr<core::experimental::MutableObjectProviderInterface>
+          mutable_object_provider,
+      std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully);
 
   /// Handle an unexpected error that occurred on a client connection.
   /// The client will be disconnected and no more messages will be processed.
@@ -704,12 +712,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \return Whether the resource is returned successfully.
   bool ReturnBundleResources(const BundleSpecification &bundle_spec);
 
-  /// Publish the infeasible task error to GCS so that drivers can subscribe to it and
-  /// print.
-  ///
-  /// \param task RayTask that is infeasible
-  void PublishInfeasibleTaskError(const RayTask &task) const;
-
   /// Populate the relevant parts of the heartbeat table. This is intended for
   /// sending raylet <-> gcs heartbeats. In particular, this should fill in
   /// resource_load and resource_load_by_shape.
@@ -779,7 +781,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// The function to shutdown raylet gracefully.
   std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully_;
   /// A pool of workers.
-  WorkerPool worker_pool_;
+  WorkerPoolInterface &worker_pool_;
   /// The `ClientCallManager` object that is shared by all `NodeManagerClient`s
   /// as well as all `CoreWorkerClient`s.
   rpc::ClientCallManager &client_call_manager_;
@@ -787,12 +789,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   rpc::CoreWorkerClientPool &worker_rpc_pool_;
   /// The raylet client to initiate the pubsub to core workers (owners).
   /// It is used to subscribe objects to evict.
-  std::unique_ptr<pubsub::SubscriberInterface> core_worker_subscriber_;
+  std::shared_ptr<pubsub::SubscriberInterface> core_worker_subscriber_;
   /// The object table. This is shared between the object manager and node
   /// manager.
-  std::unique_ptr<IObjectDirectory> object_directory_;
+  std::shared_ptr<IObjectDirectory> object_directory_;
   /// Manages client requests for object transfers and availability.
-  std::unique_ptr<ObjectManagerInterface> object_manager_;
+  std::shared_ptr<ObjectManagerInterface> object_manager_;
   /// A Plasma object store client. This is used for creating new objects in
   /// the object store (e.g., for actor tasks that can't be run because the
   /// actor died) and to pin objects that are in scope in the cluster.
@@ -814,7 +816,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// A manager to resolve objects needed by queued tasks and workers that
   /// called `ray.get` or `ray.wait`.
-  DependencyManager dependency_manager_;
+  DependencyManager &dependency_manager_;
 
   /// A manager for wait requests.
   WaitManager wait_manager_;
@@ -833,14 +835,14 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Manages all local objects that are pinned (primary
   /// copies), freed, and/or spilled.
-  LocalObjectManager local_object_manager_;
+  LocalObjectManager &local_object_manager_;
 
   /// Map from node ids to addresses of the remote node managers.
   absl::flat_hash_map<NodeID, std::pair<std::string, int32_t>>
       remote_node_manager_addresses_;
 
   /// Map of workers leased out to clients.
-  absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> leased_workers_;
+  absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers_;
 
   /// Optional extra information about why the task failed.
   absl::flat_hash_map<TaskID, ray::TaskFailureEntry> task_failure_reasons_;
@@ -871,12 +873,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Seconds to initialize a local gc
   const uint64_t local_gc_interval_ns_;
 
-  /// These two classes make up the new scheduler. ClusterResourceScheduler is
+  /// These classes make up the new scheduler. ClusterResourceScheduler is
   /// responsible for maintaining a view of the cluster state w.r.t resource
   /// usage. ClusterTaskManager is responsible for queuing, spilling back, and
   /// dispatching tasks.
   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
-  std::unique_ptr<LocalTaskManager> local_task_manager_;
+  std::shared_ptr<ILocalTaskManager> local_task_manager_;
   std::shared_ptr<ClusterTaskManagerInterface> cluster_task_manager_;
 
   absl::flat_hash_map<ObjectID, std::unique_ptr<RayObject>> pinned_objects_;
@@ -924,8 +926,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// indicate network issues (dropped/duplicated/ooo packets, etc).
   int64_t next_resource_seq_no_;
 
-  /// Whether or not if the shutdown raylet request has been received.
-  bool is_shutdown_request_received_ = false;
+  /// Whether or not if the shutdown raylet request has been initiated and in progress.
+  bool is_shutting_down_ = false;
 
   /// Ray syncer for synchronization
   syncer::RaySyncer ray_syncer_;

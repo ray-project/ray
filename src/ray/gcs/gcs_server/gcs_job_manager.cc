@@ -368,12 +368,11 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
         // If job is dead, no need to get.
         if (data.is_dead()) {
           reply->mutable_job_info_list(jj)->set_is_running_tasks(false);
-          core_worker_clients_.Disconnect(worker_id);
           size_t updated_finished_tasks = num_finished_tasks->fetch_add(1) + 1;
           try_send_reply(updated_finished_tasks);
         } else {
           // Get is_running_tasks from the core worker for the driver.
-          auto client = core_worker_clients_.GetOrConnect(data.driver_address());
+          auto client = worker_client_pool_.GetOrConnect(data.driver_address());
           auto pending_task_req = std::make_unique<rpc::NumPendingTasksRequest>();
           constexpr int64_t kNumPendingTasksRequestTimeoutMs = 1000;
           RAY_LOG(DEBUG) << "Send NumPendingTasksRequest to worker " << worker_id
@@ -414,7 +413,7 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
            send_reply_callback,
            job_data_key_to_indices,
            num_finished_tasks,
-           try_send_reply](auto result) {
+           try_send_reply](const auto &result) {
             for (const auto &data : result) {
               const std::string &job_data_key = data.first;
               // The JobInfo stored by the Ray Job API.

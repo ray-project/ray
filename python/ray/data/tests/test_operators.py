@@ -10,7 +10,7 @@ import pandas as pd
 import pytest
 
 import ray
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import wait_for_condition
 from ray.data._internal.compute import ActorPoolStrategy, TaskPoolStrategy
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
@@ -766,7 +766,7 @@ def _make_ref_bundles(raw_bundles: List[List[List[Any]]]) -> List[RefBundle]:
     rbs = []
     for raw_bundle in raw_bundles:
         blocks = []
-
+        schema = None
         for raw_block in raw_bundle:
             print(f">>> {raw_block=}")
 
@@ -774,8 +774,9 @@ def _make_ref_bundles(raw_bundles: List[List[List[Any]]]) -> List[RefBundle]:
             blocks.append(
                 (ray.put(block), BlockAccessor.for_block(block).get_metadata())
             )
+            schema = BlockAccessor.for_block(block).schema()
 
-        rb = RefBundle(blocks=blocks, owns_blocks=True)
+        rb = RefBundle(blocks=blocks, owns_blocks=True, schema=schema)
 
         rbs.append(rb)
 
@@ -1188,9 +1189,12 @@ def test_input_data_buffer_does_not_free_inputs():
     block = pd.DataFrame({"id": [0]})
     block_ref = ray.put(block)
     metadata = BlockAccessor.for_block(block).get_metadata()
+    schema = BlockAccessor.for_block(block).schema()
     op = InputDataBuffer(
         DataContext.get_current(),
-        input_data=[RefBundle([(block_ref, metadata)], owns_blocks=False)],
+        input_data=[
+            RefBundle([(block_ref, metadata)], owns_blocks=False, schema=schema)
+        ],
     )
 
     op.get_next()
