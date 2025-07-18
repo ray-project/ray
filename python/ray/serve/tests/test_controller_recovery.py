@@ -90,14 +90,19 @@ def test_recover_start_from_replica_actor_names(serve_instance, deployment_optio
 
     # Ensure recovered replica names are the same using Serve's internal APIs
     recovered_replicas = ray.get(serve_instance._controller._dump_replica_states_for_testing.remote(id))
-    recovered_replica_names = [replica.actor_handle._actor_id.hex() for replica in recovered_replicas.get(states=[ReplicaState.RUNNING])]
-    assert set(recovered_replica_names) == set(replica_names), "Running replica actor names after recovery must match"
+    recovered_replica_names = [
+        replica.actor_handle._actor_id.hex()
+        for replica in recovered_replicas.get(states=[ReplicaState.RUNNING])
+    ]
+    assert set(recovered_replica_names) == set(replica_names), \
+        "Running replica actor names after recovery must match"
 
     # Ensure recovered replica version has are the same
     for replica in recovered_replicas.get(states=[ReplicaState.RUNNING]):
         ref = replica.actor_handle.initialize_and_get_metadata.remote()
         _, version, _, _, _ = ray.get(ref)
-        assert replica_version_hash == hash(version), "Replica version hash should be the same after recover from actor names"
+        assert replica_version_hash == hash(version), \
+            "Replica version hash should be the same after recover from actor names"
 
 
 def test_recover_rolling_update_from_replica_actor_names(serve_instance):
