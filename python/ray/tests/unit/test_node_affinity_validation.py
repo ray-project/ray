@@ -1,4 +1,6 @@
 import pytest
+import sys
+
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 
@@ -21,3 +23,7 @@ def test_node_affinity_scheduling_strategy_invalid_attributes():
         NodeAffinitySchedulingStrategy(
             node_id="123", soft=True, _fail_on_unavailable=True
         )
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-vv", __file__]))
