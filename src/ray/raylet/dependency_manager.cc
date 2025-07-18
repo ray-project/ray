@@ -146,10 +146,11 @@ void DependencyManager::StartOrUpdateGetRequest(
       object_manager_.CancelPull(*request_id);
     }
 
-    if (*request_id != new_request_id) {
-      get_requests_[worker_id][new_request_id] = get_request;
-      get_requests_[worker_id].erase(*request_id);
-    }
+    // new_request_id and *request_id should not be equal. We leave a RAY_CHECK here to
+    // prevent subsequent modifications from making them equal.
+    RAY_CHECK(*request_id != new_request_id);
+    get_requests_[worker_id][new_request_id] = get_request;
+    get_requests_[worker_id].erase(*request_id);
 
     *request_id = new_request_id;
     RAY_LOG(DEBUG) << "Started pull for get request from worker " << worker_id
