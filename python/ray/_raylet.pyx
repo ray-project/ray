@@ -2753,7 +2753,7 @@ cdef void _cleanup_actor_instance_wrapper() noexcept nogil:
             pass
 
 def _cleanup_actor_instance():
-    """Cleanup callback that calls actor's __ray_cleanup__ method."""
+    """Cleanup callback that calls actor's __ray_shutdown__ method."""
     worker = ray._private.worker.global_worker
     core_worker = worker.core_worker
     
@@ -2766,14 +2766,14 @@ def _cleanup_actor_instance():
     
     if actor_instance is not None:
         try:
-            # Call the actor's __ray_cleanup__ method if it exists
-            if hasattr(actor_instance, '__ray_cleanup__') and callable(getattr(actor_instance, '__ray_cleanup__')):
-                actor_instance.__ray_cleanup__()
-                logger.info(f"Actor {actor_id} __ray_cleanup__ method completed successfully")
+            # Call the actor's __ray_shutdown__ method if it exists
+            if hasattr(actor_instance, '__ray_shutdown__') and callable(getattr(actor_instance, '__ray_shutdown__')):
+                actor_instance.__ray_shutdown__()
+                logger.info(f"Actor {actor_id} __ray_shutdown__ method completed successfully")
             else:
-                logger.debug(f"Actor {actor_id} has no __ray_cleanup__ method - skipping cleanup")
+                logger.debug(f"Actor {actor_id} has no __ray_shutdown__ method - skipping cleanup")
         except Exception as e:
-            logger.error(f"Error during actor __ray_cleanup__ method: {e}")
+            logger.error(f"Error during actor __ray_shutdown__ method: {e}")
         finally:
             # Remove from actors dict to prevent double cleanup
             worker.actors.pop(actor_id, None)
