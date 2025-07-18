@@ -358,7 +358,7 @@ ray::Status NodeManager::RegisterGcs() {
           return;
         }
         checking = true;
-        RAY_CHECK_OK(gcs_client_.Nodes().AsyncCheckSelfAlive(
+        gcs_client_.Nodes().AsyncCheckSelfAlive(
             // capture checking ptr here because vs17 fail to compile
             [this, checking_ptr = &checking](auto status, auto alive) mutable {
               if ((status.ok() && !alive)) {
@@ -375,7 +375,7 @@ ray::Status NodeManager::RegisterGcs() {
               }
               *checking_ptr = false;
             },
-            /* timeout_ms = */ 30000));
+            /* timeout_ms = */ 30000);
       },
       RayConfig::instance().raylet_liveness_self_check_interval_ms(),
       "NodeManager.GcsCheckAlive");
@@ -1245,9 +1245,9 @@ void NodeManager::ProcessAnnounceWorkerPortMessageImpl(
                                 string_from_flatbuf(*message->entrypoint()),
                                 *job_config);
 
-    RAY_CHECK_OK(gcs_client_.Jobs().AsyncAdd(job_data_ptr, [this, client](Status status) {
+    gcs_client_.Jobs().AsyncAdd(job_data_ptr, [this, client](Status status) {
       SendPortAnnouncementResponse(client, std::move(status));
-    }));
+    });
   }
 }
 
@@ -1418,8 +1418,7 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
                                    disconnect_detail,
                                    worker->GetProcess().GetId(),
                                    creation_task_exception);
-  RAY_CHECK_OK(
-      gcs_client_.Workers().AsyncReportWorkerFailure(worker_failure_data_ptr, nullptr));
+  gcs_client_.Workers().AsyncReportWorkerFailure(worker_failure_data_ptr, nullptr);
 
   if (is_worker) {
     const ActorID &actor_id = worker->GetActorId();
@@ -1461,7 +1460,7 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
             << error_message_str;
         auto error_data_ptr = gcs::CreateErrorTableData(
             type, error_message_str, absl::FromUnixMillis(current_time_ms()), job_id);
-        RAY_CHECK_OK(gcs_client_.Errors().AsyncReportJobError(error_data_ptr, nullptr));
+        gcs_client_.Errors().AsyncReportJobError(error_data_ptr, nullptr);
       }
     }
 
@@ -1477,7 +1476,7 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
     // The client is a driver.
     const auto job_id = worker->GetAssignedJobId();
     RAY_CHECK(!job_id.IsNil());
-    RAY_CHECK_OK(gcs_client_.Jobs().AsyncMarkFinished(job_id, nullptr));
+    gcs_client_.Jobs().AsyncMarkFinished(job_id, nullptr);
     worker_pool_.DisconnectDriver(worker);
 
     RAY_LOG(INFO).WithField(worker->WorkerId()).WithField(worker->GetAssignedJobId())
@@ -1691,7 +1690,7 @@ void NodeManager::ProcessPushErrorRequestMessage(const uint8_t *message_data) {
   JobID job_id = from_flatbuf<JobID>(*message->job_id());
   auto error_data_ptr = gcs::CreateErrorTableData(
       type, error_message, absl::FromUnixMillis(timestamp), job_id);
-  RAY_CHECK_OK(gcs_client_.Errors().AsyncReportJobError(error_data_ptr, nullptr));
+  gcs_client_.Errors().AsyncReportJobError(error_data_ptr, nullptr);
 }
 
 void NodeManager::HandleGetResourceLoad(rpc::GetResourceLoadRequest request,
@@ -2125,7 +2124,7 @@ void NodeManager::MarkObjectsAsFailed(
       RAY_LOG(ERROR) << error_message;
       auto error_data_ptr = gcs::CreateErrorTableData(
           "task", error_message, absl::FromUnixMillis(current_time_ms()), job_id);
-      RAY_CHECK_OK(gcs_client_.Errors().AsyncReportJobError(error_data_ptr, nullptr));
+      gcs_client_.Errors().AsyncReportJobError(error_data_ptr, nullptr);
     }
   }
 }

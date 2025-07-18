@@ -1719,7 +1719,7 @@ void WorkerPool::WarnAboutSize() {
 
       auto error_data_ptr = gcs::CreateErrorTableData(
           "worker_pool_large", warning_message_str, get_time_());
-      RAY_CHECK_OK(gcs_client_.Errors().AsyncReportJobError(error_data_ptr, nullptr));
+      gcs_client_.Errors().AsyncReportJobError(error_data_ptr, nullptr);
     }
   }
 }
