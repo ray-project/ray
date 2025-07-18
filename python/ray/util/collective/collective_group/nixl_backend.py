@@ -1,27 +1,55 @@
-from abc import ABCMeta
-
 from nixl._api import nixl_agent, nixl_agent_config
 import ray
 from ray.util.collective.types import Backend
+from typing import TYPE_CHECKING, List, Tuple
+
+if TYPE_CHECKING:
+    import torch
 
 
-class NixlBackend(metaclass=ABCMeta):
+class NixlBackend:
+    """Backend implementation for NIXL tensor transport.
+
+    This class provides functionality for transferring tensors using NIXL . It handles
+    initialization of the NIXL agent, receiving tensors, and managing NIXL metadata.
+    """
+
     def __init__(self):
+        """Initialize the NIXL backend.
+
+        Creates a NIXL agent with UCX backend.
+        """
         agent_config = nixl_agent_config(backends=["UCX"])
         ctx = ray.get_runtime_context()
         actor_id = ctx.get_actor_id()
         self._nixl_agent = nixl_agent(actor_id, agent_config)
 
-    @property
-    def nixl_agent(self) -> "nixl_agent":
-        return self._nixl_agent
-
     @classmethod
     def backend(cls):
+        """Get the backend type.
+
+        Returns:
+            Backend.NIXL: The backend type enum value for NIXL.
+        """
         return Backend.NIXL
 
-    def recv(self, tensors, nixl_serialized_descs, remote_nixl_agent_meta):
-        nixl_agent = self.nixl_agent
+    def recv(
+        self,
+        tensors: List[torch.Tensor],
+        nixl_serialized_descs: bytes,
+        remote_nixl_agent_meta: bytes,
+    ):
+        """Receive tensors from a remote NIXL agent.
+
+        Args:
+            tensors: List of tensors to receive into.
+            nixl_serialized_descs: Serialized NIXL descriptors for the remote tensors.
+            remote_nixl_agent_meta: Metadata about the remote NIXL agent.
+
+        Raises:
+            RuntimeError: If the NIXL transfer enters an error state.
+        """
+        nixl_agent = self._nixl_agent
         remote_descs = nixl_agent.deserialize_descs(nixl_serialized_descs)
         local_descs = nixl_agent.register_memory(tensors)
         remote_name = nixl_agent.add_remote_agent(remote_nixl_agent_meta)
@@ -40,8 +68,18 @@ class NixlBackend(metaclass=ABCMeta):
             elif state == "DONE":
                 break
 
-    def get_nixl_metadata(self, tensors):
-        nixl_agent = self.nixl_agent
+    def get_nixl_metadata(self, tensors: List[torch.Tensor]) -> Tuple[bytes, bytes]:
+        """Get NIXL metadata for a set of tensors.
+
+        Args:
+            tensors: List of tensors to get metadata for.
+
+        Returns:
+            tuple: A tuple containing:
+                - Serialized NIXL descriptors for the tensors
+                - Metadata about this NIXL agent
+        """
+        nixl_agent = self._nixl_agent
         reg_descs = nixl_agent.register_memory(tensors)
         xfer_descs = reg_descs.trim()
         return (

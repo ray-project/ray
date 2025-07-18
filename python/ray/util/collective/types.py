@@ -50,16 +50,20 @@ class Backend(object):
         return backend
 
 
+@dataclass
 class TensorTransportMetadata:
-    def __init__(
-        self,
-        src_rank: Optional[int] = None,
-        nixl_serialized_descs: Optional[bytes] = None,
-        nixl_agent_meta: Optional[bytes] = None,
-    ):
-        self.src_rank = src_rank
-        self.nixl_serialized_descs = nixl_serialized_descs
-        self.nixl_agent_meta = nixl_agent_meta
+    """Metadata for tensor transport.
+
+    Args:
+        src_rank: The source rank that the tensor is being transported from. It's
+            used in non-NIXL transport.
+        nixl_serialized_descs: Serialized tensor descriptors for NIXL transport.
+        nixl_agent_meta: The additional metadata of the remote NIXL agent.
+    """
+
+    src_rank: Optional[int] = None
+    nixl_serialized_descs: Optional[bytes] = None
+    nixl_agent_meta: Optional[bytes] = None
 
 
 class ReduceOp(Enum):

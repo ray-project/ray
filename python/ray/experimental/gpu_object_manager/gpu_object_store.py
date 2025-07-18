@@ -1,9 +1,9 @@
-from typing import Dict, List, Optional, Tuple, Set
+from typing import Dict, List, Optional, Set
 
 import ray.util.collective as collective
 from ray._private.custom_types import TensorTransportEnum
 from ray.util.collective.types import Backend, TensorTransportMetadata
-
+from ray.experimental.gpu_object_manager.gpu_object_manager import TensorMetadata
 
 try:
     import torch
@@ -67,9 +67,7 @@ def __ray_recv__(
     communicator_name: str,
     obj_id: str,
     src_rank: int,
-    tensor_meta: Tuple[
-        List[Tuple["torch.Size", "torch.dtype"]], Optional[bytes], Optional[bytes]
-    ],
+    tensor_meta: TensorMetadata,
 ):
     """Helper function that runs on the dst actor to receive tensors from the src actor."""
     from ray._private.worker import global_worker
@@ -77,8 +75,9 @@ def __ray_recv__(
     backend = collective.get_group_handle(communicator_name).backend()
 
     device = COLLECTIVE_BACKEND_TO_TORCH_DEVICE[backend]
-
-    tensor_basic_meta, nixl_serialized_descs, nixl_agent_meta = tensor_meta
+    tensor_basic_meta = tensor_meta.tensor_basic_meta
+    nixl_serialized_descs = tensor_meta.nixl_serialized_descs
+    nixl_agent_meta = tensor_meta.nixl_agent_meta
 
     gpu_object_store = global_worker.gpu_object_manager.gpu_object_store
     tensors = []
