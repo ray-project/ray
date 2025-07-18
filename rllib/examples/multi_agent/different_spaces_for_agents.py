@@ -8,7 +8,7 @@ RLlib tries to automatically infer them from the env provided spaces dicts
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack --num-agents=2`
+`python [script file name].py --num-agents=2`
 
 For debugging, use the following additional command line options
 `--no-tune --num-env-runners=0`
@@ -85,10 +85,6 @@ parser = add_rllib_example_script_args(
 
 if __name__ == "__main__":
     args = parser.parse_args()
-
-    assert (
-        args.enable_new_api_stack
-    ), "Must set --enable-new-api-stack when running this script!"
 
     base_config = (
         get_trainable_cls(args.algo)
