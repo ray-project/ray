@@ -88,40 +88,39 @@ class ImageClassificationJpegRayDataLoaderFactory(
         # TODO: The validation dataset directory is not partitioned by class.
         val_dir = train_dir
 
-        if train_dir.startswith("s3://"):
-            s3_filesystem = True
-            filesystem = self.get_s3fs_with_boto_creds()
-        else:
-            s3_filesystem = False
-            filesystem = None
+        filesystem = (
+            self.get_s3fs_with_boto_creds() if train_dir.startswith("s3://") else None
+        )
 
         # Create training dataset with class-based partitioning
         train_partitioning = Partitioning(
             "dir", base_dir=train_dir, field_names=["class"]
         )
-        train_ds = ray.data.read_images(
-            train_dir,
-            mode="RGB",
-            include_paths=False,
-            partitioning=train_partitioning,
-            filesystem=filesystem,
+        train_ds = (
+            ray.data.read_images(
+                train_dir,
+                mode="RGB",
+                include_paths=False,
+                partitioning=train_partitioning,
+                filesystem=filesystem,
+            )
+            .map(get_preprocess_map_fn(random_transforms=True))
+            .limit(self.get_dataloader_config().limit_training_rows)
         )
-        if s3_filesystem:
-            train_ds = train_ds.limit(self.get_dataloader_config().limit_training_rows)
-        train_ds = train_ds.map(get_preprocess_map_fn(random_transforms=True))
 
         # Create validation dataset with same partitioning
         val_partitioning = Partitioning("dir", base_dir=val_dir, field_names=["class"])
-        val_ds = ray.data.read_images(
-            val_dir,
-            mode="RGB",
-            include_paths=False,
-            partitioning=val_partitioning,
-            filesystem=filesystem,
+        val_ds = (
+            ray.data.read_images(
+                val_dir,
+                mode="RGB",
+                include_paths=False,
+                partitioning=val_partitioning,
+                filesystem=filesystem,
+            )
+            .map(get_preprocess_map_fn(random_transforms=False))
+            .limit(self.get_dataloader_config().limit_validation_rows)
         )
-        if s3_filesystem:
-            val_ds = val_ds.limit(self.get_dataloader_config().limit_validation_rows)
-        val_ds = val_ds.map(get_preprocess_map_fn(random_transforms=False))
 
         return {
             DatasetKey.TRAIN: train_ds,

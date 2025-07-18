@@ -39,13 +39,30 @@ class LimitOperator(OneToOneOperator):
     def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
         assert not self.completed()
         assert input_index == 0, input_index
+
         if self._limit_reached():
             return
+
+        input_total_rows = self.input_dependencies[0].num_output_rows_total()
+        can_passthrough = (
+            input_total_rows is not None and self._limit >= input_total_rows
+        )
+
         out_blocks: List[ObjectRef[Block]] = []
         out_metadata: List[BlockMetadata] = []
+
         for block, metadata in refs.blocks:
             num_rows = metadata.num_rows
             assert num_rows is not None
+
+            if can_passthrough:
+                # Fast path: limit is greater than or equal to all input rows, passthrough
+                out_blocks.append(block)
+                out_metadata.append(metadata)
+                self._output_blocks_stats.append(metadata.to_stats())
+                self._consumed_rows += num_rows
+                continue
+
             if self._consumed_rows + num_rows <= self._limit:
                 out_blocks.append(block)
                 out_metadata.append(metadata)
@@ -73,6 +90,7 @@ class LimitOperator(OneToOneOperator):
                 self._output_blocks_stats.append(metadata.to_stats())
                 self._consumed_rows = self._limit
                 break
+
         self._cur_output_bundles += 1
         out_refs = RefBundle(
             list(zip(out_blocks, out_metadata)),
@@ -81,7 +99,7 @@ class LimitOperator(OneToOneOperator):
         )
         self._buffer.append(out_refs)
         self._metrics.on_output_queued(out_refs)
-        if self._limit_reached():
+        if self._limit_reached() or can_passthrough:
             self.mark_execution_finished()
 
         # We cannot estimate if we have only consumed empty blocks,

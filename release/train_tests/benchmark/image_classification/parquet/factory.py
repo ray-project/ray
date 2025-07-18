@@ -54,8 +54,8 @@ class ImageClassificationParquetRayDataLoaderFactory(
                 self._data_dirs[DatasetKey.TRAIN],
                 columns=["image", "label"],
             )
-            .limit(self.get_dataloader_config().limit_training_rows)
             .map(get_preprocess_map_fn(decode_image=True, random_transforms=True))
+            .limit(self.get_dataloader_config().limit_training_rows)
         )
 
         # Create validation dataset without random transforms
@@ -64,8 +64,8 @@ class ImageClassificationParquetRayDataLoaderFactory(
                 self._data_dirs[DatasetKey.TRAIN],
                 columns=["image", "label"],
             )
-            .limit(self.get_dataloader_config().limit_validation_rows)
             .map(get_preprocess_map_fn(decode_image=True, random_transforms=False))
+            .limit(self.get_dataloader_config().limit_validation_rows)
         )
 
         return {
