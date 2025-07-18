@@ -257,7 +257,7 @@ def _get_base_dataset(stage: str = "train", days=None):
     return ds
 
 
-def get_ray_dataset(stage: DatasetKey = DatasetKey.TRAIN, days=[0]):
+def get_ray_dataset(stage: DatasetKey = DatasetKey.TRAIN, days=None):
     ds = _get_base_dataset(stage, days)
 
     # Convert categorical features to integers.

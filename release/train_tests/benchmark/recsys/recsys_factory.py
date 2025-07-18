@@ -45,7 +45,7 @@ class RecsysRayDataLoaderFactory(RayDataLoaderFactory):
     def get_ray_datasets(self) -> Dict[str, ray.data.Dataset]:
         # TODO: Use the train dataset for validation as well.
         return {
-            DatasetKey.TRAIN: get_ray_dataset(DatasetKey.TRAIN),
+            DatasetKey.TRAIN: get_ray_dataset(DatasetKey.TRAIN, [0, 1, 2]),
             DatasetKey.VALID: get_ray_dataset(DatasetKey.VALID),
         }
 
