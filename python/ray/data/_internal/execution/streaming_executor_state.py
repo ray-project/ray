@@ -748,14 +748,10 @@ def dedupe_schemas_with_validation(
     # Note, often times the refbundles correspond to only one schema. We can reduce the
     # memory footprint of multiple schemas by keeping only one copy.
     diverged = False
-    from ray.data._internal.pandas_block import PandasBlockSchema
 
-    old_schema_is_empty = old_schema is None or (
-        not old_schema.names
-        if isinstance(old_schema, PandasBlockSchema)
-        else not old_schema  # pyarrow schema check
-    )
-    if old_schema_is_empty:
+    from ray.data.block import _is_empty_schema
+
+    if _is_empty_schema(old_schema):
         return bundle, diverged
 
     # This check is fast assuming pyarrow schemas
