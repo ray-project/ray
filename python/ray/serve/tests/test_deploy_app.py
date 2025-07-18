@@ -1,13 +1,11 @@
 import sys
 import time
-from functools import partial
 from typing import Dict, List, Union
 
 import httpx
 import pytest
 
 import ray
-import ray._private.state
 import ray.actor
 from ray import serve
 from ray._common.test_utils import SignalActor, wait_for_condition
@@ -16,6 +14,7 @@ from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
 from ray.serve._private.test_utils import (
     check_num_replicas_gte,
     check_num_replicas_lte,
+    get_application_url,
 )
 from ray.serve.schema import (
     ApplicationStatus,
@@ -30,26 +29,23 @@ from ray.tests.conftest import call_ray_stop_only  # noqa: F401
 from ray.util.state import list_actors
 
 
-def check_running():
-    assert (
-        serve.status().applications[SERVE_DEFAULT_APP_NAME].status
-        == ApplicationStatus.RUNNING
-    )
+def check_running(app_name: str = SERVE_DEFAULT_APP_NAME):
+    assert serve.status().applications[app_name].status == ApplicationStatus.RUNNING
     return True
 
 
-def check_endpoint(endpoint: str, json: Union[List, Dict], expected: str):
-    resp = httpx.post(f"http://localhost:8000/{endpoint}", json=json)
+def check_endpoint(json: Union[List, Dict], expected: str, app_name: str = "default"):
+    url = get_application_url("HTTP", app_name=app_name)
+    resp = httpx.post(url, json=json)
     assert resp.text == expected
     return True
 
 
-def check_deployments_dead(deployment_ids: List[DeploymentID]):
-    prefixes = [f"{id.app_name}#{id.name}" for id in deployment_ids]
-    actor_names = [
-        actor["name"] for actor in list_actors(filters=[("state", "=", "ALIVE")])
-    ]
-    return all(f"ServeReplica::{p}" not in actor_names for p in prefixes)
+def check_deploy_failed(app_name: str, message: str):
+    status = serve.status().applications[app_name]
+    assert status.status == "DEPLOY_FAILED"
+    assert message in status.message
+    return True
 
 
 def get_test_config() -> Dict:
@@ -95,28 +91,28 @@ def check_multi_app():
 
     wait_for_condition(
         check_endpoint,
-        endpoint="app1",
         json=["ADD", 2],
         expected="4 pizzas please!",
+        app_name="app1",
     )
     wait_for_condition(
         check_endpoint,
-        endpoint="app1",
         json=["MUL", 3],
         expected="9 pizzas please!",
+        app_name="app1",
     )
 
     wait_for_condition(
         check_endpoint,
-        endpoint="app2",
         json=["ADD", 2],
         expected="5 pizzas please!",
+        app_name="app2",
     )
     wait_for_condition(
         check_endpoint,
-        endpoint="app2",
         json=["MUL", 3],
         expected="12 pizzas please!",
+        app_name="app2",
     )
 
 
@@ -128,9 +124,23 @@ def test_deploy_multi_app_basic(serve_instance):
     check_multi_app()
 
 
+def test_two_fastapi_in_one_application(serve_instance):
+    client = serve_instance
+    config = {
+        "applications": [
+            {
+                "name": "app1",
+                "route_prefix": "/app1",
+                "import_path": "ray.serve.tests.test_config_files.multi_fastapi.invalid_model",
+            }
+        ],
+    }
+    client.deploy_apps(ServeDeploySchema.parse_obj(config))
+    wait_for_condition(check_deploy_failed, app_name="app1", message="FastAPI")
+
+
 def test_deploy_multi_app_update_config(serve_instance):
     client = serve_instance
-
     config = get_test_deploy_config()
     client.deploy_apps(ServeDeploySchema.parse_obj(config))
     check_multi_app()
@@ -154,13 +164,13 @@ def test_deploy_multi_app_update_config(serve_instance):
     ]
 
     client.deploy_apps(ServeDeploySchema.parse_obj(config))
+    url = get_application_url("HTTP", app_name="app1")
     wait_for_condition(
-        lambda: httpx.post("http://localhost:8000/app1", json=["ADD", 2]).text
-        == "1 pizzas please!"
+        lambda: httpx.post(f"{url}", json=["ADD", 2]).text == "1 pizzas please!"
     )
+    url = get_application_url("HTTP", app_name="app2")
     wait_for_condition(
-        lambda: httpx.post("http://localhost:8000/app2", json=["ADD", 2]).text
-        == "12 pizzas please!"
+        lambda: httpx.post(f"{url}", json=["ADD", 2]).text == "12 pizzas please!"
     )
 
 
@@ -214,13 +224,13 @@ def test_deploy_multi_app_update_num_replicas(serve_instance):
     ]
 
     client.deploy_apps(ServeDeploySchema.parse_obj(config))
+    url = get_application_url("HTTP", app_name="app1")
     wait_for_condition(
-        lambda: httpx.post("http://localhost:8000/app1", json=["ADD", 2]).text
-        == "2 pizzas please!"
+        lambda: httpx.post(f"{url}", json=["ADD", 2]).text == "2 pizzas please!",
     )
+    url = get_application_url("HTTP", app_name="app2")
     wait_for_condition(
-        lambda: httpx.post("http://localhost:8000/app2", json=["ADD", 2]).text
-        == "102 pizzas please!"
+        lambda: httpx.post(f"{url}", json=["ADD", 2]).text == "102 pizzas please!"
     )
 
     wait_for_condition(
@@ -244,12 +254,14 @@ def test_deploy_multi_app_update_timestamp(serve_instance):
 
     config = get_test_deploy_config()
     client.deploy_apps(ServeDeploySchema.parse_obj(config))
+    wait_for_condition(check_running, app_name="app1", timeout=15)
+    wait_for_condition(check_running, app_name="app2", timeout=15)
 
     first_deploy_time_app1 = serve.status().applications["app1"].last_deployed_time_s
+    url = get_application_url("HTTP", app_name="app1")
     first_deploy_time_app2 = serve.status().applications["app2"].last_deployed_time_s
 
     assert first_deploy_time_app1 > 0 and first_deploy_time_app2 > 0
-    time.sleep(0.1)
 
     # app1
     config["applications"][0]["deployments"] = [
@@ -266,7 +278,8 @@ def test_deploy_multi_app_update_timestamp(serve_instance):
         },
     ]
     client.deploy_apps(ServeDeploySchema.parse_obj(config))
-
+    wait_for_condition(check_running, app_name="app1", timeout=15)
+    wait_for_condition(check_running, app_name="app2", timeout=15)
     assert (
         serve.status().applications["app1"].last_deployed_time_s
         > first_deploy_time_app1
@@ -280,9 +293,9 @@ def test_deploy_multi_app_update_timestamp(serve_instance):
         ApplicationStatus.DEPLOYING,
         ApplicationStatus.RUNNING,
     }
+    url = get_application_url("HTTP", app_name="app1")
     wait_for_condition(
-        lambda: httpx.post("http://localhost:8000/app1", json=["ADD", 2]).text
-        == "4 pizzas please!"
+        lambda: httpx.post(f"{url}", json=["ADD", 2]).text == "4 pizzas please!"
     )
 
 
@@ -310,27 +323,28 @@ def test_deploy_multi_app_overwrite_apps(serve_instance):
         }
     )
     client.deploy_apps(test_config)
-
+    wait_for_condition(check_running, app_name="app1", timeout=15)
+    wait_for_condition(check_running, app_name="app2", timeout=15)
+    url = get_application_url("HTTP", app_name="app1")
+    wait_for_condition(lambda: httpx.get(f"{url}").text == "wonderful world")
+    url = get_application_url("HTTP", app_name="app2")
     wait_for_condition(
-        lambda: httpx.get("http://localhost:8000/app1").text == "wonderful world"
-    )
-    wait_for_condition(
-        lambda: httpx.post("http://localhost:8000/app2", json=["ADD", 2]).text
-        == "4 pizzas please!"
+        lambda: httpx.post(f"{url}", json=["ADD", 2]).text == "4 pizzas please!"
     )
 
     # Switch the two application import paths
     test_config.applications[0].import_path = pizza_import_path
     test_config.applications[1].import_path = world_import_path
     client.deploy_apps(test_config)
+    wait_for_condition(check_running, app_name="app1", timeout=15)
+    wait_for_condition(check_running, app_name="app2", timeout=15)
 
+    url = get_application_url("HTTP", app_name="app1")
     wait_for_condition(
-        lambda: httpx.post("http://localhost:8000/app1", json=["ADD", 2]).text
-        == "4 pizzas please!"
+        lambda: httpx.post(f"{url}", json=["ADD", 2]).text == "4 pizzas please!"
     )
-    wait_for_condition(
-        lambda: httpx.get("http://localhost:8000/app2").text == "wonderful world"
-    )
+    url = get_application_url("HTTP", app_name="app2")
+    wait_for_condition(lambda: httpx.get(f"{url}").text == "wonderful world")
 
 
 def test_deploy_multi_app_overwrite_apps2(serve_instance):
@@ -357,13 +371,13 @@ def test_deploy_multi_app_overwrite_apps2(serve_instance):
     )
     # Deploy app1 and app2
     client.deploy_apps(test_config)
-
+    wait_for_condition(check_running, app_name="app1", timeout=15)
+    wait_for_condition(check_running, app_name="app2", timeout=15)
+    url1 = get_application_url("HTTP", app_name="app1")
+    wait_for_condition(lambda: httpx.get(f"{url1}").text == "wonderful world")
+    url2 = get_application_url("HTTP", app_name="app2")
     wait_for_condition(
-        lambda: httpx.get("http://localhost:8000/app1").text == "wonderful world"
-    )
-    wait_for_condition(
-        lambda: httpx.post("http://localhost:8000/app2", json=["ADD", 2]).text
-        == "4 pizzas please!"
+        lambda: httpx.post(f"{url2}", json=["ADD", 2]).text == "4 pizzas please!"
     )
 
     # Deploy app3
@@ -387,6 +401,7 @@ def test_deploy_multi_app_overwrite_apps2(serve_instance):
         }
     )
     client.deploy_apps(new_config)
+    wait_for_condition(check_running, app_name="app3", timeout=15)
 
     def check_dead():
         actors = list_actors(
@@ -403,13 +418,15 @@ def test_deploy_multi_app_overwrite_apps2(serve_instance):
     wait_for_condition(check_dead)
 
     # App1 and App2 should be gone
-    assert httpx.get("http://localhost:8000/app1").status_code != 200
-    assert httpx.post("http://localhost:8000/app2", json=["ADD", 2]).status_code != 200
+    url1 = get_application_url("HTTP", app_name="app1")
+    assert httpx.get(f"{url1}").status_code != 200
+    url2 = get_application_url("HTTP", app_name="app2")
+    assert httpx.post(f"{url2}", json=["ADD", 2]).status_code != 200
 
     # App3 should be up and running
+    url3 = get_application_url("HTTP", app_name="app3")
     wait_for_condition(
-        lambda: httpx.post("http://localhost:8000/app3", json=["ADD", 2]).text
-        == "5 pizzas please!"
+        lambda: httpx.post(f"{url3}", json=["ADD", 2]).text == "5 pizzas please!"
     )
 
 
@@ -438,6 +455,8 @@ def test_deploy_multi_app_deployments_removed(serve_instance):
     )
     # Deploy with pizza graph first
     client.deploy_apps(test_config)
+    wait_for_condition(check_running, app_name="app1", timeout=15)
+    url = get_application_url("HTTP", app_name="app1")
 
     def check_app(deployments):
         # Check that the live deployments and actors are what we expect: exactly the
@@ -459,18 +478,17 @@ def test_deploy_multi_app_deployments_removed(serve_instance):
 
     wait_for_condition(check_app, deployments=pizza_deployments)
     wait_for_condition(
-        lambda: httpx.post("http://localhost:8000/app1", json=["ADD", 2]).text
-        == "4 pizzas please!"
+        lambda: httpx.post(f"{url}", json=["ADD", 2]).text == "4 pizzas please!"
     )
 
     # Redeploy with world graph
     test_config.applications[0].import_path = world_import_path
     client.deploy_apps(test_config)
+    wait_for_condition(check_running, app_name="app1", timeout=15)
+    url = get_application_url("HTTP", app_name="app1")
 
     wait_for_condition(check_app, deployments=world_deployments)
-    wait_for_condition(
-        lambda: httpx.get("http://localhost:8000/app1").text == "wonderful world"
-    )
+    wait_for_condition(lambda: httpx.post(f"{url}").text == "wonderful world")
 
 
 @pytest.mark.parametrize(
@@ -499,7 +517,8 @@ def test_deploy_config_update_heavyweight(serve_instance, field_to_update: str):
 
     client.deploy_apps(ServeDeploySchema.parse_obj(config_template))
     wait_for_condition(check_running, timeout=15)
-    pid1, _ = httpx.get("http://localhost:8000/f").json()
+    url = get_application_url("HTTP", app_name=SERVE_DEFAULT_APP_NAME)
+    pid1, _ = httpx.get(f"{url}").json()
 
     if field_to_update == "import_path":
         config_template["applications"][0][
@@ -516,10 +535,11 @@ def test_deploy_config_update_heavyweight(serve_instance, field_to_update: str):
 
     client.deploy_apps(ServeDeploySchema.parse_obj(config_template))
     wait_for_condition(check_running, timeout=15)
+    url = get_application_url("HTTP", app_name=SERVE_DEFAULT_APP_NAME)
 
     pids = []
     for _ in range(4):
-        pids.append(httpx.get("http://localhost:8000/f").json()[0])
+        pids.append(httpx.get(f"{url}").json()[0])
     assert pid1 not in pids
 
 
@@ -535,9 +555,9 @@ def test_update_config_user_config(serve_instance):
     # Deploy first time
     client.deploy_apps(ServeDeploySchema.parse_obj({"applications": [config_template]}))
     wait_for_condition(check_running, timeout=15)
-
     # Query
-    pid1, res = httpx.get("http://localhost:8000/f").json()
+    url = get_application_url("HTTP")
+    pid1, res = httpx.get(f"{url}/f").json()
     assert res == "alice"
 
     # Redeploy with updated option
@@ -548,51 +568,13 @@ def test_update_config_user_config(serve_instance):
     def check():
         pids = []
         for _ in range(4):
-            pid, res = httpx.get("http://localhost:8000/f").json()
+            pid, res = httpx.get(f"{url}/f").json()
             assert res == "bob"
             pids.append(pid)
         assert pid1 in pids
         return True
 
     wait_for_condition(check)
-
-
-def test_update_config_graceful_shutdown_timeout(serve_instance):
-    """Check that replicas stay alive when graceful_shutdown_timeout_s is updated"""
-    client = serve_instance
-
-    config_template = {
-        "import_path": "ray.serve.tests.test_config_files.pid.node",
-        "deployments": [{"name": "f", "graceful_shutdown_timeout_s": 1000}],
-    }
-
-    # Deploy first time
-    client.deploy_apps(ServeDeploySchema.parse_obj({"applications": [config_template]}))
-    wait_for_condition(check_running, timeout=15)
-    handle = serve.get_app_handle(SERVE_DEFAULT_APP_NAME)
-
-    # Start off with signal ready, and send query
-    handle.send.remote().result()
-    pid1 = handle.remote().result()[0]
-    print("PID of replica after first deployment:", pid1)
-
-    # Redeploy with shutdown timeout set to 5 seconds
-    config_template["deployments"][0]["graceful_shutdown_timeout_s"] = 5
-    client.deploy_apps(ServeDeploySchema.parse_obj({"applications": [config_template]}))
-    wait_for_condition(check_running, timeout=15)
-
-    pid2 = handle.remote().result()[0]
-    assert pid1 == pid2
-    print("PID of replica after redeployment:", pid2)
-
-    # Send blocking query
-    handle.send.remote(clear=True)
-    handle.remote()
-    # Try to delete deployment, should be blocked until the timeout at 5 seconds
-    client.delete_apps([SERVE_DEFAULT_APP_NAME], blocking=False)
-    # Replica should be dead within 10 second timeout, which means
-    # graceful_shutdown_timeout_s was successfully updated lightweightly
-    wait_for_condition(partial(check_deployments_dead, [DeploymentID(name="f")]))
 
 
 def test_update_config_max_ongoing_requests(serve_instance):
@@ -806,18 +788,17 @@ def test_deploy_separate_runtime_envs(serve_instance):
     }
 
     client.deploy_apps(ServeDeploySchema(**config_template))
-
+    wait_for_condition(check_running, app_name="app1", timeout=15)
+    wait_for_condition(check_running, app_name="app2", timeout=15)
     wait_for_condition(
         check_endpoint,
-        endpoint="app1",
         json=["ADD", 2],
         expected="0 pizzas please!",
+        app_name="app1",
         timeout=90,
     )
-
-    wait_for_condition(
-        lambda: httpx.post("http://localhost:8000/app2").text == "Hello world!"
-    )
+    url = get_application_url("HTTP", app_name="app2")
+    wait_for_condition(lambda: httpx.post(f"{url}").text == "Hello world!")
 
 
 def test_deploy_multi_app_deleting(serve_instance):

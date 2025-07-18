@@ -1,6 +1,8 @@
 # Bazel build
 # C/C++ documentation: https://docs.bazel.build/versions/master/be/c-cpp.html
 
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
+load("@rules_python//python:defs.bzl", "py_test")
 load("//bazel:python.bzl", "py_test_module_list")
 load("//bazel:ray.bzl", "COPTS")
 
@@ -30,7 +32,6 @@ cc_binary(
 cc_library(
     name = "ray_api_lib",
     srcs = glob([
-        "src/ray/api.cc",
         "src/ray/api/*.cc",
         "src/ray/api/*.h",
         "src/ray/app/*.cc",
@@ -89,9 +90,9 @@ cc_library(
 
 cc_binary(
     name = "default_worker",
-    srcs = glob([
+    srcs = [
         "src/ray/worker/default_worker.cc",
-    ]),
+    ],
     copts = COPTS,
     linkstatic = True,
     deps = select({
@@ -119,11 +120,29 @@ filegroup(
     visibility = ["//visibility:private"],
 )
 
+filegroup(
+    name = "ray_cpp_hdrs",
+    srcs = ["include/ray/api.h"] + glob([
+        "include/ray/api/*.h",
+    ]),
+    visibility = ["//visibility:private"],
+)
+
+filegroup(
+    name = "example_files",
+    srcs = glob(["example/**"]),
+    visibility = ["//visibility:private"],
+)
+
 genrule(
     name = "ray_cpp_pkg",
     srcs = [
+        ":ray_cpp_hdrs",
+        ":example_files",
         "default_worker",
         "libray_api.so",
+        "@msgpack//:msgpack_hdrs",
+        "@nlohmann_json//:nlohmann_json_hdrs",
     ],
     outs = ["ray_cpp_pkg.out"],
     cmd = """
@@ -164,12 +183,10 @@ genrule(
         cp -f -r $$WORK_DIR/external/boost/boost/*.hpp "$$BOOST_DIR" &&
         cp -f $(locations libray_api.so) "$$PY_CPP_DIR/lib/" &&
         cp -f -r "$$WORK_DIR/cpp/include/ray" "$$PY_CPP_DIR/include" &&
-        THIRDPARTY_DIR="$$WORK_DIR/cpp/example/thirdparty" &&
-        rm -rf $$THIRDPARTY_DIR &&
-        mkdir $$THIRDPARTY_DIR &&
-        cp -f -r "$$PY_CPP_DIR/include" $$THIRDPARTY_DIR &&
-        cp -f -r "$$PY_CPP_DIR/lib" $$THIRDPARTY_DIR &&
         cp -f -r "$$WORK_DIR/cpp/example" "$$PY_CPP_DIR" &&
+        mv "$$PY_CPP_DIR/example/_WORKSPACE" "$$PY_CPP_DIR/example/WORKSPACE" &&
+        mv "$$PY_CPP_DIR/example/_BUILD.bazel" "$$PY_CPP_DIR/example/BUILD.bazel" &&
+        mv "$$PY_CPP_DIR/example/_.bazelrc" "$$PY_CPP_DIR/example/.bazelrc" &&
         echo "$$WORK_DIR" > $@
     """,
     local = 1,
@@ -223,8 +240,9 @@ cc_test(
 
 cc_test(
     name = "cluster_mode_xlang_test",
-    srcs = glob([
+    srcs = [
         "src/ray/test/cluster/cluster_mode_xlang_test.cc",
+    ] + glob([
         "src/ray/test/cluster/*.h",
     ]),
     args = [
@@ -290,9 +308,9 @@ cc_binary(
 
 cc_test(
     name = "simple_kv_store",
-    srcs = glob([
+    srcs = [
         "src/ray/test/examples/simple_kv_store.cc",
-    ]),
+    ],
     args = [
         "--ray_code_search_path=$(location simple_kv_store.so)",
         "--ray_head_args '--include-dashboard false'",
@@ -311,9 +329,9 @@ cc_test(
 cc_binary(
     name = "simple_kv_store.so",
     testonly = True,
-    srcs = glob([
+    srcs = [
         "src/ray/test/examples/simple_kv_store.cc",
-    ]),
+    ],
     copts = COPTS,
     linkopts = ["-shared"],
     linkstatic = True,
@@ -361,9 +379,9 @@ cc_binary(
 
 cc_test(
     name = "metric_example",
-    srcs = glob([
+    srcs = [
         "src/ray/test/examples/metric_example.cc",
-    ]),
+    ],
     args = [
         "--ray_code_search_path $(location metric_example.so)",
     ],
@@ -386,9 +404,9 @@ cc_test(
 cc_binary(
     name = "metric_example.so",
     testonly = True,
-    srcs = glob([
+    srcs = [
         "src/ray/test/examples/metric_example.cc",
-    ]),
+    ],
     linkopts = ["-shared"],
     linkstatic = True,
     deps = [

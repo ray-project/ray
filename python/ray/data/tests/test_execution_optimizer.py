@@ -7,8 +7,10 @@ import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pytest
+from packaging.version import parse as parse_version
 
 import ray
+from ray._private.arrow_utils import get_pyarrow_version
 from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
 from ray.data._internal.execution.interfaces.op_runtime_metrics import OpRuntimeMetrics
 from ray.data._internal.execution.operators.base_physical_operator import (
@@ -59,6 +61,24 @@ from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.test_util import _check_usage_record, get_parquet_read_logical_op
 from ray.data.tests.util import column_udf, extract_values, named_values
 from ray.tests.conftest import *  # noqa
+
+
+def _should_skip_huggingface_test():
+    """Check if we should skip the HuggingFace test due to version incompatibility."""
+    pyarrow_version = get_pyarrow_version()
+    if pyarrow_version is None:
+        return False
+
+    try:
+        datasets_version = __import__("datasets").__version__
+        if datasets_version is None:
+            return False
+
+        return pyarrow_version < parse_version("12.0.0") and parse_version(
+            datasets_version
+        ) >= parse_version("3.0.0")
+    except (ImportError, AttributeError):
+        return False
 
 
 def _check_valid_plan_and_result(
@@ -937,6 +957,10 @@ def test_from_arrow_refs_e2e(ray_start_regular_shared_2_cpus):
     _check_usage_record(["FromArrow"])
 
 
+@pytest.mark.skipif(
+    _should_skip_huggingface_test,
+    reason="Skip due to HuggingFace datasets >= 3.0.0 requiring pyarrow >= 12.0.0",
+)
 def test_from_huggingface_e2e(ray_start_regular_shared_2_cpus):
     import datasets
 
