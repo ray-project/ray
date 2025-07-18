@@ -17,6 +17,7 @@
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace ray {
 namespace rpc {
@@ -33,32 +34,59 @@ std::function<void()> CoreWorkerClientPool::GetDefaultUnavailableTimeoutCallback
           raylet_client_factory = std::move(raylet_client_factory)]() {
     const NodeID node_id = NodeID::FromBinary(addr.raylet_id());
     const WorkerID worker_id = WorkerID::FromBinary(addr.worker_id());
-    RAY_CHECK(gcs_client->Nodes().IsSubscribedToNodeChange());
-    const rpc::GcsNodeInfo *node_info =
-        gcs_client->Nodes().Get(node_id, /*filter_dead_nodes=*/true);
-    if (node_info == nullptr) {
-      RAY_LOG(INFO).WithField(worker_id).WithField(node_id)
-          << "Disconnect core worker client since its node is dead";
-      worker_client_pool->Disconnect(worker_id);
+
+    auto check_worker_alive = [raylet_client_factory,
+                               worker_client_pool,
+                               worker_id,
+                               node_id](const rpc::GcsNodeInfo &node_info) {
+      auto raylet_client = raylet_client_factory(node_info.node_manager_address(),
+                                                 node_info.node_manager_port());
+      raylet_client->IsLocalWorkerDead(
+          worker_id,
+          [worker_client_pool, worker_id, node_id](const Status &status,
+                                                   rpc::IsLocalWorkerDeadReply &&reply) {
+            if (!status.ok()) {
+              RAY_LOG(INFO).WithField(worker_id).WithField(node_id)
+                  << "Failed to check if worker is dead on request to raylet";
+              return;
+            }
+            if (reply.is_dead()) {
+              RAY_LOG(INFO).WithField(worker_id)
+                  << "Disconnecting core worker client because its node is dead";
+              worker_client_pool->Disconnect(worker_id);
+            }
+          });
+    };
+
+    if (gcs_client->Nodes().IsSubscriptionCachePopulated()) {
+      auto *node_info = gcs_client->Nodes().Get(node_id, /*filter_dead_nodes=*/true);
+      if (node_info == nullptr) {
+        worker_client_pool->Disconnect(worker_id);
+        return;
+      }
+      check_worker_alive(*node_info);
       return;
     }
-    auto raylet_client = raylet_client_factory(node_info->node_manager_address(),
-                                               node_info->node_manager_port());
-    raylet_client->IsLocalWorkerDead(
-        worker_id,
-        [worker_client_pool, worker_id, node_id](const Status &status,
-                                                 rpc::IsLocalWorkerDeadReply &&reply) {
+
+    gcs_client->Nodes().AsyncGetAll(
+        [check_worker_alive = std::move(check_worker_alive),
+         worker_id,
+         worker_client_pool](const Status &status,
+                             std::vector<rpc::GcsNodeInfo> &&nodes) {
           if (!status.ok()) {
-            RAY_LOG(INFO).WithField(worker_id).WithField(node_id)
-                << "Failed to check if worker is dead on request to raylet";
+            RAY_LOG(INFO) << "Failed to get node info from GCS";
             return;
           }
-          if (reply.is_dead()) {
+          if (nodes.empty() || nodes[0].state() != rpc::GcsNodeInfo::ALIVE) {
             RAY_LOG(INFO).WithField(worker_id)
-                << "Disconnect core worker client since it is dead";
+                << "Disconnecting core worker client because its node is dead";
             worker_client_pool->Disconnect(worker_id);
+            return;
           }
-        });
+          check_worker_alive(nodes[0]);
+        },
+        -1,
+        node_id);
   };
 }
 

@@ -617,36 +617,41 @@ void NodeInfoAccessor::AsyncGetAll(const MultiItemCallback<rpc::GcsNodeInfo> &ca
       timeout_ms);
 }
 
-Status NodeInfoAccessor::AsyncSubscribeToNodeChange(
-    const SubscribeCallback<NodeID, rpc::GcsNodeInfo> &subscribe,
-    const StatusCallback &done) {
-  RAY_CHECK(subscribe != nullptr);
+void NodeInfoAccessor::AsyncSubscribeToNodeChange(
+    std::function<void(NodeID, const rpc::GcsNodeInfo &)> subscribe,
+    StatusCallback done) {
+  /**
+  1. Subscribe to node info
+  2. Once the subscription is made, ask for all node info.
+  3. Once all node info is received, call done callback.
+  4. HandleNotification will handle conflicts between the subscription updates and
+     GetAllNodeInfo.
+  */
+
   RAY_CHECK(node_change_callback_ == nullptr);
-  node_change_callback_ = subscribe;
+  node_change_callback_ = std::move(subscribe);
+  RAY_CHECK(node_change_callback_ != nullptr);
 
   fetch_node_data_operation_ = [this](const StatusCallback &done) {
-    auto callback = [this, done](const Status &status,
-                                 std::vector<rpc::GcsNodeInfo> &&node_info_list) {
-      for (auto &node_info : node_info_list) {
-        HandleNotification(std::move(node_info));
-      }
-      if (done) {
-        done(status);
-      }
-    };
-    AsyncGetAll(callback, /*timeout_ms=*/-1);
+    AsyncGetAll(
+        [this, done](const Status &status,
+                     std::vector<rpc::GcsNodeInfo> &&node_info_list) {
+          for (auto &node_info : node_info_list) {
+            HandleNotification(std::move(node_info));
+          }
+          if (done) {
+            done(status);
+          }
+          node_subscription_cache_populated_ = true;
+        },
+        /*timeout_ms=*/-1);
   };
 
-  subscribe_node_operation_ = [this](const StatusCallback &done) {
-    auto on_subscribe = [this](rpc::GcsNodeInfo &&data) {
-      HandleNotification(std::move(data));
-    };
-    return client_impl_->GetGcsSubscriber().SubscribeAllNodeInfo(on_subscribe, done);
-  };
-
-  return subscribe_node_operation_([this, subscribe, done](const Status &status) {
-    fetch_node_data_operation_(done);
-  });
+  client_impl_->GetGcsSubscriber().SubscribeAllNodeInfo(
+      /*subscribe=*/[this](
+                        rpc::GcsNodeInfo &&data) { HandleNotification(std::move(data)); },
+      /*done=*/[this, done = std::move(done)](
+                   const Status &) { fetch_node_data_operation_(done); });
 }
 
 const rpc::GcsNodeInfo *NodeInfoAccessor::Get(const NodeID &node_id,
@@ -756,11 +761,7 @@ void NodeInfoAccessor::HandleNotification(rpc::GcsNodeInfo &&node_info) {
     } else {
       removed_nodes_.insert(node_id);
     }
-    if (node_change_callback_) {
-      // Copy happens!
-      rpc::GcsNodeInfo cache_data_copied = node_cache_[node_id];
-      node_change_callback_(node_id, std::move(cache_data_copied));
-    }
+    node_change_callback_(node_id, node_cache_[node_id]);
   }
 }
 

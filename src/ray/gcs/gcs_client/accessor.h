@@ -360,10 +360,9 @@ class NodeInfoAccessor {
   /// added or a node is removed. The callback needs to be idempotent because it will also
   /// be called for existing nodes.
   /// \param done Callback that will be called when subscription is complete.
-  /// \return Status
-  virtual Status AsyncSubscribeToNodeChange(
-      const SubscribeCallback<NodeID, rpc::GcsNodeInfo> &subscribe,
-      const StatusCallback &done);
+  virtual void AsyncSubscribeToNodeChange(
+      std::function<void(NodeID, const rpc::GcsNodeInfo &)> subscribe,
+      StatusCallback done);
 
   /// Get node information from local cache.
   /// Non-thread safe.
@@ -438,8 +437,9 @@ class NodeInfoAccessor {
   /// Add a node to accessor cache.
   virtual void HandleNotification(rpc::GcsNodeInfo &&node_info);
 
-  virtual bool IsSubscribedToNodeChange() const {
-    return node_change_callback_ != nullptr;
+  /// Initial GetAllNodeInfo request is done and has populated the cache.
+  virtual bool IsSubscriptionCachePopulated() const {
+    return node_subscription_cache_populated_;
   }
 
  private:
@@ -453,14 +453,14 @@ class NodeInfoAccessor {
 
   GcsClient *client_impl_;
 
-  using NodeChangeCallback =
-      std::function<void(const NodeID &id, rpc::GcsNodeInfo &&node_info)>;
-
   rpc::GcsNodeInfo local_node_info_;
   NodeID local_node_id_;
 
   /// The callback to call when a new node is added or a node is removed.
-  NodeChangeCallback node_change_callback_{nullptr};
+  std::function<void(NodeID, const rpc::GcsNodeInfo &)> node_change_callback_ = nullptr;
+
+  /// Initial GetAllNodeInfo request is done and has populated the cache.
+  bool node_subscription_cache_populated_ = false;
 
   /// A cache for information about all nodes.
   absl::flat_hash_map<NodeID, rpc::GcsNodeInfo> node_cache_;
