@@ -8,14 +8,17 @@ from pydantic import BaseModel, Field
 from vllm.config import KVTransferConfig
 
 from ray import serve
-from ray.llm._internal.serve.configs.prompt_formats import Prompt
-from ray.llm._internal.serve.configs.server_models import (
-    LLMRawResponse,
-    parse_args as parse_llm_configs,
+from ray.llm._internal.serve.configs.openai_api_models import (
+    ChatCompletionRequest,
+    ChatCompletionResponse,
+    CompletionRequest,
+    CompletionResponse,
+    EmbeddingRequest,
+    EmbeddingResponse,
+    ErrorResponse,
 )
-from ray.llm._internal.serve.deployments.llm.llm_server import ResponsePostprocessor
-from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import (
-    KV_TRANSFER_PARAMS_KEY,
+from ray.llm._internal.serve.configs.server_models import (
+    parse_args as parse_llm_configs,
 )
 from ray.serve.deployment import Application
 from ray.serve.handle import DeploymentHandle
@@ -28,6 +31,7 @@ from ray.serve.llm import (
 )
 
 logger = logging.getLogger(__name__)
+RequestType = Union[ChatCompletionRequest, CompletionRequest]
 
 
 class PDServingArgs(BaseModel):
@@ -92,27 +96,20 @@ class PDProxyServer(LLMServer):
             llm_config,
         )
 
-        self.prefill_server = prefill_server
-        self.decode_server = decode_server
+        self.prefill_server = prefill_server.options(stream=True)
+        self.decode_server = decode_server.options(stream=True)
 
-    async def _predict(
-        self,
-        request_id: str,
-        prompt: Prompt,
-        stream: bool,
-    ) -> AsyncGenerator[LLMRawResponse, None]:
-        """
-        Disaggregate the P/D requests:
-        1. Send the request to the prefill server.
-        2. Parse the response and forward necessary fields to the decode server.
-        3. Return the response from the decode server.
-        """
+    async def embeddings(
+        self, request: EmbeddingRequest
+    ) -> AsyncGenerator[EmbeddingResponse, None]:
+        raise NotImplementedError("Embedding is not supported for P/D disaggregation")
 
+    def _prepare_prefill_request(self, request: RequestType) -> RequestType:
         assert (
-            prompt.parameters.get(KV_TRANSFER_PARAMS_KEY, None) is None
-        ), f"{KV_TRANSFER_PARAMS_KEY} should be empty before proxy"
-        prefill_prompt = prompt.model_copy(deep=True)
-        prefill_prompt.parameters[KV_TRANSFER_PARAMS_KEY] = {
+            getattr(request, "kv_transfer_params", None) is None
+        ), "kv_transfer_params should be empty before proxy"
+        prefill_request = request.model_copy(deep=True)
+        prefill_request.kv_transfer_params = {
             "do_remote_decode": True,
             "do_remote_prefill": False,
             "remote_engine_id": None,
@@ -120,36 +117,62 @@ class PDProxyServer(LLMServer):
             "remote_host": None,
             "remote_port": None,
         }
-        prefill_prompt.parameters["max_tokens"] = 1
+        prefill_request.max_tokens = 1
+        prefill_request.stream = False
 
-        prefill_response_gen: AsyncGenerator[
-            LLMRawResponse, None
-        ] = self.prefill_server.options(
-            # _predict returns generator, we have to set stream=True
-            stream=True
-        )._predict.remote(
-            request_id=request_id, prompt=prefill_prompt, stream=False
-        )
+        return prefill_request
 
-        prefill_response = await ResponsePostprocessor.merge_stream(
-            prefill_response_gen
-        )
+    def _prepare_decode_request(
+        self,
+        request: RequestType,
+        prefill_chunk: Union[ChatCompletionResponse, CompletionResponse],
+    ) -> RequestType:
+        decode_request = request.model_copy(deep=True)
+        decode_request.kv_transfer_params = prefill_chunk.kv_transfer_params
 
-        if prefill_response.error:
-            logger.error(f"Prefill server returned error: {prefill_response.error}")
-            yield prefill_response
+        return decode_request
+
+    async def _handle_request(
+        self,
+        request: RequestType,
+    ) -> AsyncGenerator[
+        Union[str, ChatCompletionResponse, CompletionResponse, ErrorResponse], None
+    ]:
+
+        await self._maybe_add_request_id_to_request(request)
+
+        if isinstance(request, ChatCompletionRequest):
+            method = "chat"
+        elif isinstance(request, CompletionRequest):
+            method = "completions"
+        else:
+            raise ValueError(f"Unsupported request type: {type(request)}")
+
+        prefill_request = self._prepare_prefill_request(request)
+        prefill_gen = getattr(self.prefill_server, method).remote(prefill_request)
+
+        prefill_chunk = await prefill_gen.__anext__()
+
+        if isinstance(prefill_chunk, ErrorResponse):
+            logger.error(f"Prefill returned error: {prefill_chunk}")
+            yield prefill_chunk
             return
 
-        kv_transfer_params = prefill_response.metadata[KV_TRANSFER_PARAMS_KEY]
-        logger.debug(
-            f"Prefill metadata[{KV_TRANSFER_PARAMS_KEY}]: {kv_transfer_params}"
-        )
-        prompt.parameters[KV_TRANSFER_PARAMS_KEY] = kv_transfer_params
+        decode_request = self._prepare_decode_request(request, prefill_chunk)
+        decode_gen = getattr(self.decode_server, method).remote(decode_request)
 
-        async for chunk in self.decode_server.options(stream=True)._predict.remote(
-            request_id=request_id, prompt=prompt, stream=stream
-        ):
+        async for chunk in decode_gen:
             yield chunk
+
+    async def chat(
+        self, request: ChatCompletionRequest
+    ) -> AsyncGenerator[Union[str, ChatCompletionResponse, ErrorResponse], None]:
+        return self._handle_request(request)
+
+    async def completions(
+        self, request: CompletionRequest
+    ) -> AsyncGenerator[Union[str, CompletionResponse, ErrorResponse], None]:
+        return self._handle_request(request)
 
     @classmethod
     def as_deployment(cls) -> serve.Deployment:
