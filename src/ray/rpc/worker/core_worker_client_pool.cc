@@ -62,6 +62,7 @@ std::function<void()> CoreWorkerClientPool::GetDefaultUnavailableTimeoutCallback
       auto *node_info = gcs_client->Nodes().Get(node_id, /*filter_dead_nodes=*/true);
       if (node_info == nullptr) {
         worker_client_pool->Disconnect(worker_id);
+        return;
       }
       check_worker_alive(*node_info);
       return;
@@ -80,6 +81,7 @@ std::function<void()> CoreWorkerClientPool::GetDefaultUnavailableTimeoutCallback
             RAY_LOG(INFO).WithField(worker_id)
                 << "Disconnecting core worker client because its node is dead";
             worker_client_pool->Disconnect(worker_id);
+            return;
           }
           check_worker_alive(nodes[0]);
         },
