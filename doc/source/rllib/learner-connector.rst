@@ -35,8 +35,8 @@ Learner connector pipelines
 
 .. include:: /_includes/rllib/new_api_stack.rst
 
-One learner pipeline resides on each :py:class:`~ray.rllib.core.learner.learner.Learner` worker (see figure below) and is responsible for
-compiling the train batch for the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` from a list of episodes.
+On each :py:class:`~ray.rllib.core.learner.learner.Learner` actor resides a single Learner connector pipeline (see figure below)
+responsible for compiling the train batch for the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` from a list of episodes.
 
 .. figure:: images/connector_v2/learner_connector_pipeline.svg
     :width: 1000

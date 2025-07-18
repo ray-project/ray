@@ -35,9 +35,8 @@ Env-to-module pipelines
 
 .. include:: /_includes/rllib/new_api_stack.rst
 
-One env-to-module pipeline resides on each :py:class:`~ray.rllib.env.env_runner.EnvRunner` and is responsible
-for handling the data flow from the `gymnasium.Env <https://gymnasium.farama.org/api/env/>`__ to
-the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`.
+On each :py:class:`~ray.rllib.env.env_runner.EnvRunner` resides one env-to-module pipeline
+responsible for handling the data flow from the `gymnasium.Env <https://gymnasium.farama.org/api/env/>`__ to the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`.
 
 .. figure:: images/connector_v2/env_runner_connector_pipelines.svg
     :width: 1000
