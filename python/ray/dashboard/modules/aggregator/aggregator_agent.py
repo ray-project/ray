@@ -192,7 +192,7 @@ class AggregatorAgent(
         if not self._event_processing_enabled:
             return events_event_aggregator_service_pb2.AddEventReply(
                 status=events_event_aggregator_service_pb2.AddEventStatus(
-                    status_code=0, status_message="Event processing disabled"
+                    code=0, message="Event processing disabled"
                 )
             )
 

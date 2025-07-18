@@ -16,6 +16,7 @@ from ray._raylet import GcsClient
 import ray.dashboard.consts as dashboard_consts
 from ray._private.test_utils import (
     wait_until_server_available,
+    find_free_port,
 )
 
 from ray.core.generated.events_event_aggregator_service_pb2_grpc import (
@@ -32,9 +33,12 @@ from ray.core.generated.common_pb2 import TaskAttempt
 from ray.dashboard.modules.aggregator.aggregator_agent import AggregatorAgent
 
 
+_EVENT_AGGREGATOR_AGENT_TARGET_PORT = find_free_port()
+
+
 @pytest.fixture(scope="session")
 def httpserver_listen_address():
-    return ("127.0.0.1", 12345)
+    return ("127.0.0.1", _EVENT_AGGREGATOR_AGENT_TARGET_PORT)
 
 
 def get_event_aggregator_grpc_stub(webui_url, gcs_address, head_node_id):
@@ -69,8 +73,8 @@ def get_event_aggregator_grpc_stub(webui_url, gcs_address, head_node_id):
     [
         ("", -1, False, False),
         ("http://127.0.0.1", -1, False, False),
-        ("", 12345, False, False),
-        ("http://127.0.0.1", 12345, True, True),
+        ("", _EVENT_AGGREGATOR_AGENT_TARGET_PORT, False, False),
+        ("http://127.0.0.1", _EVENT_AGGREGATOR_AGENT_TARGET_PORT, True, True),
     ],
 )
 def test_aggregator_agent_http_target_not_enabled(
@@ -93,7 +97,7 @@ def test_aggregator_agent_http_target_not_enabled(
         {
             "env_vars": {
                 "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_EXPORT_ADDR": "http://127.0.0.1",
-                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_EXPORT_PORT": "12345",
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_EXPORT_PORT": _EVENT_AGGREGATOR_AGENT_TARGET_PORT,
             },
         },
     ],
@@ -156,7 +160,7 @@ def test_aggregator_agent_receive_publish_events_normally(
             "env_vars": {
                 "RAY_DASHBOARD_AGGREGATOR_AGENT_MAX_EVENT_BUFFER_SIZE": 1,
                 "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_EXPORT_ADDR": "http://127.0.0.1",
-                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_EXPORT_PORT": "12345",
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_EXPORT_PORT": _EVENT_AGGREGATOR_AGENT_TARGET_PORT,
             },
         },
     ],
@@ -209,7 +213,7 @@ def test_aggregator_agent_receive_event_full(
         {
             "env_vars": {
                 "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_EXPORT_ADDR": "http://127.0.0.1",
-                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_EXPORT_PORT": "12345",
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_EXPORT_PORT": _EVENT_AGGREGATOR_AGENT_TARGET_PORT,
             },
         },
     ],
@@ -273,7 +277,7 @@ def test_aggregator_agent_receive_dropped_at_core_worker(
         {
             "env_vars": {
                 "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_EXPORT_ADDR": "http://127.0.0.1",
-                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_EXPORT_PORT": "12345",
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_EXPORT_PORT": _EVENT_AGGREGATOR_AGENT_TARGET_PORT,
             },
         },
     ],
@@ -333,7 +337,7 @@ def test_aggregator_agent_receive_multiple_events(
             "env_vars": {
                 "RAY_DASHBOARD_AGGREGATOR_AGENT_MAX_EVENT_BUFFER_SIZE": 1,
                 "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_EXPORT_ADDR": "http://127.0.0.1",
-                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_EXPORT_PORT": "12345",
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_EXPORT_PORT": _EVENT_AGGREGATOR_AGENT_TARGET_PORT,
             },
         },
     ],
@@ -394,7 +398,7 @@ def test_aggregator_agent_receive_multiple_events_failures(
         {
             "env_vars": {
                 "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_EXPORT_ADDR": "http://127.0.0.1",
-                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_EXPORT_PORT": "12345",
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_EXPORT_PORT": _EVENT_AGGREGATOR_AGENT_TARGET_PORT,
             },
         },
     ],
