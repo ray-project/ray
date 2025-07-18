@@ -769,13 +769,13 @@ int main(int argc, char *argv[]) {
                                                           *local_task_manager);
 
     auto raylet_client_factory = [&](const NodeID &id,
-                                     ray::rpc::ClientCallManager &client_call_manager) {
+                                     ray::rpc::ClientCallManager &client_call_mgr) {
       const ray::rpc::GcsNodeInfo *node_info = gcs_client->Nodes().Get(id);
       RAY_CHECK(node_info) << "No GCS info for node " << id;
       std::shared_ptr<ray::rpc::NodeManagerWorkerClient> raylet_client =
           ray::rpc::NodeManagerWorkerClient::make(node_info->node_manager_address(),
                                                   node_info->node_manager_port(),
-                                                  client_call_manager);
+                                                  client_call_mgr);
       return std::make_shared<ray::raylet::RayletClient>(std::move(raylet_client));
     };
 
