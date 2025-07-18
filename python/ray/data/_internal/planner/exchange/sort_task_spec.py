@@ -139,10 +139,23 @@ class SortTaskSpec(ExchangeTaskSpec):
         out = accessor.sort_and_partition(boundaries, sort_key)
         from ray.data.block import BlockMetadataWithSchema
 
-        meta_with_schema = BlockMetadataWithSchema.from_block(
-            block, stats=stats.build()
-        )
-        return out + [meta_with_schema]
+        if len(out) == 0:
+            # TODO: Need to fix handling empty blocks.
+            # return an empty block with metadata.
+            return []
+
+        # Look at the first non-empty block for the schema
+        for b in out:
+            if BlockAccessor.for_block(b).num_rows() > 0:
+                meta_with_schema = BlockMetadataWithSchema.from_block(
+                    b, stats=stats.build()
+                )
+                return out + [meta_with_schema]
+
+        # no block found with rows, return first block with metadata.
+        schema = BlockAccessor.for_block(out[0]).schema()
+        meta = BlockAccessor.for_block(out[0]).get_metadata()
+        return out + [BlockMetadataWithSchema(schema=schema, metadata=meta)]
 
     @staticmethod
     def reduce(
