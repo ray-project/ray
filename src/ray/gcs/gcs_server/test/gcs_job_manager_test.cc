@@ -27,6 +27,8 @@
 #include "mock/ray/pubsub/publisher.h"
 #include "mock/ray/pubsub/subscriber.h"
 #include "mock/ray/rpc/worker/core_worker_client.h"
+#include "ray/raylet/scheduling/cluster_resource_manager.h"
+#include "ray/gcs/gcs_server/gcs_virtual_cluster_manager.h"
 
 // clang-format on
 
@@ -51,6 +53,9 @@ class GcsJobManagerTest : public ::testing::Test {
     kv_ = std::make_unique<gcs::MockInternalKVInterface>();
     fake_kv_ = std::make_unique<gcs::FakeInternalKVInterface>();
     function_manager_ = std::make_unique<gcs::GcsFunctionManager>(*kv_, io_service_);
+    cluster_resource_manager_ = std::make_unique<ray::ClusterResourceManager>(io_service_);
+    gcs_virtual_cluster_manager_ = std::make_unique<ray::gcs::GcsVirtualClusterManager>(
+            io_service_, *gcs_table_storage_, *gcs_publisher_, *cluster_resource_manager_);
 
     // Mock client factory which abuses the "address" argument to return a
     // CoreWorkerClient whose number of running tasks equal to the address port. This is
@@ -76,6 +81,8 @@ class GcsJobManagerTest : public ::testing::Test {
   std::unique_ptr<gcs::MockInternalKVInterface> kv_;
   std::unique_ptr<gcs::FakeInternalKVInterface> fake_kv_;
   rpc::CoreWorkerClientFactoryFn client_factory_;
+  std::unique_ptr<ray::ClusterResourceManager> cluster_resource_manager_;
+  std::unique_ptr<ray::gcs::GcsVirtualClusterManager> gcs_virtual_cluster_manager_;
   RuntimeEnvManager runtime_env_manager_;
   const std::chrono::milliseconds timeout_ms_{5000};
 };
@@ -108,6 +115,7 @@ TEST_F(GcsJobManagerTest, TestIsRunningTasks) {
                                      *gcs_publisher_,
                                      runtime_env_manager_,
                                      *function_manager_,
+                                     *gcs_virtual_cluster_manager_,
                                      *fake_kv_,
                                      io_service_,
                                      client_factory_);
@@ -173,6 +181,7 @@ TEST_F(GcsJobManagerTest, TestGetAllJobInfo) {
                                      *gcs_publisher_,
                                      runtime_env_manager_,
                                      *function_manager_,
+                                     *gcs_virtual_cluster_manager_,
                                      *fake_kv_,
                                      io_service_,
                                      client_factory_);
@@ -351,6 +360,7 @@ TEST_F(GcsJobManagerTest, TestGetAllJobInfoWithFilter) {
                                      *gcs_publisher_,
                                      runtime_env_manager_,
                                      *function_manager_,
+                                     *gcs_virtual_cluster_manager_,
                                      *fake_kv_,
                                      io_service_,
                                      client_factory_);
@@ -437,6 +447,7 @@ TEST_F(GcsJobManagerTest, TestGetAllJobInfoWithLimit) {
                                      *gcs_publisher_,
                                      runtime_env_manager_,
                                      *function_manager_,
+                                     *gcs_virtual_cluster_manager_,
                                      *fake_kv_,
                                      io_service_,
                                      client_factory_);
@@ -541,6 +552,7 @@ TEST_F(GcsJobManagerTest, TestGetJobConfig) {
                                      *gcs_publisher_,
                                      runtime_env_manager_,
                                      *function_manager_,
+                                     *gcs_virtual_cluster_manager_,
                                      *kv_,
                                      io_service_,
                                      client_factory_);
@@ -584,6 +596,7 @@ TEST_F(GcsJobManagerTest, TestPreserveDriverInfo) {
                                      *gcs_publisher_,
                                      runtime_env_manager_,
                                      *function_manager_,
+                                     *gcs_virtual_cluster_manager_,
                                      *fake_kv_,
                                      io_service_,
                                      client_factory_);
@@ -652,6 +665,7 @@ TEST_F(GcsJobManagerTest, TestNodeFailure) {
                                      *gcs_publisher_,
                                      runtime_env_manager_,
                                      *function_manager_,
+                                     *gcs_virtual_cluster_manager_,
                                      *fake_kv_,
                                      io_service_,
                                      client_factory_);

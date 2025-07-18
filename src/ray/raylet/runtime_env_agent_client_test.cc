@@ -221,6 +221,7 @@ TEST(RuntimeEnvAgentClientTest, GetOrCreateRuntimeEnvOK) {
                                             /*agent_manager_retry_interval_ms=*/100);
   auto job_id = JobID::FromInt(123);
   std::string serialized_runtime_env = "serialized_runtime_env";
+  std::string serialized_allocated_instances = "serialized_allocated_instances";
   ray::rpc::RuntimeEnvConfig runtime_env_config;
   runtime_env_config.set_setup_timeout_seconds(12);
 
@@ -235,7 +236,7 @@ TEST(RuntimeEnvAgentClientTest, GetOrCreateRuntimeEnvOK) {
   };
 
   client->GetOrCreateRuntimeEnv(
-      job_id, serialized_runtime_env, runtime_env_config, callback, WorkerID::Nil());
+      job_id, serialized_runtime_env, runtime_env_config, callback, WorkerID::Nil(), serialized_allocated_instances);
 
   ioc.run();
   ASSERT_EQ(called_times, 1);
@@ -275,6 +276,7 @@ TEST(RuntimeEnvAgentClientTest, GetOrCreateRuntimeEnvApplicationError) {
                                             /*agent_manager_retry_interval_ms=*/100);
   auto job_id = JobID::FromInt(123);
   std::string serialized_runtime_env = "serialized_runtime_env";
+  std::string serialized_allocated_instances = "serialized_allocated_instances";
   ray::rpc::RuntimeEnvConfig runtime_env_config;
   runtime_env_config.set_setup_timeout_seconds(12);
 
@@ -289,7 +291,7 @@ TEST(RuntimeEnvAgentClientTest, GetOrCreateRuntimeEnvApplicationError) {
   };
 
   client->GetOrCreateRuntimeEnv(
-      job_id, serialized_runtime_env, runtime_env_config, callback, WorkerID::Nil());
+      job_id, serialized_runtime_env, runtime_env_config, callback, WorkerID::Nil(), serialized_allocated_instances);
 
   ioc.run();
   ASSERT_EQ(called_times, 1);
@@ -334,6 +336,7 @@ TEST(RuntimeEnvAgentClientTest, GetOrCreateRuntimeEnvRetriesOnServerNotStarted) 
       /*agent_manager_retry_interval_ms=*/100);
   auto job_id = JobID::FromInt(123);
   std::string serialized_runtime_env = "serialized_runtime_env";
+  std::string serialized_allocated_instances = "serialized_allocated_instances";
   ray::rpc::RuntimeEnvConfig runtime_env_config;
   runtime_env_config.set_setup_timeout_seconds(12);
 
@@ -348,7 +351,7 @@ TEST(RuntimeEnvAgentClientTest, GetOrCreateRuntimeEnvRetriesOnServerNotStarted) 
   };
 
   client->GetOrCreateRuntimeEnv(
-      job_id, serialized_runtime_env, runtime_env_config, callback, WorkerID::Nil());
+      job_id, serialized_runtime_env, runtime_env_config, callback, WorkerID::Nil(), serialized_allocated_instances);
 
   ioc.run();
   ASSERT_EQ(called_times, 1);
@@ -392,7 +395,7 @@ TEST(RuntimeEnvAgentClientTest, DeleteRuntimeEnvIfPossibleOK) {
   };
 
   client->DeleteRuntimeEnvIfPossible(
-      "serialized_runtime_env", callback, WorkerID::Nil(), JobID::Nil());
+      "serialized_runtime_env", callback, WorkerID::Nil(), JobID::Nil(), "serialized_allocated_instances");
 
   ioc.run();
   ASSERT_EQ(called_times, 1);
@@ -437,7 +440,7 @@ TEST(RuntimeEnvAgentClientTest, DeleteRuntimeEnvIfPossibleApplicationError) {
   };
 
   client->DeleteRuntimeEnvIfPossible(
-      "serialized_runtime_env", callback, WorkerID::Nil(), JobID::Nil());
+      "serialized_runtime_env", callback, WorkerID::Nil(), JobID::Nil(), "serialized_allocated_instances");
 
   ioc.run();
   ASSERT_EQ(called_times, 1);
@@ -487,7 +490,7 @@ TEST(RuntimeEnvAgentClientTest, DeleteRuntimeEnvIfPossibleRetriesOnServerNotStar
   };
 
   client->DeleteRuntimeEnvIfPossible(
-      "serialized_runtime_env", callback, WorkerID::Nil(), JobID::Nil());
+      "serialized_runtime_env", callback, WorkerID::Nil(), JobID::Nil(), "serialized_allocated_instances");
 
   ioc.run();
   ASSERT_EQ(called_times, 1);
@@ -592,7 +595,7 @@ TEST(RuntimeEnvAgentClientTest, HoldsConcurrency) {
 
   for (int i = 0; i < 100; ++i) {
     client->DeleteRuntimeEnvIfPossible(
-        "serialized_runtime_env", callback, WorkerID::Nil(), JobID::Nil());
+        "serialized_runtime_env", callback, WorkerID::Nil(), JobID::Nil(), "serialized_allocated_instances");
   }
 
   ioc.run();

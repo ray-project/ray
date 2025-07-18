@@ -103,7 +103,9 @@ class MockRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
   void GetOrCreateRuntimeEnv(const JobID &job_id,
                              const std::string &serialized_runtime_env,
                              const rpc::RuntimeEnvConfig &runtime_env_config,
-                             GetOrCreateRuntimeEnvCallback callback) override {
+                             GetOrCreateRuntimeEnvCallback callback,
+                             const WorkerID &worker_id,
+                             const std::string &serialized_allocated_instances) override {
     if (serialized_runtime_env == BAD_RUNTIME_ENV) {
       callback(false, "", BAD_RUNTIME_ENV_ERROR_MSG);
     } else {
@@ -119,7 +121,10 @@ class MockRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
   };
 
   void DeleteRuntimeEnvIfPossible(const std::string &serialized_runtime_env,
-                                  DeleteRuntimeEnvIfPossibleCallback callback) override {
+                                  DeleteRuntimeEnvIfPossibleCallback callback,
+                                  const WorkerID &worker_id,
+                                  const JobID &job_id,
+                                  const std::string &serialized_allocated_instances) override {
     auto it = runtime_env_reference.find(serialized_runtime_env);
     RAY_CHECK(it != runtime_env_reference.end());
     runtime_env_reference[serialized_runtime_env] -= 1;

@@ -21,6 +21,8 @@
 #include "ray/gcs/gcs_server/test/gcs_server_test_util.h"
 #include "ray/gcs/test/gcs_test_util.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
+#include "ray/gcs/gcs_server/gcs_placement_group_scheduler.h"
+#include "ray/gcs/gcs_server/gcs_virtual_cluster_manager.h"
 #include "ray/util/counter_map.h"
 #include "mock/ray/pubsub/publisher.h"
 // clang-format on
@@ -54,16 +56,23 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
         /*is_node_available_fn=*/
         [](auto) { return true; },
         /*is_local_node_with_raylet=*/false);
+    cluster_resource_manager_ = std::make_unique<ray::ClusterResourceManager>(io_service_);
+    gcs_virtual_cluster_manager_ = std::make_unique<gcs::GcsVirtualClusterManager>(io_service_,
+                                                                                  *gcs_table_storage_,
+                                                                                  *gcs_publisher_,
+                                                                                  *cluster_resource_manager_);
     gcs_node_manager_ = std::make_shared<gcs::GcsNodeManager>(gcs_publisher_.get(),
                                                               gcs_table_storage_.get(),
                                                               io_service_,
                                                               raylet_client_pool_.get(),
-                                                              ClusterID::Nil());
+                                                              ClusterID::Nil(),
+                                                              *gcs_virtual_cluster_manager_);
     gcs_resource_manager_ = std::make_shared<gcs::GcsResourceManager>(
         io_service_,
         cluster_resource_scheduler_->GetClusterResourceManager(),
         *gcs_node_manager_,
-        local_node_id);
+        local_node_id,
+        *gcs_virtual_cluster_manager_);
     store_client_ = std::make_shared<gcs::InMemoryStoreClient>();
     raylet_client_pool_ = std::make_unique<rpc::NodeManagerClientPool>(
         [this](const rpc::Address &addr) { return raylet_clients_[addr.port()]; });

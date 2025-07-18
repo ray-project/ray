@@ -16,6 +16,7 @@
 
 #include "absl/container/flat_hash_set.h"
 #include "gtest/gtest.h"
+#include "ray/common/id.h" 
 
 namespace ray {
 
@@ -24,7 +25,9 @@ namespace raylet {
 class VirtualClusterManagerTest : public ::testing::Test {};
 
 TEST_F(VirtualClusterManagerTest, UpdateVirtualCluster) {
-  VirtualClusterManager virtual_cluster_manager;
+  NodeID node_id = NodeID::FromRandom();
+  auto cleanup_fn = []() {};
+  VirtualClusterManager virtual_cluster_manager(node_id, cleanup_fn);
 
   std::string virtual_cluster_id_0 = "virtual_cluster_id_0";
   ASSERT_FALSE(virtual_cluster_manager.ContainsVirtualCluster("virtual_cluster_id"));
@@ -57,7 +60,9 @@ TEST_F(VirtualClusterManagerTest, UpdateVirtualCluster) {
 }
 
 TEST_F(VirtualClusterManagerTest, TestContainsNodeInstance) {
-  VirtualClusterManager virtual_cluster_manager;
+  NodeID node_id = NodeID::FromRandom();
+  auto cleanup_fn = []() {};
+  VirtualClusterManager virtual_cluster_manager(node_id, cleanup_fn);
   std::string virtual_cluster_id_0 = "virtual_cluster_id_0";
 
   rpc::VirtualClusterTableData virtual_cluster_data;

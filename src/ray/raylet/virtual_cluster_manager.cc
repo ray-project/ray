@@ -34,6 +34,18 @@ bool VirtualClusterManager::UpdateVirtualCluster(
   // The virtual cluster id of the input data.
   const auto &input_virtual_cluster_id = virtual_cluster_data.id();
 
+  // Whether the revision of virtual_cluster_data is stale.
+  auto it = virtual_clusters_.find(input_virtual_cluster_id);
+  if (it != virtual_clusters_.end()) {
+    if (virtual_cluster_data.revision() < it->second.revision()) {
+      RAY_LOG(WARNING) << "Virtual cluster " << input_virtual_cluster_id
+                       << " update rejected due to stale revision "
+                       << virtual_cluster_data.revision()
+                       << " < current revision " << it->second.revision();
+      return false;
+    }
+  }
+  
   if (virtual_cluster_data.is_removed()) {
     if (local_virtual_cluster_id_ == input_virtual_cluster_id) {
       local_virtual_cluster_id_.clear();

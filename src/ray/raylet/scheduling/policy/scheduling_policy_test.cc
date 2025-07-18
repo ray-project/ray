@@ -87,7 +87,8 @@ TEST_F(SchedulingPolicyTest, NodeAffinityPolicyTest) {
 
   auto cluster_resource_manager = MockClusterResourceManager(nodes);
   raylet_scheduling_policy::CompositeSchedulingPolicy scheduling_policy(
-      scheduling::NodeID("local"), *cluster_resource_manager, [](auto) { return true; });
+      scheduling::NodeID("local"), *cluster_resource_manager, [](auto) { return true; }, 
+      [](scheduling::NodeID, const SchedulingContext *) { return true; });
 
   auto to_schedule = scheduling_policy.Schedule(
       req, SchedulingOptions::NodeAffinity(false, false, "local", false));
@@ -148,7 +149,8 @@ TEST_F(SchedulingPolicyTest, SpreadPolicyTest) {
   nodes.emplace(remote_node_3, CreateNodeResources(20, 20, 0, 0, 0, 0));
   auto cluster_resource_manager = MockClusterResourceManager(nodes);
   raylet_scheduling_policy::CompositeSchedulingPolicy scheduling_policy(
-      local_node, *cluster_resource_manager, [](auto) { return true; });
+      local_node, *cluster_resource_manager, [](auto) { return true; }, 
+      [](scheduling::NodeID, const SchedulingContext *) { return true; });
 
   auto to_schedule =
       scheduling_policy.Schedule(req, SchedulingOptions::Spread(false, false));
@@ -186,7 +188,8 @@ TEST_F(SchedulingPolicyTest, RandomPolicyTest) {
 
   auto cluster_resource_manager = MockClusterResourceManager(nodes);
   raylet_scheduling_policy::CompositeSchedulingPolicy scheduling_policy(
-      local_node, *cluster_resource_manager, [](auto) { return true; });
+      local_node, *cluster_resource_manager, [](auto) { return true; }, 
+      [](scheduling::NodeID, const SchedulingContext *) { return true; });
 
   std::map<scheduling::NodeID, size_t> decisions;
   size_t num_node_0_picks = 0;
@@ -276,7 +279,8 @@ TEST_F(SchedulingPolicyTest, AvailableTruncationTest) {
 
   auto cluster_resource_manager = MockClusterResourceManager(nodes);
   auto to_schedule = raylet_scheduling_policy::CompositeSchedulingPolicy(
-                         local_node, *cluster_resource_manager, [](auto) { return true; })
+                         local_node, *cluster_resource_manager, [](auto) { return true; },
+                         [](scheduling::NodeID, const SchedulingContext *) { return true; })
                          .Schedule(req, HybridOptions(0.51, false, false));
   ASSERT_EQ(to_schedule, local_node);
 }
@@ -291,7 +295,8 @@ TEST_F(SchedulingPolicyTest, AvailableTieBreakTest) {
 
   auto cluster_resource_manager = MockClusterResourceManager(nodes);
   auto to_schedule = raylet_scheduling_policy::CompositeSchedulingPolicy(
-                         local_node, *cluster_resource_manager, [](auto) { return true; })
+                         local_node, *cluster_resource_manager, [](auto) { return true; },
+                         [](scheduling::NodeID, const SchedulingContext *) { return true; })
                          .Schedule(req, HybridOptions(0.50, false, false));
   ASSERT_EQ(to_schedule, remote_node);
 }
@@ -306,7 +311,8 @@ TEST_F(SchedulingPolicyTest, AvailableOverFeasibleTest) {
 
   auto cluster_resource_manager = MockClusterResourceManager(nodes);
   auto to_schedule = raylet_scheduling_policy::CompositeSchedulingPolicy(
-                         local_node, *cluster_resource_manager, [](auto) { return true; })
+                         local_node, *cluster_resource_manager, [](auto) { return true; },
+                         [](scheduling::NodeID, const SchedulingContext *) { return true; })
                          .Schedule(req, HybridOptions(0.50, false, false));
   ASSERT_EQ(to_schedule, remote_node);
 }
@@ -319,7 +325,8 @@ TEST_F(SchedulingPolicyTest, InfeasibleTest) {
 
   auto cluster_resource_manager = MockClusterResourceManager(nodes);
   auto to_schedule = raylet_scheduling_policy::CompositeSchedulingPolicy(
-                         local_node, *cluster_resource_manager, [](auto) { return true; })
+                         local_node, *cluster_resource_manager, [](auto) { return true; },
+                         [](scheduling::NodeID, const SchedulingContext *) { return true; })
                          .Schedule(req, HybridOptions(0.50, false, false));
   ASSERT_TRUE(to_schedule.IsNil());
 }
@@ -333,7 +340,8 @@ TEST_F(SchedulingPolicyTest, BarelyFeasibleTest) {
 
   auto cluster_resource_manager = MockClusterResourceManager(nodes);
   auto to_schedule = raylet_scheduling_policy::CompositeSchedulingPolicy(
-                         local_node, *cluster_resource_manager, [](auto) { return true; })
+                         local_node, *cluster_resource_manager, [](auto) { return true; }, 
+                         [](scheduling::NodeID, const SchedulingContext *) { return true; })
                          .Schedule(req, HybridOptions(0.50, false, false));
   ASSERT_EQ(to_schedule, local_node);
 }
@@ -347,7 +355,8 @@ TEST_F(SchedulingPolicyTest, TruncationAcrossFeasibleNodesTest) {
 
   auto cluster_resource_manager = MockClusterResourceManager(nodes);
   auto to_schedule = raylet_scheduling_policy::CompositeSchedulingPolicy(
-                         local_node, *cluster_resource_manager, [](auto) { return true; })
+                         local_node, *cluster_resource_manager, [](auto) { return true; },
+                         [](scheduling::NodeID, const SchedulingContext *) { return true; })
                          .Schedule(req, HybridOptions(0.51, false, false));
   ASSERT_EQ(to_schedule, local_node);
 }
@@ -361,7 +370,8 @@ TEST_F(SchedulingPolicyTest, ForceSpillbackIfAvailableTest) {
 
   auto cluster_resource_manager = MockClusterResourceManager(nodes);
   auto to_schedule = raylet_scheduling_policy::CompositeSchedulingPolicy(
-                         local_node, *cluster_resource_manager, [](auto) { return true; })
+                         local_node, *cluster_resource_manager, [](auto) { return true; },
+                         [](scheduling::NodeID, const SchedulingContext *) { return true; })
                          .Schedule(req, HybridOptions(0.51, true, true));
   ASSERT_EQ(to_schedule, remote_node);
 }
@@ -378,7 +388,8 @@ TEST_F(SchedulingPolicyTest, AvoidSchedulingCPURequestsOnGPUNodes) {
     const ResourceRequest req = ResourceMapToResourceRequest({{"CPU", 1}}, false);
     const auto to_schedule =
         raylet_scheduling_policy::CompositeSchedulingPolicy(
-            local_node, *cluster_resource_manager, [](auto) { return true; })
+            local_node, *cluster_resource_manager, [](auto) { return true; }, 
+            [](scheduling::NodeID, const SchedulingContext *) { return true; })
             .Schedule(ResourceMapToResourceRequest({{"CPU", 1}}, false),
                       HybridOptions(0.51, false, true, true));
     ASSERT_EQ(to_schedule, remote_node);
@@ -388,7 +399,8 @@ TEST_F(SchedulingPolicyTest, AvoidSchedulingCPURequestsOnGPUNodes) {
     const ResourceRequest req = ResourceMapToResourceRequest({{"GPU", 1}}, false);
     const auto to_schedule =
         raylet_scheduling_policy::CompositeSchedulingPolicy(
-            local_node, *cluster_resource_manager, [](auto) { return true; })
+            local_node, *cluster_resource_manager, [](auto) { return true; }, 
+            [](scheduling::NodeID, const SchedulingContext *) { return true; })
             .Schedule(req, HybridOptions(0.51, false, true, true));
     ASSERT_EQ(to_schedule, local_node);
   }
@@ -397,7 +409,8 @@ TEST_F(SchedulingPolicyTest, AvoidSchedulingCPURequestsOnGPUNodes) {
     const ResourceRequest req = ResourceMapToResourceRequest({{"CPU", 1}}, false);
     const auto to_schedule =
         raylet_scheduling_policy::CompositeSchedulingPolicy(
-            local_node, *cluster_resource_manager, [](auto) { return true; })
+            local_node, *cluster_resource_manager, [](auto) { return true; }, 
+            [](scheduling::NodeID, const SchedulingContext *) { return true; })
             .Schedule(req, HybridOptions(0.51, false, true, true));
     ASSERT_EQ(to_schedule, remote_node);
   }
@@ -407,7 +420,8 @@ TEST_F(SchedulingPolicyTest, AvoidSchedulingCPURequestsOnGPUNodes) {
         ResourceMapToResourceRequest({{"CPU", 1}, {"GPU", 1}}, false);
     const auto to_schedule =
         raylet_scheduling_policy::CompositeSchedulingPolicy(
-            local_node, *cluster_resource_manager, [](auto) { return true; })
+            local_node, *cluster_resource_manager, [](auto) { return true; }, 
+            [](scheduling::NodeID, const SchedulingContext *) { return true; })
             .Schedule(req, HybridOptions(0.51, false, true, true));
     ASSERT_EQ(to_schedule, local_node);
   }
@@ -423,7 +437,8 @@ TEST_F(SchedulingPolicyTest, SchedulenCPURequestsOnGPUNodeAsALastResort) {
   auto cluster_resource_manager = MockClusterResourceManager(nodes);
   const auto to_schedule =
       raylet_scheduling_policy::CompositeSchedulingPolicy(
-          local_node, *cluster_resource_manager, [](auto) { return true; })
+          local_node, *cluster_resource_manager, [](auto) { return true; }, 
+          [](scheduling::NodeID, const SchedulingContext *) { return true; })
           .Schedule(req, HybridOptions(0.51, false, true, true));
   ASSERT_EQ(to_schedule, remote_node);
 }
@@ -437,7 +452,8 @@ TEST_F(SchedulingPolicyTest, ForceSpillbackTest) {
 
   auto cluster_resource_manager = MockClusterResourceManager(nodes);
   auto to_schedule = raylet_scheduling_policy::CompositeSchedulingPolicy(
-                         local_node, *cluster_resource_manager, [](auto) { return true; })
+                         local_node, *cluster_resource_manager, [](auto) { return true; },
+                         [](scheduling::NodeID, const SchedulingContext *) { return true; })
                          .Schedule(req, HybridOptions(0.51, true, false));
   ASSERT_EQ(to_schedule, remote_node);
 }
@@ -452,7 +468,8 @@ TEST_F(SchedulingPolicyTest, ForceSpillbackOnlyFeasibleLocallyTest) {
 
   auto cluster_resource_manager = MockClusterResourceManager(nodes);
   auto to_schedule = raylet_scheduling_policy::CompositeSchedulingPolicy(
-                         local_node, *cluster_resource_manager, [](auto) { return true; })
+                         local_node, *cluster_resource_manager, [](auto) { return true; },
+                         [](scheduling::NodeID, const SchedulingContext *) { return true; })
                          .Schedule(req, HybridOptions(0.51, true, false));
   ASSERT_TRUE(to_schedule.IsNil());
 }
@@ -470,7 +487,8 @@ TEST_F(SchedulingPolicyTest, NonGpuNodePreferredSchedulingTest) {
 
   ResourceRequest req = ResourceMapToResourceRequest({{"CPU", 1}}, false);
   auto to_schedule = raylet_scheduling_policy::CompositeSchedulingPolicy(
-                         local_node, *cluster_resource_manager, [](auto) { return true; })
+                         local_node, *cluster_resource_manager, [](auto) { return true; },
+                         [](scheduling::NodeID, const SchedulingContext *) { return true; })
                          .Schedule(req,
                                    HybridOptions(0.51,
                                                  false,
@@ -480,7 +498,8 @@ TEST_F(SchedulingPolicyTest, NonGpuNodePreferredSchedulingTest) {
 
   req = ResourceMapToResourceRequest({{"CPU", 3}}, false);
   to_schedule = raylet_scheduling_policy::CompositeSchedulingPolicy(
-                    local_node, *cluster_resource_manager, [](auto) { return true; })
+                    local_node, *cluster_resource_manager, [](auto) { return true; },
+                    [](scheduling::NodeID, const SchedulingContext *) { return true; })
                     .Schedule(req,
                               HybridOptions(0.51,
                                             false,
@@ -490,7 +509,8 @@ TEST_F(SchedulingPolicyTest, NonGpuNodePreferredSchedulingTest) {
 
   req = ResourceMapToResourceRequest({{"CPU", 1}, {"GPU", 1}}, false);
   to_schedule = raylet_scheduling_policy::CompositeSchedulingPolicy(
-                    local_node, *cluster_resource_manager, [](auto) { return true; })
+                    local_node, *cluster_resource_manager, [](auto) { return true; },
+                    [](scheduling::NodeID, const SchedulingContext *) { return true; })
                     .Schedule(req,
                               HybridOptions(0.51,
                                             false,
@@ -500,7 +520,8 @@ TEST_F(SchedulingPolicyTest, NonGpuNodePreferredSchedulingTest) {
 
   req = ResourceMapToResourceRequest({{"CPU", 2}}, false);
   to_schedule = raylet_scheduling_policy::CompositeSchedulingPolicy(
-                    local_node, *cluster_resource_manager, [](auto) { return true; })
+                    local_node, *cluster_resource_manager, [](auto) { return true; },
+                    [](scheduling::NodeID, const SchedulingContext *) { return true; })
                     .Schedule(req,
                               HybridOptions(0.51,
                                             false,
@@ -527,7 +548,8 @@ TEST_F(SchedulingPolicyTest, StrictPackBundleSchedulingTest) {
   auto strict_pack_op = SchedulingOptions::BundleStrictPack(
       /*max_cpu_fraction_per_node*/ 1.0, scheduling::NodeID::Nil());
   auto to_schedule = raylet_scheduling_policy::BundleStrictPackSchedulingPolicy(
-                         *cluster_resource_manager, [](auto) { return true; })
+                         *cluster_resource_manager, [](auto) { return true; },
+                         [](scheduling::NodeID, const SchedulingContext *) { return true; })
                          .Schedule(req_list, strict_pack_op);
   ASSERT_TRUE(to_schedule.status.IsSuccess());
   ASSERT_EQ(to_schedule.selected_nodes[0], local_node);
@@ -536,7 +558,8 @@ TEST_F(SchedulingPolicyTest, StrictPackBundleSchedulingTest) {
   strict_pack_op = SchedulingOptions::BundleStrictPack(/*max_cpu_fraction_per_node*/ 1.0,
                                                        remote_node_2);
   to_schedule = raylet_scheduling_policy::BundleStrictPackSchedulingPolicy(
-                    *cluster_resource_manager, [](auto) { return true; })
+                    *cluster_resource_manager, [](auto) { return true; },
+                    [](scheduling::NodeID, const SchedulingContext *) { return true; })
                     .Schedule(req_list, strict_pack_op);
   ASSERT_TRUE(to_schedule.status.IsSuccess());
   ASSERT_EQ(to_schedule.selected_nodes[0], remote_node_2);
@@ -545,7 +568,8 @@ TEST_F(SchedulingPolicyTest, StrictPackBundleSchedulingTest) {
   strict_pack_op =
       SchedulingOptions::BundleStrictPack(/*max_cpu_fraction_per_node*/ 1.0, remote_node);
   to_schedule = raylet_scheduling_policy::BundleStrictPackSchedulingPolicy(
-                    *cluster_resource_manager, [](auto) { return true; })
+                    *cluster_resource_manager, [](auto) { return true; },
+                    [](scheduling::NodeID, const SchedulingContext *) { return true; })
                     .Schedule(req_list, strict_pack_op);
   ASSERT_TRUE(to_schedule.status.IsSuccess());
   ASSERT_EQ(to_schedule.selected_nodes[0], local_node);
@@ -554,7 +578,8 @@ TEST_F(SchedulingPolicyTest, StrictPackBundleSchedulingTest) {
   strict_pack_op = SchedulingOptions::BundleStrictPack(/*max_cpu_fraction_per_node*/ 1.0,
                                                        scheduling::NodeID(888));
   to_schedule = raylet_scheduling_policy::BundleStrictPackSchedulingPolicy(
-                    *cluster_resource_manager, [](auto) { return true; })
+                    *cluster_resource_manager, [](auto) { return true; },
+                    [](scheduling::NodeID, const SchedulingContext *) { return true; })
                     .Schedule(req_list, strict_pack_op);
   ASSERT_TRUE(to_schedule.status.IsSuccess());
   ASSERT_EQ(to_schedule.selected_nodes[0], local_node);
@@ -581,22 +606,26 @@ TEST_F(SchedulingPolicyTest, BundleSchedulingMaxFractionTest) {
   auto cluster_resource_manager = MockClusterResourceManager(nodes);
   // req is unscheduleable because the max cpu fraction reaches 0.5.
   auto unscheduable = raylet_scheduling_policy::BundlePackSchedulingPolicy(
-                          *cluster_resource_manager, [](auto) { return true; })
+                          *cluster_resource_manager, [](auto) { return true; },
+                          [](scheduling::NodeID, const SchedulingContext *) { return true; })
                           .Schedule(req_list, pack_op);
   ASSERT_TRUE(unscheduable.status.IsFailed());
 
   unscheduable = raylet_scheduling_policy::BundleSpreadSchedulingPolicy(
-                     *cluster_resource_manager, [](auto) { return true; })
+                     *cluster_resource_manager, [](auto) { return true; },
+                     [](scheduling::NodeID, const SchedulingContext *) { return true; })
                      .Schedule(req_list, spread_op);
   ASSERT_TRUE(unscheduable.status.IsFailed());
 
   unscheduable = raylet_scheduling_policy::BundleStrictPackSchedulingPolicy(
-                     *cluster_resource_manager, [](auto) { return true; })
+                     *cluster_resource_manager, [](auto) { return true; },
+                     [](scheduling::NodeID, const SchedulingContext *) { return true; })
                      .Schedule(req_list, strict_pack_op);
   ASSERT_TRUE(unscheduable.status.IsInfeasible());
 
   unscheduable = raylet_scheduling_policy::BundleStrictSpreadSchedulingPolicy(
-                     *cluster_resource_manager, [](auto) { return true; })
+                     *cluster_resource_manager, [](auto) { return true; },
+                     [](scheduling::NodeID, const SchedulingContext *) { return true; })
                      .Schedule(req_list, strict_spread_op);
   ASSERT_TRUE(unscheduable.status.IsInfeasible());
 }
@@ -618,7 +647,8 @@ TEST_F(SchedulingPolicyTest, BundleSchedulingMaxFractionOneCpuReservationGuarant
   auto cluster_resource_manager = MockClusterResourceManager(nodes);
   // req is unscheduleable because the max cpu fraction reaches 0.5.
   auto to_schedule = raylet_scheduling_policy::BundlePackSchedulingPolicy(
-                         *cluster_resource_manager, [](auto) { return true; })
+                         *cluster_resource_manager, [](auto) { return true; },
+                         [](scheduling::NodeID, const SchedulingContext *) { return true; })
                          .Schedule(req_list, pack_op);
   ASSERT_TRUE(to_schedule.status.IsSuccess());
 }
@@ -641,7 +671,8 @@ TEST_F(SchedulingPolicyTest,
   auto cluster_resource_manager = MockClusterResourceManager(nodes);
   // req is unscheduleable because the max cpu fraction reaches 0.5.
   auto to_schedule = raylet_scheduling_policy::BundlePackSchedulingPolicy(
-                         *cluster_resource_manager, [](auto) { return true; })
+                         *cluster_resource_manager, [](auto) { return true; },
+                         [](scheduling::NodeID, const SchedulingContext *) { return true; })
                          .Schedule(req_list, pack_op);
   ASSERT_TRUE(to_schedule.status.IsSuccess());
 
@@ -649,7 +680,8 @@ TEST_F(SchedulingPolicyTest,
 
   auto to_schedule_task =
       raylet_scheduling_policy::CompositeSchedulingPolicy(
-          local_node, *cluster_resource_manager, [](auto) { return true; })
+          local_node, *cluster_resource_manager, [](auto) { return true; },
+          [](scheduling::NodeID, const SchedulingContext *) { return true; })
           .Schedule(req, HybridOptions(0.50, false, false));
   ASSERT_TRUE(!to_schedule_task.IsNil());
 }
@@ -674,7 +706,8 @@ TEST_F(SchedulingPolicyTest, BundleSchedulingMaxFractionWorkingWhenNormalResourc
   auto cluster_resource_manager = MockClusterResourceManager(nodes);
   // req is unscheduleable because the max cpu fraction reaches 0.5.
   auto to_schedule = raylet_scheduling_policy::BundlePackSchedulingPolicy(
-                         *cluster_resource_manager, [](auto) { return true; })
+                         *cluster_resource_manager, [](auto) { return true; },
+                         [](scheduling::NodeID, const SchedulingContext *) { return true; })
                          .Schedule(req_list, pack_op);
   ASSERT_TRUE(to_schedule.status.IsSuccess());
 }
