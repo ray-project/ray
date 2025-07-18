@@ -136,15 +136,6 @@ class VLLMEngineConfig(BaseModelExtended):
         else:
             engine_kwargs["distributed_executor_backend"] = "ray"
 
-        if (
-            "disable_log_stats" in engine_kwargs
-            and not engine_kwargs["disable_log_stats"]
-        ):
-            logger.warning(
-                "disable_log_stats = False is not allowed in engine_kwargs when using Ray Serve LLM Configs. Setting it to True."
-            )
-        engine_kwargs["disable_log_stats"] = True
-
         return engine_kwargs
 
     def get_runtime_env_with_local_env_vars(self) -> dict:
