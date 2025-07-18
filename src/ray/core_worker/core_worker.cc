@@ -358,8 +358,6 @@ CoreWorker::CoreWorker(
 
   RegisterToGcs(options_.worker_launch_time_ms, options_.worker_launched_time_ms);
 
-  SubscribeToNodeChanges();
-
   // Create an entry for the driver task in the task table. This task is
   // added immediately with status RUNNING. This allows us to push errors
   // related to this driver task back to the driver. For example, if the
