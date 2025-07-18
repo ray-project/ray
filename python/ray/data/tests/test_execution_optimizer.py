@@ -1353,6 +1353,116 @@ def test_limit_pushdown_mapbatches(ray_start_regular_shared_2_cpus):
     )
 
 
+def test_limit_pushdown_union(ray_start_regular_shared_2_cpus):
+    """Test limit pushdown behavior with Union operations."""
+
+    # Create two datasets and union with limit
+    ds1 = ray.data.range(100, override_num_blocks=10)
+    ds2 = ray.data.range(200, override_num_blocks=10)
+    ds = ds1.union(ds2).limit(5)
+
+    expected_plan = "Read[ReadRange] -> Limit[limit=5], Read[ReadRange] -> Limit[limit=5] -> Union[Union] -> Limit[limit=5]"
+    _check_valid_plan_and_result(ds, expected_plan, [{"id": i} for i in range(5)])
+
+
+def test_limit_pushdown_union_with_maprows(ray_start_regular_shared_2_cpus):
+    """Limit after Union + MapRows: limit should be pushed before the MapRows
+    and inside each Union branch."""
+    ds1 = ray.data.range(100, override_num_blocks=10)
+    ds2 = ray.data.range(200, override_num_blocks=10)
+    ds = ds1.union(ds2).map(lambda x: x).limit(5)
+
+    expected_plan = (
+        "Read[ReadRange] -> Limit[limit=5], "
+        "Read[ReadRange] -> Limit[limit=5] -> Union[Union] -> "
+        "Limit[limit=5] -> MapRows[Map(<lambda>)]"
+    )
+    _check_valid_plan_and_result(ds, expected_plan, [{"id": i} for i in range(5)])
+
+
+def test_limit_pushdown_union_with_sort(ray_start_regular_shared_2_cpus):
+    """Limit after Union + Sort: limit must NOT push through the Sort."""
+    ds1 = ray.data.range(100, override_num_blocks=4)
+    ds2 = ray.data.range(50, override_num_blocks=4).map(
+        lambda x: {"id": x["id"] + 1000}
+    )
+    ds = ds1.union(ds2).sort("id").limit(5)
+
+    expected_plan = (
+        "Read[ReadRange], "
+        "Read[ReadRange] -> MapRows[Map(<lambda>)] -> "
+        "Union[Union] -> Sort[Sort] -> Limit[limit=5]"
+    )
+    _check_valid_plan_and_result(ds, expected_plan, [{"id": i} for i in range(5)])
+
+
+def test_limit_pushdown_multiple_unions(ray_start_regular_shared_2_cpus):
+    """Outer limit over nested unions should create a branch-local limit
+    for every leaf plus the global one."""
+    ds = (
+        ray.data.range(100)
+        .union(ray.data.range(100, override_num_blocks=5))
+        .union(ray.data.range(50))
+        .limit(5)
+    )
+
+    # 4 limits expected: 3 branch limits + 1 global.
+    assert ds._plan._logical_plan.dag.dag_str.count("Limit[limit=5]") == 4
+    assert ds.take() == {"id": 0}  # Correctness smoke-check.
+
+
+def test_limit_pushdown_union_with_groupby(ray_start_regular_shared_2_cpus):
+    """Limit after Union + Aggregate: limit should stay after Aggregate."""
+    ds1 = ray.data.range(100)
+    ds2 = ray.data.range(100).map(lambda x: {"id": x["id"] + 1000})
+    ds = ds1.union(ds2).groupby("id").count().limit(5)
+    # Result should contain 5 distinct ids with count == 1.
+    res = ds.take_all()
+    # Plan suffix check (no branch limits past Aggregate).
+    assert ds._plan._logical_plan.dag.dag_str.endswith(
+        "Union[Union] -> Aggregate[Aggregate] -> Limit[limit=5]"
+    )
+    assert len(res) == 5 and all(r["count()"] == 1 for r in res)
+
+
+def test_limit_pushdown_complex_chain(ray_start_regular_shared_2_cpus):
+    """
+    Complex end-to-end case:
+      1. Two branches each with a branch-local Limit pushed to Read.
+         • left  : Project
+         • right : MapRows
+      2. Union of the two branches.
+      3. Global Aggregate (groupby/count).
+      4. Sort (descending id) – pushes stop here.
+      5. Final Limit.
+    Verifies both plan rewrite and result correctness.
+    """
+    # ── left branch ────────────────────────────────────────────────
+    left = ray.data.range(50).select_columns(["id"]).limit(10)
+
+    # ── right branch ───────────────────────────────────────────────
+    right = ray.data.range(50).map(lambda x: {"id": x["id"] + 1000}).limit(10)
+
+    # ── union → aggregate → sort → limit ──────────────────────────
+    ds = left.union(right).groupby("id").count().sort("id", descending=True).limit(3)
+
+    # Expected logical-plan string.
+    expected_plan = (
+        "Read[ReadRange] -> Limit[limit=10] -> Project[Project], "
+        "Read[ReadRange] -> Limit[limit=10] -> MapRows[Map(<lambda>)] "
+        "-> Union[Union] -> Aggregate[Aggregate] -> Sort[Sort] -> Limit[limit=3]"
+    )
+
+    # Top-3 ids are the three largest (1009, 1008, 1007) with count()==1.
+    expected_result = [
+        {"id": 1009, "count()": 1},
+        {"id": 1008, "count()": 1},
+        {"id": 1007, "count()": 1},
+    ]
+
+    _check_valid_plan_and_result(ds, expected_plan, expected_result)
+
+
 def test_execute_to_legacy_block_list(
     ray_start_regular_shared_2_cpus,
 ):

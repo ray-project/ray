@@ -8,6 +8,7 @@ from ray.data._internal.logical.operators.one_to_one_operator import (
     Limit,
 )
 from ray.data._internal.logical.operators.read_operator import Read
+from ray.data._internal.logical.operators.n_ary_operator import Union
 
 
 class LimitPushdownRule(Rule):
@@ -19,10 +20,10 @@ class LimitPushdownRule(Rule):
     - Project operations (column selection)
     - MapRows operations (row-wise transformations that preserve row count)
     - MapBatches operations (batch-wise transformations that preserve row count)
+    - Union operations (limits are prepended to each branch)
 
     We stop at:
     - Any operator that can modify the number of output rows (Sort, Shuffle, Aggregate, Read etc.)
-    - Union operations (limits should not be pushed through unions as it changes semantics)
 
     In addition, we also fuse consecutive Limit operators into a single
     Limit operator, i.e. `Limit[n] -> Limit[m]` becomes `Limit[min(n, m)]`.
@@ -34,29 +35,65 @@ class LimitPushdownRule(Rule):
         return LogicalPlan(dag=optimized_dag, context=plan.context)
 
     def _apply_limit_pushdown(self, op: LogicalOperator) -> LogicalOperator:
-        """Given a DAG of LogicalOperators, traverse the DAG and push down
-        Limit operators conservatively.
+        """Push down Limit operators in the given operator DAG.
 
-        Returns a new LogicalOperator with the Limit operators pushed down."""
-        # Post-order traversal.
-        nodes: Iterable[LogicalOperator] = deque()
-        for node in op.post_order_iter():
-            nodes.appendleft(node)
+        This implementation uses ``LogicalOperator._apply_transform`` to
+        post-order-traverse the DAG and rewrite each ``Limit`` node via
+        :py:meth:`_push_limit_down`.
+        """
 
-        current_dag_root = op
-        while len(nodes) > 0:
-            current_op = nodes.pop()
+        def transform(node: LogicalOperator) -> LogicalOperator:
+            if isinstance(node, Limit):
+                if isinstance(node.input_dependency, Union):
+                    return self._push_limit_into_union(node)
+                return self._push_limit_down(node)
+            return node
 
-            if isinstance(current_op, Limit):
-                new_op = self._push_limit_down(current_op)
-                if new_op != current_op:
-                    nodes.append(new_op)
-                    # If this is the DAG root, update it
-                    if current_op == current_dag_root:
-                        current_dag_root = new_op
-                    # Continue processing instead of returning early
+        # ``_apply_transform`` returns the (potentially new) root of the DAG.
+        return op._apply_transform(transform)
 
-        return current_dag_root
+    def _push_limit_into_union(self, limit_op: Limit) -> Limit:
+        """Push `limit_op` INTO every branch of its upstream Union
+        and preserve the global limit.
+
+        Existing topology:
+            child₁ , child₂ , …  ->  Union  ->  Limit
+
+        New topology:
+            child₁ -> Limit ->│
+                               │
+            child₂ -> Limit ->┤ Union ──► Limit   (original)
+                               │
+            …    -> Limit  ->│
+        """
+        union_op = limit_op.input_dependency
+        if not isinstance(union_op, Union):
+            # Should never happen – guard for safety.
+            return limit_op
+
+        # 1. Detach the original Union from its children.
+        original_children = list(union_op.input_dependencies)
+        for child in original_children:
+            if union_op in child._output_dependencies:
+                child._output_dependencies.remove(union_op)
+
+        # 2. Create a new Limit for each branch and wire it to the child.
+        branch_limits: List[LogicalOperator] = []
+        for child in original_children:
+            branch_limit = Limit(child, limit_op._limit)  # child -> branch_limit
+            branch_limit._output_dependencies = []  # will be set below
+            branch_limits.append(branch_limit)
+
+        # 3. Re-attach the Union so that each branch_limit feeds into it.
+        new_union = Union(*branch_limits)  # limits -> new_union
+        for bl in branch_limits:
+            bl._output_dependencies.append(new_union)
+
+        # 4. Re-wire the original (global) Limit to consume the *new* Union.
+        limit_op._input_dependencies = [new_union]
+        new_union._output_dependencies = [limit_op]
+
+        return limit_op
 
     def _push_limit_down(self, limit_op: Limit) -> LogicalOperator:
         """Push a single limit down through compatible operators conservatively.
