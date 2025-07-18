@@ -67,7 +67,9 @@ def test_csv_read_partitioning(ray_start_regular_shared, tmp_path):
         ),
     ],
 )
-def test_csv_read(ray_start_regular_shared, fs, data_path, endpoint_url):
+def test_csv_read(
+    ray_start_regular_shared, fs, data_path, endpoint_url, target_max_block_size_none
+):
     if endpoint_url is None:
         storage_options = {}
     else:
@@ -651,7 +653,7 @@ def test_csv_read_partitioned_with_filter_multikey(
     assert_base_partitioned_ds(ds, num_input_files=6)
 
 
-def test_csv_write(ray_start_regular_shared, tmp_path):
+def test_csv_write(ray_start_regular_shared, tmp_path, target_max_block_size_none):
     input_df = pd.DataFrame({"id": [0]})
     ds = ray.data.from_blocks([input_df])
 
@@ -667,7 +669,9 @@ def test_csv_write(ray_start_regular_shared, tmp_path):
 
 
 @pytest.mark.parametrize("override_num_blocks", [None, 2])
-def test_csv_roundtrip(ray_start_regular_shared, tmp_path, override_num_blocks):
+def test_csv_roundtrip(
+    ray_start_regular_shared, tmp_path, override_num_blocks, target_max_block_size_none
+):
     df = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
 
     ds = ray.data.from_pandas([df], override_num_blocks=override_num_blocks)
@@ -767,7 +771,9 @@ def test_csv_read_with_column_type_specified(ray_start_regular_shared, tmp_path)
     Version(pa.__version__) < Version("7.0.0"),
     reason="invalid_row_handler was added in pyarrow 7.0.0",
 )
-def test_csv_invalid_file_handler(ray_start_regular_shared, tmp_path):
+def test_csv_invalid_file_handler(
+    ray_start_regular_shared, tmp_path, target_max_block_size_none
+):
     from pyarrow import csv
 
     invalid_txt = "f1,f2\n2,3\nx\n4,5"
@@ -784,7 +790,9 @@ def test_csv_invalid_file_handler(ray_start_regular_shared, tmp_path):
 
 
 @pytest.mark.parametrize("min_rows_per_file", [5, 10, 50])
-def test_write_min_rows_per_file(tmp_path, ray_start_regular_shared, min_rows_per_file):
+def test_write_min_rows_per_file(
+    tmp_path, ray_start_regular_shared, min_rows_per_file, target_max_block_size_none
+):
     ray.data.range(100, override_num_blocks=20).write_csv(
         tmp_path, min_rows_per_file=min_rows_per_file
     )
