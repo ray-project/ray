@@ -149,10 +149,10 @@ def pow_2_router(request) -> PowerOfTwoChoicesRequestRouter:
                 "use_replica_queue_len_cache", False
             ),
             get_curr_time_s=TIMER.time,
-        )
-        request_router.backoff_sequence_s = request.param.get(
-            "backoff_sequence_s",
-            [0, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001],
+            backoff_sequence_s=request.param.get(
+                "backoff_sequence_s",
+                [0, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001],
+            ),
         )
         return request_router
 
