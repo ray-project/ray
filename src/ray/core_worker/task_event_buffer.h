@@ -50,7 +50,7 @@ using TaskAttempt = std::pair<TaskID, int32_t>;
 /// 1. Flushing to GCS (will be deprecated): the flush to GCS will be periodic and it
 /// will be converted to rpc::TaskEvents.
 /// 2. Flushing to the event aggregator: the flush to the event aggregator will be
-/// periodic and it will be converted to rpc::events::RayEventData.
+/// periodic and it will be converted to rpc::events::RayEventsData.
 /// 3. Export API (will be deprecated): Periodically flush to the file system. When
 /// flushing, it will be converted to rpc::ExportTaskEventData.
 ///
@@ -275,7 +275,7 @@ class TaskEventBuffer {
  public:
   struct TaskEventDataToSend {
     std::unique_ptr<rpc::TaskEventData> task_event_data;
-    std::unique_ptr<rpc::events::RayEventData> ray_event_data;
+    std::unique_ptr<rpc::events::RayEventsData> ray_event_data;
   };
 
   /// Update task status change for the task attempt in TaskEventBuffer if needed.
@@ -443,13 +443,13 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   /// \param dropped_task_attempts_to_send The task attempts that were dropped due to
   ///        status events being dropped.
   /// \param[out] data The ray event data to be sent.
-  void CreateRayEventDataToSend(
+  void CreateRayEventsDataToSend(
       absl::flat_hash_map<TaskAttempt,
                           std::pair<std::optional<rpc::events::RayEvent>,
                                     std::optional<rpc::events::RayEvent>>>
           &&agg_task_events,
       const absl::flat_hash_set<TaskAttempt> &dropped_task_attempts_to_send,
-      std::unique_ptr<rpc::events::RayEventData> &data);
+      std::unique_ptr<rpc::events::RayEventsData> &data);
 
   /// Reset the metrics counters for flush.
   void ResetCountersForFlush();
@@ -493,7 +493,7 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   /// Send ray events to the event aggregator.
   ///
   /// \param data The ray event data to be sent.
-  void SendRayEventsToAggregator(std::unique_ptr<rpc::events::RayEventData> data);
+  void SendRayEventsToAggregator(std::unique_ptr<rpc::events::RayEventsData> data);
 
   /// Reset the task event counters during flushing data.
   void ResetTaskEventCountersForFlush();
