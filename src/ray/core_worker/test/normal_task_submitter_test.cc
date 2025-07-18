@@ -148,15 +148,18 @@ class MockTaskManager : public MockTaskManagerInterface {
  public:
   MockTaskManager() {}
 
-  void CompletePendingTask(const TaskID &,
+  void CompletePendingTask(const TaskID &task_id,
                            const rpc::PushTaskReply &,
                            const rpc::Address &actor_addr,
                            bool is_application_error) override {
     num_tasks_complete++;
+    not_submissible_tasks_.insert(task_id);
   }
 
   bool RetryTaskIfPossible(const TaskID &task_id,
                            const rpc::RayErrorInfo &error_info) override {
+    EXPECT_TRUE(!not_submissible_tasks_.contains(task_id))
+        << "Tried to retry task that was not submissible " + task_id.Hex();
     num_task_retries_attempted++;
     return false;
   }
@@ -167,6 +170,7 @@ class MockTaskManager : public MockTaskManagerInterface {
                        const rpc::RayErrorInfo *ray_error_info = nullptr) override {
     num_fail_pending_task_calls++;
     num_tasks_failed++;
+    not_submissible_tasks_.insert(task_id);
   }
 
   bool FailOrRetryPendingTask(const TaskID &task_id,
@@ -176,6 +180,10 @@ class MockTaskManager : public MockTaskManagerInterface {
                               bool mark_task_object_failed = true,
                               bool fail_immediately = false) override {
     num_tasks_failed++;
+    if (!fail_immediately) {
+      RetryTaskIfPossible(task_id,
+                          ray_error_info ? *ray_error_info : rpc::RayErrorInfo());
+    }
     return true;
   }
 
@@ -211,6 +219,9 @@ class MockTaskManager : public MockTaskManagerInterface {
   int num_task_retries_attempted = 0;
   int num_fail_pending_task_calls = 0;
   int num_generator_failed_and_resubmitted = 0;
+
+ private:
+  absl::flat_hash_set<TaskID> not_submissible_tasks_;
 };
 
 class MockRayletClient : public WorkerLeaseInterface {
@@ -237,9 +248,19 @@ class MockRayletClient : public WorkerLeaseInterface {
       const ray::rpc::ClientCallback<ray::rpc::GetTaskFailureCauseReply> &callback)
       override {
     std::lock_guard<std::mutex> lock(mu_);
-    ray::rpc::GetTaskFailureCauseReply reply;
-    callback(Status::OK(), std::move(reply));
+    get_task_failure_cause_callbacks.push_back(callback);
     num_get_task_failure_causes += 1;
+  }
+
+  bool ReplyGetTaskFailureCause() {
+    if (get_task_failure_cause_callbacks.size() == 0) {
+      return false;
+    }
+    auto callback = std::move(get_task_failure_cause_callbacks.front());
+    get_task_failure_cause_callbacks.pop_front();
+    rpc::GetTaskFailureCauseReply reply;
+    callback(Status::OK(), std::move(reply));
+    return true;
   }
 
   void ReportWorkerBacklog(
@@ -630,6 +651,7 @@ TEST_F(NormalTaskSubmitterTest, TestHandleTaskFailure) {
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, NodeID::Nil()));
   // Simulate a system failure, i.e., worker died unexpectedly.
   ASSERT_TRUE(worker_client->ReplyPushTask(Status::IOError("oops")));
+  ASSERT_TRUE(raylet_client->ReplyGetTaskFailureCause());
   ASSERT_EQ(worker_client->callbacks.size(), 0);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
   ASSERT_EQ(raylet_client->num_workers_disconnected, 1);
@@ -642,6 +664,26 @@ TEST_F(NormalTaskSubmitterTest, TestHandleTaskFailure) {
   // Check that there are no entries left in the scheduling_key_entries_ hashmap. These
   // would otherwise cause a memory leak.
   ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntriesPublic());
+}
+
+TEST_F(NormalTaskSubmitterTest, TestCancellationWhileHandlingTaskFailure) {
+  // This test is a regression test for a bug where a crash happens when
+  // the task cancellation races between ReplyPushTask and ReplyGetTaskFailureCause.
+  // For an example of a python integration test, see
+  // https://github.com/ray-project/ray/blob/2b6807f4d9c4572e6309f57bc404aa641bc4b185/python/ray/tests/test_cancel.py#L35
+  auto submitter =
+      CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(1));
+
+  TaskSpecification task = BuildEmptyTaskSpec();
+  ASSERT_TRUE(submitter.SubmitTask(task).ok());
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, NodeID::Nil()));
+  // Simulate a system failure, i.e., worker died unexpectedly so that
+  // GetTaskFailureCause is called.
+  ASSERT_TRUE(worker_client->ReplyPushTask(Status::IOError("oops")));
+  // Cancel the task while GetTaskFailureCause has not been completed.
+  ASSERT_TRUE(submitter.CancelTask(task, true, false).ok());
+  // Completing the GetTaskFailureCause call. Check that the reply runs without error.
+  ASSERT_TRUE(raylet_client->ReplyGetTaskFailureCause());
 }
 
 TEST_F(NormalTaskSubmitterTest, TestHandleUnschedulableTask) {
@@ -1225,6 +1267,7 @@ TEST_F(NormalTaskSubmitterTest, TestWorkerNotReusedOnError) {
 
   // Task 1 finishes with failure; the worker is returned.
   ASSERT_TRUE(worker_client->ReplyPushTask(Status::IOError("worker dead")));
+  ASSERT_TRUE(raylet_client->ReplyGetTaskFailureCause());
   ASSERT_EQ(worker_client->callbacks.size(), 0);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
   ASSERT_EQ(raylet_client->num_workers_disconnected, 1);
@@ -1646,6 +1689,7 @@ TEST_F(NormalTaskSubmitterTest, TestWorkerLeaseTimeout) {
   // Task 1 finishes with failure; the worker is returned due to the error even though
   // it hasn't timed out.
   ASSERT_TRUE(worker_client->ReplyPushTask(Status::IOError("worker dead")));
+  ASSERT_TRUE(raylet_client->ReplyGetTaskFailureCause());
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
   ASSERT_EQ(raylet_client->num_workers_disconnected, 1);
 
@@ -1685,6 +1729,7 @@ TEST_F(NormalTaskSubmitterTest, TestKillExecutingTask) {
   ASSERT_TRUE(submitter.CancelTask(task, true, false).ok());
   ASSERT_EQ(worker_client->kill_requests.front().intended_task_id(), task.TaskIdBinary());
   ASSERT_TRUE(worker_client->ReplyPushTask(Status::IOError("workerdying"), true));
+  ASSERT_TRUE(raylet_client->ReplyGetTaskFailureCause());
   ASSERT_EQ(worker_client->callbacks.size(), 0);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
   ASSERT_EQ(raylet_client->num_workers_returned_exiting, 0);
