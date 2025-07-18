@@ -11,6 +11,7 @@ from ray.train.v2._internal.execution.worker_group import (
     WorkerGroupSchedulingStatus,
     WorkerStatus,
 )
+from ray.train.v2.api.exceptions import ControllerError, TrainingFailedError
 
 
 def _worker_group_status_from_errors(errors):
@@ -40,19 +41,40 @@ def test_max_failures(max_failures):
         [RuntimeError(f"Worker {i} failed") if i % 2 == 0 else None for i in range(8)]
     )
     for _ in range(max_failures):
-        assert policy.make_decision(status.errors) == FailureDecision.RETRY
-    assert policy.make_decision(status.errors) == FailureDecision.RAISE
+        assert (
+            policy.make_decision(
+                training_failed_error=TrainingFailedError(
+                    error_message=status.get_error_string(),
+                    worker_failures=status.errors,
+                )
+            )
+            == FailureDecision.RESTART
+        )
+    assert (
+        policy.make_decision(
+            training_failed_error=TrainingFailedError(
+                error_message=status.get_error_string(), worker_failures=status.errors
+            )
+        )
+        == FailureDecision.RAISE
+    )
 
 
 @pytest.mark.parametrize("scheduling_failure_limit", [0, 1, 10])
 def test_reschedule(scheduling_failure_limit):
     policy = create_failure_policy(
-        FailureConfig(scheduling_failure_limit=scheduling_failure_limit)
+        FailureConfig(controller_failure_limit=scheduling_failure_limit)
     )
     status = _worker_group_resize_status_from_errors()
     for _ in range(scheduling_failure_limit):
-        assert policy.make_decision(status.error) == FailureDecision.RETRY
-    assert policy.make_decision(status.error) == FailureDecision.RAISE
+        assert (
+            policy.make_decision(controller_failed_error=ControllerError(status.error))
+            == FailureDecision.RESCHEDULE
+        )
+    assert (
+        policy.make_decision(controller_failed_error=ControllerError(status.error))
+        == FailureDecision.RAISE
+    )
 
 
 def test_infinite_retry():
@@ -61,20 +83,34 @@ def test_infinite_retry():
         [RuntimeError(f"Worker {i} failed") if i % 2 == 0 else None for i in range(8)]
     )
     for _ in range(10):
-        assert policy.make_decision(status.errors) == FailureDecision.RETRY
+        assert (
+            policy.make_decision(
+                training_failed_error=TrainingFailedError(
+                    error_message=status.get_error_string(),
+                    worker_failures=status.errors,
+                )
+            )
+            == FailureDecision.RESTART
+        )
 
 
 def test_non_retryable_scheduling_error():
-    policy = create_failure_policy(FailureConfig(scheduling_failure_limit=10))
+    policy = create_failure_policy(FailureConfig(controller_failure_limit=10))
     status = _non_retryable_scheduling_error()
-    assert policy.make_decision(status.error) == FailureDecision.RAISE
+    assert (
+        policy.make_decision(controller_failed_error=ControllerError(status.error))
+        == FailureDecision.RAISE
+    )
 
 
 def test_infinite_reschedule():
-    policy = create_failure_policy(FailureConfig(scheduling_failure_limit=-1))
+    policy = create_failure_policy(FailureConfig(controller_failure_limit=-1))
     status = _worker_group_resize_status_from_errors()
     for _ in range(10):
-        assert policy.make_decision(status.error) == FailureDecision.RETRY
+        assert (
+            policy.make_decision(controller_failed_error=ControllerError(status.error))
+            == FailureDecision.RESCHEDULE
+        )
 
 
 if __name__ == "__main__":

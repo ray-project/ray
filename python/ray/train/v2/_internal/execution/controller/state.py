@@ -1,9 +1,10 @@
 from enum import Enum
+from typing import Optional
 
 from ray.train.v2._internal.execution.scaling_policy.scaling_policy import (
     ScalingDecision,
 )
-from ray.train.v2.api.exceptions import TrainingFailedError
+from ray.train.v2.api.exceptions import ControllerError, TrainingFailedError
 
 
 class TrainControllerStateType(Enum):
@@ -90,8 +91,12 @@ class SchedulingState(TrainControllerState):
 
 
 class ReschedulingState(TrainControllerState):
-    def __init__(self):
+    def __init__(
+        self,
+        controller_failed_error: ControllerError,
+    ):
         super().__init__(state_type=TrainControllerStateType.RESCHEDULING)
+        self.controller_failed_error = controller_failed_error
 
 
 class RunningState(TrainControllerState):
@@ -122,10 +127,19 @@ class ResizingState(TrainControllerState):
 class ErroredState(TrainControllerState):
     def __init__(
         self,
-        training_failed_error: TrainingFailedError,
+        training_failed_error: Optional[TrainingFailedError] = None,
+        controller_failed_error: Optional[ControllerError] = None,
     ):
+        assert training_failed_error is not None or controller_failed_error is not None
         super().__init__(state_type=TrainControllerStateType.ERRORED)
         self.training_failed_error = training_failed_error
+        self.controller_failed_error = controller_failed_error
+
+    def get_error_message(self) -> str:
+        if self.training_failed_error:
+            return str(self.training_failed_error)
+        else:
+            return str(self.controller_failed_error)
 
 
 class FinishedState(TrainControllerState):
