@@ -9,7 +9,12 @@ import pyarrow.csv
 
 import ray.data
 
-from constants import DatasetKey
+
+class DatasetKey:
+    TRAIN = "train"
+    VALID = "val"
+    TEST = "test"
+
 
 if TYPE_CHECKING:
     from torchrec.datasets.utils import Batch
@@ -19,9 +24,11 @@ logger = logging.getLogger(__name__)
 
 S3_BUCKET = "ray-benchmark-data-internal-us-west-2"
 CRITEO_S3_URI = f"s3://{S3_BUCKET}/criteo/tsv.gz"
-CAT_FEATURE_VALUE_COUNT_JSON_PATH_PATTERN = (
-    "criteo/tsv.gz/categorical_feature_value_counts/{}-value_counts.json"
-)
+
+CACHED_FEATURE_VALUE_COUNT_PATH_PATTER = {
+    "train": "criteo/tsv.gz/full_categorical_feature_value_counts/{}-value_counts.json",
+    "val": "criteo/tsv.gz/categorical_feature_value_counts/{}-value_counts.json",
+}
 
 
 INT_FEATURE_COUNT = 13
@@ -179,8 +186,65 @@ def read_json_from_s3(bucket_name, key):
     return data
 
 
-def _get_base_dataset(stage: DatasetKey = DatasetKey.TRAIN):
-    ds_path = DATASET_PATHS[stage]
+def build_dataset_path(stage: str = "train", days=None):
+    """Build S3 dataset paths for the given stage and days by listing actual files in S3.
+
+    Args:
+        stage: Dataset stage ('train', 'val', or 'test')
+        days: List of day indices to include in the paths
+
+    Returns:
+        List of S3 paths for files matching the day pattern
+    """
+    directory = DATASET_PATHS[stage]
+
+    if days is None:
+        return [directory]
+
+    assert isinstance(days, list) and len(days) > 0, "days must be a non-empty list"
+
+    # Parse S3 URI to get bucket and prefix
+    # directory format: s3://bucket/prefix
+    if directory.startswith("s3://"):
+        parts = directory[5:].split("/", 1)
+        bucket_name = parts[0]
+        prefix = parts[1] if len(parts) > 1 else ""
+    else:
+        raise ValueError(f"Invalid S3 URI format: {directory}")
+
+    s3 = boto3.client("s3")
+    ds_paths = []
+
+    # List all objects with the base prefix
+    paginator = s3.get_paginator("list_objects_v2")
+    page_iterator = paginator.paginate(Bucket=bucket_name, Prefix=prefix)
+
+    for page in page_iterator:
+        if "Contents" in page:
+            for obj in page["Contents"]:
+                key = obj["Key"]
+                filename = key.split("/")[-1]  # Get just the filename
+
+                # Check if filename matches any of the requested days
+                for day in days:
+                    if filename.startswith(f"day_{day}_") and filename.endswith(
+                        ".tsv.gz"
+                    ):
+                        full_s3_path = f"s3://{bucket_name}/{key}"
+                        ds_paths.append(full_s3_path)
+                        break  # Don't add the same file multiple times
+
+    logger.info(
+        f"Found {len(ds_paths)} files matching day patterns {days} in {directory}"
+    )
+    return ds_paths
+
+
+def _get_base_dataset(stage: str = "train", days=None):
+    if days is not None:
+        ds_path = build_dataset_path(stage, days)
+    else:
+        ds_path = DATASET_PATHS[stage]
 
     ds = ray.data.read_csv(
         ds_path,
@@ -193,8 +257,8 @@ def _get_base_dataset(stage: DatasetKey = DatasetKey.TRAIN):
     return ds
 
 
-def get_ray_dataset(stage: DatasetKey = DatasetKey.TRAIN):
-    ds = _get_base_dataset(stage)
+def get_ray_dataset(stage: DatasetKey = DatasetKey.TRAIN, days=None):
+    ds = _get_base_dataset(stage, days)
 
     # Convert categorical features to integers.
 
@@ -208,7 +272,7 @@ def get_ray_dataset(stage: DatasetKey = DatasetKey.TRAIN):
         if COMPUTE_VALUE_COUNTS_FROM_SCRATCH:
             value_counts = _compute_value_counts(ds, cat_feature)
         else:
-            json_filepath = CAT_FEATURE_VALUE_COUNT_JSON_PATH_PATTERN.format(
+            json_filepath = CACHED_FEATURE_VALUE_COUNT_PATH_PATTER[stage].format(
                 cat_feature
             )
             logger.info(f"Downloading value counts file: {json_filepath}")
