@@ -97,8 +97,8 @@ class FailureConfig(FailureConfigV1):
     """
 
     fail_fast: Union[bool, str] = _DEPRECATED
-    # The limit of rescheduling trials. -1 means infinite rescheduling.
-    scheduling_failure_limit: int = -1
+    # The limit of controller failures. -1 means infinite controller failures.
+    controller_failure_limit: int = -1
 
     def __post_init__(self):
         # TODO(justinvyu): Add link to migration guide.
