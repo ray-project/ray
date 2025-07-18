@@ -1,9 +1,7 @@
 from typing import Dict, Union
 
 
-def get_error_string(
-    scheduling_or_poll_error: Union[Exception, Dict[int, Exception]]
-) -> str:
+def get_error_string(controller_error: Union[Exception, Dict[int, Exception]]) -> str:
     """Format an error or dictionary of errors into a readable string.
 
     Args:

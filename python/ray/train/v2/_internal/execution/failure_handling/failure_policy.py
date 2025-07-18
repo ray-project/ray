@@ -1,8 +1,9 @@
 import abc
 from enum import Enum
-from typing import Dict, Union
+from typing import Optional
 
 from ray.train.v2.api.config import FailureConfig
+from ray.train.v2.api.exceptions import ControllerError, TrainingFailedError
 
 
 class FailureDecision(Enum):
@@ -24,6 +25,7 @@ class FailurePolicy(abc.ABC):
     @abc.abstractmethod
     def make_decision(
         self,
-        scheduling_or_poll_error: Union[Exception, Dict[int, Exception]],
+        training_failed_error: Optional[TrainingFailedError] = None,
+        controller_failed_error: Optional[ControllerError] = None,
     ) -> FailureDecision:
         raise NotImplementedError

@@ -3,7 +3,7 @@ import logging
 import os
 import uuid
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Optional, Union
+from typing import Callable, List, Optional
 
 import pandas as pd
 
@@ -44,7 +44,6 @@ from ray.train.v2._internal.execution.controller.state import (
 from ray.train.v2._internal.execution.failure_handling import (
     FailureDecision,
     FailurePolicy,
-    get_error_string,
 )
 from ray.train.v2._internal.execution.scaling_policy import (
     NoopDecision,
@@ -65,7 +64,7 @@ from ray.train.v2._internal.execution.worker_group.worker_group import (
 from ray.train.v2._internal.logging.logging import configure_controller_logger
 from ray.train.v2._internal.util import ObjectRefWrapper, time_monotonic
 from ray.train.v2.api.callback import RayTrainCallback
-from ray.train.v2.api.exceptions import TrainingFailedError
+from ray.train.v2.api.exceptions import ControllerError, TrainingFailedError
 from ray.train.v2.api.result import Result
 
 logger = logging.getLogger(__name__)
@@ -79,6 +78,7 @@ class TrainControllerLoopIterationResult:
     previous_state: TrainControllerState
     next_state: TrainControllerState
     training_failed_error: Optional[TrainingFailedError] = None
+    controller_failed_error: Optional[ControllerError] = None
 
     def __repr__(self) -> str:
         return (
@@ -87,6 +87,7 @@ class TrainControllerLoopIterationResult:
             f"    previous_state={self.previous_state._state_type.state_name},\n"
             f"    next_state={self.next_state._state_type.state_name}\n"
             f"    training_failed_error={self.training_failed_error}\n"
+            f"    controller_failed_error={self.controller_failed_error}\n"
             f")"
         )
 
@@ -203,7 +204,8 @@ class TrainController:
     def _execute_failure_decision(
         self,
         failure_decision: FailureDecision,
-        scheduling_or_poll_error: Union[Exception, Dict[int, Exception]],
+        training_failed_error: Optional[TrainingFailedError] = None,
+        controller_failed_error: Optional[ControllerError] = None,
     ) -> TrainControllerLoopIterationResult:
         """Executes failure handling decisions for a scheduling or poll error."""
 
@@ -212,6 +214,8 @@ class TrainController:
         for callback in self._controller_callbacks:
             callback.before_controller_execute_failure_decision(failure_decision)
 
+        assert training_failed_error is not None or controller_failed_error is not None
+
         # TODO: What should we do here?
         # This currently never happens because there must be errors.
         if failure_decision == FailureDecision.NOOP:
@@ -219,18 +223,10 @@ class TrainController:
                 run_attempt_id=self._get_run_attempt_id(),
                 previous_state=controller_state,
                 next_state=controller_state,
+                training_failed_error=training_failed_error,
+                controller_failed_error=controller_failed_error,
             )
 
-        # TODO: make TrainingFailedError accept both worker_failures and controller_error.
-        worker_failures = (
-            scheduling_or_poll_error
-            if isinstance(scheduling_or_poll_error, Dict)
-            else {0: scheduling_or_poll_error}
-        )
-        training_failed_error = TrainingFailedError(
-            error_message=get_error_string(scheduling_or_poll_error),
-            worker_failures=worker_failures,
-        )
         if failure_decision == FailureDecision.RETRY:
             assert isinstance(controller_state, (RunningState, SchedulingState))
             return TrainControllerLoopIterationResult(

@@ -1,127 +1,125 @@
 import logging
-from typing import Dict, Union
+from typing import Optional
 
 from .failure_policy import FailureDecision, FailurePolicy
-from .utils import get_error_string
 from ray.train.v2._internal.exceptions import (
     WorkerGroupStartupFailedError,
     WorkerGroupStartupTimeoutError,
 )
 from ray.train.v2.api.config import FailureConfig
+from ray.train.v2.api.exceptions import ControllerError, TrainingFailedError
 
 logger = logging.getLogger(__name__)
 
 
-RETRYABLE_SCHEDULING_ERRORS = (
+RETRYABLE_CONTROLLER_ERRORS = (
     WorkerGroupStartupFailedError,
     WorkerGroupStartupTimeoutError,
 )
-
-NON_RETRYABLE_ERRORS = ()
 
 
 class DefaultFailurePolicy(FailurePolicy):
     def __init__(self, failure_config: FailureConfig):
         super().__init__(failure_config)
         self._running_failures = 0
-        # TODO: change to count the consecutive reschedule failures.
-        self._schedule_failures = 0
+        self._controller_failures = 0
 
-    def _log_non_retryable_error(
-        self, scheduling_or_poll_error: Union[Exception, Dict[int, Exception]]
-    ):
+    def _log_non_retryable_controller_error(self, controller_error: ControllerError):
         logger.info(
-            "Decided to terminate the training operation, since the error is non-retryable. "
-            f"Error: {get_error_string(scheduling_or_poll_error)}"
+            "Decided to terminate the training operation, since the controller error is non-retryable. "
+            f"Error: {controller_error}"
         )
 
-    def _log_scheduling_failure_limit_exceeded(
-        self, scheduling_or_poll_error: Union[Exception, Dict[int, Exception]]
-    ):
+    def _log_controller_error_limit_exceeded(self, controller_error: ControllerError):
         logger.info(
-            "Decided to terminate the scheduling operation, since the scheduling failure count exceeded the maximum allowed failures. "
-            f"FailureConfig(scheduling_failure_limit={self.failure_config.scheduling_failure_limit}). "
-            f"Encountered {self._schedule_failures} schedule failures so far. "
-            f"Error: {get_error_string(scheduling_or_poll_error)}"
+            "Decided to terminate the training operation, since the controller error count exceeded the maximum allowed failures. "
+            f"FailureConfig(controller_failure_limit={self.failure_config.controller_failure_limit}). "
+            f"Encountered {self._controller_failures} controller failures so far. "
+            f"Error: {controller_error}"
         )
 
-    def _log_scheduling_failure_limit_not_exceeded(
-        self, scheduling_or_poll_error: Union[Exception, Dict[int, Exception]]
+    def _log_controller_error_limit_not_exceeded(
+        self, controller_error: ControllerError
     ):
         logger.info(
-            "Decided to reschedule the scheduling operation, since the scheduling failure count did not exceed the maximum allowed failures. "
-            f"FailureConfig(scheduling_failure_limit={self.failure_config.scheduling_failure_limit}). "
-            f"Encountered {self._schedule_failures} schedule failures so far. "
-            f"Error: {get_error_string(scheduling_or_poll_error)}"
+            "Decided to reschedule the training operation, since the controller error count did not exceed the maximum allowed failures. "
+            f"FailureConfig(controller_failure_limit={self.failure_config.controller_failure_limit}). "
+            f"Encountered {self._controller_failures} controller failures so far. "
+            f"Error: {controller_error}"
         )
 
-    def _log_infinite_retry_enabled(
-        self, scheduling_or_poll_error: Union[Exception, Dict[int, Exception]]
-    ):
+    def _log_infinite_controller_retry_enabled(self, controller_error: ControllerError):
         logger.info(
-            "Decided to restart the training operation, since infinite retry is enabled. "
-            f"Error: {get_error_string(scheduling_or_poll_error)}"
+            "Decided to restart the training operation, since infinite controller retry is enabled. "
+            f"Error: {controller_error}"
         )
 
-    def _log_max_running_failures_exceeded(
-        self, scheduling_or_poll_error: Union[Exception, Dict[int, Exception]]
+    def _log_max_training_error_exceeded(
+        self, training_failed_error: TrainingFailedError
     ):
         logger.info(
-            "Decided to terminate the training operation, since the total failure count exceeded the maximum allowed failures. "
+            "Decided to terminate the training operation, since the total training error count exceeded the maximum allowed failures. "
             f"FailureConfig(max_failures={self.failure_config.max_failures}). "
-            f"Encountered {self._running_failures} failures so far. "
-            f"Error: {get_error_string(scheduling_or_poll_error)}"
+            f"Encountered {self._running_failures} training errors so far. "
+            f"Error: {training_failed_error}"
         )
 
-    def _log_max_running_failures_not_exceeded(
-        self, scheduling_or_poll_error: Union[Exception, Dict[int, Exception]]
+    def _log_max_training_error_not_exceeded(
+        self, training_failed_error: TrainingFailedError
     ):
         logger.info(
-            "Decided to restart the training operation, since the total failure count did not exceed the maximum allowed failures. "
+            "Decided to restart the training operation, since the total training error count did not exceed the maximum allowed failures. "
             f"FailureConfig(max_failures={self.failure_config.max_failures}). "
-            f"Encountered {self._running_failures} failures so far. "
-            f"Error: {get_error_string(scheduling_or_poll_error)}"
+            f"Encountered {self._running_failures} training errors so far. "
+            f"Error: {training_failed_error}"
+        )
+
+    def _log_infinite_training_retry_enabled(
+        self, training_failed_error: TrainingFailedError
+    ):
+        logger.info(
+            "Decided to restart the training operation, since infinite training retry is enabled. "
+            f"Error: {training_failed_error}"
         )
 
     def make_decision(
         self,
-        scheduling_or_poll_error: Union[Exception, Dict[int, Exception]],
+        training_failed_error: Optional[TrainingFailedError] = None,
+        controller_failed_error: Optional[ControllerError] = None,
     ) -> FailureDecision:
-        errors_list = []
-        if isinstance(scheduling_or_poll_error, Exception):
-            errors_list.append(scheduling_or_poll_error)
-        else:
-            errors_list.extend(scheduling_or_poll_error.values())
 
-        # For non-retryable errors and scheduling errors, we would fall in this category if we encounter any of them.
-        for error in errors_list:
-            if isinstance(error, NON_RETRYABLE_ERRORS):
-                self._log_non_retryable_error(error)
-                return FailureDecision.RAISE
-
-            if isinstance(error, RETRYABLE_SCHEDULING_ERRORS):
-                self._schedule_failures += 1
-                if self.failure_config.scheduling_failure_limit == -1:
-                    self._log_infinite_retry_enabled(error)
+        if controller_failed_error is not None:
+            error = controller_failed_error.controller_failure
+            if isinstance(error, RETRYABLE_CONTROLLER_ERRORS):
+                self._controller_failures += 1
+                if self.failure_config.controller_failure_limit == -1:
+                    self._log_infinite_controller_retry_enabled(controller_failed_error)
                     return FailureDecision.RETRY
                 elif (
-                    self._schedule_failures
-                    > self.failure_config.scheduling_failure_limit
+                    self._controller_failures
+                    > self.failure_config.controller_failure_limit
                 ):
-                    self._log_scheduling_failure_limit_exceeded(error)
+                    self._log_controller_error_limit_exceeded(controller_failed_error)
                     return FailureDecision.RAISE
                 else:
-                    self._log_scheduling_failure_limit_not_exceeded(error)
+                    self._log_controller_error_limit_not_exceeded(
+                        controller_failed_error
+                    )
                     return FailureDecision.RETRY
 
-        # All other errors are retryable runnable errors.
-        self._running_failures += 1
-        if self.failure_config.max_failures == -1:
-            self._log_infinite_retry_enabled(scheduling_or_poll_error)
-            return FailureDecision.RETRY
-        elif self._running_failures > self.failure_config.max_failures:
-            self._log_max_running_failures_exceeded(scheduling_or_poll_error)
-            return FailureDecision.RAISE
-        else:
-            self._log_max_running_failures_not_exceeded(scheduling_or_poll_error)
-            return FailureDecision.RETRY
+        if training_failed_error is not None:
+
+            self._running_failures += 1
+            if self.failure_config.max_failures == -1:
+                self._log_infinite_training_retry_enabled(training_failed_error)
+                return FailureDecision.RETRY
+            elif self._running_failures > self.failure_config.max_failures:
+                self._log_max_training_error_exceeded(training_failed_error)
+                return FailureDecision.RAISE
+            else:
+                self._log_max_training_error_not_exceeded(training_failed_error)
+                return FailureDecision.RETRY
+
+        assert (
+            False
+        ), "Both training_failed_error and controller_failed_error are None, which should not happen."
