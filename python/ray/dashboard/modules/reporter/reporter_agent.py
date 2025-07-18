@@ -316,8 +316,8 @@ METRICS_GAUGES = {
         "percentage",
         COMPONENT_GPU_TAG_KEYS,
     ),
-    "component_gpu_memory_usage": Gauge(
-        "component_gpu_memory_usage",
+    "component_gpu_memory_mb": Gauge(
+        "component_gpu_memory_mb",
         "GPU memory usage of all components on the node.",
         "MB",
         COMPONENT_GPU_TAG_KEYS,
@@ -570,7 +570,7 @@ class ReporterAgent(
             return False
 
     @staticmethod
-    def _get_gpu_usage() -> List[GpuUtilizationInfo]:
+    def _get_pynvml_gpu_usage() -> List[GpuUtilizationInfo]:
         global enable_gpu_usage_check
         import ray._private.thirdparty.pynvml as pynvml
 
@@ -694,7 +694,7 @@ class ReporterAgent(
         if not enable_gpu_usage_check:
             return []
         if not using_nvidia_smi:
-            return ReporterAgent._get_gpu_usage()
+            return ReporterAgent._get_pynvml_gpu_usage()
         try:
             gpu_info = subprocess.run(
                 [
@@ -747,7 +747,7 @@ class ReporterAgent(
                 f"nvidia-smi failed to retrieve GPU information: {e}. Using pynvml."
             )
             using_nvidia_smi = False
-            return ReporterAgent._get_gpu_usage()
+            return ReporterAgent._get_pynvml_gpu_usage()
 
     @staticmethod
     def _get_boot_time():
@@ -1148,57 +1148,69 @@ class ReporterAgent(
         worker_stats: List[dict],
         gpus: List[GpuUtilizationInfo],
     ) -> List[Record]:
-        worker_processes = {}
-        for stat in worker_stats:
-            cmdline = stat.get("cmdline")
-            if cmdline and len(cmdline) > 0 and cmdline[0].startswith("ray::"):
-                worker_processes[stat["pid"]] = cmdline[0]
+        # Map worker PIDs to their process names
+        worker_processes = {
+            stat["pid"]: stat["cmdline"][0]
+            for stat in worker_stats
+            if stat.get("cmdline") and stat["cmdline"][0].startswith("ray::")
+        }
 
-        # Generate records for GPU utilization and memory usage
         records = []
         gpu_proc = set()
+        component_2_mem_usage = {}
+        component_2_utilization = {}
 
-        def _generate_records(proc_name, pid):
-            for gpu in gpus:
-                if "processes_pids" not in gpu:
-                    continue
-                for proc in gpu["processes_pids"]:
-                    if pid == proc["pid"]:
-                        tags = {
-                            "Component": proc_name,
-                            # "pid": str(pid),
-                            # "GpuIndex": str(gpu["index"]),
-                            # "GpuDeviceName": gpu["name"] if gpu["name"] else "",
-                        }
-                        records.append(
-                            Record(
-                                gauge=METRICS_GAUGES["component_gpu_memory_usage"],
-                                value=int(
-                                    proc["gpu_memory_usage"] * MB
-                                ),  # Convert to bytes
-                                tags=tags,
-                            )
-                        )
-                        if proc["gpu_utilization"]:
-                            records.append(
-                                Record(
-                                    gauge=METRICS_GAUGES["component_gpu_utilization"],
-                                    value=proc["gpu_utilization"],
-                                    tags=tags,
-                                )
-                            )
-                        gpu_proc.add(proc_name)
-                        break  # Same pid can be in multiple GPUs
+        # Build process ID -> GPU info mapping for faster lookups
+        gpu_pid_mapping = {}
+        for gpu in gpus:
+            if not gpu.get("processes_pids"):
+                continue
+            for proc in gpu["processes_pids"]:
+                pid = proc["pid"]
+                if pid not in gpu_pid_mapping:
+                    gpu_pid_mapping[pid] = []
+                gpu_pid_mapping[pid].append(proc)
 
+        # Process each worker's GPU stats
         for pid, proc_name in worker_processes.items():
-            _generate_records(proc_name, pid)
+            if pid not in gpu_pid_mapping:
+                continue
+
+            # Aggregate GPU memory and utilization across all GPUs for this process
+            for proc in gpu_pid_mapping[pid]:
+                component_2_mem_usage[proc_name] = (
+                    component_2_mem_usage.get(proc_name, 0) + proc["gpu_memory_usage"]
+                )
+                utilization = proc["gpu_utilization"] or 0
+                component_2_utilization[proc_name] = (
+                    component_2_utilization.get(proc_name, 0) + utilization
+                )
+                gpu_proc.add(proc_name)
+
+        # Generate records for GPU utilization and memory usage
+        for proc_name, mem_usage in component_2_mem_usage.items():
+            records.append(
+                Record(
+                    gauge=METRICS_GAUGES["component_gpu_memory_mb"],
+                    value=mem_usage,
+                    tags={"Component": proc_name},
+                )
+            )
+            if component_2_utilization[proc_name]: # Only report utilization if it's not 0
+                records.append(
+                    Record(
+                        gauge=METRICS_GAUGES["component_gpu_utilization"],
+                        value=component_2_utilization[proc_name],
+                        tags={"Component": proc_name},
+                    )
+                )
 
         # Generate reset records for stale processes
         stale_procs = self._latest_gpu_proc - gpu_proc
         for stale_proc in stale_procs:
             records.append(
                 Record(
-                    gauge=METRICS_GAUGES["component_gpu_memory_usage"],
+                    gauge=METRICS_GAUGES["component_gpu_memory_mb"],
                     value=0,
                     tags={
                         "Component": stale_proc,
