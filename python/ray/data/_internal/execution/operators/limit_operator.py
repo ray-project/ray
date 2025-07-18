@@ -39,26 +39,24 @@ class LimitOperator(OneToOneOperator):
         else:
             return self._consumed_rows >= self._limit
 
+    def _within_limit(self, num_rows: int, input_total_rows: Optional[int]) -> bool:
+        if input_total_rows is not None and self._limit >= input_total_rows:
+            return self._consumed_rows + num_rows <= input_total_rows
+        else:
+            return self._consumed_rows + num_rows <= self._limit
+
     def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
         assert not self.completed()
         assert input_index == 0, input_index
-
         input_total_rows = self.input_dependencies[0].num_output_rows_total()
         if self._limit_reached(input_total_rows):
             return
-
-        can_passthrough = (
-            input_total_rows is not None and self._limit >= input_total_rows
-        )
-
         out_blocks: List[ObjectRef[Block]] = []
         out_metadata: List[BlockMetadata] = []
-
         for block, metadata in refs.blocks:
             num_rows = metadata.num_rows
             assert num_rows is not None
-
-            if can_passthrough or self._consumed_rows + num_rows <= self._limit:
+            if self._within_limit(num_rows, input_total_rows):
                 out_blocks.append(block)
                 out_metadata.append(metadata)
                 self._output_blocks_stats.append(metadata.to_stats())
@@ -85,7 +83,6 @@ class LimitOperator(OneToOneOperator):
                 self._output_blocks_stats.append(metadata.to_stats())
                 self._consumed_rows = self._limit
                 break
-
         self._cur_output_bundles += 1
         out_refs = RefBundle(
             list(zip(out_blocks, out_metadata)),
