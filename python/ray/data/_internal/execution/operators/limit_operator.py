@@ -33,17 +33,20 @@ class LimitOperator(OneToOneOperator):
         if self._limit <= 0:
             self.mark_execution_finished()
 
-    def _limit_reached(self) -> bool:
-        return self._consumed_rows >= self._limit
+    def _limit_reached(self, input_total_rows: Optional[int]) -> bool:
+        if input_total_rows is not None and self._limit >= input_total_rows:
+            return self._consumed_rows >= input_total_rows
+        else:
+            return self._consumed_rows >= self._limit
 
     def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
         assert not self.completed()
         assert input_index == 0, input_index
 
-        if self._limit_reached():
+        input_total_rows = self.input_dependencies[0].num_output_rows_total()
+        if self._limit_reached(input_total_rows):
             return
 
-        input_total_rows = self.input_dependencies[0].num_output_rows_total()
         can_passthrough = (
             input_total_rows is not None and self._limit >= input_total_rows
         )
@@ -55,15 +58,7 @@ class LimitOperator(OneToOneOperator):
             num_rows = metadata.num_rows
             assert num_rows is not None
 
-            if can_passthrough:
-                # Fast path: limit is greater than or equal to all input rows, passthrough
-                out_blocks.append(block)
-                out_metadata.append(metadata)
-                self._output_blocks_stats.append(metadata.to_stats())
-                self._consumed_rows += num_rows
-                continue
-
-            if self._consumed_rows + num_rows <= self._limit:
+            if can_passthrough or self._consumed_rows + num_rows <= self._limit:
                 out_blocks.append(block)
                 out_metadata.append(metadata)
                 self._output_blocks_stats.append(metadata.to_stats())
@@ -99,7 +94,7 @@ class LimitOperator(OneToOneOperator):
         )
         self._buffer.append(out_refs)
         self._metrics.on_output_queued(out_refs)
-        if self._limit_reached() or can_passthrough:
+        if self._limit_reached(input_total_rows):
             self.mark_execution_finished()
 
         # We cannot estimate if we have only consumed empty blocks,
