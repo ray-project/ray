@@ -17,6 +17,7 @@ class Depset:
     output: str
     source_depset: Optional[str] = None
     depsets: Optional[List[str]] = None
+    extra_flags: Optional[List[str]] = None
 
 
 @dataclass
@@ -35,6 +36,7 @@ class Config:
                 output=values.get("output"),
                 source_depset=values.get("source_depset"),
                 depsets=values.get("depsets", []),
+                extra_flags=values.get("extra_flags", []),
             )
             for values in raw_depsets
         ]

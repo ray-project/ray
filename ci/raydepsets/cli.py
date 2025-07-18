@@ -20,6 +20,7 @@ DEFAULT_UV_FLAGS = [
     "--extra-index-url https://download.pytorch.org/whl/cpu",
     "--index-strategy unsafe-best-match",
     "--quiet",
+    "--python-version=3.11",
 ]
 
 
@@ -128,6 +129,7 @@ class DependencySetManager:
         output: str,
     ):
         """Compile a dependency set."""
+        args = self.override_uv_flags(args)
         if constraints:
             for constraint in constraints:
                 args.extend(["-c", self.get_path(constraint)])
@@ -149,7 +151,7 @@ class DependencySetManager:
         self.compile(
             constraints=[source_depset.output],
             requirements=requirements,
-            args=DEFAULT_UV_FLAGS.copy(),
+            args=source_depset.extra_flags,
             name=name,
             output=output,
         )
@@ -169,13 +171,29 @@ class DependencySetManager:
         self.compile(
             constraints=constraints,
             requirements=depset_req_list,
-            args=DEFAULT_UV_FLAGS.copy(),
+            args=depset.extra_flags,
             name=name,
             output=output,
         )
 
     def get_path(self, path: str) -> str:
         return (Path(self.workspace.dir) / path).as_posix()
+
+    def override_uv_flags(self, flags: List[str]):
+        found = False
+        new_flags = DEFAULT_UV_FLAGS.copy()
+        for flag in flags:
+            flag_name = flag.split(" ")[0]
+            if len(flag_name) == 0:
+                flag_name = flag.split("=")[0]
+            for i, default_flag in enumerate(new_flags):
+                if flag_name in default_flag:
+                    new_flags[i] = flag
+                    found = True
+                    break
+        if not found:
+            new_flags.extend(flags)
+        return new_flags
 
 
 def uv_binary():

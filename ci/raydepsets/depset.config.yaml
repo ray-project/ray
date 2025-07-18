@@ -6,38 +6,40 @@ depsets:
       - python/requirements/base-test-requirements.txt
     constraints:
       - python/requirements_compiled.txt
-    output: python/requirements_compiled_ray_test_py311_cpu.txt
+    output: python/requirements_compiled_ray_test_${PYTHON_CODE}_${CUDA_CODE}.txt
     operation: compile
+    extra_flags:
+      - --extra-index-url "https://download.pytorch.org/whl/${CUDA_CODE}"
 
   - name: general_depset
     operation: compile
     requirements:
       - python/requirements.txt
-    output: python/requirements_compiled_general_py311_cpu.txt
+    output: python/requirements_compiled_general_${PYTHON_CODE}_${CUDA_CODE}.txt
 
   - name: cloud_depset
     operation: compile
     requirements:
       - python/requirements/cloud-requirements.txt
-    output: python/requirements_compiled_cloud_req_py311_cpu.txt
+    output: python/requirements_compiled_cloud_req_${PYTHON_CODE}_${CUDA_CODE}.txt
 
   - name: base_test_depset
     operation: compile
     requirements:
       - python/requirements/base-test-requirements.txt
-    output: python/requirements_compiled_base_test_py311_cpu.txt
+    output: python/requirements_compiled_base_test_${PYTHON_CODE}_${CUDA_CODE}.txt
 
   - name: llm_depset
     operation: compile
     requirements:
       - python/requirements/llm/llm-requirements.txt
-    output: python/requirements_compiled_llm_py311_cpu.txt
+    output: python/requirements_compiled_llm_${PYTHON_CODE}_${CUDA_CODE}.txt
 
   - name: llm_test_depset
     operation: compile
     requirements:
       - python/requirements/llm/llm-test-requirements.txt
-    output: python/requirements_compiled_llm_test_py311_cpu.txt
+    output: python/requirements_compiled_llm_test_${PYTHON_CODE}_${CUDA_CODE}.txt
 
   - name: compiled_ray_llm_test_depset
     operation: expand
@@ -48,15 +50,19 @@ depsets:
       - llm_depset
       - llm_test_depset
     constraints:
-      - python/requirements_compiled_ray_test_py311_cpu.txt
-    output: python/requirements_compiled_rayllm_test_py311_cpu.txt
+      - python/requirements_compiled_ray_test_${PYTHON_CODE}_${CUDA_CODE}.txt
+    output: python/requirements_compiled_rayllm_test_${PYTHON_CODE}_${CUDA_CODE}.txt
+    extra_flags:
+      - --extra-index-url "https://download.pytorch.org/whl/${CUDA_CODE}"
 
   - name: compiled_ray_depset
     operation: subset
     source_depset: ray_base_test_depset
     requirements:
       - python/requirements.txt
-    output: python/requirements_compiled_ray_py311_cpu.txt
+    output: python/requirements_compiled_ray_${PYTHON_CODE}_${CUDA_CODE}.txt
+    extra_flags:
+      - --extra-index-url "https://download.pytorch.org/whl/${CUDA_CODE}"
 
   - name: compiled_ray_llm_depset
     operation: subset
@@ -64,4 +70,6 @@ depsets:
     requirements:
       - python/requirements.txt
       - python/requirements/llm/llm-requirements.txt
-    output: python/requirements_compiled_rayllm_py311_cpu.txt
+    output: python/requirements_compiled_rayllm_${PYTHON_CODE}_${CUDA_CODE}.txt
+    extra_flags:
+      - --extra-index-url "https://download.pytorch.org/whl/${CUDA_CODE}"
