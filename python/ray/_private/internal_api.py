@@ -216,9 +216,8 @@ def free(object_refs: list, local_only: bool = False):
             object store or all object stores.
     """
     warnings.warn(
-        "DeprecationWarning: `free` is a deprecated API and will be "
-        "removed in a future version of Ray. If you have a use case "
-        " for this API, please open an issue on GitHub.",
+        "`free` is a deprecated API and will be removed in a future version of Ray. "
+        "If you have a use case for this API, please open an issue on GitHub.",
         DeprecationWarning,
     )
     worker = ray._private.worker.global_worker
