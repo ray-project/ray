@@ -41,14 +41,14 @@ class HttpServerAgent:
         last_exception: Optional[OSError] = None
 
         http_address = "127.0.0.1" if self.ip == "127.0.0.1" else "0.0.0.0"
-        if os.environ.get("RAY_PREFER_IPV6") is not None and http_address == "0.0.0.0":
-                http_address = "::"
+        if os.environ.get("RAY_PREFER_IPV6") is not None:
+            http_address = "::"
 
         for attempt in range(max_retries + 1):  # +1 for initial attempt
             try:
                 site = aiohttp.web.TCPSite(
                     self.runner,
-                    "127.0.0.1" if self.ip == "127.0.0.1" else "0.0.0.0",
+                    http_address,
                     self.listen_port,
                 )
                 await site.start()

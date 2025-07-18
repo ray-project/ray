@@ -192,6 +192,8 @@ class Monitor:
                     )
                 )
                 kwargs = {"addr": "127.0.0.1"} if head_node_ip == "127.0.0.1" else {}
+                if os.environ.get("RAY_PREFER_IPV6") is not None:
+                    kwargs = {"addr": "::"}
                 prometheus_client.start_http_server(
                     port=AUTOSCALER_METRIC_PORT,
                     registry=self.prom_metrics.registry,
