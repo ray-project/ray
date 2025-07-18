@@ -1467,7 +1467,7 @@ def test_limit_pushdown_complex_chain(ray_start_regular_shared_2_cpus):
 
 
 def test_limit_pushdown_union_maps_projects(ray_start_regular_shared_2_cpus):
-    """
+    r"""
     Read -> MapBatches -> MapRows -> Project
          \                               /
           --------   Union   -------------   → Limit
