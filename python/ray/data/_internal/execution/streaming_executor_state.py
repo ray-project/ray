@@ -451,18 +451,14 @@ def process_completed_tasks(
 
     max_bytes_to_read_per_op: Dict[OpState, int] = {}
     for op, state in topology.items():
-        # Check all backpressure policies for max_task_output_bytes_to_read
-        # Use the minimum limit from all policies (most restrictive)
-        max_bytes_to_read = None
-        for policy in backpressure_policies:
-            policy_limit = policy.max_task_output_bytes_to_read(op)
-            if policy_limit is not None:
-                if max_bytes_to_read is None:
-                    max_bytes_to_read = policy_limit
-                else:
-                    max_bytes_to_read = min(max_bytes_to_read, policy_limit)
-
-        # If no policy provides a limit, there's no limit
+        max_bytes_to_read = min(
+            (
+                limit
+                for policy in backpressure_policies
+                if (limit := policy.max_task_output_bytes_to_read(op)) is not None
+            ),
+            default=None,
+        )
         op.notify_in_task_output_backpressure(max_bytes_to_read == 0)
         if max_bytes_to_read is not None:
             max_bytes_to_read_per_op[state] = max_bytes_to_read
