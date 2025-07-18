@@ -74,17 +74,16 @@ cryptography==44.0.3
 cupy-cuda12x==13.1.0
 cycler==0.12.1
 Cython==0.29.37
-dask==2022.10.2
+dask==2023.6.1
 databricks-sdk==0.52.0
-datasets==2.19.1
+datasets==3.6.0
 debugpy==1.8.0
 decorator==5.1.1
 deepspeed==0.12.3
 defusedxml==0.7.1
-Deprecated==1.2.18
 dill==0.3.7
 distlib==0.3.7
-distributed==2022.10.2
+distributed==2023.6.1
 distro @ file:///home/conda/feedstock_root/build_artifacts/distro_1734729835256/work
 dm-control==1.0.12
 dm-env==1.6
@@ -118,13 +117,13 @@ fsspec==2023.5.0
 fugue==0.8.7
 fugue-sql-antlr==0.2.0
 future==1.0.0
-gast==0.4.0
+gast==0.6.0
 gcs-oauth2-boto-plugin==3.0
 getdaft==0.4.3
 gitdb==4.0.11
 GitPython==3.1.40
 glfw==2.6.3
-google-api-core==1.34.0
+google-api-core==2.24.2
 google-api-python-client==2.111.0
 google-apitools==0.5.32
 google-auth==2.23.4
@@ -193,7 +192,7 @@ keras==2.15.0
 kiwisolver==1.4.5
 labmaze==1.0.6
 lazy_loader==0.4
-libclang==16.0.6
+libclang==18.1.1
 libmambapy @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_libmambapy_1750078835/work/libmambapy
 lightgbm==4.6.0
 lightning-utilities==0.11.2
@@ -211,9 +210,8 @@ matplotlib==3.7.4
 matplotlib-inline==0.1.6
 mdit-py-plugins==0.4.2
 mdurl==0.1.2
-MedPy==0.4.0
 memray==1.10.0
-menuinst @ file:///home/conda/feedstock_root/build_artifacts/menuinst_1731146985033/work
+menuinst @ file:///home/conda/feedstock_root/build_artifacts/menuinst_1750792275478/work
 minigrid==2.3.1
 mistune==0.8.4
 ml-dtypes==0.3.2
@@ -222,10 +220,9 @@ mlagents-envs==0.28.0
 mlflow==2.22.0
 mlflow-skinny==2.22.0
 modin==0.22.2
-monai==1.3.2
 monotonic==1.6
-more-itertools==10.1.0
-mosaicml==0.2.4
+more-itertools==10.7.0
+mosaicml==0.3.1
 moviepy==0.2.3.1
 mpmath==1.3.0
 msgpack==1.0.7
@@ -265,18 +262,14 @@ oauthlib==3.2.2
 onnx==1.15.0
 onnxruntime==1.18.0
 open-spiel==1.4
-opencensus==0.11.3
+opencensus==0.11.4
 opencensus-context==0.1.3
 opencv-python-headless==4.9.0.80
-opentelemetry-api==1.26.0
-opentelemetry-exporter-otlp==1.26.0
-opentelemetry-exporter-otlp-proto-common==1.26.0
-opentelemetry-exporter-otlp-proto-grpc==1.26.0
-opentelemetry-exporter-otlp-proto-http==1.26.0
-opentelemetry-exporter-prometheus==0.47b0
-opentelemetry-proto==1.26.0
-opentelemetry-sdk==1.26.0
-opentelemetry-semantic-conventions==0.47b0
+opentelemetry-api==1.34.1
+opentelemetry-exporter-prometheus==0.55b1
+opentelemetry-proto==1.27.0
+opentelemetry-sdk==1.34.1
+opentelemetry-semantic-conventions==0.55b1
 opt-einsum==3.3.0
 optuna==4.1.0
 ormsgpack==1.7.0
@@ -300,21 +293,20 @@ promise==2.3
 prompt-toolkit==3.0.41
 propcache==0.3.0
 prophet==1.1.5
-proto-plus==1.26.1
-protobuf==3.20.3
+proto-plus==1.22.3
+protobuf==4.25.8
 psutil==5.9.6
 ptyprocess==0.7.0
 pure-eval==0.2.2
 py-cpuinfo==9.0.0
 py-spy==0.4.0
-pyarrow==14.0.2
-pyarrow-hotfix==0.7
+pyarrow==19.0.1
 pyasn1==0.5.1
 pyasn1-modules==0.3.0
 pycosat @ file:///home/conda/feedstock_root/build_artifacts/pycosat_1732588390546/work
 pycparser==2.21
-pydantic==2.9.2
-pydantic_core==2.23.4
+pydantic==2.10.0
+pydantic_core==2.27.0
 pygame==2.5.2
 pyglet==1.5.15
 Pygments==2.18.0
@@ -333,7 +325,7 @@ pytest==7.4.4
 pytest-remotedata==0.3.2
 python-box==6.1.0
 python-dateutil==2.8.2
-python-dotenv==1.1.0
+python-dotenv==1.1.1
 python-json-logger==2.0.7
 pytorch-lightning==1.8.6
 pytorch-ranger==0.1.1
@@ -342,7 +334,7 @@ pyu2f==0.1.5
 PyYAML==6.0.1
 pyzmq==26.0.3
 qpd==0.4.4
-ray @ file:///home/ray/ray-3.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl#sha256=f6b636a536bf17527c0ba3c6cb03e13b08ea37911ea2a581939536a7bb662528
+ray @ file:///home/ray/ray-3.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl#sha256=5a7ca35580e97891618705a7a7efcc556b30cc1d3e6155605d690b18d50c4383
 redis==4.4.2
 referencing==0.36.2
 regex==2024.5.15
@@ -350,7 +342,7 @@ requests==2.32.3
 requests-oauthlib==2.0.0
 requests-toolbelt==1.0.0
 responses==0.13.4
-RestrictedPython==7.1
+RestrictedPython==8.0
 retry_decorator==1.1.1
 rfc3339-validator==0.1.4
 rfc3986-validator==0.1.1
@@ -374,7 +366,6 @@ setproctitle==1.3.6
 shellingham==1.5.4
 Shimmy==2.0.0
 shortuuid==1.0.1
-SimpleITK==2.3.1
 simplejson==3.19.2
 six==1.16.0
 smart-open==6.2.0
@@ -401,11 +392,11 @@ tensorflow==2.15.1
 tensorflow-datasets==4.9.3
 tensorflow-estimator==2.15.0
 tensorflow-io-gcs-filesystem==0.31.0
-tensorflow-metadata==1.14.0
+tensorflow-metadata==1.13.1
 tensorflow-probability==0.23.0
 termcolor==2.4.0
 terminado==0.18.1
-textual==3.4.0
+textual==4.0.0
 threadpoolctl==3.1.0
 tifffile==2024.8.30
 timm==0.9.2
@@ -416,7 +407,7 @@ toml==0.10.2
 tomli==2.0.1
 toolz==0.12.1
 torch==2.3.0+cu121
-torch-optimizer==0.3.0
+torch-optimizer==0.1.0
 torch_cluster==1.6.3+pt23cu121
 torch_geometric==2.5.3
 torch_scatter==2.1.2+pt23cu121
@@ -426,7 +417,7 @@ torchmetrics==0.10.3
 torchtext==0.18.0+cpu
 torchvision==0.18.0+cu121
 tornado==6.1
-tqdm==4.64.1
+tqdm @ file:///home/conda/feedstock_root/build_artifacts/tqdm_1735661334605/work
 traitlets==5.14.3
 transformers==4.36.2
 triad==0.9.8
@@ -443,7 +434,7 @@ uritemplate==4.1.1
 urllib3==1.26.19
 utilsforecast==0.2.0
 uvicorn==0.22.0
-uvloop==0.19.0
+uvloop==0.21.0
 virtualenv==20.29.1
 wandb==0.17.0
 watchfiles==0.19.0
