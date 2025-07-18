@@ -313,7 +313,7 @@ class LLMConfig(BaseModelExtended):
         return value
 
     @model_validator(mode="after")
-    def validate_engine_kwargs_with_metrics(self):
+    def _check_log_stats_with_metrics(self):
         # Require disable_log_stats is not set to True when log_engine_metrics is enabled.
         if self.log_engine_metrics and self.engine_kwargs.get("disable_log_stats"):
             raise ValueError(
