@@ -189,8 +189,8 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
 
   bool AddJob(const std::shared_ptr<rpc::JobTableData> &job_table_data) {
     std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Jobs().AsyncAdd(
-        job_table_data, [&promise](Status status) { promise.set_value(status.ok()); }));
+    gcs_client_->Jobs().AsyncAdd(
+        job_table_data, [&promise](Status status) { promise.set_value(status.ok()); });
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
@@ -202,15 +202,15 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
 
   bool MarkJobFinished(const JobID &job_id) {
     std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Jobs().AsyncMarkFinished(
-        job_id, [&promise](Status status) { promise.set_value(status.ok()); }));
+    gcs_client_->Jobs().AsyncMarkFinished(
+        job_id, [&promise](Status status) { promise.set_value(status.ok()); });
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
   JobID GetNextJobID() {
     std::promise<JobID> promise;
-    RAY_CHECK_OK(gcs_client_->Jobs().AsyncGetNextJobID(
-        [&promise](const JobID &job_id) { promise.set_value(job_id); }));
+    gcs_client_->Jobs().AsyncGetNextJobID(
+        [&promise](const JobID &job_id) { promise.set_value(job_id); });
     return promise.get_future().get();
   }
 
@@ -263,35 +263,29 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     TaskSpecification task_spec(message);
 
     if (skip_wait) {
-      return gcs_client_->Actors()
-          .AsyncRegisterActor(task_spec, [](Status status) {})
-          .ok();
+      gcs_client_->Actors().AsyncRegisterActor(task_spec, [](Status status) {});
+      return true;
     }
 
     // NOTE: GCS will not reply when actor registration fails, so when GCS restarts, gcs
     // client will register the actor again and promise may be set twice.
     auto promise = std::make_shared<std::promise<bool>>();
-    RAY_CHECK_OK(
-        gcs_client_->Actors().AsyncRegisterActor(task_spec, [promise](Status status) {
-          try {
-            promise->set_value(status.ok());
-          } catch (...) {
-          }
-        }));
+    gcs_client_->Actors().AsyncRegisterActor(
+        task_spec, [promise](Status status) { promise->set_value(status.ok()); });
     return WaitReady(promise->get_future(), timeout_ms_);
   }
 
   rpc::ActorTableData GetActor(const ActorID &actor_id) {
     std::promise<bool> promise;
     rpc::ActorTableData actor_table_data;
-    RAY_CHECK_OK(gcs_client_->Actors().AsyncGet(
+    gcs_client_->Actors().AsyncGet(
         actor_id,
         [&actor_table_data, &promise](Status status,
                                       const std::optional<rpc::ActorTableData> &result) {
           assert(result);
           actor_table_data.CopyFrom(*result);
           promise.set_value(true);
-        }));
+        });
     EXPECT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
     return actor_table_data;
   }
@@ -299,7 +293,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
   std::vector<rpc::ActorTableData> GetAllActors(bool filter_non_dead_actor = false) {
     std::promise<bool> promise;
     std::vector<rpc::ActorTableData> actors;
-    RAY_CHECK_OK(gcs_client_->Actors().AsyncGetAllByFilter(
+    gcs_client_->Actors().AsyncGetAllByFilter(
         std::nullopt,
         std::nullopt,
         std::nullopt,
@@ -317,7 +311,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
             }
           }
           promise.set_value(true);
-        }));
+        });
     EXPECT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
     return actors;
   }
@@ -337,8 +331,8 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
 
   bool RegisterNode(const rpc::GcsNodeInfo &node_info) {
     std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Nodes().AsyncRegister(
-        node_info, [&promise](Status status) { promise.set_value(status.ok()); }));
+    gcs_client_->Nodes().AsyncRegister(
+        node_info, [&promise](Status status) { promise.set_value(status.ok()); });
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
@@ -350,13 +344,13 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
   std::vector<rpc::GcsNodeInfo> GetNodeInfoList() {
     std::promise<bool> promise;
     std::vector<rpc::GcsNodeInfo> nodes;
-    RAY_CHECK_OK(gcs_client_->Nodes().AsyncGetAll(
+    gcs_client_->Nodes().AsyncGetAll(
         [&nodes, &promise](Status status, std::vector<rpc::GcsNodeInfo> &&result) {
           assert(!result.empty());
           nodes = std::move(result);
           promise.set_value(status.ok());
         },
-        gcs::GetGcsTimeoutMs()));
+        gcs::GetGcsTimeoutMs());
     EXPECT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
     return nodes;
   }
@@ -364,21 +358,21 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
   std::vector<rpc::AvailableResources> GetAllAvailableResources() {
     std::promise<bool> promise;
     std::vector<rpc::AvailableResources> resources;
-    RAY_CHECK_OK(gcs_client_->NodeResources().AsyncGetAllAvailableResources(
+    gcs_client_->NodeResources().AsyncGetAllAvailableResources(
         [&resources, &promise](Status status,
                                const std::vector<rpc::AvailableResources> &result) {
           EXPECT_TRUE(!result.empty());
           resources.assign(result.begin(), result.end());
           promise.set_value(status.ok());
-        }));
+        });
     EXPECT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
     return resources;
   }
 
   bool ReportJobError(const std::shared_ptr<rpc::ErrorTableData> &error_table_data) {
     std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(
-        error_table_data, [&promise](Status status) { promise.set_value(status.ok()); }));
+    gcs_client_->Errors().AsyncReportJobError(
+        error_table_data, [&promise](Status status) { promise.set_value(status.ok()); });
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
@@ -393,16 +387,16 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
   bool ReportWorkerFailure(
       const std::shared_ptr<rpc::WorkerTableData> &worker_failure_data) {
     std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Workers().AsyncReportWorkerFailure(
+    gcs_client_->Workers().AsyncReportWorkerFailure(
         worker_failure_data,
-        [&promise](Status status) { promise.set_value(status.ok()); }));
+        [&promise](Status status) { promise.set_value(status.ok()); });
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
   bool AddWorker(const std::shared_ptr<rpc::WorkerTableData> &worker_data) {
     std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Workers().AsyncAdd(
-        worker_data, [&promise](Status status) { promise.set_value(status.ok()); }));
+    gcs_client_->Workers().AsyncAdd(
+        worker_data, [&promise](Status status) { promise.set_value(status.ok()); });
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
