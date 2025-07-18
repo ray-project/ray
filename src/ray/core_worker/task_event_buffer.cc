@@ -746,9 +746,7 @@ void TaskEventBufferImpl::SendTaskEventsToGCS(std::unique_ptr<rpc::TaskEventData
     }
     gcs_grpc_in_progress_ = false;
   };
-
-  auto status = task_accessor->AsyncAddTaskEventData(std::move(data), on_complete);
-  RAY_CHECK_OK(status);
+  task_accessor->AsyncAddTaskEventData(std::move(data), on_complete);
 }
 
 void TaskEventBufferImpl::SendRayEventsToAggregator(
