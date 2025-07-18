@@ -172,7 +172,7 @@ RL environment and ``N(ot)`` is the number of times the agent has already been t
             explore=None,
             shared_data=None,
             **kwargs,
-        ) -> Any:
+        ):
             for sa_episode in self.single_agent_episode_iterator(
                 episodes=episodes, agents_that_stepped_only=False
             ):
