@@ -128,7 +128,6 @@ def test_map_groups_with_actors_and_args(
     ray_start_regular_shared_2_cpus,
     configure_shuffle_method,
     disable_fallback_to_object_extension,
-    target_max_block_size_none,
 ):
     class Fn:
         def __init__(self, x: int, y: Optional[int] = None):
@@ -159,7 +158,6 @@ def test_groupby_large_udf_returns(
     ray_start_regular_shared_2_cpus,
     configure_shuffle_method,
     disable_fallback_to_object_extension,
-    target_max_block_size_none,
 ):
     # Test for https://github.com/ray-project/ray/issues/44861.
 
@@ -282,7 +280,6 @@ def test_groupby_multiple_keys_tabular_count(
     num_parts,
     configure_shuffle_method,
     disable_fallback_to_object_extension,
-    target_max_block_size_none,
 ):
     # Test built-in count aggregation
     print(f"Seeding RNG for test_groupby_arrow_count with: {RANDOM_SEED}")
