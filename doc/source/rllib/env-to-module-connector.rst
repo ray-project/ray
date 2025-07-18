@@ -1,12 +1,32 @@
 .. include:: /_includes/rllib/we_are_hiring.rst
 
-.. include:: /_includes/rllib/new_api_stack.rst
-
-
 .. _env-to-module-pipeline-docs:
 
 Env-to-module pipelines
 =======================
+
+.. include:: /_includes/rllib/new_api_stack.rst
+
+.. grid:: 1 2 3 4
+    :gutter: 1
+    :class-container: container pb-3
+
+    .. grid-item-card::
+        :img-top: /rllib/images/connector_v2/connector_generic.svg
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: connector-v2-docs
+
+            ConnectorV2 overview
+
+    .. grid-item-card::
+        :img-top: /rllib/images/connector_v2/env_to_module_connector.svg
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: env-to-module-pipeline-docs
+
+            Env-to-module pipelines (this page)
+
 
 One env-to-module pipeline resides on each :py:class:`~ray.rllib.env.env_runner.EnvRunner` and is responsible
 for handling the data flow from the `gymnasium.Env <https://gymnasium.farama.org/api/env/>`__ to
@@ -84,10 +104,21 @@ use the following code snippet as a starting point:
 
 
 Alternatively, in case there is no ``env`` object available, you should pass in the ``spaces`` argument instead.
-RLlib requires these pieces of information to compute the correct output observation space, so that the
-:py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` can receive the correct space for its own setup procedure.
+RLlib requires either of these pieces of information to compute the correct output observation space of the pipeline, so that the
+:py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` can receive the correct input space for its own setup procedure.
+The structure of the `spaces` argument should ideally be:
 
-:ref:`See here for the expected format of the spaces arg <env-to-module-connectors-structure-of-spaces-arg>`.
+.. code-block:: python
+
+    spaces = {
+        "__env__": ([env observation space], [env action space]),  # <- may be vectorized
+        "__env_single__": ([env observation space], [env action space]),  # <- never vectorized!
+        "[module ID, e.g. 'default_policy']": ([module observation space], [module action space]),
+        ...  # <- more modules in multi-agent case
+    }
+
+However, for single-agent cases, it may be enough to provide the non-vectorized, single observation-
+and action spaces only:
 
 .. testcode::
 
@@ -125,7 +156,7 @@ for stateless- and stateful :py:class:`~ray.rllib.core.rl_module.rl_module.RLMod
             action = 0
             obs, _, _, _, _ = env.step(action)
             episode1.add_env_step(observation=obs, action=action, reward=1.0)
-            # - episode 2 (just do one timestep)
+            # - episode 2 (just one timestep)
             obs, _ = env.reset()
             episode2.add_env_reset(observation=obs)
 
@@ -179,7 +210,7 @@ for stateless- and stateful :py:class:`~ray.rllib.core.rl_module.rl_module.RLMod
 
 You can see that the pipeline extracted the current observations from the two
 running episodes and placed them under the ``obs`` column into the forward batch.
-The batch has a size of 2, because we had 2 episodes, and should look similar to this:
+The batch has a size of two, because we had two episodes, and should look similar to this:
 
 .. code-block:: text
 
@@ -225,19 +256,6 @@ RLlib prepends the provided :py:class:`~ray.rllib.connectors.connector_v2.Connec
 :ref:`default env-to-module pipeline <default-env-to-module-pipeline>` in the order returned,
 unless you set `add_default_connectors_to_env_to_module_pipeline=False` in your config, in which case RLlib exclusively uses the provided
 :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` pieces without any automatically added default behavior.
-
-.. _env-to-module-connectors-structure-of-spaces-arg:
-
-Note that RLlib expects the structure of the `spaces` argument to be:
-
-.. code-block:: python
-
-    spaces = {
-        "__env__": ([env observation space], [env action space]),  # <- may be vectorized
-        "__env_single__": ([env observation space], [env action space]),  # <- never vectorized!
-        "[module ID, e.g. 'default_policy']": ([module observation space], [module action space]),
-        ...  # <- more modules in multi-agent case
-    }
 
 For example, to prepend a custom ConnectorV2 piece to the env-to-module pipeline, you can do this in your config:
 
