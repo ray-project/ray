@@ -1,3 +1,4 @@
+import warnings
 from typing import List, Tuple
 
 import ray
@@ -178,7 +179,12 @@ def store_stats_summary(reply):
 
 
 def free(object_refs: list, local_only: bool = False):
-    """Free a list of IDs from the in-process and plasma object stores.
+    """
+    DeprecationWarning: `free` is a deprecated API and will be
+    removed in a future version of Ray. If you have a use case
+    for this API, please open an issue on GitHub.
+
+    Free a list of IDs from the in-process and plasma object stores.
 
     This function is a low-level API which should be used in restricted
     scenarios.
@@ -209,6 +215,11 @@ def free(object_refs: list, local_only: bool = False):
         local_only: Whether only deleting the list of objects in local
             object store or all object stores.
     """
+    warnings.warn(
+        "`free` is a deprecated API and will be removed in a future version of Ray. "
+        "If you have a use case for this API, please open an issue on GitHub.",
+        DeprecationWarning,
+    )
     worker = ray._private.worker.global_worker
 
     if isinstance(object_refs, ray.ObjectRef):
