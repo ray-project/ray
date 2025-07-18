@@ -136,6 +136,12 @@ class VLLMEngineConfig(BaseModelExtended):
         else:
             engine_kwargs["distributed_executor_backend"] = "ray"
 
+        if "disable_log_requests" not in engine_kwargs:
+            logger.info(
+                "Disabling request logging by default. To enable, set to False in engine_kwargs."
+            )
+            engine_kwargs["disable_log_requests"] = True
+
         return engine_kwargs
 
     def get_runtime_env_with_local_env_vars(self) -> dict:
