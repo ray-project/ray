@@ -60,27 +60,31 @@ std::function<void()> CoreWorkerClientPool::GetDefaultUnavailableTimeoutCallback
 
     if (gcs_client->Nodes().IsSubscribedToNodeChange()) {
       auto *node_info = gcs_client->Nodes().Get(node_id, /*filter_dead_nodes=*/true);
+      if (node_info == nullptr) {
+        worker_client_pool->Disconnect(worker_id);
+      }
       check_worker_alive(*node_info);
-    } else {
-      RAY_CHECK_OK(gcs_client->Nodes().AsyncGetAll(
-          [check_worker_alive = std::move(check_worker_alive),
-           worker_id,
-           worker_client_pool](const Status &status,
-                               std::vector<rpc::GcsNodeInfo> &&nodes) {
-            if (!status.ok()) {
-              RAY_LOG(INFO) << "Failed to get node info from GCS";
-              return;
-            }
-            if (nodes.empty() || nodes[0].state() != rpc::GcsNodeInfo::ALIVE) {
-              RAY_LOG(INFO).WithField(worker_id)
-                  << "Disconnecting core worker client because its node is dead";
-              worker_client_pool->Disconnect(worker_id);
-            }
-            check_worker_alive(nodes[0]);
-          },
-          -1,
-          node_id));
+      return;
     }
+
+    RAY_CHECK_OK(gcs_client->Nodes().AsyncGetAll(
+        [check_worker_alive = std::move(check_worker_alive),
+         worker_id,
+         worker_client_pool](const Status &status,
+                             std::vector<rpc::GcsNodeInfo> &&nodes) {
+          if (!status.ok()) {
+            RAY_LOG(INFO) << "Failed to get node info from GCS";
+            return;
+          }
+          if (nodes.empty() || nodes[0].state() != rpc::GcsNodeInfo::ALIVE) {
+            RAY_LOG(INFO).WithField(worker_id)
+                << "Disconnecting core worker client because its node is dead";
+            worker_client_pool->Disconnect(worker_id);
+          }
+          check_worker_alive(nodes[0]);
+        },
+        -1,
+        node_id));
   };
 }
 
