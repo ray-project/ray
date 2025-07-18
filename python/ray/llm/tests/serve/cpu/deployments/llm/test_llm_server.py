@@ -1,12 +1,22 @@
 import sys
-from typing import Optional
+from typing import List, Optional
 from unittest.mock import patch
 
 import pytest
 
 from ray import serve
-from ray.llm._internal.serve.configs.server_models import LoraConfig
-from ray.llm._internal.serve.deployments.llm.llm_server import LLMServer
+from ray.llm._internal.serve.configs.openai_api_models import (
+    CompletionRequest,
+)
+from ray.llm._internal.serve.configs.server_models import (
+    LLMConfig,
+    LoraConfig,
+    ModelLoadingConfig,
+)
+from ray.llm._internal.serve.deployments.llm.llm_server import (
+    CompletionResponseType,
+    LLMServer,
+)
 from ray.llm.tests.serve.mocks.mock_vllm_engine import (
     FakeLoraModelLoader,
     MockVLLMEngine,
@@ -135,6 +145,90 @@ class TestLLMServer:
 
         # Validate embedding response
         LLMResponseValidator.validate_embedding_response(chunks[0], dimensions)
+
+    @pytest.mark.parametrize("prompt", ["Hello", [1, 2, 3]])
+    @pytest.mark.asyncio
+    async def test_completions_non_streaming(self, create_server, prompt):
+        """Test streaming text completion."""
+        llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(
+                model_id="test_model",
+            ),
+            experimental_configs={
+                # Maximum batching
+                "stream_batching_interval_ms": 10000,
+            },
+        )
+
+        server: LLMServer = await create_server(llm_config, engine_cls=MockVLLMEngine)
+
+        # Create a completion request
+        request = CompletionRequest(
+            model="test_model",
+            prompt=prompt,
+            stream=False,
+            max_tokens=5,
+        )
+
+        # Get the response
+        response_stream = await server.completions(request)
+
+        # Collect responses (should be just one)
+        responses = []
+        async for response in response_stream:
+            responses.append(response)
+
+        # Check that we got one response
+        assert len(responses) == 1
+        assert responses[0].choices[0].text == "test_0 test_1 test_2 test_3 test_4"
+        assert responses[0].choices[0].finish_reason == "stop"
+
+    @pytest.mark.parametrize("prompt", ["Hello", [1, 2, 3]])
+    @pytest.mark.asyncio
+    async def test_completions_streaming(self, create_server, prompt):
+        """Test streaming text completion."""
+        llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(
+                model_id="test_model",
+            ),
+            experimental_configs={
+                # Maximum batching
+                "stream_batching_interval_ms": 10000,
+            },
+        )
+
+        server: LLMServer = await create_server(llm_config, engine_cls=MockVLLMEngine)
+
+        # Create a completion request
+        request = CompletionRequest(
+            model="test_model",
+            prompt=prompt,
+            stream=True,
+            max_tokens=5,
+        )
+
+        # Get the response stream
+        response_stream = await server.completions(request)
+
+        # Collect responses from the stream
+        responses: List[CompletionResponseType] = []
+        async for response in response_stream:
+            responses.append(response)
+
+        # Check that we got responses
+        assert len(responses) > 0
+
+        chunks: List[str] = []
+        for response in responses:
+            assert isinstance(response, list)
+            for chunk in response:
+                assert isinstance(chunk, str)
+                chunks.append(chunk)
+
+        assert len(chunks) == 6
+        for i, chunk in enumerate(chunks[:-1]):
+            assert f'"index": 0, "text": "test_{i}' in chunk
+        assert chunks[-1] == "data: [DONE]\n\n"
 
     @pytest.mark.asyncio
     async def test_check_health(self, create_server, mock_llm_config):
