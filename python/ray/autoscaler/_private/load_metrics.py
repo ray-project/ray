@@ -132,9 +132,6 @@ class LoadMetrics:
         logger.debug("Node {} is newly setup, treating as active".format(ip))
         self.last_heartbeat_time_by_ip[ip] = time.time()
 
-    def is_active(self, ip):
-        return ip in self.last_heartbeat_time_by_ip
-
     def prune_active_ips(self, active_ips: List[str]):
         """The Raylet ips stored by LoadMetrics are obtained by polling
         the GCS in Monitor.update_load_metrics().
