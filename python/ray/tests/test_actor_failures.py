@@ -1249,7 +1249,7 @@ def test_actor_restart_and_partial_task_not_completed(shutdown_only):
 
 
 def test_actor_cleanup_behavior(ray_start_regular):
-    """Test actor cleanup behavior: __ray_cleanup__ method is called, atexit is not."""
+    """Test actor cleanup behavior: __ray_shutdown__ method is called."""
     import atexit
     import tempfile
     import os
@@ -1267,7 +1267,7 @@ def test_actor_cleanup_behavior(ray_start_regular):
             self.atexit_file = atexit_file.name
             atexit.register(self._atexit_handler)
 
-        def __ray_cleanup__(self):
+        def __ray_shutdown__(self):
             # Write to file to prove cleanup was called
             with open(self.cleanup_file, "w") as f:
                 f.write("ray_cleanup_called")
@@ -1313,11 +1313,11 @@ def test_actor_cleanup_behavior(ray_start_regular):
 
 
 def test_actor_ray_cleanup_comprehensive(ray_start_regular):
-    """Comprehensive test for __ray_cleanup__ method functionality."""
+    """Comprehensive test for __ray_shutdown__ method functionality."""
     import tempfile
     import os
 
-    # Test 1: Actors without __ray_cleanup__ work normally
+    # Test 1: Actors without __ray_shutdown__ work normally
     @ray.remote
     class NoCleanupActor:
         def get_value(self):
@@ -1328,7 +1328,7 @@ def test_actor_ray_cleanup_comprehensive(ray_start_regular):
     del actor
     time.sleep(0.1)
 
-    # Test 2: __ray_cleanup__ called with exception handling and no naming conflicts
+    # Test 2: __ray_shutdown__ called with exception handling and no naming conflicts
     cleanup_file = tempfile.NamedTemporaryFile(delete=False)
     cleanup_file.close()
     user_cleanup_file = tempfile.NamedTemporaryFile(delete=False)
@@ -1341,7 +1341,7 @@ def test_actor_ray_cleanup_comprehensive(ray_start_regular):
             self.user_cleanup_file = user_cleanup_file.name
             self.cleanup_count = 0
 
-        def __ray_cleanup__(self):
+        def __ray_shutdown__(self):
             # Test complex resource cleanup and exception handling
             try:
                 # Simulate resource cleanup
@@ -1358,7 +1358,7 @@ def test_actor_ray_cleanup_comprehensive(ray_start_regular):
                 pass
 
         def cleanup(self):
-            # User's cleanup method - should not conflict with __ray_cleanup__
+            # User's cleanup method - should not conflict with __ray_shutdown__
             with open(self.user_cleanup_file, "w") as f:
                 f.write("user_cleanup_called")
 
@@ -1398,7 +1398,7 @@ def test_actor_ray_cleanup_comprehensive(ray_start_regular):
 
 
 def test_actor_ray_cleanup_termination_methods(ray_start_regular):
-    """Test __ray_cleanup__ with different actor termination methods."""
+    """Test __ray_shutdown__ with different actor termination methods."""
     import tempfile
     import os
 
@@ -1412,7 +1412,7 @@ def test_actor_ray_cleanup_termination_methods(ray_start_regular):
             def __init__(self):
                 self.cleanup_file = cleanup_file.name
 
-            def __ray_cleanup__(self):
+            def __ray_shutdown__(self):
                 with open(self.cleanup_file, "w") as f:
                     f.write(f"cleanup_called_{termination_method}")
 
@@ -1454,11 +1454,11 @@ def test_actor_ray_cleanup_edge_cases(ray_start_regular):
     import tempfile
     import os
 
-    # Test 1: Non-callable __ray_cleanup__ attribute should be ignored
+    # Test 1: Non-callable __ray_shutdown__ attribute should be ignored
     @ray.remote
     class NonCallableActor:
         def __init__(self):
-            self.__ray_cleanup__ = "not_callable"  # Non-callable
+            self.__ray_shutdown__ = "not_callable"  # Non-callable
 
         def get_ready(self):
             return "ready"
@@ -1482,7 +1482,7 @@ def test_actor_ray_cleanup_edge_cases(ray_start_regular):
 
     @ray.remote
     class OverrideActor(BaseActor):
-        def __ray_cleanup__(self):
+        def __ray_shutdown__(self):
             with open(self.cleanup_file, "w") as f:
                 f.write("explicit_override")
 
