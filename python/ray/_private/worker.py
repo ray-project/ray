@@ -793,23 +793,19 @@ class Worker:
     def put_object(
         self,
         value: Any,
-        object_ref: Optional["ray.ObjectRef"] = None,
         owner_address: Optional[str] = None,
         _is_experimental_channel: bool = False,
     ):
-        """Put value in the local object store with object reference `object_ref`.
+        """Put value in the local object store.
 
-        This assumes that the value for `object_ref` has not yet been placed in
-        the local object store. If the plasma store is full, the worker will
-        automatically retry up to DEFAULT_PUT_OBJECT_RETRIES times. Each
-        retry will delay for an exponentially doubling amount of time,
+        If the plasma store is full, the worker will automatically
+        retry up to DEFAULT_PUT_OBJECT_RETRIES times. Each retry
+        will delay for an exponentially doubling amount of time,
         starting with DEFAULT_PUT_OBJECT_DELAY. After this, exception
         will be raised.
 
         Args:
             value: The value to put in the object store.
-            object_ref: The object ref of the value to be
-                put. If None, one will be generated.
             owner_address: The serialized address of object's owner.
             _is_experimental_channel: An experimental flag for mutable
                 objects. If True, then the returned object will not have a
@@ -831,11 +827,6 @@ class Worker:
                 "If you really want to do this, you can wrap the "
                 "ray.ObjectRef in a list and call 'put' on it."
             )
-
-        if self.mode == LOCAL_MODE:
-            assert (
-                object_ref is None
-            ), "Local Mode does not support inserting with an ObjectRef"
 
         try:
             serialized_value = self.get_serialization_context().serialize(value)
@@ -862,7 +853,6 @@ class Worker:
         return ray.ObjectRef(
             self.core_worker.put_serialized_object_and_increment_local_ref(
                 serialized_value,
-                object_ref=object_ref,
                 pin_object=pin_object,
                 owner_address=owner_address,
                 _is_experimental_channel=_is_experimental_channel,

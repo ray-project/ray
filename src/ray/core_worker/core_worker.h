@@ -422,27 +422,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                           rpc::Address *owner_address,
                           std::string *serialized_object_status);
 
-  /// Get the owner information of an object. This should be
-  /// called when serializing an object ID, and the returned information should
-  /// be stored with the serialized object ID. If the ownership of the object
-  /// cannot be established, then we terminate the process.
-  ///
-  /// This can only be called on object IDs that we created via task
-  /// submission, ray.put, or object IDs that we deserialized. It cannot be
-  /// called on object IDs that were created randomly, e.g.,
-  /// ObjectID::FromRandom.
-  ///
-  /// Postcondition: Get(object_id) is valid.
-  ///
-  /// \param[in] object_id The object ID to serialize.
-  /// appended to the serialized object ID.
-  /// \param[out] owner_address The address of the object's owner. This should
-  /// be appended to the serialized object ID.
-  /// \param[out] serialized_object_status The serialized object status protobuf.
-  void GetOwnershipInfoOrDie(const ObjectID &object_id,
-                             rpc::Address *owner_address,
-                             std::string *serialized_object_status);
-
   /// Add a reference to an ObjectID that was deserialized by the language
   /// frontend. This will also start the process to resolve the future.
   /// Specifically, we will periodically contact the owner, until we learn that
@@ -508,7 +487,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] contained_object_ids The IDs serialized in this object.
   /// \param[out] object_id Object ID generated for the put.
   /// \param[out] data Buffer for the user to write the object into.
-  /// \param[in] created_by_worker create by worker or not.
   /// \param[in] owner_address The address of object's owner. If not provided,
   /// defaults to this worker.
   /// \param[in] inline_small_object Whether to inline create this object if it's
@@ -521,7 +499,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       const std::vector<ObjectID> &contained_object_ids,
       ObjectID *object_id,
       std::shared_ptr<Buffer> *data,
-      bool created_by_worker,
       const std::unique_ptr<rpc::Address> &owner_address = nullptr,
       bool inline_small_object = true);
 

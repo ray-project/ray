@@ -1482,13 +1482,6 @@ std::vector<rpc::ObjectReference> CoreWorker::GetObjectRefs(
   return refs;
 }
 
-void CoreWorker::GetOwnershipInfoOrDie(const ObjectID &object_id,
-                                       rpc::Address *owner_address,
-                                       std::string *serialized_object_status) {
-  auto status = GetOwnershipInfo(object_id, owner_address, serialized_object_status);
-  RAY_CHECK_OK(status);
-}
-
 Status CoreWorker::GetOwnershipInfo(const ObjectID &object_id,
                                     rpc::Address *owner_address,
                                     std::string *serialized_object_status) {
@@ -1618,7 +1611,6 @@ Status CoreWorker::CreateOwnedAndIncrementLocalRef(
     const std::vector<ObjectID> &contained_object_ids,
     ObjectID *object_id,
     std::shared_ptr<Buffer> *data,
-    bool created_by_worker,
     const std::unique_ptr<rpc::Address> &owner_address,
     bool inline_small_object) {
   auto status = WaitForActorRegistered(contained_object_ids);
@@ -1687,7 +1679,7 @@ Status CoreWorker::CreateOwnedAndIncrementLocalRef(
                                               *object_id,
                                               /* owner_address = */ real_owner_address,
                                               data,
-                                              created_by_worker,
+                                              /*created_by_worker=*/true,
                                               is_experimental_mutable_object);
     }
     if (!status.ok()) {
