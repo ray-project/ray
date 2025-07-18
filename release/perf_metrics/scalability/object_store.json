@@ -1,12 +1,12 @@
 {
-    "broadcast_time": 12.597426240999994,
+    "broadcast_time": 17.324763202,
     "num_nodes": 50,
     "object_size": 1073741824,
     "perf_metrics": [
         {
             "perf_metric_name": "time_to_broadcast_1073741824_bytes_to_50_nodes",
             "perf_metric_type": "LATENCY",
-            "perf_metric_value": 12.597426240999994
+            "perf_metric_value": 17.324763202
         }
     ],
     "success": "1"

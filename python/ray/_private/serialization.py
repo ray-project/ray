@@ -296,9 +296,20 @@ class SerializationContext:
             # tensors into the GPU object store. Releasing the lock should be
             # safe because we should not be in the middle of an import.
             global_worker.function_actor_manager.lock.release()
-            tensors = gpu_object_manager.gpu_object_store.wait_and_pop_object(
-                object_id, timeout=ray_constants.FETCH_WARN_TIMEOUT_SECONDS
-            )
+            gpu_object_store = gpu_object_manager.gpu_object_store
+            # If the GPU object is the primary copy, it means the transfer is intra-actor.
+            # In this case, we should not remove the GPU object after it is consumed once,
+            # because the GPU object reference may be used again.
+            # Instead, we should wait for the GC callback to clean it up.
+            pop_object = not gpu_object_store.is_primary_copy(object_id):
+            if pop_object:
+                tensors = gpu_object_manager.gpu_object_store.wait_and_pop_object(
+                    object_id, timeout=ray_constants.FETCH_WARN_TIMEOUT_SECONDS
+                )
+            else:
+                tensors = gpu_object_manager.gpu_object_store.wait_object(
+                    object_id, timeout=ray_constants.FETCH_WARN_TIMEOUT_SECONDS
+                )
             global_worker.function_actor_manager.lock.acquire()
             ctx.reset_out_of_band_tensors(tensors)
 
@@ -641,7 +652,7 @@ class SerializationContext:
             obj_id = obj_id.decode("ascii")
             worker = ray._private.worker.global_worker
             gpu_object_manager = worker.gpu_object_manager
-            gpu_object_manager.gpu_object_store.add_object(obj_id, tensors)
+            gpu_object_manager.gpu_object_store.add_object(obj_id, tensors, is_primary=True)
 
         return serialized_val
 

@@ -397,7 +397,7 @@ py_test(
 
 py_test(
     name = "test_join",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_join.py"],
     tags = [
         "data_non_parallel",

@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional, Tuple, Set
 import threading
 
 import ray.util.collective as collective
@@ -118,6 +118,8 @@ class GPUObjectStore:
         # background _ray_system thread, which executes data transfers and
         # performs GC.
         self.object_present_cv = threading.Condition(gpu_object_store_lock)
+        # A set of object IDs that are the primary copy.
+        self.primary_gpu_object_ids: Set[str] = set()
 
     def has_object(self, obj_id: str) -> bool:
         return obj_id in self.gpu_object_store
@@ -125,10 +127,28 @@ class GPUObjectStore:
     def get_object(self, obj_id: str) -> Optional[List["torch.Tensor"]]:
         return self.gpu_object_store[obj_id]
 
-    def add_object(self, obj_id: str, tensors: List["torch.Tensor"]):
+    def add_object(
+        self,
+        obj_id: str,
+        gpu_object: List["torch.Tensor"],
+        is_primary: bool = False,
+    ):
+        """
+        Add a GPU object to the GPU object store.
+
+        Args:
+            obj_id: The object ID of the GPU object.
+            gpu_object: A list of tensors representing the GPU object.
+            is_primary: Whether the GPU object is the primary copy.
+        """
         with self.object_present_cv:
+            if is_primary:
+                self.primary_gpu_object_ids.add(obj_id)
             self.gpu_object_store[obj_id] = tensors
             self.object_present_cv.notify_all()
+
+    def is_primary_copy(self, obj_id: str) -> bool:
+        return obj_id in self.primary_gpu_object_ids
 
     def wait_and_pop_object(
         self, obj_id: str, timeout: Optional[float] = None
@@ -150,7 +170,7 @@ class GPUObjectStore:
             self.wait_object(obj_id, timeout)
             return self.pop_object(obj_id)
 
-    def wait_object(self, obj_id: str, timeout: Optional[float] = None):
+    def wait_object(self, obj_id: str, timeout: Optional[float] = None) -> List["torch.Tensor"]:
         """Wait for the GPU object to be present in the GPU object store.
         If the object is not present after the optional timeout, raise a
         TimeoutError.
@@ -169,6 +189,14 @@ class GPUObjectStore:
                 raise TimeoutError(
                     f"ObjectRef({obj_id}) not found in GPU object store after {timeout}s, transfer may have failed. Please report this issue on GitHub: https://github.com/ray-project/ray/issues/new/choose"
                 )
+            return self.gpu_object_store[obj_id]
 
     def pop_object(self, obj_id: str) -> List["torch.Tensor"]:
-        return self.gpu_object_store.pop(obj_id)
+        with self.object_present_cv:
+            assert (
+                obj_id in self.gpu_object_store
+            ), f"obj_id={obj_id} not found in GPU object store"
+            tensors= self.gpu_object_store.pop(obj_id)
+            if obj_id in self.primary_gpu_object_ids:
+                self.primary_gpu_object_ids.remove(obj_id)
+            return tensors
