@@ -361,7 +361,8 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   /// \param event_aggregator_client Event aggregator client
   explicit TaskEventBufferImpl(
       std::unique_ptr<gcs::GcsClient> gcs_client,
-      std::unique_ptr<rpc::EventAggregatorClient> event_aggregator_client);
+      std::unique_ptr<rpc::EventAggregatorClient> event_aggregator_client,
+      std::string session_name);
 
   TaskEventBufferImpl(const TaskEventBufferImpl &) = delete;
   TaskEventBufferImpl &operator=(const TaskEventBufferImpl &) = delete;

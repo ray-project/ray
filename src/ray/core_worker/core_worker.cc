@@ -419,7 +419,8 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
   task_event_buffer_ = std::make_unique<worker::TaskEventBufferImpl>(
       std::make_unique<gcs::GcsClient>(options_.gcs_options),
       std::make_unique<rpc::EventAggregatorClientImpl>(options_.metrics_agent_port,
-                                                       *client_call_manager_));
+                                                       *client_call_manager_),
+      options_.session_name);
 
   // Initialize raylet client.
   // NOTE(edoakes): the core_worker_server_ must be running before registering with
