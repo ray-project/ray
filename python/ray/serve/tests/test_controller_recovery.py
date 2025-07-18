@@ -16,8 +16,6 @@ from ray.serve._private.common import DeploymentID, ReplicaState
 from ray.serve._private.constants import (
     SERVE_CONTROLLER_NAME,
     SERVE_DEFAULT_APP_NAME,
-    SERVE_NAMESPACE,
-    SERVE_PROXY_NAME,
 )
 from ray.serve._private.test_utils import check_replica_counts, get_application_url
 from ray.serve.schema import LoggingConfig, ServeDeploySchema
@@ -54,7 +52,7 @@ def test_recover_start_from_replica_actor_names(serve_instance, deployment_optio
             "/recover_start_from_replica_actor_names/", timeout=30, app_name="app"
         )
         assert response.text == "hii"
-    
+
     # Assert 2 replicas are running in deployment after partially
     # successful deploy() call with transient error
     deployment_dict = ray.get(serve_instance._controller._all_running_replicas.remote())
@@ -73,11 +71,18 @@ def test_recover_start_from_replica_actor_names(serve_instance, deployment_optio
         )
 
     # Get replica names using Serve's internal APIs
-    replicas = ray.get(serve_instance._controller._dump_replica_states_for_testing.remote(id))
-    replica_names = [replica.actor_handle._actor_id.hex() for replica in replicas.get(states=[ReplicaState.RUNNING])]
-    assert len(replica_names) == 2, "Should have two running replicas fetched from Serve API."
+    replicas = ray.get(
+        serve_instance._controller._dump_replica_states_for_testing.remote(id)
+    )
+    replica_names = [
+        replica.actor_handle._actor_id.hex()
+        for replica in replicas.get(states=[ReplicaState.RUNNING])
+    ]
+    assert (
+        len(replica_names) == 2
+    ), "Should have two running replicas fetched from Serve API."
 
-    # Kill controller and wait for endpoint to be available again
+    # Kill the controller and wait for the endpoint to be available again
     ray.kill(serve.context._global_client._controller, no_restart=False)
     wait_for_condition(
         lambda: get_application_url("HTTP", "app", use_localhost=True) is not None
@@ -89,20 +94,24 @@ def test_recover_start_from_replica_actor_names(serve_instance, deployment_optio
         assert response.text == "hii"
 
     # Ensure recovered replica names are the same using Serve's internal APIs
-    recovered_replicas = ray.get(serve_instance._controller._dump_replica_states_for_testing.remote(id))
+    recovered_replicas = ray.get(
+        serve_instance._controller._dump_replica_states_for_testing.remote(id)
+    )
     recovered_replica_names = [
         replica.actor_handle._actor_id.hex()
         for replica in recovered_replicas.get(states=[ReplicaState.RUNNING])
     ]
-    assert set(recovered_replica_names) == set(replica_names), \
-        "Running replica actor names after recovery must match"
+    assert set(recovered_replica_names) == set(
+        replica_names
+    ), "Running replica actor names after recovery must match"
 
     # Ensure recovered replica version has are the same
     for replica in recovered_replicas.get(states=[ReplicaState.RUNNING]):
         ref = replica.actor_handle.initialize_and_get_metadata.remote()
         _, version, _, _, _ = ray.get(ref)
-        assert replica_version_hash == hash(version), \
-            "Replica version hash should be the same after recover from actor names"
+        assert replica_version_hash == hash(
+            version
+        ), "Replica version hash should be the same after recover from actor names"
 
 
 def test_recover_rolling_update_from_replica_actor_names(serve_instance):
@@ -221,8 +230,14 @@ def test_controller_recover_initializing_actor(serve_instance):
         else:
             # For replicas, use the deployment API
             deployment_id = DeploymentID(name="V1", app_name="app")
-            replicas = ray.get(serve_instance._controller._dump_replica_states_for_testing.remote(deployment_id))
-            for replica in replicas.get(states=[ReplicaState.RUNNING, ReplicaState.STARTING]):
+            replicas = ray.get(
+                serve_instance._controller._dump_replica_states_for_testing.remote(
+                    deployment_id
+                )
+            )
+            for replica in replicas.get(
+                states=[ReplicaState.RUNNING, ReplicaState.STARTING]
+            ):
                 if name in replica.actor_handle._actor_id.hex():
                     return replica.actor_handle._actor_id.hex(), replica._actor.pid
             return None, None
@@ -230,7 +245,7 @@ def test_controller_recover_initializing_actor(serve_instance):
     actor_tag, _ = get_actor_info(f"app#{V1.name}")
     _, controller1_pid = get_actor_info(SERVE_CONTROLLER_NAME)
     ray.kill(serve.context._global_client._controller, no_restart=False)
-    
+
     # wait for controller is alive again using Serve APIs
     def check_controller_alive():
         try:
@@ -238,7 +253,7 @@ def test_controller_recover_initializing_actor(serve_instance):
             return True
         except Exception:
             return False
-    
+
     wait_for_condition(check_controller_alive)
     assert controller1_pid != get_actor_info(SERVE_CONTROLLER_NAME)[1]
 
@@ -504,4 +519,4 @@ def test_controller_recover_and_deploy(serve_instance):
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-v", "-s", __file__])) 
+    sys.exit(pytest.main(["-v", "-s", __file__]))
