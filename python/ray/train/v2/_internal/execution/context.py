@@ -362,7 +362,7 @@ class LocalTestingTrainContext(TrainContext):
         checkpoint: Optional[Checkpoint] = None,
         checkpoint_dir_name: Optional[str] = None,
     ):
-        print(
+        logger.info(
             f"Report metrics: {metrics}, checkpoint: {checkpoint}, checkpoint_dir_name: {checkpoint_dir_name}"
         )
 
