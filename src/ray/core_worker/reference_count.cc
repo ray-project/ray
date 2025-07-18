@@ -319,7 +319,7 @@ bool ReferenceCounter::AddOwnedObjectInternal(
     bool add_local_ref,
     const std::optional<NodeID> &pinned_at_raylet_id,
     rpc::TensorTransport tensor_transport) {
-  if (object_id_refs_.count(object_id) != 0) {
+  if (object_id_refs_.contains(object_id)) {
     return false;
   }
   if (ObjectID::IsActorID(object_id)) {
@@ -642,12 +642,12 @@ std::vector<rpc::Address> ReferenceCounter::GetOwnerAddresses(
 
 bool ReferenceCounter::IsPlasmaObjectFreed(const ObjectID &object_id) const {
   absl::MutexLock lock(&mutex_);
-  return freed_objects_.find(object_id) != freed_objects_.end();
+  return freed_objects_.contains(object_id);
 }
 
 bool ReferenceCounter::TryMarkFreedObjectInUseAgain(const ObjectID &object_id) {
   absl::MutexLock lock(&mutex_);
-  if (object_id_refs_.count(object_id) == 0) {
+  if (!object_id_refs_.contains(object_id)) {
     return false;
   }
   return freed_objects_.erase(object_id) != 0u;
@@ -815,7 +815,7 @@ bool ReferenceCounter::AddObjectOutOfScopeOrFreedCallback(
     // The object has already gone out of scope but cannot be deleted yet. Do
     // not set the deletion callback because it may never get called.
     return false;
-  } else if (freed_objects_.count(object_id) > 0) {
+  } else if (freed_objects_.contains(object_id)) {
     // The object has been freed by the language frontend, so it
     // should be deleted immediately.
     return false;
@@ -852,7 +852,7 @@ void ReferenceCounter::UpdateObjectPinnedAtRaylet(const ObjectID &object_id,
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it != object_id_refs_.end()) {
-    if (freed_objects_.count(object_id) > 0) {
+    if (freed_objects_.contains(object_id)) {
       // The object has been freed by the language frontend.
       return;
     }
