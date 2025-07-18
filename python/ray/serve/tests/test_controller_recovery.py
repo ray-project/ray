@@ -19,7 +19,7 @@ from ray.serve._private.constants import (
     SERVE_NAMESPACE,
     SERVE_PROXY_NAME,
 )
-from ray.serve._private.test_utils import check_replica_counts
+from ray.serve._private.test_utils import check_replica_counts, get_application_url
 from ray.serve.schema import LoggingConfig, ServeDeploySchema
 from ray.serve.tests.test_failure import request_with_retries
 
@@ -51,7 +51,7 @@ def test_recover_start_from_replica_actor_names(serve_instance, deployment_optio
     serve.run(TransientConstructorFailureDeployment.bind(), name="app")
     for _ in range(10):
         response = request_with_retries(
-            "/recover_start_from_replica_actor_names/", timeout=30
+            "/recover_start_from_replica_actor_names/", timeout=30, app_name="app"
         )
         assert response.text == "hii"
     
@@ -79,9 +79,12 @@ def test_recover_start_from_replica_actor_names(serve_instance, deployment_optio
 
     # Kill controller and wait for endpoint to be available again
     ray.kill(serve.context._global_client._controller, no_restart=False)
+    wait_for_condition(
+        lambda: get_application_url("HTTP", "app", use_localhost=True) is not None
+    )
     for _ in range(10):
         response = request_with_retries(
-            "/recover_start_from_replica_actor_names/", timeout=30
+            "/recover_start_from_replica_actor_names/", timeout=30, app_name="app"
         )
         assert response.text == "hii"
 

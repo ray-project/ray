@@ -268,6 +268,35 @@ filegroup(
     ],
 )
 
+genrule(
+    name = "copy_pom_file",
+    srcs = [
+        "//java:io_ray_ray_" + module + "_pom"
+        for module in all_modules
+    ],
+    outs = ["copy_pom_file.out"],
+    cmd = """
+        WORK_DIR="$$(pwd)"
+        cp -f $(location //java:io_ray_ray_api_pom) "$$WORK_DIR/java/api/pom.xml"
+        cp -f $(location //java:io_ray_ray_runtime_pom) "$$WORK_DIR/java/runtime/pom.xml"
+        cp -f $(location //java:io_ray_ray_test_pom) "$$WORK_DIR/java/test/pom.xml"
+        cp -f $(location //java:io_ray_ray_performance_test_pom) "$$WORK_DIR/java/performance_test/pom.xml"
+        cp -f $(location //java:io_ray_ray_serve_pom) "$$WORK_DIR/java/serve/pom.xml"
+
+        FILES=(
+            $(location //java:io_ray_ray_api_pom)
+            $(location //java:io_ray_ray_runtime_pom)
+            $(location //java:io_ray_ray_test_pom)
+            $(location //java:io_ray_ray_performance_test_pom)
+            $(location //java:io_ray_ray_serve_pom)
+        )
+        echo "# copy_pom_file" > $@
+        if [[ "$$OSTYPE" =~ ^darwin ]]; then shasum "$${FILES[@]}" > $@ ; else sha1sum "$${FILES[@]}" >> $@ ; fi
+    """,
+    local = 1,
+    tags = ["no-cache"],
+)
+
 # Generates the dependencies needed by maven.
 genrule(
     name = "cp_java_generated",
@@ -322,35 +351,6 @@ genrule(
             cp "$$f" "$$NATIVE_DEPS_DIR"
             if [[ "$$OSTYPE" =~ ^darwin ]]; then shasum "$$f" >> $@ ; else sha1sum "$$f" >> $@ ; fi
         done
-    """,
-    local = 1,
-    tags = ["no-cache"],
-)
-
-genrule(
-    name = "copy_pom_file",
-    srcs = [
-        "//java:io_ray_ray_" + module + "_pom"
-        for module in all_modules
-    ],
-    outs = ["copy_pom_file.out"],
-    cmd = """
-        WORK_DIR="$$(pwd)"
-        cp -f $(location //java:io_ray_ray_api_pom) "$$WORK_DIR/java/api/pom.xml"
-        cp -f $(location //java:io_ray_ray_runtime_pom) "$$WORK_DIR/java/runtime/pom.xml"
-        cp -f $(location //java:io_ray_ray_test_pom) "$$WORK_DIR/java/test/pom.xml"
-        cp -f $(location //java:io_ray_ray_performance_test_pom) "$$WORK_DIR/java/performance_test/pom.xml"
-        cp -f $(location //java:io_ray_ray_serve_pom) "$$WORK_DIR/java/serve/pom.xml"
-
-        FILES=(
-            $(location //java:io_ray_ray_api_pom)
-            $(location //java:io_ray_ray_runtime_pom)
-            $(location //java:io_ray_ray_test_pom)
-            $(location //java:io_ray_ray_performance_test_pom)
-            $(location //java:io_ray_ray_serve_pom)
-        )
-        echo "# copy_pom_file" > $@
-        if [[ "$$OSTYPE" =~ ^darwin ]]; then shasum "$${FILES[@]}" > $@ ; else sha1sum "$${FILES[@]}" >> $@ ; fi
     """,
     local = 1,
     tags = ["no-cache"],
