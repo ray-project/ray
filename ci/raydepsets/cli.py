@@ -8,6 +8,7 @@ import runfiles
 from networkx import DiGraph, topological_sort
 
 DEFAULT_UV_FLAGS = [
+    "--generate-hashes",
     "--strip-extras",
     "--no-strip-markers",
     "--emit-index-url",
@@ -18,7 +19,6 @@ DEFAULT_UV_FLAGS = [
     "--index-url https://pypi.org/simple",
     "--extra-index-url https://download.pytorch.org/whl/cpu",
     "--index-strategy unsafe-best-match",
-    "--generate-hashes",
     "--quiet",
 ]
 
@@ -125,7 +125,7 @@ class DependencySetManager:
         requirements: List[str],
         args: List[str],
         name: str,
-        output: str = None,
+        output: str,
     ):
         """Compile a dependency set."""
         if constraints:

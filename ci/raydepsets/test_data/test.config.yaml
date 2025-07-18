@@ -11,7 +11,7 @@ depsets:
     operation: compile
     requirements:
       - requirements_test.txt
-    output: requirements_compiled_general.txt
+    output: requirements_compiled_general_py311.txt
 
   - name: subset_general_depset
     operation: subset

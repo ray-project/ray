@@ -23,6 +23,7 @@ tzdata
 requests >= 2.31.0
 tqdm
 networkx
+python-dotenv
 -r requirements-doc.txt
 
 # Upgrades
