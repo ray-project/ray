@@ -2195,10 +2195,10 @@ cdef execute_task_with_cancellation_handler(
         actor_id = core_worker.get_actor_id()
         actor = actor_class.__new__(actor_class)
         worker.actors[actor_id] = actor
-        
+
         # Register cleanup callback after actor is created
         _register_actor_cleanup_callback()
-        
+
         # Record the actor class via :actor_name: magic token in the log.
         #
         # (Phase 1): this covers code run before __init__ finishes.
@@ -2743,6 +2743,7 @@ cdef void terminate_asyncio_thread() nogil:
         core_worker = ray._private.worker.global_worker.core_worker
         core_worker.stop_and_join_asyncio_threads_if_exist()
 
+
 cdef void _cleanup_actor_instance_wrapper() noexcept nogil:
     """C++ wrapper function that calls the Python actor cleanup callback."""
     with gil:
@@ -2752,18 +2753,19 @@ cdef void _cleanup_actor_instance_wrapper() noexcept nogil:
             # Swallow all exceptions to prevent them from propagating to C++
             pass
 
+
 def _cleanup_actor_instance():
     """Cleanup callback that calls actor's __ray_shutdown__ method."""
     worker = ray._private.worker.global_worker
     core_worker = worker.core_worker
-    
+
     # Get the actor instance from worker.actors
     actor_id = core_worker.get_actor_id()
     if actor_id.is_nil():
         return
-        
+
     actor_instance = worker.actors.get(actor_id)
-    
+
     if actor_instance is not None:
         try:
             # Call the actor's __ray_shutdown__ method if it exists
@@ -2778,18 +2780,20 @@ def _cleanup_actor_instance():
             # Remove from actors dict to prevent double cleanup
             worker.actors.pop(actor_id, None)
 
+
 def _register_actor_cleanup_callback():
     """Register callback to cleanup actor instance before shutdown."""
     worker = ray._private.worker.global_worker
     core_worker = worker.core_worker
-    
+
     # Only register for actors
     actor_id = core_worker.get_actor_id()
     if actor_id.is_nil():
         return
-        
+
     # Register the cleanup callback
     core_worker.set_actor_cleanup_callback(_cleanup_actor_instance)
+
 
 cdef class StreamRedirector:
     @staticmethod
