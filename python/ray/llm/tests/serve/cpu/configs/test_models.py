@@ -273,6 +273,18 @@ class TestModelConfig:
                 experimental_configs={123: "value1"},
             )
 
+    def test_log_engine_metrics_disable_log_stats_validation(self):
+        """Test that log_engine_metrics=True prevents disable_log_stats=True."""
+        with pytest.raises(
+            pydantic.ValidationError,
+            match="disable_log_stats cannot be set to True when log_engine_metrics is enabled",
+        ):
+            LLMConfig(
+                model_loading_config=ModelLoadingConfig(model_id="test_model"),
+                log_engine_metrics=True,
+                engine_kwargs={"disable_log_stats": True},
+            )
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

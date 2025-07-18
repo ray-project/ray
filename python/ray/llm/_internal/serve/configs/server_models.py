@@ -18,6 +18,7 @@ from pydantic import (
     PositiveInt,
     PrivateAttr,
     field_validator,
+    model_validator,
 )
 
 import ray
@@ -310,6 +311,17 @@ class LLMConfig(BaseModelExtended):
             raise ValueError(f"Invalid deployment config: {value}") from e
 
         return value
+
+    @model_validator(mode="after")
+    def _check_log_stats_with_metrics(self):
+        # Require disable_log_stats is not set to True when log_engine_metrics is enabled.
+        if self.log_engine_metrics and self.engine_kwargs.get("disable_log_stats"):
+            raise ValueError(
+                "disable_log_stats cannot be set to True when log_engine_metrics is enabled. "
+                "Engine metrics require log stats to be enabled."
+            )
+
+        return self
 
     def multiplex_config(self) -> ServeMultiplexConfig:
         multiplex_config = None
