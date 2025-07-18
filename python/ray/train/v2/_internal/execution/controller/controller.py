@@ -65,7 +65,7 @@ from ray.train.v2._internal.execution.worker_group.worker_group import (
 from ray.train.v2._internal.logging.logging import configure_controller_logger
 from ray.train.v2._internal.util import ObjectRefWrapper, time_monotonic
 from ray.train.v2.api.callback import RayTrainCallback
-from ray.train.v2.api.exceptions import TrainingFailedError, WorkerTrainingFailedError
+from ray.train.v2.api.exceptions import TrainingFailedError
 from ray.train.v2.api.result import Result
 
 logger = logging.getLogger(__name__)
@@ -220,7 +220,7 @@ class TrainController:
             )
 
         errors_str = worker_group_status.get_error_string()
-        training_failed_error = WorkerTrainingFailedError(
+        training_failed_error = TrainingFailedError(
             error_message=errors_str, worker_failures=worker_group_status.errors
         )
 
