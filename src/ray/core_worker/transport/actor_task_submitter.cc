@@ -40,14 +40,14 @@ void ActorTaskSubmitter::NotifyGCSWhenActorOutOfScope(
         }
       }
     }
-    RAY_CHECK_OK(actor_creator_.AsyncReportActorOutOfScope(
+    actor_creator_.AsyncReportActorOutOfScope(
         actor_id, num_restarts_due_to_lineage_reconstruction, [actor_id](Status status) {
           if (!status.ok()) {
             RAY_LOG(ERROR).WithField(actor_id)
                 << "Failed to report actor out of scope: " << status
                 << ". The actor will not be killed";
           }
-        }));
+        });
   };
 
   if (!reference_counter_->AddObjectOutOfScopeOrFreedCallback(
@@ -113,7 +113,7 @@ Status ActorTaskSubmitter::SubmitActorCreationTask(TaskSpecification task_spec) 
     // more details please see the protocol of actor management based on gcs.
     // https://docs.google.com/document/d/1EAWide-jy05akJp6OMtDn58XOK7bUyruWMia4E-fV28/edit?usp=sharing
     RAY_LOG(DEBUG).WithField(actor_id).WithField(task_id) << "Creating actor via GCS";
-    RAY_CHECK_OK(actor_creator_.AsyncCreateActor(
+    actor_creator_.AsyncCreateActor(
         task_spec,
         [this, actor_id, task_id](Status create_actor_status,
                                   const rpc::CreateActorReply &reply) {
@@ -159,7 +159,7 @@ Status ActorTaskSubmitter::SubmitActorCreationTask(TaskSpecification task_spec) 
                 &create_actor_status,
                 ray_error_info.has_actor_died_error() ? &ray_error_info : nullptr));
           }
-        }));
+        });
   });
 
   return Status::OK();
@@ -341,7 +341,7 @@ void ActorTaskSubmitter::RestartActorForLineageReconstruction(const ActorID &act
   RAY_CHECK(queue->second.is_restartable) << "This actor is no longer restartable";
   queue->second.state = rpc::ActorTableData::RESTARTING;
   queue->second.num_restarts_due_to_lineage_reconstructions += 1;
-  RAY_CHECK_OK(actor_creator_.AsyncRestartActorForLineageReconstruction(
+  actor_creator_.AsyncRestartActorForLineageReconstruction(
       actor_id,
       queue->second.num_restarts_due_to_lineage_reconstructions,
       [this,
@@ -356,7 +356,7 @@ void ActorTaskSubmitter::RestartActorForLineageReconstruction(const ActorID &act
           NotifyGCSWhenActorOutOfScope(actor_id,
                                        num_restarts_due_to_lineage_reconstructions);
         }
-      }));
+      });
 }
 
 void ActorTaskSubmitter::DisconnectActor(const ActorID &actor_id,
