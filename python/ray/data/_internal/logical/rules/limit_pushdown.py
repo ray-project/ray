@@ -30,6 +30,7 @@ class LimitPushdownRule(Rule):
     """
 
     def apply(self, plan: LogicalPlan) -> LogicalPlan:
+        # The DAG's root is the most downstream operator.
         optimized_dag = self._apply_limit_pushdown(plan.dag)
         optimized_dag = self._apply_limit_fusion(optimized_dag)
         return LogicalPlan(dag=optimized_dag, context=plan.context)
@@ -127,18 +128,18 @@ class LimitPushdownRule(Rule):
         limit_op_copy._input_dependencies = [new_input_into_limit]
         new_input_into_limit._output_dependencies = [limit_op_copy]
 
-        chain_ops = [limit_op_copy] + list(reversed(ops_between_new_input_and_limit))
+        # Wire limit_op_copy to the first operator that should come after it
+        # (which is the last one we added to the list). Going from up upstream to downstream.
+        current_op = limit_op_copy
+        for next_op in reversed(ops_between_new_input_and_limit):
+            current_op._output_dependencies = [next_op]
+            next_op._input_dependencies = [current_op]
+            current_op = next_op
 
-        limit_op_copy._input_dependencies = [new_input_into_limit]
-        new_input_into_limit._output_dependencies = [limit_op_copy]
-
-        for head, tail in zip(chain_ops, chain_ops[1:]):
-            head._output_dependencies = [tail]
-            tail._input_dependencies = [head]
-
-        last_op = chain_ops[-1]
-        for down_op in limit_op.output_dependencies:
-            down_op._input_dependencies = [last_op]
+        # Link up all operations from last downstream op to post old limit location (further downstream)
+        last_op = current_op
+        for downstream_op in limit_op.output_dependencies:
+            downstream_op._input_dependencies = [last_op]
         last_op._output_dependencies = limit_op.output_dependencies
         return last_op
 
