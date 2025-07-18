@@ -7,8 +7,8 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
     TaskContext,
 )
+from ray.data._internal.execution.interfaces.physical_operator import _create_sub_pb
 from ray.data._internal.logical.interfaces import LogicalOperator
-from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.stats import StatsDict
 from ray.data.context import DataContext
 
@@ -152,17 +152,10 @@ class AllToAllOperator(InternalQueueOperatorMixin, PhysicalOperator):
         if self._sub_progress_bar_names is not None:
             self._sub_progress_bar_dict = {}
             for name in self._sub_progress_bar_names:
-                bar = ProgressBar(
-                    name,
-                    self.num_output_rows_total() or 1,
-                    unit="row",
-                    position=position,
+                bar, position = _create_sub_pb(
+                    name, self.num_output_rows_total(), position
                 )
-                # NOTE: call `set_description` to trigger the initial print of progress
-                # bar on console.
-                bar.set_description(f"  *- {name}")
                 self._sub_progress_bar_dict[name] = bar
-                position += 1
             return len(self._sub_progress_bar_dict)
         else:
             return 0

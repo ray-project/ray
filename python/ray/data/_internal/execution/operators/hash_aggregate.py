@@ -143,6 +143,8 @@ class HashAggregateOperator(HashShufflingOperatorBase):
                 key_columns, aggregation_fns
             ),
             aggregator_ray_remote_args_override=aggregator_ray_remote_args_override,
+            shuffle_progress_bar_name="Shuffle",
+            finalize_progress_bar_name="Aggregation",
         )
 
     def _get_default_num_cpus_per_partition(self) -> int:
