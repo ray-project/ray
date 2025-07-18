@@ -31,6 +31,8 @@
 #include "ray/common/task/task_common.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/object_manager/ownership_object_directory.h"
+#include "ray/raylet/local_object_manager.h"
+#include "ray/raylet/local_object_manager_interface.h"
 #include "ray/raylet/raylet.h"
 #include "ray/stats/stats.h"
 #include "ray/util/cmd_line_utils.h"
@@ -40,7 +42,6 @@
 #include "ray/util/stream_redirection_options.h"
 #include "ray/util/subreaper.h"
 #include "scheduling/cluster_task_manager.h"
-#include "src/ray/protobuf/gcs.pb.h"
 
 using json = nlohmann::json;
 
@@ -262,7 +263,7 @@ int main(int argc, char *argv[]) {
   std::unique_ptr<ray::raylet::WorkerPoolInterface> worker_pool;
   /// Manages all local objects that are pinned (primary
   /// copies), freed, and/or spilled.
-  std::unique_ptr<ray::raylet::LocalObjectManager> local_object_manager;
+  std::unique_ptr<ray::raylet::LocalObjectManagerInterface> local_object_manager;
   /// These classes make up the new scheduler. ClusterResourceScheduler is
   /// responsible for maintaining a view of the cluster state w.r.t resource
   /// usage. ClusterTaskManager is responsible for queuing, spilling back, and

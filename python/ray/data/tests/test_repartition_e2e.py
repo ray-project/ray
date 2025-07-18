@@ -2,6 +2,8 @@ import numpy as np
 import pytest
 
 import ray
+from ray.data._internal.logical.optimizers import PhysicalOptimizer
+from ray.data._internal.planner import create_planner
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext, ShuffleStrategy
 from ray.data.tests.conftest import *  # noqa
@@ -220,6 +222,88 @@ def test_repartition_empty_datasets(ray_start_regular_shared_2_cpus, shuffle):
         metadata = ref_bundle.blocks[0][1]
         assert metadata.num_rows == 0
         assert metadata.size_bytes == 0
+
+
+def test_streaming_repartition_write_no_operator_fusion(
+    ray_start_regular_shared_2_cpus, tmp_path, disable_fallback_to_object_extension
+):
+    """Test that write with streaming repartition produces exact partitions
+    without operator fusion.
+    This test verifies:
+    1. StreamingRepartition and Write operators are not fused
+    2. Exact partition structure is maintained
+    3. Skewed data is properly distributed across partitions
+    """
+
+    # Configure shuffle strategy
+    ctx = DataContext.get_current()
+    ctx._shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
+
+    num_rows = 100
+    partition_col = "skewed_key"
+
+    # Create sample data with skewed partitioning
+    # 1 occurs for every 5th row (20 rows), 0 for others (80 rows)
+    table = [{"id": n, partition_col: 1 if n % 5 == 0 else 0} for n in range(num_rows)]
+    ds = ray.data.from_items(table)
+
+    # Repartition by key to simulate shuffle
+    ds = ds.repartition(num_blocks=2, keys=[partition_col])
+
+    # Further rebalance to meet target row size
+    ds = ds.repartition(target_num_rows_per_block=20)
+
+    # Verify non-fusion of map_batches with repartition
+    ds = ds.map_batches(lambda x: x)
+    planner = create_planner()
+    physical_plan = planner.plan(ds._logical_plan)
+    physical_plan = PhysicalOptimizer().optimize(physical_plan)
+    physical_op = physical_plan.dag
+    assert physical_op.name == "MapBatches(<lambda>)"
+    assert len(physical_op.input_dependencies) == 1
+
+    # Verify that StreamingRepartition physical operator has supports_fusion=False
+    up_physical_op = physical_op.input_dependencies[0]
+    assert up_physical_op.name == "StreamingRepartition"
+    assert not getattr(
+        up_physical_op, "_supports_fusion", True
+    ), "StreamingRepartition should have supports_fusion=False"
+
+    # Write output to local Parquet files partitioned by key
+    ds.write_parquet(path=tmp_path, partition_cols=[partition_col])
+
+    # Verify exact number of files created based on target_num_rows_per_block=20
+    # 80 rows with key=0 should create 4 files (80/20=4)
+    # 20 rows with key=1 should create 1 file (20/20=1)
+    # Total should be 5 files
+    # Note: Partition column values are returned as strings when reading partitioned Parquet
+    partition_0_files = list((tmp_path / f"{partition_col}=0").glob("*.parquet"))
+    partition_1_files = list((tmp_path / f"{partition_col}=1").glob("*.parquet"))
+
+    assert (
+        len(partition_0_files) == 4
+    ), f"Expected 4 files in partition 0, got {len(partition_0_files)}"
+    assert (
+        len(partition_1_files) == 1
+    ), f"Expected 1 file in partition 1, got {len(partition_1_files)}"
+
+    total_files = len(partition_0_files) + len(partition_1_files)
+    assert (
+        total_files == 5
+    ), f"Expected exactly 5 parquet files total, got {total_files}"
+
+    # Verify data can be read back correctly with expected row count
+    ds_read_back = ray.data.read_parquet(str(tmp_path))
+    assert (
+        ds_read_back.count() == num_rows
+    ), f"Expected {num_rows} total rows when reading back"
+
+    # Verify per-partition row counts
+    partition_0_ds = ray.data.read_parquet(str(tmp_path / f"{partition_col}=0"))
+    partition_1_ds = ray.data.read_parquet(str(tmp_path / f"{partition_col}=1"))
+
+    assert partition_0_ds.count() == 80, "Expected 80 rows in partition 0"
+    assert partition_1_ds.count() == 20, "Expected 20 rows in partition 1"
 
 
 if __name__ == "__main__":

@@ -98,6 +98,7 @@ config = (
         evaluation_interval=1,
         evaluation_parallel_to_training=False,
         offline_evaluation_interval=1,
+        offline_evaluation_type="eval_loss",
         num_offline_eval_runners=args.num_offline_eval_runners,
         num_gpus_per_offline_eval_runner=args.num_gpus_per_offline_eval_runner,
         offline_eval_batch_size_per_runner=128,

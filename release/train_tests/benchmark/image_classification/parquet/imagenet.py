@@ -11,7 +11,7 @@ from image_classification.imagenet import (
 )
 
 IMAGENET_PARQUET_SPLIT_S3_ROOT = (
-    "s3://ray-benchmark-data-internal/imagenet/parquet_split"
+    "s3://ray-benchmark-data-internal-us-west-2/imagenet/parquet_split"
 )
 IMAGENET_PARQUET_SPLIT_S3_DIRS = {
     DatasetKey.TRAIN: f"{IMAGENET_PARQUET_SPLIT_S3_ROOT}/train",

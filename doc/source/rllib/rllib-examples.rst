@@ -134,12 +134,20 @@ Connectors
    This type of filtering can improve learning stability in environments with highly variable state magnitudes
    by scaling observations to a normalized range.
 
-- `Multi-agent connector mapping global observations to different per-agent/policy observations <https://github.com/ray-project/ray/blob/master/rllib/examples/connectors/multi_agent_with_different_observation_spaces.py>`__:
-   A connector example showing how to map from a global, multi-agent observation space to n individual, per-agent, per-module observation spaces.
+- `Multi-agent observation preprocessor enhancing non-Markovian observations to Markovian ones <https://github.com/ray-project/ray/blob/master/rllib/examples/connectors/multi_agent_observation_preprocessor.py>`__:
+   A multi-agent preprocessor enhances the per-agent observations of a multi-agent env, which by themselves are non-Markovian,
+   partial observations and converts them into Markovian observations by adding information from
+   the respective other agent. A policy can only be trained optimally through this additional information.
 
 - `Prev-actions, prev-rewards connector <https://github.com/ray-project/ray/blob/master/rllib/examples/connectors/prev_actions_prev_rewards.py>`__:
    Augments observations with previous actions and rewards, giving the agent a short-term memory of past events, which can improve
    decision-making in partially observable or sequentially dependent tasks.
+
+- `Single-agent observation preprocessor <https://github.com/ray-project/ray/blob/master/rllib/examples/connectors/single_agent_observation_preprocessor.py>`__:
+   A connector alters the CartPole-v1 environment observations from the Markovian 4-tuple (x-pos,
+   angular-pos, x-velocity, angular-velocity) to a non-Markovian, simpler 2-tuple (only
+   x-pos and angular-pos). The resulting problem can only be solved through a
+   memory/stateful model, for example an LSTM.
 
 
 Curiosity
@@ -308,8 +316,10 @@ Multi-agent RL
    a hand-coded random policy while another agent trains with PPO. This example highlights integrating static and dynamic policies,
    suitable for environments with a mix of fixed-strategy and adaptive agents.
 
-- `Different spaces for agents <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/different_spaces_for_agents.py>`__:
+- `Different observation- and action spaces for different agents <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/different_spaces_for_agents.py>`__:
    Configures agents with differing observation and action spaces within the same environment, showcasing RLlib's support for heterogeneous agents with varying space requirements in a single multi-agent environment.
+   Another example, which also makes use of connectors, and that covers the same topic, agents having different spaces, can be found
+   `here <https://github.com/ray-project/ray/blob/master/rllib/examples/connectors/multi_agent_observation_preprocessor.py>`__.
 
 - `Grouped agents, two-step game <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/two_step_game_with_grouped_agents.py>`__:
    Implements a multi-agent, grouped setup within a two-step game environment from the `QMIX paper <https://arxiv.org/pdf/1803.11485.pdf>`__.

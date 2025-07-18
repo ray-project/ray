@@ -7,7 +7,6 @@ import httpx
 import pytest
 
 import ray
-import ray._private.state
 import ray.actor
 from ray import serve
 from ray._common.test_utils import wait_for_condition
@@ -207,7 +206,7 @@ def test_controller_deserialization_deployment_def(
         from ray._common.utils import import_attr
 
         # Import and build the graph
-        graph = import_attr("test_config_files.pizza.serve_dag")
+        graph = import_attr("ray.serve.tests.test_config_files.pizza.serve_dag")
 
         # Run the graph locally on the cluster
         serve.run(graph)

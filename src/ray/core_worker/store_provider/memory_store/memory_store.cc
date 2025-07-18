@@ -149,24 +149,17 @@ CoreWorkerMemoryStore::CoreWorkerMemoryStore(
 
 void CoreWorkerMemoryStore::GetAsync(
     const ObjectID &object_id, std::function<void(std::shared_ptr<RayObject>)> callback) {
-  std::shared_ptr<RayObject> ptr;
-  {
-    absl::MutexLock lock(&mu_);
-    auto iter = objects_.find(object_id);
-    if (iter != objects_.end()) {
-      ptr = iter->second;
-    } else {
-      object_async_get_requests_[object_id].push_back(callback);
-    }
-    if (ptr != nullptr) {
-      ptr->SetAccessed();
-    }
+  absl::MutexLock lock(&mu_);
+  auto iter = objects_.find(object_id);
+  if (iter == objects_.end()) {
+    object_async_get_requests_[object_id].push_back(std::move(callback));
+    return;
   }
-  // It's important for performance to run the callback outside the lock.
-  if (ptr != nullptr) {
-    io_context_.post([callback = std::move(callback), ptr]() { callback(ptr); },
-                     "CoreWorkerMemoryStore.GetAsync.Callback");
-  }
+  auto &object_ptr = iter->second;
+  object_ptr->SetAccessed();
+  io_context_.post(
+      [callback = std::move(callback), object_ptr]() { callback(object_ptr); },
+      "CoreWorkerMemoryStore.GetAsync.Callback");
 }
 
 std::shared_ptr<RayObject> CoreWorkerMemoryStore::GetIfExists(const ObjectID &object_id) {
@@ -191,8 +184,11 @@ bool CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &object_
   if (object_allocator_ != nullptr) {
     object_entry = object_allocator_(object, object_id);
   } else {
-    object_entry = std::make_shared<RayObject>(
-        object.GetData(), object.GetMetadata(), object.GetNestedRefs(), true);
+    object_entry = std::make_shared<RayObject>(object.GetData(),
+                                               object.GetMetadata(),
+                                               object.GetNestedRefs(),
+                                               true,
+                                               object.GetTensorTransport());
   }
 
   // TODO(edoakes): we should instead return a flag to the caller to put the object in

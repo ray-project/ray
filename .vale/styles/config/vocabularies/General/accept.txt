@@ -60,6 +60,7 @@ Kubernetes
 Kueue
 LMs
 LSH
+MCP
 Megatron
 MLflow
 MLOps
@@ -68,7 +69,9 @@ NER
 Nsight
 NumPy
 OOM
+open-source
 pipelining
+Podman
 NVIDIA
 pretraining
 productionize
@@ -76,14 +79,17 @@ Pythonic
 QPS
 retrigger
 RISECamp
+RLHF
 rollouts
 SageMaker
 serverless
 SFT
 ShareGPT
+streamable
 Softmax
 teardown
 deserialization
+verl
 VPC(s)?
 preemptible
 CRD(s)?
@@ -100,3 +106,4 @@ uv
 VS Code
 ETDataset
 DLinear
+Podman

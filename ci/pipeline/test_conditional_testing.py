@@ -57,8 +57,6 @@ doc/example.ipynb: lint doc
 doc/tutorial.rst: lint doc
 .vale.ini: lint doc
 .vale/styles/config/vocabularies/Core/accept.txt: lint doc
-doc/source/cluster/kubernetes/doc_sanitize.cfg: lint k8s_doc
-ci/k8s/run-kuberay-doc-tests.sh: lint k8s_doc
 
 ci/docker/doctest.build.Dockerfile: lint
 release/requirements.txt: lint release_tests

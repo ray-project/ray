@@ -39,23 +39,33 @@ InboundRequest::InboundRequest(
 void InboundRequest::Accept() {
   accept_callback_(task_spec_, std::move(send_reply_callback_));
 }
+
 void InboundRequest::Cancel(const Status &status) {
   reject_callback_(task_spec_, status, std::move(send_reply_callback_));
 }
 
-bool InboundRequest::CanExecute() const { return pending_dependencies_.empty(); }
 ray::TaskID InboundRequest::TaskID() const { return task_spec_.TaskId(); }
+
 uint64_t InboundRequest::AttemptNumber() const { return task_spec_.AttemptNumber(); }
+
 const std::string &InboundRequest::ConcurrencyGroupName() const {
   return task_spec_.ConcurrencyGroupName();
 }
+
 ray::FunctionDescriptor InboundRequest::FunctionDescriptor() const {
   return task_spec_.FunctionDescriptor();
 }
+
 const std::vector<rpc::ObjectReference> &InboundRequest::PendingDependencies() const {
   return pending_dependencies_;
 };
-void InboundRequest::MarkDependenciesSatisfied() { pending_dependencies_.clear(); }
+
+bool InboundRequest::DependenciesResolved() const {
+  return pending_dependencies_.empty();
+}
+
+void InboundRequest::MarkDependenciesResolved() { pending_dependencies_.clear(); }
+
 const TaskSpecification &InboundRequest::TaskSpec() const { return task_spec_; }
 
 DependencyWaiterImpl::DependencyWaiterImpl(DependencyWaiterInterface &dependency_client)
