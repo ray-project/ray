@@ -7,7 +7,10 @@ py_library(
         "cli.py",
         "workspace.py",
     ],
-    data = ["@uv_x86_64//:file"],
+    data = [
+        ".env",
+        "@uv_x86_64//:file",
+    ],
     deps = [
         ci_require("bazel-runfiles"),
         ci_require("click"),
@@ -35,6 +38,8 @@ py_test(
         "test_data/test.config.yaml",
         "test_data/requirements_compiled_test.txt",
         "test_data/requirements_compiled_test_update.txt",
+        "test_data/requirements_test.txt",
+        "test_data/test.config.yaml",
     ],
     exec_compatible_with = ["//:hermetic_python"],
     tags = [

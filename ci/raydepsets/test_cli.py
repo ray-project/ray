@@ -330,10 +330,6 @@ depsets:
                     workspace_dir=tmpdir,
                 )
 
-    def test_execute(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            _copy_data_to_tmpdir(tmpdir)
-
     def test_expand(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             _copy_data_to_tmpdir(tmpdir)
@@ -463,6 +459,16 @@ def _copy_data_to_tmpdir(tmpdir):
         tmpdir,
         dirs_exist_ok=True,
     )
+
+
+def _replace_in_file(filepath, old, new):
+    with open(filepath, "r") as f:
+        contents = f.read()
+
+    contents = contents.replace(old, new)
+
+    with open(filepath, "w") as f:
+        f.write(contents)
 
 
 def _replace_in_file(filepath, old, new):
