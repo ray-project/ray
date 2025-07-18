@@ -33,7 +33,7 @@ workload. Using the Dask-on-Ray scheduler, the entire Dask ecosystem can be exec
        - Dask Version
      * - ``2.48.0`` or above
        - | ``2023.6.1`` (Python version < 3.12)``
-       - | ``2025.5.0`` (Python version >= 3.12)``
+         | ``2025.5.0`` (Python version >= 3.12)``
      * - ``2.40.0`` to ``2.47.1``
        - | ``2022.10.2 (Python version < 3.12)``
          | ``2024.6.0 (Python version >= 3.12)``
