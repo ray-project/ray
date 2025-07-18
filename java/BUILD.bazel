@@ -269,66 +269,108 @@ filegroup(
 )
 
 genrule(
-    name = "copy_pom_file",
+    name = "copy_pom_file_zip",
     srcs = [
         "//java:io_ray_ray_" + module + "_pom"
         for module in all_modules
     ],
-    outs = ["copy_pom_file.out"],
+    outs = ["copy_pom_files.zip"],
     cmd = """
-        WORK_DIR="$$(pwd)"
-        cp -f $(location //java:io_ray_ray_api_pom) "$$WORK_DIR/java/api/pom.xml"
-        cp -f $(location //java:io_ray_ray_runtime_pom) "$$WORK_DIR/java/runtime/pom.xml"
-        cp -f $(location //java:io_ray_ray_test_pom) "$$WORK_DIR/java/test/pom.xml"
-        cp -f $(location //java:io_ray_ray_performance_test_pom) "$$WORK_DIR/java/performance_test/pom.xml"
-        cp -f $(location //java:io_ray_ray_serve_pom) "$$WORK_DIR/java/serve/pom.xml"
+        tmpdir=$$(mktemp -d)
+        mkdir -p "$$tmpdir/java/api" "$$tmpdir/java/runtime" "$$tmpdir/java/test" "$$tmpdir/java/performance_test" "$$tmpdir/java/serve"
 
-        FILES=(
-            $(location //java:io_ray_ray_api_pom)
-            $(location //java:io_ray_ray_runtime_pom)
-            $(location //java:io_ray_ray_test_pom)
-            $(location //java:io_ray_ray_performance_test_pom)
-            $(location //java:io_ray_ray_serve_pom)
-        )
-        echo "# copy_pom_file" > $@
-        if [[ "$$OSTYPE" =~ ^darwin ]]; then shasum "$${FILES[@]}" > $@ ; else sha1sum "$${FILES[@]}" >> $@ ; fi
+        cp $(location //java:io_ray_ray_api_pom) "$$tmpdir/java/api/pom.xml"
+        chmod 644 "$$tmpdir/java/api/pom.xml"
+
+        cp $(location //java:io_ray_ray_runtime_pom) "$$tmpdir/java/runtime/pom.xml"
+        chmod 644 "$$tmpdir/java/runtime/pom.xml"
+
+        cp $(location //java:io_ray_ray_test_pom) "$$tmpdir/java/test/pom.xml"
+        chmod 644 "$$tmpdir/java/test/pom.xml"
+
+        cp $(location //java:io_ray_ray_performance_test_pom) "$$tmpdir/java/performance_test/pom.xml"
+        chmod 644 "$$tmpdir/java/performance_test/pom.xml"
+
+        cp $(location //java:io_ray_ray_serve_pom) "$$tmpdir/java/serve/pom.xml"
+        chmod 644 "$$tmpdir/java/serve/pom.xml"
+
+        (cd "$$tmpdir"; zip -0 -q -r out.zip "java")
+        mv "$$tmpdir/out.zip" $@
+
+        rm -rf "$$tmpdir"
+    """,
+    visibility = ["//visibility:private"],
+)
+
+genrule(
+    name = "copy_pom_file",
+    srcs = [
+        ":copy_pom_file_zip",
+    ],
+    outs = ["copy_pom_file.sum"],
+    cmd = """
+        unzip -q -o $(location :copy_pom_file_zip) -d "$$(pwd)"
+        if [[ "$$OSTYPE" =~ ^darwin ]]; then shasum $< > $@ ; else sha1sum $< > $@ ; fi
     """,
     local = 1,
     tags = ["no-cache"],
+    visibility = ["//visibility:private"],
 )
 
 # Generates the dependencies needed by maven.
 genrule(
-    name = "cp_java_generated",
+    name = "cp_java_generated_zip",
     srcs = [
         ":all_java_proto",
-        ":copy_pom_file",
         ":serve_java_proto",
+    ],
+    outs = ["cp_java_generated.zip"],
+    cmd = """
+        tmpdir=$$(mktemp -d)
+
+        mkdir -p "$$tmpdir/java/runtime/src/main/java/io/ray/runtime/generated"
+        for f in $(locations :all_java_proto); do
+            unzip -q "$$f" -x META-INF/MANIFEST.MF -d "$$tmpdir/java/runtime/src/main/java"
+        done
+
+        mkdir -p "$$tmpdir/java/serve/src/main/java/io/ray/serve/generated"
+        for f in $(locations :serve_java_proto); do
+            unzip -q "$$f" -x META-INF/MANIFEST.MF -d "$$tmpdir/java/serve/src/main/java"
+        done
+
+        (cd "$$tmpdir"; zip -0 -q -r out.zip "java")
+        mv "$$tmpdir/out.zip" $@
+
+        rm -rf "$$tmpdir"
+    """,
+    visibility = ["//visibility:private"],
+)
+
+genrule(
+    name = "cp_java_generated",
+    srcs = [
+        ":cp_java_generated_zip",
     ],
     outs = ["cp_java_generated.out"],
     cmd = """
         WORK_DIR="$$(pwd)"
-        # Copy protobuf-generated files.
+
         rm -rf "$$WORK_DIR/java/runtime/src/main/java/io/ray/runtime/generated"
-        echo "# cp_java_generated" > $@
-        for f in $(locations //java:all_java_proto); do
-            unzip "$$f" -x META-INF/MANIFEST.MF -d "$$WORK_DIR/java/runtime/src/main/java"
-            if [[ "$$OSTYPE" =~ ^darwin ]]; then shasum "$$f" >> $@ ; else sha1sum "$$f" >> $@ ; fi
-        done
         rm -rf "$$WORK_DIR/java/serve/src/main/java/io/ray/serve/generated"
-        for f in $(locations //java:serve_java_proto); do
-            unzip "$$f" -x META-INF/MANIFEST.MF -d "$$WORK_DIR/java/serve/src/main/java"
-            if [[ "$$OSTYPE" =~ ^darwin ]]; then shasum "$$f" >> $@ ; else sha1sum "$$f" >> $@ ; fi
-        done
+
+        unzip -q -o $(location :cp_java_generated_zip) -d "$$WORK_DIR"
+        if [[ "$$OSTYPE" =~ ^darwin ]]; then shasum $< > $@ ; else sha1sum $< > $@ ; fi
     """,
     local = 1,
     tags = ["no-cache"],
+    visibility = ["//visibility:private"],
 )
 
 # Generates the dependencies needed by maven.
 genrule(
     name = "gen_maven_deps",
     srcs = [
+        ":copy_pom_file",
         ":cp_java_generated",
         ":java_native_deps",
     ],
@@ -354,6 +396,7 @@ genrule(
     """,
     local = 1,
     tags = ["no-cache"],
+    visibility = ["//visibility:private"],
 )
 
 java_binary(
@@ -398,4 +441,5 @@ genrule(
     """,
     local = 1,
     tags = ["no-cache"],
+    visibility = ["//visibility:private"],
 )
