@@ -617,10 +617,6 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
             /*min_concurrent_lease_cap_*/ 10);
   }
 
-  if (options_.worker_type == WorkerType::DRIVER) {
-    SubscribeToNodeChanges();
-  }
-
   plasma_store_provider_ = std::make_shared<CoreWorkerPlasmaStoreProvider>(
       options_.store_socket,
       local_raylet_client_,
