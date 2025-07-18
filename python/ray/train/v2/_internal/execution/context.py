@@ -321,7 +321,7 @@ class RayTrainContext(TrainContext):
 
 
 class LocalTestingTrainContext(TrainContext):
-    """The TrainContext for the training run without local testing (python running locally, torchrun, etc.)"""
+    """The TrainContext for the training run for local testing (python running locally, torchrun, etc.)"""
 
     def __init__(
         self, world_size: int, world_rank: int, dataset_shards: Dict[str, DataIterator]
