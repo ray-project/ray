@@ -144,7 +144,7 @@ class DependencySetManager:
         args: List[str],
         name: str,
         output: str,
-    ) -> str:
+    ):
         """Compile a dependency set."""
         if constraints:
             for constraint in constraints:
