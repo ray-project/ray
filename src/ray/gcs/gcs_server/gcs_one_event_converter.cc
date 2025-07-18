@@ -42,14 +42,43 @@ void GcsOneEventConverter::ConvertToTaskEventData(
       ConvertTaskExecutionEventToTaskEvent(event.task_execution_event(), task_event);
       break;
     }
+    case rpc::events::RayEvent::ACTOR_TASK_DEFINITION_EVENT: {
+      ConvertActorTaskDefinitionEventToTaskEvent(event.actor_task_definition_event(),
+                                                 task_event);
+      break;
+    }
+    case rpc::events::RayEvent::ACTOR_TASK_EXECUTION_EVENT: {
+      ConvertActorTaskExecutionEventToTaskEvent(event.actor_task_execution_event(),
+                                                task_event);
+      break;
+    }
     default:
-      // TODO(can-anyscale): Handle other event types
+      RAY_CHECK(false) << "Unexpected one event type: " << event.event_type();
       break;
     }
     task_event_data->add_events_by_task()->Swap(&task_event);
   }
   if (task_event_data->events_by_task_size() > 0) {
     task_event_data->set_job_id(task_event_data->events_by_task(0).job_id());
+  }
+}
+
+void GcsOneEventConverter::ConvertActorTaskExecutionEventToTaskEvent(
+    const rpc::events::ActorTaskExecutionEvent &event, rpc::TaskEvents &task_event) {
+  task_event.set_task_id(event.task_id());
+  task_event.set_attempt_number(event.task_attempt());
+  task_event.set_job_id(event.job_id());
+
+  rpc::TaskStateUpdate *task_state_update = task_event.mutable_state_updates();
+  task_state_update->set_node_id(event.node_id());
+  task_state_update->set_worker_id(event.worker_id());
+  task_state_update->mutable_error_info()->CopyFrom(event.ray_error_info());
+  task_state_update->set_worker_pid(event.worker_pid());
+
+  // Copy task state
+  for (const auto &[state, timestamp] : event.task_state()) {
+    int64_t ns = timestamp.seconds() * 1000000000LL + timestamp.nanos();
+    (*task_state_update->mutable_state_ts_ns())[state] = ns;
   }
 }
 
@@ -72,6 +101,19 @@ void GcsOneEventConverter::ConvertTaskExecutionEventToTaskEvent(
   }
 }
 
+void GcsOneEventConverter::ConvertActorTaskDefinitionEventToTaskEvent(
+    const rpc::events::ActorTaskDefinitionEvent &event, rpc::TaskEvents &task_event) {
+  task_event.set_task_id(event.task_id());
+  task_event.set_attempt_number(event.task_attempt());
+  task_event.set_job_id(event.job_id());
+
+  rpc::TaskInfoEntry *task_info = task_event.mutable_task_info();
+  GenerateTaskInfoEntry(event.runtime_env_info(),
+                        event.actor_func(),
+                        event.required_resources(),
+                        task_info);
+}
+
 void GcsOneEventConverter::ConvertTaskDefinitionEventToTaskEvent(
     const rpc::events::TaskDefinitionEvent &event, rpc::TaskEvents &task_event) {
   task_event.set_task_id(event.task_id());
@@ -80,8 +122,16 @@ void GcsOneEventConverter::ConvertTaskDefinitionEventToTaskEvent(
 
   rpc::TaskInfoEntry *task_info = task_event.mutable_task_info();
   task_info->set_name(event.task_name());
-  task_info->mutable_runtime_env_info()->CopyFrom(event.runtime_env_info());
-  auto function_descriptor = event.task_func();
+  GenerateTaskInfoEntry(
+      event.runtime_env_info(), event.task_func(), event.required_resources(), task_info);
+}
+
+void GcsOneEventConverter::GenerateTaskInfoEntry(
+    const rpc::RuntimeEnvInfo &runtime_env_info,
+    const rpc::FunctionDescriptor &function_descriptor,
+    const ::google::protobuf::Map<std::string, std::string> &required_resources,
+    rpc::TaskInfoEntry *task_info) {
+  task_info->mutable_runtime_env_info()->CopyFrom(runtime_env_info);
   if (function_descriptor.has_cpp_function_descriptor()) {
     task_info->set_language(rpc::Language::CPP);
     task_info->set_func_or_class_name(
@@ -97,7 +147,7 @@ void GcsOneEventConverter::ConvertTaskDefinitionEventToTaskEvent(
   }
 
   // Copy required resources map
-  for (const auto &resource : event.required_resources()) {
+  for (const auto &resource : required_resources) {
     try {
       double value = std::stod(resource.second);
       (*task_info->mutable_required_resources())[resource.first] = value;

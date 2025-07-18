@@ -43,4 +43,5 @@ message ActorTaskExecutionEvent {
   bytes parent_task_id = 9;
   bytes actor_id = 10;
   bytes placement_group_id = 11;
+  bytes job_id = 12;
 }
