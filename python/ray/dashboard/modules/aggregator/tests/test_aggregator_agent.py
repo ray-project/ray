@@ -72,14 +72,13 @@ def get_event_aggregator_grpc_stub(webui_url, gcs_address, head_node_id):
     indirect=True,
 )
 def test_aggregator_agent_receive_publish_events_normally(
-    ray_start_cluster_head_with_env_vars, httpserver
+    ray_start_cluster_head_with_env_vars, httpserver, reset_httpserver_before_test
 ):
     cluster = ray_start_cluster_head_with_env_vars
     stub = get_event_aggregator_grpc_stub(
         cluster.webui_url, cluster.gcs_address, cluster.head_node.node_id
     )
 
-    httpserver.clear_log()
     httpserver.expect_request("/", method="POST").respond_with_data("", status=200)
 
     test_time = 1751302230130457542
@@ -135,14 +134,13 @@ def test_aggregator_agent_receive_publish_events_normally(
     indirect=True,
 )
 def test_aggregator_agent_receive_event_full(
-    ray_start_cluster_head_with_env_vars, httpserver
+    ray_start_cluster_head_with_env_vars, httpserver, reset_httpserver_before_test
 ):
     cluster = ray_start_cluster_head_with_env_vars
     stub = get_event_aggregator_grpc_stub(
         cluster.webui_url, cluster.gcs_address, cluster.head_node.node_id
     )
 
-    httpserver.clear_log()
     httpserver.expect_request("/", method="POST").respond_with_data("", status=200)
 
     now = time.time_ns()
@@ -188,14 +186,13 @@ def test_aggregator_agent_receive_event_full(
     indirect=True,
 )
 def test_aggregator_agent_receive_dropped_at_core_worker(
-    ray_start_cluster_head_with_env_vars, httpserver
+    ray_start_cluster_head_with_env_vars, httpserver, reset_httpserver_before_test
 ):
     cluster = ray_start_cluster_head_with_env_vars
     stub = get_event_aggregator_grpc_stub(
         cluster.webui_url, cluster.gcs_address, cluster.head_node.node_id
     )
 
-    httpserver.clear_log()
     httpserver.expect_request("/", method="POST").respond_with_data("", status=200)
 
     now = time.time_ns()
@@ -252,14 +249,13 @@ def test_aggregator_agent_receive_dropped_at_core_worker(
     indirect=True,
 )
 def test_aggregator_agent_receive_multiple_events(
-    ray_start_cluster_head_with_env_vars, httpserver
+    ray_start_cluster_head_with_env_vars, httpserver, reset_httpserver_before_test
 ):
     cluster = ray_start_cluster_head_with_env_vars
     stub = get_event_aggregator_grpc_stub(
         cluster.webui_url, cluster.gcs_address, cluster.head_node.node_id
     )
 
-    httpserver.clear_log()
     httpserver.expect_request("/", method="POST").respond_with_data("", status=200)
     now = time.time_ns()
     seconds, nanos = divmod(now, 10**9)
@@ -313,13 +309,12 @@ def test_aggregator_agent_receive_multiple_events(
     indirect=True,
 )
 def test_aggregator_agent_receive_multiple_events_failures(
-    ray_start_cluster_head_with_env_vars, httpserver
+    ray_start_cluster_head_with_env_vars, httpserver, reset_httpserver_before_test
 ):
     cluster = ray_start_cluster_head_with_env_vars
     stub = get_event_aggregator_grpc_stub(
         cluster.webui_url, cluster.gcs_address, cluster.head_node.node_id
     )
-    httpserver.clear_log()
     httpserver.expect_request("/", method="POST").respond_with_data("", status=200)
     now = time.time_ns()
     seconds, nanos = divmod(now, 10**9)
@@ -374,13 +369,12 @@ def test_aggregator_agent_receive_multiple_events_failures(
     indirect=True,
 )
 def test_aggregator_agent_receive_empty_events(
-    ray_start_cluster_head_with_env_vars, httpserver
+    ray_start_cluster_head_with_env_vars, httpserver, reset_httpserver_before_test
 ):
     cluster = ray_start_cluster_head_with_env_vars
     stub = get_event_aggregator_grpc_stub(
         cluster.webui_url, cluster.gcs_address, cluster.head_node.node_id
     )
-    httpserver.clear_log()
     httpserver.expect_request("/", method="POST").respond_with_data("", status=200)
     request = AddEventRequest(
         events_data=RayEventsData(
