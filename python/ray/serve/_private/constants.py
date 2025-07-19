@@ -312,11 +312,6 @@ RAY_SERVE_ENABLE_MEMORY_PROFILING = (
     os.environ.get("RAY_SERVE_ENABLE_MEMORY_PROFILING", "0") == "1"
 )
 
-# Enable cProfile in all Serve actors.
-RAY_SERVE_ENABLE_CPU_PROFILING = (
-    os.environ.get("RAY_SERVE_ENABLE_CPU_PROFILING", "0") == "1"
-)
-
 # Max value allowed for max_replicas_per_node option.
 # TODO(jjyao) the <= 100 limitation is an artificial one
 # and is due to the fact that Ray core only supports resource
@@ -462,3 +457,14 @@ REQUEST_ROUTING_STATS_METHOD = "record_routing_stats"
 RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD = (
     os.environ.get("RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD", "1") == "1"
 )
+
+# The default buffer size for request path logs. Setting to 1 will ensure
+# logs are flushed to file handler immediately, otherwise it will be buffered
+# and flushed to file handler when the buffer is full or when there is a log
+# line with level ERROR.
+RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE = int(
+    os.environ.get("RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE", "1")
+)
+
+# The message to return when the replica is healthy.
+HEALTHY_MESSAGE = "success"

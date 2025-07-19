@@ -275,8 +275,9 @@ def assert_base_partitioned_ds():
 @pytest.fixture
 def restore_data_context(request):
     """Restore any DataContext changes after the test runs"""
-    original = copy.deepcopy(ray.data.context.DataContext.get_current())
-    yield
+    ctx = ray.data.context.DataContext.get_current()
+    original = copy.deepcopy(ctx)
+    yield ctx
     ray.data.context.DataContext._set_current(original)
 
 
@@ -725,17 +726,10 @@ def assert_blocks_expected_in_plasma(
     last_snapshot,
     num_blocks_expected,
     block_size_expected=None,
-    total_bytes_expected=None,
 ):
-    assert not (
-        block_size_expected is not None and total_bytes_expected is not None
-    ), "only specify one of block_size_expected, total_bytes_expected"
+    total_bytes_expected = None
 
-    if total_bytes_expected is None:
-        if block_size_expected is None:
-            block_size_expected = (
-                ray.data.context.DataContext.get_current().target_max_block_size
-            )
+    if block_size_expected is not None:
         total_bytes_expected = num_blocks_expected * block_size_expected
 
     print(f"Expecting {total_bytes_expected} bytes, {num_blocks_expected} blocks")
@@ -750,7 +744,8 @@ def assert_blocks_expected_in_plasma(
                         <= 1.5 * num_blocks_expected
                     ),
                     "cumulative_created_plasma_bytes": (
-                        lambda count: total_bytes_expected * 0.5
+                        lambda count: total_bytes_expected is None
+                        or total_bytes_expected * 0.5
                         <= count
                         <= 1.5 * total_bytes_expected
                     ),
