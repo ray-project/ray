@@ -23,8 +23,8 @@ import ray
 import ray._private.ray_constants as ray_constants
 import ray._private.services
 from ray._common.utils import try_to_create_directory
+from ray._private.resource_and_label_spec import ResourceAndLabelSpec
 from ray._private.resource_isolation_config import ResourceIsolationConfig
-from ray._private.resource_spec import ResourceSpec
 from ray._private.services import get_address, serialize_config
 from ray._private.utils import (
     is_in_test,
@@ -136,7 +136,7 @@ class Node:
             ),
         )
 
-        self._resource_spec = None
+        self._resource_and_label_spec = None
         self._localhost = socket.gethostbyname("localhost")
         self._ray_params = ray_params
         self._config = ray_params._system_config or {}
@@ -289,8 +289,6 @@ class Node:
             self._raylet_socket_name = self._prepare_socket_file(
                 self._ray_params.raylet_socket_name, default_prefix="raylet"
             )
-            # Set node labels from RayParams or environment override variables.
-            self._node_labels = self._get_node_labels()
             if (
                 self._ray_params.env_vars is not None
                 and "RAY_OVERRIDE_NODE_ID_FOR_TESTING" in self._ray_params.env_vars
@@ -524,43 +522,8 @@ class Node:
             tpu_logs_symlink = os.path.join(self._logs_dir, "tpu_logs")
             try_to_symlink(tpu_logs_symlink, tpu_log_dir)
 
-    def _get_node_labels(self):
-        def merge_labels(env_override_labels, params_labels):
-            """Merges two dictionaries, picking from the
-            first in the event of a conflict. Also emit a warning on every
-            conflict.
-            """
-
-            result = params_labels.copy()
-            result.update(env_override_labels)
-
-            for key in set(env_override_labels.keys()).intersection(
-                set(params_labels.keys())
-            ):
-                if params_labels[key] != env_override_labels[key]:
-                    logger.warning(
-                        "Autoscaler is overriding your label:"
-                        f"{key}: {params_labels[key]} to "
-                        f"{key}: {env_override_labels[key]}."
-                    )
-            return result
-
-        env_override_labels = {}
-        env_override_labels_string = os.getenv(
-            ray_constants.LABELS_ENVIRONMENT_VARIABLE
-        )
-        if env_override_labels_string:
-            try:
-                env_override_labels = json.loads(env_override_labels_string)
-            except Exception:
-                logger.exception(f"Failed to load {env_override_labels_string}")
-                raise
-            logger.info(f"Autoscaler overriding labels: {env_override_labels}.")
-
-        return merge_labels(env_override_labels, self._ray_params.labels or {})
-
-    def get_resource_spec(self):
-        """Resolve and return the current resource spec for the node."""
+    def get_resource_and_label_spec(self):
+        """Resolve and return the current ResourceAndLabelSpec for the node."""
 
         def merge_resources(env_dict, params_dict):
             """Separates special case params and merges two dictionaries, picking from the
@@ -583,7 +546,7 @@ class Node:
                     )
             return num_cpus, num_gpus, memory, object_store_memory, result
 
-        if not self._resource_spec:
+        if not self._resource_and_label_spec:
             env_resources = {}
             env_string = os.getenv(ray_constants.RESOURCES_ENVIRONMENT_VARIABLE)
             if env_string:
@@ -600,7 +563,7 @@ class Node:
                 object_store_memory,
                 resources,
             ) = merge_resources(env_resources, self._ray_params.resources)
-            self._resource_spec = ResourceSpec(
+            self._resource_and_label_spec = ResourceAndLabelSpec(
                 self._ray_params.num_cpus if num_cpus is None else num_cpus,
                 self._ray_params.num_gpus if num_gpus is None else num_gpus,
                 self._ray_params.memory if memory is None else memory,
@@ -610,8 +573,9 @@ class Node:
                     else object_store_memory
                 ),
                 resources,
+                self._ray_params.labels,
             ).resolve(is_head=self.head, node_ip_address=self.node_ip_address)
-        return self._resource_spec
+        return self._resource_and_label_spec
 
     @property
     def node_id(self):
@@ -1270,6 +1234,7 @@ class Node:
             create_out=True,
             create_err=True,
         )
+
         process_info = ray._private.services.start_raylet(
             self.redis_address,
             self.gcs_address,
@@ -1285,7 +1250,7 @@ class Node:
             self._session_dir,
             self._runtime_env_dir,
             self._logs_dir,
-            self.get_resource_spec(),
+            self.get_resource_and_label_spec(),
             plasma_directory,
             fallback_directory,
             object_store_memory,
@@ -1318,7 +1283,6 @@ class Node:
             env_updates=self._ray_params.env_vars,
             node_name=self._ray_params.node_name,
             webui=self._webui_url,
-            labels=self.node_labels,
             resource_isolation_config=self.resource_isolation_config,
         )
         assert ray_constants.PROCESS_TYPE_RAYLET not in self.all_processes
@@ -1480,7 +1444,7 @@ class Node:
 
         # Make sure we don't call `determine_plasma_store_config` multiple
         # times to avoid printing multiple warnings.
-        resource_spec = self.get_resource_spec()
+        resource_spec = self.get_resource_and_label_spec()
 
         (
             plasma_directory,
