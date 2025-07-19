@@ -1,6 +1,4 @@
-load("//bazel:ray.bzl", "define_java_module")
-load("//bazel:ray.bzl", "native_java_binary")
-load("//bazel:ray.bzl", "native_java_library")
+load("//bazel:ray.bzl", "define_java_module", "native_java_library")
 load("@rules_proto_grpc//java:defs.bzl", "java_proto_compile")
 load(
     "@com_github_johnynek_bazel_jar_jar//:jar_jar.bzl",
@@ -259,7 +257,11 @@ filegroup(
     ],
 )
 
-native_java_library("runtime", "core_worker_library_java", "//src/ray/core_worker/lib/java:libcore_worker_library_java.so")
+native_java_library(
+    name = "core_worker_library_java",
+    module_name = "runtime",
+    native_library_name = "//src/ray/core_worker/lib/java:libcore_worker_library_java.so",
+)
 
 filegroup(
     name = "java_native_deps",
