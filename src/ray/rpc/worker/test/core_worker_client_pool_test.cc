@@ -82,7 +82,7 @@ class MockGcsClientNodeAccessor : public gcs::NodeInfoAccessor {
  public:
   MockGcsClientNodeAccessor() : gcs::NodeInfoAccessor(nullptr) {}
 
-  bool IsSubscribedToNodeChange() const override { return true; }
+  bool IsSubscriptionCachePopulated() const override { return true; }
 
   MOCK_METHOD(const rpc::GcsNodeInfo *,
               Get,

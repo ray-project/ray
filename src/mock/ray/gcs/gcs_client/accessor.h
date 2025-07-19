@@ -142,7 +142,7 @@ class MockNodeInfoAccessor : public NodeInfoAccessor {
                int64_t timeout_ms,
                std::optional<NodeID> node_id),
               (override));
-  MOCK_METHOD(Status,
+  MOCK_METHOD(void,
               AsyncSubscribeToNodeChange,
               ((const SubscribeCallback<NodeID, rpc::GcsNodeInfo> &subscribe),
                const StatusCallback &done),
