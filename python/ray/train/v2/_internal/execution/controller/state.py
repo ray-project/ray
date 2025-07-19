@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Optional
+from typing import Union
 
 from ray.train.v2._internal.execution.scaling_policy.scaling_policy import (
     ScalingDecision,
@@ -127,19 +127,13 @@ class ResizingState(TrainControllerState):
 class ErroredState(TrainControllerState):
     def __init__(
         self,
-        training_failed_error: Optional[TrainingFailedError] = None,
-        controller_failed_error: Optional[ControllerError] = None,
+        error: Union[TrainingFailedError, ControllerError],
     ):
-        assert training_failed_error is not None or controller_failed_error is not None
         super().__init__(state_type=TrainControllerStateType.ERRORED)
-        self.training_failed_error = training_failed_error
-        self.controller_failed_error = controller_failed_error
+        self.error = error
 
     def get_error_message(self) -> str:
-        if self.training_failed_error:
-            return str(self.training_failed_error)
-        else:
-            return str(self.controller_failed_error)
+        return str(self.error)
 
 
 class FinishedState(TrainControllerState):

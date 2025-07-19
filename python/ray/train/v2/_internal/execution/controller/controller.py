@@ -3,7 +3,7 @@ import logging
 import os
 import uuid
 from dataclasses import dataclass
-from typing import Callable, List, Optional
+from typing import Callable, List, Optional, Union
 
 import pandas as pd
 
@@ -77,8 +77,7 @@ class TrainControllerLoopIterationResult:
     run_attempt_id: str
     previous_state: TrainControllerState
     next_state: TrainControllerState
-    training_failed_error: Optional[TrainingFailedError] = None
-    controller_failed_error: Optional[ControllerError] = None
+    error: Optional[Union[TrainingFailedError, ControllerError]] = None
 
     def __repr__(self) -> str:
         return (
@@ -86,8 +85,7 @@ class TrainControllerLoopIterationResult:
             f"    run_attempt_id={self.run_attempt_id},\n"
             f"    previous_state={self.previous_state._state_type.state_name},\n"
             f"    next_state={self.next_state._state_type.state_name}\n"
-            f"    training_failed_error={self.training_failed_error}\n"
-            f"    controller_failed_error={self.controller_failed_error}\n"
+            f"    error={self.error}\n"
             f")"
         )
 
@@ -190,11 +188,11 @@ class TrainController:
         if scheduling_status.has_error:
             controller_error = ControllerError(scheduling_status.error)
             failure_decision = self._failure_policy.make_decision(
-                controller_failed_error=controller_error,
+                error=controller_error,
             )
             return self._execute_failure_decision(
                 failure_decision,
-                controller_failed_error=controller_error,
+                error=controller_error,
             )
         else:
             return TrainControllerLoopIterationResult(
@@ -206,8 +204,7 @@ class TrainController:
     def _execute_failure_decision(
         self,
         failure_decision: FailureDecision,
-        training_failed_error: Optional[TrainingFailedError] = None,
-        controller_failed_error: Optional[ControllerError] = None,
+        error: Union[TrainingFailedError, ControllerError],
     ) -> TrainControllerLoopIterationResult:
         """Executes failure handling decisions for a scheduling or poll error."""
 
@@ -216,8 +213,6 @@ class TrainController:
         for callback in self._controller_callbacks:
             callback.before_controller_execute_failure_decision(failure_decision)
 
-        assert training_failed_error is not None or controller_failed_error is not None
-
         # TODO: What should we do here?
         # This currently never happens because there must be errors.
         if failure_decision == FailureDecision.NOOP:
@@ -225,36 +220,32 @@ class TrainController:
                 run_attempt_id=self._get_run_attempt_id(),
                 previous_state=controller_state,
                 next_state=controller_state,
-                training_failed_error=training_failed_error,
-                controller_failed_error=controller_failed_error,
+                error=error,
             )
 
         if failure_decision == FailureDecision.RESTART:
-            assert training_failed_error is not None
+            assert isinstance(error, TrainingFailedError)
             return TrainControllerLoopIterationResult(
                 run_attempt_id=self._get_run_attempt_id(),
                 previous_state=controller_state,
-                next_state=RestartingState(training_failed_error=training_failed_error),
+                next_state=RestartingState(training_failed_error=error),
             )
         elif failure_decision == FailureDecision.RESCHEDULE:
-            assert controller_failed_error is not None
+            assert isinstance(error, ControllerError)
             return TrainControllerLoopIterationResult(
                 run_attempt_id=self._get_run_attempt_id(),
                 previous_state=controller_state,
-                next_state=ReschedulingState(
-                    controller_failed_error=controller_failed_error
-                ),
+                next_state=ReschedulingState(controller_failed_error=error),
             )
         elif failure_decision == FailureDecision.RAISE:
             next_state = ErroredState(
-                training_failed_error=training_failed_error,
-                controller_failed_error=controller_failed_error,
+                error=error,
             )
             return TrainControllerLoopIterationResult(
                 run_attempt_id=self._get_run_attempt_id(),
                 previous_state=controller_state,
                 next_state=next_state,
-                training_failed_error=training_failed_error,
+                error=error,
             )
         else:
             raise ValueError(f"Unexpected failure decision: {failure_decision}")
@@ -399,7 +390,7 @@ class TrainController:
                     worker_failures=worker_group_status.errors,
                 )
                 failure_decision = self._failure_policy.make_decision(
-                    training_failed_error=training_failed_error,
+                    error=training_failed_error,
                 )
                 return self._execute_failure_decision(
                     failure_decision, training_failed_error
