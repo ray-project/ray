@@ -83,7 +83,8 @@ class LimitOperator(OneToOneOperator):
                 ).remote(
                     block,
                     metadata,
-                    self._get_limit_reached_rows(input_total_rows) - self._consumed_rows,
+                    self._get_limit_reached_rows(input_total_rows)
+                    - self._consumed_rows,
                 )
                 out_blocks.append(block)
                 metadata = ray.get(metadata_ref)
@@ -141,9 +142,7 @@ class LimitOperator(OneToOneOperator):
         # The total number of rows is simply the limit or the number
         # of input rows, whichever is smaller
         input_num_rows = self.input_dependencies[0].num_output_rows_total()
-        if input_num_rows is None:
-            return None
-        return min(self._limit, input_num_rows)
+        return self._get_limit_reached_rows(input_num_rows)
 
     def throttling_disabled(self) -> bool:
         return True
