@@ -1914,6 +1914,17 @@ py_test(
 )
 
 py_test(
+    name = "test_algorithm_save_load_checkpoint_connectors",
+    size = "medium",
+    srcs = ["algorithms/tests/test_algorithm_save_load_checkpoint_connectors.py"],
+    tags = [
+        "algorithms_dir",
+        "algorithms_dir_generic",
+        "team:rllib",
+    ],
+)
+
+py_test(
     name = "test_algorithm_rl_module_restore",
     size = "large",
     srcs = ["algorithms/tests/test_algorithm_rl_module_restore.py"],

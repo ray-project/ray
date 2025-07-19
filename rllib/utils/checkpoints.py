@@ -196,12 +196,15 @@ class Checkpointable(abc.ABC):
 
         # Get the entire state of this Checkpointable, or use provided `state`.
         _state_provided = state is not None
+        # Get only the non-checkpointable components of the state. Checkpointable
+        # components are saved to path by their own `save_to_path` in the loop below.
         state = state or self.get_state(
             not_components=[c[0] for c in self.get_checkpointable_components()]
         )
 
         # Write components of `self` that themselves are `Checkpointable`.
         for comp_name, comp in self.get_checkpointable_components():
+            print(f"{comp_name} ...")
             # If subcomponent's name is not in `state`, ignore it and don't write this
             # subcomponent's state to disk.
             if _state_provided and comp_name not in state:
