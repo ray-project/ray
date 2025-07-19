@@ -1,7 +1,11 @@
 import yaml
 from dataclasses import dataclass, field
-from typing import List
+from typing import List, Optional
 import os
+from dotenv import load_dotenv
+from pathlib import Path
+
+load_dotenv(dotenv_path=Path(__file__).parent / ".env")
 
 
 @dataclass
@@ -11,6 +15,9 @@ class Depset:
     requirements: List[str]
     constraints: List[str]
     output: str
+    source_depset: Optional[str] = None
+    depsets: Optional[List[str]] = None
+    extra_flags: Optional[List[str]] = None
 
 
 @dataclass
@@ -27,6 +34,9 @@ class Config:
                 constraints=values.get("constraints", []),
                 operation=values.get("operation", "compile"),
                 output=values.get("output"),
+                source_depset=values.get("source_depset"),
+                depsets=values.get("depsets", []),
+                extra_flags=values.get("extra_flags", []),
             )
             for values in raw_depsets
         ]
@@ -44,5 +54,6 @@ class Workspace:
 
     def load_config(self, path: str) -> Config:
         with open(os.path.join(self.dir, path), "r") as f:
-            data = yaml.safe_load(f)
+            content = os.path.expandvars(f.read())
+            data = yaml.safe_load(content)
             return Config.from_dict(data)
