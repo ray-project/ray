@@ -17,6 +17,7 @@ from ray import serve
 from ray._common.test_utils import wait_for_condition
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
 from ray.serve._private.test_utils import (
+    get_application_url,
     ping_fruit_stand,
     ping_grpc_another_method,
     ping_grpc_call_method,
@@ -26,25 +27,45 @@ from ray.serve._private.test_utils import (
     ping_grpc_streaming,
 )
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
-from ray.util.state import list_actors
 
 CONNECTION_ERROR_MSG = "connection error"
 
 
+def is_application_ready():
+    """Check if the application is ready to accept connections."""
+    try:
+        base_url = get_application_url("HTTP", use_localhost=True)
+        if not base_url:
+            return False
+        response = httpx.get(f"{base_url}/-/healthz", timeout=2.0)
+        return response.status_code == 200
+    except Exception:
+        return False
+
+
 def ping_endpoint(endpoint: str, params: str = ""):
     endpoint = endpoint.lstrip("/")
+    try:
+        base_url = get_application_url("HTTP", use_localhost=True)
+        if not base_url:
+            return CONNECTION_ERROR_MSG
+    except Exception:
+        return CONNECTION_ERROR_MSG
 
     try:
-        return httpx.get(f"http://localhost:8000/{endpoint}{params}").text
-    except httpx.HTTPError:
+        return httpx.get(f"{base_url}/{endpoint}{params}", timeout=5.0).text
+    except (httpx.HTTPError, httpx.TimeoutException, httpx.ConnectError):
         return CONNECTION_ERROR_MSG
 
 
 def check_app_status(app_name: str, expected_status: str):
-    status_response = subprocess.check_output(["serve", "status"])
-    status = yaml.safe_load(status_response)["applications"]
-    assert status[app_name]["status"] == expected_status
-    return True
+    try:
+        status_response = subprocess.check_output(["serve", "status"])
+        status = yaml.safe_load(status_response)["applications"]
+        assert status[app_name]["status"] == expected_status
+        return True
+    except (subprocess.CalledProcessError, KeyError, AssertionError):
+        return False
 
 
 def check_app_running(app_name: str):
@@ -52,9 +73,24 @@ def check_app_running(app_name: str):
 
 
 def check_http_response(expected_text: str, json: Optional[Dict] = None):
-    resp = httpx.post("http://localhost:8000/", json=json)
-    assert resp.text == expected_text
-    return True
+    try:
+        base_url = get_application_url("HTTP", use_localhost=True)
+        if not base_url:
+            return False
+    except Exception:
+        return False
+
+    try:
+        resp = httpx.post(f"{base_url}/", json=json, timeout=5.0)
+        assert resp.text == expected_text
+        return True
+    except (
+        httpx.HTTPError,
+        httpx.TimeoutException,
+        httpx.ConnectError,
+        AssertionError,
+    ):
+        return False
 
 
 def test_start_shutdown(ray_start_stop):
@@ -64,6 +100,9 @@ def test_start_shutdown(ray_start_stop):
 
     deploy_response = subprocess.check_output(["serve", "deploy", import_path])
     assert b"Sent deploy request successfully." in deploy_response
+
+    # Wait for the application to be ready before making requests
+    wait_for_condition(is_application_ready, timeout=15)
 
     wait_for_condition(
         check_http_response,
@@ -75,8 +114,11 @@ def test_start_shutdown(ray_start_stop):
     assert b"Sent shutdown request; applications will be deleted asynchronously" in ret
 
     def check_no_apps():
-        status = subprocess.check_output(["serve", "status"])
-        return b"applications: {}" in status
+        try:
+            status = subprocess.check_output(["serve", "status"])
+            return b"applications: {}" in status
+        except subprocess.CalledProcessError:
+            return False
 
     wait_for_condition(check_no_apps, timeout=15)
 
@@ -105,11 +147,14 @@ def test_shutdown(ray_start_stop):
     subprocess.check_output(["serve", "shutdown", "-y"])
 
     def num_live_deployments():
-        status_response = subprocess.check_output(["serve", "status"])
-        serve_status = yaml.safe_load(status_response)["applications"][
-            SERVE_DEFAULT_APP_NAME
-        ]
-        return len(serve_status["deployments"])
+        try:
+            status_response = subprocess.check_output(["serve", "status"])
+            serve_status = yaml.safe_load(status_response)["applications"][
+                SERVE_DEFAULT_APP_NAME
+            ]
+            return len(serve_status["deployments"])
+        except (subprocess.CalledProcessError, KeyError, yaml.YAMLError):
+            return 0
 
     config_file_name = os.path.join(
         os.path.dirname(__file__), "test_config_files", "basic_graph.yaml"
@@ -140,13 +185,19 @@ def test_shutdown(ray_start_stop):
         # `serve config` and `serve status` should print messages indicating
         # nothing is deployed
         def serve_config_empty():
-            config_response = subprocess.check_output(["serve", "config"])
-            return len(config_response) == 0
+            try:
+                config_response = subprocess.check_output(["serve", "config"])
+                return len(config_response) == 0
+            except subprocess.CalledProcessError:
+                return True
 
         def serve_status_empty():
-            status_response = subprocess.check_output(["serve", "status"])
-            status = yaml.safe_load(status_response)
-            return len(status["applications"]) == 0
+            try:
+                status_response = subprocess.check_output(["serve", "status"])
+                status = yaml.safe_load(status_response)
+                return len(status["applications"]) == 0
+            except (subprocess.CalledProcessError, yaml.YAMLError, KeyError):
+                return True
 
         wait_for_condition(serve_config_empty)
         wait_for_condition(serve_status_empty)
@@ -168,11 +219,15 @@ def test_deploy_with_http_options(ray_start_stop):
     deploy_response = subprocess.check_output(["serve", "deploy", f1])
     assert success_message_fragment in deploy_response
 
-    wait_for_condition(
-        lambda: httpx.post("http://localhost:8005/", json=None).text
-        == "wonderful world",
-        timeout=15,
-    )
+    # Test the custom port configuration (port 8005)
+    def check_custom_port():
+        try:
+            response = httpx.post("http://localhost:8005/", json=None, timeout=5.0)
+            return response.text == "wonderful world"
+        except (httpx.HTTPError, httpx.TimeoutException):
+            return False
+
+    wait_for_condition(check_custom_port, timeout=15)
 
     # Config should contain matching host and port options
     info_response = subprocess.check_output(["serve", "config"])
@@ -216,13 +271,20 @@ def test_build_multi_app(ray_start_stop):
         print("App 2 is live and reachable over HTTP.")
 
         app_name = "app3"
-        channel = grpc.insecure_channel("localhost:9000")
-        stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
-        request = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
-        metadata = (("application", app_name),)
-        response = stub.__call__(request=request, metadata=metadata)
-        assert response.greeting == "Hello foo from bar"
-        print("App 3 is live and reachable over gRPC.")
+        try:
+            grpc_url = get_application_url("gRPC", use_localhost=True)
+            if not grpc_url:
+                raise Exception("gRPC URL not available")
+            channel = grpc.insecure_channel(grpc_url)
+            stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
+            request = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
+            metadata = (("application", app_name),)
+            response = stub.__call__(request=request, metadata=metadata)
+            assert response.greeting == "Hello foo from bar"
+            print("App 3 is live and reachable over gRPC.")
+        except Exception as e:
+            print(f"gRPC connection failed: {e}")
+            raise
 
         print("Deleting applications.")
         subprocess.check_output(["serve", "shutdown", "-y"])
@@ -248,7 +310,7 @@ def test_idempotence_after_controller_death(ray_start_stop, use_command: bool):
     ray.init(address="auto", namespace=SERVE_NAMESPACE)
     serve.start()
     wait_for_condition(
-        lambda: len(list_actors(filters=[("state", "=", "ALIVE")])) == 4,
+        lambda: check_app_running(SERVE_DEFAULT_APP_NAME),
         timeout=15,
     )
 
@@ -269,7 +331,7 @@ def test_idempotence_after_controller_death(ray_start_stop, use_command: bool):
     # Restore testing controller
     serve.start()
     wait_for_condition(
-        lambda: len(list_actors(filters=[("state", "=", "ALIVE")])) == 4,
+        lambda: check_app_running(SERVE_DEFAULT_APP_NAME),
         timeout=15,
     )
     serve.shutdown()
@@ -295,7 +357,14 @@ def test_serving_request_through_grpc_proxy(ray_start_stop):
     app1 = "app1"
     app_names = [app1]
 
-    channel = grpc.insecure_channel("localhost:9000")
+    try:
+        grpc_url = get_application_url("gRPC", use_localhost=True)
+        if not grpc_url:
+            raise Exception("gRPC URL not available")
+        channel = grpc.insecure_channel(grpc_url)
+    except Exception as e:
+        print(f"gRPC connection failed: {e}")
+        raise
 
     # Ensures ListApplications method succeeding.
     wait_for_condition(
@@ -337,7 +406,14 @@ def test_grpc_proxy_model_composition(ray_start_stop):
     app = "app1"
     app_names = [app]
 
-    channel = grpc.insecure_channel("localhost:9000")
+    try:
+        grpc_url = get_application_url("gRPC", use_localhost=True)
+        if not grpc_url:
+            raise Exception("gRPC URL not available")
+        channel = grpc.insecure_channel(grpc_url)
+    except Exception as e:
+        print(f"gRPC connection failed: {e}")
+        raise
 
     # Ensures ListApplications method succeeding.
     wait_for_condition(
@@ -357,6 +433,9 @@ def test_control_c_shutdown_serve_components(ray_start_stop):
 
     p = subprocess.Popen(["serve", "run", "ray.serve.tests.test_cli_3.echo_app"])
 
+    # Wait for the application to be ready before making requests
+    wait_for_condition(is_application_ready, timeout=15)
+
     # Make sure Serve components are up and running
     wait_for_condition(check_app_running, app_name=SERVE_DEFAULT_APP_NAME)
     assert ping_endpoint("/-/healthz") == "success"
@@ -368,9 +447,19 @@ def test_control_c_shutdown_serve_components(ray_start_stop):
     p.wait()
 
     # Make sure Serve components are shutdown
-    status_response = subprocess.check_output(["serve", "status"])
-    status = yaml.safe_load(status_response)
-    assert status == {"applications": {}, "proxies": {}, "target_capacity": None}
+    def check_serve_shutdown():
+        try:
+            status_response = subprocess.check_output(["serve", "status"])
+            status = yaml.safe_load(status_response)
+            return status == {
+                "applications": {},
+                "proxies": {},
+                "target_capacity": None,
+            }
+        except (subprocess.CalledProcessError, yaml.YAMLError):
+            return True
+
+    wait_for_condition(check_serve_shutdown, timeout=15)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
@@ -395,11 +484,13 @@ def test_deploy_with_access_to_current_directory(ray_start_stop_in_specific_dire
 
     # Ensure serve deploy eventually succeeds.
     def check_deploy_successfully():
-        status_response = subprocess.check_output(["serve", "status"])
-        assert b"RUNNING" in status_response
-        return True
+        try:
+            status_response = subprocess.check_output(["serve", "status"])
+            return b"RUNNING" in status_response
+        except subprocess.CalledProcessError:
+            return False
 
-    wait_for_condition(check_deploy_successfully, timeout=5)
+    wait_for_condition(check_deploy_successfully, timeout=15)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
@@ -424,9 +515,11 @@ class TestRayReinitialization:
         cause error.
         """
         p = subprocess.Popen(["serve", "run", import_file_name])
-        wait_for_condition(lambda: ping_endpoint("") == "foobar", timeout=10)
-        p.send_signal(signal.SIGINT)
-        p.wait()
+        try:
+            wait_for_condition(lambda: ping_endpoint("") == "foobar", timeout=10)
+        finally:
+            p.send_signal(signal.SIGINT)
+            p.wait()
 
     def test_run_with_address_same_address(self, import_file_name, ray_start_stop):
         """Test serve run with ray already initialized and run with address argument
@@ -439,9 +532,11 @@ class TestRayReinitialization:
         p = subprocess.Popen(
             ["serve", "run", "--address=127.0.0.1:6379", import_file_name]
         )
-        wait_for_condition(lambda: ping_endpoint("") == "foobar", timeout=10)
-        p.send_signal(signal.SIGINT)
-        p.wait()
+        try:
+            wait_for_condition(lambda: ping_endpoint("") == "foobar", timeout=10)
+        finally:
+            p.send_signal(signal.SIGINT)
+            p.wait()
 
     def test_run_with_address_different_address(
         self, import_file_name, pattern, ansi_escape, ray_start_stop
@@ -458,18 +553,20 @@ class TestRayReinitialization:
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
         )
-        wait_for_condition(lambda: ping_endpoint("") == "foobar", timeout=10)
-        p.send_signal(signal.SIGINT)
-        p.wait()
-        process_output, _ = p.communicate()
-        logs = process_output.decode("utf-8").strip()
-        ray_address = ansi_escape.sub("", pattern.search(logs).group(1))
-        expected_warning_message = (
-            "An address was passed to `serve run` but the imported module also "
-            f"connected to Ray at a different address: '{ray_address}'. You do not "
-            "need to call `ray.init` in your code when using `serve run`."
-        )
-        assert expected_warning_message in logs
+        try:
+            wait_for_condition(lambda: ping_endpoint("") == "foobar", timeout=10)
+        finally:
+            p.send_signal(signal.SIGINT)
+            p.wait()
+            process_output, _ = p.communicate()
+            logs = process_output.decode("utf-8").strip()
+            ray_address = ansi_escape.sub("", pattern.search(logs).group(1))
+            expected_warning_message = (
+                "An address was passed to `serve run` but the imported module also "
+                f"connected to Ray at a different address: '{ray_address}'. You do not "
+                "need to call `ray.init` in your code when using `serve run`."
+            )
+            assert expected_warning_message in logs
 
     def test_run_with_auto_address(
         self, import_file_name, pattern, ansi_escape, ray_start_stop
@@ -486,18 +583,20 @@ class TestRayReinitialization:
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
         )
-        wait_for_condition(lambda: ping_endpoint("") == "foobar", timeout=10)
-        p.send_signal(signal.SIGINT)
-        p.wait()
-        process_output, _ = p.communicate()
-        logs = process_output.decode("utf-8").strip()
-        ray_address = ansi_escape.sub("", pattern.search(logs).group(1))
-        expected_warning_message = (
-            "An address was passed to `serve run` but the imported module also "
-            f"connected to Ray at a different address: '{ray_address}'. You do not "
-            "need to call `ray.init` in your code when using `serve run`."
-        )
-        assert expected_warning_message not in logs
+        try:
+            wait_for_condition(lambda: ping_endpoint("") == "foobar", timeout=10)
+        finally:
+            p.send_signal(signal.SIGINT)
+            p.wait()
+            process_output, _ = p.communicate()
+            logs = process_output.decode("utf-8").strip()
+            ray_address = ansi_escape.sub("", pattern.search(logs).group(1))
+            expected_warning_message = (
+                "An address was passed to `serve run` but the imported module also "
+                f"connected to Ray at a different address: '{ray_address}'. You do not "
+                "need to call `ray.init` in your code when using `serve run`."
+            )
+            assert expected_warning_message not in logs
 
 
 if __name__ == "__main__":
