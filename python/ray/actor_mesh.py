@@ -1,4 +1,5 @@
 import copy
+import math
 import os
 import random
 from typing import Any, Callable, Concatenate, Dict, Generic, List, Optional, Tuple, TypeVar, ParamSpec, Union
@@ -81,9 +82,9 @@ class ActorMesh(Generic[T]):
         self.shape = shape
 
         if isinstance(shape, dict):
-            self._num_actors = sum(shape.values())
+            self._num_actors = math.prod(shape.values())
         else:
-            self._num_actors = sum(shape)
+            self._num_actors = math.prod(shape)
 
         self._actor_cls = actor_cls
         self._actors = []
@@ -187,3 +188,7 @@ if __name__ == "__main__":
     batch = torch.eye(6)
     result = mesh.methods.torch_process.shard(batch, 1)
     assert (result == torch.eye(6) + 1).all()
+
+    # The case of a more complex shape
+    mesh = ActorMesh(Test, (), {}, shape=(2, 3))
+    assert mesh.num_actors == 6
