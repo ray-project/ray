@@ -136,7 +136,8 @@ Status RayletClient::ActorCreationTaskDone() {
 Status RayletClient::FetchOrReconstruct(const std::vector<ObjectID> &object_ids,
                                         const std::vector<rpc::Address> &owner_addresses,
                                         bool fetch_only,
-                                        const TaskID &current_task_id) {
+                                        const TaskID &current_task_id,
+                                        uint64_t *request_id) {
   RAY_CHECK(object_ids.size() == owner_addresses.size());
   flatbuffers::FlatBufferBuilder fbb;
   auto object_ids_message = to_flatbuf(fbb, object_ids);
@@ -145,14 +146,26 @@ Status RayletClient::FetchOrReconstruct(const std::vector<ObjectID> &object_ids,
                                          object_ids_message,
                                          AddressesToFlatbuffer(fbb, owner_addresses),
                                          fetch_only,
-                                         to_flatbuf(fbb, current_task_id));
+                                         to_flatbuf(fbb, current_task_id),
+                                         *request_id);
   fbb.Finish(message);
-  return conn_->WriteMessage(MessageType::FetchOrReconstruct, &fbb);
+  std::vector<uint8_t> reply;
+  RAY_RETURN_NOT_OK(conn_->AtomicRequestReply(MessageType::FetchOrReconstruct,
+                                              MessageType::FetchOrReconstructReply,
+                                              &reply,
+                                              &fbb));
+  /// Parse new request id
+  auto reply_message =
+      flatbuffers::GetRoot<protocol::FetchOrReconstructReply>(reply.data());
+  *request_id = reply_message->new_request_id();
+  return Status::OK();
 }
 
-Status RayletClient::NotifyUnblocked(const TaskID &current_task_id) {
+Status RayletClient::NotifyUnblocked(const TaskID &current_task_id,
+                                     const uint64_t get_request_id) {
   flatbuffers::FlatBufferBuilder fbb;
-  auto message = protocol::CreateNotifyUnblocked(fbb, to_flatbuf(fbb, current_task_id));
+  auto message = protocol::CreateNotifyUnblocked(
+      fbb, to_flatbuf(fbb, current_task_id), get_request_id);
   fbb.Finish(message);
   return conn_->WriteMessage(MessageType::NotifyUnblocked, &fbb);
 }
@@ -164,9 +177,9 @@ Status RayletClient::NotifyDirectCallTaskBlocked() {
   return conn_->WriteMessage(MessageType::NotifyDirectCallTaskBlocked, &fbb);
 }
 
-Status RayletClient::NotifyDirectCallTaskUnblocked() {
+Status RayletClient::NotifyDirectCallTaskUnblocked(const uint64_t get_request_id) {
   flatbuffers::FlatBufferBuilder fbb;
-  auto message = protocol::CreateNotifyDirectCallTaskUnblocked(fbb);
+  auto message = protocol::CreateNotifyDirectCallTaskUnblocked(fbb, get_request_id);
   fbb.Finish(message);
   return conn_->WriteMessage(MessageType::NotifyDirectCallTaskUnblocked, &fbb);
 }

@@ -380,11 +380,13 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \param required_object_refs The objects that the client is blocked waiting for.
   /// \param current_task_id The task that is blocked.
   /// \param ray_get Whether the task is blocked in a `ray.get` call.
+  /// \param get_request_id The ID of get request.
   /// \return Void.
   void AsyncResolveObjects(const std::shared_ptr<ClientConnection> &client,
                            const std::vector<rpc::ObjectReference> &required_object_refs,
                            const TaskID &current_task_id,
-                           bool ray_get);
+                           bool ray_get,
+                           uint64_t *get_request_id = nullptr);
 
   /// Handle end of a blocking object get. This could be a task assigned to a
   /// worker, an out-of-band task (e.g., a thread created by the application),
@@ -394,9 +396,13 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   ///
   /// \param client The client that is executing the unblocked task.
   /// \param current_task_id The task that is unblocked.
+  /// \param get_request_ids The IDs of the get requests that needs to be canceled.
+  /// std:: means cancel all get request which come from worker.
   /// \return Void.
-  void AsyncResolveObjectsFinish(const std::shared_ptr<ClientConnection> &client,
-                                 const TaskID &current_task_id);
+  void AsyncResolveObjectsFinish(
+      const std::shared_ptr<ClientConnection> &client,
+      const TaskID &current_task_id,
+      std::optional<absl::flat_hash_set<uint64_t>> get_request_ids = std::nullopt);
 
   /// Handle a task that is blocked. Note that this callback may
   /// arrive after the worker lease has been returned to the node manager.
@@ -409,7 +415,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// However, it is guaranteed to arrive after DirectCallTaskBlocked.
   ///
   /// \param worker Shared ptr to the worker, or nullptr if lost.
-  void HandleDirectCallTaskUnblocked(const std::shared_ptr<WorkerInterface> &worker);
+  /// \param get_request_ids The IDs of the get requests that needs to be canceled.
+  /// std:: means cancel all get request which come from worker.
+  void HandleDirectCallTaskUnblocked(
+      const std::shared_ptr<WorkerInterface> &worker,
+      std::optional<absl::flat_hash_set<uint64_t>> get_request_ids = std::nullopt);
 
   /// Destroy a worker.
   /// We will disconnect the worker connection first and then kill the worker.
