@@ -6,7 +6,7 @@ from ray.util.annotations import PublicAPI
 
 @PublicAPI(stability="alpha")
 class TrainingFailedError(RayTrainError):
-    """Exception raised by `<Framework>Trainer.fit()` when training fails."""
+    """Exception raised after the controller finishes and training starts."""
 
     def __init__(self, error_message: str, worker_failures: Dict[int, Exception]):
         super().__init__("Training failed due to worker errors:\n" + error_message)
@@ -15,3 +15,17 @@ class TrainingFailedError(RayTrainError):
 
     def __reduce__(self):
         return (self.__class__, (self._error_message, self.worker_failures))
+
+
+@PublicAPI(stability="alpha")
+class ControllerError(RayTrainError):
+    """Exception raised when training fails due to controller errors."""
+
+    def __init__(self, controller_failure: Exception):
+        super().__init__(
+            "Training failed due to controller errors:\n" + str(controller_failure)
+        )
+        self.controller_failure = controller_failure
+
+    def __reduce__(self):
+        return (self.__class__, (self.controller_failure))
