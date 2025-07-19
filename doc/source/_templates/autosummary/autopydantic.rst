@@ -7,7 +7,8 @@
     :exclude-members: Config
     :model-show-config-summary: False
     :model-show-validator-summary: False
-    :model-show-field-summary: False
+    :model-show-field-summary: True
     :field-list-validators: False
+    :field-show-default: True
     :model-show-json: False
     :undoc-members: 
