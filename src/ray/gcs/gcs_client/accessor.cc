@@ -767,15 +767,16 @@ void NodeInfoAccessor::HandleNotification(rpc::GcsNodeInfo &&node_info) {
 
 void NodeInfoAccessor::AsyncResubscribe() {
   RAY_LOG(DEBUG) << "Reestablishing subscription for node info.";
-  auto fetch_all_done = [](const Status &status) {
-    RAY_LOG(INFO) << "Finished fetching all node information from gcs server after gcs "
-                     "server or pub-sub server is restarted.";
-  };
-
-  if (subscribe_node_operation_ != nullptr) {
-    RAY_CHECK_OK(subscribe_node_operation_([this, fetch_all_done](const Status &status) {
-      fetch_node_data_operation_(fetch_all_done);
-    }));
+  if (fetch_node_data_operation_ != nullptr) {
+    client_impl_->GetGcsSubscriber().SubscribeAllNodeInfo(
+        /*subscribe=*/[this](rpc::GcsNodeInfo
+                                 &&data) { HandleNotification(std::move(data)); },
+        /*done=*/
+        [](const Status &) {
+          RAY_LOG(INFO)
+              << "Finished fetching all node information from gcs server after gcs "
+                 "server or pub-sub server is restarted.";
+        });
   }
 }
 
