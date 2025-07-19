@@ -51,8 +51,8 @@ std::function<void()> CoreWorkerClientPool::GetDefaultUnavailableTimeoutCallback
               return;
             }
             if (reply.is_dead()) {
-              RAY_LOG(INFO).WithField(worker_id)
-                  << "Disconnecting core worker client because its node is dead";
+              RAY_LOG(INFO).WithField(worker_id).WithField(node_id)
+                  << "Disconnecting core worker client because the worker is dead";
               worker_client_pool->Disconnect(worker_id);
             }
           });
@@ -61,6 +61,8 @@ std::function<void()> CoreWorkerClientPool::GetDefaultUnavailableTimeoutCallback
     if (gcs_client->Nodes().IsSubscriptionCachePopulated()) {
       auto *node_info = gcs_client->Nodes().Get(node_id, /*filter_dead_nodes=*/true);
       if (node_info == nullptr) {
+        RAY_LOG(INFO).WithField(worker_id).WithField(node_id)
+            << "Disconnecting core worker client because its node is dead.";
         worker_client_pool->Disconnect(worker_id);
         return;
       }
@@ -71,6 +73,7 @@ std::function<void()> CoreWorkerClientPool::GetDefaultUnavailableTimeoutCallback
     gcs_client->Nodes().AsyncGetAll(
         [check_worker_alive = std::move(check_worker_alive),
          worker_id,
+         node_id,
          worker_client_pool](const Status &status,
                              std::vector<rpc::GcsNodeInfo> &&nodes) {
           if (!status.ok()) {
@@ -78,7 +81,7 @@ std::function<void()> CoreWorkerClientPool::GetDefaultUnavailableTimeoutCallback
             return;
           }
           if (nodes.empty() || nodes[0].state() != rpc::GcsNodeInfo::ALIVE) {
-            RAY_LOG(INFO).WithField(worker_id)
+            RAY_LOG(INFO).WithField(worker_id).WithField(node_id)
                 << "Disconnecting core worker client because its node is dead";
             worker_client_pool->Disconnect(worker_id);
             return;
