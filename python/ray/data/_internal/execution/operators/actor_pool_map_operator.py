@@ -1,11 +1,14 @@
 import abc
+import atexit
 import logging
+import threading
 import time
 import uuid
 import warnings
 from abc import abstractmethod
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
+from collections import defaultdict
 
 import ray
 from ray.actor import ActorHandle
@@ -35,7 +38,7 @@ from ray.data._internal.execution.operators.map_transformer import MapTransforme
 from ray.data._internal.execution.util import locality_string
 from ray.data._internal.remote_fn import _add_system_error_to_retry_exceptions
 from ray.data.block import Block, BlockMetadata
-from ray.data.context import DataContext
+from ray.data.context import DataContext, DEFAULT_MAX_TASKS_IN_FLIGHT_PER_ACTOR
 from ray.types import ObjectRef
 from ray.util.common import INT32_MAX
 
@@ -71,6 +74,7 @@ class ActorPoolMapOperator(MapOperator):
         map_task_kwargs: Optional[Dict[str, Any]] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
+        shared_key: Optional[str] = None,
     ):
         """Create an ActorPoolMapOperator instance.
 
@@ -98,6 +102,7 @@ class ActorPoolMapOperator(MapOperator):
                 advanced, experimental feature.
             ray_remote_args: Customize the ray remote args for this op's tasks.
                 See :func:`ray.remote` for details.
+            shared_key: Optional key for sharing the actor pool across executions.
         """
         super().__init__(
             map_transformer,
@@ -111,6 +116,7 @@ class ActorPoolMapOperator(MapOperator):
             ray_remote_args_fn,
             ray_remote_args,
         )
+        self._shared_key = shared_key
         self._ray_actor_task_remote_args = {}
         actor_task_errors = self.data_context.actor_task_retry_on_errors
         if actor_task_errors:
@@ -143,13 +149,13 @@ class ActorPoolMapOperator(MapOperator):
 
         max_actor_concurrency = self._ray_remote_args.get("max_concurrency", 1)
 
-        self._actor_pool = _ActorPool(
-            self._start_actor,
-            per_actor_resource_usage,
-            min_size=compute_strategy.min_size,
-            max_size=compute_strategy.max_size,
-            max_actor_concurrency=max_actor_concurrency,
-            max_tasks_in_flight_per_actor=(
+        actor_pool_kwargs = {
+            "create_actor_fn": self._start_actor,
+            "per_actor_resource_usage": per_actor_resource_usage,
+            "min_size": compute_strategy.min_size,
+            "max_size": compute_strategy.max_size,
+            "max_actor_concurrency": max_actor_concurrency,
+            "max_tasks_in_flight_per_actor": (
                 # NOTE: Unless explicitly configured by the user, max tasks-in-flight config
                 #       will fall back to be 2 x of `max_concurrency`, entailing that for every
                 #       running task we'd allow 1 more task to be enqueued
@@ -157,8 +163,21 @@ class ActorPoolMapOperator(MapOperator):
                 or data_context.max_tasks_in_flight_per_actor
                 or max_actor_concurrency * 2
             ),
-            _enable_actor_pool_on_exit_hook=self.data_context._enable_actor_pool_on_exit_hook,
-        )
+            "_enable_actor_pool_on_exit_hook": self.data_context._enable_actor_pool_on_exit_hook,
+        }
+
+        if shared_key is not None:
+            existing_pool = _shared_actor_pool_registry.get(shared_key)
+            if existing_pool is not None:
+                self._verify_actor_pool_compatibility(
+                    existing_pool, compute_strategy, self._ray_remote_args, data_context
+                )
+                self._actor_pool = existing_pool
+            else:
+                self._actor_pool = _ActorPool(**actor_pool_kwargs)
+            _shared_actor_pool_registry.register(shared_key, self._actor_pool)
+        else:
+            self._actor_pool = _ActorPool(**actor_pool_kwargs)
 
         self._actor_task_selector = self._create_task_selector(self._actor_pool)
         # A queue of bundles awaiting dispatch to actors.
@@ -196,9 +215,13 @@ class ActorPoolMapOperator(MapOperator):
 
         # Create the actor workers and add them to the pool.
         self._cls = ray.remote(**self._ray_remote_args)(_MapWorker)
+
+        # If we're reusing actors across executions, some actors may already exist in
+        # the pool. Only create the delta needed to satisfy the minimum size.
         self._actor_pool.scale(
             ActorPoolScalingRequest(
-                delta=self._actor_pool.min_size(), reason="scaling to min size"
+                delta=self._actor_pool.min_size() - self._actor_pool.current_size(),
+                reason="scaling to min size",
             )
         )
 
@@ -368,7 +391,15 @@ class ActorPoolMapOperator(MapOperator):
             )
 
     def _do_shutdown(self, force: bool = False):
-        self._actor_pool.shutdown(force=force)
+        if self._shared_key is not None and not force:
+            _shared_actor_pool_registry.release(self._shared_key, force=False)
+            return
+
+        if self._shared_key is not None and force:
+            _shared_actor_pool_registry.release(self._shared_key, force=True)
+        else:
+            self._actor_pool.shutdown(force=force)
+
         # NOTE: It's critical for Actor Pool to release actors before calling into
         #       the base method that will attempt to cancel and join pending.
         super()._do_shutdown(force)
@@ -462,6 +493,12 @@ class ActorPoolMapOperator(MapOperator):
         return ray_remote_args
 
     def get_autoscaling_actor_pools(self) -> List[AutoscalingActorPool]:
+        # While reusing actors across executions, we don't want the default
+        # autoscaler logic to scale the pool down to zero after the operator
+        # finishes, otherwise the next execution would have to spin them up
+        # again. In that case, we simply opt-out of autoscaling.
+        if self._shared_key is not None:
+            return []
         return [self._actor_pool]
 
     def update_resource_usage(self) -> None:
@@ -485,6 +522,51 @@ class ActorPoolMapOperator(MapOperator):
     def get_actor_info(self) -> _ActorPoolInfo:
         """Returns Actor counts for Alive, Restarting and Pending Actors."""
         return self._actor_pool.get_actor_info()
+
+    def _verify_actor_pool_compatibility(
+        self,
+        existing_pool: "_ActorPool",
+        compute_strategy: ActorPoolStrategy,
+        ray_remote_args: Dict[str, Any],
+        data_context: DataContext,
+    ):
+        """Verify that the new operator's configuration is compatible with the existing shared actor pool."""
+        if (
+            existing_pool.min_size() != compute_strategy.min_size
+            or existing_pool.max_size() != compute_strategy.max_size
+            or existing_pool.max_tasks_in_flight_per_actor()
+            != (
+                compute_strategy.max_tasks_in_flight_per_actor
+                or DEFAULT_MAX_TASKS_IN_FLIGHT_PER_ACTOR
+            )
+        ):
+            raise ValueError(
+                f"Cannot reuse shared actor pool with key '{self._shared_key}': "
+                f"Compute strategy mismatch. "
+                f"Existing pool: min_size={existing_pool.min_size()}, max_size={existing_pool.max_size()}, "
+                f"max_tasks_in_flight={existing_pool.max_tasks_in_flight_per_actor()}. "
+                f"New operator: min_size={compute_strategy.min_size}, max_size={compute_strategy.max_size}, "
+                f"max_tasks_in_flight={compute_strategy.max_tasks_in_flight_per_actor or DEFAULT_MAX_TASKS_IN_FLIGHT_PER_ACTOR}."
+            )
+
+        existing_resources = existing_pool.per_actor_resource_usage()
+        new_per_actor_cpu = ray_remote_args.get("num_cpus", 0)
+        new_per_actor_gpu = ray_remote_args.get("num_gpus", 0)
+
+        if (
+            existing_resources.cpu != new_per_actor_cpu
+            or existing_resources.gpu != new_per_actor_gpu
+        ):
+            raise ValueError(
+                f"Cannot reuse shared actor pool with key '{self._shared_key}': "
+                f"Resource requirements mismatch. "
+                f"Existing pool per-actor resources: CPU={existing_resources.cpu}, GPU={existing_resources.gpu}. "
+                f"New operator per-actor resources: CPU={new_per_actor_cpu}, GPU={new_per_actor_gpu}."
+            )
+
+        # Note: We don't check scheduling_strategy, max_restarts, max_task_retries etc.
+        # because these don't affect whether actors can be shared - they're execution-level
+        # settings that can vary between operators using the same actor pool.
 
 
 class _MapWorker:
@@ -956,7 +1038,7 @@ class _ActorPool(AutoscalingActorPool):
         """Get the logical IDs for pending and running actors in the actor pool.
 
         We can’t use Ray Core actor IDs because we need to identify actors by labels,
-        but labels must be set before creation, and actor IDs aren’t available until
+        but labels must be set before creation, and actor IDs aren't available until
         after.
         """
         return list(self._actor_to_logical_id.values())
@@ -1110,3 +1192,59 @@ class _ActorPool(AutoscalingActorPool):
             return self.num_tasks_in_flight() / (
                 self._max_actor_concurrency * self.num_running_actors()
             )
+
+
+class SharedActorPoolRegistry:
+    """
+    Thread-safe registry for shared ActorPool instances across ActorPoolMapOperator executions.
+    This allows multiple operators to share the same actor pool while maintaining separate operator state.
+    """
+
+    def __init__(self):
+        self._lock = threading.RLock()
+        self._pools: Dict[str, _ActorPool] = {}
+        self._usage_count = defaultdict(int)
+
+    def register(self, shared_key: str, pool: _ActorPool) -> _ActorPool:
+        """Register or retrieve a shared pool and increment usage count."""
+        with self._lock:
+            self._pools[shared_key] = pool
+            self._usage_count[shared_key] += 1
+            return pool
+
+    def get(self, shared_key: str) -> Optional[_ActorPool]:
+        """Get a shared pool if it exists."""
+        with self._lock:
+            return self._pools.get(shared_key)
+
+    def release(self, shared_key: str, force: bool = False) -> bool:
+        """Release a shared pool and decrement usage count."""
+        with self._lock:
+            if shared_key not in self._usage_count:
+                return False
+
+            if force:
+                pool = self._pools.pop(shared_key, None)
+                if pool:
+                    self._usage_count.pop(shared_key, None)
+                    pool.shutdown(force=True)
+                    return True
+                return False
+
+            if self._usage_count[shared_key] > 0:
+                self._usage_count[shared_key] -= 1
+            return False
+
+    def shutdown(self):
+        """Shutdown all shared pools."""
+        with self._lock:
+            keys = list(self._pools.keys())
+            for key in keys:
+                self.release(key, force=True)
+
+
+_shared_actor_pool_registry = SharedActorPoolRegistry()
+
+# Register an atexit hook to ensure all shared pools are cleaned up when the
+# Python process exits. This prevents lingering Ray actors when sharing pools.
+atexit.register(_shared_actor_pool_registry.shutdown)

@@ -164,6 +164,7 @@ class MapBatches(AbstractUDFMap):
         compute: Optional[ComputeStrategy] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
+        shared_key: Optional[str] = None,
     ):
         super().__init__(
             "MapBatches",
@@ -181,6 +182,7 @@ class MapBatches(AbstractUDFMap):
         self._batch_size = batch_size
         self._batch_format = batch_format
         self._zero_copy_batch = zero_copy_batch
+        self._shared_key = shared_key
 
     def can_modify_num_rows(self) -> bool:
         return False

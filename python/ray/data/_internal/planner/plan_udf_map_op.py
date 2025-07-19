@@ -277,6 +277,7 @@ def plan_udf_map_op(
         min_rows_per_bundle=op._min_rows_per_bundled_input,
         ray_remote_args_fn=op._ray_remote_args_fn,
         ray_remote_args=op._ray_remote_args,
+        shared_key=getattr(op, "_shared_key", None),
     )
 
 
@@ -704,6 +705,7 @@ def _generate_transform_fn_for_async_map(
         #       to keep the output ordering the same as that one of the input
         #       iterator.
         completed_tasks_queue = asyncio.Queue(maxsize=max_concurrency)
+
         # NOTE: This method is nested to support Python 3.9 where we only can
         #       init `asyncio.Queue` inside the async function
         async def _reorder() -> None:
