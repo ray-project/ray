@@ -2,6 +2,7 @@ import logging
 from typing import List, Optional, Union
 
 import ray
+from ray.dag import DAGNode
 from ray.dag.collective_node import CollectiveOutputNode, _CollectiveOperation
 from ray.dag.constants import (
     BIND_INDEX_KEY,
@@ -15,6 +16,8 @@ from ray.experimental.util.types import (
     AllGatherOp,
     AllReduceOp,
     ReduceScatterOp,
+    BroadcastOp,
+    ReduceOperation,
     _CollectiveOp,
 )
 from ray.util.collective.types import ReduceOp as RayReduceOp
@@ -23,8 +26,10 @@ logger = logging.getLogger(__name__)
 
 
 def _bind(
-    inputs: Union[List["ray.dag.DAGNode"], List[List["ray.dag.DAGNode"]]],
+    inputs: Union[DAGNode, List[DAGNode], List[List[DAGNode]]],
     op: _CollectiveOp,
+    *,
+    dst: Optional[Union["ray.actor.ActorHandle", List["ray.actor.ActorHandle"]]] = None,
     transport: Optional[Union[str, Communicator]] = None,
 ):
     """
@@ -48,9 +53,12 @@ def _bind(
     5. If input nodes are provided, then all tensors have the same shape.
         If lists of input nodes are provided, then all tensors in each
         list have the same shape.
+    6. If the operation is one-to-all, dst must be a list of actor handles and
+        the input node's actor handle must be in the dst list.
+    7. If the operation is all-to-one, dst must be an actor handle and dst must
+        be an input node's actor handle.
 
-    Requirements 1-3 are checked in the `CollectiveGroup` constructor.
-    Requirement 4 is not checked yet.
+    Requirements 1-7 are checked in the `CollectiveGroup` constructor.
 
     Args:
         inputs: A list of DAG nodes or a list of lists of DAG nodes. Each leaf list
@@ -64,6 +72,10 @@ def _bind(
         with the same shape as the input nodes. Each output node has the same order and
         belongs to the same actor as the corresponding input node.
     """
+    # Convert single DAGNode into a list for type checking.
+    if isinstance(inputs, DAGNode):
+        inputs = [inputs]
+
     if isinstance(inputs[0], list) and not isinstance(op, AllReduceOp):
         raise ValueError(
             "Currently binding a nested list of dag nodes is only supported for allreduce"
@@ -75,7 +87,7 @@ def _bind(
 
     if transport is None:
         transport = TorchTensorType.ACCELERATOR
-    collective_op = _CollectiveOperation(inputs, op, transport)
+    collective_op = _CollectiveOperation(inputs, op, dst, transport)
     collective_output_nodes: List[CollectiveOutputNode] = []
 
     if isinstance(op, AllGatherOp):
@@ -84,6 +96,10 @@ def _bind(
         method_name = f"allreduce.{op.reduceOp}"
     elif isinstance(op, ReduceScatterOp):
         method_name = f"reducescatter.{op.reduceOp}"
+    elif isinstance(op, BroadcastOp):
+        method_name = "broadcast"
+    elif isinstance(op, ReduceOperation):
+        method_name = f"reduce.{op.reduceOp}"
     else:
         raise ValueError(f"Expected a collective operation, but got {op}")
 
@@ -132,10 +148,10 @@ class AllGatherWrapper:
 
     def bind(
         self,
-        input_nodes: List["ray.dag.DAGNode"],
+        input_nodes: List[DAGNode],
         transport: Optional[Union[str, Communicator]] = None,
     ) -> List[CollectiveOutputNode]:
-        return _bind(input_nodes, AllGatherOp(), transport)
+        return _bind(input_nodes, AllGatherOp(), transport=transport)
 
     def __call__(
         self,
@@ -153,14 +169,14 @@ class AllReduceWrapper:
 
     def bind(
         self,
-        input_nodes: List["ray.dag.DAGNode"],
+        input_nodes: List[DAGNode],
         op: ReduceOp = ReduceOp.SUM,
         transport: Optional[Union[str, Communicator]] = None,
     ) -> List[CollectiveOutputNode]:
         if not isinstance(op, ReduceOp):
             raise ValueError(f"Unexpected operation: {op}")
 
-        return _bind(input_nodes, AllReduceOp(reduceOp=op), transport)
+        return _bind(input_nodes, AllReduceOp(reduceOp=op), transport=transport)
 
     def __call__(
         self,
@@ -178,14 +194,14 @@ class ReduceScatterWrapper:
 
     def bind(
         self,
-        input_nodes: List["ray.dag.DAGNode"],
+        input_nodes: List[DAGNode],
         op: ReduceOp = ReduceOp.SUM,
         transport: Optional[Union[str, Communicator]] = None,
     ) -> List[CollectiveOutputNode]:
         if not isinstance(op, ReduceOp):
             raise ValueError(f"Unexpected operation: {op}")
 
-        return _bind(input_nodes, ReduceScatterOp(reduceOp=op), transport)
+        return _bind(input_nodes, ReduceScatterOp(reduceOp=op), transport=transport)
 
     def __call__(
         self,
@@ -198,6 +214,64 @@ class ReduceScatterWrapper:
         return reducescatter(tensor, group_name, op)
 
 
+class BroadcastWrapper:
+    """Wrapper for NCCL broadcast."""
+
+    def bind(
+        self,
+        input_node: DAGNode,
+        *,
+        dst: List["ray.actor.ActorHandle"],
+        transport: Optional[Union[str, Communicator]] = None,
+    ) -> List[CollectiveOutputNode]:
+        return _bind(input_node, BroadcastOp(), dst=dst, transport=transport)
+
+    def __call__(
+        self,
+        tensor,
+        src_rank: int,
+        group_name: str = "default",
+    ):
+        from ray.util.collective.collective import broadcast
+
+        return broadcast(tensor, src_rank, group_name)
+
+
+class ReduceWrapper:
+    """Wrapper for NCCL reduce."""
+
+    def bind(
+        self,
+        input_nodes: List[DAGNode],
+        *,
+        dst: "ray.actor.ActorHandle",
+        op: ReduceOp = ReduceOp.SUM,
+        transport: Optional[Union[str, Communicator]] = None,
+    ) -> List[CollectiveOutputNode]:
+        if not isinstance(op, ReduceOp):
+            raise ValueError(f"Unexpected operation: {op}")
+
+        return _bind(
+            input_nodes,
+            ReduceOperation(reduceOp=op),
+            dst=dst,
+            transport=transport,
+        )
+
+    def __call__(
+        self,
+        tensor,
+        dst_rank: int,
+        group_name: str = "default",
+        op: RayReduceOp = RayReduceOp.SUM,
+    ):
+        from ray.util.collective.collective import reduce
+
+        return reduce(tensor, dst_rank, group_name, op)
+
+
 allgather = AllGatherWrapper()
 allreduce = AllReduceWrapper()
 reducescatter = ReduceScatterWrapper()
+broadcast = BroadcastWrapper()
+reduce = ReduceWrapper()
