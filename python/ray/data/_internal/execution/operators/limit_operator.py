@@ -33,6 +33,12 @@ class LimitOperator(OneToOneOperator):
         if self._limit <= 0:
             self.mark_execution_finished()
 
+    def _get_limit_reached_rows(self, input_total_rows: Optional[int] = None) -> int:
+        if input_total_rows is not None and self._limit >= input_total_rows:
+            return input_total_rows
+        else:
+            return self._limit
+
     def _limit_reached(self, input_total_rows: Optional[int] = None) -> bool:
         if input_total_rows is not None and self._limit >= input_total_rows:
             return self._consumed_rows >= input_total_rows
@@ -77,13 +83,13 @@ class LimitOperator(OneToOneOperator):
                 ).remote(
                     block,
                     metadata,
-                    self._limit - self._consumed_rows,
+                    self._get_limit_reached_rows(input_total_rows) - self._consumed_rows,
                 )
                 out_blocks.append(block)
                 metadata = ray.get(metadata_ref)
                 out_metadata.append(metadata)
                 self._output_blocks_stats.append(metadata.to_stats())
-                self._consumed_rows = self._limit
+                self._consumed_rows = self._get_limit_reached_rows(input_total_rows)
                 break
         self._cur_output_bundles += 1
         out_refs = RefBundle(
