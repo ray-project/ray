@@ -33,7 +33,7 @@ class LimitOperator(OneToOneOperator):
         if self._limit <= 0:
             self.mark_execution_finished()
 
-    def _limit_reached(self, input_total_rows: Optional[int]) -> bool:
+    def _limit_reached(self, input_total_rows: Optional[int] = None) -> bool:
         if input_total_rows is not None and self._limit >= input_total_rows:
             return self._consumed_rows >= input_total_rows
         else:
