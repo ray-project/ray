@@ -271,11 +271,14 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // Init usage stats client.
   InitUsageStatsClient();
 
-  RecordMetrics();
-
   // Start RPC server when all tables have finished loading initial
   // data.
   rpc_server_.Run();
+
+  periodical_runner_->RunFnPeriodically(
+      [this] { RecordMetrics(); },
+      /*ms*/ RayConfig::instance().metrics_report_interval_ms() / 2,
+      "GCSServer.deadline_timer.metrics_report");
 
   periodical_runner_->RunFnPeriodically(
       [this] {
@@ -732,6 +735,8 @@ void GcsServer::InitGcsTaskManager() {
   // Register service.
   rpc_server_.RegisterService(
       std::make_unique<rpc::TaskInfoGrpcService>(io_context, *gcs_task_manager_));
+  rpc_server_.RegisterService(
+      std::make_unique<rpc::EventExportGrpcService>(io_context, *gcs_task_manager_));
 }
 
 void GcsServer::InstallEventListeners() {
@@ -838,11 +843,6 @@ void GcsServer::RecordMetrics() const {
   gcs_placement_group_manager_->RecordMetrics();
   gcs_task_manager_->RecordMetrics();
   gcs_job_manager_->RecordMetrics();
-  execute_after(
-      io_context_provider_.GetDefaultIOContext(),
-      [this] { RecordMetrics(); },
-      std::chrono::milliseconds(RayConfig::instance().metrics_report_interval_ms() /
-                                2) /* milliseconds */);
 }
 
 void GcsServer::DumpDebugStateToFile() const {

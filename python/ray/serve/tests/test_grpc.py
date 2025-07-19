@@ -1,4 +1,3 @@
-import os
 import sys
 from typing import Any
 
@@ -9,9 +8,10 @@ import pytest
 
 import ray
 from ray import serve
-from ray._common.test_utils import SignalActor, wait_for_condition
+from ray._common.test_utils import SignalActor
 from ray.serve._private.constants import SERVE_NAMESPACE
 from ray.serve._private.test_utils import (
+    get_application_url,
     ping_fruit_stand,
     ping_grpc_another_method,
     ping_grpc_call_method,
@@ -25,11 +25,10 @@ from ray.serve.config import gRPCOptions
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
 from ray.serve.grpc_util import RayServegRPCContext
 from ray.serve.tests.test_config_files.grpc_deployment import g, g2
-from ray.util.state import list_actors
 
 
-def test_serving_request_through_grpc_proxy(ray_cluster):
-    """Test serving request through gRPC proxy.
+def test_serving_grpc_requests(ray_cluster):
+    """Test serving gRPC requests.
 
     When Serve runs with a gRPC deployment, the app should be deployed successfully,
     both ListApplications and Healthz methods returning successful responses, and
@@ -119,7 +118,7 @@ def test_serve_start_dictionary_grpc_options(ray_cluster):
     ping_grpc_healthz(channel)
 
 
-def test_grpc_proxy_routing_without_metadata(ray_cluster):
+def test_grpc_routing_without_metadata(ray_cluster):
     """Test metadata are not required when calling gRPC proxy with only one app.
 
     When there is only one app deployed, gRPC proxy will route the request to the app
@@ -173,7 +172,7 @@ def test_grpc_proxy_routing_without_metadata(ray_cluster):
     assert "Application metadata not set" in rpc_error.details()
 
 
-def test_grpc_proxy_with_request_id(ray_cluster):
+def test_grpc_request_with_request_id(ray_cluster):
     """Test gRPC request with and without request id.
 
     When no request id is passed, gRPC proxy will respond with a random request id in
@@ -225,131 +224,8 @@ def test_grpc_proxy_with_request_id(ray_cluster):
     assert custom_request_id != response_request_id
 
 
-def test_grpc_proxy_on_draining_nodes(ray_cluster):
-    """Test gRPC request on the draining node.
-
-    When there are no replicas on head node and some replicas on the worker node, the
-    ListApplications and Healthz methods should respond successfully. When there are
-    no replicas on any nodes, ListApplications and Healthz methods should continue to
-    succeeding on the head node. But should return draining response on the worker node.
-
-    Also note, this is to ensure the previous fix to serve downscaling also applies to
-    gRPC proxy. Head node will not need to be downscaled and never be in the draining
-    state. Worker nodes will be in draining when there is no replicas. We will fail the
-    health check in this case, so ALB knows not to route to this node anymore.
-    """
-    head_node_grpc_port = 9000
-    worker_node_grpc_port = 9001
-
-    # Setup worker gRPC proxy to be pointing to port 9001. Head node gRPC proxy will
-    # continue to be pointing to the default port 9000.
-    os.environ["TEST_WORKER_NODE_GRPC_PORT"] = str(worker_node_grpc_port)
-
-    # Set up a cluster with 2 nodes.
-    cluster = ray_cluster
-    cluster.add_node(num_cpus=0)
-    cluster.add_node(num_cpus=2)
-    cluster.wait_for_nodes()
-    ray.init(address=cluster.address)
-
-    # Start serve with gRPC proxy
-    grpc_servicer_functions = [
-        "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
-        "ray.serve.generated.serve_pb2_grpc.add_FruitServiceServicer_to_server",
-    ]
-    serve.start(
-        http_options={"location": "EveryNode"},
-        grpc_options=gRPCOptions(
-            port=head_node_grpc_port,
-            grpc_servicer_functions=grpc_servicer_functions,
-        ),
-    )
-
-    # Deploy 2 replicas, both should be on the worker node.
-    @serve.deployment(num_replicas=2)
-    class HelloModel:
-        def __call__(self):
-            return serve_pb2.UserDefinedResponse(greeting="hello")
-
-    model = HelloModel.bind()
-    app_name = "app1"
-    serve.run(model, name=app_name)
-
-    # Ensure worker node has both replicas.
-    def check_replicas_on_worker_nodes():
-        return (
-            len(
-                {
-                    a.node_id
-                    for a in list_actors(address=cluster.address)
-                    if a.class_name.startswith("ServeReplica")
-                }
-            )
-            == 1
-        )
-
-    wait_for_condition(check_replicas_on_worker_nodes)
-
-    # Ensure total actors of 2 proxies, 1 controller, and 2 replicas, and 2 nodes exist.
-    wait_for_condition(lambda: len(list_actors(address=cluster.address)) == 5)
-    assert len(ray.nodes()) == 2
-
-    # Set up gRPC channels.
-    head_node_channel = grpc.insecure_channel(f"localhost:{head_node_grpc_port}")
-    worker_node_channel = grpc.insecure_channel(f"localhost:{worker_node_grpc_port}")
-
-    # Ensures ListApplications method on the head node is succeeding.
-    wait_for_condition(
-        ping_grpc_list_applications, channel=head_node_channel, app_names=[app_name]
-    )
-
-    # Ensures Healthz method on the head node is succeeding.
-    ping_grpc_healthz(head_node_channel)
-
-    # Ensures ListApplications method on the worker node is succeeding.
-    wait_for_condition(
-        ping_grpc_list_applications,
-        channel=worker_node_channel,
-        app_names=[app_name],
-        timeout=30,
-    )
-
-    # Ensures Healthz method on the worker node is succeeding.
-    ping_grpc_healthz(worker_node_channel)
-
-    # Delete the deployment should bring the active actors down to 3 and drop
-    # replicas on all nodes.
-    serve.delete(name=app_name)
-
-    wait_for_condition(
-        lambda: len(
-            list_actors(address=cluster.address, filters=[("STATE", "=", "ALIVE")])
-        )
-        == 3,
-    )
-
-    # Ensures ListApplications method on the head node is succeeding.
-    wait_for_condition(
-        ping_grpc_list_applications, channel=head_node_channel, app_names=[]
-    )
-
-    # Ensures Healthz method on the head node is succeeding.
-    ping_grpc_healthz(head_node_channel)
-
-    # Ensures ListApplications method on the worker node is draining.
-    wait_for_condition(
-        ping_grpc_list_applications,
-        channel=worker_node_channel,
-        app_names=[],
-        test_draining=True,
-    )
-
-    # Ensures Healthz method on the worker node is draining.
-    ping_grpc_healthz(worker_node_channel, test_draining=True)
-
-
 @pytest.mark.parametrize("streaming", [False, True])
-def test_grpc_proxy_timeouts(ray_instance, ray_shutdown, streaming: bool):
+def test_grpc_request_timeouts(ray_instance, ray_shutdown, streaming: bool):
     """Test gRPC request timed out.
 
     When the request timed out, gRPC proxy should return timeout response for both
@@ -411,7 +287,7 @@ def test_grpc_proxy_timeouts(ray_instance, ray_shutdown, streaming: bool):
 
 
 @pytest.mark.parametrize("streaming", [False, True])
-def test_grpc_proxy_internal_error(ray_instance, ray_shutdown, streaming: bool):
+def test_grpc_request_internal_error(ray_instance, ray_shutdown, streaming: bool):
     """Test gRPC request error out.
 
     When the request error out, gRPC proxy should return INTERNAL status and the error
@@ -459,7 +335,7 @@ def test_grpc_proxy_internal_error(ray_instance, ray_shutdown, streaming: bool):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("streaming", [False, True])
-async def test_grpc_proxy_cancellation(ray_instance, ray_shutdown, streaming: bool):
+async def test_grpc_request_cancellation(ray_instance, ray_shutdown, streaming: bool):
     """Test gRPC request client cancelled.
 
     When the request is canceled, gRPC proxy should cancel the underlying task.
@@ -566,7 +442,8 @@ def test_using_grpc_context(ray_instance, ray_shutdown, streaming: bool):
     app_name = "app1"
     serve.run(model, name=app_name)
 
-    channel = grpc.insecure_channel("localhost:9000")
+    url = get_application_url("gRPC", app_name=app_name, use_localhost=True)
+    channel = grpc.insecure_channel(url)
     stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
     request = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
 
@@ -627,7 +504,8 @@ def test_using_grpc_context_exception(ray_instance, ray_shutdown, streaming: boo
     app_name = "app1"
     serve.run(model, name=app_name)
 
-    channel = grpc.insecure_channel("localhost:9000")
+    url = get_application_url("gRPC", app_name=app_name, use_localhost=True)
+    channel = grpc.insecure_channel(url)
     stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
     request = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
 
@@ -725,7 +603,8 @@ def test_using_grpc_context_bad_function_signature(
     app_name = "app1"
     serve.run(model, name=app_name)
 
-    channel = grpc.insecure_channel("localhost:9000")
+    url = get_application_url("gRPC", app_name=app_name, use_localhost=True)
+    channel = grpc.insecure_channel(url)
     stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
     request = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
 
@@ -767,7 +646,8 @@ def test_grpc_client_sending_large_payload(ray_instance, ray_shutdown):
     options = [
         ("grpc.max_receive_message_length", 1024 * 1024 * 1024),
     ]
-    channel = grpc.insecure_channel("localhost:9000", options=options)
+    url = get_application_url("gRPC", use_localhost=True)
+    channel = grpc.insecure_channel(url, options=options)
     stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
 
     # This is a large payload that exists gRPC's default message limit.
