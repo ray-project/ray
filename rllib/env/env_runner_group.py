@@ -23,6 +23,7 @@ from ray.exceptions import RayActorError
 from ray.rllib.core import (
     COMPONENT_ENV_TO_MODULE_CONNECTOR,
     COMPONENT_LEARNER,
+    COMPONENT_METRICS_LOGGER,
     COMPONENT_MODULE_TO_ENV_CONNECTOR,
     COMPONENT_RL_MODULE,
 )
@@ -380,6 +381,7 @@ class EnvRunnerGroup:
         env_runner_indices_to_update: Optional[List[int]] = None,
         env_to_module=None,
         module_to_env=None,
+        env_runner_metrics: Optional[Dict[str, Any]] = None,
     ) -> None:
         """Synchronizes the connectors of this EnvRunnerGroup's EnvRunners.
 
@@ -402,6 +404,9 @@ class EnvRunnerGroup:
             env_runner_indices_to_update: The indices of those EnvRunners to update
                 with the merged state. Use None (default) to update all remote
                 EnvRunners.
+            env_runner_metrics: The states dict of a `MetricsLogger` to sync with
+                the remote EnvRunners if `update_worker_filter_stats` is True
+                in `config`.
         """
         from_worker = from_worker or self.local_env_runner
 
@@ -438,6 +443,11 @@ class EnvRunnerGroup:
                         else {}
                     ),
                     **(rl_module_state or {}),
+                    **(
+                        {COMPONENT_METRICS_LOGGER: env_runner_metrics}
+                        if env_runner_metrics
+                        else {}
+                    ),
                 }
             )
             return
@@ -526,6 +536,26 @@ class EnvRunnerGroup:
             env_runner_states[NUM_ENV_STEPS_SAMPLED_LIFETIME] = env_steps_sampled // (
                 config.num_env_runners or 1
             )
+
+        # Update metrics:
+        if env_runner_metrics:
+            # env_runner_states[NUM_ENV_STEPS_SAMPLED_LIFETIME] should be included here
+            # and can be deprecated in the future.
+            # Divide reduce="sum" metrics by the number of env runners (such that each
+            # EnvRunner knows (roughly) its own(!) count and can infer the global
+            # count from it).
+            for stat in env_runner_metrics["stats"].values():
+                # NOTE: the hist reduction needs to be compatible with stats.merge_stats
+                if stat["reduce"] == "sum" and stat["clear_on_reduce"] is False:
+                    if stat["window"] in (None, float("inf")):
+                        stat["_hist"] = [
+                            [v // (config.num_env_runners or 1) for v in h]
+                            for h in stat["_hist"]
+                        ]
+                    stat["values"] = [
+                        v // (config.num_env_runners or 1) for v in stat["values"]
+                    ]
+            env_runner_states[COMPONENT_METRICS_LOGGER] = env_runner_metrics
 
         # If we do NOT want remote EnvRunners to get their Connector states updated,
         # only update the local worker here (with all state components, except the model
