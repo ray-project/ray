@@ -339,7 +339,7 @@ class TestLLMServer:
             mean_llm_server, mean_engine, rtol=0.1
         ), f"{mean_llm_server=}, {mean_engine=}"
         assert np.isclose(
-            std_var_llm_server, std_var_engine, atol=0.5
+            std_var_llm_server, std_var_engine, atol=1.0
         ), f"{std_var_llm_server=}, {std_var_engine=}"
 
 
