@@ -3,11 +3,29 @@ from typing import TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional, Tuple
 import ray
 from ray._private.custom_types import TensorTransportEnum
 from ray._raylet import ObjectRef
-
+import ray.util.collective as collective
+from ray.util.collective.types import Backend
+from dataclasses import dataclass
 
 if TYPE_CHECKING:
     import torch
     from ray.experimental.gpu_object_manager.gpu_object_store import GPUObjectStore
+
+
+@dataclass
+class TensorMetadata:
+    """Metadata for tensors stored in the GPU object store.
+
+    Args:
+        tensor_basic_meta: A list of tuples, each containing the shape and dtype of a tensor.
+        nixl_serialized_descs: Serialized NIXL descriptors for NIXL transport.
+        nixl_agent_meta: The additional metadata of the remote NIXL agent.
+    """
+
+    tensor_basic_meta: List[Tuple["torch.Size", "torch.dtype"]]
+    nixl_serialized_descs: Optional[bytes] = None
+    nixl_agent_meta: Optional[bytes] = None
+
 
 # GPUObjectMeta is a named tuple containing the source actor, tensor transport
 # backend, and tensor metadata.
@@ -20,11 +38,32 @@ class GPUObjectMeta(NamedTuple):
     # Must be a valid backend name as defined in
     # `ray.util.collective.types.Backend`.
     tensor_transport_backend: str
-    tensor_meta: List[Tuple["torch.Size", "torch.dtype"]]
+    tensor_meta: TensorMetadata
 
 
-def __ray_get_tensor_meta__(self, obj_id: str):
-    """Helper function that runs on the src actor to get the tensor metadata."""
+def __ray_get_tensor_meta__(
+    self: "ray.actor.ActorHandle", obj_id: str, use_nixl: bool
+) -> TensorMetadata:
+    """Helper function that runs on the source actor to get tensor metadata.
+
+    This function retrieves metadata about tensors stored in the GPU object store,
+    including their shapes and dtypes. When NIXL transport is enabled, it also gets
+    NIXL-specific metadata needed for tensor transport.
+
+    Args:
+        self: The actor that runs this function.
+        obj_id: The ID of the GPU object to get metadata for
+        use_nixl: Whether to use NIXL transport and get NIXL metadata
+
+    Returns:
+        TensorMetadata: A named tuple containing the tensor metadata.
+        - tensor_basic_meta: A list of tuples, each containing the shape and dtype of a tensor.
+        - nixl_serialized_descs: Serialized NIXL descriptors for NIXL transport.
+        - nixl_agent_meta: The additional metadata of the remote NIXL agent.
+
+    Raises:
+        AssertionError: If the object ID is not found in the GPU object store
+    """
     from ray._private.worker import global_worker
 
     gpu_object_store = global_worker.gpu_object_manager.gpu_object_store
@@ -32,7 +71,22 @@ def __ray_get_tensor_meta__(self, obj_id: str):
         obj_id
     ), f"obj_id={obj_id} not found in GPU object store"
     tensors = gpu_object_store.get_gpu_object(obj_id)
-    return [(t.shape, t.dtype) for t in tensors]
+    if use_nixl:
+        from ray.util.collective.collective_group.nixl_backend import NixlBackend
+
+        nixl_backend: NixlBackend = collective.get_group_handle("nixl")
+        serialized_descs, agent_meta = nixl_backend.get_nixl_metadata(tensors)
+        return TensorMetadata(
+            tensor_basic_meta=[(t.shape, t.dtype) for t in tensors],
+            nixl_serialized_descs=serialized_descs,
+            nixl_agent_meta=agent_meta,
+        )
+    else:
+        return TensorMetadata(
+            tensor_basic_meta=[(t.shape, t.dtype) for t in tensors],
+            nixl_serialized_descs=None,
+            nixl_agent_meta=None,
+        )
 
 
 def __ray_fetch_gpu_object__(self, obj_id: str):
@@ -70,13 +124,13 @@ class GPUObjectManager:
         return self._gpu_object_store
 
     def _get_tensor_meta(
-        self, src_actor: "ray.actor.ActorHandle", obj_id: str
+        self, src_actor: "ray.actor.ActorHandle", obj_id: str, use_nixl: bool
     ) -> ObjectRef:
         # Submit a Ray actor task to the source actor to get the tensor metadata.
         # The metadata is a list of tuples, where each tuple contains the shape and dtype
         # of a tensor in the GPU object store. This function returns an ObjectRef that
         # points to the tensor metadata.
-        return src_actor.__ray_call__.remote(__ray_get_tensor_meta__, obj_id)
+        return src_actor.__ray_call__.remote(__ray_get_tensor_meta__, obj_id, use_nixl)
 
     def is_managed_gpu_object(self, obj_id: str) -> bool:
         """
@@ -113,8 +167,9 @@ class GPUObjectManager:
         tensor_transport_backend = _tensor_transport_to_collective_backend(
             tensor_transport
         )
+        use_nixl = tensor_transport_backend == Backend.NIXL
         obj_id = obj_ref.hex()
-        tensor_meta = self._get_tensor_meta(src_actor, obj_id)
+        tensor_meta = self._get_tensor_meta(src_actor, obj_id, use_nixl)
         self.managed_gpu_object_metadata[obj_id] = GPUObjectMeta(
             src_actor=src_actor,
             tensor_transport_backend=tensor_transport_backend,
@@ -144,14 +199,18 @@ class GPUObjectManager:
         dst_actor: "ray.actor.ActorHandle",
         obj_id: str,
         src_rank: int,
-        tensor_meta: List[Tuple["torch.Size", "torch.dtype"]],
+        tensor_meta: TensorMetadata,
     ):
         from ray.experimental.gpu_object_manager.gpu_object_store import __ray_recv__
 
         # Receive tensors from the source rank and store them in the
         # `dst_actor`'s GPU object store.
         dst_actor.__ray_call__.remote(
-            __ray_recv__, communicator_name, obj_id, src_rank, tensor_meta
+            __ray_recv__,
+            communicator_name,
+            obj_id,
+            src_rank,
+            tensor_meta,
         )
 
     def fetch_gpu_object(self, obj_id: str):
@@ -218,42 +277,57 @@ class GPUObjectManager:
 
             src_actor = gpu_object_meta.src_actor
             tensor_meta = gpu_object_meta.tensor_meta
-            communicators = get_collective_groups(
-                [src_actor, dst_actor], backend=gpu_object_meta.tensor_transport_backend
-            )
-            # TODO(kevin85421): Support multiple communicators.
-            if len(communicators) == 0:
-                raise ValueError(
-                    f"No communicators found for actors {src_actor} and {dst_actor}. "
-                    "Create a communicator with "
-                    "`ray.experimental.collective.create_collective_group` "
-                    "before calling actor tasks."
-                )
-            elif len(communicators) > 1:
-                raise ValueError(
-                    f"There are {len(communicators)} possible communicators that contain actors {src_actor} and {dst_actor}. "
-                    "Currently, GPU objects only support one communicator. Please make sure only "
-                    "one communicator exists."
-                )
-            communicator = communicators[0]
-            src_rank = communicator.get_rank(src_actor)
-            if src_rank == -1:
-                raise ValueError(
-                    f"Sender actor {src_actor} not found in communicator. "
-                    "Please make sure the sender and receiver are in the same communicator."
-                )
-            dst_rank = communicator.get_rank(dst_actor)
-            if dst_rank == -1:
-                raise ValueError(
-                    f"Receiver actor {dst_actor} not found in communicator. "
-                    "Please make sure the sender and receiver are in the same communicator."
-                )
-            if src_rank == dst_rank:
-                # If the source and destination ranks are the same, the tensors can
+            if src_actor == dst_actor:
+                # If the source and destination actors are the same, the tensors can
                 # be transferred intra-process, so we skip the out-of-band tensor
                 # transfer.
                 continue
-            self._send_gpu_object(communicator.name, src_actor, arg.hex(), dst_rank)
-            self._recv_gpu_object(
-                communicator.name, dst_actor, arg.hex(), src_rank, tensor_meta
-            )
+            if gpu_object_meta.tensor_transport_backend == Backend.NIXL:
+                self._recv_gpu_object(
+                    "nixl",
+                    dst_actor,
+                    arg.hex(),
+                    # Placeholder for src_rank, NIXL does not actually use it.
+                    -1,
+                    tensor_meta,
+                )
+            else:
+                communicators = get_collective_groups(
+                    [src_actor, dst_actor],
+                    backend=gpu_object_meta.tensor_transport_backend,
+                )
+                # TODO(kevin85421): Support multiple communicators.
+                if len(communicators) == 0:
+                    raise ValueError(
+                        f"No communicators found for actors {src_actor} and {dst_actor}. "
+                        "Create a communicator with "
+                        "`ray.experimental.collective.create_collective_group` "
+                        "before calling actor tasks."
+                    )
+                elif len(communicators) > 1:
+                    raise ValueError(
+                        f"There are {len(communicators)} possible communicators that contain actors {src_actor} and {dst_actor}. "
+                        "Currently, GPU objects only support one communicator. Please make sure only "
+                        "one communicator exists."
+                    )
+                communicator = communicators[0]
+                src_rank = communicator.get_rank(src_actor)
+                if src_rank == -1:
+                    raise ValueError(
+                        f"Sender actor {src_actor} not found in communicator. "
+                        "Please make sure the sender and receiver are in the same communicator."
+                    )
+                dst_rank = communicator.get_rank(dst_actor)
+                if dst_rank == -1:
+                    raise ValueError(
+                        f"Receiver actor {dst_actor} not found in communicator. "
+                        "Please make sure the sender and receiver are in the same communicator."
+                    )
+                self._send_gpu_object(communicator.name, src_actor, arg.hex(), dst_rank)
+                self._recv_gpu_object(
+                    communicator.name,
+                    dst_actor,
+                    arg.hex(),
+                    src_rank,
+                    tensor_meta,
+                )
