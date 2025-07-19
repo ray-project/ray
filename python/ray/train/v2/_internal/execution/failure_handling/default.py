@@ -1,5 +1,5 @@
 import logging
-from typing import Optional
+from typing import Union
 
 from .failure_policy import FailureDecision, FailurePolicy
 from ray.train.v2._internal.exceptions import (
@@ -84,45 +84,40 @@ class DefaultFailurePolicy(FailurePolicy):
 
     def make_decision(
         self,
-        training_failed_error: Optional[TrainingFailedError] = None,
-        controller_failed_error: Optional[ControllerError] = None,
+        error: Union[TrainingFailedError, ControllerError],
     ) -> FailureDecision:
 
-        if controller_failed_error is not None:
-            error = controller_failed_error.controller_failure
-            if isinstance(error, RETRYABLE_CONTROLLER_ERRORS):
+        if isinstance(error, ControllerError):
+            controller_exception = error.controller_failure
+            if isinstance(controller_exception, RETRYABLE_CONTROLLER_ERRORS):
                 self._controller_failures += 1
                 if self.failure_config.controller_failure_limit == -1:
-                    self._log_infinite_controller_retry_enabled(controller_failed_error)
+                    self._log_infinite_controller_retry_enabled(error)
                     return FailureDecision.RESCHEDULE
                 elif (
                     self._controller_failures
                     > self.failure_config.controller_failure_limit
                 ):
-                    self._log_controller_error_limit_exceeded(controller_failed_error)
+                    self._log_controller_error_limit_exceeded(error)
                     return FailureDecision.RAISE
                 else:
-                    self._log_controller_error_limit_not_exceeded(
-                        controller_failed_error
-                    )
+                    self._log_controller_error_limit_not_exceeded(error)
                     return FailureDecision.RESCHEDULE
             else:
-                self._log_non_retryable_controller_error(controller_failed_error)
+                self._log_non_retryable_controller_error(error)
                 return FailureDecision.RAISE
 
-        if training_failed_error is not None:
+        elif isinstance(error, TrainingFailedError):
 
             self._running_failures += 1
             if self.failure_config.max_failures == -1:
-                self._log_infinite_training_retry_enabled(training_failed_error)
+                self._log_infinite_training_retry_enabled(error)
                 return FailureDecision.RESTART
             elif self._running_failures > self.failure_config.max_failures:
-                self._log_max_training_error_exceeded(training_failed_error)
+                self._log_max_training_error_exceeded(error)
                 return FailureDecision.RAISE
             else:
-                self._log_max_training_error_not_exceeded(training_failed_error)
+                self._log_max_training_error_not_exceeded(error)
                 return FailureDecision.RESTART
-
-        assert (
-            False
-        ), "Both training_failed_error and controller_failed_error are None, which should not happen."
+        else:
+            raise ValueError(f"Unexpected error type: {type(error)}")

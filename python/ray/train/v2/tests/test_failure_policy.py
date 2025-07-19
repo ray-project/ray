@@ -43,7 +43,7 @@ def test_max_failures(max_failures):
     for _ in range(max_failures):
         assert (
             policy.make_decision(
-                training_failed_error=TrainingFailedError(
+                error=TrainingFailedError(
                     error_message=status.get_error_string(),
                     worker_failures=status.errors,
                 )
@@ -52,7 +52,7 @@ def test_max_failures(max_failures):
         )
     assert (
         policy.make_decision(
-            training_failed_error=TrainingFailedError(
+            error=TrainingFailedError(
                 error_message=status.get_error_string(), worker_failures=status.errors
             )
         )
@@ -68,11 +68,11 @@ def test_reschedule(scheduling_failure_limit):
     status = _worker_group_resize_status_from_errors()
     for _ in range(scheduling_failure_limit):
         assert (
-            policy.make_decision(controller_failed_error=ControllerError(status.error))
+            policy.make_decision(error=ControllerError(status.error))
             == FailureDecision.RESCHEDULE
         )
     assert (
-        policy.make_decision(controller_failed_error=ControllerError(status.error))
+        policy.make_decision(error=ControllerError(status.error))
         == FailureDecision.RAISE
     )
 
@@ -85,7 +85,7 @@ def test_infinite_retry():
     for _ in range(10):
         assert (
             policy.make_decision(
-                training_failed_error=TrainingFailedError(
+                error=TrainingFailedError(
                     error_message=status.get_error_string(),
                     worker_failures=status.errors,
                 )
@@ -98,7 +98,7 @@ def test_non_retryable_scheduling_error():
     policy = create_failure_policy(FailureConfig(controller_failure_limit=10))
     status = _non_retryable_scheduling_error()
     assert (
-        policy.make_decision(controller_failed_error=ControllerError(status.error))
+        policy.make_decision(error=ControllerError(status.error))
         == FailureDecision.RAISE
     )
 
@@ -108,7 +108,7 @@ def test_infinite_reschedule():
     status = _worker_group_resize_status_from_errors()
     for _ in range(10):
         assert (
-            policy.make_decision(controller_failed_error=ControllerError(status.error))
+            policy.make_decision(error=ControllerError(status.error))
             == FailureDecision.RESCHEDULE
         )
 
