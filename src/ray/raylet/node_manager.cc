@@ -210,9 +210,15 @@ NodeManager::NodeManager(
   dashboard_agent_manager_ = CreateDashboardAgentManager(self_node_id, config);
   runtime_env_agent_manager_ = CreateRuntimeEnvAgentManager(self_node_id, config);
 
+  std::string runtime_env_agent_ip = std::string(config.node_manager_address);
+  bool is_ipv6 = std::getenv("RAY_PREFER_IPV6") != nullptr;
+  if (is_ipv6) {
+    runtime_env_agent_ip =
+        runtime_env_agent_ip.substr(1, runtime_env_agent_ip.length() - 2);
+  }
   auto runtime_env_agent_client = RuntimeEnvAgentClient::Create(
       io_service_,
-      config.node_manager_address,
+      runtime_env_agent_ip,
       config.runtime_env_agent_port, /*delay_executor=*/
       [this](std::function<void()> task, uint32_t delay_ms) {
         return execute_after(

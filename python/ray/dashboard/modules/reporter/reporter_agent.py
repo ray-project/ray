@@ -434,7 +434,7 @@ class ReporterAgent(
         self._gcs_client = dashboard_agent.gcs_client
         self._ip = dashboard_agent.ip
         self._log_dir = dashboard_agent.log_dir
-        self._is_head_node = self._ip == dashboard_agent.gcs_address.split(":")[0]
+        self._is_head_node = self._ip == dashboard_agent.gcs_address.rsplit(":", 1)[0]
         self._hostname = socket.gethostname()
         # (pid, created_time) -> psutil.Process
         self._workers = {}
@@ -453,12 +453,15 @@ class ReporterAgent(
         self._open_telemetry_metric_recorder = None
         self._session_name = dashboard_agent.session_name
         if not self._metrics_collection_disabled:
+            http_address = ("127.0.0.1" if self._ip == "127.0.0.1" else "")
+            if os.environ.get("RAY_PREFER_IPV6") is not None:
+                http_address = "::"
             try:
                 stats_exporter = prometheus_exporter.new_stats_exporter(
                     prometheus_exporter.Options(
                         namespace="ray",
                         port=dashboard_agent.metrics_export_port,
-                        address="127.0.0.1" if self._ip == "127.0.0.1" else "",
+                        address=http_address,
                     )
                 )
             except Exception:

@@ -61,6 +61,19 @@ class stream_protocol;
 
 }  // namespace boost::asio::generic
 
+inline std::vector<std::string> SplitIpPort(const std::string &address) {
+  std::vector<std::string> result;
+  size_t found;
+  found = address.find_last_of(":");
+  if (found == std::string::npos) {
+    return result;
+  }
+
+  result.push_back(address.substr(0, found));
+  result.push_back(address.substr(found + 1));
+  return result;
+}
+
 // Append append_str to the beginning of each line of str.
 inline std::string AppendToEachLine(const std::string &str,
                                     const std::string &append_str) {
