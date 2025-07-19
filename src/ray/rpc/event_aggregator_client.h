@@ -35,8 +35,9 @@ class EventAggregatorClient {
  public:
   virtual ~EventAggregatorClient() = default;
 
-  virtual Status AsyncAddRayEventData(std::unique_ptr<rpc::events::RayEventData> data_ptr,
-                                      std::function<void(Status status)> callback) = 0;
+  virtual Status AsyncAddRayEventsData(
+      std::unique_ptr<rpc::events::RayEventsData> data_ptr,
+      std::function<void(Status status)> callback) = 0;
 };
 
 class EventAggregatorClientImpl : public EventAggregatorClient {
@@ -51,8 +52,8 @@ class EventAggregatorClientImpl : public EventAggregatorClient {
         "127.0.0.1", port, client_call_manager);
   };
 
-  Status AsyncAddRayEventData(std::unique_ptr<rpc::events::RayEventData> data_ptr,
-                              std::function<void(Status status)> callback) override {
+  Status AsyncAddRayEventsData(std::unique_ptr<rpc::events::RayEventsData> data_ptr,
+                               std::function<void(Status status)> callback) override {
     rpc::events::AddEventRequest request;
     *request.mutable_events_data() = std::move(*data_ptr);
     AddEvents(request,

@@ -60,7 +60,7 @@ class TaskEventBufferTest : public ::testing::Test {
 
     task_event_buffer_ = std::make_unique<TaskEventBufferImpl>(
         std::make_unique<ray::gcs::MockGcsClient>(),
-        std::make_unique<rpc::MockEventAggregatorClient>());
+        std::make_unique<ray::rpc::MockEventAggregatorClient>());
   }
 
   virtual void SetUp() { RAY_CHECK_OK(task_event_buffer_->Start(/*auto_flush*/ false)); }
@@ -189,8 +189,8 @@ class TaskEventBufferTest : public ::testing::Test {
     }
   }
 
-  static void CompareRayEventData(const rpc::events::RayEventData &actual_data,
-                                  const rpc::events::RayEventData &expect_data) {
+  static void CompareRayEventsData(const rpc::events::RayEventsData &actual_data,
+                                   const rpc::events::RayEventsData &expect_data) {
     // Sore and compare
     std::vector<std::string> actual_events;
     std::vector<std::string> expect_events;
@@ -386,7 +386,7 @@ TEST_P(TaskEventBufferTestDifferentDestination, TestFlushEvents) {
 
   // Expect data flushed match. Generate expected data
   rpc::TaskEventData expected_task_event_data;
-  rpc::events::RayEventData expected_ray_event_data;
+  rpc::events::RayEventsData expected_ray_event_data;
   expected_task_event_data.set_num_profile_events_dropped(0);
   for (const auto &task_event : task_events) {
     auto event = expected_task_event_data.add_events_by_task();
@@ -429,14 +429,14 @@ TEST_P(TaskEventBufferTestDifferentDestination, TestFlushEvents) {
   auto event_aggregator_client = static_cast<rpc::MockEventAggregatorClient *>(
       task_event_buffer_->event_aggregator_client_.get());
   if (to_aggregator) {
-    EXPECT_CALL(*event_aggregator_client, AsyncAddRayEventData(_, _))
-        .WillOnce([&](std::unique_ptr<rpc::events::RayEventData> actual_data,
+    EXPECT_CALL(*event_aggregator_client, AsyncAddRayEventsData(_, _))
+        .WillOnce([&](std::unique_ptr<rpc::events::RayEventsData> actual_data,
                       std::function<void(Status status)> callback) {
-          CompareRayEventData(*actual_data, expected_ray_event_data);
+          CompareRayEventsData(*actual_data, expected_ray_event_data);
           return Status::OK();
         });
   } else {
-    EXPECT_CALL(*event_aggregator_client, AsyncAddRayEventData(_, _)).Times(0);
+    EXPECT_CALL(*event_aggregator_client, AsyncAddRayEventsData(_, _)).Times(0);
   }
 
   task_event_buffer_->FlushEvents(false);
@@ -482,14 +482,14 @@ TEST_P(TaskEventBufferTestDifferentDestination, TestFailedFlush) {
   auto event_aggregator_client = static_cast<rpc::MockEventAggregatorClient *>(
       task_event_buffer_->event_aggregator_client_.get());
   if (to_aggregator) {
-    EXPECT_CALL(*event_aggregator_client, AsyncAddRayEventData)
+    EXPECT_CALL(*event_aggregator_client, AsyncAddRayEventsData)
         .Times(2)
-        .WillOnce([&](std::unique_ptr<rpc::events::RayEventData> actual_data,
+        .WillOnce([&](std::unique_ptr<rpc::events::RayEventsData> actual_data,
                       std::function<void(Status status)> callback) {
           callback(Status::RpcError("grpc error", grpc::StatusCode::UNKNOWN));
           return Status::OK();
         })
-        .WillOnce([&](std::unique_ptr<rpc::events::RayEventData> actual_data,
+        .WillOnce([&](std::unique_ptr<rpc::events::RayEventsData> actual_data,
                       std::function<void(Status status)> callback) {
           callback(Status::OK());
           return Status::OK();
@@ -557,9 +557,9 @@ TEST_P(TaskEventBufferTestDifferentDestination, TestBackPressure) {
   auto event_aggregator_client = static_cast<rpc::MockEventAggregatorClient *>(
       task_event_buffer_->event_aggregator_client_.get());
   if (to_aggregator) {
-    EXPECT_CALL(*event_aggregator_client, AsyncAddRayEventData).Times(1);
+    EXPECT_CALL(*event_aggregator_client, AsyncAddRayEventsData).Times(1);
   } else {
-    EXPECT_CALL(*event_aggregator_client, AsyncAddRayEventData).Times(0);
+    EXPECT_CALL(*event_aggregator_client, AsyncAddRayEventsData).Times(0);
   }
 
   task_event_buffer_->FlushEvents(false);
@@ -595,9 +595,9 @@ TEST_P(TaskEventBufferTestDifferentDestination, TestForcedFlush) {
   auto event_aggregator_client = static_cast<rpc::MockEventAggregatorClient *>(
       task_event_buffer_->event_aggregator_client_.get());
   if (to_aggregator) {
-    EXPECT_CALL(*event_aggregator_client, AsyncAddRayEventData).Times(2);
+    EXPECT_CALL(*event_aggregator_client, AsyncAddRayEventsData).Times(2);
   } else {
-    EXPECT_CALL(*event_aggregator_client, AsyncAddRayEventData).Times(0);
+    EXPECT_CALL(*event_aggregator_client, AsyncAddRayEventsData).Times(0);
   }
 
   auto task_id_1 = RandomTaskId();
@@ -641,17 +641,17 @@ TEST_P(TaskEventBufferTestBatchSendDifferentDestination, TestBatchedSend) {
   auto event_aggregator_client = static_cast<rpc::MockEventAggregatorClient *>(
       task_event_buffer_->event_aggregator_client_.get());
   if (to_aggregator) {
-    EXPECT_CALL(*event_aggregator_client, AsyncAddRayEventData)
+    EXPECT_CALL(*event_aggregator_client, AsyncAddRayEventsData)
         .Times(num_events / batch_size)
         .WillRepeatedly(
-            [&batch_size](std::unique_ptr<rpc::events::RayEventData> actual_data,
+            [&batch_size](std::unique_ptr<rpc::events::RayEventsData> actual_data,
                           std::function<void(Status status)> callback) {
               EXPECT_EQ(actual_data->events_size(), batch_size);
               callback(Status::OK());
               return Status::OK();
             });
   } else {
-    EXPECT_CALL(*event_aggregator_client, AsyncAddRayEventData).Times(0);
+    EXPECT_CALL(*event_aggregator_client, AsyncAddRayEventsData).Times(0);
   }
 
   for (int i = 0; i * batch_size < num_events; i++) {
@@ -681,7 +681,7 @@ TEST_P(TaskEventBufferTestLimitBufferDifferentDestination,
   }
 
   rpc::TaskEventData expected_data;
-  rpc::events::RayEventData expected_ray_event_data;
+  rpc::events::RayEventsData expected_ray_event_data;
   for (const auto &event_ptr : status_events_1) {
     rpc::TaskAttempt rpc_task_attempt;
     auto task_attempt = event_ptr->GetTaskAttempt();
@@ -742,14 +742,14 @@ TEST_P(TaskEventBufferTestLimitBufferDifferentDestination,
   auto event_aggregator_client = static_cast<rpc::MockEventAggregatorClient *>(
       task_event_buffer_->event_aggregator_client_.get());
   if (to_aggregator) {
-    EXPECT_CALL(*event_aggregator_client, AsyncAddRayEventData(_, _))
-        .WillOnce([&](std::unique_ptr<rpc::events::RayEventData> actual_data,
+    EXPECT_CALL(*event_aggregator_client, AsyncAddRayEventsData(_, _))
+        .WillOnce([&](std::unique_ptr<rpc::events::RayEventsData> actual_data,
                       std::function<void(Status status)> callback) {
-          CompareRayEventData(*actual_data, expected_ray_event_data);
+          CompareRayEventsData(*actual_data, expected_ray_event_data);
           return Status::OK();
         });
   } else {
-    EXPECT_CALL(*event_aggregator_client, AsyncAddRayEventData(_, _)).Times(0);
+    EXPECT_CALL(*event_aggregator_client, AsyncAddRayEventsData(_, _)).Times(0);
   }
   task_event_buffer_->FlushEvents(false);
 

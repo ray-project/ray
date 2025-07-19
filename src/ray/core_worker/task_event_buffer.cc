@@ -578,13 +578,13 @@ void TaskEventBufferImpl::CreateTaskEventDataToSend(
   data->set_num_profile_events_dropped(num_profile_events_dropped);
 }
 
-void TaskEventBufferImpl::CreateRayEventDataToSend(
+void TaskEventBufferImpl::CreateRayEventsDataToSend(
     absl::flat_hash_map<TaskAttempt,
                         std::pair<std::optional<rpc::events::RayEvent>,
                                   std::optional<rpc::events::RayEvent>>>
         &&agg_task_events,
     const absl::flat_hash_set<TaskAttempt> &dropped_task_attempts_to_send,
-    std::unique_ptr<rpc::events::RayEventData> &data) {
+    std::unique_ptr<rpc::events::RayEventsData> &data) {
   // Move the ray events.
   for (auto &[task_attempt, ray_events] : agg_task_events) {
     auto &[task_definition_event, task_execution_event] = ray_events;
@@ -662,10 +662,10 @@ TaskEventBuffer::TaskEventDataToSend TaskEventBufferImpl::CreateDataToSend(
     dataToSend.task_event_data = std::move(task_event_data);
   }
 
-  // Convert to rpc::events::RayEventData
+  // Convert to rpc::events::RayEventsData
   if (send_ray_events_to_aggregator_enabled_) {
-    auto ray_event_data = std::make_unique<rpc::events::RayEventData>();
-    CreateRayEventDataToSend(
+    auto ray_event_data = std::make_unique<rpc::events::RayEventsData>();
+    CreateRayEventsDataToSend(
         std::move(agg_ray_events), dropped_task_attempts_to_send, ray_event_data);
     dataToSend.ray_event_data = std::move(ray_event_data);
   }
@@ -750,7 +750,7 @@ void TaskEventBufferImpl::SendTaskEventsToGCS(std::unique_ptr<rpc::TaskEventData
 }
 
 void TaskEventBufferImpl::SendRayEventsToAggregator(
-    std::unique_ptr<rpc::events::RayEventData> data) {
+    std::unique_ptr<rpc::events::RayEventsData> data) {
   event_aggregator_grpc_in_progress_ = true;
   auto num_task_attempts_to_send = data->events_size();
   auto num_dropped_task_attempts_to_send =
@@ -776,7 +776,7 @@ void TaskEventBufferImpl::SendRayEventsToAggregator(
   };
 
   auto status =
-      event_aggregator_client_->AsyncAddRayEventData(std::move(data), on_complete);
+      event_aggregator_client_->AsyncAddRayEventsData(std::move(data), on_complete);
   RAY_CHECK_OK(status);
 }
 

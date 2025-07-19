@@ -26,8 +26,8 @@
 #include "absl/types/optional.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "mock/ray/core_worker/event_aggregator_exporter.h"
 #include "mock/ray/gcs/gcs_client/gcs_client.h"
+#include "mock/ray/rpc/event_aggregator_client.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/common/test_util.h"
 #include "ray/core_worker/task_event_buffer.h"
@@ -61,7 +61,7 @@ class TaskEventTestWriteExport : public ::testing::Test {
 
     task_event_buffer_ = std::make_unique<TaskEventBufferImpl>(
         std::make_unique<ray::gcs::MockGcsClient>(),
-        std::make_unique<ray::MockEventAggregatorClient>());
+        std::make_unique<ray::rpc::MockEventAggregatorClient>());
   }
 
   virtual void SetUp() { RAY_CHECK_OK(task_event_buffer_->Start(/*auto_flush*/ false)); }

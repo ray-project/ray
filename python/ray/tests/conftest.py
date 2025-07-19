@@ -1458,3 +1458,14 @@ def random_ascii_file(request):
         fp.flush()
 
         yield fp
+
+
+"""
+pytest httpserver related test fixtures
+"""
+
+
+@pytest.fixture
+def reset_httpserver_before_test(httpserver):
+    httpserver.clear()
+    yield
