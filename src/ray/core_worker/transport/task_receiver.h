@@ -161,8 +161,9 @@ class TaskReceiver {
   /// This is only available after the actor creation task.
   std::string actor_repr_name_;
 
-  /// Cache the concurrency groups of this worker's actor.
-  std::vector<ConcurrencyGroup> concurrency_groups_cache_;
+  /// The concurrency groups of this worker's actor, computed from actor creation task
+  /// spec.
+  std::vector<ConcurrencyGroup> concurrency_groups_;
 };
 
 }  // namespace core

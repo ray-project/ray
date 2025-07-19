@@ -53,8 +53,10 @@ from ray.serve._private.constants import (
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
     RAY_SERVE_METRICS_EXPORT_INTERVAL_MS,
     RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_PERIOD_S,
+    RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE,
     RAY_SERVE_RUN_SYNC_IN_THREADPOOL,
     RAY_SERVE_RUN_SYNC_IN_THREADPOOL_WARNING,
+    RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD,
     RECONFIGURE_METHOD,
     REQUEST_LATENCY_BUCKETS_MS,
     REQUEST_ROUTING_STATS_METHOD,
@@ -75,7 +77,6 @@ from ray.serve._private.http_util import (
 )
 from ray.serve._private.logging_utils import (
     access_log_msg,
-    configure_component_cpu_profiler,
     configure_component_logger,
     configure_component_memory_profiler,
     get_component_logger_file_path,
@@ -286,13 +287,13 @@ class ReplicaMetricsManager:
                 ),
             )
 
-    def inc_num_ongoing_requests(self) -> int:
+    def inc_num_ongoing_requests(self, request_metadata: RequestMetadata) -> int:
         """Increment the current total queue length of requests for this replica."""
         self._num_ongoing_requests += 1
         if not self._cached_metrics_enabled:
             self._num_ongoing_requests_gauge.set(self._num_ongoing_requests)
 
-    def dec_num_ongoing_requests(self) -> int:
+    def dec_num_ongoing_requests(self, request_metadata: RequestMetadata) -> int:
         """Decrement the current total queue length of requests for this replica."""
         self._num_ongoing_requests -= 1
         if not self._cached_metrics_enabled:
@@ -371,6 +372,7 @@ class ReplicaBase(ABC):
             init_kwargs,
             deployment_id=self._deployment_id,
             run_sync_methods_in_threadpool=RAY_SERVE_RUN_SYNC_IN_THREADPOOL,
+            run_user_code_in_separate_thread=RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD,
             local_testing_mode=False,
         )
         self._semaphore = Semaphore(lambda: self.max_ongoing_requests)
@@ -442,19 +444,15 @@ class ReplicaBase(ABC):
             component_name=self._component_name,
             component_id=self._component_id,
             logging_config=logging_config,
+            buffer_size=RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE,
         )
         configure_component_memory_profiler(
             component_type=ServeComponentType.REPLICA,
             component_name=self._component_name,
             component_id=self._component_id,
         )
-        self.cpu_profiler, self.cpu_profiler_log = configure_component_cpu_profiler(
-            component_type=ServeComponentType.REPLICA,
-            component_name=self._component_name,
-            component_id=self._component_id,
-        )
 
-    def _can_accept_request(self) -> bool:
+    def _can_accept_request(self, request_metadata: RequestMetadata) -> bool:
         # This replica gates concurrent request handling with an asyncio.Semaphore.
         # Each in-flight request acquires the semaphore. When the number of ongoing
         # requests reaches max_ongoing_requests, the semaphore becomes locked.
@@ -505,7 +503,6 @@ class ReplicaBase(ABC):
             status_code = s
 
         try:
-            self._metrics_manager.inc_num_ongoing_requests()
             yield _status_code_callback
         except asyncio.CancelledError as e:
             user_exception = e
@@ -514,8 +511,6 @@ class ReplicaBase(ABC):
             user_exception = e
             logger.exception("Request failed.")
             self._on_request_failed(request_metadata, e)
-        finally:
-            self._metrics_manager.dec_num_ongoing_requests()
 
         latency_ms = (time.time() - start_time) * 1000
         self._record_errors_and_metrics(
@@ -542,7 +537,7 @@ class ReplicaBase(ABC):
         else:
             status_str = "ERROR"
 
-        # Set in _wrap_user_method_call.
+        # Set in _wrap_request.
         logger.info(
             access_log_msg(
                 method=http_method or "CALL",
@@ -603,10 +598,11 @@ class ReplicaBase(ABC):
         request_args, request_kwargs = self._unpack_proxy_args(
             request_metadata, request_args, request_kwargs
         )
-        async with self._wrap_user_method_call(request_metadata):
-            return await self._user_callable_wrapper.call_user_method(
-                request_metadata, request_args, request_kwargs
-            )
+        with self._wrap_request(request_metadata):
+            async with self._start_request(request_metadata):
+                return await self._user_callable_wrapper.call_user_method(
+                    request_metadata, request_args, request_kwargs
+                )
 
     async def handle_request_streaming(
         self, request_metadata: RequestMetadata, *request_args, **request_kwargs
@@ -615,31 +611,30 @@ class ReplicaBase(ABC):
         request_args, request_kwargs = self._unpack_proxy_args(
             request_metadata, request_args, request_kwargs
         )
-        async with self._wrap_user_method_call(
-            request_metadata
-        ) as status_code_callback:
-            if request_metadata.is_http_request:
-                scope, receive = request_args
-                async for result in self._user_callable_wrapper.call_http_entrypoint(
-                    request_metadata,
-                    status_code_callback,
-                    scope,
-                    receive,
-                ):
-                    yield result
-            else:
-                async for result in self._user_callable_wrapper.call_user_generator(
-                    request_metadata,
-                    request_args,
-                    request_kwargs,
-                ):
-                    yield result
+        with self._wrap_request(request_metadata) as status_code_callback:
+            async with self._start_request(request_metadata):
+                if request_metadata.is_http_request:
+                    scope, receive = request_args
+                    async for msgs in self._user_callable_wrapper.call_http_entrypoint(
+                        request_metadata,
+                        status_code_callback,
+                        scope,
+                        receive,
+                    ):
+                        yield pickle.dumps(msgs)
+                else:
+                    async for result in self._user_callable_wrapper.call_user_generator(
+                        request_metadata,
+                        request_args,
+                        request_kwargs,
+                    ):
+                        yield result
 
     async def handle_request_with_rejection(
         self, request_metadata: RequestMetadata, *request_args, **request_kwargs
     ):
         # Check if the replica has capacity for the request.
-        if not self._can_accept_request():
+        if not self._can_accept_request(request_metadata):
             limit = self.max_ongoing_requests
             logger.warning(
                 f"Replica at capacity of max_ongoing_requests={limit}, "
@@ -652,36 +647,35 @@ class ReplicaBase(ABC):
         request_args, request_kwargs = self._unpack_proxy_args(
             request_metadata, request_args, request_kwargs
         )
-        async with self._wrap_user_method_call(
-            request_metadata
-        ) as status_code_callback:
-            yield ReplicaQueueLengthInfo(
-                accepted=True,
-                # NOTE(edoakes): `_wrap_user_method_call` will increment the number
-                # of ongoing requests to include this one, so re-fetch the value.
-                num_ongoing_requests=self.get_num_ongoing_requests(),
-            )
-
-            if request_metadata.is_http_request:
-                scope, receive = request_args
-                async for result in self._user_callable_wrapper.call_http_entrypoint(
-                    request_metadata,
-                    status_code_callback,
-                    scope,
-                    receive,
-                ):
-                    yield result
-            elif request_metadata.is_streaming:
-                async for result in self._user_callable_wrapper.call_user_generator(
-                    request_metadata,
-                    request_args,
-                    request_kwargs,
-                ):
-                    yield result
-            else:
-                yield await self._user_callable_wrapper.call_user_method(
-                    request_metadata, request_args, request_kwargs
+        with self._wrap_request(request_metadata) as status_code_callback:
+            async with self._start_request(request_metadata):
+                yield ReplicaQueueLengthInfo(
+                    accepted=True,
+                    # NOTE(edoakes): `_wrap_request` will increment the number
+                    # of ongoing requests to include this one, so re-fetch the value.
+                    num_ongoing_requests=self.get_num_ongoing_requests(),
                 )
+
+                if request_metadata.is_http_request:
+                    scope, receive = request_args
+                    async for msgs in self._user_callable_wrapper.call_http_entrypoint(
+                        request_metadata,
+                        status_code_callback,
+                        scope,
+                        receive,
+                    ):
+                        yield pickle.dumps(msgs)
+                elif request_metadata.is_streaming:
+                    async for result in self._user_callable_wrapper.call_user_generator(
+                        request_metadata,
+                        request_args,
+                        request_kwargs,
+                    ):
+                        yield result
+                else:
+                    yield await self._user_callable_wrapper.call_user_method(
+                        request_metadata, request_args, request_kwargs
+                    )
 
     @abstractmethod
     async def _on_initialized(self):
@@ -766,16 +760,20 @@ class ReplicaBase(ABC):
         pass
 
     @abstractmethod
-    @asynccontextmanager
-    async def _wrap_user_method_call(
+    @contextmanager
+    def _wrap_request(
         self, request_metadata: RequestMetadata
     ) -> Generator[StatusCodeCallback, None, None]:
         pass
 
     @asynccontextmanager
-    async def _start_request(self):
+    async def _start_request(self, request_metadata: RequestMetadata):
         async with self._semaphore:
-            yield
+            try:
+                self._metrics_manager.inc_num_ongoing_requests(request_metadata)
+                yield
+            finally:
+                self._metrics_manager.dec_num_ongoing_requests(request_metadata)
 
     async def _drain_ongoing_requests(self):
         """Wait for any ongoing requests to finish.
@@ -801,14 +799,7 @@ class ReplicaBase(ABC):
                 )
                 break
 
-    async def perform_graceful_shutdown(self):
-        self._shutting_down = True
-
-        # If the replica was never initialized it never served traffic, so we
-        # can skip the wait period.
-        if self._user_callable_initialized:
-            await self._drain_ongoing_requests()
-
+    async def shutdown(self):
         try:
             await self._user_callable_wrapper.call_destructor()
         except:  # noqa: E722
@@ -823,6 +814,16 @@ class ReplicaBase(ABC):
                 logger.exception("__del__ raised an exception.")
 
         await self._metrics_manager.shutdown()
+
+    async def perform_graceful_shutdown(self):
+        self._shutting_down = True
+
+        # If the replica was never initialized it never served traffic, so we
+        # can skip the wait period.
+        if self._user_callable_initialized:
+            await self._drain_ongoing_requests()
+
+        await self.shutdown()
 
     async def check_health(self):
         try:
@@ -880,32 +881,29 @@ class Replica(ReplicaBase):
         if ray.util.pdb._is_ray_debugger_post_mortem_enabled():
             ray.util.pdb._post_mortem()
 
-    @asynccontextmanager
-    async def _wrap_user_method_call(
+    @contextmanager
+    def _wrap_request(
         self, request_metadata: RequestMetadata
-    ) -> AsyncGenerator[StatusCodeCallback, None]:
+    ) -> Generator[StatusCodeCallback, None, None]:
         """Context manager that wraps user method calls.
 
         1) Sets the request context var with appropriate metadata.
         2) Records the access log message (if not disabled).
         3) Records per-request metrics via the metrics manager.
         """
-        async with self._start_request():
-            ray.serve.context._serve_request_context.set(
-                ray.serve.context._RequestContext(
-                    route=request_metadata.route,
-                    request_id=request_metadata.request_id,
-                    _internal_request_id=request_metadata.internal_request_id,
-                    app_name=self._deployment_id.app_name,
-                    multiplexed_model_id=request_metadata.multiplexed_model_id,
-                    grpc_context=request_metadata.grpc_context,
-                )
+        ray.serve.context._serve_request_context.set(
+            ray.serve.context._RequestContext(
+                route=request_metadata.route,
+                request_id=request_metadata.request_id,
+                _internal_request_id=request_metadata.internal_request_id,
+                app_name=self._deployment_id.app_name,
+                multiplexed_model_id=request_metadata.multiplexed_model_id,
+                grpc_context=request_metadata.grpc_context,
             )
+        )
 
-            with self._handle_errors_and_metrics(
-                request_metadata
-            ) as status_code_callback:
-                yield status_code_callback
+        with self._handle_errors_and_metrics(request_metadata) as status_code_callback:
+            yield status_code_callback
 
 
 class ReplicaActor:
@@ -935,7 +933,6 @@ class ReplicaActor:
         deployment_def = cloudpickle.loads(serialized_deployment_def)
         if isinstance(deployment_def, str):
             deployment_def = _load_deployment_def_from_import_path(deployment_def)
-
         self._replica_impl: ReplicaBase = create_replica_impl(
             replica_id=replica_id,
             deployment_def=deployment_def,
@@ -988,10 +985,12 @@ class ReplicaActor:
     ) -> ReplicaMetadata:
         """Handles initializing the replica.
 
-        Returns: 3-tuple containing
+        Returns: 5-tuple containing
             1. DeploymentConfig of the replica
             2. DeploymentVersion of the replica
             3. Initialization duration in seconds
+            4. Port
+            5. FastAPI `docs_path`, if relevant (i.e. this is an ingress deployment integrated with FastAPI).
         """
         # Unused `_after` argument is for scheduling: passing an ObjectRef
         # allows delaying this call until after the `_after` call has returned.
@@ -1112,27 +1111,6 @@ class ReplicaActor:
     async def perform_graceful_shutdown(self):
         await self._replica_impl.perform_graceful_shutdown()
 
-    def _save_cpu_profile_data(self) -> str:
-        """Saves CPU profiling data, if CPU profiling is enabled.
-
-        Logs a warning if CPU profiling is disabled.
-        """
-
-        if self.cpu_profiler is not None:
-            import marshal
-
-            self.cpu_profiler.snapshot_stats()
-            with open(self.cpu_profiler_log, "wb") as f:
-                marshal.dump(self.cpu_profiler.stats, f)
-            logger.info(f'Saved CPU profile data to file "{self.cpu_profiler_log}"')
-            return self.cpu_profiler_log
-        else:
-            logger.error(
-                "Attempted to save CPU profile data, but failed because no "
-                "CPU profiler was running! Enable CPU profiling by enabling "
-                "the RAY_SERVE_ENABLE_CPU_PROFILING env var."
-            )
-
 
 @dataclass
 class UserMethodInfo:
@@ -1169,6 +1147,7 @@ class UserCallableWrapper:
         *,
         deployment_id: DeploymentID,
         run_sync_methods_in_threadpool: bool,
+        run_user_code_in_separate_thread: bool,
         local_testing_mode: bool,
     ):
         if not (inspect.isfunction(deployment_def) or inspect.isclass(deployment_def)):
@@ -1185,33 +1164,44 @@ class UserCallableWrapper:
         self._local_testing_mode = local_testing_mode
         self._destructor_called = False
         self._run_sync_methods_in_threadpool = run_sync_methods_in_threadpool
+        self._run_user_code_in_separate_thread = run_user_code_in_separate_thread
         self._warned_about_sync_method_change = False
         self._cached_user_method_info: Dict[str, UserMethodInfo] = {}
 
         # Will be populated in `initialize_callable`.
         self._callable = None
 
-        # All interactions with user code run on this loop to avoid blocking the
-        # replica's main event loop.
-        self._user_code_event_loop: asyncio.AbstractEventLoop = asyncio.new_event_loop()
+        if self._run_user_code_in_separate_thread:
+            # All interactions with user code run on this loop to avoid blocking the
+            # replica's main event loop.
+            self._user_code_event_loop: asyncio.AbstractEventLoop = (
+                asyncio.new_event_loop()
+            )
 
-        def _run_user_code_event_loop():
-            # Required so that calls to get the current running event loop work
-            # properly in user code.
-            asyncio.set_event_loop(self._user_code_event_loop)
-            self._user_code_event_loop.run_forever()
+            def _run_user_code_event_loop():
+                # Required so that calls to get the current running event loop work
+                # properly in user code.
+                asyncio.set_event_loop(self._user_code_event_loop)
+                self._user_code_event_loop.run_forever()
 
-        self._user_code_event_loop_thread = threading.Thread(
-            daemon=True,
-            target=_run_user_code_event_loop,
-        )
-        self._user_code_event_loop_thread.start()
+            self._user_code_event_loop_thread = threading.Thread(
+                daemon=True,
+                target=_run_user_code_event_loop,
+            )
+            self._user_code_event_loop_thread.start()
+        else:
+            self._user_code_event_loop = asyncio.get_running_loop()
+
+    @property
+    def event_loop(self) -> asyncio.AbstractEventLoop:
+        return self._user_code_event_loop
 
     def _run_user_code(f: Callable) -> Callable:
         """Decorator to run a coroutine method on the user code event loop.
 
         The method will be modified to be a sync function that returns a
-        `asyncio.Future`.
+        `asyncio.Future` if user code is running in a separate event loop.
+        Otherwise, it will return the coroutine directly.
         """
         assert inspect.iscoroutinefunction(
             f
@@ -1220,11 +1210,14 @@ class UserCallableWrapper:
         @functools.wraps(f)
         def wrapper(self, *args, **kwargs) -> Any:
             coro = f(self, *args, **kwargs)
-            fut = asyncio.run_coroutine_threadsafe(coro, self._user_code_event_loop)
-            if self._local_testing_mode:
-                return fut
+            if self._run_user_code_in_separate_thread:
+                fut = asyncio.run_coroutine_threadsafe(coro, self._user_code_event_loop)
+                if self._local_testing_mode:
+                    return fut
 
-            return asyncio.wrap_future(fut)
+                return asyncio.wrap_future(fut)
+            else:
+                return coro
 
         return wrapper
 
@@ -1572,22 +1565,30 @@ class UserCallableWrapper:
         receive: Receive,
     ) -> Any:
         result_queue = MessageQueue()
-
-        # `asyncio.Event`s are not thread safe, so `call_soon_threadsafe` must be
-        # used to interact with the result queue from the user callable thread.
-        system_event_loop = asyncio.get_running_loop()
-
-        async def enq(item: Any):
-            system_event_loop.call_soon_threadsafe(result_queue.put_nowait, item)
-
         user_method_info = self.get_user_method_info(request_metadata.call_method)
-        call_user_method_future = self._call_http_entrypoint(
-            user_method_info, scope, receive, enq
-        )
+
+        if self._run_user_code_in_separate_thread:
+            # `asyncio.Event`s are not thread safe, so `call_soon_threadsafe` must be
+            # used to interact with the result queue from the user callable thread.
+            system_event_loop = asyncio.get_running_loop()
+
+            async def enqueue(item: Any):
+                system_event_loop.call_soon_threadsafe(result_queue.put_nowait, item)
+
+            call_future = self._call_http_entrypoint(
+                user_method_info, scope, receive, enqueue
+            )
+        else:
+
+            async def enqueue(item: Any):
+                result_queue.put_nowait(item)
+
+            call_future = asyncio.create_task(
+                self._call_http_entrypoint(user_method_info, scope, receive, enqueue)
+            )
+
         first_message_peeked = False
-        async for messages in result_queue.fetch_messages_from_queue(
-            call_user_method_future
-        ):
+        async for messages in result_queue.fetch_messages_from_queue(call_future):
             # HTTP (ASGI) messages are only consumed by the proxy so batch them
             # and use vanilla pickle (we know it's safe because these messages
             # only contain primitive Python types).
@@ -1601,7 +1602,7 @@ class UserCallableWrapper:
                     # field. Other response types like WebSockets may not.
                     status_code_callback(str(msg["status"]))
 
-            yield pickle.dumps(messages)
+            yield messages
 
     @_run_user_code
     async def _call_http_entrypoint(
@@ -1637,7 +1638,9 @@ class UserCallableWrapper:
 
         receive_task = None
         try:
-            receive_task = asyncio.create_task(receive.fetch_until_disconnect())
+            if hasattr(receive, "fetch_until_disconnect"):
+                receive_task = asyncio.create_task(receive.fetch_until_disconnect())
+
             result, sync_gen_consumed = await self._call_func_or_gen(
                 user_method_info.callable,
                 args=request_args,
@@ -1693,27 +1696,32 @@ class UserCallableWrapper:
         The user method is called in an asyncio `Task` and places its results on a
         `result_queue`. This method pulls and yields from the `result_queue`.
         """
-        result_queue = MessageQueue()
+        if not self._run_user_code_in_separate_thread:
+            gen = await self._call_user_generator(
+                request_metadata, request_args, request_kwargs
+            )
+            async for result in gen:
+                yield result
+        else:
+            result_queue = MessageQueue()
 
-        # `asyncio.Event`s are not thread safe, so `call_soon_threadsafe` must be
-        # used to interact with the result queue from the user callable thread.
-        system_event_loop = asyncio.get_running_loop()
+            # `asyncio.Event`s are not thread safe, so `call_soon_threadsafe` must be
+            # used to interact with the result queue from the user callable thread.
+            system_event_loop = asyncio.get_running_loop()
 
-        def _enqueue_thread_safe(item: Any):
-            system_event_loop.call_soon_threadsafe(result_queue.put_nowait, item)
+            def _enqueue_thread_safe(item: Any):
+                system_event_loop.call_soon_threadsafe(result_queue.put_nowait, item)
 
-        call_user_method_future = self._call_user_generator(
-            request_metadata,
-            request_args,
-            request_kwargs,
-            generator_result_callback=_enqueue_thread_safe,
-        )
+            call_future = self._call_user_generator(
+                request_metadata,
+                request_args,
+                request_kwargs,
+                enqueue=_enqueue_thread_safe,
+            )
 
-        async for messages in result_queue.fetch_messages_from_queue(
-            call_user_method_future
-        ):
-            for msg in messages:
-                yield msg
+            async for messages in result_queue.fetch_messages_from_queue(call_future):
+                for msg in messages:
+                    yield msg
 
     @_run_user_code
     async def _call_user_generator(
@@ -1722,8 +1730,8 @@ class UserCallableWrapper:
         request_args: Tuple[Any],
         request_kwargs: Dict[str, Any],
         *,
-        generator_result_callback: Optional[Callable] = None,
-    ) -> Any:
+        enqueue: Optional[Callable] = None,
+    ) -> Optional[AsyncGenerator[Any, None]]:
         """Call a user generator.
 
         The `generator_result_callback` is used to communicate the results of generator
@@ -1734,28 +1742,62 @@ class UserCallableWrapper:
         """
         self._raise_if_not_initialized("_call_user_generator")
 
+        request_args = request_args if request_args is not None else tuple()
+        request_kwargs = request_kwargs if request_kwargs is not None else dict()
+
+        user_method_info = self.get_user_method_info(request_metadata.call_method)
+        callable = user_method_info.callable
+        is_sync_method = (
+            inspect.isfunction(callable) or inspect.ismethod(callable)
+        ) and not (
+            inspect.iscoroutinefunction(callable)
+            or inspect.isasyncgenfunction(callable)
+        )
+
         logger.info(
-            f"Started executing request to method '{request_metadata.call_method}'.",
+            f"Started executing request to method '{user_method_info.name}'.",
             extra={"log_to_stderr": False, "serve_access_log": True},
         )
 
-        user_method_info = self.get_user_method_info(request_metadata.call_method)
-        result, sync_gen_consumed = await self._call_func_or_gen(
-            user_method_info.callable,
-            args=request_args,
-            kwargs=request_kwargs,
-            is_streaming=True,
-            generator_result_callback=generator_result_callback,
-        )
-        return await self._handle_user_method_result(
-            result,
-            user_method_info,
-            is_streaming=True,
-            is_http_request=False,
-            sync_gen_consumed=sync_gen_consumed,
-            generator_result_callback=generator_result_callback,
-            asgi_args=None,
-        )
+        async def _call_generator_async() -> AsyncGenerator[Any, None]:
+            gen = callable(*request_args, **request_kwargs)
+            if inspect.iscoroutine(gen):
+                gen = await gen
+
+            if inspect.isgenerator(gen):
+                for result in gen:
+                    yield result
+            elif inspect.isasyncgen(gen):
+                async for result in gen:
+                    yield result
+            else:
+                raise TypeError(
+                    f"Called method '{user_method_info.name}' with "
+                    "`handle.options(stream=True)` but it did not return a generator."
+                )
+
+        def _call_generator_sync():
+            gen = callable(*request_args, **request_kwargs)
+            if inspect.isgenerator(gen):
+                for result in gen:
+                    enqueue(result)
+            else:
+                raise TypeError(
+                    f"Called method '{user_method_info.name}' with "
+                    "`handle.options(stream=True)` but it did not return a generator."
+                )
+
+        if enqueue and is_sync_method and self._run_sync_methods_in_threadpool:
+            await to_thread.run_sync(_call_generator_sync)
+        elif enqueue:
+
+            async def gen_coro_wrapper():
+                async for result in _call_generator_async():
+                    enqueue(result)
+
+            await gen_coro_wrapper()
+        else:
+            return _call_generator_async()
 
     @_run_user_code
     async def call_user_method(

@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import marshal
 import os
 import pickle
 import time
@@ -36,8 +35,11 @@ from ray.serve._private.default_impl import create_cluster_node_info_cache
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.deployment_state import DeploymentStateManager
 from ray.serve._private.endpoint_state import EndpointState
+from ray.serve._private.grpc_util import set_proxy_default_grpc_options
+from ray.serve._private.http_util import (
+    configure_http_options_with_defaults,
+)
 from ray.serve._private.logging_utils import (
-    configure_component_cpu_profiler,
     configure_component_logger,
     configure_component_memory_profiler,
     get_component_logger_file_path,
@@ -142,9 +144,7 @@ class ServeController:
         configure_component_memory_profiler(
             component_name="controller", component_id=str(os.getpid())
         )
-        self.cpu_profiler, self.cpu_profiler_log = configure_component_cpu_profiler(
-            component_name="controller", component_id=str(os.getpid())
-        )
+
         if RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH:
             logger.info(
                 "Calling user-provided callback from import path "
@@ -156,13 +156,16 @@ class ServeController:
         self.cluster_node_info_cache = create_cluster_node_info_cache(self.gcs_client)
         self.cluster_node_info_cache.update()
 
+        # Configure proxy default HTTP and gRPC options.
         self.proxy_state_manager = ProxyStateManager(
-            http_options=http_options,
+            http_options=configure_http_options_with_defaults(http_options),
             head_node_id=self._controller_node_id,
             cluster_node_info_cache=self.cluster_node_info_cache,
             logging_config=self.global_logging_config,
-            grpc_options=grpc_options,
+            grpc_options=set_proxy_default_grpc_options(grpc_options),
         )
+        # We modify the HTTP and gRPC options above, so delete them to avoid
+        del http_options, grpc_options
 
         self.endpoint_state = EndpointState(self.kv_store, self.long_poll_host)
 
@@ -769,9 +772,6 @@ class ServeController:
                         "route_prefix": (
                             args.route_prefix if args.HasField("route_prefix") else None
                         ),
-                        "docs_path": (
-                            args.docs_path if args.HasField("docs_path") else None
-                        ),
                     }
                 )
             name_to_deployment_args[name] = deployment_args_deserialized
@@ -1126,31 +1126,12 @@ class ServeController:
         # until the controller is killed, which raises a RayActorError.
         await self._shutdown_event.wait()
 
-    def _save_cpu_profile_data(self) -> str:
-        """Saves CPU profiling data, if CPU profiling is enabled.
-
-        Logs a warning if CPU profiling is disabled.
-        """
-
-        if self.cpu_profiler is not None:
-            self.cpu_profiler.snapshot_stats()
-            with open(self.cpu_profiler_log, "wb") as f:
-                marshal.dump(self.cpu_profiler.stats, f)
-            logger.info(f'Saved CPU profile data to file "{self.cpu_profiler_log}"')
-            return self.cpu_profiler_log
-        else:
-            logger.error(
-                "Attempted to save CPU profile data, but failed because no "
-                "CPU profiler was running! Enable CPU profiling by enabling "
-                "the RAY_SERVE_ENABLE_CPU_PROFILING env var."
-            )
-
     def _get_logging_config(self) -> Tuple:
         """Get the logging configuration (for testing purposes)."""
         log_file_path = None
         for handler in logger.handlers:
-            if isinstance(handler, logging.handlers.RotatingFileHandler):
-                log_file_path = handler.baseFilename
+            if isinstance(handler, logging.handlers.MemoryHandler):
+                log_file_path = handler.target.baseFilename
         return self.global_logging_config, log_file_path
 
     def _get_target_capacity_direction(self) -> Optional[TargetCapacityDirection]:

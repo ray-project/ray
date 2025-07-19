@@ -101,7 +101,9 @@ def test_spill_file_uniqueness(shutdown_only):
         with patch.object(
             StorageType, "_get_objects_from_store"
         ) as mock_get_objects_from_store:
-            mock_get_objects_from_store.return_value = [(b"somedata", b"metadata")]
+            mock_get_objects_from_store.return_value = [
+                (b"somedata", b"metadata", None)
+            ]
             storage = StorageType(ray_context["node_id"], "/tmp")
             spilled_url_set = {
                 storage.spill_objects(refs, [b"localhost"])[0] for _ in range(10)

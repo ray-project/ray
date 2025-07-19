@@ -25,16 +25,21 @@ from ray.autoscaler.v2.instance_manager.node_provider import (
     ICloudInstanceProvider,
     NodeProviderAdapter,
 )
+from ray.autoscaler.v2.instance_manager.ray_installer import RayInstaller
 from ray.autoscaler.v2.instance_manager.reconciler import Reconciler
 from ray.autoscaler.v2.instance_manager.storage import InMemoryStorage
 from ray.autoscaler.v2.instance_manager.subscribers.cloud_instance_updater import (
     CloudInstanceUpdater,
 )
 from ray.autoscaler.v2.instance_manager.subscribers.ray_stopper import RayStopper
+from ray.autoscaler.v2.instance_manager.subscribers.threaded_ray_installer import (
+    ThreadedRayInstaller,
+)
 from ray.autoscaler.v2.metrics_reporter import AutoscalerMetricsReporter
 from ray.autoscaler.v2.scheduler import ResourceDemandScheduler
 from ray.autoscaler.v2.sdk import get_cluster_resource_state
 from ray.core.generated.autoscaler_pb2 import AutoscalingState
+from urllib.parse import urlsplit
 
 logger = logging.getLogger(__name__)
 
@@ -133,16 +138,27 @@ class Autoscaler:
         subscribers.append(
             RayStopper(gcs_client=gcs_client, error_queue=self._ray_stop_errors_queue)
         )
-        if not config.disable_node_updaters():
-            # Supporting ray installer is only needed for providers that doesn't
-            # install or manage ray (e.g. AWS, GCP). These providers will be
-            # supported in the future.
-            raise NotImplementedError(
-                "RayInstaller is not supported yet in current "
-                "release of the Autoscaler V2. Therefore, providers "
-                "that update nodes (with `disable_node_updaters` set to True) "
-                "are not supported yet. Only KubeRay is supported for now which sets "
-                "disable_node_updaters to True in provider's config."
+        if not config.disable_node_updaters() and isinstance(
+            cloud_provider, NodeProviderAdapter
+        ):
+            head_node_ip = urlsplit("//" + self._gcs_client.address).hostname
+            assert head_node_ip is not None, "Invalid GCS address format"
+            subscribers.append(
+                ThreadedRayInstaller(
+                    head_node_ip=head_node_ip,
+                    instance_storage=instance_storage,
+                    ray_installer=RayInstaller(
+                        provider=cloud_provider.v1_provider,
+                        config=config,
+                    ),
+                    error_queue=self._ray_install_errors_queue,
+                    # TODO(rueian): Rewrite the ThreadedRayInstaller and its underlying
+                    # NodeUpdater and CommandRunner to use the asyncio, so that we don't
+                    # need to use so many threads. We use so many threads now because
+                    # they are blocking and letting the new cloud machines to wait for
+                    # previous machines to finish installing Ray is quite inefficient.
+                    max_concurrent_installs=config.get_max_num_worker_nodes() or 50,
+                )
             )
 
         self._instance_manager = InstanceManager(

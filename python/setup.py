@@ -177,6 +177,7 @@ ray_files += [
     "ray/autoscaler/aws/cloudwatch/ray_prometheus_waiter.sh",
     "ray/autoscaler/azure/defaults.yaml",
     "ray/autoscaler/spark/defaults.yaml",
+    "ray/autoscaler/_private/readonly/defaults.yaml",
     "ray/autoscaler/_private/_azure/azure-vm-template.json",
     "ray/autoscaler/_private/_azure/azure-config-template.json",
     "ray/autoscaler/gcp/defaults.yaml",
@@ -220,7 +221,6 @@ if setup_spec.type == SetupType.RAY:
     numpy_dep = "numpy >= 1.20"
     pyarrow_deps = [
         "pyarrow >= 9.0.0",
-        "pyarrow <18; sys_platform == 'darwin' and platform_machine == 'x86_64'",
     ]
     pydantic_dep = "pydantic!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*,<3"
     setup_spec.extras = {
@@ -251,7 +251,7 @@ if setup_spec.type == SetupType.RAY:
             "grpcio >= 1.32.0; python_version < '3.10'",  # noqa:E501
             "grpcio >= 1.42.0; python_version >= '3.10'",  # noqa:E501
             "opencensus",
-            "opentelemetry-sdk",
+            "opentelemetry-sdk >= 1.30.0",
             "opentelemetry-exporter-prometheus",
             "opentelemetry-proto",
             pydantic_dep,
@@ -260,9 +260,6 @@ if setup_spec.type == SetupType.RAY:
             "virtualenv >=20.0.24, !=20.21.1",  # For pip runtime env.
         ],
         "observability": [
-            "opentelemetry-api",
-            "opentelemetry-sdk",
-            "opentelemetry-exporter-otlp",
             "memray; sys_platform != 'win32'",
         ],
         "serve": [
@@ -358,13 +355,14 @@ if setup_spec.type == SetupType.RAY:
     setup_spec.extras["llm"] = list(
         set(
             [
-                "vllm>=0.9.0.1",
+                "vllm>=0.9.2",
                 "jsonref>=1.1.0",
                 "jsonschema",
                 "ninja",
                 # async-timeout is a backport of asyncio.timeout for python < 3.11
                 "async-timeout; python_version < '3.11'",
                 "typer",
+                "hf_transfer",
             ]
             + setup_spec.extras["data"]
             + setup_spec.extras["serve"]
@@ -405,27 +403,31 @@ def is_invalid_windows_platform():
     return platform == "msys" or (platform == "win32" and ver and "GCC" in ver)
 
 
-# Calls Bazel in PATH, falling back to the standard user installation path
-# (~/bin/bazel) if it isn't found.
-def bazel_invoke(invoker, cmdline, *args, **kwargs):
-    home = os.path.expanduser("~")
-    first_candidate = os.getenv("BAZEL_PATH", "bazel")
-    candidates = [first_candidate]
+def _find_bazel_bin():
+    candidates = []
+
+    # User specified bazel location.
+    bazel_path = os.getenv("BAZEL_PATH")
+    if bazel_path:
+        candidates.append(bazel_path)
+
+    # Default bazel locations; prefers bazelisk.
+    candidates.extend(["bazelisk", "bazel"])
+
     if sys.platform == "win32":
         mingw_dir = os.getenv("MINGW_DIR")
         if mingw_dir:
-            candidates.append(mingw_dir + "/bin/bazel.exe")
+            candidates.append(os.path.join(mingw_dir, "bin", "bazel.exe"))
     else:
-        candidates.append(os.path.join(home, "bin", "bazel"))
-    result = None
-    for i, cmd in enumerate(candidates):
-        try:
-            result = invoker([cmd] + cmdline, *args, **kwargs)
-            break
-        except IOError:
-            if i >= len(candidates) - 1:
-                raise
-    return result
+        home_dir = os.path.expanduser("~")
+        candidates.append(os.path.join(home_dir, "bin", "bazel"))
+
+    for bazel in candidates:
+        bazel_bin = shutil.which(bazel)
+        if bazel_bin:
+            return bazel_bin
+
+    raise RuntimeError("Cannot find bazel in PATH")
 
 
 def patch_isdir():
@@ -530,7 +532,8 @@ def build(build_python, build_java, build_cpp):
         )
         raise OSError(msg)
 
-    bazel_env = dict(os.environ, PYTHON3_BIN_PATH=sys.executable)
+    bazel_env = os.environ.copy()
+    bazel_env["PYTHON3_BIN_PATH"] = sys.executable
 
     if is_native_windows_or_msys():
         SHELL = bazel_env.get("SHELL")
@@ -641,9 +644,14 @@ def build(build_python, build_java, build_cpp):
     if setup_spec.build_type == BuildType.TSAN:
         bazel_flags.append("--config=tsan")
 
-    return bazel_invoke(
-        subprocess.check_call,
-        bazel_precmd_flags + ["build"] + bazel_flags + ["--"] + bazel_targets,
+    bazel_bin = _find_bazel_bin()
+    subprocess.check_call(
+        [bazel_bin]
+        + bazel_precmd_flags
+        + ["build"]
+        + bazel_flags
+        + ["--"]
+        + bazel_targets,
         env=bazel_env,
     )
 

@@ -7,13 +7,34 @@ from ray.rllib.utils.typing import AgentID
 
 
 class DoubleRowCorridorEnv(MultiAgentEnv):
-    """A MAEnv with a single, global observation space.
+    """A MultiAgentEnv with a single, global observation space for all agents.
 
-    The env
+    There are two agents in this grid-world-style environment, `agent_0` and `agent_1`.
+    The grid has two-rows and multiple columns and agents must, each
+    separately, reach their individual goal position to receive a final reward of +10:
 
-    TODO: describe
+    +---------------+
+    |0              |
+    |              1|
+    +---------------+
+    Legend:
+    0 = agent_0 + goal state for agent_1
+    1 = agent_1 + goal state for agent_0
 
+    You can change the length of the grid through providing the "length" key in the
+    `config` dict passed to the env's constructor.
 
+    The action space for both agents is Discrete(4), which encodes to moving up, down,
+    left, or right in the grid.
+
+    If the two agents collide, meaning they end up in the exact same field after both
+    taking their actions at any timestep, an additional reward of +5 is given to both
+    agents. Thus, optimal policies aim at seeking the respective other agent first, and
+    only then proceeding to their agent's goal position.
+
+    Each agent in the env has an observation space of a 2-tuple containing its own
+    x/y-position, where x is the row index, being either 0 (1st row) or 1 (2nd row),
+    and y is the column index (starting from 0).
     """
 
     def __init__(self, config=None):
@@ -29,14 +50,13 @@ class DoubleRowCorridorEnv(MultiAgentEnv):
         self.agents = self.possible_agents = ["agent_0", "agent_1"]
         self.terminateds = {}
 
-        # Observations: positions of both agents (row, col).
-        # For example: [0.0, 2.0, 1.0, 4.0] means agent_0 is in position (0, 2)
-        # and agent_1 is in position (1, 4), where the first number is the row index,
-        # the second number is the column index.
-        self._global_obs_space = gym.spaces.Box(
-            0.0, self.length - 1, shape=(4,), dtype=np.int32
+        # Observations: x/y, where the first number is the row index, the second number
+        # is the column index, for both agents.
+        # For example: [0.0, 2.0] means the agent is in row 0 and column 2.
+        self._obs_spaces = gym.spaces.Box(
+            0.0, self.length - 1, shape=(2,), dtype=np.int32
         )
-        self._global_act_space = gym.spaces.Discrete(4)
+        self._act_spaces = gym.spaces.Discrete(4)
 
     @override(MultiAgentEnv)
     def reset(self, *, seed=None, options=None):
@@ -110,11 +130,11 @@ class DoubleRowCorridorEnv(MultiAgentEnv):
 
     @override(MultiAgentEnv)
     def get_observation_space(self, agent_id: AgentID) -> gym.Space:
-        return self._global_obs_space
+        return self._obs_spaces
 
     @override(MultiAgentEnv)
     def get_action_space(self, agent_id: AgentID) -> gym.Space:
-        return self._global_act_space
+        return self._act_spaces
 
     def _get_obs(self):
         obs = {}
@@ -122,10 +142,5 @@ class DoubleRowCorridorEnv(MultiAgentEnv):
         for agent_id in self.agent_pos:
             if self.terminateds[agent_id]:
                 continue
-            obs[agent_id] = np.array(pos["agent_0"] + pos["agent_1"], dtype=np.int32)
+            obs[agent_id] = np.array(pos[agent_id], dtype=np.int32)
         return obs
-
-
-if __name__ == "__main__":
-    env = DoubleRowCorridorEnv()
-    print(env.observation_space)
