@@ -96,6 +96,7 @@ void SchedulerResourceReporter::FillResourceUsage(rpc::ResourcesData &data) cons
       }
 
       const auto &resources = scheduling_class_descriptor.resource_set.GetResourceMap();
+      const auto &label_selectors = scheduling_class_descriptor.label_selector;
       auto by_shape_entry = resource_load_by_shape->Add();
 
       for (const auto &resource : resources) {
@@ -108,6 +109,17 @@ void SchedulerResourceReporter::FillResourceUsage(rpc::ResourcesData &data) cons
         }
         // Add to `resource_load_by_shape`.
         (*by_shape_entry->mutable_shape())[label] = quantity;
+      }
+
+      for (const auto &constraint : label_selectors.GetConstraints()) {
+        auto *selector_proto = by_shape_entry->add_label_selectors();
+        auto *constraint_proto = selector_proto->add_label_constraints();
+        constraint_proto->set_label_key(constraint.GetLabelKey());
+        constraint_proto->set_operator_(static_cast<ray::rpc::LabelSelectorOperator>(
+            static_cast<int>(constraint.GetOperator())));
+        for (const auto &val : constraint.GetLabelValues()) {
+          constraint_proto->add_label_values(val);
+        }
       }
 
       if (is_infeasible) {
