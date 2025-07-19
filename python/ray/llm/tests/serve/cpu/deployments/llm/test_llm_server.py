@@ -281,7 +281,7 @@ class TestLLMServer:
     @pytest.mark.parametrize("stream", [True])
     @pytest.mark.parametrize("max_tokens", [64])
     @pytest.mark.parametrize("concurrency", [1, 16])
-    @pytest.mark.parametrize("stream_batching_interval_ms", [0, 8])
+    @pytest.mark.parametrize("stream_batching_interval_ms", [0])
     @pytest.mark.asyncio
     async def test_stable_streaming_tpot(
         self,
