@@ -104,8 +104,8 @@ class ImageClassificationJpegRayDataLoaderFactory(
                 partitioning=train_partitioning,
                 filesystem=filesystem,
             )
-            .limit(self.get_dataloader_config().limit_training_rows)
             .map(get_preprocess_map_fn(random_transforms=True))
+            .limit(self.get_dataloader_config().limit_training_rows)
         )
 
         # Create validation dataset with same partitioning
@@ -118,8 +118,8 @@ class ImageClassificationJpegRayDataLoaderFactory(
                 partitioning=val_partitioning,
                 filesystem=filesystem,
             )
-            .limit(self.get_dataloader_config().limit_validation_rows)
             .map(get_preprocess_map_fn(random_transforms=False))
+            .limit(self.get_dataloader_config().limit_validation_rows)
         )
 
         return {
