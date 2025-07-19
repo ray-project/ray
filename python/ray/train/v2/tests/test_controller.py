@@ -89,6 +89,7 @@ async def test_resize():
     scaling_policy.queue_recovery_decision(
         ResizeDecision(num_workers=1, resources_per_worker={})
     )
+
     await controller._run_control_loop_iteration()
     assert isinstance(controller.get_state(), SchedulingState)
     assert controller.get_worker_group() is None
@@ -199,7 +200,8 @@ async def test_worker_group_start_failure(monkeypatch, error_type):
     assert isinstance(controller.get_state(), SchedulingState)
 
     # Worker group will fail to start, but controller should not raise
-    # and should go into RESCHEDULING state.
+    # and should go into ReschedulingState.
+    failure_policy.queue_decision(FailureDecision.RESCHEDULE)
     await controller._run_control_loop_iteration()
     assert isinstance(controller.get_state(), ReschedulingState)
 

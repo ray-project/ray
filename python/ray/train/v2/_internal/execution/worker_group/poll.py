@@ -25,8 +25,12 @@ class WorkerGroupPollStatus:
         }
 
     @property
+    def has_error(self) -> bool:
+        return bool(self.errors)
+
+    @property
     def finished(self) -> bool:
-        return self.worker_statuses and all(
+        return bool(self.worker_statuses) and all(
             not status.running for status in self.worker_statuses.values()
         )
 
