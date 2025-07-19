@@ -277,7 +277,9 @@ class LLMServer(_LLMServerBase):
             An AsyncGenerator of the response. If stream is True and batching is enabled, then the generator will yield a list of chat streaming responses (strings of the format data: {response_json}\n\n). Otherwise, it will yield the ChatCompletionResponse object directly.
         """
         return await self._run_request(
-            request, engine_method="chat", batch_output_stream=True
+            request,
+            engine_method="chat",
+            batch_output_stream=self._get_batch_interval_ms() > 0,
         )
 
     async def completions(
@@ -294,7 +296,9 @@ class LLMServer(_LLMServerBase):
             An AsyncGenerator of the response. If stream is True and batching is enabled, then the generator will yield a list of completion streaming responses (strings of the format data: {response_json}\n\n). Otherwise, it will yield the CompletionResponse object directly.
         """
         return await self._run_request(
-            request, engine_method="completions", batch_output_stream=True
+            request,
+            engine_method="completions",
+            batch_output_stream=self._get_batch_interval_ms() > 0,
         )
 
     async def embeddings(
