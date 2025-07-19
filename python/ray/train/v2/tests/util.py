@@ -1,6 +1,6 @@
 import time
 import uuid
-from typing import Optional
+from typing import Optional, Union
 from unittest.mock import MagicMock
 
 from ray.train.context import TrainContext
@@ -127,8 +127,7 @@ class MockFailurePolicy(FailurePolicy):
 
     def make_decision(
         self,
-        training_failed_error: Optional[TrainingFailedError] = None,
-        controller_failed_error: Optional[ControllerError] = None,
+        error: Union[TrainingFailedError, ControllerError],
     ) -> FailureDecision:
         if self._decision_queue:
             return self._decision_queue.pop(0)
