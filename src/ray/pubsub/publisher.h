@@ -153,9 +153,9 @@ class SubscriptionIndex {
 };
 
 struct LongPollConnection {
-  LongPollConnection(rpc::PubsubLongPollingReply *reply,
-                     rpc::SendReplyCallback send_reply_callback)
-      : reply(reply), send_reply_callback(send_reply_callback) {}
+  LongPollConnection(rpc::PubsubLongPollingReply *_reply,
+                     rpc::SendReplyCallback _send_reply_callback)
+      : reply(_reply), send_reply_callback(_send_reply_callback) {}
 
   rpc::PubsubLongPollingReply *reply;
   rpc::SendReplyCallback send_reply_callback;

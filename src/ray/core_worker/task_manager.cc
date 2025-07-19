@@ -272,17 +272,17 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
 
     return_ids.push_back(return_id);
     rpc::ObjectReference ref;
-    auto object_id = spec.ReturnId(i);
-    ref.set_object_id(object_id.Binary());
+    auto return_object_id = spec.ReturnId(i);
+    ref.set_object_id(return_object_id.Binary());
     ref.mutable_owner_address()->CopyFrom(caller_address);
     ref.set_call_site(call_site);
 
     // Register the callback to free the GPU object when it is out of scope.
-    auto tensor_transport = reference_counter_.GetTensorTransport(object_id);
+    auto tensor_transport = reference_counter_.GetTensorTransport(return_object_id);
     if (tensor_transport.value_or(rpc::TensorTransport::OBJECT_STORE) !=
         rpc::TensorTransport::OBJECT_STORE) {
       reference_counter_.AddObjectOutOfScopeOrFreedCallback(
-          object_id, [this](const ObjectID &object_id) {
+          return_object_id, [this](const ObjectID &object_id) {
             auto actor_id = ObjectID::ToActorID(object_id);
             auto rpc_client = get_actor_rpc_client_callback_(actor_id);
             auto request = rpc::FreeActorObjectRequest();
