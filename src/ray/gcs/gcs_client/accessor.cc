@@ -772,10 +772,12 @@ void NodeInfoAccessor::AsyncResubscribe() {
         /*subscribe=*/[this](rpc::GcsNodeInfo
                                  &&data) { HandleNotification(std::move(data)); },
         /*done=*/
-        [](const Status &) {
-          RAY_LOG(INFO)
-              << "Finished fetching all node information from gcs server after gcs "
-                 "server or pub-sub server is restarted.";
+        [this](const Status &) {
+          fetch_node_data_operation_([](const Status &) {
+            RAY_LOG(INFO)
+                << "Finished fetching all node information from gcs server after gcs "
+                   "server or pub-sub server is restarted.";
+          });
         });
   }
 }
