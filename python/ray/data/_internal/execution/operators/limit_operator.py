@@ -39,7 +39,9 @@ class LimitOperator(OneToOneOperator):
         else:
             return self._consumed_rows >= self._limit
 
-    def _within_limit(self, num_rows: int, input_total_rows: Optional[int]) -> bool:
+    def _within_limit(
+        self, num_rows: int, input_total_rows: Optional[int] = None
+    ) -> bool:
         if input_total_rows is not None and self._limit >= input_total_rows:
             return self._consumed_rows + num_rows <= input_total_rows
         else:
