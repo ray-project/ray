@@ -22,8 +22,8 @@ namespace rpc {
 class MockEventAggregatorClient : public EventAggregatorClient {
  public:
   MOCK_METHOD(Status,
-              AsyncAddRayEventData,
-              (std::unique_ptr<rpc::events::RayEventData> data_ptr,
+              AsyncAddRayEventsData,
+              (std::unique_ptr<rpc::events::RayEventsData> data_ptr,
                std::function<void(Status status)> callback),
               (override));
 };
