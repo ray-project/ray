@@ -853,8 +853,9 @@ def test_usage_lib_cluster_metadata_generation_usage_disabled(
         meta = ray_usage_lib._generate_cluster_metadata(ray_init_cluster=False)
         assert "ray_version" in meta
         assert "python_version" in meta
+        assert "python_magic_number" in meta
         assert "ray_init_cluster" in meta
-        assert len(meta) == 3
+        assert len(meta) == 4
 
 
 def test_usage_lib_get_total_num_running_jobs_to_report(
@@ -1167,9 +1168,9 @@ provider:
             print_dashboard_log()
             raise
         payload = usage_stats_server.report_payload
-        ray_version, python_version = ray._private.utils.compute_version_info()
-        assert payload["ray_version"] == ray_version
-        assert payload["python_version"] == python_version
+        version_info = ray._private.utils.compute_version_info()
+        assert payload["ray_version"] == version_info.ray_version
+        assert payload["python_version"] == version_info.python_version
         assert payload["schema_version"] == "0.1"
         assert payload["os"] == sys.platform
         if sys.platform != "linux":
