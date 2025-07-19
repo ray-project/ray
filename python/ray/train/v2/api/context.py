@@ -2,6 +2,7 @@ from typing import Any, Dict
 
 from ray.train.v2._internal.execution.context import (
     get_train_context as get_internal_train_context,
+    is_running_local_testing,
 )
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 
@@ -210,3 +211,11 @@ class TrainContext:
         without notice between minor versions.
         """
         return get_internal_train_context().get_storage()
+
+    @DeveloperAPI
+    def is_running_local_testing(self) -> bool:
+        """Check if the current run is running without Ray Train, e.g. python running locally, torchrun, etc.
+
+        NOTE: This is a developer API, and local testing mode is under development.
+        """
+        return is_running_local_testing()
