@@ -87,6 +87,7 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
         map_task_kwargs: Optional[Dict[str, Any]],
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]],
         ray_remote_args: Optional[Dict[str, Any]],
+        shared_key: Optional[str] = None,
     ):
         # NOTE: This constructor should not be called directly; use MapOperator.create()
         # instead.
@@ -101,7 +102,7 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
         self._ray_remote_args_fn = ray_remote_args_fn
         self._ray_remote_args_factory_actor_locality = None
         self._remote_args_for_metrics = copy.deepcopy(self._ray_remote_args)
-
+        self._shared_key = shared_key
         # Bundles block references up to the min_rows_per_bundle target.
         self._block_ref_bundler = _BlockRefBundler(min_rows_per_bundle)
 
@@ -177,6 +178,7 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
         map_task_kwargs: Optional[Dict[str, Any]] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
+        shared_key: Optional[str] = None,
     ) -> "MapOperator":
         """Create a MapOperator.
 
@@ -207,11 +209,19 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
                 always override the args in ``ray_remote_args``. Note: this is an
                 advanced, experimental feature.
             ray_remote_args: Customize the :func:`ray.remote` args for this op's tasks.
+            shared_key: Optional key for sharing this operator across executions.
+                Note: Operator sharing is only supported for ActorPoolStrategy.
         """
         if compute_strategy is None:
             compute_strategy = TaskPoolStrategy()
 
         if isinstance(compute_strategy, TaskPoolStrategy):
+            if shared_key is not None:
+                logger.warning(
+                    "shared_key is not supported for TaskPoolStrategy and will be ignored. "
+                    "Operator sharing is only available for ActorPoolStrategy."
+                )
+
             from ray.data._internal.execution.operators.task_pool_map_operator import (
                 TaskPoolMapOperator,
             )
@@ -246,6 +256,7 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
                 map_task_kwargs=map_task_kwargs,
                 ray_remote_args_fn=ray_remote_args_fn,
                 ray_remote_args=ray_remote_args,
+                shared_key=shared_key,
             )
         else:
             raise ValueError(f"Unsupported execution strategy {compute_strategy}")
@@ -343,9 +354,9 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
         if "scheduling_strategy" not in ray_remote_args:
             ctx = self.data_context
             if input_bundle and input_bundle.size_bytes() > ctx.large_args_threshold:
-                ray_remote_args[
-                    "scheduling_strategy"
-                ] = ctx.scheduling_strategy_large_args
+                ray_remote_args["scheduling_strategy"] = (
+                    ctx.scheduling_strategy_large_args
+                )
                 # Takes precedence over small args case. This is to let users know
                 # when the large args case is being triggered.
                 self._remote_args_for_metrics = copy.deepcopy(ray_remote_args)
@@ -498,8 +509,7 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
     @abstractmethod
     def min_max_resource_requirements(
         self,
-    ) -> Tuple[ExecutionResources, ExecutionResources]:
-        ...
+    ) -> Tuple[ExecutionResources, ExecutionResources]: ...
 
     @abstractmethod
     def incremental_resource_usage(self) -> ExecutionResources:

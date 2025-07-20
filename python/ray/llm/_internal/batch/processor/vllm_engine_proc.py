@@ -58,6 +58,12 @@ class vLLMEngineProcessorConfig(OfflineProcessorConfig):
         "specified and LoRA is enabled, then the 'model' in LoRA "
         "requests will be interpreted as model ID used by HF transformers.",
     )
+    # Engine sharing key.
+    shared_engine_key: Optional[str] = Field(
+        default=None,
+        description="Custom key for engine sharing. Use this to explicitly "
+        "control which engines are shared.",
+    )
 
     @root_validator(pre=True)
     def validate_task_type(cls, values):
@@ -139,42 +145,43 @@ def build_vllm_engine_processor(
 
     # Core stage -- the vLLM engine.
 
-    stages.append(
-        vLLMEngineStage(
-            fn_constructor_kwargs=dict(
-                batch_size=config.batch_size,
-                max_concurrent_batches=config.max_concurrent_batches,
-                model=config.model_source,
-                engine_kwargs=config.engine_kwargs,
-                task_type=config.task_type,
-                max_pending_requests=config.max_pending_requests,
-                dynamic_lora_loading_path=config.dynamic_lora_loading_path,
-            ),
-            map_batches_kwargs=dict(
-                zero_copy_batch=True,
-                # The number of running replicas. This is a deprecated field, but
-                # we need to set `max_tasks_in_flight_per_actor` through `compute`,
-                # which initiates enough many overlapping UDF calls per actor, to
-                # saturate `max_concurrency`.
-                compute=ray.data.ActorPoolStrategy(
-                    # vLLM start up time is significant, so if user give fixed
-                    # concurrency, start all instances without auto-scaling.
-                    min_size=config.concurrency,
-                    max_size=config.concurrency,
-                    max_tasks_in_flight_per_actor=config.experimental.get(
-                        "max_tasks_in_flight_per_actor", DEFAULT_MAX_TASKS_IN_FLIGHT
-                    ),
+    vllm_stage = vLLMEngineStage(
+        fn_constructor_kwargs=dict(
+            batch_size=config.batch_size,
+            max_concurrent_batches=config.max_concurrent_batches,
+            model=config.model_source,
+            engine_kwargs=config.engine_kwargs,
+            task_type=config.task_type,
+            max_pending_requests=config.max_pending_requests,
+            dynamic_lora_loading_path=config.dynamic_lora_loading_path,
+        ),
+        map_batches_kwargs=dict(
+            zero_copy_batch=True,
+            # The number of running replicas. This is a deprecated field, but
+            # we need to set `max_tasks_in_flight_per_actor` through `compute`,
+            # which initiates enough many overlapping UDF calls per actor, to
+            # saturate `max_concurrency`.
+            compute=ray.data.ActorPoolStrategy(
+                min_size=config.concurrency,
+                max_size=config.concurrency,
+                max_tasks_in_flight_per_actor=config.experimental.get(
+                    "max_tasks_in_flight_per_actor", DEFAULT_MAX_TASKS_IN_FLIGHT
                 ),
-                # The number of running batches "per actor" in Ray Core level.
-                # This is used to make sure we overlap batches to avoid the tail
-                # latency of each batch.
-                max_concurrency=config.max_concurrent_batches,
-                resources=config.resources_per_bundle,
-                accelerator_type=config.accelerator_type,
-                runtime_env=config.runtime_env,
             ),
-        )
+            # The number of running batches "per actor" in Ray Core level.
+            # This is used to make sure we overlap batches to avoid the tail
+            # latency of each batch.
+            max_concurrency=config.max_concurrent_batches,
+            resources=config.resources_per_bundle,
+            accelerator_type=config.accelerator_type,
+            runtime_env=config.runtime_env,
+        ),
     )
+
+    if config.shared_engine_key:
+        vllm_stage._shared_engine_key = config.shared_engine_key
+
+    stages.append(vllm_stage)
 
     if config.detokenize:
         stages.append(

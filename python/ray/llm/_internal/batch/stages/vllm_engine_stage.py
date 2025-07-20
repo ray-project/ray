@@ -685,6 +685,16 @@ class vLLMEngineStage(StatefulStage):
         map_batches_kwargs.update(ray_remote_args)
         return values
 
+    def get_dataset_map_batches_kwargs(
+        self,
+        batch_size: int,
+        data_column: str,
+    ) -> Dict[str, Any]:
+        kwargs = super().get_dataset_map_batches_kwargs(batch_size, data_column)
+        if getattr(self, "_shared_engine_key", None):
+            kwargs["shared_key"] = self._shared_engine_key
+        return kwargs
+
     def get_required_input_keys(self) -> Dict[str, str]:
         """The required input keys of the stage and their descriptions."""
         ret = {"prompt": "The text prompt (str)."}
