@@ -14,8 +14,9 @@
 
 #pragma once
 
-#include <memory>
 #include <boost/thread.hpp>
+#include <memory>
+#include <string>
 
 #include "ray/core_worker/core_worker_options.h"
 #include "ray/util/mutex_protected.h"
@@ -129,13 +130,14 @@ class CoreWorkerProcessImpl {
   /// Try to get core worker. Returns nullptr if core worker doesn't exist.
   std::shared_ptr<CoreWorker> TryGetCoreWorker() const;
 
-  std::shared_ptr<CoreWorker> createCoreWorker(CoreWorkerOptions options, const WorkerID &worker_id);
+  std::shared_ptr<CoreWorker> CreateCoreWorker(CoreWorkerOptions options,
+                                               const WorkerID &worker_id);
 
   /// Get the `CoreWorker` instance. The process will be exited if
   /// the core worker is nullptr.
   ///
   /// \return The `CoreWorker` instance.
-  std::shared_ptr<CoreWorker> GetCoreWorker() const;
+  const std::shared_ptr<CoreWorker> &GetCoreWorker() const;
 
   /// Run worker execution loop.
   void RunWorkerTaskExecutionLoop();
@@ -143,7 +145,18 @@ class CoreWorkerProcessImpl {
   /// Shutdown the driver completely at the process level.
   void ShutdownDriver();
 
-  void RunIOService();
+  /// Register core worker to worker pool.
+  static Status RegisterWorkerToRaylet(raylet::RayletConnection &conn,
+                                       const WorkerID &worker_id,
+                                       rpc::WorkerType worker_type,
+                                       const JobID &job_id,
+                                       int runtime_env_hash,
+                                       const Language &language,
+                                       const std::string &ip_address,
+                                       const std::string &serialized_job_config,
+                                       const StartupToken &startup_token,
+                                       NodeID *raylet_id,
+                                       int *port);
 
  private:
   /// The various options.
@@ -155,10 +168,9 @@ class CoreWorkerProcessImpl {
   /// The worker ID of this worker.
   const WorkerID worker_id_;
 
-  //Member variables moved from CoreWorker to CoreWorkerProcessImpl
-
   /// Event loop where the IO events are handled. e.g. async GCS operations.
-  instrumented_io_context io_service_{/*enable_lag_probe=*/false, /*running_on_single_thread=*/true};
+  instrumented_io_context io_service_{/*enable_lag_probe=*/false,
+                                      /*running_on_single_thread=*/true};
 
   /// Keeps the io_service_ alive.
   boost::asio::executor_work_guard<boost::asio::io_context::executor_type> io_work_;
@@ -166,7 +178,8 @@ class CoreWorkerProcessImpl {
   /// Event loop where tasks are processed.
   /// task_execution_service_ should be destructed first to avoid
   /// issues like https://github.com/ray-project/ray/issues/18857
-  instrumented_io_context task_execution_service_{/*enable_lag_probe=*/false, /*running_on_single_thread=*/true};
+  instrumented_io_context task_execution_service_{/*enable_lag_probe=*/false,
+                                                  /*running_on_single_thread=*/true};
 
   /// The asio work to keep task_execution_service_ alive.
   boost::asio::executor_work_guard<boost::asio::io_context::executor_type>
@@ -174,7 +187,6 @@ class CoreWorkerProcessImpl {
 
   // Thread that runs a boost::asio service to process IO events.
   boost::thread io_thread_;
-
 };
 }  // namespace core
 }  // namespace ray

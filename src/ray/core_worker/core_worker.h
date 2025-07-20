@@ -171,7 +171,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   CoreWorker(CoreWorkerOptions options,
              std::unique_ptr<WorkerContext> worker_context,
-             instrumented_io_context& io_service,
+             instrumented_io_context &io_service,
              std::unique_ptr<rpc::ClientCallManager> client_call_manager,
              std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool,
              std::shared_ptr<PeriodicalRunner> periodical_runner,
@@ -180,11 +180,12 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
              bool connected,
              std::shared_ptr<gcs::GcsClient> gcs_client,
              std::shared_ptr<raylet::RayletClient> local_raylet_client,
-             boost::thread& io_thread,
+             boost::thread &io_thread,
              std::shared_ptr<ReferenceCounter> reference_counter,
              std::shared_ptr<CoreWorkerMemoryStore> memory_store,
              std::shared_ptr<CoreWorkerPlasmaStoreProvider> plasma_store_provider,
-             std::shared_ptr<experimental::MutableObjectProvider> experimental_mutable_object_provider,
+             std::shared_ptr<experimental::MutableObjectProvider>
+                 experimental_mutable_object_provider,
              std::unique_ptr<FutureResolver> future_resolver,
              std::shared_ptr<TaskManager> task_manager,
              std::shared_ptr<ActorCreatorInterface> actor_creator,
@@ -195,7 +196,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
              std::unique_ptr<NormalTaskSubmitter> normal_task_submitter,
              std::unique_ptr<ObjectRecoveryManager> object_recovery_manager,
              std::unique_ptr<ActorManager> actor_manager,
-             instrumented_io_context& task_execution_service,
+             instrumented_io_context &task_execution_service,
              std::unique_ptr<worker::TaskEventBuffer> task_event_buffer,
              uint32_t pid);
 
@@ -1356,7 +1357,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
             const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes =
                 nullptr);
 
-  void TaskManagerRetryTask(TaskSpecification &spec, bool object_recovery, uint32_t delay_ms);
+  void TaskManagerRetryTask(TaskSpecification &spec,
+                            bool object_recovery,
+                            uint32_t delay_ms);
 
  private:
   static nlohmann::json OverrideRuntimeEnv(const nlohmann::json &child,
@@ -1370,19 +1373,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   FRIEND_TEST(TestOverrideRuntimeEnv, TestWorkingDirOverride);
   FRIEND_TEST(TestOverrideRuntimeEnv, TestCondaInherit);
   FRIEND_TEST(TestOverrideRuntimeEnv, TestCondaOverride);
-
-  /// Register core worker to worker pool.
-  static Status RegisterWorkerToRaylet(raylet::RayletConnection &conn,
-                                const WorkerID &worker_id,
-                                rpc::WorkerType worker_type,
-                                const JobID &job_id,
-                                int runtime_env_hash,
-                                const Language &language,
-                                const std::string &ip_address,
-                                const std::string &serialized_job_config,
-                                const StartupToken &startup_token,
-                                NodeID *raylet_id,
-                                int *port);
 
   Status RegisterWorkerToRayletWithPort(raylet::RayletConnection &conn,
                                         const WorkerID &worker_id,
@@ -1758,7 +1748,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   bool initialized_ ABSL_GUARDED_BY(initialize_mutex_) = false;
 
   /// Event loop where the IO events are handled. e.g. async GCS operations.
-  instrumented_io_context& io_service_;
+  instrumented_io_context &io_service_;
 
   /// Shared client call manager.
   std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
@@ -1893,7 +1883,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Event loop where tasks are processed.
   /// task_execution_service_ should be destructed first to avoid
   /// issues like https://github.com/ray-project/ray/issues/18857
-  instrumented_io_context& task_execution_service_;
+  instrumented_io_context &task_execution_service_;
 
   // Queue of tasks to resubmit when the specified time passes.
   std::priority_queue<TaskToRetry, std::deque<TaskToRetry>, TaskToRetryDescComparator>
