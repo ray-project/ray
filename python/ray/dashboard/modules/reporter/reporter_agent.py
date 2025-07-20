@@ -39,7 +39,8 @@ from ray._private.telemetry.open_telemetry_metric_recorder import (
     OpenTelemetryMetricRecorder,
 )
 from ray._raylet import GCS_PID_KEY, WorkerID
-from ray.core.generated import metrics_service_pb2_grpc, reporter_pb2, reporter_pb2_grpc
+from opentelemetry.proto.collector.metrics.v1 import metrics_service_pb2_grpc
+from ray.core.generated import reporter_pb2, reporter_pb2_grpc
 from ray.dashboard import k8s_utils
 from ray.dashboard.consts import (
     CLUSTER_TAG_KEYS,

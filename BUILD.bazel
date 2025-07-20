@@ -13,6 +13,8 @@ load("@com_github_grpc_grpc//bazel:cython_library.bzl", "pyx_library")
 load("@hedron_compile_commands//:refresh_compile_commands.bzl", "refresh_compile_commands")
 load("@python3_9//:defs.bzl", python39 = "interpreter")
 load("@rules_cc//cc:defs.bzl", "cc_proto_library")
+load("@rules_pkg//pkg:mappings.bzl", "pkg_attributes", "pkg_files")
+load("@rules_pkg//pkg:zip.bzl", "pkg_zip")
 load("@rules_proto//proto:defs.bzl", "proto_library")
 load("@rules_python//python:defs.bzl", "py_library", "py_runtime", "py_runtime_pair")
 load("//bazel:ray.bzl", "COPTS", "FLATC_ARGS", "PYX_COPTS", "PYX_SRCS", "copy_to_workspace", "ray_cc_binary", "ray_cc_library", "ray_cc_test")
@@ -992,12 +994,7 @@ filegroup(
         "python/ray/util/*.py",
         "python/ray/internal/*.py",
     ]) + [
-        "python/ray/autoscaler/_private/readonly/defaults.yaml",
-        "python/ray/autoscaler/aws/defaults.yaml",
-        "python/ray/autoscaler/azure/defaults.yaml",
-        "python/ray/autoscaler/gcp/defaults.yaml",
-        "python/ray/autoscaler/local/defaults.yaml",
-        "python/ray/autoscaler/vsphere/defaults.yaml",
+        "//python/ray/autoscaler:default_yamls",
         "python/ray/core/__init__.py",
         "python/ray/core/generated/__init__.py",
         "python/ray/core/generated/ray/__init__.py",
@@ -1034,7 +1031,6 @@ filegroup(
         "//src/ray/protobuf:gcs_py_proto",
         "//src/ray/protobuf:gcs_service_py_proto",
         "//src/ray/protobuf:instance_manager_py_proto",
-        "//src/ray/protobuf:metrics_service_py_proto",
         "//src/ray/protobuf:node_manager_py_proto",
         "//src/ray/protobuf:ray_client_py_proto",
         "//src/ray/protobuf:reporter_py_proto",
@@ -1042,6 +1038,13 @@ filegroup(
         "//src/ray/protobuf:runtime_env_common_py_proto",
         "//src/ray/protobuf:usage_py_proto",
     ],
+)
+
+genrule(
+    name = "all_py_proto_filelist",
+    srcs = ["//src/ray/protobuf:all_py_proto"],
+    outs = ["all_py_proto_filelist.txt"],
+    cmd = "for f in $(SRCS); do echo $$f; done > $@",
 )
 
 filegroup(
@@ -1060,6 +1063,88 @@ py_library(
         exclude = ["python/ray/tests/*.py"],
     ),
     visibility = ["__subpackages__"],
+)
+
+pkg_files(
+    name = "raylet_so_files",
+    srcs = ["python/ray/_raylet.so"],
+    visibility = ["//visibility:private"],
+    strip_prefix = "python",
+    attributes = pkg_attributes(mode = "755"),
+)
+
+pkg_files(
+    name = "all_py_proto_files",
+    srcs = ["//src/ray/protobuf:all_py_proto"],
+    visibility = ["//visibility:private"],
+    prefix = "ray/core/generated",
+    excludes = [
+        "opentelemetry/proto/metrics/v1/metrics_pb2.py",
+    ],
+)
+
+pkg_zip(
+    name = "all_py_proto_zip",
+    srcs = [":all_py_proto_files"],
+    out = "all_py_proto.zip",
+    visibility = ["//visibility:private"],
+)
+
+pkg_files(
+    name = "serve_py_proto_files",
+    srcs = [":serve_py_proto"],
+    visibility = ["//visibility:private"],
+    prefix = "ray/serve/generated",
+)
+
+pkg_files(
+    name = "redis_files",
+    srcs = [
+        ":redis-cli",
+        ":redis-server",
+    ],
+    visibility = ["//visibility:private"],
+    attributes = pkg_attributes(mode = "755"),
+    prefix = "ray/core/src/ray/thirdparty/redis/src",
+)
+
+pkg_files(
+    name = "raylet_files",
+    srcs = [":raylet"],
+    visibility = ["//visibility:private"],
+    attributes = pkg_attributes(mode = "755"),
+    prefix = "ray/core/src/ray/raylet",
+)
+
+pkg_files(
+    name = "gcs_server_files",
+    srcs = ["//src/ray/gcs/gcs_server"],
+    visibility = ["//visibility:private"],
+    attributes = pkg_attributes(mode = "755"),
+    prefix = "ray/core/src/ray/gcs",
+)
+
+pkg_files(
+    name = "jemalloc_files",
+    srcs = ["@jemalloc//:shared"],
+    visibility = ["//visibility:private"],
+    attributes = pkg_attributes(mode = "755"),
+    prefix = "ray/core/",
+)
+
+pkg_zip(
+    name = "ray_pkg_zip",
+    srcs = [
+        ":raylet_so_files",
+        ":all_py_proto_files",
+        ":serve_py_proto_files",
+        ":redis_files",
+        ":raylet_files",
+        ":gcs_server_files",
+        ":jemalloc_files",
+    ],
+    out = "ray_pkg.zip",
+    visibility = ["//visibility:private"],
 )
 
 copy_to_workspace(
