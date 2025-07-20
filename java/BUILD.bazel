@@ -1,9 +1,13 @@
-load("//bazel:ray.bzl", "define_java_module", "native_java_library")
-load("@rules_proto_grpc//java:defs.bzl", "java_proto_compile")
 load(
     "@com_github_johnynek_bazel_jar_jar//:jar_jar.bzl",
     "jar_jar",
 )
+load("@rules_java//java:java_binary.bzl", "java_binary")
+load("@rules_java//java:java_import.bzl", "java_import")
+load("@rules_java//java:java_library.bzl", "java_library")
+load("@rules_java//java:java_test.bzl", "java_test")
+load("@rules_proto_grpc//java:defs.bzl", "java_proto_compile")
+load("//bazel:ray.bzl", "define_java_module", "native_java_library")
 
 exports_files([
     "testng.xml",

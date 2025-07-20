@@ -568,7 +568,7 @@ ray_cc_library(
 )
 
 ray_cc_library(
-    name ="local_object_manager_interface",
+    name = "local_object_manager_interface",
     hdrs = ["src/ray/raylet/local_object_manager_interface.h"],
     deps = [
         "//src/ray/common:id",
@@ -626,8 +626,8 @@ ray_cc_library(
         ],
     }),
     deps = [
-        ":local_object_manager_interface",
         ":local_object_manager",
+        ":local_object_manager_interface",
         ":node_manager_fbs",
         ":node_manager_rpc",
         ":raylet_agent_manager",
@@ -776,10 +776,10 @@ ray_cc_test(
     srcs = ["src/ray/raylet/test/node_manager_test.cc"],
     tags = ["team:core"],
     deps = [
-        ":ray_mock",
         ":local_object_manager_interface",
-        "//src/ray/util:macros",
+        ":ray_mock",
         ":raylet_lib",
+        "//src/ray/util:macros",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -932,12 +932,13 @@ flatbuffer_cc_library(
 pyx_library(
     name = "_raylet",
     srcs = glob([
+        "python/ray/includes/*.pxd",
+        "python/ray/includes/*.pxi",
+    ]) + [
         "python/ray/__init__.py",
         "python/ray/_raylet.pxd",
         "python/ray/_raylet.pyx",
-        "python/ray/includes/*.pxd",
-        "python/ray/includes/*.pxi",
-    ]),
+    ],
     # Export ray ABI symbols, which can then be used by _streaming.so.
     # We need to dlopen this lib with RTLD_GLOBAL to use ABI in this
     # shared lib, see python/ray/__init__.py.
@@ -982,26 +983,17 @@ filegroup(
     name = "python_sources",
     srcs = glob([
         "python/ray/*.py",
-        "python/ray/autoscaler/*.py",
-        "python/ray/autoscaler/_private/*.py",
-        "python/ray/autoscaler/_private/_azure/*.json",
-        "python/ray/autoscaler/_private/readonly/defaults.yaml",
-        "python/ray/autoscaler/aws/defaults.yaml",
-        "python/ray/autoscaler/azure/defaults.yaml",
-        "python/ray/autoscaler/gcp/defaults.yaml",
-        "python/ray/autoscaler/local/defaults.yaml",
-        "python/ray/autoscaler/vsphere/defaults.yaml",
         "python/ray/cloudpickle/*.py",
-        "python/ray/core/__init__.py",
-        "python/ray/core/generated/__init__.py",
-        "python/ray/core/generated/ray/__init__.py",
-        "python/ray/core/generated/ray/protocol/__init__.py",
         "python/ray/dashboard/**/*.py",
         "python/ray/experimental/*.py",
         "python/ray/util/*.py",
         "python/ray/internal/*.py",
-        "python/ray/workers/default_worker.py",
-    ]),
+    ]) + [
+        "python/ray/core/__init__.py",
+        "//python/ray/_private:src_files",
+        "//python/ray/autoscaler:default_configs",
+        "//python/ray/autoscaler:src_files",
+    ],
 )
 
 alias(
