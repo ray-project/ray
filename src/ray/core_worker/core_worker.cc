@@ -409,8 +409,8 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
   const bool worker_port_assigned = options_.assigned_worker_port.has_value();
   NodeID local_raylet_id = raylet_id_assigned ? *options_.assigned_raylet_id : NodeID{};
   int assigned_port = worker_port_assigned ? *options_.assigned_worker_port : 0;
-  // TODO(hjiang): both should be assigned for worker, neither assigned for driver. Currently
-  // neither assigned for driver or worker.
+  // TODO(hjiang): both should be assigned for worker, neither assigned for driver.
+  // Currently neither assigned for driver or worker.
   RAY_CHECK((raylet_id_assigned && worker_port_assigned) ||
             (!raylet_id_assigned && !worker_port_assigned));
 
