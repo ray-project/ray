@@ -985,21 +985,16 @@ filegroup(
     name = "python_sources",
     srcs = glob([
         "python/ray/*.py",
-        "python/ray/autoscaler/*.py",
-        "python/ray/autoscaler/_private/*.py",
-        "python/ray/autoscaler/_private/_azure/*.json",
         "python/ray/cloudpickle/*.py",
         "python/ray/dashboard/**/*.py",
         "python/ray/experimental/*.py",
         "python/ray/util/*.py",
         "python/ray/internal/*.py",
     ]) + [
-        "//python/ray/autoscaler:default_yamls",
         "python/ray/core/__init__.py",
-        "python/ray/core/generated/__init__.py",
-        "python/ray/core/generated/ray/__init__.py",
-        "python/ray/core/generated/ray/protocol/__init__.py",
-        "python/ray/workers/default_worker.py",
+        "//python/ray/_private:src_files",
+        "//python/ray/autoscaler:default_configs",
+        "//python/ray/autoscaler:src_files",
     ],
 )
 

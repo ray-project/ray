@@ -9,14 +9,23 @@ doctest(
 )
 
 filegroup(
-    name = "default_yamls",
+    name = "default_configs",
     srcs = [
         "_private/readonly/defaults.yaml",
-        "aws/defaults.yaml",
-        "azure/defaults.yaml",
-        "gcp/defaults.yaml",
-        "local/defaults.yaml",
         "vsphere/defaults.yaml",
+        "//python/ray/autoscaler/aws:default_config",
+        "//python/ray/autoscaler/azure:default_config",
+        "//python/ray/autoscaler/gcp:default_config",
+        "//python/ray/autoscaler/local:default_config",
     ],
-    visibility = ["//visibility:public"],
+    visibility = ["//:__pkg__"],
+)
+
+filegroup(
+    name = "src_files",
+    srcs = glob([
+        "*.py",
+        "_private/*.py",
+    ]),
+    visibility = ["//:__pkg__"],
 )
