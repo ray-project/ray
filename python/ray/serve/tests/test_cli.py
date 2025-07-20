@@ -332,10 +332,7 @@ def test_cli_without_config_deploy(serve_instance):
             SERVE_DEFAULT_APP_NAME
         ]
 
-        assert (
-            info_response
-            == "No config has been deployed during `serve run`. Nothing to display.\n"
-        )
+        assert info_response == "No deployed application configs found.\n"
         assert (
             config_response_for_absent_app
             == 'Application "absent_app" does not exist.\n'

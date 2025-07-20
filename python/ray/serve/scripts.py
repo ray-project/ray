@@ -644,7 +644,7 @@ def config(address: str, name: Optional[str]):
         if configs:
             print("\n---\n\n".join(configs), end="")
         else:
-            print("No config has been deployed during `serve run`. Nothing to display.")
+            print("No deployed application configs found.")
     # Fetch a specific app config by name.
     else:
         app = applications.get(name)
