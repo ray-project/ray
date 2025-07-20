@@ -1,6 +1,6 @@
-import React from 'react';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import React from 'react';
 import { ThemeProvider, useTheme } from '../contexts/ThemeContext';
 
 // Test component to verify theme context works
@@ -22,7 +22,7 @@ describe('ThemeContext', () => {
     return render(
       <ThemeProvider>
         {component}
-      </ThemeProvider>
+      </ThemeProvider>,
     );
   };
 

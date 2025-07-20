@@ -4,6 +4,7 @@ import dayjs from "dayjs";
 import duration from "dayjs/plugin/duration";
 import React, { Suspense, useEffect, useState } from "react";
 import { HashRouter, Navigate, Route, Routes } from "react-router-dom";
+import { ThemeProvider as CustomThemeProvider, useTheme } from "./contexts/ThemeContext";
 import ActorDetailPage, { ActorDetailLayout } from "./pages/actor/ActorDetail";
 import { ActorLayout } from "./pages/actor/ActorLayout";
 import Loading from "./pages/exception/Loading";
@@ -56,8 +57,7 @@ import {
 } from "./pages/serve/ServeSystemDetailPage";
 import { TaskPage } from "./pages/task/TaskPage";
 import { getNodeList } from "./service/node";
-import { lightTheme, darkTheme } from "./theme";
-import { ThemeProvider as CustomThemeProvider, useTheme } from "./contexts/ThemeContext";
+import { darkTheme, lightTheme } from "./theme";
 
 dayjs.extend(duration);
 

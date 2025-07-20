@@ -1,9 +1,9 @@
-import React from 'react';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { ThemeToggle } from './ThemeToggle';
+import React from 'react';
 import { ThemeProvider } from '../contexts/ThemeContext';
 import { STYLE_WRAPPER } from '../util/test-utils';
+import { ThemeToggle } from './ThemeToggle';
 
 describe('ThemeToggle', () => {
   const renderWithProviders = () => {
@@ -12,7 +12,7 @@ describe('ThemeToggle', () => {
         <ThemeProvider>
           <ThemeToggle />
         </ThemeProvider>
-      </STYLE_WRAPPER>
+      </STYLE_WRAPPER>,
     );
   };
 

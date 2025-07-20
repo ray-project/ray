@@ -3,8 +3,8 @@ import React, { PropsWithChildren } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { SWRConfig } from "swr";
 import { GlobalContext, GlobalContextType } from "../App";
-import { lightTheme, darkTheme } from "../theme";
 import { ThemeProvider as CustomThemeProvider, useTheme } from "../contexts/ThemeContext";
+import { darkTheme, lightTheme } from "../theme";
 
 const ThemedWrapper = ({ children }: PropsWithChildren<{}>) => {
   const { mode } = useTheme();
