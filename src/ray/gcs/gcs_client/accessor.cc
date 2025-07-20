@@ -624,8 +624,8 @@ void NodeInfoAccessor::AsyncSubscribeToNodeChange(
   1. Subscribe to node info
   2. Once the subscription is made, ask for all node info.
   3. Once all node info is received, call done callback.
-  4. HandleNotification will handle conflicts between the subscription updates and
-     GetAllNodeInfo.
+  4. HandleNotification can handle conflicts between the subscription updates and
+     GetAllNodeInfo because nodes can only go from alive to dead, never back to alive.
   */
 
   RAY_CHECK(node_change_callback_ == nullptr);

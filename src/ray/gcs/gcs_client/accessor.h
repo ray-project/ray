@@ -462,6 +462,8 @@ class NodeInfoAccessor {
   absl::flat_hash_map<NodeID, rpc::GcsNodeInfo> node_cache_;
   /// The set of removed nodes.
   std::unordered_set<NodeID> removed_nodes_;
+
+  FRIEND_TEST(NodeInfoAccessorTest, TestHandleNotification);
 };
 
 /// \class NodeResourceInfoAccessor
