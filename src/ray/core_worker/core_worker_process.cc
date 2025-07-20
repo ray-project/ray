@@ -43,6 +43,8 @@
 #include "ray/util/subreaper.h"
 #include "ray/util/util.h"
 
+using MessageType = ray::protocol::MessageType;
+
 namespace ray {
 namespace core {
 namespace {
@@ -925,5 +927,52 @@ const std::shared_ptr<CoreWorker> &CoreWorkerProcessImpl::GetCoreWorker() const 
   return read_locked.Get();
 }
 
+Status CoreWorkerProcessImpl::RegisterWorkerToRaylet(
+    raylet::RayletConnection &conn,
+    const WorkerID &worker_id,
+    rpc::WorkerType worker_type,
+    const JobID &job_id,
+    int runtime_env_hash,
+    const Language &language,
+    const std::string &ip_address,
+    const std::string &serialized_job_config,
+    const StartupToken &startup_token,
+    NodeID *raylet_id,
+    int *port) {
+  flatbuffers::FlatBufferBuilder fbb;
+  // TODO(suquark): Use `WorkerType` in `common.proto` without converting to int.
+  auto message =
+      protocol::CreateRegisterClientRequest(fbb,
+                                            static_cast<int>(worker_type),
+                                            to_flatbuf(fbb, worker_id),
+                                            getpid(),
+                                            startup_token,
+                                            to_flatbuf(fbb, job_id),
+                                            runtime_env_hash,
+                                            language,
+                                            fbb.CreateString(ip_address),
+                                            /*port=*/0,
+                                            fbb.CreateString(serialized_job_config));
+  fbb.Finish(message);
+  // Register the process ID with the raylet.
+  // NOTE(swang): If raylet exits and we are registered as a worker, we will get killed.
+  std::vector<uint8_t> reply;
+  auto request_status = conn.AtomicRequestReply(
+      MessageType::RegisterClientRequest, MessageType::RegisterClientReply, &reply, &fbb);
+  if (!request_status.ok()) {
+    return Status(request_status.code(),
+                  std::string("[RayletClient] Unable to register worker with raylet. ") +
+                      request_status.message());
+  }
+  auto reply_message = flatbuffers::GetRoot<protocol::RegisterClientReply>(reply.data());
+  bool success = reply_message->success();
+  if (!success) {
+    return Status::Invalid(string_from_flatbuf(*reply_message->failure_reason()));
+  }
+
+  *raylet_id = NodeID::FromBinary(reply_message->raylet_id()->str());
+  *port = reply_message->port();
+  return Status::OK();
+}
 }  // namespace core
 }  // namespace ray
