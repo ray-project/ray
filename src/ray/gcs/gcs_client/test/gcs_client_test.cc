@@ -317,7 +317,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
   }
 
   bool SubscribeToNodeChange(
-      const gcs::SubscribeCallback<NodeID, rpc::GcsNodeInfo> &subscribe) {
+      std::function<void(NodeID, const rpc::GcsNodeInfo &)> subscribe) {
     std::promise<bool> promise;
     gcs_client_->Nodes().AsyncSubscribeToNodeChange(
         subscribe, [&promise](Status status) { promise.set_value(status.ok()); });

@@ -144,8 +144,8 @@ class MockNodeInfoAccessor : public NodeInfoAccessor {
               (override));
   MOCK_METHOD(void,
               AsyncSubscribeToNodeChange,
-              ((const SubscribeCallback<NodeID, rpc::GcsNodeInfo> &subscribe),
-               const StatusCallback &done),
+              (std::function<void(NodeID, const rpc::GcsNodeInfo &)> subscribe,
+               StatusCallback done),
               (override));
   MOCK_METHOD(const rpc::GcsNodeInfo *,
               Get,

@@ -46,6 +46,7 @@ std::function<void()> CoreWorkerClientPool::GetDefaultUnavailableTimeoutCallback
           [worker_client_pool, worker_id, node_id](const Status &status,
                                                    rpc::IsLocalWorkerDeadReply &&reply) {
             if (!status.ok()) {
+              // Will try again when unavailable timeout callback is retried.
               RAY_LOG(INFO).WithField(worker_id).WithField(node_id)
                   << "Failed to check if worker is dead on request to raylet";
               return;
@@ -59,13 +60,18 @@ std::function<void()> CoreWorkerClientPool::GetDefaultUnavailableTimeoutCallback
     };
 
     if (gcs_client->Nodes().IsSubscriptionCachePopulated()) {
-      auto *node_info = gcs_client->Nodes().Get(node_id, /*filter_dead_nodes=*/true);
+      auto *node_info = gcs_client->Nodes().Get(node_id, /*filter_dead_nodes=*/false);
       if (node_info == nullptr) {
+        // Node info hasn't come in yet for this node.
+        return;
+      }
+      if (node_info->state() == rpc::GcsNodeInfo::DEAD) {
         RAY_LOG(INFO).WithField(worker_id).WithField(node_id)
             << "Disconnecting core worker client because its node is dead.";
         worker_client_pool->Disconnect(worker_id);
         return;
       }
+      // Node is alive so check worker.
       check_worker_alive(*node_info);
       return;
     }
@@ -77,10 +83,15 @@ std::function<void()> CoreWorkerClientPool::GetDefaultUnavailableTimeoutCallback
          worker_client_pool](const Status &status,
                              std::vector<rpc::GcsNodeInfo> &&nodes) {
           if (!status.ok()) {
+            // Will try again when unavailable timeout callback is retried.
             RAY_LOG(INFO) << "Failed to get node info from GCS";
             return;
           }
-          if (nodes.empty() || nodes[0].state() != rpc::GcsNodeInfo::ALIVE) {
+          if (nodes.empty()) {
+            // Node info hasn't come in yet for this node.
+            return;
+          }
+          if (nodes[0].state() != rpc::GcsNodeInfo::ALIVE) {
             RAY_LOG(INFO).WithField(worker_id).WithField(node_id)
                 << "Disconnecting core worker client because its node is dead";
             worker_client_pool->Disconnect(worker_id);
