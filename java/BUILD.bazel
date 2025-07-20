@@ -4,6 +4,8 @@ load(
     "@com_github_johnynek_bazel_jar_jar//:jar_jar.bzl",
     "jar_jar",
 )
+load("@rules_pkg//pkg:mappings.bzl", "pkg_files")
+load("@rules_pkg//pkg:zip.bzl", "pkg_zip")
 
 exports_files([
     "testng.xml",
@@ -270,48 +272,76 @@ filegroup(
     ],
 )
 
-genrule(
-    name = "copy_pom_file_zip",
+pkg_files(
+    name = "api_pom_files",
+    srcs = ["io_ray_ray_api_pom"],
+    prefix = "java/api/",
+    visibility = ["//visibility:private"],
+    renames = {
+        "io_ray_ray_api_pom.xml": "pom.xml",
+    },
+)
+
+pkg_files(
+    name = "runtime_pom_files",
+    srcs = ["io_ray_ray_runtime_pom"],
+    prefix = "java/runtime/",
+    visibility = ["//visibility:private"],
+    renames = {
+        "io_ray_ray_runtime_pom.xml": "pom.xml",
+    },
+)
+
+pkg_files(
+    name = "test_pom_files",
+    srcs = ["io_ray_ray_test_pom"],
+    prefix = "java/test/",
+    visibility = ["//visibility:private"],
+    renames = {
+        "io_ray_ray_test_pom.xml": "pom.xml",
+    },
+)
+
+pkg_files(
+    name = "performance_test_pom_files",
+    srcs = ["io_ray_ray_performance_test_pom"],
+    prefix = "java/performance_test/",
+    visibility = ["//visibility:private"],
+    renames = {
+        "io_ray_ray_performance_test_pom.xml": "pom.xml",
+    },
+)
+
+pkg_files(
+    name = "serve_pom_files",
+    srcs = ["io_ray_ray_serve_pom"],
+    prefix = "java/serve/",
+    visibility = ["//visibility:private"],
+    renames = {
+        "io_ray_ray_serve_pom.xml": "pom.xml",
+    },
+)
+
+pkg_zip(
+    name = "pom_files",
     srcs = [
-        "//java:io_ray_ray_" + module + "_pom"
-        for module in all_modules
+        ":api_pom_files",
+        ":runtime_pom_files",
+        ":test_pom_files",
+        ":performance_test_pom_files",
+        ":serve_pom_files",
     ],
-    outs = ["copy_pom_files.zip"],
-    cmd = """
-        tmpdir=$$(mktemp -d)
-        mkdir -p "$$tmpdir/java/api" "$$tmpdir/java/runtime" "$$tmpdir/java/test" "$$tmpdir/java/performance_test" "$$tmpdir/java/serve"
-
-        cp $(location //java:io_ray_ray_api_pom) "$$tmpdir/java/api/pom.xml"
-        chmod 644 "$$tmpdir/java/api/pom.xml"
-
-        cp $(location //java:io_ray_ray_runtime_pom) "$$tmpdir/java/runtime/pom.xml"
-        chmod 644 "$$tmpdir/java/runtime/pom.xml"
-
-        cp $(location //java:io_ray_ray_test_pom) "$$tmpdir/java/test/pom.xml"
-        chmod 644 "$$tmpdir/java/test/pom.xml"
-
-        cp $(location //java:io_ray_ray_performance_test_pom) "$$tmpdir/java/performance_test/pom.xml"
-        chmod 644 "$$tmpdir/java/performance_test/pom.xml"
-
-        cp $(location //java:io_ray_ray_serve_pom) "$$tmpdir/java/serve/pom.xml"
-        chmod 644 "$$tmpdir/java/serve/pom.xml"
-
-        (cd "$$tmpdir"; zip -0 -q -r out.zip "java")
-        mv "$$tmpdir/out.zip" $@
-
-        rm -rf "$$tmpdir"
-    """,
     visibility = ["//visibility:private"],
 )
 
 genrule(
-    name = "copy_pom_file",
+    name = "copy_pom_files",
     srcs = [
-        ":copy_pom_file_zip",
+        ":pom_files.zip",
     ],
-    outs = ["copy_pom_file.sum"],
+    outs = ["copy_pom_files.sum"],
     cmd = """
-        unzip -q -o $(location :copy_pom_file_zip) -d "$$(pwd)"
+        unzip -q -o $(location :pom_files.zip) -d "$$(pwd)" &&
         if [[ "$$OSTYPE" =~ ^darwin ]]; then shasum $< > $@ ; else sha1sum $< > $@ ; fi
     """,
     local = 1,
@@ -328,6 +358,8 @@ genrule(
     ],
     outs = ["cp_java_generated.zip"],
     cmd = """
+        set -euo pipefail
+
         tmpdir=$$(mktemp -d)
 
         mkdir -p "$$tmpdir/java/runtime/src/main/java/io/ray/runtime/generated"
@@ -372,7 +404,7 @@ genrule(
 genrule(
     name = "gen_maven_deps",
     srcs = [
-        ":copy_pom_file",
+        ":copy_pom_files",
         ":cp_java_generated",
         ":java_native_deps",
     ],
@@ -426,20 +458,38 @@ jar_jar(
     rules = "//java:shade_rule",
 )
 
+pkg_files(
+    name = "ray_java_pkg_files",
+    srcs = [
+        ":ray_dist_shaded.jar",
+    ],
+    prefix = "ray/jars/",
+    renames = {
+        "ray_dist_shaded.jar": "ray_dist.jar",
+    },
+)
+
+pkg_zip(
+    name = "ray_java_pkg_zip",
+    out = "ray_java_pkg.zip",
+    srcs = [
+        ":ray_java_pkg_files",
+    ],
+    visibility = ["//visibility:private"],
+)
+
 genrule(
     name = "ray_java_pkg",
     srcs = [
-        "//java:ray_dist_shaded.jar",
-        "//java:gen_maven_deps",
+        "ray_java_pkg.zip",
+        ":gen_maven_deps",
     ],
     outs = ["ray_java_pkg.out"],
     cmd = """
-        WORK_DIR="$$(pwd)"
-        rm -rf "$$WORK_DIR/python/ray/jars" && mkdir -p "$$WORK_DIR/python/ray/jars"
-        cp -f $(location //java:ray_dist_shaded.jar) "$$WORK_DIR/python/ray/jars/ray_dist.jar"
-        echo "# ray_java_pkg" > $@
-        OUTPUT_JAR="$(location //java:ray_dist_shaded.jar)"
-        if [[ "$$OSTYPE" =~ ^darwin ]]; then shasum "$$OUTPUT_JAR" >> $@ ; else sha1sum "$$OUTPUT_JAR" >> $@ ; fi
+        WORK_DIR="$$(pwd)" &&
+        rm -rf "$$WORK_DIR/python/ray/jars" && mkdir -p "$$WORK_DIR/python/ray/jars" &&
+        unzip -q $(location ray_java_pkg.zip) -d "$$WORK_DIR/python" &&
+        if [[ "$$OSTYPE" =~ ^darwin ]]; then shasum $(SRCS) > $@ ; else sha1sum $(SRCS) > $@ ; fi
     """,
     local = 1,
     tags = ["no-cache"],
