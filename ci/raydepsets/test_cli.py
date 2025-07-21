@@ -112,7 +112,7 @@ class TestCli(unittest.TestCase):
             compiled_file = Path(
                 _runfiles.Rlocation(f"{tmpdir}/requirement_constraints_test.txt")
             )
-            _replace_in_file(compiled_file, "emoji==2.10.0", "emoji==2.12.0")
+            _replace_in_file(compiled_file, "emoji==2.9.0", "emoji==2.10.0")
             output_file = Path(
                 _runfiles.Rlocation(f"{tmpdir}/requirements_compiled.txt")
             )
