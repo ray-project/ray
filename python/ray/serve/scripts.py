@@ -644,13 +644,11 @@ def config(address: str, name: Optional[str]):
         if configs:
             print("\n---\n\n".join(configs), end="")
         else:
-            print("No deployed application configs found.")
+            print("No configuration was found.")
     # Fetch a specific app config by name.
     else:
-        app = applications.get(name)
-        if app is None:
-            print(f'Application "{name}" does not exist.')
-        elif app.deployed_app_config is None:
+        app = serve_details.applications.get(name)
+        if app is None or app.deployed_app_config is None:
             print(f'No config has been deployed for application "{name}".')
         else:
             config = app.deployed_app_config.dict(exclude_unset=True)

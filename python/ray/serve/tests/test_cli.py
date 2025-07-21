@@ -332,10 +332,10 @@ def test_cli_without_config_deploy(serve_instance):
             SERVE_DEFAULT_APP_NAME
         ]
 
-        assert info_response == "No deployed application configs found.\n"
+        assert info_response == "No configuration was found.\n"
         assert (
             config_response_for_absent_app
-            == 'Application "absent_app" does not exist.\n'
+            == 'No config has been deployed for application "absent_app".\n'
         )
         assert fetched_status["status"] == "RUNNING"
         assert fetched_status["deployments"]["fn"]["status"] == "HEALTHY"

@@ -143,7 +143,7 @@ def test_shutdown(ray_start_stop):
             config_response = subprocess.check_output(["serve", "config"]).decode(
                 "utf-8"
             )
-            return config_response == "No deployed application configs found.\n"
+            return config_response == "No configuration was found.\n"
 
         def serve_status_empty():
             status_response = subprocess.check_output(["serve", "status"])
