@@ -487,6 +487,9 @@ class NodeProviderAdapter(ICloudInstanceProvider):
             )
             logger.info("Launched {} nodes of type {}.".format(count, node_type))
         except Exception as e:
+            logger.info(
+                "Failed to launch {} nodes of type {}: {}".format(count, node_type, e)
+            )
             error = LaunchNodeError(node_type, count, request_id, int(time.time_ns()))
             error.__cause__ = e
             self._errors_queue.put(error)

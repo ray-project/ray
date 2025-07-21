@@ -1903,7 +1903,7 @@ cdef void execute_task(
 
                     for arg in args:
                         raise_if_dependency_failed(arg)
-                    args, kwargs = ray._private.signature.recover_args(args)
+                    args, kwargs = ray._common.signature.recover_args(args)
 
             if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK):
                 actor_id = core_worker.get_actor_id()
@@ -2286,6 +2286,12 @@ cdef execute_task_with_cancellation_handler(
             raise_sys_exit_with_custom_error_message(
                 f"Exited because worker reached max_calls={execution_info.max_calls}"
                 " for this method.")
+
+cdef void free_actor_object_callback(const CObjectID &c_object_id) nogil:
+    with gil:
+        object_id = c_object_id.Hex().decode()
+        gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
+        gpu_object_manager.gpu_object_store.remove_gpu_object(object_id)
 
 cdef shared_ptr[LocalMemoryBuffer] ray_error_to_memory_buf(ray_error):
     cdef bytes py_bytes = ray_error.to_bytes()
@@ -2998,6 +3004,7 @@ cdef class CoreWorker:
         options.driver_name = driver_name
         options.initialize_thread_callback = initialize_pygilstate_for_thread
         options.task_execution_callback = task_execution_handler
+        options.free_actor_object_callback = free_actor_object_callback
         options.check_signals = check_signals
         options.gc_collect = gc_collect
         options.spill_objects = spill_objects_handler
@@ -3219,48 +3226,6 @@ cdef class CoreWorker:
 
         return has_object and (not memory_store_only or not is_in_plasma)
 
-    cdef _create_put_buffer(self, shared_ptr[CBuffer] &metadata,
-                            size_t data_size, ObjectRef object_ref,
-                            c_vector[CObjectID] contained_ids,
-                            CObjectID *c_object_id, shared_ptr[CBuffer] *data,
-                            c_bool created_by_worker,
-                            owner_address=None,
-                            c_bool inline_small_object=True,
-                            c_bool is_experimental_channel=False,
-                            ):
-        cdef:
-            unique_ptr[CAddress] c_owner_address
-
-        c_owner_address = move(self._convert_python_address(owner_address))
-
-        if object_ref is None:
-            with nogil:
-                check_status(CCoreWorkerProcess.GetCoreWorker()
-                             .CreateOwnedAndIncrementLocalRef(
-                             is_experimental_channel, metadata,
-                             data_size, contained_ids,
-                             c_object_id, data, created_by_worker,
-                             move(c_owner_address),
-                             inline_small_object))
-        else:
-            c_object_id[0] = object_ref.native()
-            if owner_address is None:
-                c_owner_address = make_unique[CAddress]()
-                dereference(
-                    c_owner_address
-                ).CopyFrom(CCoreWorkerProcess.GetCoreWorker().GetRpcAddress())
-            with nogil:
-                check_status(CCoreWorkerProcess.GetCoreWorker().CreateExisting(
-                            metadata, data_size, c_object_id[0],
-                            dereference(c_owner_address), data,
-                            created_by_worker))
-
-        # If data is nullptr, that means the ObjectRef already existed,
-        # which we ignore.
-        # TODO(edoakes): this is hacky, we should return the error instead
-        # and deal with it here.
-        return data.get() == NULL
-
     cdef unique_ptr[CAddress] _convert_python_address(self, address=None):
         """ convert python address to `CAddress`, If not provided,
         return nullptr.
@@ -3294,8 +3259,8 @@ cdef class CoreWorker:
             CObjectID c_object_id = object_ref.native()
             shared_ptr[CBuffer] data_buf
             shared_ptr[CBuffer] metadata_buf
-            unique_ptr[CAddress] c_owner_address = move(self._convert_python_address(
-                    object_ref.owner_address()))
+            unique_ptr[CAddress] c_owner_address = self._convert_python_address(
+                    object_ref.owner_address())
 
         # TODO(suquark): This method does not support put objects to
         # in memory store currently.
@@ -3414,8 +3379,8 @@ cdef class CoreWorker:
                 .ExperimentalRegisterMutableObjectReader(c_object_id))
 
     def put_serialized_object_and_increment_local_ref(
-            self, serialized_object,
-            ObjectRef object_ref=None,
+            self,
+            serialized_object,
             c_bool pin_object=True,
             owner_address=None,
             c_bool inline_small_object=True,
@@ -3424,59 +3389,55 @@ cdef class CoreWorker:
         cdef:
             CObjectID c_object_id
             shared_ptr[CBuffer] data
-            shared_ptr[CBuffer] metadata
-            unique_ptr[CAddress] c_owner_address
-            c_vector[CObjectID] contained_object_ids
             c_vector[CObjectReference] contained_object_refs
-
-        metadata = string_to_buffer(serialized_object.metadata)
-        total_bytes = serialized_object.total_bytes
-        contained_object_ids = ObjectRefsToVector(
+            shared_ptr[CBuffer] metadata = string_to_buffer(
+                serialized_object.metadata)
+            unique_ptr[CAddress] c_owner_address = self._convert_python_address(
+                owner_address)
+            c_vector[CObjectID] contained_object_ids = ObjectRefsToVector(
                 serialized_object.contained_object_refs)
-        object_already_exists = self._create_put_buffer(
-            metadata, total_bytes, object_ref,
-            contained_object_ids,
-            &c_object_id, &data, True, owner_address, inline_small_object,
-            _is_experimental_channel)
+            size_t total_bytes = serialized_object.total_bytes
+
+        with nogil:
+            check_status(CCoreWorkerProcess.GetCoreWorker()
+                .CreateOwnedAndIncrementLocalRef(
+                    _is_experimental_channel,
+                    metadata,
+                    total_bytes,
+                    contained_object_ids,
+                    &c_object_id,
+                    &data,
+                    c_owner_address,
+                    inline_small_object))
+
+        if (data.get() == NULL):
+            # Object already exists
+            return c_object_id.Binary()
 
         logger.debug(
             f"Serialized object size of {c_object_id.Hex()} is {total_bytes} bytes")
 
-        if not object_already_exists:
-            if total_bytes > 0:
-                (<SerializedObject>serialized_object).write_to(
-                    Buffer.make(data))
-            if self.is_local_mode:
-                contained_object_refs = (
-                        CCoreWorkerProcess.GetCoreWorker().
-                        GetObjectRefs(contained_object_ids))
-                if owner_address is not None:
-                    raise Exception(
-                        "cannot put data into memory store directly"
-                        " and assign owner at the same time")
-                check_status(CCoreWorkerProcess.GetCoreWorker().Put(
-                        CRayObject(data, metadata, contained_object_refs),
-                        contained_object_ids, c_object_id))
-            else:
-                c_owner_address = move(self._convert_python_address(
-                    owner_address))
-                with nogil:
-                    if object_ref is None:
-                        check_status(
-                            CCoreWorkerProcess.GetCoreWorker().SealOwned(
-                                        c_object_id,
-                                        pin_object,
-                                        move(c_owner_address)))
-                    else:
-                        # Using custom object refs is not supported because we
-                        # can't track their lifecycle, so we don't pin the
-                        # object in this case.
-                        check_status(
-                            CCoreWorkerProcess.GetCoreWorker().SealExisting(
-                                        c_object_id, pin_object=False,
-                                        generator_id=CObjectID.Nil(),
-                                        owner_address=move(c_owner_address)))
-
+        if total_bytes > 0:
+            (<SerializedObject>serialized_object).write_to(
+                Buffer.make(data))
+        if self.is_local_mode:
+            contained_object_refs = (
+                    CCoreWorkerProcess.GetCoreWorker().
+                    GetObjectRefs(contained_object_ids))
+            if owner_address is not None:
+                raise Exception(
+                    "cannot put data into memory store directly"
+                    " and assign owner at the same time")
+            check_status(CCoreWorkerProcess.GetCoreWorker().Put(
+                    CRayObject(data, metadata, contained_object_refs),
+                    contained_object_ids, c_object_id))
+        else:
+            with nogil:
+                check_status(
+                    CCoreWorkerProcess.GetCoreWorker().SealOwned(
+                                c_object_id,
+                                pin_object,
+                                move(c_owner_address)))
         return c_object_id.Binary()
 
     def wait(self,
@@ -3595,10 +3556,19 @@ cdef class CoreWorker:
         with nogil:
             CCoreWorkerProcess.GetCoreWorker().TriggerGlobalGC()
 
-    def dump_object_store_memory_usage(self):
-        message = CCoreWorkerProcess.GetCoreWorker().MemoryUsageString()
-        logger.warning("Local object store memory usage:\n{}\n".format(
-            message.decode("utf-8")))
+    def log_plasma_usage(self):
+        """Logs the current usage of the Plasma Store.
+        Makes an unretriable blocking IPC to the Plasma Store.
+
+        Raises an error if cannot connect to the Plasma Store. This should
+        be fatal for the worker.
+        """
+        cdef:
+            c_string result
+        status = CCoreWorkerProcess.GetCoreWorker().GetPlasmaUsage(result)
+        check_status(status)
+        logger.warning("Plasma Store Usage:\n{}\n".format(
+            result.decode("utf-8")))
 
     def get_memory_store_size(self):
         return CCoreWorkerProcess.GetCoreWorker().GetMemoryStoreSize()

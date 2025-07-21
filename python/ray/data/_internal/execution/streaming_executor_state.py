@@ -29,6 +29,9 @@ from ray.data._internal.execution.operators.base_physical_operator import (
     AllToAllOperator,
     InternalQueueOperatorMixin,
 )
+from ray.data._internal.execution.operators.hash_shuffle import (
+    HashShuffleProgressBarMixin,
+)
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.resource_manager import ResourceManager
 from ray.data._internal.progress_bar import ProgressBar
@@ -212,13 +215,16 @@ class OpState:
         For AllToAllOperator, zero or more sub progress bar would be created.
         Return the number of enabled progress bars created for this operator.
         """
-        is_all_to_all = isinstance(self.op, AllToAllOperator)
+        contains_sub_progress_bars = isinstance(
+            self.op, AllToAllOperator
+        ) or isinstance(self.op, HashShuffleProgressBarMixin)
         # Only show 1:1 ops when in verbose progress mode.
+
         ctx = DataContext.get_current()
         progress_bar_enabled = (
             ctx.enable_progress_bars
             and ctx.enable_operator_progress_bars
-            and (is_all_to_all or verbose_progress)
+            and (contains_sub_progress_bars or verbose_progress)
         )
         self.progress_bar = ProgressBar(
             "- " + self.op.name,
@@ -228,7 +234,7 @@ class OpState:
             enabled=progress_bar_enabled,
         )
         num_progress_bars = 1
-        if is_all_to_all:
+        if contains_sub_progress_bars:
             # Initialize must be called for sub progress bars, even the
             # bars are not enabled via the DataContext.
             num_progress_bars += self.op.initialize_sub_progress_bars(index + 1)
@@ -238,7 +244,11 @@ class OpState:
         """Close all progress bars for this operator."""
         if self.progress_bar:
             self.progress_bar.close()
-            if isinstance(self.op, AllToAllOperator):
+            contains_sub_progress_bars = isinstance(
+                self.op, AllToAllOperator
+            ) or isinstance(self.op, HashShuffleProgressBarMixin)
+            if contains_sub_progress_bars:
+                # Close all sub progress bars.
                 self.op.close_sub_progress_bars()
 
     def total_enqueued_input_bundles(self) -> int:
@@ -428,7 +438,7 @@ def build_streaming_topology(
 
 def process_completed_tasks(
     topology: Topology,
-    resource_manager: ResourceManager,
+    backpressure_policies: List[BackpressurePolicy],
     max_errored_blocks: int,
 ) -> int:
     """Process any newly completed tasks. To update operator
@@ -450,14 +460,22 @@ def process_completed_tasks(
             active_tasks[task.get_waitable()] = (state, task)
 
     max_bytes_to_read_per_op: Dict[OpState, int] = {}
-    if resource_manager.op_resource_allocator_enabled():
-        for op, state in topology.items():
-            max_bytes_to_read = (
-                resource_manager.op_resource_allocator.max_task_output_bytes_to_read(op)
-            )
-            op._in_task_output_backpressure = max_bytes_to_read == 0
-            if max_bytes_to_read is not None:
-                max_bytes_to_read_per_op[state] = max_bytes_to_read
+    for op, state in topology.items():
+        # Check all backpressure policies for max_task_output_bytes_to_read
+        # Use the minimum limit from all policies (most restrictive)
+        max_bytes_to_read = None
+        for policy in backpressure_policies:
+            policy_limit = policy.max_task_output_bytes_to_read(op)
+            if policy_limit is not None:
+                if max_bytes_to_read is None:
+                    max_bytes_to_read = policy_limit
+                else:
+                    max_bytes_to_read = min(max_bytes_to_read, policy_limit)
+
+        # If no policy provides a limit, there's no limit
+        op.notify_in_task_output_backpressure(max_bytes_to_read == 0)
+        if max_bytes_to_read is not None:
+            max_bytes_to_read_per_op[state] = max_bytes_to_read
 
     # Process completed Ray tasks and notify operators.
     num_errored_blocks = 0
@@ -471,7 +489,7 @@ def process_completed_tasks(
 
         # Organize tasks by the operator they belong to, and sort them by task index.
         # So that we'll process them in a deterministic order.
-        # This is because OpResourceAllocator may limit the number of blocks to read
+        # This is because backpressure policies may limit the number of blocks to read
         # per operator. In this case, we want to have fewer tasks finish quickly and
         # yield resources, instead of having all tasks output blocks together.
         ready_tasks_by_op = defaultdict(list)
@@ -567,7 +585,6 @@ def update_operator_states(topology: Topology) -> None:
 def get_eligible_operators(
     topology: Topology,
     backpressure_policies: List[BackpressurePolicy],
-    resource_manager: ResourceManager,
     *,
     ensure_liveness: bool,
 ) -> List[PhysicalOperator]:
@@ -590,20 +607,9 @@ def get_eligible_operators(
     eligible_ops: List[PhysicalOperator] = []
 
     for op, state in topology.items():
-        assert resource_manager.op_resource_allocator_enabled(), topology
-
-        # Check whether the operator is under its limits imposed by the
-        # resource manager
-        under_resource_limits = (
-            resource_manager.op_resource_allocator.can_submit_new_task(op)
-        )
-        # Operator is considered being in task-submission back-pressure if
-        # both of the following holds true:
-        #   - It's exceeding its resource limits
-        #   - At least one of the back-pressure policies are violated
-        in_backpressure = not under_resource_limits or not all(
-            p.can_add_input(op) for p in backpressure_policies
-        )
+        # Operator is considered being in task-submission back-pressure if any
+        # back-pressure policy is violated
+        in_backpressure = any(not p.can_add_input(op) for p in backpressure_policies)
 
         op_runnable = False
 
@@ -625,10 +631,11 @@ def get_eligible_operators(
         # Update scheduling status
         state._scheduling_status = OpSchedulingStatus(
             runnable=op_runnable,
-            under_resource_limits=under_resource_limits,
+            under_resource_limits=not in_backpressure,
         )
 
         # Signal whether op in backpressure for stats collections
+        # TODO(hchen): also report which policy triggers backpressure.
         op.notify_in_task_submission_backpressure(in_backpressure)
 
     # To ensure liveness, allow at least 1 operator to schedule tasks regardless of
@@ -665,7 +672,6 @@ def select_operator_to_run(
     eligible_ops = get_eligible_operators(
         topology,
         backpressure_policies,
-        resource_manager,
         ensure_liveness=ensure_liveness,
     )
 

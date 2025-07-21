@@ -64,7 +64,7 @@ from ray.experimental.channel.shared_memory_channel import (
 )
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
 
-from ray.experimental.channel.torch_tensor_nccl_channel import (
+from ray.experimental.channel.torch_tensor_accelerator_channel import (
     _init_communicator,
     _destroy_communicator,
 )
@@ -341,18 +341,19 @@ def _wrap_exception(exc):
     return wrapped
 
 
-def _get_nccl_group_id(type_hint: ChannelOutputType) -> Optional[str]:
+def _get_comm_group_id(type_hint: ChannelOutputType) -> Optional[str]:
     """
-    Get the NCCL group ID from the type hint. If the type hint does not
-    require NCCL, return None.
+    Get the communicator group ID from the type hint. If the type hint does not
+    require communicator, return None.
 
     Args:
         type_hint: The type hint of the channel.
 
     Returns:
-        The NCCL group ID if the type hint requires NCCL, otherwise None.
+        The communicator group ID if the type hint requires communicator,
+        otherwise None.
     """
-    if type_hint.requires_nccl():
+    if type_hint.requires_accelerator():
         assert isinstance(type_hint, TorchTensorType)
         return type_hint.communicator_id
     return None
@@ -361,7 +362,7 @@ def _get_nccl_group_id(type_hint: ChannelOutputType) -> Optional[str]:
 def _device_context_manager():
     """
     Return a context manager for executing communication operations
-    (i.e., READ and WRITE). For NCCL operations, the context manager
+    (i.e., READ and WRITE). For accelerator operations, the context manager
     uses the proper cuda device from channel context, otherwise,
     nullcontext will be returned.
     """
@@ -509,7 +510,7 @@ class ExecutableTask:
         self.input_type_hints: List[ChannelOutputType] = task.arg_type_hints
         self.output_type_hint: ChannelOutputType = task.dag_node.type_hint
 
-        # The NCCL collective operation.
+        # The accelerator collective operation.
         self.collective_op: Optional["ray.dag.CollectiveOperation"] = None
         if isinstance(task.dag_node, CollectiveOutputNode):
             self.collective_op = task.dag_node.collective_op
@@ -599,25 +600,25 @@ class ExecutableTask:
 
         # Set up send_stream and recv_stream when overlap_gpu_communication
         # is configured
-        if self.output_type_hint.requires_nccl():
-            nccl_group_id = _get_nccl_group_id(self.output_type_hint)
-            nccl_group = ChannelContext.get_current().communicators.get(nccl_group_id)
-            assert nccl_group is not None
-            self._send_stream = nccl_group.send_stream
+        if self.output_type_hint.requires_accelerator():
+            comm_group_id = _get_comm_group_id(self.output_type_hint)
+            comm_group = ChannelContext.get_current().communicators.get(comm_group_id)
+            assert comm_group is not None
+            self._send_stream = comm_group.send_stream
         if self.input_type_hints:
             for type_hint in self.input_type_hints:
-                if type_hint.requires_nccl():
-                    nccl_group_id = _get_nccl_group_id(type_hint)
-                    nccl_group = ChannelContext.get_current().communicators.get(
-                        nccl_group_id
+                if type_hint.requires_accelerator():
+                    comm_group_id = _get_comm_group_id(type_hint)
+                    comm_group = ChannelContext.get_current().communicators.get(
+                        comm_group_id
                     )
-                    assert nccl_group is not None
+                    assert comm_group is not None
                     if not isinstance(self._recv_stream, nullcontext):
-                        assert self._recv_stream == nccl_group.recv_stream, (
+                        assert self._recv_stream == comm_group.recv_stream, (
                             "Currently all torch tensor input channels of a "
                             "Compiled Graph task should use the same recv cuda stream."
                         )
-                    self._recv_stream = nccl_group.recv_stream
+                    self._recv_stream = comm_group.recv_stream
 
     def wrap_and_set_intermediate_future(
         self, val: Any, wrap_in_gpu_future: bool
@@ -722,7 +723,7 @@ class ExecutableTask:
             resolved_inputs.append(task_input.resolve(input_data))
 
         if self.collective_op is not None:
-            # Run a NCCL collective operation.
+            # Run an accelerator collective operation.
             method = self.collective_op.execute
         else:
             # Run an actor method.
@@ -877,7 +878,7 @@ class CompiledDAG:
                 tensors. Three types of values are valid. (1) Communicator:
                 For p2p operations, this is the default communicator
                 to use for nodes annotated with `with_tensor_transport()` and when
-                shared memory is not the desired option (e.g., when transport="nccl",
+                shared memory is not the desired option (e.g., when transport="accelerator",
                 or when transport="auto" for communication between two different GPUs).
                 For collective operations, this is the default communicator to use
                 when a custom communicator is not specified.
@@ -1189,10 +1190,10 @@ class CompiledDAG:
                 if isinstance(dag_node.type_hint, AutoTransportType):
                     auto_transport_tasks.add(task)
 
-                # Collect actors for NCCL P2P methods.
-                if dag_node.type_hint.requires_nccl():
+                # Collect actors for accelerator P2P methods.
+                if dag_node.type_hint.requires_accelerator():
                     self._track_communicator_usage(dag_node, {actor_handle})
-                # Collect NCCL collective operations.
+                # Collect accelerator collective operations.
                 if isinstance(dag_node, CollectiveOutputNode):
                     self._track_communicator_usage(
                         dag_node,
@@ -1201,16 +1202,16 @@ class CompiledDAG:
                     )
                     assert not self._overlap_gpu_communication, (
                         "Currently, the overlap_gpu_communication option is not "
-                        "supported for NCCL collective operations. Please set "
+                        "supported for accelerator collective operations. Please set "
                         "overlap_gpu_communication=False."
                     )
             elif isinstance(dag_node, InputNode) or isinstance(
                 dag_node, InputAttributeNode
             ):
-                if dag_node.type_hint.requires_nccl():
+                if dag_node.type_hint.requires_accelerator():
                     raise ValueError(
-                        "DAG inputs cannot be transferred via NCCL because "
-                        "the driver cannot participate in the NCCL group"
+                        "DAG inputs cannot be transferred via accelerator because "
+                        "the driver cannot participate in the communicator group"
                     )
                 if isinstance(dag_node.type_hint, AutoTransportType):
                     # Currently driver on GPU is not supported, so we always
@@ -1283,7 +1284,7 @@ class CompiledDAG:
 
                 upstream_task.downstream_task_idxs[task_idx] = downstream_actor_handle
 
-                if upstream_task.dag_node.type_hint.requires_nccl():
+                if upstream_task.dag_node.type_hint.requires_accelerator():
                     # Here we are processing the args of the DAGNode, so track
                     # downstream actors only, upstream actor is already tracked
                     # when processing the DAGNode itself.
@@ -1399,7 +1400,7 @@ class CompiledDAG:
             collective_op: Whether the communicator is used for a collective operation.
         """
         if None in actors:
-            raise ValueError("Driver cannot participate in the NCCL group.")
+            raise ValueError("Driver cannot participate in the communicator group.")
         if collective_op:
             type_hint = dag_node._collective_op.type_hint
         else:
@@ -1461,9 +1462,9 @@ class CompiledDAG:
         Resolve the auto transport type hint for the DAG.
         """
         type_hint_resolver = TypeHintResolver(self.actor_to_gpu_ids)
-        # Resolve AutoChannelType type hints and track the actors that use NCCL.
-        # This is needed so that the NCCL group can be initialized for these
-        # actors that use NCCL.
+        # Resolve AutoChannelType type hints and track the actors that use accelerator.
+        # This is needed so that the communicator group can be initialized for
+        # these actors that use accelerator.
         for task in auto_transport_tasks:
             writer = task.dag_node._get_actor_handle()
             readers = task.downstream_task_idxs.values()
@@ -1479,7 +1480,7 @@ class CompiledDAG:
                 writer_and_node,
                 reader_and_node_list,
             )
-            if task.dag_node.type_hint.requires_nccl():
+            if task.dag_node.type_hint.requires_accelerator():
                 self._track_communicator_usage(
                     task.dag_node,
                     set(readers).union({writer}),
@@ -1776,7 +1777,7 @@ class CompiledDAG:
 
         if RAY_CGRAPH_ENABLE_DETECT_DEADLOCK and self._detect_deadlock():
             raise ValueError(
-                "This DAG cannot be compiled because it will deadlock on NCCL "
+                "This DAG cannot be compiled because it will deadlock on accelerator "
                 "calls. If you believe this is a false positive, please disable "
                 "the graph verification by setting the environment variable "
                 "RAY_CGRAPH_ENABLE_DETECT_DEADLOCK to 0 and file an issue at "
@@ -1961,13 +1962,15 @@ class CompiledDAG:
                 dag_node = self.idx_to_task[task_idx].dag_node
                 method_name = exec_task.method_name
                 actor_handle = dag_node._get_actor_handle()
-                requires_nccl_read = False
+                requires_accelerator_read = False
                 for upstream_node in dag_node._upstream_nodes:
-                    if upstream_node.type_hint.requires_nccl():
-                        requires_nccl_read = True
+                    if upstream_node.type_hint.requires_accelerator():
+                        requires_accelerator_read = True
                         break
-                requires_nccl_compute = isinstance(dag_node, CollectiveOutputNode)
-                requires_nccl_write = dag_node.type_hint.requires_nccl()
+                requires_accelerator_compute = isinstance(
+                    dag_node, CollectiveOutputNode
+                )
+                requires_accelerator_write = dag_node.type_hint.requires_accelerator()
 
                 read_node = _DAGOperationGraphNode(
                     _DAGNodeOperation(
@@ -1975,7 +1978,7 @@ class CompiledDAG:
                     ),
                     task_idx,
                     actor_handle,
-                    requires_nccl_read,
+                    requires_accelerator_read,
                 )
                 compute_node = _DAGOperationGraphNode(
                     _DAGNodeOperation(
@@ -1983,7 +1986,7 @@ class CompiledDAG:
                     ),
                     task_idx,
                     actor_handle,
-                    requires_nccl_compute,
+                    requires_accelerator_compute,
                 )
                 write_node = _DAGOperationGraphNode(
                     _DAGNodeOperation(
@@ -1991,7 +1994,7 @@ class CompiledDAG:
                     ),
                     task_idx,
                     actor_handle,
-                    requires_nccl_write,
+                    requires_accelerator_write,
                 )
 
                 actor_to_operation_nodes[actor_handle].append(
@@ -2058,8 +2061,8 @@ class CompiledDAG:
         """
         TODO (kevin85421): Avoid false negatives.
 
-        Currently, a compiled graph may deadlock if there are NCCL channels, and the
-        readers have control dependencies on the same actor. For example:
+        Currently, a compiled graph may deadlock if there are accelerator channels,
+        and the readers have control dependencies on the same actor. For example:
 
         actor1.a ---> actor2.f1
                  |
@@ -2860,8 +2863,8 @@ class CompiledDAG:
 
                     # Get the type hint for this argument
                     if arg_index < len(task.arg_type_hints):
-                        if task.arg_type_hints[arg_index].requires_nccl():
-                            type_hint = "Nccl"
+                        if task.arg_type_hints[arg_index].requires_accelerator():
+                            type_hint = "Accelerator"
                         else:
                             type_hint = type(task.arg_type_hints[arg_index]).__name__
                     else:
@@ -2905,7 +2908,7 @@ class CompiledDAG:
         # Print edges
         ascii_visualization += "\nEdges Information:\n"
         for upstream_task, downstream_task, type_hint in edge_info:
-            if type_hint == "Nccl":
+            if type_hint == "Accelerator":
                 edgs_channel = "+++"
             else:
                 edgs_channel = "---"
@@ -2915,7 +2918,7 @@ class CompiledDAG:
 
         # Add the legend to the output
         ascii_visualization += "\nLegend:\n"
-        ascii_visualization += "+++> : Represents Nccl-type data channels\n"
+        ascii_visualization += "+++> : Represents Accelerator-type data channels\n"
         ascii_visualization += "---> : Represents Shared Memory data channels\n"
 
         # Find the maximum width (number of nodes in any layer)

@@ -94,8 +94,8 @@ void NormalTaskSubmitter::AddWorkerLeaseClient(
     const TaskID &task_id) {
   core_worker_client_pool_->GetOrConnect(addr);
   int64_t expiration = current_time_ms() + lease_timeout_ms_;
-  LeaseEntry new_lease_entry = LeaseEntry(
-      std::move(lease_client), expiration, assigned_resources, scheduling_key, task_id);
+  LeaseEntry new_lease_entry{
+      std::move(lease_client), expiration, assigned_resources, scheduling_key, task_id};
   worker_to_lease_entry_.emplace(addr, new_lease_entry);
 
   auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
@@ -103,7 +103,7 @@ void NormalTaskSubmitter::AddWorkerLeaseClient(
   RAY_CHECK(scheduling_key_entry.active_workers.size() >= 1);
 }
 
-void NormalTaskSubmitter::ReturnWorker(const rpc::Address addr,
+void NormalTaskSubmitter::ReturnWorker(const rpc::Address &addr,
                                        bool was_error,
                                        const std::string &error_detail,
                                        bool worker_exiting,
@@ -433,20 +433,18 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
                              << " with worker "
                              << WorkerID::FromBinary(reply.worker_address().worker_id());
 
-              auto resources_copy = reply.resource_mapping();
-
               AddWorkerLeaseClient(reply.worker_address(),
                                    std::move(lease_client),
-                                   resources_copy,
+                                   reply.resource_mapping(),
                                    scheduling_key,
                                    task_id);
               RAY_CHECK(scheduling_key_entry.active_workers.size() >= 1);
               OnWorkerIdle(reply.worker_address(),
                            scheduling_key,
-                           /*error=*/false,
+                           /*was_error=*/false,
                            /*error_detail*/ "",
                            /*worker_exiting=*/false,
-                           resources_copy);
+                           reply.resource_mapping());
             } else {
               // The raylet redirected us to a different raylet to retry at.
               RAY_CHECK(!is_spillback);
@@ -620,7 +618,7 @@ void NormalTaskSubmitter::PushNormalTask(
             // Successful actor creation leases the worker indefinitely from the raylet.
             OnWorkerIdle(addr,
                          scheduling_key,
-                         /*error=*/was_error,
+                         /*was_error=*/was_error,
                          /*error_detail*/ status.message(),
                          /*worker_exiting=*/is_worker_exiting,
                          assigned_resources);
@@ -791,22 +789,16 @@ Status NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
         if (!reply.attempt_succeeded()) {
           if (reply.requested_task_running()) {
             // Retry cancel request if failed.
-            if (cancel_retry_timer_.has_value()) {
-              if (cancel_retry_timer_->expiry().time_since_epoch() <=
-                  std::chrono::high_resolution_clock::now().time_since_epoch()) {
-                cancel_retry_timer_->expires_after(boost::asio::chrono::milliseconds(
-                    RayConfig::instance().cancellation_retry_ms()));
-              }
-              cancel_retry_timer_->async_wait(
-                  boost::bind(&NormalTaskSubmitter::CancelTask,
-                              this,
-                              std::move(task_spec),
-                              force_kill,
-                              recursive));
-            } else {
-              RAY_LOG(DEBUG)
-                  << "Failed to cancel a task which is running. Stop retrying.";
+            if (cancel_retry_timer_.expiry().time_since_epoch() <=
+                std::chrono::high_resolution_clock::now().time_since_epoch()) {
+              cancel_retry_timer_.expires_after(boost::asio::chrono::milliseconds(
+                  RayConfig::instance().cancellation_retry_ms()));
             }
+            cancel_retry_timer_.async_wait(boost::bind(&NormalTaskSubmitter::CancelTask,
+                                                       this,
+                                                       std::move(task_spec),
+                                                       force_kill,
+                                                       recursive));
           } else {
             RAY_LOG(DEBUG) << "Attempt to cancel task " << task_spec.TaskId()
                            << " in a worker that doesn't have this task.";
