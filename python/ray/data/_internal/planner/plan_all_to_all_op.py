@@ -25,10 +25,10 @@ def _plan_hash_shuffle_repartition(
     logical_op: Repartition,
     input_physical_op: PhysicalOperator,
 ) -> PhysicalOperator:
-    from ray.data._internal.planner.exchange.sort_task_spec import SortKey
     from ray.data._internal.execution.operators.hash_shuffle import (
         HashShuffleOperator,
     )
+    from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 
     normalized_key_columns = SortKey(logical_op._keys).get_columns()
 
@@ -51,10 +51,10 @@ def _plan_hash_shuffle_aggregate(
     logical_op: Aggregate,
     input_physical_op: PhysicalOperator,
 ) -> PhysicalOperator:
-    from ray.data._internal.planner.exchange.sort_task_spec import SortKey
     from ray.data._internal.execution.operators.hash_aggregate import (
         HashAggregateOperator,
     )
+    from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 
     normalized_key_columns = SortKey(logical_op._key).get_columns()
 

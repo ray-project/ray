@@ -1,13 +1,12 @@
-import numpy as np
 import sys
-import os
 
+import numpy as np
 import pytest
 
 import ray
 
 from ray.tests.test_task_metrics import tasks_by_all, METRIC_CONFIG
-from ray._private.test_utils import (
+from ray._common.test_utils import (
     wait_for_condition,
 )
 
@@ -71,9 +70,4 @@ def test_task_reconstruction(ray_start_cluster):
 
 
 if __name__ == "__main__":
-    import sys
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

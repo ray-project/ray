@@ -57,6 +57,7 @@ from ray.autoscaler._private.util import (
     hash_runtime_conf,
     prepare_config,
     validate_config,
+    with_envs,
 )
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import (
@@ -820,6 +821,19 @@ def get_or_create_head_node(
 
         if not no_restart:
             warn_about_bad_start_command(ray_start_commands, no_monitor_on_head)
+
+        # Use RAY_UP_enable_autoscaler_v2 instead of RAY_enable_autoscaler_v2
+        # to avoid accidentally enabling autoscaler v2 for ray up
+        # due to env inheritance.
+        if os.getenv("RAY_UP_enable_autoscaler_v2", "0") == "1":
+            ray_start_commands = with_envs(
+                ray_start_commands,
+                {
+                    "RAY_enable_autoscaler_v2": "1",
+                    "RAY_CLOUD_INSTANCE_ID": head_node,
+                    "RAY_NODE_TYPE_NAME": head_node_type,
+                },
+            )
 
         updater = NodeUpdaterThread(
             node_id=head_node,

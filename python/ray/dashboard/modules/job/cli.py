@@ -8,12 +8,12 @@ from typing import Any, Dict, Optional, Tuple, Union
 
 import click
 
+from ray._common.utils import load_class
 import ray._private.ray_constants as ray_constants
 from ray._common.utils import (
     get_or_create_event_loop,
 )
 from ray._private.utils import (
-    load_class,
     parse_metadata_json,
     parse_resources_json,
 )
@@ -302,6 +302,9 @@ def submit(
             cli_logger.print(cf.bold(f"ray job stop {job_id}"))
 
     cli_logger.newline()
+    # Flush stdout to ensure the Ray job ID is output immediately
+    # for the kubectl plugin, ref PR #52780, Issue kuberay/#3508.
+    cli_logger.flush()
     sdk_version = client.get_version()
     # sdk version 0 does not have log streaming
     if not no_wait:

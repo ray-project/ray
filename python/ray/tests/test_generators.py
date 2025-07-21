@@ -11,7 +11,7 @@ from ray.util.client.ray_client_helpers import (
 )
 from ray._private.client_mode_hook import enable_client_mode
 from ray.tests.conftest import call_ray_start_context
-from ray._private.test_utils import (
+from ray._common.test_utils import (
     wait_for_condition,
 )
 
@@ -35,7 +35,7 @@ def assert_no_leak():
     sys.platform != "linux" and sys.platform != "linux2",
     reason="This test requires Linux.",
 )
-def test_generator_oom(ray_start_regular):
+def test_generator_oom(ray_start_regular_shared):
     num_returns = 100
 
     @ray.remote(max_retries=0)
@@ -68,7 +68,7 @@ def test_generator_oom(ray_start_regular):
 
 @pytest.mark.parametrize("use_actors", [False, True])
 @pytest.mark.parametrize("store_in_plasma", [False, True])
-def test_generator_returns(ray_start_regular, use_actors, store_in_plasma):
+def test_generator_returns(ray_start_regular_shared, use_actors, store_in_plasma):
     remote_generator_fn = None
     if use_actors:
 
@@ -143,7 +143,7 @@ def test_generator_returns(ray_start_regular, use_actors, store_in_plasma):
 @pytest.mark.parametrize("store_in_plasma", [False, True])
 @pytest.mark.parametrize("num_returns_type", ["dynamic", None])
 def test_generator_errors(
-    ray_start_regular, use_actors, store_in_plasma, num_returns_type
+    ray_start_regular_shared, use_actors, store_in_plasma, num_returns_type
 ):
     remote_generator_fn = None
     if use_actors:
@@ -197,7 +197,7 @@ def test_generator_errors(
 @pytest.mark.parametrize("store_in_plasma", [False, True])
 @pytest.mark.parametrize("num_returns_type", ["dynamic", None])
 def test_dynamic_generator_retry_exception(
-    ray_start_regular, store_in_plasma, num_returns_type
+    ray_start_regular_shared, store_in_plasma, num_returns_type
 ):
     class CustomException(Exception):
         pass
@@ -250,7 +250,7 @@ def test_dynamic_generator_retry_exception(
 @pytest.mark.parametrize("store_in_plasma", [False, True])
 @pytest.mark.parametrize("num_returns_type", ["dynamic", None])
 def test_dynamic_generator(
-    ray_start_regular, use_actors, store_in_plasma, num_returns_type
+    ray_start_regular_shared, use_actors, store_in_plasma, num_returns_type
 ):
     if not use_actors:
 
@@ -334,6 +334,32 @@ def test_dynamic_generator(
             gen = ray.get(static.remote(3))
             for ref in gen:
                 ray.get(ref)
+
+
+def test_dynamic_generator_gc_each_yield(ray_start_cluster):
+    # Need to shutdown when going from ray_start_regular_shared to ray_start_cluster
+    ray.shutdown()
+
+    num_returns = 5
+
+    @ray.remote(num_returns="dynamic")
+    def generator():
+        for i in range(num_returns):
+            yield np.ones((1000, 1000), dtype=np.uint8)
+
+    def check_ref_counts(expected):
+        ref_counts = (
+            ray._private.worker.global_worker.core_worker.get_all_reference_counts()
+        )
+        return len(ref_counts) == expected
+
+    dynamic_ref = ray.get(generator.remote())
+
+    for i, ref in enumerate(dynamic_ref):
+        gc.collect()
+        # assert references are released after each yield
+        wait_for_condition(lambda: check_ref_counts(num_returns - i))
+        ray.get(ref)
 
 
 @pytest.mark.parametrize("num_returns_type", ["dynamic", None])
@@ -777,9 +803,5 @@ def test_ray_client(call_ray_start_shared, store_in_plasma):
 
 
 if __name__ == "__main__":
-    import os
 
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

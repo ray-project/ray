@@ -31,7 +31,7 @@
 #include "ray/gcs/pb_util.h"
 #include "ray/util/counter_map.h"
 #include "ray/util/event.h"
-#include "src/ray/protobuf/export_api/export_task_event.pb.h"
+#include "src/ray/protobuf/export_task_event.pb.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
@@ -436,7 +436,8 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   absl::Mutex profile_mutex_;
 
   /// IO service event loop owned by TaskEventBuffer.
-  instrumented_io_context io_service_;
+  instrumented_io_context io_service_{/*enable_lag_probe=*/false,
+                                      /*running_on_single_thread=*/true};
 
   /// Work guard to prevent the io_context from exiting when no work.
   boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work_guard_;

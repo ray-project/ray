@@ -17,8 +17,6 @@ import uuid
 from pdb import Pdb
 from typing import Callable
 
-import setproctitle
-
 import ray
 from ray._private import ray_constants
 from ray.experimental.internal_kv import _internal_kv_del, _internal_kv_put
@@ -254,7 +252,7 @@ def _connect_ray_pdb(
     pdb_address = "{}:{}".format(ip_address, sockname[1])
     parentframeinfo = inspect.getouterframes(inspect.currentframe())[2]
     data = {
-        "proctitle": setproctitle.getproctitle(),
+        "proctitle": ray._raylet.getproctitle(),
         "pdb_address": pdb_address,
         "filename": parentframeinfo.filename,
         "lineno": parentframeinfo.lineno,

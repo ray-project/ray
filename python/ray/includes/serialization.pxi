@@ -197,7 +197,6 @@ cdef class MessagePackSerializer(object):
 @cython.wraparound(False)
 def split_buffer(Buffer buf):
     cdef:
-        const uint8_t *data = buf.buffer.get().Data()
         size_t size = buf.buffer.get().Size()
         uint8_t[:] bufferview = buf
         int64_t msgpack_bytes_length

@@ -1,10 +1,11 @@
+import glob
+import logging
 import os
 import re
-import glob
-import requests
-import logging
 from functools import lru_cache
-from typing import Dict, Optional, List, Tuple
+from typing import Dict, List, Optional, Tuple
+
+import requests
 
 from ray._private.accelerators.accelerator import AcceleratorManager
 

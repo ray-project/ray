@@ -1,4 +1,3 @@
-import os
 import sys
 import subprocess
 import pytest
@@ -101,7 +100,4 @@ def test_get_neuron_core_count_failure_with_empty_results(mock_isdir, mock_subpr
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

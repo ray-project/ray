@@ -1,11 +1,12 @@
 import platform
 import re
+import sys
 
 import numpy as np
 import pytest
 
 import ray
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import wait_for_condition
 from ray.cluster_utils import AutoscalingCluster
 
 
@@ -188,10 +189,4 @@ def test_no_scaledown_with_spilled_objects(autoscaler_v2, shutdown_only):
 
 
 if __name__ == "__main__":
-    import os
-    import sys
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

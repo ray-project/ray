@@ -110,7 +110,7 @@ class EventTracker {
   /// \param expected_queueing_delay_ns How much to pad the observed queueing start time,
   ///  in nanoseconds.
   /// \return An opaque stats handle, to be given to RecordExecution() or RecordEnd().
-  std::shared_ptr<StatsHandle> RecordStart(const std::string &name,
+  std::shared_ptr<StatsHandle> RecordStart(std::string name,
                                            int64_t expected_queueing_delay_ns = 0);
 
   /// Records stats about the provided function's execution. This is used in conjunction

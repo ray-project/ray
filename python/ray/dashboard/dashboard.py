@@ -13,12 +13,12 @@ import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.head as dashboard_head
 import ray.dashboard.utils as dashboard_utils
 from ray._common.utils import get_or_create_event_loop
+from ray._private import logging_utils
 from ray._private.ray_logging import setup_component_logger
 from ray._private.utils import (
     format_error_message,
     publish_error_to_driver,
 )
-from ray._private import logging_utils
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray provides a default configuration at

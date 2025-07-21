@@ -8,13 +8,13 @@ import logging
 from functools import partial
 from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Set, Tuple, Union
 
+import pyarrow as pa
+from packaging import version
+
 from ray.data._internal.util import _check_import
 from ray.data.block import Block, BlockMetadata
 from ray.data.datasource.datasource import Datasource, ReadTask
 from ray.util.annotations import DeveloperAPI
-
-from packaging import version
-import pyarrow as pa
 
 if TYPE_CHECKING:
     from pyiceberg.catalog import Catalog
@@ -276,7 +276,6 @@ class IcebergDatasource(Datasource):
                 num_rows=sum(task.file.record_count for task in chunk_tasks)
                 - position_delete_count,
                 size_bytes=sum(task.length for task in chunk_tasks),
-                schema=pya_schema,
                 input_files=[task.file.file_path for task in chunk_tasks],
                 exec_stats=None,
             )
@@ -284,6 +283,7 @@ class IcebergDatasource(Datasource):
                 ReadTask(
                     read_fn=lambda tasks=chunk_tasks: get_read_task(tasks),
                     metadata=metadata,
+                    schema=pya_schema,
                 )
             )
 

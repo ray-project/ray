@@ -33,6 +33,7 @@ from ray.autoscaler._private.constants import (
     DISABLE_NODE_UPDATERS_KEY,
     FOREGROUND_NODE_LAUNCH_KEY,
     WORKER_LIVENESS_CHECK_KEY,
+    AUTOSCALER_HEARTBEAT_TIMEOUT_S,
 )
 from ray.autoscaler._private.load_metrics import LoadMetrics
 from ray.autoscaler._private.monitor import Monitor
@@ -77,7 +78,7 @@ class DrainNodeOutcome(str, Enum):
     differently by the autoscaler.
     """
 
-    # Return a reponse indicating all nodes were succesfully drained.
+    # Return a reponse indicating all nodes were successfully drained.
     Succeeded = "Succeeded"
     # Return response indicating at least one node failed to be drained.
     NotAllDrained = "NotAllDrained"
@@ -438,7 +439,7 @@ class AutoscalingTest(unittest.TestCase):
 
         Args:
             foreground_node_launcher: Whether workers nodes are expected to be
-            launched in the foreground.
+                launched in the foreground.
 
         """
         worker_ids = self.provider.non_terminated_nodes(tag_filters=WORKER_FILTER)
@@ -2239,14 +2240,13 @@ class AutoscalingTest(unittest.TestCase):
         )
 
         autoscaler.update()
+        # TODO(rueian): This is a hack to avoid running into race conditions
+        # within v1 autoscaler. These should no longer be relevant in v2.
+        self.waitForNodes(2)
         autoscaler.update()
         self.waitForNodes(2)
         self.provider.finish_starting_nodes()
-        # TODO(rickyx): This is a hack to avoid running into race conditions
-        # within v1 autoscaler. These should no longer be relevant in v2.
-        time.sleep(3)
         autoscaler.update()
-        time.sleep(3)
         self.waitForNodes(2, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE})
 
     def testReportsConfigFailures(self):
@@ -3620,9 +3620,7 @@ class AutoscalingTest(unittest.TestCase):
         worker_ip = self.provider.non_terminated_node_ips(WORKER_FILTER)[0]
         # Mark the node as idle
         lm.update(worker_ip, mock_raylet_id(), {"CPU": 1}, {"CPU": 1}, 20)
-        assert lm.is_active(worker_ip)
         autoscaler.update()
-        assert not lm.is_active(worker_ip)
         assert self.provider.internal_ip("1") == worker_ip
         events = autoscaler.event_summarizer.summary()
         assert "Removing 1 nodes of type worker (idle)." in events, events
@@ -3652,6 +3650,8 @@ class AutoscalingTest(unittest.TestCase):
         )
 
         runner = MockProcessRunner()
+        # Avoid the "Unable to deserialize `image_env` to Python object" error in the DockerCommandRunner.
+        runner.respond_to_call("json .Config.Env", ["[]" for i in range(2)])
         lm = LoadMetrics()
         mock_gcs_client = MockGcsClient()
         autoscaler = MockAutoscaler(
@@ -3666,11 +3666,12 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         # 1 worker is ready upfront.
         self.waitForNodes(1, tag_filters=WORKER_FILTER)
+        # clear the summary for later check.
+        autoscaler.event_summarizer.clear()
 
         # Restore min_workers to allow scaling down to 0.
         config["available_node_types"]["worker"]["min_workers"] = 0
         self.write_config(config)
-        autoscaler.update()
 
         # Create a placement group with 2 bundles that require 2 workers.
         placement_group_table_data = gcs_pb2.PlacementGroupTableData(
@@ -3699,6 +3700,9 @@ class AutoscalingTest(unittest.TestCase):
             [placement_group_table_data],
         )
         autoscaler.update()
+        # TODO(rueian): This is a hack to avoid running into race conditions
+        # within v1 autoscaler. These should no longer be relevant in v2.
+        self.waitForNodes(2, tag_filters=WORKER_FILTER)
 
         events = autoscaler.event_summarizer.summary()
         assert "Removing 1 nodes of type worker (idle)." not in events, events
@@ -3706,6 +3710,166 @@ class AutoscalingTest(unittest.TestCase):
 
         autoscaler.update()
         self.waitForNodes(2, tag_filters=WORKER_FILTER)
+
+    def testRecoverUnhealthyWorkersWithNodeSpecificDocker(self):
+        """Test that recovery uses node-specific docker configuration.
+
+        This test verifies that when a worker node becomes unhealthy and needs
+        recovery, the autoscaler uses the node-specific docker configuration
+        rather than the global docker configuration.
+        """
+
+        config = copy.deepcopy(SMALL_CLUSTER)
+
+        # Top-level global docker config (should be overridden by node-specific config)
+        config["docker"]["image"] = "global-image:latest"
+        config["docker"]["worker_image"] = "global-worker-image:latest"
+
+        # Add node-specific docker configuration
+        config["available_node_types"]["worker"]["docker"] = {
+            "worker_image": "node-specific-worker-image:latest",
+            "worker_run_options": ["--gpus=all"],
+        }
+
+        config["available_node_types"]["worker"]["min_workers"] = 1
+
+        config_path = self.write_config(config)
+        self.provider = MockProvider()
+        runner = MockProcessRunner()
+        runner.respond_to_call("json .Config.Env", ["[]" for i in range(2)])
+        lm = LoadMetrics()
+        mock_metrics = Mock()
+
+        # Create head node
+        self.provider.create_node(
+            {},
+            {
+                TAG_RAY_NODE_KIND: NODE_KIND_HEAD,
+                TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
+                TAG_RAY_USER_NODE_TYPE: "head",
+            },
+            1,
+        )
+
+        autoscaler = MockAutoscaler(
+            config_path,
+            lm,
+            MockGcsClient(),
+            max_failures=0,
+            process_runner=runner,
+            update_interval_s=0,
+            prom_metrics=mock_metrics,
+        )
+        autoscaler.update()
+        self.waitForNodes(1, tag_filters=WORKER_FILTER)
+        self.provider.finish_starting_nodes()
+        autoscaler.update()
+        self.waitForNodes(
+            1, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE, **WORKER_FILTER}
+        )
+
+        # Wait for initial updaters to finish
+        self.waitForUpdatersToFinish(autoscaler)
+        autoscaler.update()
+
+        # Ensure initial updaters are cleared after they finish
+        assert not autoscaler.updaters
+
+        # Clear command history before triggering recovery to ensure we only check
+        # commands from the recovery process, not the initial node creation
+        runner.clear_history()
+
+        # Trigger node recovery by setting the last heartbeat time to be before the timeout
+        worker_ip = "172.0.0.1"  # Expected IP of the first worker node
+        lm.last_heartbeat_time_by_ip[worker_ip] = (
+            time.time() - AUTOSCALER_HEARTBEAT_TIMEOUT_S - 1
+        )
+        autoscaler.update()
+
+        # Wait for recovery to start and finish
+        self.waitFor(lambda: len(autoscaler.updaters) > 0, num_retries=150)
+        self.waitForUpdatersToFinish(autoscaler)
+
+        # Verify that recovery has started by checking multiple indicators:
+
+        # 1. Check that an updater was created for recovery
+        assert len(autoscaler.updaters) == 1
+        node_id = list(autoscaler.updaters.keys())[0]
+        updater = autoscaler.updaters[node_id]
+
+        # 2. Verify the updater is marked as a recovery updater
+        assert updater.for_recovery is True
+
+        # 3. Verify the recovery event was logged
+        events = autoscaler.event_summarizer.summary()
+        assert any(
+            "Restarting" in event and "lost contact with raylet" in event
+            for event in events
+        )
+
+        # 4. Verify that the recovery process uses the node-specific docker image
+        # instead of the global docker image
+        runner.assert_has_call(worker_ip, pattern="node-specific-worker-image:latest")
+
+        # 5. Verify that the recovery process uses the node-specific run options
+        runner.assert_has_call(worker_ip, pattern="--gpus=all")
+
+        # 6. Verify that the recovery updater has the correct docker config
+        # by checking that it uses the node-specific docker configuration
+        assert (
+            updater.docker_config.get("worker_image")
+            == "node-specific-worker-image:latest"
+        )
+        assert "--gpus=all" in updater.docker_config.get("worker_run_options")
+
+    def test_node_becomes_inactive_after_heartbeat_timeout(self):
+        cluster_config = copy.deepcopy(MOCK_DEFAULT_CONFIG)
+        cluster_config["available_node_types"]["ray.worker.default"]["min_workers"] = 1
+        cluster_config["worker_start_ray_commands"] = ["ray_start_cmd"]
+
+        cluster_config["head_node_type"] = ["ray.worker.default"]
+        del cluster_config["available_node_types"]["ray.head.default"]
+        del cluster_config["docker"]
+
+        config_path = self.write_config(cluster_config)
+
+        self.provider = MockProvider()
+        runner = MockProcessRunner()
+        lm = LoadMetrics()
+        mock_gcs_client = MockGcsClient()
+        autoscaler = MockAutoscaler(
+            config_path,
+            lm,
+            mock_gcs_client,
+            max_failures=0,
+            process_runner=runner,
+            update_interval_s=0,
+        )
+
+        autoscaler.update()
+        self.waitForNodes(1, tag_filters=WORKER_FILTER)
+        self.provider.finish_starting_nodes()
+        autoscaler.update()
+        self.waitForNodes(
+            1, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE, **WORKER_FILTER}
+        )
+
+        self.waitForUpdatersToFinish(autoscaler)
+        autoscaler.update()
+
+        assert not autoscaler.updaters
+
+        worker_ip = self.provider.non_terminated_node_ips(WORKER_FILTER)[0]
+        now = time.time()
+        past_heartbeat = now - AUTOSCALER_HEARTBEAT_TIMEOUT_S - 1
+        lm.last_heartbeat_time_by_ip[worker_ip] = past_heartbeat
+
+        autoscaler.update()
+        self.waitForNodes(
+            1, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE, **WORKER_FILTER}
+        )
+        events = autoscaler.summary()
+        assert events.failed_nodes == [("172.0.0.0", "ray.worker.default")]
 
 
 def test_import():
@@ -3730,8 +3894,4 @@ def test_prom_null_metric_inc_fix():
 
 
 if __name__ == "__main__":
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

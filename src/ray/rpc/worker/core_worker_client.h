@@ -189,6 +189,9 @@ class CoreWorkerClientInterface : public pubsub::SubscriberClientInterface {
       const RayletNotifyGCSRestartRequest &request,
       const ClientCallback<RayletNotifyGCSRestartReply> &callback) {}
 
+  virtual void FreeActorObject(const FreeActorObjectRequest &request,
+                               const ClientCallback<FreeActorObjectReply> &callback) {}
+
   virtual ~CoreWorkerClientInterface() = default;
 };
 
@@ -200,7 +203,7 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
   ///
   /// \param[in] address Address of the worker server.
   /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
-  CoreWorkerClient(const rpc::Address &address,
+  CoreWorkerClient(rpc::Address address,
                    ClientCallManager &client_call_manager,
                    std::function<void()> core_worker_unavailable_timeout_callback);
 
@@ -259,11 +262,12 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
                          /*method_timeout_ms*/ -1,
                          override)
 
-  VOID_RPC_CLIENT_METHOD(CoreWorkerService,
-                         UpdateObjectLocationBatch,
-                         grpc_client_,
-                         /*method_timeout_ms*/ -1,
-                         override)
+  VOID_RETRYABLE_RPC_CLIENT_METHOD(retryable_grpc_client_,
+                                   CoreWorkerService,
+                                   UpdateObjectLocationBatch,
+                                   grpc_client_,
+                                   /*method_timeout_ms*/ -1,
+                                   override)
 
   VOID_RPC_CLIENT_METHOD(CoreWorkerService,
                          GetObjectLocationsOwner,
@@ -337,6 +341,12 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
 
   VOID_RPC_CLIENT_METHOD(CoreWorkerService,
                          AssignObjectOwner,
+                         grpc_client_,
+                         /*method_timeout_ms*/ -1,
+                         override)
+
+  VOID_RPC_CLIENT_METHOD(CoreWorkerService,
+                         FreeActorObject,
                          grpc_client_,
                          /*method_timeout_ms*/ -1,
                          override)

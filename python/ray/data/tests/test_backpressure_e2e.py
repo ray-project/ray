@@ -9,11 +9,11 @@ import ray
 from ray._private.internal_api import memory_summary
 from ray.data.block import BlockMetadata
 from ray.data.datasource import Datasource, ReadTask
-from ray.data.tests.conftest import restore_data_context  # noqa: F401
 from ray.data.tests.conftest import (
     CoreExecutionMetrics,
     assert_core_execution_metrics_equals,
     get_initial_core_execution_metrics_snapshot,
+    restore_data_context,  # noqa: F401
 )
 from ray.tests.conftest import shutdown_only  # noqa: F401
 
@@ -263,7 +263,6 @@ def test_input_backpressure_e2e(restore_data_context, shutdown_only):  # noqa: F
                     BlockMetadata(
                         num_rows=n // parallelism,
                         size_bytes=sz,
-                        schema=None,
                         input_files=None,
                         exec_stats=None,
                     ),

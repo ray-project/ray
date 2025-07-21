@@ -36,7 +36,7 @@ class TensorflowTrainer(DataParallelTrainer):
     the "train" key), then it will be split into multiple dataset
     shards that can then be accessed by ``ray.train.get_dataset_shard("train")`` inside
     ``train_loop_per_worker``. All the other datasets will not be split and
-    ``ray.train.get_dataset_shard(...)`` will return the the entire Dataset.
+    ``ray.train.get_dataset_shard(...)`` will return the entire Dataset.
 
     Inside the ``train_loop_per_worker`` function, you can use any of the
     :ref:`Ray Train loop methods <train-loop-api>`.
@@ -88,6 +88,7 @@ class TensorflowTrainer(DataParallelTrainer):
         import os
         import tempfile
         import tensorflow as tf
+        import numpy as np
 
         import ray
         from ray import train
@@ -129,7 +130,7 @@ class TensorflowTrainer(DataParallelTrainer):
                     checkpoint=checkpoint,
                 )
 
-        train_dataset = ray.data.from_items([{"x": x, "y": x + 1} for x in range(32)])
+        train_dataset = ray.data.from_items([{"x": np.array([x], dtype=np.float32), "y": x + 1} for x in range(32)])
         trainer = TensorflowTrainer(
             train_loop_per_worker=train_loop_per_worker,
             scaling_config=ScalingConfig(num_workers=3, use_gpu=True),

@@ -31,6 +31,7 @@ steps:
   - name: doctestbuild
     wanda: ci/docker/doctest.build.wanda.yaml
     depends_on: oss-ci-base_build
+    tags: cibase
 
   - label: doc tests
     tags: python
@@ -78,7 +79,6 @@ steps:
       - bazel run //ci/ray_ci/automation:determine_microcheck_tests -- {{matrix}} 100 --test-prefix windows:__ --consider-master-branch --production
     matrix:
       - "core"
-      - "serverless"
       - "serve"
       - "data"
       - "ml"

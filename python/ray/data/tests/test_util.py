@@ -1,6 +1,7 @@
 from typing import Any, Dict, List, Optional
 
 import numpy as np
+import pandas as pd
 import pyarrow as pa
 import pytest
 from typing_extensions import Hashable
@@ -8,6 +9,11 @@ from typing_extensions import Hashable
 import ray
 from ray.data._internal.datasource.parquet_datasource import ParquetDatasource
 from ray.data._internal.logical.operators.read_operator import Read
+from ray.data._internal.logical.util import (
+    _op_name_white_list,
+    _recorded_operators,
+    _recorded_operators_lock,
+)
 from ray.data._internal.memory_tracing import (
     leak_report,
     trace_allocation,
@@ -20,13 +26,9 @@ from ray.data._internal.util import (
     _check_pyarrow_version,
     find_partition_index,
     iterate_with_retry,
+    rows_same,
 )
 from ray.data.tests.conftest import *  # noqa: F401, F403
-from ray.data._internal.logical.util import (
-    _op_name_white_list,
-    _recorded_operators,
-    _recorded_operators_lock,
-)
 
 
 def _check_usage_record(op_names: List[str], clear_after_check: Optional[bool] = True):
@@ -341,6 +343,24 @@ def test_find_partition_index_duplicates_descending():
     assert find_partition_index(table, (1,), sort_key) == 5
     # Insert (3,) -> belongs at index 0
     assert find_partition_index(table, (3,), sort_key) == 0
+
+
+@pytest.mark.parametrize(
+    "actual, expected, expected_equal",
+    [
+        (pd.DataFrame({"a": [1]}), pd.DataFrame({"a": [1]}), True),
+        # Different value.
+        (pd.DataFrame({"a": [1]}), pd.DataFrame({"a": [2]}), False),
+        # Extra column.
+        (pd.DataFrame({"a": [1]}), pd.DataFrame({"a": [1], "b": [2]}), False),
+        # Different number of rows.
+        (pd.DataFrame({"a": [1]}), pd.DataFrame({"a": [1, 1]}), False),
+        # Same rows, but different order.
+        (pd.DataFrame({"a": [1, 2]}), pd.DataFrame({"a": [2, 1]}), True),
+    ],
+)
+def test_rows_same(actual: pd.DataFrame, expected: pd.DataFrame, expected_equal: bool):
+    assert rows_same(actual, expected) == expected_equal
 
 
 if __name__ == "__main__":

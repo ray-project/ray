@@ -1,44 +1,36 @@
 # coding: utf-8
 import os
+import subprocess
 import sys
+import tempfile
 import time
+from typing import List
 
 import pytest
 import numpy as np
 
 import ray
-from ray.core.generated import common_pb2
-from ray.core.generated import node_manager_pb2, node_manager_pb2_grpc
+from ray._common.test_utils import wait_for_condition
 from ray._private.test_utils import (
-    wait_for_condition,
     run_string_as_driver,
     run_string_as_driver_nonblocking,
 )
-from ray._private.utils import init_grpc_channel
+from ray.util.state import list_workers
+from ray.util.state.common import WorkerState
 
 
-def get_workers():
-    raylet = ray.nodes()[0]
-    raylet_address = "{}:{}".format(
-        raylet["NodeManagerAddress"], raylet["NodeManagerPort"]
+def get_workers() -> List[WorkerState]:
+    """Return non-driver workers."""
+    return list_workers(
+        filters=[("worker_type", "=", "WORKER"), ("is_alive", "=", "True")]
     )
-    channel = init_grpc_channel(raylet_address)
-    stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
-    return [
-        worker
-        for worker in stub.GetNodeStats(
-            node_manager_pb2.GetNodeStatsRequest()
-        ).core_workers_stats
-        if worker.worker_type != common_pb2.DRIVER
-    ]
 
 
 # Test that when `redis_address` and `job_config` is not set in
 # `ray.init(...)`, Raylet will start `num_cpus` Python workers for the driver.
 def test_initial_workers(shutdown_only):
-    # `num_cpus` should be <=2 because a Travis CI machine only has 2 CPU cores
-    ray.init(num_cpus=1, include_dashboard=True)
-    wait_for_condition(lambda: len(get_workers()) == 1)
+    ray.init(num_cpus=2)
+    wait_for_condition(lambda: len(get_workers()) == 2)
 
 
 # This test case starts some driver processes. Each driver process submits
@@ -93,9 +85,6 @@ ray.shutdown()
         out = p.stdout.read().decode("ascii")
         err = p.stderr.read().decode("ascii")
         p.wait()
-        # out, err = p.communicate()
-        # out = ray._private.utils.decode(out)
-        # err = ray._private.utils.decode(err)
         if p.returncode != 0:
             print(
                 "Driver with PID {} returned error code {}".format(p.pid, p.returncode)
@@ -118,106 +107,134 @@ ray.shutdown()
                     all_worker_pids.add(worker_pid)
 
 
-def test_runtime_env(shutdown_only):
-    ray.init(
-        job_config=ray.job_config.JobConfig(
-            runtime_env={"env_vars": {"foo1": "bar1", "foo2": "bar2"}}
-        )
-    )
+class SignalFile:
+    def __init__(self):
+        self._tmpdir = tempfile.TemporaryDirectory()
+        self._tmppath = os.path.join(self._tmpdir.name, "signal.txt")
 
-    @ray.remote
-    def get_env(key):
-        return os.environ.get(key)
+    def __enter__(self):
+        return self
 
-    assert ray.get(get_env.remote("foo1")) == "bar1"
-    assert ray.get(get_env.remote("foo2")) == "bar2"
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self._tmpdir.cleanup()
+
+    def wait(self):
+        while not os.path.exists(self._tmppath):
+            time.sleep(0.1)
+
+    def send(self):
+        with open(self._tmppath, "w") as f:
+            f.write("go!")
+            f.flush()
+            f.close()
 
 
-def test_worker_capping_kill_idle_workers(shutdown_only):
+def test_kill_idle_workers(shutdown_only):
     # Avoid starting initial workers by setting num_cpus to 0.
     ray.init(num_cpus=0)
     assert len(get_workers()) == 0
 
     @ray.remote(num_cpus=0)
     class Actor:
-        def ping(self):
-            pass
+        pass
 
-    actor = Actor.remote()
-    ray.get(actor.ping.remote())
-    # Actor is now alive and worker 1 which holds the actor is alive
+    # Worker 1 should be alive running the actor.
+    a = Actor.remote()
+    ray.get(a.__ray_ready__.remote())
     assert len(get_workers()) == 1
 
-    @ray.remote(num_cpus=0)
-    def foo():
-        # Wait for a while
-        time.sleep(10)
+    # NOTE(edoakes): I tried writing this test using a SignalActor instead of a file
+    # to coordinate the tasks, but it failed because the idle workers weren't killed.
+    with SignalFile() as signal:
 
-    obj1 = foo.remote()
-    # Worker 2 runs a normal task
-    wait_for_condition(lambda: len(get_workers()) == 2)
+        @ray.remote(num_cpus=0)
+        def foo():
+            signal.wait()
 
-    obj2 = foo.remote()
-    # Worker 3 runs a normal task
-    wait_for_condition(lambda: len(get_workers()) == 3)
+        # Worker 2 should be alive running foo.
+        obj1 = foo.remote()
+        wait_for_condition(lambda: len(get_workers()) == 2)
 
-    ray.get([obj1, obj2])
-    # Worker 2 and 3 now become idle and should be killed
+        # Worker 3 should be alive running foo.
+        obj2 = foo.remote()
+        wait_for_condition(lambda: len(get_workers()) == 3)
+
+        # Signal the tasks to unblock and wait for them to complete.
+        signal.send()
+        ray.get([obj1, obj2])
+
+    # Worker 2 and 3 now become idle and should be killed.
     wait_for_condition(lambda: len(get_workers()) == 1)
+
+    # Worker 1 should also be killed when the actor exits.
+    del a
+    wait_for_condition(lambda: len(get_workers()) == 0)
 
 
 def test_worker_capping_run_many_small_tasks(shutdown_only):
     ray.init(num_cpus=2)
 
-    @ray.remote(num_cpus=0.5)
-    def foo():
-        time.sleep(5)
+    with SignalFile() as signal:
 
-    # Run more tasks than `num_cpus`, but the CPU resource requirement is
-    # still within `num_cpus`.
-    obj_refs = [foo.remote() for _ in range(4)]
-    wait_for_condition(lambda: len(get_workers()) == 4)
+        @ray.remote(num_cpus=0.5)
+        def foo():
+            signal.wait()
 
-    ray.get(obj_refs)
-    # After finished the tasks, some workers are killed to keep the total
+        # Run more tasks than `num_cpus`, but the CPU resource requirement is
+        # still within `num_cpus`.
+        obj_refs = [foo.remote() for _ in range(4)]
+        wait_for_condition(lambda: len(get_workers()) == 4)
+
+        # Unblock the tasks.
+        signal.send()
+        ray.get(obj_refs)
+
+    # After the tasks finish, some workers are killed to keep the total
     # number of workers <= num_cpus.
     wait_for_condition(lambda: len(get_workers()) == 2)
 
-    time.sleep(1)
     # The two remaining workers stay alive forever.
-    assert len(get_workers()) == 2
+    for _ in range(10):
+        assert len(get_workers()) == 2
 
 
 def test_worker_capping_run_chained_tasks(shutdown_only):
     ray.init(num_cpus=2)
 
-    @ray.remote(num_cpus=0.5)
-    def foo(x):
-        if x > 1:
-            return ray.get(foo.remote(x - 1)) + x
-        else:
-            time.sleep(5)
-            return x
+    with SignalFile() as signal:
 
-    # Run a chain of tasks which exceed `num_cpus` in amount, but the CPU
-    # resource requirement is still within `num_cpus`.
-    obj = foo.remote(4)
-    wait_for_condition(lambda: len(get_workers()) == 4)
+        @ray.remote(num_cpus=0.5)
+        def foo(x):
+            if x > 1:
+                return ray.get(foo.remote(x - 1)) + x
+            else:
+                signal.wait()
+                return x
 
-    ray.get(obj)
+        # Run a chain of tasks which exceed `num_cpus` in amount, but the CPU
+        # resource requirement is still within `num_cpus`.
+        obj = foo.remote(4)
+        wait_for_condition(lambda: len(get_workers()) == 4)
+
+        # Unblock the tasks.
+        signal.send()
+        ray.get(obj)
+
     # After finished the tasks, some workers are killed to keep the total
     # number of workers <= num_cpus.
     wait_for_condition(lambda: len(get_workers()) == 2)
 
-    time.sleep(1)
     # The two remaining workers stay alive forever.
-    assert len(get_workers()) == 2
+    for _ in range(10):
+        assert len(get_workers()) == 2
 
 
 def test_worker_registration_failure_after_driver_exit(shutdown_only):
-    info = ray.init(num_cpus=1)
+    info = ray.init(num_cpus=2)
+    wait_for_condition(lambda: len(get_workers()) == 2)
 
     driver_code = """
+import os
 import ray
 import time
 
@@ -228,66 +245,65 @@ ray.init(address="{}")
 def foo():
     pass
 
-[foo.remote() for _ in range(100)]
-
-ray.shutdown()
+obj_refs = [foo.remote() for _ in range(1000)]
+ray.get(obj_refs[0])
+os._exit(0)
     """.format(
         info["address"]
     )
 
-    def worker_registered():
-        return len(get_workers()) == 1
+    # Run a driver that spawns many tasks and blocks until the first result is ready,
+    # so at least one worker should have registered.
+    try:
+        run_string_as_driver(driver_code)
+    except subprocess.CalledProcessError:
+        # The driver exits with non-zero status Windows due to ungraceful os._exit.
+        pass
 
-    wait_for_condition(worker_registered)
-
-    before = 1
-    run_string_as_driver(driver_code)
-
-    # wait for a while to let workers register
-    time.sleep(2)
-    wait_for_condition(lambda: len(get_workers()) <= before)
+    # Verify that the workers spawned by the old driver go away.
+    wait_for_condition(lambda: len(get_workers()) <= 2)
 
 
 def test_not_killing_workers_that_own_objects(shutdown_only):
+    idle_worker_kill_interval_ms = 10
+
     # Set the small interval for worker capping
     # so that we can easily trigger it.
     ray.init(
-        num_cpus=1,
+        num_cpus=0,
         _system_config={
-            "kill_idle_workers_interval_ms": 10,
-            "worker_lease_timeout_milliseconds": 0,
+            "kill_idle_workers_interval_ms": idle_worker_kill_interval_ms,
         },
     )
 
-    expected_num_workers = 6
-    # Create a nested tasks to start 8 workers each of which owns an object.
+    # Create a nested tasks to start 4 workers each of which owns an object.
+    with SignalFile() as signal:
+        expected_num_workers = 4
 
-    @ray.remote
-    def nested(i):
-        # The task owns an object.
-        if i >= expected_num_workers - 1:
-            return [ray.put(np.ones(1 * 1024 * 1024, dtype=np.uint8))]
-        else:
-            return [ray.put(np.ones(1 * 1024 * 1024, dtype=np.uint8))] + ray.get(
-                nested.remote(i + 1)
-            )
+        @ray.remote(num_cpus=0)
+        def nested(i):
+            # Each of these tasks owns an object so it shouldn't be killed.
+            if i >= expected_num_workers - 1:
+                signal.wait()
+                return [ray.put(np.ones(1 * 1024 * 1024, dtype=np.uint8))]
+            else:
+                return [ray.put(np.ones(1 * 1024 * 1024, dtype=np.uint8))] + ray.get(
+                    nested.remote(i + 1)
+                )
 
-    ref = ray.get(nested.remote(0))
-    num_workers = len(get_workers())
+        # Wait for all the workers to start up.
+        outer_ref = nested.remote(0)
+        wait_for_condition(lambda: len(get_workers()) == expected_num_workers)
 
-    # Wait for worker capping. worker capping should be triggered
-    # every 10 ms, but we wait long enough to avoid a flaky test.
-    time.sleep(1)
-    ref2 = ray.get(nested.remote(0))
+        # Unblock the tasks.
+        signal.send()
+        inner_ref = ray.get(outer_ref)
 
-    # New workers shouldn't be registered because we reused the
-    # previous workers that own objects.
-    cur_num_workers = len(get_workers())
-    # TODO(ekl) ideally these would be exactly equal, however the test is
-    # occasionally flaky with that check.
-    assert abs(num_workers - cur_num_workers) < 2, (num_workers, cur_num_workers)
-    assert len(ref2) == expected_num_workers
-    assert len(ref) == expected_num_workers
+    # Sleep for 10x the idle worker kill interval and verify that those workers
+    # aren't killed because they own objects that are in scope.
+    time.sleep((10 * idle_worker_kill_interval_ms) / 1000.0)
+    assert len(get_workers()) == expected_num_workers
+    del inner_ref
 
 
 def test_kill_idle_workers_that_are_behind_owned_workers(shutdown_only):
@@ -326,7 +342,4 @@ def test_kill_idle_workers_that_are_behind_owned_workers(shutdown_only):
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

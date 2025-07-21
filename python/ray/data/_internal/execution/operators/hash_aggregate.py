@@ -1,15 +1,15 @@
 import logging
 import math
-from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
-from ray.data._internal.execution.operators.hash_shuffle import (
-    HashShufflingOperatorBase,
-    StatefulShuffleAggregation,
-    BlockTransformer,
-)
 from ray.data import DataContext
 from ray.data._internal.arrow_block import ArrowBlockAccessor
 from ray.data._internal.execution.interfaces import PhysicalOperator
+from ray.data._internal.execution.operators.hash_shuffle import (
+    BlockTransformer,
+    HashShufflingOperatorBase,
+    StatefulShuffleAggregation,
+)
 from ray.data._internal.util import GiB
 from ray.data.aggregate import AggregateFn
 from ray.data.block import Block, BlockAccessor
@@ -143,6 +143,8 @@ class HashAggregateOperator(HashShufflingOperatorBase):
                 key_columns, aggregation_fns
             ),
             aggregator_ray_remote_args_override=aggregator_ray_remote_args_override,
+            shuffle_progress_bar_name="Shuffle",
+            finalize_progress_bar_name="Aggregation",
         )
 
     def _get_default_num_cpus_per_partition(self) -> int:

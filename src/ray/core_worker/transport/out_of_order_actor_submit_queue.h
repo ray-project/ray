@@ -14,7 +14,6 @@
 
 #pragma once
 
-#include <map>
 #include <utility>
 #include <vector>
 
@@ -36,13 +35,12 @@ namespace core {
 class OutofOrderActorSubmitQueue : public IActorSubmitQueue {
  public:
   explicit OutofOrderActorSubmitQueue(ActorID actor_id);
-  /// Add a task into the queue. Returns false if a task with the same sequence_no has
-  /// already been inserted.
-  bool Emplace(uint64_t position, const TaskSpecification &spec) override;
+  /// Add a task into the queue.
+  void Emplace(uint64_t position, const TaskSpecification &spec) override;
   /// If a task exists.
   bool Contains(uint64_t position) const override;
-  /// Get a task; the bool indicates if the task's dependency was resolved.
-  const std::pair<TaskSpecification, bool> &Get(uint64_t position) const override;
+  /// If the task's dependencies were resolved.
+  bool DependenciesResolved(uint64_t position) const override;
   /// Mark a task's dependency resolution failed thus remove from the queue.
   void MarkDependencyFailed(uint64_t position) override;
   /// Make a task's dependency is resolved thus ready to send.
@@ -59,14 +57,6 @@ class OutofOrderActorSubmitQueue : public IActorSubmitQueue {
   ///   - a pair of task and bool represents the task to be send and if the receiver
   ///     should SKIP THE SCHEDULING QUEUE while executing it.
   std::optional<std::pair<TaskSpecification, bool>> PopNextTaskToSend() override;
-  /// On client connect/reconnect, find all the TASK that's known to be
-  /// executed out of order. This ALWAYS RETURNS empty.
-  std::map<uint64_t, TaskSpecification> PopAllOutOfOrderCompletedTasks() override;
-  /// Get the sequence number of the task to send.
-  /// This is ignored by the receivier but only for debugging purpose.
-  uint64_t GetSequenceNumber(const TaskSpecification &task_spec) const override;
-  /// Mark a task has been executed on the receiver side.
-  void MarkSeqnoCompleted(uint64_t position, const TaskSpecification &task_spec) override;
   bool Empty() override;
 
  private:

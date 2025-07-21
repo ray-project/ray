@@ -4,7 +4,7 @@ import collections
 import pickle
 import warnings
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Dict, Union, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 from ray.air.util.data_batch_conversion import BatchFormat
 from ray.util.annotations import DeveloperAPI, PublicAPI
@@ -337,8 +337,8 @@ class Preprocessor(abc.ABC):
         the input columns.
 
         Raises:
-            ValueError if the length of the output columns does not match the
-        length of the input columns.
+            ValueError: If the length of the output columns does not match the
+                length of the input columns.
         """
 
         if output_columns and len(columns) != len(output_columns):
@@ -376,7 +376,8 @@ class Preprocessor(abc.ABC):
     @DeveloperAPI
     def serialize(self) -> str:
         """Return this preprocessor serialized as a string.
-        Note: this is not a stable serialization format as it uses `pickle`.
+
+        Note: This is not a stable serialization format as it uses `pickle`.
         """
         # Convert it to a plain string so that it can be included as JSON metadata
         # in Trainer checkpoints.

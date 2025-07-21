@@ -23,7 +23,7 @@ py_test_module_list(
 
 # Batch test
 py_test_module_list(
-    size = "small",
+    size = "medium",
     files = glob([
         "batch/cpu/**/test_*.py",
         "batch/observability/usage_telemetry/test_*.py",

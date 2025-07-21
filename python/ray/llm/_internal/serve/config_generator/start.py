@@ -18,8 +18,8 @@ from ray.llm._internal.serve.config_generator.inputs import (
     get_input_model_via_interactive_inputs,
 )
 from ray.llm._internal.serve.config_generator.utils.gpu import (
-    GPUType,
     DEFAULT_MODEL_ID_TO_GPU,
+    GPUType,
 )
 
 
