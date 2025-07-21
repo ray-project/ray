@@ -819,7 +819,7 @@ def test_train_test_split_shuffle_stratify_error(ray_start_regular_shared):
     
     # Test that combining shuffle=True and stratify raises ValueError
     with pytest.raises(ValueError, match="Cannot specify both 'shuffle=True' and 'stratify'"):
-        ds.train_test_split(test_size=0.5, shuffle=True, stratify="label")
+        ds.train_test_split(test_size=2, shuffle=True, stratify="label")
 
 
 def test_train_test_split_stratified_imbalanced(ray_start_regular_shared):
