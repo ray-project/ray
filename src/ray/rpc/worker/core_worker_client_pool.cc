@@ -59,7 +59,7 @@ std::function<void()> CoreWorkerClientPool::GetDefaultUnavailableTimeoutCallback
           });
     };
 
-    if (gcs_client->Nodes().IsSubscriptionCachePopulated()) {
+    if (gcs_client->Nodes().IsSubscribedToNodeChange()) {
       auto *node_info = gcs_client->Nodes().Get(node_id, /*filter_dead_nodes=*/false);
       if (node_info == nullptr) {
         // Node info hasn't come in yet for this node.

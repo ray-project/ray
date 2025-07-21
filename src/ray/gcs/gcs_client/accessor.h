@@ -438,8 +438,8 @@ class NodeInfoAccessor {
   virtual void HandleNotification(rpc::GcsNodeInfo &&node_info);
 
   /// Initial GetAllNodeInfo request is done and has populated the cache.
-  virtual bool IsSubscriptionCachePopulated() const {
-    return node_subscription_cache_populated_;
+  virtual bool IsSubscribedToNodeChange() const {
+    return node_change_callback_ != nullptr;
   }
 
  private:
@@ -454,9 +454,6 @@ class NodeInfoAccessor {
 
   /// The callback to call when a new node is added or a node is removed.
   std::function<void(NodeID, const rpc::GcsNodeInfo &)> node_change_callback_ = nullptr;
-
-  /// Initial GetAllNodeInfo request is done and has populated the cache.
-  bool node_subscription_cache_populated_ = false;
 
   /// A cache for information about all nodes.
   absl::flat_hash_map<NodeID, rpc::GcsNodeInfo> node_cache_;

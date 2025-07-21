@@ -82,13 +82,11 @@ TEST(CoreWorkerClientPoolTest, TestGC) {
 
 class MockGcsClientNodeAccessor : public gcs::NodeInfoAccessor {
  public:
-  explicit MockGcsClientNodeAccessor(bool is_subscription_cache_populated)
+  explicit MockGcsClientNodeAccessor(bool is_subscribed_to_node_change)
       : gcs::NodeInfoAccessor(nullptr),
-        is_subscription_cache_populated_(is_subscription_cache_populated) {}
+        is_subscribed_to_node_change_(is_subscribed_to_node_change) {}
 
-  bool IsSubscriptionCachePopulated() const override {
-    return is_subscription_cache_populated_;
-  }
+  bool IsSubscribedToNodeChange() const override { return is_subscribed_to_node_change_; }
 
   MOCK_METHOD(const rpc::GcsNodeInfo *, Get, (const NodeID &, bool), (const, override));
 
@@ -100,14 +98,14 @@ class MockGcsClientNodeAccessor : public gcs::NodeInfoAccessor {
               (override));
 
  private:
-  bool is_subscription_cache_populated_;
+  bool is_subscribed_to_node_change_;
 };
 
 class MockGcsClient : public gcs::GcsClient {
  public:
-  explicit MockGcsClient(bool is_subscription_cache_populated) {
+  explicit MockGcsClient(bool is_subscribed_to_node_change) {
     this->node_accessor_ =
-        std::make_unique<MockGcsClientNodeAccessor>(is_subscription_cache_populated);
+        std::make_unique<MockGcsClientNodeAccessor>(is_subscribed_to_node_change);
   }
 
   MockGcsClientNodeAccessor &MockNodeAccessor() {
@@ -118,8 +116,8 @@ class MockGcsClient : public gcs::GcsClient {
 class DefaultUnavailableTimeoutCallbackTest : public ::testing::TestWithParam<bool> {
  public:
   DefaultUnavailableTimeoutCallbackTest()
-      : is_subscription_cache_populated_(GetParam()),
-        gcs_client_(is_subscription_cache_populated_),
+      : is_subscribed_to_node_change_(GetParam()),
+        gcs_client_(is_subscribed_to_node_change_),
         raylet_client_(std::make_shared<MockRayletClientInterface>()),
         client_pool_(
             std::make_unique<CoreWorkerClientPool>([this](const rpc::Address &addr) {
@@ -133,7 +131,7 @@ class DefaultUnavailableTimeoutCallbackTest : public ::testing::TestWithParam<bo
                       addr));
             })) {}
 
-  bool is_subscription_cache_populated_;
+  bool is_subscribed_to_node_change_;
   MockGcsClient gcs_client_;
   std::shared_ptr<MockRayletClientInterface> raylet_client_;
   std::unique_ptr<CoreWorkerClientPool> client_pool_;
@@ -152,7 +150,7 @@ TEST_P(DefaultUnavailableTimeoutCallbackTest, NodeDeadWithCache) {
   node_info_alive.set_state(rpc::GcsNodeInfo::ALIVE);
   rpc::GcsNodeInfo node_info_dead;
   node_info_dead.set_state(rpc::GcsNodeInfo::DEAD);
-  if (is_subscription_cache_populated_) {
+  if (is_subscribed_to_node_change_) {
     EXPECT_CALL(gcs_client_.MockNodeAccessor(), Get(_, /*filter_dead_nodes=*/false))
         .WillOnce(Return(nullptr))
         .WillOnce(Return(&node_info_alive))
@@ -207,7 +205,7 @@ TEST_P(DefaultUnavailableTimeoutCallbackTest, WorkerDeadWithCache) {
 
   rpc::GcsNodeInfo node_info_alive;
   node_info_alive.set_state(rpc::GcsNodeInfo::ALIVE);
-  if (is_subscription_cache_populated_) {
+  if (is_subscribed_to_node_change_) {
     EXPECT_CALL(gcs_client_.MockNodeAccessor(), Get(_, /*filter_dead_nodes=*/false))
         .Times(2)
         .WillRepeatedly(Return(&node_info_alive));
@@ -247,7 +245,7 @@ TEST_P(DefaultUnavailableTimeoutCallbackTest, WorkerDeadWithCache) {
   ASSERT_EQ(client_pool_->Size(), 0);
 }
 
-INSTANTIATE_TEST_SUITE_P(IsSubscriptionCachePopulated,
+INSTANTIATE_TEST_SUITE_P(IsSubscribedToNodeChange,
                          DefaultUnavailableTimeoutCallbackTest,
                          ::testing::Values(true, false));
 

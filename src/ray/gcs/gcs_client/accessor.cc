@@ -642,7 +642,6 @@ void NodeInfoAccessor::AsyncSubscribeToNodeChange(
           if (done) {
             done(status);
           }
-          node_subscription_cache_populated_ = true;
         },
         /*timeout_ms=*/-1);
   };
