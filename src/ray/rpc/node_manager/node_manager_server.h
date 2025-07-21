@@ -136,6 +136,11 @@ class NodeManagerServiceHandler {
       rpc::CancelResourceReserveReply *reply,
       rpc::SendReplyCallback send_reply_callback) = 0;
 
+  virtual void HandleResizeLocalResourceInstances(
+      rpc::ResizeLocalResourceInstancesRequest request,
+      rpc::ResizeLocalResourceInstancesReply *reply,
+      rpc::SendReplyCallback send_reply_callback) = 0;
+
   virtual void HandlePinObjectIDs(PinObjectIDsRequest request,
                                   PinObjectIDsReply *reply,
                                   SendReplyCallback send_reply_callback) = 0;

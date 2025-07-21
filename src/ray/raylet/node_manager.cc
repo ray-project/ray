@@ -34,6 +34,7 @@
 #include "ray/common/client_connection.h"
 #include "ray/common/common_protocol.h"
 #include "ray/common/constants.h"
+#include "ray/common/grpc_util.h"
 #include "ray/common/memory_monitor.h"
 #include "ray/common/scheduling/scheduling_ids.h"
 #include "ray/common/status.h"
@@ -1935,6 +1936,115 @@ void NodeManager::HandleCancelResourceReserve(
 
   RAY_CHECK_OK(placement_group_resource_manager_->ReturnBundle(bundle_spec));
   cluster_task_manager_.ScheduleAndDispatchTasks();
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
+void NodeManager::HandleResizeLocalResourceInstances(
+    rpc::ResizeLocalResourceInstancesRequest request,
+    rpc::ResizeLocalResourceInstancesReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  // Get target resources as a map
+  auto target_resource_map = MapFromProtobuf(request.resources());
+
+  // Get current local resources and convert to resource maps
+  const auto current_resources =
+      cluster_resource_scheduler_.GetLocalResourceManager().GetLocalResources();
+  auto current_total_map =
+      current_resources.GetTotalResourceInstances().ToNodeResourceSet().GetResourceMap();
+  auto current_available_map = current_resources.GetAvailableResourceInstances()
+                                   .ToNodeResourceSet()
+                                   .GetResourceMap();
+
+  // Calculate delta resource map (target - current) and validate
+  absl::flat_hash_map<std::string, double> delta_resource_map;
+  for (const auto &target_resource : target_resource_map) {
+    const std::string &resource_name = target_resource.first;
+    double target_value = target_resource.second;
+    double current_total = 0.0;
+    double current_available = 0.0;
+
+    auto total_it = current_total_map.find(resource_name);
+    if (total_it != current_total_map.end()) {
+      current_total = total_it->second;
+    }
+
+    auto available_it = current_available_map.find(resource_name);
+    if (available_it != current_available_map.end()) {
+      current_available = available_it->second;
+    }
+
+    double delta_value = target_value - current_total;
+
+    // Check if applying delta would make available resources negative
+    double new_available = current_available + delta_value;
+    if (new_available < 0.0) {
+      std::string error_msg = absl::StrFormat(
+          "Cannot resize %s to %g: would make available resources negative "
+          "(current_available=%g, delta=%g, new_available=%g). ",
+          resource_name,
+          target_value,
+          current_available,
+          delta_value,
+          new_available);
+      send_reply_callback(
+          Status::RpcError(error_msg, grpc::StatusCode::FAILED_PRECONDITION),
+          nullptr,
+          nullptr);
+      return;
+    }
+
+    if (delta_value != 0.0) {
+      delta_resource_map[resource_name] = delta_value;
+    }
+  }
+
+  // Convert delta resource map to NodeResourceInstanceSet and apply
+  if (!delta_resource_map.empty()) {
+    NodeResourceSet delta_resources(delta_resource_map);
+    NodeResourceInstanceSet delta_instances(delta_resources);
+
+    // Apply deltas for each resource
+    for (const auto &resource_id : delta_resources.ExplicitResourceIds()) {
+      const auto &instances = delta_instances.Get(resource_id);
+      cluster_resource_scheduler_.GetLocalResourceManager().AddLocalResourceInstances(
+          resource_id, instances);
+    }
+  }
+
+  // Trigger scheduling to account for the new resources
+  cluster_task_manager_.ScheduleAndDispatchTasks();
+
+  // Get updated resource state and populate reply
+  const auto updated_resources =
+      cluster_resource_scheduler_.GetLocalResourceManager().GetLocalResources();
+  auto updated_total_map =
+      updated_resources.GetTotalResourceInstances().ToNodeResourceSet().GetResourceMap();
+  auto updated_available_map = updated_resources.GetAvailableResourceInstances()
+                                   .ToNodeResourceSet()
+                                   .GetResourceMap();
+
+  if (!delta_resource_map.empty()) {
+    RAY_LOG(INFO) << "Successfully resized local resources. Current Total resources:";
+    for (const auto &resource : updated_total_map) {
+      RAY_LOG(INFO) << "  " << resource.first << ": " << resource.second;
+    }
+    RAY_LOG(INFO) << "Available resources:";
+    for (const auto &resource : updated_available_map) {
+      RAY_LOG(INFO) << "  " << resource.first << ": " << resource.second;
+    }
+  }
+
+  // Populate the reply with current resource state
+  auto *total_resources = reply->mutable_total_resources();
+  for (const auto &resource : updated_total_map) {
+    (*total_resources)[resource.first] = resource.second;
+  }
+
+  auto *available_resources = reply->mutable_available_resources();
+  for (const auto &resource : updated_available_map) {
+    (*available_resources)[resource.first] = resource.second;
+  }
+
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
