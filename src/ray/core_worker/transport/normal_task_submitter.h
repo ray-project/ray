@@ -154,6 +154,11 @@ class NormalTaskSubmitter {
   /// we avoid double counting backlogs in autoscaler.
   void ReportWorkerBacklog();
 
+  void SetOwnerAddress(const rpc::Address &owner_address) {
+    rpc_address_ = owner_address;
+    lease_policy_->SetOwnerAddress(owner_address);
+  }
+
  private:
   /// Schedule more work onto an idle worker or return it back to the raylet if
   /// no more tasks are queued for submission. If an error was encountered

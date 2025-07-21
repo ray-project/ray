@@ -66,6 +66,10 @@ class FutureResolver {
                              const Status &status,
                              const rpc::GetObjectStatusReply &object_status);
 
+  void SetOwnerAddress(const rpc::Address &owner_address) {
+    rpc_address_ = owner_address;
+  }
+
  private:
   /// Used to store values of resolved futures.
   std::shared_ptr<CoreWorkerMemoryStore> in_memory_store_;

@@ -426,7 +426,10 @@ CoreWorker::CoreWorker(
   // Update rpc_address_ with the actual assigned port
   int actual_port = core_worker_server_->GetPort();
   rpc_address_.set_port(actual_port);
-
+  reference_counter_->SetOwnerAddress(rpc_address_);
+  normal_task_submitter_->SetOwnerAddress(rpc_address_);
+  future_resolver_->SetOwnerAddress(rpc_address_);
+  object_recovery_manager_->SetOwnerAddress(rpc_address_);
   RegisterToGcs(options_.worker_launch_time_ms, options_.worker_launched_time_ms);
 
   // Create an entry for the driver task in the task table. This task is

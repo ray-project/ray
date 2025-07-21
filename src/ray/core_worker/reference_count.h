@@ -595,6 +595,10 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// Get the tensor transport for the given object.
   std::optional<rpc::TensorTransport> GetTensorTransport(const ObjectID &object_id) const;
 
+  void SetOwnerAddress(const rpc::Address &owner_address) {
+    rpc_address_ = owner_address;
+  }
+
  private:
   /// Contains information related to nested object refs only.
   struct NestedReferenceCount {

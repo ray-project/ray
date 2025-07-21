@@ -95,6 +95,10 @@ class ObjectRecoveryManager {
   /// reconstruction failure callback will be called for this object).
   bool RecoverObject(const ObjectID &object_id);
 
+  void SetOwnerAddress(const rpc::Address &owner_address) {
+    rpc_address_ = owner_address;
+  }
+
  private:
   /// Pin a new copy for a lost object from the given locations or, if that
   /// fails, attempt to reconstruct it by resubmitting the task that created
