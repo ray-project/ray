@@ -359,7 +359,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             int64_t stdout_end_offset,
             int64_t stderr_end_offset) const
 
-        void SetActorCleanupCallback(function[void()] callback)
+        void SetActorShutdownCallback(function[void()] callback)
 
         void Exit(const CWorkerExitType exit_type,
                   const c_string &detail,
