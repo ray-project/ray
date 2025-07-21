@@ -401,14 +401,10 @@ def _generate_cluster_metadata(*, ray_init_cluster: bool):
     Params:
         ray_init_cluster: Whether the cluster is started by ray.init()
     """
-    ray_version, python_version = ray._private.utils.compute_version_info()
-    # These two metadata is necessary although usage report is not enabled
-    # to check version compatibility.
-    metadata = {
-        "ray_version": ray_version,
-        "python_version": python_version,
-        "ray_init_cluster": ray_init_cluster,
-    }
+    # These metadata items are recorded to check version compatibility.
+    # They are necessary whether or not usage stats are enabled.
+    metadata = asdict(ray._private.utils.compute_version_info())
+    metadata["ray_init_cluster"] = ray_init_cluster
     # Additional metadata is recorded only when usage stats are enabled.
     if usage_stats_enabled():
         metadata.update(
@@ -419,7 +415,7 @@ def _generate_cluster_metadata(*, ray_init_cluster: bool):
             }
         )
         if sys.platform == "linux":
-            # Record llibc version
+            # Record libc version
             (lib, ver) = platform.libc_ver()
             if not lib:
                 metadata.update({"libc_version": "NA"})
