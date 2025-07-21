@@ -15,6 +15,10 @@
 #include "ray/common/ray_syncer/ray_syncer.h"
 
 #include <functional>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/ray_config.h"
