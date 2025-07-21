@@ -186,6 +186,15 @@ Databricks
 
    read_databricks_tables
 
+Snowflake
+---------
+
+.. autosummary::
+   :toctree: doc/
+
+   read_snowflake
+   Dataset.write_snowflake
+
 Unity Catalog
 -------------
 
