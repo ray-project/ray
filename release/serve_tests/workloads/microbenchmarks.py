@@ -158,7 +158,9 @@ async def _main(
         if run_throughput:
             # Microbenchmark: HTTP throughput
             for max_ongoing_requests in throughput_max_ongoing_requests:
-                serve.run(Noop.options(max_ongoing_requests=max_ongoing_requests).bind())
+                serve.run(
+                    Noop.options(max_ongoing_requests=max_ongoing_requests).bind()
+                )
                 url = get_application_url(use_localhost=True)
                 mean, std, _ = await run_throughput_benchmark(
                     fn=partial(do_single_http_batch, batch_size=BATCH_SIZE, url=url),
@@ -167,7 +169,9 @@ async def _main(
                     trial_runtime=TRIAL_RUNTIME_S,
                 )
                 test_name = get_throughput_test_name("http", max_ongoing_requests)
-                perf_metrics.extend(convert_throughput_to_perf_metrics(test_name, mean, std))
+                perf_metrics.extend(
+                    convert_throughput_to_perf_metrics(test_name, mean, std)
+                )
                 serve.shutdown()
 
         if run_streaming:
@@ -277,18 +281,26 @@ async def _main(
             # Microbenchmark: GRPC throughput
             for max_ongoing_requests in throughput_max_ongoing_requests:
                 serve.start(grpc_options=serve_grpc_options)
-                serve.run(GrpcDeployment.options(max_ongoing_requests=max_ongoing_requests).bind())
+                serve.run(
+                    GrpcDeployment.options(
+                        max_ongoing_requests=max_ongoing_requests
+                    ).bind()
+                )
                 target = get_application_url(
                     protocol=RequestProtocol.GRPC, use_localhost=True
                 )
                 mean, std, _ = await run_throughput_benchmark(
-                    fn=partial(do_single_grpc_batch, batch_size=BATCH_SIZE, target=target),
+                    fn=partial(
+                        do_single_grpc_batch, batch_size=BATCH_SIZE, target=target
+                    ),
                     multiplier=BATCH_SIZE,
                     num_trials=NUM_TRIALS,
                     trial_runtime=TRIAL_RUNTIME_S,
                 )
                 test_name = get_throughput_test_name("grpc", max_ongoing_requests)
-                perf_metrics.extend(convert_throughput_to_perf_metrics(test_name, mean, std))
+                perf_metrics.extend(
+                    convert_throughput_to_perf_metrics(test_name, mean, std)
+                )
                 serve.shutdown()
 
     # Handle
@@ -320,7 +332,9 @@ async def _main(
                     trial_runtime=TRIAL_RUNTIME_S,
                 )
                 test_name = get_throughput_test_name("handle", max_ongoing_requests)
-                perf_metrics.extend(convert_throughput_to_perf_metrics(test_name, mean, std))
+                perf_metrics.extend(
+                    convert_throughput_to_perf_metrics(test_name, mean, std)
+                )
                 serve.shutdown()
 
         if run_streaming:
