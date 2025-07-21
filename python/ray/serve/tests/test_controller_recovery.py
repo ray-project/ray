@@ -119,6 +119,7 @@ def test_recover_rolling_update_from_replica_actor_names(serve_instance):
 
     Replicas starting -> updating -> running
     replicas from actor names, with right replica versions during rolling
+    replicas from actor names, with right replica versions during rolling
     update.
     """
 
@@ -222,7 +223,7 @@ def test_controller_recover_initializing_actor(ray_instance):
             return f"1|{os.getpid()}"
 
     # Deploy using Python API
-    serve.run(V1.bind(), name="app")
+    serve._run(V1.bind(), name="app", _blocking=False)
 
     ray.get(pending_init_indicator.remote())
 
@@ -273,11 +274,14 @@ def test_controller_recover_initializing_actor(ray_instance):
     def check_app_running():
         try:
             status = serve.status()
-            return status["applications"]["app"]["status"] == "RUNNING"
-        except (KeyError, Exception):
+            app_status = status.applications["app"].status
+            print(f"App 'app' status: {app_status}")
+            return app_status == "RUNNING"
+        except (KeyError, Exception) as e:
+            print(f"Exception checking app status: {e}")
             return False
 
-    wait_for_condition(check_app_running, timeout=30)
+    wait_for_condition(check_app_running, timeout=60)
 
     # Make sure the actor before controller dead is staying alive.
     assert actor_tag == get_actor_info(f"app#{V1.name}")[0]

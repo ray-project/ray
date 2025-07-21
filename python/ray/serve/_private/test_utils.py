@@ -739,7 +739,7 @@ def _build_url_for_target(
     ip = "localhost" if use_localhost else target.ip
     if protocol == RequestProtocol.HTTP:
         scheme = "ws" if is_websocket else "http"
-        url = f"{scheme}://{ip}:{target.port}{route_prefix}"
+        url = f"{scheme}://{ip}:{target.port}{route_prefix or ''}"
     elif protocol == RequestProtocol.GRPC:
         if is_websocket:
             raise ValueError("is_websocket=True is not supported with gRPC protocol.")
