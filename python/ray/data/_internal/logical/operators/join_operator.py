@@ -52,7 +52,9 @@ class BroadcastJoin(LogicalOperator):
                 f"Supported join types are: {', '.join(jt.value for jt in JoinType)}."
             )
 
-        super().__init__("BroadcastJoin", [left_input_op, right_input_op], num_partitions)
+        super().__init__(
+            "BroadcastJoin", [left_input_op, right_input_op], num_partitions
+        )
 
         self._left_key_columns = left_key_columns
         self._right_key_columns = right_key_columns

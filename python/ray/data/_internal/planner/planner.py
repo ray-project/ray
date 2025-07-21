@@ -160,9 +160,10 @@ def _register_default_plan_logical_op_fns():
         physical_children: List[PhysicalOperator],
         data_context: DataContext,
     ) -> PhysicalOperator:
-        from ray.data._internal.execution.operators.broadcast_join import BroadcastJoinOperator
-        from ray.data._internal.logical.operators.join_operator import BroadcastJoin
-        
+        from ray.data._internal.execution.operators.broadcast_join import (
+            BroadcastJoinOperator,
+        )
+
         assert len(physical_children) == 2
         assert logical_op._num_partitions is not None
 
@@ -179,9 +180,6 @@ def _register_default_plan_logical_op_fns():
         )
 
     register_plan_logical_op_fn(Join, plan_join_op)
-    
-    # Import BroadcastJoin and register its planner function
-    from ray.data._internal.logical.operators.join_operator import BroadcastJoin
     register_plan_logical_op_fn(BroadcastJoin, plan_broadcast_join_op)
 
 

@@ -2396,9 +2396,9 @@ class Dataset:
                 operand.
             right_suffix: (Optional) Suffix to be appended for columns of the right
                 operand.
-            broadcast: (Optional) Whether to use broadcast join instead of hash shuffle 
-                join. In broadcast join, the right dataset is loaded into memory and 
-                broadcasted to all workers using map_batches with PyArrow joins. 
+            broadcast: (Optional) Whether to use broadcast join instead of hash shuffle
+                join. In broadcast join, the right dataset is loaded into memory and
+                broadcasted to all workers using map_batches with PyArrow joins.
                 This is efficient when the right dataset is small. Defaults to False.
             partition_size_hint: (Optional) Hint to joining operator about the estimated
                 avg expected size of the individual partition (in bytes).
@@ -2472,9 +2472,10 @@ class Dataset:
             Join._validate_schemas(left_op_schema, right_op_schema, on, right_on)
 
         plan = self._plan.copy()
-        
+
         if broadcast:
             from ray.data._internal.logical.operators.join_operator import BroadcastJoin
+
             op = BroadcastJoin(
                 left_input_op=self._logical_plan.dag,
                 right_input_op=ds._logical_plan.dag,
