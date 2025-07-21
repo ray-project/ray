@@ -311,6 +311,7 @@ depsets:
 
     def test_env_substitution(self):
         with tempfile.TemporaryDirectory() as tmpdir:
+            os.environ["PYTHON_CODE"] = "py311"
             _copy_data_to_tmpdir(tmpdir)
             output_fp = Path(tmpdir) / "test.config.yaml"
             _replace_in_file(
@@ -330,6 +331,7 @@ depsets:
 
     def test_env_substitution_with_brackets(self):
         with tempfile.TemporaryDirectory() as tmpdir:
+            os.environ["PYTHON_CODE"] = "py311"
             _copy_data_to_tmpdir(tmpdir)
             output_fp = Path(tmpdir) / "test.config.yaml"
             _replace_in_file(
