@@ -437,6 +437,10 @@ class MockLeasePolicy : public LeasePolicyInterface {
     return std::make_pair(fallback_rpc_address_, is_locality_aware);
   };
 
+  void SetOwnerAddress(const rpc::Address &owner_address) {
+    fallback_rpc_address_ = owner_address;
+  }
+
   rpc::Address fallback_rpc_address_;
 
   int num_lease_policy_consults = 0;
