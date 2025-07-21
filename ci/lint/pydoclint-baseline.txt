@@ -204,16 +204,6 @@ python/ray/_private/services.py
     DOC111: Function `start_ray_client_server`: The option `--arg-type-hints-in-docstring` is `False` but there are type hints in the docstring arg list
     DOC103: Function `start_ray_client_server`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [fate_share: Optional[bool]].
 --------------------
-python/ray/_private/signature.py
-    DOC106: Function `get_signature`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
-    DOC107: Function `get_signature`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
-    DOC106: Function `extract_signature`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
-    DOC107: Function `extract_signature`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
-    DOC107: Function `validate_args`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
-    DOC107: Function `flatten_args`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
-    DOC106: Function `recover_args`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
-    DOC107: Function `recover_args`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
---------------------
 python/ray/_private/state.py
     DOC106: Method `GlobalState._initialize_global_state`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
     DOC107: Method `GlobalState._initialize_global_state`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
@@ -390,7 +380,6 @@ python/ray/air/_internal/torch_utils.py
     DOC103: Function `convert_ndarray_batch_to_torch_tensor_batch`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [dtypes: Optional[Union[torch.dtype, Dict[str, torch.dtype]]], ndarrays: Union[np.ndarray, Dict[str, np.ndarray]]]. Arguments in the docstring but not in the function signature: [dtype: , ndarray: ].
     DOC201: Function `convert_ndarray_batch_to_torch_tensor_batch` does not have a return section in docstring
     DOC201: Function `consume_prefix_in_state_dict_if_present_not_in_place` does not have a return section in docstring
-    DOC201: Function `convert_ndarray_list_to_torch_tensor_list` does not have a return section in docstring
 --------------------
 python/ray/air/_internal/uri_utils.py
     DOC101: Method `URI.rstrip_subpath`: Docstring contains fewer arguments than in function signature.
@@ -1203,7 +1192,6 @@ python/ray/data/_internal/execution/streaming_executor_state.py
     DOC201: Method `OpBufferQueue.has_next` does not have a return section in docstring
     DOC101: Method `OpState.get_output_blocking`: Docstring contains fewer arguments than in function signature.
     DOC103: Method `OpState.get_output_blocking`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [output_split_idx: Optional[int]].
-    DOC103: Function `process_completed_tasks`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [resource_manager: ResourceManager]. Arguments in the docstring but not in the function signature: [backpressure_policies: ].
 --------------------
 python/ray/data/_internal/iterator/stream_split_iterator.py
     DOC101: Method `SplitCoordinator.start_epoch`: Docstring contains fewer arguments than in function signature.
@@ -1487,8 +1475,8 @@ python/ray/experimental/channel/shared_memory_channel.py
     DOC101: Method `CompositeChannel.__init__`: Docstring contains fewer arguments than in function signature.
     DOC103: Method `CompositeChannel.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [_channel_dict: Optional[Dict[ray.ActorID, ChannelInterface]], _channels: Optional[Set[ChannelInterface]], _reader_registered: bool, _writer_registered: bool].
 --------------------
-python/ray/experimental/channel/torch_tensor_nccl_channel.py
-    DOC201: Method `TorchTensorNcclChannel._recv_cpu_and_gpu_data` does not have a return section in docstring
+python/ray/experimental/channel/torch_tensor_accelerator_channel.py
+    DOC201: Method `TorchTensorAcceleratorChannel._recv_cpu_and_gpu_data` does not have a return section in docstring
     DOC201: Function `_get_ranks` does not have a return section in docstring
     DOC201: Function `_init_communicator` does not have a return section in docstring
 --------------------
@@ -1586,22 +1574,8 @@ python/ray/llm/_internal/common/utils/download_utils.py
     DOC201: Function `get_model_location_on_disk` does not have a return section in docstring
     DOC201: Method `CloudModelDownloader.get_model` does not have a return section in docstring
 --------------------
-python/ray/llm/_internal/serve/configs/json_mode_utils.py
-    DOC201: Method `JSONSchemaValidator.try_load_json_schema` does not have a return section in docstring
---------------------
 python/ray/llm/_internal/serve/configs/openai_api_models.py
     DOC201: Function `to_model_metadata` does not have a return section in docstring
---------------------
-python/ray/llm/_internal/serve/configs/prompt_formats.py
-    DOC101: Method `Image.check_image_url`: Docstring contains fewer arguments than in function signature.
-    DOC106: Method `Image.check_image_url`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
-    DOC107: Method `Image.check_image_url`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
-    DOC103: Method `Image.check_image_url`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [value: ].
-    DOC201: Method `Image.check_image_url` does not have a return section in docstring
---------------------
-python/ray/llm/_internal/serve/deployments/llm/llm_server.py
-    DOC402: Method `LLMServer.embeddings` has "yield" statements, but the docstring does not have a "Yields" section
-    DOC404: Method `LLMServer.embeddings` yield type(s) in docstring not consistent with the return annotation. Return annotation exists, but docstring "yields" section does not exist or has 0 type(s).
 --------------------
 python/ray/llm/_internal/serve/deployments/llm/multiplex/utils.py
     DOC201: Function `retry_with_exponential_backoff` does not have a return section in docstring
@@ -1744,8 +1718,6 @@ python/ray/serve/_private/logging_utils.py
     DOC102: Method `ServeFormatter.format`: Docstring contains more arguments than in function signature.
     DOC103: Method `ServeFormatter.format`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the docstring but not in the function signature: [Returns: ].
     DOC201: Method `ServeFormatter.format` does not have a return section in docstring
-    DOC101: Function `configure_component_cpu_profiler`: Docstring contains fewer arguments than in function signature.
-    DOC103: Function `configure_component_cpu_profiler`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [component_id: str, component_name: str, component_type: Optional[ServeComponentType]].
 --------------------
 python/ray/serve/_private/long_poll.py
     DOC107: Method `LongPollClient.__init__`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
@@ -2127,10 +2099,6 @@ python/ray/train/v2/_internal/util.py
 python/ray/train/v2/api/context.py
     DOC201: Method `TrainContext.get_local_world_size` does not have a return section in docstring
     DOC201: Method `TrainContext.get_node_rank` does not have a return section in docstring
---------------------
-python/ray/train/v2/api/train_fn_utils.py
-    DOC101: Function `report`: Docstring contains fewer arguments than in function signature.
-    DOC103: Function `report`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [checkpoint_dir_name: Optional[str]].
 --------------------
 python/ray/train/v2/lightgbm/lightgbm_trainer.py
     DOC101: Method `LightGBMTrainer.__init__`: Docstring contains fewer arguments than in function signature.

@@ -275,8 +275,9 @@ def assert_base_partitioned_ds():
 @pytest.fixture
 def restore_data_context(request):
     """Restore any DataContext changes after the test runs"""
-    original = copy.deepcopy(ray.data.context.DataContext.get_current())
-    yield
+    ctx = ray.data.context.DataContext.get_current()
+    original = copy.deepcopy(ctx)
+    yield ctx
     ray.data.context.DataContext._set_current(original)
 
 

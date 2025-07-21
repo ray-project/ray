@@ -49,6 +49,7 @@ Worker::Worker(const JobID &job_id,
       runtime_env_hash_(runtime_env_hash),
       bundle_id_(std::make_pair(PlacementGroupID::Nil(), -1)),
       dead_(false),
+      killing_(false),
       blocked_(false),
       client_call_manager_(client_call_manager) {}
 
@@ -57,6 +58,43 @@ rpc::WorkerType Worker::GetWorkerType() const { return worker_type_; }
 void Worker::MarkDead() { dead_ = true; }
 
 bool Worker::IsDead() const { return dead_; }
+
+void Worker::KillAsync(instrumented_io_context &io_service, bool force) {
+  if (killing_.exchange(true)) {  // TODO(rueian): could we just reuse the dead_ flag?
+    return;  // This is not the first time calling KillAsync, do nothing.
+  }
+  const auto worker = shared_from_this();
+  if (force) {
+    worker->GetProcess().Kill();
+    return;
+  }
+#ifdef _WIN32
+  // TODO(mehrdadn): implement graceful process termination mechanism
+#else
+  // Attempt to gracefully shutdown the worker before force killing it.
+  kill(worker->GetProcess().GetId(), SIGTERM);
+#endif
+
+  auto retry_timer = std::make_shared<boost::asio::deadline_timer>(io_service);
+  auto timeout = RayConfig::instance().kill_worker_timeout_milliseconds();
+  auto retry_duration = boost::posix_time::milliseconds(timeout);
+  retry_timer->expires_from_now(retry_duration);
+  retry_timer->async_wait(
+      [timeout, retry_timer, worker](const boost::system::error_code &error) {
+#ifdef _WIN32
+#else
+        if (worker->GetProcess().IsAlive()) {
+          RAY_LOG(INFO) << "Worker with PID=" << worker->GetProcess().GetId()
+                        << " did not exit after " << timeout
+                        << "ms, force killing with SIGKILL.";
+        } else {
+          return;
+        }
+#endif
+        // Force kill worker
+        worker->GetProcess().Kill();
+      });
+}
 
 void Worker::MarkBlocked() { blocked_ = true; }
 

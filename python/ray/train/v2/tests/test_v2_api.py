@@ -30,6 +30,26 @@ def test_api_configs(operation, raise_error):
             pytest.fail(f"Default Operation raised an exception: {e}")
 
 
+def test_run_config_default_failure_config():
+    """Test that RunConfig creates a default FailureConfig from v2 API, not v1."""
+    # Import the v2 FailureConfig and v1 FailureConfig for comparison
+    from ray.train.v2.api.config import FailureConfig as FailureConfigV2
+
+    # Create a RunConfig without specifying failure_config
+    run_config = RunConfig()
+
+    # Verify that the default failure_config is the v2 version
+    assert run_config.failure_config is not None
+    assert isinstance(run_config.failure_config, FailureConfigV2)
+    assert type(run_config.failure_config) is FailureConfigV2
+
+    # Verify that explicitly passing None also creates v2 FailureConfig
+    run_config_explicit_none = RunConfig(failure_config=None)
+    assert run_config_explicit_none.failure_config is not None
+    assert isinstance(run_config_explicit_none.failure_config, FailureConfigV2)
+    assert type(run_config_explicit_none.failure_config) is FailureConfigV2
+
+
 def test_scaling_config_total_resources():
     """Test the patched scaling config total resources calculation."""
     num_workers = 2
