@@ -31,7 +31,12 @@ export const TaskPage = () => {
   const { task, isLoading } = useStateApiTask(taskId);
 
   return (
-    <Box sx={(theme: Theme) => ({ padding: 2, backgroundColor: theme.palette.background.default })}>
+    <Box
+      sx={(theme: Theme) => ({
+        padding: 2,
+        backgroundColor: theme.palette.background.default,
+      })}
+    >
       <MainNavPageInfo
         pageInfo={
           task

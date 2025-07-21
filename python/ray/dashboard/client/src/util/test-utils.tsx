@@ -3,18 +3,17 @@ import React, { PropsWithChildren } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { SWRConfig } from "swr";
 import { GlobalContext, GlobalContextType } from "../App";
-import { ThemeProvider as CustomThemeProvider, useTheme } from "../contexts/ThemeContext";
+import {
+  ThemeProvider as CustomThemeProvider,
+  useTheme,
+} from "../contexts/ThemeContext";
 import { darkTheme, lightTheme } from "../theme";
 
 const ThemedWrapper = ({ children }: PropsWithChildren<{}>) => {
   const { mode } = useTheme();
-  const currentTheme = mode === 'dark' ? darkTheme : lightTheme;
-  
-  return (
-    <ThemeProvider theme={currentTheme}>
-      {children}
-    </ThemeProvider>
-  );
+  const currentTheme = mode === "dark" ? darkTheme : lightTheme;
+
+  return <ThemeProvider theme={currentTheme}>{children}</ThemeProvider>;
 };
 
 export const TEST_APP_WRAPPER = ({ children }: PropsWithChildren<{}>) => {
