@@ -85,12 +85,13 @@ class MockWorker : public WorkerInterface {
   void MarkDead() override { RAY_CHECK(false) << "Method unused"; }
   bool IsDead() const override {
     RAY_CHECK(false) << "Method unused";
-    return false;
+    return killing_.load(std::memory_order_acquire);
   }
   void KillAsync(instrumented_io_context &io_service, bool force) override {
-    killed_.store(true);
+    bool expected = false;
+    killing_.compare_exchange_strong(expected, true, std::memory_order_acq_rel);
   }
-  bool IsKilled() const { return killed_.load(); }
+  bool IsKilled() const { return killing_.load(std::memory_order_acquire); }
   void MarkBlocked() override { blocked_ = true; }
   void MarkUnblocked() override { blocked_ = false; }
   bool IsBlocked() const override { return blocked_; }
@@ -203,7 +204,7 @@ class MockWorker : public WorkerInterface {
   JobID job_id_;
   ActorID root_detached_actor_id_;
   Process proc_;
-  std::atomic<bool> killed_ = false;
+  std::atomic<bool> killing_ = false;
 };
 
 }  // namespace raylet
