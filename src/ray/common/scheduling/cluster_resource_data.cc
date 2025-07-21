@@ -14,11 +14,14 @@
 
 #include "ray/common/scheduling/cluster_resource_data.h"
 
+#include <algorithm>
+#include <string>
+
 #include "ray/common/bundle_spec.h"
 #include "ray/common/scheduling/resource_set.h"
 
 namespace ray {
-using namespace ::ray::scheduling;
+using namespace ::ray::scheduling;  // NOLINT
 
 /// Convert a map of resources to a ResourceRequest data structure.
 ResourceRequest ResourceMapToResourceRequest(

@@ -14,6 +14,9 @@
 
 #include "ray/common/scheduling/label_selector.h"
 
+#include <string>
+#include <utility>
+
 #include "absl/strings/match.h"
 #include "ray/util/logging.h"
 
@@ -24,7 +27,7 @@ LabelSelector::LabelSelector(
     const google::protobuf::Map<std::string, std::string> &label_selector) {
   for (const auto &[key, value] : label_selector) {
     if (key.empty()) {
-      // TODO (ryanaoleary@): propagate up an InvalidArgument from here.
+      // TODO(ryanaoleary@): propagate up an InvalidArgument from here.
       RAY_LOG(ERROR) << "Empty Label Selector key.";
     }
 
@@ -65,7 +68,7 @@ LabelSelector::ParseLabelSelectorValue(const std::string &key, const std::string
     }
 
     if (values.empty()) {
-      // TODO (ryanaoleary@): propagate up an InvalidArgument from here.
+      // TODO(ryanaoleary@): propagate up an InvalidArgument from here.
       RAY_LOG(ERROR) << "No values provided for Label Selector key: " << key;
     }
 
