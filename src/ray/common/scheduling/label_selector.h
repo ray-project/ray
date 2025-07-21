@@ -105,3 +105,21 @@ H AbslHashValue(H h, const LabelSelector &label_selector) {
 }
 
 }  // namespace ray
+
+namespace std {
+template <>
+struct hash<ray::LabelSelector> {
+  size_t operator()(ray::LabelSelector const &label_selector) const noexcept {
+    size_t seed = label_selector.GetConstraints().size();
+    // Add constraint key, operator, and values to hash seed
+    for (auto const &constraint : label_selector.GetConstraints()) {
+      seed ^= std::hash<std::string>()(constraint.GetLabelKey());
+      seed ^= std::hash<int>()(static_cast<int>(constraint.GetOperator()));
+      for (auto const &value : constraint.GetLabelValues()) {
+        seed ^= std::hash<std::string>()(value);
+      }
+    }
+    return seed;
+  }
+};
+}  // namespace std
