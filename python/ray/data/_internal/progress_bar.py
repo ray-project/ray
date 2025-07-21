@@ -1,6 +1,7 @@
 import logging
 import threading
-from typing import Any, List, Optional
+import time
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import ray
 from ray.experimental import tqdm_ray
@@ -20,6 +21,83 @@ except ImportError:
 # Used a signal to cancel execution.
 _canceled_threads = set()
 _canceled_threads_lock = threading.Lock()
+
+
+class AsyncProgressUpdater:
+    """Lightweight async progress bar updater that prevents blocking on tqdm calls."""
+
+    def __init__(self, update_interval: float = 0.05):  # More responsive updates
+        self._pending_calls: Dict[str, Tuple[Callable, tuple, dict]] = {}
+        self._lock = threading.Lock()
+        self._update_interval = update_interval
+        self._worker_thread = None
+        self._shutdown = False
+        self._started = False
+
+    def start(self):
+        if not self._started:
+            self._started = True
+            self._worker_thread = threading.Thread(
+                target=self._worker_loop, daemon=True, name="ProgressBarUpdater"
+            )
+            self._worker_thread.start()
+
+    def submit_async(self, call_id: str, func: Callable, *args, **kwargs):
+        """Submit any progress bar call to run asynchronously"""
+        if not self._shutdown:
+            with self._lock:
+                # Only keep latest call per ID - overwrites previous
+                self._pending_calls[call_id] = (func, args, kwargs)
+
+    def submit_sync(self, call_id: str, func: Callable, *args, **kwargs):
+        """Submit a progress bar call and flush immediately (for critical updates)"""
+        self.submit_async(call_id, func, *args, **kwargs)
+        self.flush_pending()
+
+    def flush_pending(self):
+        """Process all pending updates immediately (blocking)"""
+        with self._lock:
+            calls_to_process = self._pending_calls.copy()
+            self._pending_calls.clear()
+
+        # Execute all pending calls synchronously
+        for call_id, (func, args, kwargs) in calls_to_process.items():
+            try:
+                func(*args, **kwargs)
+            except Exception as e:
+                logger.debug(
+                    f"Progress bar call failed during flush for {call_id}: {e}"
+                )
+
+    def _worker_loop(self):
+        while not self._shutdown:
+            # Get snapshot of pending calls and clear them
+            with self._lock:
+                calls_to_process = self._pending_calls.copy()
+                self._pending_calls.clear()
+
+            # Execute all pending calls
+            for call_id, (func, args, kwargs) in calls_to_process.items():
+                try:
+                    func(*args, **kwargs)
+                except Exception as e:
+                    logger.debug(f"Progress bar call failed for {call_id}: {e}")
+
+            time.sleep(self._update_interval)
+
+    def shutdown(self):
+        self._shutdown = True
+
+        # Process any remaining updates before shutdown
+        self.flush_pending()
+
+        # Wait for worker thread to finish
+        if self._worker_thread:
+            self._worker_thread.join(timeout=1.0)
+
+
+# Global instance
+_async_progress_updater = AsyncProgressUpdater()
 
 
 def extract_num_rows(result: Any) -> int:
@@ -45,7 +123,11 @@ class ProgressBar:
 
     If `total` is `None` known (for example, it is unknown
     because no tasks have finished yet), doesn't display the full
-    progress bar. Still displays basic progress stats from tqdm."""
+    progress bar. Still displays basic progress stats from tqdm.
+
+    All update methods are now async internally to prevent blocking the
+    main scheduling loop when terminal I/O is slow.
+    """
 
     # If the name/description of the progress bar exceeds this length,
     # it will be truncated.
@@ -61,6 +143,8 @@ class ProgressBar:
     ):
         self._desc = self._truncate_name(name)
         self._progress = 0
+        self._bar_id = f"progress_bar_{id(self)}"  # Unique ID for this bar
+
         # Prepend a space to the unit for better formatting.
         if unit[0] != " ":
             unit = " " + unit
@@ -90,6 +174,9 @@ class ProgressBar:
                 print("[dataset]: Run `pip install tqdm` to enable progress reporting.")
                 needs_warning = False
             self._bar = None
+
+        # Start the async updater
+        _async_progress_updater.start()
 
     def _truncate_name(self, name: str) -> str:
         ctx = ray.data.context.DataContext.get_current()
@@ -175,30 +262,97 @@ class ProgressBar:
 
         return [ref_to_result[ref] for ref in refs]
 
-    def set_description(self, name: str) -> None:
+    def set_description(self, name: str, flush: bool = False) -> None:
         name = self._truncate_name(name)
         if self._bar and name != self._desc:
+            # Update local state immediately
             self._desc = name
-            self._bar.set_description(self._desc)
+
+            # Use synchronous updates if flush=True
+            if flush:
+                try:
+                    self._bar.set_description(self._desc)
+                except Exception as e:
+                    logger.debug(f"Sync progress bar set_description failed: {e}")
+            else:
+                # Submit actual tqdm update to async updater
+                _async_progress_updater.submit_async(
+                    f"{self._bar_id}_set_description",
+                    self._bar.set_description,
+                    self._desc,
+                )
 
     def get_description(self) -> str:
         return self._desc
 
-    def refresh(self):
+    def refresh(self, flush: bool = False):
         if self._bar:
-            self._bar.refresh()
+            # Use synchronous refresh if flush=True
+            if flush:
+                try:
+                    self._bar.refresh()
+                except Exception as e:
+                    logger.debug(f"Sync progress bar refresh failed: {e}")
+            else:
+                # Submit to async updater instead of blocking
+                _async_progress_updater.submit_async(
+                    f"{self._bar_id}_refresh", self._bar.refresh
+                )
 
-    def update(self, i: int = 0, total: Optional[int] = None) -> None:
+    def update(
+        self, i: int = 0, total: Optional[int] = None, flush: bool = False
+    ) -> None:
         if self._bar and (i != 0 or self._bar.total != total):
+            # Update local state immediately (for progress tracking)
             self._progress += i
             if total is not None:
                 self._bar.total = total
             if self._bar.total is not None and self._progress > self._bar.total:
                 # If the progress goes over 100%, update the total.
                 self._bar.total = self._progress
-            self._bar.update(i)
+
+            # Use synchronous updates if flush=True
+            if flush:
+                try:
+                    self._bar.update(i)
+                except Exception as e:
+                    logger.debug(f"Sync progress bar update failed: {e}")
+            else:
+                # Submit actual tqdm update to async updater
+                _async_progress_updater.submit_async(
+                    f"{self._bar_id}_update", self._bar.update, i
+                )
 
     def close(self):
+        if self._bar:
+            # Process any pending updates for this specific progress bar
+            self._process_pending_updates()
+
+            # Always close synchronously to ensure final state is shown
+            self._close_sync()
+
+    def _process_pending_updates(self):
+        """Process any pending async updates for this progress bar specifically"""
+        bar_update_key = f"{self._bar_id}_update"
+        bar_refresh_key = f"{self._bar_id}_refresh"
+        bar_desc_key = f"{self._bar_id}_set_description"
+
+        with _async_progress_updater._lock:
+            # Process pending updates for this bar only
+            for call_id in [bar_update_key, bar_desc_key, bar_refresh_key]:
+                if call_id in _async_progress_updater._pending_calls:
+                    func, args, kwargs = _async_progress_updater._pending_calls.pop(
+                        call_id
+                    )
+                    try:
+                        func(*args, **kwargs)
+                    except Exception as e:
+                        logger.debug(
+                            f"Failed to process pending update for {call_id}: {e}"
+                        )
+
+    def _close_sync(self):
+        """The original synchronous close logic"""
         if self._bar:
             if self._bar.total is not None and self._progress != self._bar.total:
                 # If the progress is not complete, update the total.

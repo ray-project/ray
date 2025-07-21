@@ -239,7 +239,7 @@ class StreamingExecutor(Executor, threading.Thread):
                         f"{WARN_PREFIX} Dataset {self._dataset_id} execution failed"
                     )
                 logger.info(prog_bar_msg)
-                self._global_info.set_description(prog_bar_msg)
+                self._global_info.set_description(prog_bar_msg, flush=True)
                 self._global_info.close()
 
             timer = Timer()
@@ -598,10 +598,10 @@ class _ClosingIterator(OutputIterator):
             op, state = self._executor._output_node
             bundle = state.get_output_blocking(output_split_idx)
 
-            # Update progress-bars
+            # Update progress-bars (flush=True for final state accuracy)
             if self._executor._global_info:
                 self._executor._global_info.update(
-                    bundle.num_rows(), op.num_output_rows_total()
+                    bundle.num_rows(), op.num_output_rows_total(), flush=True
                 )
 
             return bundle
