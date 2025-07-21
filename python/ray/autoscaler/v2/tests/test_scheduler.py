@@ -1995,6 +1995,77 @@ def test_node_schedule_score(source):
     )
 
 
+@pytest.mark.parametrize(
+    "source",
+    [
+        ResourceRequestSource.PENDING_DEMAND,
+        ResourceRequestSource.CLUSTER_RESOURCE_CONSTRAINT,
+    ],
+    ids=["demand", "cluster_resource_constraint"],
+)
+def test_node_schedule_label_selector_score(source):
+    def try_schedule_ls(
+        node_resources: Dict,
+        node_labels: Dict[str, str],
+        selectors,
+    ) -> Tuple:
+        cfg = NodeTypeConfig(
+            name="type_1",
+            resources=node_resources,
+            min_worker_nodes=0,
+            max_worker_nodes=1,
+            labels=node_labels,
+        )
+        node = SchedulingNode.from_node_config(
+            node_config=cfg,
+            status=SchedulingNodeStatus.SCHEDULABLE,
+            node_kind=NodeKind.WORKER,
+        )
+        req = ResourceRequestUtil.make({"CPU": 1}, label_selectors=selectors)
+        infeasible, score = node.try_schedule([req], source)
+        return ResourceRequestUtil.to_resource_maps(infeasible), score
+
+    labels = {"ray.io/accelerator-type": "A100"}
+
+    # 1) A matching label selector should be schedulable on node type_1
+    label_selector_1 = [
+        [
+            (
+                "ray.io/accelerator-type",
+                LabelSelectorOperator.LABEL_OPERATOR_IN,
+                ["TPU-v6e"],
+            )
+        ],
+        [
+            (
+                "ray.io/accelerator-type",
+                LabelSelectorOperator.LABEL_OPERATOR_IN,
+                ["B200"],
+            )
+        ],
+        [
+            (
+                "ray.io/accelerator-type",
+                LabelSelectorOperator.LABEL_OPERATOR_IN,
+                ["A100"],
+            )
+        ],
+    ]
+    assert try_schedule_ls({"CPU": 1}, labels, label_selector_1) == (
+        [],
+        (1, True, 1, 1.0, 1.0),
+    )
+
+    # 2) A non‑matching label selector should be infeasible
+    label_selector_2 = [
+        [("ray.io/accelerator-type", LabelSelectorOperator.LABEL_OPERATOR_IN, ["B200"])]
+    ]
+    assert try_schedule_ls({"CPU": 1}, labels, label_selector_2) == (
+        [{"CPU": 1.0}],
+        (0, True, 0, 0.0, 0.0),
+    )
+
+
 def test_get_nodes_packing_heuristic():
     node_type_configs = {
         "m4.large": NodeTypeConfig(
@@ -2439,6 +2510,61 @@ def test_scale_up_node_to_satisfy_labels():
     to_launch, _ = _launch_and_terminate(reply)
 
     assert to_launch == {"gpu_node": 1}
+
+
+def test_label_selector_fallback_priority():
+    """
+    Test that a resource request with multiple label selectors scales up
+    the expected node given its fallback priority (i.e. earlier selectors are
+    satisfied first).
+    """
+    scheduler = ResourceDemandScheduler(event_logger)
+
+    node_type_configs = {
+        "tpu_node": NodeTypeConfig(
+            name="tpu_node",
+            resources={"CPU": 1},
+            labels={"accelerator-type": "TPU"},
+            min_worker_nodes=0,
+            max_worker_nodes=10,
+        ),
+        "gpu_node": NodeTypeConfig(
+            name="gpu_node",
+            resources={"CPU": 1},
+            labels={"accelerator-type": "A100"},
+            min_worker_nodes=0,
+            max_worker_nodes=10,
+        ),
+    }
+
+    # 1). TPU node is scaled up to satisfy first label selector.
+    req1 = ResourceRequestUtil.make(
+        {"CPU": 1},
+        label_selectors=[
+            [("accelerator-type", LabelSelectorOperator.LABEL_OPERATOR_IN, ["TPU"])],
+            [("accelerator-type", LabelSelectorOperator.LABEL_OPERATOR_IN, ["A100"])],
+        ],
+    )
+    reply1 = scheduler.schedule(
+        sched_request(node_type_configs=node_type_configs, resource_requests=[req1])
+    )
+    to_launch1, _ = _launch_and_terminate(reply1)
+    assert to_launch1 == {"tpu_node": 1}
+
+    # 1). Label selector falls back to second priority and scales up A100 node.
+    req2 = ResourceRequestUtil.make(
+        {"CPU": 1},
+        label_selectors=[
+            # infeasible
+            [("accelerator-type", LabelSelectorOperator.LABEL_OPERATOR_IN, ["B200"])],
+            [("accelerator-type", LabelSelectorOperator.LABEL_OPERATOR_IN, ["A100"])],
+        ],
+    )
+    reply2 = scheduler.schedule(
+        sched_request(node_type_configs=node_type_configs, resource_requests=[req2])
+    )
+    to_launch2, _ = _launch_and_terminate(reply2)
+    assert to_launch2 == {"gpu_node": 1}
 
 
 def test_pg_with_bundle_infeasible_label_selectors():

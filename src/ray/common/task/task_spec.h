@@ -227,6 +227,7 @@ struct hash<ray::SchedulingClassDescriptor> {
     hash_val ^= sched_cls.function_descriptor->Hash();
     hash_val ^= sched_cls.depth;
     hash_val ^= std::hash<ray::rpc::SchedulingStrategy>()(sched_cls.scheduling_strategy);
+    hash_val ^= std::hash<ray::LabelSelector>()(sched_cls.label_selector);
     return hash_val;
   }
 };
