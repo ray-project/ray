@@ -21,7 +21,7 @@ This example:
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack --port 5555
+`python [script file name].py --port 5555
 
 Use the `--port` option to change the default port (5555) to some other value.
 Make sure that you do the same on the client side.
@@ -81,7 +81,6 @@ parser = add_rllib_example_script_args(
     default_reward=450.0, default_iters=200, default_timesteps=2000000
 )
 parser.set_defaults(
-    enable_new_api_stack=True,
     num_env_runners=1,
 )
 parser.add_argument(

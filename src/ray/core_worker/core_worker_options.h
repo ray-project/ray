@@ -87,6 +87,7 @@ struct CoreWorkerOptions {
         raylet_ip_address(""),
         driver_name(""),
         task_execution_callback(nullptr),
+        free_actor_object_callback(nullptr),
         check_signals(nullptr),
         initialize_thread_callback(nullptr),
         gc_collect(nullptr),
@@ -146,6 +147,8 @@ struct CoreWorkerOptions {
   std::string driver_name;
   /// Application-language worker callback to execute tasks.
   TaskExecutionCallback task_execution_callback;
+  /// Callback to free GPU object from the in-actor object store.
+  std::function<void(const ObjectID &)> free_actor_object_callback;
   /// Application-language callback to check for signals that have been received
   /// since calling into C++. This will be called periodically (at least every
   /// 1s) during long-running operations. If the function returns anything but StatusOK,

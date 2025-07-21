@@ -413,9 +413,6 @@
 
 
 - name: "sort_{{scaling}}"
-  # This test intermittently fails due to Arrow offset overflow errors, or OOD from
-  # overly-conservative autoscaling.
-  stable: False
 
   matrix:
     setup:
