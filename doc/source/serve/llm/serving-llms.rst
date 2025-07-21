@@ -238,31 +238,8 @@ For production deployments, Ray Serve LLM provides utilities for config-driven d
     .. tab-item:: Inline Config
         :sync: inline
 
-        .. code-block:: yaml
-
-            # config.yaml
-            applications:
-            - args:
-                llm_configs:
-                    - model_loading_config:
-                        model_id: qwen-0.5b
-                        model_source: Qwen/Qwen2.5-0.5B-Instruct
-                      accelerator_type: A10G
-                      deployment_config:
-                        autoscaling_config:
-                            min_replicas: 1
-                            max_replicas: 2
-                    - model_loading_config:
-                        model_id: qwen-1.5b
-                        model_source: Qwen/Qwen2.5-1.5B-Instruct
-                      accelerator_type: A10G
-                      deployment_config:
-                        autoscaling_config:
-                            min_replicas: 1
-                            max_replicas: 2
-              import_path: ray.serve.llm:build_openai_app
-              name: llm_app
-              route_prefix: "/"
+        .. literalinclude:: ../doc_code/llm_config_example.yaml
+            :language: yaml
 
 
     .. tab-item:: Standalone Config
