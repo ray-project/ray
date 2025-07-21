@@ -73,8 +73,8 @@ class LimitPushdownRule(Rule):
         # 1. Detach the original Union from its children.
         original_children = list(union_op.input_dependencies)
         for child in original_children:
-            assert union_op in child._output_dependencies
-            child._output_dependencies.remove(union_op)
+            if union_op in child._output_dependencies:
+                child._output_dependencies.remove(union_op)
 
         # 2. Insert a branch-local Limit and push it further upstream.
         branch_tails: List[LogicalOperator] = []
