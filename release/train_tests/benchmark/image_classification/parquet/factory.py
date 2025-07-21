@@ -53,8 +53,7 @@ class ImageClassificationParquetRayDataLoaderFactory(
             ray.data.read_parquet(
                 self._data_dirs[DatasetKey.TRAIN],
                 columns=["image", "label"],
-            )
-            .map(get_preprocess_map_fn(decode_image=True, random_transforms=True))
+            ).map(get_preprocess_map_fn(decode_image=True, random_transforms=True))
             # Add limit after map to enable operator fusion.
             .limit(self.get_dataloader_config().limit_training_rows)
         )
@@ -64,8 +63,7 @@ class ImageClassificationParquetRayDataLoaderFactory(
             ray.data.read_parquet(
                 self._data_dirs[DatasetKey.TRAIN],
                 columns=["image", "label"],
-            )
-            .map(get_preprocess_map_fn(decode_image=True, random_transforms=False))
+            ).map(get_preprocess_map_fn(decode_image=True, random_transforms=False))
             # Add limit after map to enable operator fusion.
             .limit(self.get_dataloader_config().limit_validation_rows)
         )
