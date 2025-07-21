@@ -106,6 +106,7 @@ def load_and_get_states(
         "get_state",
         local_env_runner=False,
     )
+
     return states
 
 
@@ -210,6 +211,10 @@ class TestAlgorithmWithConnectorsSaveAndRestore(unittest.TestCase):
             )
             for running_stat in running_stats_states_algo_2
         ]
+
+        # The number of env-runners must be two for the following checks to make sense.
+        self.assertEqual(len(running_stats_states_algo_1), 2)
+        self.assertEqual(len(running_stats_states_algo_2), 2)
 
         # Assert that all running stats in algo-1 are the same (for consistency).
         check(running_stats_states_algo_1[0][0], running_stats_states_algo_1[1][0])
