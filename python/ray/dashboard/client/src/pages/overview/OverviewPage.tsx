@@ -23,18 +23,18 @@ const styles = {
       maxWidth: `calc((100% - ${theme.spacing(3)} * 2) / 3)`,
     },
   }),
-  autoscalerCard: {
-    backgroundColor: "white",
+  autoscalerCard: (theme: Theme) => ({
+    backgroundColor: theme.palette.background.paper,
     paddingX: 3,
     paddingY: 2,
-  },
+  }),
 };
 
 export const OverviewPage = () => {
   const { clusterStatus } = useRayStatus();
 
   return (
-    <Box sx={{ padding: 3, backgroundColor: "white" }}>
+    <Box sx={(theme: Theme) => ({ padding: 3, backgroundColor: theme.palette.background.default })}>
       <MainNavPageInfo
         pageInfo={{ title: "Overview", id: "overview", path: "/overview" }}
       />

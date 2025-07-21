@@ -29,7 +29,7 @@ export const JobDetailInfoPage = () => {
 
   if (!job) {
     return (
-      <Box sx={{ padding: 2, backgroundColor: "white" }}>
+      <Box sx={{ padding: 2, backgroundColor: "background.default" }}>
         <MainNavPageInfo
           pageInfo={{
             title: "Info",
@@ -48,7 +48,7 @@ export const JobDetailInfoPage = () => {
   }
 
   return (
-    <Box sx={{ padding: 2, backgroundColor: "white" }}>
+    <Box sx={{ padding: 2, backgroundColor: "background.default" }}>
       <MainNavPageInfo
         pageInfo={{
           title: "Info",

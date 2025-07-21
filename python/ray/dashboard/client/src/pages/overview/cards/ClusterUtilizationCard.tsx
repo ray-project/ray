@@ -1,6 +1,7 @@
 import { Box, SxProps, Theme, Typography } from "@mui/material";
 import React, { useContext } from "react";
 import { GlobalContext } from "../../../App";
+import { useTheme } from "../../../contexts/ThemeContext";
 import { GrafanaNotRunningAlert } from "../../metrics";
 import { LinkWithArrow, OverviewCard } from "./OverviewCard";
 
@@ -13,6 +14,7 @@ export const ClusterUtilizationCard = ({
   className,
   sx,
 }: ClusterUtilizationCardProps) => {
+  const { mode } = useTheme();
   const {
     metricsContextLoaded,
     grafanaHost,
@@ -25,7 +27,8 @@ export const ClusterUtilizationCard = ({
   } = useContext(GlobalContext);
   const grafanaDefaultDashboardUid =
     dashboardUids?.default ?? "rayDefaultDashboard";
-  const path = `/d-solo/${grafanaDefaultDashboardUid}/default-dashboard?orgId=${grafanaOrgId}&theme=light&panelId=41&var-datasource=${dashboardDatasource}`;
+  const grafanaTheme = mode === 'dark' ? 'dark' : 'light';
+  const path = `/d-solo/${grafanaDefaultDashboardUid}/default-dashboard?orgId=${grafanaOrgId}&theme=${grafanaTheme}&panelId=41&var-datasource=${dashboardDatasource}`;
   const timeRangeParams = "&from=now-1h&to=now";
 
   if (!metricsContextLoaded || grafanaHost === "DISABLED") {

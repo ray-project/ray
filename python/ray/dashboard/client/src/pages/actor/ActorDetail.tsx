@@ -1,4 +1,4 @@
-import { Box } from "@mui/material";
+import { Box, Theme } from "@mui/material";
 import React from "react";
 import { Outlet } from "react-router-dom";
 import {
@@ -55,7 +55,7 @@ const ActorDetailPage = () => {
 
   if (isLoading || actorDetail === undefined) {
     return (
-      <Box sx={{ padding: 2, backgroundColor: "white" }}>
+      <Box sx={(theme: Theme) => ({ padding: 2, backgroundColor: theme.palette.background.default })}>
         <Loading loading={isLoading} />
         <TitleCard title={`ACTOR - ${params.actorId}`}>
           <StatusChip type="actor" status="LOADING" />
@@ -67,7 +67,7 @@ const ActorDetailPage = () => {
   }
 
   return (
-    <Box sx={{ padding: 2, backgroundColor: "white" }}>
+    <Box sx={(theme: Theme) => ({ padding: 2, backgroundColor: theme.palette.background.default })}>
       <MetadataSection
         metadataList={[
           {
