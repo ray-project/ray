@@ -7,3 +7,12 @@ doctest(
     ),
     tags = ["team:core"],
 )
+
+filegroup(
+    name = "src_files",
+    srcs = glob(
+        ["**/*.py"],
+        exclude = ["**/thirdparty_files/**"],
+    ),
+    visibility = ["//:__pkg__"],
+)
