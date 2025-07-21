@@ -38,6 +38,7 @@ from ray_release.bazel import bazel_runfile
 
 init_global_config(bazel_runfile("release/ray_release/configs/oss_config.yaml"))
 
+
 class MockBuildkiteAgent:
     def __init__(self, return_dict: Dict):
         self.return_dict = return_dict
@@ -510,7 +511,13 @@ class BuildkiteSettingsTest(unittest.TestCase):
             test_attr_regex_filters={"name": "test.*"},
         )
         self.assertSequenceEqual(
-            filtered, [("test_1", False), ("test_2", True), ("test_3", False), ("test_4.kuberay", False)]
+            filtered,
+            [
+                ("test_1", False),
+                ("test_2", True),
+                ("test_3", False),
+                ("test_4.kuberay", False),
+            ],
         )
 
         filtered = self._filter_names_smoke(
@@ -538,7 +545,9 @@ class BuildkiteSettingsTest(unittest.TestCase):
             frequency=Frequency.ANY,
             test_attr_regex_filters={"run/type": "job"},
         )
-        self.assertSequenceEqual(filtered, [("test_1", False), ("other_2", False), ("test_4.kuberay", False)])
+        self.assertSequenceEqual(
+            filtered, [("test_1", False), ("other_2", False), ("test_4.kuberay", False)]
+        )
 
         filtered = self._filter_names_smoke(
             tests,
