@@ -7,7 +7,9 @@ from typing import Callable, Dict, List, Optional, Union
 from xgboost.core import Booster
 
 import ray.train
+import ray.tune
 from ray.train import Checkpoint
+from ray.tune.trainable.trainable_fn_utils import _in_tune_session
 from ray.tune.utils import flatten_dict
 from ray.util.annotations import PublicAPI
 
@@ -167,7 +169,7 @@ class RayTrainReportCallback(TuneCallback):
     @contextmanager
     def _get_checkpoint(self, model: Booster) -> Optional[Checkpoint]:
         # NOTE: The world rank returns None for Tune usage without Train.
-        if ray.train.get_context().get_world_rank() in (0, None):
+        if _in_tune_session() or ray.train.get_context().get_world_rank() in (0, None):
             with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
                 model.save_model(Path(temp_checkpoint_dir, self._filename).as_posix())
                 yield Checkpoint(temp_checkpoint_dir)
@@ -187,9 +189,15 @@ class RayTrainReportCallback(TuneCallback):
         if should_checkpoint:
             self._last_checkpoint_iteration = epoch
             with self._get_checkpoint(model=model) as checkpoint:
-                ray.train.report(report_dict, checkpoint=checkpoint)
+                if _in_tune_session:
+                    ray.tune.report(report_dict, checkpoint=checkpoint)
+                else:
+                    ray.train.report(report_dict, checkpoint=checkpoint)
         else:
-            ray.train.report(report_dict)
+            if _in_tune_session:
+                ray.tune.report(report_dict)
+            else:
+                ray.train.report(report_dict)
 
     def after_training(self, model: Booster) -> Booster:
         if not self._checkpoint_at_end:
@@ -205,6 +213,9 @@ class RayTrainReportCallback(TuneCallback):
 
         report_dict = self._get_report_dict(self._evals_log) if self._evals_log else {}
         with self._get_checkpoint(model=model) as checkpoint:
-            ray.train.report(report_dict, checkpoint=checkpoint)
+            if _in_tune_session():
+                ray.tune.report(report_dict, checkpoint=checkpoint)
+            else:
+                ray.train.report(report_dict, checkpoint=checkpoint)
 
         return model
