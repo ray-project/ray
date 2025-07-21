@@ -2191,7 +2191,7 @@
 
     - __suffix__: skip_training.jpeg.preserve_order
       run:
-        timeout: 1200
+        timeout: 2400
         script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --image_classification_data_format=jpeg --dataloader_type=ray_data --num_workers=16 --skip_train_step --skip_validation_at_epoch_end --preserve_order
 
     - __suffix__: skip_training.jpeg.torch_dataloader

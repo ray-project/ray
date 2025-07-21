@@ -11,6 +11,7 @@ from ray import serve
 from ray._common.test_utils import SignalActor
 from ray.serve._private.constants import SERVE_NAMESPACE
 from ray.serve._private.test_utils import (
+    get_application_url,
     ping_fruit_stand,
     ping_grpc_another_method,
     ping_grpc_call_method,
@@ -441,7 +442,8 @@ def test_using_grpc_context(ray_instance, ray_shutdown, streaming: bool):
     app_name = "app1"
     serve.run(model, name=app_name)
 
-    channel = grpc.insecure_channel("localhost:9000")
+    url = get_application_url("gRPC", app_name=app_name, use_localhost=True)
+    channel = grpc.insecure_channel(url)
     stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
     request = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
 
@@ -502,7 +504,8 @@ def test_using_grpc_context_exception(ray_instance, ray_shutdown, streaming: boo
     app_name = "app1"
     serve.run(model, name=app_name)
 
-    channel = grpc.insecure_channel("localhost:9000")
+    url = get_application_url("gRPC", app_name=app_name, use_localhost=True)
+    channel = grpc.insecure_channel(url)
     stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
     request = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
 
@@ -600,7 +603,8 @@ def test_using_grpc_context_bad_function_signature(
     app_name = "app1"
     serve.run(model, name=app_name)
 
-    channel = grpc.insecure_channel("localhost:9000")
+    url = get_application_url("gRPC", app_name=app_name, use_localhost=True)
+    channel = grpc.insecure_channel(url)
     stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
     request = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
 
@@ -642,7 +646,8 @@ def test_grpc_client_sending_large_payload(ray_instance, ray_shutdown):
     options = [
         ("grpc.max_receive_message_length", 1024 * 1024 * 1024),
     ]
-    channel = grpc.insecure_channel("localhost:9000", options=options)
+    url = get_application_url("gRPC", use_localhost=True)
+    channel = grpc.insecure_channel(url, options=options)
     stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
 
     # This is a large payload that exists gRPC's default message limit.

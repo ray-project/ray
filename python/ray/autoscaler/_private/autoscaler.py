@@ -1444,7 +1444,7 @@ class StandardAutoscaler:
         non_failed = set()
 
         node_type_mapping = {}
-
+        now = time.time()
         for node_id in self.non_terminated_nodes.all_node_ids:
             ip = self.provider.internal_ip(node_id)
             node_tags = self.provider.node_tags(node_id)
@@ -1467,9 +1467,7 @@ class StandardAutoscaler:
 
             node_type_mapping[ip] = node_type
 
-            # TODO (Alex): If a node's raylet has died, it shouldn't be marked
-            # as active.
-            is_active = self.load_metrics.is_active(ip)
+            is_active = self.heartbeat_on_time(node_id, now)
             if is_active:
                 active_nodes[node_type] += 1
                 non_failed.add(node_id)

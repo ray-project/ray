@@ -1,6 +1,5 @@
 import asyncio
 import json
-import os
 import sys
 from typing import (
     Any,
@@ -22,12 +21,13 @@ from starlette.responses import JSONResponse, Response, StreamingResponse
 from ray import serve
 from ray._common.utils import get_or_create_event_loop
 from ray.llm._internal.serve.configs.constants import (
-    RAYLLM_ROUTER_HTTP_TIMEOUT,
-    RAYLLM_ROUTER_INITIAL_REPLICAS,
-    RAYLLM_ROUTER_MAX_REPLICAS,
-    RAYLLM_ROUTER_MIN_REPLICAS,
-    RAYLLM_ROUTER_TARGET_ONGOING_REQUESTS,
-    ROUTER_TO_MODEL_REPLICA_RATIO,
+    DEFAULT_LLM_ROUTER_HTTP_TIMEOUT,
+    DEFAULT_LLM_ROUTER_INITIAL_REPLICAS,
+    DEFAULT_LLM_ROUTER_MAX_REPLICAS,
+    DEFAULT_LLM_ROUTER_MIN_REPLICAS,
+    DEFAULT_LLM_ROUTER_TARGET_ONGOING_REQUESTS,
+    DEFAULT_MAX_ONGOING_REQUESTS,
+    DEFAULT_ROUTER_TO_MODEL_REPLICA_RATIO,
 )
 from ray.llm._internal.serve.configs.openai_api_models import (
     ChatCompletionRequest,
@@ -375,7 +375,7 @@ class LLMRouter:
         )
         call_method = "chat" if is_chat else "completions"
 
-        async with timeout(RAYLLM_ROUTER_HTTP_TIMEOUT):
+        async with timeout(DEFAULT_LLM_ROUTER_HTTP_TIMEOUT):
 
             gen = self._get_response(body=body, call_method=call_method)
 
@@ -433,7 +433,7 @@ class LLMRouter:
         Returns:
             A response object with embeddings.
         """
-        async with timeout(RAYLLM_ROUTER_HTTP_TIMEOUT):
+        async with timeout(DEFAULT_LLM_ROUTER_HTTP_TIMEOUT):
             results = self._get_response(body=body, call_method="embeddings")
             result = await results.__anext__()
             if isinstance(result, ErrorResponse):
@@ -455,9 +455,9 @@ class LLMRouter:
         Returns:
             A Ray Serve deployment.
         """
-        min_replicas = RAYLLM_ROUTER_MIN_REPLICAS
-        initial_replicas = RAYLLM_ROUTER_INITIAL_REPLICAS
-        max_replicas = RAYLLM_ROUTER_MAX_REPLICAS
+        min_replicas = DEFAULT_LLM_ROUTER_MIN_REPLICAS
+        initial_replicas = DEFAULT_LLM_ROUTER_INITIAL_REPLICAS
+        max_replicas = DEFAULT_LLM_ROUTER_MAX_REPLICAS
         num_router_replicas = 0
 
         # Note (genesu): Based on our internal benchmark, we are currently bottleneck
@@ -491,13 +491,13 @@ class LLMRouter:
                 )
                 model_max_replicas += autoscaling_config.max_replicas
             min_replicas = num_router_replicas or int(
-                model_min_replicas * ROUTER_TO_MODEL_REPLICA_RATIO
+                model_min_replicas * DEFAULT_ROUTER_TO_MODEL_REPLICA_RATIO
             )
             initial_replicas = num_router_replicas or int(
-                model_initial_replicas * ROUTER_TO_MODEL_REPLICA_RATIO
+                model_initial_replicas * DEFAULT_ROUTER_TO_MODEL_REPLICA_RATIO
             )
             max_replicas = num_router_replicas or int(
-                model_max_replicas * ROUTER_TO_MODEL_REPLICA_RATIO
+                model_max_replicas * DEFAULT_ROUTER_TO_MODEL_REPLICA_RATIO
             )
 
         ingress_cls = serve.ingress(fastapi_router_app)(cls)
@@ -506,12 +506,9 @@ class LLMRouter:
                 "min_replicas": min_replicas,
                 "initial_replicas": initial_replicas,
                 "max_replicas": max_replicas,
-                "target_ongoing_requests": RAYLLM_ROUTER_TARGET_ONGOING_REQUESTS,
+                "target_ongoing_requests": DEFAULT_LLM_ROUTER_TARGET_ONGOING_REQUESTS,
             },
-            ray_actor_options=json.loads(
-                os.environ.get("RAYLLM_ROUTER_RAY_ACTOR_OPTIONS", "{}")
-            ),
-            max_ongoing_requests=1000,  # Maximum backlog for a single replica
+            max_ongoing_requests=DEFAULT_MAX_ONGOING_REQUESTS,
         )
 
         deployment_cls = deployment_decorator(ingress_cls)
