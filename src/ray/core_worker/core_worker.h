@@ -1303,10 +1303,10 @@ class CoreWorker {
   /// Mark this worker is exiting.
   void SetIsExiting();
 
-  /// Set the callback to cleanup actor instance before shutdown.
+  /// Set the callback to shutdown actor instance before shutdown.
   /// This callback will be invoked for actor workers before the shutdown begins.
-  /// \param callback The cleanup callback function.
-  void SetActorCleanupCallback(std::function<void()> callback);
+  /// \param callback The shutdown callback function.
+  void SetActorShutdownCallback(std::function<void()> callback);
 
   /// Add task log info for a task when it starts executing.
   ///

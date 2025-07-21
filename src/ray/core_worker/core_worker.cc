@@ -4696,7 +4696,7 @@ void ClusterSizeBasedLeaseRequestRateLimiter::OnNodeChanges(
   RAY_LOG_EVERY_MS(INFO, 60000) << "Number of alive nodes:" << num_alive_nodes_.load();
 }
 
-void CoreWorker::SetActorCleanupCallback(std::function<void()> callback) {
+void CoreWorker::SetActorShutdownCallback(std::function<void()> callback) {
   actor_cleanup_callback_ = std::move(callback);
 }
 

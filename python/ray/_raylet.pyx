@@ -2197,7 +2197,7 @@ cdef execute_task_with_cancellation_handler(
         worker.actors[actor_id] = actor
 
         # Register cleanup callback after actor is created
-        _register_actor_cleanup_callback()
+        _register_actor_shutdown_callback()
 
         # Record the actor class via :actor_name: magic token in the log.
         #
@@ -2744,18 +2744,20 @@ cdef void terminate_asyncio_thread() nogil:
         core_worker.stop_and_join_asyncio_threads_if_exist()
 
 
-cdef void _cleanup_actor_instance_wrapper() noexcept nogil:
-    """C++ wrapper function that calls the Python actor cleanup callback."""
+cdef void call_actor_shutdown() noexcept nogil:
+    """C++ wrapper function that calls the Python actor shutdown callback."""
     with gil:
         try:
-            _cleanup_actor_instance()
+            _call_actor_shutdown()
         except:
             # Swallow all exceptions to prevent them from propagating to C++
+            # The inner method handles user code exceptions with proper logging,
+            # but this catches any system-level exceptions (e.g., GIL issues, worker state)
             pass
 
 
-def _cleanup_actor_instance():
-    """Cleanup callback that calls actor's __ray_shutdown__ method."""
+def _call_actor_shutdown():
+    """Internal function that calls actor's __ray_shutdown__ method."""
     worker = ray._private.worker.global_worker
     core_worker = worker.core_worker
 
@@ -2781,8 +2783,8 @@ def _cleanup_actor_instance():
             worker.actors.pop(actor_id, None)
 
 
-def _register_actor_cleanup_callback():
-    """Register callback to cleanup actor instance before shutdown."""
+def _register_actor_shutdown_callback():
+    """Register callback to shutdown actor instance before shutdown."""
     worker = ray._private.worker.global_worker
     core_worker = worker.core_worker
 
@@ -2791,8 +2793,8 @@ def _register_actor_cleanup_callback():
     if actor_id.is_nil():
         return
 
-    # Register the cleanup callback
-    core_worker.set_actor_cleanup_callback(_cleanup_actor_instance)
+    # Register the shutdown callback
+    core_worker.set_actor_shutdown_callback(_call_actor_shutdown)
 
 
 cdef class StreamRedirector:
@@ -4703,10 +4705,10 @@ cdef class CoreWorker:
         return (CCoreWorkerProcess.GetCoreWorker().GetWorkerContext()
                 .SetCurrentActorShouldExit())
 
-    def set_actor_cleanup_callback(self, callback):
-        """Set the callback to cleanup actor instance before shutdown."""
-        cdef function[void()] c_callback = _cleanup_actor_instance_wrapper
-        CCoreWorkerProcess.GetCoreWorker().SetActorCleanupCallback(c_callback)
+    def set_actor_shutdown_callback(self, callback):
+        """Set the callback to shutdown actor instance before shutdown."""
+        cdef function[void()] c_callback = call_actor_shutdown
+        CCoreWorkerProcess.GetCoreWorker().SetActorShutdownCallback(c_callback)
 
     def get_current_actor_should_exit(self):
         return (CCoreWorkerProcess.GetCoreWorker().GetWorkerContext()
