@@ -459,6 +459,7 @@ class NodeInfoAccessor {
   /// The set of removed nodes.
   std::unordered_set<NodeID> removed_nodes_;
 
+  // TODO(dayshah): Need to refactor gcs client / accessor to avoid this.
   FRIEND_TEST(NodeInfoAccessorTest, TestHandleNotification);
 };
 
