@@ -146,20 +146,9 @@ class TestAlgorithmWithConnectorsSaveAndRestore(unittest.TestCase):
                     connector_states_algo_2,
                 )
 
-                # Assert that all running stats in algo-1 are the same (for consistency).
-                self.assertEqual(num_env_runners, 2)
-                check(
-                    running_stats_states_algo_1[0][0], running_stats_states_algo_1[1][0]
-                )
-
-                # Now ensure that the connector states on remote `EnvRunner`s were restored.
-                check(
-                    running_stats_states_algo_1[0][0], running_stats_states_algo_2[0][0]
-                )
-
-                # Ensure also that all states are the same in algo-2 (for consistency).
-                check(
-                    running_stats_states_algo_2[0][0], running_stats_states_algo_2[1][0]
+                # Assert that all running stats are the same.
+                self._assert_running_stats_consistency(
+                    running_stats_states_algo_1, running_stats_states_algo_2
                 )
 
     def test_save_and_restore_w_remote_env_runners_and_wo_local_env_runner(self):
@@ -191,21 +180,28 @@ class TestAlgorithmWithConnectorsSaveAndRestore(unittest.TestCase):
                     connector_states_algo_2,
                 )
 
-                # Assert that all running stats in algo-1 are the same (for consistency).
-                self.assertEqual(num_env_runners, 2)
-                check(
-                    running_stats_states_algo_1[0][0], running_stats_states_algo_1[1][0]
+                # Assert that all running stats are the same.
+                self._assert_running_stats_consistency(
+                    running_stats_states_algo_1, running_stats_states_algo_2
                 )
 
-                # Now ensure that the connector states on remote `EnvRunner`s were restored.
-                check(
-                    running_stats_states_algo_1[0][0], running_stats_states_algo_2[0][0]
-                )
+    def _assert_running_stats_consistency(
+        self, running_stats_states_algo_1, running_stats_states_algo_2, num_env_runners
+    ):
+        """
+        Asserts consistency of running stats within and between algorithms.
+        """
+        # Assert that all running stats in algo-1 are the same (for consistency).
+        self.assertEqual(
+            num_env_runners, 2
+        )  # Consider if this specific assert should be part of this helper
+        check(running_stats_states_algo_1[0][0], running_stats_states_algo_1[1][0])
 
-                # Ensure also that all states are the same in algo-2 (for consistency).
-                check(
-                    running_stats_states_algo_2[0][0], running_stats_states_algo_2[1][0]
-                )
+        # Now ensure that the connector states on remote `EnvRunner`s were restored.
+        check(running_stats_states_algo_1[0][0], running_stats_states_algo_2[0][0])
+
+        # Ensure also that all states are the same in algo-2 (for consistency).
+        check(running_stats_states_algo_2[0][0], running_stats_states_algo_2[1][0])
 
     def _extract_running_stats_from_states(
         self, connector_states_algo_1: list, connector_states_algo_2: list
