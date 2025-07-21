@@ -1262,7 +1262,11 @@ def setup_ray_cluster(
 
     Environment variable settings:
      - LOG_RAY_SYSTEM_METRICS: If true, a MLflow run will be created when creating the
-       Ray on Spark cluster, and the Ray system metrics are logged to the MLflow run.
+       Ray on Spark cluster, and the Ray system metrics are logged to the MLflow run,
+       and it will set environment variable `MLFLOW_RUN_ID` to the created run ID,
+       so that user code can reuse the created mlflow run to log other data.
+       Note: if enabling this functionality, ensure that when calling
+       `setup_ray_cluster`, there is no active MLflow run.
 
     Args:
         max_worker_nodes: This argument represents maximum ray worker nodes to start
