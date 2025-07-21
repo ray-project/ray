@@ -150,9 +150,17 @@ def pow_2_router(request) -> PowerOfTwoChoicesRequestRouter:
             ),
             get_curr_time_s=TIMER.time,
         )
-        request_router.backoff_sequence_s = request.param.get(
-            "backoff_sequence_s",
-            [0, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001],
+        request_router.initial_backoff_s = request.param.get(
+            "initial_backoff_s",
+            0.001,
+        )
+        request_router.backoff_multiplier = request.param.get(
+            "backoff_multiplier",
+            1,
+        )
+        request_router.max_backoff_s = request.param.get(
+            "max_backoff_s",
+            0.001,
         )
         return request_router
 
@@ -1841,7 +1849,9 @@ async def test_replicas_actor_unavailable_error(
             "prefer_local_node": True,
             "prefer_local_az": True,
             "az": ROUTER_AZ,
-            "backoff_sequence_s": [999, 999, 999, 999],
+            "initial_backoff_s": 999,
+            "backoff_multiplier": 1,
+            "max_backoff_s": 999,
         },
     ],
     indirect=True,
@@ -1900,7 +1910,7 @@ async def test_locality_aware_backoff_skips_sleeps(pow_2_router):
     else:
 
         # The request will be served by r3 without added latency.
-        # Since we set up the `backoff_sequence_s` to be 999s, this 10s timeout will still
+        # Since we set up the `backoff_s` to be 999s on every attempt, this 10s timeout will still
         # capture the extra delay if it was added between routing loop.
         assert len(done) == 1
         assert done.pop().result() == r3
