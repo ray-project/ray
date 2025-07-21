@@ -11,7 +11,6 @@ from ray.tune.registry import register_env
 
 parser = add_rllib_example_script_args(default_timesteps=2000000)
 parser.set_defaults(
-    enable_new_api_stack=True,
     num_agents=2,
     num_env_runners=6,
 )
