@@ -1022,9 +1022,6 @@ void NodeManager::ProcessClientMessage(const std::shared_ptr<ClientConnection> &
   case protocol::MessageType::AnnounceWorkerPort: {
     ProcessAnnounceWorkerPortMessage(client, message_data);
   } break;
-  case protocol::MessageType::RegisterWorkerWithPortRequest: {
-    ProcessRegisterClientAndAnnouncePortMessage(client, message_data);
-  } break;
   case protocol::MessageType::ActorCreationTaskDone: {
     if (registered_worker) {
       // Worker may send this message after it was disconnected.
@@ -1163,6 +1160,9 @@ Status NodeManager::RegisterForNewWorker(
     pid_t pid,
     const StartupToken &worker_startup_token,
     std::function<void(Status, int)> send_reply_callback) {
+  RAY_CHECK_GE(pid, 0);
+  RAY_CHECK(send_reply_callback);
+
   Status status = Status::OK();
   if (send_reply_callback) {
     status = worker_pool_.RegisterWorker(
@@ -1273,47 +1273,6 @@ void NodeManager::SendPortAnnouncementResponse(
               /*graceful=*/false,
               rpc::WorkerExitType::SYSTEM_ERROR,
               "Failed to send AnnounceWorkerPortReply to client: " + status.ToString());
-        }
-      });
-}
-
-void NodeManager::ProcessRegisterClientAndAnnouncePortMessage(
-    const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data) {
-  auto *message =
-      flatbuffers::GetRoot<protocol::RegisterWorkerWithPortRequest>(message_data);
-  const ray::protocol::RegisterClientRequest *register_client_request =
-      message->request_client_request();
-  auto status = ProcessRegisterClientRequestMessageImpl(
-      client, register_client_request, register_client_request->port());
-  if (!status.ok()) {
-    SendRegisterClientAndAnnouncePortResponse(client, std::move(status));
-    return;
-  }
-  ProcessAnnounceWorkerPortMessageImpl(client, message->announcement_port_request());
-
-  // TODO(hjiang): In the next PR, `ProcessAnnounceWorkerPortMessageImpl` should split
-  // into two parts, one for worker, another for driver.
-  SendRegisterClientAndAnnouncePortResponse(client, Status::OK());
-}
-
-void NodeManager::SendRegisterClientAndAnnouncePortResponse(
-    const std::shared_ptr<ClientConnection> &client, Status status) {
-  flatbuffers::FlatBufferBuilder fbb;
-  auto message = protocol::CreateRegisterWorkerWithPortReply(
-      fbb, status.ok(), fbb.CreateString(status.ToString()));
-  fbb.Finish(message);
-
-  client->WriteMessageAsync(
-      static_cast<int64_t>(protocol::MessageType::RegisterWorkerWithPortReply),
-      fbb.GetSize(),
-      fbb.GetBufferPointer(),
-      [this, client](const ray::Status &status) {
-        if (!status.ok()) {
-          DisconnectClient(client,
-                           /*graceful=*/false,
-                           rpc::WorkerExitType::SYSTEM_ERROR,
-                           "Failed to send RegisterWorkerWithPortReply to client: " +
-                               status.ToString());
         }
       });
 }

@@ -405,41 +405,27 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
   auto raylet_conn = std::make_unique<raylet::RayletConnection>(
       io_service_, options_.raylet_socket, /*num_retries=*/-1, /*timeout=*/-1);
 
-  const bool raylet_id_assigned = options_.assigned_raylet_id.has_value();
-  const bool worker_port_assigned = options_.assigned_worker_port.has_value();
-  NodeID local_raylet_id = raylet_id_assigned ? *options_.assigned_raylet_id : NodeID{};
-  int assigned_port = worker_port_assigned ? *options_.assigned_worker_port : 0;
-  // TODO(hjiang): both should be assigned for worker, neither assigned for driver.
-  // Currently neither assigned for driver or worker.
-  RAY_CHECK((raylet_id_assigned && worker_port_assigned) ||
-            (!raylet_id_assigned && !worker_port_assigned));
+  NodeID local_raylet_id;
+  int assigned_port = 0;
 
-  // TODO(hjiang): Use `is_worker` / `is_driver` boolean to replace repeated `has_value`
-  // check.
-  if (!options_.assigned_worker_port.has_value()) {
-    // TODO(hjiang): In the next PR we will pass down port number and raylet id and use
-    // them directly. Then we need to rename `RegisterWorkerToRaylet` to
-    // `RegisterDriverToRaylet`.
-    Status raylet_client_status =
-        RegisterWorkerToRaylet(*raylet_conn,
-                               GetWorkerID(),
-                               options_.worker_type,
-                               worker_context_.GetCurrentJobID(),
-                               options_.runtime_env_hash,
-                               options_.language,
-                               options_.node_ip_address,
-                               options_.serialized_job_config,
-                               options_.startup_token,
-                               &local_raylet_id,
-                               &assigned_port);
-    if (!raylet_client_status.ok()) {
-      // Avoid using FATAL log or RAY_CHECK here because they may create a core dump file.
-      RAY_LOG(ERROR).WithField(worker_id)
-          << "Failed to register worker to Raylet: " << raylet_client_status;
-      QuickExit();
-    }
-    RAY_CHECK_GE(assigned_port, 0);
+  Status raylet_client_status = RegisterWorkerToRaylet(*raylet_conn,
+                                                       GetWorkerID(),
+                                                       options_.worker_type,
+                                                       worker_context_.GetCurrentJobID(),
+                                                       options_.runtime_env_hash,
+                                                       options_.language,
+                                                       options_.node_ip_address,
+                                                       options_.serialized_job_config,
+                                                       options_.startup_token,
+                                                       &local_raylet_id,
+                                                       &assigned_port);
+  if (!raylet_client_status.ok()) {
+    // Avoid using FATAL log or RAY_CHECK here because they may create a core dump file.
+    RAY_LOG(ERROR).WithField(worker_id)
+        << "Failed to register worker to Raylet: " << raylet_client_status;
+    QuickExit();
   }
+  RAY_CHECK_GE(assigned_port, 0);
 
   local_raylet_client_ = std::make_shared<raylet::RayletClient>(
       std::move(raylet_conn), std::move(grpc_client), GetWorkerID());
@@ -936,7 +922,7 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
   // Verify driver and worker are never mixed in the same process.
   RAY_CHECK_EQ(options_.worker_type != WorkerType::DRIVER, niced);
 #endif
-
+  // Tell the raylet the port that we are listening on.
   // NOTE: This also marks the worker as available in Raylet. We do this at the very end
   // in case there is a problem during construction.
   ConnectToRayletInternal();
@@ -1000,8 +986,6 @@ void CoreWorker::ConnectToRayletInternal() {
         core_worker_server_->GetPort(), options_.entrypoint);
     RAY_CHECK_OK(status) << "Failed to announce driver's port to raylet and GCS";
   } else {
-    // TODO(hjiang): In the future this function should only accessed by driver, should
-    // delete worker branch.
     Status status =
         local_raylet_client_->AnnounceWorkerPortForWorker(core_worker_server_->GetPort());
     RAY_CHECK_OK(status) << "Failed to announce worker's port to raylet and GCS";

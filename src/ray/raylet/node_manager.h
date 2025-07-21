@@ -481,17 +481,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
       const std::shared_ptr<ClientConnection> &client,
       const ray::protocol::AnnounceWorkerPort *message);
 
-  // Send status of client registration and port announcement to client side.
-  void SendRegisterClientAndAnnouncePortResponse(
-      const std::shared_ptr<ClientConnection> &client, Status status);
-
   // Send status of port announcement to client side.
   void SendPortAnnouncementResponse(const std::shared_ptr<ClientConnection> &client,
                                     Status status);
-
-  /// Process client registration and port announcement.
-  void ProcessRegisterClientAndAnnouncePortMessage(
-      const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data);
 
   /// Handle the case that a worker is available.
   ///
