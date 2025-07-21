@@ -432,9 +432,9 @@ For each usage pattern, we provide a server and client code snippet.
 Multi-LoRA Deployment
 ~~~~~~~~~~~~~~~~~~~~~
 
-You can use LoRA (Low-Rank Adaptation) to efficiently fine-tune models by configuring the :class:`LoraConfig <ray.serve.llm.LoraConfig>`.
+You can use our multi-LoRA (Low-Rank Adaptation) feature to efficiently serve multiple fine-tuned models by configuring the :class:`LoraConfig <ray.serve.llm.LoraConfig>`.
 We use Ray Serve's multiplexing feature to serve multiple LoRA checkpoints from the same model.
-This allows the weights to be loaded on each replica on-the-fly and be cached via an LRU mechanism.
+When a request for a given LoRA adapter arrives, Ray Serve first checks if any replica has already loaded that adapter. If a replica with the adapter is found and is not overloaded, the request is routed to it. If all replicas with the adapter are overloaded, the request is routed to a less busy replica, which will then load the adapter on the new replica. If no replica has the adapter loaded, the request is routed to a replica according to the default request router logic (for example Power of 2) and loaded there so that the next time it will be cached. This ensures the adapter is cached for subsequent requests. The cache of LoRA adapters on each replica is controlled via a Least Recently Used (LRU) mechanism with a max size controlled by the ``max_num_adapters_per_replica`` variable.
 
 .. tab-set::
 
