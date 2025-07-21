@@ -557,7 +557,7 @@ def test_cold_start_time(serve_instance):
     result = handle.remote().result()
     cold_start_time = time.time() - start
     if sys.platform == "win32":
-        timeout = 5  # Windows has a longer tail.
+        timeout = 10  # Windows has a longer tail.
     else:
         timeout = 3
     assert cold_start_time < timeout
