@@ -46,8 +46,8 @@ class ObjectRecoveryManager {
       rpc::Address rpc_address,
       ObjectPinningClientFactoryFn client_factory,
       std::shared_ptr<PinObjectsInterface> local_object_pinning_client,
-      std::function<Status(const ObjectID &object_id,
-                           const ObjectLookupCallback &callback)> object_lookup,
+      std::function<void(const ObjectID &object_id, const ObjectLookupCallback &callback)>
+          object_lookup,
       TaskManagerInterface &task_manager,
       ReferenceCounter &reference_counter,
       CoreWorkerMemoryStore &in_memory_store,
@@ -127,7 +127,7 @@ class ObjectRecoveryManager {
   std::shared_ptr<PinObjectsInterface> local_object_pinning_client_;
 
   /// Function to lookup an object's locations from the global database.
-  std::function<Status(const ObjectID &object_id, const ObjectLookupCallback &callback)>
+  std::function<void(const ObjectID &object_id, const ObjectLookupCallback &callback)>
       object_lookup_;
 
   /// Used to store object values (InPlasmaError) if recovery succeeds.
