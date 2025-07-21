@@ -100,6 +100,7 @@ def _init_global_config(config_file: str):
         ci_pipeline_buildkite_secret=config_content.get("ci_pipeline", {}).get(
             "buildkite_secret"
         ),
+        kuberay_disabled=config_content.get("kuberay", {}).get("disabled", 0) == 1,
     )
     # setup GCP workload identity federation
     os.environ[
