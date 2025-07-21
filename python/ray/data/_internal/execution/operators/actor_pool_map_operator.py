@@ -504,10 +504,8 @@ class _MapWorker:
         # Initialize state for this actor.
         self._map_transformer.init()
         self._logical_actor_id = logical_actor_id
-        ray.get(
-            actor_location_tracker.update_actor_location.remote(
-                self._logical_actor_id, ray.get_runtime_context().get_node_id()
-            )
+        actor_location_tracker.update_actor_location.remote(
+            self._logical_actor_id, ray.get_runtime_context().get_node_id()
         )
 
     def get_location(self) -> NodeIdStr:
