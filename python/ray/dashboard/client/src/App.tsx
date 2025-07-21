@@ -4,7 +4,10 @@ import dayjs from "dayjs";
 import duration from "dayjs/plugin/duration";
 import React, { Suspense, useEffect, useState } from "react";
 import { HashRouter, Navigate, Route, Routes } from "react-router-dom";
-import { ThemeProvider as CustomThemeProvider, useTheme } from "./contexts/ThemeContext";
+import {
+  ThemeProvider as CustomThemeProvider,
+  useTheme,
+} from "./contexts/ThemeContext";
 import ActorDetailPage, { ActorDetailLayout } from "./pages/actor/ActorDetail";
 import { ActorLayout } from "./pages/actor/ActorLayout";
 import Loading from "./pages/exception/Loading";
@@ -142,9 +145,9 @@ const AppContent = () => {
     dashboardDatasource: undefined,
     serverTimeZone: undefined,
   });
-  
+
   const { mode } = useTheme();
-  const currentTheme = mode === 'dark' ? darkTheme : lightTheme;
+  const currentTheme = mode === "dark" ? darkTheme : lightTheme;
 
   useEffect(() => {
     getNodeList().then((res) => {

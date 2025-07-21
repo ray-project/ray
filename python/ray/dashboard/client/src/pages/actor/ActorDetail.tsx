@@ -55,7 +55,12 @@ const ActorDetailPage = () => {
 
   if (isLoading || actorDetail === undefined) {
     return (
-      <Box sx={(theme: Theme) => ({ padding: 2, backgroundColor: theme.palette.background.default })}>
+      <Box
+        sx={(theme: Theme) => ({
+          padding: 2,
+          backgroundColor: theme.palette.background.default,
+        })}
+      >
         <Loading loading={isLoading} />
         <TitleCard title={`ACTOR - ${params.actorId}`}>
           <StatusChip type="actor" status="LOADING" />
@@ -67,7 +72,12 @@ const ActorDetailPage = () => {
   }
 
   return (
-    <Box sx={(theme: Theme) => ({ padding: 2, backgroundColor: theme.palette.background.default })}>
+    <Box
+      sx={(theme: Theme) => ({
+        padding: 2,
+        backgroundColor: theme.palette.background.default,
+      })}
+    >
       <MetadataSection
         metadataList={[
           {

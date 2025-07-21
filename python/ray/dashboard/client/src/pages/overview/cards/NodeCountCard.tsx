@@ -24,7 +24,7 @@ export const NodeCountCard = ({ className, sx }: NodeCountCardProps) => {
   } = useContext(GlobalContext);
   const grafanaDefaultDashboardUid =
     dashboardUids?.default ?? "rayDefaultDashboard";
-  const grafanaTheme = mode === 'dark' ? 'dark' : 'light';
+  const grafanaTheme = mode === "dark" ? "dark" : "light";
   const path = `/d-solo/${grafanaDefaultDashboardUid}/default-dashboard?orgId=${grafanaOrgId}&theme=${grafanaTheme}&panelId=24&var-datasource=${dashboardDatasource}`;
   const timeRangeParams = "&from=now-1h&to=now";
 

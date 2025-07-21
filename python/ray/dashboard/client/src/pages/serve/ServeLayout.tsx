@@ -7,7 +7,13 @@ import { SideTabLayout, SideTabRouteLink } from "../layout/SideTabLayout";
 
 export const ServeLayout = () => {
   return (
-    <Box sx={(theme: Theme) => ({ width: "100%", minHeight: 800, background: theme.palette.background.default })}>
+    <Box
+      sx={(theme: Theme) => ({
+        width: "100%",
+        minHeight: 800,
+        background: theme.palette.background.default,
+      })}
+    >
       <MainNavPageInfo
         pageInfo={{
           id: "serve",

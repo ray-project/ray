@@ -6,7 +6,7 @@ import { useTheme } from "../contexts/ThemeContext";
 export const ThemeToggle: React.FC = () => {
   const { mode, toggleTheme } = useTheme();
   const muiTheme = useMuiTheme();
-  const isDark = mode === 'dark';
+  const isDark = mode === "dark";
 
   return (
     <Tooltip title={isDark ? "Switch to light mode" : "Switch to dark mode"}>

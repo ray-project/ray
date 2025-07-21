@@ -1,4 +1,11 @@
-import { Box, IconButton, Link, Tooltip, Typography, useTheme } from "@mui/material";
+import {
+  Box,
+  IconButton,
+  Link,
+  Tooltip,
+  Typography,
+  useTheme,
+} from "@mui/material";
 import React, { useContext } from "react";
 import { RiBookMarkLine, RiFeedbackLine } from "react-icons/ri/";
 import { Outlet, Link as RouterLink } from "react-router-dom";
@@ -150,7 +157,10 @@ const MainNavBar = () => {
               marginRight: 6,
               fontSize: "1rem",
               fontWeight: 500,
-              color: rootRouteId === id ? theme.palette.primary.main : theme.palette.text.primary,
+              color:
+                rootRouteId === id
+                  ? theme.palette.primary.main
+                  : theme.palette.text.primary,
               textDecoration: "none",
             }}
             to={path}
@@ -240,8 +250,8 @@ const MainNavBreadcrumbs = () => {
             sx={{
               textDecoration: "none",
               color:
-                index === mainNavPageHierarchy.length - 1 
-                  ? theme.palette.text.primary 
+                index === mainNavPageHierarchy.length - 1
+                  ? theme.palette.text.primary
                   : theme.palette.text.secondary,
             }}
             to={currentPath}

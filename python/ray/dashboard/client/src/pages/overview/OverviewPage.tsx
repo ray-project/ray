@@ -34,7 +34,12 @@ export const OverviewPage = () => {
   const { clusterStatus } = useRayStatus();
 
   return (
-    <Box sx={(theme: Theme) => ({ padding: 3, backgroundColor: theme.palette.background.default })}>
+    <Box
+      sx={(theme: Theme) => ({
+        padding: 3,
+        backgroundColor: theme.palette.background.default,
+      })}
+    >
       <MainNavPageInfo
         pageInfo={{ title: "Overview", id: "overview", path: "/overview" }}
       />
