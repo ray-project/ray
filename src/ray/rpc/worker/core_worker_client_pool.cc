@@ -62,7 +62,8 @@ std::function<void()> CoreWorkerClientPool::GetDefaultUnavailableTimeoutCallback
     if (gcs_client->Nodes().IsSubscribedToNodeChange()) {
       auto *node_info = gcs_client->Nodes().Get(node_id, /*filter_dead_nodes=*/false);
       if (node_info == nullptr) {
-        // Node info hasn't come in yet for this node.
+        // Node info hasn't come in yet for this node, will try again when unavailable
+        // timeout callback is retried.
         return;
       }
       if (node_info->state() == rpc::GcsNodeInfo::DEAD) {
@@ -88,7 +89,8 @@ std::function<void()> CoreWorkerClientPool::GetDefaultUnavailableTimeoutCallback
             return;
           }
           if (nodes.empty()) {
-            // Node info hasn't come in yet for this node.
+            // Node info hasn't come in yet for this node, will try again when unavailable
+            // timeout callback is retried.
             return;
           }
           if (nodes[0].state() != rpc::GcsNodeInfo::ALIVE) {

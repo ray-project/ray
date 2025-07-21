@@ -437,7 +437,6 @@ class NodeInfoAccessor {
   /// Add a node to accessor cache.
   virtual void HandleNotification(rpc::GcsNodeInfo &&node_info);
 
-  /// Initial GetAllNodeInfo request is done and has populated the cache.
   virtual bool IsSubscribedToNodeChange() const {
     return node_change_callback_ != nullptr;
   }

@@ -766,7 +766,7 @@ void NodeInfoAccessor::HandleNotification(rpc::GcsNodeInfo &&node_info) {
 
 void NodeInfoAccessor::AsyncResubscribe() {
   RAY_LOG(DEBUG) << "Reestablishing subscription for node info.";
-  if (fetch_node_data_operation_ != nullptr) {
+  if (IsSubscribedToNodeChange()) {
     client_impl_->GetGcsSubscriber().SubscribeAllNodeInfo(
         /*subscribe=*/[this](rpc::GcsNodeInfo
                                  &&data) { HandleNotification(std::move(data)); },
