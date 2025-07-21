@@ -2,14 +2,14 @@ import pytest
 import sys
 import unittest
 import tempfile
-import runfiles
+import subprocess
 import shutil
-from ci.raydepsets.cli import load, DependencySetManager, Workspace
+import runfiles
+from ci.raydepsets.cli import load, DependencySetManager, uv_binary
+from ci.raydepsets.workspace import Workspace
 from click.testing import CliRunner
 from pathlib import Path
 import os
-from ci.raydepsets.cli import uv_binary
-import subprocess
 
 _REPO_NAME = "com_github_ray_project_ray"
 _runfiles = runfiles.Create()
@@ -140,14 +140,6 @@ class TestCli(unittest.TestCase):
                 "Dependency set subset_general_depset compiled successfully"
                 in result.output
             )
-
-
-def _copy_data_to_tmpdir(tmpdir):
-    shutil.copytree(
-        _runfiles.Rlocation(f"{_REPO_NAME}/ci/raydepsets/test_data"),
-        tmpdir,
-        dirs_exist_ok=True,
-    )
 
 
 def _copy_data_to_tmpdir(tmpdir):
