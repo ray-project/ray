@@ -5,7 +5,7 @@ depsets:
       - python/requirements/cloud-requirements.txt
       - python/requirements/base-test-requirements.txt
     constraints:
-      - tmp/ray-deps/requirements_compiled.txt
+      - /tmp/ray-deps/requirements_compiled.txt
     output: python/requirements_compiled_ray_test_${PYTHON_CODE}_${CUDA_CODE}.txt
     operation: compile
     override_flags:
