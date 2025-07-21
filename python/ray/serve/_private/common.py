@@ -125,6 +125,8 @@ class DeploymentStatus(str, Enum):
 
 
 class DeploymentStatusTrigger(str, Enum):
+    """Explains how a deployment reached its current DeploymentStatus."""
+
     UNSPECIFIED = "UNSPECIFIED"
     CONFIG_UPDATE_STARTED = "CONFIG_UPDATE_STARTED"
     CONFIG_UPDATE_COMPLETED = "CONFIG_UPDATE_COMPLETED"
@@ -232,6 +234,7 @@ class DeploymentStatusInfo:
 
         Args:
             trigger: An internal trigger that determines the state
+                transition. This is the new incoming trigger causing the
                 transition.
             message: The message to set in status info.
 
@@ -239,8 +242,6 @@ class DeploymentStatusInfo:
             New instance of DeploymentStatusInfo representing the
             next state to transition to.
         """
-        # 'self.status_trigger' is the trigger that caused the current status.
-        # 'trigger' is the new incoming trigger causing the transition.
 
         # If there was an unexpected internal error during reconciliation, set
         # status to unhealthy immediately and return
