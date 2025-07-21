@@ -505,16 +505,13 @@ class TestTargetCapacityUpdateAndServeStatus:
         config.target_capacity = target_capacity
         client.deploy_apps(config)
 
-        def check_app_status():
+        def check():
             status = serve.status()
             assert status.target_capacity == target_capacity
 
             if expected_app_status is not None:
                 assert status.applications[app_name].status == expected_app_status
-            return True
 
-        def check_deployment_status():
-            status = serve.status()
             dep_status = status.applications[app_name].deployments[deployment_name]
             if expected_deployment_status is not None:
                 assert dep_status.status == expected_deployment_status
@@ -524,8 +521,7 @@ class TestTargetCapacityUpdateAndServeStatus:
 
             return True
 
-        wait_for_condition(check_app_status, timeout=timeout)
-        wait_for_condition(check_deployment_status, timeout=timeout)
+        wait_for_condition(check, timeout=timeout)
 
     def unblock_replica_creation_and_deletion(self, lifecycle_signal, app_name: str):
         """Unblocks creating and deleting ControlledLifecycleDeployment replicas.
@@ -542,7 +538,7 @@ class TestTargetCapacityUpdateAndServeStatus:
             return True
 
         ray.get(lifecycle_signal.send.remote())
-        wait_for_condition(check_running, timeout=40, retry_interval_ms=500)
+        wait_for_condition(check_running, timeout=20, retry_interval_ms=500)
         ray.get(lifecycle_signal.send.remote(clear=True))
 
     def test_static_num_replicas_target_capacity_update(
@@ -683,7 +679,7 @@ class TestTargetCapacityUpdateAndServeStatus:
             config=config,
             app_name=app_name,
             deployment_name=deployment_name,
-            timeout=30,
+            timeout=20,
             expected_app_status=ApplicationStatus.RUNNING,
             expected_deployment_status=DeploymentStatus.HEALTHY,
             expected_deployment_status_trigger=(
@@ -720,7 +716,7 @@ class TestTargetCapacityUpdateAndServeStatus:
             expected_num_replicas=int(0.5 * max_replicas),
             app_name=app_name,
             deployment_name=deployment_name,
-            timeout=30,
+            timeout=20,
         )
 
         # Clear requests and check that application scales down.
@@ -936,7 +932,6 @@ class TestInitialReplicasHandling:
             wait_for_condition(
                 check_expected_num_replicas,
                 deployment_to_num_replicas={deployment_name: num_replicas},
-                timeout=30,
             )
 
     def test_initial_replicas_scales_up_and_down(
