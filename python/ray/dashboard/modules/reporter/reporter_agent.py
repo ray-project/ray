@@ -14,7 +14,10 @@ from typing import List, Optional, Tuple, TypedDict, Union
 from opencensus.stats import stats as stats_module
 from prometheus_client.core import REGISTRY
 from prometheus_client.parser import text_string_to_metric_families
-from opentelemetry.proto.collector.metrics.v1 import metrics_service_pb2
+from opentelemetry.proto.collector.metrics.v1 import (
+    metrics_service_pb2,
+    metrics_service_pb2_grpc,
+)
 from grpc.aio import ServicerContext
 
 
@@ -39,7 +42,7 @@ from ray._private.telemetry.open_telemetry_metric_recorder import (
     OpenTelemetryMetricRecorder,
 )
 from ray._raylet import GCS_PID_KEY, WorkerID
-from ray.core.generated import metrics_service_pb2_grpc, reporter_pb2, reporter_pb2_grpc
+from ray.core.generated import reporter_pb2, reporter_pb2_grpc
 from ray.dashboard import k8s_utils
 from ray.dashboard.consts import (
     CLUSTER_TAG_KEYS,
