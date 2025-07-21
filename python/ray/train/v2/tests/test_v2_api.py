@@ -1,4 +1,5 @@
 import importlib
+import pickle
 import sys
 
 import pytest
@@ -6,6 +7,7 @@ import pytest
 import ray.train
 from ray.train import FailureConfig, RunConfig, ScalingConfig
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
+from ray.train.v2.api.exceptions import ControllerError, TrainingFailedError
 
 
 @pytest.mark.parametrize(
@@ -120,6 +122,50 @@ def test_train_v2_import(monkeypatch, env_v2_enabled):
         assert RunConfig is not RunConfigV2
         assert FailureConfig is not FailureConfigV2
         assert Result is not ResultV2
+
+
+def test_exceptions_are_picklable():
+    """Test that TrainingFailedError and ControllerError are picklable."""
+    # Test TrainingFailedError
+    worker_failures = {
+        0: ValueError("worker 0 failed"),
+        1: RuntimeError("worker 1 failed"),
+    }
+    training_error = TrainingFailedError(
+        "Training failed on multiple workers", worker_failures
+    )
+
+    # Test pickle/unpickle for TrainingFailedError
+    pickled_training_error = pickle.dumps(training_error)
+    unpickled_training_error = pickle.loads(pickled_training_error)
+
+    # Verify attributes are preserved
+    assert str(unpickled_training_error) == str(training_error)
+    assert (
+        unpickled_training_error._error_message == "Training failed on multiple workers"
+    )
+
+    # Compare worker failures by type and message since Exception objects don't implement __eq__
+    assert len(unpickled_training_error.worker_failures) == len(worker_failures)
+    for rank, original_exc in worker_failures.items():
+        unpickled_exc = unpickled_training_error.worker_failures[rank]
+        assert type(unpickled_exc) is type(original_exc)
+        assert str(unpickled_exc) == str(original_exc)
+
+    # Test ControllerError
+    controller_failure = Exception("Controller crashed")
+    controller_error = ControllerError(controller_failure)
+
+    # Test pickle/unpickle for ControllerError
+    pickled_controller_error = pickle.dumps(controller_error)
+    unpickled_controller_error = pickle.loads(pickled_controller_error)
+
+    # Verify attributes are preserved
+    assert str(unpickled_controller_error) == str(controller_error)
+    assert type(unpickled_controller_error.controller_failure) is type(
+        controller_failure
+    )
+    assert str(unpickled_controller_error.controller_failure) == str(controller_failure)
 
 
 if __name__ == "__main__":
