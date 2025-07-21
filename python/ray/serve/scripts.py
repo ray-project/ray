@@ -647,7 +647,7 @@ def config(address: str, name: Optional[str]):
             print("No configuration was found.")
     # Fetch a specific app config by name.
     else:
-        app = serve_details.applications.get(name)
+        app = applications.get(name)
         if app is None or app.deployed_app_config is None:
             print(f'No config has been deployed for application "{name}".')
         else:
