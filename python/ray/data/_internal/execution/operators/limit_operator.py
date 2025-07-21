@@ -33,50 +33,20 @@ class LimitOperator(OneToOneOperator):
         if self._limit <= 0:
             self.mark_execution_finished()
 
-    def _valid_input_total_rows(self, input_total_rows: Optional[int] = None) -> int:
-        return input_total_rows is not None and input_total_rows > 0
-
-    def _get_limit_rows(self, input_total_rows: Optional[int] = None) -> int:
-        if (
-            self._valid_input_total_rows(input_total_rows)
-            and self._limit >= input_total_rows
-        ):
-            return input_total_rows
-        else:
-            return self._limit
-
-    def _limit_reached(self, input_total_rows: Optional[int] = None) -> bool:
-        if (
-            self._valid_input_total_rows(input_total_rows)
-            and self._limit >= input_total_rows
-        ):
-            return self._consumed_rows >= input_total_rows
-        else:
-            return self._consumed_rows >= self._limit
-
-    def _within_limit(
-        self, num_rows: int, input_total_rows: Optional[int] = None
-    ) -> bool:
-        if (
-            self._valid_input_total_rows(input_total_rows)
-            and self._limit >= input_total_rows
-        ):
-            return self._consumed_rows + num_rows <= input_total_rows
-        else:
-            return self._consumed_rows + num_rows <= self._limit
+    def _limit_reached(self) -> bool:
+        return self._consumed_rows >= self._limit
 
     def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
         assert not self.completed()
         assert input_index == 0, input_index
-        input_total_rows = self.input_dependencies[0].num_output_rows_total()
-        if self._limit_reached(input_total_rows):
+        if self._limit_reached():
             return
         out_blocks: List[ObjectRef[Block]] = []
         out_metadata: List[BlockMetadata] = []
         for block, metadata in refs.blocks:
             num_rows = metadata.num_rows
             assert num_rows is not None
-            if self._within_limit(num_rows, input_total_rows):
+            if self._consumed_rows + num_rows <= self._limit:
                 out_blocks.append(block)
                 out_metadata.append(metadata)
                 self._output_blocks_stats.append(metadata.to_stats())
@@ -95,13 +65,13 @@ class LimitOperator(OneToOneOperator):
                 ).remote(
                     block,
                     metadata,
-                    self._get_limit_rows(input_total_rows) - self._consumed_rows,
+                    self._limit - self._consumed_rows,
                 )
                 out_blocks.append(block)
                 metadata = ray.get(metadata_ref)
                 out_metadata.append(metadata)
                 self._output_blocks_stats.append(metadata.to_stats())
-                self._consumed_rows = self._get_limit_rows(input_total_rows)
+                self._consumed_rows = self._limit
                 break
         self._cur_output_bundles += 1
         out_refs = RefBundle(
@@ -153,7 +123,9 @@ class LimitOperator(OneToOneOperator):
         # The total number of rows is simply the limit or the number
         # of input rows, whichever is smaller
         input_num_rows = self.input_dependencies[0].num_output_rows_total()
-        return self._get_limit_rows(input_num_rows)
+        if input_num_rows is None:
+            return None
+        return min(self._limit, input_num_rows)
 
     def throttling_disabled(self) -> bool:
         return True
