@@ -8,6 +8,19 @@ from ray.llm._internal.serve.deployments.llm.vllm.kv_transfer_backends.base impo
 
 class NixlConnectorBackend(BaseConnectorBackend):
     def setup(self) -> None:
+        """Initialize the NIXL connector backend.
+
+        This method sets up the NIXL (Network Interface for eXtended LLM) connector by:
+        1. Verifying that the required vLLM environment variables are supported
+        2. Configuring the side channel port and host if not already set
+        3. Creating a unique engine ID across replicas
+
+        The side channel is used for KV cache transfer between vLLM instances.
+
+        Raises:
+            ValueError: If the current vLLM version doesn't support the required
+                       NIXL environment variables.
+        """
         from vllm import envs as vllm_envs, utils as vllm_utils
 
         if (

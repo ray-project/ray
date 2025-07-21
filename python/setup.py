@@ -362,6 +362,7 @@ if setup_spec.type == SetupType.RAY:
                 # async-timeout is a backport of asyncio.timeout for python < 3.11
                 "async-timeout; python_version < '3.11'",
                 "typer",
+                "lmcache>=0.3.2",
             ]
             + setup_spec.extras["data"]
             + setup_spec.extras["serve"]

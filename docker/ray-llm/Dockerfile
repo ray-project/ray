@@ -119,6 +119,8 @@ sudo apt-get install -y kmod pkg-config librdmacm-dev
 )
 sudo rm -rf "${TEMP_DIR}"
 
+pip install "lmcache>=0.3.2"
+
 EOF
 
 ENV PATH="${UCX_HOME}/bin:${NIXL_HOME}/bin:${PATH}"

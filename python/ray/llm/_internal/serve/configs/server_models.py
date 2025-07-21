@@ -466,13 +466,12 @@ class LLMConfig(BaseModelExtended):
         if not kv_connector:
             raise ValueError("Connector type is not specified.")
 
-        if kv_connector not in SUPPORTED_KV_CONNECTOR_BACKENDS:
+        kv_connector_backend_class = SUPPORTED_KV_CONNECTOR_BACKENDS.get(kv_connector)
+        if not kv_connector_backend_class:
             raise ValueError(f"Unsupported connector type: {kv_connector}")
 
         # 2. Setup the backend
-        kv_connector_backend = SUPPORTED_KV_CONNECTOR_BACKENDS[kv_connector](
-            kv_transfer_config
-        )
+        kv_connector_backend = kv_connector_backend_class(kv_transfer_config)
         kv_connector_backend.setup()
 
 
