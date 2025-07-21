@@ -10,17 +10,15 @@ from networkx import DiGraph, topological_sort
 DEFAULT_UV_FLAGS = [
     "--generate-hashes",
     "--strip-extras",
-    "--no-strip-markers",
-    "--emit-index-url",
-    "--emit-find-links",
     "--unsafe-package ray",
     "--unsafe-package grpcio-tools",
     "--unsafe-package setuptools",
     "--index-url https://pypi.org/simple",
     "--extra-index-url https://download.pytorch.org/whl/cpu",
     "--index-strategy unsafe-best-match",
-    "--quiet",
-    "--python-version=3.11",
+    "--no-strip-markers",
+    "--emit-index-url",
+    "--emit-find-links",
 ]
 
 
