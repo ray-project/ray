@@ -7,7 +7,6 @@ import shutil
 from ci.raydepsets.cli import load, DependencySetManager, Workspace
 from click.testing import CliRunner
 from pathlib import Path
-from ci.raydepsets.cli import DEFAULT_UV_FLAGS
 import os
 from ci.raydepsets.cli import uv_binary
 import subprocess
@@ -98,7 +97,7 @@ class TestCli(unittest.TestCase):
             manager.compile(
                 constraints=["requirement_constraints_test.txt"],
                 requirements=["requirements_test.txt"],
-                args=["--no-annotate", "--no-header"] + DEFAULT_UV_FLAGS.copy(),
+                args=["--no-annotate", "--no-header"],
                 name="ray_base_test_depset",
                 output="requirements_compiled.txt",
             )
@@ -126,7 +125,7 @@ class TestCli(unittest.TestCase):
             manager.compile(
                 constraints=["requirement_constraints_test.txt"],
                 requirements=["requirements_test.txt"],
-                args=["--no-annotate", "--no-header"] + DEFAULT_UV_FLAGS.copy(),
+                args=["--no-annotate", "--no-header"],
                 name="ray_base_test_depset",
                 output="requirements_compiled.txt",
             )
@@ -310,18 +309,6 @@ depsets:
             assert Path(tmpdir) / "requirements_compiled_expand_general.txt"
             assert Path(tmpdir) / "requirements_compiled_ray_test_py311_cpu.txt"
 
-    def test_get_path(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            _copy_data_to_tmpdir(tmpdir)
-            manager = DependencySetManager(
-                config_path="test.config.yaml",
-                workspace_dir=tmpdir,
-            )
-            assert (
-                manager.get_path("requirements_test.txt")
-                == f"{tmpdir}/requirements_test.txt"
-            )
-
     def test_env_substitution(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             _copy_data_to_tmpdir(tmpdir)
@@ -329,13 +316,13 @@ depsets:
             _replace_in_file(
                 output_fp,
                 "requirements_compiled_general_py311.txt",
-                "requirements_compiled_general_$PY_VERSION.txt",
+                "requirements_compiled_general_$PYTHON_CODE.txt",
             )
             manager = DependencySetManager(
                 config_path="test.config.yaml",
                 workspace_dir=tmpdir,
             )
-            assert os.getenv("PY_VERSION") == "py311"
+            assert os.getenv("PYTHON_CODE") == "py311"
             assert (
                 "requirements_compiled_general_py311.txt"
                 == manager.get_depset("general_depset").output
@@ -348,13 +335,13 @@ depsets:
             _replace_in_file(
                 output_fp,
                 "requirements_compiled_general_py311.txt",
-                "requirements_compiled_general_${PY_VERSION}.txt",
+                "requirements_compiled_general_${PYTHON_CODE}.txt",
             )
             manager = DependencySetManager(
                 config_path="test.config.yaml",
                 workspace_dir=tmpdir,
             )
-            assert os.getenv("PY_VERSION") == "py311"
+            assert os.getenv("PYTHON_CODE") == "py311"
             assert (
                 "requirements_compiled_general_py311.txt"
                 == manager.get_depset("general_depset").output

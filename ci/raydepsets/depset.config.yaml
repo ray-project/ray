@@ -8,7 +8,7 @@ depsets:
       - python/requirements_compiled.txt
     output: python/requirements_compiled_ray_test_${PYTHON_CODE}_${CUDA_CODE}.txt
     operation: compile
-    extra_flags:
+    override_flags:
       - --extra-index-url "https://download.pytorch.org/whl/${CUDA_CODE}"
 
   - name: general_depset

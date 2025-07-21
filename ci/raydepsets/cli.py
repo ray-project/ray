@@ -98,7 +98,7 @@ class DependencySetManager:
             self.compile(
                 constraints=depset.constraints,
                 requirements=depset.requirements,
-                args=DEFAULT_UV_FLAGS.copy(),
+                args=depset.override_flags,
                 name=depset.name,
                 output=depset.output,
             )
@@ -128,6 +128,7 @@ class DependencySetManager:
     ):
         """Compile a dependency set."""
         args = self.override_uv_flags(args)
+        print(f"args: {args}")
         if constraints:
             for constraint in constraints:
                 args.extend(["-c", constraint])
@@ -149,7 +150,7 @@ class DependencySetManager:
         self.compile(
             constraints=[source_depset.output],
             requirements=requirements,
-            args=source_depset.extra_flags,
+            args=source_depset.override_flags,
             name=name,
             output=output,
         )
@@ -169,7 +170,7 @@ class DependencySetManager:
         self.compile(
             constraints=constraints,
             requirements=depset_req_list,
-            args=depset.extra_flags,
+            args=depset.override_flags,
             name=name,
             output=output,
         )
