@@ -190,6 +190,7 @@ Snowflake
 ---------
 
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
    read_snowflake
