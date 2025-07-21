@@ -26,7 +26,7 @@ def test_add_and_length():
     assert len(queue) == 2
 
 
-def test_pop():
+def test_get_next():
     queue = create_bundle_queue()
     bundle1 = _create_bundle("test1")
     queue.add(bundle1)
@@ -38,7 +38,7 @@ def test_pop():
     assert len(queue) == 1
 
 
-def test_peek():
+def test_peek_next():
     queue = create_bundle_queue()
     bundle1 = _create_bundle("test1")
     queue.add(bundle1)
@@ -50,13 +50,13 @@ def test_peek():
     assert len(queue) == 2  # Length should remain unchanged
 
 
-def test_pop_empty_queue():
+def test_get_next_empty_queue():
     queue = create_bundle_queue()
     with pytest.raises(IndexError):
         queue.get_next()
 
 
-def test_pop_does_not_leak_objects():
+def test_get_next_does_not_leak_objects():
     queue = create_bundle_queue()
     bundle1 = _create_bundle("test1")
     queue.add(bundle1)
@@ -64,7 +64,7 @@ def test_pop_does_not_leak_objects():
     assert queue.is_empty()
 
 
-def test_peek_empty_queue():
+def test_peek_next_empty_queue():
     queue = create_bundle_queue()
     assert queue.peek_next() is None
     assert queue.is_empty()

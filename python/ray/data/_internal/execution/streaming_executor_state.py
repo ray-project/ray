@@ -266,10 +266,7 @@ class OpState:
 
     def has_valid_input_bundle(self) -> bool:
         """Check if the operator has a valid bundle in its input queue."""
-        for queue in self.input_queues:
-            if queue.has_valid_next():
-                return True
-        return False
+        return any(queue.has_valid_next() for queue in self.input_queues)
 
     def add_output(self, ref: RefBundle) -> None:
         """Move a bundle produced by the operator to its outqueue."""
