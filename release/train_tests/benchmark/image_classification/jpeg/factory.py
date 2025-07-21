@@ -105,6 +105,7 @@ class ImageClassificationJpegRayDataLoaderFactory(
                 filesystem=filesystem,
             )
             .map(get_preprocess_map_fn(random_transforms=True))
+            # Add limit after map to enable operator fusion.
             .limit(self.get_dataloader_config().limit_training_rows)
         )
 
@@ -119,6 +120,7 @@ class ImageClassificationJpegRayDataLoaderFactory(
                 filesystem=filesystem,
             )
             .map(get_preprocess_map_fn(random_transforms=False))
+            # Add limit after map to enable operator fusion.
             .limit(self.get_dataloader_config().limit_validation_rows)
         )
 
