@@ -18,7 +18,7 @@ from ray.llm.tests.serve.utils.testing_utils import LLMResponseValidator
 
 
 @pytest.fixture
-def serve_handle(mock_llm_config, stream_batching_interval_ms):
+def serve_handle(mock_llm_config, stream_batching_interval_ms=0):
     mock_llm_config.experimental_configs = {
         "stream_batching_interval_ms": stream_batching_interval_ms,
     }
