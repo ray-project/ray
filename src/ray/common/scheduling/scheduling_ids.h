@@ -38,11 +38,11 @@ enum PredefinedResourcesEnum {
   PredefinedResourcesEnum_MAX
 };
 
-constexpr char kCPU_ResourceLabel = "CPU";
-constexpr char kGPU_ResourceLabel = "GPU";
-constexpr char kObjectStoreMemory_ResourceLabel = "object_store_memory";
-constexpr char kMemory_ResourceLabel = "memory";
-constexpr char kBundle_ResourceLabel = "bundle";
+constexpr const char *kCPU_ResourceLabel = "CPU";
+constexpr const char *kGPU_ResourceLabel = "GPU";
+constexpr const char *kObjectStoreMemory_ResourceLabel = "object_store_memory";
+constexpr const char *kMemory_ResourceLabel = "memory";
+constexpr const char *kBundle_ResourceLabel = "bundle";
 
 /// Class to map string IDs to unique integer IDs and back.
 class StringIdMap {
