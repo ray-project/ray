@@ -363,6 +363,10 @@ class NormalTaskSubmitter {
   // Keeps track of where currently executing tasks are being run.
   absl::flat_hash_map<TaskID, rpc::Address> executing_tasks_ ABSL_GUARDED_BY(mu_);
 
+  // Tasks that have failed but we are waiting for their error cause to decide if they
+  // should be retried or permanently failed.
+  absl::flat_hash_set<TaskID> failed_tasks_pending_failure_cause_ ABSL_GUARDED_BY(mu_);
+
   // Generators that are currently running and need to be resubmitted.
   absl::flat_hash_set<TaskID> generators_to_resubmit_ ABSL_GUARDED_BY(mu_);
 
