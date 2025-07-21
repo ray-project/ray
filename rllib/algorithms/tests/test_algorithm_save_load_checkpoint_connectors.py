@@ -148,7 +148,9 @@ class TestAlgorithmWithConnectorsSaveAndRestore(unittest.TestCase):
 
                 # Assert that all running stats are the same.
                 self._assert_running_stats_consistency(
-                    running_stats_states_algo_1, running_stats_states_algo_2
+                    running_stats_states_algo_1,
+                    running_stats_states_algo_2,
+                    num_env_runners,
                 )
 
     def test_save_and_restore_w_remote_env_runners_and_wo_local_env_runner(self):
@@ -182,7 +184,9 @@ class TestAlgorithmWithConnectorsSaveAndRestore(unittest.TestCase):
 
                 # Assert that all running stats are the same.
                 self._assert_running_stats_consistency(
-                    running_stats_states_algo_1, running_stats_states_algo_2
+                    running_stats_states_algo_1,
+                    running_stats_states_algo_2,
+                    num_env_runners,
                 )
 
     def _assert_running_stats_consistency(
