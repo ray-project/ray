@@ -51,11 +51,11 @@ Given concrete choices for ``a``, ``b`` and ``x`` we can evaluate the objective 
             :start-after: __function_api_start__
             :end-before: __function_api_end__
 
-        Note that we use ``session.report(...)`` to report the intermediate ``score`` in the training loop, which can be useful
+        Note that we use ``tune.report(...)`` to report the intermediate ``score`` in the training loop, which can be useful
         in many machine learning tasks.
         If you just want to report the final ``score`` outside of this loop, you can simply return the score at the
         end of the ``trainable`` function with ``return {"score": score}``.
-        You can also use ``yield {"score": score}`` instead of ``session.report()``.
+        You can also use ``yield {"score": score}`` instead of ``tune.report()``.
 
     .. tab-item:: Class API
 
@@ -66,7 +66,7 @@ Given concrete choices for ``a``, ``b`` and ``x`` we can evaluate the objective 
             :start-after: __class_api_start__
             :end-before: __class_api_end__
 
-        .. tip:: ``session.report`` can't be used within a ``Trainable`` class.
+        .. tip:: ``tune.report`` can't be used within a ``Trainable`` class.
 
 Learn more about the details of :ref:`Trainables here <trainable-docs>`
 and :ref:`have a look at our examples <tune-examples-others>`.
@@ -248,7 +248,7 @@ Tune Schedulers
 ---------------
 
 To make your training process more efficient, you can use a :ref:`Trial Scheduler <tune-schedulers>`.
-For instance, in our ``trainable`` example minimizing a function in a training loop, we used ``session.report()``.
+For instance, in our ``trainable`` example minimizing a function in a training loop, we used ``tune.report()``.
 This reported `incremental` results, given a hyperparameter configuration selected by a search algorithm.
 Based on these reported results, a Tune scheduler can decide whether to stop the trial early or not.
 If you don't specify a scheduler, Tune will use a first-in-first-out (FIFO) scheduler by default, which simply

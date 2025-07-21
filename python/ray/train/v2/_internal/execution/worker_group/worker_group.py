@@ -9,7 +9,7 @@ import ray
 from ray._private.ray_constants import env_float
 from ray.actor import ActorHandle
 from ray.exceptions import GetTimeoutError, RayActorError
-from ray.train import Checkpoint
+from ray.runtime_env import RuntimeEnv
 from ray.train.v2._internal.constants import (
     DEFAULT_REPORT_BARRIER_TIMEOUT_S,
     DEFAULT_REPORT_BARRIER_WARN_INTERVAL_S,
@@ -38,7 +38,6 @@ from ray.train.v2._internal.execution.context import (
     StorageContext,
     TrainRunContext,
 )
-from ray.train.v2._internal.logging.logging import get_train_application_worker_log_path
 from ray.train.v2._internal.execution.worker_group.poll import (
     PollTask,
     WorkerGroupPollStatus,
@@ -52,7 +51,9 @@ from ray.train.v2._internal.execution.worker_group.worker import (
     Worker,
     WorkerStatus,
 )
+from ray.train.v2._internal.logging.logging import get_train_application_worker_log_path
 from ray.train.v2._internal.util import (
+    ObjectRefWrapper,
     bundle_to_remote_args,
     invoke_context_managers,
     ray_get_safe,
@@ -82,22 +83,17 @@ class WorkerGroupContext:
 
     Attributes:
         run_attempt_id: The ID of the run attempt.
-        train_fn: The training function to execute.
+        train_fn_ref: An object store reference to the training function to execute.
         num_workers: The number of workers in the worker group.
         resources_per_worker: The resources per worker.
         placement_strategy: Strategy for placing workers.
-        checkpoint: Optional checkpoint to restore from.
     """
 
     run_attempt_id: str
-    train_fn: Callable[[], None]
+    train_fn_ref: ObjectRefWrapper[Callable[[], None]]
     num_workers: int
     resources_per_worker: Dict[str, float]
     placement_strategy: str = "PACK"
-    # TODO: Remove checkpoint from WorkerGroupContext
-    # and move it to CheckpointManager. Populate TrainContext
-    # similar to how the dataset shards are passed to the workers.
-    checkpoint: Optional[Checkpoint] = None
 
 
 class WorkerGroup:
@@ -288,9 +284,7 @@ class WorkerGroup:
             # To prevent the driver from crashing, catch all `RayActorError`s and
             # raise a specially handled error to the controller.
             try:
-                train_context_args = {
-                    "checkpoint": [worker_group_context.checkpoint] * len(workers)
-                }
+                train_context_args = {}
                 for callable in self._callbacks:
                     args = callable.before_init_train_context(workers)
                     for arg, arg_values in args.items():
@@ -320,7 +314,7 @@ class WorkerGroup:
         # This task should start a worker thread and return immediately.
         ray_get_safe(
             [
-                worker.actor.run_train_fn.remote(worker_group_context.train_fn)
+                worker.actor.run_train_fn.remote(worker_group_context.train_fn_ref)
                 for worker in workers
             ]
         )
@@ -348,16 +342,19 @@ class WorkerGroup:
         resources_per_worker: Dict[str, float],
     ) -> List[Worker]:
 
-        worker_actor_cls = ray.remote(**bundle_to_remote_args(resources_per_worker))(
-            self._worker_cls
+        runtime_env = self._get_worker_runtime_env(
+            custom_runtime_env=self._train_run_context.run_config.worker_runtime_env
         )
+        worker_actor_cls = ray.remote(
+            runtime_env=runtime_env,
+            **bundle_to_remote_args(resources_per_worker),
+        )(self._worker_cls)
 
         actors = [
             worker_actor_cls.options(
                 scheduling_strategy=PlacementGroupSchedulingStrategy(
                     placement_group=placement_group, placement_group_bundle_index=i
                 ),
-                runtime_env={"env_vars": get_env_vars_to_propagate()},
             ).remote()
             for i in range(num_workers)
         ]
@@ -429,6 +426,15 @@ class WorkerGroup:
     def _clear_state(self):
         self._worker_group_state = None
         self._world_rank_to_ongoing_poll = {}
+
+    def abort(self):
+        """Abort the worker group."""
+        # TODO: consider shutting down the workers in the future.
+        # We don't do this for now due to this risk of hanging e.g. when calling
+        # `destroy_process_group` on an active group.
+        self._assert_active()
+        for callback in self._callbacks:
+            callback.before_worker_group_abort(self._worker_group_context)
 
     #####################################################################################
     # Polling Worker Group
@@ -714,8 +720,6 @@ class WorkerGroup:
 
         # Assign log paths to workers
         for worker, log_path in zip(workers, log_paths):
-            if log_path is None:
-                raise ValueError("Worker log file path is not set.")
             worker.log_file_path = log_path
 
         return workers
@@ -777,3 +781,24 @@ class WorkerGroup:
         for workers in node_id_to_workers.values():
             sorted_workers.extend(workers)
         return sorted_workers
+
+    @staticmethod
+    def _get_worker_runtime_env(
+        custom_runtime_env: Union[Dict, RuntimeEnv],
+    ) -> Union[Dict, RuntimeEnv]:
+        """Update custom runtime env with internal Ray Train env vars
+        that should be propagated from the driver to worker processes.
+
+        Args:
+            custom_runtime_env: The custom runtime env dict passed in by the user.
+
+        Returns:
+            A copy of the custom runtime env dict updated with internal
+            Ray Train environment variables to propagate to worker processes.
+        """
+        merged_env_vars = get_env_vars_to_propagate()
+        merged_env_vars.update(custom_runtime_env.get("env_vars", {}))
+
+        runtime_env = dict(custom_runtime_env)
+        runtime_env["env_vars"] = merged_env_vars
+        return runtime_env

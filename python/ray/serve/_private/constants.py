@@ -1,4 +1,5 @@
 import os
+from typing import List
 
 #: Logger used by serve components
 SERVE_LOGGER_NAME = "ray.serve"
@@ -19,7 +20,7 @@ DEFAULT_HTTP_HOST = os.environ.get("RAY_SERVE_DEFAULT_HTTP_HOST", "127.0.0.1")
 DEFAULT_HTTP_PORT = int(os.environ.get("RAY_SERVE_DEFAULT_HTTP_PORT", 8000))
 
 #: Uvicorn timeout_keep_alive Config
-DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S = 5
+DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S = 90
 
 #: gRPC Port
 DEFAULT_GRPC_PORT = int(os.environ.get("RAY_SERVE_DEFAULT_GRPC_PORT", 9000))
@@ -253,10 +254,23 @@ SERVE_LOG_UNWANTED_ATTRS = {
     "job_id",
 }
 
+RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S = int(
+    os.environ.get("RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S", 0)
+)
+
+RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S = (
+    float(os.environ.get("RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S", 0))
+    or float(os.environ.get("SERVE_REQUEST_PROCESSING_TIMEOUT_S", 0))
+    or None
+)
+
 SERVE_LOG_EXTRA_FIELDS = "ray_serve_extra_fields"
 
 # Serve HTTP request header key for routing requests.
 SERVE_MULTIPLEXED_MODEL_ID = "serve_multiplexed_model_id"
+
+# HTTP request ID
+SERVE_HTTP_REQUEST_ID_HEADER = "x-request-id"
 
 # Feature flag to turn on node locality routing for proxies. On by default.
 RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING = (
@@ -298,11 +312,6 @@ RAY_SERVE_ENABLE_MEMORY_PROFILING = (
     os.environ.get("RAY_SERVE_ENABLE_MEMORY_PROFILING", "0") == "1"
 )
 
-# Enable cProfile in all Serve actors.
-RAY_SERVE_ENABLE_CPU_PROFILING = (
-    os.environ.get("RAY_SERVE_ENABLE_CPU_PROFILING", "0") == "1"
-)
-
 # Max value allowed for max_replicas_per_node option.
 # TODO(jjyao) the <= 100 limitation is an artificial one
 # and is due to the fact that Ray core only supports resource
@@ -328,9 +337,22 @@ RAY_SERVE_MAX_QUEUE_LENGTH_RESPONSE_DEADLINE_S = float(
     os.environ.get("RAY_SERVE_MAX_QUEUE_LENGTH_RESPONSE_DEADLINE_S", 1.0)
 )
 
-# Length of time to respect entries in the queue length cache when scheduling requests.
+# Length of time to respect entries in the queue length cache when routing requests.
 RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S = float(
     os.environ.get("RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S", 10.0)
+)
+
+# Backoff seconds when choosing router failed, backoff time is calculated as
+# initial_backoff_s * backoff_multiplier ** attempt.
+# The default backoff time is [0.025, 0.05, 0.1, 0.2, 0.4, 0.5, 0.5 ... ].
+RAY_SERVE_ROUTER_RETRY_INITIAL_BACKOFF_S = float(
+    os.environ.get("RAY_SERVE_ROUTER_RETRY_INITIAL_BACKOFF_S", 0.025)
+)
+RAY_SERVE_ROUTER_RETRY_BACKOFF_MULTIPLIER = int(
+    os.environ.get("RAY_SERVE_ROUTER_RETRY_BACKOFF_MULTIPLIER", 2)
+)
+RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S = float(
+    os.environ.get("RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S", 0.5)
 )
 
 # The default autoscaling policy to use if none is specified.
@@ -376,6 +398,21 @@ RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY = (
     os.environ.get("RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY", "0") == "1"
 )
 
+
+def str_to_list(s: str) -> List[str]:
+    """Return a list from a comma-separated string.
+
+    Trims whitespace and skips empty entries.
+    """
+    return [r.strip() for r in s.split(",") if r.strip()]
+
+
+# Comma-separated list of custom resources prioritized in scheduling. Sorted from highest to lowest priority.
+# Example: "customx,customy"
+RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES: List[str] = str_to_list(
+    os.environ.get("RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES", "")
+)
+
 # Feature flag to always override local_testing_mode to True in serve.run.
 # This is used for internal testing to avoid passing the flag to every invocation.
 RAY_SERVE_FORCE_LOCAL_TESTING_MODE = (
@@ -412,3 +449,35 @@ RAY_SERVE_PROXY_GC_THRESHOLD = int(
 RAY_SERVE_METRICS_EXPORT_INTERVAL_MS = int(
     os.environ.get("RAY_SERVE_METRICS_EXPORT_INTERVAL_MS", "100")
 )
+
+# The default request router class to use if none is specified.
+DEFAULT_REQUEST_ROUTER_PATH = (
+    "ray.serve._private.request_router:PowerOfTwoChoicesRequestRouter"
+)
+
+# The default request routing period to use if none is specified.
+DEFAULT_REQUEST_ROUTING_STATS_PERIOD_S = 10
+
+# The default request routing timeout to use if none is specified.
+DEFAULT_REQUEST_ROUTING_STATS_TIMEOUT_S = 30
+
+# Name of deployment request routing stats method implemented by user.
+REQUEST_ROUTING_STATS_METHOD = "record_routing_stats"
+
+# By default, we run user code in a separate event loop.
+# This flag can be set to 0 to run user code in the same event loop as the
+# replica's main event loop.
+RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD = (
+    os.environ.get("RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD", "1") == "1"
+)
+
+# The default buffer size for request path logs. Setting to 1 will ensure
+# logs are flushed to file handler immediately, otherwise it will be buffered
+# and flushed to file handler when the buffer is full or when there is a log
+# line with level ERROR.
+RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE = int(
+    os.environ.get("RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE", "1")
+)
+
+# The message to return when the replica is healthy.
+HEALTHY_MESSAGE = "success"

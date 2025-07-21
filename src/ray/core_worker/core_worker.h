@@ -189,6 +189,12 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Public methods used by `CoreWorkerProcess` and `CoreWorker` itself.
   ///
 
+  /// Get the Plasma Store Usage.
+  ///
+  /// \param output[out] memory usage from the plasma store
+  /// \return error status if unable to get response from the plasma store
+  Status GetPlasmaUsage(std::string &output);
+
   /// Gracefully disconnect the worker from Raylet.
   /// Once the method is returned, it is guaranteed that raylet is
   /// notified that this worker is disconnected from a raylet.
@@ -416,27 +422,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                           rpc::Address *owner_address,
                           std::string *serialized_object_status);
 
-  /// Get the owner information of an object. This should be
-  /// called when serializing an object ID, and the returned information should
-  /// be stored with the serialized object ID. If the ownership of the object
-  /// cannot be established, then we terminate the process.
-  ///
-  /// This can only be called on object IDs that we created via task
-  /// submission, ray.put, or object IDs that we deserialized. It cannot be
-  /// called on object IDs that were created randomly, e.g.,
-  /// ObjectID::FromRandom.
-  ///
-  /// Postcondition: Get(object_id) is valid.
-  ///
-  /// \param[in] object_id The object ID to serialize.
-  /// appended to the serialized object ID.
-  /// \param[out] owner_address The address of the object's owner. This should
-  /// be appended to the serialized object ID.
-  /// \param[out] serialized_object_status The serialized object status protobuf.
-  void GetOwnershipInfoOrDie(const ObjectID &object_id,
-                             rpc::Address *owner_address,
-                             std::string *serialized_object_status);
-
   /// Add a reference to an ObjectID that was deserialized by the language
   /// frontend. This will also start the process to resolve the future.
   /// Specifically, we will periodically contact the owner, until we learn that
@@ -502,7 +487,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] contained_object_ids The IDs serialized in this object.
   /// \param[out] object_id Object ID generated for the put.
   /// \param[out] data Buffer for the user to write the object into.
-  /// \param[in] created_by_worker create by worker or not.
   /// \param[in] owner_address The address of object's owner. If not provided,
   /// defaults to this worker.
   /// \param[in] inline_small_object Whether to inline create this object if it's
@@ -515,7 +499,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       const std::vector<ObjectID> &contained_object_ids,
       ObjectID *object_id,
       std::shared_ptr<Buffer> *data,
-      bool created_by_worker,
       const std::unique_ptr<rpc::Address> &owner_address = nullptr,
       bool inline_small_object = true);
 
@@ -789,11 +772,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       rpc::ReportGeneratorItemReturnsRequest request,
       rpc::ReportGeneratorItemReturnsReply *reply,
       rpc::SendReplyCallback send_reply_callback) override;
-
-  /// Get a string describing object store memory usage for debugging purposes.
-  ///
-  /// \return std::string The string describing memory usage.
-  std::string MemoryUsageString();
 
   ///
   /// Public methods related to task submission.
@@ -1155,9 +1133,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                       rpc::SendReplyCallback send_reply_callback) override;
 
   /// Implements gRPC server handler.
-  void HandleDirectActorCallArgWaitComplete(
-      rpc::DirectActorCallArgWaitCompleteRequest request,
-      rpc::DirectActorCallArgWaitCompleteReply *reply,
+  void HandleActorCallArgWaitComplete(
+      rpc::ActorCallArgWaitCompleteRequest request,
+      rpc::ActorCallArgWaitCompleteReply *reply,
       rpc::SendReplyCallback send_reply_callback) override;
 
   /// Implements gRPC server handler.
@@ -1268,9 +1246,15 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void HandleNumPendingTasks(rpc::NumPendingTasksRequest request,
                              rpc::NumPendingTasksReply *reply,
                              rpc::SendReplyCallback send_reply_callback) override;
+
+  // Free GPU objects from the in-actor GPU object store.
+  void HandleFreeActorObject(rpc::FreeActorObjectRequest request,
+                             rpc::FreeActorObjectReply *reply,
+                             rpc::SendReplyCallback send_reply_callback) override;
+
   ///
   /// Public methods related to async actor call. This should only be used when
-  /// the actor is (1) direct actor and (2) using asyncio mode.
+  /// the actor is (1) direct actor and (2) using async mode.
   ///
 
   /// Block current fiber until event is triggered.
@@ -1410,7 +1394,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       bool include_job_config = false,
       int64_t generator_backpressure_num_objects = -1,
       bool enable_task_events = true,
-      const std::unordered_map<std::string, std::string> &labels = {});
+      const std::unordered_map<std::string, std::string> &labels = {},
+      const std::unordered_map<std::string, std::string> &label_selector = {},
+      const rpc::TensorTransport &tensor_transport = rpc::TensorTransport::OBJECT_STORE);
   void SetCurrentTaskId(const TaskID &task_id,
                         uint64_t attempt_number,
                         const std::string &task_name);
@@ -1660,11 +1646,28 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                             bool recursive,
                             const OnCanceledCallback &on_canceled);
 
-  /// Cancel an actor task queued or running in the current worker.
-  ///
-  /// See params in CancelTaskOnExecutor.
-  /// For the actor task cancel protocol, see the docstring of
-  /// actor_task_submitter.h::CancelTask.
+  // Attempt to cancel the actor task.
+  //
+  // The callback will be called with `success` to indicate if the cancellation succeeded.
+  // If not, the caller must retry the cancellation request until either it succeeds or
+  // the task finishes executing.
+  //
+  // A task can be in one of three states locally:
+  //
+  // 1) Not present in the local task receiver.
+  //    This means it wasn't received yet or it already finished executing.
+  // 2) Queued in the local task receiver, but not executing yet.
+  // 3) Executing.
+  //
+  // We first check if the task is present in the local receiver. If not, we
+  // do nothing and return success=false.
+  //
+  // If the task *is* present in the local receiver, we attempt to cancel it.
+  // The task may already be running, in which case we cancel it during execution.
+  //
+  // NOTE: only async actor tasks can be cancelled during execution. For non-async
+  // actor tasks that are already executing, we will return success=true to prevent the
+  // client from retrying infinitely.
   void CancelActorTaskOnExecutor(WorkerID caller_worker_id,
                                  TaskID intended_task_id,
                                  bool force_kill,
@@ -1726,7 +1729,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   bool initialized_ ABSL_GUARDED_BY(initialize_mutex_) = false;
 
   /// Event loop where the IO events are handled. e.g. async GCS operations.
-  instrumented_io_context io_service_;
+  instrumented_io_context io_service_{/*enable_lag_probe=*/false,
+                                      /*running_on_single_thread=*/true};
 
   /// Keeps the io_service_ alive.
   boost::asio::executor_work_guard<boost::asio::io_context::executor_type> io_work_;
@@ -1827,9 +1831,12 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Our actor ID. If this is nil, then we execute only stateless tasks.
   ActorID actor_id_ ABSL_GUARDED_BY(mutex_);
 
-  /// The currently executing task spec. We have to track this separately since
-  /// we cannot access the thread-local worker contexts from GetCoreWorkerStats()
-  absl::flat_hash_map<TaskID, TaskSpecification> current_tasks_ ABSL_GUARDED_BY(mutex_);
+  /// Set of currently-running tasks. For single-threaded, non-async actors this will
+  /// contain at most one task ID.
+  ///
+  /// We have to track this separately because we cannot access the thread-local worker
+  /// contexts from GetCoreWorkerStats().
+  absl::flat_hash_map<TaskID, TaskSpecification> running_tasks_ ABSL_GUARDED_BY(mutex_);
 
   /// Key value pairs to be displayed on Web UI.
   std::unordered_map<std::string, std::string> webui_display_ ABSL_GUARDED_BY(mutex_);
@@ -1850,9 +1857,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// for this worker. Each pair consists of the resource ID and the fraction
   /// of that resource allocated for this worker. This is set on task assignment.
   ResourceMappingType resource_ids_ ABSL_GUARDED_BY(mutex_);
-
-  /// Common rpc service for all worker modules.
-  rpc::CoreWorkerGrpcService grpc_service_;
 
   /// Used to notify the task receiver when the arguments of a queued
   /// actor task are ready.

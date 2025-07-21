@@ -113,7 +113,7 @@ class VPG(Algorithm):
         with self.metrics.log_time((TIMERS, ENV_RUNNER_SAMPLING_TIMER)):
             episodes, env_runner_results = self._sample_episodes()
         # Merge results from n parallel sample calls into self's metrics logger.
-        self.metrics.merge_and_log_n_dicts(env_runner_results, key=ENV_RUNNER_RESULTS)
+        self.metrics.aggregate(env_runner_results, key=ENV_RUNNER_RESULTS)
 
         # Just for demonstration purposes, log the number of time steps sampled in this
         # `training_step` round.
@@ -144,7 +144,7 @@ class VPG(Algorithm):
                 },
             )
         # Merge results from m parallel update calls into self's metrics logger.
-        self.metrics.merge_and_log_n_dicts(learner_results, key=LEARNER_RESULTS)
+        self.metrics.aggregate(learner_results, key=LEARNER_RESULTS)
 
         # Sync weights.
         with self.metrics.log_time((TIMERS, SYNCH_WORKER_WEIGHTS_TIMER)):

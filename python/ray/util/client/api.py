@@ -6,7 +6,7 @@ import logging
 from concurrent.futures import Future
 from typing import TYPE_CHECKING, Any, Callable, List, Optional, Union
 
-from ray._private import ray_option_utils
+from ray._common import ray_option_utils
 from ray.util.client.runtime_context import _ClientWorkerPropertyAPI
 
 if TYPE_CHECKING:

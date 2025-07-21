@@ -88,9 +88,14 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
                       rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
                   const std::string &scheduling_failure_message = "") override;
 
-  /// Cancel all tasks owned by a specific worker.
-  bool CancelAllTaskOwnedBy(
+  bool CancelAllTasksOwnedBy(
       const WorkerID &worker_id,
+      rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type =
+          rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
+      const std::string &scheduling_failure_message = "") override;
+
+  bool CancelAllTasksOwnedBy(
+      const NodeID &node_id,
       rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type =
           rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
       const std::string &scheduling_failure_message = "") override;
@@ -126,17 +131,14 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// the only fields used.
   void FillResourceUsage(rpc::ResourcesData &data) override;
 
-  /// Return if any tasks are pending resource acquisition.
+  /// Return with an exemplar if any tasks are pending resource acquisition.
   ///
-  /// \param[out] example: An example task that is deadlocking.
-  /// \param[in,out] any_pending: True if there's any pending example.
   /// \param[in,out] num_pending_actor_creation: Number of pending actor creation tasks.
   /// \param[in,out] num_pending_tasks: Number of pending tasks.
-  /// \return True if any progress is any tasks are pending.
-  bool AnyPendingTasksForResourceAcquisition(RayTask *example,
-                                             bool *any_pending,
-                                             int *num_pending_actor_creation,
-                                             int *num_pending_tasks) const override;
+  /// \return An example task that is deadlocking if any tasks are pending resource
+  /// acquisition.
+  const RayTask *AnyPendingTasksForResourceAcquisition(
+      int *num_pending_actor_creation, int *num_pending_tasks) const override;
 
   // Schedule and dispatch tasks.
   void ScheduleAndDispatchTasks() override;
@@ -197,8 +199,6 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
 
   ILocalTaskManager &local_task_manager_;
 
-  /// TODO(swang): Add index from TaskID -> Work to avoid having to iterate
-  /// through queues to cancel tasks, etc.
   /// Queue of lease requests that are waiting for resources to become available.
   /// Tasks move from scheduled -> dispatch | waiting.
   absl::flat_hash_map<SchedulingClass, std::deque<std::shared_ptr<internal::Work>>>

@@ -1,3 +1,4 @@
+import os
 import abc
 from typing import Dict, Any, Optional, List
 
@@ -47,6 +48,7 @@ class CommandRunner(abc.ABC):
             "TEST_OUTPUT_JSON": self._RESULT_OUTPUT_JSON,
             "METRICS_OUTPUT_JSON": self._METRICS_OUTPUT_JSON,
             "USER_GENERATED_ARTIFACT": self._USER_GENERATED_ARTIFACT,
+            "BUILDKITE_BRANCH": os.environ.get("BUILDKITE_BRANCH", ""),
         }
 
     def get_full_command_env(self, env: Optional[Dict] = None):

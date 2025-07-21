@@ -24,8 +24,7 @@ namespace ray::internal {
 
 class StreamRedirectionHandle {
  public:
-  StreamRedirectionHandle(MEMFD_TYPE_NON_UNIQUE stream_fd,
-                          const StreamRedirectionOption &opt);
+  StreamRedirectionHandle(int stream_fd, const StreamRedirectionOption &opt);
 
   StreamRedirectionHandle(const StreamRedirectionHandle &) = delete;
   StreamRedirectionHandle &operator=(const StreamRedirectionHandle &) = delete;

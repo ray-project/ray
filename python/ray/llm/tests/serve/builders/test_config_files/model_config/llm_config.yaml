@@ -1,9 +1,0 @@
-model_loading_config:
-  model_id: model1
-
-accelerator_type: "L4"
-
-deployment_config:
-  ray_actor_options:
-    resources:
-      mock_resource: 0

@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Iterator, Optional, ContextManager
+from typing import ContextManager, Iterator, Optional
 
 from .execution_options import ExecutionOptions
 from .physical_operator import PhysicalOperator
@@ -26,7 +26,7 @@ class OutputIterator(Iterator[RefBundle], ABC):
                 only allowed for iterators created by `Dataset.streaming_split()`.
 
         Raises:
-            StopIteration if there are no more outputs to return.
+            StopIteration: If there are no more outputs to return.
         """
         ...
 
@@ -59,12 +59,17 @@ class Executor(ContextManager, ABC):
         """
         ...
 
-    def shutdown(self, exception: Optional[Exception] = None):
+    def shutdown(self, force: bool, exception: Optional[Exception] = None):
         """Shutdown an executor, which may still be running.
 
         This should interrupt execution and clean up any used resources.
 
         Args:
+            force: Controls whether shutdown should forcefully terminate all execution
+                   activity (making sure that upon returning from this method all
+                   activities are stopped). When force=False, some activities could be
+                   terminated asynchronously (ie this method won't provide guarantee
+                   that they stop executing before returning from this method)
             exception: The exception that causes the executor to shut down, or None if
                 the executor finishes successfully.
         """
@@ -83,4 +88,6 @@ class Executor(ContextManager, ABC):
         return self
 
     def __exit__(self, exc_type, exc_value, traceback, /):
-        self.shutdown(exception=exc_value)
+        # NOTE: ``ContextManager`` semantic must guarantee that executor
+        #       fully shutdown upon returning from this method
+        self.shutdown(force=True, exception=exc_value)

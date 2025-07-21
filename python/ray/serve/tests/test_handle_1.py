@@ -2,6 +2,7 @@ import asyncio
 import concurrent.futures
 import sys
 import threading
+from typing import Any
 
 import pytest
 
@@ -309,6 +310,33 @@ def test_init_after_request_fails(serve_instance):
 
     with pytest.raises(RuntimeError):
         h._init(_prefer_local_routing=True)
+
+
+def test_response_used_in_multiple_calls(serve_instance):
+    @serve.deployment(graceful_shutdown_timeout_s=0)
+    class F:
+        async def __call__(self, sleep_amt: int, x: Any):
+            await asyncio.sleep(sleep_amt)
+            return f"({x})"
+
+    @serve.deployment(graceful_shutdown_timeout_s=0)
+    class Ingress:
+        async def __init__(self, h):
+            self.h = h
+
+        async def __call__(self):
+            # r1 will take 5 seconds to finish. This makes sure when h.remote() is
+            # started for r2 and r3 (and both rely on r1), r1 is still executing.
+            r1 = self.h.remote(5, "r1")
+
+            # Neither of these should get stuck.
+            r2 = self.h.remote(0, r1)
+            r3 = self.h.remote(0, r1)
+
+            return await r2, await r3
+
+    h = serve.run(Ingress.bind(F.bind()))
+    assert h.remote().result(timeout_s=10) == ("((r1))", "((r1))")
 
 
 if __name__ == "__main__":

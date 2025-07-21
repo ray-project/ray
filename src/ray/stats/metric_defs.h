@@ -22,7 +22,7 @@ namespace stats {
 
 /// The definitions of metrics that you can use everywhere.
 ///
-/// There are 4 types of metric:
+/// There are 4 types of metric. The values of the metrics are of type double.
 ///   Histogram: Histogram distribution of metric points.
 ///   Gauge: Keeps the last recorded value, drops everything before.
 ///   Count: The count of the number of metric points.
@@ -70,6 +70,11 @@ DECLARE_stats(grpc_server_req_process_time_ms);
 DECLARE_stats(grpc_server_req_new);
 DECLARE_stats(grpc_server_req_handling);
 DECLARE_stats(grpc_server_req_finished);
+DECLARE_stats(grpc_server_req_succeeded);
+DECLARE_stats(grpc_server_req_failed);
+
+/// GRPC Client Failures
+DECLARE_stats(grpc_client_req_failed);
 
 /// Object Manager.
 DECLARE_stats(object_manager_bytes);
@@ -87,7 +92,7 @@ DECLARE_stats(pull_manager_num_object_pins);
 DECLARE_stats(pull_manager_object_request_time_ms);
 
 /// Push Manager
-DECLARE_stats(push_manager_in_flight_pushes);
+DECLARE_stats(push_manager_num_pushes_remaining);
 DECLARE_stats(push_manager_chunks);
 
 /// Scheduler
@@ -230,7 +235,7 @@ static Sum NumCachedWorkersSkippedRuntimeEnvironmentMismatch(
     "workers");
 
 static Sum NumCachedWorkersSkippedDynamicOptionsMismatch(
-    "internal_num_processes_skipped_job_mismatch",
+    "internal_num_processes_skipped_dynamic_options_mismatch",
     "The total number of cached workers skipped due to dynamic options mismatch.",
     "workers");
 

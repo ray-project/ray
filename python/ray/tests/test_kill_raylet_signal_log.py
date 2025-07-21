@@ -6,7 +6,7 @@ import psutil
 import pytest
 
 import ray
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import wait_for_condition
 
 
 def get_pid(name):
@@ -41,16 +41,5 @@ def test_kill_raylet_signal_log(shutdown_only):
     check_result("{}/logs/raylet.err", signal.SIGABRT, "SIGABRT")
 
 
-@pytest.mark.skipif(sys.platform != "win32", reason="Only run on Windows.")
-@pytest.mark.skip(reason="Flaky on Windows")
-def test_kill_raylet_signal_log_win(shutdown_only):
-    check_result("{}/logs/raylet.out", signal.CTRL_BREAK_EVENT, "SIGTERM")
-
-
 if __name__ == "__main__":
-    import os
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

@@ -2,26 +2,26 @@ import asyncio
 import os
 from typing import List
 
+import httpx
 import pytest
-import requests
 
 import ray
 from ray import serve
-from ray._private.test_utils import SignalActor, wait_for_condition
+from ray._common.test_utils import SignalActor, wait_for_condition
 from ray._common.utils import get_or_create_event_loop
 from ray.serve._private.common import DeploymentID, ReplicaID
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import SERVE_MULTIPLEXED_MODEL_ID
-from ray.serve._private.replica_scheduler import ReplicaScheduler
+from ray.serve._private.request_router import RequestRouter
 from ray.serve.context import _get_internal_replica_context
 from ray.serve.handle import DeploymentHandle
 from ray.serve.multiplex import _ModelMultiplexWrapper
 
 
-def _get_replica_scheduler(handle: DeploymentHandle) -> ReplicaScheduler:
+def _get_request_router(handle: DeploymentHandle) -> RequestRouter:
     # TODO(edoakes): we shouldn't be reaching into private fields, but better
     # to isolate it to one place (this function).
-    return handle._router._asyncio_router._replica_scheduler
+    return handle._router._asyncio_router._request_router
 
 
 @pytest.fixture()
@@ -303,8 +303,8 @@ class TestBasicAPI:
         assert serve.get_multiplexed_model_id() == "1"
 
 
-def test_multiplexed_replica_info(serve_instance):
-    """Test MultiplexedReplicaInfo is passed to the controller & router"""
+def test_request_routing_info(serve_instance):
+    """Test RequestRoutingInfo is passed to the controller & router"""
 
     @serve.deployment
     class MyModel:
@@ -325,8 +325,8 @@ def test_multiplexed_replica_info(serve_instance):
         if not handle.is_initialized:
             handle._init()
 
-        replica_scheduler = _get_replica_scheduler(handle)
-        for replica in replica_scheduler.curr_replicas.values():
+        request_router = _get_request_router(handle)
+        for replica in request_router.curr_replicas.values():
             if (
                 replica.replica_id != replica_id
                 or model_ids != replica.multiplexed_model_ids
@@ -366,10 +366,10 @@ def check_model_id_in_replicas(handle: DeploymentHandle, model_id: str) -> bool:
     if not handle.is_initialized:
         handle._init()
 
-    replica_scheduler = _get_replica_scheduler(handle)
+    request_router = _get_request_router(handle)
     replica_to_model_ids = {
         tag: replica.multiplexed_model_ids
-        for tag, replica in replica_scheduler.curr_replicas.items()
+        for tag, replica in request_router.curr_replicas.items()
     }
     msg = (
         f"Model ID '{model_id}' not found in replica_to_model_ids: "
@@ -397,14 +397,14 @@ def test_multiplexed_e2e(serve_instance):
     model_id = "1"
     handle = serve.run(Model.bind())
     headers = {SERVE_MULTIPLEXED_MODEL_ID: model_id}
-    resp = requests.get("http://localhost:8000", headers=headers)
+    resp = httpx.get("http://localhost:8000", headers=headers)
     initial_pid = resp.json()
 
     wait_for_condition(check_model_id_in_replicas, handle=handle, model_id=model_id)
 
     # Check that the same replica is used repeatedly for the same model_id.
     for _ in range(10):
-        resp = requests.get("http://localhost:8000", headers=headers)
+        resp = httpx.get("http://localhost:8000", headers=headers)
         assert resp.json() == initial_pid
 
     for _ in range(10):
@@ -431,14 +431,14 @@ def test_multiplexed_lru_policy(serve_instance):
 
     handle = serve.run(Model.bind())
     headers = {SERVE_MULTIPLEXED_MODEL_ID: "1"}
-    requests.get("http://localhost:8000", headers=headers)
+    httpx.get("http://localhost:8000", headers=headers)
     headers = {SERVE_MULTIPLEXED_MODEL_ID: "2"}
-    requests.get("http://localhost:8000", headers=headers)
+    httpx.get("http://localhost:8000", headers=headers)
     # Make sure model2 will be evicted
     headers = {SERVE_MULTIPLEXED_MODEL_ID: "1"}
-    requests.get("http://localhost:8000", headers=headers)
+    httpx.get("http://localhost:8000", headers=headers)
     headers = {SERVE_MULTIPLEXED_MODEL_ID: "3"}
-    requests.get("http://localhost:8000", headers=headers)
+    httpx.get("http://localhost:8000", headers=headers)
 
     wait_for_condition(
         (
@@ -535,8 +535,8 @@ def test_replica_upgrade_to_cleanup_resource(serve_instance):
             self.model_id = model_id
             self.record_handle = record_handle
 
-        def __del__(self):
-            self.record_handle.add.remote(self.model_id)
+        async def __del__(self):
+            await self.record_handle.add.remote(self.model_id)
 
         def __eq__(self, model):
             return model.model_id == self.model_id
@@ -560,7 +560,7 @@ def test_replica_upgrade_to_cleanup_resource(serve_instance):
 
     model_id = "1"
     headers = {"serve_multiplexed_model_id": model_id}
-    requests.get("http://localhost:8000", headers=headers)
+    httpx.get("http://localhost:8000", headers=headers)
     assert record_handle.get_call_record.remote().result() == set()
     serve.run(Model.bind(record_handle))
     assert record_handle.get_call_record.remote().result() == {"1"}

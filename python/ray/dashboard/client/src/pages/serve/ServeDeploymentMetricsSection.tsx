@@ -27,15 +27,15 @@ import {
 const METRICS_CONFIG: MetricConfig[] = [
   {
     title: "QPS per replica",
-    pathParams: "orgId=1&theme=light&panelId=2",
+    pathParams: "theme=light&panelId=2",
   },
   {
     title: "Error QPS per replica",
-    pathParams: "orgId=1&theme=light&panelId=3",
+    pathParams: "&theme=light&panelId=3",
   },
   {
     title: "P90 latency per replica",
-    pathParams: "orgId=1&theme=light&panelId=5",
+    pathParams: "&theme=light&panelId=5",
   },
 ];
 
@@ -53,6 +53,7 @@ export const ServeReplicaMetricsSection = ({
 }: ServeDeploymentMetricsSectionProps) => {
   const {
     grafanaHost,
+    grafanaOrgId,
     prometheusHealth,
     dashboardUids,
     dashboardDatasource,
@@ -183,7 +184,7 @@ export const ServeReplicaMetricsSection = ({
         >
           {METRICS_CONFIG.map(({ title, pathParams }) => {
             const path =
-              `/d-solo/${grafanaServeDashboardUid}?${pathParams}` +
+              `/d-solo/${grafanaServeDashboardUid}?orgId=${grafanaOrgId}&${pathParams}` +
               `${refreshParams}&timezone=${currentTimeZone}${timeRangeParams}&var-Deployment=${encodeURIComponent(
                 deploymentName,
               )}&var-Replica=${encodeURIComponent(
@@ -224,8 +225,13 @@ export const useViewServeDeploymentMetricsButtonUrl = (
   deploymentName: string,
   replicaId?: string,
 ) => {
-  const { grafanaHost, prometheusHealth, dashboardUids, dashboardDatasource } =
-    useContext(GlobalContext);
+  const {
+    grafanaHost,
+    grafanaOrgId,
+    prometheusHealth,
+    dashboardUids,
+    dashboardDatasource,
+  } = useContext(GlobalContext);
   const grafanaServeDashboardUid =
     dashboardUids?.serveDeployment ?? "rayServeDashboard";
 
@@ -235,7 +241,7 @@ export const useViewServeDeploymentMetricsButtonUrl = (
 
   return grafanaHost === undefined || !prometheusHealth
     ? null
-    : `${grafanaHost}/d/${grafanaServeDashboardUid}?var-Deployment=${encodeURIComponent(
+    : `${grafanaHost}/d/${grafanaServeDashboardUid}?orgId=${grafanaOrgId}&var-Deployment=${encodeURIComponent(
         deploymentName,
       )}${replicaStr}&var-datasource=${dashboardDatasource}`;
 };

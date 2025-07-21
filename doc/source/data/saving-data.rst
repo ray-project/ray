@@ -143,11 +143,11 @@ Changing the number of output files
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 When you call a write method, Ray Data writes your data to several files. To control the
-number of output files, configure ``min_rows_per_write``.
+number of output files, configure ``min_rows_per_file``.
 
 .. note::
 
-    ``min_rows_per_write`` is a hint, not a strict limit. Ray Data might write more or
+    ``min_rows_per_file`` is a hint, not a strict limit. Ray Data might write more or
     fewer rows to each file. Under the hood, if the number of rows per block is
     larger than the specified value, Ray Data writes
     the number of rows per block to each file.
@@ -159,7 +159,7 @@ number of output files, configure ``min_rows_per_write``.
     import ray
 
     ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
-    ds.write_csv("/tmp/few_files/", min_rows_per_write=75)
+    ds.write_csv("/tmp/few_files/", min_rows_per_file=75)
 
     print(os.listdir("/tmp/few_files/"))
 
@@ -216,7 +216,7 @@ Ray Data interoperates with distributed data processing frameworks like `Daft <h
 
     .. tab-item:: Daft
 
-        To convert a :class:`~ray.data.dataset.Dataset` to a `Daft Dataframe <https://www.getdaft.io/projects/docs/en/stable/api_docs/dataframe.html>`_, call
+        To convert a :class:`~ray.data.dataset.Dataset` to a `Daft Dataframe <https://docs.getdaft.io/en/stable/api/dataframe/>`_, call
         :meth:`Dataset.to_daft() <ray.data.Dataset.to_daft>`.
 
         .. testcode::

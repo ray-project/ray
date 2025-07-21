@@ -114,19 +114,33 @@ def split_and_zero_pad(
     item_list = deque(item_list)
     while len(item_list) > 0:
         item = item_list.popleft()
-        # `item` is already a batched np.array: Split if necessary.
-        if isinstance(item, BatchedNdArray):
-            t = max_seq_len - current_t
-            current_time_row.append(item[:t])
-            if len(item) <= t:
-                current_t += len(item)
+        t = max_seq_len - current_t
+
+        # In case `item` is a complex struct.
+        item_flat = tree.flatten(item)
+        item_list_append = []
+        current_time_row_flat_items = []
+        add_to_current_t = 0
+
+        for itm in item_flat:
+            # `itm` is already a batched np.array: Split if necessary.
+            if isinstance(itm, BatchedNdArray):
+                current_time_row_flat_items.append(itm[:t])
+                if len(itm) <= t:
+                    add_to_current_t = len(itm)
+                else:
+                    add_to_current_t = t
+                    item_list_append.append(itm[t:])
+            # `itm` is a single item (no batch axis): Append and continue with next
+            # item.
             else:
-                current_t += t
-                item_list.appendleft(item[t:])
-        # `item` is a single item (no batch axis): Append and continue with next item.
-        else:
-            current_time_row.append(item)
-            current_t += 1
+                current_time_row_flat_items.append(itm)
+                add_to_current_t = 1
+
+        current_t += add_to_current_t
+        current_time_row.append(tree.unflatten_as(item, current_time_row_flat_items))
+        if item_list_append:
+            item_list.appendleft(tree.unflatten_as(item, item_list_append))
 
         # `current_time_row` is "full" (max_seq_len): Append as ndarray (with batch
         # axis) to `ret`.
@@ -151,15 +165,34 @@ def split_and_zero_pad(
 
 
 @DeveloperAPI
-def split_and_zero_pad_n_episodes(nd_array, episode_lens, max_seq_len):
+def split_and_zero_pad_n_episodes(
+    nd_array: np._typing.NDArray,
+    episode_lens: List[int],
+    max_seq_len: int,
+) -> List[np._typing.NDArray]:
+    """Splits and zero-pads a single np.ndarray based on episode lens and a maxlen.
+
+    Args:
+        nd_array: The single np.ndarray to be split into n chunks, based on the given
+            `episode_lens` and the `max_seq_len` argument. For example, if `nd_array`
+            has a batch dimension (axis 0) of 21, `episode_lens` is [15, 3, 3], and
+            `max_seq_len` is 6, then the returned list would have np.ndarrays in it of
+            batch dimensions (axis 0): [6, 6, 6 (zero-padded), 6 (zero-padded),
+            6 (zero-padded)].
+            Note that this function doesn't work on nested data, such as dicts of
+            ndarrays.
+        episode_lens: A list of episode lengths along which to split and zero-pad the
+            given `nd_array`.
+        max_seq_len: The maximum sequence length to split at (and zero-pad).
+
+    Returns: A list of n np.ndarrays, resulting from splitting and zero-padding the
+        given `nd_array`.
+    """
     ret = []
 
-    # item_list = deque(item_list)
     cursor = 0
     for episode_len in episode_lens:
-        # episode_item_list = []
         items = BatchedNdArray(nd_array[cursor : cursor + episode_len])
-        # episode_item_list.append(items)
         ret.extend(split_and_zero_pad([items], max_seq_len))
         cursor += episode_len
 
@@ -167,7 +200,10 @@ def split_and_zero_pad_n_episodes(nd_array, episode_lens, max_seq_len):
 
 
 @DeveloperAPI
-def unpad_data_if_necessary(episode_lens, data):
+def unpad_data_if_necessary(
+    episode_lens: List[int],
+    data: np._typing.NDArray,
+) -> np._typing.NDArray:
     """Removes right-side zero-padding from data based on `episode_lens`.
 
     ..testcode::

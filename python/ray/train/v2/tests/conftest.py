@@ -3,6 +3,9 @@ import logging
 import pytest
 
 import ray
+from ray.train.v2._internal.constants import (
+    ENABLE_STATE_ACTOR_RECONCILIATION_ENV_VAR,
+)
 
 
 @pytest.fixture()
@@ -25,3 +28,9 @@ def setup_logging():
 def shutdown_only():
     yield None
     ray.shutdown()
+
+
+@pytest.fixture(autouse=True)
+def disable_state_actor_polling(monkeypatch):
+    monkeypatch.setenv(ENABLE_STATE_ACTOR_RECONCILIATION_ENV_VAR, "0")
+    yield

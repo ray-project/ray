@@ -139,35 +139,6 @@ class GcsSubscriber {
 };
 
 // This client is only supposed to be used from Cython / Python
-class RAY_EXPORT PythonGcsPublisher {
- public:
-  explicit PythonGcsPublisher(const std::string &gcs_address);
-
-  /// Connect to the publisher service of the GCS.
-  /// This function must be called before calling other functions.
-  ///
-  /// \return Status
-  Status Connect();
-
-  /// Publish error information to GCS.
-  Status PublishError(const std::string &key_id,
-                      const rpc::ErrorTableData &data,
-                      int64_t num_retries);
-
-  /// Publish logs to GCS.
-  Status PublishLogs(const std::string &key_id, const rpc::LogBatch &log_batch);
-
- private:
-  Status DoPublishWithRetries(const rpc::GcsPublishRequest &request,
-                              int64_t num_retries,
-                              int64_t timeout_ms);
-  std::unique_ptr<rpc::InternalPubSubGcsService::Stub> pubsub_stub_;
-  std::shared_ptr<grpc::Channel> channel_;
-  std::string gcs_address_;
-  int gcs_port_;
-};
-
-// This client is only supposed to be used from Cython / Python
 class RAY_EXPORT PythonGcsSubscriber {
  public:
   explicit PythonGcsSubscriber(const std::string &gcs_address,

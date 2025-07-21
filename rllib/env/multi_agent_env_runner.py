@@ -76,7 +76,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
             config: An `AlgorithmConfig` object containing all settings needed to
                 build this `EnvRunner` class.
         """
-        super().__init__(config=config)
+        super().__init__(config=config, **kwargs)
 
         # Raise an Error, if the provided config is not a multi-agent one.
         if not self.config.is_multi_agent:
@@ -87,9 +87,6 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 "policy_mapping_fn=...)`."
             )
 
-        # Get the worker index on which this instance is running.
-        self.worker_index: int = kwargs.get("worker_index")
-        self.tune_trial_id: str = kwargs.get("tune_trial_id")
         self.spaces = kwargs.get("spaces", {})
 
         self._setup_metrics()
@@ -545,7 +542,12 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         self._ongoing_episodes_for_metrics.clear()
 
         # Try resetting the environment.
-        observations, infos = self._try_env_reset()
+        observations, infos = self._try_env_reset(
+            # Only seed (if seed provided) upon initial reset.
+            seed=self._seed if self._needs_initial_reset else None,
+            # TODO (sven): Support options?
+            options=None,
+        )
 
         # Set the initial obs and infos in the episodes.
         for env_index in range(self.num_envs):
@@ -922,21 +924,26 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         self._make_on_episode_callback("on_episode_created", env_index, episodes)
 
     def _make_on_episode_callback(
-        self, which: str, idx: int, episodes: List[MultiAgentEpisode] = None
+        self, which: str, idx: int, episodes: List[MultiAgentEpisode]
     ):
-        # episode = episode if episode is not None else self._episode
+        kwargs = dict(
+            episode=episodes[idx],
+            env_runner=self,
+            metrics_logger=self.metrics,
+            env=self.env.unwrapped,
+            rl_module=self.module,
+            env_index=idx,
+        )
+        if which == "on_episode_end":
+            kwargs["prev_episode_chunks"] = self._ongoing_episodes_for_metrics[
+                episodes[idx].id_
+            ]
+
         make_callback(
             which,
             callbacks_objects=self._callbacks,
             callbacks_functions=getattr(self.config, f"callbacks_{which}"),
-            kwargs=dict(
-                episode=episodes[idx],
-                env_runner=self,
-                metrics_logger=self.metrics,
-                env=self.env.unwrapped,
-                rl_module=self.module,
-                env_index=idx,
-            ),
+            kwargs=kwargs,
         )
 
     def _increase_sampled_metrics(self, num_steps, next_obs, episode):

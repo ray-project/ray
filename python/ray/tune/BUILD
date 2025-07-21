@@ -152,6 +152,17 @@ py_test(
 )
 
 py_test(
+    name = "test_env_callbacks",
+    size = "small",
+    srcs = ["tests/test_env_callbacks.py"],
+    tags = [
+        "exclusive",
+        "team:ml",
+    ],
+    deps = [":tune_lib"],
+)
+
+py_test(
     name = "test_experiment",
     size = "small",
     srcs = ["tests/test_experiment.py"],
@@ -214,17 +225,6 @@ py_test(
         "tests/test_multi_tenancy.py",
     ],
     tags = ["team:ml"],
-    deps = [":tune_lib"],
-)
-
-py_test(
-    name = "test_multinode_sync",
-    size = "large",
-    srcs = ["tests/test_multinode_sync.py"],
-    tags = [
-        "multinode",
-        "team:ml",
-    ],
     deps = [":tune_lib"],
 )
 

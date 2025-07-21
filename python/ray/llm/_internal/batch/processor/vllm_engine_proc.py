@@ -1,49 +1,44 @@
 """The vLLM engine processor."""
+
 from typing import Any, Dict, Optional
 
+import transformers
 from pydantic import Field, root_validator
 
-from ray.data.block import UserDefinedFunction
-
 import ray
+from ray.data.block import UserDefinedFunction
+from ray.llm._internal.batch.observability.usage_telemetry.usage import (
+    BatchModelTelemetry,
+    TelemetryAgent,
+    get_or_create_telemetry_agent,
+)
 from ray.llm._internal.batch.processor.base import (
+    DEFAULT_MAX_TASKS_IN_FLIGHT,
+    OfflineProcessorConfig,
     Processor,
-    ProcessorConfig,
     ProcessorBuilder,
 )
 from ray.llm._internal.batch.stages import (
-    vLLMEngineStage,
     ChatTemplateStage,
+    DetokenizeStage,
     PrepareImageStage,
     TokenizeStage,
-    DetokenizeStage,
+    vLLMEngineStage,
 )
 from ray.llm._internal.batch.stages.vllm_engine_stage import vLLMTaskType
-from ray.llm._internal.batch.observability.usage_telemetry.usage import (
-    TelemetryAgent,
-    BatchModelTelemetry,
-)
 from ray.llm._internal.common.observability.telemetry_utils import DEFAULT_GPU_TYPE
 from ray.llm._internal.common.utils.download_utils import (
-    download_model_files,
     NodeModelDownloadable,
+    download_model_files,
 )
-from ray.llm._internal.batch.observability.usage_telemetry.usage import (
-    get_or_create_telemetry_agent,
-)
-
-import transformers
 
 DEFAULT_MODEL_ARCHITECTURE = "UNKNOWN_MODEL_ARCHITECTURE"
 
 
-class vLLMEngineProcessorConfig(ProcessorConfig):
+class vLLMEngineProcessorConfig(OfflineProcessorConfig):
     """The configuration for the vLLM engine processor."""
 
     # vLLM stage configurations.
-    model_source: str = Field(
-        description="The model source to use for the vLLM engine.",
-    )
     engine_kwargs: Dict[str, Any] = Field(
         default_factory=dict,
         description="The kwargs to pass to the vLLM engine. See "
@@ -55,47 +50,6 @@ class vLLMEngineProcessorConfig(ProcessorConfig):
         description="The task type to use. If not specified, will use "
         "'generate' by default.",
     )
-    runtime_env: Optional[Dict[str, Any]] = Field(
-        default=None,
-        description="The runtime environment to use for the vLLM engine.",
-    )
-    max_pending_requests: Optional[int] = Field(
-        default=None,
-        description="The maximum number of pending requests. If not specified, "
-        "will use the default value from the vLLM engine.",
-    )
-    max_concurrent_batches: int = Field(
-        default=4,
-        description="The maximum number of concurrent batches in the engine. "
-        "This is to overlap the batch processing to avoid the tail latency of "
-        "each batch. The default value may not be optimal when the batch size "
-        "or the batch processing latency is too small, but it should be good "
-        "enough for batch size >= 64.",
-    )
-
-    # Processor stage configurations.
-    apply_chat_template: bool = Field(
-        default=True, description="Whether to apply chat template."
-    )
-    chat_template: Optional[str] = Field(
-        default=None,
-        description="The chat template to use. This is usually not needed if the "
-        "model checkpoint already contains the chat template.",
-    )
-    tokenize: bool = Field(
-        default=True,
-        description="Whether to tokenize the input before passing it to the "
-        "vLLM engine. If not, vLLM will tokenize the prompt in the engine.",
-    )
-    detokenize: bool = Field(
-        default=True,
-        description="Whether to detokenize the output.",
-    )
-    has_image: bool = Field(
-        default=False,
-        description="Whether the input messages have images.",
-    )
-
     # LoRA configurations.
     dynamic_lora_loading_path: Optional[str] = Field(
         default=None,
@@ -134,13 +88,12 @@ def build_vllm_engine_processor(
 
     stages = []
     if isinstance(config.concurrency, int):
-        processor_concurrency = (1, config.concurrency)  # copied from previous logic
-    elif isinstance(config.concurrency, tuple):
-        processor_concurrency = config.concurrency
+        # For CPU-only stages, we leverage auto-scaling to recycle resources.
+        processor_concurrency = (1, config.concurrency)
     else:
         raise ValueError(
-            "``concurrency`` is expected to be set as an integer or a "
-            f"tuple of integers, but got: {config.concurrency}."
+            "``concurrency`` is expected to be set as an integer,"
+            f" but got: {config.concurrency}."
         )
 
     if config.has_image:
@@ -189,6 +142,8 @@ def build_vllm_engine_processor(
     stages.append(
         vLLMEngineStage(
             fn_constructor_kwargs=dict(
+                batch_size=config.batch_size,
+                max_concurrent_batches=config.max_concurrent_batches,
                 model=config.model_source,
                 engine_kwargs=config.engine_kwargs,
                 task_type=config.task_type,
@@ -197,8 +152,19 @@ def build_vllm_engine_processor(
             ),
             map_batches_kwargs=dict(
                 zero_copy_batch=True,
-                # The number of running replicas.
-                concurrency=config.concurrency,
+                # The number of running replicas. This is a deprecated field, but
+                # we need to set `max_tasks_in_flight_per_actor` through `compute`,
+                # which initiates enough many overlapping UDF calls per actor, to
+                # saturate `max_concurrency`.
+                compute=ray.data.ActorPoolStrategy(
+                    # vLLM start up time is significant, so if user give fixed
+                    # concurrency, start all instances without auto-scaling.
+                    min_size=config.concurrency,
+                    max_size=config.concurrency,
+                    max_tasks_in_flight_per_actor=config.experimental.get(
+                        "max_tasks_in_flight_per_actor", DEFAULT_MAX_TASKS_IN_FLIGHT
+                    ),
+                ),
                 # The number of running batches "per actor" in Ray Core level.
                 # This is used to make sure we overlap batches to avoid the tail
                 # latency of each batch.
@@ -235,7 +201,9 @@ def build_vllm_engine_processor(
         model_path,
         trust_remote_code=config.engine_kwargs.get("trust_remote_code", False),
     )
-    architecture = getattr(hf_config, "architectures", [DEFAULT_MODEL_ARCHITECTURE])[0]
+
+    architectures = getattr(hf_config, "architectures", [])
+    architecture = architectures[0] if architectures else DEFAULT_MODEL_ARCHITECTURE
 
     telemetry_agent = get_or_create_telemetry_agent()
     telemetry_agent.push_telemetry_report(

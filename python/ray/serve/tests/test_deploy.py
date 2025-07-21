@@ -4,13 +4,14 @@ import time
 from collections import defaultdict
 from typing import Callable
 
+import httpx
 import pytest
-import requests
 
 import ray
 from ray import serve
-from ray._private.pydantic_compat import ValidationError
-from ray._private.test_utils import SignalActor, wait_for_condition
+from ray._common.pydantic_compat import ValidationError
+from ray._common.test_utils import SignalActor, wait_for_condition
+from ray.serve._private.test_utils import get_application_url
 from ray.serve._private.utils import get_random_string
 from ray.serve.exceptions import RayServeException
 
@@ -34,7 +35,8 @@ def test_deploy_basic(serve_instance, use_handle):
             handle = serve.get_deployment_handle("d", "default")
             return handle.remote().result()
         else:
-            return requests.get("http://localhost:8000/d").json()
+            url = get_application_url("HTTP")
+            return httpx.get(f"{url}/d", timeout=None).json()
 
     serve.run(d.bind())
     resp, pid1 = call()
@@ -55,6 +57,52 @@ def test_deploy_basic(serve_instance, use_handle):
     resp, pid3 = call()
     assert resp == "code version 2"
     assert pid3 != pid2
+
+
+@pytest.mark.parametrize(
+    "component_name_with_special_character",
+    [
+        "test@component",
+        "test#123",
+        "component/name",
+        "component.name",
+        "component!name",
+        "component$name",
+        "component%name",
+        "component^name",
+        "component&name",
+        "component*name",
+        "component_name",
+    ],
+)
+def test_deploy_with_any_characters(
+    serve_instance, component_name_with_special_character
+):
+    """The function should not fail when the deployment name contains special characters."""
+
+    # V1 blocks on signal
+    @serve.deployment
+    class V1:
+        async def handler(self):
+            return True
+
+        async def __call__(self):
+            return await self.handler()
+
+    # Check that deployment succeeds with special characters
+    deployment = V1.options(name=component_name_with_special_character).bind()
+    serve.run(deployment, name="app")
+
+    status = serve.status()
+
+    handle_name = serve.get_deployment_handle(
+        component_name_with_special_character, "app"
+    ).deployment_name
+
+    assert handle_name == component_name_with_special_character
+
+    app = status.applications["app"]
+    assert app.status == "RUNNING"
 
 
 def test_empty_decorator(serve_instance):
@@ -111,7 +159,8 @@ def test_redeploy_single_replica(serve_instance, use_handle):
             handle = serve.get_deployment_handle(name, "app")
             return handle.handler.remote().result()
         else:
-            return requests.get("http://localhost:8000/").json()
+            url = get_application_url("HTTP", app_name="app")
+            return httpx.get(f"{url}/", timeout=None).json()
 
     signal_name = f"signal-{get_random_string()}"
     signal = SignalActor.options(name=signal_name).remote()
@@ -246,7 +295,8 @@ def test_reconfigure_multiple_replicas(serve_instance, use_handle):
             handle = serve.get_deployment_handle(name, "app")
             ret = handle.handler.remote().result()
         else:
-            ret = requests.get(f"http://localhost:8000/{name}").text
+            url = get_application_url("HTTP", app_name="app")
+            ret = httpx.get(f"{url}/{name}").text
 
         return ret.split("|")[0], ret.split("|")[1]
 
@@ -338,10 +388,12 @@ def test_reconfigure_does_not_run_while_there_are_active_queries(serve_instance)
     handle = serve.run(A.options(version="1", user_config={"a": 1}).bind())
     responses = [handle.remote() for _ in range(10)]
 
+    def check():
+        assert ray.get(signal.cur_num_waiters.remote()) == len(responses)
+        return True
+
     # Give the queries time to get to the replicas before the reconfigure.
-    wait_for_condition(
-        lambda: ray.get(signal.cur_num_waiters.remote()) == len(responses)
-    )
+    wait_for_condition(check)
 
     @ray.remote(num_cpus=0)
     def reconfigure():
@@ -387,7 +439,8 @@ def test_redeploy_scale_down(serve_instance, use_handle):
             handle = serve.get_app_handle("app")
             ret = handle.remote().result()
         else:
-            ret = requests.get(f"http://localhost:8000/{name}").text
+            url = get_application_url("HTTP", app_name="app")
+            ret = httpx.get(f"{url}/{name}").text
 
         return ret.split("|")[0], ret.split("|")[1]
 
@@ -438,7 +491,8 @@ def test_redeploy_scale_up(serve_instance, use_handle):
             handle = serve.get_app_handle("app")
             ret = handle.remote().result()
         else:
-            ret = requests.get(f"http://localhost:8000/{name}").text
+            url = get_application_url("HTTP", app_name="app")
+            ret = httpx.get(f"{url}/{name}").text
 
         return ret.split("|")[0], ret.split("|")[1]
 
@@ -664,8 +718,10 @@ def test_deploy_multiple_apps_batched(serve_instance):
     assert serve.get_app_handle("a").remote().result() == "a"
     assert serve.get_app_handle("b").remote().result() == "b"
 
-    assert requests.get("http://localhost:8000/a").text == "a"
-    assert requests.get("http://localhost:8000/b").text == "b"
+    urla = get_application_url("HTTP", app_name="a", use_localhost=True)
+    urlb = get_application_url("HTTP", app_name="b", use_localhost=True)
+    assert httpx.get(urla).text == "a"
+    assert httpx.get(urlb).text == "b"
 
 
 def test_redeploy_multiple_apps_batched(serve_instance):

@@ -14,6 +14,7 @@ from unittest.mock import MagicMock
 from urllib.parse import quote_plus
 
 import pytest
+from ray._common.test_utils import wait_for_condition
 import requests
 from click.testing import CliRunner
 from requests.exceptions import ConnectionError, HTTPError
@@ -35,7 +36,6 @@ from ray._private.test_utils import (
     get_error_message,
     init_error_pubsub,
     run_string_as_driver,
-    wait_for_condition,
     wait_until_server_available,
     wait_until_succeeded_without_exception,
 )
@@ -124,7 +124,6 @@ def test_basic(ray_start_regular):
 
     all_processes = ray._private.worker._global_node.all_processes
     assert ray_constants.PROCESS_TYPE_DASHBOARD in all_processes
-    assert ray_constants.PROCESS_TYPE_REPORTER not in all_processes
     dashboard_proc_info = all_processes[ray_constants.PROCESS_TYPE_DASHBOARD][0]
     dashboard_proc = psutil.Process(dashboard_proc_info.process.pid)
     assert dashboard_proc.status() in [
@@ -1074,17 +1073,6 @@ def test_agent_does_not_depend_on_serve(shutdown_only):
 def test_agent_port_conflict(shutdown_only):
     ray.shutdown()
 
-    # start ray and test agent works.
-    ray.init(include_dashboard=True)
-
-    node = ray._private.worker._global_node
-    agent_url = node.node_ip_address + ":" + str(node.dashboard_agent_listen_port)
-    wait_for_condition(
-        lambda: requests.get(f"http://{agent_url}/api/serve/applications/").status_code
-        == 200
-    )
-    ray.shutdown()
-
     # ocuppy the port with a socket.
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
@@ -1108,23 +1096,6 @@ def test_agent_port_conflict(shutdown_only):
     agent_pid = agent_proc.pid
 
     check_agent_register(raylet_proc, agent_pid)
-
-    # Release the port from socket.
-    s.close()
-
-    agent_url = node.node_ip_address + ":" + str(node.dashboard_agent_listen_port)
-
-    # Check that Serve-dependent features fail.
-    try:
-        wait_for_condition(
-            lambda: requests.get(
-                f"http://{agent_url}/api/serve/applications/"
-            ).status_code
-            == 200
-        )
-        assert False
-    except Exception as e:
-        assert e is not None
 
 
 @pytest.mark.skipif(

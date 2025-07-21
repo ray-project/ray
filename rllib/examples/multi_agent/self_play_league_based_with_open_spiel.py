@@ -133,7 +133,7 @@ if __name__ == "__main__":
             "league_exploiter_0",
             "league_exploiter_1",
         }
-        if args.enable_new_api_stack:
+        if not args.old_api_stack:
             policies = names
             spec = {
                 mid: RLModuleSpec(
@@ -173,13 +173,13 @@ if __name__ == "__main__":
         .callbacks(
             functools.partial(
                 SelfPlayLeagueBasedCallback
-                if args.enable_new_api_stack
+                if not args.old_api_stack
                 else SelfPlayLeagueBasedCallbackOldAPIStack,
                 win_rate_threshold=args.win_rate_threshold,
             )
         )
         .env_runners(
-            num_envs_per_env_runner=1 if args.enable_new_api_stack else 5,
+            num_envs_per_env_runner=1 if not args.old_api_stack else 5,
         )
         .training(
             num_epochs=20,
@@ -191,7 +191,7 @@ if __name__ == "__main__":
             policies=_get_multi_agent()["policies"],
             policy_mapping_fn=(
                 agent_to_module_mapping_fn
-                if args.enable_new_api_stack
+                if not args.old_api_stack
                 else policy_mapping_fn
             ),
             # At first, only train main_0 (until good enough to win against
@@ -233,7 +233,7 @@ if __name__ == "__main__":
                 raise ValueError("No last checkpoint found in results!")
             algo.restore(checkpoint)
 
-        if args.enable_new_api_stack:
+        if not args.old_api_stack:
             rl_module = algo.get_module("main")
 
         # Play from the command line against the trained agent
@@ -250,7 +250,7 @@ if __name__ == "__main__":
                     action = ask_user_for_action(time_step)
                 else:
                     obs = np.array(time_step.observations["info_state"][player_id])
-                    if args.enable_new_api_stack:
+                    if not args.old_api_stack:
                         action = np.argmax(
                             rl_module.forward_inference(
                                 {"obs": torch.from_numpy(obs).unsqueeze(0).float()}

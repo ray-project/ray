@@ -18,7 +18,7 @@ class HealthzAgent(dashboard_utils.DashboardAgentModule):
     def __init__(self, dashboard_agent):
         super().__init__(dashboard_agent)
         self._health_checker = HealthChecker(
-            dashboard_agent.gcs_aio_client,
+            dashboard_agent.gcs_client,
             f"{dashboard_agent.ip}:{dashboard_agent.node_manager_port}",
         )
 

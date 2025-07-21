@@ -8,6 +8,7 @@ from typing import (
     ContextManager,
     Dict,
     Generator,
+    Generic,
     List,
     Optional,
     TypeVar,
@@ -42,7 +43,7 @@ def construct_train_func(
     train_func: Union[Callable[[], T], Callable[[Dict[str, Any]], T]],
     config: Optional[Dict[str, Any]],
     train_func_context: ContextManager,
-    fn_arg_name: Optional[str] = "train_func",
+    fn_arg_name: Optional[str] = "train_loop_per_worker",
 ) -> Callable[[], T]:
     """Validates and constructs the training function to execute.
     Args:
@@ -86,6 +87,16 @@ def construct_train_func(
     return train_fn
 
 
+class ObjectRefWrapper(Generic[T]):
+    """Thin wrapper around ray.put to manually control dereferencing."""
+
+    def __init__(self, obj: T):
+        self._ref = ray.put(obj)
+
+    def get(self) -> T:
+        return ray.get(self._ref)
+
+
 def date_str(include_ms: bool = False):
     pattern = "%Y-%m-%d_%H-%M-%S"
     if include_ms:
@@ -106,7 +117,7 @@ def _copy_doc(copy_func):
 
 
 def ray_get_safe(
-    object_refs: Union[ObjectRef, List[ObjectRef]]
+    object_refs: Union[ObjectRef, List[ObjectRef]],
 ) -> Union[Any, List[Any]]:
     """This is a safe version of `ray.get` that raises an exception immediately
     if an input task dies, while the others are still running.
@@ -169,3 +180,33 @@ def get_module_name(obj: object) -> str:
         Full module and qualified name as a string.
     """
     return f"{obj.__module__}.{obj.__qualname__}"
+
+
+def get_callable_name(fn: Callable) -> str:
+    """Returns a readable name for any callable.
+
+    Examples:
+
+        >>> get_callable_name(lambda x: x)
+        '<lambda>'
+        >>> def foo(a, b): pass
+        >>> get_callable_name(foo)
+        'foo'
+        >>> from functools import partial
+        >>> bar = partial(partial(foo, a=1), b=2)
+        >>> get_callable_name(bar)
+        'foo'
+        >>> class Dummy:
+        ...     def __call__(self, a, b): pass
+        >>> get_callable_name(Dummy())
+        'Dummy'
+    """
+    if isinstance(fn, functools.partial):
+        return get_callable_name(fn.func)
+
+    # Use __name__ for regular functions and lambdas
+    if hasattr(fn, "__name__"):
+        return fn.__name__
+
+    # Fallback to the class name for objects that implement __call__
+    return fn.__class__.__name__

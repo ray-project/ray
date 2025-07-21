@@ -4,7 +4,6 @@ from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.utils.test_utils import add_rllib_example_script_args
 
 parser = add_rllib_example_script_args(default_timesteps=400000, default_reward=-300)
-parser.set_defaults(enable_new_api_stack=True)
 # Use `parser` to add your own custom command line options to this script
 # and (if needed) use their values to set up `config` below.
 args = parser.parse_args()
@@ -15,7 +14,7 @@ config = (
     .env_runners(
         num_env_runners=2,
         num_envs_per_env_runner=20,
-        env_to_module_connector=lambda env: MeanStdFilter(),
+        env_to_module_connector=lambda env, spaces, device: MeanStdFilter(),
     )
     .training(
         train_batch_size_per_learner=1024,

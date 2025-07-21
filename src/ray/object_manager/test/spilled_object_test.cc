@@ -21,7 +21,6 @@
 
 #include "absl/strings/str_format.h"
 #include "gtest/gtest.h"
-#include "ray/common/test_util.h"
 #include "ray/object_manager/chunk_object_reader.h"
 #include "ray/object_manager/memory_object_reader.h"
 #include "ray/object_manager/spilled_object_reader.h"
