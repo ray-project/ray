@@ -103,9 +103,9 @@ class ImageClassificationJpegRayDataLoaderFactory(
                 include_paths=False,
                 partitioning=train_partitioning,
                 filesystem=filesystem,
-            )
+            ).map(get_preprocess_map_fn(random_transforms=True))
+            # Add limit after map to enable operator fusion.
             .limit(self.get_dataloader_config().limit_training_rows)
-            .map(get_preprocess_map_fn(random_transforms=True))
         )
 
         # Create validation dataset with same partitioning
@@ -117,9 +117,9 @@ class ImageClassificationJpegRayDataLoaderFactory(
                 include_paths=False,
                 partitioning=val_partitioning,
                 filesystem=filesystem,
-            )
+            ).map(get_preprocess_map_fn(random_transforms=False))
+            # Add limit after map to enable operator fusion.
             .limit(self.get_dataloader_config().limit_validation_rows)
-            .map(get_preprocess_map_fn(random_transforms=False))
         )
 
         return {
