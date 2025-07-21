@@ -1,4 +1,5 @@
 import logging
+import os
 import threading
 from collections import defaultdict
 from dataclasses import dataclass
@@ -118,18 +119,33 @@ class RayMetricsMonitor:
         sampling_interval: float, default to 10. The interval (in seconds) at which to pull system
             metrics.
     """
-    def __init__(self, sampling_interval: float = 10):
+    def __init__(self, ray_head_ip: str, sampling_interval: float = 10):
         import mlflow
         from mlflow.tracking.client import MlflowClient
         from mlflow.utils.autologging_utils import BatchMetricsLogger
+        from mlflow.system_metrics.system_metrics_monitor import SystemMetricsMonitor
 
         self._mlflow_experiment_id = mlflow.tracking.fluent._get_experiment_id()
-        self._run_id = MlflowClient().create_run(self._mlflow_experiment_id).info.run_id
+
+        if mlflow.active_run() is not None:
+            raise RuntimeError(
+                "Before starting RayMetricsMonitor, ensure the current active MLflow run is "
+                "terminated."
+            )
+        self._run_id = mlflow.start_run()
+
+        # export the MLflow run ID so that user code can log other data into
+        # the same run.
+        os.environ["MLFLOW_RUN_ID"] = self._run_id
+
         self._sampling_interval = sampling_interval
         self._logging_step = 0
         self.mlflow_logger = BatchMetricsLogger(self._run_id)
         self._shutdown_event = threading.Event()
         self._process = None
+
+        os.environ["MLFLOW_SYSTEM_METRICS_NODE_ID"] = ray_head_ip
+        self._mlflow_sys_metrics_monitor = SystemMetricsMonitor(run_id=self._run_id)
 
     @property
     def mlflow_experiment_id(self):
@@ -151,6 +167,13 @@ class RayMetricsMonitor:
         except Exception as e:
             _logger.error(f"Failed to start RayMetricsMonitor thread: {e}")
             self._process = None
+
+        # Beside `self.monitor` that collects Ray cluster specific metrics,
+        # Using MLFlow builtin `SystemMetricsMonitor` can collect general
+        # system metrics for CPU/GPU/disk/network ect.
+        # Note the MLFlow builtin `SystemMetricsMonitor` only monitors
+        # local node.
+        self._mlflow_sys_metrics_monitor.start()
 
     def collect_metrics(self):
         try:
@@ -198,6 +221,9 @@ class RayMetricsMonitor:
             return
         _logger.info("Stopping system metrics monitoring...")
         self._shutdown_event.set()
+        self._mlflow_sys_metrics_monitor.finish()
+        del os.environ["MLFLOW_RUN_ID"]
+        del os.environ["MLFLOW_SYSTEM_METRICS_NODE_ID"]
         try:
             self._process.join()
             self.mlflow_logger.flush()
