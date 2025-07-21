@@ -277,7 +277,7 @@ async def _main(
             # Microbenchmark: GRPC throughput
             for max_ongoing_requests in throughput_max_ongoing_requests:
                 serve.start(grpc_options=serve_grpc_options)
-                serve.run(GrpcDeployment.bind())
+                serve.run(GrpcDeployment.options(max_ongoing_requests=max_ongoing_requests).bind())
                 target = get_application_url(
                     protocol=RequestProtocol.GRPC, use_localhost=True
                 )
@@ -309,7 +309,11 @@ async def _main(
         if run_throughput:
             # Microbenchmark: Handle throughput
             for max_ongoing_requests in throughput_max_ongoing_requests:
-                h: DeploymentHandle = serve.run(Benchmarker.options(max_ongoing_requests=max_ongoing_requests).bind(Noop.bind()))
+                h: DeploymentHandle = serve.run(
+                    Benchmarker.options(max_ongoing_requests=max_ongoing_requests).bind(
+                        Noop.options(max_ongoing_requests=max_ongoing_requests).bind()
+                    )
+                )
                 mean, std, _ = await h.run_throughput_benchmark.remote(
                     batch_size=BATCH_SIZE,
                     num_trials=NUM_TRIALS,
@@ -360,7 +364,14 @@ async def _main(
 @click.option("--run-latency", is_flag=True)
 @click.option("--run-throughput", is_flag=True)
 @click.option("--run-streaming", is_flag=True)
-@click.option("--throughput-max-ongoing-requests", type=list, default=[5, 100])
+@click.option(
+    "--throughput-max-ongoing-requests",
+    "-t",
+    multiple=True,
+    type=int,
+    default=[5, 100],
+    help="Max ongoing requests for throughput benchmarks. Default: [5, 100]",
+)
 def main(
     output_path: Optional[str],
     run_all: bool,
