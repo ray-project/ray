@@ -33,7 +33,10 @@ from ray_release.exception import ReleaseTestConfigError
 from ray_release.wheels import (
     DEFAULT_BRANCH,
 )
+from ray_release.configs.global_config import init_global_config
+from ray_release.bazel import bazel_runfile
 
+init_global_config(bazel_runfile("release/ray_release/configs/oss_config.yaml"))
 
 class MockBuildkiteAgent:
     def __init__(self, return_dict: Dict):
@@ -420,6 +423,7 @@ class BuildkiteSettingsTest(unittest.TestCase):
                     "frequency": "nightly",
                     "env": "kuberay",
                     "team": "team_2",
+                    "run": {"type": "job"},
                 }
             ),
         ]
@@ -453,6 +457,7 @@ class BuildkiteSettingsTest(unittest.TestCase):
                 ("other_2", True),
                 ("other_3", False),
                 ("test_3", False),
+                ("test_4.kuberay", False),
             ],
         )
 
@@ -464,6 +469,7 @@ class BuildkiteSettingsTest(unittest.TestCase):
                 ("test_2", True),
                 ("other_2", False),
                 ("test_3", False),
+                ("test_4.kuberay", False),
             ],
         )
 
@@ -479,6 +485,7 @@ class BuildkiteSettingsTest(unittest.TestCase):
                 ("test_2", True),
                 ("other_2", True),
                 ("test_3", False),
+                ("test_4.kuberay", False),
             ],
         )
 
@@ -503,7 +510,7 @@ class BuildkiteSettingsTest(unittest.TestCase):
             test_attr_regex_filters={"name": "test.*"},
         )
         self.assertSequenceEqual(
-            filtered, [("test_1", False), ("test_2", True), ("test_3", False)]
+            filtered, [("test_1", False), ("test_2", True), ("test_3", False), ("test_4.kuberay", False)]
         )
 
         filtered = self._filter_names_smoke(
@@ -531,7 +538,7 @@ class BuildkiteSettingsTest(unittest.TestCase):
             frequency=Frequency.ANY,
             test_attr_regex_filters={"run/type": "job"},
         )
-        self.assertSequenceEqual(filtered, [("test_1", False), ("other_2", False)])
+        self.assertSequenceEqual(filtered, [("test_1", False), ("other_2", False), ("test_4.kuberay", False)])
 
         filtered = self._filter_names_smoke(
             tests,

@@ -410,6 +410,9 @@ py_test(
         "release_unit",
         "team:ci",
     ],
+    data = [
+        "ray_release/configs/oss_config.yaml",
+    ],
     deps = [
         ":ray_release",
         bk_require("pyyaml"),
