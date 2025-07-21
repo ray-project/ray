@@ -90,7 +90,7 @@ class DependencySetManager:
     def exec_uv_cmd(self, cmd: str, args: List[str]) -> str:
         cmd = f"{uv_binary()} pip {cmd} {' '.join(args)}"
         click.echo(f"Executing command: {cmd}")
-        status = subprocess.run(cmd, shell=True)
+        status = subprocess.run(cmd, shell=True, cwd=self.workspace.dir)
         if status.returncode != 0:
             raise RuntimeError(f"Failed to execute command: {cmd}")
         return status.stdout
@@ -132,11 +132,11 @@ class DependencySetManager:
         args = self.override_uv_flags(args)
         if constraints:
             for constraint in constraints:
-                args.extend(["-c", self.get_path(constraint)])
+                args.extend(["-c", constraint])
         if requirements:
             for requirement in requirements:
-                args.extend([self.get_path(requirement)])
-        args.extend(["-o", self.get_path(output)])
+                args.extend([requirement])
+        args.extend(["-o", output])
         self.exec_uv_cmd("compile", args)
 
     def subset(
@@ -175,9 +175,6 @@ class DependencySetManager:
             name=name,
             output=output,
         )
-
-    def get_path(self, path: str) -> str:
-        return (Path(self.workspace.dir) / path).as_posix()
 
     def override_uv_flags(self, flags: List[str]):
         found = False
