@@ -484,8 +484,7 @@ service CoreWorkerService {
       returns (ActorCallArgWaitCompleteReply);
 
   // A worker asks the object's owner worker about the object's current status.
-  // Failure: TODO, Needs better failure behavior, currently assumes owner is dead and
-  // object is lost.
+  // Failure: Retries, it's idempotent.
   rpc GetObjectStatus(GetObjectStatusRequest) returns (GetObjectStatusReply);
 
   // From GCS actor manager to the actor's owner.

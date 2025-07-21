@@ -13,7 +13,6 @@
 // limitations under the License.
 
 #include "ray/core_worker/core_worker.h"
-
 #include <algorithm>
 #include <future>
 #include <memory>
@@ -3990,6 +3989,7 @@ void CoreWorker::HandleRayletNotifyGCSRestart(
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
+// HandleGetObjectStatus is expected to be idempotent
 void CoreWorker::HandleGetObjectStatus(rpc::GetObjectStatusRequest request,
                                        rpc::GetObjectStatusReply *reply,
                                        rpc::SendReplyCallback send_reply_callback) {
