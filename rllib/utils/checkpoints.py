@@ -204,7 +204,6 @@ class Checkpointable(abc.ABC):
 
         # Write components of `self` that themselves are `Checkpointable`.
         for comp_name, comp in self.get_checkpointable_components():
-            print(f"{comp_name} ...")
             # If subcomponent's name is not in `state`, ignore it and don't write this
             # subcomponent's state to disk.
             if _state_provided and comp_name not in state:
