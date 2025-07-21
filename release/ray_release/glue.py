@@ -475,7 +475,7 @@ def run_release_test_kuberay(
         result.status = result_status.value
         if runtime is not None:
             result.runtime = runtime
-        raise pipeline_exception
+        raise
     return result
 
 
