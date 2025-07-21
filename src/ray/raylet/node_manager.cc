@@ -1078,14 +1078,12 @@ void NodeManager::ProcessClientMessage(const std::shared_ptr<ClientConnection> &
 void NodeManager::ProcessRegisterClientRequestMessage(
     const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data) {
   auto *message = flatbuffers::GetRoot<protocol::RegisterClientRequest>(message_data);
-  RAY_UNUSED(
-      ProcessRegisterClientRequestMessageImpl(client, message, /*port=*/std::nullopt));
+  RAY_UNUSED(ProcessRegisterClientRequestMessageImpl(client, message));
 }
 
 Status NodeManager::ProcessRegisterClientRequestMessageImpl(
     const std::shared_ptr<ClientConnection> &client,
-    const ray::protocol::RegisterClientRequest *message,
-    std::optional<int> port) {
+    const ray::protocol::RegisterClientRequest *message) {
   client->Register();
 
   Language language = static_cast<Language>(message->language());
@@ -1116,34 +1114,30 @@ Status NodeManager::ProcessRegisterClientRequestMessageImpl(
                                worker_startup_token));
 
   std::function<void(Status, int)> send_reply_callback;
-  if (port.has_value()) {
-    worker->SetAssignedPort(*port);
-  } else {
-    send_reply_callback = [this, client](Status status, int assigned_port) {
-      flatbuffers::FlatBufferBuilder fbb;
-      auto reply =
-          ray::protocol::CreateRegisterClientReply(fbb,
-                                                   status.ok(),
-                                                   fbb.CreateString(status.ToString()),
-                                                   to_flatbuf(fbb, self_node_id_),
-                                                   assigned_port);
-      fbb.Finish(reply);
-      client->WriteMessageAsync(
-          static_cast<int64_t>(protocol::MessageType::RegisterClientReply),
-          fbb.GetSize(),
-          fbb.GetBufferPointer(),
-          [this, client](const ray::Status &status) {
-            if (!status.ok()) {
-              DisconnectClient(client,
-                               /*graceful=*/false,
-                               rpc::WorkerExitType::SYSTEM_ERROR,
-                               "Worker is failed because the raylet couldn't reply the "
-                               "registration request: " +
-                                   status.ToString());
-            }
-          });
-    };
-  }
+  send_reply_callback = [this, client](Status status, int assigned_port) {
+    flatbuffers::FlatBufferBuilder fbb;
+    auto reply =
+        ray::protocol::CreateRegisterClientReply(fbb,
+                                                 status.ok(),
+                                                 fbb.CreateString(status.ToString()),
+                                                 to_flatbuf(fbb, self_node_id_),
+                                                 assigned_port);
+    fbb.Finish(reply);
+    client->WriteMessageAsync(
+        static_cast<int64_t>(protocol::MessageType::RegisterClientReply),
+        fbb.GetSize(),
+        fbb.GetBufferPointer(),
+        [this, client](const ray::Status &status) {
+          if (!status.ok()) {
+            DisconnectClient(client,
+                             /*graceful=*/false,
+                             rpc::WorkerExitType::SYSTEM_ERROR,
+                             "Worker is failed because the raylet couldn't reply the "
+                             "registration request: " +
+                                 status.ToString());
+          }
+        });
+  };
 
   if (worker_type == rpc::WorkerType::WORKER ||
       worker_type == rpc::WorkerType::SPILL_WORKER ||
@@ -1163,14 +1157,8 @@ Status NodeManager::RegisterForNewWorker(
   RAY_CHECK_GE(pid, 0);
   RAY_CHECK(send_reply_callback);
 
-  Status status = Status::OK();
-  if (send_reply_callback) {
-    status = worker_pool_.RegisterWorker(
-        worker, pid, worker_startup_token, send_reply_callback);
-  } else {
-    status = worker_pool_.RegisterWorker(worker, pid, worker_startup_token);
-  }
-
+  Status status =
+      worker_pool_.RegisterWorker(worker, pid, worker_startup_token, send_reply_callback);
   if (!status.ok()) {
     // If the worker failed to register to Raylet, trigger task dispatching here to
     // allow new worker processes to be started (if capped by

@@ -455,8 +455,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
       const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data);
   Status ProcessRegisterClientRequestMessageImpl(
       const std::shared_ptr<ClientConnection> &client,
-      const ray::protocol::RegisterClientRequest *message,
-      std::optional<int> port);
+      const ray::protocol::RegisterClientRequest *message);
 
   // Register a new worker into worker pool.
   Status RegisterForNewWorker(std::shared_ptr<WorkerInterface> worker,
