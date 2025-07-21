@@ -29,7 +29,10 @@
 namespace ray {
 namespace rpc {
 
-/// Client used by workers for communicating with a node manager server.
+/// TODO(dayshah): Kill this completely. This class should only be used by the
+/// RayletClient which is just a wrapper around this. This exists for the legacy reason
+/// that all the function names in RayletClient have to change if you move the things in
+/// here into RayletClient.
 class NodeManagerWorkerClient {
  public:
   /// Constructor.
@@ -37,67 +40,54 @@ class NodeManagerWorkerClient {
   /// \param[in] address Address of the node manager server.
   /// \param[in] port Port of the node manager server.
   /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
-  static std::shared_ptr<NodeManagerWorkerClient> make(
-      const std::string &address,
-      const int port,
-      ClientCallManager &client_call_manager) {
-    // C++ limitation: std::make_shared cannot be used because std::shared_ptr cannot
-    // invoke private constructors.
-    auto instance = new NodeManagerWorkerClient(address, port, client_call_manager);
-    return std::shared_ptr<NodeManagerWorkerClient>(instance);
-  }
+  NodeManagerWorkerClient(const std::string &address,
+                          const int port,
+                          ClientCallManager &client_call_manager)
+      : grpc_client_{std::make_unique<GrpcClient<NodeManagerService>>(
+            address, port, client_call_manager)} {}
 
   std::shared_ptr<grpc::Channel> Channel() const { return grpc_client_->Channel(); }
 
-  /// Get a resource load
   VOID_RPC_CLIENT_METHOD(NodeManagerService,
                          GetResourceLoad,
                          grpc_client_,
                          /*method_timeout_ms*/ -1, )
 
-  /// Cancel tasks with certain resource shapes
   VOID_RPC_CLIENT_METHOD(NodeManagerService,
                          CancelTasksWithResourceShapes,
                          grpc_client_,
                          /*method_timeout_ms*/ -1, )
 
-  /// Notify GCS restart.
   VOID_RPC_CLIENT_METHOD(NodeManagerService,
                          NotifyGCSRestart,
                          grpc_client_,
                          /*method_timeout_ms*/ -1, )
 
-  /// Request a worker lease.
   VOID_RPC_CLIENT_METHOD(NodeManagerService,
                          RequestWorkerLease,
                          grpc_client_,
                          /*method_timeout_ms*/ -1, )
 
-  /// Request a prestart worker.
   VOID_RPC_CLIENT_METHOD(NodeManagerService,
                          PrestartWorkers,
                          grpc_client_,
                          /*method_timeout_ms*/ -1, )
 
-  /// Report task backlog information
   VOID_RPC_CLIENT_METHOD(NodeManagerService,
                          ReportWorkerBacklog,
                          grpc_client_,
                          /*method_timeout_ms*/ -1, )
 
-  /// Return a worker lease.
   VOID_RPC_CLIENT_METHOD(NodeManagerService,
                          ReturnWorker,
                          grpc_client_,
                          /*method_timeout_ms*/ -1, )
 
-  /// Release unused workers.
   VOID_RPC_CLIENT_METHOD(NodeManagerService,
                          ReleaseUnusedActorWorkers,
                          grpc_client_,
                          /*method_timeout_ms*/ -1, )
 
-  /// Shutdown the raylet gracefully.
   VOID_RPC_CLIENT_METHOD(NodeManagerService,
                          ShutdownRaylet,
                          grpc_client_,
@@ -113,49 +103,41 @@ class NodeManagerWorkerClient {
                          grpc_client_,
                          /*method_timeout_ms*/ -1, )
 
-  /// Cancel a pending worker lease request.
   VOID_RPC_CLIENT_METHOD(NodeManagerService,
                          CancelWorkerLease,
                          grpc_client_,
                          /*method_timeout_ms*/ -1, )
 
-  /// Request prepare resources for an atomic placement group creation.
   VOID_RPC_CLIENT_METHOD(NodeManagerService,
                          PrepareBundleResources,
                          grpc_client_,
                          /*method_timeout_ms*/ -1, )
 
-  /// Request commit resources for an atomic placement group creation.
   VOID_RPC_CLIENT_METHOD(NodeManagerService,
                          CommitBundleResources,
                          grpc_client_,
                          /*method_timeout_ms*/ -1, )
 
-  /// Return resource lease.
   VOID_RPC_CLIENT_METHOD(NodeManagerService,
                          CancelResourceReserve,
                          grpc_client_,
                          /*method_timeout_ms*/ -1, )
 
-  /// Notify the raylet to pin the provided object IDs.
   VOID_RPC_CLIENT_METHOD(NodeManagerService,
                          PinObjectIDs,
                          grpc_client_,
                          /*method_timeout_ms*/ -1, )
 
-  /// Trigger global GC across the cluster.
   VOID_RPC_CLIENT_METHOD(NodeManagerService,
                          GlobalGC,
                          grpc_client_,
                          /*method_timeout_ms*/ -1, )
 
-  /// Release unused bundles.
   VOID_RPC_CLIENT_METHOD(NodeManagerService,
                          ReleaseUnusedBundles,
                          grpc_client_,
                          /*method_timeout_ms*/ -1, )
 
-  /// Get the system config from Raylet.
   VOID_RPC_CLIENT_METHOD(NodeManagerService,
                          GetSystemConfig,
                          grpc_client_,
@@ -188,19 +170,6 @@ class NodeManagerWorkerClient {
                          /*method_timeout_ms*/ -1, )
 
  private:
-  /// Constructor.
-  ///
-  /// \param[in] address Address of the node manager server.
-  /// \param[in] port Port of the node manager server.
-  /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
-  NodeManagerWorkerClient(const std::string &address,
-                          const int port,
-                          ClientCallManager &client_call_manager) {
-    grpc_client_ = std::make_unique<GrpcClient<NodeManagerService>>(
-        address, port, client_call_manager);
-  };
-
-  /// The RPC client.
   std::unique_ptr<GrpcClient<NodeManagerService>> grpc_client_;
 };
 

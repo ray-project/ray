@@ -32,12 +32,12 @@ using RayletClientFactoryFn =
     std::function<std::shared_ptr<ray::RayletClientInterface>(const rpc::Address &)>;
 class NodeManagerClientPool {
  public:
-  /// Return an existing NodeManagerWorkerClient if exists, and connect to one if it does
+  /// Return an existing RayletClient if exists or connect to one if it does
   /// not. The returned pointer is borrowed, and expected to be used briefly.
   std::optional<std::shared_ptr<ray::RayletClientInterface>> GetOrConnectByID(
       ray::NodeID id);
 
-  /// Return an existing NodeManagerWorkerClient if exists, and connect to one if it does
+  /// Return an existing RayletClient if exists or connect to one if it does
   /// not. The returned pointer is borrowed, and expected to be used briefly.
   /// The function is guaranteed to return the non-nullptr.
   std::shared_ptr<ray::RayletClientInterface> GetOrConnectByAddress(
@@ -62,19 +62,18 @@ class NodeManagerClientPool {
   RayletClientFactoryFn DefaultClientFactory(
       rpc::ClientCallManager &client_call_manager) const {
     return [&](const rpc::Address &addr) {
-      auto nm_client = NodeManagerWorkerClient::make(
-          addr.ip_address(), addr.port(), client_call_manager);
       std::shared_ptr<ray::RayletClientInterface> raylet_client =
-          std::make_shared<ray::raylet::RayletClient>(nm_client);
+          std::make_shared<ray::raylet::RayletClient>(
+              addr.ip_address(), addr.port(), client_call_manager);
       return raylet_client;
     };
   };
 
   absl::Mutex mu_;
 
-  /// This factory function does the connection to NodeManagerWorkerClient, and is
+  /// This factory function makes the connection to the NodeManagerService, and is
   /// provided by the constructor (either the default implementation, above, or a
-  /// provided one)
+  /// provided one).
   RayletClientFactoryFn client_factory_;
 
   /// A pool of open connections by host:port. Clients can reuse the connection

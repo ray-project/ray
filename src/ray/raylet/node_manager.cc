@@ -2701,7 +2701,7 @@ void NodeManager::HandleFormatGlobalMemoryInfo(
 
   // Fetch from remote nodes.
   for (const auto &[node_id, address] : remote_node_manager_addresses_) {
-    auto client = rpc::NodeManagerWorkerClient::make(
+    auto client = std::make_shared<rpc::NodeManagerWorkerClient>(
         /*address=*/address.first, /*port=*/address.second, client_call_manager_);
     client->GetNodeStats(
         stats_req,
