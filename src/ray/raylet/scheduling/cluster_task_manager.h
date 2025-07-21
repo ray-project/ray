@@ -199,8 +199,6 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
 
   ILocalTaskManager &local_task_manager_;
 
-  /// TODO(swang): Add index from TaskID -> Work to avoid having to iterate
-  /// through queues to cancel tasks, etc.
   /// Queue of lease requests that are waiting for resources to become available.
   /// Tasks move from scheduled -> dispatch | waiting.
   absl::flat_hash_map<SchedulingClass, std::deque<std::shared_ptr<internal::Work>>>
