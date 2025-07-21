@@ -132,6 +132,19 @@ message CancelResourceReserveRequest {
 
 message CancelResourceReserveReply {}
 
+message ResizeLocalResourceInstancesRequest {
+  // Map of resource names to their desired total quantities
+  // For example: {"CPU": 4, "memory": 1000000}
+  map<string, double> resources = 1;
+}
+
+message ResizeLocalResourceInstancesReply {
+  // Current total resources after the resize operation
+  map<string, double> total_resources = 1;
+  // Current available resources after the resize operation
+  map<string, double> available_resources = 2;
+}
+
 // Release a worker back to its raylet.
 message ReturnWorkerRequest {
   // Port of the leased worker that we are now returning.
@@ -449,6 +462,15 @@ service NodeManagerService {
   // Failure: Has retry behavior, could be improved to just use retriable grpc client.
   rpc CancelResourceReserve(CancelResourceReserveRequest)
       returns (CancelResourceReserveReply);
+  // Adjust the total number of local resource instances on the raylet to match the
+  // specified values.
+  // Success: Returns the updated total and available resources for the node.
+  // Failure: Returns INVALID_ARGUMENT if the request attempts to resize a unit instance
+  // resource (e.g., GPU), as these cannot be resized by this API.
+  // Returns FAILED_PRECONDITION if downsizing would result in negative available
+  // resources. Otherwise, succeeds unless a network error occurs.
+  rpc ResizeLocalResourceInstances(ResizeLocalResourceInstancesRequest)
+      returns (ResizeLocalResourceInstancesReply);
   // Cancel a pending lease request. This only returns success if the
   // lease request was not yet granted.
   // Failure: TODO: This needs to handle network failure
