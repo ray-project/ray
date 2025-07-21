@@ -78,6 +78,10 @@ These are the environment variables Ray Tune currently considers:
   unsuccessful. After that, the trial is not restored to its previous checkpoint but rather from scratch.
   Default is ``0``. While this retry counter is taking effect, per trial failure number will not be incremented, which
   is compared against ``max_failures``.
+* **TUNE_ONLY_STORE_CHECKPOINT_SCORE_ATTRIBUTE**:  If set to ``1``, only the metric defined by ``checkpoint_score_attribute``
+  will be stored with each ``Checkpoint``. As a result, ``Result.best_checkpoints`` will contain only this metric,
+  omitting others that would normally be included. This can significantly reduce memory usage, especially when many
+  checkpoints are stored or when metrics are large. Defaults to ``0`` (i.e., all metrics are stored).
 * **RAY_AIR_FULL_TRACEBACKS**: If set to 1, will print full tracebacks for training functions,
   including internal code paths. Otherwise, abbreviated tracebacks that only show user code
   are printed. Defaults to 0 (disabled).

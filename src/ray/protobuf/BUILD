@@ -141,11 +141,6 @@ proto_library(
     ],
 )
 
-python_grpc_compile(
-    name = "metrics_service_py_proto",
-    deps = ["@com_github_opentelemetry_proto//:metrics_service_proto"],
-)
-
 cc_proto_library(
     name = "reporter_cc_proto",
     deps = [":reporter_proto"],
@@ -161,6 +156,7 @@ proto_library(
     srcs = ["gcs_service.proto"],
     deps = [
         ":common_proto",
+        ":events_event_aggregator_service_proto",
         ":gcs_proto",
         ":pubsub_proto",
     ],
@@ -429,7 +425,6 @@ proto_library(
         ":gcs_proto",
         ":logging_proto",
         ":reporter_proto",
-        "@com_github_opentelemetry_proto//:metrics_service_proto",
     ],
 )
 

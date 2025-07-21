@@ -14,7 +14,7 @@ This example:
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack --env [env name e.g. 'ALE/Pong-v5']
+`python [script file name].py --env [env name e.g. 'ALE/Pong-v5']
 --wandb-key=[your WandB API key] --wandb-project=[some WandB project name]
 --wandb-run-name=[optional: WandB run name within --wandb-project]`
 
@@ -75,7 +75,6 @@ from ray import tune
 
 parser = add_rllib_example_script_args(default_reward=20.0)
 parser.set_defaults(
-    enable_new_api_stack=True,
     env="ale_py:ALE/Pong-v5",
 )
 

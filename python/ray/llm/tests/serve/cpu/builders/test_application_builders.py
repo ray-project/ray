@@ -15,7 +15,7 @@ from ray.llm._internal.serve.builders.application_builders import (
     build_openai_app,
 )
 from ray.llm._internal.serve.configs.constants import (
-    RAYLLM_ROUTER_TARGET_ONGOING_REQUESTS,
+    DEFAULT_LLM_ROUTER_TARGET_ONGOING_REQUESTS,
 )
 from ray.llm._internal.serve.configs.server_models import (
     LLMConfig,
@@ -180,7 +180,7 @@ class TestBuildOpenaiApp:
         assert router_autoscaling_config.max_replicas == 12  # (1 + 1 + 4) * 2
         assert (
             router_autoscaling_config.target_ongoing_requests
-            == RAYLLM_ROUTER_TARGET_ONGOING_REQUESTS
+            == DEFAULT_LLM_ROUTER_TARGET_ONGOING_REQUESTS
         )
 
 

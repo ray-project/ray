@@ -14,7 +14,7 @@ This example:
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack --stop-reward=200.0`
+`python [script file name].py --stop-reward=200.0`
 
 Use the `--stop-iters`, `--stop-reward`, and/or `--stop-timesteps` options to
 determine how long to train the policy for. Use the `--serve-episodes` option to
@@ -93,7 +93,6 @@ from ray.rllib.utils.test_utils import (
 
 parser = add_rllib_example_script_args()
 parser.set_defaults(
-    enable_new_api_stack=True,
     checkpoint_freq=1,
     checkpoint_at_and=True,
 )

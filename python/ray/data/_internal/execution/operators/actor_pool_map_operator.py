@@ -26,7 +26,7 @@ from ray.data._internal.execution.interfaces import (
     TaskContext,
 )
 from ray.data._internal.execution.interfaces.physical_operator import _ActorPoolInfo
-from ray.data._internal.execution.node_trackers.actor_location import (
+from ray.data._internal.execution.node_trackers import (
     ActorLocationTracker,
     get_or_create_actor_location_tracker,
 )
@@ -504,10 +504,8 @@ class _MapWorker:
         # Initialize state for this actor.
         self._map_transformer.init()
         self._logical_actor_id = logical_actor_id
-        ray.get(
-            actor_location_tracker.update_actor_location.remote(
-                self._logical_actor_id, ray.get_runtime_context().get_node_id()
-            )
+        actor_location_tracker.update_actor_location.remote(
+            self._logical_actor_id, ray.get_runtime_context().get_node_id()
         )
 
     def get_location(self) -> NodeIdStr:

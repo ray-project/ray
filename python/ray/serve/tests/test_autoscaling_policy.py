@@ -180,6 +180,10 @@ class TestAutoscalingMetrics:
         wait_for_condition(check_num_requests_eq, client=client, id=dep_id, expected=0)
         tlog("Queued and ongoing requests dropped to 0.")
 
+    @pytest.mark.skipif(
+        not RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
+        reason="Needs metric collection at handle.",
+    )
     @pytest.mark.parametrize("use_generator", [True, False])
     def test_replicas_die(self, serve_instance_with_signal, use_generator):
         """If replicas die while requests are still executing, that
@@ -553,7 +557,7 @@ def test_cold_start_time(serve_instance):
     result = handle.remote().result()
     cold_start_time = time.time() - start
     if sys.platform == "win32":
-        timeout = 5  # Windows has a longer tail.
+        timeout = 10  # Windows has a longer tail.
     else:
         timeout = 3
     assert cold_start_time < timeout
