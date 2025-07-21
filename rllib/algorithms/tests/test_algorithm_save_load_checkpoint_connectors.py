@@ -1,7 +1,6 @@
 import tempfile
 import unittest
 
-from typing import Tuple
 
 import ray
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
@@ -137,20 +136,9 @@ class TestAlgorithmWithConnectorsSaveAndRestore(unittest.TestCase):
                     )
                 )
 
-                # Extract the `RunningStat` states from the connector states.
-                (
-                    running_stats_states_algo_1,
-                    running_stats_states_algo_2,
-                ) = self._extract_running_stats_from_states(
-                    connector_states_algo_1,
-                    connector_states_algo_2,
-                )
-
                 # Assert that all running stats are the same.
                 self._assert_running_stats_consistency(
-                    running_stats_states_algo_1,
-                    running_stats_states_algo_2,
-                    num_env_runners,
+                    connector_states_algo_1, connector_states_algo_2
                 )
 
     def test_save_and_restore_w_remote_env_runners_and_wo_local_env_runner(self):
@@ -172,44 +160,17 @@ class TestAlgorithmWithConnectorsSaveAndRestore(unittest.TestCase):
                         config, num_env_runners, "CartPole-v1", tmpdir
                     )
                 )
-
-                # Extract the `RunningStat` states from the connector states.
-                (
-                    running_stats_states_algo_1,
-                    running_stats_states_algo_2,
-                ) = self._extract_running_stats_from_states(
-                    connector_states_algo_1,
-                    connector_states_algo_2,
-                )
-
                 # Assert that all running stats are the same.
                 self._assert_running_stats_consistency(
-                    running_stats_states_algo_1,
-                    running_stats_states_algo_2,
-                    num_env_runners,
+                    connector_states_algo_1, connector_states_algo_2
                 )
 
     def _assert_running_stats_consistency(
-        self, running_stats_states_algo_1, running_stats_states_algo_2, num_env_runners
+        self, connector_states_algo_1: list, connector_states_algo_2: list
     ):
         """
         Asserts consistency of running stats within and between algorithms.
         """
-        # Assert that all running stats in algo-1 are the same (for consistency).
-        self.assertEqual(
-            num_env_runners, 2
-        )  # Consider if this specific assert should be part of this helper
-        check(running_stats_states_algo_1[0][0], running_stats_states_algo_1[1][0])
-
-        # Now ensure that the connector states on remote `EnvRunner`s were restored.
-        check(running_stats_states_algo_1[0][0], running_stats_states_algo_2[0][0])
-
-        # Ensure also that all states are the same in algo-2 (for consistency).
-        check(running_stats_states_algo_2[0][0], running_stats_states_algo_2[1][0])
-
-    def _extract_running_stats_from_states(
-        self, connector_states_algo_1: list, connector_states_algo_2: list
-    ) -> Tuple[list, list]:
 
         running_stats_states_algo_1 = [
             state[COMPONENT_ENV_TO_MODULE_CONNECTOR]["MeanStdFilter"][None][
@@ -250,7 +211,14 @@ class TestAlgorithmWithConnectorsSaveAndRestore(unittest.TestCase):
             for running_stat in running_stats_states_algo_2
         ]
 
-        return running_stats_states_algo_1, running_stats_states_algo_2
+        # Assert that all running stats in algo-1 are the same (for consistency).
+        check(running_stats_states_algo_1[0][0], running_stats_states_algo_1[1][0])
+
+        # Now ensure that the connector states on remote `EnvRunner`s were restored.
+        check(running_stats_states_algo_1[0][0], running_stats_states_algo_2[0][0])
+
+        # Ensure also that all states are the same in algo-2 (for consistency).
+        check(running_stats_states_algo_2[0][0], running_stats_states_algo_2[1][0])
 
 
 if __name__ == "__main__":
