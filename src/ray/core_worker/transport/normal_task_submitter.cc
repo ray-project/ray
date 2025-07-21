@@ -28,62 +28,60 @@ namespace core {
 Status NormalTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
   RAY_CHECK(task_spec.IsNormalTask());
   RAY_LOG(DEBUG) << "Submit task " << task_spec.TaskId();
-  num_tasks_submitted_++;
+  num_tasks_submitted_.fetch_add(1, std::memory_order_relaxed);
 
   resolver_.ResolveDependencies(task_spec, [this, task_spec](Status status) mutable {
     // NOTE: task_spec here is capture copied (from a stack variable) and also
     // mutable. (Mutations to the variable are expected to be shared inside and
     // outside of this closure).
-    task_finisher_.MarkDependenciesResolved(task_spec.TaskId());
+    task_manager_.MarkDependenciesResolved(task_spec.TaskId());
     if (!status.ok()) {
       RAY_LOG(WARNING) << "Resolving task dependencies failed " << status.ToString();
-      RAY_UNUSED(task_finisher_.FailOrRetryPendingTask(
+      RAY_UNUSED(task_manager_.FailOrRetryPendingTask(
           task_spec.TaskId(), rpc::ErrorType::DEPENDENCY_RESOLUTION_FAILED, &status));
       return;
     }
     RAY_LOG(DEBUG) << "Task dependencies resolved " << task_spec.TaskId();
 
-    {
-      absl::MutexLock lock(&mu_);
-      auto task_iter = cancelled_tasks_.find(task_spec.TaskId());
-      if (task_iter != cancelled_tasks_.end()) {
-        cancelled_tasks_.erase(task_iter);
-        return;
-      }
+    absl::MutexLock lock(&mu_);
+    auto task_iter = cancelled_tasks_.find(task_spec.TaskId());
+    if (task_iter != cancelled_tasks_.end()) {
+      cancelled_tasks_.erase(task_iter);
+      return;
+    }
 
-      task_spec.GetMutableMessage().set_dependency_resolution_timestamp_ms(
-          current_sys_time_ms());
-      // Note that the dependencies in the task spec are mutated to only contain
-      // plasma dependencies after ResolveDependencies finishes.
-      const SchedulingKey scheduling_key(
-          task_spec.GetSchedulingClass(),
-          task_spec.GetDependencyIds(),
-          task_spec.IsActorCreationTask() ? task_spec.ActorCreationId() : ActorID::Nil(),
-          task_spec.GetRuntimeEnvHash());
-      auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
-      scheduling_key_entry.task_queue.push_back(task_spec);
-      scheduling_key_entry.resource_spec = std::move(task_spec);
+    task_spec.GetMutableMessage().set_dependency_resolution_timestamp_ms(
+        current_sys_time_ms());
+    // Note that the dependencies in the task spec are mutated to only contain
+    // plasma dependencies after ResolveDependencies finishes.
+    const SchedulingKey scheduling_key(
+        task_spec.GetSchedulingClass(),
+        task_spec.GetDependencyIds(),
+        task_spec.IsActorCreationTask() ? task_spec.ActorCreationId() : ActorID::Nil(),
+        task_spec.GetRuntimeEnvHash());
+    auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
+    scheduling_key_entry.task_queue.push_back(task_spec);
+    scheduling_key_entry.resource_spec = std::move(task_spec);
 
-      if (!scheduling_key_entry.AllWorkersBusy()) {
-        // There are idle workers, so we don't need more
-        // workers.
-        for (const auto &active_worker_addr : scheduling_key_entry.active_workers) {
-          auto iter = worker_to_lease_entry_.find(active_worker_addr);
-          RAY_CHECK(iter != worker_to_lease_entry_.end());
-          auto &lease_entry = iter->second;
-          if (!lease_entry.is_busy) {
-            OnWorkerIdle(active_worker_addr,
-                         scheduling_key,
-                         /*was_error*/ false,
-                         /*error_detail*/ "",
-                         /*worker_exiting*/ false,
-                         lease_entry.assigned_resources);
-            break;
-          }
+    if (!scheduling_key_entry.AllWorkersBusy()) {
+      // There are idle workers, so we don't need more
+      // workers.
+      for (const auto &active_worker_addr : scheduling_key_entry.active_workers) {
+        auto iter = worker_to_lease_entry_.find(active_worker_addr);
+        RAY_CHECK(iter != worker_to_lease_entry_.end());
+        auto &lease_entry = iter->second;
+        if (!lease_entry.is_busy) {
+          OnWorkerIdle(active_worker_addr,
+                       scheduling_key,
+                       /*was_error*/ false,
+                       /*error_detail*/ "",
+                       /*worker_exiting*/ false,
+                       lease_entry.assigned_resources);
+          break;
         }
       }
-      RequestNewWorkerIfNeeded(scheduling_key);
     }
+    RequestNewWorkerIfNeeded(scheduling_key);
   });
   return Status::OK();
 }
@@ -96,8 +94,8 @@ void NormalTaskSubmitter::AddWorkerLeaseClient(
     const TaskID &task_id) {
   core_worker_client_pool_->GetOrConnect(addr);
   int64_t expiration = current_time_ms() + lease_timeout_ms_;
-  LeaseEntry new_lease_entry = LeaseEntry(
-      std::move(lease_client), expiration, assigned_resources, scheduling_key, task_id);
+  LeaseEntry new_lease_entry{
+      std::move(lease_client), expiration, assigned_resources, scheduling_key, task_id};
   worker_to_lease_entry_.emplace(addr, new_lease_entry);
 
   auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
@@ -105,7 +103,7 @@ void NormalTaskSubmitter::AddWorkerLeaseClient(
   RAY_CHECK(scheduling_key_entry.active_workers.size() >= 1);
 }
 
-void NormalTaskSubmitter::ReturnWorker(const rpc::Address addr,
+void NormalTaskSubmitter::ReturnWorker(const rpc::Address &addr,
                                        bool was_error,
                                        const std::string &error_detail,
                                        bool worker_exiting,
@@ -435,20 +433,18 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
                              << " with worker "
                              << WorkerID::FromBinary(reply.worker_address().worker_id());
 
-              auto resources_copy = reply.resource_mapping();
-
               AddWorkerLeaseClient(reply.worker_address(),
                                    std::move(lease_client),
-                                   resources_copy,
+                                   reply.resource_mapping(),
                                    scheduling_key,
                                    task_id);
               RAY_CHECK(scheduling_key_entry.active_workers.size() >= 1);
               OnWorkerIdle(reply.worker_address(),
                            scheduling_key,
-                           /*error=*/false,
+                           /*was_error=*/false,
                            /*error_detail*/ "",
                            /*worker_exiting=*/false,
-                           resources_copy);
+                           reply.resource_mapping());
             } else {
               // The raylet redirected us to a different raylet to retry at.
               RAY_CHECK(!is_spillback);
@@ -519,12 +515,12 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
           auto &task_spec = tasks_to_fail.front();
           if (task_spec.IsActorCreationTask() &&
               error_type == rpc::ErrorType::TASK_PLACEMENT_GROUP_REMOVED) {
-            task_finisher_.FailPendingTask(task_spec.TaskId(),
-                                           rpc::ErrorType::ACTOR_PLACEMENT_GROUP_REMOVED,
-                                           &error_status,
-                                           &error_info);
+            task_manager_.FailPendingTask(task_spec.TaskId(),
+                                          rpc::ErrorType::ACTOR_PLACEMENT_GROUP_REMOVED,
+                                          &error_status,
+                                          &error_info);
           } else {
-            task_finisher_.FailPendingTask(
+            task_manager_.FailPendingTask(
                 task_spec.TaskId(), error_type, &error_status, &error_info);
           }
           tasks_to_fail.pop_front();
@@ -564,9 +560,9 @@ void NormalTaskSubmitter::PushNormalTask(
   request->mutable_task_spec()->CopyFrom(task_spec.GetMessage());
   request->mutable_resource_mapping()->CopyFrom(assigned_resources);
   request->set_intended_worker_id(addr.worker_id());
-  task_finisher_.MarkTaskWaitingForExecution(task_id,
-                                             NodeID::FromBinary(addr.raylet_id()),
-                                             WorkerID::FromBinary(addr.worker_id()));
+  task_manager_.MarkTaskWaitingForExecution(task_id,
+                                            NodeID::FromBinary(addr.raylet_id()),
+                                            WorkerID::FromBinary(addr.worker_id()));
   client->PushNormalTask(
       std::move(request),
       [this,
@@ -576,12 +572,15 @@ void NormalTaskSubmitter::PushNormalTask(
        scheduling_key,
        addr,
        assigned_resources](Status status, const rpc::PushTaskReply &reply) {
+        bool resubmit_generator = false;
         {
           RAY_LOG(DEBUG) << "Task " << task_id << " finished from worker "
                          << WorkerID::FromBinary(addr.worker_id()) << " of raylet "
                          << NodeID::FromBinary(addr.raylet_id());
           absl::MutexLock lock(&mu_);
           executing_tasks_.erase(task_id);
+
+          resubmit_generator = generators_to_resubmit_.erase(task_id) > 0;
 
           // Decrement the number of tasks in flight to the worker
           auto &lease_entry = worker_to_lease_entry_[addr];
@@ -619,7 +618,7 @@ void NormalTaskSubmitter::PushNormalTask(
             // Successful actor creation leases the worker indefinitely from the raylet.
             OnWorkerIdle(addr,
                          scheduling_key,
-                         /*error=*/was_error,
+                         /*was_error=*/was_error,
                          /*error_detail*/ status.message(),
                          /*worker_exiting=*/is_worker_exiting,
                          assigned_resources);
@@ -629,14 +628,18 @@ void NormalTaskSubmitter::PushNormalTask(
           if (reply.was_cancelled_before_running()) {
             RAY_LOG(DEBUG) << "Task " << task_id
                            << " was cancelled before it started running.";
-            task_finisher_.FailPendingTask(task_id, rpc::ErrorType::TASK_CANCELLED);
+            task_manager_.FailPendingTask(task_id, rpc::ErrorType::TASK_CANCELLED);
+          } else if (resubmit_generator) {
+            // If the generator was queued up for resubmission for object recovery,
+            // resubmit as long as we get a valid reply.
+            task_manager_.MarkGeneratorFailedAndResubmit(task_id);
           } else if (!task_spec.GetMessage().retry_exceptions() ||
                      !reply.is_retryable_error() ||
-                     !task_finisher_.RetryTaskIfPossible(
+                     !task_manager_.RetryTaskIfPossible(
                          task_id,
                          gcs::GetRayErrorInfo(rpc::ErrorType::TASK_EXECUTION_EXCEPTION,
                                               reply.task_execution_error()))) {
-            task_finisher_.CompletePendingTask(
+            task_manager_.CompletePendingTask(
                 task_id, reply, addr, reply.is_application_error());
           }
         }
@@ -686,12 +689,12 @@ void NormalTaskSubmitter::HandleGetTaskFailureCause(
     error_info->set_error_message(buffer.str());
     error_info->set_error_type(rpc::ErrorType::NODE_DIED);
   }
-  RAY_UNUSED(task_finisher_.FailOrRetryPendingTask(task_id,
-                                                   task_error_type,
-                                                   &task_execution_status,
-                                                   error_info.get(),
-                                                   /*mark_task_object_failed*/ true,
-                                                   fail_immediately));
+  RAY_UNUSED(task_manager_.FailOrRetryPendingTask(task_id,
+                                                  task_error_type,
+                                                  &task_execution_status,
+                                                  error_info.get(),
+                                                  /*mark_task_object_failed*/ true,
+                                                  fail_immediately));
 }
 
 Status NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
@@ -707,9 +710,17 @@ Status NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
   std::shared_ptr<rpc::CoreWorkerClientInterface> client = nullptr;
   {
     absl::MutexLock lock(&mu_);
-    if (cancelled_tasks_.find(task_spec.TaskId()) != cancelled_tasks_.end() ||
-        !task_finisher_.MarkTaskCanceled(task_spec.TaskId()) ||
-        !task_finisher_.IsTaskPending(task_spec.TaskId())) {
+    auto task_id = task_spec.TaskId();
+    generators_to_resubmit_.erase(task_id);
+
+    if (cancelled_tasks_.contains(task_id)) {
+      // The task cancel is already in progress. We don't need to do anything.
+      return Status::OK();
+    }
+
+    task_manager_.MarkTaskCanceled(task_id);
+    if (!task_manager_.IsTaskPending(task_id)) {
+      // The task is finished or failed so marking the task as cancelled is sufficient.
       return Status::OK();
     }
 
@@ -722,8 +733,8 @@ Status NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
         if (spec->TaskId() == task_spec.TaskId()) {
           scheduling_tasks.erase(spec);
           CancelWorkerLeaseIfNeeded(scheduling_key);
-          task_finisher_.FailPendingTask(task_spec.TaskId(),
-                                         rpc::ErrorType::TASK_CANCELLED);
+          task_manager_.FailPendingTask(task_spec.TaskId(),
+                                        rpc::ErrorType::TASK_CANCELLED);
           return Status::OK();
         }
       }
@@ -737,8 +748,8 @@ Status NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
     if (rpc_client == executing_tasks_.end()) {
       // This case is reached for tasks that have unresolved dependencies.
       resolver_.CancelDependencyResolution(task_spec.TaskId());
-      RAY_UNUSED(task_finisher_.FailPendingTask(task_spec.TaskId(),
-                                                rpc::ErrorType::TASK_CANCELLED));
+      RAY_UNUSED(task_manager_.FailPendingTask(task_spec.TaskId(),
+                                               rpc::ErrorType::TASK_CANCELLED));
       if (scheduling_key_entry.CanDelete()) {
         // We can safely remove the entry keyed by scheduling_key from the
         // scheduling_key_entries_ hashmap.
@@ -778,22 +789,16 @@ Status NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
         if (!reply.attempt_succeeded()) {
           if (reply.requested_task_running()) {
             // Retry cancel request if failed.
-            if (cancel_retry_timer_.has_value()) {
-              if (cancel_retry_timer_->expiry().time_since_epoch() <=
-                  std::chrono::high_resolution_clock::now().time_since_epoch()) {
-                cancel_retry_timer_->expires_after(boost::asio::chrono::milliseconds(
-                    RayConfig::instance().cancellation_retry_ms()));
-              }
-              cancel_retry_timer_->async_wait(
-                  boost::bind(&NormalTaskSubmitter::CancelTask,
-                              this,
-                              std::move(task_spec),
-                              force_kill,
-                              recursive));
-            } else {
-              RAY_LOG(DEBUG)
-                  << "Failed to cancel a task which is running. Stop retrying.";
+            if (cancel_retry_timer_.expiry().time_since_epoch() <=
+                std::chrono::high_resolution_clock::now().time_since_epoch()) {
+              cancel_retry_timer_.expires_after(boost::asio::chrono::milliseconds(
+                  RayConfig::instance().cancellation_retry_ms()));
             }
+            cancel_retry_timer_.async_wait(boost::bind(&NormalTaskSubmitter::CancelTask,
+                                                       this,
+                                                       std::move(task_spec),
+                                                       force_kill,
+                                                       recursive));
           } else {
             RAY_LOG(DEBUG) << "Attempt to cancel task " << task_spec.TaskId()
                            << " in a worker that doesn't have this task.";
@@ -814,6 +819,16 @@ Status NormalTaskSubmitter::CancelRemoteTask(const ObjectID &object_id,
   request.set_remote_object_id(object_id.Binary());
   client->RemoteCancelTask(request, nullptr);
   return Status::OK();
+}
+
+bool NormalTaskSubmitter::QueueGeneratorForResubmit(const TaskSpecification &spec) {
+  absl::MutexLock lock(&mu_);
+  if (cancelled_tasks_.contains(spec.TaskId())) {
+    // The user cancelled the task.
+    return false;
+  }
+  generators_to_resubmit_.insert(spec.TaskId());
+  return true;
 }
 
 }  // namespace core

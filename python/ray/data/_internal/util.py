@@ -1497,16 +1497,20 @@ def convert_bytes_to_human_readable_str(num_bytes: int) -> str:
 
 
 def _validate_rows_per_file_args(
-    *, num_rows_per_file: Optional[int] = None, min_rows_per_file: Optional[int] = None
-) -> Optional[int]:
+    *,
+    num_rows_per_file: Optional[int] = None,
+    min_rows_per_file: Optional[int] = None,
+    max_rows_per_file: Optional[int] = None,
+) -> Tuple[Optional[int], Optional[int]]:
     """Helper method to validate and handle rows per file arguments.
 
     Args:
         num_rows_per_file: Deprecated parameter for number of rows per file
         min_rows_per_file: New parameter for minimum rows per file
+        max_rows_per_file: New parameter for maximum rows per file
 
     Returns:
-        The effective min_rows_per_file value to use
+        A tuple of (effective_min_rows_per_file, effective_max_rows_per_file)
     """
     if num_rows_per_file is not None:
         import warnings
@@ -1522,8 +1526,28 @@ def _validate_rows_per_file_args(
                 "Cannot specify both `num_rows_per_file` and `min_rows_per_file`. "
                 "Use `min_rows_per_file` as `num_rows_per_file` is deprecated."
             )
-        return num_rows_per_file
-    return min_rows_per_file
+        min_rows_per_file = num_rows_per_file
+
+    # Validate max_rows_per_file
+    if max_rows_per_file is not None and max_rows_per_file <= 0:
+        raise ValueError("max_rows_per_file must be a positive integer")
+
+    # Validate min_rows_per_file
+    if min_rows_per_file is not None and min_rows_per_file <= 0:
+        raise ValueError("min_rows_per_file must be a positive integer")
+
+    # Validate that max >= min if both are specified
+    if (
+        min_rows_per_file is not None
+        and max_rows_per_file is not None
+        and min_rows_per_file > max_rows_per_file
+    ):
+        raise ValueError(
+            f"min_rows_per_file ({min_rows_per_file}) cannot be greater than "
+            f"max_rows_per_file ({max_rows_per_file})"
+        )
+
+    return min_rows_per_file, max_rows_per_file
 
 
 def is_nan(value) -> bool:

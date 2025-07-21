@@ -31,6 +31,7 @@ steps:
   - name: doctestbuild
     wanda: ci/docker/doctest.build.wanda.yaml
     depends_on: oss-ci-base_build
+    tags: cibase
 
   - label: doc tests
     tags: python

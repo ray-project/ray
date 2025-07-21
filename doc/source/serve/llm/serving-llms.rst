@@ -507,6 +507,9 @@ You can generate embeddings by selecting the embed task in the engine arguments.
 Models supporting this use case are listed at
 `vLLM text embedding models <https://docs.vllm.ai/en/stable/models/supported_models.html#text-embedding-task-embed>`_.
 
+
+Note: You need to set the `VLLM_USE_V1` environment variable to `0`, since the VLLM V1 still does not fully support the embedding endpoints.
+
 .. tab-set::
 
     .. tab-item:: Server
@@ -524,6 +527,11 @@ Models supporting this use case are listed at
                 ),
                 engine_kwargs=dict(
                     task="embed",
+                ),
+                runtime_env=dict(
+                    env_vars={
+                        "VLLM_USE_V1": "0",
+                    }
                 ),
             )
 
@@ -906,6 +914,7 @@ An example config is shown below:
       import_path: ray.serve.llm:build_openai_app
       name: llm_app
       route_prefix: "/"
+
 
 Usage Data Collection
 --------------------------

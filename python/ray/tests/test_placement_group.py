@@ -7,7 +7,6 @@ import pytest
 import ray
 from ray._private.utils import get_ray_doc_version
 from ray._private.test_utils import placement_group_assert_no_leak
-from ray._private.test_utils import skip_flaky_core_test_premerge
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from ray.util.placement_group import (
     validate_placement_group,
@@ -342,7 +341,6 @@ def test_placement_group_spread(ray_start_cluster, gcs_actor_scheduling_enabled)
 
 
 @pytest.mark.parametrize("gcs_actor_scheduling_enabled", [False, True])
-@skip_flaky_core_test_premerge("https://github.com/ray-project/ray/issues/38726")
 def test_placement_group_strict_spread(ray_start_cluster, gcs_actor_scheduling_enabled):
     @ray.remote
     class Actor(object):
@@ -410,7 +408,7 @@ def test_placement_group_strict_spread(ray_start_cluster, gcs_actor_scheduling_e
         num_cpus=2,
     ).remote()
     with pytest.raises(ray.exceptions.GetTimeoutError):
-        ray.get(actor_no_resource.value.remote(), timeout=1)
+        ray.get(actor_no_resource.value.remote(), timeout=0.5)
 
     placement_group_assert_no_leak([placement_group])
 

@@ -66,6 +66,10 @@ class WorkerGroupCallback(RayTrainCallback):
     ):
         pass
 
+    def before_worker_group_abort(self, worker_group_context: "WorkerGroupContext"):
+        """Called before the worker group is aborted."""
+        pass
+
 
 @DeveloperAPI
 class ControllerCallback(RayTrainCallback):
