@@ -391,7 +391,6 @@ void NodeManager::DestroyWorker(std::shared_ptr<WorkerInterface> worker,
   // due to worker dead will be ignored.
   DisconnectClient(
       worker->Connection(), /*graceful=*/false, disconnect_type, disconnect_detail);
-  worker->MarkDead();
   worker->KillAsync(io_service_, force);
   if (disconnect_type == rpc::WorkerExitType::SYSTEM_ERROR) {
     number_workers_killed_++;

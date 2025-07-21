@@ -302,9 +302,7 @@ class Worker : public std::enable_shared_from_this<Worker>, public WorkerInterfa
   /// The worker's placement group bundle. It is used to detect if the worker is
   /// associated with a placement group bundle.
   BundleID bundle_id_;
-  /// Whether the worker is dead.
-  bool dead_;
-  /// Whether the worker is killed by the Kill method.
+  /// Whether the worker is being killed by the KillAsync or MarkDead method.
   std::atomic<bool> killing_;
   /// Whether the worker is blocked. Workers become blocked in a `ray.get`, if
   /// they require a data dependency while executing a task.
