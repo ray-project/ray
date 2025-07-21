@@ -311,7 +311,7 @@ def train_func(config):
     # Configure logging, saving, evaluation strategies as usual.
     args = TrainingArguments(
         ...,
-        evaluation_strategy="epoch",
+        eval_strategy="epoch",
         save_strategy="epoch",
         logging_strategy="step",
     )
