@@ -1,9 +1,10 @@
-import { Box, IconButton, Link, Tooltip, Typography } from "@mui/material";
+import { Box, IconButton, Link, Tooltip, Typography, useTheme } from "@mui/material";
 import React, { useContext } from "react";
 import { RiBookMarkLine, RiFeedbackLine } from "react-icons/ri/";
 import { Outlet, Link as RouterLink } from "react-router-dom";
 import { GlobalContext } from "../../App";
 import { SearchTimezone } from "../../components/SearchComponent";
+import { ThemeToggle } from "../../components/ThemeToggle";
 import Logo from "../../logo.svg";
 import { MainNavContext, useMainNavState } from "./mainNavContext";
 
@@ -27,6 +28,7 @@ export const BREADCRUMBS_HEIGHT = 36;
  */
 export const MainNavLayout = () => {
   const mainNavContextState = useMainNavState();
+  const theme = useTheme();
 
   return (
     <MainNavContext.Provider value={mainNavContextState}>
@@ -35,7 +37,7 @@ export const MainNavLayout = () => {
         sx={{
           position: "fixed",
           width: "100%",
-          backgroundColor: "white",
+          backgroundColor: theme.palette.background.paper,
           zIndex: 1000,
         }}
       >
@@ -109,6 +111,7 @@ const MainNavBar = () => {
   const rootRouteId = mainNavPageHierarchy[0]?.id;
   const { metricsContextLoaded, grafanaHost, serverTimeZone, currentTimeZone } =
     useContext(GlobalContext);
+  const theme = useTheme();
 
   let navItems = NAV_ITEMS;
   if (!metricsContextLoaded || grafanaHost === "DISABLED") {
@@ -122,9 +125,9 @@ const MainNavBar = () => {
         flexDirection: "row",
         flexWrap: "nowrap",
         height: 56,
-        backgroundColor: "white",
+        backgroundColor: theme.palette.background.paper,
         alignItems: "center",
-        boxShadow: "0px 1px 0px #D2DCE6",
+        borderBottom: `1px solid ${theme.palette.divider}`,
       }}
     >
       <Link
@@ -147,7 +150,7 @@ const MainNavBar = () => {
               marginRight: 6,
               fontSize: "1rem",
               fontWeight: 500,
-              color: rootRouteId === id ? "#036DCF" : "black",
+              color: rootRouteId === id ? theme.palette.primary.main : theme.palette.text.primary,
               textDecoration: "none",
             }}
             to={path}
@@ -158,9 +161,10 @@ const MainNavBar = () => {
       ))}
       <Box sx={{ flexGrow: 1 }}></Box>
       <Box sx={{ marginRight: 2 }}>
+        <ThemeToggle />
         <Tooltip title="Docs">
           <IconButton
-            sx={{ color: "#5F6469" }}
+            sx={{ color: theme.palette.text.secondary }}
             href="https://docs.ray.io/en/latest/ray-core/ray-dashboard.html"
             target="_blank"
             rel="noopener noreferrer"
@@ -171,7 +175,7 @@ const MainNavBar = () => {
         </Tooltip>
         <Tooltip title="Leave feedback">
           <IconButton
-            sx={{ color: "#5F6469" }}
+            sx={{ color: theme.palette.text.secondary }}
             href="https://github.com/ray-project/ray/issues/new?assignees=&labels=bug%2Ctriage%2Cdashboard&template=bug-report.yml&title=%5BDashboard%5D+%3CTitle%3E"
             target="_blank"
             rel="noopener noreferrer"
@@ -198,6 +202,7 @@ const MainNavBar = () => {
 
 const MainNavBreadcrumbs = () => {
   const { mainNavPageHierarchy } = useContext(MainNavContext);
+  const theme = useTheme();
 
   if (mainNavPageHierarchy.length <= 1) {
     // Only render breadcrumbs if we have at least 2 items
@@ -216,9 +221,9 @@ const MainNavBreadcrumbs = () => {
         marginTop: "1px",
         paddingLeft: 2,
         paddingRight: 2,
-        backgroundColor: "white",
+        backgroundColor: theme.palette.background.paper,
         alignItems: "center",
-        boxShadow: "0px 1px 0px #D2DCE6",
+        borderBottom: `1px solid ${theme.palette.divider}`,
       }}
     >
       {mainNavPageHierarchy.map(({ title, id, path }, index) => {
@@ -235,7 +240,9 @@ const MainNavBreadcrumbs = () => {
             sx={{
               textDecoration: "none",
               color:
-                index === mainNavPageHierarchy.length - 1 ? "black" : "#8C9196",
+                index === mainNavPageHierarchy.length - 1 
+                  ? theme.palette.text.primary 
+                  : theme.palette.text.secondary,
             }}
             to={currentPath}
           >
@@ -250,7 +257,7 @@ const MainNavBreadcrumbs = () => {
               key={id}
               sx={{
                 fontWeight: 500,
-                color: "#8C9196",
+                color: theme.palette.text.secondary,
                 "&:not(:first-child)": {
                   marginLeft: 1,
                 },
@@ -266,7 +273,7 @@ const MainNavBreadcrumbs = () => {
               <Typography
                 sx={{
                   fontWeight: 500,
-                  color: "#8C9196",
+                  color: theme.palette.text.secondary,
                   "&:not(:first-child)": {
                     marginLeft: 1,
                   },
@@ -278,7 +285,7 @@ const MainNavBreadcrumbs = () => {
               <Typography
                 sx={{
                   fontWeight: 500,
-                  color: "#8C9196",
+                  color: theme.palette.text.secondary,
                   "&:not(:first-child)": {
                     marginLeft: 1,
                   },

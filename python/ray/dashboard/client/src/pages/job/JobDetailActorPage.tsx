@@ -10,7 +10,7 @@ export const JobDetailActorsPage = () => {
   const { params } = useJobDetail();
 
   return (
-    <Box sx={{ padding: 2, backgroundColor: "white" }}>
+    <Box sx={{ padding: 2, backgroundColor: "background.default" }}>
       <MainNavPageInfo
         pageInfo={{
           title: "Actors",

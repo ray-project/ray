@@ -1,6 +1,7 @@
 import { Box, SxProps, Theme, Typography } from "@mui/material";
 import React, { useContext } from "react";
 import { GlobalContext } from "../../../App";
+import { useTheme } from "../../../contexts/ThemeContext";
 import { GrafanaNotRunningAlert } from "../../metrics";
 import { LinkWithArrow, OverviewCard } from "./OverviewCard";
 
@@ -10,6 +11,7 @@ type NodeCountCardProps = {
 };
 
 export const NodeCountCard = ({ className, sx }: NodeCountCardProps) => {
+  const { mode } = useTheme();
   const {
     metricsContextLoaded,
     grafanaHost,
@@ -22,7 +24,8 @@ export const NodeCountCard = ({ className, sx }: NodeCountCardProps) => {
   } = useContext(GlobalContext);
   const grafanaDefaultDashboardUid =
     dashboardUids?.default ?? "rayDefaultDashboard";
-  const path = `/d-solo/${grafanaDefaultDashboardUid}/default-dashboard?orgId=${grafanaOrgId}&theme=light&panelId=24&var-datasource=${dashboardDatasource}`;
+  const grafanaTheme = mode === 'dark' ? 'dark' : 'light';
+  const path = `/d-solo/${grafanaDefaultDashboardUid}/default-dashboard?orgId=${grafanaOrgId}&theme=${grafanaTheme}&panelId=24&var-datasource=${dashboardDatasource}`;
   const timeRangeParams = "&from=now-1h&to=now";
 
   if (!metricsContextLoaded || grafanaHost === "DISABLED") {

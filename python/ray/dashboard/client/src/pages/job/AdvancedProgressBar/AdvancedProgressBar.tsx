@@ -156,7 +156,7 @@ export const AdvancedProgressBarSegment = ({
                   sx={{
                     border: "none",
                     cursor: "pointer",
-                    color: "#036DCF",
+                    color: "primary.main",
                     textDecoration: "underline",
                     background: "none",
                   }}
@@ -173,7 +173,7 @@ export const AdvancedProgressBarSegment = ({
                   sx={{
                     border: "none",
                     cursor: "pointer",
-                    color: "#036DCF",
+                    color: "primary.main",
                     textDecoration: "underline",
                     background: "none",
                   }}

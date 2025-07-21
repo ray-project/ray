@@ -1,4 +1,4 @@
-import { Box, Typography } from "@mui/material";
+import { Box, Theme, Typography } from "@mui/material";
 import React from "react";
 import { useParams } from "react-router-dom";
 import {
@@ -31,7 +31,7 @@ export const TaskPage = () => {
   const { task, isLoading } = useStateApiTask(taskId);
 
   return (
-    <Box sx={{ padding: 2, backgroundColor: "white" }}>
+    <Box sx={(theme: Theme) => ({ padding: 2, backgroundColor: theme.palette.background.default })}>
       <MainNavPageInfo
         pageInfo={
           task
