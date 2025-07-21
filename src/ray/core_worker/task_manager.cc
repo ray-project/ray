@@ -1068,11 +1068,14 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
   {
     absl::MutexLock lock(&mu_);
     auto it = submissible_tasks_.find(task_id);
-    RAY_CHECK(it != submissible_tasks_.end())
-        << "Tried to retry task that was not pending " << task_id;
+    if (it == submissible_tasks_.end()) {
+      RAY_LOG(INFO).WithField("task_id", task_id)
+          << "Task was already completed. Skip retrying.";
+      return false;
+    }
     auto &task_entry = it->second;
-    RAY_CHECK(task_entry.IsPending())
-        << "Tried to retry task that was not pending " << task_id;
+    RAY_CHECK(task_entry.IsPending()) << "Tried to retry task that was not pending "
+                                      << task_id << " " << task_entry.spec.DebugString();
     spec = task_entry.spec;
     num_retries_left = task_entry.num_retries_left;
     num_oom_retries_left = task_entry.num_oom_retries_left;
