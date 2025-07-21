@@ -68,23 +68,23 @@ class LimitPushdownRule(Rule):
             …    -> Limit  ->│
         """
         union_op = limit_op.input_dependency
-        if not isinstance(union_op, Union):
-            # Should never happen – guard for safety.
-            return limit_op
+        assert isinstance(union_op, Union)
 
         # 1. Detach the original Union from its children.
         original_children = list(union_op.input_dependencies)
         for child in original_children:
-            if union_op in child._output_dependencies:
-                child._output_dependencies.remove(union_op)
+            assert union_op in child._output_dependencies
+            child._output_dependencies.remove(union_op)
 
         # 2. Insert a branch-local Limit and push it further upstream.
         branch_tails: List[LogicalOperator] = []
         for child in original_children:
             raw_limit = Limit(child, limit_op._limit)  # child → limit
             if isinstance(child, Union):
+                # This represents the limit operator appended after the union.
                 pushed_tail = self._push_limit_into_union(raw_limit)
             else:
+                # This represents the operator that takes place of the original limit position.
                 pushed_tail = self._push_limit_down(raw_limit)
             branch_tails.append(pushed_tail)
 
