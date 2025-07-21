@@ -441,9 +441,8 @@ def run_release_test_kuberay(
         test_name_hash = hashlib.sha256(test["name"].encode()).hexdigest()[:10]
         # random 8 digit suffix
         random_suffix = "".join(random.choices(string.digits, k=8))
-        job_name = f"{test['name'][:20]}-{test_name_hash}-{random_suffix}".replace(
-            "_", "-"
-        )
+        base_job_name = f"{test['name'][:20]}-{test_name_hash}-{random_suffix}"
+        job_name = base_job_name.replace("_", "-")
         logger.info(f"Job name: {job_name}")
         kuberay_job_manager = KubeRayJobManager()
         retcode, duration = kuberay_job_manager.run_and_wait(
