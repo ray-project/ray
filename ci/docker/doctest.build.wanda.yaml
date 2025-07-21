@@ -17,5 +17,7 @@ srcs:
   - python/requirements/ml/data-test-requirements.txt
   - python/requirements/ml/rllib-requirements.txt
   - python/requirements/ml/rllib-test-requirements.txt
+  - python/requirements/llm/llm-requirements.txt
+  - python/requirements/llm/llm-test-requirements.txt
 tags:
   - cr.ray.io/rayproject/doctestbuild
