@@ -26,7 +26,7 @@ from ray.data._internal.execution.interfaces import (
     TaskContext,
 )
 from ray.data._internal.execution.interfaces.physical_operator import _ActorPoolInfo
-from ray.data._internal.execution.node_trackers import (
+from ray.data._internal.execution.node_trackers.actor_location import (
     ActorLocationTracker,
     get_or_create_actor_location_tracker,
 )
@@ -159,7 +159,6 @@ class ActorPoolMapOperator(MapOperator):
             ),
             _enable_actor_pool_on_exit_hook=self.data_context._enable_actor_pool_on_exit_hook,
         )
-
         self._actor_task_selector = self._create_task_selector(self._actor_pool)
         # A queue of bundles awaiting dispatch to actors.
         self._bundle_queue = create_bundle_queue()
@@ -234,7 +233,7 @@ class ActorPoolMapOperator(MapOperator):
 
         Args:
             labels: The key-value labels to launch the actor with.
-            logical_actor_id: A unique identifier for the actor.
+            logical_actor_id: The logical id of the actor.
 
         Returns:
             A tuple of the actor handle and the object ref to the actor's location.
@@ -597,7 +596,7 @@ class _ActorTaskSelectorImpl(_ActorTaskSelector):
         while input_queue:
             # Filter out actors that are invalid, i.e. actors with number of tasks in
             # flight >= _max_tasks_in_flight or actor_state is not ALIVE.
-            bundle = input_queue.peek()
+            bundle = input_queue.peek_next()
             valid_actors = [
                 actor
                 for actor in self._actor_pool.running_actors()
