@@ -9,9 +9,15 @@ if [[ "${PYTHON_CODE}" != "py311" ]]; then
 	exit 1
 fi
 
+mkdir -p /tmp/ray-deps
+
+# Remove the GPU constraints
+cp python/requirements_compiled.txt /tmp/ray-deps/requirements_compiled.txt
+sed -i '/^--extra-index-url /d' /tmp/ray-deps/requirements_compiled.txt
+sed -i '/^--find-links /d' /tmp/ray-deps/requirements_compiled.txt
+
 for CUDA_CODE in cpu cu121 cu128; do
 	export CUDA_CODE="${CUDA_CODE}"
-	export PYTHON_CODE="${PYTHON_CODE}"
 	bazel run //ci/raydepsets:raydepsets -- load
 done
 

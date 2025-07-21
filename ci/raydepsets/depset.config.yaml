@@ -5,7 +5,7 @@ depsets:
       - python/requirements/cloud-requirements.txt
       - python/requirements/base-test-requirements.txt
     constraints:
-      - python/requirements_compiled.txt
+      - tmp/ray-deps/requirements_compiled.txt
     output: python/requirements_compiled_ray_test_${PYTHON_CODE}_${CUDA_CODE}.txt
     operation: compile
     override_flags:
@@ -16,30 +16,40 @@ depsets:
     requirements:
       - python/requirements.txt
     output: python/requirements_compiled_general_${PYTHON_CODE}_${CUDA_CODE}.txt
+    override_flags:
+      - --extra-index-url "https://download.pytorch.org/whl/${CUDA_CODE}"
 
   - name: cloud_depset
     operation: compile
     requirements:
       - python/requirements/cloud-requirements.txt
     output: python/requirements_compiled_cloud_req_${PYTHON_CODE}_${CUDA_CODE}.txt
+    override_flags:
+      - --extra-index-url "https://download.pytorch.org/whl/${CUDA_CODE}"
 
   - name: base_test_depset
     operation: compile
     requirements:
       - python/requirements/base-test-requirements.txt
     output: python/requirements_compiled_base_test_${PYTHON_CODE}_${CUDA_CODE}.txt
+    override_flags:
+      - --extra-index-url "https://download.pytorch.org/whl/${CUDA_CODE}"
 
   - name: llm_depset
     operation: compile
     requirements:
       - python/requirements/llm/llm-requirements.txt
     output: python/requirements_compiled_llm_${PYTHON_CODE}_${CUDA_CODE}.txt
+    override_flags:
+      - --extra-index-url "https://download.pytorch.org/whl/${CUDA_CODE}"
 
   - name: llm_test_depset
     operation: compile
     requirements:
       - python/requirements/llm/llm-test-requirements.txt
     output: python/requirements_compiled_llm_test_${PYTHON_CODE}_${CUDA_CODE}.txt
+    override_flags:
+      - --extra-index-url "https://download.pytorch.org/whl/${CUDA_CODE}"
 
   - name: compiled_ray_llm_test_depset
     operation: expand
@@ -52,7 +62,7 @@ depsets:
     constraints:
       - python/requirements_compiled_ray_test_${PYTHON_CODE}_${CUDA_CODE}.txt
     output: python/requirements_compiled_rayllm_test_${PYTHON_CODE}_${CUDA_CODE}.txt
-    extra_flags:
+    override_flags:
       - --extra-index-url "https://download.pytorch.org/whl/${CUDA_CODE}"
 
   - name: compiled_ray_depset
@@ -61,7 +71,7 @@ depsets:
     requirements:
       - python/requirements.txt
     output: python/requirements_compiled_ray_${PYTHON_CODE}_${CUDA_CODE}.txt
-    extra_flags:
+    override_flags:
       - --extra-index-url "https://download.pytorch.org/whl/${CUDA_CODE}"
 
   - name: compiled_ray_llm_depset
@@ -71,5 +81,5 @@ depsets:
       - python/requirements.txt
       - python/requirements/llm/llm-requirements.txt
     output: python/requirements_compiled_rayllm_${PYTHON_CODE}_${CUDA_CODE}.txt
-    extra_flags:
+    override_flags:
       - --extra-index-url "https://download.pytorch.org/whl/${CUDA_CODE}"
