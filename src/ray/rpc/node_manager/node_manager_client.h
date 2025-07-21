@@ -29,42 +29,8 @@
 namespace ray {
 namespace rpc {
 
-/// Client used for communicating with a remote node manager server.
-class NodeManagerClient {
- public:
-  /// Constructor.
-  ///
-  /// \param[in] address Address of the node manager server.
-  /// \param[in] port Port of the node manager server.
-  /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
-  NodeManagerClient(const std::string &address,
-                    const int port,
-                    ClientCallManager &client_call_manager) {
-    grpc_client_ = std::make_unique<GrpcClient<NodeManagerService>>(
-        address, port, client_call_manager);
-  };
-
-  /// Get current node stats.
-  VOID_RPC_CLIENT_METHOD(NodeManagerService,
-                         GetNodeStats,
-                         grpc_client_,
-                         /*method_timeout_ms*/ -1, )
-
-  void GetNodeStats(const ClientCallback<GetNodeStatsReply> &callback) {
-    GetNodeStatsRequest request;
-    GetNodeStats(request, callback);
-  }
-
-  std::shared_ptr<grpc::Channel> Channel() const { return grpc_client_->Channel(); }
-
- private:
-  /// The RPC client.
-  std::unique_ptr<GrpcClient<NodeManagerService>> grpc_client_;
-};
-
 /// Client used by workers for communicating with a node manager server.
-class NodeManagerWorkerClient
-    : public std::enable_shared_from_this<NodeManagerWorkerClient> {
+class NodeManagerWorkerClient {
  public:
   /// Constructor.
   ///
@@ -213,6 +179,11 @@ class NodeManagerWorkerClient
 
   VOID_RPC_CLIENT_METHOD(NodeManagerService,
                          PushMutableObject,
+                         grpc_client_,
+                         /*method_timeout_ms*/ -1, )
+
+  VOID_RPC_CLIENT_METHOD(NodeManagerService,
+                         GetNodeStats,
                          grpc_client_,
                          /*method_timeout_ms*/ -1, )
 
