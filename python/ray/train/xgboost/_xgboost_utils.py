@@ -123,6 +123,8 @@ class RayTrainReportCallback(TuneCallback):
         # Keep track of the last checkpoint iteration to avoid double-checkpointing
         # when using `checkpoint_at_end=True`.
         self._last_checkpoint_iteration = None
+        # Resolves report_fn based on tune/train usage.
+        self.report_fn = ray.tune.report if _in_tune_session() else ray.train.report
 
     @classmethod
     def get_model(
@@ -189,15 +191,10 @@ class RayTrainReportCallback(TuneCallback):
         if should_checkpoint:
             self._last_checkpoint_iteration = epoch
             with self._get_checkpoint(model=model) as checkpoint:
-                if _in_tune_session:
-                    ray.tune.report(report_dict, checkpoint=checkpoint)
-                else:
-                    ray.train.report(report_dict, checkpoint=checkpoint)
+                self.report_fn(report_dict, checkpoint=checkpoint)
+
         else:
-            if _in_tune_session:
-                ray.tune.report(report_dict)
-            else:
-                ray.train.report(report_dict)
+            self.report_fn(report_dict)
 
     def after_training(self, model: Booster) -> Booster:
         if not self._checkpoint_at_end:
@@ -213,9 +210,6 @@ class RayTrainReportCallback(TuneCallback):
 
         report_dict = self._get_report_dict(self._evals_log) if self._evals_log else {}
         with self._get_checkpoint(model=model) as checkpoint:
-            if _in_tune_session():
-                ray.tune.report(report_dict, checkpoint=checkpoint)
-            else:
-                ray.train.report(report_dict, checkpoint=checkpoint)
+            self.report_fn(report_dict, checkpoint=checkpoint)
 
         return model
