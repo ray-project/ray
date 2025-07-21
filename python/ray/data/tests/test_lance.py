@@ -99,7 +99,11 @@ def test_lance_read_with_scanner_fragments(data_path):
 
     fragments = dataset.get_fragments()
     ds = ray.data.read_lance(path, scanner_options={"fragments": fragments[:1]})
-    assert len(ds.take_all()) == 2
+    values = [[s["one"], s["two"]] for s in ds.take_all()]
+    assert values == [
+        [2, "b"],
+        [1, "a"],
+    ]
 
 
 @pytest.mark.parametrize("data_path", [lazy_fixture("local_path")])
