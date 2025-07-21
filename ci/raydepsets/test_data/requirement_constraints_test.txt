@@ -1,7 +1,2 @@
-filelock==3.17.0
-lz4==4.3.3
-numpy==1.26.4
-aiorwlock==1.3.0
-scipy==1.11.4
-colorful==0.5.5
-rich==13.3.2
+emoji==2.9.0
+pyperclip<=1.6.0

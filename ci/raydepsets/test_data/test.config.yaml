@@ -1,11 +1,11 @@
 depsets:
   - name: ray_base_test_depset
+    operation: compile
     requirements:
       - requirements_test.txt
     constraints:
       - requirement_constraints_test.txt
     output: requirements_compiled.txt
-    operation: compile
   - name: general_depset
     operation: compile
     requirements:
