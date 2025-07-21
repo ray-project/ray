@@ -714,6 +714,41 @@ def tlog(s: str, level: str = "INFO"):
     print(f"[{level}] {now} {s}")
 
 
+def _build_url_for_target(
+    target: dict[str, Any],
+    protocol: RequestProtocol,
+    route_prefix: str,
+    use_localhost: bool = False,
+    is_websocket: bool = False,
+) -> str:
+    """Build a URL for a specific target.
+
+    Args:
+        target: The target object containing ip and port.
+        protocol: The protocol to use for the URL.
+        route_prefix: The route prefix to append to the URL.
+        use_localhost: Whether to use localhost instead of the target IP.
+        is_websocket: Whether the URL should be served as a websocket.
+
+    Returns:
+        The constructed URL string.
+
+    Raises:
+        ValueError: If the protocol is unsupported or websocket is used with gRPC.
+    """
+    ip = "localhost" if use_localhost else target.ip
+    if protocol == RequestProtocol.HTTP:
+        scheme = "ws" if is_websocket else "http"
+        url = f"{scheme}://{ip}:{target.port}{route_prefix}"
+    elif protocol == RequestProtocol.GRPC:
+        if is_websocket:
+            raise ValueError("is_websocket=True is not supported with gRPC protocol.")
+        url = f"{ip}:{target.port}"
+    else:
+        raise ValueError(f"Unsupported protocol: {protocol}")
+    return url.rstrip("/")
+
+
 def get_application_urls(
     protocol: Union[str, RequestProtocol] = RequestProtocol.HTTP,
     app_name: str = SERVE_DEFAULT_APP_NAME,
@@ -737,7 +772,19 @@ def get_application_urls(
     client = _get_global_client()
     serve_details = client.get_serve_details()
     if app_name not in serve_details["applications"]:
-        return [client.root_url]
+        # If app_name not found, return appropriate URL based on protocol
+        if isinstance(protocol, str):
+            protocol = RequestProtocol(protocol)
+
+        if protocol == RequestProtocol.GRPC:
+            # For gRPC, construct URL using gRPC config
+            grpc_config = ray.get(client._controller.get_grpc_config.remote())
+            ip = "localhost" if use_localhost else "0.0.0.0"
+            return [f"{ip}:{grpc_config.port}"]
+        else:
+            # For HTTP, return the root URL
+            return [client.root_url]
+
     route_prefix = serve_details["applications"][app_name]["route_prefix"]
     if exclude_route_prefix:
         route_prefix = ""
@@ -759,19 +806,9 @@ def get_application_urls(
     urls = []
     for target_group in target_groups:
         for target in target_group.targets:
-            ip = "localhost" if use_localhost else target.ip
-            if protocol == RequestProtocol.HTTP:
-                scheme = "ws" if is_websocket else "http"
-                url = f"{scheme}://{ip}:{target.port}{route_prefix}"
-            elif protocol == RequestProtocol.GRPC:
-                if is_websocket:
-                    raise ValueError(
-                        "is_websocket=True is not supported with gRPC protocol."
-                    )
-                url = f"{ip}:{target.port}"
-            else:
-                raise ValueError(f"Unsupported protocol: {protocol}")
-            url = url.rstrip("/")
+            url = _build_url_for_target(
+                target, protocol, route_prefix, use_localhost, is_websocket
+            )
             urls.append(url)
     return urls
 

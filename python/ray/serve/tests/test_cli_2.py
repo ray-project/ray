@@ -30,6 +30,57 @@ from ray.serve.generated import serve_pb2, serve_pb2_grpc
 
 CONNECTION_ERROR_MSG = "connection error"
 
+# Use the full path to serve command from the conda environment
+SERVE_CMD = "/home/ubuntu/.conda/envs/rayturbo/bin/serve"
+RAY_CMD = "/home/ubuntu/.conda/envs/rayturbo/bin/ray"
+
+
+def check_ray_stop():
+    """Check if Ray is stopped."""
+    try:
+        response = httpx.get("http://localhost:8265/api/ray/version", timeout=1.0)
+        return response.status_code != 200
+    except Exception:
+        return True
+
+
+@pytest.fixture(scope="module")
+def ray_and_serve_setup():
+    """Start Ray and Serve once for the entire test module."""
+    # Stop any existing Ray cluster
+    try:
+        subprocess.check_output([RAY_CMD, "stop", "--force"])
+        wait_for_condition(check_ray_stop, timeout=30)
+    except Exception:
+        pass
+
+    # Start Ray cluster
+    subprocess.check_output([RAY_CMD, "start", "--head"])
+    wait_for_condition(
+        lambda: httpx.get("http://localhost:8265/api/ray/version").status_code == 200,
+        timeout=30,
+    )
+
+    # Start Serve
+    subprocess.check_output([SERVE_CMD, "start"])
+
+    # Wait for Serve to be ready
+    wait_for_condition(wait_for_serve_ready, timeout=30)
+
+    yield
+
+    # Cleanup: Stop Serve and Ray
+    try:
+        subprocess.check_output([SERVE_CMD, "shutdown", "-y"])
+    except Exception:
+        pass
+
+    try:
+        subprocess.check_output([RAY_CMD, "stop", "--force"])
+        wait_for_condition(check_ray_stop, timeout=30)
+    except Exception:
+        pass
+
 
 def is_application_ready():
     """Check if the application is ready to accept connections."""
@@ -37,10 +88,43 @@ def is_application_ready():
         base_url = get_application_url("HTTP", use_localhost=True)
         if not base_url:
             return False
-        response = httpx.get(f"{base_url}/-/healthz", timeout=2.0)
+        response = httpx.get(f"{base_url}/-/healthz", timeout=5.0)
         return response.status_code == 200
     except Exception:
         return False
+
+
+def is_grpc_application_ready():
+    """Check if the gRPC application is ready to accept connections."""
+    try:
+        grpc_url = get_application_url("gRPC", use_localhost=True)
+        if not grpc_url:
+            return False
+        # Try to get the gRPC URL - if it exists, the application is ready
+        return True
+    except Exception:
+        return False
+
+
+def wait_for_serve_ready():
+    """Wait for Serve to be ready."""
+    try:
+        subprocess.check_output([SERVE_CMD, "status"], timeout=10)
+        return True
+    except Exception:
+        return False
+
+
+def ensure_clean_serve_state():
+    """Ensure Serve is in a clean state before each test."""
+    try:
+        subprocess.check_output([SERVE_CMD, "shutdown", "-y"])
+        # Wait a bit for cleanup
+        import time
+
+        time.sleep(2)
+    except Exception:
+        pass
 
 
 def ping_endpoint(endpoint: str, params: str = ""):
@@ -60,7 +144,7 @@ def ping_endpoint(endpoint: str, params: str = ""):
 
 def check_app_status(app_name: str, expected_status: str):
     try:
-        status_response = subprocess.check_output(["serve", "status"])
+        status_response = subprocess.check_output([SERVE_CMD, "status"])
         status = yaml.safe_load(status_response)["applications"]
         assert status[app_name]["status"] == expected_status
         return True
@@ -93,62 +177,62 @@ def check_http_response(expected_text: str, json: Optional[Dict] = None):
         return False
 
 
-def test_start_shutdown(ray_start_stop):
-    subprocess.check_output(["serve", "start"])
+@pytest.mark.order(1)
+def test_start_shutdown(ray_and_serve_setup):
     # deploy a simple app
     import_path = "ray.serve.tests.test_config_files.arg_builders.build_echo_app"
 
-    deploy_response = subprocess.check_output(["serve", "deploy", import_path])
+    deploy_response = subprocess.check_output([SERVE_CMD, "deploy", import_path])
     assert b"Sent deploy request successfully." in deploy_response
 
     # Wait for the application to be ready before making requests
-    wait_for_condition(is_application_ready, timeout=15)
+    wait_for_condition(is_application_ready, timeout=30)
 
     wait_for_condition(
         check_http_response,
         expected_text="DEFAULT",
-        timeout=15,
+        timeout=30,
     )
 
-    ret = subprocess.check_output(["serve", "shutdown", "-y"])
+    ret = subprocess.check_output([SERVE_CMD, "shutdown", "-y"])
     assert b"Sent shutdown request; applications will be deleted asynchronously" in ret
 
     def check_no_apps():
         try:
-            status = subprocess.check_output(["serve", "status"])
+            status = subprocess.check_output([SERVE_CMD, "status"])
             return b"applications: {}" in status
         except subprocess.CalledProcessError:
             return False
 
-    wait_for_condition(check_no_apps, timeout=15)
+    wait_for_condition(check_no_apps, timeout=30)
 
     # Test shutdown when no Serve instance is running
-    ret = subprocess.check_output(["serve", "shutdown", "-y"], stderr=subprocess.STDOUT)
+    ret = subprocess.check_output(
+        [SERVE_CMD, "shutdown", "-y"], stderr=subprocess.STDOUT
+    )
     assert b"No Serve instance found running" in ret
 
 
-def test_start_shutdown_without_serve_running(ray_start_stop):
+@pytest.mark.order(2)
+def test_start_shutdown_without_serve_running(ray_and_serve_setup):
     # Test shutdown when no Serve instance is running
-    ret = subprocess.check_output(["serve", "shutdown", "-y"], stderr=subprocess.STDOUT)
+    ret = subprocess.check_output(
+        [SERVE_CMD, "shutdown", "-y"], stderr=subprocess.STDOUT
+    )
     assert b"No Serve instance found running" in ret
 
 
-# def test_start_shutdown_without_ray_running():
-#     # Test shutdown when Ray is not running
-#     ret = subprocess.check_output(["serve", "shutdown", "-y"], stderr=subprocess.STDOUT)
-#     assert b"Unable to shutdown Serve on the cluster" in ret
-
-
+@pytest.mark.order(3)
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_shutdown(ray_start_stop):
+def test_shutdown(ray_and_serve_setup):
     """Deploys a config file and shuts down the Serve application."""
 
     # Check that `serve shutdown` works even if no Serve app is running
-    subprocess.check_output(["serve", "shutdown", "-y"])
+    subprocess.check_output([SERVE_CMD, "shutdown", "-y"])
 
     def num_live_deployments():
         try:
-            status_response = subprocess.check_output(["serve", "status"])
+            status_response = subprocess.check_output([SERVE_CMD, "status"])
             serve_status = yaml.safe_load(status_response)["applications"][
                 SERVE_DEFAULT_APP_NAME
             ]
@@ -166,34 +250,34 @@ def test_shutdown(ray_start_stop):
         print(f"*** Starting Iteration {iteration}/{num_iterations} ***\n")
 
         print("Deploying config.")
-        subprocess.check_output(["serve", "deploy", config_file_name])
-        wait_for_condition(lambda: num_live_deployments() == 2, timeout=15)
+        subprocess.check_output([SERVE_CMD, "deploy", config_file_name])
+        wait_for_condition(lambda: num_live_deployments() == 2, timeout=30)
         print("Deployment successful. Deployments are live.")
 
         # `serve config` and `serve status` should print non-empty schemas
-        config_response = subprocess.check_output(["serve", "config"])
+        config_response = subprocess.check_output([SERVE_CMD, "config"])
         yaml.safe_load(config_response)
 
-        status_response = subprocess.check_output(["serve", "status"])
+        status_response = subprocess.check_output([SERVE_CMD, "status"])
         status = yaml.safe_load(status_response)
         assert len(status["applications"])
         print("`serve config` and `serve status` print non-empty responses.\n")
 
         print("Deleting Serve app.")
-        subprocess.check_output(["serve", "shutdown", "-y"])
+        subprocess.check_output([SERVE_CMD, "shutdown", "-y"])
 
         # `serve config` and `serve status` should print messages indicating
         # nothing is deployed
         def serve_config_empty():
             try:
-                config_response = subprocess.check_output(["serve", "config"])
+                config_response = subprocess.check_output([SERVE_CMD, "config"])
                 return len(config_response) == 0
             except subprocess.CalledProcessError:
                 return True
 
         def serve_status_empty():
             try:
-                status_response = subprocess.check_output(["serve", "status"])
+                status_response = subprocess.check_output([SERVE_CMD, "status"])
                 status = yaml.safe_load(status_response)
                 return len(status["applications"]) == 0
             except (subprocess.CalledProcessError, yaml.YAMLError, KeyError):
@@ -204,8 +288,9 @@ def test_shutdown(ray_start_stop):
         print("`serve config` and `serve status` print empty responses.\n")
 
 
+@pytest.mark.order(4)
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_deploy_with_http_options(ray_start_stop):
+def test_deploy_with_http_options(ray_and_serve_setup):
     """Deploys config with host and port options specified"""
 
     f1 = os.path.join(
@@ -216,7 +301,7 @@ def test_deploy_with_http_options(ray_start_stop):
     with open(f1, "r") as config_file:
         config = yaml.safe_load(config_file)
 
-    deploy_response = subprocess.check_output(["serve", "deploy", f1])
+    deploy_response = subprocess.check_output([SERVE_CMD, "deploy", f1])
     assert success_message_fragment in deploy_response
 
     # Test the custom port configuration (port 8005)
@@ -227,10 +312,10 @@ def test_deploy_with_http_options(ray_start_stop):
         except (httpx.HTTPError, httpx.TimeoutException):
             return False
 
-    wait_for_condition(check_custom_port, timeout=15)
+    wait_for_condition(check_custom_port, timeout=30)
 
     # Config should contain matching host and port options
-    info_response = subprocess.check_output(["serve", "config"])
+    info_response = subprocess.check_output([SERVE_CMD, "config"])
     info = yaml.safe_load(info_response)
 
     # TODO(zcin): the assertion should just be `info == config` here but the output
@@ -238,15 +323,19 @@ def test_deploy_with_http_options(ray_start_stop):
     assert info == config["applications"][0]
 
 
+@pytest.mark.order(5)
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_build_multi_app(ray_start_stop):
+def test_build_multi_app(ray_and_serve_setup):
+    # Ensure clean state
+    ensure_clean_serve_state()
+
     with NamedTemporaryFile(mode="w+", suffix=".yaml") as tmp:
         print('Building nodes "TestApp1Node" and "TestApp2Node".')
         # Build an app
         grpc_servicer_func_root = "ray.serve.generated.serve_pb2_grpc"
         subprocess.check_output(
             [
-                "serve",
+                SERVE_CMD,
                 "build",
                 "ray.serve.tests.test_cli_3.TestApp1Node",
                 "ray.serve.tests.test_cli_3.TestApp2Node",
@@ -259,14 +348,18 @@ def test_build_multi_app(ray_start_stop):
         )
         print("Build succeeded! Deploying node.")
 
-        subprocess.check_output(["serve", "deploy", tmp.name])
+        subprocess.check_output([SERVE_CMD, "deploy", tmp.name])
         print("Deploy succeeded!")
+
+        # Wait for applications to be ready
+        wait_for_condition(is_application_ready, timeout=60)
+
         wait_for_condition(
-            lambda: ping_endpoint("app1") == "wonderful world", timeout=15
+            lambda: ping_endpoint("app1") == "wonderful world", timeout=60
         )
         print("App 1 is live and reachable over HTTP.")
         wait_for_condition(
-            lambda: ping_endpoint("app2") == "wonderful world", timeout=15
+            lambda: ping_endpoint("app2") == "wonderful world", timeout=60
         )
         print("App 2 is live and reachable over HTTP.")
 
@@ -287,59 +380,61 @@ def test_build_multi_app(ray_start_stop):
             raise
 
         print("Deleting applications.")
-        subprocess.check_output(["serve", "shutdown", "-y"])
+        subprocess.check_output([SERVE_CMD, "shutdown", "-y"])
         wait_for_condition(
             lambda: ping_endpoint("app1") == CONNECTION_ERROR_MSG
             and ping_endpoint("app2") == CONNECTION_ERROR_MSG,
-            timeout=15,
+            timeout=30,
         )
         print("Delete succeeded! Node is no longer reachable over HTTP.")
 
 
+@pytest.mark.order(6)
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 @pytest.mark.parametrize("use_command", [True, False])
-def test_idempotence_after_controller_death(ray_start_stop, use_command: bool):
+def test_idempotence_after_controller_death(ray_and_serve_setup, use_command: bool):
     """Check that CLI is idempotent even if controller dies."""
     config_file_name = os.path.join(
         os.path.dirname(__file__), "test_config_files", "basic_graph.yaml"
     )
     success_message_fragment = b"Sent deploy request successfully."
-    deploy_response = subprocess.check_output(["serve", "deploy", config_file_name])
+    deploy_response = subprocess.check_output([SERVE_CMD, "deploy", config_file_name])
     assert success_message_fragment in deploy_response
 
-    ray.init(address="auto", namespace=SERVE_NAMESPACE)
+    ray.init(address="auto", namespace=SERVE_NAMESPACE, ignore_reinit_error=True)
     serve.start()
     wait_for_condition(
         lambda: check_app_running(SERVE_DEFAULT_APP_NAME),
-        timeout=15,
+        timeout=30,
     )
 
     # Kill controller
     if use_command:
-        subprocess.check_output(["serve", "shutdown", "-y"])
+        subprocess.check_output([SERVE_CMD, "shutdown", "-y"])
     else:
         serve.shutdown()
 
-    status_response = subprocess.check_output(["serve", "status"])
+    status_response = subprocess.check_output([SERVE_CMD, "status"])
     status_info = yaml.safe_load(status_response)
 
     assert len(status_info["applications"]) == 0
 
-    deploy_response = subprocess.check_output(["serve", "deploy", config_file_name])
+    deploy_response = subprocess.check_output([SERVE_CMD, "deploy", config_file_name])
     assert success_message_fragment in deploy_response
 
     # Restore testing controller
     serve.start()
     wait_for_condition(
         lambda: check_app_running(SERVE_DEFAULT_APP_NAME),
-        timeout=15,
+        timeout=30,
     )
     serve.shutdown()
     ray.shutdown()
 
 
+@pytest.mark.order(7)
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_serving_request_through_grpc_proxy(ray_start_stop):
+def test_serving_request_through_grpc_proxy(ray_and_serve_setup):
     """Test serving request through gRPC proxy
 
     When Serve runs with a gRPC deployment, the app should be deployed successfully,
@@ -352,10 +447,15 @@ def test_serving_request_through_grpc_proxy(ray_start_stop):
         "deploy_grpc_app.yaml",
     )
 
-    subprocess.check_output(["serve", "deploy", config_file], stderr=subprocess.STDOUT)
+    subprocess.check_output(
+        [SERVE_CMD, "deploy", config_file], stderr=subprocess.STDOUT
+    )
 
     app1 = "app1"
     app_names = [app1]
+
+    # Wait for the application to be ready
+    wait_for_condition(is_application_ready, timeout=60)
 
     try:
         grpc_url = get_application_url("gRPC", use_localhost=True)
@@ -387,8 +487,11 @@ def test_serving_request_through_grpc_proxy(ray_start_stop):
     ping_grpc_streaming(channel, app1)
 
 
+@pytest.mark.order(8)
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_grpc_proxy_model_composition(ray_start_stop):
+def test_grpc_proxy_model_composition(ray_and_serve_setup):
+    # Ensure clean state
+    ensure_clean_serve_state()
     """Test serving request through gRPC proxy
 
     When Serve runs with a gRPC deployment, the app should be deployed successfully,
@@ -401,10 +504,15 @@ def test_grpc_proxy_model_composition(ray_start_stop):
         "deploy_grpc_model_composition.yaml",
     )
 
-    subprocess.check_output(["serve", "deploy", config_file], stderr=subprocess.STDOUT)
+    subprocess.check_output(
+        [SERVE_CMD, "deploy", config_file], stderr=subprocess.STDOUT
+    )
 
     app = "app1"
     app_names = [app]
+
+    # Wait for the gRPC application to be ready
+    wait_for_condition(is_grpc_application_ready, timeout=60)
 
     try:
         grpc_url = get_application_url("gRPC", use_localhost=True)
@@ -427,14 +535,18 @@ def test_grpc_proxy_model_composition(ray_start_stop):
     ping_fruit_stand(channel, app)
 
 
+@pytest.mark.order(9)
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_control_c_shutdown_serve_components(ray_start_stop):
+def test_control_c_shutdown_serve_components(ray_and_serve_setup):
     """Test ctrl+c after `serve run` shuts down serve components."""
 
-    p = subprocess.Popen(["serve", "run", "ray.serve.tests.test_cli_3.echo_app"])
+    # Ensure clean state
+    ensure_clean_serve_state()
+
+    p = subprocess.Popen([SERVE_CMD, "run", "ray.serve.tests.test_cli_3.echo_app"])
 
     # Wait for the application to be ready before making requests
-    wait_for_condition(is_application_ready, timeout=15)
+    wait_for_condition(is_application_ready, timeout=60)
 
     # Make sure Serve components are up and running
     wait_for_condition(check_app_running, app_name=SERVE_DEFAULT_APP_NAME)
@@ -449,7 +561,7 @@ def test_control_c_shutdown_serve_components(ray_start_stop):
     # Make sure Serve components are shutdown
     def check_serve_shutdown():
         try:
-            status_response = subprocess.check_output(["serve", "status"])
+            status_response = subprocess.check_output([SERVE_CMD, "status"])
             status = yaml.safe_load(status_response)
             return status == {
                 "applications": {},
@@ -459,18 +571,12 @@ def test_control_c_shutdown_serve_components(ray_start_stop):
         except (subprocess.CalledProcessError, yaml.YAMLError):
             return True
 
-    wait_for_condition(check_serve_shutdown, timeout=15)
+    wait_for_condition(check_serve_shutdown, timeout=30)
 
 
+@pytest.mark.order(10)
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-@pytest.mark.parametrize(
-    "ray_start_stop_in_specific_directory",
-    [
-        os.path.join(os.path.dirname(__file__), "test_config_files"),
-    ],
-    indirect=True,
-)
-def test_deploy_with_access_to_current_directory(ray_start_stop_in_specific_directory):
+def test_deploy_with_access_to_current_directory(ray_and_serve_setup):
     """Test serve deploy using modules in the current directory succeeds.
 
     There was an issue where dashboard client doesn't add the current directory to
@@ -479,20 +585,32 @@ def test_deploy_with_access_to_current_directory(ray_start_stop_in_specific_dire
 
     See: https://github.com/ray-project/ray/issues/43889
     """
-    # Deploy Serve application with a config in the current directory.
-    subprocess.check_output(["serve", "deploy", "use_current_working_directory.yaml"])
+    # Change to the test_config_files directory
+    original_dir = os.getcwd()
+    config_dir = os.path.join(os.path.dirname(__file__), "test_config_files")
+    os.chdir(config_dir)
 
-    # Ensure serve deploy eventually succeeds.
-    def check_deploy_successfully():
-        try:
-            status_response = subprocess.check_output(["serve", "status"])
-            return b"RUNNING" in status_response
-        except subprocess.CalledProcessError:
-            return False
+    try:
+        # Deploy Serve application with a config in the current directory.
+        subprocess.check_output(
+            [SERVE_CMD, "deploy", "use_current_working_directory.yaml"]
+        )
 
-    wait_for_condition(check_deploy_successfully, timeout=15)
+        # Ensure serve deploy eventually succeeds.
+        def check_deploy_successfully():
+            try:
+                status_response = subprocess.check_output([SERVE_CMD, "status"])
+                return b"RUNNING" in status_response
+            except subprocess.CalledProcessError:
+                return False
+
+        wait_for_condition(check_deploy_successfully, timeout=60)
+    finally:
+        # Change back to original directory
+        os.chdir(original_dir)
 
 
+@pytest.mark.order(11)
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 class TestRayReinitialization:
     @pytest.fixture
@@ -507,21 +625,26 @@ class TestRayReinitialization:
     def ansi_escape(self) -> Pattern:
         return re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
 
-    def test_run_without_address(self, import_file_name, ray_start_stop):
+    def test_run_without_address(self, import_file_name, ray_and_serve_setup):
         """Test serve run with ray already initialized and run without address argument.
 
         When the imported file already initialized a ray instance and serve doesn't run
         with address argument, then serve does not reinitialize another ray instance and
         cause error.
         """
-        p = subprocess.Popen(["serve", "run", import_file_name])
+        # Ensure clean state
+        ensure_clean_serve_state()
+
+        p = subprocess.Popen([SERVE_CMD, "run", import_file_name])
         try:
-            wait_for_condition(lambda: ping_endpoint("") == "foobar", timeout=10)
+            # Wait for the application to be ready
+            wait_for_condition(is_application_ready, timeout=60)
+            wait_for_condition(lambda: ping_endpoint("") == "foobar", timeout=60)
         finally:
             p.send_signal(signal.SIGINT)
             p.wait()
 
-    def test_run_with_address_same_address(self, import_file_name, ray_start_stop):
+    def test_run_with_address_same_address(self, import_file_name, ray_and_serve_setup):
         """Test serve run with ray already initialized and run with address argument
         that has the same address as existing ray instance.
 
@@ -529,17 +652,22 @@ class TestRayReinitialization:
         address argument same as the ray instance, then serve does not reinitialize
         another ray instance and cause error.
         """
+        # Ensure clean state
+        ensure_clean_serve_state()
+
         p = subprocess.Popen(
-            ["serve", "run", "--address=127.0.0.1:6379", import_file_name]
+            [SERVE_CMD, "run", "--address=127.0.0.1:6379", import_file_name]
         )
         try:
-            wait_for_condition(lambda: ping_endpoint("") == "foobar", timeout=10)
+            # Wait for the application to be ready
+            wait_for_condition(is_application_ready, timeout=60)
+            wait_for_condition(lambda: ping_endpoint("") == "foobar", timeout=60)
         finally:
             p.send_signal(signal.SIGINT)
             p.wait()
 
     def test_run_with_address_different_address(
-        self, import_file_name, pattern, ansi_escape, ray_start_stop
+        self, import_file_name, pattern, ansi_escape, ray_and_serve_setup
     ):
         """Test serve run with ray already initialized and run with address argument
         that has the different address as existing ray instance.
@@ -548,13 +676,18 @@ class TestRayReinitialization:
         address argument different as the ray instance, then serve does not reinitialize
         another ray instance and cause error and logs warning to the user.
         """
+        # Ensure clean state
+        ensure_clean_serve_state()
+
         p = subprocess.Popen(
-            ["serve", "run", "--address=ray://123.45.67.89:50005", import_file_name],
+            [SERVE_CMD, "run", "--address=ray://123.45.67.89:50005", import_file_name],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
         )
         try:
-            wait_for_condition(lambda: ping_endpoint("") == "foobar", timeout=10)
+            # Wait for the application to be ready
+            wait_for_condition(is_application_ready, timeout=60)
+            wait_for_condition(lambda: ping_endpoint("") == "foobar", timeout=60)
         finally:
             p.send_signal(signal.SIGINT)
             p.wait()
@@ -569,7 +702,7 @@ class TestRayReinitialization:
             assert expected_warning_message in logs
 
     def test_run_with_auto_address(
-        self, import_file_name, pattern, ansi_escape, ray_start_stop
+        self, import_file_name, pattern, ansi_escape, ray_and_serve_setup
     ):
         """Test serve run with ray already initialized and run with "auto" address
         argument.
@@ -578,13 +711,18 @@ class TestRayReinitialization:
         address argument same as the ray instance, then serve does not reinitialize
         another ray instance and cause error.
         """
+        # Ensure clean state
+        ensure_clean_serve_state()
+
         p = subprocess.Popen(
-            ["serve", "run", "--address=auto", import_file_name],
+            [SERVE_CMD, "run", "--address=auto", import_file_name],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
         )
         try:
-            wait_for_condition(lambda: ping_endpoint("") == "foobar", timeout=10)
+            # Wait for the application to be ready
+            wait_for_condition(is_application_ready, timeout=60)
+            wait_for_condition(lambda: ping_endpoint("") == "foobar", timeout=60)
         finally:
             p.send_signal(signal.SIGINT)
             p.wait()

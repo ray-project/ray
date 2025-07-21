@@ -198,12 +198,14 @@ def test_recover_rolling_update_from_replica_actor_names(serve_instance):
     )
 
 
-def test_controller_recover_initializing_actor(serve_instance):
+def test_controller_recover_initializing_actor(ray_instance):
     """Recover the actor which is under PENDING_INITIALIZATION using Serve APIs."""
+
+    # Start Serve using Python API
+    serve.start()
 
     signal = SignalActor.remote()
     signal2 = SignalActor.remote()
-    client = serve_instance
 
     @ray.remote
     def pending_init_indicator():
@@ -219,7 +221,9 @@ def test_controller_recover_initializing_actor(serve_instance):
         def __call__(self, request):
             return f"1|{os.getpid()}"
 
-    serve._run(V1.bind(), _blocking=False, name="app")
+    # Deploy using Python API
+    serve.run(V1.bind(), name="app")
+
     ray.get(pending_init_indicator.remote())
 
     def get_actor_info(name: str):
@@ -232,7 +236,7 @@ def test_controller_recover_initializing_actor(serve_instance):
             # For replicas, use the deployment API
             deployment_id = DeploymentID(name="V1", app_name="app")
             replicas = ray.get(
-                serve_instance._controller._dump_replica_states_for_testing.remote(
+                serve.context._global_client._controller._dump_replica_states_for_testing.remote(
                     deployment_id
                 )
             )
@@ -250,7 +254,9 @@ def test_controller_recover_initializing_actor(serve_instance):
     # wait for controller is alive again using Serve APIs
     def check_controller_alive():
         try:
-            ray.get(serve_instance._controller._get_logging_config.remote())
+            ray.get(
+                serve.context._global_client._controller._get_logging_config.remote()
+            )
             return True
         except Exception:
             return False
@@ -262,9 +268,22 @@ def test_controller_recover_initializing_actor(serve_instance):
 
     # Let the actor proceed initialization
     ray.get(signal.send.remote())
-    client._wait_for_application_running("app")
+
+    # Wait for application to be running
+    def check_app_running():
+        try:
+            status = serve.status()
+            return status["applications"]["app"]["status"] == "RUNNING"
+        except (KeyError, Exception):
+            return False
+
+    wait_for_condition(check_app_running, timeout=30)
+
     # Make sure the actor before controller dead is staying alive.
     assert actor_tag == get_actor_info(f"app#{V1.name}")[0]
+
+    # Clean up
+    serve.shutdown()
 
 
 def test_replica_deletion_after_controller_recover(serve_instance):
