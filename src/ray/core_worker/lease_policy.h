@@ -69,7 +69,7 @@ class LocalityAwareLeasePolicy : public LeasePolicyInterface {
   std::pair<rpc::Address, bool> GetBestNodeForTask(
       const TaskSpecification &spec) override;
 
-  void SetOwnerAddress(const rpc::Address &owner_address) {
+  void SetOwnerAddress(const rpc::Address &owner_address) override {
     fallback_rpc_address_ = owner_address;
   }
 
@@ -100,7 +100,7 @@ class LocalLeasePolicy : public LeasePolicyInterface {
   std::pair<rpc::Address, bool> GetBestNodeForTask(
       const TaskSpecification &spec) override;
 
-  void SetOwnerAddress(const rpc::Address &owner_address) {
+  void SetOwnerAddress(const rpc::Address &owner_address) override {
     local_node_rpc_address_ = owner_address;
   }
 
