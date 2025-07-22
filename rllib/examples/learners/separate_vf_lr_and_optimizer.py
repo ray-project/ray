@@ -29,7 +29,7 @@ learn any useful policy anymore.
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack --lr-vf=0.001 --lr-policy=0.0005`
+`python [script file name].py --lr-vf=0.001 --lr-policy=0.0005`
 
 Use the `--lr-policy` option to set the policy learning rate (used by the policy
 optimizer) and the `--lr-vf` option to set the value function learning rate (used by the
@@ -79,7 +79,6 @@ torch, _ = try_import_torch()
 
 
 parser = add_rllib_example_script_args(default_reward=450.0)
-parser.set_defaults(enable_new_api_stack=True)
 parser.add_argument(
     "--lr-vf",
     type=float,
@@ -97,9 +96,6 @@ parser.add_argument(
 if __name__ == "__main__":
     args = parser.parse_args()
 
-    assert (
-        args.enable_new_api_stack
-    ), "Must set --enable-new-api-stack when running this script!"
     assert args.algo == "PPO", "Must set --algo=PPO when running this script!"
 
     base_config = (

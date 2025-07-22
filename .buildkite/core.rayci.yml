@@ -6,6 +6,7 @@ steps:
   # builds
   - name: corebuild
     wanda: ci/docker/core.build.py39.wanda.yaml
+    tags: cibase
     env:
       IMAGE_FROM: cr.ray.io/rayproject/oss-ci-base_build
       IMAGE_TO: corebuild
@@ -13,6 +14,7 @@ steps:
 
   - name: coregpubuild
     wanda: ci/docker/core.build.py39.wanda.yaml
+    tags: cibase
     depends_on: oss-ci-base_gpu
     env:
       IMAGE_FROM: cr.ray.io/rayproject/oss-ci-base_gpu
@@ -22,6 +24,7 @@ steps:
   - name: corebuild-multipy
     label: "wanda: corebuild-py{{matrix}}"
     wanda: ci/docker/core.build.wanda.yaml
+    tags: cibase
     matrix:
       - "3.12"
     env:
@@ -31,6 +34,7 @@ steps:
   - name: minbuild-core
     label: "wanda: minbuild-core-py{{matrix}}"
     wanda: ci/docker/min.build.wanda.yaml
+    tags: cibase
     matrix:
       - "3.9"
       - "3.10"
@@ -169,19 +173,28 @@ steps:
         --except-tags gpu
         --skip-ray-installation
 
-  - label: ":ray: core: dask & modin tests"
+  - label: ":ray: core: dask tests"
     tags:
-      # These tests are only triggered on premerge if there are changes under
-      # `ray/util/dask/`. This is not technically related to modin, but modin tests can
-      # run postmerge-only and are too small for their own build.
       - dask
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:test_in_docker --
-        python/ray/util/dask/... python/ray/tests/modin/... core
+        python/ray/util/dask/... core
+        --install-mask all-ray-libraries
+        --build-name databuild-py3.12
+    depends_on:
+      - databuild-multipy
+      - forge
+
+  - label: ":ray: core: modin tests"
+    tags:
+      - skip-on-premerge
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker --
+        python/ray/tests/modin/... core
         --install-mask all-ray-libraries
         --build-name datalbuild
-        --parallelism-per-worker 2
     depends_on:
       - datalbuild
       - forge

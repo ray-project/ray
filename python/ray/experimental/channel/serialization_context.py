@@ -144,7 +144,7 @@ class _SerializationContext:
         target_device: Device,
     ):
 
-        # Found a placeholder for a tensor that was serialized via NCCL.
+        # Found a placeholder for a tensor that was serialized via accelerator.
         # Replace it with the corresponding deserialized tensor.
         if isinstance(val, int):
             placeholder = val

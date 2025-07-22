@@ -71,7 +71,8 @@ message Instance {
     RAY_STOPPING = 7;
     // Ray stopped - follows from the RAY_STOPPING/RAY_RUNNING state.
     RAY_STOPPED = 8;
-    // The instance is terminating - follows from the RAY_STOPPED or ALLOCATED state.
+    // The instance is terminating - follows from the RAY_STOPPED state or ALLOCATED
+    // state.
     TERMINATING = 9;
     // The instance is terminated - follows from TERMINATING state or any other running
     // states when instance was preempted.

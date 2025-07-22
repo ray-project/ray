@@ -1,7 +1,8 @@
+import json
 import logging
 import warnings
 from enum import Enum
-from typing import Any, Callable, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 from ray import cloudpickle
 from ray._common.pydantic_compat import (
@@ -20,6 +21,9 @@ from ray.serve._private.constants import (
     DEFAULT_GRPC_PORT,
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
+    DEFAULT_REQUEST_ROUTER_PATH,
+    DEFAULT_REQUEST_ROUTING_STATS_PERIOD_S,
+    DEFAULT_REQUEST_ROUTING_STATS_TIMEOUT_S,
     DEFAULT_TARGET_ONGOING_REQUESTS,
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
     SERVE_LOGGER_NAME,
@@ -27,6 +31,132 @@ from ray.serve._private.constants import (
 from ray.util.annotations import Deprecated, PublicAPI
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+
+
+@PublicAPI(stability="alpha")
+class RequestRouterConfig(BaseModel):
+    """Config for the Serve request router.
+
+    This class configures how Ray Serve routes requests to deployment replicas. The router is
+    responsible for selecting which replica should handle each incoming request based on the
+    configured routing policy. You can customize the routing behavior by specifying a custom
+    request router class and providing configuration parameters.
+
+    The router also manages periodic health checks and scheduling statistics collection from
+    replicas to make informed routing decisions.
+
+    Example:
+        .. code-block:: python
+
+            from ray.serve.config import RequestRouterConfig, DeploymentConfig
+            from ray import serve
+
+            # Use default router with custom stats collection interval
+            request_router_config = RequestRouterConfig(
+                request_routing_stats_period_s=5.0,
+                request_routing_stats_timeout_s=15.0
+            )
+
+            # Use custom router class
+            request_router_config = RequestRouterConfig(
+                request_router_class="ray.llm._internal.serve.request_router.prefix_aware.prefix_aware_router.PrefixAwarePow2ReplicaRouter",
+                request_router_kwargs={"imbalanced_threshold": 20}
+            )
+            deployment_config = DeploymentConfig(
+                request_router_config=request_router_config
+            )
+            deployment = serve.deploy(
+                "my_deployment",
+                deployment_config=deployment_config
+            )
+    """
+
+    _serialized_request_router_cls: bytes = PrivateAttr(default=b"")
+
+    request_router_class: Union[str, Callable] = Field(
+        default=DEFAULT_REQUEST_ROUTER_PATH,
+        description=(
+            "The class of the request router that Ray Serve uses for this deployment. This value can be "
+            "a string or a class. All the deployment handles that you create for this "
+            "deployment use the routing policy defined by the request router. "
+            "Default to Serve's PowerOfTwoChoicesRequestRouter."
+        ),
+    )
+    request_router_kwargs: Dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "Keyword arguments that Ray Serve passes to the request router class "
+            "initialize_state method."
+        ),
+    )
+
+    request_routing_stats_period_s: PositiveFloat = Field(
+        default=DEFAULT_REQUEST_ROUTING_STATS_PERIOD_S,
+        description=(
+            "Duration between record scheduling stats calls for the replica. "
+            "Defaults to 10s. The health check is by default a no-op Actor call "
+            "to the replica, but you can define your own request scheduling stats "
+            "using the 'record_scheduling_stats' method in your deployment."
+        ),
+    )
+
+    request_routing_stats_timeout_s: PositiveFloat = Field(
+        default=DEFAULT_REQUEST_ROUTING_STATS_TIMEOUT_S,
+        description=(
+            "Duration in seconds, that replicas wait for a request scheduling "
+            "stats method to return before considering it as failed. Defaults to 30s."
+        ),
+    )
+
+    @validator("request_router_kwargs", always=True)
+    def request_router_kwargs_json_serializable(cls, v):
+        if isinstance(v, bytes):
+            return v
+        if v is not None:
+            try:
+                json.dumps(v)
+            except TypeError as e:
+                raise ValueError(
+                    f"request_router_kwargs is not JSON-serializable: {str(e)}."
+                )
+
+        return v
+
+    def __init__(self, **kwargs: dict[str, Any]):
+        """Initialize RequestRouterConfig with the given parameters.
+
+        Needed to serialize the request router class since validators are not called
+        for attributes that begin with an underscore.
+
+        Args:
+            **kwargs: Keyword arguments to pass to BaseModel.
+        """
+        super().__init__(**kwargs)
+        self._serialize_request_router_cls()
+
+    def _serialize_request_router_cls(self) -> None:
+        """Import and serialize request router class with cloudpickle.
+
+        Import the request router if you pass it in as a string import path.
+        Then cloudpickle the request router and set to
+        `_serialized_request_router_cls`.
+        """
+        request_router_class = self.request_router_class
+        if isinstance(request_router_class, Callable):
+            request_router_class = (
+                f"{request_router_class.__module__}.{request_router_class.__name__}"
+            )
+
+        request_router_path = request_router_class or DEFAULT_REQUEST_ROUTER_PATH
+        request_router_class = import_attr(request_router_path)
+
+        self._serialized_request_router_cls = cloudpickle.dumps(request_router_class)
+        # Update the request_router_class field to be the string path
+        self.request_router_class = request_router_path
+
+    def get_request_router_class(self) -> Callable:
+        """Deserialize the request router from cloudpickled bytes."""
+        return cloudpickle.loads(self._serialized_request_router_cls)
 
 
 @PublicAPI(stability="stable")
@@ -43,13 +173,17 @@ class AutoscalingConfig(BaseModel):
 
     target_ongoing_requests: PositiveFloat = DEFAULT_TARGET_ONGOING_REQUESTS
 
-    # How often to scrape for metrics
-    metrics_interval_s: PositiveFloat = 10.0
-    # Time window to average over for metrics.
-    look_back_period_s: PositiveFloat = 30.0
+    metrics_interval_s: PositiveFloat = Field(
+        default=10.0, description="How often to scrape for metrics."
+    )
+    look_back_period_s: PositiveFloat = Field(
+        default=30.0, description="Time window to average over for metrics."
+    )
 
-    # DEPRECATED
-    smoothing_factor: PositiveFloat = 1.0
+    smoothing_factor: PositiveFloat = Field(
+        default=1.0,
+        description="[DEPRECATED] Smoothing factor for autoscaling decisions.",
+    )
     # DEPRECATED: replaced by `downscaling_factor`
     upscale_smoothing_factor: Optional[PositiveFloat] = Field(
         default=None, description="[DEPRECATED] Please use `upscaling_factor` instead."
@@ -60,16 +194,23 @@ class AutoscalingConfig(BaseModel):
         description="[DEPRECATED] Please use `downscaling_factor` instead.",
     )
 
-    # Multiplicative "gain" factor to limit scaling decisions
-    upscaling_factor: Optional[PositiveFloat] = None
-    downscaling_factor: Optional[PositiveFloat] = None
+    upscaling_factor: Optional[PositiveFloat] = Field(
+        default=None,
+        description='Multiplicative "gain" factor to limit upscaling decisions.',
+    )
+    downscaling_factor: Optional[PositiveFloat] = Field(
+        default=None,
+        description='Multiplicative "gain" factor to limit downscaling decisions.',
+    )
 
     # How frequently to make autoscaling decisions
     # loop_period_s: float = CONTROL_LOOP_PERIOD_S
-    # How long to wait before scaling down replicas
-    downscale_delay_s: NonNegativeFloat = 600.0
-    # How long to wait before scaling up replicas
-    upscale_delay_s: NonNegativeFloat = 30.0
+    downscale_delay_s: NonNegativeFloat = Field(
+        default=600.0, description="How long to wait before scaling down replicas."
+    )
+    upscale_delay_s: NonNegativeFloat = Field(
+        default=30.0, description="How long to wait before scaling up replicas."
+    )
 
     # Cloudpickled policy definition.
     _serialized_policy_def: bytes = PrivateAttr(default=b"")

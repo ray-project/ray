@@ -71,7 +71,7 @@ for ((i=0; i<${#PY_MMS[@]}; ++i)); do
     # Setuptools on CentOS is too old to install arrow 0.9.0, therefore we upgrade.
     # TODO: Unpin after https://github.com/pypa/setuptools/issues/2849 is fixed.
     $PIP_CMD install --upgrade setuptools==69.5.1
-    $PIP_CMD install -q cython==0.29.37
+    $PIP_CMD install -q cython==3.0.12
     # Install wheel to avoid the error "invalid command 'bdist_wheel'".
     $PIP_CMD install -q wheel
     # Set the commit SHA in _version.py.

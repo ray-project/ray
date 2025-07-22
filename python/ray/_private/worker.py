@@ -55,8 +55,8 @@ import ray.cloudpickle as pickle  # noqa
 import ray.job_config
 import ray.remote_function
 from ray import ActorID, JobID, Language, ObjectRef
+from ray._common import ray_option_utils
 from ray._common.utils import load_class
-from ray._private import ray_option_utils
 from ray._private.client_mode_hook import client_mode_hook
 from ray._private.function_manager import FunctionActorManager
 from ray._private.inspect_util import is_cython
@@ -449,6 +449,9 @@ class Worker:
         self.actors = {}
         # GPU object manager to manage GPU object lifecycles, including coordinating out-of-band
         # tensor transfers between actors, storing and retrieving GPU objects, and garbage collection.
+        # We create the GPU object manager lazily, if a user specifies a
+        # non-default tensor_transport, to avoid circular import and because it
+        # imports third-party dependencies like PyTorch.
         self._gpu_object_manager = None
         # When the worker is constructed. Record the original value of the
         # (CUDA_VISIBLE_DEVICES, ONEAPI_DEVICE_SELECTOR, HIP_VISIBLE_DEVICES,
@@ -500,10 +503,12 @@ class Worker:
         self._is_connected: bool = False
 
     @property
-    def gpu_object_manager(self) -> "ray._private.gpu_object_manager.GPUObjectManager":
+    def gpu_object_manager(self) -> "ray.experimental.GPUObjectManager":
         if self._gpu_object_manager is None:
-            # Initialize lazily to avoid circular import.
-            from ray._private.gpu_object_manager import GPUObjectManager
+            # We create the GPU object manager lazily, if a user specifies a
+            # non-default tensor_transport, to avoid circular import and because it
+            # imports third-party dependencies like PyTorch.
+            from ray.experimental import GPUObjectManager
 
             self._gpu_object_manager = GPUObjectManager()
         return self._gpu_object_manager
@@ -788,23 +793,19 @@ class Worker:
     def put_object(
         self,
         value: Any,
-        object_ref: Optional["ray.ObjectRef"] = None,
         owner_address: Optional[str] = None,
         _is_experimental_channel: bool = False,
     ):
-        """Put value in the local object store with object reference `object_ref`.
+        """Put value in the local object store.
 
-        This assumes that the value for `object_ref` has not yet been placed in
-        the local object store. If the plasma store is full, the worker will
-        automatically retry up to DEFAULT_PUT_OBJECT_RETRIES times. Each
-        retry will delay for an exponentially doubling amount of time,
+        If the plasma store is full, the worker will automatically
+        retry up to DEFAULT_PUT_OBJECT_RETRIES times. Each retry
+        will delay for an exponentially doubling amount of time,
         starting with DEFAULT_PUT_OBJECT_DELAY. After this, exception
         will be raised.
 
         Args:
             value: The value to put in the object store.
-            object_ref: The object ref of the value to be
-                put. If None, one will be generated.
             owner_address: The serialized address of object's owner.
             _is_experimental_channel: An experimental flag for mutable
                 objects. If True, then the returned object will not have a
@@ -826,11 +827,6 @@ class Worker:
                 "If you really want to do this, you can wrap the "
                 "ray.ObjectRef in a list and call 'put' on it."
             )
-
-        if self.mode == LOCAL_MODE:
-            assert (
-                object_ref is None
-            ), "Local Mode does not support inserting with an ObjectRef"
 
         try:
             serialized_value = self.get_serialization_context().serialize(value)
@@ -857,7 +853,6 @@ class Worker:
         return ray.ObjectRef(
             self.core_worker.put_serialized_object_and_increment_local_ref(
                 serialized_value,
-                object_ref=object_ref,
                 pin_object=pin_object,
                 owner_address=owner_address,
                 _is_experimental_channel=_is_experimental_channel,
@@ -866,21 +861,21 @@ class Worker:
             skip_adding_local_ref=True,
         )
 
-    def raise_errors(self, data_metadata_pairs, object_refs):
-        out = self.deserialize_objects(data_metadata_pairs, object_refs)
+    def raise_errors(self, serialized_objects, object_refs):
+        out = self.deserialize_objects(serialized_objects, object_refs)
         if "RAY_IGNORE_UNHANDLED_ERRORS" in os.environ:
             return
         for e in out:
             _unhandled_error_handler(e)
 
-    def deserialize_objects(self, data_metadata_pairs, object_refs):
+    def deserialize_objects(self, serialized_objects, object_refs):
         # Function actor manager or the import thread may call pickle.loads
         # at the same time which can lead to failed imports
         # TODO: We may be better off locking on all imports or injecting a lock
         # into pickle.loads (https://github.com/ray-project/ray/issues/16304)
         with self.function_actor_manager.lock:
             context = self.get_serialization_context()
-            return context.deserialize_objects(data_metadata_pairs, object_refs)
+            return context.deserialize_objects(serialized_objects, object_refs)
 
     def get_objects(
         self,
@@ -888,7 +883,7 @@ class Worker:
         timeout: Optional[float] = None,
         return_exceptions: bool = False,
         skip_deserialization: bool = False,
-    ):
+    ) -> Tuple[List[serialization.SerializedRayObject], bytes]:
         """Get the values in the object store associated with the IDs.
 
         Return the values from the local object store for object_refs. This
@@ -922,15 +917,15 @@ class Worker:
         timeout_ms = (
             int(timeout * 1000) if timeout is not None and timeout != -1 else -1
         )
-        data_metadata_pairs: List[
-            Tuple[ray._raylet.Buffer, bytes]
+        serialized_objects: List[
+            serialization.SerializedRayObject
         ] = self.core_worker.get_objects(
             object_refs,
             timeout_ms,
         )
 
         debugger_breakpoint = b""
-        for data, metadata in data_metadata_pairs:
+        for data, metadata, _ in serialized_objects:
             if metadata:
                 metadata_fields = metadata.split(b",")
                 if len(metadata_fields) >= 2 and metadata_fields[1].startswith(
@@ -942,13 +937,13 @@ class Worker:
         if skip_deserialization:
             return None, debugger_breakpoint
 
-        values = self.deserialize_objects(data_metadata_pairs, object_refs)
+        values = self.deserialize_objects(serialized_objects, object_refs)
         if not return_exceptions:
             # Raise exceptions instead of returning them to the user.
             for i, value in enumerate(values):
                 if isinstance(value, RayError):
                     if isinstance(value, ray.exceptions.ObjectLostError):
-                        global_worker.core_worker.dump_object_store_memory_usage()
+                        global_worker.core_worker.log_plasma_usage()
                     if isinstance(value, RayTaskError):
                         raise value.as_instanceof_cause()
                     else:
@@ -2849,12 +2844,11 @@ def get(
                 "'object_refs' must either be an ObjectRef or a list of ObjectRefs. "
             )
 
-        # TODO(ujvl): Consider how to allow user to retrieve the ready objects.
         values, debugger_breakpoint = worker.get_objects(object_refs, timeout=timeout)
         for i, value in enumerate(values):
             if isinstance(value, RayError):
                 if isinstance(value, ray.exceptions.ObjectLostError):
-                    worker.core_worker.dump_object_store_memory_usage()
+                    worker.core_worker.log_plasma_usage()
                 if isinstance(value, RayTaskError):
                     raise value.as_instanceof_cause()
                 else:
