@@ -188,10 +188,19 @@ async def get_lora_finetuned_context_length(bucket_uri: str):
 
     Return: Returns the max sequence length for the adapter, if it exists.
     """
-    config_uri = f"{bucket_uri}/{LORA_ADAPTER_CONFIG_NAME}"
-    config_body = await get_object_from_cloud(config_uri)
+    if bucket_uri.endswith("/"):
+        bucket_uri = bucket_uri.rstrip("/")
 
-    if config_body == CLOUD_OBJECT_MISSING:
+    config_uri = f"{bucket_uri}/{LORA_ADAPTER_CONFIG_NAME}"
+
+    try:
+        config_body = CloudFileSystem.get_file(config_uri)
+    except Exception as e:
+        logger.warning(f"Failed to get config from {config_uri}: {e}")
+        return None
+
+    if config_body is None:
+        logger.warning(f"Config file not found at {config_uri}")
         return None
 
     try:
@@ -251,9 +260,6 @@ async def download_multiplex_config_info(
 ) -> Tuple[str, int]:
     """Download multiplex configuration info for a LoRA model.
 
-    This is a wrapper that forwards to the correct implementation.
-    The actual implementation is in multiplex/utils.py.
-
     Args:
         model_id: The LoRA model ID
         base_path: The base path where the model is stored
@@ -261,12 +267,9 @@ async def download_multiplex_config_info(
     Returns:
         Tuple of (bucket_uri, max_total_tokens)
     """
-    # Import here to avoid circular imports
-    from ray.llm._internal.serve.deployments.llm.multiplex.utils import (
-        download_multiplex_config_info as _actual_download_multiplex_config_info,
-    )
-
-    return await _actual_download_multiplex_config_info(model_id, base_path)
+    bucket_uri = f"{base_path}/{model_id}"
+    ft_context_length = await get_lora_finetuned_context_length(bucket_uri)
+    return bucket_uri, ft_context_length or 4096
 
 
 def download_lora_adapter(

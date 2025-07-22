@@ -6,7 +6,7 @@ LoRA abstractions from common/lora_utils.py. This ensures clean separation
 between generic and serve-specific concerns.
 """
 
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional
 
 from filelock import FileLock
 
@@ -15,8 +15,8 @@ from ray.llm._internal.common.utils.cloud_utils import (
     LoraMirrorConfig,
 )
 from ray.llm._internal.common.utils.lora_utils import (
+    download_multiplex_config_info,
     get_base_model_id,
-    get_lora_finetuned_context_length,
     get_lora_id,
 )
 from ray.llm._internal.serve.configs.server_models import LLMConfig
@@ -65,23 +65,7 @@ def sync_model(
 # in lora_utils.py to avoid duplication
 
 
-async def download_multiplex_config_info(
-    model_id: str, base_path: str
-) -> Tuple[str, int]:
-    """Download multiplex configuration info for a LoRA model.
-
-    This is serve-specific logic that uses generic cloud utilities.
-
-    Args:
-        model_id: The LoRA model ID
-        base_path: The base path where the model is stored
-
-    Returns:
-        Tuple of (bucket_uri, max_total_tokens)
-    """
-    bucket_uri = f"{base_path}/{model_id}"
-    ft_context_length = await get_lora_finetuned_context_length(bucket_uri)
-    return bucket_uri, ft_context_length or 4096
+# download_multiplex_config_info is now imported from lora_utils.py
 
 
 async def get_lora_model_metadata(
