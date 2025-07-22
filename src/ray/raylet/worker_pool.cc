@@ -534,7 +534,6 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
     *status = PopWorkerStatus::RuntimeEnvCreationFailed;
     return {Process(), (StartupToken)-1};
   }
-  }
   stats::NumWorkersStarted.Record(1);
   RAY_LOG(INFO) << "Started worker process with pid " << proc.GetId() << ", the token is "
                 << worker_startup_token_counter_;
