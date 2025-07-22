@@ -12,10 +12,10 @@ from pprint import pformat
 _ALL_TAGS = set(
     """
     always
-    lint python cpp core_cpp java workflow accelerated_dag dashboard
-    data serve ml tune train llm rllib rllib_gpu rllib_directly
+    lint python cpp core_cpp java workflow compiled_graphs dashboard ray_client
+    data dask serve ml tune train llm rllib rllib_gpu rllib_directly
     linux_wheels macos_wheels docker doc python_dependencies tools
-    release_tests compiled_python
+    release_tests compiled_python spark_on_ray
     """.split()
 )
 

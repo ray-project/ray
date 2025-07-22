@@ -146,12 +146,8 @@ class Monitor:
         # TODO: eventually plumb ClusterID through to here
         self.gcs_client = GcsClient(address=self.gcs_address)
 
-        if monitor_ip:
-            monitor_addr = f"{monitor_ip}:{AUTOSCALER_METRIC_PORT}"
-            self.gcs_client.internal_kv_put(
-                b"AutoscalerMetricsAddress", monitor_addr.encode(), True, None
-            )
         _initialize_internal_kv(self.gcs_client)
+
         if monitor_ip:
             monitor_addr = f"{monitor_ip}:{AUTOSCALER_METRIC_PORT}"
             self.gcs_client.internal_kv_put(
@@ -573,13 +569,12 @@ class Monitor:
             _internal_kv_put(
                 ray_constants.DEBUG_AUTOSCALING_ERROR, message, overwrite=True
             )
-        gcs_publisher = ray._raylet.GcsPublisher(address=self.gcs_address)
         from ray._private.utils import publish_error_to_driver
 
         publish_error_to_driver(
             ray_constants.MONITOR_DIED_ERROR,
             message,
-            gcs_publisher=gcs_publisher,
+            gcs_client=self.gcs_client,
         )
 
     def _signal_handler(self, sig, frame):

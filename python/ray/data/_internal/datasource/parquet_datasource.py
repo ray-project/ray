@@ -27,7 +27,7 @@ from ray.data._internal.util import (
     call_with_retry,
     iterate_with_retry,
 )
-from ray.data.block import Block
+from ray.data.block import Block, BlockAccessor
 from ray.data.context import DataContext
 from ray.data.datasource import Datasource
 from ray.data.datasource.datasource import ReadTask
@@ -373,7 +373,6 @@ class ParquetDatasource(Datasource):
 
             meta = self._meta_provider(
                 paths,
-                self._inferred_schema,
                 num_fragments=len(fragments),
                 prefetched_metadata=metadata,
             )
@@ -404,6 +403,7 @@ class ParquetDatasource(Datasource):
                 self._include_paths,
                 self._partitioning,
             )
+
             read_tasks.append(
                 ReadTask(
                     lambda f=fragments: read_fragments(
@@ -418,6 +418,7 @@ class ParquetDatasource(Datasource):
                         partitioning,
                     ),
                     meta,
+                    schema=self._inferred_schema,
                 )
             )
 
@@ -493,7 +494,9 @@ def read_fragments(
         ):
             table = pa.Table.from_batches([batch], schema=schema)
             if include_paths:
-                table = table.append_column("path", [[fragment.path]] * len(table))
+                table = BlockAccessor.for_block(table).fill_column(
+                    "path", fragment.path
+                )
             if partitions:
                 table = _add_partitions_to_table(partitions, table)
 
@@ -688,13 +691,11 @@ def sample_fragments(
 def _add_partitions_to_table(
     partitions: Dict[str, PartitionDataType], table: "pyarrow.Table"
 ) -> "pyarrow.Table":
-    import pyarrow as pa
 
     for field_name, value in partitions.items():
-        column = pa.array([value] * len(table))
         field_index = table.schema.get_field_index(field_name)
         if field_index == -1:
-            table = table.append_column(field_name, column)
+            table = BlockAccessor.for_block(table).fill_column(field_name, value)
 
     return table
 
@@ -726,7 +727,10 @@ def _add_partition_fields_to_schema(
             field_type = pa.from_numpy_dtype(partitioning.field_types[field_name])
         else:
             field_type = pa.string()
-        schema = schema.append(pa.field(field_name, field_type))
+        if field_name not in schema.names:
+            # Without this check, we would add the same partition field multiple times,
+            # which silently fails when asking for `pa.field()`.
+            schema = schema.append(pa.field(field_name, field_type))
 
     return schema
 

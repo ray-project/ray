@@ -34,7 +34,7 @@ using ObjectPinningClientFactoryFn = std::function<std::shared_ptr<PinObjectsInt
     const std::string &ip_address, int port)>;
 
 using ObjectLookupCallback = std::function<void(
-    const ObjectID &object_id, const std::vector<rpc::Address> &raylet_locations)>;
+    const ObjectID &object_id, std::vector<rpc::Address> raylet_locations)>;
 
 // A callback for if we fail to recover an object.
 using ObjectRecoveryFailureCallback = std::function<void(
@@ -48,11 +48,11 @@ class ObjectRecoveryManager {
       std::shared_ptr<PinObjectsInterface> local_object_pinning_client,
       std::function<Status(const ObjectID &object_id,
                            const ObjectLookupCallback &callback)> object_lookup,
-      TaskResubmissionInterface &task_resubmitter,
+      TaskManagerInterface &task_manager,
       ReferenceCounter &reference_counter,
       CoreWorkerMemoryStore &in_memory_store,
       ObjectRecoveryFailureCallback recovery_failure_callback)
-      : task_resubmitter_(task_resubmitter),
+      : task_manager_(task_manager),
         reference_counter_(reference_counter),
         rpc_address_(std::move(rpc_address)),
         client_factory_(std::move(client_factory)),
@@ -81,8 +81,9 @@ class ObjectRecoveryManager {
   /// storing a new value for the object in the direct memory store.
   /// 3. If pinning fails at all locations for the object (or there are no
   /// locations), attempt to reconstruct the object by resubmitting the task
-  /// that created the object. If the task resubmission fails, then the
-  /// fail the recovery operation.
+  /// that created the object. If the task resubmission fails, then fail the recovery
+  /// operation. If the task is a streaming generator task that has been pushed to the
+  /// worker and hasn't finished, cancel the task and resubmit it.
   /// 4. If task resubmission succeeds, recursively attempt to recover any
   /// plasma arguments to the task. The recovery operation will succeed once
   /// the task completes and stores a new value for its return object.
@@ -99,19 +100,19 @@ class ObjectRecoveryManager {
   /// fails, attempt to reconstruct it by resubmitting the task that created
   /// the object.
   void PinOrReconstructObject(const ObjectID &object_id,
-                              const std::vector<rpc::Address> &locations);
+                              std::vector<rpc::Address> locations);
 
   /// Pin a new copy for the object at the given location. If that fails, then
   /// try one of the other locations.
   void PinExistingObjectCopy(const ObjectID &object_id,
                              const rpc::Address &raylet_address,
-                             const std::vector<rpc::Address> &other_locations);
+                             std::vector<rpc::Address> other_locations);
 
   /// Reconstruct an object by resubmitting the task that created it.
   void ReconstructObject(const ObjectID &object_id);
 
   /// Used to resubmit tasks.
-  TaskResubmissionInterface &task_resubmitter_;
+  TaskManagerInterface &task_manager_;
 
   /// Used to check whether we own an object.
   ReferenceCounter &reference_counter_;

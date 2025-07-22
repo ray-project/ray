@@ -1,21 +1,18 @@
-from fastapi import HTTPException, status
-from httpx import HTTPStatusError as HTTPXHTTPStatusError
-import traceback
-
-from pydantic import ValidationError as PydanticValidationError
-from ray import serve
-
-from ray.llm._internal.serve.configs.openai_api_models import OpenAIHTTPException
-from ray.llm._internal.serve.configs.server_models import (
-    LLMRawResponse,
-)
-from ray.llm._internal.serve.configs.openai_api_models_patch import (
-    ErrorResponse,
-)
-from ray.llm._internal.serve.observability.logging import get_logger
 import asyncio
+import traceback
 from functools import partial
 from typing import Awaitable, Callable, TypeVar
+
+from fastapi import HTTPException, status
+from httpx import HTTPStatusError as HTTPXHTTPStatusError
+from pydantic import ValidationError as PydanticValidationError
+
+from ray import serve
+from ray.llm._internal.serve.configs.openai_api_models import (
+    ErrorResponse,
+    OpenAIHTTPException,
+)
+from ray.llm._internal.serve.observability.logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -76,7 +73,7 @@ def _extract_message(e):
 def get_response_for_error(
     e: Exception,
     request_id: str,
-) -> LLMRawResponse:
+) -> ErrorResponse:
     if isinstance(e, HTTPException):
         status_code = e.status_code
     elif isinstance(e, OpenAIHTTPException):
@@ -114,18 +111,19 @@ def get_response_for_error(
         internal_message += f" (Request ID: {request_id})"
 
     error_response = ErrorResponse(
-        message=message,
+        message=f"Message: {message}, Internal exception: {internal_message}, original exception: {str(e)}",
         code=status_code,
-        internal_message=internal_message,
         type=exc_type,
-        original_exception=e,
     )
-    return LLMRawResponse(error=error_response)
+    return error_response
 
 
 def get_serve_request_id() -> str:
     """Get request id from serve request context."""
-    return serve.context._serve_request_context.get().request_id
+    context = serve.context._serve_request_context.get()
+    if context is not None:
+        return context.request_id
+    return ""
 
 
 def get_model_request_id(model: str):

@@ -24,8 +24,6 @@
 #define PRINT_REF_COUNT(it) \
   RAY_LOG(DEBUG) << "REF " << it->first << ": " << it->second.DebugString();
 
-namespace {}  // namespace
-
 namespace ray {
 namespace core {
 
@@ -195,7 +193,8 @@ void ReferenceCounter::AddOwnedObject(const ObjectID &object_id,
                                       const int64_t object_size,
                                       bool is_reconstructable,
                                       bool add_local_ref,
-                                      const absl::optional<NodeID> &pinned_at_raylet_id) {
+                                      const std::optional<NodeID> &pinned_at_raylet_id,
+                                      rpc::TensorTransport tensor_transport) {
   absl::MutexLock lock(&mutex_);
   RAY_CHECK(AddOwnedObjectInternal(object_id,
                                    inner_ids,
@@ -204,7 +203,8 @@ void ReferenceCounter::AddOwnedObject(const ObjectID &object_id,
                                    object_size,
                                    is_reconstructable,
                                    add_local_ref,
-                                   pinned_at_raylet_id))
+                                   pinned_at_raylet_id,
+                                   tensor_transport))
       << "Tried to create an owned object that already exists: " << object_id;
 }
 
@@ -233,7 +233,7 @@ void ReferenceCounter::AddDynamicReturn(const ObjectID &object_id,
                                     /*object_size=*/-1,
                                     outer_it->second.is_reconstructable,
                                     /*add_local_ref=*/false,
-                                    absl::optional<NodeID>()));
+                                    std::optional<NodeID>()));
   AddNestedObjectIdsInternal(generator_id, {object_id}, owner_address);
 }
 
@@ -268,7 +268,7 @@ void ReferenceCounter::OwnDynamicStreamingTaskReturnRef(const ObjectID &object_i
                                     /*object_size=*/-1,
                                     outer_it->second.is_reconstructable,
                                     /*add_local_ref=*/true,
-                                    absl::optional<NodeID>()));
+                                    std::optional<NodeID>()));
 }
 
 void ReferenceCounter::TryReleaseLocalRefs(const std::vector<ObjectID> &object_ids,
@@ -317,8 +317,9 @@ bool ReferenceCounter::AddOwnedObjectInternal(
     const int64_t object_size,
     bool is_reconstructable,
     bool add_local_ref,
-    const absl::optional<NodeID> &pinned_at_raylet_id) {
-  if (object_id_refs_.count(object_id) != 0) {
+    const std::optional<NodeID> &pinned_at_raylet_id,
+    rpc::TensorTransport tensor_transport) {
+  if (object_id_refs_.contains(object_id)) {
     return false;
   }
   if (ObjectID::IsActorID(object_id)) {
@@ -338,7 +339,8 @@ bool ReferenceCounter::AddOwnedObjectInternal(
                                    call_site,
                                    object_size,
                                    is_reconstructable,
-                                   pinned_at_raylet_id))
+                                   pinned_at_raylet_id,
+                                   tensor_transport))
                 .first;
   if (!inner_ids.empty()) {
     // Mark that this object ID contains other inner IDs. Then, we will not GC
@@ -640,12 +642,12 @@ std::vector<rpc::Address> ReferenceCounter::GetOwnerAddresses(
 
 bool ReferenceCounter::IsPlasmaObjectFreed(const ObjectID &object_id) const {
   absl::MutexLock lock(&mutex_);
-  return freed_objects_.find(object_id) != freed_objects_.end();
+  return freed_objects_.contains(object_id);
 }
 
 bool ReferenceCounter::TryMarkFreedObjectInUseAgain(const ObjectID &object_id) {
   absl::MutexLock lock(&mutex_);
-  if (object_id_refs_.count(object_id) == 0) {
+  if (!object_id_refs_.contains(object_id)) {
     return false;
   }
   return freed_objects_.erase(object_id) != 0u;
@@ -813,7 +815,7 @@ bool ReferenceCounter::AddObjectOutOfScopeOrFreedCallback(
     // The object has already gone out of scope but cannot be deleted yet. Do
     // not set the deletion callback because it may never get called.
     return false;
-  } else if (freed_objects_.count(object_id) > 0) {
+  } else if (freed_objects_.contains(object_id)) {
     // The object has been freed by the language frontend, so it
     // should be deleted immediately.
     return false;
@@ -850,7 +852,7 @@ void ReferenceCounter::UpdateObjectPinnedAtRaylet(const ObjectID &object_id,
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it != object_id_refs_.end()) {
-    if (freed_objects_.count(object_id) > 0) {
+    if (freed_objects_.contains(object_id)) {
       // The object has been freed by the language frontend.
       return;
     }
@@ -1391,7 +1393,7 @@ void ReferenceCounter::UpdateObjectPendingCreationInternal(const ObjectID &objec
   }
 }
 
-absl::optional<absl::flat_hash_set<NodeID>> ReferenceCounter::GetObjectLocations(
+std::optional<absl::flat_hash_set<NodeID>> ReferenceCounter::GetObjectLocations(
     const ObjectID &object_id) {
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
@@ -1442,7 +1444,7 @@ bool ReferenceCounter::HandleObjectSpilled(const ObjectID &object_id,
   return true;
 }
 
-absl::optional<LocalityData> ReferenceCounter::GetLocalityData(
+std::optional<LocalityData> ReferenceCounter::GetLocalityData(
     const ObjectID &object_id) const {
   absl::MutexLock lock(&mutex_);
   // Uses the reference table to return locality data for an object.
@@ -1478,7 +1480,7 @@ absl::optional<LocalityData> ReferenceCounter::GetLocalityData(
   }
 
   // We should only reach here if we have valid locality data to return.
-  absl::optional<LocalityData> locality_data(
+  std::optional<LocalityData> locality_data(
       {static_cast<uint64_t>(object_size), std::move(node_ids)});
   return locality_data;
 }
@@ -1704,6 +1706,16 @@ void ReferenceCounter::Reference::ToProto(rpc::ObjectReferenceCount *ref,
   for (const auto &contains_id : nested().contains) {
     ref->add_contains(contains_id.Binary());
   }
+}
+
+std::optional<rpc::TensorTransport> ReferenceCounter::GetTensorTransport(
+    const ObjectID &object_id) const {
+  absl::MutexLock lock(&mutex_);
+  auto it = object_id_refs_.find(object_id);
+  if (it == object_id_refs_.end()) {
+    return absl::nullopt;
+  }
+  return it->second.tensor_transport;
 }
 
 }  // namespace core

@@ -24,7 +24,7 @@ def _get_source_files(event_dir, source_types=None, event_file_filter=None):
         assert source_type in all_source_types, f"Invalid source type: {source_type}"
         files = []
         for n in event_log_names:
-            if fnmatch.fnmatch(n, f"*{source_type}*"):
+            if fnmatch.fnmatch(n, f"*{source_type}*.log"):
                 f = os.path.join(event_dir, n)
                 if event_file_filter is not None and not event_file_filter(f):
                     continue
@@ -128,7 +128,7 @@ def monitor_events(
         monitor_files = {}
 
     logger.info(
-        "Monitor events logs modified after %s on %s, " "the source types are %s.",
+        "Monitor events logs modified after %s on %s, the source types are %s.",
         start_mtime,
         event_dir,
         "all" if source_types is None else source_types,
@@ -160,7 +160,7 @@ def monitor_events(
                     and monitor_file.mtime == stat.st_mtime
                 ):
                     logger.debug(
-                        "Skip reading the file because " "there is no change: %s", file
+                        "Skip reading the file because there is no change: %s", file
                     )
                     return []
                 position = monitor_file.position

@@ -12,8 +12,7 @@ import pytest
 os.environ["RAY_enable_export_api_write_config"] = "EXPORT_SUBMISSION_JOB"
 
 import ray
-from ray._private.gcs_utils import GcsAioClient
-from ray._private.test_utils import async_wait_for_condition
+from ray._common.test_utils import async_wait_for_condition
 from ray.dashboard.modules.job.job_manager import JobManager
 from ray.job_submission import JobStatus
 from ray.tests.conftest import call_ray_start  # noqa: F401
@@ -162,9 +161,9 @@ async def test_submission_job_export_events(call_ray_start, tmp_path):  # noqa: 
     as the job goes through various state changes in its lifecycle.
     """
 
-    address_info = ray.init(address=call_ray_start)
-    gcs_aio_client = GcsAioClient(address=address_info["gcs_address"])
-    job_manager = JobManager(gcs_aio_client, tmp_path)
+    ray.init(address=call_ray_start)
+    gcs_client = ray._private.worker.global_worker.gcs_client
+    job_manager = JobManager(gcs_client, tmp_path)
 
     # Submit a job.
     submission_id = await job_manager.submit_job(

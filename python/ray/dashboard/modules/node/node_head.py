@@ -2,10 +2,10 @@ import asyncio
 import json
 import logging
 import time
-from collections import deque, defaultdict
+from collections import defaultdict, deque
 from concurrent.futures import ThreadPoolExecutor
 from itertools import chain
-from typing import AsyncGenerator, Iterable, List, Dict, Any, Optional
+from typing import Any, AsyncGenerator, Dict, Iterable, List, Optional, Set
 
 import aiohttp.web
 import grpc
@@ -13,17 +13,19 @@ import grpc
 import ray._private.utils
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
-from ray._private import ray_constants
 from ray._common.utils import get_or_create_event_loop
-from ray._private.gcs_pubsub import GcsAioActorSubscriber
+from ray._private import ray_constants
 from ray._private.collections_utils import split
-from ray._private.gcs_pubsub import GcsAioNodeInfoSubscriber
+from ray._private.gcs_pubsub import (
+    GcsAioActorSubscriber,
+    GcsAioNodeInfoSubscriber,
+    GcsAioResourceUsageSubscriber,
+)
 from ray._private.ray_constants import (
     DEBUG_AUTOSCALING_ERROR,
     DEBUG_AUTOSCALING_STATUS,
     env_integer,
 )
-from ray._private.gcs_pubsub import GcsAioResourceUsageSubscriber
 from ray.autoscaler._private.util import (
     LoadMetricsSummary,
     get_per_node_breakdown_as_dict,
@@ -31,17 +33,17 @@ from ray.autoscaler._private.util import (
 )
 from ray.core.generated import gcs_pb2, node_manager_pb2, node_manager_pb2_grpc
 from ray.dashboard.consts import (
-    GCS_RPC_TIMEOUT_SECONDS,
-    DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX,
     DASHBOARD_AGENT_ADDR_IP_PREFIX,
+    DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX,
+    GCS_RPC_TIMEOUT_SECONDS,
 )
+from ray.dashboard.modules.node import actor_consts, node_consts
 from ray.dashboard.modules.node.datacenter import DataOrganizer, DataSource
-from ray.dashboard.modules.node import node_consts
-from ray.dashboard.modules.node import actor_consts
+from ray.dashboard.subprocesses.module import SubprocessModule
+from ray.dashboard.subprocesses.routes import SubprocessRouteTable as routes
 from ray.dashboard.utils import async_loop_forever
 
 logger = logging.getLogger(__name__)
-routes = dashboard_optional_utils.DashboardHeadRouteTable
 
 
 # NOTE: Executor in this head is intentionally constrained to just 1 thread by
@@ -113,6 +115,7 @@ def _actor_table_data_to_dict(message):
         "reprName",
         "placementGroupId",
         "callSite",
+        "labelSelector",
     }
     light_message = {k: v for (k, v) in orig_message.items() if k in fields}
     light_message["actorClass"] = orig_message["className"]
@@ -133,13 +136,13 @@ def _actor_table_data_to_dict(message):
     light_message["startTime"] = int(light_message["startTime"])
     light_message["endTime"] = int(light_message["endTime"])
     light_message["requiredResources"] = dict(message.required_resources)
-
+    light_message["labelSelector"] = dict(message.label_selector)
     return light_message
 
 
-class NodeHead(dashboard_utils.DashboardHeadModule):
-    def __init__(self, config: dashboard_utils.DashboardHeadModuleConfig):
-        super().__init__(config)
+class NodeHead(SubprocessModule):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
         self._stubs = {}
         self._collect_memory_info = False
@@ -149,6 +152,8 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         # The time it takes until the head node is registered. None means
         # head node hasn't been registered.
         self._head_node_registration_time_s = None
+        # The node ID of the current head node
+        self._registered_head_node_id = None
         # Queue of dead nodes to be removed, up to MAX_DEAD_NODES_TO_CACHE
         self._dead_node_queue = deque()
 
@@ -168,6 +173,8 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         self._actor_executor = ThreadPoolExecutor(
             max_workers=1, thread_name_prefix="node_head_actor_executor"
         )
+
+        self._background_tasks: Set[asyncio.Task] = set()
 
     def get_internal_states(self):
         return {
@@ -190,12 +197,12 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         # it happens after the subscription. That is, an update between
         # get-all-node-info and the subscription is not missed.
         # [1] https://en.wikipedia.org/wiki/Time-of-check_to_time-of-use
-        all_node_info = await self.gcs_aio_client.get_all_node_info(timeout=None)
+        all_node_info = await self.gcs_client.async_get_all_node_info(timeout=None)
 
         def _convert_to_dict(messages: Iterable[gcs_pb2.GcsNodeInfo]) -> List[dict]:
             return [_gcs_node_info_to_dict(m) for m in messages]
 
-        all_node_infos = await get_or_create_event_loop().run_in_executor(
+        all_node_infos = await self._loop.run_in_executor(
             self._node_executor,
             _convert_to_dict,
             all_node_info.values(),
@@ -215,7 +222,7 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                 else:
                     updated_infos_proto = []
 
-                updated_infos = await get_or_create_event_loop().run_in_executor(
+                updated_infos = await self._loop.run_in_executor(
                     self._node_executor,
                     _convert_to_dict,
                     updated_infos_proto,
@@ -228,12 +235,24 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
 
     async def _update_node(self, node: dict):
         node_id = node["nodeId"]  # hex
-        if node["isHeadNode"] and not self._head_node_registration_time_s:
+        if (
+            node["isHeadNode"]
+            and node["state"] == "ALIVE"
+            and self._registered_head_node_id != node_id
+        ):
+            if self._registered_head_node_id is not None:
+                logger.warning(
+                    "A new head node has become ALIVE. New head node ID: %s, old head node ID: %s, internal states: %s",
+                    node_id,
+                    self._registered_head_node_id,
+                    self.get_internal_states(),
+                )
+            self._registered_head_node_id = node_id
             self._head_node_registration_time_s = time.time() - self._module_start_time
             # Put head node ID in the internal KV to be read by JobAgent.
             # TODO(architkulkarni): Remove once State API exposes which
             # node is the head node.
-            await self.gcs_aio_client.internal_kv_put(
+            await self.gcs_client.async_internal_kv_put(
                 ray_constants.KV_HEAD_NODE_ID_KEY,
                 node_id.encode(),
                 overwrite=True,
@@ -249,7 +268,7 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                 f"{DASHBOARD_AGENT_ADDR_IP_PREFIX}{node['nodeManagerAddress']}",
             ]
             tasks = [
-                self.gcs_aio_client.internal_kv_del(
+                self.gcs_client.async_internal_kv_del(
                     key,
                     del_by_prefix=False,
                     namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
@@ -306,13 +325,13 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         from ray.autoscaler.v2.utils import is_autoscaler_v2
 
         if is_autoscaler_v2():
-            from ray.autoscaler.v2.sdk import ClusterStatusParser
             from ray.autoscaler.v2.schema import Stats
+            from ray.autoscaler.v2.sdk import ClusterStatusParser
 
             try:
                 # here we have a sync request
                 req_time = time.time()
-                cluster_status = await self.gcs_aio_client.get_cluster_status()
+                cluster_status = await self.gcs_client.async_get_cluster_status()
                 reply_time = time.time()
                 cluster_status = ClusterStatusParser.from_get_cluster_status_reply(
                     cluster_status,
@@ -343,7 +362,7 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         # Legacy autoscaler status code.
         (status_string, error) = await asyncio.gather(
             *[
-                self.gcs_aio_client.internal_kv_get(
+                self.gcs_client.async_internal_kv_get(
                     key.encode(), namespace=None, timeout=GCS_RPC_TIMEOUT_SECONDS
                 )
                 for key in [
@@ -490,9 +509,11 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
 
         # NOTE: Zip will silently truncate to shorter argument that potentially
         #       could lead to subtle hard to catch issues, hence the assertion
-        assert len(node_ids) == len(responses)
+        assert len(node_ids) == len(
+            responses
+        ), f"node_ids({len(node_ids)}): {node_ids}, responses({len(responses)}): {responses}"
 
-        new_node_stats = await get_or_create_event_loop().run_in_executor(
+        new_node_stats = await self._loop.run_in_executor(
             self._node_executor, postprocess, zip(node_ids, responses)
         )
 
@@ -506,8 +527,6 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         subscriber = GcsAioResourceUsageSubscriber(address=self.gcs_address)
         await subscriber.subscribe()
 
-        loop = get_or_create_event_loop()
-
         while True:
             try:
                 # The key is b'RAY_REPORTER:{node id hex}',
@@ -518,7 +537,7 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
 
                 # NOTE: Every iteration is executed inside the thread-pool executor
                 #       (TPE) to avoid blocking the Dashboard's event-loop
-                parsed_data = await loop.run_in_executor(
+                parsed_data = await self._loop.run_in_executor(
                     self._node_executor, json.loads, data
                 )
 
@@ -648,7 +667,7 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
             DataSource.node_actors[node_id] = node_actors
 
     async def _get_all_actors(self) -> Dict[str, dict]:
-        actors = await self.gcs_aio_client.get_all_actor_info(
+        actors = await self.gcs_client.async_get_all_actor_info(
             timeout=GCS_RPC_TIMEOUT_SECONDS
         )
 
@@ -729,8 +748,9 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                 **{key: data},
             )
 
-    async def run(self, server):
-        await asyncio.gather(
+    async def run(self):
+        await super().run()
+        coros = [
             self._update_nodes(),
             self._update_node_stats(),
             self._update_node_physical_stats(),
@@ -738,8 +758,8 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
             self._cleanup_actors(),
             DataOrganizer.purge(),
             DataOrganizer.organize(self._node_executor),
-        )
-
-    @staticmethod
-    def is_minimal_module():
-        return False
+        ]
+        for coro in coros:
+            task = self._loop.create_task(coro)
+            self._background_tasks.add(task)
+            task.add_done_callback(self._background_tasks.discard)

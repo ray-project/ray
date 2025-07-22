@@ -121,7 +121,7 @@ class WorkerLeaseInterface {
       const TaskID &task_id,
       const ray::rpc::ClientCallback<ray::rpc::GetTaskFailureCauseReply> &callback) = 0;
 
-  virtual ~WorkerLeaseInterface(){};
+  virtual ~WorkerLeaseInterface() = default;
 };
 
 /// Interface for leasing resource.
@@ -154,7 +154,7 @@ class ResourceReserveInterface {
       const std::vector<rpc::Bundle> &bundles_in_use,
       const rpc::ClientCallback<rpc::ReleaseUnusedBundlesReply> &callback) = 0;
 
-  virtual ~ResourceReserveInterface(){};
+  virtual ~ResourceReserveInterface() = default;
 };
 
 /// Interface for waiting dependencies. Abstract for testing.
@@ -166,10 +166,10 @@ class DependencyWaiterInterface {
   /// \param references The objects to wait for.
   /// \param tag Value that will be sent to the core worker via gRPC on completion.
   /// \return ray::Status.
-  virtual ray::Status WaitForDirectActorCallArgs(
+  virtual ray::Status WaitForActorCallArgs(
       const std::vector<rpc::ObjectReference> &references, int64_t tag) = 0;
 
-  virtual ~DependencyWaiterInterface(){};
+  virtual ~DependencyWaiterInterface() = default;
 };
 
 /// Interface for getting resource reports.
@@ -178,11 +178,13 @@ class ResourceTrackingInterface {
   virtual void GetResourceLoad(
       const rpc::ClientCallback<rpc::GetResourceLoadReply> &callback) = 0;
 
-  virtual ~ResourceTrackingInterface(){};
+  virtual ~ResourceTrackingInterface() = default;
 };
 
 class MutableObjectReaderInterface {
  public:
+  virtual ~MutableObjectReaderInterface() = default;
+
   /// Registers a mutable object on this node so that it can be read. Writes are performed
   /// on a remote node. This local node creates a mapping from `object_id` ->
   /// `reader_ref`.
@@ -211,7 +213,8 @@ class MutableObjectReaderInterface {
   /// node.
   /// \param metadata_size The size of the metadata to write to the mutable object on this
   /// local node.
-  /// \param data The data and metadata to write. This is formatted as (data | metadata).
+  /// \param data The data to write to the mutable object on this local node.
+  /// \param metadata The metadata to write to the mutable object on this local node.
   /// \param callback This callback is executed to send a reply to the remote node once
   /// the mutable object is transferred.
   virtual void PushMutableObject(
@@ -219,6 +222,7 @@ class MutableObjectReaderInterface {
       uint64_t data_size,
       uint64_t metadata_size,
       void *data,
+      void *metadata,
       const rpc::ClientCallback<rpc::PushMutableObjectReply> &callback) = 0;
 };
 
@@ -229,8 +233,6 @@ class RayletClientInterface : public PinObjectsInterface,
                               public ResourceTrackingInterface,
                               public MutableObjectReaderInterface {
  public:
-  virtual ~RayletClientInterface(){};
-
   /// Get the system config from Raylet.
   /// \param callback Callback that will be called after raylet replied the system config.
   virtual void GetSystemConfig(
@@ -290,13 +292,17 @@ class RayletClient : public RayletClientInterface {
   /// \param startup_token The startup token of the process assigned to
   /// it during startup as a command line argument.
   RayletClient(std::unique_ptr<RayletConnection> raylet_conn,
-               std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client,
+               const std::string &address,
+               const int port,
+               rpc::ClientCallManager &client_call_manager,
                const WorkerID &worker_id);
 
   /// Connect to the raylet via grpc only.
   ///
   /// \param grpc_client gRPC client to the raylet.
-  explicit RayletClient(std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client);
+  explicit RayletClient(const std::string &address,
+                        const int port,
+                        rpc::ClientCallManager &client_call_manager);
 
   /// Notify the raylet that this client is disconnecting gracefully. This
   /// is used by actors to exit gracefully so that the raylet doesn't
@@ -385,8 +391,8 @@ class RayletClient : public RayletClientInterface {
   /// \param references The objects to wait for.
   /// \param tag Value that will be sent to the core worker via gRPC on completion.
   /// \return ray::Status.
-  ray::Status WaitForDirectActorCallArgs(
-      const std::vector<rpc::ObjectReference> &references, int64_t tag) override;
+  ray::Status WaitForActorCallArgs(const std::vector<rpc::ObjectReference> &references,
+                                   int64_t tag) override;
 
   /// Push an error to the relevant driver.
   ///
@@ -448,6 +454,7 @@ class RayletClient : public RayletClientInterface {
                          uint64_t data_size,
                          uint64_t metadata_size,
                          void *data,
+                         void *metadata,
                          const ray::rpc::ClientCallback<ray::rpc::PushMutableObjectReply>
                              &callback) override;
 
@@ -533,10 +540,13 @@ class RayletClient : public RayletClientInterface {
 
   int64_t GetPinsInFlight() const { return pins_in_flight_.load(); }
 
+  void GetNodeStats(const rpc::GetNodeStatsRequest &request,
+                    const rpc::ClientCallback<rpc::GetNodeStatsReply> &callback);
+
  private:
-  /// gRPC client to the raylet. Right now, this is only used for a couple
-  /// request types.
-  std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client_;
+  /// gRPC client to the NodeManagerService.
+  std::shared_ptr<rpc::NodeManagerClient> grpc_client_;
+
   const WorkerID worker_id_;
 
   /// A map from resource name to the resource IDs that are currently reserved
@@ -547,10 +557,7 @@ class RayletClient : public RayletClientInterface {
   std::unique_ptr<RayletConnection> conn_;
 
   /// The number of object ID pin RPCs currently in flight.
-  std::atomic<int64_t> pins_in_flight_{0};
-
- protected:
-  RayletClient() {}
+  std::atomic<int64_t> pins_in_flight_ = 0;
 };
 
 }  // namespace raylet

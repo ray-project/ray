@@ -14,7 +14,6 @@
 
 #include "ray/core_worker/transport/out_of_order_actor_submit_queue.h"
 
-#include <map>
 #include <utility>
 #include <vector>
 
@@ -24,29 +23,26 @@ namespace core {
 OutofOrderActorSubmitQueue::OutofOrderActorSubmitQueue(ActorID actor_id)
     : kActorId(actor_id) {}
 
-bool OutofOrderActorSubmitQueue::Emplace(uint64_t position,
+void OutofOrderActorSubmitQueue::Emplace(uint64_t position,
                                          const TaskSpecification &spec) {
-  if (Contains(position)) {
-    return false;
-  }
-  return pending_queue_
-      .emplace(position, std::make_pair(spec, /*dependency_resolved*/ false))
-      .second;
+  RAY_CHECK(!sending_queue_.contains(position));
+  RAY_CHECK(pending_queue_
+                .emplace(position, std::make_pair(spec, /*dependency_resolved*/ false))
+                .second);
 }
 
 bool OutofOrderActorSubmitQueue::Contains(uint64_t position) const {
   return pending_queue_.contains(position) || sending_queue_.contains(position);
 }
 
-const std::pair<TaskSpecification, bool> &OutofOrderActorSubmitQueue::Get(
-    uint64_t position) const {
+bool OutofOrderActorSubmitQueue::DependenciesResolved(uint64_t position) const {
   auto it = pending_queue_.find(position);
   if (it != pending_queue_.end()) {
-    return it->second;
+    return it->second.second;
   }
   auto rit = sending_queue_.find(position);
   RAY_CHECK(rit != sending_queue_.end());
-  return rit->second;
+  return rit->second.second;
 }
 
 void OutofOrderActorSubmitQueue::MarkDependencyFailed(uint64_t position) {
@@ -86,7 +82,7 @@ std::vector<TaskID> OutofOrderActorSubmitQueue::ClearAllTasks() {
   return task_ids;
 }
 
-absl::optional<std::pair<TaskSpecification, bool>>
+std::optional<std::pair<TaskSpecification, bool>>
 OutofOrderActorSubmitQueue::PopNextTaskToSend() {
   auto it = sending_queue_.begin();
   if (it == sending_queue_.end()) {
@@ -96,21 +92,6 @@ OutofOrderActorSubmitQueue::PopNextTaskToSend() {
   sending_queue_.erase(it);
   return std::make_pair(std::move(task_spec), /*skip_queue*/ true);
 }
-
-std::map<uint64_t, TaskSpecification>
-OutofOrderActorSubmitQueue::PopAllOutOfOrderCompletedTasks() {
-  return {};
-}
-
-void OutofOrderActorSubmitQueue::OnClientConnected() {}
-
-uint64_t OutofOrderActorSubmitQueue::GetSequenceNumber(
-    const TaskSpecification &task_spec) const {
-  return task_spec.ActorCounter();
-}
-
-void OutofOrderActorSubmitQueue::MarkSeqnoCompleted(uint64_t position,
-                                                    const TaskSpecification &task_spec) {}
 
 }  // namespace core
 }  // namespace ray

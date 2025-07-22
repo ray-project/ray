@@ -38,7 +38,7 @@ if torch:
     TORCH_COMPILE_REQUIRED_VERSION = version.parse("2.0.0")
 else:
     TORCH_COMPILE_REQUIRED_VERSION = ValueError(
-        "torch is not installed. " "TORCH_COMPILE_REQUIRED_VERSION is " "not defined."
+        "torch is not installed. TORCH_COMPILE_REQUIRED_VERSION is not defined."
     )
 
 
@@ -368,8 +368,9 @@ def explained_variance(y: TensorType, pred: TensorType) -> TensorType:
     Returns:
         The explained variance given a pair of labels and predictions.
     """
-    y_var = torch.var(y, dim=[0])
-    diff_var = torch.var(y - pred, dim=[0])
+    squeezed_y = y.squeeze()
+    y_var = torch.var(squeezed_y, dim=0)
+    diff_var = torch.var(squeezed_y - pred.squeeze(), dim=0)
     min_ = torch.tensor([-1.0]).to(pred.device)
     return torch.max(min_, 1 - (diff_var / (y_var + SMALL_NUMBER)))[0]
 
@@ -717,11 +718,20 @@ def set_torch_seed(seed: Optional[int] = None) -> None:
         cuda_version = torch.version.cuda
         if cuda_version is not None and float(torch.version.cuda) >= 10.2:
             os.environ["CUBLAS_WORKSPACE_CONFIG"] = "4096:8"
+            torch.cuda.manual_seed(seed)
+            torch.cuda.manual_seed_all(seed)  # if using multi-GPU
         else:
-            # Not all Operations support this.
-            torch.use_deterministic_algorithms(True)
+            if version.Version(torch.__version__) >= version.Version("1.8.0"):
+                # Not all Operations support this.
+                torch.use_deterministic_algorithms(True)
+            else:
+                torch.set_deterministic(True)
         # This is only for Convolution no problem.
         torch.backends.cudnn.deterministic = True
+        # For benchmark=True, CuDNN may choose different algorithms depending on runtime
+        # conditions or slight differences in input sizes, even if the seed is fixed,
+        # which breaks determinism.
+        torch.backends.cudnn.benchmark = False
 
 
 @PublicAPI

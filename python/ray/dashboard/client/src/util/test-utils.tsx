@@ -12,6 +12,7 @@ export const TEST_APP_WRAPPER = ({ children }: PropsWithChildren<{}>) => {
     namespaceMap: {},
     metricsContextLoaded: true,
     grafanaHost: "localhost:3000",
+    grafanaOrgId: "1",
     dashboardUids: {
       default: "rayDefaultDashboard",
       serve: "rayServeDashboard",

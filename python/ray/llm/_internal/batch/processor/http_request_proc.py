@@ -5,15 +5,14 @@ from typing import Any, Dict, Optional
 from pydantic import Field
 
 from ray.data.block import UserDefinedFunction
-
-from ray.llm._internal.batch.processor.base import (
-    Processor,
-    ProcessorConfig,
-    ProcessorBuilder,
-)
 from ray.llm._internal.batch.observability.usage_telemetry.usage import (
     BatchModelTelemetry,
     get_or_create_telemetry_agent,
+)
+from ray.llm._internal.batch.processor.base import (
+    Processor,
+    ProcessorBuilder,
+    ProcessorConfig,
 )
 from ray.llm._internal.batch.stages import HttpRequestStage
 
@@ -38,6 +37,21 @@ class HttpRequestProcessorConfig(ProcessorConfig):
         default=None,
         description="The maximum number of requests per second to avoid rate limit. "
         "If None, the request will be sent sequentially.",
+    )
+    max_retries: int = Field(
+        default=0,
+        description="The maximum number of retries per request in the event of failures.",
+    )
+    base_retry_wait_time_in_s: float = Field(
+        default=1,
+        description="The base wait time for a retry during exponential backoff.",
+    )
+    # Since `session_factory` is a callable, we use type Any to avoid pydantic serialization issues
+    session_factory: Optional[Any] = Field(
+        default=None,
+        description="Optional session factory to be used for initializing a client session. Type: Callable[[], ClientSession]",
+        # exclude from JSON serialization since `session_factory` is a callable
+        exclude=True,
     )
 
 
@@ -65,6 +79,9 @@ def build_http_request_processor(
                 url=config.url,
                 additional_header=config.headers,
                 qps=config.qps,
+                max_retries=config.max_retries,
+                base_retry_wait_time_in_s=config.base_retry_wait_time_in_s,
+                session_factory=config.session_factory,
             ),
             map_batches_kwargs=dict(
                 concurrency=config.concurrency,

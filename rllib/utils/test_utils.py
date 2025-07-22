@@ -83,11 +83,6 @@ def add_rllib_example_script_args(
         "--algo", type=str, default="PPO", help="The RLlib-registered algorithm to use."
     )
     parser.add_argument(
-        "--enable-new-api-stack",
-        action="store_true",
-        help="Whether to use the `enable_rl_module_and_learner` config setting.",
-    )
-    parser.add_argument(
         "--framework",
         choices=["tf", "tf2", "torch"],
         default="torch",
@@ -326,6 +321,18 @@ def add_rllib_example_script_args(
         type=int,
         default=None,
         help="The number of GPUs to use (only on the old API stack).",
+    )
+    parser.add_argument(
+        "--old-api-stack",
+        action="store_true",
+        help="Run this script on the old API stack of RLlib.",
+    )
+
+    # Deprecated options. Throws error when still used. Use `--old-api-stack` for
+    # disabling the new API stack.
+    parser.add_argument(
+        "--enable-new-api-stack",
+        action="store_true",
     )
 
     return parser
@@ -1106,6 +1113,14 @@ def run_rllib_example_script_experiment(
         parser = add_rllib_example_script_args()
         args = parser.parse_args()
 
+    # Deprecated args.
+    if args.enable_new_api_stack:
+        raise ValueError(
+            "`--enable-new-api-stack` flag no longer supported (it's the default "
+            "behavior now)! To switch back to the old API stack on your scripts, use "
+            "the `--old-api-stack` flag."
+        )
+
     # If run --as-release-test, --as-test must also be set.
     if args.as_release_test:
         args.as_test = True
@@ -1139,7 +1154,7 @@ def run_rllib_example_script_experiment(
             config.environment(args.env)
 
         # Disable the new API stack?
-        if not args.enable_new_api_stack:
+        if args.old_api_stack:
             config.api_stack(
                 enable_rl_module_and_learner=False,
                 enable_env_runner_and_connector_v2=False,
@@ -1249,7 +1264,10 @@ def run_rllib_example_script_experiment(
                     EPISODE_RETURN_MEAN, np.nan
                 )
                 print(f"iter={i} R={mean_return}", end="")
-            if EVALUATION_RESULTS in results:
+            if (
+                EVALUATION_RESULTS in results
+                and ENV_RUNNER_RESULTS in results[EVALUATION_RESULTS]
+            ):
                 Reval = results[EVALUATION_RESULTS][ENV_RUNNER_RESULTS][
                     EPISODE_RETURN_MEAN
                 ]

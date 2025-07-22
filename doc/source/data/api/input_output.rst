@@ -186,6 +186,15 @@ Databricks
 
    read_databricks_tables
 
+Unity Catalog
+-------------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_unity_catalog
+
 Delta Sharing
 -------------
 
@@ -214,6 +223,15 @@ Iceberg
    read_iceberg
    Dataset.write_iceberg
 
+Delta Lake
+----------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_delta
+
 Lance
 -----
 
@@ -232,6 +250,7 @@ ClickHouse
    :toctree: doc/
 
    read_clickhouse
+   Dataset.write_clickhouse
 
 Daft
 ----

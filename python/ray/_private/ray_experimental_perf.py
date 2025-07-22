@@ -2,18 +2,18 @@
 
 import asyncio
 import logging
-from ray._private.ray_microbenchmark_helpers import timeit, asyncio_timeit
 import multiprocessing
-import ray
-from ray.dag.compiled_dag_node import CompiledDAG
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
+import ray
 import ray.experimental.channel as ray_channel
-from ray.dag import InputNode, MultiOutputNode
 from ray._common.utils import (
     get_or_create_event_loop,
 )
+from ray._private.ray_microbenchmark_helpers import asyncio_timeit, timeit
 from ray._private.test_utils import get_actor_node_id
+from ray.dag import InputNode, MultiOutputNode
+from ray.dag.compiled_dag_node import CompiledDAG
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 logger = logging.getLogger(__name__)
 

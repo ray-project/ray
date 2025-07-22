@@ -28,5 +28,7 @@ Instead, we should first schedule all remote calls, which are then processed in 
 
 Other ``ray.get()`` related anti-patterns are:
 
+- :doc:`nested-ray-get`
 - :doc:`unnecessary-ray-get`
 - :doc:`ray-get-submission-order`
+- :doc:`ray-get-too-many-objects`

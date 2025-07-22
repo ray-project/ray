@@ -17,7 +17,7 @@ from ray._private.test_utils import (
     wait_for_pid_to_exit,
     client_test_enabled,
 )
-from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
+from ray._common.constants import HEAD_NODE_RESOURCE_NAME
 
 logger = logging.getLogger(__name__)
 
@@ -367,7 +367,4 @@ def test_head_node_resource_ray_start(call_ray_start):
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

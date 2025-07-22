@@ -20,7 +20,6 @@
 
 #include "ray/core_worker/core_worker.h"
 #include "ray/stats/stats.h"
-#include "ray/util/compat.h"
 #include "ray/util/env.h"
 #include "ray/util/event.h"
 #include "ray/util/process.h"
@@ -265,13 +264,13 @@ void CoreWorkerProcessImpl::InitializeSystemConfig() {
   // the system config in the constructor of `CoreWorkerProcessImpl`.
   std::promise<std::string> promise;
   std::thread thread([&] {
-    instrumented_io_context io_service;
+    instrumented_io_context io_service{/*enable_lag_probe=*/false,
+                                       /*running_on_single_thread=*/true};
     boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
         io_service.get_executor());
-    rpc::ClientCallManager client_call_manager(io_service);
-    auto grpc_client = rpc::NodeManagerWorkerClient::make(
+    rpc::ClientCallManager client_call_manager(io_service, /*record_stats=*/false);
+    raylet::RayletClient raylet_client(
         options_.raylet_ip_address, options_.node_manager_port, client_call_manager);
-    raylet::RayletClient raylet_client(grpc_client);
 
     std::function<void(int64_t)> get_once = [this,
                                              &get_once,
@@ -325,8 +324,8 @@ void CoreWorkerProcessImpl::InitializeSystemConfig() {
   thread.join();
 
   RayConfig::instance().initialize(promise.get_future().get());
-  ray::asio::testing::init();
-  ray::rpc::testing::init();
+  ray::asio::testing::Init();
+  ray::rpc::testing::Init();
 }
 
 void CoreWorkerProcessImpl::RunWorkerTaskExecutionLoop() {

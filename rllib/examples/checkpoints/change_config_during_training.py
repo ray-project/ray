@@ -18,7 +18,7 @@ This example:
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack --num-agents=[0 or 2]
+`python [script file name].py --num-agents=[0 or 2]
 --stop-reward-first-config=[return at which the algo on 1st config should stop training]
 --stop-reward=[the final return to achieve after restoration from the checkpoint with
 the 2nd config]
@@ -111,7 +111,6 @@ parser.add_argument(
 )
 # By default, set `args.checkpoint_freq` to 1 and `args.checkpoint_at_end` to True.
 parser.set_defaults(
-    enable_new_api_stack=True,
     checkpoint_freq=1,
     checkpoint_at_end=True,
 )
@@ -128,6 +127,7 @@ if __name__ == "__main__":
     base_config = (
         PPOConfig()
         .environment("CartPole-v1" if args.num_agents == 0 else "ma_cart")
+        .env_runners(create_env_on_local_worker=True)
         .training(lr=0.0001)
         # TODO (sven): Tune throws a weird error inside the "log json" callback
         #  when running with this option. The `perf` key in the result dict contains

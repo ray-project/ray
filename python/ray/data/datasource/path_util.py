@@ -3,7 +3,7 @@ import sys
 import urllib
 from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
-from ray.data._internal.util import _resolve_custom_scheme
+from ray.data._internal.util import RetryingPyFileSystem, _resolve_custom_scheme
 
 if TYPE_CHECKING:
     import pyarrow
@@ -74,7 +74,6 @@ def _resolve_paths_and_filesystem(
     elif len(paths) == 0:
         raise ValueError("Must provide at least one path.")
 
-    need_unwrap_path_protocol = True
     if filesystem and not isinstance(filesystem, FileSystem):
         err_msg = (
             f"The filesystem passed must either conform to "
@@ -83,7 +82,7 @@ def _resolve_paths_and_filesystem(
             f"filesystem was: {filesystem}"
         )
         try:
-            import fsspec
+            import fsspec  # noqa: F401
             from fsspec.implementations.http import HTTPFileSystem
         except ModuleNotFoundError:
             # If filesystem is not a pyarrow filesystem and fsspec isn't
@@ -92,12 +91,6 @@ def _resolve_paths_and_filesystem(
             raise TypeError(err_msg) from None
         if not isinstance(filesystem, fsspec.spec.AbstractFileSystem):
             raise TypeError(err_msg) from None
-        if isinstance(filesystem, HTTPFileSystem):
-            # If filesystem is fsspec HTTPFileSystem, the protocol/scheme of paths
-            # should not be unwrapped/removed, because HTTPFileSystem expects full file
-            # paths including protocol/scheme. This is different behavior compared to
-            # file systems implementation in pyarrow.fs.FileSystem.
-            need_unwrap_path_protocol = False
 
         filesystem = PyFileSystem(FSSpecHandler(filesystem))
 
@@ -121,6 +114,7 @@ def _resolve_paths_and_filesystem(
                     # try to use fsspec HTTPFileSystem. This expects fsspec is
                     # installed.
                     try:
+                        import fsspec  # noqa: F401
                         from fsspec.implementations.http import HTTPFileSystem
                     except ModuleNotFoundError:
                         raise ImportError(
@@ -129,19 +123,46 @@ def _resolve_paths_and_filesystem(
 
                     resolved_filesystem = PyFileSystem(FSSpecHandler(HTTPFileSystem()))
                     resolved_path = path
-                    need_unwrap_path_protocol = False
                 else:
                     raise
             else:
                 raise
+
         if filesystem is None:
             filesystem = resolved_filesystem
-        elif need_unwrap_path_protocol:
+
+        # If the PyArrow filesystem is handled by a fsspec HTTPFileSystem, the protocol/
+        # scheme of paths should not be unwrapped/removed, because HTTPFileSystem
+        # expects full file paths including protocol/scheme. This is different behavior
+        # compared to other file system implementation in pyarrow.fs.FileSystem.
+        if not _is_http_filesystem(filesystem):
             resolved_path = _unwrap_protocol(resolved_path)
+
         resolved_path = filesystem.normalize_path(resolved_path)
         resolved_paths.append(resolved_path)
 
     return resolved_paths, filesystem
+
+
+def _is_http_filesystem(fs: "pyarrow.fs.FileSystem") -> bool:
+    """Return whether ``fs`` is a PyFileSystem handled by a fsspec HTTPFileSystem."""
+    from pyarrow.fs import FSSpecHandler, PyFileSystem
+
+    try:
+        import fsspec  # noqa: F401
+        from fsspec.implementations.http import HTTPFileSystem
+    except ModuleNotFoundError:
+        return False
+
+    if isinstance(fs, RetryingPyFileSystem):
+        fs = fs.unwrap()
+
+    if not isinstance(fs, PyFileSystem):
+        return False
+
+    return isinstance(fs.handler, FSSpecHandler) and isinstance(
+        fs.handler.fs, HTTPFileSystem
+    )
 
 
 def _unwrap_protocol(path):

@@ -120,13 +120,13 @@ def test_sort_arrow(
     num_items,
     parallelism,
     configure_shuffle_method,
-    use_polars,
+    use_polars_sort,
 ):
     ctx = ray.data.context.DataContext.get_current()
 
     try:
-        original_use_polars = ctx.use_polars
-        ctx.use_polars = use_polars
+        original_use_polars = ctx.use_polars_sort
+        ctx.use_polars_sort = use_polars_sort
 
         a = list(reversed(range(num_items)))
         b = [f"{x:03}" for x in range(num_items)]
@@ -159,10 +159,10 @@ def test_sort_arrow(
         assert_sorted(ds.sort(key="b"), zip(a, b))
         assert_sorted(ds.sort(key="a", descending=True), zip(a, b))
     finally:
-        ctx.use_polars = original_use_polars
+        ctx.use_polars_sort = original_use_polars
 
 
-def test_sort(ray_start_regular, use_polars):
+def test_sort(ray_start_regular, use_polars_sort):
     import random
 
     import pyarrow as pa
@@ -184,13 +184,13 @@ def test_sort(ray_start_regular, use_polars):
 
 
 def test_sort_arrow_with_empty_blocks(
-    ray_start_regular, configure_shuffle_method, use_polars
+    ray_start_regular, configure_shuffle_method, use_polars_sort
 ):
     ctx = ray.data.context.DataContext.get_current()
 
     try:
-        original_use_polars = ctx.use_polars
-        ctx.use_polars = use_polars
+        original_use_polars = ctx.use_polars_sort
+        ctx.use_polars_sort = use_polars_sort
 
         assert (
             BlockAccessor.for_block(pa.Table.from_pydict({}))
@@ -208,8 +208,8 @@ def test_sort_arrow_with_empty_blocks(
 
         assert (
             BlockAccessor.for_block(pa.Table.from_pydict({}))
-            .merge_sorted_blocks([pa.Table.from_pydict({})], SortKey("A"))[0]
-            .num_rows
+            .merge_sorted_blocks([pa.Table.from_pydict({})], SortKey("A"))[1]
+            .metadata.num_rows
             == 0
         )
 
@@ -231,7 +231,7 @@ def test_sort_arrow_with_empty_blocks(
         )
         assert ds.sort("id").count() == 0
     finally:
-        ctx.use_polars = original_use_polars
+        ctx.use_polars_sort = original_use_polars
 
 
 @pytest.mark.parametrize("descending", [False, True])
@@ -317,8 +317,8 @@ def test_sort_pandas_with_empty_blocks(ray_start_regular, configure_shuffle_meth
 
     assert (
         BlockAccessor.for_block(pa.Table.from_pydict({}))
-        .merge_sorted_blocks([pa.Table.from_pydict({})], SortKey("A"))[0]
-        .num_rows
+        .merge_sorted_blocks([pa.Table.from_pydict({})], SortKey("A"))[1]
+        .metadata.num_rows
         == 0
     )
 
@@ -667,6 +667,9 @@ SHUFFLE_ALL_TO_ALL_OPS = [
 def test_debug_limit_shuffle_execution_to_num_blocks(
     ray_start_regular, restore_data_context, configure_shuffle_method, shuffle_op
 ):
+    if configure_shuffle_method == ShuffleStrategy.HASH_SHUFFLE:
+        pytest.skip("Not supported by hash-shuffle")
+
     shuffle_fn = shuffle_op
 
     parallelism = 100
@@ -675,9 +678,7 @@ def test_debug_limit_shuffle_execution_to_num_blocks(
     shuffled_ds = shuffled_ds.materialize()
     assert shuffled_ds._plan.initial_num_blocks() == parallelism
 
-    DataContext.get_current().set_config(
-        "debug_limit_shuffle_execution_to_num_blocks", 1
-    )
+    ds.context.set_config("debug_limit_shuffle_execution_to_num_blocks", 1)
     shuffled_ds = shuffle_fn(ds).materialize()
     shuffled_ds = shuffled_ds.materialize()
     assert shuffled_ds._plan.initial_num_blocks() == 1

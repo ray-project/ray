@@ -48,28 +48,36 @@ class MockWorkerPool : public WorkerPoolInterface {
  public:
   MockWorkerPool() : num_pops(0) {}
 
-  void PopWorker(const TaskSpecification &task_spec, const PopWorkerCallback &callback) {
+  void PopWorker(const TaskSpecification &task_spec,
+                 const PopWorkerCallback &callback) override {
     num_pops++;
     const int runtime_env_hash = task_spec.GetRuntimeEnvHash();
     callbacks[runtime_env_hash].push_back(callback);
   }
 
-  void PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
+  void PushWorker(const std::shared_ptr<WorkerInterface> &worker) override {
     workers.push_front(worker);
   }
 
-  const std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredWorkers(
-      bool filter_dead_workers, bool filter_io_workers) const {
+  std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredWorkers(
+      bool filter_dead_workers, bool filter_io_workers) const override {
     RAY_CHECK(false) << "Not used.";
     return {};
   }
 
-  std::shared_ptr<WorkerInterface> GetRegisteredWorker(const WorkerID &worker_id) const {
+  bool IsWorkerAvailableForScheduling() const override {
+    RAY_CHECK(false) << "Not used.";
+    return false;
+  }
+
+  std::shared_ptr<WorkerInterface> GetRegisteredWorker(
+      const WorkerID &worker_id) const override {
     RAY_CHECK(false) << "Not used.";
     return nullptr;
   };
 
-  std::shared_ptr<WorkerInterface> GetRegisteredDriver(const WorkerID &worker_id) const {
+  std::shared_ptr<WorkerInterface> GetRegisteredDriver(
+      const WorkerID &worker_id) const override {
     RAY_CHECK(false) << "Not used.";
     return nullptr;
   }
@@ -118,6 +126,126 @@ class MockWorkerPool : public WorkerPoolInterface {
     }
   }
 
+  std::shared_ptr<WorkerInterface> GetRegisteredWorker(
+      const std::shared_ptr<ClientConnection> &connection) const override {
+    RAY_CHECK(false) << "Not used.";
+    return nullptr;
+  }
+
+  std::shared_ptr<WorkerInterface> GetRegisteredDriver(
+      const std::shared_ptr<ClientConnection> &connection) const override {
+    RAY_CHECK(false) << "Not used.";
+    return nullptr;
+  }
+
+  void HandleJobStarted(const JobID &job_id, const rpc::JobConfig &job_config) override {
+    RAY_CHECK(false) << "Not used.";
+  }
+
+  void HandleJobFinished(const JobID &job_id) override {
+    RAY_CHECK(false) << "Not used.";
+  }
+
+  void Start() override { RAY_CHECK(false) << "Not used."; }
+
+  void SetNodeManagerPort(int node_manager_port) override {
+    RAY_CHECK(false) << "Not used.";
+  }
+
+  void SetRuntimeEnvAgentClient(
+      std::unique_ptr<RuntimeEnvAgentClient> runtime_env_agent_client) override {
+    RAY_CHECK(false) << "Not used.";
+  }
+
+  std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredDrivers(
+      bool filter_dead_drivers) const override {
+    RAY_CHECK(false) << "Not used.";
+    return {};
+  }
+
+  Status RegisterDriver(const std::shared_ptr<WorkerInterface> &worker,
+                        const rpc::JobConfig &job_config,
+                        std::function<void(Status, int)> send_reply_callback) override {
+    RAY_CHECK(false) << "Not used.";
+    return Status::Invalid("Not used.");
+  }
+
+  Status RegisterWorker(const std::shared_ptr<WorkerInterface> &worker,
+                        pid_t pid,
+                        StartupToken worker_startup_token,
+                        std::function<void(Status, int)> send_reply_callback) override {
+    RAY_CHECK(false) << "Not used.";
+    return Status::Invalid("Not used.");
+  }
+
+  Status RegisterWorker(const std::shared_ptr<WorkerInterface> &worker,
+                        pid_t pid,
+                        StartupToken worker_startup_token) override {
+    RAY_CHECK(false) << "Not used.";
+    return Status::Invalid("Not used.");
+  }
+
+  boost::optional<const rpc::JobConfig &> GetJobConfig(
+      const JobID &job_id) const override {
+    RAY_CHECK(false) << "Not used.";
+    return boost::none;
+  }
+
+  void OnWorkerStarted(const std::shared_ptr<WorkerInterface> &worker) override {
+    RAY_CHECK(false) << "Not used.";
+  }
+
+  void PushSpillWorker(const std::shared_ptr<WorkerInterface> &worker) override {
+    RAY_CHECK(false) << "Not used.";
+  }
+
+  void PushRestoreWorker(const std::shared_ptr<WorkerInterface> &worker) override {
+    RAY_CHECK(false) << "Not used.";
+  }
+
+  void DisconnectWorker(const std::shared_ptr<WorkerInterface> &worker,
+                        rpc::WorkerExitType disconnect_type) override {
+    RAY_CHECK(false) << "Not used.";
+  }
+
+  void DisconnectDriver(const std::shared_ptr<WorkerInterface> &driver) override {
+    RAY_CHECK(false) << "Not used.";
+  }
+
+  void PrestartWorkers(const TaskSpecification &task_spec,
+                       int64_t backlog_size) override {
+    RAY_CHECK(false) << "Not used.";
+  }
+
+  void StartNewWorker(
+      const std::shared_ptr<PopWorkerRequest> &pop_worker_request) override {
+    RAY_CHECK(false) << "Not used.";
+  }
+
+  std::string DebugString() const override {
+    RAY_CHECK(false) << "Not used.";
+    return "";
+  }
+
+  void PopSpillWorker(
+      std::function<void(std::shared_ptr<WorkerInterface>)> callback) override {
+    RAY_CHECK(false) << "Not used.";
+  }
+
+  void PopRestoreWorker(
+      std::function<void(std::shared_ptr<WorkerInterface>)> callback) override {
+    RAY_CHECK(false) << "Not used.";
+  }
+
+  void PushDeleteWorker(const std::shared_ptr<WorkerInterface> &worker) override {
+    RAY_CHECK(false) << "Not used.";
+  }
+
+  void PopDeleteWorker(
+      std::function<void(std::shared_ptr<WorkerInterface>)> callback) override {
+    RAY_CHECK(false) << "Not used.";
+  }
+
   size_t CallbackSize(int runtime_env_hash) {
     auto cb_it = callbacks.find(runtime_env_hash);
     if (cb_it != callbacks.end()) {
@@ -160,6 +288,8 @@ RayTask CreateTask(
   TaskID id = RandomTaskId();
   JobID job_id = RandomJobId();
   rpc::Address address;
+  address.set_raylet_id(NodeID::FromRandom().Binary());
+  address.set_worker_id(WorkerID::FromRandom().Binary());
   spec_builder.SetCommonTaskSpec(id,
                                  "dummy_task",
                                  Language::PYTHON,
@@ -254,15 +384,11 @@ class ClusterTaskManagerTest : public ::testing::Test {
         id_(NodeID::FromRandom()),
         scheduler_(CreateSingleNodeScheduler(
             id_.Binary(), num_cpus_at_head, num_gpus_at_head, *gcs_client_)),
-        is_owner_alive_(true),
         dependency_manager_(missing_objects_),
         local_task_manager_(std::make_unique<LocalTaskManager>(
             id_,
             *scheduler_,
-            dependency_manager_, /* is_owner_alive= */
-            [this](const WorkerID &worker_id, const NodeID &node_id) {
-              return is_owner_alive_;
-            },
+            dependency_manager_,
             /* get_node_info= */
             [this](const NodeID &node_id) -> const rpc::GcsNodeInfo * {
               node_info_calls_++;
@@ -386,7 +512,6 @@ class ClusterTaskManagerTest : public ::testing::Test {
   absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> leased_workers_;
   std::unordered_set<ObjectID> missing_objects_;
 
-  bool is_owner_alive_ = false;
   int default_arg_size_ = 10;
 
   int node_info_calls_ = 0;
@@ -1621,10 +1746,7 @@ TEST_F(ClusterTaskManagerTest, BacklogReportTest) {
 }
 
 TEST_F(ClusterTaskManagerTest, OwnerDeadTest) {
-  /*
-    Test the race condition in which the owner of a task dies while the task is pending.
-    This is the essence of test_actor_advanced.py::test_pending_actor_removed_by_owner
-   */
+  // Test the case when the task owner (worker or node) dies, the task is cancelled.
   RayTask task = CreateTask({{ray::kCPU_ResourceLabel, 4}});
   rpc::RequestWorkerLeaseReply reply;
   bool callback_occurred = false;
@@ -1634,25 +1756,22 @@ TEST_F(ClusterTaskManagerTest, OwnerDeadTest) {
     *callback_occurred_ptr = true;
   };
 
-  std::shared_ptr<MockWorker> worker =
-      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
-  pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
-
-  is_owner_alive_ = false;
   task_manager_.QueueAndScheduleTask(task, false, false, &reply, callback);
   pool_.TriggerCallbacks();
 
   ASSERT_FALSE(callback_occurred);
-  ASSERT_EQ(leased_workers_.size(), 0);
-  ASSERT_EQ(pool_.workers.size(), 1);
 
-  is_owner_alive_ = true;
-  task_manager_.ScheduleAndDispatchTasks();
+  task_manager_.CancelAllTasksOwnedBy(task.GetTaskSpecification().CallerWorkerId());
+
+  AssertNoLeaks();
+
+  callback_occurred = false;
+  task_manager_.QueueAndScheduleTask(task, false, false, &reply, callback);
   pool_.TriggerCallbacks();
 
   ASSERT_FALSE(callback_occurred);
-  ASSERT_EQ(leased_workers_.size(), 0);
-  ASSERT_EQ(pool_.workers.size(), 1);
+
+  task_manager_.CancelAllTasksOwnedBy(task.GetTaskSpecification().CallerNodeId());
 
   AssertNoLeaks();
 }
@@ -1756,12 +1875,13 @@ TEST_F(ClusterTaskManagerTest, TestAnyPendingTasksForResourceAcquisition) {
   ASSERT_EQ(pool_.workers.size(), 0);
 
   // task1: running. Progress is made, and there's no deadlock.
-  ray::RayTask exemplar;
-  bool any_pending = false;
   int pending_actor_creations = 0;
   int pending_tasks = 0;
-  ASSERT_FALSE(task_manager_.AnyPendingTasksForResourceAcquisition(
-      &exemplar, &any_pending, &pending_actor_creations, &pending_tasks));
+  ASSERT_EQ(task_manager_.AnyPendingTasksForResourceAcquisition(&pending_actor_creations,
+                                                                &pending_tasks),
+            nullptr);
+  ASSERT_EQ(pending_actor_creations, 0);
+  ASSERT_EQ(pending_tasks, 0);
 
   // task1: running, task2: queued.
   RayTask task2 = CreateTask({{ray::kCPU_ResourceLabel, 6}});
@@ -1774,8 +1894,12 @@ TEST_F(ClusterTaskManagerTest, TestAnyPendingTasksForResourceAcquisition) {
   task_manager_.QueueAndScheduleTask(task2, false, false, &reply2, callback2);
   pool_.TriggerCallbacks();
   ASSERT_FALSE(*callback_occurred2);
-  ASSERT_TRUE(task_manager_.AnyPendingTasksForResourceAcquisition(
-      &exemplar, &any_pending, &pending_actor_creations, &pending_tasks));
+  auto pending_task = task_manager_.AnyPendingTasksForResourceAcquisition(
+      &pending_actor_creations, &pending_tasks);
+  ASSERT_EQ(pending_task->GetTaskSpecification().TaskId(),
+            task2.GetTaskSpecification().TaskId());
+  ASSERT_EQ(pending_actor_creations, 0);
+  ASSERT_EQ(pending_tasks, 1);
 }
 
 TEST_F(ClusterTaskManagerTest, ArgumentEvicted) {

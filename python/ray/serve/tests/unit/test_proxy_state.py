@@ -4,8 +4,9 @@ from unittest.mock import patch
 
 import pytest
 
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import wait_for_condition
 from ray.serve._private.cluster_node_info_cache import ClusterNodeInfoCache
+from ray.serve._private.common import RequestProtocol
 from ray.serve._private.constants import PROXY_HEALTH_CHECK_UNHEALTHY_THRESHOLD
 from ray.serve._private.proxy_state import ProxyState, ProxyStateManager, ProxyWrapper
 from ray.serve._private.test_utils import MockTimer
@@ -24,7 +25,7 @@ class MockClusterNodeInfoCache:
         return self.alive_nodes
 
     def get_alive_node_ids(self):
-        return {node_id for node_id, _ in self.alive_nodes}
+        return {node_id for node_id, _, _ in self.alive_nodes}
 
 
 class FakeProxyActor:
@@ -113,6 +114,7 @@ def _create_proxy_state(
         actor_name="alice",
         node_id=node_id,
         node_ip="mock_node_ip",
+        node_instance_id="mock_instance_id",
         timer=timer,
     )
     state._set_status(status=status)
@@ -125,9 +127,9 @@ def number_of_worker_nodes() -> int:
 
 
 @pytest.fixture
-def all_nodes(number_of_worker_nodes) -> List[Tuple[str, str]]:
-    return [(HEAD_NODE_ID, "fake-head-ip")] + [
-        (f"worker-node-id-{i}", f"fake-worker-ip-{i}")
+def all_nodes(number_of_worker_nodes) -> List[Tuple[str, str, str]]:
+    return [(HEAD_NODE_ID, "fake-head-ip", "fake-head-instance-id")] + [
+        (f"worker-node-id-{i}", f"fake-worker-ip-{i}", f"fake-instance-id-{i}")
         for i in range(number_of_worker_nodes)
     ]
 
@@ -156,7 +158,7 @@ def _update_and_check_proxy_state_manager(
 
 
 def test_node_selection(all_nodes):
-    all_node_ids = {node_id for node_id, _ in all_nodes}
+    all_node_ids = {node_id for node_id, _, _ in all_nodes}
     # Test NoServer
     proxy_state_manager, cluster_node_info_cache = _create_proxy_state_manager(
         HTTPOptions(location=DeploymentMode.NoServer)
@@ -184,7 +186,7 @@ def test_node_selection(all_nodes):
     )
     cluster_node_info_cache.alive_nodes = all_nodes
     assert proxy_state_manager._get_target_nodes({HEAD_NODE_ID}) == [
-        (HEAD_NODE_ID, "fake-head-ip")
+        (HEAD_NODE_ID, "fake-head-ip", "fake-head-instance-id")
     ]
 
 
@@ -404,13 +406,13 @@ def test_proxy_manager_update_proxies_states(all_nodes, number_of_worker_nodes):
     )
     cluster_node_info_cache.alive_nodes = all_nodes
 
-    for node_id, _ in all_nodes:
+    for node_id, _, _ in all_nodes:
         manager._proxy_states[node_id] = _create_proxy_state(
             status=ProxyStatus.HEALTHY,
             node_id=node_id,
         )
 
-    node_ids = [node_id for node_id, _ in all_nodes]
+    node_ids = [node_id for node_id, _, _ in all_nodes]
 
     # No target proxy nodes
     proxy_nodes = set()
@@ -501,7 +503,7 @@ def test_proxy_actor_manager_removing_proxies(all_nodes, number_of_worker_nodes)
     )
     cluster_node_info_cache.alive_nodes = all_nodes
 
-    for node_id, _ in all_nodes:
+    for node_id, _, _ in all_nodes:
         manager._proxy_states[node_id] = _create_proxy_state(
             status=ProxyStatus.STARTING,
             node_id=node_id,
@@ -511,7 +513,7 @@ def test_proxy_actor_manager_removing_proxies(all_nodes, number_of_worker_nodes)
         manager._proxy_states[node_id]._actor_proxy_wrapper.is_ready_response = True
 
     # All nodes are target proxy nodes
-    node_ids = [node_id for node_id, _ in all_nodes]
+    node_ids = [node_id for node_id, _, _ in all_nodes]
 
     worker_node_id = node_ids[1]
     worker_proxy_state = manager._proxy_states[worker_node_id]
@@ -567,7 +569,7 @@ def test_is_ready_for_shutdown(all_nodes):
     )
     cluster_node_info_cache.alive_nodes = all_nodes
 
-    for node_id, node_ip_address in all_nodes:
+    for node_id, _, _ in all_nodes:
         manager._proxy_states[node_id] = _create_proxy_state(
             status=ProxyStatus.HEALTHY,
             node_id=node_id,
@@ -659,6 +661,34 @@ def test_proxy_state_manager_timing_out_on_start(number_of_worker_nodes, all_nod
         assert proxy_state == prev_proxy_state
         assert prev_proxy_state.status == ProxyStatus.HEALTHY
         assert proxy_state.status == ProxyStatus.HEALTHY
+
+
+def test_proxy_state_manager_get_targets(all_nodes):
+    """Test the get_targets method on ProxyStateManager."""
+    manager, cluster_node_info_cache = _create_proxy_state_manager(
+        HTTPOptions(location=DeploymentMode.EveryNode)
+    )
+    cluster_node_info_cache.alive_nodes = all_nodes
+
+    for node_id, _, _ in all_nodes:
+        manager._proxy_states[node_id] = _create_proxy_state(
+            status=ProxyStatus.HEALTHY,
+            node_id=node_id,
+        )
+
+    manager._proxy_states[all_nodes[-1][0]].try_update_status(ProxyStatus.DRAINED)
+
+    targets = manager.get_targets(RequestProtocol.HTTP)
+    assert len(targets) == len(all_nodes) - 1
+    assert targets[0].ip == "mock_node_ip"
+    assert targets[0].port == 8000
+    assert targets[0].instance_id == "mock_instance_id"
+
+    targets = manager.get_targets(RequestProtocol.GRPC)
+    assert len(targets) == 0
+
+    with pytest.raises(ValueError):
+        manager.get_targets("invalid_protocol")
 
 
 if __name__ == "__main__":

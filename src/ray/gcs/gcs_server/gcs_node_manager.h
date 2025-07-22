@@ -123,7 +123,7 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   ///
   /// \param node_id The id of the node.
   /// \return the node if it is alive. Optional empty value if it is not alive.
-  absl::optional<std::shared_ptr<rpc::GcsNodeInfo>> GetAliveNode(
+  std::optional<std::shared_ptr<rpc::GcsNodeInfo>> GetAliveNode(
       const NodeID &node_id) const;
 
   /// Get all alive nodes.

@@ -1,8 +1,9 @@
 import os
 import tempfile
-import requests
-import pytest
 from typing import Generator, List
+
+import pytest
+import requests
 
 S3_ARTIFACT_URL = "https://air-example-data.s3.amazonaws.com/"
 S3_ARTIFACT_LLM_OSSCI_URL = S3_ARTIFACT_URL + "rayllm-ossci/"
@@ -157,8 +158,9 @@ def gpu_type():
 
         print(f"{torch.version.cuda=}", flush=True)
         name = torch.cuda.get_device_name()
-        # The name of the GPU is in the format of "NVIDIA L4" or "Tesla T4".
-        _, type_name = name.split(" ")
+        # The name of the GPU is in the format of "NVIDIA L4" or "Tesla T4"
+        # or "NVIDIA H100 80GB HBM3"
+        type_name = name.split(" ")[1]
         print(f"GPU type: {type_name}", flush=True)
         yield type_name
     except ImportError:

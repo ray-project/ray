@@ -49,7 +49,7 @@ Follow [this document](kuberay-operator-deploy) to install the latest stable Kub
 ### Step 3: Install a RayCluster with GCS FT enabled
 
 ```sh
-curl -LO https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-cluster.external-redis.yaml
+curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.4.2/ray-operator/config/samples/ray-cluster.external-redis.yaml
 kubectl apply -f ray-cluster.external-redis.yaml
 ```
 
@@ -60,14 +60,21 @@ kubectl apply -f ray-cluster.external-redis.yaml
 # The expected output should be 4 Pods: 1 head, 1 worker, 1 KubeRay, and 1 Redis.
 kubectl get pods
 
+# [Example output]
+# NAME                                                 READY   STATUS    RESTARTS   AGE
+# kuberay-operator-6bc45dd644-ktbnh                    1/1     Running   0          3m4s
+# raycluster-external-redis-head                       1/1     Running   0          2m41s
+# raycluster-external-redis-small-group-worker-dwt98   1/1     Running   0          2m41s
+# redis-6cf756c755-qljcv                               1/1     Running   0          2m41s
+
 # Step 4.2: List all ConfigMaps in the `default` namespace.
 kubectl get configmaps
 
 # [Example output]
 # NAME                  DATA   AGE
+# kube-root-ca.crt      1      3m4s
 # ray-example           2      5m45s
 # redis-config          1      5m45s
-# ...
 ```
 
 The [ray-cluster.external-redis.yaml](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-cluster.external-redis.yaml) file defines Kubernetes resources for RayCluster, Redis, and ConfigMaps.
@@ -103,16 +110,20 @@ The `ray-example` ConfigMap houses two Python scripts: `detached_actor.py` and `
 ### Step 5: Create a detached actor
 
 ```sh
-# Step 4.1: Create a detached actor with the name, `counter_actor`.
+# Step 5.1: Create a detached actor with the name, `counter_actor`.
 export HEAD_POD=$(kubectl get pods --selector=ray.io/node-type=head -o custom-columns=POD:metadata.name --no-headers)
 kubectl exec -it $HEAD_POD -- python3 /home/ray/samples/detached_actor.py
 
-# Step 4.2: Increment the counter.
+# 2025-04-18 02:51:25,359	INFO worker.py:1514 -- Using address 127.0.0.1:6379 set in the environment variable RAY_ADDRESS
+# 2025-04-18 02:51:25,361	INFO worker.py:1654 -- Connecting to existing Ray cluster at address: 10.244.0.8:6379...
+# 2025-04-18 02:51:25,557	INFO worker.py:1832 -- Connected to Ray cluster. View the dashboard at 10.244.0.8:8265 
+
+# Step 5.2: Increment the counter.
 kubectl exec -it $HEAD_POD -- python3 /home/ray/samples/increment_counter.py
 
-# 2023-09-07 16:01:41,925 INFO worker.py:1313 -- Using address 127.0.0.1:6379 set in the environment variable RAY_ADDRESS
-# 2023-09-07 16:01:41,926 INFO worker.py:1431 -- Connecting to existing Ray cluster at address: 10.244.0.17:6379...
-# 2023-09-07 16:01:42,000 INFO worker.py:1612 -- Connected to Ray cluster. View the dashboard at http://10.244.0.17:8265
+# 2025-04-18 02:51:29,069	INFO worker.py:1514 -- Using address 127.0.0.1:6379 set in the environment variable RAY_ADDRESS
+# 2025-04-18 02:51:29,072	INFO worker.py:1654 -- Connecting to existing Ray cluster at address: 10.244.0.8:6379...
+# 2025-04-18 02:51:29,198	INFO worker.py:1832 -- Connected to Ray cluster. View the dashboard at 10.244.0.8:8265 
 # 1
 ```
 
@@ -136,15 +147,13 @@ kubectl get pods $HEAD_POD -o=jsonpath='{.spec.containers[0].env}' | jq
 # ]
 
 # Step 6.3: Log into the Redis Pod.
-export REDIS_POD=$(kubectl get pods --selector=app=redis -o custom-columns=POD:metadata.name --no-headers)
 # The password `5241590000000000` is defined in the `redis-config` ConfigMap.
-kubectl exec -it $REDIS_POD -- redis-cli -a "5241590000000000"
-
 # Step 6.4: Check the keys in Redis.
 # Note: the schema changed in Ray 2.38.0. Previously we use a single HASH table,
 # now we use multiple HASH tables with a common prefix.
+export REDIS_POD=$(kubectl get pods --selector=app=redis -o custom-columns=POD:metadata.name --no-headers)
+kubectl exec -it $REDIS_POD -- env REDISCLI_AUTH="5241590000000000" redis-cli KEYS "*"
 
-KEYS *
 # [Example output]:
 # 1) "RAY864b004c-6305-42e3-ac46-adfa8eb6f752@INTERNAL_CONFIG"
 # 2) "RAY864b004c-6305-42e3-ac46-adfa8eb6f752@KV"
@@ -154,7 +163,7 @@ KEYS *
 #
 
 # Step 6.5: Check the value of the key.
-HGETALL RAY864b004c-6305-42e3-ac46-adfa8eb6f752@NODE
+kubectl exec -it $REDIS_POD -- env REDISCLI_AUTH="5241590000000000" redis-cli HGETALL RAY864b004c-6305-42e3-ac46-adfa8eb6f752@NODE
 # Before Ray 2.38.0:
 # HGETALL 864b004c-6305-42e3-ac46-adfa8eb6f752
 ```
@@ -170,6 +179,8 @@ See [this section](kuberay-external-storage-namespace) to learn more about the o
 kubectl get pods $HEAD_POD -o=jsonpath='{.spec.containers[0].env}' | jq
 # [Expected result]:
 # No `RAY_gcs_rpc_server_reconnect_timeout_s` environment variable is set. Hence, the Ray head uses its default value of `60`.
+
+export YOUR_WORKER_POD=$(kubectl get pods -l ray.io/group=small-group -o jsonpath='{.items[0].metadata.name}')
 kubectl get pods $YOUR_WORKER_POD -o=jsonpath='{.spec.containers[0].env}' | jq
 # [Expected result]:
 # KubeRay injects the `RAY_gcs_rpc_server_reconnect_timeout_s` environment variable with the value `600` to the worker Pod.
@@ -190,7 +201,7 @@ kubectl exec -it $HEAD_POD -- pkill gcs_server
 kubectl get pods -l=ray.io/is-ray-node=yes
 # [Example output]:
 # NAME                                                 READY   STATUS    RESTARTS      AGE
-# raycluster-external-redis-head-xxxxx                 1/1     Running   1 (64s ago)   xxm
+# raycluster-external-redis-head                       1/1     Running   1 (64s ago)   xxm
 # raycluster-external-redis-worker-small-group-yyyyy   1/1     Running   0             xxm
 ```
 
@@ -233,8 +244,7 @@ kubectl get raycluster
 
 # Step 9.5: Check Redis keys after the Kubernetes Job finishes.
 export REDIS_POD=$(kubectl get pods --selector=app=redis -o custom-columns=POD:metadata.name --no-headers)
-kubectl exec -it $REDIS_POD -- redis-cli -a "5241590000000000"
-KEYS *
+kubectl exec -i $REDIS_POD -- env REDISCLI_AUTH="5241590000000000" redis-cli KEYS "*"
 # [Expected output]: (empty list or set)
 ```
 

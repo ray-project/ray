@@ -23,7 +23,7 @@ namespace ray {
 namespace core {
 
 OutOfOrderActorSchedulingQueue::OutOfOrderActorSchedulingQueue(
-    instrumented_io_context &main_io_service,
+    instrumented_io_context &task_execution_service,
     DependencyWaiter &waiter,
     worker::TaskEventBuffer &task_event_buffer,
     std::shared_ptr<ConcurrencyGroupManager<BoundedExecutor>> pool_manager,
@@ -31,7 +31,7 @@ OutOfOrderActorSchedulingQueue::OutOfOrderActorSchedulingQueue(
     bool is_asyncio,
     int fiber_max_concurrency,
     const std::vector<ConcurrencyGroup> &concurrency_groups)
-    : io_service_(main_io_service),
+    : task_execution_service_(task_execution_service),
       main_thread_id_(std::this_thread::get_id()),
       waiter_(waiter),
       task_event_buffer_(task_event_buffer),
@@ -145,9 +145,9 @@ bool OutOfOrderActorSchedulingQueue::CancelTaskIfFound(TaskID task_id) {
   }
 }
 
-void OutOfOrderActorSchedulingQueue::RunRequestWithSatisfiedDependencies(
+void OutOfOrderActorSchedulingQueue::RunRequestWithResolvedDependencies(
     InboundRequest &request) {
-  RAY_CHECK(request.CanExecute());
+  RAY_CHECK(request.DependenciesResolved());
   const auto task_id = request.TaskID();
   if (is_asyncio_) {
     // Process async actor task.
@@ -195,8 +195,8 @@ void OutOfOrderActorSchedulingQueue::RunRequest(InboundRequest request) {
           rpc::TaskStatus::PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY,
           /* include_task_info */ false));
 
-      request.MarkDependenciesSatisfied();
-      RunRequestWithSatisfiedDependencies(request);
+      request.MarkDependenciesResolved();
+      RunRequestWithResolvedDependencies(request);
     });
   } else {
     RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
@@ -206,8 +206,8 @@ void OutOfOrderActorSchedulingQueue::RunRequest(InboundRequest request) {
         task_spec,
         rpc::TaskStatus::PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY,
         /* include_task_info */ false));
-    request.MarkDependenciesSatisfied();
-    RunRequestWithSatisfiedDependencies(request);
+    request.MarkDependenciesResolved();
+    RunRequestWithResolvedDependencies(request);
   }
 }
 
@@ -242,7 +242,7 @@ void OutOfOrderActorSchedulingQueue::AcceptRequestOrRejectIfCanceled(
   }
 
   if (request_to_run.has_value()) {
-    io_service_.post(
+    task_execution_service_.post(
         [this, request = std::move(*request_to_run)]() mutable {
           RunRequest(std::move(request));
         },

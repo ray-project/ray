@@ -11,11 +11,6 @@ ray_cc_library(
 )
 
 ray_cc_library(
-    name = "event_label",
-    hdrs = ["event_label.h"],
-)
-
-ray_cc_library(
     name = "array",
     hdrs = ["array.h"],
 )
@@ -52,7 +47,6 @@ ray_cc_library(
     srcs = ["logging.cc"],
     hdrs = ["logging.h"],
     deps = [
-        ":event_label",
         ":macros",
         ":string_utils",
         ":thread_utils",
@@ -60,7 +54,6 @@ ray_cc_library(
         "@com_google_absl//absl/debugging:failure_signal_handler",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_googletest//:gtest_prod",
-        "@nlohmann_json",
     ],
 )
 
@@ -205,6 +198,9 @@ ray_cc_library(
 ray_cc_library(
     name = "sample",
     hdrs = ["sample.h"],
+    deps = [
+        "@com_google_absl//absl/time",
+    ],
 )
 
 ray_cc_library(
@@ -227,7 +223,7 @@ ray_cc_library(
         ":logging",
         ":macros",
         ":process",
-        "//:sha256",
+        "//src/ray/thirdparty:sha256",
         "@boost//:asio",
         "@com_google_absl//absl/container:flat_hash_map",
     ],
@@ -303,6 +299,7 @@ ray_cc_library(
         ":stream_redirection_options",
         ":util",
         "//src/ray/util/internal:stream_redirection_handle",
+        "@com_google_absl//absl/container:inlined_vector",
     ],
 )
 
@@ -346,10 +343,7 @@ ray_cc_library(
 
 ray_cc_library(
     name = "scoped_dup2_wrapper",
-    srcs = select({
-        "@platforms//os:windows": ["scoped_dup2_wrapper_windows.cc"],
-        "//conditions:default": ["scoped_dup2_wrapper_posix.cc"],
-    }),
+    srcs = ["scoped_dup2_wrapper.cc"],
     hdrs = ["scoped_dup2_wrapper.h"],
     deps = [
         ":compat",

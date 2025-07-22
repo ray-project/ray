@@ -30,6 +30,8 @@ class AggregateNumRows(PhysicalOperator):
 
         self._num_rows = 0
         self._has_outputted = False
+        self._estimated_num_output_bundles = 1
+        self._estimated_output_num_rows = 1
 
     def has_next(self) -> bool:
         return self._inputs_complete and not self._has_outputted
@@ -43,7 +45,8 @@ class AggregateNumRows(PhysicalOperator):
         block_ref = ray.put(block)
 
         metadata = BlockAccessor.for_block(block).get_metadata()
-        bundle = RefBundle([(block_ref, metadata)], owns_blocks=True)
+        schema = BlockAccessor.for_block(block).schema()
+        bundle = RefBundle([(block_ref, metadata)], owns_blocks=True, schema=schema)
 
         self._has_outputted = True
         return bundle

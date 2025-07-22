@@ -29,9 +29,8 @@
 namespace ray {
 namespace raylet {
 
-typedef std::function<std::shared_ptr<boost::asio::deadline_timer>(std::function<void()>,
-                                                                   uint32_t delay_ms)>
-    DelayExecutorFn;
+using DelayExecutorFn = std::function<std::shared_ptr<boost::asio::deadline_timer>(
+    std::function<void()>, uint32_t)>;
 
 // Manages a separate "Agent" process. In constructor (or the `StartAgent` method) it
 // starts a process with `agent_commands` plus some additional arguments.
@@ -48,8 +47,7 @@ class AgentManager {
   struct Options {
     const NodeID node_id;
     const std::string agent_name;
-    // Commands to start the agent. Note we append extra arguments:
-    // --agent-id $AGENT_ID # A random string of int
+    // Commands to start the agent.
     std::vector<std::string> agent_commands;
     // If true: the started process fate-shares with the raylet. i.e., when the process
     // fails to start or exits, we SIGTERM the raylet.
@@ -63,7 +61,7 @@ class AgentManager {
       bool start_agent = true /* for test */)
       : options_(std::move(options)),
         delay_executor_(std::move(delay_executor)),
-        shutdown_raylet_gracefully_(shutdown_raylet_gracefully),
+        shutdown_raylet_gracefully_(std::move(shutdown_raylet_gracefully)),
         fate_shares_(options_.fate_shares) {
     if (options_.agent_name.empty()) {
       RAY_LOG(FATAL) << "AgentManager agent_name must not be empty.";

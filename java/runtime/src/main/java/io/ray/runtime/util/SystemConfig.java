@@ -17,7 +17,7 @@ public class SystemConfig {
   private static HashMap<String, Object> cachedConfigs = new HashMap<>();
 
   /**
-   * The string key to use for getting the largest size passed by value. If the the size of an
+   * The string key to use for getting the largest size passed by value. If the size of an
    * argument's serialized data is smaller than this number, the argument will be passed by value.
    * Otherwise it'll be passed by reference.
    */

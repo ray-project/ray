@@ -1,10 +1,9 @@
 (kuberay-rayservice-quickstart)=
-
 # RayService Quickstart
 
 ## Prerequisites
 
-This guide mainly focuses on the behavior of KubeRay v1.3.0 and Ray 2.41.0.
+This guide mainly focuses on the behavior of KubeRay v1.4.2 and Ray 2.46.0.
 
 ## What's a RayService?
 
@@ -36,7 +35,7 @@ Note that the YAML file in this example uses `serveConfigV2` to specify a multi-
 ## Step 3: Install a RayService
 
 ```sh
-kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/v1.3.0/ray-operator/config/samples/ray-service.sample.yaml
+kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/v1.4.2/ray-operator/config/samples/ray-service.sample.yaml
 ```
 
 ## Step 4: Verify the Kubernetes cluster status
@@ -47,22 +46,22 @@ kubectl get rayservice
 
 # [Example output]
 # NAME                SERVICE STATUS   NUM SERVE ENDPOINTS
-# rayservice-sample   Running          1
+# rayservice-sample   Running          2
 
 # Step 4.2: List all RayCluster custom resources in the `default` namespace.
 kubectl get raycluster
 
 # [Example output]
-# NAME                                 DESIRED WORKERS   AVAILABLE WORKERS   CPUS    MEMORY   GPUS   STATUS   AGE
-# rayservice-sample-raycluster-bwrp8   1                 1                   2500m   4Gi      0      ready    83s
+# NAME                      DESIRED WORKERS   AVAILABLE WORKERS   CPUS    MEMORY   GPUS   STATUS   AGE
+# rayservice-sample-cxm7t   1                 1                   2500m   4Gi      0      ready    79s
 
 # Step 4.3: List all Ray Pods in the `default` namespace.
 kubectl get pods -l=ray.io/is-ray-node=yes
 
 # [Example output]
-# NAME                                                          READY   STATUS    RESTARTS   AGE
-# rayservice-sample-raycluster-bwrp8-head-p8dnc                 1/1     Running   0          105s
-# rayservice-sample-raycluster-bwrp8-small-group-worker-hbwr2   1/1     Running   0          105s
+# NAME                                               READY   STATUS    RESTARTS   AGE
+# rayservice-sample-cxm7t-head                       1/1     Running   0          3m5s
+# rayservice-sample-cxm7t-small-group-worker-8hrgg   1/1     Running   0          3m5s
 
 # Step 4.4: Check the `Ready` condition of the RayService.
 # The RayService is ready to serve requests when the condition is `True`.
@@ -70,7 +69,7 @@ kubectl describe rayservices.ray.io rayservice-sample
 
 # [Example output]
 # Conditions:
-#   Last Transition Time:  2025-02-13T04:55:37Z
+#   Last Transition Time:  2025-06-26T13:23:06Z
 #   Message:               Number of serve endpoints is greater than 0
 #   Observed Generation:   1
 #   Reason:                NonZeroServeEndpoints
@@ -80,14 +79,23 @@ kubectl describe rayservices.ray.io rayservice-sample
 # Step 4.5: List services in the `default` namespace.
 kubectl get services
 
-# NAME                                          TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)                                                   AGE
+# NAME                               TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)                                         AGE
 # ...
-# rayservice-sample-head-svc                    ClusterIP   None           <none>        10001/TCP,8265/TCP,6379/TCP,8080/TCP,8000/TCP   77s
-# rayservice-sample-raycluster-bwrp8-head-svc   ClusterIP   None           <none>        10001/TCP,8265/TCP,6379/TCP,8080/TCP,8000/TCP   2m16s
-# rayservice-sample-serve-svc                   ClusterIP   10.96.212.79   <none>        8000/TCP                                        77s
+# rayservice-sample-cxm7t-head-svc   ClusterIP   None            <none>        10001/TCP,8265/TCP,6379/TCP,8080/TCP,8000/TCP   71m
+# rayservice-sample-head-svc         ClusterIP   None            <none>        10001/TCP,8265/TCP,6379/TCP,8080/TCP,8000/TCP   70m
+# rayservice-sample-serve-svc        ClusterIP   10.96.125.107   <none>        8000/TCP                                        70m
 ```
 
 When the Ray Serve applications are healthy and ready, KubeRay creates a head service and a Ray Serve service for the RayService custom resource. For example, `rayservice-sample-head-svc` and `rayservice-sample-serve-svc` in Step 4.5.
+> **What do these services do?**
+
+- **`rayservice-sample-head-svc`**  
+  This service points to the **head pod** of the active RayCluster and is typically used to view the **Ray Dashboard** (port `8265`).
+
+- **`rayservice-sample-serve-svc`**  
+  This service exposes the **HTTP interface** of Ray Serve, typically on port `8000`.  
+  Use this service to send HTTP requests to your deployed Serve applications (e.g., REST API, ML inference, etc.).
+
 
 ## Step 5: Verify the status of the Serve applications
 
@@ -121,7 +129,7 @@ curl -X POST -H 'Content-Type: application/json' rayservice-sample-serve-svc:800
 
 ```sh
 # Delete the RayService.
-kubectl delete -f https://raw.githubusercontent.com/ray-project/kuberay/v1.3.0/ray-operator/config/samples/ray-service.sample.yaml
+kubectl delete -f https://raw.githubusercontent.com/ray-project/kuberay/v1.4.2/ray-operator/config/samples/ray-service.sample.yaml
 
 # Uninstall the KubeRay operator.
 helm uninstall kuberay-operator

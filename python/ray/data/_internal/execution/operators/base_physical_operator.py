@@ -1,3 +1,4 @@
+import abc
 from typing import List, Optional
 
 from ray.data._internal.execution.interfaces import (
@@ -6,10 +7,17 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
     TaskContext,
 )
+from ray.data._internal.execution.interfaces.physical_operator import _create_sub_pb
 from ray.data._internal.logical.interfaces import LogicalOperator
-from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.stats import StatsDict
 from ray.data.context import DataContext
+
+
+class InternalQueueOperatorMixin(PhysicalOperator, abc.ABC):
+    @abc.abstractmethod
+    def internal_queue_size(self) -> int:
+        """Returns Operator's internal queue size"""
+        ...
 
 
 class OneToOneOperator(PhysicalOperator):
@@ -39,7 +47,7 @@ class OneToOneOperator(PhysicalOperator):
         return self.input_dependencies[0]
 
 
-class AllToAllOperator(PhysicalOperator):
+class AllToAllOperator(InternalQueueOperatorMixin, PhysicalOperator):
     """A blocking operator that executes once its inputs are complete.
 
     This operator implements distributed sort / shuffle operations, etc.
@@ -96,9 +104,13 @@ class AllToAllOperator(PhysicalOperator):
         self._input_buffer.append(refs)
         self._metrics.on_input_queued(refs)
 
+    def internal_queue_size(self) -> int:
+        return len(self._input_buffer)
+
     def all_inputs_done(self) -> None:
         ctx = TaskContext(
             task_idx=self._next_task_index,
+            op_name=self.name,
             sub_progress_bar_dict=self._sub_progress_bar_dict,
             target_max_block_size=self.actual_target_max_block_size,
         )
@@ -140,17 +152,10 @@ class AllToAllOperator(PhysicalOperator):
         if self._sub_progress_bar_names is not None:
             self._sub_progress_bar_dict = {}
             for name in self._sub_progress_bar_names:
-                bar = ProgressBar(
-                    name,
-                    self.num_output_rows_total() or 1,
-                    unit="row",
-                    position=position,
+                bar, position = _create_sub_pb(
+                    name, self.num_output_rows_total(), position
                 )
-                # NOTE: call `set_description` to trigger the initial print of progress
-                # bar on console.
-                bar.set_description(f"  *- {name}")
                 self._sub_progress_bar_dict[name] = bar
-                position += 1
             return len(self._sub_progress_bar_dict)
         else:
             return 0

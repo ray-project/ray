@@ -2,7 +2,7 @@ import ray
 from pathlib import Path
 import re
 from ray.util.state import list_tasks
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import wait_for_condition
 import argparse
 
 parser = argparse.ArgumentParser()

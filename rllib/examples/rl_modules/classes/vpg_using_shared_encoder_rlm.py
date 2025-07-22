@@ -52,7 +52,7 @@ class VPGMultiRLModuleWithSharedEncoder(MultiRLModule):
 
         .. testcode::
 
-    # __sphinx_doc_how_to_run_begin__
+            # __sphinx_doc_how_to_run_begin__
             import gymnasium as gym
             from ray.rllib.algorithms.ppo import PPOConfig
             from ray.rllib.core import MultiRLModuleSpec, RLModuleSpec
@@ -80,6 +80,7 @@ class VPGMultiRLModuleWithSharedEncoder(MultiRLModule):
                                 module_class=SharedEncoder,
                                 model_config={"embedding_dim": EMBEDDING_DIM},
                                 observation_space=single_agent_env.observation_space,
+                                action_space=single_agent_env.action_space,
                             ),
                             # Large policy net.
                             "p0": RLModuleSpec(
@@ -102,8 +103,8 @@ class VPGMultiRLModuleWithSharedEncoder(MultiRLModule):
                 )
             )
             algo = config.build()
-            print(algo.get_module())
-    # __sphinx_doc_how_to_run_end__
+            print(algo.get_module("p0"))
+            # __sphinx_doc_how_to_run_end__
 
         Also note that in order to learn properly, a special, multi-agent Learner
         accounting for the shared encoder must be setup. This Learner should have only

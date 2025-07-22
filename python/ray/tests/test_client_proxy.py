@@ -11,10 +11,11 @@ import grpc
 import pytest
 
 import ray
+from ray._common.test_utils import wait_for_condition
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.util.client.server.proxier as proxier
 from ray._private.ray_constants import REDIS_DEFAULT_PASSWORD
-from ray._private.test_utils import run_string_as_driver, wait_for_condition
+from ray._private.test_utils import run_string_as_driver
 from ray.cloudpickle.compat import pickle
 from ray.job_config import JobConfig
 
@@ -483,9 +484,4 @@ def test_proxy_cancelled_grpc_request_stream():
 
 
 if __name__ == "__main__":
-    import sys
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

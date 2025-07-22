@@ -1,23 +1,22 @@
-import sys
 import asyncio
 import logging
 import multiprocessing
 import os
 from typing import Optional, Union
+
 import multidict
 
+import ray.dashboard.consts as dashboard_consts
 from ray.dashboard.optional_deps import aiohttp
-
 from ray.dashboard.subprocesses.module import (
     SubprocessModule,
     SubprocessModuleConfig,
     run_module,
 )
 from ray.dashboard.subprocesses.utils import (
-    module_logging_filename,
     ResponseType,
-    get_socket_path,
-    get_named_pipe_path,
+    get_http_session_to_module,
+    module_logging_filename,
 )
 
 """
@@ -29,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 
 def filter_hop_by_hop_headers(
-    headers: Union[dict[str, str], multidict.CIMultiDictProxy[str]]
+    headers: Union[dict[str, str], multidict.CIMultiDictProxy[str]],
 ) -> dict[str, str]:
     """
     Filter out hop-by-hop headers from the headers dict.
@@ -101,7 +100,7 @@ class SubprocessModuleHandle:
         self.incarnation = 0
         # Runtime states, set by start_module() and wait_for_module_ready(),
         # reset by destroy_module().
-        self.process_ready_event = self.mp_context.Event()
+        self.parent_conn = None
         self.process = None
         self.http_client_session: Optional[aiohttp.ClientSession] = None
         self.health_check_task = None
@@ -118,6 +117,7 @@ class SubprocessModuleHandle:
         """
         Start the module. Should be non-blocking.
         """
+        self.parent_conn, child_conn = self.mp_context.Pipe()
         if not os.path.exists(self.config.socket_dir):
             os.makedirs(self.config.socket_dir)
         self.process = self.mp_context.Process(
@@ -126,28 +126,39 @@ class SubprocessModuleHandle:
                 self.module_cls,
                 self.config,
                 self.incarnation,
-                self.process_ready_event,
+                child_conn,
             ),
             daemon=True,
             name=f"{self.module_cls.__name__}-{self.incarnation}",
         )
         self.process.start()
+        child_conn.close()
 
     def wait_for_module_ready(self):
         """
         Wait for the module to be ready. This is called after start_module()
         and can be blocking.
         """
-        self.process_ready_event.wait()
+        if self.parent_conn.poll(dashboard_consts.SUBPROCESS_MODULE_WAIT_READY_TIMEOUT):
+            try:
+                self.parent_conn.recv()
+            except EOFError:
+                raise RuntimeError(
+                    f"Module {self.module_cls.__name__} failed to start. "
+                    "Received EOF from pipe."
+                )
+            self.parent_conn.close()
+            self.parent_conn = None
+        else:
+            raise RuntimeError(
+                f"Module {self.module_cls.__name__} failed to start. "
+                f"Timeout after {dashboard_consts.SUBPROCESS_MODULE_WAIT_READY_TIMEOUT} seconds."
+            )
 
         module_name = self.module_cls.__name__
-        if sys.platform == "win32":
-            named_pipe_path = get_named_pipe_path(module_name)
-            connector = aiohttp.NamedPipeConnector(named_pipe_path)
-        else:
-            socket_path = get_socket_path(self.config.socket_dir, module_name)
-            connector = aiohttp.UnixConnector(socket_path)
-        self.http_client_session = aiohttp.ClientSession(connector=connector)
+        self.http_client_session = get_http_session_to_module(
+            module_name, self.config.socket_dir, self.config.session_name
+        )
 
         self.health_check_task = self.loop.create_task(self._do_periodic_health_check())
 
@@ -156,7 +167,10 @@ class SubprocessModuleHandle:
         Destroy the module. This is called when the module is unhealthy.
         """
         self.incarnation += 1
-        self.process_ready_event.clear()
+
+        if self.parent_conn:
+            self.parent_conn.close()
+            self.parent_conn = None
 
         if self.process:
             self.process.kill()
@@ -252,6 +266,7 @@ class SubprocessModuleHandle:
             url,
             data=body,
             headers=filter_hop_by_hop_headers(request.headers),
+            allow_redirects=False,
         ) as backend_resp:
             resp_body = await backend_resp.read()
             return aiohttp.web.Response(
@@ -275,7 +290,10 @@ class SubprocessModuleHandle:
             data=body,
             headers=filter_hop_by_hop_headers(request.headers),
         ) as backend_resp:
-            proxy_resp = aiohttp.web.StreamResponse(status=backend_resp.status)
+            proxy_resp = aiohttp.web.StreamResponse(
+                status=backend_resp.status,
+                headers=filter_hop_by_hop_headers(backend_resp.headers),
+            )
             await proxy_resp.prepare(request)
 
             async for chunk, _ in backend_resp.content.iter_chunks():

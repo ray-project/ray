@@ -72,6 +72,8 @@ if [[ ! -d ".git" ]]; then
 fi
 
 echo "Build java maven deps."
+bazel build //java:copy_pom_files
+bazel build //java:cp_java_generated
 bazel build //java:gen_maven_deps
 
 echo "Build test jar."
@@ -118,8 +120,23 @@ run_testng java -Dray.run-mode="LOCAL" -cp "$ROOT_DIR"/../bazel-bin/java/all_tes
 
 echo "Running connecting existing cluster tests."
 case "${OSTYPE}" in
-  linux*) ip=$(hostname -I | awk '{print $1}');;
-  darwin*) ip=$(ipconfig getifaddr en0);;
+  linux*) ip="$(hostname -I | awk '{print $1}')";;
+  darwin*)
+    # On newer macos ec2 instances, en0 is IPv6 only.
+    # en6 (or sometimes en7) is the private network and has an IPv4 address.
+    for interface in en0 en6 en7; do
+      ip="$(ipconfig getifaddr "$interface" || true)"
+      if [[ "$ip" != "" ]]; then
+        break
+      fi
+    done
+
+    if [[ -z "$ip" ]]; then
+      echo "Can't get IP address; ifconfig output:"
+      ifconfig
+      exit 1
+    fi
+  ;;
   *) echo "Can't get ip address for ${OSTYPE}"; exit 1;;
 esac
 RAY_BACKEND_LOG_LEVEL=debug ray start --head --port=6379 --redis-password=123456 --node-ip-address="$ip"

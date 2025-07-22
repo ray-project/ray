@@ -11,13 +11,14 @@ from abc import ABCMeta, abstractmethod
 from base64 import b64decode
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Optional, Dict, List, Any, TYPE_CHECKING
 from enum import IntEnum
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
+
+from ray._common.utils import binary_to_hex
 
 if TYPE_CHECKING:
     from ray.core.generated.node_manager_pb2 import GetNodeStatsReply
 
-from frozenlist import FrozenList  # noqa: F401
 from packaging.version import Version
 
 import ray
@@ -26,14 +27,12 @@ import ray._private.ray_constants as ray_constants
 import ray._private.services as services
 import ray.experimental.internal_kv as internal_kv
 from ray._common.utils import get_or_create_event_loop
-from ray._private.gcs_utils import GcsAioClient, GcsChannel
+from ray._private.gcs_utils import GcsChannel
 from ray._private.utils import (
-    binary_to_hex,
     check_dashboard_dependencies_installed,
     split_address,
 )
 from ray._raylet import GcsClient
-from ray.dashboard.dashboard_metrics import DashboardPrometheusMetrics
 
 try:
     create_task = asyncio.create_task
@@ -101,10 +100,6 @@ class DashboardHeadModuleConfig:
     ip: str
     http_host: str
     http_port: int
-    # We can't put this to ctor of DashboardHeadModule because ServeRestApiImpl requires
-    # DashboardHeadModule and DashboardAgentModule have the same shape of ctor, that
-    # is, single argument.
-    metrics: DashboardPrometheusMetrics
 
 
 class DashboardHeadModule(abc.ABC):
@@ -115,7 +110,6 @@ class DashboardHeadModule(abc.ABC):
         """
         self._config = config
         self._gcs_client = None
-        self._gcs_aio_client = None  # lazy init
         self._aiogrpc_gcs_channel = None  # lazy init
         self._http_session = None  # lazy init
 
@@ -171,28 +165,15 @@ class DashboardHeadModule(abc.ABC):
         return self._http_session
 
     @property
-    def metrics(self):
-        return self._config.metrics
-
-    @property
     def gcs_client(self):
         if self._gcs_client is None:
             self._gcs_client = GcsClient(
                 address=self._config.gcs_address,
                 cluster_id=self._config.cluster_id_hex,
             )
-        return self._gcs_client
-
-    @property
-    def gcs_aio_client(self):
-        if self._gcs_aio_client is None:
-            self._gcs_aio_client = GcsAioClient(
-                address=self._config.gcs_address,
-                cluster_id=self._config.cluster_id_hex,
-            )
             if not internal_kv._internal_kv_initialized():
-                internal_kv._initialize_internal_kv(self.gcs_client)
-        return self._gcs_aio_client
+                internal_kv._initialize_internal_kv(self._gcs_client)
+        return self._gcs_client
 
     @property
     def aiogrpc_gcs_channel(self):
@@ -206,11 +187,10 @@ class DashboardHeadModule(abc.ABC):
         return self._aiogrpc_gcs_channel
 
     @abc.abstractmethod
-    async def run(self, server):
+    async def run(self):
         """
         Run the module in an asyncio loop. A head module can provide
         servicers to the server.
-        :param server: Asyncio GRPC server, or None if ray is minimal.
         """
 
     @staticmethod
@@ -472,42 +452,6 @@ class Bunch(dict):
 
     def __setattr__(self, key, value):
         self.__setitem__(key, value)
-
-
-class Change:
-    """Notify change object."""
-
-    def __init__(self, owner=None, old=None, new=None):
-        self.owner = owner
-        self.old = old
-        self.new = new
-
-    def __str__(self):
-        return (
-            f"Change(owner: {type(self.owner)}), " f"old: {self.old}, new: {self.new}"
-        )
-
-
-class NotifyQueue:
-    """Asyncio notify queue for Dict signal."""
-
-    _queue = None
-
-    @classmethod
-    def queue(cls):
-        # Lazy initialization to avoid creating a asyncio.Queue
-        # whenever this Python file is imported.
-        if cls._queue is None:
-            cls._queue = asyncio.Queue()
-        return cls._queue
-
-    @classmethod
-    def put(cls, co):
-        cls.queue().put_nowait(co)
-
-    @classmethod
-    async def get(cls):
-        return await cls.queue().get()
 
 
 """

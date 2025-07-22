@@ -45,6 +45,12 @@ pre_commit() {
   done
 }
 
+pre_commit_pydoclint() {
+  # Run pre-commit pydoclint on all files
+  pip install -c python/requirements_compiled.txt pre-commit clang-format
+  pre-commit run pydoclint --all-files --show-diff-on-failure
+}
+
 code_format() {
   pip install -c python/requirements_compiled.txt -r python/requirements/lint-requirements.txt
   FORMAT_SH_PRINT_DIFF=1 ./ci/lint/format.sh --all-scripts

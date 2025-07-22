@@ -15,6 +15,7 @@
 #pragma once
 
 #include <memory>
+#include <string>
 
 #include "ray/util/pipe_logger.h"
 #include "ray/util/scoped_dup2_wrapper.h"
@@ -23,8 +24,7 @@ namespace ray::internal {
 
 class StreamRedirectionHandle {
  public:
-  StreamRedirectionHandle(MEMFD_TYPE_NON_UNIQUE stream_fd,
-                          const StreamRedirectionOption &opt);
+  StreamRedirectionHandle(int stream_fd, const StreamRedirectionOption &opt);
 
   StreamRedirectionHandle(const StreamRedirectionHandle &) = delete;
   StreamRedirectionHandle &operator=(const StreamRedirectionHandle &) = delete;
@@ -34,6 +34,8 @@ class StreamRedirectionHandle {
   // Flush buffered output and restore stream redirection.
   ~StreamRedirectionHandle();
 
+  const std::string &GetFilePath() const { return filepath_; }
+
   // Flush on redirected stream synchronously.
   //
   // TODO(hjiang): Current implementation is naive, which directly flushes on spdlog
@@ -42,6 +44,8 @@ class StreamRedirectionHandle {
   void FlushOnRedirectedStream();
 
  private:
+  // File path which dumps the IO stream to.
+  std::string filepath_;
   RedirectionFileHandle redirection_file_handle_;
   // Used for restoration.
   std::unique_ptr<ScopedDup2Wrapper> scoped_dup2_wrapper_;

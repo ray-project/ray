@@ -48,8 +48,11 @@ TensorStructType = Union[TensorType, dict, tuple]
 # A shape of a tensor.
 TensorShape = Union[Tuple[int], List[int]]
 
-# A neural network
+# A neural network.
 NetworkType = Union["torch.nn.Module", "tf.keras.Model"]
+
+# A device.
+DeviceType = TypeVar("torch.cuda.device")
 
 # An RLModule spec (single-agent or multi-agent).
 RLModuleSpecType = Union["RLModuleSpec", "MultiRLModuleSpec"]
@@ -178,6 +181,7 @@ Param = Union["torch.Tensor", "tf.Variable"]
 ParamRef = Hashable
 ParamDict = Dict[ParamRef, Param]
 ParamList = List[Param]
+NamedParamDict = Dict[str, Param]
 
 # A single learning rate or a learning rate schedule (list of sub-lists, each of
 # the format: [ts (int), lr_to_reach_by_ts (float)]).

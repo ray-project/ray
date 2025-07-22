@@ -70,10 +70,13 @@ def make_local_deployment_handle(
         deployment.init_kwargs,
         deployment_id=deployment_id,
         run_sync_methods_in_threadpool=RAY_SERVE_RUN_SYNC_IN_THREADPOOL,
+        run_user_code_in_separate_thread=True,
+        local_testing_mode=True,
     )
     try:
         logger.info(f"Initializing local replica class for {deployment_id}.")
         user_callable_wrapper.initialize_callable().result()
+        user_callable_wrapper.call_reconfigure(deployment.user_config)
     except Exception:
         logger.exception(f"Failed to initialize deployment {deployment_id}.")
         raise
@@ -297,15 +300,30 @@ class LocalRouter(Router):
             generator_result_callback = None
 
         # Conform to the router interface of returning a future to the ReplicaResult.
+        if request_meta.is_http_request:
+            fut = self._user_callable_wrapper._call_http_entrypoint(
+                request_meta,
+                request_args,
+                request_kwargs,
+                generator_result_callback=generator_result_callback,
+            )
+        elif request_meta.is_streaming:
+            fut = self._user_callable_wrapper._call_user_generator(
+                request_meta,
+                request_args,
+                request_kwargs,
+                enqueue=generator_result_callback,
+            )
+        else:
+            fut = self._user_callable_wrapper.call_user_method(
+                request_meta,
+                request_args,
+                request_kwargs,
+            )
         noop_future = concurrent.futures.Future()
         noop_future.set_result(
             LocalReplicaResult(
-                self._user_callable_wrapper.call_user_method(
-                    request_meta,
-                    request_args,
-                    request_kwargs,
-                    generator_result_callback=generator_result_callback,
-                ),
+                fut,
                 request_id=request_meta.request_id,
                 is_streaming=request_meta.is_streaming,
                 generator_result_queue=generator_result_queue,

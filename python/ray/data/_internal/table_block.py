@@ -6,50 +6,55 @@ from typing import (
     Dict,
     Iterator,
     List,
-    Mapping,
     Optional,
+    Sequence,
+    Tuple,
     TypeVar,
     Union,
-    Tuple,
-    Sequence,
 )
 
 import numpy as np
 
+from ray._private.ray_constants import env_integer
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.data._internal.block_builder import BlockBuilder
 from ray.data._internal.row import TableRow
 from ray.data._internal.size_estimator import SizeEstimator
-from ray.data._internal.util import MiB, keys_equal, NULL_SENTINEL, is_nan
+from ray.data._internal.util import (
+    NULL_SENTINEL,
+    find_partition_index,
+    is_nan,
+    keys_equal,
+)
 from ray.data.block import (
     Block,
     BlockAccessor,
-    BlockType,
-    BlockExecStats,
-    BlockMetadata,
-    KeyType,
     BlockColumnAccessor,
+    BlockExecStats,
+    BlockMetadataWithSchema,
+    BlockType,
+    KeyType,
     U,
 )
+from ray.data.context import DEFAULT_TARGET_MAX_BLOCK_SIZE
 
 if TYPE_CHECKING:
     from ray.data._internal.planner.exchange.sort_task_spec import SortKey
-
     from ray.data.aggregate import AggregateFn
 
 T = TypeVar("T")
 
 # The max size of Python tuples to buffer before compacting them into a
 # table in the BlockBuilder.
-MAX_UNCOMPACTED_SIZE_BYTES = 50 * MiB
+MAX_UNCOMPACTED_SIZE_BYTES = env_integer(
+    "RAY_DATA_MAX_UNCOMPACTED_SIZE_BYTES", DEFAULT_TARGET_MAX_BLOCK_SIZE
+)
 
 
 class TableBlockBuilder(BlockBuilder):
     def __init__(self, block_type):
         # The set of uncompacted Python values buffered.
         self._columns = collections.defaultdict(list)
-        # The column names of uncompacted Python values buffered.
-        self._column_names = None
         # The set of compacted tables we have built so far.
         self._tables: List[Any] = []
         # Cursor into tables indicating up to which table we've accumulated table sizes.
@@ -64,6 +69,7 @@ class TableBlockBuilder(BlockBuilder):
         # Size estimator for un-compacted table values.
         self._uncompacted_size = SizeEstimator()
         self._num_rows = 0
+        self._num_uncompacted_rows = 0
         self._num_compactions = 0
         self._block_type = block_type
 
@@ -78,23 +84,17 @@ class TableBlockBuilder(BlockBuilder):
                 "got {} (type {}).".format(item, type(item))
             )
 
-        item_column_names = item.keys()
-        if self._column_names is not None:
-            # Check all added rows have same columns.
-            if item_column_names != self._column_names:
-                raise ValueError(
-                    "Current row has different columns compared to previous rows. "
-                    f"Columns of current row: {sorted(item_column_names)}, "
-                    f"Columns of previous rows: {sorted(self._column_names)}."
-                )
-        else:
-            # Initialize column names with the first added row.
-            self._column_names = item_column_names
+        # Fill in missing columns with None.
+        for column_name in item:
+            if column_name not in self._columns:
+                self._columns[column_name] = [None] * self._num_uncompacted_rows
 
-        for key, value in item.items():
-            self._columns[key].append(value)
+        for column_name in self._columns:
+            value = item.get(column_name)
+            self._columns[column_name].append(value)
 
         self._num_rows += 1
+        self._num_uncompacted_rows += 1
         self._compact_if_needed()
         self._uncompacted_size.add(item)
 
@@ -165,6 +165,7 @@ class TableBlockBuilder(BlockBuilder):
         self._uncompacted_size = SizeEstimator()
         self._columns.clear()
         self._num_compactions += 1
+        self._num_uncompacted_rows = 0
 
 
 class TableBlockAccessor(BlockAccessor):
@@ -196,35 +197,11 @@ class TableBlockAccessor(BlockAccessor):
     def column_names(self) -> List[str]:
         raise NotImplementedError
 
-    def append_column(self, name: str, data: Any) -> Block:
+    def fill_column(self, name: str, value: Any) -> Block:
         raise NotImplementedError
 
     def to_block(self) -> Block:
         return self._table
-
-    def iter_rows(
-        self, public_row_format: bool
-    ) -> Iterator[Union[Mapping, np.ndarray]]:
-        outer = self
-
-        class Iter:
-            def __init__(self):
-                self._cur = -1
-
-            def __iter__(self):
-                return self
-
-            def __next__(self):
-                self._cur += 1
-                if self._cur < outer.num_rows():
-                    row = outer._get_row(self._cur)
-                    if public_row_format and isinstance(row, TableRow):
-                        return row.as_pydict()
-                    else:
-                        return row
-                raise StopIteration
-
-        return Iter()
 
     def _zip(self, acc: BlockAccessor) -> "Block":
         raise NotImplementedError
@@ -328,7 +305,7 @@ class TableBlockAccessor(BlockAccessor):
 
         Args:
             sort_key: A column name or list of column names.
-            If this is ``None``, place all rows in a single group.
+               If this is ``None``, place all rows in a single group.
 
             aggs: The aggregations to do.
 
@@ -409,7 +386,7 @@ class TableBlockAccessor(BlockAccessor):
         sort_key: "SortKey",
         aggs: Tuple["AggregateFn"],
         finalize: bool = True,
-    ) -> Tuple[Block, BlockMetadata]:
+    ) -> Tuple[Block, "BlockMetadataWithSchema"]:
         """Combine previously aggregated blocks.
 
         This assumes blocks are already sorted by key in ascending order,
@@ -523,7 +500,32 @@ class TableBlockAccessor(BlockAccessor):
                 break
 
         ret = builder.build()
-        return ret, BlockAccessor.for_block(ret).get_metadata(exec_stats=stats.build())
+        return ret, BlockMetadataWithSchema.from_block(ret, stats=stats.build())
+
+    def _find_partitions_sorted(
+        self,
+        boundaries: List[Tuple[Any]],
+        sort_key: "SortKey",
+    ):
+        partitions = []
+
+        # For each boundary value, count the number of items that are less
+        # than it. Since the block is sorted, these counts partition the items
+        # such that boundaries[i] <= x < boundaries[i + 1] for each x in
+        # partition[i]. If `descending` is true, `boundaries` would also be
+        # in descending order and we only need to count the number of items
+        # *greater than* the boundary value instead.
+        bounds = [
+            find_partition_index(self._table, boundary, sort_key)
+            for boundary in boundaries
+        ]
+
+        last_idx = 0
+        for idx in bounds:
+            partitions.append(self._table[last_idx:idx])
+            last_idx = idx
+        partitions.append(self._table[last_idx:])
+        return partitions
 
     @classmethod
     def normalize_block_types(
@@ -534,10 +536,10 @@ class TableBlockAccessor(BlockAccessor):
         """Normalize input blocks to the specified `normalize_type`. If the blocks
         are already all of the same type, returns original blocks.
 
-         Args:
+        Args:
             blocks: A list of TableBlocks to be normalized.
             target_block_type: The type to normalize the blocks to. If None,
-                will be chosen such that to minimize amount of data conversions.
+               Ray Data chooses a type to minimize the amount of data conversions.
 
         Returns:
             A list of blocks of the same type.

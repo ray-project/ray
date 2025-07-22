@@ -53,9 +53,8 @@ class VPGTorchLearner(TorchLearner):
             self.metrics.log_value(
                 key=(module_id, f"action_{act}_return_to_go_mean"),
                 value=ret_to_go,
-                # Mean over the batch size.
                 reduce="mean",
-                window=len(batch[Columns.RETURNS_TO_GO]),
+                clear_on_reduce=True,
             )
 
         return loss
