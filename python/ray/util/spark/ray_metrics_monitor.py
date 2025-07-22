@@ -49,7 +49,9 @@ _ray_metric_families = {
     for family in [
         _RayMetricFamily("ray_tasks", [_RayMetricLabels.NAME, _RayMetricLabels.STATE, _RayMetricLabels.IS_RETRY], None),
         _RayMetricFamily("ray_actors", [_RayMetricLabels.NAME, _RayMetricLabels.STATE], None),
-        _RayMetricFamily("ray_resources", [_RayMetricLabels.NAME, _RayMetricLabels.STATE, _RayMetricLabels.NODE_ADDR], None),
+        _RayMetricFamily(
+            "ray_resources", [_RayMetricLabels.NAME, _RayMetricLabels.STATE], _RayMetricLabels.NODE_ADDR
+        ),
         _RayMetricFamily("ray_object_store_memory", [
             _RayMetricLabels.LOCATION, _RayMetricLabels.OBJECT_STATE,
         ],  _RayMetricLabels.NODE_ADDR),
