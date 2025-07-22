@@ -42,6 +42,7 @@
 #include "ray/core_worker/object_recovery_manager.h"
 #include "ray/core_worker/profile_event.h"
 #include "ray/core_worker/reference_count.h"
+#include "ray/core_worker/shutdown_coordinator.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/store_provider/plasma_store_provider.h"
 #include "ray/core_worker/task_event_buffer.h"
@@ -1286,6 +1287,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Mark this worker is exiting.
   void SetIsExiting();
 
+  /// Check if the worker should exit based on idle state.
+  /// This method is used by the shutdown executor to implement the idle checking logic.
+  bool ShouldWorkerExit() const;
+
   /// Add task log info for a task when it starts executing.
   ///
   /// It's an no-op in local mode.
@@ -1896,11 +1901,16 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// TODO(kevin85421): the shutdown logic contained in `Disconnect`, `Exit`, and
   /// `Shutdown` should be unified to avoid mistakes due to complex dependent semantics.
   /// See https://github.com/ray-project/ray/issues/51642.
+  ///
+  /// RESOLVED: Unified shutdown coordinator handles all shutdown entry points.
 
-  /// Used to ensure that the `CoreWorker::Exit` method is called at most once.
-  std::atomic<bool> is_exited_ = false;
-  /// Used to ensure that the `CoreWorker::Shutdown` method is called at most once.
-  std::atomic<bool> is_shutdown_ = false;
+  /// Unified shutdown coordinator that manages all shutdown operations.
+  /// This replaces the fragmented is_exited_/is_shutdown_ atomics with a
+  /// single state machine that coordinates all shutdown entry points.
+  std::unique_ptr<ShutdownCoordinator> shutdown_coordinator_;
+
+  /// ELIMINATED: Legacy atomics removed as per unified shutdown design.
+  /// All shutdown state now managed by shutdown_coordinator_ with no race conditions.
 
   int64_t max_direct_call_object_size_;
 
@@ -1940,6 +1950,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Maps serialized runtime env info to **immutable** deserialized protobuf.
   mutable utils::container::ThreadSafeSharedLruCache<std::string, rpc::RuntimeEnvInfo>
       runtime_env_json_serialization_cache_;
+
+  // Grant CoreWorkerShutdownExecutor access to CoreWorker internals for orchestrating
+  // the shutdown procedure without exposing additional public APIs.
+  friend class CoreWorkerShutdownExecutor;
 };
 
 // Lease request rate-limiter based on cluster node size.
