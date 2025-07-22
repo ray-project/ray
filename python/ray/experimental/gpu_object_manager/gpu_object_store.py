@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional, Tuple, Set
+from typing import Dict, List, Optional, Tuple, Set
 import threading
 
 import ray.util.collective as collective
@@ -108,7 +108,7 @@ def __ray_fetch_gpu_object__(self, obj_id: str):
 
 class GPUObjectStore:
     """
-    This class is thread-safe. The GPU object store is meant to be read and 
+    This class is thread-safe. The GPU object store is meant to be read and
     written by the following threads:
     1. The main thread, which is executing user code. This thread may get, put,
     and pop objects.

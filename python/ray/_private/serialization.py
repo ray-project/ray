@@ -2,7 +2,7 @@ import io
 import logging
 import threading
 import traceback
-from typing import TYPE_CHECKING, Any, List, Optional, Tuple, Union, Dict
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 
 if TYPE_CHECKING:
     import torch
@@ -13,7 +13,6 @@ import ray._private.utils
 import ray.cloudpickle as pickle
 import ray.exceptions
 from ray._private import ray_constants
-from ray._private.custom_types import TensorTransportEnum
 from ray._raylet import (
     DynamicObjectRefGenerator,
     MessagePackSerializedObject,
