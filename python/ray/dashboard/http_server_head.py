@@ -4,6 +4,7 @@ import ipaddress
 import logging
 import os
 import pathlib
+import posixpath
 import sys
 import time
 from math import floor
@@ -170,9 +171,7 @@ class HttpServerDashboardHead:
 
             # If the destination is not relative to the expected directory,
             # then the user is attempting path traversal, so deny the request.
-            request_path = pathlib.PurePosixPath(
-                pathlib.posixpath.realpath(request.path)
-            )
+            request_path = pathlib.PurePosixPath(posixpath.realpath(request.path))
             if request_path != parent and parent not in request_path.parents:
                 logger.info(
                     f"Rejecting {request_path=} because it is not relative to {parent=}"
