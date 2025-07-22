@@ -2,7 +2,7 @@ import io
 import logging
 import threading
 import traceback
-from typing import TYPE_CHECKING, Any, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, List, Optional, Tuple, Union, Dict
 
 if TYPE_CHECKING:
     import torch
@@ -259,7 +259,7 @@ class SerializationContext:
     def _deserialize_pickle5_data(
         self,
         data: Any,
-        out_of_band_tensors: Optional[List[torch.Tensor]],
+        out_of_band_tensors: Optional[List["torch.Tensor"]],
     ) -> Any:
         """
 
@@ -297,7 +297,7 @@ class SerializationContext:
         self,
         data,
         metadata_fields,
-        out_of_band_tensors: Optional[List[torch.Tensor]] = None,
+        out_of_band_tensors: Optional[List["torch.Tensor"]] = None,
     ):
         msgpack_data, pickle5_data = split_buffer(data)
 
@@ -347,7 +347,7 @@ class SerializationContext:
         data,
         metadata,
         object_ref,
-        out_of_band_tensors: Optional[List[torch.Tensor]],
+        out_of_band_tensors: Optional[List["torch.Tensor"]],
     ):
         if metadata:
             metadata_fields = metadata.split(b",")
@@ -490,22 +490,26 @@ class SerializationContext:
             return PlasmaObjectNotAvailable
 
     def deserialize_objects(
-        self, serialized_ray_objects: List[SerializedRayObject], object_refs, out_of_band_tensors: Dict[str, List[torch.Tensor]]
+        self,
+        serialized_ray_objects: List[SerializedRayObject],
+        object_refs,
+        out_of_band_tensors: Dict[str, List["torch.Tensor"]],
     ):
         assert len(serialized_ray_objects) == len(object_refs)
         # initialize the thread-local field
         if not hasattr(self._thread_local, "object_ref_stack"):
             self._thread_local.object_ref_stack = []
         results = []
-        for object_ref, (data, metadata, _) in zip(
-            object_refs, serialized_ray_objects
-        ):
+        for object_ref, (data, metadata, _) in zip(object_refs, serialized_ray_objects):
             try:
                 # Push the object ref to the stack, so the object under
                 # the object ref knows where it comes from.
                 self._thread_local.object_ref_stack.append(object_ref)
                 obj = self._deserialize_object(
-                    data, metadata, object_ref, out_of_band_tensors.pop(object_ref.hex(), None)
+                    data,
+                    metadata,
+                    object_ref,
+                    out_of_band_tensors.pop(object_ref.hex(), None),
                 )
             except Exception as e:
                 logger.exception(e)
@@ -613,7 +617,9 @@ class SerializationContext:
             obj_id = obj_id.decode("ascii")
             worker = ray._private.worker.global_worker
             gpu_object_manager = worker.gpu_object_manager
-            gpu_object_manager.gpu_object_store.add_object(obj_id, tensors, is_primary=True)
+            gpu_object_manager.gpu_object_store.add_object(
+                obj_id, tensors, is_primary=True
+            )
 
         return serialized_val
 

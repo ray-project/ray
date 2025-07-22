@@ -55,6 +55,7 @@ import ray.cloudpickle as pickle  # noqa
 import ray.job_config
 import ray.remote_function
 from ray import ActorID, JobID, Language, ObjectRef
+from ray._private.custom_types import TensorTransportEnum
 from ray._common import ray_option_utils
 from ray._common.utils import load_class
 from ray._private.client_mode_hook import client_mode_hook
@@ -100,7 +101,7 @@ from ray.widgets import Template
 from ray.widgets.util import repr_with_fallback
 
 if TYPE_CHECKING:
-    pass
+    import torch
 
 SCRIPT_MODE = 0
 WORKER_MODE = 1
@@ -868,8 +869,8 @@ class Worker:
         for e in out:
             _unhandled_error_handler(e)
 
-    def _deserialize_out_of_band_tensors(self, obj_id: str) -> List[torch.Tensor]:
-        gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
+    def _deserialize_out_of_band_tensors(self, object_id: str) -> List["torch.Tensor"]:
+        gpu_object_manager = self.gpu_object_manager
         gpu_object_store = gpu_object_manager.gpu_object_store
         if gpu_object_manager.is_managed_object(object_id):
             gpu_object_manager.fetch_object(object_id)
@@ -878,27 +879,32 @@ class Worker:
         # In this case, we should not remove the GPU object after it is consumed once,
         # because the GPU object reference may be used again.
         # Instead, we should wait for the GC callback to clean it up.
-        pop_object = not gpu_object_store.is_primary_copy(object_id):
+        pop_object = not gpu_object_store.is_primary_copy(object_id)
         if pop_object:
             tensors = gpu_object_manager.gpu_object_store.wait_and_pop_object(
                 object_id, timeout=ray_constants.FETCH_FAIL_TIMEOUT_SECONDS
             )
         else:
-            tensors = gpu_object_manager.gpu_object_store.wait_object(
+            tensors = gpu_object_manager.gpu_object_store.wait_and_get_object(
                 object_id, timeout=ray_constants.FETCH_FAIL_TIMEOUT_SECONDS
             )
         return tensors
 
     def deserialize_objects(self, serialized_objects, object_refs):
-        out_of_band_tensors : Dict[str, List[torch.Tensor]] = {}
+        out_of_band_tensors: Dict[str, List["torch.Tensor"]] = {}
         for obj_ref, (_, _, tensor_transport) in zip(object_refs, serialized_objects):
             # If using a non-object store transport, then tensors will be sent
             # out-of-band. Get them before deserializing the object store data.
-            if tensor_transport is None or tensor_transport == TensorTransportEnum.OBJECT_STORE:
+            if (
+                tensor_transport is None
+                or tensor_transport == TensorTransportEnum.OBJECT_STORE
+            ):
                 continue
 
             object_id = obj_ref.hex()
-            out_of_band_tensors[object_id] = self._deserialize_out_of_band_tensors(object_id)
+            out_of_band_tensors[object_id] = self._deserialize_out_of_band_tensors(
+                object_id
+            )
 
         # Function actor manager or the import thread may call pickle.loads
         # at the same time which can lead to failed imports
@@ -906,7 +912,9 @@ class Worker:
         # into pickle.loads (https://github.com/ray-project/ray/issues/16304)
         with self.function_actor_manager.lock:
             context = self.get_serialization_context()
-            return context.deserialize_objects(serialized_objects, object_refs, out_of_band_tensors)
+            return context.deserialize_objects(
+                serialized_objects, object_refs, out_of_band_tensors
+            )
 
     def get_objects(
         self,

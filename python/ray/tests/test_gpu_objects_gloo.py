@@ -31,12 +31,9 @@ class GPUTestActor:
         gpu_object_store = (
             ray._private.worker.global_worker.gpu_object_manager.gpu_object_store
         )
-        if timeout is not None:
-            gpu_object_store.wait_object(obj_id, timeout)
-        if gpu_object_store.has_object(obj_id):
-            gpu_object = gpu_object_store.get_object(obj_id)
-            return gpu_object
-        return None
+        if timeout is None:
+            timeout = 0
+        return gpu_object_store.wait_and_get_object(obj_id, timeout)
 
     def get_num_gpu_objects(self):
         gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager

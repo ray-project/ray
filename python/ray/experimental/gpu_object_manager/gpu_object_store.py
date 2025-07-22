@@ -90,8 +90,7 @@ def __ray_get_tensor_meta__(self, obj_id: str):
     # NOTE: We do not specify a timeout here because the user task that returns
     # it could take arbitrarily long and we don't want to trigger a spurious
     # timeout.
-    gpu_object_store.wait_object(obj_id)
-    tensors = gpu_object_store.get_object(obj_id)
+    tensors = gpu_object_store.wait_and_get_object(obj_id)
     return [(t.shape, t.dtype) for t in tensors]
 
 
@@ -109,12 +108,16 @@ def __ray_fetch_gpu_object__(self, obj_id: str):
 
 class GPUObjectStore:
     """
-    This class is thread-safe. The GPU object store is meant to be read and
-    written by the main thread, which is executing user code, and the background
-    _ray_system thread, which executes data transfers. Garbage collection
-    callbacks (which remove data from the object store) are executed on the
-    background CoreWorker server thread.
+    This class is thread-safe. The GPU object store is meant to be read and 
+    written by the following threads:
+    1. The main thread, which is executing user code. This thread may get, put,
+    and pop objects.
+    2. The background _ray_system thread, which executes data transfers. This
+    thread may get and put objects.
+    3. The background CoreWorker server thread, which executes garbage
+    collection callbacks that pop objects that are no longer in use.
     """
+
     def __init__(self):
         # A dictionary that maps from an object ID to a list of tensors.
         #
@@ -152,12 +155,32 @@ class GPUObjectStore:
         with self.object_present_cv:
             if is_primary:
                 self.primary_gpu_object_ids.add(obj_id)
-            self.gpu_object_store[obj_id] = tensors
+            self.gpu_object_store[obj_id] = gpu_object
             self.object_present_cv.notify_all()
 
     def is_primary_copy(self, obj_id: str) -> bool:
         with self.lock:
             return obj_id in self.primary_gpu_object_ids
+
+    def wait_and_get_object(
+        self, obj_id: str, timeout: Optional[float] = None
+    ) -> List["torch.Tensor"]:
+        """Atomically waits for the GPU object to be present in the GPU object
+        store, then gets it.  If the object is not present after the optional
+        timeout, raise a TimeoutError.
+
+        Args:
+            obj_id: The object ID to wait for.
+            timeout: The maximum time in seconds to wait for the object to be
+            present in the GPU object store. If not specified, wait
+            indefinitely.
+
+        Returns:
+            The tensors in the GPU object.
+        """
+        with self.lock:
+            self._wait_object(obj_id, timeout)
+            return self.get_object(obj_id)
 
     def wait_and_pop_object(
         self, obj_id: str, timeout: Optional[float] = None
@@ -175,12 +198,14 @@ class GPUObjectStore:
         Returns:
             The tensors in the GPU object.
         """
-        with self.object_present_cv:
-            self.wait_object(obj_id, timeout)
+        with self.lock:
+            self._wait_object(obj_id, timeout)
             return self.pop_object(obj_id)
 
-    def wait_object(self, obj_id: str, timeout: Optional[float] = None) -> List["torch.Tensor"]:
-        """Wait for the GPU object to be present in the GPU object store.
+    def _wait_object(
+        self, obj_id: str, timeout: Optional[float] = None
+    ) -> List["torch.Tensor"]:
+        """Helper method to wait for the GPU object to be present in the GPU object store.
         If the object is not present after the optional timeout, raise a
         TimeoutError.
 
@@ -205,7 +230,7 @@ class GPUObjectStore:
             assert (
                 obj_id in self.gpu_object_store
             ), f"obj_id={obj_id} not found in GPU object store"
-            tensors= self.gpu_object_store.pop(obj_id)
+            tensors = self.gpu_object_store.pop(obj_id)
             if obj_id in self.primary_gpu_object_ids:
                 self.primary_gpu_object_ids.remove(obj_id)
             return tensors

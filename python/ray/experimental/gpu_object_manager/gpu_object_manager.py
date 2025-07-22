@@ -46,7 +46,7 @@ class GPUObjectManager:
                     GPUObjectStore,
                 )
 
-                self._gpu_object_store = GPUObjectStore(self.gpu_object_store_lock)
+                self._gpu_object_store = GPUObjectStore()
         return self._gpu_object_store
 
     def _get_tensor_meta(
