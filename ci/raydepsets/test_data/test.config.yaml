@@ -6,6 +6,11 @@ depsets:
     constraints:
       - requirement_constraints_test.txt
     output: requirements_compiled.txt
+    append_flags:
+      - --no-annotate
+      - --no-header
+    override_flags:
+      - --extra-index-url https://download.pytorch.org/whl/cu128
 
   - name: general_depset
     operation: compile

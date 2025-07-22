@@ -50,6 +50,13 @@ class TestCli(unittest.TestCase):
                 "requirement_constraints_test.txt"
             ]
             assert manager.config.depsets[0].output == "requirements_compiled.txt"
+            assert manager.config.depsets[0].append_flags == [
+                "--no-annotate",
+                "--no-header",
+            ]
+            assert manager.config.depsets[0].override_flags == [
+                "--extra-index-url https://download.pytorch.org/whl/cu128"
+            ]
 
     def test_dependency_set_manager_get_depset(self):
         with tempfile.TemporaryDirectory() as tmpdir:
