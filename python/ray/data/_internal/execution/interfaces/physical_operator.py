@@ -320,6 +320,9 @@ class PhysicalOperator(Operator):
     def actual_target_max_block_size(self) -> Optional[int]:
         """
         The actual target max block size output by this operator.
+        Returns:
+            `None` if the target max block size is not set, otherwise the target max block size.
+            `None` means the block size is infinite.
         """
         target_max_block_size = self.target_max_block_size
         if target_max_block_size is None:
