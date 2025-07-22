@@ -235,6 +235,12 @@ class ProcessFD {
       // This code is now executed by the direct child (if !decouple) or
       // the grandchild (if decouple).
 
+      // Redirect the read pipe to stdin so that child can track the
+      // parent lifetime.
+      if (pipe_to_stdin && parent_lifetime_pipe[0] != -1) {
+        dup2(parent_lifetime_pipe[0], STDIN_FILENO);
+      }
+
       // For decoupled processes, send the real PID back to the parent.
       if (decouple) {
         pid_t my_pid = getpid();
