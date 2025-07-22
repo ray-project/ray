@@ -1306,8 +1306,6 @@ opentelemetry-api==1.34.1
     #   opentelemetry-semantic-conventions
 opentelemetry-exporter-prometheus==0.55b1
     # via -r python/requirements.txt
-opentelemetry-proto==1.27.0
-    # via -r python/requirements.txt
 opentelemetry-sdk==1.34.1
     # via
     #   -r python/requirements.txt
@@ -1501,7 +1499,6 @@ protobuf==4.25.8
     #   mlflow-skinny
     #   onnx
     #   onnxruntime
-    #   opentelemetry-proto
     #   proto-plus
     #   ray
     #   raydp

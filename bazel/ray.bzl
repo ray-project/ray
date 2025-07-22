@@ -96,6 +96,36 @@ def define_java_module(
         },
     )
 
+def copy_to_thirdparty_files(name, srcs):
+    dst_dir = "python/ray/thirdparty_files"
+    src_locations = " ".join(["$(locations %s)" % src for src in srcs])
+
+    native.genrule(
+        name = name,
+        srcs = srcs,
+        outs = [name + ".out"],  # Declared output just for Bazel to track
+        cmd = r"""
+            mkdir -p {dst_dir}
+            echo "name={name}" > $@
+            echo "dstdir={dst_dir}" >> $@
+            echo "----" >> $@
+
+            for f in {locations}; do
+                rel_path=$$(echo "$$f" | sed "s|.*/src/ray/protobuf/[^/]*/||")
+                dest="{dst_dir}/$$rel_path"
+                mkdir -p "$$(dirname $$dest)"
+                cp -f "$$f" "$$dest"
+                if [[ "$$OSTYPE" =~ ^darwin ]]; then shasum "$$f" >> $@ ; else sha1sum "$$f" >> $@ ; fi
+            done
+        """.format(
+            name = name,
+            locations = src_locations,
+            dst_dir = "./" + dst_dir,
+        ),
+        local = 1,
+        tags = ["no-cache"],
+    )
+
 def copy_to_workspace(name, srcs, dstdir = ""):
     if dstdir.startswith("/") or dstdir.startswith("\\"):
         fail("Subdirectory must be a relative path: " + dstdir)
