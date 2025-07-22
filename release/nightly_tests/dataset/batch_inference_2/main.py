@@ -12,7 +12,7 @@ from pybase64 import b64decode
 from benchmark import Benchmark
 
 
-INPUT_PREFIX = "s3://ray-benchmark-data-internal/10TiB-jsonl-images/0636.jsonl"
+INPUT_PREFIX = "s3://ray-benchmark-data-internal/10TiB-jsonl-images"
 OUTPUT_PREFIX = f"s3://ray-data-write-benchmark/{uuid.uuid4().hex}"
 
 BATCH_SIZE = 1024

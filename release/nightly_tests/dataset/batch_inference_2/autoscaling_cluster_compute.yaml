@@ -1,3 +1,4 @@
+# This cluster compute is based on a real user setup.
 cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
 region: us-west-2
 
