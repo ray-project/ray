@@ -18,10 +18,7 @@ from ray.tune.registry import get_trainable_cls
 parser = add_rllib_example_script_args(default_timesteps=200000, default_reward=400.0)
 # Use DQN by default (PPO is on-policy and won't work with this simple, connector-based
 # setup).
-parser.set_defaults(
-    enable_new_api_stack=True,
-    algo="DQN",
-)
+parser.set_defaults(algo="DQN")
 
 
 if __name__ == "__main__":
@@ -40,11 +37,14 @@ if __name__ == "__main__":
     config = (
         get_trainable_cls(args.algo)
         .get_default_config()
-        .environment("env", env_config={
-            "num_actions": 4,
-            "allowed_actions_key": allowed_actions_key,
-            "allowed_actions_location": allowed_actions_location,
-        })
+        .environment(
+            "env",
+            env_config={
+                "num_actions": 4,
+                "allowed_actions_key": allowed_actions_key,
+                "allowed_actions_location": allowed_actions_location,
+            },
+        )
         .env_runners(
             module_to_env_connector=lambda env: ActionMaskingOffPolicy(
                 allowed_actions_key=allowed_actions_key,
@@ -53,17 +53,13 @@ if __name__ == "__main__":
         )
         .training(gamma=0.99, lr=0.0003)
         .rl_module(
-            model_config_dict=dict(
+            model_config=dict(
                 {
                     "fcnet_hiddens": [32],
                     "fcnet_activation": "linear",
                     "vf_share_layers": True,
                 },
-                **(
-                    {}
-                    if not args.enable_new_api_stack
-                    else {"uses_new_env_runners": True}
-                ),
+                **{"uses_new_env_runners": True},
             ),
         )
     )
