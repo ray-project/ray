@@ -80,6 +80,29 @@ void SetFdCloseOnExec(int fd) {
   RAY_CHECK_NE(ret, -1) << "fcntl error: errno = " << errno << ", fd = " << fd;
   RAY_LOG(DEBUG) << "set FD_CLOEXEC to fd " << fd;
 }
+
+// A helper function to robustly read a specific number of bytes from a file descriptor.
+// This handles partial reads and interruptions by signals.
+static inline ssize_t ReadBytesFromFd(int fd, void *buffer, size_t count) {
+  ssize_t total_bytes_read = 0;
+  while (total_bytes_read < (ssize_t)count) {
+    ssize_t bytes_read =
+        read(fd, (char *)buffer + total_bytes_read, count - total_bytes_read);
+    if (bytes_read == 0) {
+      // EOF reached before all bytes were read.
+      return total_bytes_read;
+    }
+    if (bytes_read == -1) {
+      if (errno == EINTR) {
+        continue;  // Interrupted by signal, retry.
+      } else {
+        return -1;  // A real read error occurred.
+      }
+    }
+    total_bytes_read += bytes_read;
+  }
+  return total_bytes_read;
+}
 #endif
 
 bool EnvironmentVariableLess::operator()(char a, char b) const {
@@ -274,7 +297,7 @@ class ProcessFD {
         // Simple case: read execvpe status from the direct child.
         int err_from_child;
         ssize_t bytes_read =
-            read(pipefds[0], &err_from_child, sizeof(err_from_child));
+            ReadBytesFromFd(pipefds[0], &err_from_child, sizeof(err_from_child));
 
         if (bytes_read == 0) {
           // Success: child exec'd, pipe was closed by CLOEXEC.
@@ -300,7 +323,7 @@ class ProcessFD {
         waitpid(pid, &s, 0);  // Wait for the intermediate process to exit.
 
         // Read the grandchild's PID from the pipe.
-        ssize_t bytes_read_pid = read(pipefds[0], &pid, sizeof(pid));
+        ssize_t bytes_read_pid = ReadBytesFromFd(pipefds[0], &pid, sizeof(pid));
         if (bytes_read_pid == sizeof(pid)) {
           // Successfully got PID. Now do a non-blocking read for a potential error.
           int flags = fcntl(pipefds[0], F_GETFL, 0);
@@ -331,43 +354,13 @@ class ProcessFD {
           ec = std::error_code(errno, std::system_category());
           pid = -1;
           close(pipefds[0]);
-        } else { // bytes_read_pid == 0 or partial read
+        } else {  // bytes_read_pid == 0 or partial read
           // If bytes_read_pid is 0, it means EOF (child exited before writing PID).
-          // If bytes_read_pid is positive but less than sizeof(pid), it's a partial read.
-          // In both cases, it's a failure to get the PID.
+          // If bytes_read_pid is positive but less than sizeof(pid), it's a partial
+          // read. In both cases, it's a failure to get the PID.
           ec = std::error_code(ECHILD, std::system_category());
           pid = -1;
           close(pipefds[0]);
-        }
-          // If we can't read the grandchild PID, it failed before sending it.
-          ec = std::error_code(ECHILD, std::system_category());
-          pid = -1;
-          close(pipefds[0]);
-        } else {
-          // Successfully got PID. Now do a non-blocking read for a potential error.
-          int flags = fcntl(pipefds[0], F_GETFL, 0);
-          fcntl(pipefds[0], F_SETFL, flags | O_NONBLOCK);
-          int exec_errno = 0;
-          ssize_t bytes_read = read(pipefds[0], &exec_errno, sizeof(exec_errno));
-          // Restore original flags.
-          fcntl(pipefds[0], F_SETFL, flags);
-
-          if (bytes_read == sizeof(exec_errno)) {
-            // We received an errno from the grandchild, meaning execvpe failed.
-            ec = std::error_code(exec_errno, std::system_category());
-            pid = -1;
-            close(pipefds[0]);
-          } else if (bytes_read == -1 && errno == EAGAIN) {
-            // No data available, which means execvpe succeeded.
-            // 'fd' will be the pipe for lifetime tracking.
-            fd = pipefds[0];
-          } else {
-            // Grandchild died after sending PID but before we could check for error.
-            // This is a startup failure.
-            ec = std::error_code(ECHILD, std::system_category());
-            pid = -1;
-            close(pipefds[0]);
-          }
         }
       }
 
