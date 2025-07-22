@@ -53,7 +53,7 @@ class DefaultFailurePolicy(FailurePolicy):
 
     def _log_infinite_controller_retry_enabled(self, controller_error: ControllerError):
         logger.info(
-            "Decided to restart the training operation, since infinite controller retry is enabled. "
+            "Decided to reschedule the training operation, since infinite controller retry is enabled. "
             f"Error: {controller_error}"
         )
 
