@@ -1662,6 +1662,7 @@ def _start_ray_worker_nodes(
                 # general system metrics.
                 os.environ["MLFLOW_SYSTEM_METRICS_NODE_ID"] = ray_node_ip
                 mlflow_sys_metrics_monitor = SystemMetricsMonitor(run_id=mlflow_run_id)
+                mlflow_sys_metrics_monitor.start()
 
             # Note:
             # When a pyspark job cancelled, the UDF python worker process are killed by
