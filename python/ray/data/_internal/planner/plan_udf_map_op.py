@@ -820,3 +820,151 @@ def _generate_transform_fn_for_async_map(
                     yield item
 
     return _transform
+
+
+def plan_fillna_op(
+    op: "FillNa",
+    physical_children: List[PhysicalOperator],
+    data_context: DataContext,
+) -> MapOperator:
+    """Plan a FillNa logical operator."""
+    import pyarrow as pa
+    import pyarrow.compute as pc
+    from ray.data._internal.logical.operators.map_operator import FillNa
+    
+    assert len(physical_children) == 1
+    input_physical_dag = physical_children[0]
+
+    value = op.value
+    subset = op.subset
+
+    def fn(batch: pa.Table) -> pa.Table:
+        try:
+            # If no subset specified, apply to all columns
+            columns_to_fill = subset if subset else batch.schema.names
+            
+            # Create a new table with filled values
+            new_columns = {}
+            
+            for col_name in batch.schema.names:
+                column = batch.column(col_name)
+                
+                if col_name in columns_to_fill:
+                    if isinstance(value, dict):
+                        # Column-specific fill values
+                        fill_value = value.get(col_name)
+                        if fill_value is not None:
+                            # Convert fill_value to appropriate PyArrow scalar
+                            fill_scalar = pa.scalar(fill_value, type=column.type)
+                            new_columns[col_name] = pc.fill_null(column, fill_scalar)
+                        else:
+                            new_columns[col_name] = column
+                    else:
+                        # Scalar fill value for all columns
+                        fill_scalar = pa.scalar(value, type=column.type)
+                        new_columns[col_name] = pc.fill_null(column, fill_scalar)
+                else:
+                    new_columns[col_name] = column
+                    
+            return pa.table(new_columns, schema=batch.schema)
+            
+        except Exception as e:
+            _try_wrap_udf_exception(e, batch)
+
+    compute = get_compute(op._compute)
+    transform_fn = _generate_transform_fn_for_map_block(fn)
+    map_transformer = _create_map_transformer_for_block_based_map_op(
+        transform_fn,
+        batch_format="pyarrow",
+        zero_copy_batch=True,
+    )
+
+    return MapOperator.create(
+        map_transformer,
+        input_physical_dag,
+        name="FillNa",
+        compute_strategy=compute,
+        ray_remote_args=op._ray_remote_args,
+    )
+
+
+def plan_dropna_op(
+    op: "DropNa", 
+    physical_children: List[PhysicalOperator],
+    data_context: DataContext,
+) -> MapOperator:
+    """Plan a DropNa logical operator."""
+    import pyarrow as pa
+    import pyarrow.compute as pc
+    from ray.data._internal.logical.operators.map_operator import DropNa
+    
+    assert len(physical_children) == 1
+    input_physical_dag = physical_children[0]
+
+    how = op.how
+    subset = op.subset
+    thresh = op.thresh
+
+    def fn(batch: pa.Table) -> pa.Table:
+        try:
+            if batch.num_rows == 0:
+                return batch
+            
+            # Determine which columns to check for nulls
+            columns_to_check = subset if subset else batch.schema.names
+            
+            if thresh is not None:
+                # Threshold-based dropping: keep rows with at least `thresh` non-null values
+                non_null_counts = pa.array([0] * batch.num_rows, type=pa.int32())
+                
+                for col_name in columns_to_check:
+                    column = batch.column(col_name)
+                    is_valid = pc.is_valid(column).cast(pa.int32())
+                    non_null_counts = pc.add(non_null_counts, is_valid)
+                
+                mask = pc.greater_equal(non_null_counts, pa.scalar(thresh))
+            
+            else:
+                # Create mask based on how parameter
+                if how == "any":
+                    # Drop rows where ANY value in specified columns is null
+                    mask = None
+                    for col_name in columns_to_check:
+                        column = batch.column(col_name)
+                        is_valid = pc.is_valid(column)
+                        if mask is None:
+                            mask = is_valid
+                        else:
+                            mask = pc.and_(mask, is_valid)
+                elif how == "all":
+                    # Drop rows where ALL values in specified columns are null
+                    mask = None
+                    for col_name in columns_to_check:
+                        column = batch.column(col_name)
+                        is_valid = pc.is_valid(column)
+                        if mask is None:
+                            mask = is_valid
+                        else:
+                            mask = pc.or_(mask, is_valid)
+            
+            # Filter the table using the mask
+            return pc.filter(batch, mask)
+            
+        except Exception as e:
+            _try_wrap_udf_exception(e, batch)
+
+    compute = get_compute(op._compute)
+    transform_fn = _generate_transform_fn_for_map_block(fn)
+    map_transformer = _create_map_transformer_for_block_based_map_op(
+        transform_fn,
+        batch_format="pyarrow",
+        zero_copy_batch=True,
+    )
+
+    return MapOperator.create(
+        map_transformer,
+        input_physical_dag,
+        name="DropNa",
+        compute_strategy=compute,
+        ray_remote_args=op._ray_remote_args,
+    )
