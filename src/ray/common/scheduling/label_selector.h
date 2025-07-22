@@ -61,6 +61,8 @@ class LabelSelector {
   explicit LabelSelector(
       const google::protobuf::Map<std::string, std::string> &label_selector);
 
+  explicit LabelSelector(const std::unordered_map<std::string, std::string> &sel_map);
+
   void ToProto(rpc::LabelSelector *out) const;
 
   void AddConstraint(const std::string &key, const std::string &value);
