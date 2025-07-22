@@ -36,11 +36,13 @@ class Batcher(Generic[T]):
         else:
             self.interval_s = interval_ms / 1000
 
-        if interval_ms > 0:
-            self.done_event: asyncio.Event = asyncio.Event()
+        if interval_ms == 0:
+            return
 
-            # We are okay with this task getting cancelled (to propagate cancellations)
-            self.read_task = asyncio.create_task(self.read())
+        self.done_event: asyncio.Event = asyncio.Event()
+
+        # We are okay with this task getting cancelled (to propagate cancellations)
+        self.read_task = asyncio.create_task(self.read())
 
     def _merge_results(self, results: List[T]) -> Iterable[T]:
         return results
