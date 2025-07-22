@@ -18,6 +18,7 @@ sed -i '/^--find-links /d' /tmp/ray-deps/requirements_compiled.txt
 
 for CUDA_CODE in cpu cu121 cu128; do
 	export CUDA_CODE="${CUDA_CODE}"
+	export PYTHON_CODE="${PYTHON_CODE}"
 	bazel run //ci/raydepsets:raydepsets -- load
 done
 
