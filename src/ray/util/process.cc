@@ -191,7 +191,7 @@ class ProcessFD {
 
     // TODO(mehrdadn): Use clone() on Linux or posix_spawnp() on Mac to avoid duplicating
     // file descriptors into the child process, as that can be problematic.
-    intptr_t fd;
+    intptr_t fd = -1;
     int pipefds[2];  // Create pipe to get PID & track lifetime
     int parent_lifetime_pipe[2];
 
@@ -257,6 +257,10 @@ class ProcessFD {
         // For the simple case, we can report the error via the pipe.
         int err = errno;
         (void)!write(pipefds[1], &err, sizeof(err));
+      } else {
+        // For the decoupled case, send the errno after the PID.
+        int err = errno;
+        (void)!write(pipefds[1], &err, sizeof(err));
       }
       // For both cases, exit with a non-zero status. For the decoupled case,
       // this will cause the lifetime-tracking pipe to close, signaling failure.
@@ -275,14 +279,15 @@ class ProcessFD {
         if (bytes_read == 0) {
           // Success: child exec'd, pipe was closed by CLOEXEC.
           ec = std::error_code();
-        } else if (bytes_read > 0) {
-          // Failure: child sent an errno.
+        } else if (bytes_read == sizeof(err_from_child)) {
+          // Failure: child sent a complete errno.
           ec = std::error_code(err_from_child, std::system_category());
           waitpid(pid, NULL, 0);  // Reap the zombie child.
           pid = -1;
         } else {
-          // Pipe read error.
-          ec = std::error_code(errno, std::system_category());
+          // Pipe read error or unexpected data (e.g. partial read).
+          // If read failed, use its errno; otherwise, it's a broken pipe.
+          ec = std::error_code(bytes_read < 0 ? errno : EPIPE, std::system_category());
           waitpid(pid, NULL, 0);
           pid = -1;
         }
@@ -296,13 +301,36 @@ class ProcessFD {
 
         // Read the grandchild's PID from the pipe.
         if (read(pipefds[0], &pid, sizeof(pid)) != sizeof(pid)) {
-          // If we can't read the grandchild PID, something went wrong.
+          // If we can't read the grandchild PID, it failed before sending it.
           ec = std::error_code(ECHILD, std::system_category());
           pid = -1;
-        }
+          close(pipefds[0]);
+        } else {
+          // Successfully got PID. Now do a non-blocking read for a potential error.
+          int flags = fcntl(pipefds[0], F_GETFL, 0);
+          fcntl(pipefds[0], F_SETFL, flags | O_NONBLOCK);
+          int exec_errno = 0;
+          ssize_t bytes_read = read(pipefds[0], &exec_errno, sizeof(exec_errno));
+          // Restore original flags.
+          fcntl(pipefds[0], F_SETFL, flags);
 
-        // In this case, fd is the read-end of the pipe, used for lifetime tracking.
-        fd = pipefds[0];
+          if (bytes_read == sizeof(exec_errno)) {
+            // We received an errno from the grandchild, meaning execvpe failed.
+            ec = std::error_code(exec_errno, std::system_category());
+            pid = -1;
+            close(pipefds[0]);
+          } else if (bytes_read == -1 && errno == EAGAIN) {
+            // No data available, which means execvpe succeeded.
+            // 'fd' will be the pipe for lifetime tracking.
+            fd = pipefds[0];
+          } else {
+            // Grandchild died after sending PID but before we could check for error.
+            // This is a startup failure.
+            ec = std::error_code(ECHILD, std::system_category());
+            pid = -1;
+            close(pipefds[0]);
+          }
+        }
       }
 
     } else {
