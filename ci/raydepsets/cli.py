@@ -92,9 +92,9 @@ class DependencySetManager:
         """Compile a dependency set."""
         args = []
         if override_flags:
-            args = override_uv_flags(override_flags)
+            args = _override_uv_flags(override_flags)
         if append_flags:
-            args = append_uv_flags(append_flags)
+            args = _append_uv_flags(append_flags)
         if constraints:
             for constraint in constraints:
                 args.extend(["-c", self.get_path(constraint)])
@@ -109,7 +109,7 @@ class DependencySetManager:
         return (Path(self.workspace.dir) / path).as_posix()
 
 
-def override_uv_flags(flags: List[str]) -> List[str]:
+def _override_uv_flags(flags: List[str]) -> List[str]:
     removed_flags = set()
     default_flags = set(DEFAULT_UV_FLAGS.copy())
     for flag in flags:
@@ -121,7 +121,7 @@ def override_uv_flags(flags: List[str]) -> List[str]:
     return list(default_flags.union(flags))
 
 
-def append_uv_flags(flags: List[str]) -> List[str]:
+def _append_uv_flags(flags: List[str]) -> List[str]:
     default_flags = set(DEFAULT_UV_FLAGS.copy())
     default_flags.update(flags)
     return list(default_flags)

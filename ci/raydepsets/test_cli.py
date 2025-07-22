@@ -9,8 +9,8 @@ from ci.raydepsets.cli import (
     load,
     DependencySetManager,
     uv_binary,
-    override_uv_flags,
-    append_uv_flags,
+    _override_uv_flags,
+    _append_uv_flags,
 )
 from ci.raydepsets.workspace import Workspace
 from click.testing import CliRunner
@@ -198,7 +198,7 @@ class TestCli(unittest.TestCase):
             )
 
     def test_append_uv_flags(self):
-        assert sorted(append_uv_flags(["--no-annotate", "--no-header"])) == sorted(
+        assert sorted(_append_uv_flags(["--no-annotate", "--no-header"])) == sorted(
             [
                 *DEFAULT_UV_FLAGS,
                 "--no-annotate",
@@ -208,7 +208,7 @@ class TestCli(unittest.TestCase):
 
     def test_override_uv_flag(self):
         assert sorted(
-            override_uv_flags(
+            _override_uv_flags(
                 ["--extra-index-url https://download.pytorch.org/whl/cu128"]
             )
         ) == sorted(
@@ -229,7 +229,7 @@ class TestCli(unittest.TestCase):
         )
 
     def test_override_uv_flags(self):
-        assert sorted(override_uv_flags(["--unsafe-package dummy"])) == sorted(
+        assert sorted(_override_uv_flags(["--unsafe-package dummy"])) == sorted(
             [
                 "--generate-hashes",
                 "--strip-extras",
