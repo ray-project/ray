@@ -199,3 +199,11 @@ repos:
         language: python
         files: '^src/ray/'
         types: [c++]
+
+  - repo: local
+    hooks:
+      - id: check-for-upstream
+        name: Check for upstream file
+        entry: scripts/check_for_upstream.sh
+        language: system
+        types: [file]
