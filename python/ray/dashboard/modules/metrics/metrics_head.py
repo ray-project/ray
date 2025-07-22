@@ -145,7 +145,7 @@ class MetricsHead(SubprocessModule):
                 if resp.status != 200:
                     return dashboard_optional_utils.rest_response(
                         status_code=dashboard_utils.HTTPStatusCode.INTERNAL_ERROR,
-                        message="Grafana healtcheck failed",
+                        message="Grafana healthcheck failed",
                         status=resp.status,
                     )
                 json = await resp.json()
@@ -153,7 +153,7 @@ class MetricsHead(SubprocessModule):
                 if json["database"] != "ok":
                     return dashboard_optional_utils.rest_response(
                         status_code=dashboard_utils.HTTPStatusCode.INTERNAL_ERROR,
-                        message="Grafana healtcheck failed. Database not ok.",
+                        message="Grafana healthcheck failed. Database not ok.",
                         status=resp.status,
                         json=json,
                     )
@@ -175,7 +175,7 @@ class MetricsHead(SubprocessModule):
 
             return dashboard_optional_utils.rest_response(
                 status_code=dashboard_utils.HTTPStatusCode.INTERNAL_ERROR,
-                message="Grafana healtcheck failed",
+                message="Grafana healthcheck failed",
                 exception=str(e),
             )
 
