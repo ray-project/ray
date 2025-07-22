@@ -199,16 +199,8 @@ def test_recover_rolling_update_from_replica_actor_names(serve_instance):
     )
 
 
-def test_controller_recover_initializing_actor():
+def test_controller_recover_initializing_actor(ray_instance):
     """Recover the actor which is under PENDING_INITIALIZATION using Serve APIs."""
-    ray.init(
-        _metrics_export_port=9999,
-        _system_config={
-            "metrics_report_interval_ms": 1000,
-            "task_retry_delay_ms": 50,
-        },
-        ignore_reinit_error=True,
-    )
 
     # Start Serve using Python API
     serve.start()
@@ -296,7 +288,6 @@ def test_controller_recover_initializing_actor():
 
     # Clean up
     serve.shutdown()
-    ray.shutdown()
 
 
 def test_replica_deletion_after_controller_recover(serve_instance):
