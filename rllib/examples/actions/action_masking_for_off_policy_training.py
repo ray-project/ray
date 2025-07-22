@@ -2,8 +2,6 @@ from ray.tune.registry import register_env
 from ray.rllib.connectors.module_to_env.action_masking_off_policy import (
     ActionMaskingOffPolicy
 )
-from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
-from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
 from ray.rllib.examples.envs.classes.cartpole_with_action_masking import (
     CartPoleWithActionMasking
 )
@@ -53,14 +51,11 @@ if __name__ == "__main__":
         )
         .training(gamma=0.99, lr=0.0003)
         .rl_module(
-            model_config=dict(
-                {
-                    "fcnet_hiddens": [32],
-                    "fcnet_activation": "linear",
-                    "vf_share_layers": True,
-                },
-                **{"uses_new_env_runners": True},
-            ),
+            model_config={
+                "fcnet_hiddens": [32],
+                "fcnet_activation": "linear",
+                "vf_share_layers": True,
+            },
         )
     )
 
