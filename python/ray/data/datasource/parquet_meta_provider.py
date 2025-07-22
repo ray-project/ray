@@ -151,11 +151,11 @@ class ParquetMetadataProvider(FileMetadataProvider):
                 )
             )
 
+            return _dedupe_fragment_metadata(raw_metadata)
+
         else:
             raw_metadata = _fetch_metadata(fragments)
-
-        return _dedupe_fragment_metadata(raw_metadata)
-
+            return raw_metadata
 
 
 def _fetch_metadata_serialization_wrapper(
@@ -247,6 +247,7 @@ def _dedupe_metadata(
             stripped_md.set_schema_pickled(existing_schema_ser)
         stripped_metadatas.append(stripped_md)
     return stripped_metadatas
+
 
 def _dedupe_fragment_metadata(
     metadatas: List[_ParquetFileFragmentMetaData],
