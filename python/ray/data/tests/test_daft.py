@@ -1,45 +1,36 @@
+import os
+
+# Set environment variable before any imports
+os.environ["RAY_ARROW_EXTENSION_SERIALIZATION_FORMAT"] = "0"
+
 import sys
-from unittest.mock import patch
 
 import daft
 import numpy as np
 import pandas as pd
-import pyarrow as pa
 import pytest
-from packaging.version import parse as parse_version
 
 import ray
-
-# Daft needs to use ray.cloudpickle and json for fallback for
-# serialization/deserialization of Arrow tensor extension types.
-pytestmark = pytest.mark.skip(
-    reason="https://github.com/ray-project/ray/issues/54837",
+import ray.air.util.tensor_extensions.arrow as arrow_module
+from ray.air.util.tensor_extensions.arrow import (
+    SerializationFormat,
 )
 
 
 @pytest.fixture(scope="module")
 def ray_start(request):
+    # Force the serialization format to JSON
+    original_format = arrow_module.ARROW_EXTENSION_SERIALIZATION_FORMAT
+    arrow_module.ARROW_EXTENSION_SERIALIZATION_FORMAT = SerializationFormat.JSON
+
     try:
         yield ray.init(num_cpus=16)
     finally:
         ray.shutdown()
+        # Restore original format
+        arrow_module.ARROW_EXTENSION_SERIALIZATION_FORMAT = original_format
 
 
-def test_from_daft_raises_error_on_pyarrow_14(ray_start):
-    # This test assumes that `from_daft` calls `get_pyarrow_version` to get the
-    # PyArrow version. We can't mock `__version__` on the module directly because
-    # `get_pyarrow_version` caches the version.
-    with patch(
-        "ray.data.read_api.get_pyarrow_version", return_value=parse_version("14.0.0")
-    ):
-        with pytest.raises(RuntimeError):
-            ray.data.from_daft(daft.from_pydict({"col": [0]}))
-
-
-@pytest.mark.skipif(
-    parse_version(pa.__version__) >= parse_version("14.0.0"),
-    reason="https://github.com/ray-project/ray/issues/53278",
-)
 def test_daft_round_trip(ray_start):
     data = {
         "int_col": list(range(128)),

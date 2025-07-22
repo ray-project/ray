@@ -11,6 +11,7 @@ import numpy as np
 import pyarrow as pa
 from packaging.version import parse as parse_version
 import ray.cloudpickle as cloudpickle
+from enum import Enum
 
 from ray._private.arrow_utils import get_pyarrow_version
 from ray.air.util.tensor_extensions.utils import (
@@ -26,6 +27,8 @@ from ray.data._internal.numpy_support import (
 from ray.util import log_once
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.common import INT32_MAX
+from ray._private.ray_constants import env_integer
+
 
 PYARROW_VERSION = get_pyarrow_version()
 # Minimum version of Arrow that supports subclassable ExtensionScalars.
@@ -35,6 +38,20 @@ MIN_PYARROW_VERSION_SCALAR_SUBCLASS = parse_version("9.0.0")
 MIN_PYARROW_VERSION_CHUNKED_ARRAY_TO_NUMPY_ZERO_COPY_ONLY = parse_version("13.0.0")
 
 NUM_BYTES_PER_UNICODE_CHAR = 4
+
+
+class SerializationFormat(Enum):
+    JSON = 0
+    CLOUDPICKLE = 1
+
+
+# Set the default serialization format for Arrow extension types.
+ARROW_EXTENSION_SERIALIZATION_FORMAT = SerializationFormat(
+    env_integer(
+        "RAY_ARROW_EXTENSION_SERIALIZATION_FORMAT",
+        SerializationFormat.CLOUDPICKLE.value,
+    )
+)
 
 
 logger = logging.getLogger(__name__)
@@ -467,7 +484,14 @@ class _BaseFixedShapeArrowTensorType(pa.ExtensionType, abc.ABC):
         )
 
     def __arrow_ext_serialize__(self):
-        return cloudpickle.dumps(self._shape)
+        if ARROW_EXTENSION_SERIALIZATION_FORMAT == SerializationFormat.CLOUDPICKLE:
+            return cloudpickle.dumps(self._shape)
+        elif ARROW_EXTENSION_SERIALIZATION_FORMAT == SerializationFormat.JSON:
+            return json.dumps(self._shape).encode()
+        else:
+            raise ValueError(
+                f"Invalid serialization format: {ARROW_EXTENSION_SERIALIZATION_FORMAT}"
+            )
 
     def __arrow_ext_class__(self):
         """
@@ -1048,7 +1072,14 @@ class ArrowVariableShapedTensorType(pa.ExtensionType):
         )
 
     def __arrow_ext_serialize__(self):
-        return cloudpickle.dumps(self._ndim)
+        if ARROW_EXTENSION_SERIALIZATION_FORMAT == SerializationFormat.CLOUDPICKLE:
+            return cloudpickle.dumps(self._ndim)
+        elif ARROW_EXTENSION_SERIALIZATION_FORMAT == SerializationFormat.JSON:
+            return json.dumps(self._ndim).encode()
+        else:
+            raise ValueError(
+                f"Invalid serialization format: {ARROW_EXTENSION_SERIALIZATION_FORMAT}"
+            )
 
     @classmethod
     def __arrow_ext_deserialize__(cls, storage_type, serialized):
