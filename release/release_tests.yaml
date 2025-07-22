@@ -4066,6 +4066,11 @@
     timeout: 2400
     script: python launch_and_verify_cluster.py aws/tests/aws_cluster.yaml --num-expected-nodes 2 --retries 10 --docker-override commit
 
+  variations:
+    - __suffix__: v1
+    - __suffix__: v2
+      run:
+        script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py aws/tests/aws_cluster.yaml --num-expected-nodes 2 --retries 10 --docker-override commit
 
 
 - name: aws_cluster_launcher_minimal
@@ -4216,6 +4221,12 @@
   run:
     timeout: 3600
     script: python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 20  --docker-override commit
+
+  variations:
+    - __suffix__: v1
+    - __suffix__: v2
+      run:
+        script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 20  --docker-override commit
 
 - name: gcp_cluster_launcher_gpu_docker
   group: cluster-launcher-test
