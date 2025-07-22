@@ -224,14 +224,12 @@ class TrainController:
             )
 
         if failure_decision == FailureDecision.RESTART:
-            assert isinstance(error, TrainingFailedError)
             return TrainControllerLoopIterationResult(
                 run_attempt_id=self._get_run_attempt_id(),
                 previous_state=controller_state,
                 next_state=RestartingState(error=error),
             )
         elif failure_decision == FailureDecision.RESCHEDULE:
-            assert isinstance(error, ControllerError)
             return TrainControllerLoopIterationResult(
                 run_attempt_id=self._get_run_attempt_id(),
                 previous_state=controller_state,
