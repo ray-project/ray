@@ -614,7 +614,7 @@ class WorkerPool : public WorkerPoolInterface {
   /// \return An object representing the started worker process.
   virtual Process StartProcess(const std::vector<std::string> &worker_command_args,
                                const ProcessEnvironment &env,
-               std::error_code &ec);
+                               std::error_code &ec);
 
   /// Push an warning message to user if worker pool is getting to big.
   virtual void WarnAboutSize();
@@ -623,7 +623,7 @@ class WorkerPool : public WorkerPoolInterface {
   void PopWorkerCallbackInternal(const PopWorkerCallback &callback,
                                  std::shared_ptr<WorkerInterface> worker,
                                  PopWorkerStatus status,
-                                const std::string &runtime_env_setup_error_message);
+                                 const std::string &runtime_env_setup_error_message);
 
   /// Look up worker's dynamic options by startup token.
   /// TODO(scv119): replace dynamic options by runtime_env.
@@ -790,10 +790,11 @@ class WorkerPool : public WorkerPoolInterface {
 
   /// Call the `PopWorkerCallback` function asynchronously to make sure executed in
   /// different stack.
-  virtual void PopWorkerCallbackAsync(PopWorkerCallback callback,
-                                      std::shared_ptr<WorkerInterface> worker,
-                                      PopWorkerStatus status,
-                                    const std::string &runtime_env_setup_error_message = "");
+  virtual void PopWorkerCallbackAsync(
+      PopWorkerCallback callback,
+      std::shared_ptr<WorkerInterface> worker,
+      PopWorkerStatus status,
+      const std::string &runtime_env_setup_error_message = "");
 
   /// We manage all runtime env resources locally by the two methods:
   /// `GetOrCreateRuntimeEnv` and `DeleteRuntimeEnvIfPossible`.

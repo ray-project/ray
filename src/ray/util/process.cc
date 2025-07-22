@@ -272,8 +272,7 @@ class ProcessFD {
         }
       }
 
-      execvpe(
-          argv[0], const_cast<char *const *>(argv), const_cast<char *const *>(envp));
+      execvpe(argv[0], const_cast<char *const *>(argv), const_cast<char *const *>(envp));
 
       // If execvpe returns, an error occurred.
       if (!decouple) {

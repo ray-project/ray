@@ -606,7 +606,8 @@ bool LocalTaskManager::PoppedWorkerHandler(
         << "This node has available resources, but no worker processes "
            "to grant the lease: status "
         << status;
-    if (status == PopWorkerStatus::RuntimeEnvCreationFailed || status == PopWorkerStatus::ArgumentListTooLong) {
+    if (status == PopWorkerStatus::RuntimeEnvCreationFailed ||
+        status == PopWorkerStatus::ArgumentListTooLong) {
       // In case of runtime env creation or worker startup failure, we cancel this task
       // directly and raise an exception to user eventually. The task will be removed
       // from dispatch queue in
