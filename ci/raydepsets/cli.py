@@ -81,6 +81,7 @@ class DependencySetManager:
             self.subset(
                 source_depset=depset.source_depset,
                 requirements=depset.requirements,
+                args=DEFAULT_UV_FLAGS.copy(),
                 name=depset.name,
                 output=depset.output,
             )

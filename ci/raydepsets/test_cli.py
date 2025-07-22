@@ -233,4 +233,4 @@ def _replace_in_file(filepath, old, new):
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-vv", __file__]))
+    sys.exit(pytest.main(["-v", __file__]))
