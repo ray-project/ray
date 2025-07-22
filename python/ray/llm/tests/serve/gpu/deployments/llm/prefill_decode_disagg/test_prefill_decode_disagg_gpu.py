@@ -1,7 +1,7 @@
 import sys
+from unittest.mock import MagicMock
 
 import pytest
-from vllm.config import KVTransferConfig
 
 from ray.llm._internal.serve.configs.server_models import (
     LLMConfig,
@@ -21,12 +21,16 @@ class TestPDDisaggVLLMEngine:
         # llm_config is a fixture defined in serve.tests.conftest.py
         llm_config: LLMConfig,
         kv_connector: str,
+        monkeypatch,
     ):
         """Test vLLM engine under PD disagg."""
+        if kv_connector == "LMCacheConnectorV1":
+            lmcache_mock = MagicMock()
+            monkeypatch.setitem(sys.modules, "lmcache", lmcache_mock)
         llm_config = llm_config.model_copy(deep=True)
         llm_config.engine_kwargs.update(
             {
-                "kv_transfer_config": KVTransferConfig(
+                "kv_transfer_config": dict(
                     kv_connector=kv_connector,
                     kv_role="kv_both",
                 ),
