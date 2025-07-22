@@ -540,9 +540,12 @@ class RayletClient : public RayletClientInterface {
 
   int64_t GetPinsInFlight() const { return pins_in_flight_.load(); }
 
+  void GetNodeStats(const rpc::GetNodeStatsRequest &request,
+                    const rpc::ClientCallback<rpc::GetNodeStatsReply> &callback);
+
  private:
   /// gRPC client to the NodeManagerService.
-  std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client_;
+  std::shared_ptr<rpc::NodeManagerClient> grpc_client_;
 
   const WorkerID worker_id_;
 

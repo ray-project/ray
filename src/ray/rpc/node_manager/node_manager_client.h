@@ -27,22 +27,30 @@
 #include "src/ray/protobuf/node_manager.pb.h"
 
 namespace ray {
+
+namespace raylet {
+class RayletClient;
+}
+
 namespace rpc {
 
-/// TODO(dayshah): Kill this completely. This class should only be used by the
-/// RayletClient which is just a wrapper around this. This exists for the legacy reason
-/// that all the function names in RayletClient have to change if you move the things in
-/// here into RayletClient.
-class NodeManagerWorkerClient {
+/// TODO(dayshah): Kill this completely. This class is only used by the RayletClient which
+/// is just a wrapper around this. This exists for the legacy reason that all the function
+/// definitions in RayletClient have to change if you move the things in here into
+/// RayletClient.
+class NodeManagerClient {
  public:
+  friend class raylet::RayletClient;
+
+ private:
   /// Constructor.
   ///
   /// \param[in] address Address of the node manager server.
   /// \param[in] port Port of the node manager server.
   /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
-  NodeManagerWorkerClient(const std::string &address,
-                          const int port,
-                          ClientCallManager &client_call_manager)
+  NodeManagerClient(const std::string &address,
+                    const int port,
+                    ClientCallManager &client_call_manager)
       : grpc_client_{std::make_unique<GrpcClient<NodeManagerService>>(
             address, port, client_call_manager)} {}
 
@@ -169,7 +177,6 @@ class NodeManagerWorkerClient {
                          grpc_client_,
                          /*method_timeout_ms*/ -1, )
 
- private:
   std::unique_ptr<GrpcClient<NodeManagerService>> grpc_client_;
 };
 
