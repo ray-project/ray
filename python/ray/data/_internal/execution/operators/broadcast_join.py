@@ -2,6 +2,7 @@ import logging
 from typing import Optional, Tuple
 
 import ray
+from ray.data._internal.arrow_block import ArrowBlockAccessor
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.logical.operators.join_operator import JoinType
@@ -66,8 +67,6 @@ class BroadcastJoinFunction:
 
         # Combine all blocks into a single PyArrow table
         import pyarrow as pa
-    
-        from ray.data._internal.arrow_block import ArrowBlockAccessor
 
         right_tables = [
             ArrowBlockAccessor.for_block(block).to_arrow() for block in right_blocks
