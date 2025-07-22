@@ -1,6 +1,6 @@
 import time
-from collections import defaultdict
-from typing import List
+from collections import Counter
+from typing import List, NamedTuple
 
 from ray._raylet import GcsClient
 from ray.autoscaler.v2.schema import ClusterStatus, Stats
@@ -14,8 +14,15 @@ from ray.core.generated.autoscaler_pb2 import (
 DEFAULT_RPC_TIMEOUT_S = 10
 
 
+class ResourceRequest(NamedTuple):
+    resources: dict
+    label_selector: dict
+
+
 def request_cluster_resources(
-    gcs_address: str, to_request: List[dict], timeout: int = DEFAULT_RPC_TIMEOUT_S
+    gcs_address: str,
+    to_request: List[dict],
+    timeout: int = DEFAULT_RPC_TIMEOUT_S,
 ):
     """Request resources from the autoscaler.
 
@@ -28,28 +35,50 @@ def request_cluster_resources(
 
     Args:
         gcs_address: The GCS address to query.
-        to_request: A list of resource bundles to request the cluster to have.
-            Each bundle is a dict of resource name to resource quantity, e.g:
-            [{"CPU": 1}, {"GPU": 1}].
+        to_request: A list of resource requests to request the cluster to have.
+            Each resource request is a tuple of resources and a label_selector
+            to apply per-bundle. e.g.: [{"resources": {"CPU": 1, "GPU": 1}, "label_selector": {"accelerator-type": "A100"}}]
         timeout: Timeout in seconds for the request to be timeout
 
     """
     assert len(gcs_address) > 0, "GCS address is not specified."
 
-    # Aggregate bundle by shape.
-    resource_requests_by_count = defaultdict(int)
-    for request in to_request:
-        bundle = frozenset(request.items())
-        resource_requests_by_count[bundle] += 1
+    # Convert bundle dicts to ResourceRequest tuples.
+    normalized: List[ResourceRequest] = []
+    for r in to_request:
+        if isinstance(r, dict):
+            if "resources" in r:
+                resources = r["resources"]
+                selector = r.get("label_selector", {})
+            else:
+                # Support legacy format where `to_request` is a list of resource bundles.
+                resources = r
+                selector = {}
+            normalized.append(ResourceRequest(resources, selector))
+        else:
+            raise TypeError("Each element must be a dict")
+    to_request = normalized
 
-    bundles = []
-    counts = []
-    for bundle, count in resource_requests_by_count.items():
+    # Aggregate bundle by shape.defaultdict
+    def keyfunc(r):
+        return (
+            frozenset(r.resources.items()),
+            frozenset(r.label_selector.items()),
+        )
+
+    grouped_requests = Counter(keyfunc(r) for r in to_request)
+
+    bundles: List[dict] = []
+    label_selectors: List[dict] = []
+    counts: List[int] = []
+
+    for (bundle, selector), count in grouped_requests.items():
         bundles.append(dict(bundle))
+        label_selectors.append(dict(selector))
         counts.append(count)
 
     GcsClient(gcs_address).request_cluster_resource_constraint(
-        bundles, counts, timeout_s=timeout
+        bundles, counts, label_selectors, timeout_s=timeout
     )
 
 
