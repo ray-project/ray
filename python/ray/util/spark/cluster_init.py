@@ -470,7 +470,8 @@ def _create_hook_entry(is_global):
 
 
 def _ray_system_metrics_logging_enabled():
-    return os.environ.get("LOG_RAY_SYSTEM_METRICS", "false").lower == "true"
+    from ray._private.ray_constants import env_bool
+    return env_bool("LOG_RAY_SYSTEM_METRICS", False)
 
 
 def _setup_ray_cluster(
