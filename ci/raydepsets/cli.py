@@ -109,18 +109,13 @@ class DependencySetManager:
         return (Path(self.workspace.dir) / path).as_posix()
 
     def override_uv_flags(self, flags: List[str]) -> List[str]:
-        found = False
-        new_flags = DEFAULT_UV_FLAGS.copy()
+        new_flags = set(DEFAULT_UV_FLAGS.copy())
         for flag in flags:
             flag_name = flag.split(" ")[0]
-            for i, default_flag in enumerate(new_flags):
-                if flag_name in default_flag:
-                    new_flags[i] = flag
-                    found = True
-                    break
-        if not found:
-            new_flags.extend(flags)
-        return new_flags
+            if flag_name in new_flags:
+                new_flags.remove(flag_name)
+                new_flags.add(flag)
+        return list(new_flags)
 
     def append_uv_flags(self, flags: List[str]) -> List[str]:
         return DEFAULT_UV_FLAGS.copy() + flags

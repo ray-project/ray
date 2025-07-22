@@ -204,7 +204,7 @@ class TestCli(unittest.TestCase):
                 "--no-header",
             ]
 
-    def test_override_uv_flags(self):
+    def test_override_uv_flag(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             _copy_data_to_tmpdir(tmpdir)
             manager = DependencySetManager(
@@ -224,6 +224,25 @@ class TestCli(unittest.TestCase):
                 "--unsafe-package setuptools",
                 "--index-url https://pypi.org/simple",
                 "--extra-index-url https://download.pytorch.org/whl/cu128",
+                "--index-strategy unsafe-best-match",
+                "--quiet",
+            ]
+
+    def test_override_uv_flags(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _copy_data_to_tmpdir(tmpdir)
+            manager = DependencySetManager(
+                config_path="test.config.yaml",
+                workspace_dir=tmpdir,
+            )
+            assert manager.override_uv_flags(["--unsafe-package dummy"]) == [
+                "--generate-hashes",
+                "--strip-extras",
+                "--no-strip-markers",
+                "--emit-index-url",
+                "--emit-find-links",
+                "--unsafe-package dummy",
+                "--index-url https://pypi.org/simple",
                 "--index-strategy unsafe-best-match",
                 "--quiet",
             ]
