@@ -460,6 +460,7 @@ class NodeInfoAccessor {
   std::unordered_set<NodeID> removed_nodes_;
 
   // TODO(dayshah): Need to refactor gcs client / accessor to avoid this.
+  // https://github.com/ray-project/ray/issues/54805
   FRIEND_TEST(NodeInfoAccessorTest, TestHandleNotification);
 };
 
