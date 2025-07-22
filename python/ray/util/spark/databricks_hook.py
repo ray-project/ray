@@ -190,6 +190,7 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
         db_api_entry.registerBackgroundSparkJobGroup(job_group_id)
 
     def custom_environment_variables(self):
+        from ray.util.spark.cluster_init import _ray_system_metrics_logging_enabled
         conf = {
             **super().custom_environment_variables(),
             # Hardcode `GLOO_SOCKET_IFNAME` to `eth0` for Databricks runtime.
@@ -228,6 +229,13 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
                 "<a href='https://docs.databricks.com/en/dev-tools/auth/"
                 "oauth-m2m.html'>Databricks OAuth</a>."
             )
+
+            if _ray_system_metrics_logging_enabled():
+                raise RuntimeError(
+                    "Ray system metrics logging is enabled, but it requires MLflow "
+                    "credential configurations: " + warn_msg
+                )
+
             get_databricks_display_html_function()(
                 f"<b style='color:red;'>{warn_msg}<br></b>"
             )
