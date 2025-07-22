@@ -256,12 +256,16 @@ class ProcessFD {
         // We received an errno from the child, meaning execvpe failed.
         ec = std::error_code(err_from_child, std::system_category());
         // Reap the zombie child process that failed to exec.
-        waitpid(pid, NULL, 0);
+        if (waitpid(pid, NULL, 0) == -1) {
+          RAY_LOG(ERROR) << "Failed to reap zombie child process (PID: " << pid << ") after child execvpe failure. errno: " << errno;
+	}
         pid = -1;
       } else {
         // A read error occurred on the pipe itself.
         ec = std::error_code(errno, std::system_category());
-        waitpid(pid, NULL, 0);
+        if (waitpid(pid, NULL, 0) == -1) {
+          RAY_LOG(ERROR) << "Failed to reap zombie child process (PID: " << pid << ") after child execvpe failure. errno: " << errno;
+	}
         pid = -1;
       }
     
