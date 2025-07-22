@@ -221,7 +221,7 @@ class RayMetricsMonitor:
 
     def finish(self):
         """Stop monitoring system metrics."""
-        from mlflow.tracking.client import MlflowClient
+        import mlflow
 
         if self._process is None:
             return
@@ -238,4 +238,6 @@ class RayMetricsMonitor:
             _logger.error(f"Error terminating system metrics monitoring process: {e}.")
         self._process = None
 
-        MlflowClient().set_terminated(self._run_id, "FINISHED")
+        if active_run := mlflow.active_run():
+            if active_run.info.run_id == self._run_id:
+                mlflow.end_run()
