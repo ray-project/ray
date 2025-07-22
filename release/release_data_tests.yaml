@@ -567,10 +567,6 @@
           python setup_chaos.py --chaos TerminateEC2InstanceWithGracePeriod
           --batch-size-to-kill 10 --max-to-kill 100 --kill-delay 120
 
-  matrix:
-    setup:
-      suffix: [autoscaling, fixed_size]
-
 - name: batch_inference_2
   frequency: manual
   working_dir: nightly_tests/dataset/batch_inference_2
