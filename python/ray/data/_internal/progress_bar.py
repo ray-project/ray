@@ -273,36 +273,31 @@ class ProgressBar:
             # Update local state immediately
             self._desc = name
 
-            # Use synchronous updates if flush=True
-            if flush:
-                try:
-                    self._bar.set_description(self._desc)
-                except Exception as e:
-                    logger.debug(f"Sync progress bar set_description failed: {e}")
-            else:
-                # Submit actual tqdm update to async updater
-                _async_progress_updater.submit_async(
-                    f"{self._bar_id}_set_description",
-                    self._bar.set_description,
-                    self._desc,
-                )
+            # Execute or queue the tqdm update
+            self._execute_or_queue(
+                "set_description", self._bar.set_description, self._desc, flush=flush
+            )
 
     def get_description(self) -> str:
         return self._desc
 
+    def _execute_or_queue(
+        self, method_name: str, func: Callable, *args, flush: bool = False, **kwargs
+    ):
+        """Execute a progress bar method either synchronously or asynchronously"""
+        if flush:
+            try:
+                func(*args, **kwargs)
+            except Exception as e:
+                logger.debug(f"Sync progress bar {method_name} failed: {e}")
+        else:
+            _async_progress_updater.submit_async(
+                f"{self._bar_id}_{method_name}", func, *args, **kwargs
+            )
+
     def refresh(self, flush: bool = False):
         if self._bar:
-            # Use synchronous refresh if flush=True
-            if flush:
-                try:
-                    self._bar.refresh()
-                except Exception as e:
-                    logger.debug(f"Sync progress bar refresh failed: {e}")
-            else:
-                # Submit to async updater instead of blocking
-                _async_progress_updater.submit_async(
-                    f"{self._bar_id}_refresh", self._bar.refresh
-                )
+            self._execute_or_queue("refresh", self._bar.refresh, flush=flush)
 
     def update(
         self, i: int = 0, total: Optional[int] = None, flush: bool = False
@@ -316,17 +311,8 @@ class ProgressBar:
                 # If the progress goes over 100%, update the total.
                 self._bar.total = self._progress
 
-            # Use synchronous updates if flush=True
-            if flush:
-                try:
-                    self._bar.update(i)
-                except Exception as e:
-                    logger.debug(f"Sync progress bar update failed: {e}")
-            else:
-                # Submit actual tqdm update to async updater
-                _async_progress_updater.submit_async(
-                    f"{self._bar_id}_update", self._bar.update, i
-                )
+            # Execute or queue the tqdm update
+            self._execute_or_queue("update", self._bar.update, i, flush=flush)
 
     def close(self):
         if self._bar:
