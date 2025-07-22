@@ -1063,19 +1063,19 @@ py_library(
 pkg_files(
     name = "raylet_so_files",
     srcs = ["python/ray/_raylet.so"],
-    visibility = ["//visibility:private"],
-    strip_prefix = "python",
     attributes = pkg_attributes(mode = "755"),
+    strip_prefix = "python",
+    visibility = ["//visibility:private"],
 )
 
 pkg_files(
     name = "all_py_proto_files",
     srcs = ["//src/ray/protobuf:all_py_proto"],
-    visibility = ["//visibility:private"],
-    prefix = "ray/core/generated",
     excludes = [
         "opentelemetry/proto/metrics/v1/metrics_pb2.py",
     ],
+    prefix = "ray/core/generated",
+    visibility = ["//visibility:private"],
 )
 
 pkg_zip(
@@ -1088,8 +1088,8 @@ pkg_zip(
 pkg_files(
     name = "serve_py_proto_files",
     srcs = [":serve_py_proto"],
-    visibility = ["//visibility:private"],
     prefix = "ray/serve/generated",
+    visibility = ["//visibility:private"],
 )
 
 pkg_files(
@@ -1098,45 +1098,45 @@ pkg_files(
         ":redis-cli",
         ":redis-server",
     ],
-    visibility = ["//visibility:private"],
     attributes = pkg_attributes(mode = "755"),
     prefix = "ray/core/src/ray/thirdparty/redis/src",
+    visibility = ["//visibility:private"],
 )
 
 pkg_files(
     name = "raylet_files",
     srcs = [":raylet"],
-    visibility = ["//visibility:private"],
     attributes = pkg_attributes(mode = "755"),
     prefix = "ray/core/src/ray/raylet",
+    visibility = ["//visibility:private"],
 )
 
 pkg_files(
     name = "gcs_server_files",
     srcs = ["//src/ray/gcs/gcs_server"],
-    visibility = ["//visibility:private"],
     attributes = pkg_attributes(mode = "755"),
     prefix = "ray/core/src/ray/gcs",
+    visibility = ["//visibility:private"],
 )
 
 pkg_files(
     name = "jemalloc_files",
     srcs = ["@jemalloc//:shared"],
-    visibility = ["//visibility:private"],
     attributes = pkg_attributes(mode = "755"),
     prefix = "ray/core/",
+    visibility = ["//visibility:private"],
 )
 
 pkg_zip(
     name = "ray_pkg_zip",
     srcs = [
-        ":raylet_so_files",
         ":all_py_proto_files",
-        ":serve_py_proto_files",
-        ":redis_files",
-        ":raylet_files",
         ":gcs_server_files",
         ":jemalloc_files",
+        ":raylet_files",
+        ":raylet_so_files",
+        ":redis_files",
+        ":serve_py_proto_files",
     ],
     out = "ray_pkg.zip",
     visibility = ["//visibility:private"],

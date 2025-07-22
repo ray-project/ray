@@ -614,8 +614,8 @@ python_grpc_compile(
 python_grpc_compile(
     name = "all_py_proto",
     deps = [
-        ":common_proto",
         ":autoscaler_proto",
+        ":common_proto",
         ":core_worker_proto",
         ":event_proto",
         ":events_event_aggregator_service_proto",
