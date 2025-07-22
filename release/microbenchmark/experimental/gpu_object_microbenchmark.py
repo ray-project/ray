@@ -2,7 +2,7 @@
 import argparse
 import time
 import os
-from typing import Tuple, Type
+from typing import Tuple
 
 import socket
 import numpy as np
@@ -65,19 +65,14 @@ def _exec_p2p_transfer(
     sender_hint: ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy,
     receiver_hint: ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy,
 ):
-    actor_cls: Type
-    group_backend: str
-    if backend == "gloo":
-        actor_cls = GlooActor
-        group_backend = "torch_gloo"
-    elif backend == "object":
-        actor_cls = ObjectStoreActor
-        group_backend = None
-    elif backend == "nccl":
-        actor_cls = NCCLActor
-        group_backend = "nccl"
-    else:
+    BACKEND_CONFIG = {
+        "gloo": (GlooActor, "torch_gloo"),
+        "object": (ObjectStoreActor, None),
+        "nccl": (NCCLActor, "nccl"),
+    }
+    if backend not in BACKEND_CONFIG:
         raise ValueError(f"Unsupported backend: {backend}")
+    actor_cls, group_backend = BACKEND_CONFIG[backend]
     sender = actor_cls.options(scheduling_strategy=sender_hint).remote()
     receiver = actor_cls.options(scheduling_strategy=receiver_hint).remote()
     if group_backend is not None:
