@@ -1943,10 +1943,10 @@ void NodeManager::HandleResizeLocalResourceInstances(
     rpc::ResizeLocalResourceInstancesRequest request,
     rpc::ResizeLocalResourceInstancesReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  // Get target resources as a map
   auto target_resource_map = MapFromProtobuf(request.resources());
 
   // Check if any resource is a unit instance resource
+  // Unit instance resources (e.g., GPU) cannot be resized with this API
   for (const auto &[resource_name, target_value] : target_resource_map) {
     if (ResourceID(resource_name).IsUnitInstanceResource()) {
       std::string error_msg = absl::StrFormat(
