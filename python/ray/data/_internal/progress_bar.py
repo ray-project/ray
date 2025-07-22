@@ -54,15 +54,27 @@ class AsyncProgressUpdater:
     def submit_sync(self, call_id: str, func: Callable, *args, **kwargs):
         """Submit a progress bar call and flush immediately (for critical updates)"""
         self.submit_async(call_id, func, *args, **kwargs)
-        self.flush_pending()
+        self.flush_calls()
 
-    def flush_pending(self):
-        """Process all pending updates immediately (blocking)"""
+    def flush_calls(self, call_ids: Optional[List[str]] = None):
+        """Process pending calls immediately (blocking)
+
+        Args:
+            call_ids: Specific call IDs to flush. If None, flushes all pending calls.
+        """
         with self._lock:
-            calls_to_process = self._pending_calls.copy()
-            self._pending_calls.clear()
+            if call_ids is None:
+                # Flush all pending calls
+                calls_to_process = self._pending_calls.copy()
+                self._pending_calls.clear()
+            else:
+                # Flush specific calls
+                calls_to_process = {}
+                for call_id in call_ids:
+                    if call_id in self._pending_calls:
+                        calls_to_process[call_id] = self._pending_calls.pop(call_id)
 
-        # Execute all pending calls synchronously
+        # Execute the calls synchronously
         for call_id, (func, args, kwargs) in calls_to_process.items():
             try:
                 func(*args, **kwargs)
@@ -73,7 +85,7 @@ class AsyncProgressUpdater:
 
     def _worker_loop(self):
         while not self._shutdown:
-            self.flush_pending()
+            self.flush_calls()
             time.sleep(self._update_interval)
 
     def shutdown(self):
@@ -81,28 +93,11 @@ class AsyncProgressUpdater:
             self._shutdown = True
 
         # Process any remaining updates before shutdown
-        self.flush_pending()
+        self.flush_calls()
 
         # Wait for worker thread to finish
         if self._worker_thread:
             self._worker_thread.join(timeout=1.0)
-
-    def flush_calls(self, call_ids: List[str]):
-        """Process specific pending calls immediately (blocking)"""
-        with self._lock:
-            calls_to_process = {}
-            for call_id in call_ids:
-                if call_id in self._pending_calls:
-                    calls_to_process[call_id] = self._pending_calls.pop(call_id)
-
-        # Execute the specific calls synchronously
-        for call_id, (func, args, kwargs) in calls_to_process.items():
-            try:
-                func(*args, **kwargs)
-            except Exception as e:
-                logger.debug(
-                    f"Progress bar call failed during specific flush for {call_id}: {e}"
-                )
 
 
 # Global instance
