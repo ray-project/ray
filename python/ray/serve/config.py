@@ -228,6 +228,16 @@ class AutoscalingConfig(BaseModel):
         default=30.0, description="How long to wait before scaling up replicas."
     )
 
+    # Default None means unlimited, setting this smaller increases frequency scale up actions
+    target_latency: Optional[PositiveFloat] = None
+
+    # 0.9 = P90, 0.95 = P95 etc. setting this closer to 1.0 increases scaling frequency
+    target_p: Optional[PositiveFloat] = 0.9
+
+    mode: AutoscalingMode = Field(
+        default=AutoscalingMode.DEPLOYMENT, description="The granularity of Autoscaling (DEPLOYMENT or APPLICATION)."
+    )
+
     # Cloudpickled policy definition.
     _serialized_policy_def: bytes = PrivateAttr(default=b"")
 
