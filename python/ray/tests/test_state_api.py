@@ -3807,9 +3807,9 @@ def test_get_actor_timeout_multiplier(shutdown_only):
     This test reproduces the issue where get_actor with timeout=1 fails even though
     the actual operation takes less than 1 second, because GetApiOptions doesn't
     apply the 0.8 server timeout multiplier that ListApiOptions uses.
+    
+    Related issue: https://github.com/ray-project/ray/issues/54153
     """
-
-    ray.init()
 
     @ray.remote
     class TestActor:

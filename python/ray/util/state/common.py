@@ -91,12 +91,10 @@ class Humanify:
     """A class containing default methods to
     convert units into a human readable string."""
 
-    @staticmethod
     def timestamp(x: float):
         """Converts milliseconds to a datetime object."""
         return str(datetime.datetime.fromtimestamp(x / 1000))
 
-    @staticmethod
     def memory(x: int):
         """Converts raw bytes to a human readable memory size."""
         if x >= 2**30:
@@ -107,12 +105,10 @@ class Humanify:
             return str(format(x / (2**10), ".3f")) + " KiB"
         return str(format(x, ".3f")) + " B"
 
-    @staticmethod
     def duration(x: int):
         """Converts milliseconds to a human readable duration."""
         return str(datetime.timedelta(milliseconds=x))
 
-    @staticmethod
     def events(events: List[dict]):
         """Converts a list of task events into a human readable format."""
         for event in events:
@@ -120,7 +116,6 @@ class Humanify:
                 event["created_ms"] = Humanify.timestamp(event["created_ms"])
         return events
 
-    @staticmethod
     def node_resources(resources: dict):
         """Converts a node's resources into a human readable format."""
         for resource in resources:
@@ -177,7 +172,7 @@ class ListApiOptions:
         # For exmaple, 2 filters with same key and same value but one with '=' predicate
         # and ther other with '!=' predicate
         equal_filters = {}
-        for filter in self.filters or []:
+        for filter in self.filters:
             filter_key, filter_predicate, filter_value = filter
             if filter_predicate == "=":
                 if (
@@ -485,7 +480,7 @@ class ActorState(StateSchema):
     #:   It is equivalent to `PENDING_CREATION`,
     #:   but means the actor was dead more than once.
     #: - DEAD: The actor is permanatly dead.
-    state: "TypeActorStatus" = state_column(filterable=True)
+    state: TypeActorStatus = state_column(filterable=True)
     #: The job id of this actor.
     job_id: str = state_column(filterable=True)
     #: The name of the actor given by the `name` argument.
@@ -543,7 +538,7 @@ class PlacementGroupState(StateSchema):
     #: - REMOVED: The placement group is removed.
     #: - RESCHEDULING: The placement group is rescheduling because some of
     #:   bundles are dead because they were on dead nodes.
-    state: "TypePlacementGroupStatus" = state_column(filterable=True)
+    state: TypePlacementGroupStatus = state_column(filterable=True)
     #: The bundle specification of the placement group.
     bundles: Optional[List[dict]] = state_column(filterable=False, detail=True)
     #: True if the placement group is detached. False otherwise.
@@ -593,103 +588,59 @@ class NodeState(StateSchema):
 # NOTE: Declaring this as dataclass would make __init__ not being called properly.
 # NOTE: `JobDetails` will be `None` in the minimal install because Pydantic is not
 #       installed. Inheriting from `None` raises an exception.
-if JobDetails is not None:
+class JobState(StateSchema, JobDetails if JobDetails is not None else object):
+    """The state of the job that's submitted by Ray's Job APIs or driver jobs"""
 
-    class JobState(StateSchema, JobDetails):
-        """The state of the job that's submitted by Ray's Job APIs or driver jobs"""
+    def __init__(self, **kwargs):
+        JobDetails.__init__(self, **kwargs)
 
-        def __init__(self, **kwargs):
-            JobDetails.__init__(self, **kwargs)
+    @classmethod
+    def filterable_columns(cls) -> Set[str]:
+        # We are not doing any filtering since filtering is currently done
+        # at the backend.
+        return {"job_id", "type", "status", "submission_id"}
 
-        @classmethod
-        def filterable_columns(cls) -> Set[str]:
-            # We are not doing any filtering since filtering is currently done
-            # at the backend.
-            return {"job_id", "type", "status", "submission_id"}
+    @classmethod
+    def humanify(cls, state: dict) -> dict:
+        return state
 
-        @classmethod
-        def humanify(cls, state: dict) -> dict:
-            return state
-
-        @classmethod
-        def list_columns(cls, detail: bool = True) -> List[str]:
-            if not detail:
-                return [
-                    "job_id",
-                    "submission_id",
-                    "entrypoint",
-                    "type",
-                    "status",
-                    "message",
-                    "error_type",
-                    "driver_info",
-                ]
-            if JobDetails is None:
-                # We don't have pydantic in the dashboard. This is because
-                # we call this method at module import time, so we need to
-                # check if the class is a pydantic model.
-                return []
-
-            # TODO(aguo): Once we only support pydantic 2, we can remove this if check.
-            # In pydantic 2.0, `__fields__` has been renamed to `model_fields`.
-            return (
-                list(JobDetails.model_fields.keys())
-                if hasattr(JobDetails, "model_fields")
-                else list(JobDetails.__fields__.keys())
-            )
-
-        def asdict(self):
-            return JobDetails.dict(self)
-
-        @classmethod
-        def schema_dict(cls) -> Dict[str, Any]:
-            schema_types = cls.schema()["properties"]
-            # Get type name to actual type mapping.
-            return {
-                k: v["type"]
-                for k, v in schema_types.items()
-                if v.get("type") is not None
-            }
-
-else:
-
-    class JobState(StateSchema):
-        """The state of the job that's submitted by Ray's Job APIs or driver jobs"""
-
-        def __init__(self, **kwargs):
-            super().__init__()
-
-        @classmethod
-        def filterable_columns(cls) -> Set[str]:
-            # We are not doing any filtering since filtering is currently done
-            # at the backend.
-            return {"job_id", "type", "status", "submission_id"}
-
-        @classmethod
-        def humanify(cls, state: dict) -> dict:
-            return state
-
-        @classmethod
-        def list_columns(cls, detail: bool = True) -> List[str]:
-            if not detail:
-                return [
-                    "job_id",
-                    "submission_id",
-                    "entrypoint",
-                    "type",
-                    "status",
-                    "message",
-                    "error_type",
-                    "driver_info",
-                ]
+    @classmethod
+    def list_columns(cls, detail: bool = True) -> List[str]:
+        if not detail:
+            return [
+                "job_id",
+                "submission_id",
+                "entrypoint",
+                "type",
+                "status",
+                "message",
+                "error_type",
+                "driver_info",
+            ]
+        if JobDetails is None:
+            # We don't have pydantic in the dashboard. This is because
+            # we call this method at module import time, so we need to
+            # check if the class is a pydantic model.
             return []
 
-        def asdict(self):
-            return {}
+        # TODO(aguo): Once we only support pydantic 2, we can remove this if check.
+        # In pydantic 2.0, `__fields__` has been renamed to `model_fields`.
+        return (
+            list(JobDetails.model_fields.keys())
+            if hasattr(JobDetails, "model_fields")
+            else list(JobDetails.__fields__.keys())
+        )
 
-        @classmethod
-        def schema_dict(cls) -> Dict[str, Any]:
-            return {}
+    def asdict(self):
+        return JobDetails.dict(self)
+
+    @classmethod
+    def schema_dict(cls) -> Dict[str, Any]:
+        schema_types = cls.schema()["properties"]
+        # Get type name to actual type mapping.
+        return {
+            k: v["type"] for k, v in schema_types.items() if v.get("type") is not None
+        }
 
 
 @dataclass(init=not IS_PYDANTIC_2)
