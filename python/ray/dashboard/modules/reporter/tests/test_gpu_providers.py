@@ -66,10 +66,10 @@ class TestGpuUtilizationInfo(unittest.TestCase):
         self.assertEqual(gpu_info["index"], 1)
         self.assertEqual(gpu_info["name"], "AMD Radeon RX 6800 XT")
         self.assertEqual(gpu_info["uuid"], "GPU-87654321-4321-4321-4321-ba9876543210")
-        self.assertIsNone(gpu_info["utilization_gpu"])
+        self.assertIsNone(gpu_info["utilization_gpu"])  # Should be None, not -1
         self.assertEqual(gpu_info["memory_used"], 4096)
         self.assertEqual(gpu_info["memory_total"], 16384)
-        self.assertIsNone(gpu_info["processes_pids"])
+        self.assertIsNone(gpu_info["processes_pids"])  # Should be None, not []
 
 
 class TestGpuProvider(unittest.TestCase):
@@ -112,33 +112,84 @@ class TestNvidiaGpuProvider(unittest.TestCase):
         mock_pynvml.nvmlInit.return_value = None
         mock_pynvml.nvmlShutdown.return_value = None
 
-        self.assertTrue(self.provider.is_available())
-        mock_pynvml.nvmlInit.assert_called_once()
-        mock_pynvml.nvmlShutdown.assert_called_once()
+        # Mock sys.modules to make the import work
+        import sys
+
+        original_modules = sys.modules.copy()
+        sys.modules["ray._private.thirdparty.pynvml"] = mock_pynvml
+
+        try:
+            self.assertTrue(self.provider.is_available())
+            mock_pynvml.nvmlInit.assert_called_once()
+            mock_pynvml.nvmlShutdown.assert_called_once()
+        finally:
+            # Restore original modules
+            sys.modules.clear()
+            sys.modules.update(original_modules)
 
     @patch("ray._private.thirdparty.pynvml", create=True)
     def test_is_available_failure(self, mock_pynvml):
         """Test is_available when NVIDIA GPU is not available."""
         mock_pynvml.nvmlInit.side_effect = Exception("NVIDIA driver not found")
 
-        self.assertFalse(self.provider.is_available())
+        # Mock sys.modules to make the import work but nvmlInit fail
+        import sys
+
+        original_modules = sys.modules.copy()
+        sys.modules["ray._private.thirdparty.pynvml"] = mock_pynvml
+
+        try:
+            self.assertFalse(self.provider.is_available())
+        finally:
+            # Restore original modules
+            sys.modules.clear()
+            sys.modules.update(original_modules)
 
     @patch("ray._private.thirdparty.pynvml", create=True)
     def test_initialize_success(self, mock_pynvml):
         """Test successful initialization."""
+        # Ensure provider starts fresh
+        self.provider._initialized = False
+
         mock_pynvml.nvmlInit.return_value = None
 
-        self.assertTrue(self.provider.initialize())
-        self.assertTrue(self.provider._initialized)
-        mock_pynvml.nvmlInit.assert_called_once()
+        # Mock sys.modules to make the import work
+        import sys
+
+        original_modules = sys.modules.copy()
+        sys.modules["ray._private.thirdparty.pynvml"] = mock_pynvml
+
+        try:
+            self.assertTrue(self.provider.initialize())
+            self.assertTrue(self.provider._initialized)
+            mock_pynvml.nvmlInit.assert_called_once()
+        finally:
+            # Restore original modules
+            sys.modules.clear()
+            sys.modules.update(original_modules)
 
     @patch("ray._private.thirdparty.pynvml", create=True)
     def test_initialize_failure(self, mock_pynvml):
         """Test failed initialization."""
+        # Ensure provider starts fresh
+        self.provider._initialized = False
+
+        # Make nvmlInit fail
         mock_pynvml.nvmlInit.side_effect = Exception("Initialization failed")
 
-        self.assertFalse(self.provider.initialize())
-        self.assertFalse(self.provider._initialized)
+        # Mock sys.modules to make the import work but nvmlInit fail
+        import sys
+
+        original_modules = sys.modules.copy()
+        sys.modules["ray._private.thirdparty.pynvml"] = mock_pynvml
+
+        try:
+            self.assertFalse(self.provider.initialize())
+            self.assertFalse(self.provider._initialized)
+        finally:
+            # Restore original modules
+            sys.modules.clear()
+            sys.modules.update(original_modules)
 
     @patch("ray._private.thirdparty.pynvml", create=True)
     def test_initialize_already_initialized(self, mock_pynvml):
@@ -259,8 +310,74 @@ class TestNvidiaGpuProvider(unittest.TestCase):
 
         self.assertEqual(gpu_info["index"], 0)
         self.assertEqual(gpu_info["name"], "NVIDIA Tesla V100")
-        self.assertIsNone(gpu_info["utilization_gpu"])  # Should be None due to error
-        self.assertIsNone(gpu_info["processes_pids"])  # Should be None due to error
+        self.assertEqual(gpu_info["utilization_gpu"], -1)  # Should be -1 due to error
+        self.assertEqual(
+            gpu_info["processes_pids"], []
+        )  # Should be empty list due to error
+
+    @patch("ray._private.thirdparty.pynvml", create=True)
+    def test_get_gpu_utilization_with_mig(self, mock_pynvml):
+        """Test GPU utilization retrieval with MIG devices."""
+        # Mock regular GPU handle
+        mock_gpu_handle = Mock()
+        mock_memory_info = Mock()
+        mock_memory_info.used = 4 * MB * 1024
+        mock_memory_info.total = 8 * MB * 1024
+
+        # Mock MIG device handle and info
+        mock_mig_handle = Mock()
+        mock_mig_memory_info = Mock()
+        mock_mig_memory_info.used = 2 * MB * 1024
+        mock_mig_memory_info.total = 4 * MB * 1024
+
+        mock_mig_utilization_info = Mock()
+        mock_mig_utilization_info.gpu = 80
+
+        # Configure mocks for MIG-enabled GPU
+        mock_pynvml.nvmlInit.return_value = None
+        mock_pynvml.nvmlDeviceGetCount.return_value = 1
+        mock_pynvml.nvmlDeviceGetHandleByIndex.return_value = mock_gpu_handle
+
+        # MIG mode enabled
+        mock_pynvml.nvmlDeviceGetMigMode.return_value = (
+            True,
+            True,
+        )  # (current, pending)
+        mock_pynvml.nvmlDeviceGetMaxMigDeviceCount.return_value = 1  # Only 1 MIG device
+        mock_pynvml.nvmlDeviceGetMigDeviceHandleByIndex.return_value = mock_mig_handle
+
+        # MIG device info
+        mock_pynvml.nvmlDeviceGetMemoryInfo.return_value = mock_mig_memory_info
+        mock_pynvml.nvmlDeviceGetUtilizationRates.return_value = (
+            mock_mig_utilization_info
+        )
+        mock_pynvml.nvmlDeviceGetComputeRunningProcesses.return_value = []
+        mock_pynvml.nvmlDeviceGetGraphicsRunningProcesses.return_value = []
+        mock_pynvml.nvmlDeviceGetName.return_value = b"NVIDIA A100-SXM4-40GB MIG 1g.5gb"
+        mock_pynvml.nvmlDeviceGetUUID.return_value = (
+            b"MIG-12345678-1234-1234-1234-123456789abc"
+        )
+        mock_pynvml.nvmlShutdown.return_value = None
+
+        # Set up provider state
+        self.provider._pynvml = mock_pynvml
+        self.provider._initialized = True
+
+        result = self.provider.get_gpu_utilization()
+
+        # Should return MIG device info instead of regular GPU
+        self.assertEqual(
+            len(result), 1
+        )  # Only one MIG device due to exception handling
+        gpu_info = result[0]
+
+        self.assertEqual(gpu_info["index"], 0)  # First MIG device (0 * 1000 + 0)
+        self.assertEqual(gpu_info["name"], "NVIDIA A100-SXM4-40GB MIG 1g.5gb")
+        self.assertEqual(gpu_info["uuid"], "MIG-12345678-1234-1234-1234-123456789abc")
+        self.assertEqual(gpu_info["utilization_gpu"], 80)
+        self.assertEqual(gpu_info["memory_used"], 2 * 1024)  # 2GB in MB
+        self.assertEqual(gpu_info["memory_total"], 4 * 1024)  # 4GB in MB
+        self.assertEqual(gpu_info["processes_pids"], [])
 
 
 class TestAmdGpuProvider(unittest.TestCase):

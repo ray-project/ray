@@ -140,7 +140,7 @@ class NvidiaGpuProvider(GpuProvider):
                 self._initialized = False
 
     def get_gpu_utilization(self) -> List[GpuUtilizationInfo]:
-        """Get GPU utilization information for all NVIDIA GPUs."""
+        """Get GPU utilization information for all NVIDIA GPUs and MIG devices."""
         if not self._initialized:
             if not self.initialize():
                 return []
@@ -152,52 +152,23 @@ class NvidiaGpuProvider(GpuProvider):
 
             for i in range(num_gpus):
                 gpu_handle = self._pynvml.nvmlDeviceGetHandleByIndex(i)
-                memory_info = self._pynvml.nvmlDeviceGetMemoryInfo(gpu_handle)
 
-                # Get GPU utilization
-                utilization = None
+                # Check if MIG mode is enabled on this GPU
                 try:
-                    utilization_info = self._pynvml.nvmlDeviceGetUtilizationRates(
-                        gpu_handle
-                    )
-                    utilization = int(utilization_info.gpu)
-                except self._pynvml.NVMLError as e:
-                    logger.debug(f"Failed to retrieve GPU utilization: {e}")
+                    mig_mode = self._pynvml.nvmlDeviceGetMigMode(gpu_handle)
+                    if mig_mode[0]:  # MIG mode is enabled
+                        # Get MIG device instances
+                        mig_devices = self._get_mig_devices(gpu_handle, i)
+                        gpu_utilizations.extend(mig_devices)
+                        continue
+                except (self._pynvml.NVMLError, AttributeError):
+                    # MIG not supported or not enabled, continue with regular GPU
+                    pass
 
-                # Get running processes
-                processes_pids = None
-                try:
-                    nv_comp_processes = (
-                        self._pynvml.nvmlDeviceGetComputeRunningProcesses(gpu_handle)
-                    )
-                    nv_graphics_processes = (
-                        self._pynvml.nvmlDeviceGetGraphicsRunningProcesses(gpu_handle)
-                    )
-
-                    processes_pids = [
-                        ProcessGPUInfo(
-                            pid=int(nv_process.pid),
-                            gpu_memory_usage=(
-                                int(nv_process.usedGpuMemory) // MB
-                                if nv_process.usedGpuMemory
-                                else 0
-                            ),
-                        )
-                        for nv_process in (nv_comp_processes + nv_graphics_processes)
-                    ]
-                except self._pynvml.NVMLError as e:
-                    logger.debug(f"Failed to retrieve GPU processes: {e}")
-
-                info = GpuUtilizationInfo(
-                    index=i,
-                    name=self.decode(self._pynvml.nvmlDeviceGetName(gpu_handle)),
-                    uuid=self.decode(self._pynvml.nvmlDeviceGetUUID(gpu_handle)),
-                    utilization_gpu=utilization,
-                    memory_used=int(memory_info.used) // MB,
-                    memory_total=int(memory_info.total) // MB,
-                    processes_pids=processes_pids,
-                )
-                gpu_utilizations.append(info)
+                # Process regular GPU (non-MIG)
+                gpu_info = self._get_gpu_info(gpu_handle, i)
+                if gpu_info:
+                    gpu_utilizations.append(gpu_info)
 
         except Exception as e:
             logger.debug(f"Error getting NVIDIA GPU utilization: {e}")
@@ -205,6 +176,161 @@ class NvidiaGpuProvider(GpuProvider):
             self.shutdown()
 
         return gpu_utilizations
+
+    def _get_mig_devices(self, gpu_handle, gpu_index: int) -> List[GpuUtilizationInfo]:
+        """Get MIG device information for a GPU with MIG enabled."""
+        mig_devices = []
+
+        try:
+            # Get all MIG device instances
+            mig_count = self._pynvml.nvmlDeviceGetMaxMigDeviceCount(gpu_handle)
+
+            for mig_idx in range(mig_count):
+                try:
+                    # Get MIG device handle
+                    mig_handle = self._pynvml.nvmlDeviceGetMigDeviceHandleByIndex(
+                        gpu_handle, mig_idx
+                    )
+
+                    # Get MIG device info
+                    mig_info = self._get_mig_device_info(mig_handle, gpu_index, mig_idx)
+                    if mig_info:
+                        mig_devices.append(mig_info)
+
+                except self._pynvml.NVMLError:
+                    # MIG device not available at this index
+                    continue
+
+        except (self._pynvml.NVMLError, AttributeError) as e:
+            logger.debug(f"Error getting MIG devices: {e}")
+
+        return mig_devices
+
+    def _get_mig_device_info(
+        self, mig_handle, gpu_index: int, mig_index: int
+    ) -> Optional[GpuUtilizationInfo]:
+        """Get utilization info for a single MIG device."""
+        try:
+            memory_info = self._pynvml.nvmlDeviceGetMemoryInfo(mig_handle)
+
+            # Get MIG device utilization
+            utilization = -1
+            try:
+                utilization_info = self._pynvml.nvmlDeviceGetUtilizationRates(
+                    mig_handle
+                )
+                utilization = int(utilization_info.gpu)
+            except self._pynvml.NVMLError as e:
+                logger.debug(f"Failed to retrieve MIG device utilization: {e}")
+
+            # Get running processes on MIG device
+            processes_pids = []
+            try:
+                nv_comp_processes = self._pynvml.nvmlDeviceGetComputeRunningProcesses(
+                    mig_handle
+                )
+                nv_graphics_processes = (
+                    self._pynvml.nvmlDeviceGetGraphicsRunningProcesses(mig_handle)
+                )
+
+                processes_pids = [
+                    ProcessGPUInfo(
+                        pid=int(nv_process.pid),
+                        gpu_memory_usage=(
+                            int(nv_process.usedGpuMemory) // MB
+                            if nv_process.usedGpuMemory
+                            else 0
+                        ),
+                    )
+                    for nv_process in (nv_comp_processes + nv_graphics_processes)
+                ]
+            except self._pynvml.NVMLError as e:
+                logger.debug(f"Failed to retrieve MIG device processes: {e}")
+
+            # Get MIG device UUID and name
+            try:
+                mig_uuid = self.decode(self._pynvml.nvmlDeviceGetUUID(mig_handle))
+                mig_name = self.decode(self._pynvml.nvmlDeviceGetName(mig_handle))
+            except self._pynvml.NVMLError:
+                # Fallback for older drivers
+                try:
+                    parent_name = self.decode(
+                        self._pynvml.nvmlDeviceGetName(
+                            self._pynvml.nvmlDeviceGetHandleByIndex(gpu_index)
+                        )
+                    )
+                    mig_name = f"{parent_name} MIG {mig_index}"
+                    mig_uuid = f"MIG-GPU-{gpu_index}-{mig_index}"
+                except Exception:
+                    mig_name = f"NVIDIA MIG Device {gpu_index}.{mig_index}"
+                    mig_uuid = f"MIG-{gpu_index}-{mig_index}"
+
+            return GpuUtilizationInfo(
+                index=gpu_index * 1000 + mig_index,  # Unique index for MIG devices
+                name=mig_name,
+                uuid=mig_uuid,
+                utilization_gpu=utilization,
+                memory_used=int(memory_info.used) // MB,
+                memory_total=int(memory_info.total) // MB,
+                processes_pids=processes_pids,
+            )
+
+        except Exception as e:
+            logger.debug(f"Error getting MIG device info: {e}")
+            return None
+
+    def _get_gpu_info(self, gpu_handle, gpu_index: int) -> Optional[GpuUtilizationInfo]:
+        """Get utilization info for a regular (non-MIG) GPU."""
+        try:
+            memory_info = self._pynvml.nvmlDeviceGetMemoryInfo(gpu_handle)
+
+            # Get GPU utilization
+            utilization = -1
+            try:
+                utilization_info = self._pynvml.nvmlDeviceGetUtilizationRates(
+                    gpu_handle
+                )
+                utilization = int(utilization_info.gpu)
+            except self._pynvml.NVMLError as e:
+                logger.debug(f"Failed to retrieve GPU utilization: {e}")
+
+            # Get running processes
+            processes_pids = []
+            try:
+                nv_comp_processes = self._pynvml.nvmlDeviceGetComputeRunningProcesses(
+                    gpu_handle
+                )
+                nv_graphics_processes = (
+                    self._pynvml.nvmlDeviceGetGraphicsRunningProcesses(gpu_handle)
+                )
+
+                processes_pids = [
+                    ProcessGPUInfo(
+                        pid=int(nv_process.pid),
+                        gpu_memory_usage=(
+                            int(nv_process.usedGpuMemory) // MB
+                            if nv_process.usedGpuMemory
+                            else 0
+                        ),
+                    )
+                    for nv_process in (nv_comp_processes + nv_graphics_processes)
+                ]
+            except self._pynvml.NVMLError as e:
+                logger.debug(f"Failed to retrieve GPU processes: {e}")
+
+            return GpuUtilizationInfo(
+                index=gpu_index,
+                name=self.decode(self._pynvml.nvmlDeviceGetName(gpu_handle)),
+                uuid=self.decode(self._pynvml.nvmlDeviceGetUUID(gpu_handle)),
+                utilization_gpu=utilization,
+                memory_used=int(memory_info.used) // MB,
+                memory_total=int(memory_info.total) // MB,
+                processes_pids=processes_pids,
+            )
+
+        except Exception as e:
+            logger.debug(f"Error getting GPU info: {e}")
+            return None
 
 
 class AmdGpuProvider(GpuProvider):
@@ -270,7 +396,7 @@ class AmdGpuProvider(GpuProvider):
             for i in range(num_gpus):
                 utilization = self._pyamdsmi.smi_get_device_utilization(i)
                 if utilization == -1:
-                    utilization = None
+                    utilization = -1
 
                 # Get running processes
                 processes_pids = []
