@@ -1,6 +1,6 @@
 import os
 from collections import deque
-from typing import Iterator, List, Tuple
+from typing import AsyncIterator, List, Tuple
 
 import ray
 from ray.dashboard.modules.job.common import JOB_LOGS_PATH_TEMPLATE
@@ -25,10 +25,10 @@ class JobLogStorageClient:
         except FileNotFoundError:
             return ""
 
-    def tail_logs(self, job_id: str) -> Iterator[List[str]]:
+    def tail_logs(self, job_id: str) -> AsyncIterator[List[str]]:
         return file_tail_iterator(self.get_log_file_path(job_id))
 
-    def get_last_n_log_lines(
+    async def get_last_n_log_lines(
         self, job_id: str, num_log_lines=NUM_LOG_LINES_ON_ERROR
     ) -> str:
         """
@@ -39,9 +39,8 @@ class JobLogStorageClient:
             job_id: The id of the job whose logs we want to return
             num_log_lines: The number of lines to return.
         """
-        log_tail_iter = self.tail_logs(job_id)
         log_tail_deque = deque(maxlen=num_log_lines)
-        for lines in log_tail_iter:
+        async for lines in self.tail_logs(job_id):
             if lines is None:
                 break
             else:

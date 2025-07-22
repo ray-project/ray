@@ -1,6 +1,6 @@
 # @OldAPIStack
 hopper_cql:
-    env: 
+    env:
         grid_search:
             #- ray.rllib.examples.envs.classes.d4rl_env.hopper_random
             - ray.rllib.examples.envs.classes.d4rl_env.hopper_medium
@@ -48,4 +48,3 @@ hopper_cql:
         lagrangian: False
         evaluation_config:
             input: sampler
-

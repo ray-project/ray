@@ -109,7 +109,7 @@ if [[ "${CI-}" == "true" ]]; then
   if [[ "${OSTYPE}" == msys ]]; then
     echo "startup --output_user_root=c:/tmp" >> ~/.bazelrc
   fi
-  
+
   if [[ "${platform}" == darwin ]]; then
     echo "Using local disk cache on mac"
     echo "build --disk_cache=/tmp/bazel-cache" >> ~/.bazelrc

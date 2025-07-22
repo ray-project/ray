@@ -126,7 +126,7 @@ def test_create_node_cap_at_max(
             {
                 "raycluster-autoscaler-head-8zsc8": NodeData(
                     kind="head",
-                    type="head-group",
+                    type="headgroup",
                     replica_index=None,
                     ip="10.4.2.6",
                     status="up-to-date",
@@ -149,7 +149,7 @@ def test_create_node_cap_at_max(
             {
                 "raycluster-autoscaler-head-8zsc8": NodeData(
                     kind="head",
-                    type="head-group",
+                    type="headgroup",
                     replica_index=None,
                     ip="10.4.2.6",
                     status="up-to-date",
@@ -159,13 +159,6 @@ def test_create_node_cap_at_max(
                     type="fake-gpu-group",
                     replica_index=None,
                     ip="10.4.0.6",
-                    status="up-to-date",
-                ),
-                "raycluster-autoscaler-worker-fake-tpu-group-xtpcl": NodeData(
-                    kind="worker",
-                    type="tpu-group",
-                    replica_index="tpu-group-0",
-                    ip="10.136.1.29",
                     status="up-to-date",
                 ),
                 "raycluster-autoscaler-worker-small-group-dkz2r": NodeData(
@@ -180,6 +173,20 @@ def test_create_node_cap_at_max(
                     type="small-group",
                     replica_index=None,
                     ip="10.4.0.5",
+                    status="up-to-date",
+                ),
+                "raycluster-autoscaler-tpu-group-worker-s8jhq": NodeData(
+                    kind="worker",
+                    type="tpu-group",
+                    replica_index="tpu-group-0",
+                    ip="10.24.9.4",
+                    status="up-to-date",
+                ),
+                "raycluster-autoscaler-tpu-group-worker-jd69f": NodeData(
+                    kind="worker",
+                    type="tpu-group",
+                    replica_index="tpu-group-0",
+                    ip="10.24.8.4",
                     status="up-to-date",
                 ),
             },
@@ -217,7 +224,7 @@ def test_get_node_data(podlist_file: str, expected_node_data):
             {
                 "raycluster-autoscaler-head-8zsc8": NodeData(
                     kind="head",
-                    type="head-group",
+                    type="headgroup",
                     replica_index=None,
                     ip="10.4.2.6",
                     status="up-to-date",

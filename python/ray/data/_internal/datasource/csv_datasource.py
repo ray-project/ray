@@ -10,7 +10,13 @@ if TYPE_CHECKING:
 class CSVDatasource(FileBasedDatasource):
     """CSV datasource, for reading and writing CSV files."""
 
-    _FILE_EXTENSIONS = ["csv"]
+    _FILE_EXTENSIONS = [
+        "csv",
+        "csv.gz",  # gzip-compressed files
+        "csv.br",  # Brotli-compressed files
+        "csv.zst",  # Zstandard-compressed files
+        "csv.lz4",  # lz4-compressed files
+    ]
 
     def __init__(
         self,

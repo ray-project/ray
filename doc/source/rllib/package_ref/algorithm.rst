@@ -1,14 +1,18 @@
-
 .. include:: /_includes/rllib/we_are_hiring.rst
 
-.. include:: /_includes/rllib/new_api_stack.rst
-
-.. algorithm-reference-docs:
+.. _algorithm-reference-docs:
 
 Algorithms
 ==========
 
-The :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` class is the highest-level API in RLlib responsible for **WHEN** and **WHAT** of RL algorithms. Things like **WHEN** should we sample the algorithm, **WHEN** should we perform a neural network update, and so on. The **HOW** will be delegated to components such as :py:class:`~ray.rllib.evaluation.rollout_worker.RolloutWorker`, etc.. It is the main entry point for RLlib users to interact with RLlib's algorithms.
+.. include:: /_includes/rllib/new_api_stack.rst
+
+The :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` class is the highest-level API in RLlib responsible for **WHEN** and **WHAT** of RL algorithms.
+Things like **WHEN** should we sample the algorithm, **WHEN** should we perform a neural network update, and so on.
+The **HOW** will be delegated to components such as ``RolloutWorker``, etc..
+
+It is the main entry point for RLlib users to interact with RLlib's algorithms.
+
 It allows you to train and evaluate policies, save an experiment's progress and restore from
 a prior saved experiment when continuing an RL run.
 :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` is a sub-class
@@ -19,99 +23,10 @@ and thus fully supports distributed hyperparameter tuning for RL.
 .. figure:: ../images/trainer_class_overview.svg
     :align: left
 
-    **A typical RLlib Algorithm object:** Algorhtms are normally comprised of
-    N :py:class:`~ray.rllib.evaluation.rollout_worker.RolloutWorker` that
+    **A typical RLlib Algorithm object:** Algorithms are normally comprised of
+    N ``RolloutWorkers`` that
     orchestrated via a :py:class:`~ray.rllib.env.env_runner_group.EnvRunnerGroup` object.
-    Each worker own its own a set of :py:class:`~ray.rllib.policy.policy.Policy` objects and their NN models per worker, plus a :py:class:`~ray.rllib.env.base_env.BaseEnv` instance per worker.
-
-.. _algo-config-api:
-
-Algorithm Configuration API
-----------------------------
-
-The :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig` class represents
-the primary way of configuring and building an :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`.
-You don't use ``AlgorithmConfig`` directly in practice, but rather use its algorithm-specific
-implementations such as :py:class:`~ray.rllib.algorithms.ppo.ppo.PPOConfig`, which each come
-with their own set of arguments to their respective ``.training()`` method.
-
-.. currentmodule:: ray.rllib.algorithms.algorithm_config
-
-Constructor
-~~~~~~~~~~~
-
-.. autosummary::
-    :nosignatures:
-    :toctree: doc/
-
-    ~AlgorithmConfig
-
-
-Public methods
-~~~~~~~~~~~~~~
-.. autosummary::
-    :nosignatures:
-    :toctree: doc/
-
-    ~AlgorithmConfig.copy
-    ~AlgorithmConfig.validate
-    ~AlgorithmConfig.freeze
-
-Builder methods
-~~~~~~~~~~~~~~~
-.. autosummary::
-    :nosignatures:
-    :toctree: doc/
-
-    ~AlgorithmConfig.build
-    ~AlgorithmConfig.build_learner_group
-    ~AlgorithmConfig.build_learner
-
-Configuration methods
-~~~~~~~~~~~~~~~~~~~~~
-
-.. autosummary::
-    :nosignatures:
-    :toctree: doc/
-
-    ~AlgorithmConfig.callbacks
-    ~AlgorithmConfig.debugging
-    ~AlgorithmConfig.environment
-    ~AlgorithmConfig.evaluation
-    ~AlgorithmConfig.experimental
-    ~AlgorithmConfig.fault_tolerance
-    ~AlgorithmConfig.framework
-    ~AlgorithmConfig.multi_agent
-    ~AlgorithmConfig.offline_data
-    ~AlgorithmConfig.python_environment
-    ~AlgorithmConfig.reporting
-    ~AlgorithmConfig.resources
-    ~AlgorithmConfig.rl_module
-    ~AlgorithmConfig.rollouts
-    ~AlgorithmConfig.training
-
-Getter methods
-~~~~~~~~~~~~~~
-.. autosummary::
-    :nosignatures:
-    :toctree: doc/
-
-    ~AlgorithmConfig.get_default_learner_class
-    ~AlgorithmConfig.get_default_rl_module_spec
-    ~AlgorithmConfig.get_evaluation_config_object
-    ~AlgorithmConfig.get_multi_rl_module_spec
-    ~AlgorithmConfig.get_multi_agent_setup
-    ~AlgorithmConfig.get_rollout_fragment_length
-
-Miscellaneous methods
-~~~~~~~~~~~~~~~~~~~~~
-.. autosummary::
-    :nosignatures:
-    :toctree: doc/
-
-    ~AlgorithmConfig.validate_train_batch_size_vs_rollout_fragment_length
-
-
+    Each worker own its own a set of ``Policy`` objects and their NN models per worker, plus a :py:class:`~ray.rllib.env.base_env.BaseEnv` instance per worker.
 
 Building Custom Algorithm Classes
 ---------------------------------
@@ -141,8 +56,8 @@ Algorithm API
 
 .. currentmodule:: ray.rllib.algorithms.algorithm
 
-Constructor
-~~~~~~~~~~~
+Construction and setup
+~~~~~~~~~~~~~~~~~~~~~~
 
 .. autosummary::
     :nosignatures:
@@ -151,34 +66,8 @@ Constructor
     ~Algorithm
     ~Algorithm.setup
     ~Algorithm.get_default_config
-
-Inference and Evaluation
-~~~~~~~~~~~~~~~~~~~~~~~~
-.. autosummary::
-    :nosignatures:
-    :toctree: doc/
-
-    ~Algorithm.compute_actions
-    ~Algorithm.compute_single_action
-    ~Algorithm.evaluate
-
-Saving and Restoring
-~~~~~~~~~~~~~~~~~~~~
-.. autosummary::
-    :nosignatures:
-    :toctree: doc/
-
-    ~Algorithm.from_checkpoint
-    ~Algorithm.from_state
-    ~Algorithm.get_weights
-    ~Algorithm.set_weights
-    ~Algorithm.export_model
-    ~Algorithm.export_policy_checkpoint
-    ~Algorithm.export_policy_model
-    ~Algorithm.restore
-    ~Algorithm.restore_workers
-    ~Algorithm.save
-    ~Algorithm.save_checkpoint
+    ~Algorithm.env_runner
+    ~Algorithm.eval_env_runner
 
 
 Training
@@ -190,11 +79,33 @@ Training
     ~Algorithm.train
     ~Algorithm.training_step
 
+Saving and restoring
+~~~~~~~~~~~~~~~~~~~~
+.. autosummary::
+    :nosignatures:
+    :toctree: doc/
+
+    ~Algorithm.save_to_path
+    ~Algorithm.restore_from_path
+    ~Algorithm.from_checkpoint
+    ~Algorithm.get_state
+    ~Algorithm.set_state
+
+
+Evaluation
+~~~~~~~~~~
+.. autosummary::
+    :nosignatures:
+    :toctree: doc/
+
+    ~Algorithm.evaluate
+
 Multi Agent
 ~~~~~~~~~~~
 .. autosummary::
     :nosignatures:
     :toctree: doc/
 
+    ~Algorithm.get_module
     ~Algorithm.add_policy
     ~Algorithm.remove_policy

@@ -76,7 +76,7 @@ connections. The solution for this problem is to start the worker nodes more slo
 Problems getting a SLURM cluster to work
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-A class of issues exist with starting Ray on SLURM clusters. While the exact causes aren't understood, (as of June 2023), some Ray 
+A class of issues exist with starting Ray on SLURM clusters. While the exact causes aren't understood, (as of June 2023), some Ray
 improvements mitigate some of the resource contention. Some of the issues
 reported are as follows:
 
@@ -89,7 +89,7 @@ reported are as follows:
   starting Ray to verify that the allocations are as expected. For more
   detailed information see :ref:`ray-slurm-deploy`.
 
-.. _`known OpenBLAS limitation`: https://github.com/xianyi/OpenBLAS/wiki/faq#how-can-i-use-openblas-in-multi-threaded-applications
+.. _`known OpenBLAS limitation`: http://www.openmathlib.org/OpenBLAS/docs/faq/#how-can-i-use-openblas-in-multi-threaded-applications
 
 Where does my Ray Job entrypoint script run? On the head node or worker nodes?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

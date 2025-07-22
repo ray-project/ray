@@ -1,6 +1,6 @@
-load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_library_public")
-load("@bazel_skylib//rules:copy_file.bzl", "copy_file")
 load("@bazel_common//tools/maven:pom_file.bzl", "pom_file")
+load("@bazel_skylib//rules:copy_file.bzl", "copy_file")
+load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_library_public")
 load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
 
 COPTS_WITHOUT_LOG = select({
@@ -11,7 +11,12 @@ COPTS_WITHOUT_LOG = select({
         # TODO(mehrdadn): (How to) support dynamic linking?
         "-DRAY_STATIC",
     ],
-    "//conditions:default": [],
+    "//conditions:default": [
+        "-Wunused-result",
+        "-Wconversion-null",
+        "-Wno-misleading-indentation",
+        "-Wimplicit-fallthrough",
+    ],
 }) + select({
     "//:clang-cl": [
         "-Wno-builtin-macro-redefined",  # To get rid of warnings caused by deterministic build macros (e.g. #define __DATE__ "redacted")
@@ -27,6 +32,8 @@ PYX_COPTS = select({
     "//conditions:default": [
         # Ignore this warning since CPython and Cython have issue removing deprecated tp_print on MacOS
         "-Wno-deprecated-declarations",
+        "-Wno-shadow",
+        "-Wno-implicit-fallthrough",
     ],
 }) + select({
     "@platforms//os:windows": [
@@ -99,47 +106,21 @@ def copy_to_workspace(name, srcs, dstdir = ""):
         outs = [name + ".out"],
         cmd = r"""
             mkdir -p -- {dstdir}
+            echo "name={name}" > $@
+            echo "dstdir={dstdir}" >> $@
+            echo "----" >> $@
             for f in {locations}; do
                 rm -f -- {dstdir}$${{f##*/}}
                 cp -f -- "$$f" {dstdir}
+                if [[ "$$OSTYPE" =~ ^darwin ]]; then shasum "$$f" >> $@ ; else sha1sum "$$f" >> $@ ; fi
             done
-            date > $@
         """.format(
+            name = name,
             locations = src_locations,
             dstdir = "." + ("/" + dstdir.replace("\\", "/")).rstrip("/") + "/",
         ),
         local = 1,
         tags = ["no-cache"],
-    )
-
-def native_java_binary(module_name, name, native_binary_name):
-    """Copy native binary file to different path based on operating systems"""
-    copy_file(
-        name = name + "_darwin",
-        src = native_binary_name,
-        out = module_name + "/src/main/resources/native/darwin/" + name,
-    )
-
-    copy_file(
-        name = name + "_linux",
-        src = native_binary_name,
-        out = module_name + "/src/main/resources/native/linux/" + name,
-    )
-
-    copy_file(
-        name = name + "_windows",
-        src = native_binary_name,
-        out = module_name + "/src/main/resources/native/windows/" + name,
-    )
-
-    native.filegroup(
-        name = name,
-        srcs = select({
-            "@platforms//os:osx": [name + "_darwin"],
-            "@platforms//os:windows": [name + "_windows"],
-            "//conditions:default": [name + "_linux"],
-        }),
-        visibility = ["//visibility:public"],
     )
 
 def native_java_library(module_name, name, native_library_name):
@@ -208,3 +189,10 @@ filter_files_with_suffix = rule(
         "suffix": attr.string(),
     },
 )
+
+# It will be passed to the FlatBuffers compiler when defining flatbuffer_cc_library
+FLATC_ARGS = [
+    "--gen-object-api",
+    "--gen-mutable",
+    "--scoped-enums",
+]

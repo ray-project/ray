@@ -261,31 +261,6 @@ def describe_launch_template_versions_by_name_default(ec2_client_stub, versions)
     )
 
 
-def describe_instance_status_ok(ec2_client_stub, instance_ids):
-    ec2_client_stub.add_response(
-        "describe_instance_status",
-        expected_params={"InstanceIds": instance_ids},
-        service_response={
-            "InstanceStatuses": [
-                {
-                    "InstanceId": instance_id,
-                    "InstanceState": {"Code": 16, "Name": "running"},
-                    "AvailabilityZone": "us-west-2",
-                    "SystemStatus": {
-                        "Status": "ok",
-                        "Details": [{"Status": "passed", "Name": "reachability"}],
-                    },
-                    "InstanceStatus": {
-                        "Status": "ok",
-                        "Details": [{"Status": "passed", "Name": "reachability"}],
-                    },
-                }
-            ]
-            for instance_id in instance_ids
-        },
-    )
-
-
 def get_ec2_cwa_installed_tag_true(ec2_client_stub, node_id):
     ec2_client_stub.add_response(
         "describe_instances",

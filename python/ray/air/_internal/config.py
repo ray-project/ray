@@ -16,7 +16,7 @@ def ensure_only_allowed_dataclass_keys_updated(
     Args:
         dataclass: Dict or dataclass to check.
         allowed_keys: dataclass attribute keys that can have a value different than
-        the default one.
+            the default one.
     """
     default_data = dataclass.__class__()
 

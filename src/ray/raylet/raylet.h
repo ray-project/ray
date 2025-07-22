@@ -15,17 +15,14 @@
 #pragma once
 
 #include <boost/asio.hpp>
-#include <boost/asio/error.hpp>
+#include <memory>
+#include <string>
 
-// clang-format off
-#include "ray/raylet/node_manager.h"
-#include "ray/object_manager/object_manager.h"
 #include "ray/common/asio/instrumented_io_context.h"
-// clang-format on
+#include "ray/object_manager/object_manager.h"
+#include "ray/raylet/node_manager.h"
 
-namespace ray {
-
-namespace raylet {
+namespace ray::raylet {
 
 using rpc::GcsNodeInfo;
 using rpc::NodeSnapshot;
@@ -54,10 +51,10 @@ class Raylet {
          const std::string &node_name,
          const NodeManagerConfig &node_manager_config,
          const ObjectManagerConfig &object_manager_config,
-         std::shared_ptr<gcs::GcsClient> gcs_client,
+         gcs::GcsClient &gcs_client,
          int metrics_export_port,
          bool is_head_node,
-         std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully);
+         NodeManager &node_manager);
 
   /// Start this raylet.
   void Start();
@@ -97,9 +94,9 @@ class Raylet {
   GcsNodeInfo self_node_info_;
 
   /// A client connection to the GCS.
-  std::shared_ptr<gcs::GcsClient> gcs_client_;
+  gcs::GcsClient &gcs_client_;
   /// Manages client requests for task submission and execution.
-  NodeManager node_manager_;
+  NodeManager &node_manager_;
   /// The name of the socket this raylet listens on.
   std::string socket_name_;
 
@@ -109,6 +106,4 @@ class Raylet {
   local_stream_socket socket_;
 };
 
-}  // namespace raylet
-
-}  // namespace ray
+}  // namespace ray::raylet

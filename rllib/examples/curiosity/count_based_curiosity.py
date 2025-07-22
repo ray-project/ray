@@ -16,7 +16,7 @@ limit of 14 to make it almost impossible for a non-curiosity based policy to lea
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack`
+`python [script file name].py`
 
 Use the `--no-curiosity` flag to disable curiosity learning and force your policy
 to be trained on the task w/o the use of intrinsic rewards. With this option, the
@@ -55,6 +55,7 @@ Policy NOT using curiosity:
 [DOES NOT LEARN AT ALL]
 """
 from ray.rllib.connectors.env_to_module import FlattenObservations
+from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.examples.connectors.classes.count_based_curiosity import (
     CountBasedCuriosity,
 )
@@ -67,7 +68,6 @@ from ray.tune.registry import get_trainable_cls
 parser = add_rllib_example_script_args(
     default_reward=0.99, default_iters=200, default_timesteps=1000000
 )
-parser.set_defaults(enable_new_api_stack=True)
 parser.add_argument(
     "--intrinsic-reward-coeff",
     type=float,
@@ -114,7 +114,7 @@ if __name__ == "__main__":
         .env_runners(
             num_envs_per_env_runner=5,
             # Flatten discrete observations (into one-hot vectors).
-            env_to_module_connector=lambda env: FlattenObservations(),
+            env_to_module_connector=lambda env, spaces, device: FlattenObservations(),
         )
         .training(
             # The main code in this example: We add the `CountBasedCuriosity` connector
@@ -127,10 +127,10 @@ if __name__ == "__main__":
             learner_connector=(
                 None if args.no_curiosity else lambda *ags, **kw: CountBasedCuriosity()
             ),
-            num_sgd_iter=10,
+            num_epochs=10,
             vf_loss_coeff=0.01,
         )
-        .rl_module(model_config_dict={"vf_share_layers": True})
+        .rl_module(model_config=DefaultModelConfig(vf_share_layers=True))
     )
 
     run_rllib_example_script_experiment(base_config, args)

@@ -9,6 +9,7 @@ from ray import train, tune
 from ray.air.constants import MAX_REPR_LENGTH
 from ray.data.context import DataContext
 from ray.train import Checkpoint, ScalingConfig
+from ray.train._internal.session import get_session
 from ray.train.trainer import BaseTrainer
 from ray.util.placement_group import get_current_placement_group
 
@@ -135,30 +136,16 @@ def test_repr(ray_start_4_cpus):
     assert len(representation) < MAX_REPR_LENGTH
 
 
-def test_metadata_propagation_base(ray_start_4_cpus):
+def test_metadata_propagation(ray_start_4_cpus):
     class MyTrainer(BaseTrainer):
         def training_loop(self):
-            assert train.get_context().get_metadata() == {"a": 1, "b": 1}
+            assert get_session().metadata == {"a": 1, "b": 1}
             with tempfile.TemporaryDirectory() as path:
                 checkpoint = Checkpoint.from_directory(path)
                 checkpoint.set_metadata({"b": 2, "c": 3})
                 train.report(dict(my_metric=1), checkpoint=checkpoint)
 
     trainer = MyTrainer(metadata={"a": 1, "b": 1})
-    result = trainer.fit()
-    meta_out = result.checkpoint.get_metadata()
-    assert meta_out == {"a": 1, "b": 2, "c": 3}, meta_out
-
-
-def test_metadata_propagation_data_parallel(ray_start_4_cpus):
-    def training_loop(self):
-        assert train.get_context().get_metadata() == {"a": 1, "b": 1}
-        with tempfile.TemporaryDirectory() as path:
-            checkpoint = Checkpoint.from_directory(path)
-            checkpoint.set_metadata({"b": 2, "c": 3})
-            train.report(dict(my_metric=1), checkpoint=checkpoint)
-
-    trainer = DummyTrainer(training_loop, metadata={"a": 1, "b": 1})
     result = trainer.fit()
     meta_out = result.checkpoint.get_metadata()
     assert meta_out == {"a": 1, "b": 2, "c": 3}, meta_out
@@ -188,7 +175,7 @@ def test_large_params(ray_start_4_cpus):
     huge_array = np.zeros(shape=int(1e8))
 
     def training_loop(self):
-        huge_array
+        _ = huge_array
 
     trainer = DummyTrainer(training_loop)
     trainer.fit()

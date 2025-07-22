@@ -23,7 +23,12 @@ import {
   StateApiLogViewerPage,
 } from "./pages/log/Logs";
 import { Metrics } from "./pages/metrics";
-import { DashboardUids, getMetricsInfo } from "./pages/metrics/utils";
+import {
+  DashboardUids,
+  getMetricsInfo,
+  getTimeZoneInfo,
+  TimezoneInfo,
+} from "./pages/metrics/utils";
 import Nodes, { ClusterMainPageLayout } from "./pages/node";
 import { ClusterDetailInfoPage } from "./pages/node/ClusterDetailInfoPage";
 import { ClusterLayout } from "./pages/node/ClusterLayout";
@@ -76,6 +81,10 @@ export type GlobalContextType = {
    */
   grafanaHost: string | undefined;
   /**
+   * The param 'orgId' used in grafana. Default is 1.
+   */
+  grafanaOrgId: string;
+  /**
    * The uids of the dashboards that ray exports that powers the various metrics UIs.
    */
   dashboardUids: DashboardUids | undefined;
@@ -91,6 +100,14 @@ export type GlobalContextType = {
    * The name of the current selected datasource.
    */
   dashboardDatasource: string | undefined;
+  /**
+   * The timezone set on the ray cluster.
+   */
+  serverTimeZone: TimezoneInfo | null | undefined;
+  /**
+   * The globally selected current time zone.
+   */
+  currentTimeZone: string | undefined;
 };
 export const GlobalContext = React.createContext<GlobalContextType>({
   nodeMap: {},
@@ -98,23 +115,31 @@ export const GlobalContext = React.createContext<GlobalContextType>({
   namespaceMap: {},
   metricsContextLoaded: false,
   grafanaHost: undefined,
+  grafanaOrgId: "1",
   dashboardUids: undefined,
   prometheusHealth: undefined,
   sessionName: undefined,
   dashboardDatasource: undefined,
+  serverTimeZone: undefined,
+  currentTimeZone: undefined,
 });
 
 const App = () => {
-  const [context, setContext] = useState<GlobalContextType>({
+  const [currentTimeZone, setCurrentTimeZone] = useState<string>();
+  const [context, setContext] = useState<
+    Omit<GlobalContextType, "currentTimeZone">
+  >({
     nodeMap: {},
     nodeMapByIp: {},
     namespaceMap: {},
     metricsContextLoaded: false,
     grafanaHost: undefined,
+    grafanaOrgId: "1",
     dashboardUids: undefined,
     prometheusHealth: undefined,
     sessionName: undefined,
     dashboardDatasource: undefined,
+    serverTimeZone: undefined,
   });
   useEffect(() => {
     getNodeList().then((res) => {
@@ -140,6 +165,7 @@ const App = () => {
     const doEffect = async () => {
       const {
         grafanaHost,
+        grafanaOrgId,
         sessionName,
         prometheusHealth,
         dashboardUids,
@@ -149,6 +175,7 @@ const App = () => {
         ...existingContext,
         metricsContextLoaded: true,
         grafanaHost,
+        grafanaOrgId,
         dashboardUids,
         sessionName,
         prometheusHealth,
@@ -158,11 +185,36 @@ const App = () => {
     doEffect();
   }, []);
 
+  useEffect(() => {
+    const updateTimezone = async () => {
+      // Sets the initial timezone to localStorage value if it exists
+      const storedTimeZone = localStorage.getItem("timezone");
+      if (storedTimeZone) {
+        setCurrentTimeZone(storedTimeZone);
+      }
+
+      // Fetch the server time zone.
+      const tzInfo = await getTimeZoneInfo();
+
+      const timeZone =
+        storedTimeZone ||
+        tzInfo?.value ||
+        Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+      setCurrentTimeZone(timeZone);
+      setContext((existingContext) => ({
+        ...existingContext,
+        serverTimeZone: tzInfo,
+      }));
+    };
+    updateTimezone();
+  }, []);
+
   return (
     <StyledEngineProvider injectFirst>
       <ThemeProvider theme={lightTheme}>
         <Suspense fallback={Loading}>
-          <GlobalContext.Provider value={context}>
+          <GlobalContext.Provider value={{ ...context, currentTimeZone }}>
             <CssBaseline />
             <HashRouter>
               <Routes>

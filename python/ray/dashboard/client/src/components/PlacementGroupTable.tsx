@@ -15,6 +15,7 @@ import {
 import Autocomplete from "@mui/material/Autocomplete";
 import Pagination from "@mui/material/Pagination";
 import React, { useState } from "react";
+import { CodeDialogButtonWithPreview } from "../common/CodeDialogButton";
 import rowStyles from "../common/RowStyles";
 import { sliceToPage } from "../common/util";
 import { Bundle, PlacementGroup } from "../type/placementGroup";
@@ -24,19 +25,43 @@ import { StatusChip } from "./StatusChip";
 
 const BundleResourceRequirements = ({
   bundles,
-  sx,
 }: {
   bundles: Bundle[];
   sx?: SxProps<Theme>;
 }) => {
+  const resources = bundles.map(({ unit_resources }) => unit_resources);
   return (
-    <Box sx={sx}>
-      {bundles.map(({ unit_resources }, index) => {
-        return `{${Object.entries(unit_resources || {})
-          .map(([key, val]) => `${key}: ${val}`)
-          .join(", ")}}, `;
-      })}
-    </Box>
+    <React.Fragment>
+      {Object.entries(resources).length > 0 ? (
+        <CodeDialogButtonWithPreview
+          title="Required resources"
+          code={JSON.stringify(resources, undefined, 2)}
+        />
+      ) : (
+        "[]"
+      )}
+    </React.Fragment>
+  );
+};
+
+const LabelSelector = ({
+  bundles,
+}: {
+  bundles: Bundle[];
+  sx?: SxProps<Theme>;
+}) => {
+  const labelSelector = bundles.map(({ label_selector }) => label_selector);
+  return (
+    <React.Fragment>
+      {Object.entries(labelSelector).length > 0 ? (
+        <CodeDialogButtonWithPreview
+          title="Label selector"
+          code={JSON.stringify(labelSelector, undefined, 2)}
+        />
+      ) : (
+        "[]"
+      )}
+    </React.Fragment>
   );
 };
 
@@ -63,6 +88,7 @@ const PlacementGroupTable = ({
     { label: "Job Id" },
     { label: "State" },
     { label: "Reserved Resources" },
+    { label: "Label Selector" },
     { label: "Scheduling Detail" },
   ];
 
@@ -180,21 +206,10 @@ const PlacementGroupTable = ({
                     <StatusChip type="placementGroup" status={state} />
                   </TableCell>
                   <TableCell align="center">
-                    <Tooltip
-                      title={<BundleResourceRequirements bundles={bundles} />}
-                      arrow
-                    >
-                      <BundleResourceRequirements
-                        sx={{
-                          display: "block",
-                          width: "100px",
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                        }}
-                        bundles={bundles}
-                      />
-                    </Tooltip>
+                    <BundleResourceRequirements bundles={bundles} />
+                  </TableCell>
+                  <TableCell align="center">
+                    <LabelSelector bundles={bundles} />
                   </TableCell>
                   <TableCell align="center">
                     {stats ? stats.scheduling_state : "-"}

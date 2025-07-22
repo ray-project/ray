@@ -15,15 +15,16 @@
 #pragma once
 
 #include <boost/asio.hpp>
+#include <memory>
 
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/asio/periodical_runner.h"
-#include "ray/gcs/redis_client.h"
 
 namespace ray {
-
 namespace gcs {
-class RedisGcsClient;
+
+// Forward declaration.
+class RedisClient;
 
 /// GcsRedisFailureDetector is responsible for monitoring redis and binding GCS server and
 /// redis life cycle together. GCS client subscribes to redis messages and it cannot sense
@@ -58,7 +59,7 @@ class GcsRedisFailureDetector {
   std::shared_ptr<RedisClient> redis_client_;
 
   /// The runner to run function periodically.
-  std::unique_ptr<PeriodicalRunner> periodical_runner_;
+  std::shared_ptr<PeriodicalRunner> periodical_runner_;
 
   /// A function is called when redis is detected to be unavailable.
   std::function<void()> callback_;

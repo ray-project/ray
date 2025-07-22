@@ -1,15 +1,15 @@
 import asyncio
 import pickle
 import sys
-from typing import Tuple, Union
+from typing import Union
 
 import pytest
 
 import ray
 from ray import ObjectRef, ObjectRefGenerator
-from ray._private.test_utils import SignalActor
-from ray._private.utils import get_or_create_event_loop
-from ray.actor import ActorHandle
+from ray._common.test_utils import SignalActor
+from ray._common.utils import get_or_create_event_loop
+from ray.exceptions import TaskCancelledError
 from ray.serve._private.common import (
     DeploymentID,
     ReplicaID,
@@ -17,10 +17,8 @@ from ray.serve._private.common import (
     RequestMetadata,
     RunningReplicaInfo,
 )
-from ray.serve._private.replica_scheduler.common import (
-    ActorReplicaWrapper,
-    PendingRequest,
-)
+from ray.serve._private.request_router.common import PendingRequest
+from ray.serve._private.request_router.replica_wrapper import RunningReplica
 from ray.serve._private.test_utils import send_signal_on_cancellation
 
 
@@ -68,9 +66,13 @@ class FakeReplicaActor:
         cancelled_signal_actor = kwargs.pop("cancelled_signal_actor", None)
         if cancelled_signal_actor is not None:
             executing_signal_actor = kwargs.pop("executing_signal_actor")
-            await executing_signal_actor.send.remote()
-            await send_signal_on_cancellation(cancelled_signal_actor)
-            return
+            async with send_signal_on_cancellation(cancelled_signal_actor):
+                await executing_signal_actor.send.remote()
+
+        # Special case: if "raise_task_cancelled_error" is in kwargs, raise TaskCancelledError
+        # This simulates the scenario where the underlying Ray task gets cancelled
+        if kwargs.pop("raise_task_cancelled_error", False):
+            raise TaskCancelledError()
 
         yield pickle.dumps(self._replica_queue_length_info)
         if not self._replica_queue_length_info.accepted:
@@ -87,29 +89,23 @@ class FakeReplicaActor:
 
 
 @pytest.fixture
-def setup_fake_replica(ray_instance) -> Tuple[ActorReplicaWrapper, ActorHandle]:
+def setup_fake_replica(ray_instance) -> RunningReplica:
     actor_handle = FakeReplicaActor.remote()
-    return (
-        ActorReplicaWrapper(
-            RunningReplicaInfo(
-                ReplicaID(
-                    "fake_replica", deployment_id=DeploymentID(name="fake_deployment")
-                ),
-                node_id=None,
-                availability_zone=None,
-                actor_handle=actor_handle,
-                max_ongoing_requests=10,
-                is_cross_language=False,
-            )
-        ),
-        actor_handle,
+    return RunningReplicaInfo(
+        ReplicaID("fake_replica", deployment_id=DeploymentID(name="fake_deployment")),
+        node_id=None,
+        node_ip=None,
+        availability_zone=None,
+        actor_handle=actor_handle,
+        max_ongoing_requests=10,
+        is_cross_language=False,
     )
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("is_streaming", [False, True])
-async def test_send_request(setup_fake_replica, is_streaming: bool):
-    replica, _ = setup_fake_replica
+async def test_send_request_without_rejection(setup_fake_replica, is_streaming: bool):
+    replica = RunningReplica(setup_fake_replica)
 
     pr = PendingRequest(
         args=["Hello"],
@@ -117,19 +113,18 @@ async def test_send_request(setup_fake_replica, is_streaming: bool):
         metadata=RequestMetadata(
             request_id="abc",
             internal_request_id="def",
-            endpoint="123",
             is_streaming=is_streaming,
         ),
     )
-    obj_ref_or_gen = replica.send_request(pr)
+    replica_result, _ = await replica.send_request(pr, with_rejection=False)
     if is_streaming:
-        assert isinstance(obj_ref_or_gen, ObjectRefGenerator)
+        assert isinstance(replica_result.to_object_ref_gen(), ObjectRefGenerator)
         for i in range(5):
-            next_obj_ref = await obj_ref_or_gen.__anext__()
-            assert await next_obj_ref == f"Hello-{i}"
+            assert await replica_result.__anext__() == f"Hello-{i}"
     else:
-        assert isinstance(obj_ref_or_gen, ObjectRef)
-        assert await obj_ref_or_gen == "Hello"
+        assert isinstance(replica_result.to_object_ref(), ObjectRef)
+        assert isinstance(await replica_result.to_object_ref_async(), ObjectRef)
+        assert await replica_result.get_async() == "Hello"
 
 
 @pytest.mark.asyncio
@@ -138,7 +133,8 @@ async def test_send_request(setup_fake_replica, is_streaming: bool):
 async def test_send_request_with_rejection(
     setup_fake_replica, accepted: bool, is_streaming: bool
 ):
-    replica, actor_handle = setup_fake_replica
+    actor_handle = setup_fake_replica.actor_handle
+    replica = RunningReplica(setup_fake_replica)
     ray.get(
         actor_handle.set_replica_queue_length_info.remote(
             ReplicaQueueLengthInfo(accepted=accepted, num_ongoing_requests=10),
@@ -151,24 +147,22 @@ async def test_send_request_with_rejection(
         metadata=RequestMetadata(
             request_id="abc",
             internal_request_id="def",
-            endpoint="123",
             is_streaming=is_streaming,
         ),
     )
-    obj_ref_or_gen, info = await replica.send_request_with_rejection(pr)
+    replica_result, info = await replica.send_request(pr, with_rejection=True)
     assert info.accepted == accepted
     assert info.num_ongoing_requests == 10
     if not accepted:
-        assert obj_ref_or_gen is None
+        assert replica_result is None
     elif is_streaming:
-        assert isinstance(obj_ref_or_gen, ObjectRefGenerator)
+        assert isinstance(replica_result.to_object_ref_gen(), ObjectRefGenerator)
         for i in range(5):
-            next_obj_ref = await obj_ref_or_gen.__anext__()
-            assert await next_obj_ref == f"Hello-{i}"
+            assert await replica_result.__anext__() == f"Hello-{i}"
     else:
-        assert isinstance(obj_ref_or_gen, ObjectRefGenerator)
-        obj_ref = await obj_ref_or_gen.__anext__()
-        assert await obj_ref == "Hello"
+        assert isinstance(replica_result.to_object_ref(), ObjectRef)
+        assert isinstance(await replica_result.to_object_ref_async(), ObjectRef)
+        assert await replica_result.get_async() == "Hello"
 
 
 @pytest.mark.asyncio
@@ -177,7 +171,7 @@ async def test_send_request_with_rejection_cancellation(setup_fake_replica):
     Verify that the downstream actor method call is cancelled if the call to send the
     request to the replica is cancelled.
     """
-    replica, actor_handle = setup_fake_replica
+    replica = RunningReplica(setup_fake_replica)
 
     executing_signal_actor = SignalActor.remote()
     cancelled_signal_actor = SignalActor.remote()
@@ -191,14 +185,13 @@ async def test_send_request_with_rejection_cancellation(setup_fake_replica):
         metadata=RequestMetadata(
             request_id="abc",
             internal_request_id="def",
-            endpoint="123",
         ),
     )
 
     # Send request should hang because the downstream actor method call blocks
     # before sending the system message.
     send_request_task = get_or_create_event_loop().create_task(
-        replica.send_request_with_rejection(pr)
+        replica.send_request(pr, with_rejection=True)
     )
 
     # Check that the downstream actor method call has started.
@@ -214,6 +207,38 @@ async def test_send_request_with_rejection_cancellation(setup_fake_replica):
         await send_request_task
 
     await cancelled_signal_actor.wait.remote()
+
+
+@pytest.mark.asyncio
+async def test_send_request_with_rejection_task_cancelled_error(setup_fake_replica):
+    """
+    Test that TaskCancelledError from the underlying Ray task gets converted to
+    asyncio.CancelledError when sending request with rejection.
+    """
+    actor_handle = setup_fake_replica.actor_handle
+    replica = RunningReplica(setup_fake_replica)
+
+    # Set up the replica to accept the request
+    ray.get(
+        actor_handle.set_replica_queue_length_info.remote(
+            ReplicaQueueLengthInfo(accepted=True, num_ongoing_requests=5),
+        )
+    )
+
+    pr = PendingRequest(
+        args=["Hello"],
+        kwargs={
+            "raise_task_cancelled_error": True
+        },  # This will trigger TaskCancelledError
+        metadata=RequestMetadata(
+            request_id="abc",
+            internal_request_id="def",
+        ),
+    )
+
+    # The TaskCancelledError should be caught and converted to asyncio.CancelledError
+    with pytest.raises(asyncio.CancelledError):
+        await replica.send_request(pr, with_rejection=True)
 
 
 if __name__ == "__main__":

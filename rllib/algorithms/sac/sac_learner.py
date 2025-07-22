@@ -2,13 +2,13 @@ import numpy as np
 
 from typing import Dict
 
-from ray.rllib.algorithms.dqn.dqn_rainbow_learner import DQNRainbowLearner
+from ray.rllib.algorithms.dqn.dqn_learner import DQNLearner
 from ray.rllib.core.learner.learner import Learner
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.lambda_defaultdict import LambdaDefaultDict
 from ray.rllib.utils.typing import ModuleID, TensorType
 
-# Now, this is double defined: In `SACRLModule` and here. I would keep it here
+# Now, this is double defined: In `DefaultSACRLModule` and here. I would keep it here
 # or push it into the `Learner` as these are recurring keys in RL.
 LOGPS_KEY = "logps"
 QF_LOSS_KEY = "qf_loss"
@@ -21,9 +21,14 @@ QF_TWIN_PREDS = "qf_twin_preds"
 TD_ERROR_MEAN_KEY = "td_error_mean"
 CRITIC_TARGET = "critic_target"
 ACTION_DIST_INPUTS_NEXT = "action_dist_inputs_next"
+QF_TARGET_NEXT = "q_target_next"
+ACTION_PROBS_NEXT = "action_probs_next"
+ACTION_LOG_PROBS_NEXT = "action_log_probs_next"
+ACTION_PROBS = "action_probs"
+ACTION_LOG_PROBS = "action_log_probs"
 
 
-class SACLearner(DQNRainbowLearner):
+class SACLearner(DQNLearner):
     @override(Learner)
     def build(self) -> None:
         # Store the current alpha in log form. We need it during optimization

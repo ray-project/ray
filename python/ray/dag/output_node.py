@@ -19,8 +19,6 @@ class MultiOutputNode(DAGNode):
             args = list(args)
         if not isinstance(args, list):
             raise ValueError(f"Invalid input type for `args`, {type(args)}.")
-        if not isinstance(args, list):
-            args = (args,)
         super().__init__(
             args,
             {},

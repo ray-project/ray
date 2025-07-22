@@ -14,6 +14,9 @@
 
 #include "ray/object_manager/plasma/get_request_queue.h"
 
+#include <memory>
+#include <vector>
+
 namespace plasma {
 
 GetRequest::GetRequest(instrumented_io_context &io_context,

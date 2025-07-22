@@ -2,7 +2,7 @@
 import time
 
 import ray
-from ray import train, tune
+from ray import tune
 
 
 def evaluation_fn(step, width, height):
@@ -18,7 +18,7 @@ def easy_objective(config):
         # Iterative training function - can be any arbitrary training procedure
         intermediate_score = evaluation_fn(step, width, height)
         # Feed the score back back to Tune.
-        train.report({"iterations": step, "mean_loss": intermediate_score})
+        tune.report({"iterations": step, "mean_loss": intermediate_score})
 
 
 if __name__ == "__main__":

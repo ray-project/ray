@@ -2,7 +2,7 @@ import numpy as np
 
 from ray.rllib.utils.typing import TensorType
 from ray.rllib.utils.framework import try_import_torch, try_import_tf
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import DeveloperAPI
 
 torch, _ = try_import_torch()
 _, tf, _ = try_import_tf()
@@ -52,7 +52,7 @@ torch_to_numpy_dtype_dict = {
 tf_to_numpy_dtype_dict = {value: key for (key, value) in numpy_to_tf_dtype_dict.items()}
 
 
-@PublicAPI(stability="alpha")
+@DeveloperAPI
 def get_np_dtype(x: TensorType) -> np.dtype:
     """Returns the NumPy dtype of the given tensor or array."""
     if torch and isinstance(x, torch.Tensor):

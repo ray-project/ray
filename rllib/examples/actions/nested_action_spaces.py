@@ -22,12 +22,8 @@ parser = add_rllib_example_script_args(default_timesteps=200000, default_reward=
 if __name__ == "__main__":
     args = parser.parse_args()
 
-    assert (
-        args.enable_new_api_stack
-    ), "Must set --enable-new-api-stack when running this script!"
-
     # Define env-to-module-connector pipeline for the new stack.
-    def _env_to_module_pipeline(env):
+    def _env_to_module_pipeline(env, spaces, device):
         return FlattenObservations(multi_agent=args.num_agents > 0)
 
     # Register our environment with tune.
@@ -66,9 +62,6 @@ if __name__ == "__main__":
         .training(
             gamma=0.0,
             lr=0.0005,
-            model=(
-                {} if not args.enable_new_api_stack else {"uses_new_env_runners": True}
-            ),
         )
     )
 
@@ -84,7 +77,7 @@ if __name__ == "__main__":
         base_config.training(
             # We don't want high entropy in this Env.
             entropy_coeff=0.00005,
-            num_sgd_iter=4,
+            num_epochs=4,
             vf_loss_coeff=0.01,
         )
 

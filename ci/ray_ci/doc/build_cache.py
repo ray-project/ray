@@ -27,7 +27,7 @@ class BuildCache:
         """
         self._cache_dir = cache_dir
 
-    def upload(self) -> None:
+    def upload(self, dry_run: bool) -> None:
         """
         Upload the build artifacts to S3
         """
@@ -39,6 +39,10 @@ class BuildCache:
 
         logger.info("Creating a tarball of the cache files.")
         doc_tarball = self._zip_cache(cache_files)
+
+        if dry_run:
+            logger.info(f"Skipping upload of {doc_tarball} to S3.")
+            return
 
         logger.info("Upload the tarball to S3.")
         self._upload_cache(doc_tarball)

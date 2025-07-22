@@ -17,7 +17,7 @@ limit of 16 to make it almost impossible for a non-curriculum policy to learn.
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack`
+`python [script file name].py`
 
 Use the `--no-curriculum` flag to disable curriculum learning and force your policy
 to be trained on the hardest task right away. With this option, the algorithm should NOT
@@ -56,10 +56,11 @@ Policy NOT using the curriculum (trying to solve the hardest task right away):
 """
 from functools import partial
 
-from ray.air.constants import TRAINING_ITERATION
+from ray.tune.result import TRAINING_ITERATION
 from ray.rllib.algorithms.algorithm import Algorithm
-from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.callbacks.callbacks import RLlibCallback
 from ray.rllib.connectors.env_to_module import FlattenObservations
+from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     EPISODE_RETURN_MEAN,
@@ -72,7 +73,6 @@ from ray.rllib.utils.test_utils import (
 from ray.tune.registry import get_trainable_cls
 
 parser = add_rllib_example_script_args(default_iters=100, default_timesteps=600000)
-parser.set_defaults(enable_new_api_stack=True)
 parser.add_argument(
     "--upgrade-task-threshold",
     type=float,
@@ -145,7 +145,7 @@ def _remote_fn(env_runner, new_task: int):
     env_runner.make_env()
 
 
-class EnvTaskCallback(DefaultCallbacks):
+class EnvTaskCallback(RLlibCallback):
     """Custom callback implementing `on_train_result()` for changing the envs' maps."""
 
     def on_train_result(
@@ -174,7 +174,7 @@ class EnvTaskCallback(DefaultCallbacks):
                     f"Switching task/map on all EnvRunners to #{new_task} (0=easiest, "
                     f"2=hardest), b/c R={current_return} on current task."
                 )
-                algorithm.env_runner_group.foreach_worker(
+                algorithm.env_runner_group.foreach_env_runner(
                     func=partial(_remote_fn, new_task=new_task)
                 )
                 algorithm._counters["current_env_task"] = new_task
@@ -189,7 +189,7 @@ class EnvTaskCallback(DefaultCallbacks):
                 "Emergency brake: Our policy seemed to have collapsed -> Setting task "
                 "back to 0."
             )
-            algorithm.env_runner_group.foreach_worker(
+            algorithm.env_runner_group.foreach_env_runner(
                 func=partial(_remote_fn, new_task=0)
             )
             algorithm._counters["current_env_task"] = 0
@@ -215,14 +215,14 @@ if __name__ == "__main__":
         )
         .env_runners(
             num_envs_per_env_runner=5,
-            env_to_module_connector=lambda env: FlattenObservations(),
+            env_to_module_connector=lambda env, spaces, device: FlattenObservations(),
         )
         .training(
-            num_sgd_iter=6,
+            num_epochs=6,
             vf_loss_coeff=0.01,
             lr=0.0002,
         )
-        .rl_module(model_config_dict={"vf_share_layers": True})
+        .rl_module(model_config=DefaultModelConfig(vf_share_layers=True))
     )
 
     stop = {

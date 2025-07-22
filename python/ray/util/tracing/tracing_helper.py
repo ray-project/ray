@@ -331,14 +331,10 @@ def _inject_tracing_into_function(function):
     if not _is_tracing_enabled():
         return function
 
-    setattr(
+    function.__signature__ = _add_param_to_signature(
         function,
-        "__signature__",
-        _add_param_to_signature(
-            function,
-            inspect.Parameter(
-                "_ray_trace_ctx", inspect.Parameter.KEYWORD_ONLY, default=None
-            ),
+        inspect.Parameter(
+            "_ray_trace_ctx", inspect.Parameter.KEYWORD_ONLY, default=None
         ),
     )
 
@@ -420,14 +416,12 @@ def _tracing_actor_method_invocation(method):
         **_kwargs: Any,
     ) -> Any:
         # If tracing feature flag is not on, perform a no-op
-        if not _is_tracing_enabled() or self._actor_ref()._ray_is_cross_language:
+        if not _is_tracing_enabled() or self._actor._ray_is_cross_language:
             if kwargs is not None:
                 assert "_ray_trace_ctx" not in kwargs
             return method(self, args, kwargs, *_args, **_kwargs)
 
-        class_name = (
-            self._actor_ref()._ray_actor_creation_function_descriptor.class_name
-        )
+        class_name = self._actor._ray_actor_creation_function_descriptor.class_name
         method_name = self._method_name
         assert "_ray_trace_ctx" not in _kwargs
 
@@ -440,7 +434,7 @@ def _tracing_actor_method_invocation(method):
             # Inject a _ray_trace_ctx as a dictionary
             kwargs["_ray_trace_ctx"] = _DictPropagator.inject_current_context()
 
-            span.set_attribute("ray.actor_id", self._actor_ref()._ray_actor_id.hex())
+            span.set_attribute("ray.actor_id", self._actor._ray_actor_id.hex())
 
             return method(self, args, kwargs, *_args, **_kwargs)
 
@@ -541,14 +535,10 @@ def _inject_tracing_into_class(_cls):
             continue
 
         # Add _ray_trace_ctx to method signature
-        setattr(
+        method.__signature__ = _add_param_to_signature(
             method,
-            "__signature__",
-            _add_param_to_signature(
-                method,
-                inspect.Parameter(
-                    "_ray_trace_ctx", inspect.Parameter.KEYWORD_ONLY, default=None
-                ),
+            inspect.Parameter(
+                "_ray_trace_ctx", inspect.Parameter.KEYWORD_ONLY, default=None
             ),
         )
 

@@ -147,8 +147,8 @@ def test_write_creates_dir(tmp_path, ray_start_regular_shared):
     assert os.path.isdir(path)
 
 
-@pytest.mark.parametrize("num_rows_per_file", [5, 10, 50])
-def test_write_num_rows_per_file(tmp_path, ray_start_regular_shared, num_rows_per_file):
+@pytest.mark.parametrize("min_rows_per_file", [5, 10, 50])
+def test_write_min_rows_per_file(tmp_path, ray_start_regular_shared, min_rows_per_file):
     class MockFileDatasink(BlockBasedFileDatasink):
         def write_block_to_file(self, block: BlockAccessor, file: "pyarrow.NativeFile"):
             for _ in range(block.num_rows()):
@@ -157,14 +157,14 @@ def test_write_num_rows_per_file(tmp_path, ray_start_regular_shared, num_rows_pe
     ds = ray.data.range(100, override_num_blocks=20)
 
     ds.write_datasink(
-        MockFileDatasink(path=tmp_path, num_rows_per_file=num_rows_per_file)
+        MockFileDatasink(path=tmp_path, min_rows_per_file=min_rows_per_file)
     )
 
     num_rows_written_total = 0
     for filename in os.listdir(tmp_path):
         with open(os.path.join(tmp_path, filename), "r") as file:
             num_rows_written = len(file.read().splitlines())
-            assert num_rows_written == num_rows_per_file
+            assert num_rows_written == min_rows_per_file
             num_rows_written_total += num_rows_written
 
     assert num_rows_written_total == 100

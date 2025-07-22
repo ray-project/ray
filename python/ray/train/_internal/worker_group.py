@@ -45,7 +45,7 @@ class WorkerMetadata:
         node_ip: IP address of the node this worker is on.
         hostname: Hostname that this worker is on.
         resource_ids: Map of accelerator resources
-        ("GPU", "neuron_cores", ..) to their IDs.
+            ("GPU", "neuron_cores", ..) to their IDs.
         pid: Process ID of this worker.
     """
 

@@ -20,14 +20,12 @@ public class ServeProtoUtilTest {
         RequestMetadata.newBuilder()
             .setRequestId(requestId)
             .setCallMethod(callMethod)
-            .setEndpoint(endpoint)
             .putContext("context", context)
             .build();
 
     RequestMetadata result = ServeProtoUtil.parseRequestMetadata(requestMetadata.toByteArray());
     Assert.assertNotNull(result);
     Assert.assertEquals(result.getCallMethod(), callMethod);
-    Assert.assertEquals(result.getEndpoint(), endpoint);
     Assert.assertEquals(result.getRequestId(), requestId);
     Assert.assertEquals(result.getContextMap().get("context"), context);
   }

@@ -1,4 +1,3 @@
-import os
 import sys
 import subprocess
 import pytest
@@ -25,7 +24,7 @@ def test_auto_detected_more_than_visible(
     # Test more neuron_cores are detected than visible.
     monkeypatch.setenv("NEURON_RT_VISIBLE_CORES", "0,1,2")
     ray.init()
-    mock_get_num_accelerators.called
+    _ = mock_get_num_accelerators.called
     assert ray.available_resources()["neuron_cores"] == 3
 
 
@@ -36,7 +35,7 @@ def test_auto_detected_more_than_visible(
 def test_auto_detect_resources(mock_get_num_accelerators, shutdown_only):
     # Test that ray node resources are filled with auto detected count.
     ray.init()
-    mock_get_num_accelerators.called
+    _ = mock_get_num_accelerators.called
     assert ray.available_resources()["neuron_cores"] == 2
 
 
@@ -101,7 +100,4 @@ def test_get_neuron_core_count_failure_with_empty_results(mock_isdir, mock_subpr
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

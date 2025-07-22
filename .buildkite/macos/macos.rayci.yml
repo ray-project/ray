@@ -12,10 +12,11 @@ steps:
     tags:
       - macos_wheels
       - python_dependencies
+      - release_wheels
     job_env: MACOS
     instance_type: macos
     commands:
-      - ./ci/ray_ci/macos/macos_ci_build.sh build_x86_64
+      - bash ci/ray_ci/macos/macos_ci_build.sh
 
   - label: ":tapioca: build: :mac: wheels and jars (aarch64)"
     key: macos_wheels_arm64
@@ -23,10 +24,11 @@ steps:
     tags:
       - macos_wheels
       - python_dependencies
+      - release_wheels
     job_env: MACOS
     instance_type: macos-arm64
     commands:
-      - ./ci/ray_ci/macos/macos_ci_build.sh build_aarch64
+      - bash ci/ray_ci/macos/macos_ci_build.sh
 
   # test
   - label: ":ray: core: :mac: small & client tests"
@@ -37,7 +39,7 @@ steps:
       - macos_wheels
       - oss
     job_env: MACOS
-    instance_type: macos
+    instance_type: macos-arm64
     commands:
       - ./ci/ray_ci/macos/macos_ci.sh run_small_test
 
@@ -49,7 +51,7 @@ steps:
       - macos_wheels
       - oss
     job_env: MACOS
-    instance_type: macos
+    instance_type: macos-arm64
     commands:
       - ./ci/ray_ci/macos/macos_ci.sh run_medium_a_j_test
 
@@ -61,7 +63,7 @@ steps:
       - macos_wheels
       - oss
     job_env: MACOS
-    instance_type: macos
+    instance_type: macos-arm64
     commands:
       - ./ci/ray_ci/macos/macos_ci.sh run_medium_k_z_test
 
@@ -73,7 +75,7 @@ steps:
       - macos_wheels
       - oss
     job_env: MACOS
-    instance_type: macos
+    instance_type: macos-arm64
     parallelism: 3
     commands:
       - ./ci/ray_ci/macos/macos_ci.sh run_large_test
@@ -87,7 +89,7 @@ steps:
       - macos_wheels
       - oss
     job_env: MACOS
-    instance_type: macos
+    instance_type: macos-arm64
     commands:
       - ./ci/ray_ci/macos/macos_ci.sh run_core_dashboard_test
 
@@ -111,9 +113,10 @@ steps:
       - python
       - macos_wheels
       - oss
+      - flaky
       - skip_on_premerge
     job_env: MACOS
-    instance_type: macos
+    instance_type: macos-arm64
     soft_fail: true
     commands:
       - ./ci/ray_ci/macos/macos_ci.sh run_flaky_tests

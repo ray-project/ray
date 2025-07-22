@@ -27,15 +27,15 @@ import {
 export const APPS_METRICS_CONFIG: MetricConfig[] = [
   {
     title: "QPS per application",
-    pathParams: "orgId=1&theme=light&panelId=7",
+    pathParams: "theme=light&panelId=7",
   },
   {
     title: "Error QPS per application",
-    pathParams: "orgId=1&theme=light&panelId=8",
+    pathParams: "theme=light&panelId=8",
   },
   {
     title: "P90 latency per application",
-    pathParams: "orgId=1&theme=light&panelId=15",
+    pathParams: "theme=light&panelId=15",
   },
 ];
 
@@ -43,27 +43,27 @@ export const APPS_METRICS_CONFIG: MetricConfig[] = [
 export const SERVE_SYSTEM_METRICS_CONFIG: MetricConfig[] = [
   {
     title: "Ongoing HTTP Requests",
-    pathParams: "orgId=1&theme=light&panelId=20",
+    pathParams: "theme=light&panelId=20",
   },
   {
     title: "Ongoing gRPC Requests",
-    pathParams: "orgId=1&theme=light&panelId=21",
+    pathParams: "theme=light&panelId=21",
   },
   {
     title: "Scheduling Tasks",
-    pathParams: "orgId=1&theme=light&panelId=22",
+    pathParams: "theme=light&panelId=22",
   },
   {
     title: "Scheduling Tasks in Backoff",
-    pathParams: "orgId=1&theme=light&panelId=23",
+    pathParams: "theme=light&panelId=23",
   },
   {
     title: "Controller Control Loop Duration",
-    pathParams: "orgId=1&theme=light&panelId=24",
+    pathParams: "theme=light&panelId=24",
   },
   {
     title: "Number of Control Loops",
-    pathParams: "orgId=1&theme=light&panelId=25",
+    pathParams: "theme=light&panelId=25",
   },
 ];
 
@@ -77,8 +77,14 @@ export const ServeMetricsSection = ({
   metricsConfig,
   sx,
 }: ServeMetricsSectionProps) => {
-  const { grafanaHost, prometheusHealth, dashboardUids, dashboardDatasource } =
-    useContext(GlobalContext);
+  const {
+    grafanaHost,
+    grafanaOrgId,
+    prometheusHealth,
+    dashboardUids,
+    dashboardDatasource,
+    currentTimeZone,
+  } = useContext(GlobalContext);
   const grafanaServeDashboardUid = dashboardUids?.serve ?? "rayServeDashboard";
   const [refreshOption, setRefreshOption] = useState<RefreshOptions>(
     RefreshOptions.FIVE_SECONDS,
@@ -125,7 +131,7 @@ export const ServeMetricsSection = ({
           }}
         >
           <Button
-            href={`${grafanaHost}/d/${grafanaServeDashboardUid}?var-datasource=${dashboardDatasource}`}
+            href={`${grafanaHost}/d/${grafanaServeDashboardUid}?orgId=${grafanaOrgId}&var-datasource=${dashboardDatasource}`}
             target="_blank"
             rel="noopener noreferrer"
             endIcon={<RiExternalLinkLine />}
@@ -195,8 +201,8 @@ export const ServeMetricsSection = ({
         >
           {metricsConfig.map(({ title, pathParams }) => {
             const path =
-              `/d-solo/${grafanaServeDashboardUid}?${pathParams}` +
-              `${refreshParams}${timeRangeParams}&var-datasource=${dashboardDatasource}`;
+              `/d-solo/${grafanaServeDashboardUid}?orgId=${grafanaOrgId}&${pathParams}` +
+              `${refreshParams}&timezone=${currentTimeZone}${timeRangeParams}&var-datasource=${dashboardDatasource}`;
             return (
               <Paper
                 key={pathParams}

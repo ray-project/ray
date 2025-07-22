@@ -12,8 +12,8 @@ VERSION_1.0 {
         InitRayRuntime;
         # If the symbols of absl::flags are hidden, and the users also use the absl::flags library,
         # then the flags feature will bring issues, e.g. `ERROR: Unknown command line flag`.
-        *absl*; 
+        *absl*;
         FLAGS_*;
-    local: 
+    local:
         *;
 };

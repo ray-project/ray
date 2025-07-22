@@ -11,17 +11,37 @@ import pytest
 
 import ray
 import ray.util.state
+from ray._common.test_utils import wait_for_condition
+from ray._private.arrow_utils import get_pyarrow_version
 from ray._private.internal_api import get_memory_info_reply, get_state_from_address
-from ray._private.utils import _get_pyarrow_version
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.tensor_extensions.arrow import ArrowTensorArray
+from ray.data import Schema
 from ray.data.block import BlockExecStats, BlockMetadata
+from ray.data.context import DataContext, ShuffleStrategy
 from ray.data.tests.mock_server import *  # noqa
 
 # Trigger pytest hook to automatically zip test cluster logs to archive dir on failure
 from ray.tests.conftest import *  # noqa
-from ray.tests.conftest import pytest_runtest_makereport  # noqa
-from ray.tests.conftest import _ray_start, wait_for_condition
+from ray.tests.conftest import _ray_start
+from ray.util.debug import reset_log_once
+
+
+@pytest.fixture(scope="module")
+def data_context_override(request):
+    overrides = getattr(request, "param", {})
+
+    ctx = DataContext.get_current()
+    copy = ctx.copy()
+
+    for k, v in overrides.items():
+        assert hasattr(ctx, k), f"Key '{k}' not found in DataContext"
+
+        setattr(ctx, k, v)
+
+    yield ctx
+
+    DataContext._set_current(copy)
 
 
 @pytest.fixture(scope="module")
@@ -121,7 +141,7 @@ def _s3_fs(aws_credentials, s3_server, s3_path):
 
     kwargs = aws_credentials.copy()
 
-    if parse_version(_get_pyarrow_version()) >= parse_version("9.0.0"):
+    if get_pyarrow_version() >= parse_version("9.0.0"):
         kwargs["allow_bucket_creation"] = True
         kwargs["allow_bucket_deletion"] = True
 
@@ -217,7 +237,7 @@ def assert_base_partitioned_ds():
         count=6,
         num_input_files=2,
         num_rows=6,
-        schema="{one: int64, two: string}",
+        schema=Schema(pa.schema([("one", pa.int64()), ("two", pa.string())])),
         sorted_values=None,
         ds_take_transform_fn=None,
         sorted_values_transform_fn=None,
@@ -238,28 +258,9 @@ def assert_base_partitioned_ds():
         assert not ds._plan.has_started_execution
         assert ds.count() == count, f"{ds.count()} != {count}"
         assert ds.size_bytes() > 0, f"{ds.size_bytes()} <= 0"
-        assert ds.schema() is not None
+        assert ds.schema() == schema
         actual_input_files = ds.input_files()
         assert len(actual_input_files) == num_input_files, actual_input_files
-
-        # For Datasets with long string representations, the format will include
-        # whitespace and newline characters, which is difficult to generalize
-        # without implementing the formatting logic again (from
-        # `ExecutionPlan.get_plan_as_string()`). Therefore, we remove whitespace
-        # characters to test the string contents regardless of the string repr length.
-        def _remove_whitespace(ds_str):
-            for c in ["\n", "   ", " "]:
-                ds_str = ds_str.replace(c, "")
-            return ds_str
-
-        assert "Dataset(num_rows={},schema={})".format(
-            num_rows,
-            _remove_whitespace(schema),
-        ) == _remove_whitespace(str(ds)), ds
-        assert "Dataset(num_rows={},schema={})".format(
-            num_rows,
-            _remove_whitespace(schema),
-        ) == _remove_whitespace(repr(ds)), ds
 
         # Force a data read.
         values = ds_take_transform_fn(ds.take_all())
@@ -274,18 +275,56 @@ def assert_base_partitioned_ds():
 @pytest.fixture
 def restore_data_context(request):
     """Restore any DataContext changes after the test runs"""
-    original = copy.deepcopy(ray.data.context.DataContext.get_current())
-    yield
+    ctx = ray.data.context.DataContext.get_current()
+    original = copy.deepcopy(ctx)
+    yield ctx
     ray.data.context.DataContext._set_current(original)
 
 
-@pytest.fixture(params=[True, False])
-def use_push_based_shuffle(request):
+@pytest.fixture
+def disable_fallback_to_object_extension(request, restore_data_context):
+    """Disables fallback to ArrowPythonObjectType"""
+    ray.data.context.DataContext.get_current().enable_fallback_to_arrow_object_ext_type = (
+        False
+    )
+
+
+@pytest.fixture(params=[s for s in ShuffleStrategy])  # noqa: C416
+def configure_shuffle_method(request):
+    shuffle_strategy = request.param
+
     ctx = ray.data.context.DataContext.get_current()
-    original = ctx.use_push_based_shuffle
-    ctx.use_push_based_shuffle = request.param
+
+    original_shuffle_strategy = ctx.shuffle_strategy
+    original_default_hash_shuffle_parallelism = ctx.default_hash_shuffle_parallelism
+
+    ctx.shuffle_strategy = shuffle_strategy
+
+    # NOTE: We override default parallelism for hash-based shuffling to
+    #       avoid excessive partitioning of the data (to achieve desired
+    #       parallelism
+    if shuffle_strategy == ShuffleStrategy.HASH_SHUFFLE:
+        ctx.default_hash_shuffle_parallelism = 8
+
     yield request.param
-    ctx.use_push_based_shuffle = original
+
+    ctx.shuffle_strategy = original_shuffle_strategy
+    ctx.default_hash_shuffle_parallelism = original_default_hash_shuffle_parallelism
+
+
+@pytest.fixture(params=[True, False])
+def use_polars_sort(request):
+    use_polars_sort = request.param
+
+    ctx = ray.data.context.DataContext.get_current()
+
+    original_use_polars = ctx.use_polars_sort
+
+    ctx.use_polars_sort = use_polars_sort
+
+    yield request.param
+
+    ctx.use_polars_sort = original_use_polars
 
 
 @pytest.fixture(params=[True, False])
@@ -304,6 +343,12 @@ def enable_auto_log_stats(request):
     ctx.enable_auto_log_stats = request.param
     yield request.param
     ctx.enable_auto_log_stats = original
+
+
+@pytest.fixture(autouse=True)
+def reset_log_once_fixture():
+    reset_log_once()
+    yield
 
 
 @pytest.fixture(params=[1024])
@@ -386,9 +431,10 @@ def unsupported_pyarrow_version(request):
     orig_version = pa.__version__
     pa.__version__ = request.param
     # Unset pyarrow version cache.
-    import ray._private.utils as utils
+    import ray._private.arrow_utils
 
-    utils._PYARROW_VERSION = None
+    ray._private.arrow_utils._PYARROW_INSTALLED = None
+    ray._private.arrow_utils._PYARROW_VERSION = None
     yield request.param
     pa.__version__ = orig_version
 
@@ -406,7 +452,7 @@ def op_two_block():
     block_params = {
         "num_rows": [10000, 5000],
         "size_bytes": [100, 50],
-        "max_rss_bytes": [1024 * 1024 * 2, 1024 * 1024 * 1],
+        "uss_bytes": [1024 * 1024 * 2, 1024 * 1024 * 1],
         "wall_time": [5, 10],
         "cpu_time": [1.2, 3.4],
         "udf_time": [1.1, 1.7],
@@ -427,13 +473,12 @@ def op_two_block():
         block_exec_stats.cpu_time_s = block_params["cpu_time"][i]
         block_exec_stats.udf_time_s = block_params["udf_time"][i]
         block_exec_stats.node_id = block_params["node_id"][i]
-        block_exec_stats.max_rss_bytes = block_params["max_rss_bytes"][i]
+        block_exec_stats.max_uss_bytes = block_params["uss_bytes"][i]
         block_exec_stats.task_idx = block_params["task_idx"][i]
         block_meta_list.append(
             BlockMetadata(
                 num_rows=block_params["num_rows"][i],
                 size_bytes=block_params["size_bytes"][i],
-                schema=None,
                 input_files=None,
                 exec_stats=block_exec_stats,
             )
@@ -681,17 +726,10 @@ def assert_blocks_expected_in_plasma(
     last_snapshot,
     num_blocks_expected,
     block_size_expected=None,
-    total_bytes_expected=None,
 ):
-    assert not (
-        block_size_expected is not None and total_bytes_expected is not None
-    ), "only specify one of block_size_expected, total_bytes_expected"
+    total_bytes_expected = None
 
-    if total_bytes_expected is None:
-        if block_size_expected is None:
-            block_size_expected = (
-                ray.data.context.DataContext.get_current().target_max_block_size
-            )
+    if block_size_expected is not None:
         total_bytes_expected = num_blocks_expected * block_size_expected
 
     print(f"Expecting {total_bytes_expected} bytes, {num_blocks_expected} blocks")
@@ -706,7 +744,8 @@ def assert_blocks_expected_in_plasma(
                         <= 1.5 * num_blocks_expected
                     ),
                     "cumulative_created_plasma_bytes": (
-                        lambda count: total_bytes_expected * 0.5
+                        lambda count: total_bytes_expected is None
+                        or total_bytes_expected * 0.5
                         <= count
                         <= 1.5 * total_bytes_expected
                     ),

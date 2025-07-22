@@ -50,7 +50,6 @@ class MultiAgentDebugCounterEnv(MultiAgentEnv):
                 for aid in range(self.num_agents)
             }
         )
-        self._obs_space_in_preferred_format = True
 
         # Actions are always:
         # (episodeID, envID) as floats.
@@ -60,7 +59,6 @@ class MultiAgentDebugCounterEnv(MultiAgentEnv):
                 for aid in range(self.num_agents)
             }
         )
-        self._action_space_in_preferred_format = True
 
         self.timesteps = [0] * self.num_agents
         self.terminateds = set()

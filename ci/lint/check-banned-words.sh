@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Checks Python and doc files for common mispellings.
+# Checks Python and doc files for common misspellings.
 
 BANNED_WORDS="RLLib Rllib Kuberay"
 

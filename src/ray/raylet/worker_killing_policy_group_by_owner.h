@@ -16,6 +16,11 @@
 
 #include <gtest/gtest_prod.h>
 
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "absl/container/flat_hash_set.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
@@ -30,7 +35,7 @@ namespace raylet {
 /// Key groups on its owner id. For non-retriable task the owner id is itself,
 /// Since non-retriable task forms its own group.
 struct GroupKey {
-  GroupKey(const TaskID &owner_id) : owner_id(owner_id) {}
+  explicit GroupKey(const TaskID &owner_id) : owner_id(owner_id) {}
   const TaskID &owner_id;
 };
 

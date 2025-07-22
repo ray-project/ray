@@ -20,7 +20,7 @@ worker_node_types:
         custom_resources:
           worker: 1
 
-aws:
+advanced_configurations_json:
   TagSpecifications:
     - ResourceType: "instance"
       Tags:

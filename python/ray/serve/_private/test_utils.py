@@ -1,13 +1,14 @@
 import asyncio
 import datetime
 import os
+import random
 import threading
 import time
+from contextlib import asynccontextmanager
 from copy import copy, deepcopy
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import grpc
-import pytest
 import requests
 from starlette.requests import Request
 
@@ -17,18 +18,22 @@ from ray import serve
 from ray.actor import ActorHandle
 from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.common import (
-    ApplicationStatus,
+    CreatePlacementGroupRequest,
     DeploymentID,
     DeploymentStatus,
     RequestProtocol,
 )
-from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
+from ray.serve._private.constants import (
+    SERVE_DEFAULT_APP_NAME,
+    SERVE_NAMESPACE,
+)
 from ray.serve._private.deployment_state import ALL_REPLICA_STATES, ReplicaState
 from ray.serve._private.proxy import DRAINING_MESSAGE
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import TimerBase
 from ray.serve.context import _get_global_client
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
+from ray.serve.schema import ApplicationStatus, TargetGroup
 
 TELEMETRY_ROUTE_PREFIX = "/telemetry"
 STORAGE_ACTOR_NAME = "storage"
@@ -188,19 +193,12 @@ class MockActorClass:
 
 
 class MockPlacementGroup:
-    def __init__(
-        self,
-        bundles: List[Dict[str, float]],
-        strategy: str = "PACK",
-        name: str = "",
-        lifetime: Optional[str] = None,
-        _soft_target_node_id: Optional[str] = None,
-    ):
-        self._bundles = bundles
-        self._strategy = strategy
-        self._name = name
-        self._lifetime = lifetime
-        self._soft_target_node_id = _soft_target_node_id
+    def __init__(self, request: CreatePlacementGroupRequest):
+        self._bundles = request.bundles
+        self._strategy = request.strategy
+        self._soft_target_node_id = request.target_node_id
+        self._name = request.name
+        self._lifetime = "detached"
 
 
 class MockDeploymentHandle:
@@ -209,6 +207,16 @@ class MockDeploymentHandle:
         self._app_name = app_name
         self._protocol = RequestProtocol.UNDEFINED
         self._running_replicas_populated = False
+        self._initialized = False
+
+    def is_initialized(self):
+        return self._initialized
+
+    def _init(self):
+        if self._initialized:
+            raise RuntimeError("already initialized")
+
+        self._initialized = True
 
     def options(self, *args, **kwargs):
         return self
@@ -244,14 +252,14 @@ get_pid_entrypoint = GetPID.bind()
 
 def check_ray_stopped():
     try:
-        requests.get("http://localhost:52365/api/ray/version")
+        requests.get("http://localhost:8265/api/ray/version")
         return False
     except Exception:
         return True
 
 
 def check_ray_started():
-    return requests.get("http://localhost:52365/api/ray/version").status_code == 200
+    return requests.get("http://localhost:8265/api/ray/version").status_code == 200
 
 
 def check_deployment_status(
@@ -287,11 +295,20 @@ def check_num_replicas_gte(
 
 
 def check_num_replicas_eq(
-    name: str, target: int, app_name: str = SERVE_DEFAULT_APP_NAME
+    name: str,
+    target: int,
+    app_name: str = SERVE_DEFAULT_APP_NAME,
+    use_controller: bool = False,
 ) -> int:
     """Check if num replicas is == target."""
 
-    assert get_num_alive_replicas(name, app_name) == target
+    if use_controller:
+        dep = serve.status().applications[app_name].deployments[name]
+        num_running_replicas = dep.replica_states.get(ReplicaState.RUNNING, 0)
+        assert num_running_replicas == target
+    else:
+        assert get_num_alive_replicas(name, app_name) == target
+
     return True
 
 
@@ -417,6 +434,8 @@ def check_telemetry(
 
 
 def ping_grpc_list_applications(channel, app_names, test_draining=False):
+    import pytest
+
     stub = serve_pb2_grpc.RayServeAPIServiceStub(channel)
     request = serve_pb2.ListApplicationsRequest()
     if test_draining:
@@ -433,6 +452,8 @@ def ping_grpc_list_applications(channel, app_names, test_draining=False):
 
 
 def ping_grpc_healthz(channel, test_draining=False):
+    import pytest
+
     stub = serve_pb2_grpc.RayServeAPIServiceStub(channel)
     request = serve_pb2.HealthzRequest()
     if test_draining:
@@ -448,6 +469,8 @@ def ping_grpc_healthz(channel, test_draining=False):
 
 
 def ping_grpc_call_method(channel, app_name, test_not_found=False):
+    import pytest
+
     stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
     request = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
     metadata = (("application", app_name),)
@@ -503,13 +526,22 @@ def ping_fruit_stand(channel, app_name):
     assert response.costs == 32
 
 
+@asynccontextmanager
 async def send_signal_on_cancellation(signal_actor: ActorHandle):
+    cancelled = False
     try:
-        await asyncio.sleep(100000)
+        yield
+        await asyncio.sleep(100)
     except asyncio.CancelledError:
+        cancelled = True
         # Clear the context var to avoid Ray recursively cancelling this method call.
         ray._raylet.async_task_id.set(None)
         await signal_actor.send.remote()
+
+    if not cancelled:
+        raise RuntimeError(
+            "CancelledError wasn't raised during `send_signal_on_cancellation` block"
+        )
 
 
 class FakeGrpcContext:
@@ -680,3 +712,92 @@ def tlog(s: str, level: str = "INFO"):
 
     now = datetime.datetime.now().strftime("%H:%M:%S.%f")[:-3]
     print(f"[{level}] {now} {s}")
+
+
+def get_application_urls(
+    protocol: Union[str, RequestProtocol] = RequestProtocol.HTTP,
+    app_name: str = SERVE_DEFAULT_APP_NAME,
+    use_localhost: bool = True,
+    is_websocket: bool = False,
+    exclude_route_prefix: bool = False,
+) -> List[str]:
+    """Get the URL of the application.
+
+    Args:
+        protocol: The protocol to use for the application.
+        app_name: The name of the application.
+        use_localhost: Whether to use localhost instead of the IP address.
+            Set to True if Serve deployments are not exposed publicly or
+            for low latency benchmarking.
+        is_websocket: Whether the url should be served as a websocket.
+        exclude_route_prefix: The route prefix to exclude from the application.
+    Returns:
+        The URLs of the application.
+    """
+    client = _get_global_client()
+    serve_details = client.get_serve_details()
+    if app_name not in serve_details["applications"]:
+        return [client.root_url]
+    route_prefix = serve_details["applications"][app_name]["route_prefix"]
+    if exclude_route_prefix:
+        route_prefix = ""
+    if isinstance(protocol, str):
+        protocol = RequestProtocol(protocol)
+    target_groups: List[TargetGroup] = ray.get(
+        client._controller.get_target_groups.remote(app_name)
+    )
+    target_groups = [
+        target_group
+        for target_group in target_groups
+        if target_group.protocol == protocol
+    ]
+
+    if len(target_groups) == 0:
+        raise ValueError(
+            f"No target group found for app {app_name} with protocol {protocol} and route prefix {route_prefix}"
+        )
+    urls = []
+    for target_group in target_groups:
+        for target in target_group.targets:
+            ip = "localhost" if use_localhost else target.ip
+            if protocol == RequestProtocol.HTTP:
+                scheme = "ws" if is_websocket else "http"
+                url = f"{scheme}://{ip}:{target.port}{route_prefix}"
+            elif protocol == RequestProtocol.GRPC:
+                if is_websocket:
+                    raise ValueError(
+                        "is_websocket=True is not supported with gRPC protocol."
+                    )
+                url = f"{ip}:{target.port}"
+            else:
+                raise ValueError(f"Unsupported protocol: {protocol}")
+            url = url.rstrip("/")
+            urls.append(url)
+    return urls
+
+
+def get_application_url(
+    protocol: Union[str, RequestProtocol] = RequestProtocol.HTTP,
+    app_name: str = SERVE_DEFAULT_APP_NAME,
+    use_localhost: bool = True,
+    is_websocket: bool = False,
+    exclude_route_prefix: bool = False,
+) -> str:
+    """Get the URL of the application.
+
+    Args:
+        protocol: The protocol to use for the application.
+        app_name: The name of the application.
+        use_localhost: Whether to use localhost instead of the IP address.
+            Set to True if Serve deployments are not exposed publicly or
+            for low latency benchmarking.
+        is_websocket: Whether the url should be served as a websocket.
+        exclude_route_prefix: The route prefix to exclude from the application.
+    Returns:
+        The URL of the application. If there are multiple URLs, a random one is returned.
+    """
+    return random.choice(
+        get_application_urls(
+            protocol, app_name, use_localhost, is_websocket, exclude_route_prefix
+        )
+    )

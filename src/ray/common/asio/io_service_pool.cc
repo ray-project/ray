@@ -24,10 +24,12 @@ IOServicePool::~IOServicePool() {}
 
 void IOServicePool::Run() {
   for (size_t i = 0; i < io_service_num_; ++i) {
-    io_services_.emplace_back(std::make_unique<instrumented_io_context>());
+    io_services_.emplace_back(std::make_unique<instrumented_io_context>(
+        /*enable_lag_probe=*/false, /*running_on_single_thread=*/true));
     instrumented_io_context &io_service = *io_services_[i];
     threads_.emplace_back([&io_service] {
-      boost::asio::io_service::work work(io_service);
+      boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
+          io_service.get_executor());
       io_service.run();
     });
   }

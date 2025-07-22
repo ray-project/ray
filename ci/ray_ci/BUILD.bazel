@@ -1,5 +1,5 @@
-load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_test")
 load("@py_deps_buildkite//:requirements.bzl", ci_require = "requirement")
+load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_test")
 
 py_library(
     name = "ray_ci_lib",
@@ -11,8 +11,8 @@ py_library(
             "build_in_docker.py",
         ],
     ),
-    visibility = ["//ci/ray_ci:__subpackages__"],
     data = glob(["*.yaml"]),
+    visibility = ["//ci/ray_ci:__subpackages__"],
     deps = [
         ci_require("boto3"),
         ci_require("pyyaml"),
@@ -207,4 +207,17 @@ py_test(
         ":ray_ci_lib_test",
         ci_require("pytest"),
     ],
+)
+
+# This test is only run on linux machines
+# with docker containers that have --privileged
+# enabled.
+py_test(
+    name = "test_privileged",
+    size = "small",
+    srcs = ["test_privileged.py"],
+    tags = [
+        "team:ci",
+    ],
+    deps = [ci_require("pytest")],
 )

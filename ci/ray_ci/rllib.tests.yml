@@ -1,6 +1,6 @@
 flaky_tests:
   # torch, tf2-static-graph, tf2-eager-tracing
-  - //rllib:learning_tests_multi_agent_cartpole_impala 
+  - //rllib:learning_tests_multi_agent_cartpole_impala
   - //rllib:learning_tests_multi_agent_pendulum_ppo
   - //rllib:learning_tests_stateless_cartpole_r2d2
   - //rllib:learning_tests_cartpole_appo_fake_gpus
@@ -13,12 +13,12 @@ flaky_tests:
   - //rllib:learning_tests_multi_agent_cartpole_crashing_and_stalling_appo
   - //rllib:examples/self_play_with_open_spiel_connect_4_appo_w_rlm_tf2
   # algorithm, model and other tests
-  - //rllib:test_bc 
+  - //rllib:test_bc
   - //rllib:test_a3c
   - //rllib:policy/tests/test_policy
   - //rllib:env/tests/test_local_inference_cartpole
   - //rllib:evaluation/tests/test_envs_that_crash
-  - //rllib:test_actor_manager 
+  - //rllib:test_actor_manager
   - //rllib:test_apex_ddpg
   - //rllib:test_algorithm_export_checkpoint
   - //rllib:test_dataset_reader

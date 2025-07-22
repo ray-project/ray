@@ -14,6 +14,8 @@
 
 #include "ray/core_worker/future_resolver.h"
 
+#include <memory>
+
 namespace ray {
 namespace core {
 
@@ -42,8 +44,8 @@ void FutureResolver::ProcessResolvedObject(const ObjectID &object_id,
                                            const Status &status,
                                            const rpc::GetObjectStatusReply &reply) {
   if (!status.ok()) {
-    RAY_LOG(WARNING) << "Error retrieving the value of object ID " << object_id
-                     << " that was deserialized: " << status.ToString();
+    RAY_LOG(WARNING).WithField(object_id)
+        << "Failed to retrieve deserialized object value: " << status;
   }
 
   if (!status.ok()) {
@@ -77,19 +79,21 @@ void FutureResolver::ProcessResolvedObject(const ObjectID &object_id,
     // Put the RayObject into the in-memory store.
     const auto &data = reply.object().data();
     std::shared_ptr<LocalMemoryBuffer> data_buffer;
-    if (data.size() > 0) {
-      RAY_LOG(DEBUG) << "Object returned directly in GetObjectStatus reply, putting "
-                     << object_id << " in memory store";
+    if (!data.empty()) {
+      RAY_LOG(DEBUG).WithField(object_id)
+          << "Object returned directly in GetObjectStatus reply, "
+          << "putting it in memory store";
       data_buffer = std::make_shared<LocalMemoryBuffer>(
           const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(data.data())),
           data.size());
     } else {
-      RAY_LOG(DEBUG) << "Object not returned directly in GetObjectStatus reply, "
-                     << object_id << " will have to be fetched from Plasma";
+      RAY_LOG(DEBUG).WithField(object_id)
+          << "Object not returned directly in GetObjectStatus reply, "
+          << "fetching it from Plasma";
     }
     const auto &metadata = reply.object().metadata();
     std::shared_ptr<LocalMemoryBuffer> metadata_buffer;
-    if (metadata.size() > 0) {
+    if (!metadata.empty()) {
       metadata_buffer = std::make_shared<LocalMemoryBuffer>(
           const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(metadata.data())),
           metadata.size());

@@ -1,6 +1,5 @@
 import builtins
 import functools
-from copy import copy
 from typing import Iterable, List, Optional, Tuple
 
 import numpy as np
@@ -96,7 +95,6 @@ class RangeDatasource(Datasource):
             meta = BlockMetadata(
                 num_rows=count,
                 size_bytes=8 * count * element_size,
-                schema=copy(self._schema()),
                 input_files=None,
                 exec_stats=None,
             )
@@ -106,13 +104,14 @@ class RangeDatasource(Datasource):
                         i, count, target_rows_per_block
                     ),
                     meta,
+                    schema=self._schema,
                 )
             )
             i += block_size
 
         return read_tasks
 
-    @functools.cache
+    @functools.cached_property
     def _schema(self):
         if self._n == 0:
             return None

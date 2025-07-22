@@ -1,5 +1,10 @@
-from ray.autoscaler._private import cli_logger
+import io
+import sys
+from unittest.mock import patch
+
 import pytest
+
+from ray.autoscaler._private import cli_logger
 
 
 def test_colorful_mock_with_style():
@@ -14,11 +19,13 @@ def test_colorful_mock_random_function():
     assert cm.bold("abc") == "abc"
 
 
-if __name__ == "__main__":
-    import os
-    import sys
+def test_pathname():
+    # Ensure that the `pathname` of the `LogRecord` points to the
+    # caller of `cli_logger`, not `cli_logger` itself.
+    with patch("sys.stdout", new=io.StringIO()) as mock_stdout:
+        cli_logger.cli_logger.info("123")
+        assert "test_cli_logger.py" in mock_stdout.getvalue()
 
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-sv", __file__]))

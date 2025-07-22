@@ -6,7 +6,8 @@ import time
 import threading
 from dataclasses import asdict
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
+from ray._common.test_utils import wait_for_condition
 from ray._raylet import GcsClient
 
 import requests
@@ -20,7 +21,6 @@ import ray._private.usage.usage_lib as ray_usage_lib
 from ray._private.test_utils import (
     format_web_url,
     run_string_as_driver,
-    wait_for_condition,
     wait_until_server_available,
 )
 from ray._private.usage.usage_lib import ClusterConfigToReport, UsageStatsEnabledness
@@ -771,7 +771,7 @@ def test_hardware_usages(shutdown_only, reset_usage_stats):
 @pytest.mark.skipif(
     os.environ.get("RAY_MINIMAL") == "1",
     reason="This test is not supposed to work for minimal installation "
-    "since we import serve.",
+    "since we import libraries.",
 )
 @pytest.mark.parametrize("ray_client", [True, False])
 def test_library_usages(call_ray_start, reset_usage_stats, ray_client):
@@ -788,12 +788,6 @@ ray_usage_lib.record_library_usage("pre_init")
 ray.init(address="{}")
 
 ray_usage_lib.record_library_usage("post_init")
-ray.workflow.init()
-ray.data.range(10)
-from ray import serve
-
-serve.start()
-serve.shutdown()
 
 class Actor:
     def get_actor_metadata(self):
@@ -834,14 +828,12 @@ with joblib.parallel_backend("ray"):
     expected = {
         "pre_init",
         "post_init",
-        "dataset",
-        "workflow",
-        "serve",
         "util.ActorGroup",
         "util.ActorPool",
         "util.multiprocessing.Pool",
         "util.Queue",
         "util.joblib",
+        "core",
     }
     if sys.platform != "win32":
         expected.add("job_submission")
@@ -1028,13 +1020,20 @@ available_node_types:
     cluster_config_to_report = ray_usage_lib.get_cluster_config_to_report(
         tmp_path / "does_not_exist.yaml"
     )
-    assert cluster_config_to_report == ClusterConfigToReport()
+    # can't assert cloud_provider here because it will be set based on
+    # where the test is actually running
+    assert cluster_config_to_report.head_node_instance_type is None
+    assert cluster_config_to_report.min_workers is None
+    assert cluster_config_to_report.max_workers is None
+    assert cluster_config_to_report.worker_node_instance_types is None
 
     monkeypatch.setenv("KUBERNETES_SERVICE_HOST", "localhost")
     cluster_config_to_report = ray_usage_lib.get_cluster_config_to_report(
         tmp_path / "does_not_exist.yaml"
     )
-    assert cluster_config_to_report.cloud_provider == "kubernetes"
+    # starts with because additional cloud provider info may be added depending on
+    # the environment
+    assert cluster_config_to_report.cloud_provider.startswith("kubernetes")
     assert cluster_config_to_report.min_workers is None
     assert cluster_config_to_report.max_workers is None
     assert cluster_config_to_report.head_node_instance_type is None
@@ -1044,7 +1043,7 @@ available_node_types:
     cluster_config_to_report = ray_usage_lib.get_cluster_config_to_report(
         tmp_path / "does_not_exist.yaml"
     )
-    assert cluster_config_to_report.cloud_provider == "kuberay"
+    assert cluster_config_to_report.cloud_provider.startswith("kuberay")
 
 
 def test_usage_lib_report_data(
@@ -1143,24 +1142,18 @@ provider:
 
         cluster = ray_start_cluster
         node = cluster.add_node(num_cpus=3)
-        if os.environ.get("RAY_MINIMAL") != "1":
-            from ray import train  # noqa: F401
-            from ray.rllib.algorithms.ppo import PPO  # noqa: F401
 
         ray_usage_lib.record_extra_usage_tag(ray_usage_lib.TagKey._TEST1, "extra_v2")
 
         ray.init(address=cluster.address)
 
+        @ray.remote
+        def f():
+            pass
+
+        ray.get(f.remote())
+
         ray_usage_lib.record_extra_usage_tag(ray_usage_lib.TagKey._TEST2, "extra_v3")
-
-        if os.environ.get("RAY_MINIMAL") != "1":
-            from ray import tune  # noqa: F401
-
-            def objective(*args):
-                pass
-
-            tuner = tune.Tuner(objective)
-            tuner.fit()
 
         """
         Verify the usage stats are reported to the server.
@@ -1227,18 +1220,10 @@ provider:
             "gcs_storage": gcs_storage_type,
             "dashboard_used": "False",
         }
-        if os.environ.get("RAY_MINIMAL") != "1":
-            expected_payload["tune_scheduler"] = "FIFOScheduler"
-            expected_payload["tune_searcher"] = "BasicVariantGenerator"
-            expected_payload["air_entrypoint"] = "Tuner.fit"
-            expected_payload["air_storage_configuration"] = "local"
         assert payload["extra_usage_tags"] == expected_payload
         assert payload["total_num_nodes"] == 1
         assert payload["total_num_running_jobs"] == 1
-        if os.environ.get("RAY_MINIMAL") == "1":
-            assert set(payload["library_usages"]) == set()
-        else:
-            assert set(payload["library_usages"]) == {"rllib", "train", "tune"}
+        assert set(payload["library_usages"]) == {"core"}
         assert payload["hardware_usages"] == ["TestCPU"]
         validate(instance=payload, schema=schema)
         """
@@ -1414,110 +1399,6 @@ def test_usage_file_error_message(monkeypatch, ray_start_cluster, reset_usage_st
         assert read_file(temp_dir, "usage_stats")["total_success"] == 0
 
 
-def test_lib_used_from_driver(monkeypatch, ray_start_cluster, reset_usage_stats):
-    """
-    Test library usage is correctly reported when they are imported from
-    a driver.
-    """
-    with monkeypatch.context() as m:
-        m.setenv("RAY_USAGE_STATS_ENABLED", "1")
-        m.setenv("RAY_USAGE_STATS_REPORT_URL", "http://127.0.0.1:8000/usage")
-        m.setenv("RAY_USAGE_STATS_REPORT_INTERVAL_S", "1")
-        cluster = ray_start_cluster
-        cluster.add_node(num_cpus=3)
-        ray.init(address=cluster.address)
-
-        script = """
-import ray
-import os
-if os.environ.get("RAY_MINIMAL") != "1":
-    from ray import train  # noqa: F401
-    from ray.rllib.algorithms.ppo import PPO  # noqa: F401
-
-ray.init(address="{addr}")
-
-if os.environ.get("RAY_MINIMAL") != "1":
-    from ray import tune  # noqa: F401
-    def objective(*args):
-        pass
-
-    tune.run(objective)
-"""
-        # Run a script in a separate process. It is a workaround to
-        # reimport libraries. Without this, `import train`` will become
-        # no-op since we already imported this lib in previous tests.
-        run_string_as_driver(script.format(addr=cluster.address))
-
-        """
-        Verify the usage_stats.json is updated.
-        """
-        print("Verifying lib usage report.")
-        global_node = ray.worker._global_node
-        temp_dir = pathlib.Path(global_node.get_session_dir_path())
-
-        wait_for_condition(lambda: file_exists(temp_dir), timeout=30)
-
-        def verify():
-            lib_usages = read_file(temp_dir, "usage_stats")["library_usages"]
-            print(lib_usages)
-            if os.environ.get("RAY_MINIMAL") == "1":
-                return set(lib_usages) == set()
-            else:
-                return set(lib_usages) == {"rllib", "train", "tune"}
-
-        wait_for_condition(verify)
-
-
-@pytest.mark.skipif(
-    os.environ.get("RAY_MINIMAL") == "1",
-    reason="This test is not supposed to work for minimal installation.",
-)
-def test_lib_used_from_workers(monkeypatch, ray_start_cluster, reset_usage_stats):
-    """
-    Test library usage is correctly reported when they are imported from
-    workers.
-    """
-    with monkeypatch.context() as m:
-        m.setenv("RAY_USAGE_STATS_ENABLED", "1")
-        m.setenv("RAY_USAGE_STATS_REPORT_URL", "http://127.0.0.1:8000/usage")
-        m.setenv("RAY_USAGE_STATS_REPORT_INTERVAL_S", "1")
-        cluster = ray_start_cluster
-        cluster.add_node(num_cpus=3)
-        ray_usage_lib._recorded_library_usages.clear()
-
-        ray.init(address=cluster.address)
-
-        @ray.remote
-        class ActorWithLibImport:
-            def __init__(self):
-                from ray import train  # noqa: F401
-                from ray.rllib.algorithms.ppo import PPO  # noqa: F401
-
-            def ready(self):
-                from ray import tune  # noqa: F401
-
-                def objective(*args):
-                    pass
-
-                tune.run(objective)
-
-        a = ActorWithLibImport.remote()
-        ray.get(a.ready.remote())
-
-        """
-        Verify the usage_stats.json contains the lib usage.
-        """
-        global_node = ray.worker._global_node
-        temp_dir = pathlib.Path(global_node.get_session_dir_path())
-        wait_for_condition(lambda: file_exists(temp_dir), timeout=30)
-
-        def verify():
-            lib_usages = read_file(temp_dir, "usage_stats")["library_usages"]
-            return set(lib_usages) == {"tune", "rllib", "train"}
-
-        wait_for_condition(verify)
-
-
 def test_usage_stats_tags(
     monkeypatch, ray_start_cluster, reset_usage_stats, gcs_storage_type
 ):
@@ -1660,8 +1541,55 @@ def test_usages_stats_dashboard(monkeypatch, ray_start_cluster, reset_usage_stat
         wait_for_condition(verify_dashboard_used)
 
 
+def test_get_cloud_from_metadata_requests(monkeypatch):
+    def create_mock_response(url: str, provider: str, error_providers: list[str]):
+        # Create a mock response based on the URL.
+        mock_response = Mock()
+
+        if url == "http://metadata.google.internal/computeMetadata/v1":
+            # GCP endpoint
+            if "gcp" in error_providers:
+                print("raising")
+                raise requests.exceptions.ConnectionError()
+            mock_response.status_code = 200 if provider == "gcp" else 404
+        elif url == "http://169.254.169.254/latest/meta-data/":
+            # AWS endpoint
+            if "aws" in error_providers:
+                raise requests.exceptions.ConnectionError()
+            mock_response.status_code = 200 if provider == "aws" else 404
+        elif url == "http://169.254.169.254/metadata/instance?api-version=2021-02-01":
+            # Azure endpoint
+            if "azure" in error_providers:
+                raise requests.exceptions.ConnectionError()
+            mock_response.status_code = 200 if provider == "azure" else 404
+
+        return mock_response
+
+    with patch("requests.get") as mock_get:
+        mock_get.side_effect = lambda url, **kwargs: create_mock_response(
+            url, "gcp", []
+        )
+        result = ray_usage_lib.get_cloud_from_metadata_requests()
+        assert result == "gcp"
+
+        mock_get.side_effect = lambda url, **kwargs: create_mock_response(
+            url, "aws", []
+        )
+        result = ray_usage_lib.get_cloud_from_metadata_requests()
+        assert result == "aws"
+
+        mock_get.side_effect = lambda url, **kwargs: create_mock_response(
+            url, "azure", ["gcp"]
+        )
+        result = ray_usage_lib.get_cloud_from_metadata_requests()
+        assert result == "azure"
+
+        mock_get.side_effect = lambda url, **kwargs: create_mock_response(
+            url, "", ["gcp", "aws", "azure"]
+        )
+        result = ray_usage_lib.get_cloud_from_metadata_requests()
+        assert result == "unknown"
+
+
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

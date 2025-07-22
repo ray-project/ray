@@ -61,6 +61,7 @@ def main(
 
 def _update_high_impact_tests(tests: List[Test], high_impact_tests: Set[str]) -> None:
     for test in tests:
+        test.update_from_s3()
         test_name = test.get_name()
         test[Test.KEY_IS_HIGH_IMPACT] = (
             "true" if test_name in high_impact_tests else "false"

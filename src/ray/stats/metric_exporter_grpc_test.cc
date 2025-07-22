@@ -12,6 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#ifdef _WIN32
+// Prevent inclusion of winsock.h
+#define WIN32_LEAN_AND_MEAN
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#endif
+
 #include <chrono>
 #include <iostream>
 #include <vector>
@@ -150,8 +157,6 @@ TEST(OpenCensusProtoExporterTest, export_view_data_split_by_batch_size) {
     //   - Exporting 4 time-series
     //   - Only 1 RPC payload should be sent
     //
-    RAY_LOG(INFO) << "Test #1";
-
     size_t kBatchSize = 4;
     // Initialize the exporter
     auto mockClient = std::make_shared<MockMetricsAgentClient>();
@@ -174,8 +179,6 @@ TEST(OpenCensusProtoExporterTest, export_view_data_split_by_batch_size) {
     //   - Exporting 4 time-series
     //   - 2 RPC payloads should be sent
     //
-    RAY_LOG(INFO) << "Test #2";
-
     size_t kBatchSize = 2;
     // Initialize the exporter
     auto mockClient = std::make_shared<MockMetricsAgentClient>();
@@ -219,13 +222,6 @@ TEST(OpenCensusProtoExporterTest, export_view_data_split_by_payload_size) {
   opencensus::stats::StatsExporterImpl::Get()->Export();
 
   const auto view_data = view.GetData();
-
-  /*
-  for (auto &[vd, value] : view_data.int_data()) {
-    RAY_LOG(INFO) << "Metric: " << absl::StrJoin(vd, ",") << ", value: " << value;
-  }
-  */
-
   {
     //
     // Test #1: Splitting time-series across 2 batches (overflows payload size)
@@ -234,8 +230,6 @@ TEST(OpenCensusProtoExporterTest, export_view_data_split_by_payload_size) {
     //   - 2 RPC payloads should be sent (1 payload will be taking ~180 bytes, it'll be
     //   split in 2)
     //
-    RAY_LOG(INFO) << "Test #1";
-
     size_t kBatchSize = 4;
     size_t maxPayloadSize = 250;
     // Initialize the exporter
@@ -250,9 +244,6 @@ TEST(OpenCensusProtoExporterTest, export_view_data_split_by_payload_size) {
     });
 
     auto requests = mockClient->CollectedReportOCMetricsRequests();
-
-    RAY_LOG(INFO) << "Request payload: " << requests[0].DebugString();
-
     ASSERT_THAT(requests.size(), 2);
     for (int i = 0; i < 2; ++i) {
       // Both batches have to have 1 metric with 2 time-series each
@@ -270,8 +261,6 @@ TEST(OpenCensusProtoExporterTest, export_view_data_split_by_payload_size) {
     //   - 6 RPC payloads should be sent (since 1 payload will be taking ~250 bytes, it'll
     //   be split in 6)
     //
-    RAY_LOG(INFO) << "Test #2";
-
     size_t kBatchSize = 6;
     size_t maxPayloadSize = 250;  // 50% of the expected target payload size
     // Initialize the exporter
@@ -288,11 +277,6 @@ TEST(OpenCensusProtoExporterTest, export_view_data_split_by_payload_size) {
                                     {view_descriptor, view_data}});
 
     auto requests = mockClient->CollectedReportOCMetricsRequests();
-
-    RAY_LOG(INFO) << "Request payload: " << requests[0].DebugString();
-    RAY_LOG(INFO) << "Request payload: " << requests[1].DebugString();
-    RAY_LOG(INFO) << "Request payload: " << requests[2].DebugString();
-
     ASSERT_THAT(requests.size(), 6);
     for (int i = 0; i < 6; ++i) {
       // Each of the batches have to have 1 metric with 2 time-series each
@@ -310,8 +294,6 @@ TEST(OpenCensusProtoExporterTest, export_view_data_split_by_payload_size) {
     //   - 1 RPC payloads should be sent (since 1 payload will be taking ~180 bytes, it'll
     //   be split in 6)
     //
-    RAY_LOG(INFO) << "Test #3";
-
     size_t kBatchSize = 12;
     size_t maxPayloadSize = 1000;  // 50% of the expected target payload size
     // Initialize the exporter
@@ -326,13 +308,7 @@ TEST(OpenCensusProtoExporterTest, export_view_data_split_by_payload_size) {
     ocProtoExporter.ExportViewData({{view_descriptor, view_data},
                                     {view_descriptor, view_data},
                                     {view_descriptor, view_data}});
-
-    RAY_LOG(INFO) << mockClient->CollectedReportOCMetricsRequests()[0].ByteSizeLong();
-
     auto requests = mockClient->CollectedReportOCMetricsRequests();
-
-    RAY_LOG(INFO) << "Payload: " << requests[0].DebugString();
-
     ASSERT_THAT(requests.size(), 1);
     ASSERT_THAT(requests[0].metrics().size(), 3);
     // Batch have to have 3 metric with 4 time-series each

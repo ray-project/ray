@@ -11,11 +11,10 @@ import pytest
 import ray
 from ray.air.constants import TRAINING_ITERATION
 from ray.air.execution import FixedResourceManager, PlacementGroupResourceManager
-from ray.train import Checkpoint, CheckpointConfig
 from ray.train._internal.session import _TrainingResult
 from ray.train._internal.storage import StorageContext
 from ray.train.tests.util import mock_storage_context
-from ray.tune import PlacementGroupFactory, ResumeConfig
+from ray.tune import Checkpoint, CheckpointConfig, PlacementGroupFactory, ResumeConfig
 from ray.tune.execution.tune_controller import TuneController
 from ray.tune.experiment import Trial
 from ray.tune.result import DONE
@@ -504,7 +503,7 @@ def test_checkpoint_sync_up_timeout(
     Legacy test: test_trial_runner_3.py::TrialRunnerTest::
         testForcedCloudCheckpointSyncTimeout
     """
-    storage = mock_storage_context(sync_config=ray.train.SyncConfig(sync_timeout=0.5))
+    storage = mock_storage_context(sync_config=ray.tune.SyncConfig(sync_timeout=0.5))
     monkeypatch.setenv("TUNE_WARN_SLOW_EXPERIMENT_CHECKPOINT_SYNC_THRESHOLD_S", "0.25")
 
     def _hanging_upload_to_fs_path(*args, **kwargs):

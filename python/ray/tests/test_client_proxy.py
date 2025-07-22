@@ -11,10 +11,11 @@ import grpc
 import pytest
 
 import ray
+from ray._common.test_utils import wait_for_condition
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.util.client.server.proxier as proxier
 from ray._private.ray_constants import REDIS_DEFAULT_PASSWORD
-from ray._private.test_utils import run_string_as_driver, wait_for_condition
+from ray._private.test_utils import run_string_as_driver
 from ray.cloudpickle.compat import pickle
 from ray.job_config import JobConfig
 
@@ -121,10 +122,10 @@ def test_multiple_clients_use_different_drivers(call_ray_start):
     Test that each client uses a separate JobIDs and namespaces.
     """
     with ray.client("localhost:25001").connect():
-        job_id_one = ray.get_runtime_context().job_id
+        job_id_one = ray.get_runtime_context().get_job_id()
         namespace_one = ray.get_runtime_context().namespace
     with ray.client("localhost:25001").connect():
-        job_id_two = ray.get_runtime_context().job_id
+        job_id_two = ray.get_runtime_context().get_job_id()
         namespace_two = ray.get_runtime_context().namespace
 
     assert job_id_one != job_id_two
@@ -321,9 +322,8 @@ def test_prepare_runtime_init_req_modified_job():
         (["ipython", "-m", "ray.util.client.server"], True),
         (["ipython -m ray.util.client.server"], True),
         (["ipython -m", "ray.util.client.server"], True),
-        (["bash", "ipython", "-m", "ray.util.client.server"], False),
-        (["bash", "ipython -m ray.util.client.server"], False),
-        (["python", "-m", "bash", "ipython -m ray.util.client.server"], False),
+        (["bash", "-c", "ipython -m ray.util.client.server"], True),
+        (["python", "-m", "bash", "ipython"], False),
     ],
 )
 def test_match_running_client_server(test_case):
@@ -484,9 +484,4 @@ def test_proxy_cancelled_grpc_request_stream():
 
 
 if __name__ == "__main__":
-    import sys
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

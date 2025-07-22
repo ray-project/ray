@@ -49,8 +49,8 @@ Try one of the following:
 a) For Atari support: `pip install gym[atari] autorom[accept-rom-license]`.
    For PyBullet support: `pip install pybullet`.
 b) To register your custom env, do `from ray import tune;
-   tune.register('[name]', lambda cfg: [return env obj from here using cfg])`.
-   Then in your config, do `config['env'] = [name]`.
+   tune.register_env('[name]', lambda cfg: [return env obj from here using cfg])`.
+   Then in your config, do `config.environment(env='[name]').
 c) Make sure you provide a fully qualified classpath, e.g.:
    `ray.rllib.examples.envs.classes.repeat_after_me_env.RepeatAfterMeEnv`
 """
@@ -67,7 +67,7 @@ In order to fix this problem, do the following:
 1) Run `pip install gymnasium` on your command line.
 2) Change all your import statements in your code from
    `import gym` -> `import gymnasium as gym` OR
-   `from gym.space import Discrete` -> `from gymnasium.spaces import Discrete`
+   `from gym.spaces import Discrete` -> `from gymnasium.spaces import Discrete`
 
 For your custom (single agent) gym.Env classes:
 3.1) Either wrap your old Env class via the provided `from gymnasium.wrappers import

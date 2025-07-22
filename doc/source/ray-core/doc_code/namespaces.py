@@ -34,7 +34,7 @@ try:
       except ValueError:
         pass
 
-      # This succceeds because the name "orange" is unused in this namespace.
+      # This succeeds because the name "orange" is unused in this namespace.
       Actor.options(name="orange", lifetime="detached").remote()
       Actor.options(name="watermelon", lifetime="detached").remote()
 

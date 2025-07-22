@@ -1,11 +1,12 @@
 import sys
 import threading
 
+import pandas as pd
 import pytest
 
 import ray
+from ray._common.test_utils import wait_for_condition
 from ray._private.internal_api import memory_summary
-from ray._private.test_utils import wait_for_condition
 from ray.tests.conftest import *  # noqa
 
 
@@ -107,7 +108,7 @@ def test_tf_iteration(shutdown_only):
     # The size of dataset is 500*(80*80*4)*8B, about 100MB.
     ds = ray.data.range_tensor(
         500, shape=(80, 80, 4), override_num_blocks=100
-    ).add_column("label", lambda x: 1)
+    ).add_column("label", lambda df: pd.Series([1] * len(df)))
 
     # to_tf
     check_to_tf_no_spill(ctx, ds.map(lambda x: x))

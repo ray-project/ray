@@ -38,8 +38,8 @@ class OffPolicyEstimator(OfflineEvaluator):
             policy: Policy to evaluate.
             gamma: Discount factor of the environment.
             epsilon_greedy: The probability by which we act acording to a fully random
-            policy during deployment. With 1-epsilon_greedy we act according the target
-            policy.
+                policy during deployment. With 1-epsilon_greedy we act according the target
+                policy.
             # TODO (kourosh): convert the input parameters to a config dict.
         """
         super().__init__(policy)
@@ -52,9 +52,9 @@ class OffPolicyEstimator(OfflineEvaluator):
 
         Args:
             batch: The episode to calculate the off-policy estimates (OPE) on. The
-            episode must be a sample batch type that contains the fields "obs",
-            "actions", and "action_prob" and it needs to represent a
-            complete trajectory.
+                episode must be a sample batch type that contains the fields "obs",
+                "actions", and "action_prob" and it needs to represent a
+                complete trajectory.
 
         Returns:
             The off-policy estimates (OPE) calculated on the given episode. The returned
@@ -72,8 +72,8 @@ class OffPolicyEstimator(OfflineEvaluator):
 
         Args:
             batch: The batch to calculate the off-policy estimates (OPE) on. The
-            batch must be a sample batch type that contains the fields "obs",
-            "actions", and "action_prob".
+                batch must be a sample batch type that contains the fields "obs",
+                "actions", and "action_prob".
 
         Returns:
             The off-policy estimates (OPE) calculated on the given batch of single time
@@ -92,7 +92,7 @@ class OffPolicyEstimator(OfflineEvaluator):
 
         Args:
             sample_batch: The batch to split by episode. This contains multiple
-            episodes.
+                episodes.
 
         Returns:
             The modified batch before calling split_by_episode().
@@ -109,7 +109,7 @@ class OffPolicyEstimator(OfflineEvaluator):
 
         Args:
             all_episodes: The list of episodes in the original batch. Each element is a
-            sample batch type that is a single episode.
+                sample batch type that is a single episode.
         """
 
         return all_episodes
@@ -124,7 +124,7 @@ class OffPolicyEstimator(OfflineEvaluator):
 
         Args:
             episode: The episode that is split from the original batch. This is a
-            sample batch type that is a single episode.
+                sample batch type that is a single episode.
         """
         pass
 
@@ -136,8 +136,8 @@ class OffPolicyEstimator(OfflineEvaluator):
 
         Args:
             batch: The batch to calculate the off-policy estimates (OPE) on. The
-            batch must contain the fields "obs", "actions", and "action_prob".
-            split_batch_by_episode: Whether to split the batch by episode.
+                batch must contain the fields "obs", "actions", and "action_prob".
+                split_batch_by_episode: Whether to split the batch by episode.
 
         Returns:
             The off-policy estimates (OPE) calculated on the given batch. The returned

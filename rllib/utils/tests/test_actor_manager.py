@@ -34,7 +34,7 @@ class Actor(FaultAwareApply):
         self.count = 0
         self.maybe_crash = maybe_crash
         self.config = {
-            "recreate_failed_env_runners": True,
+            "restart_failed_env_runners": True,
         }
 
     def _maybe_crash(self):
@@ -331,21 +331,6 @@ class TestActorManager(unittest.TestCase):
 
         manager.clear()
 
-    def test_len_of_func_not_match_len_of_actors(self):
-        """Test healthy only mode works when a list of funcs are provided."""
-        actors = [Actor.remote(i) for i in range(4)]
-        manager = FaultTolerantActorManager(actors=actors)
-
-        def f(id, _):
-            return id
-
-        func = [functools.partial(f, i) for i in range(3)]
-
-        with self.assertRaisesRegexp(AssertionError, "same number of callables") as _:
-            manager.foreach_actor_async(func, healthy_only=True)
-
-        manager.clear()
-
     def test_probe_unhealthy_actors(self):
         """Test probe brings back unhealthy actors."""
         actors = [Actor.remote(i, maybe_crash=False) for i in range(4)]
@@ -371,8 +356,8 @@ class TestActorManager(unittest.TestCase):
             tags="pingpong", timeout_seconds=10.0
         )
         results_call = manager.fetch_ready_async_reqs(tags="call", timeout_seconds=2.0)
-        self.assertEquals(len(results_ping_pong), 4)
-        self.assertEquals(len(results_call), 4)
+        self.assertEqual(len(results_ping_pong), 4)
+        self.assertEqual(len(results_call), 4)
         for result in results_ping_pong:
             data = result.get()
             self.assertEqual(data, "pong")
@@ -387,7 +372,7 @@ class TestActorManager(unittest.TestCase):
         manager.foreach_actor_async(lambda w: w.call())
         time.sleep(1)
         results = manager.fetch_ready_async_reqs(timeout_seconds=5)
-        self.assertEquals(len(results), 8)
+        self.assertEqual(len(results), 8)
         for result in results:
             data = result.get()
             self.assertEqual(result.tag, None)
@@ -405,7 +390,7 @@ class TestActorManager(unittest.TestCase):
         results = manager.fetch_ready_async_reqs(
             timeout_seconds=5, tags=["pingpong", "call"]
         )
-        self.assertEquals(len(results), 8)
+        self.assertEqual(len(results), 8)
         for result in results:
             data = result.get()
             if isinstance(data, str):
@@ -422,11 +407,11 @@ class TestActorManager(unittest.TestCase):
         manager.foreach_actor_async(lambda w: w.call(), tag="call")
         time.sleep(1)
         results = manager.fetch_ready_async_reqs(timeout_seconds=5, tags=["incorrect"])
-        self.assertEquals(len(results), 0)
+        self.assertEqual(len(results), 0)
 
         # now test that passing no tags still gives back all of the results
         results = manager.fetch_ready_async_reqs(timeout_seconds=5)
-        self.assertEquals(len(results), 8)
+        self.assertEqual(len(results), 8)
         for result in results:
             data = result.get()
             if isinstance(data, str):

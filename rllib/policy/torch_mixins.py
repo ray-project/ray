@@ -1,7 +1,7 @@
-from ray.rllib.policy.policy import Policy, PolicyState
+from ray.rllib.policy.policy import PolicyState
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import TorchPolicy
-from ray.rllib.utils.annotations import OldAPIStack, override
+from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.schedules import PiecewiseSchedule
 
@@ -32,21 +32,19 @@ class LearningRateSchedule:
             )
             self.cur_lr2 = self._lr2_schedule.value(0)
 
-    @override(Policy)
     def on_global_var_update(self, global_vars):
         super().on_global_var_update(global_vars)
-        if not self.config.get("enable_rl_module_and_learner", False):
-            if self._lr_schedule:
-                self.cur_lr = self._lr_schedule.value(global_vars["timestep"])
-                for opt in self._optimizers:
-                    for p in opt.param_groups:
-                        p["lr"] = self.cur_lr
-            if self._lr2_schedule:
-                assert len(self._optimizers) == 2
-                self.cur_lr2 = self._lr2_schedule.value(global_vars["timestep"])
-                opt = self._optimizers[1]
+        if self._lr_schedule:
+            self.cur_lr = self._lr_schedule.value(global_vars["timestep"])
+            for opt in self._optimizers:
                 for p in opt.param_groups:
-                    p["lr"] = self.cur_lr2
+                    p["lr"] = self.cur_lr
+        if self._lr2_schedule:
+            assert len(self._optimizers) == 2
+            self.cur_lr2 = self._lr2_schedule.value(global_vars["timestep"])
+            opt = self._optimizers[1]
+            for p in opt.param_groups:
+                p["lr"] = self.cur_lr2
 
 
 @OldAPIStack
@@ -57,9 +55,7 @@ class EntropyCoeffSchedule:
         self._entropy_coeff_schedule = None
         # Disable any scheduling behavior related to learning if Learner API is active.
         # Schedules are handled by Learner class.
-        if entropy_coeff_schedule is None or (
-            self.config.get("enable_rl_module_and_learner", False)
-        ):
+        if entropy_coeff_schedule is None:
             self.entropy_coeff = entropy_coeff
         else:
             # Allows for custom schedule similar to lr_schedule format
@@ -78,7 +74,6 @@ class EntropyCoeffSchedule:
                 )
             self.entropy_coeff = self._entropy_coeff_schedule.value(0)
 
-    @override(Policy)
     def on_global_var_update(self, global_vars):
         super(EntropyCoeffSchedule, self).on_global_var_update(global_vars)
         if self._entropy_coeff_schedule is not None:
@@ -111,14 +106,12 @@ class KLCoeffMixin:
         # Return the current KL value.
         return self.kl_coeff
 
-    @override(TorchPolicy)
     def get_state(self) -> PolicyState:
         state = super().get_state()
         # Add current kl-coeff value.
         state["current_kl_coeff"] = self.kl_coeff
         return state
 
-    @override(TorchPolicy)
     def set_state(self, state: PolicyState) -> None:
         # Set current kl-coeff value first.
         self.kl_coeff = state.pop("current_kl_coeff", self.config["kl_coeff"])
@@ -209,29 +202,17 @@ class TargetNetworkMixin:
 
         # Support partial (soft) synching.
         # If tau == 1.0: Full sync from Q-model to target Q-model.
+        # Support partial (soft) synching.
+        # If tau == 1.0: Full sync from Q-model to target Q-model.
+        target_state_dict = next(iter(self.target_models.values())).state_dict()
+        model_state_dict = {
+            k: tau * model_state_dict[k] + (1 - tau) * v
+            for k, v in target_state_dict.items()
+        }
 
-        if self.config.get("enable_rl_module_and_learner", False):
-            target_current_network_pairs = self.model.get_target_network_pairs()
-            for target_network, current_network in target_current_network_pairs:
-                current_state_dict = current_network.state_dict()
-                new_state_dict = {
-                    k: tau * current_state_dict[k] + (1 - tau) * v
-                    for k, v in target_network.state_dict().items()
-                }
-                target_network.load_state_dict(new_state_dict)
-        else:
-            # Support partial (soft) synching.
-            # If tau == 1.0: Full sync from Q-model to target Q-model.
-            target_state_dict = next(iter(self.target_models.values())).state_dict()
-            model_state_dict = {
-                k: tau * model_state_dict[k] + (1 - tau) * v
-                for k, v in target_state_dict.items()
-            }
+        for target in self.target_models.values():
+            target.load_state_dict(model_state_dict)
 
-            for target in self.target_models.values():
-                target.load_state_dict(model_state_dict)
-
-    @override(TorchPolicy)
     def set_weights(self, weights):
         # Makes sure that whenever we restore weights for this policy's
         # model, we sync the target network (from the main model)

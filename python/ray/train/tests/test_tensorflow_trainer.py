@@ -59,7 +59,8 @@ def test_tensorflow_linear(ray_start_4_cpus, num_workers):
     }
     scaling_config = ScalingConfig(num_workers=num_workers)
     dataset = ray.data.read_csv("s3://anonymous@air-example-data/regression.csv")
-    preprocessor = Concatenator(exclude=["", "y"], output_column_name="x")
+    columns_to_concatenate = [f"x{i:03}" for i in range(100)]
+    preprocessor = Concatenator(columns=columns_to_concatenate, output_column_name="x")
     dataset = preprocessor.transform(dataset)
 
     trainer = TensorflowTrainer(

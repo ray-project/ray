@@ -7,7 +7,7 @@ The configuration outlined here can be applied to most KubeRay examples found in
 
 ## Step 1: Create a Kubernetes cluster on Amazon EKS
 
-Follow the first two steps in [this AWS documentation](https://docs.aws.amazon.com/eks/latest/userguide/getting-started-console.html#) to: 
+Follow the first two steps in [this AWS documentation](https://docs.aws.amazon.com/eks/latest/userguide/getting-started-console.html#) to:
 (1) create your Amazon EKS cluster and (2) configure your computer to communicate with your cluster.
 
 ## Step 2: Create node groups for the Amazon EKS cluster
@@ -17,7 +17,7 @@ The following section provides more detailed information.
 
 ### Create a CPU node group
 
-Typically, avoid running GPU workloads on the Ray head. Create a CPU node group for all Pods except Ray GPU 
+Typically, avoid running GPU workloads on the Ray head. Create a CPU node group for all Pods except Ray GPU
 workers, such as the KubeRay operator, Ray head, and CoreDNS Pods.
 
 Here's a common configuration that works for most KubeRay examples in the docs:
@@ -46,11 +46,11 @@ Create a GPU node group for Ray GPU workers.
    ```sh
    # Install the DaemonSet
    kubectl apply -f https://raw.githubusercontent.com/NVIDIA/k8s-device-plugin/v0.9.0/nvidia-device-plugin.yml
-   
+
    # Verify that your nodes have allocatable GPUs. If the GPU node fails to detect GPUs,
    # please verify whether the DaemonSet schedules the Pod on the GPU node.
    kubectl get nodes "-o=custom-columns=NAME:.metadata.name,GPU:.status.allocatable.nvidia\.com/gpu"
-   
+
    # Example output:
    # NAME                                GPU
    # ip-....us-west-2.compute.internal   4

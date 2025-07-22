@@ -23,7 +23,10 @@ class TestPolicyStateSwapping(unittest.TestCase):
 
     def test_policy_swap_gpu(self):
         config = (
-            APPOConfig()
+            APPOConfig().api_stack(
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
+            )
             # Use a single GPU for this test.
             .resources(num_gpus=1)
         )

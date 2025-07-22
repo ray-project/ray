@@ -14,7 +14,7 @@ This example:
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack
+`python [script file name].py
 --wandb-key=[your WandB API key] --wandb-project=[some WandB project name]
 --wandb-run-name=[optional: WandB run name within --wandb-project]`
 
@@ -160,10 +160,6 @@ MultiAgentCustomRenderedCorridorEnv = make_multi_agent(
 
 if __name__ == "__main__":
     args = parser.parse_args()
-
-    assert (
-        args.enable_new_api_stack
-    ), "Must set --enable-new-api-stack when running this script!"
 
     # The `config` arg passed into our Env's constructor (see the class' __init__ method
     # above). Feel free to change these.

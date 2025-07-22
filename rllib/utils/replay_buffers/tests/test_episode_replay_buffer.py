@@ -6,6 +6,8 @@ from ray.rllib.utils.replay_buffers.episode_replay_buffer import (
     EpisodeReplayBuffer,
 )
 
+from ray.rllib.utils.test_utils import check
+
 
 class TestEpisodeReplayBuffer(unittest.TestCase):
     @staticmethod
@@ -138,6 +140,53 @@ class TestEpisodeReplayBuffer(unittest.TestCase):
             # Where is_terminated, the next rewards should always be 0.0
             # (reset rewards).
             assert np.all(np.where(is_terminated[:, :-1], rewards[:, 1:] == 0.0, True))
+
+    def test_episode_replay_buffer_episode_sample_logic(self):
+
+        buffer = EpisodeReplayBuffer(capacity=10000)
+
+        for _ in range(200):
+            episode = self._get_episode()
+            buffer.add(episode)
+
+        for i in range(1000):
+            sample = buffer.sample(batch_size_B=16, n_step=1, sample_episodes=True)
+            check(buffer.get_sampled_timesteps(), 16 * (i + 1))
+            for eps in sample:
+
+                (
+                    obs,
+                    action,
+                    reward,
+                    next_obs,
+                    is_terminated,
+                    is_truncated,
+                    n_step,
+                ) = (
+                    eps.get_observations(0),
+                    eps.get_actions(-1),
+                    eps.get_rewards(-1),
+                    eps.get_observations(-1),
+                    eps.is_terminated,
+                    eps.is_truncated,
+                    eps.get_extra_model_outputs("n_step", -1),
+                )
+
+                # Make sure terminated and truncated are never both True.
+                assert not (is_truncated and is_terminated)
+
+                # Note, floating point numbers cannot be compared directly.
+                tolerance = 1e-8
+                # Assert that actions correspond to the observations.
+                check(obs, action, atol=tolerance)
+                # Assert that next observations are correctly one step after
+                # observations.
+                check(next_obs, obs + 1, atol=tolerance)
+                # Assert that the reward comes from the next observation.
+                check(reward * 10, next_obs, atol=tolerance)
+
+                # Assert that all n-steps are 1.0 as passed into `sample`.
+                check(n_step, 1.0, atol=tolerance)
 
 
 if __name__ == "__main__":

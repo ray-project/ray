@@ -26,14 +26,15 @@ ResultGrid (tune.ResultGrid)
 
 .. _result-docstring:
 
-Result (train.Result)
+Result (tune.Result)
 ---------------------
 
 .. autosummary::
     :nosignatures:
     :template: autosummary/class_without_autosummary.rst
+    :toctree: doc/
 
-    ~train.Result
+    ~tune.Result
 
 .. _exp-analysis-docstring:
 

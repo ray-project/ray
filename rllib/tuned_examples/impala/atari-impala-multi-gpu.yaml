@@ -2,7 +2,7 @@
 # Runs on a p2.8xlarge single head node machine.
 # Should reach ~400 reward in about 1h and after 15-20M ts.
 atari-impala:
-    env: ALE/Breakout-v5
+    env: ale_py:ALE/Breakout-v5
     run: IMPALA
     config:
         # Works for both torch and tf.

@@ -48,7 +48,7 @@ class CustomTorchCategorical(Distribution):
         return CustomTorchCategorical(logits=logits)
 
     # This method is used to create a deterministic distribution for the
-    # PPORLModule.forward_inference.
+    # DefaultPPORLModule.forward_inference.
     def to_deterministic(self):
         return TorchDeterministic(loc=torch.argmax(self.logits, dim=-1))
 
