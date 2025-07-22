@@ -1,28 +1,20 @@
 # coding: utf-8
 import argparse
 import time
-
-from typing import List, Tuple, Type
+import os
+from typing import Tuple, Type
 
 import socket
 import numpy as np
 import torch
 import ray
+import json
+from ray._private.ray_microbenchmark_helpers import timeit
 from ray.experimental.collective import create_collective_group
 
 
 DTYPE = torch.float16
-DEFAULT_SIZES: List[int] = [
-    4 * 1024,
-    16 * 1024,
-    64 * 1024,
-    256 * 1024,
-    1 * 1024 * 1024,
-    4 * 1024 * 1024,
-    16 * 1024 * 1024,
-    64 * 1024 * 1024,
-]
-BACKENDS = ["gloo", "object", "nccl"]
+NUM_ITERS = 5
 
 
 @ray.remote
@@ -67,12 +59,12 @@ class NCCLActor:
 
 
 def _exec_p2p_transfer(
+    label: str,
     shape: Tuple[int],
-    iters: int,
     backend: str,
     sender_hint: ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy,
     receiver_hint: ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy,
-) -> float:
+):
     actor_cls: Type
     group_backend: str
     if backend == "gloo":
@@ -91,44 +83,77 @@ def _exec_p2p_transfer(
     if group_backend is not None:
         create_collective_group([sender, receiver], backend=group_backend)
 
-    ray.get(receiver.recv.remote(sender.send.remote(shape, DTYPE)))  # warm‑up
-
-    start = time.perf_counter()
-    for _ in range(iters):
+    def _run():
         ref = sender.send.remote(shape, DTYPE)
         ref2 = receiver.recv.remote(ref)
         ray.get(ref2)
-    elapsed = time.perf_counter() - start
 
-    avg_us = (elapsed / iters) * 1e6
+    results = timeit(label, _run)
 
     ray.kill(sender)
     ray.kill(receiver)
+    time.sleep(1)
 
-    return avg_us
+    return results
+
+
+def _exec_p2p_transfer_object(
+    shape: Tuple[int],
+    sender_hint: ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy,
+    receiver_hint: ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy,
+):
+    return _exec_p2p_transfer(
+        "exec_p2p_transfer_object", shape, "object", sender_hint, receiver_hint
+    )
+
+
+def _exec_p2p_transfer_gloo(
+    shape: Tuple[int],
+    sender_hint: ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy,
+    receiver_hint: ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy,
+):
+    return _exec_p2p_transfer(
+        "exec_p2p_transfer_gloo", shape, "gloo", sender_hint, receiver_hint
+    )
+
+
+def _exec_p2p_transfer_nccl(
+    shape: Tuple[int],
+    sender_hint: ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy,
+    receiver_hint: ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy,
+):
+    return _exec_p2p_transfer(
+        "exec_p2p_transfer_nccl", shape, "nccl", sender_hint, receiver_hint
+    )
+
+
+def to_dict_key(key: str):
+    for r in [" ", ":", "-"]:
+        key = key.replace(r, "_")
+    for r in ["(", ")"]:
+        key = key.replace(r, "")
+    return key
 
 
 def main() -> None:
     p = argparse.ArgumentParser(description="GPU tensor transfer benchmark")
-    p.add_argument("--size", type=int, default=None, help="Tensor size in bytes")
-    p.add_argument("--iters", type=int, default=10, help="Iterations per run")
+    p.add_argument(
+        "--tensor-size-bytes",
+        type=int,
+        default=1_000_000,
+    )
     p.add_argument(
         "--distributed",
         action="store_true",
         help="Whether this is running on more than one node",
     )
-    p.add_argument(
-        "--backend",
-        choices=["gloo", "object", "nccl"],
-        default="gloo",
-        help="Transport backend to benchmark",
-    )
+
     args = p.parse_args()
     ray.init(
         logging_level="ERROR",
         runtime_env={
             "env_vars": {
-                "NCCL_DEBUG": "INFO",
+                # "NCCL_DEBUG": "INFO",
                 # "UCX_TLS": "^gdr_copy",
                 "RAY_worker_register_timeout_seconds": "120",
                 # Needed for torch distributed.
@@ -156,16 +181,33 @@ def main() -> None:
             remote_node_id, soft=False
         )
 
-    # Single‑run path
-    size = args.size or DEFAULT_SIZES[-1]  # default to largest size
-    backend = args.backend
+    size = args.tensor_size_bytes
     shape = (size // 2,)
-    lat = _exec_p2p_transfer(shape, args.iters, backend, sender_hint, receiver_hint)
+    results = []
+    results += _exec_p2p_transfer_object(shape, sender_hint, receiver_hint)
+    results += _exec_p2p_transfer_gloo(shape, sender_hint, receiver_hint)
+    results += _exec_p2p_transfer_nccl(shape, sender_hint, receiver_hint)
+    result_dict = {
+        f"{to_dict_key(v[0])}": (v[1], v[2]) for v in results if v is not None
+    }
 
-    print(
-        f"Backend: {backend} | Tensor size: {size // 1024} KB | "
-        f"Iterations: {args.iters} | Avg latency: {lat:.2f} µs",
+    perf_metrics = [
+        {
+            "perf_metric_name": to_dict_key(v[0]),
+            "perf_metric_value": v[1],
+            "perf_metric_type": "THROUGHPUT",
+        }
+        for v in results
+        if v is not None
+    ]
+    result_dict["perf_metrics"] = perf_metrics
+
+    test_output_json = os.environ.get(
+        "TEST_OUTPUT_JSON", "/tmp/microbenchmark_gpu_object.json"
     )
+
+    with open(test_output_json, "wt") as f:
+        json.dump(result_dict, f)
 
 
 if __name__ == "__main__":
