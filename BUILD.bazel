@@ -15,7 +15,7 @@ load("@python3_9//:defs.bzl", python39 = "interpreter")
 load("@rules_cc//cc:defs.bzl", "cc_proto_library")
 load("@rules_proto//proto:defs.bzl", "proto_library")
 load("@rules_python//python:defs.bzl", "py_library", "py_runtime", "py_runtime_pair")
-load("//bazel:ray.bzl", "COPTS", "FLATC_ARGS", "PYX_COPTS", "PYX_SRCS", "copy_to_workspace", "ray_cc_binary", "ray_cc_library", "ray_cc_test")
+load("//bazel:ray.bzl", "COPTS", "FLATC_ARGS", "PYX_COPTS", "PYX_SRCS", "copy_to_thirdparty_files", "copy_to_workspace", "ray_cc_binary", "ray_cc_library", "ray_cc_test")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -1012,6 +1012,8 @@ alias(
     }),
 )
 
+# This file group should be used only for Ray’s internal protobufs. 
+# For third-party protobufs, use :cp_thirdparty_py_proto instead.
 filegroup(
     name = "all_py_proto",
     srcs = [
@@ -1049,6 +1051,13 @@ py_library(
         exclude = ["python/ray/tests/*.py"],
     ),
     visibility = ["__subpackages__"],
+)
+
+copy_to_thirdparty_files(
+    name = "cp_thirdparty_py_proto",
+    srcs = [
+        "//src/ray/protobuf:metrics_service_py_proto",
+    ],
 )
 
 copy_to_workspace(
@@ -1099,6 +1108,7 @@ copy_to_workspace(
 genrule(
     name = "install_py_proto",
     srcs = [
+        ":cp_thirdparty_py_proto",
         ":cp_all_py_proto",
         ":cp_serve_py_proto",
     ],

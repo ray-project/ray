@@ -1839,12 +1839,6 @@ opentelemetry-exporter-prometheus==0.55b1 \
     # via
     #   -c python/requirements_compiled_rayllm_test_py311_cu121.txt
     #   -r python/requirements.txt
-opentelemetry-proto==1.27.0 \
-    --hash=sha256:33c9345d91dafd8a74fc3d7576c5a38f18b7fdf8d02983ac67485386132aedd6 \
-    --hash=sha256:b133873de5581a50063e1e4b29cdcf0c5e253a8c2d8dc1229add20a4c3830ace
-    # via
-    #   -c python/requirements_compiled_rayllm_test_py311_cu121.txt
-    #   -r python/requirements.txt
 opentelemetry-sdk==1.34.1 \
     --hash=sha256:308effad4059562f1d92163c61c8141df649da24ce361827812c40abb2a1e96e \
     --hash=sha256:8091db0d763fcd6098d4781bbc80ff0971f94e260739aa6afe6fd379cdf3aa4d
@@ -2167,7 +2161,6 @@ protobuf==4.25.8 \
     #   -r python/requirements.txt
     #   google-api-core
     #   googleapis-common-protos
-    #   opentelemetry-proto
     #   proto-plus
     #   ray
     #   tensorboardx

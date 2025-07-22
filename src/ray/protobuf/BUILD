@@ -141,6 +141,11 @@ proto_library(
     ],
 )
 
+python_grpc_compile(
+    name = "metrics_service_py_proto",
+    deps = ["@com_github_opentelemetry_proto//:metrics_service_proto"],
+)
+
 cc_proto_library(
     name = "reporter_cc_proto",
     deps = [":reporter_proto"],

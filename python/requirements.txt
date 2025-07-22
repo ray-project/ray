@@ -36,7 +36,6 @@ rich
 opentelemetry-sdk>=1.30.0
 opentelemetry-api
 opentelemetry-exporter-prometheus
-opentelemetry-proto
 fastapi
 gymnasium==1.0.0
 virtualenv!=20.21.1,>=20.0.24
