@@ -5,7 +5,7 @@ from typing import List
 import subprocess
 import platform
 import runfiles
-from typing import Optional
+from typing import Optional, Union
 
 DEFAULT_UV_FLAGS = [
     "--generate-hashes",
@@ -13,12 +13,12 @@ DEFAULT_UV_FLAGS = [
     "--no-strip-markers",
     "--emit-index-url",
     "--emit-find-links",
-    "--unsafe-package ray",
-    "--unsafe-package grpcio-tools",
-    "--unsafe-package setuptools",
-    "--index-url https://pypi.org/simple",
-    "--extra-index-url https://download.pytorch.org/whl/cpu",
-    "--index-strategy unsafe-best-match",
+    ["--unsafe-package", "ray"],
+    ["--unsafe-package", "grpcio-tools"],
+    ["--unsafe-package", "setuptools"],
+    ["--index-url", "https://pypi.org/simple"],
+    ["--extra-index-url", "https://download.pytorch.org/whl/cpu"],
+    ["--index-strategy", "unsafe-best-match"],
     "--quiet",
 ]
 
@@ -57,7 +57,7 @@ class DependencySetManager:
         raise KeyError(f"Dependency set {name} not found")
 
     def exec_uv_cmd(self, cmd: str, args: List[str]) -> str:
-        cmd = f"{uv_binary()} pip {cmd} {' '.join(args)}"
+        cmd = f"{uv_binary()} pip {cmd} {_join_args(args)}"
         click.echo(f"Executing command: {cmd}")
         status = subprocess.run(cmd, shell=True)
         if status.returncode != 0:
@@ -90,11 +90,11 @@ class DependencySetManager:
         override_flags: Optional[List[str]] = None,
     ):
         """Compile a dependency set."""
-        args = []
+        args = DEFAULT_UV_FLAGS.copy()
         if override_flags:
-            args = _override_uv_flags(override_flags)
+            args = _override_uv_flags(override_flags, args)
         if append_flags:
-            args = _append_uv_flags(append_flags)
+            args = _append_uv_flags(append_flags, args)
         if constraints:
             for constraint in constraints:
                 args.extend(["-c", self.get_path(constraint)])
@@ -109,22 +109,48 @@ class DependencySetManager:
         return (Path(self.workspace.dir) / path).as_posix()
 
 
-def _override_uv_flags(flags: List[str]) -> List[str]:
-    removed_flags = set()
-    default_flags = set(DEFAULT_UV_FLAGS.copy())
+def _join_args(args: List[Union[str, List[str]]]) -> str:
+    flat_parts = []
+    for arg in args:
+        if isinstance(arg, str):
+            flat_parts.append(arg)
+        elif isinstance(arg, list):
+            flat_parts.extend(arg)
+        else:
+            raise TypeError(f"Unsupported type: {type(arg)}")
+    return " ".join(flat_parts)
+
+
+def _override_uv_flags(
+    flags: List[str], args: List[Union[str, List[str]]]
+) -> List[str]:
+    split_flags = _create_arg_list(flags)
+    for flag in split_flags:
+        for arg in args:
+            if isinstance(arg, str):
+                if flag == arg:
+                    args.remove(arg)
+            elif isinstance(arg, list):
+                key = arg[0]
+                if flag[0] == key:
+                    args.remove(arg)
+    return args + split_flags
+
+
+def _create_arg_list(flags: List[str]) -> List[Union[str, List[str]]]:
+    args = []
     for flag in flags:
-        flag_name = flag.split(" ")[0]
-        for default_flag in default_flags:
-            if flag_name in default_flag:
-                removed_flags.add(default_flag)
-    default_flags.difference_update(removed_flags)
-    return list(default_flags.union(flags))
+        split_flag = flag.split(" ")
+        if len(split_flag) == 1:
+            args.append(split_flag[0])
+        else:
+            args.append([split_flag[0], split_flag[1]])
+    return args
 
 
-def _append_uv_flags(flags: List[str]) -> List[str]:
-    default_flags = set(DEFAULT_UV_FLAGS.copy())
-    default_flags.update(flags)
-    return list(default_flags)
+def _append_uv_flags(flags: List[str], args: List[Union[str, List[str]]]) -> List[str]:
+    args.extend(flags)
+    return args
 
 
 def uv_binary():

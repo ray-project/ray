@@ -10,7 +10,9 @@ from ci.raydepsets.cli import (
     DependencySetManager,
     uv_binary,
     _override_uv_flags,
+    _join_args,
     _append_uv_flags,
+    _create_arg_list,
 )
 from ci.raydepsets.workspace import Workspace
 from click.testing import CliRunner
@@ -198,50 +200,55 @@ class TestCli(unittest.TestCase):
             )
 
     def test_append_uv_flags(self):
-        assert sorted(_append_uv_flags(["--no-annotate", "--no-header"])) == sorted(
-            [
-                *DEFAULT_UV_FLAGS,
-                "--no-annotate",
-                "--no-header",
-            ]
-        )
+        assert _append_uv_flags(
+            ["--no-annotate", "--no-header"], DEFAULT_UV_FLAGS.copy()
+        ) == DEFAULT_UV_FLAGS.copy() + ["--no-annotate", "--no-header"]
 
     def test_override_uv_flag(self):
-        assert sorted(
-            _override_uv_flags(
-                ["--extra-index-url https://download.pytorch.org/whl/cu128"]
-            )
-        ) == sorted(
-            [
-                "--generate-hashes",
-                "--strip-extras",
-                "--no-strip-markers",
-                "--emit-index-url",
-                "--emit-find-links",
-                "--unsafe-package ray",
-                "--unsafe-package grpcio-tools",
-                "--unsafe-package setuptools",
-                "--index-url https://pypi.org/simple",
-                "--extra-index-url https://download.pytorch.org/whl/cu128",
-                "--index-strategy unsafe-best-match",
-                "--quiet",
-            ]
-        )
+        assert _override_uv_flags(
+            ["--extra-index-url https://download.pytorch.org/whl/cu128"],
+            DEFAULT_UV_FLAGS.copy(),
+        ) == [
+            "--generate-hashes",
+            "--strip-extras",
+            "--no-strip-markers",
+            "--emit-index-url",
+            "--emit-find-links",
+            ["--unsafe-package", "ray"],
+            ["--unsafe-package", "grpcio-tools"],
+            ["--unsafe-package", "setuptools"],
+            ["--index-url", "https://pypi.org/simple"],
+            ["--index-strategy", "unsafe-best-match"],
+            "--quiet",
+            ["--extra-index-url", "https://download.pytorch.org/whl/cu128"],
+        ]
 
-    def test_override_uv_flags(self):
-        assert sorted(_override_uv_flags(["--unsafe-package dummy"])) == sorted(
+    def test_create_arg_list(self):
+        assert _create_arg_list(["--emit-find-links"]) == ["--emit-find-links"]
+        assert _create_arg_list(["--unsafe-package dummy"]) == [
+            ["--unsafe-package", "dummy"]
+        ]
+        assert _create_arg_list(
             [
-                "--generate-hashes",
-                "--strip-extras",
-                "--no-strip-markers",
-                "--emit-index-url",
                 "--emit-find-links",
-                "--unsafe-package dummy",
-                "--index-url https://pypi.org/simple",
-                "--index-strategy unsafe-best-match",
-                "--extra-index-url https://download.pytorch.org/whl/cpu",
-                "--quiet",
+                "--extra-index-url https://download.pytorch.org/whl/cu128",
             ]
+        ) == [
+            "--emit-find-links",
+            ["--extra-index-url", "https://download.pytorch.org/whl/cu128"],
+        ]
+
+    def test_join_args(self):
+        assert _join_args(["--emit-find-links"]) == "--emit-find-links"
+        assert _join_args([["--unsafe-package", "dummy"]]) == "--unsafe-package dummy"
+        assert (
+            _join_args(
+                [
+                    "--emit-find-links",
+                    ["--extra-index-url", "https://download.pytorch.org/whl/cu128"],
+                ]
+            )
+            == "--emit-find-links --extra-index-url https://download.pytorch.org/whl/cu128"
         )
 
 
