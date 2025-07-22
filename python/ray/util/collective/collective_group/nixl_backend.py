@@ -2,6 +2,7 @@ from nixl._api import nixl_agent, nixl_agent_config
 import ray
 from ray.util.collective.types import Backend
 from typing import TYPE_CHECKING, List, Tuple
+import time
 
 if TYPE_CHECKING:
     import torch
@@ -35,7 +36,7 @@ class NixlBackend:
 
     def recv(
         self,
-        tensors: List[torch.Tensor],
+        tensors: List["torch.Tensor"],
         nixl_serialized_descs: bytes,
         remote_nixl_agent_meta: bytes,
     ):
@@ -55,7 +56,7 @@ class NixlBackend:
         remote_name = nixl_agent.add_remote_agent(remote_nixl_agent_meta)
 
         xfer_handle = nixl_agent.initialize_xfer(
-            "READ", local_descs.trim(), remote_descs, remote_name, b"UUID1"
+            "READ", local_descs.trim(), remote_descs, remote_name
         )
 
         state = nixl_agent.transfer(xfer_handle)
@@ -65,10 +66,12 @@ class NixlBackend:
             state = nixl_agent.check_xfer_state(xfer_handle)
             if state == "ERR":
                 raise RuntimeError("NIXL transfer got to Error state.")
+            if state == "PROC":
+                time.sleep(0.001)  # Avoid busy waiting
             elif state == "DONE":
                 break
 
-    def get_nixl_metadata(self, tensors: List[torch.Tensor]) -> Tuple[bytes, bytes]:
+    def get_nixl_metadata(self, tensors: List["torch.Tensor"]) -> Tuple[bytes, bytes]:
         """Get NIXL metadata for a set of tensors.
 
         Args:
