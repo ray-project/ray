@@ -212,24 +212,26 @@ void WorkerPool::SetRuntimeEnvAgentClient(
 
 void WorkerPool::PopWorkerCallbackAsync(PopWorkerCallback callback,
                                         std::shared_ptr<WorkerInterface> worker,
-                                        PopWorkerStatus status) {
+                                        PopWorkerStatus status,
+					const std::string &runtime_env_setup_error_message) {
   // This method shouldn't be invoked when runtime env creation has failed because
   // when runtime env is failed to be created, they are all
   // invoking the callback immediately.
   RAY_CHECK(status != PopWorkerStatus::RuntimeEnvCreationFailed);
   // Call back this function asynchronously to make sure executed in different stack.
   io_service_->post(
-      [this, callback = std::move(callback), worker = std::move(worker), status]() {
-        PopWorkerCallbackInternal(callback, worker, status);
+      [this, callback = std::move(callback), worker = std::move(worker), status, runtime_env_setup_error_message]() {
+        PopWorkerCallbackInternal(callback, worker, status, runtime_env_setup_error_message);
       },
       "WorkerPool.PopWorkerCallback");
 }
 
 void WorkerPool::PopWorkerCallbackInternal(const PopWorkerCallback &callback,
                                            std::shared_ptr<WorkerInterface> worker,
-                                           PopWorkerStatus status) {
+                                           PopWorkerStatus status,
+					   const std::string &runtime_env_setup_error_message) {
   RAY_CHECK(callback);
-  auto used = callback(worker, status, /*runtime_env_setup_error_message=*/"");
+  auto used = callback(worker, status, runtime_env_setup_error_message);
   if (worker && !used) {
     // The invalid worker not used, restore it to worker pool.
     PushWorker(worker);
@@ -521,8 +523,14 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
                               state);
 
   auto start = std::chrono::high_resolution_clock::now();
+  std::error_code ec;
   // Start a process and measure the startup time.
-  Process proc = StartProcess(worker_command_args, env);
+  Process proc = StartProcess(worker_command_args, env, ec);
+  RAY_LOG(ERROR) << "Error code is " << ec.value();
+  if (ec.value() == E2BIG) {
+    *status = PopWorkerStatus::ArgumentListTooLong;
+    return {Process(), (StartupToken)-1};
+  }
   stats::NumWorkersStarted.Record(1);
   RAY_LOG(INFO) << "Started worker process with pid " << proc.GetId() << ", the token is "
                 << worker_startup_token_counter_;
@@ -634,7 +642,7 @@ void WorkerPool::MonitorPopWorkerRequestForRegistration(
 }
 
 Process WorkerPool::StartProcess(const std::vector<std::string> &worker_command_args,
-                                 const ProcessEnvironment &env) {
+                                 const ProcessEnvironment &env, std::error_code &ec) {
   if (RAY_LOG_ENABLED(DEBUG)) {
     std::string debug_info;
     debug_info.append("Starting worker process with command:");
@@ -658,7 +666,6 @@ Process WorkerPool::StartProcess(const std::vector<std::string> &worker_command_
   }
 
   // Launch the process to create the worker.
-  std::error_code ec;
   std::vector<const char *> argv;
   for (const std::string &arg : worker_command_args) {
     argv.push_back(arg.c_str());
@@ -1356,7 +1363,12 @@ void WorkerPool::StartNewWorker(
       state.pending_start_requests.emplace_back(std::move(pop_worker_request));
     } else {
       DeleteRuntimeEnvIfPossible(serialized_runtime_env);
-      PopWorkerCallbackAsync(std::move(pop_worker_request->callback), nullptr, status);
+      // If we failed due to E2BIG, we provide a more specific error message.
+      std::string error_msg = "";
+      if (status == PopWorkerStatus::ArgumentListTooLong) {
+          error_msg = "Worker command arguments too long. This can be caused by a large runtime environment.";
+      }
+      PopWorkerCallbackAsync(std::move(pop_worker_request->callback), nullptr, status, error_msg);
     }
   };
 
