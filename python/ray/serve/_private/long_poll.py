@@ -105,7 +105,9 @@ class LongPollClient:
         # NOTE(edoakes): we schedule the initial _poll_next call with an empty context
         # so that Ray will not recursively cancel the underlying `listen_for_change`
         # task. See: https://github.com/ray-project/ray/issues/52476.
-        self.event_loop.call_soon_threadsafe(self._poll_next, context=contextvars.Context())
+        self.event_loop.call_soon_threadsafe(
+            self._poll_next, context=contextvars.Context()
+        )
 
     def stop(self) -> None:
         """Stop the long poll client after the next RPC returns."""
