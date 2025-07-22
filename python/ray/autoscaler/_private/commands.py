@@ -926,6 +926,13 @@ def get_or_create_head_node(
         )
         cli_logger.newline()
 
+    # Clean up temporary config file if it was created
+    if not no_monitor_on_head and "remote_config_file" in locals():
+        try:
+            os.remove(remote_config_file.name)
+        except Exception:
+            pass  # Ignore cleanup errors
+
 
 def _should_create_new_head(
     head_node_id: Optional[str],
@@ -1025,9 +1032,14 @@ def _set_up_config_for_head_node(
     remote_config = provider.prepare_for_head_node(remote_config)
 
     # Now inject the rewritten config and SSH key into the head node
-    remote_config_file = tempfile.NamedTemporaryFile("w", prefix="ray-bootstrap-")
+    # On Windows, use delete=False because delete=True locks the file
+    # handle which prevents rsync/scp from being able to copy it the head node.
+    remote_config_file = tempfile.NamedTemporaryFile(
+        "w", prefix="ray-bootstrap-", delete=False
+    )
     remote_config_file.write(json.dumps(remote_config))
     remote_config_file.flush()
+    remote_config_file.close()  # Close the file handle to ensure it's accessible
     config["file_mounts"].update(
         {"~/ray_bootstrap_config.yaml": remote_config_file.name}
     )
