@@ -1,5 +1,5 @@
 from .common import NodeIdStr
-from .execution_options import ExecutionOptions, ExecutionResources
+from .execution_options import ExecutionOptions, ExecutionResources, OperatorOptions
 from .executor import Executor, OutputIterator
 from .physical_operator import PhysicalOperator, ReportsExtraResourceUsage
 from .ref_bundle import RefBundle
@@ -17,4 +17,5 @@ __all__ = [
     "RefBundle",
     "ReportsExtraResourceUsage",
     "TaskContext",
+    "OperatorOptions",
 ]
