@@ -542,6 +542,16 @@ def _setup_ray_cluster(
     )
     port_exclude_list.append(spark_job_server_port)
 
+    if _ray_system_metrics_logging_enabled():
+        metrics_export_port = get_random_unused_port(
+            ray_head_ip,
+            min_port=9000,
+            max_port=10000,
+            exclude_list=port_exclude_list,
+        )
+        port_exclude_list.append(metrics_export_port)
+        head_node_options["metrics_export_port"] = metrics_export_port
+
     if include_dashboard is None or include_dashboard is True:
         if ray_dashboard_port is None:
             ray_dashboard_port = get_random_unused_port(
@@ -706,7 +716,9 @@ def _setup_ray_cluster(
 
     if _ray_system_metrics_logging_enabled():
         from ray.util.spark.ray_metrics_monitor import RayMetricsMonitor
-        ray_metrics_monitor = RayMetricsMonitor(ray_head_ip)
+        ray_metrics_monitor = RayMetricsMonitor(
+            ray_head_ip, head_node_options["metrics_export_port"]
+        )
         ray_metrics_monitor.start()
     ray_cluster_handler = RayClusterOnSpark(
         address=cluster_address,

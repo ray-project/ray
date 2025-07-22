@@ -68,10 +68,8 @@ _ray_metric_families = {
     ]
 }
 
-_RAY_METRICS_EXPORT_PORT = 6389
 
-
-def collect_ray_metrics():
+def collect_ray_metrics(node_ip, metrics_export_port):
     """
     Query ray metrics at current timestamp,
     return a dict of metric_key to metric_value
@@ -81,7 +79,7 @@ def collect_ray_metrics():
     from prometheus_client.parser import text_string_to_metric_families
     import requests
 
-    response = requests.get(f"http://localhost:{_RAY_METRICS_EXPORT_PORT}")
+    response = requests.get(f"http://{node_ip}:{metrics_export_port}")
     metric_data = response.text
 
     def gen_metric_key(_family, label_data):
@@ -119,12 +117,14 @@ class RayMetricsMonitor:
         sampling_interval: float, default to 10. The interval (in seconds) at which to pull system
             metrics.
     """
-    def __init__(self, ray_head_ip: str, sampling_interval: float = 10):
+    def __init__(self, ray_head_ip: str, metrics_export_port: int, sampling_interval: float = 10):
         import mlflow
         from mlflow.tracking.client import MlflowClient
         from mlflow.utils.autologging_utils import BatchMetricsLogger
         from mlflow.system_metrics.system_metrics_monitor import SystemMetricsMonitor
 
+        self._ray_head_ip = ray_head_ip
+        self._metrics_export_port = metrics_export_port
         self._mlflow_experiment_id = mlflow.tracking.fluent._get_experiment_id()
 
         if mlflow.active_run() is not None:
@@ -177,7 +177,7 @@ class RayMetricsMonitor:
 
     def collect_metrics(self):
         try:
-            return collect_ray_metrics()
+            return collect_ray_metrics(self._ray_head_ip, self._metrics_export_port)
         except Exception as e:
             _logger.warning(f"Failed to collect Ray metrics: {e}")
             return {}
