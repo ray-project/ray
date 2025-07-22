@@ -526,7 +526,6 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
   std::error_code ec;
   // Start a process and measure the startup time.
   Process proc = StartProcess(worker_command_args, env, ec);
-  RAY_LOG(ERROR) << "Error code is " << ec.value();
   if (ec.value() == E2BIG) {
     *status = PopWorkerStatus::ArgumentListTooLong;
     return {Process(), (StartupToken)-1};
