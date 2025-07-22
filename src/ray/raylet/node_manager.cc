@@ -2515,7 +2515,7 @@ void NodeManager::HandleGetNodeStats(rpc::GetNodeStatsRequest node_stats_request
   // workers have replied.
   auto all_workers = worker_pool_.GetAllRegisteredWorkers(/* filter_dead_worker */ true);
   absl::flat_hash_set<WorkerID> driver_ids;
-  for (auto driver :
+  for (const auto &driver :
        worker_pool_.GetAllRegisteredDrivers(/* filter_dead_driver */ true)) {
     all_workers.push_back(driver);
     driver_ids.insert(driver->WorkerId());
@@ -2544,11 +2544,13 @@ void NodeManager::HandleGetNodeStats(rpc::GetNodeStatsRequest node_stats_request
   }
 }
 
+namespace {
+
 rpc::ObjectStoreStats AccumulateStoreStats(
-    std::vector<rpc::GetNodeStatsReply> node_stats) {
+    const std::vector<rpc::GetNodeStatsReply> &node_stats) {
   rpc::ObjectStoreStats store_stats;
   for (const auto &reply : node_stats) {
-    auto cur_store = reply.store_stats();
+    const auto &cur_store = reply.store_stats();
     // Use max aggregation for time, since the nodes are spilling concurrently.
     store_stats.set_spill_time_total_s(
         std::max(store_stats.spill_time_total_s(), cur_store.spill_time_total_s()));
@@ -2588,7 +2590,7 @@ rpc::ObjectStoreStats AccumulateStoreStats(
   return store_stats;
 }
 
-std::string FormatMemoryInfo(std::vector<rpc::GetNodeStatsReply> node_stats) {
+std::string FormatMemoryInfo(const std::vector<rpc::GetNodeStatsReply> &node_stats) {
   // First pass to compute object sizes.
   absl::flat_hash_map<ObjectID, int64_t> object_sizes;
   for (const auto &reply : node_stats) {
@@ -2667,6 +2669,8 @@ std::string FormatMemoryInfo(std::vector<rpc::GetNodeStatsReply> node_stats) {
   return builder.str();
 }
 
+}  // namespace
+
 void NodeManager::HandleFormatGlobalMemoryInfo(
     rpc::FormatGlobalMemoryInfoRequest request,
     rpc::FormatGlobalMemoryInfoReply *reply,
@@ -2683,8 +2687,8 @@ void NodeManager::HandleFormatGlobalMemoryInfo(
 
   auto store_reply =
       [replies, reply, num_nodes, send_reply_callback, include_memory_info](
-          const rpc::GetNodeStatsReply &local_reply) {
-        replies->push_back(local_reply);
+          rpc::GetNodeStatsReply &&local_reply) {
+        replies->push_back(std::move(local_reply));
         if (replies->size() >= num_nodes) {
           if (include_memory_info) {
             reply->set_memory_summary(FormatMemoryInfo(*replies));
@@ -2695,18 +2699,17 @@ void NodeManager::HandleFormatGlobalMemoryInfo(
       };
 
   // Fetch from remote nodes.
-  for (const auto &entry : remote_node_manager_addresses_) {
-    auto client = std::make_unique<rpc::NodeManagerClient>(
-        entry.second.first, entry.second.second, client_call_manager_);
-    client->GetNodeStats(stats_req,
-                         [replies, store_reply](const ray::Status &status,
-                                                const rpc::GetNodeStatsReply &r) {
-                           if (!status.ok()) {
-                             RAY_LOG(ERROR) << "Failed to get remote node stats: "
-                                            << status.ToString();
-                           }
-                           store_reply(r);
-                         });
+  for (const auto &[node_id, address] : remote_node_manager_addresses_) {
+    auto client = std::make_shared<RayletClient>(
+        /*address=*/address.first, /*port=*/address.second, client_call_manager_);
+    client->GetNodeStats(
+        stats_req,
+        [replies, store_reply](const ray::Status &status, rpc::GetNodeStatsReply &&r) {
+          if (!status.ok()) {
+            RAY_LOG(ERROR) << "Failed to get remote node stats: " << status.ToString();
+          }
+          store_reply(std::move(r));
+        });
   }
 
   // Fetch from the local node.
@@ -2715,7 +2718,7 @@ void NodeManager::HandleFormatGlobalMemoryInfo(
                      [local_reply, store_reply](Status status,
                                                 std::function<void()> success,
                                                 std::function<void()> failure) mutable {
-                       store_reply(*local_reply);
+                       store_reply(std::move(*local_reply));
                      });
 }
 

@@ -418,16 +418,6 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
   task_event_buffer_ = std::make_unique<worker::TaskEventBufferImpl>(
       std::make_shared<gcs::GcsClient>(options_.gcs_options));
 
-  // Initialize raylet client.
-  // NOTE(edoakes): the core_worker_server_ must be running before registering with
-  // the raylet, as the raylet will start sending some RPC messages immediately.
-  // TODO(zhijunfu): currently RayletClient would crash in its constructor if it cannot
-  // connect to Raylet after a number of retries, this can be changed later
-  // so that the worker (java/python .etc) can retrieve and handle the error
-  // instead of crashing.
-  auto grpc_client = rpc::NodeManagerWorkerClient::make(
-      options_.raylet_ip_address, options_.node_manager_port, *client_call_manager_);
-
   if (options_.worker_type != WorkerType::DRIVER) {
     periodical_runner_->RunFnPeriodically(
         [this] { ExitIfParentRayletDies(); },
@@ -496,8 +486,19 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
     RAY_CHECK_GE(assigned_port, 0);
   }
 
-  local_raylet_client_ = std::make_shared<raylet::RayletClient>(
-      std::move(raylet_conn), std::move(grpc_client), GetWorkerID());
+  // Initialize raylet client.
+  // NOTE(edoakes): the core_worker_server_ must be running before registering with
+  // the raylet, as the raylet will start sending some RPC messages immediately.
+  // TODO(zhijunfu): currently RayletClient would crash in its constructor if it cannot
+  // connect to Raylet after a number of retries, this can be changed later
+  // so that the worker (java/python .etc) can retrieve and handle the error
+  // instead of crashing.
+  local_raylet_client_ =
+      std::make_shared<raylet::RayletClient>(std::move(raylet_conn),
+                                             options_.raylet_ip_address,
+                                             options_.node_manager_port,
+                                             *client_call_manager_,
+                                             GetWorkerID());
   connected_ = true;
 
   // Initialize task receivers.
@@ -565,8 +566,7 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
                 core_worker_client_pool_.get(),
                 [this](const std::string &node_manager_address, int32_t port) {
                   return std::make_shared<raylet::RayletClient>(
-                      rpc::NodeManagerWorkerClient::make(
-                          node_manager_address, port, *client_call_manager_));
+                      node_manager_address, port, *client_call_manager_);
                 },
                 addr));
       });
@@ -678,11 +678,9 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
       [this](const NodeID &node_id, rpc::ClientCallManager &client_call_manager) {
         auto node_info = gcs_client_->Nodes().Get(node_id);
         RAY_CHECK(node_info) << "No GCS info for node " << node_id;
-        auto grpc_client =
-            rpc::NodeManagerWorkerClient::make(node_info->node_manager_address(),
-                                               node_info->node_manager_port(),
-                                               client_call_manager);
-        return std::make_shared<raylet::RayletClient>(std::move(grpc_client));
+        return std::make_shared<raylet::RayletClient>(node_info->node_manager_address(),
+                                                      node_info->node_manager_port(),
+                                                      client_call_manager);
       };
   experimental_mutable_object_provider_ =
       std::make_shared<experimental::MutableObjectProvider>(
@@ -779,9 +777,8 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
   }
 
   auto raylet_client_factory = [this](const std::string &ip_address, int port) {
-    auto grpc_client =
-        rpc::NodeManagerWorkerClient::make(ip_address, port, *client_call_manager_);
-    return std::make_shared<raylet::RayletClient>(std::move(grpc_client));
+    return std::make_shared<raylet::RayletClient>(
+        ip_address, port, *client_call_manager_);
   };
 
   auto on_excess_queueing = [this](const ActorID &actor_id, uint64_t num_queued) {
