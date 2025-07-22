@@ -6,8 +6,9 @@ from ray.data._internal.logical.interfaces import (
     LogicalOperator,
     LogicalPlan,
     PhysicalPlan,
+    å,
 )
-from ray.data._internal.logical.operators.join_operator import Join
+from ray.data._internal.logical.operators.join_operator import Join, BroadcastJoin
 from ray.data.context import DataContext
 from ray.util.annotations import DeveloperAPI
 

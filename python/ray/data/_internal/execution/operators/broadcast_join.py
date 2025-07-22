@@ -138,8 +138,8 @@ class BroadcastJoinOperator(MapOperator):
         """
         from ray.data._internal.compute import ActorPoolStrategy
         from ray.data._internal.execution.operators.map_transformer import (
-            MapTransformer,
             BatchUDFMapTransformFn,
+            MapTransformer,
         )
 
         # Create the broadcast join function that materializes the right dataset immediately
