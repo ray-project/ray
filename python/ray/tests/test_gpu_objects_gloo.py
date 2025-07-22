@@ -20,6 +20,9 @@ class GPUTestActor:
     def echo(self, data):
         return data
 
+    def add(self, a, b):
+        return a + b
+
     def double(self, data):
         if isinstance(data, list):
             return [self.double(d) for d in data]
@@ -38,7 +41,13 @@ class GPUTestActor:
 
     def get_num_gpu_objects(self):
         gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
-        return len(gpu_object_manager.gpu_object_store.gpu_object_store)
+        gpu_object_store = gpu_object_manager.gpu_object_store
+        print(
+            "get_num_gpu_objects",
+            gpu_object_store.gpu_object_store,
+            gpu_object_store.gpu_object_id_to_num_readers,
+        )
+        return len(gpu_object_store.gpu_object_store)
 
 
 @pytest.mark.parametrize("data_size_bytes", [100])
@@ -198,6 +207,43 @@ def test_p2p(ray_start_regular):
     ref = sender.echo.remote(medium_tensor)
     result = receiver.double.remote(ref)
     assert ray.get(result) == pytest.approx(medium_tensor * 2)
+
+
+def test_send_same_ref_to_same_actor_task_multiple_times(ray_start_regular):
+    world_size = 2
+    actors = [GPUTestActor.remote() for _ in range(world_size)]
+    create_collective_group(actors, backend="torch_gloo")
+
+    small_tensor = torch.randn((1,))
+    sender = actors[0]
+    receiver = actors[1]
+
+    ref = sender.echo.remote(small_tensor)
+    result = receiver.add.remote(ref, ref)
+    assert ray.get(result) == pytest.approx(small_tensor * 2)
+
+    wait_for_condition(
+        lambda: ray.get(receiver.get_num_gpu_objects.remote()) == 0,
+        timeout=10,
+        retry_interval_ms=100,
+    )
+
+
+def test_send_same_ref_to_same_actor_multiple_times(ray_start_regular):
+    world_size = 2
+    actors = [GPUTestActor.remote() for _ in range(world_size)]
+    create_collective_group(actors, backend="torch_gloo")
+
+    small_tensor = torch.randn((1,))
+    sender = actors[0]
+    receiver = actors[1]
+
+    ref = sender.echo.remote(small_tensor)
+    result = receiver.double.remote(ref)
+    assert ray.get(result) == pytest.approx(small_tensor * 2)
+
+    result = receiver.double.remote(ref)
+    assert ray.get(result) == pytest.approx(small_tensor * 2)
 
 
 def test_intra_gpu_tensor_transfer(ray_start_regular):

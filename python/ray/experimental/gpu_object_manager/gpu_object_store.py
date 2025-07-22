@@ -64,6 +64,7 @@ def __ray_recv__(
     obj_id: str,
     src_rank: int,
     tensor_meta: List[Tuple["torch.Size", "torch.dtype"]],
+    num_readers: int,
 ):
     """Helper function that runs on the dst actor to receive tensors from the src actor."""
     from ray._private.worker import global_worker
@@ -78,7 +79,7 @@ def __ray_recv__(
         tensor = torch.zeros(shape, dtype=dtype, device=device)
         collective.recv(tensor, src_rank, group_name=communicator_name)
         tensors.append(tensor)
-    gpu_object_store.add_gpu_object(obj_id, tensors)
+    gpu_object_store.add_gpu_object(obj_id, tensors, num_readers=num_readers)
 
 
 def __ray_fetch_gpu_object__(self, obj_id: str):
@@ -101,6 +102,12 @@ class GPUObjectStore:
         self.gpu_object_store: Dict[str, List["torch.Tensor"]] = {}
         # A set of object IDs that are the primary copy.
         self.primary_gpu_object_ids: Set[str] = set()
+        # A dictionary that maps an object ID to the number of readers.
+        # This is used to implement garbage collection for receiver actors,
+        # handling cases where the same GPU object reference is passed to the
+        # same actor task multiple times. For sender actors, we still rely on
+        # the object store's reference counting mechanism.
+        self.gpu_object_id_to_num_readers: Dict[str, int] = {}
 
     def has_gpu_object(self, obj_id: str) -> bool:
         return obj_id in self.gpu_object_store
@@ -112,6 +119,7 @@ class GPUObjectStore:
         self,
         obj_id: str,
         gpu_object: List["torch.Tensor"],
+        num_readers: Optional[int] = None,
         is_primary: bool = False,
     ):
         """
@@ -120,11 +128,15 @@ class GPUObjectStore:
         Args:
             obj_id: The object ID of the GPU object.
             gpu_object: A list of tensors representing the GPU object.
+            num_readers: The number of readers for the GPU object. It should only
+              be set for receiver actors.
             is_primary: Whether the GPU object is the primary copy.
         """
         if is_primary:
             self.primary_gpu_object_ids.add(obj_id)
         self.gpu_object_store[obj_id] = gpu_object
+        if num_readers is not None:
+            self.gpu_object_id_to_num_readers[obj_id] = num_readers
 
     def is_primary_copy(self, obj_id: str) -> bool:
         return obj_id in self.primary_gpu_object_ids
@@ -142,3 +154,25 @@ class GPUObjectStore:
         del self.gpu_object_store[obj_id]
         if obj_id in self.primary_gpu_object_ids:
             self.primary_gpu_object_ids.remove(obj_id)
+
+    def decrement_num_readers(self, obj_id: str):
+        """
+        Decrement the number of readers for a GPU object. This function should
+        only be called by the receiver actor.
+
+        Args:
+            obj_id: The object ID of the GPU object.
+        """
+        assert (
+            obj_id in self.gpu_object_store
+        ), f"obj_id={obj_id} not found in GPU object store"
+        if obj_id not in self.primary_gpu_object_ids:
+            # If the GPU object is the primary copy, it means the transfer
+            # is intra-actor. In this case, we should not remove the GPU
+            # object after it is consumed `num_readers` times, because the
+            # GPU object reference may be used again. Instead, we should
+            # wait for the GC callback to clean it up.
+            self.gpu_object_id_to_num_readers[obj_id] -= 1
+            if self.gpu_object_id_to_num_readers[obj_id] == 0:
+                del self.gpu_object_store[obj_id]
+                del self.gpu_object_id_to_num_readers[obj_id]

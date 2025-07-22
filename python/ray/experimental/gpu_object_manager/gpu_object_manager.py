@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional, Tuple
 import ray
 from ray._private.custom_types import TensorTransportEnum
 from ray._raylet import ObjectRef
+from collections import defaultdict
 
 
 if TYPE_CHECKING:
@@ -145,13 +146,14 @@ class GPUObjectManager:
         obj_id: str,
         src_rank: int,
         tensor_meta: List[Tuple["torch.Size", "torch.dtype"]],
+        num_readers: int,
     ):
         from ray.experimental.gpu_object_manager.gpu_object_store import __ray_recv__
 
         # Receive tensors from the source rank and store them in the
         # `dst_actor`'s GPU object store.
         dst_actor.__ray_call__.remote(
-            __ray_recv__, communicator_name, obj_id, src_rank, tensor_meta
+            __ray_recv__, communicator_name, obj_id, src_rank, tensor_meta, num_readers
         )
 
     def fetch_gpu_object(self, obj_id: str):
@@ -178,7 +180,7 @@ class GPUObjectManager:
         tensors = ray.get(
             src_actor.__ray_call__.remote(__ray_fetch_gpu_object__, obj_id)
         )
-        self.gpu_object_store.add_gpu_object(obj_id, tensors)
+        self.gpu_object_store.add_gpu_object(obj_id, tensors, num_readers=1)
 
     def trigger_out_of_band_tensor_transfer(
         self, dst_actor: "ray.actor.ActorHandle", task_args: Tuple[Any, ...]
@@ -200,21 +202,23 @@ class GPUObjectManager:
             dst_actor: The target actor to receive tensors
             task_args: List of arguments for the target actor task that may contain ObjectRefs.
         """
+        gpu_object_ref_to_num_readers = defaultdict(int)
         for arg in task_args:
             # If an ObjectRef is managed, it means the actual value is a list of tensors stored
             # on a remote actor. Therefore, this function will trigger a tensor communication
             # operation between the sender and receiver actors.
             if not isinstance(arg, ObjectRef):
                 continue
+            if self.is_managed_gpu_object(arg.hex()):
+                gpu_object_ref_to_num_readers[arg] += 1
 
-            if not self.is_managed_gpu_object(arg.hex()):
-                continue
-
+        # Count the number of readers for each GPU object.
+        for obj_ref, num_readers in gpu_object_ref_to_num_readers.items():
             # Import get_collective_groups here to avoid dependency on
             # collective libraries for default Ray installation.
             from ray.experimental.collective import get_collective_groups
 
-            gpu_object_meta = self._get_gpu_object_metadata(arg)
+            gpu_object_meta = self._get_gpu_object_metadata(obj_ref)
 
             src_actor = gpu_object_meta.src_actor
             tensor_meta = gpu_object_meta.tensor_meta
@@ -253,7 +257,8 @@ class GPUObjectManager:
                 # be transferred intra-process, so we skip the out-of-band tensor
                 # transfer.
                 continue
-            self._send_gpu_object(communicator.name, src_actor, arg.hex(), dst_rank)
+            obj_id = obj_ref.hex()
+            self._send_gpu_object(communicator.name, src_actor, obj_id, dst_rank)
             self._recv_gpu_object(
-                communicator.name, dst_actor, arg.hex(), src_rank, tensor_meta
+                communicator.name, dst_actor, obj_id, src_rank, tensor_meta, num_readers
             )
