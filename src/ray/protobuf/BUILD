@@ -629,6 +629,5 @@ python_grpc_compile(
         ":runtime_env_agent_proto",
         ":runtime_env_common_proto",
         ":usage_proto",
-        "@com_github_opentelemetry_proto//:metrics_service_proto",
     ],
 )
