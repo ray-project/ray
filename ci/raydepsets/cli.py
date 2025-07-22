@@ -109,6 +109,7 @@ class DependencySetManager:
         self,
         source_depset: str,
         requirements: List[str],
+        args: List[str],
         name: str,
         output: str = None,
     ):
@@ -117,7 +118,7 @@ class DependencySetManager:
         self.compile(
             constraints=[source_depset.output],
             requirements=requirements,
-            args=DEFAULT_UV_FLAGS.copy(),
+            args=args,
             name=name,
             output=output,
         )

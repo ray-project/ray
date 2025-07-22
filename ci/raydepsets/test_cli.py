@@ -169,23 +169,16 @@ class TestCli(unittest.TestCase):
                 requirements=["requirements_test.txt"],
                 args=["--no-annotate", "--no-header"] + DEFAULT_UV_FLAGS.copy(),
                 name="general_depset",
-                output="requirements_compiled.txt",
+                output="requirements_compiled_general.txt",
             )
             manager.subset(
-                constraints=["requirement_constraints_test.txt"],
-                requirements=["requirements_test.txt"],
+                source_depset="general_depset",
+                requirements=["requirement_constraints_subset.txt"],
                 args=["--no-annotate", "--no-header"] + DEFAULT_UV_FLAGS.copy(),
-                name="ray_base_test_depset",
-                output="requirements_compiled.txt",
+                name="subset_base_test_depset",
+                output="requirements_compiled_subset_general.txt",
             )
-            # output_file_gen = Path(tmpdir) / "requirements_compiled_general.txt"
-            # output_text_gen = output_file_gen.read_text()
-            # with open(
-            #     "/home/ubuntu/repos/ray/requirements_compiled_subset_general.txt", "w"
-            # ) as f:
-            #     f.write(output_text_gen)
-
-            output_file = Path(tmpdir) / "requirements_compiled_subset_base.txt"
+            output_file = Path(tmpdir) / "requirements_compiled_subset_general.txt"
             output_text = output_file.read_text()
             output_file_valid = Path(tmpdir) / "requirements_compiled_test_subset.txt"
             output_text_valid = output_file_valid.read_text()
