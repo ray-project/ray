@@ -21,7 +21,7 @@
 
 namespace ray {
 
-// Constructor to parse LabelSelector data type from proto.
+// Constructor to parse LabelSelector data type from map proto.
 LabelSelector::LabelSelector(
     const google::protobuf::Map<std::string, std::string> &label_selector) {
   // Label selector keys and values are validated before construction in
