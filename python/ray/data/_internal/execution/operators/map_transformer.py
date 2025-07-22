@@ -89,7 +89,7 @@ class MapTransformFn:
     def output_block_size_option(self):
         return self._output_block_size_option
 
-    def set_target_max_block_size(self, target_max_block_size: int):
+    def set_target_max_block_size(self, target_max_block_size: Optional[int]):
         self._output_block_size_option = OutputBlockSizeOption(
             target_max_block_size=target_max_block_size
         )

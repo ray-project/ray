@@ -18,7 +18,7 @@ def compute_additional_split_factor(
     datasource_or_legacy_reader: Union[Datasource, Reader],
     parallelism: int,
     mem_size: int,
-    target_max_block_size: int,
+    target_max_block_size: Optional[int],
     cur_additional_split_factor: Optional[int] = None,
 ) -> Tuple[int, str, int, Optional[int]]:
     """Returns parallelism to use and the min safe parallelism to avoid OOMs."""

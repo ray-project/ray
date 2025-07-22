@@ -158,7 +158,7 @@ def _check_pyarrow_version():
 
 def _autodetect_parallelism(
     parallelism: int,
-    target_max_block_size: int,
+    target_max_block_size: Optional[int],
     ctx: DataContext,
     datasource_or_legacy_reader: Optional[Union["Datasource", "Reader"]] = None,
     mem_size: Optional[int] = None,
