@@ -1,4 +1,5 @@
 import asyncio
+import json
 import sys
 from unittest.mock import Mock, patch
 
@@ -197,6 +198,108 @@ class TestLoRAModelLoader:
                 )
 
             assert "Simulated persistent failure" in str(excinfo.value)
+
+
+class TestLoRAConfigurationParsing:
+    """Test suite for LoRA configuration parsing logic."""
+
+    @pytest.mark.asyncio
+    async def test_get_lora_finetuned_context_length_success(self):
+        """Test successful parsing of adapter config JSON."""
+        from ray.llm._internal.common.utils.lora_utils import (
+            get_lora_finetuned_context_length,
+        )
+
+        # Mock CloudFileSystem.get_file to return valid JSON
+        mock_config_json = json.dumps({"max_length": 2048, "other_param": "value"})
+
+        with patch(
+            "ray.llm._internal.common.utils.lora_utils.CloudFileSystem"
+        ) as mock_fs:
+            mock_fs.get_file.return_value = mock_config_json
+
+            result = await get_lora_finetuned_context_length("s3://bucket/lora_id")
+
+            assert result == 2048
+            mock_fs.get_file.assert_called_once_with(
+                "s3://bucket/lora_id/adapter_config.json"
+            )
+
+    @pytest.mark.asyncio
+    async def test_get_lora_finetuned_context_length_missing_file(self):
+        """Test handling of missing config file."""
+        from ray.llm._internal.common.utils.lora_utils import (
+            get_lora_finetuned_context_length,
+        )
+
+        with patch(
+            "ray.llm._internal.common.utils.lora_utils.CloudFileSystem"
+        ) as mock_fs:
+            mock_fs.get_file.return_value = None  # File not found
+
+            result = await get_lora_finetuned_context_length("s3://bucket/lora_id")
+
+            assert result is None
+
+    @pytest.mark.asyncio
+    async def test_get_lora_finetuned_context_length_invalid_json(self):
+        """Test handling of invalid JSON in config file."""
+        from ray.llm._internal.common.utils.lora_utils import (
+            get_lora_finetuned_context_length,
+        )
+
+        with patch(
+            "ray.llm._internal.common.utils.lora_utils.CloudFileSystem"
+        ) as mock_fs:
+            mock_fs.get_file.return_value = "invalid json {{"
+
+            result = await get_lora_finetuned_context_length("s3://bucket/lora_id")
+
+            assert result is None
+
+    @pytest.mark.asyncio
+    async def test_download_multiplex_config_info_integration(self):
+        """Test the integration between download_multiplex_config_info and config parsing."""
+        from ray.llm._internal.common.utils.lora_utils import (
+            download_multiplex_config_info,
+        )
+
+        # Mock successful config parsing
+        mock_config_json = json.dumps({"max_length": 4096})
+
+        with patch(
+            "ray.llm._internal.common.utils.lora_utils.CloudFileSystem"
+        ) as mock_fs:
+            mock_fs.get_file.return_value = mock_config_json
+
+            bucket_uri, context_length = await download_multiplex_config_info(
+                "lora_id", "s3://bucket"
+            )
+
+            assert bucket_uri == "s3://bucket/lora_id"
+            assert context_length == 4096
+            mock_fs.get_file.assert_called_once_with(
+                "s3://bucket/lora_id/adapter_config.json"
+            )
+
+    @pytest.mark.asyncio
+    async def test_download_multiplex_config_info_fallback_to_default(self):
+        """Test fallback to default context length when config parsing fails."""
+        from ray.llm._internal.common.utils.lora_utils import (
+            download_multiplex_config_info,
+        )
+
+        with patch(
+            "ray.llm._internal.common.utils.lora_utils.CloudFileSystem"
+        ) as mock_fs:
+            mock_fs.get_file.return_value = None  # Config file missing
+
+            bucket_uri, context_length = await download_multiplex_config_info(
+                "lora_id", "s3://bucket"
+            )
+
+            assert bucket_uri == "s3://bucket/lora_id"
+            assert context_length == 4096  # Default fallback
 
 
 if __name__ == "__main__":
