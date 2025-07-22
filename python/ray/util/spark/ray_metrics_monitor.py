@@ -133,7 +133,7 @@ class RayMetricsMonitor:
                 "Before starting RayMetricsMonitor, ensure the current active MLflow run is "
                 "terminated."
             )
-        self._run_id = mlflow.start_run()
+        self._run_id = mlflow.start_run().info.run_id
 
         # export the MLflow run ID so that user code can log other data into
         # the same run.
