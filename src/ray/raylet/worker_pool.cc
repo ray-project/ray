@@ -1363,11 +1363,10 @@ void WorkerPool::StartNewWorker(
     } else {
       DeleteRuntimeEnvIfPossible(serialized_runtime_env);
       // If we failed due to E2BIG, we provide a more specific error message.
-      std::string error_msg;
-      if (status == PopWorkerStatus::ArgumentListTooLong) {
-          error_msg = "Worker command arguments too long. This can be caused by a large runtime environment.";
-      }
-      PopWorkerCallbackAsync(std::move(pop_worker_request->callback), nullptr, status, error_msg);
+const std::string error_msg = (status == PopWorkerStatus::ArgumentListTooLong)
+              ? "Worker command arguments too long. This can be caused by a large runtime environment."
+              : "";
+PopWorkerCallbackAsync(std::move(pop_worker_request->callback), nullptr, status, error_msg);
     }
   };
 
