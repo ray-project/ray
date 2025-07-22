@@ -551,8 +551,7 @@ int main(int argc, char *argv[]) {
                   worker_rpc_pool.get(),
                   [&](const std::string &node_manager_address, int32_t port) {
                     return std::make_shared<ray::raylet::RayletClient>(
-                        ray::rpc::NodeManagerWorkerClient::make(
-                            node_manager_address, port, *client_call_manager));
+                        node_manager_address, port, *client_call_manager);
                   },
                   addr));
         });
@@ -772,11 +771,10 @@ int main(int argc, char *argv[]) {
                                      ray::rpc::ClientCallManager &client_call_manager) {
       const ray::rpc::GcsNodeInfo *node_info = gcs_client->Nodes().Get(node_id);
       RAY_CHECK(node_info) << "No GCS info for node " << node_id;
-      std::shared_ptr<ray::rpc::NodeManagerWorkerClient> raylet_client =
-          ray::rpc::NodeManagerWorkerClient::make(node_info->node_manager_address(),
-                                                  node_info->node_manager_port(),
-                                                  client_call_manager);
-      return std::make_shared<ray::raylet::RayletClient>(std::move(raylet_client));
+      return std::make_shared<ray::raylet::RayletClient>(
+          node_info->node_manager_address(),
+          node_info->node_manager_port(),
+          client_call_manager);
     };
 
     plasma_client = std::make_unique<plasma::PlasmaClient>();

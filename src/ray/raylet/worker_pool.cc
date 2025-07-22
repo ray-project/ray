@@ -45,6 +45,10 @@ DEFINE_stats(worker_register_time_ms,
              ({1, 10, 100, 1000, 10000}),
              ray::stats::HISTOGRAM);
 
+namespace ray {
+
+namespace raylet {
+
 namespace {
 
 std::shared_ptr<ray::raylet::WorkerInterface> GetWorker(
@@ -83,10 +87,6 @@ bool OptionalsMatchOrEitherEmpty(const std::optional<bool> &ask,
 }
 
 }  // namespace
-
-namespace ray {
-
-namespace raylet {
 
 WorkerPool::WorkerPool(instrumented_io_context &io_service,
                        const NodeID &node_id,
