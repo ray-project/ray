@@ -5,10 +5,12 @@ from ray.llm._internal.serve.deployments.llm.vllm.kv_transfer_backends.base impo
 
 def _check_lmcache_installed():
     try:
-        import lmcache
+        import lmcache  # noqa: F401
     except ImportError:
-        raise ImportError("LMCache is not installed. Please install it with `pip install lmcache`.")
-    
+        raise ImportError(
+            "LMCache is not installed. Please install it with `pip install lmcache`."
+        )
+
 
 class LMCacheConnectorV1Backend(BaseConnectorBackend):
     def setup(self) -> None:

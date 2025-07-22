@@ -16,8 +16,8 @@ def engine_id():
     """Fixture for the engine ID."""
     return str(uuid.uuid4())
 
-class TestNixlConnectorBackend:
 
+class TestNixlConnectorBackend:
     @pytest.fixture
     def nixl_backend(self, engine_id: str):
         """Fixture for the NixlConnectorBackend."""
