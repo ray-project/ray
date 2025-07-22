@@ -521,10 +521,11 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
   auto start = std::chrono::high_resolution_clock::now();
   std::error_code ec;
   // Start a process and measure the startup time.
-  Process proc = StartProcess(worker_command_args, env, ec);
   if (ec.value() == E2BIG) {
+    RAY_LOG(ERROR) << "E2BIG error occurred when starting worker process. Worker command arguments likely too long.";
     *status = PopWorkerStatus::ArgumentListTooLong;
     return {Process(), (StartupToken)-1};
+  }
   }
   stats::NumWorkersStarted.Record(1);
   RAY_LOG(INFO) << "Started worker process with pid " << proc.GetId() << ", the token is "
