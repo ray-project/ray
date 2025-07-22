@@ -134,7 +134,7 @@ class ObjectRecoveryManagerTestBase : public ::testing::Test {
             rpc::Address(),
             publisher_.get(),
             subscriber_.get(),
-            [](const NodeID &) { return false; },
+            /*did_node_die=*/[](const NodeID &) { return false; },
             /*lineage_pinning_enabled=*/lineage_enabled)),
         manager_(
             rpc::Address(),

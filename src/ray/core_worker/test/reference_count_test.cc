@@ -826,9 +826,10 @@ TEST(MemoryStoreIntegrationTest, TestSimple) {
   auto publisher = std::make_shared<pubsub::MockPublisher>();
   auto subscriber = std::make_shared<pubsub::MockSubscriber>();
   auto rc = std::make_shared<ReferenceCounter>(
-      rpc::Address(), publisher.get(), subscriber.get(), [](const NodeID &node_id) {
-        return false;
-      });
+      rpc::Address(),
+      publisher.get(),
+      subscriber.get(),
+      /*did_node_die=*/[](const NodeID &) { return false; });
   InstrumentedIOContextWithThread io_context("TestSimple");
   CoreWorkerMemoryStore store(io_context.GetIoService(), rc.get());
 
