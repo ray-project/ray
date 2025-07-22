@@ -402,7 +402,7 @@ there are now three more values in each observation:
     from ray.rllib.connectors.env_to_module.observation_preprocessor import SingleAgentObservationPreprocessor
 
 
-        class AddPastThreeRewards(SingleAgentObservationPreprocessor):
+    class AddPastThreeRewards(SingleAgentObservationPreprocessor):
         """Extracts last three rewards from episode and concatenates them to the observation tensor."""
 
         def recompute_output_observation_space(self, in_obs_space, in_act_space):
