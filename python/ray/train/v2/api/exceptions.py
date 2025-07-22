@@ -1,4 +1,4 @@
-from typing import Dict
+from typing import Dict, Union
 
 from ray.train.v2._internal.exceptions import RayTrainError
 from ray.util.annotations import PublicAPI
@@ -39,3 +39,6 @@ class ControllerError(RayTrainError):
 
     def __reduce__(self):
         return (self.__class__, (self.controller_failure,))
+
+
+WorkerOrControllerError = Union[TrainingFailedError, ControllerError]
