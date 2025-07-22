@@ -4006,6 +4006,11 @@
     timeout: 2400
     script: python launch_and_verify_cluster.py aws/tests/aws_cluster.yaml --num-expected-nodes 2 --retries 10
 
+  variations:
+    - __suffix__: v1
+    - __suffix__: v2
+      run:
+        script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py aws/tests/aws_cluster.yaml --num-expected-nodes 2 --retries 10
 
 - name: aws_cluster_launcher_nightly_image
   group: cluster-launcher-test
@@ -4021,6 +4026,11 @@
     timeout: 2400
     script: python launch_and_verify_cluster.py aws/tests/aws_cluster.yaml --num-expected-nodes 2 --retries 10 --docker-override nightly
 
+  variations:
+    - __suffix__: v1
+    - __suffix__: v2
+      run:
+        script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py aws/tests/aws_cluster.yaml --num-expected-nodes 2 --retries 10 --docker-override nightly
 
 - name: aws_cluster_launcher_latest_image
   group: cluster-launcher-test
@@ -4036,6 +4046,11 @@
     timeout: 2400
     script: python launch_and_verify_cluster.py aws/tests/aws_cluster.yaml --num-expected-nodes 2 --retries 10 --docker-override latest
 
+  variations:
+    - __suffix__: v1
+    - __suffix__: v2
+      run:
+        script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py aws/tests/aws_cluster.yaml --num-expected-nodes 2 --retries 10 --docker-override latest
 
 - name: aws_cluster_launcher_release_image
   group: cluster-launcher-test
@@ -4051,6 +4066,11 @@
     timeout: 2400
     script: python launch_and_verify_cluster.py aws/tests/aws_cluster.yaml --num-expected-nodes 2 --retries 10 --docker-override commit
 
+  variations:
+    - __suffix__: v1
+    - __suffix__: v2
+      run:
+        script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py aws/tests/aws_cluster.yaml --num-expected-nodes 2 --retries 10 --docker-override commit
 
 
 - name: aws_cluster_launcher_minimal
@@ -4067,6 +4087,12 @@
     timeout: 1200
     script: python launch_and_verify_cluster.py aws/example-minimal.yaml
 
+  variations:
+    - __suffix__: v1
+    - __suffix__: v2
+      run:
+        script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py aws/example-minimal.yaml
+
 - name: aws_cluster_launcher_full
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
@@ -4080,6 +4106,12 @@
   run:
     timeout: 3000
     script: python launch_and_verify_cluster.py aws/example-full.yaml --num-expected-nodes 2 --retries 20 --docker-override latest
+
+  variations:
+    - __suffix__: v1
+    - __suffix__: v2
+      run:
+        script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py aws/example-full.yaml --num-expected-nodes 2 --retries 20 --docker-override latest
 
 - name: gcp_cluster_launcher_minimal
   group: cluster-launcher-test
@@ -4098,6 +4130,12 @@
     timeout: 1200
     script: python launch_and_verify_cluster.py gcp/example-minimal-pinned.yaml
 
+  variations:
+    - __suffix__: v1
+    - __suffix__: v2
+      run:
+        script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py gcp/example-minimal-pinned.yaml
+
 - name: gcp_cluster_launcher_full
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
@@ -4114,6 +4152,12 @@
   run:
     timeout: 4800
     script: python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 30
+
+  variations:
+    - __suffix__: v1
+    - __suffix__: v2
+      run:
+        script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 30 --docker-override latest
 
 - name: gcp_cluster_launcher_latest_image
   group: cluster-launcher-test
@@ -4132,6 +4176,12 @@
     timeout: 3600
     script: python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 20  --docker-override latest
 
+  variations:
+    - __suffix__: v1
+    - __suffix__: v2
+      run:
+        script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 20  --docker-override latest
+
 - name: gcp_cluster_launcher_nightly_image
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
@@ -4149,6 +4199,11 @@
     timeout: 3600
     script: python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 20  --docker-override nightly
 
+  variations:
+    - __suffix__: v1
+    - __suffix__: v2
+      run:
+        script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 20  --docker-override nightly
 
 - name: gcp_cluster_launcher_release_image
   group: cluster-launcher-test
@@ -4167,6 +4222,12 @@
     timeout: 3600
     script: python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 20  --docker-override commit
 
+  variations:
+    - __suffix__: v1
+    - __suffix__: v2
+      run:
+        script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 20  --docker-override commit
+
 - name: gcp_cluster_launcher_gpu_docker
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
@@ -4183,6 +4244,12 @@
   run:
     timeout: 1200
     script: python launch_and_verify_cluster.py gcp/example-gpu-docker.yaml
+
+  variations:
+    - __suffix__: v1
+    - __suffix__: v2
+      run:
+        script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py gcp/example-gpu-docker.yaml
 
 - name: autoscaler_aws
   group: autoscaler-test
