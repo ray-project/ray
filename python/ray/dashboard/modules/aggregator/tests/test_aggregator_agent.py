@@ -100,8 +100,8 @@ def get_event_aggregator_grpc_stub(webui_url, gcs_address, head_node_id):
     [
         ("", -1, False, False),
         ("http://127.0.0.1", -1, False, False),
-        ("", 12345, False, False),
-        ("http://127.0.0.1", 12345, True, True),
+        ("", _EVENT_AGGREGATOR_AGENT_TARGET_PORT, False, False),
+        ("http://127.0.0.1", _EVENT_AGGREGATOR_AGENT_TARGET_PORT, True, True),
     ],
 )
 def test_aggregator_agent_http_target_not_enabled(

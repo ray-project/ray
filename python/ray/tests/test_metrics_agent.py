@@ -480,7 +480,11 @@ def httpserver_listen_address():
         {
             "env_vars": {
                 "RAY_DASHBOARD_AGGREGATOR_AGENT_MAX_EVENT_BUFFER_SIZE": 1,
-                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_SEND_PORT": _EVENT_AGGREGATOR_AGENT_TARGET_PORT,
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_EXPORT_PORT": _EVENT_AGGREGATOR_AGENT_TARGET_PORT,
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_EXPORT_ADDR": "http://127.0.0.1",
+                # Turn off task events generation to avoid the task events from the
+                # cluster impacting the test result
+                "RAY_task_events_report_interval_ms": 0,
             },
         },
     ],
@@ -522,13 +526,15 @@ def test_metrics_export_event_aggregator_agent(
             "ray_event_aggregator_agent_events_dropped_at_event_aggregator_total": 1.0,
             "ray_event_aggregator_agent_events_published_total": 1.0,
         }
+        result = True
         for descriptor, expected_value in expected_metrics_values.items():
             samples = [m for m in metric_samples if m.name == descriptor]
+            print(f"samples: {samples}")
             if not samples:
-                return False
+                result = False
             if samples[0].value != expected_value:
-                return False
-        return True
+                result = False
+        return result
 
     wait_for_condition(test_case_stats_exist, timeout=30, retry_interval_ms=1000)
 
