@@ -214,10 +214,6 @@ void WorkerPool::PopWorkerCallbackAsync(PopWorkerCallback callback,
                                         std::shared_ptr<WorkerInterface> worker,
                                         PopWorkerStatus status,
                                         const std::string &runtime_env_setup_error_message) {
-  // This method shouldn't be invoked when runtime env creation has failed because
-  // when runtime env is failed to be created, they are all
-  // invoking the callback immediately.
-  RAY_CHECK(status != PopWorkerStatus::RuntimeEnvCreationFailed);
   // Call back this function asynchronously to make sure executed in different stack.
   io_service_->post(
       [this, callback = std::move(callback), worker = std::move(worker), status, runtime_env_setup_error_message]() {

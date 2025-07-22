@@ -607,9 +607,9 @@ bool LocalTaskManager::PoppedWorkerHandler(
            "to grant the lease: status "
         << status;
     if (status == PopWorkerStatus::RuntimeEnvCreationFailed || status == PopWorkerStatus::ArgumentListTooLong) {
-      // In case of runtime env creation failed, we cancel this task
-      // directly and raise a `RuntimeEnvSetupError` exception to user
-      // eventually. The task will be removed from dispatch queue in
+      // In case of runtime env creation or worker startup failure, we cancel this task
+      // directly and raise an exception to user eventually. The task will be removed
+      // from dispatch queue in
       // `CancelTask`.
       CancelTasks(
           [task_id](const auto &work) {
