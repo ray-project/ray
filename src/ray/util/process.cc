@@ -191,6 +191,7 @@ class ProcessFD {
 
     // TODO(mehrdadn): Use clone() on Linux or posix_spawnp() on Mac to avoid duplicating
     // file descriptors into the child process, as that can be problematic.
+    intptr_t fd;
     int pipefds[2];  // Create pipe to get PID & track lifetime
     int parent_lifetime_pipe[2];
 
@@ -201,80 +202,111 @@ class ProcessFD {
       return ProcessFD(-1, -1);
     }
 
-    // Set the close-on-exec flag on the write end of the pipe. If the child
-    // calls execvpe successfully, this descriptor will be closed automatically.
-    SetFdCloseOnExec(pipefds[1]);
-
     if (pipe_to_stdin) {
       if (pipe(parent_lifetime_pipe) == -1) {
         parent_lifetime_pipe[0] = parent_lifetime_pipe[1] = -1;
       }
     }
 
+    if (!decouple) {
+      // This is the simple case for non-decoupled processes.
+      // Use a pipe with FD_CLOEXEC to synchronously report execvpe status.
+      SetFdCloseOnExec(pipefds[1]);
+    }
+
     pid = fork();
 
     if (pid == 0) {
-      // Child process
-      close(pipefds[0]);  // Close the read end, child only writes.
+      // Child process (or intermediate process if decoupled).
+      close(pipefds[0]);  // Child only writes.
 
       // Reset the SIGCHLD handler for the child.
       signal(SIGCHLD, SIG_DFL);
+
       if (decouple) {
+        // Double-fork to create an orphaned grandchild.
         if (fork() != 0) {
           // Intermediate parent exits, grandchild is orphaned and adopted by init.
           _exit(0);
         }
+        // The grandchild continues from here.
       }
-    
+
+      // This code is now executed by the direct child (if !decouple) or
+      // the grandchild (if decouple).
+
+      // For decoupled processes, send the real PID back to the parent.
+      if (decouple) {
+        pid_t my_pid = getpid();
+        if (write(pipefds[1], &my_pid, sizeof(my_pid)) != sizeof(my_pid)) {
+          _exit(errno);  // Exit if we can't even write the PID.
+        }
+      }
+
       execvpe(
           argv[0], const_cast<char *const *>(argv), const_cast<char *const *>(envp));
-    
-      // If execvpe returns, an error occurred. Write errno to the pipe.
-      int err = errno;
-      if (write(pipefds[1], &err, sizeof(err)) != sizeof(err)) {
-        // Failed to write errno to parent. The child will still exit.
-        // This might indicate a problem with the pipe or the parent.
-        fprintf(stderr, "Ray: Child process failed to communicate execvpe error %d to parent (write failed with errno %d).\n", err, errno);
+
+      // If execvpe returns, an error occurred.
+      if (!decouple) {
+        // For the simple case, we can report the error via the pipe.
+        int err = errno;
+        (void)!write(pipefds[1], &err, sizeof(err));
       }
-      close(pipefds[1]);
-      _exit(127); // Abort the child.
-    
+      // For both cases, exit with a non-zero status. For the decoupled case,
+      // this will cause the lifetime-tracking pipe to close, signaling failure.
+      _exit(errno);
+
     } else if (pid > 0) {
       // Parent process.
-      close(pipefds[1]);  // Close the write end, parent only reads.
-    
-      int err_from_child;
-      ssize_t bytes_read =
-          read(pipefds[0], &err_from_child, sizeof(err_from_child));
-      close(pipefds[0]);
-    
-      if (bytes_read == 0) {
-        // 0 bytes read means EOF, which means the child's write-end was closed
-        // by a successful execvpe. This is the success case.
-        ec = std::error_code();
-      } else if (bytes_read == sizeof(err_from_child)) {
-        // We received an errno from the child, meaning execvpe failed.
-        ec = std::error_code(err_from_child, std::system_category());
-        // Reap the zombie child process that failed to exec.
-        if (waitpid(pid, NULL, 0) == -1) {
-          RAY_LOG(ERROR) << "Failed to reap zombie child process (PID: " << pid << ") after child execvpe failure. errno: " << errno;
-	}
-        pid = -1;
+      close(pipefds[1]);  // Parent only reads.
+
+      if (!decouple) {
+        // Simple case: read execvpe status from the direct child.
+        int err_from_child;
+        ssize_t bytes_read =
+            read(pipefds[0], &err_from_child, sizeof(err_from_child));
+
+        if (bytes_read == 0) {
+          // Success: child exec'd, pipe was closed by CLOEXEC.
+          ec = std::error_code();
+        } else if (bytes_read > 0) {
+          // Failure: child sent an errno.
+          ec = std::error_code(err_from_child, std::system_category());
+          waitpid(pid, NULL, 0);  // Reap the zombie child.
+          pid = -1;
+        } else {
+          // Pipe read error.
+          ec = std::error_code(errno, std::system_category());
+          waitpid(pid, NULL, 0);
+          pid = -1;
+        }
+        close(pipefds[0]);  // We're done with this short-lived pipe.
+        fd = -1;            // No persistent fd needed.
+
       } else {
-        // A read error occurred on the pipe itself.
-        ec = std::error_code(errno, std::system_category());
-        if (waitpid(pid, NULL, 0) == -1) {
-          RAY_LOG(ERROR) << "Failed to reap zombie child process (PID: " << pid << ") after child execvpe failure. errno: " << errno;
-	}
-        pid = -1;
+        // Decoupled case: Restore original logic to get grandchild PID.
+        int s;
+        waitpid(pid, &s, 0);  // Wait for the intermediate process to exit.
+
+        // Read the grandchild's PID from the pipe.
+        if (read(pipefds[0], &pid, sizeof(pid)) != sizeof(pid)) {
+          // If we can't read the grandchild PID, something went wrong.
+          ec = std::error_code(ECHILD, std::system_category());
+          pid = -1;
+        }
+
+        // In this case, fd is the read-end of the pipe, used for lifetime tracking.
+        fd = pipefds[0];
       }
-    
+
     } else {
       // fork() failed.
       ec = std::error_code(errno, std::system_category());
       close(pipefds[0]);
       close(pipefds[1]);
+      fd = -1;
     }
+
     // Handle the separate pipe for tracking parent lifetime if used.
     if (pipe_to_stdin) {
       if (pid <= 0 && parent_lifetime_pipe[1] != -1) {
@@ -296,7 +328,7 @@ class ProcessFD {
       parent_lifetime_pipe[1] = -1;
     }
 #endif
-    return ProcessFD(pid, -1);
+    return ProcessFD(pid, fd);
   }
 };
 
