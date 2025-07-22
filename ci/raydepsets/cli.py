@@ -89,6 +89,7 @@ class DependencySetManager:
             self.expand(
                 depsets=depset.depsets,
                 constraints=depset.constraints,
+                args=DEFAULT_UV_FLAGS.copy(),
                 name=depset.name,
                 output=depset.output,
             )
