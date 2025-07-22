@@ -14,7 +14,10 @@ from typing import List, Optional, Tuple, TypedDict, Union
 from opencensus.stats import stats as stats_module
 from prometheus_client.core import REGISTRY
 from prometheus_client.parser import text_string_to_metric_families
-from opentelemetry.proto.collector.metrics.v1 import metrics_service_pb2
+from opentelemetry.proto.collector.metrics.v1 import (
+    metrics_service_pb2,
+    metrics_service_pb2_grpc,
+)
 from grpc.aio import ServicerContext
 
 
@@ -39,7 +42,7 @@ from ray._private.telemetry.open_telemetry_metric_recorder import (
     OpenTelemetryMetricRecorder,
 )
 from ray._raylet import GCS_PID_KEY, WorkerID
-from ray.core.generated import metrics_service_pb2_grpc, reporter_pb2, reporter_pb2_grpc
+from ray.core.generated import reporter_pb2, reporter_pb2_grpc
 from ray.dashboard import k8s_utils
 from ray.dashboard.consts import (
     CLUSTER_TAG_KEYS,
@@ -567,6 +570,12 @@ class ReporterAgent(
         request: metrics_service_pb2.ExportMetricsServiceRequest,
         context: ServicerContext,
     ) -> metrics_service_pb2.ExportMetricsServiceResponse:
+        """
+        GRPC method that receives the open telemetry metrics exported from other Ray
+        components running in the same node (e.g., raylet, worker, etc.). This method
+        implements an interface of `metrics_service_pb2_grpc.MetricsServiceServicer` (https://github.com/open-telemetry/opentelemetry-proto/blob/main/opentelemetry/proto/collector/metrics/v1/metrics_service.proto#L30),
+        which is the default open-telemetry metrics service interface.
+        """
         for resource_metrics in request.resource_metrics:
             for scope_metrics in resource_metrics.scope_metrics:
                 for metric in scope_metrics.metrics:
@@ -583,6 +592,15 @@ class ReporterAgent(
                             metric.name, metric.description or ""
                         )
                         data_points = metric.sum.data_points
+                    # sum metrics
+                    if (
+                        metric.WhichOneof("data") == "sum"
+                        and not metric.sum.is_monotonic
+                    ):
+                        self._open_telemetry_metric_recorder.register_sum_metric(
+                            metric.name, metric.description or ""
+                        )
+                        data_points = metric.sum.data_points
                     for data_point in data_points:
                         self._open_telemetry_metric_recorder.set_metric_value(
                             metric.name,
@@ -590,6 +608,10 @@ class ReporterAgent(
                                 tag.key: tag.value.string_value
                                 for tag in data_point.attributes
                             },
+                            # Note that all data points received from other Ray
+                            # components are always double values. This is because the
+                            # c++ apis (open_telemetry_metric_recorder.cc) only create
+                            # metrics with double values.
                             data_point.as_double,
                         )
 

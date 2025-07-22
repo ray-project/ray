@@ -1,47 +1,167 @@
+import copy
 import logging
 import os
 import threading
-from collections import defaultdict
+import time
+from collections import OrderedDict, defaultdict
 from typing import Dict, Optional
 
 import ray
+from ray._private import ray_constants
 from ray._private.event.export_event_logger import (
     EventLogType,
     check_export_api_enabled,
     get_export_event_logger,
 )
 from ray.actor import ActorHandle
-from ray.train.v2._internal.state.schema import TrainRun, TrainRunAttempt
+from ray.train.v2._internal.constants import (
+    CONTROLLERS_TO_POLL_PER_ITERATION,
+    DEFAULT_ENABLE_STATE_ACTOR_RECONCILIATION,
+    DEFAULT_STATE_ACTOR_RECONCILIATION_INTERVAL_S,
+    ENABLE_STATE_ACTOR_RECONCILIATION_ENV_VAR,
+    GET_ACTOR_TIMEOUT_S,
+    STATE_ACTOR_RECONCILIATION_INTERVAL_S_ENV_VAR,
+)
+from ray.train.v2._internal.state.schema import (
+    TrainRun,
+    TrainRunAttempt,
+)
+from ray.train.v2._internal.state.util import (
+    is_actor_alive,
+    update_train_run_aborted,
+    update_train_run_attempt_aborted,
+)
+from ray.train.v2._internal.util import time_monotonic
 
 logger = logging.getLogger(__name__)
 
 
 class TrainStateActor:
-    def __init__(self):
+    def __init__(
+        self,
+        # TODO: group into single config if we need to do similar polling elsewhere
+        enable_state_actor_reconciliation: bool = False,
+        reconciliation_interval_s: float = 30,
+        get_actor_timeout_s: int = GET_ACTOR_TIMEOUT_S,
+        controllers_to_poll_per_iteration: int = CONTROLLERS_TO_POLL_PER_ITERATION,
+    ):
         # NOTE: All runs and attempts are stored in memory.
         # This may be a memory issue for large runs.
-        self._runs: Dict[str, TrainRun] = {}
+        # TODO: consider cleaning up runs over time.
+        self._runs: Dict[str, TrainRun] = OrderedDict()
         # {run_id: {attempt_id: TrainRunAttempt}}
-        self._run_attempts: Dict[str, Dict[str, TrainRunAttempt]] = defaultdict(dict)
+        self._run_attempts: Dict[str, OrderedDict[str, TrainRunAttempt]] = defaultdict(
+            OrderedDict
+        )
         (
             self._export_logger,
             self._is_train_run_export_api_enabled,
             self._is_train_run_attempt_export_api_enabled,
         ) = self._init_export_logger()
 
-    def create_or_update_train_run(self, run: TrainRun) -> None:
-        self._runs[run.id] = run
-        self._maybe_export_train_run(run)
+        # TODO: consider row level locking if loop takes too long.
+        self._runs_lock = threading.RLock()
+        self._run_attempts_lock = threading.RLock()
 
-    def create_or_update_train_run_attempt(self, run_attempt: TrainRunAttempt):
-        self._run_attempts[run_attempt.run_id][run_attempt.attempt_id] = run_attempt
-        self._maybe_export_train_run_attempt(run_attempt)
+        # Set env vars related to reconciling train run/attempt state.
+        if enable_state_actor_reconciliation:
+            self._reconciliation_interval_s = reconciliation_interval_s
+            self._controllers_to_poll_per_iteration = controllers_to_poll_per_iteration
+            self._get_actor_timeout_s = get_actor_timeout_s
+            self._start_run_state_reconciliation_thread()
+
+    def _abort_live_runs_with_dead_controllers(
+        self, last_poll_run_id: Optional[str]
+    ) -> str:
+        aborted_run_ids = []
+        with self._runs_lock:
+            runs = list(self._runs.values())
+
+            # Start iterating from poll index.
+            starting_poll_index = 0
+            if last_poll_run_id is not None:
+                for poll_index, run in enumerate(runs):
+                    if run.id == last_poll_run_id:
+                        starting_poll_index = (poll_index + 1) % len(runs)
+                        break
+
+            # Abort runs.
+            num_polled_runs = 0
+            poll_index = starting_poll_index
+            while (
+                poll_index < starting_poll_index + len(runs)
+                and num_polled_runs < self._controllers_to_poll_per_iteration
+            ):
+                run = runs[poll_index % len(runs)]
+                poll_index += 1
+                last_poll_run_id = run.id
+                if run.status.is_terminal():
+                    continue
+                if not is_actor_alive(
+                    run.controller_actor_id, self._get_actor_timeout_s
+                ):
+                    update_train_run_aborted(run, False)
+                    self.create_or_update_train_run(run)
+                    aborted_run_ids.append(run.id)
+                num_polled_runs += 1
+
+        # Abort run attempts.
+        with self._run_attempts_lock:
+            for run_id in aborted_run_ids:
+                latest_run_attempt = self._get_latest_run_attempt(run_id)
+                if latest_run_attempt and not latest_run_attempt.status.is_terminal():
+                    update_train_run_attempt_aborted(latest_run_attempt, False)
+                    self.create_or_update_train_run_attempt(latest_run_attempt)
+
+        return last_poll_run_id
+
+    def _start_run_state_reconciliation_thread(self) -> None:
+        def _reconciliation_loop():
+            last_poll_run_id = None
+            latest_poll_time = float("-inf")
+            while True:
+                # Wait for the poll interval to elapse.
+                time_since_last_poll = time_monotonic() - latest_poll_time
+                if time_since_last_poll < self._reconciliation_interval_s:
+                    remaining_time = (
+                        self._reconciliation_interval_s - time_since_last_poll
+                    )
+                    time.sleep(remaining_time)
+
+                last_poll_run_id = self._abort_live_runs_with_dead_controllers(
+                    last_poll_run_id
+                )
+                latest_poll_time = time_monotonic()
+
+        threading.Thread(target=_reconciliation_loop, daemon=True).start()
+
+    def _get_latest_run_attempt(self, run_id: str) -> Optional[TrainRunAttempt]:
+        with self._run_attempts_lock:
+            # NOTE: run_attempts is OrderedDict from attempt_id to TrainRunAttempt.
+            run_attempts = self._run_attempts.get(run_id, {})
+            if not run_attempts:
+                return None
+            return next(reversed(run_attempts.values()))
+
+    def create_or_update_train_run(self, run: TrainRun) -> None:
+        with self._runs_lock:
+            self._runs[run.id] = run
+            run_copy = copy.deepcopy(run)
+        self._maybe_export_train_run(run_copy)
+
+    def create_or_update_train_run_attempt(self, run_attempt: TrainRunAttempt) -> None:
+        with self._run_attempts_lock:
+            self._run_attempts[run_attempt.run_id][run_attempt.attempt_id] = run_attempt
+            run_attempt_copy = copy.deepcopy(run_attempt)
+        self._maybe_export_train_run_attempt(run_attempt_copy)
 
     def get_train_runs(self) -> Dict[str, TrainRun]:
-        return self._runs
+        with self._runs_lock:
+            return self._runs
 
     def get_train_run_attempts(self) -> Dict[str, Dict[str, TrainRunAttempt]]:
-        return self._run_attempts
+        with self._run_attempts_lock:
+            return self._run_attempts
 
     # ============================
     # Export API
@@ -147,7 +267,18 @@ def get_or_create_state_actor() -> ActorHandle:
                 max_restarts=-1,
                 max_task_retries=-1,
             )
-            .remote()
+            .remote(
+                enable_state_actor_reconciliation=ray_constants.env_bool(
+                    ENABLE_STATE_ACTOR_RECONCILIATION_ENV_VAR,
+                    DEFAULT_ENABLE_STATE_ACTOR_RECONCILIATION,
+                ),
+                reconciliation_interval_s=float(
+                    os.getenv(
+                        STATE_ACTOR_RECONCILIATION_INTERVAL_S_ENV_VAR,
+                        DEFAULT_STATE_ACTOR_RECONCILIATION_INTERVAL_S,
+                    )
+                ),
+            )
         )
 
     return state_actor

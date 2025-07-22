@@ -168,10 +168,10 @@ class RayTaskError(RayError):
         class cls(RayTaskError, cause_cls):
             def __init__(self, cause):
                 self.cause = cause
-                # BaseException implements a __reduce__ method that returns
-                # a tuple with the type and the value of self.args.
-                # https://stackoverflow.com/a/49715949/2213289
                 self.args = (cause,)
+
+            def __reduce__(self):
+                return (cls, self.args)
 
             def __getattr__(self, name):
                 return getattr(self.cause, name)
@@ -196,10 +196,10 @@ class RayTaskError(RayError):
 
             def __init__(self, cause):
                 self.cause = cause
-                # BaseException implements a __reduce__ method that returns
-                # a tuple with the type and the value of self.args.
-                # https://stackoverflow.com/a/49715949/2213289
                 self.args = (cause,)
+
+            def __reduce__(self):
+                return (cls, self.args)
 
             def __getattr__(self, name):
                 return getattr(self.cause, name)
@@ -444,8 +444,8 @@ class ActorUnavailableError(RayActorError):
     def __init__(self, error_message: str, actor_id: Optional[bytes]):
         actor_id = ActorID(actor_id).hex() if actor_id is not None else None
         error_msg = (
-            f"The actor {actor_id} is unavailable: {error_message}. The task may or may"
-            "not have been executed on the actor."
+            f"The actor {actor_id} is unavailable: {error_message}. The task may or "
+            "may not have been executed on the actor."
         )
         actor_init_failed = False
         preempted = False

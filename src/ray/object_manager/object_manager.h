@@ -175,7 +175,7 @@ class ObjectManager : public ObjectManagerInterface,
       instrumented_io_context &main_service,
       const NodeID &self_node_id,
       const ObjectManagerConfig &config,
-      std::shared_ptr<gcs::GcsClient> gcs_client,
+      gcs::GcsClient &gcs_client,
       IObjectDirectory *object_directory,
       RestoreSpilledObjectCallback restore_spilled_object,
       std::function<std::string(const ObjectID &)> get_spilled_object_url,
@@ -411,7 +411,7 @@ class ObjectManager : public ObjectManagerInterface,
   const ObjectManagerConfig config_;
 
   /// The GCS Client shared by everything on the raylet
-  std::shared_ptr<gcs::GcsClient> gcs_client_;
+  gcs::GcsClient &gcs_client_;
 
   /// The object directory interface to access object information.
   IObjectDirectory *object_directory_;
