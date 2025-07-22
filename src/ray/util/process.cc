@@ -231,7 +231,11 @@ class ProcessFD {
     
       // If execvpe returns, an error occurred. Write errno to the pipe.
       int err = errno;
-      (void)!write(pipefds[1], &err, sizeof(err));
+      if (write(pipefds[1], &err, sizeof(err)) != sizeof(err)) {
+        // Failed to write errno to parent. The child will still exit.
+        // This might indicate a problem with the pipe or the parent.
+        fprintf(stderr, "Ray: Child process failed to communicate execvpe error %d to parent (write failed with errno %d).\n", err, errno);
+      }
       close(pipefds[1]);
       _exit(127); // Abort the child.
     
