@@ -96,7 +96,7 @@ class TestCli(unittest.TestCase):
             manager.compile(
                 constraints=["requirement_constraints_test.txt"],
                 requirements=["requirements_test.txt"],
-                args=["--no-annotate", "--no-header"] + DEFAULT_UV_FLAGS.copy(),
+                append_flags=["--no-annotate", "--no-header"],
                 name="ray_base_test_depset",
                 output="requirements_compiled.txt",
             )
@@ -124,7 +124,7 @@ class TestCli(unittest.TestCase):
             manager.compile(
                 constraints=["requirement_constraints_test.txt"],
                 requirements=["requirements_test.txt"],
-                args=["--no-annotate", "--no-header"] + DEFAULT_UV_FLAGS.copy(),
+                append_flags=["--no-annotate", "--no-header"],
                 name="ray_base_test_depset",
                 output="requirements_compiled.txt",
             )
@@ -168,7 +168,6 @@ class TestCli(unittest.TestCase):
                 manager.compile(
                     constraints=[],
                     requirements=["requirements_test_bad.txt"],
-                    args=[],
                     name="general_depset",
                     output="requirements_compiled_general.txt",
                 )
@@ -184,6 +183,43 @@ class TestCli(unittest.TestCase):
                 manager.get_path("requirements_test.txt")
                 == f"{tmpdir}/requirements_test.txt"
             )
+
+    def test_append_uv_flags(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _copy_data_to_tmpdir(tmpdir)
+            manager = DependencySetManager(
+                config_path="test.config.yaml",
+                workspace_dir=tmpdir,
+            )
+            assert manager.append_uv_flags(["--no-annotate", "--no-header"]) == [
+                *DEFAULT_UV_FLAGS,
+                "--no-annotate",
+                "--no-header",
+            ]
+
+    def test_override_uv_flags(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _copy_data_to_tmpdir(tmpdir)
+            manager = DependencySetManager(
+                config_path="test.config.yaml",
+                workspace_dir=tmpdir,
+            )
+            assert manager.override_uv_flags(
+                ["--extra-index-url https://download.pytorch.org/whl/cu128"]
+            ) == [
+                "--generate-hashes",
+                "--strip-extras",
+                "--no-strip-markers",
+                "--emit-index-url",
+                "--emit-find-links",
+                "--unsafe-package ray",
+                "--unsafe-package grpcio-tools",
+                "--unsafe-package setuptools",
+                "--index-url https://pypi.org/simple",
+                "--extra-index-url https://download.pytorch.org/whl/cu128",
+                "--index-strategy unsafe-best-match",
+                "--quiet",
+            ]
 
 
 def _copy_data_to_tmpdir(tmpdir):

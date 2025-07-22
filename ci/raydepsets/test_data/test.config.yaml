@@ -12,3 +12,5 @@ depsets:
     requirements:
       - requirements_test.txt
     output: requirements_compiled_general.txt
+    override_flags:
+      - --extra

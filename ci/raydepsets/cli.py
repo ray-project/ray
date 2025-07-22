@@ -5,11 +5,11 @@ from typing import List
 import subprocess
 import platform
 import runfiles
+from typing import Optional
 
 DEFAULT_UV_FLAGS = [
     "--generate-hashes",
     "--strip-extras",
-    "--python-version=3.11",
     "--no-strip-markers",
     "--emit-index-url",
     "--emit-find-links",
@@ -73,9 +73,10 @@ class DependencySetManager:
             self.compile(
                 constraints=depset.constraints,
                 requirements=depset.requirements,
-                args=DEFAULT_UV_FLAGS.copy(),
                 name=depset.name,
                 output=depset.output,
+                append_flags=depset.append_flags,
+                override_flags=depset.override_flags,
             )
             click.echo(f"Dependency set {depset.name} compiled successfully")
 
@@ -83,11 +84,17 @@ class DependencySetManager:
         self,
         constraints: List[str],
         requirements: List[str],
-        args: List[str],
         name: str,
         output: str,
+        append_flags: Optional[List[str]] = None,
+        override_flags: Optional[List[str]] = None,
     ):
         """Compile a dependency set."""
+        args = []
+        if override_flags:
+            args = self.override_uv_flags(override_flags)
+        if append_flags:
+            args = self.append_uv_flags(append_flags)
         if constraints:
             for constraint in constraints:
                 args.extend(["-c", self.get_path(constraint)])
@@ -100,6 +107,23 @@ class DependencySetManager:
 
     def get_path(self, path: str) -> str:
         return (Path(self.workspace.dir) / path).as_posix()
+
+    def override_uv_flags(self, flags: List[str]) -> List[str]:
+        found = False
+        new_flags = DEFAULT_UV_FLAGS.copy()
+        for flag in flags:
+            flag_name = flag.split(" ")[0]
+            for i, default_flag in enumerate(new_flags):
+                if flag_name in default_flag:
+                    new_flags[i] = flag
+                    found = True
+                    break
+        if not found:
+            new_flags.extend(flags)
+        return new_flags
+
+    def append_uv_flags(self, flags: List[str]) -> List[str]:
+        return DEFAULT_UV_FLAGS.copy() + flags
 
 
 def uv_binary():

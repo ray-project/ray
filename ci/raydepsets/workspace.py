@@ -11,6 +11,8 @@ class Depset:
     requirements: List[str]
     constraints: List[str]
     output: str
+    override_flags: List[str]
+    append_flags: List[str]
 
 
 @dataclass
@@ -27,6 +29,8 @@ class Config:
                 constraints=values.get("constraints", []),
                 operation=values.get("operation", "compile"),
                 output=values.get("output"),
+                override_flags=values.get("override_flags", []),
+                append_flags=values.get("append_flags", []),
             )
             for values in raw_depsets
         ]
