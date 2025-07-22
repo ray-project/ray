@@ -831,7 +831,7 @@ def plan_fillna_op(
     import pyarrow as pa
     import pyarrow.compute as pc
     from ray.data._internal.logical.operators.map_operator import FillNa
-    
+
     assert len(physical_children) == 1
     input_physical_dag = physical_children[0]
 
@@ -842,13 +842,13 @@ def plan_fillna_op(
         try:
             # If no subset specified, apply to all columns
             columns_to_fill = subset if subset else batch.schema.names
-            
+
             # Create a new table with filled values
             new_columns = {}
-            
+
             for col_name in batch.schema.names:
                 column = batch.column(col_name)
-                
+
                 if col_name in columns_to_fill:
                     if isinstance(value, dict):
                         # Column-specific fill values
@@ -865,9 +865,9 @@ def plan_fillna_op(
                         new_columns[col_name] = pc.fill_null(column, fill_scalar)
                 else:
                     new_columns[col_name] = column
-                    
+
             return pa.table(new_columns, schema=batch.schema)
-            
+
         except Exception as e:
             _try_wrap_udf_exception(e, batch)
 
@@ -889,7 +889,7 @@ def plan_fillna_op(
 
 
 def plan_dropna_op(
-    op: "DropNa", 
+    op: "DropNa",
     physical_children: List[PhysicalOperator],
     data_context: DataContext,
 ) -> MapOperator:
@@ -897,7 +897,7 @@ def plan_dropna_op(
     import pyarrow as pa
     import pyarrow.compute as pc
     from ray.data._internal.logical.operators.map_operator import DropNa
-    
+
     assert len(physical_children) == 1
     input_physical_dag = physical_children[0]
 
@@ -909,21 +909,21 @@ def plan_dropna_op(
         try:
             if batch.num_rows == 0:
                 return batch
-            
+
             # Determine which columns to check for nulls
             columns_to_check = subset if subset else batch.schema.names
-            
+
             if thresh is not None:
                 # Threshold-based dropping: keep rows with at least `thresh` non-null values
                 non_null_counts = pa.array([0] * batch.num_rows, type=pa.int32())
-                
+
                 for col_name in columns_to_check:
                     column = batch.column(col_name)
                     is_valid = pc.is_valid(column).cast(pa.int32())
                     non_null_counts = pc.add(non_null_counts, is_valid)
-                
+
                 mask = pc.greater_equal(non_null_counts, pa.scalar(thresh))
-            
+
             else:
                 # Create mask based on how parameter
                 if how == "any":
@@ -946,10 +946,10 @@ def plan_dropna_op(
                             mask = is_valid
                         else:
                             mask = pc.or_(mask, is_valid)
-            
+
             # Filter the table using the mask
             return pc.filter(batch, mask)
-            
+
         except Exception as e:
             _try_wrap_udf_exception(e, batch)
 
