@@ -136,14 +136,11 @@ class VLLMEngineConfig(BaseModelExtended):
         else:
             engine_kwargs["distributed_executor_backend"] = "ray"
 
-        if (
-            "disable_log_stats" in engine_kwargs
-            and not engine_kwargs["disable_log_stats"]
-        ):
-            logger.warning(
-                "disable_log_stats = False is not allowed in engine_kwargs when using Ray Serve LLM Configs. Setting it to True."
+        if "disable_log_requests" not in engine_kwargs:
+            logger.info(
+                "Disabling request logging by default. To enable, set to False in engine_kwargs."
             )
-        engine_kwargs["disable_log_stats"] = True
+            engine_kwargs["disable_log_requests"] = True
 
         return engine_kwargs
 
