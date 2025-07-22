@@ -99,7 +99,7 @@ class DatabricksUCDatasource(Datasource):
             )
 
         manifest = response.json()["manifest"]
-        self.is_truncated = manifest["truncated"]
+        self.is_truncated = manifest.get("truncated", False)
 
         if self.is_truncated:
             logger.warning(
@@ -107,7 +107,7 @@ class DatabricksUCDatasource(Datasource):
                 "100GiB and it is truncated."
             )
 
-        chunks = manifest["chunks"]
+        chunks = manifest.get("chunks", [])
 
         # Make chunks metadata are ordered by index.
         chunks = sorted(chunks, key=lambda x: x["chunk_index"])
