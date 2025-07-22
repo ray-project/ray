@@ -425,7 +425,6 @@ proto_library(
         ":gcs_proto",
         ":logging_proto",
         ":reporter_proto",
-        "@com_github_opentelemetry_proto//:metrics_service_proto",
     ],
 )
 
