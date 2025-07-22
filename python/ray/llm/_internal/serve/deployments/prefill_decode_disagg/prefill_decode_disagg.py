@@ -81,7 +81,7 @@ class PDProxyServer(LLMServer):
         decode_server: The decode server deployment handle.
     """
 
-    async def __init__(
+    def __init__(
         self,
         llm_config: LLMConfig,
         prefill_server: DeploymentHandle,
@@ -92,7 +92,7 @@ class PDProxyServer(LLMServer):
         # endpoint can work correctly.
         # TODO(lk-chen): refactor LLMRouter <-> LLMServer such that router query model_id through
         # API, instead of passing it in as an argument.
-        await super().__init__(
+        super().__init__(
             llm_config,
         )
 

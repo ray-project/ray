@@ -179,13 +179,10 @@ def testing_model_no_accelerator(shutdown_ray_and_serve, disable_placement_bundl
 
 @pytest.fixture
 def create_server():
-    """Asynchronously create an LLMServer instance."""
+    """Create an LLMServer instance."""
 
-    async def creator(*args, **kwargs):
-        # _ = LLMServer(...) will raise TypeError("__init__() should return None")
-        # so we do __new__ then __init__
-        server = LLMServer.__new__(LLMServer)
-        await server.__init__(*args, **kwargs)
-        return server
+    def creator(*args, **kwargs):
+        # Now __init__ is sync, so we can create normally
+        return LLMServer(*args, **kwargs)
 
     return creator

@@ -61,14 +61,20 @@ T = TypeVar("T")
 class _LLMServerBase(ABC):
     """
     This is the common interface between all the llm deployment. All llm deployments
-    need to implement an async constructor, an async predict, and check_health method.
+    need to implement a sync constructor, an async start method, and check_health method.
     """
 
-    # TODO (Kourosh): I don't know why this is an async init. Need to fix.
-    async def __init__(self):
+    def __init__(self):
         """
-        Constructor takes in an LLMConfig object and start the underlying engine.
+        Constructor takes basic setup that doesn't require async operations.
         """
+
+    @abstractmethod
+    async def start(self):
+        """
+        Start the underlying engine. This handles async initialization.
+        """
+        ...
 
     @abstractmethod
     async def chat(
@@ -118,7 +124,7 @@ class LLMServer(_LLMServerBase):
 
     _default_engine_cls = VLLMEngine
 
-    async def __init__(
+    def __init__(
         self,
         llm_config: LLMConfig,
         *,
@@ -137,16 +143,40 @@ class LLMServer(_LLMServerBase):
             model_downloader: Dependency injection for the model downloader.
                 Defaults to `LoraModelLoader`.
         """
-        await super().__init__()
+        super().__init__()
         self._llm_config = llm_config
 
         self._engine_cls = engine_cls or self._get_default_engine_class()
         self.engine: Optional[LLMEngine] = None
+        self._init_multiplex_loader(model_downloader)
+
+        # Start the engine asynchronously following the guidance pattern
+        try:
+            asyncio.run(self.start())
+        except RuntimeError as e:
+            if "cannot be called from a running event loop" in str(e):
+                # Handle case where event loop is already running (e.g., in tests)
+                import concurrent.futures
+
+                def run_start():
+                    new_loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(new_loop)
+                    try:
+                        return new_loop.run_until_complete(self.start())
+                    finally:
+                        new_loop.close()
+
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    future = executor.submit(run_start)
+                    future.result()
+            else:
+                raise
+
+    async def start(self):
+        """Start the engine asynchronously."""
         if self._engine_cls is not None:
             self.engine = self._engine_cls(self._llm_config)
             await asyncio.wait_for(self._start_engine(), timeout=ENGINE_START_TIMEOUT_S)
-
-        self._init_multiplex_loader(model_downloader)
 
     def _init_multiplex_loader(
         self, model_downloader_cls: Optional[Type[LoraModelLoader]] = None
