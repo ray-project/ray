@@ -27,13 +27,18 @@ message TaskDefinitionEvent {
   int32 task_attempt = 2;
 
   // The task definition information.
-  FunctionDescriptor task_func = 3;
-  string task_name = 4;
-  map<string, string> required_resources = 5;
-  RuntimeEnvInfo runtime_env_info = 6;
+  // Valid values are NORMAL_TASK, ACTOR_CREATION_TASK, DRIVER_TASK
+  TaskType task_type = 3;
+  Language language = 4;
+  FunctionDescriptor task_func = 5;
+  string task_name = 6;
+  map<string, double> required_resources = 7;
+  RuntimeEnvInfo runtime_env_info = 8;
 
   // The correlation ids of the task that can be used to correlate the task with
   // other events.
-  bytes job_id = 7;
-  map<string, bytes> ref_ids = 8;
+  bytes job_id = 9;
+  bytes parent_task_id = 10;
+  bytes placement_group_id = 11;
+  map<string, bytes> ref_ids = 12;
 }
