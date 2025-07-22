@@ -187,6 +187,7 @@ def test_deploy_with_http_options(ray_start_stop):
 def test_build_multi_app(ray_start_stop):
     with NamedTemporaryFile(mode="w+", suffix=".yaml") as tmp:
         print('Building nodes "TestApp1Node" and "TestApp2Node".')
+
         # Build an app
         grpc_servicer_func_root = "ray.serve.generated.serve_pb2_grpc"
         subprocess.check_output(
