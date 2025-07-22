@@ -10,6 +10,7 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Union
 import numpy as np
 import pyarrow as pa
 from packaging.version import parse as parse_version
+import ray.cloudpickle as cloudpickle
 
 from ray._private.arrow_utils import get_pyarrow_version
 from ray.air.util.tensor_extensions.utils import (
@@ -37,6 +38,21 @@ NUM_BYTES_PER_UNICODE_CHAR = 4
 
 
 logger = logging.getLogger(__name__)
+
+
+def _deserialize_with_fallback(serialized: bytes, field_name: str = "data"):
+    """Deserialize data with cloudpickle first, fallback to JSON."""
+    try:
+        # Try cloudpickle first (new format)
+        return cloudpickle.loads(serialized)
+    except Exception:
+        # Fallback to JSON format (legacy)
+        try:
+            return json.loads(serialized)
+        except json.JSONDecodeError:
+            raise ValueError(
+                f"Unable to deserialize {field_name} from {type(serialized)}"
+            )
 
 
 @DeveloperAPI
@@ -451,7 +467,7 @@ class _BaseFixedShapeArrowTensorType(pa.ExtensionType, abc.ABC):
         )
 
     def __arrow_ext_serialize__(self):
-        return json.dumps(self._shape).encode()
+        return cloudpickle.dumps(self._shape)
 
     def __arrow_ext_class__(self):
         """
@@ -558,7 +574,7 @@ class ArrowTensorType(_BaseFixedShapeArrowTensorType):
 
     @classmethod
     def __arrow_ext_deserialize__(cls, storage_type, serialized):
-        shape = tuple(json.loads(serialized))
+        shape = _deserialize_with_fallback(serialized, "shape")
         return cls(shape, storage_type.value_type)
 
     def __eq__(self, other):
@@ -588,7 +604,7 @@ class ArrowTensorTypeV2(_BaseFixedShapeArrowTensorType):
 
     @classmethod
     def __arrow_ext_deserialize__(cls, storage_type, serialized):
-        shape = tuple(json.loads(serialized))
+        shape = _deserialize_with_fallback(serialized, "shape")
         return cls(shape, storage_type.value_type)
 
     def __eq__(self, other):
@@ -1032,11 +1048,11 @@ class ArrowVariableShapedTensorType(pa.ExtensionType):
         )
 
     def __arrow_ext_serialize__(self):
-        return json.dumps(self._ndim).encode()
+        return cloudpickle.dumps(self._ndim)
 
     @classmethod
     def __arrow_ext_deserialize__(cls, storage_type, serialized):
-        ndim = json.loads(serialized)
+        ndim = _deserialize_with_fallback(serialized, "ndim")
         dtype = storage_type["data"].type.value_type
         return cls(dtype, ndim)
 
