@@ -3836,7 +3836,6 @@ def test_get_actor_timeout_multiplier(shutdown_only):
 
     # This should work without timeout issues
     result = get_actor(actor_id, timeout=1)
-    assert result is not None
     assert result["actor_id"] == actor_id
 
 
