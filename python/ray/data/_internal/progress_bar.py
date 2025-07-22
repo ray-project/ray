@@ -1,3 +1,4 @@
+import atexit
 import logging
 import threading
 import time
@@ -44,8 +45,9 @@ class AsyncProgressUpdater:
 
     def submit_async(self, call_id: str, func: Callable, *args, **kwargs):
         """Submit any progress bar call to run asynchronously"""
-        if not self._shutdown:
-            with self._lock:
+        with self._lock:
+            # Once lock is acquired, check if shutdown has been triggered.
+            if not self._shutdown:
                 # Only keep latest call per ID - overwrites previous
                 self._pending_calls[call_id] = (func, args, kwargs)
 
@@ -86,7 +88,8 @@ class AsyncProgressUpdater:
             time.sleep(self._update_interval)
 
     def shutdown(self):
-        self._shutdown = True
+        with self._lock:
+            self._shutdown = True
 
         # Process any remaining updates before shutdown
         self.flush_pending()
@@ -95,9 +98,27 @@ class AsyncProgressUpdater:
         if self._worker_thread:
             self._worker_thread.join(timeout=1.0)
 
+    def flush_calls(self, call_ids: List[str]):
+        """Process specific pending calls immediately (blocking)"""
+        with self._lock:
+            calls_to_process = {}
+            for call_id in call_ids:
+                if call_id in self._pending_calls:
+                    calls_to_process[call_id] = self._pending_calls.pop(call_id)
+
+        # Execute the specific calls synchronously
+        for call_id, (func, args, kwargs) in calls_to_process.items():
+            try:
+                func(*args, **kwargs)
+            except Exception as e:
+                logger.debug(
+                    f"Progress bar call failed during specific flush for {call_id}: {e}"
+                )
+
 
 # Global instance
 _async_progress_updater = AsyncProgressUpdater()
+atexit.register(_async_progress_updater.shutdown)
 
 
 def extract_num_rows(result: Any) -> int:
@@ -337,22 +358,11 @@ class ProgressBar:
         bar_refresh_key = f"{self._bar_id}_refresh"
         bar_desc_key = f"{self._bar_id}_set_description"
 
-        with _async_progress_updater._lock:
-            # Process pending updates for this bar only
-            for call_id in [bar_update_key, bar_desc_key, bar_refresh_key]:
-                if call_id in _async_progress_updater._pending_calls:
-                    func, args, kwargs = _async_progress_updater._pending_calls.pop(
-                        call_id
-                    )
-                    try:
-                        func(*args, **kwargs)
-                    except Exception as e:
-                        logger.debug(
-                            f"Failed to process pending update for {call_id}: {e}"
-                        )
+        _async_progress_updater.flush_calls(
+            [bar_update_key, bar_desc_key, bar_refresh_key]
+        )
 
     def _close_sync(self):
-        """The original synchronous close logic"""
         if self._bar:
             if self._bar.total is not None and self._progress != self._bar.total:
                 # If the progress is not complete, update the total.
