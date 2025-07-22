@@ -229,7 +229,7 @@ void WorkerPool::PopWorkerCallbackAsync(PopWorkerCallback callback,
 void WorkerPool::PopWorkerCallbackInternal(const PopWorkerCallback &callback,
                                            std::shared_ptr<WorkerInterface> worker,
                                            PopWorkerStatus status,
-					   const std::string &runtime_env_setup_error_message) {
+           const std::string &runtime_env_setup_error_message) {
   RAY_CHECK(callback);
   auto used = callback(worker, status, runtime_env_setup_error_message);
   if (worker && !used) {
