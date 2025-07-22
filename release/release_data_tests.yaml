@@ -567,6 +567,31 @@
           python setup_chaos.py --chaos TerminateEC2InstanceWithGracePeriod
           --batch-size-to-kill 10 --max-to-kill 100 --kill-delay 120
 
+  matrix:
+    setup:
+      suffix: [autoscaling, fixed_size]
+
+- name: batch_inference_2
+  frequency: manual
+  working_dir: nightly_tests/dataset/batch_inference_2
+
+  run:
+    timeout: 3600
+
+  variations:
+    - __suffix__: fixed_size
+      cluster:
+        cluster_compute: fixed_size_cluster_compute.yaml
+      run:
+        script: python main.py --concurrency 40 40
+
+    - __suffix__: autoscaling
+      cluster:
+        cluster_compute: autoscaling_cluster_compute.yaml
+      run:
+        script: python main.py --concurrency 1 40
+
+
 ##############
 # TPCH Queries
 ##############
