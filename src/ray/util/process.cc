@@ -300,7 +300,45 @@ class ProcessFD {
         waitpid(pid, &s, 0);  // Wait for the intermediate process to exit.
 
         // Read the grandchild's PID from the pipe.
-        if (read(pipefds[0], &pid, sizeof(pid)) != sizeof(pid)) {
+        ssize_t bytes_read_pid = read(pipefds[0], &pid, sizeof(pid));
+        if (bytes_read_pid == sizeof(pid)) {
+          // Successfully got PID. Now do a non-blocking read for a potential error.
+          int flags = fcntl(pipefds[0], F_GETFL, 0);
+          fcntl(pipefds[0], F_SETFL, flags | O_NONBLOCK);
+          int exec_errno = 0;
+          ssize_t bytes_read_errno = read(pipefds[0], &exec_errno, sizeof(exec_errno));
+          // Restore original flags.
+          fcntl(pipefds[0], F_SETFL, flags);
+
+          if (bytes_read_errno == sizeof(exec_errno)) {
+            // We received an errno from the grandchild, meaning execvpe failed.
+            ec = std::error_code(exec_errno, std::system_category());
+            pid = -1;
+            close(pipefds[0]);
+          } else if (bytes_read_errno == -1 && errno == EAGAIN) {
+            // No data available, which means execvpe succeeded.
+            // 'fd' will be the pipe for lifetime tracking.
+            fd = pipefds[0];
+          } else {
+            // Grandchild died after sending PID but before we could check for error.
+            // This is a startup failure.
+            ec = std::error_code(ECHILD, std::system_category());
+            pid = -1;
+            close(pipefds[0]);
+          }
+        } else if (bytes_read_pid == -1) {
+          // read failed, use errno for specific error.
+          ec = std::error_code(errno, std::system_category());
+          pid = -1;
+          close(pipefds[0]);
+        } else { // bytes_read_pid == 0 or partial read
+          // If bytes_read_pid is 0, it means EOF (child exited before writing PID).
+          // If bytes_read_pid is positive but less than sizeof(pid), it's a partial read.
+          // In both cases, it's a failure to get the PID.
+          ec = std::error_code(ECHILD, std::system_category());
+          pid = -1;
+          close(pipefds[0]);
+        }
           // If we can't read the grandchild PID, it failed before sending it.
           ec = std::error_code(ECHILD, std::system_category());
           pid = -1;
