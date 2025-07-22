@@ -166,13 +166,7 @@ class GPUObjectStore:
         assert (
             obj_id in self.gpu_object_store
         ), f"obj_id={obj_id} not found in GPU object store"
-        if obj_id not in self.primary_gpu_object_ids:
-            # If the GPU object is the primary copy, it means the transfer
-            # is intra-actor. In this case, we should not remove the GPU
-            # object after it is consumed `num_readers` times, because the
-            # GPU object reference may be used again. Instead, we should
-            # wait for the GC callback to clean it up.
-            self.gpu_object_id_to_num_readers[obj_id] -= 1
-            if self.gpu_object_id_to_num_readers[obj_id] == 0:
-                del self.gpu_object_store[obj_id]
-                del self.gpu_object_id_to_num_readers[obj_id]
+        self.gpu_object_id_to_num_readers[obj_id] -= 1
+        if self.gpu_object_id_to_num_readers[obj_id] == 0:
+            del self.gpu_object_store[obj_id]
+            del self.gpu_object_id_to_num_readers[obj_id]

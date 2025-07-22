@@ -293,7 +293,13 @@ class SerializationContext:
             tensors = gpu_object_manager.gpu_object_store.get_gpu_object(object_id)
             ctx.reset_out_of_band_tensors(tensors)
             gpu_object_store = gpu_object_manager.gpu_object_store
-            gpu_object_store.decrement_num_readers(object_id)
+            # If the GPU object is the primary copy, it means the transfer
+            # is intra-actor. In this case, we should not remove the GPU
+            # object after it is consumed `num_readers` times, because the
+            # GPU object reference may be used again. Instead, we should
+            # wait for the GC callback to clean it up.
+            if not gpu_object_store.is_primary_copy(object_id):
+                gpu_object_store.decrement_num_readers(object_id)
 
         try:
             in_band, buffers = unpack_pickle5_buffers(data)
