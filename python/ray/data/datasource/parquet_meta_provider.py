@@ -269,7 +269,8 @@ def _dedupe_fragment_metadata(
     """
     schema_to_id = {}  # schema_ser -> schema_id
     id_to_schema = {}  # schema_id -> schema_ser
-    stripped_metadatas = []
+    schema_to_id = {}  # schema_ser -> schema_id
+    id_to_schema = {}  # schema_id -> schema_ser
 
     for metadata in metadatas:
         # Get the current schema serialization
@@ -287,6 +288,6 @@ def _dedupe_fragment_metadata(
             existing_schema_ser = id_to_schema[schema_id]
             metadata.set_schema_pickled(existing_schema_ser)
 
-        stripped_metadatas.append(metadata)
+    return metadatas
 
     return stripped_metadatas
