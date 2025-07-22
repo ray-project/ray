@@ -182,7 +182,7 @@ def create_server():
     """Create an LLMServer instance."""
 
     def creator(*args, **kwargs):
-        # Now __init__ is sync, so we can create normally
+        # Use regular constructor
         return LLMServer(*args, **kwargs)
 
     return creator

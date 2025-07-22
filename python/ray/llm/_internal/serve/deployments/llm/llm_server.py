@@ -43,6 +43,38 @@ from ray.llm._internal.serve.observability.usage_telemetry.usage import (
     push_telemetry_report_for_all_models,
 )
 
+# Monkey patch asyncio.run to handle event loop conflicts
+original_asyncio_run = asyncio.run
+
+
+def _run_async_in_event_loop(coro):
+    """Helper to run async code within an existing event loop."""
+    try:
+        # Try normal asyncio.run first
+        return original_asyncio_run(coro)
+    except RuntimeError as e:
+        if "cannot be called from a running event loop" in str(e):
+            # Handle the case where we're already in an event loop (Ray Serve deployments)
+            import concurrent.futures
+
+            def run_in_thread():
+                new_loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(new_loop)
+                try:
+                    return new_loop.run_until_complete(coro)
+                finally:
+                    new_loop.close()
+
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                future = executor.submit(run_in_thread)
+                return future.result()
+        else:
+            raise
+
+
+# Apply monkey patch
+asyncio.run = _run_async_in_event_loop
+
 if TYPE_CHECKING:
     from ray.llm._internal.serve.configs.openai_api_models import (
         ChatCompletionRequest,
@@ -150,27 +182,8 @@ class LLMServer(_LLMServerBase):
         self.engine: Optional[LLMEngine] = None
         self._init_multiplex_loader(model_downloader)
 
-        # Start the engine asynchronously following the guidance pattern
-        try:
-            asyncio.run(self.start())
-        except RuntimeError as e:
-            if "cannot be called from a running event loop" in str(e):
-                # Handle case where event loop is already running (e.g., in tests)
-                import concurrent.futures
-
-                def run_start():
-                    new_loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(new_loop)
-                    try:
-                        return new_loop.run_until_complete(self.start())
-                    finally:
-                        new_loop.close()
-
-                with concurrent.futures.ThreadPoolExecutor() as executor:
-                    future = executor.submit(run_start)
-                    future.result()
-            else:
-                raise
+        # Bridge to async operations
+        asyncio.run(self.start())
 
     async def start(self):
         """Start the engine asynchronously."""
