@@ -7,6 +7,7 @@ import platform
 import runfiles
 
 DEFAULT_UV_FLAGS = [
+    "--generate-hashes",
     "--strip-extras",
     "--python-version=3.11",
     "--no-strip-markers",
@@ -98,7 +99,7 @@ class DependencySetManager:
         requirements: List[str],
         args: List[str],
         name: str,
-        output: str = None,
+        output: str,
     ):
         """Compile a dependency set."""
         if constraints:
@@ -107,16 +108,15 @@ class DependencySetManager:
         if requirements:
             for requirement in requirements:
                 args.extend([self.get_path(requirement)])
-        args.extend(["-o", self.get_path(output)])
-        try:
-            self.exec_uv_cmd("compile", args)
-        except RuntimeError as e:
-            raise RuntimeError(f"Error: {str(e)}")
+        if output:
+            args.extend(["-o", self.get_path(output)])
+        self.exec_uv_cmd("compile", args)
 
     def subset(
         self,
         source_depset: str,
         requirements: List[str],
+        args: List[str],
         name: str,
         output: str = None,
     ):
@@ -125,7 +125,7 @@ class DependencySetManager:
         self.compile(
             constraints=[source_depset.output],
             requirements=requirements,
-            args=DEFAULT_UV_FLAGS.copy(),
+            args=args,
             name=name,
             output=output,
         )

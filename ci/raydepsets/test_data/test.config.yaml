@@ -1,21 +1,21 @@
 depsets:
   - name: ray_base_test_depset
+    operation: compile
     requirements:
       - requirements_test.txt
     constraints:
       - requirement_constraints_test.txt
     output: requirements_compiled.txt
-    operation: compile
   - name: general_depset
     operation: compile
     requirements:
       - requirements_test.txt
     output: requirements_compiled_general.txt
-  - name: subset_general_depset
+  - name: subset_base_test_depset
     operation: subset
     source_depset: general_depset
     requirements:
-      - cloud-requirements.txt
+      - requirement_constraints_subset.txt
     output: requirements_compiled_subset_general.txt
   - name: expand_general_depset
     operation: expand

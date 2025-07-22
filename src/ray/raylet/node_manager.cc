@@ -358,7 +358,7 @@ ray::Status NodeManager::RegisterGcs() {
           return;
         }
         checking = true;
-        RAY_CHECK_OK(gcs_client_.Nodes().AsyncCheckSelfAlive(
+        gcs_client_.Nodes().AsyncCheckSelfAlive(
             // capture checking ptr here because vs17 fail to compile
             [this, checking_ptr = &checking](auto status, auto alive) mutable {
               if ((status.ok() && !alive)) {
@@ -375,7 +375,7 @@ ray::Status NodeManager::RegisterGcs() {
               }
               *checking_ptr = false;
             },
-            /* timeout_ms = */ 30000));
+            /* timeout_ms = */ 30000);
       },
       RayConfig::instance().raylet_liveness_self_check_interval_ms(),
       "NodeManager.GcsCheckAlive");
@@ -391,7 +391,6 @@ void NodeManager::DestroyWorker(std::shared_ptr<WorkerInterface> worker,
   // due to worker dead will be ignored.
   DisconnectClient(
       worker->Connection(), /*graceful=*/false, disconnect_type, disconnect_detail);
-  worker->MarkDead();
   worker->KillAsync(io_service_, force);
   if (disconnect_type == rpc::WorkerExitType::SYSTEM_ERROR) {
     number_workers_killed_++;
@@ -1245,9 +1244,9 @@ void NodeManager::ProcessAnnounceWorkerPortMessageImpl(
                                 string_from_flatbuf(*message->entrypoint()),
                                 *job_config);
 
-    RAY_CHECK_OK(gcs_client_.Jobs().AsyncAdd(job_data_ptr, [this, client](Status status) {
+    gcs_client_.Jobs().AsyncAdd(job_data_ptr, [this, client](Status status) {
       SendPortAnnouncementResponse(client, std::move(status));
-    }));
+    });
   }
 }
 
@@ -1418,8 +1417,7 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
                                    disconnect_detail,
                                    worker->GetProcess().GetId(),
                                    creation_task_exception);
-  RAY_CHECK_OK(
-      gcs_client_.Workers().AsyncReportWorkerFailure(worker_failure_data_ptr, nullptr));
+  gcs_client_.Workers().AsyncReportWorkerFailure(worker_failure_data_ptr, nullptr);
 
   if (is_worker) {
     const ActorID &actor_id = worker->GetActorId();
@@ -1461,7 +1459,7 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
             << error_message_str;
         auto error_data_ptr = gcs::CreateErrorTableData(
             type, error_message_str, absl::FromUnixMillis(current_time_ms()), job_id);
-        RAY_CHECK_OK(gcs_client_.Errors().AsyncReportJobError(error_data_ptr, nullptr));
+        gcs_client_.Errors().AsyncReportJobError(error_data_ptr, nullptr);
       }
     }
 
@@ -1477,7 +1475,7 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
     // The client is a driver.
     const auto job_id = worker->GetAssignedJobId();
     RAY_CHECK(!job_id.IsNil());
-    RAY_CHECK_OK(gcs_client_.Jobs().AsyncMarkFinished(job_id, nullptr));
+    gcs_client_.Jobs().AsyncMarkFinished(job_id, nullptr);
     worker_pool_.DisconnectDriver(worker);
 
     RAY_LOG(INFO).WithField(worker->WorkerId()).WithField(worker->GetAssignedJobId())
@@ -1691,7 +1689,7 @@ void NodeManager::ProcessPushErrorRequestMessage(const uint8_t *message_data) {
   JobID job_id = from_flatbuf<JobID>(*message->job_id());
   auto error_data_ptr = gcs::CreateErrorTableData(
       type, error_message, absl::FromUnixMillis(timestamp), job_id);
-  RAY_CHECK_OK(gcs_client_.Errors().AsyncReportJobError(error_data_ptr, nullptr));
+  gcs_client_.Errors().AsyncReportJobError(error_data_ptr, nullptr);
 }
 
 void NodeManager::HandleGetResourceLoad(rpc::GetResourceLoadRequest request,
@@ -2125,7 +2123,7 @@ void NodeManager::MarkObjectsAsFailed(
       RAY_LOG(ERROR) << error_message;
       auto error_data_ptr = gcs::CreateErrorTableData(
           "task", error_message, absl::FromUnixMillis(current_time_ms()), job_id);
-      RAY_CHECK_OK(gcs_client_.Errors().AsyncReportJobError(error_data_ptr, nullptr));
+      gcs_client_.Errors().AsyncReportJobError(error_data_ptr, nullptr);
     }
   }
 }
@@ -2517,7 +2515,7 @@ void NodeManager::HandleGetNodeStats(rpc::GetNodeStatsRequest node_stats_request
   // workers have replied.
   auto all_workers = worker_pool_.GetAllRegisteredWorkers(/* filter_dead_worker */ true);
   absl::flat_hash_set<WorkerID> driver_ids;
-  for (auto driver :
+  for (const auto &driver :
        worker_pool_.GetAllRegisteredDrivers(/* filter_dead_driver */ true)) {
     all_workers.push_back(driver);
     driver_ids.insert(driver->WorkerId());
@@ -2546,11 +2544,13 @@ void NodeManager::HandleGetNodeStats(rpc::GetNodeStatsRequest node_stats_request
   }
 }
 
+namespace {
+
 rpc::ObjectStoreStats AccumulateStoreStats(
-    std::vector<rpc::GetNodeStatsReply> node_stats) {
+    const std::vector<rpc::GetNodeStatsReply> &node_stats) {
   rpc::ObjectStoreStats store_stats;
   for (const auto &reply : node_stats) {
-    auto cur_store = reply.store_stats();
+    const auto &cur_store = reply.store_stats();
     // Use max aggregation for time, since the nodes are spilling concurrently.
     store_stats.set_spill_time_total_s(
         std::max(store_stats.spill_time_total_s(), cur_store.spill_time_total_s()));
@@ -2590,7 +2590,7 @@ rpc::ObjectStoreStats AccumulateStoreStats(
   return store_stats;
 }
 
-std::string FormatMemoryInfo(std::vector<rpc::GetNodeStatsReply> node_stats) {
+std::string FormatMemoryInfo(const std::vector<rpc::GetNodeStatsReply> &node_stats) {
   // First pass to compute object sizes.
   absl::flat_hash_map<ObjectID, int64_t> object_sizes;
   for (const auto &reply : node_stats) {
@@ -2669,6 +2669,8 @@ std::string FormatMemoryInfo(std::vector<rpc::GetNodeStatsReply> node_stats) {
   return builder.str();
 }
 
+}  // namespace
+
 void NodeManager::HandleFormatGlobalMemoryInfo(
     rpc::FormatGlobalMemoryInfoRequest request,
     rpc::FormatGlobalMemoryInfoReply *reply,
@@ -2685,8 +2687,8 @@ void NodeManager::HandleFormatGlobalMemoryInfo(
 
   auto store_reply =
       [replies, reply, num_nodes, send_reply_callback, include_memory_info](
-          const rpc::GetNodeStatsReply &local_reply) {
-        replies->push_back(local_reply);
+          rpc::GetNodeStatsReply &&local_reply) {
+        replies->push_back(std::move(local_reply));
         if (replies->size() >= num_nodes) {
           if (include_memory_info) {
             reply->set_memory_summary(FormatMemoryInfo(*replies));
@@ -2697,18 +2699,17 @@ void NodeManager::HandleFormatGlobalMemoryInfo(
       };
 
   // Fetch from remote nodes.
-  for (const auto &entry : remote_node_manager_addresses_) {
-    auto client = std::make_unique<rpc::NodeManagerClient>(
-        entry.second.first, entry.second.second, client_call_manager_);
-    client->GetNodeStats(stats_req,
-                         [replies, store_reply](const ray::Status &status,
-                                                const rpc::GetNodeStatsReply &r) {
-                           if (!status.ok()) {
-                             RAY_LOG(ERROR) << "Failed to get remote node stats: "
-                                            << status.ToString();
-                           }
-                           store_reply(r);
-                         });
+  for (const auto &[node_id, address] : remote_node_manager_addresses_) {
+    auto client = std::make_shared<RayletClient>(
+        /*address=*/address.first, /*port=*/address.second, client_call_manager_);
+    client->GetNodeStats(
+        stats_req,
+        [replies, store_reply](const ray::Status &status, rpc::GetNodeStatsReply &&r) {
+          if (!status.ok()) {
+            RAY_LOG(ERROR) << "Failed to get remote node stats: " << status.ToString();
+          }
+          store_reply(std::move(r));
+        });
   }
 
   // Fetch from the local node.
@@ -2717,7 +2718,7 @@ void NodeManager::HandleFormatGlobalMemoryInfo(
                      [local_reply, store_reply](Status status,
                                                 std::function<void()> success,
                                                 std::function<void()> failure) mutable {
-                       store_reply(*local_reply);
+                       store_reply(std::move(*local_reply));
                      });
 }
 
