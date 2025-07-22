@@ -65,10 +65,8 @@ REQUEST_BACKOFF_MAX = ray_constants.env_integer(
 REQUEST_BACKOFF_FACTOR = ray_constants.env_float(
     f"{env_var_prefix}_REQUEST_BACKOFF_FACTOR", 1.0
 )
-# Address of the external service to send events
+# Address of the external service to send events with format of "http://<ip>:<port>"
 EVENT_EXPORT_ADDR = os.environ.get(f"{env_var_prefix}_EVENT_EXPORT_ADDR", "")
-# Port of the external service to send events
-EVENT_EXPORT_PORT = ray_constants.env_integer(f"{env_var_prefix}_EVENT_EXPORT_PORT", -1)
 # Interval to update metrics
 METRICS_UPDATE_INTERVAL_SECONDS = ray_constants.env_float(
     f"{env_var_prefix}_METRICS_UPDATE_INTERVAL_SECONDS", 0.1
@@ -146,17 +144,11 @@ class AggregatorAgent(
             if dashboard_agent.events_export_addr
             else EVENT_EXPORT_ADDR
         )
-        self._event_export_port = (
-            dashboard_agent.events_export_port
-            if dashboard_agent.events_export_port
-            else EVENT_EXPORT_PORT
-        )
 
-        if self._event_export_addr == "" or self._event_export_port == -1:
+        if self._event_export_addr == "":
             logger.info(
                 "Event HTTP target not set, skipping sending events to "
-                f"external http service. event_export_addr: {self._event_export_addr}, "
-                f"event_export_port: {self._event_export_port}"
+                f"external http service. event_export_addr: {self._event_export_addr}"
             )
             self._event_http_target_enabled = False
         else:
@@ -257,7 +249,7 @@ class AggregatorAgent(
             return
         try:
             response = self._http_session.post(
-                f"{self._event_export_addr}:{self._event_export_port}", json=event_batch
+                f"{self._event_export_addr}", json=event_batch
             )
             response.raise_for_status()
             with self._lock:
