@@ -1946,6 +1946,18 @@ void NodeManager::HandleResizeLocalResourceInstances(
   // Get target resources as a map
   auto target_resource_map = MapFromProtobuf(request.resources());
 
+  // Check if any resource is a unit instance resource
+  for (const auto &[resource_name, target_value] : target_resource_map) {
+    if (ResourceID(resource_name).IsUnitInstanceResource()) {
+      std::string error_msg = absl::StrFormat(
+          "Cannot resize unit instance resource '%s'. Unit instance resources "
+          "(e.g., GPU) cannot be resized dynamically.",
+          resource_name);
+      send_reply_callback(Status::InvalidArgument(error_msg), nullptr, nullptr);
+      return;
+    }
+  }
+
   // Get current local resources and convert to resource maps
   const auto current_resources =
       cluster_resource_scheduler_.GetLocalResourceManager().GetLocalResources();
@@ -1957,27 +1969,24 @@ void NodeManager::HandleResizeLocalResourceInstances(
 
   // Calculate delta resource map (target - current) and validate
   absl::flat_hash_map<std::string, double> delta_resource_map;
-  for (const auto &target_resource : target_resource_map) {
-    const std::string &resource_name = target_resource.first;
-    double target_value = target_resource.second;
+  for (const auto &[resource_name, target_value] : target_resource_map) {
     double current_total = 0.0;
     double current_available = 0.0;
 
-    auto total_it = current_total_map.find(resource_name);
-    if (total_it != current_total_map.end()) {
+    if (auto total_it = current_total_map.find(resource_name);
+        total_it != current_total_map.end()) {
       current_total = total_it->second;
     }
 
-    auto available_it = current_available_map.find(resource_name);
-    if (available_it != current_available_map.end()) {
+    if (auto available_it = current_available_map.find(resource_name);
+        available_it != current_available_map.end()) {
       current_available = available_it->second;
     }
 
     double delta_value = target_value - current_total;
 
     // Check if applying delta would make available resources negative
-    double new_available = current_available + delta_value;
-    if (new_available < 0.0) {
+    if (double new_available = current_available + delta_value; new_available < 0.0) {
       std::string error_msg = absl::StrFormat(
           "Cannot resize %s to %g: would make available resources negative "
           "(current_available=%g, delta=%g, new_available=%g). ",
@@ -2023,27 +2032,23 @@ void NodeManager::HandleResizeLocalResourceInstances(
                                    .ToNodeResourceSet()
                                    .GetResourceMap();
 
+  // Log the updated resources
   if (!delta_resource_map.empty()) {
     RAY_LOG(INFO) << "Successfully resized local resources. Current Total resources:";
-    for (const auto &resource : updated_total_map) {
-      RAY_LOG(INFO) << "  " << resource.first << ": " << resource.second;
+    for (const auto &[resource_name, updated_value] : updated_total_map) {
+      RAY_LOG(INFO) << "  " << resource_name << ": " << updated_value;
     }
     RAY_LOG(INFO) << "Available resources:";
-    for (const auto &resource : updated_available_map) {
-      RAY_LOG(INFO) << "  " << resource.first << ": " << resource.second;
+    for (const auto &[resource_name, updated_value] : updated_available_map) {
+      RAY_LOG(INFO) << "  " << resource_name << ": " << updated_value;
     }
   }
 
   // Populate the reply with current resource state
   auto *total_resources = reply->mutable_total_resources();
-  for (const auto &resource : updated_total_map) {
-    (*total_resources)[resource.first] = resource.second;
-  }
-
   auto *available_resources = reply->mutable_available_resources();
-  for (const auto &resource : updated_available_map) {
-    (*available_resources)[resource.first] = resource.second;
-  }
+  total_resources->insert(updated_total_map.begin(), updated_total_map.end());
+  available_resources->insert(updated_available_map.begin(), updated_available_map.end());
 
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }

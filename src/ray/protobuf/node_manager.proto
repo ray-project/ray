@@ -464,9 +464,9 @@ service NodeManagerService {
   // Failure: Has retry behavior, could be improved to just use retriable grpc client.
   rpc CancelResourceReserve(CancelResourceReserveRequest)
       returns (CancelResourceReserveReply);
-  // Adjust the total number of local resource instances on the raylet to match the specified values.
-  // Failure: Returns FAILED_PRECONDITION if downsizing would result in negative available resources.
-  // Otherwise, succeeds unless a network error occurs.
+  // Adjust the total number of local resource instances on the raylet to match the
+  // specified values. Failure: Returns FAILED_PRECONDITION if downsizing would result in
+  // negative available resources. Otherwise, succeeds unless a network error occurs.
   rpc ResizeLocalResourceInstances(ResizeLocalResourceInstancesRequest)
       returns (ResizeLocalResourceInstancesReply);
   // Cancel a pending lease request. This only returns success if the

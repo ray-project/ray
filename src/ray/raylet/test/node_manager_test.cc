@@ -774,6 +774,7 @@ TEST_F(NodeManagerTest, TestResizeLocalResourceInstancesSuccessful) {
   (*request.mutable_resources())["CPU"] = 4.0;
   (*request.mutable_resources())["memory"] = 8000000.0;
 
+  reply.Clear();
   node_manager_->HandleResizeLocalResourceInstances(
       request,
       &reply,
@@ -788,6 +789,7 @@ TEST_F(NodeManagerTest, TestResizeLocalResourceInstancesSuccessful) {
   EXPECT_EQ(reply.available_resources().at("memory"), 8000000.0);
 
   // Test 3: No changes (same values)
+  reply.Clear();
   node_manager_->HandleResizeLocalResourceInstances(
       request,
       &reply,
@@ -805,6 +807,7 @@ TEST_F(NodeManagerTest, TestResizeLocalResourceInstancesSuccessful) {
   request.mutable_resources()->clear();
   (*request.mutable_resources())["CPU"] = 8.0;  // Double the CPU
 
+  reply.Clear();
   node_manager_->HandleResizeLocalResourceInstances(
       request,
       &reply,
@@ -817,6 +820,37 @@ TEST_F(NodeManagerTest, TestResizeLocalResourceInstancesSuccessful) {
   EXPECT_EQ(reply.total_resources().at("memory"), 8000000.0);
   EXPECT_EQ(reply.available_resources().at("CPU"), 8.0);
   EXPECT_EQ(reply.available_resources().at("memory"), 8000000.0);
+}
+
+TEST_F(NodeManagerTest, TestResizeLocalResourceInstancesInvalidArgument) {
+  // Test trying to resize unit instance resources (GPU, etc.)
+  rpc::ResizeLocalResourceInstancesRequest request;
+  rpc::ResizeLocalResourceInstancesReply reply;
+
+  (*request.mutable_resources())["GPU"] = 4.0;  // GPU is a unit instance resource
+
+  bool callback_called = false;
+  Status callback_status;
+
+  node_manager_->HandleResizeLocalResourceInstances(
+      request,
+      &reply,
+      [&callback_called, &callback_status](
+          Status s, std::function<void()> success, std::function<void()> failure) {
+        callback_called = true;
+        callback_status = s;
+      });
+
+  // The callback should have been called with an InvalidArgument status
+  EXPECT_TRUE(callback_called);
+  EXPECT_FALSE(callback_status.ok());
+  EXPECT_TRUE(callback_status.IsInvalidArgument());
+  // Check the error message contains expected details
+  std::string error_msg = callback_status.message();
+  EXPECT_TRUE(error_msg.find("Cannot resize unit instance resource 'GPU'") !=
+              std::string::npos);
+  EXPECT_TRUE(error_msg.find("Unit instance resources") != std::string::npos);
+  EXPECT_TRUE(error_msg.find("cannot be resized dynamically") != std::string::npos);
 }
 
 TEST_F(NodeManagerTest, TestResizeLocalResourceInstancesFailedPreconditions) {
@@ -856,6 +890,7 @@ TEST_F(NodeManagerTest, TestResizeLocalResourceInstancesFailedPreconditions) {
   (*request.mutable_resources())["CPU"] = 8.0;
   (*request.mutable_resources())["memory"] = 16000000.0;
 
+  reply.Clear();
   node_manager_->HandleResizeLocalResourceInstances(
       request,
       &reply,
@@ -884,6 +919,7 @@ TEST_F(NodeManagerTest, TestResizeLocalResourceInstancesFailedPreconditions) {
   callback_called = false;
   (*request.mutable_resources())["CPU"] = 4.0;  // Less than the 6 in use
 
+  reply.Clear();
   node_manager_->HandleResizeLocalResourceInstances(
       request,
       &reply,
