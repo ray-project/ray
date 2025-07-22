@@ -73,18 +73,7 @@ class AsyncProgressUpdater:
 
     def _worker_loop(self):
         while not self._shutdown:
-            # Get snapshot of pending calls and clear them
-            with self._lock:
-                calls_to_process = self._pending_calls.copy()
-                self._pending_calls.clear()
-
-            # Execute all pending calls
-            for call_id, (func, args, kwargs) in calls_to_process.items():
-                try:
-                    func(*args, **kwargs)
-                except Exception as e:
-                    logger.debug(f"Progress bar call failed for {call_id}: {e}")
-
+            self.flush_pending()
             time.sleep(self._update_interval)
 
     def shutdown(self):
