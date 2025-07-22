@@ -5,7 +5,13 @@ import tempfile
 import subprocess
 import shutil
 import runfiles
-from ci.raydepsets.cli import load, DependencySetManager, uv_binary
+from ci.raydepsets.cli import (
+    load,
+    DependencySetManager,
+    uv_binary,
+    override_uv_flags,
+    append_uv_flags,
+)
 from ci.raydepsets.workspace import Workspace
 from click.testing import CliRunner
 from pathlib import Path
@@ -192,28 +198,21 @@ class TestCli(unittest.TestCase):
             )
 
     def test_append_uv_flags(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            _copy_data_to_tmpdir(tmpdir)
-            manager = DependencySetManager(
-                config_path="test.config.yaml",
-                workspace_dir=tmpdir,
-            )
-            assert manager.append_uv_flags(["--no-annotate", "--no-header"]) == [
+        assert sorted(append_uv_flags(["--no-annotate", "--no-header"])) == sorted(
+            [
                 *DEFAULT_UV_FLAGS,
                 "--no-annotate",
                 "--no-header",
             ]
+        )
 
     def test_override_uv_flag(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            _copy_data_to_tmpdir(tmpdir)
-            manager = DependencySetManager(
-                config_path="test.config.yaml",
-                workspace_dir=tmpdir,
-            )
-            assert manager.override_uv_flags(
+        assert sorted(
+            override_uv_flags(
                 ["--extra-index-url https://download.pytorch.org/whl/cu128"]
-            ) == [
+            )
+        ) == sorted(
+            [
                 "--generate-hashes",
                 "--strip-extras",
                 "--no-strip-markers",
@@ -227,15 +226,11 @@ class TestCli(unittest.TestCase):
                 "--index-strategy unsafe-best-match",
                 "--quiet",
             ]
+        )
 
     def test_override_uv_flags(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            _copy_data_to_tmpdir(tmpdir)
-            manager = DependencySetManager(
-                config_path="test.config.yaml",
-                workspace_dir=tmpdir,
-            )
-            assert manager.override_uv_flags(["--unsafe-package dummy"]) == [
+        assert sorted(override_uv_flags(["--unsafe-package dummy"])) == sorted(
+            [
                 "--generate-hashes",
                 "--strip-extras",
                 "--no-strip-markers",
@@ -244,8 +239,10 @@ class TestCli(unittest.TestCase):
                 "--unsafe-package dummy",
                 "--index-url https://pypi.org/simple",
                 "--index-strategy unsafe-best-match",
+                "--extra-index-url https://download.pytorch.org/whl/cpu",
                 "--quiet",
             ]
+        )
 
 
 def _copy_data_to_tmpdir(tmpdir):

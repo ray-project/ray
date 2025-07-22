@@ -92,9 +92,9 @@ class DependencySetManager:
         """Compile a dependency set."""
         args = []
         if override_flags:
-            args = self.override_uv_flags(override_flags)
+            args = override_uv_flags(override_flags)
         if append_flags:
-            args = self.append_uv_flags(append_flags)
+            args = append_uv_flags(append_flags)
         if constraints:
             for constraint in constraints:
                 args.extend(["-c", self.get_path(constraint)])
@@ -108,17 +108,23 @@ class DependencySetManager:
     def get_path(self, path: str) -> str:
         return (Path(self.workspace.dir) / path).as_posix()
 
-    def override_uv_flags(self, flags: List[str]) -> List[str]:
-        new_flags = set(DEFAULT_UV_FLAGS.copy())
-        for flag in flags:
-            flag_name = flag.split(" ")[0]
-            if flag_name in new_flags:
-                new_flags.remove(flag_name)
-                new_flags.add(flag)
-        return list(new_flags)
 
-    def append_uv_flags(self, flags: List[str]) -> List[str]:
-        return DEFAULT_UV_FLAGS.copy() + flags
+def override_uv_flags(flags: List[str]) -> List[str]:
+    removed_flags = set()
+    default_flags = set(DEFAULT_UV_FLAGS.copy())
+    for flag in flags:
+        flag_name = flag.split(" ")[0]
+        for default_flag in default_flags:
+            if flag_name in default_flag:
+                removed_flags.add(default_flag)
+    default_flags.difference_update(removed_flags)
+    return list(default_flags.union(flags))
+
+
+def append_uv_flags(flags: List[str]) -> List[str]:
+    default_flags = set(DEFAULT_UV_FLAGS.copy())
+    default_flags.update(flags)
+    return list(default_flags)
 
 
 def uv_binary():
