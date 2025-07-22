@@ -411,22 +411,35 @@ class _LoraModelLoader:
         clear_directory(self.lora_root)
 
     def _download_lora(self, lora_mirror_config: "LoraMirrorConfig") -> str:
-        # Use the canonical download_lora_adapter function to ensure consistency
-        # between serve and batch paths, while maintaining the _LoraModelLoader's
-        # caching and async capabilities
+        # Revert to the original working implementation approach
+        # The bucket_uri in LoraMirrorConfig already contains the full path to the lora
         lora_id = get_lora_id(clean_model_id(lora_mirror_config.lora_model_id))
 
-        # Use the canonical download function which properly downloads all files
-        # including tokenizers using CloudModelDownloader
-        local_path = download_lora_adapter(
-            lora_name=lora_id,
-            remote_path=os.path.dirname(lora_mirror_config.bucket_uri),
-            lora_root=self.lora_root,
-            download_timeout_s=self.download_timeout_s,
-            max_tries=self.max_tries,
+        # Create local directory for the lora model
+        model_local_path = os.path.join(self.lora_root, lora_id)
+        os.makedirs(model_local_path, exist_ok=True)
+
+        # Use CloudFileSystem.download_files directly like in the original implementation
+        # This is more reliable than trying to force it through download_lora_adapter
+        logger.info(
+            "Downloading %s to %s", lora_mirror_config.bucket_uri, model_local_path
         )
 
-        return local_path
+        try:
+            CloudFileSystem.download_files(
+                path=model_local_path,
+                bucket_uri=lora_mirror_config.bucket_uri,
+            )
+        except Exception as e:
+            logger.error(
+                "Failed to sync model (%s) from %s to %s",
+                str(e),
+                lora_mirror_config.bucket_uri,
+                model_local_path,
+            )
+            raise
+
+        return model_local_path
 
     def _load_model_sync(
         self, lora_mirror_config: "LoraMirrorConfig"

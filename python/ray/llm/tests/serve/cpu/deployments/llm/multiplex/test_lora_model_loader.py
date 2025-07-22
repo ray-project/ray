@@ -48,7 +48,7 @@ class TestLoRAModelLoader:
         """Common LoRA mirror config used across tests."""
         return LoraMirrorConfig(
             lora_model_id=lora_model_id,
-            bucket_uri="s3://fake-bucket-uri-abcd",
+            bucket_uri="s3://fake-bucket-uri-abcd/lora_id",  # Include lora_id in the path
             max_total_tokens=4096,
         )
 
@@ -71,7 +71,7 @@ class TestLoRAModelLoader:
             # Verify download_files was called with correct parameters
             mock_download_files.assert_called_once_with(
                 path="/tmp/ray/lora/cache/lora_id",
-                bucket_uri="s3://fake-bucket-uri-abcd",
+                bucket_uri="s3://fake-bucket-uri-abcd/lora_id",  # Include lora_id in expected bucket_uri
             )
             mock_download_files.reset_mock()
 

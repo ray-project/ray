@@ -44,6 +44,9 @@ from ray.llm._internal.serve.configs.server_models import (
     LLMRawResponse,
 )
 from ray.llm._internal.serve.deployments.llm.llm_engine import LLMEngine
+from ray.llm._internal.serve.deployments.llm.multiplex.utils import (
+    get_lora_mirror_config,
+)
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_engine import VLLMEngine
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import (
     VLLMEmbeddingRequest,
@@ -653,35 +656,13 @@ class LLMServer(_LLMServerBase):
             )
 
     async def _load_model(self, lora_model_id: str) -> DiskMultiplexConfig:
-        """Load a LoRA model using the working download mechanism."""
-        from ray.llm._internal.common.utils.lora_utils import (
-            download_lora_adapter,
-            get_lora_id,
+        """Load a LoRA model using the unified downloading functionality."""
+        lora_mirror_config = await get_lora_mirror_config(
+            lora_model_id, self._llm_config
         )
-
-        # Use the same download mechanism as batch (which works correctly)
-        # Extract the LoRA ID from the full model ID
-        lora_id = get_lora_id(lora_model_id)
-
-        # Download using the working mechanism
-        local_path = download_lora_adapter(
-            lora_name=lora_id,
-            remote_path=self._llm_config.lora_config.dynamic_lora_loading_path,
-        )
-
-        # Create a DiskMultiplexConfig compatible with the existing interface
-        from ray.llm._internal.common.models import (
-            DiskMultiplexConfig,
-            global_id_manager,
-        )
-
-        return DiskMultiplexConfig.model_validate(
-            {
-                "model_id": lora_model_id,
-                "max_total_tokens": 4096,  # Default value
-                "local_path": local_path,
-                "lora_assigned_int_id": global_id_manager.next(),
-            }
+        return await self.model_downloader.load_model(
+            lora_model_id=lora_model_id,
+            lora_mirror_config=lora_mirror_config,
         )
 
     async def _disk_lora_model(self, lora_model_id: str) -> DiskMultiplexConfig:
