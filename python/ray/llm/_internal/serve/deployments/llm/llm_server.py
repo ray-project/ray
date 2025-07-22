@@ -226,13 +226,6 @@ class LLMServer(_LLMServerBase):
     def _batch_output_stream(
         self, generator: AsyncGenerator[T, None]
     ) -> AsyncGenerator[List[T], None]:
-        if self._get_batch_interval_ms() == 0:
-
-            async def _to_list(generator: AsyncGenerator[T, None]) -> List[T]:
-                async for item in generator:
-                    yield [item]
-
-            return _to_list(generator)
         return Batcher(
             generator,
             interval_ms=self._get_batch_interval_ms(),
