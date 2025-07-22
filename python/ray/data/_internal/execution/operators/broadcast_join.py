@@ -66,6 +66,7 @@ class BroadcastJoinFunction:
 
         # Combine all blocks into a single PyArrow table
         import pyarrow as pa
+    
         from ray.data._internal.arrow_block import ArrowBlockAccessor
 
         right_tables = [
