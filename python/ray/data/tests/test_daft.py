@@ -13,8 +13,7 @@ import ray
 # Daft needs to use ray.cloudpickle and json for fallback for
 # serialization/deserialization of Arrow tensor extension types.
 pytestmark = pytest.mark.skip(
-    reason="Daft needs to use ray.cloudpickle and json for fallback for "
-    "serialization/deserialization of Arrow tensor extension types.",
+    reason="https://github.com/ray-project/ray/issues/54837",
 )
 
 

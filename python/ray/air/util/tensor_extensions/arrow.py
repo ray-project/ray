@@ -574,7 +574,7 @@ class ArrowTensorType(_BaseFixedShapeArrowTensorType):
 
     @classmethod
     def __arrow_ext_deserialize__(cls, storage_type, serialized):
-        shape = _deserialize_with_fallback(serialized, "shape")
+        shape = tuple(_deserialize_with_fallback(serialized, "shape"))
         return cls(shape, storage_type.value_type)
 
     def __eq__(self, other):
@@ -604,7 +604,7 @@ class ArrowTensorTypeV2(_BaseFixedShapeArrowTensorType):
 
     @classmethod
     def __arrow_ext_deserialize__(cls, storage_type, serialized):
-        shape = _deserialize_with_fallback(serialized, "shape")
+        shape = tuple(_deserialize_with_fallback(serialized, "shape"))
         return cls(shape, storage_type.value_type)
 
     def __eq__(self, other):
