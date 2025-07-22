@@ -530,8 +530,10 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
       return {Process(), (StartupToken)-1};
     }
     // Other errors are fatal to preserve existing behavior.
-    RAY_LOG(FATAL) << "Failed to start worker process: " << ec.message();
+    RAY_LOG(ERROR) << "Failed to start worker process: " << ec.message();
+    *status = PopWorkerStatus::RuntimeEnvCreationFailed;
     return {Process(), (StartupToken)-1};
+  }
   }
   stats::NumWorkersStarted.Record(1);
   RAY_LOG(INFO) << "Started worker process with pid " << proc.GetId() << ", the token is "
