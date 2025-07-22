@@ -175,7 +175,7 @@ class TestCli(unittest.TestCase):
                 source_depset="general_depset",
                 requirements=["requirement_constraints_subset.txt"],
                 args=["--no-annotate", "--no-header"] + DEFAULT_UV_FLAGS.copy(),
-                name="subset_base_test_depset",
+                name="subset_general_depset",
                 output="requirements_compiled_subset_general.txt",
             )
             output_file = Path(tmpdir) / "requirements_compiled_subset_general.txt"
