@@ -21,9 +21,8 @@ applications:
             max_replicas: 2
         runtime_env:
           env_vars:
-            LMCACHE_CONFIG_FILE: lmcache/prefiller.yaml
+            LMCACHE_CONFIG_FILE: configs/lmcache/prefiller.yaml
             LMCACHE_USE_EXPERIMENTAL: "True"
-            VLLM_USE_V1: "1"
 
       decode_config:
         model_loading_config:
@@ -45,9 +44,8 @@ applications:
             max_replicas: 6
         runtime_env:
           env_vars:
-            LMCACHE_CONFIG_FILE: lmcache/decoder.yaml
+            LMCACHE_CONFIG_FILE: configs/lmcache/decoder.yaml
             LMCACHE_USE_EXPERIMENTAL: "True"
-            VLLM_USE_V1: "1"
 
     import_path: ray.llm._internal.serve.deployments.prefill_decode_disagg.prefill_decode_disagg:build_app
     name: llm-endpoint
