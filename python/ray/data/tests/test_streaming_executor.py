@@ -947,7 +947,7 @@ def test_async_progress_updater_non_blocking():
             # If we reach this point, the async progress updater worked for both
             # execution and cleanup
             assert len(result) == 100
-            assert result == list(range(100))
+            assert result == [{"id": i} for i in range(100)]
 
     except ImportError:
         # Skip test if tqdm not available
