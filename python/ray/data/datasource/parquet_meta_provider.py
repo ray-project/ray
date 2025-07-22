@@ -150,10 +150,12 @@ class ParquetMetadataProvider(FileMetadataProvider):
                     **ray_remote_args,
                 )
             )
+
         else:
             raw_metadata = _fetch_metadata(fragments)
 
-        return _dedupe_metadata(raw_metadata)
+        return _dedupe_fragment_metadata(raw_metadata)
+
 
 
 def _fetch_metadata_serialization_wrapper(
@@ -161,7 +163,7 @@ def _fetch_metadata_serialization_wrapper(
     retry_match: Optional[List[str]],
     retry_max_attempts: int,
     retry_max_interval: int,
-) -> List["pyarrow.parquet.FileMetaData"]:
+) -> List["_ParquetFileFragmentMetaData"]:
     from ray.data._internal.datasource.parquet_datasource import (
         _deserialize_fragments_with_retry,
     )
@@ -209,14 +211,14 @@ def _fetch_metadata_serialization_wrapper(
 
 def _fetch_metadata(
     fragments: List["pyarrow.dataset.ParquetFileFragment"],
-) -> List["pyarrow.parquet.FileMetaData"]:
-    fragment_metadata = []
+) -> List[_ParquetFileFragmentMetaData]:
+    fragment_metadata: List["pyarrow.parquet.FileMetaData"] = []
     for f in fragments:
         try:
             fragment_metadata.append(f.metadata)
         except AttributeError:
             break
-    return fragment_metadata
+    return _dedupe_metadata(fragment_metadata)
 
 
 def _dedupe_metadata(
@@ -227,8 +229,8 @@ def _dedupe_metadata(
     memory usage by only keeping unique schema objects across all
     file fragments. This method deduplicates the schemas and returns
     a list of `_ParquetFileFragmentMetaData` objects."""
-    schema_to_id = {}  # schema_id -> serialized_schema
-    id_to_schema = {}  # serialized_schema -> schema_id
+    schema_to_id = {}  # schema_ser -> schema_id
+    id_to_schema = {}  # schema_id -> schema_ser
     stripped_metadatas = []
     for fragment_metadata in raw_metadatas:
         stripped_md = _ParquetFileFragmentMetaData(fragment_metadata)
@@ -240,8 +242,50 @@ def _dedupe_metadata(
             id_to_schema[schema_id] = schema_ser
             stripped_md.set_schema_pickled(schema_ser)
         else:
-            schema_id = schema_to_id.get(schema_ser)
+            schema_id = schema_to_id[schema_ser]  # Direct access instead of .get()
             existing_schema_ser = id_to_schema[schema_id]
             stripped_md.set_schema_pickled(existing_schema_ser)
         stripped_metadatas.append(stripped_md)
+    return stripped_metadatas
+
+def _dedupe_fragment_metadata(
+    metadatas: List[_ParquetFileFragmentMetaData],
+) -> List[_ParquetFileFragmentMetaData]:
+    """Deduplicates schema objects across existing _ParquetFileFragmentMetaData objects.
+
+    For datasets with a large number of columns, the pickled schema can be very large.
+    This function reduces memory usage by ensuring that identical schemas across multiple
+    fragment metadata objects reference the same underlying pickled schema object,
+    rather than each fragment maintaining its own copy.
+
+    Args:
+        metadatas: List of _ParquetFileFragmentMetaData objects that already have
+                  pickled schemas set.
+
+    Returns:
+        The same list of _ParquetFileFragmentMetaData objects, but with duplicate
+        schemas deduplicated to reference the same object in memory.
+    """
+    schema_to_id = {}  # schema_ser -> schema_id
+    id_to_schema = {}  # schema_id -> schema_ser
+    stripped_metadatas = []
+
+    for metadata in metadatas:
+        # Get the current schema serialization
+        schema_ser = metadata.schema_pickled
+
+        if schema_ser not in schema_to_id:
+            # This is a new unique schema
+            schema_id = len(schema_to_id)
+            schema_to_id[schema_ser] = schema_id
+            id_to_schema[schema_id] = schema_ser
+            # No need to set schema_pickled - it already has the correct value
+        else:
+            # This schema already exists, reuse the existing one
+            schema_id = schema_to_id[schema_ser]
+            existing_schema_ser = id_to_schema[schema_id]
+            metadata.set_schema_pickled(existing_schema_ser)
+
+        stripped_metadatas.append(metadata)
+
     return stripped_metadatas
