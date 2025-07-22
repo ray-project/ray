@@ -1780,6 +1780,10 @@ class DeploymentState:
         )
 
         # Determine if the updated target state simply scales the current state.
+        # Although the else branch handles the CONFIG_UPDATE, we also take this branch
+        # for a config update whose only effect is changing `num_replicas`.
+        # Treating it as a scaling event keeps the user-visible deployment status more
+        # consistent for observability.
         if self._target_state.is_scaled_copy_of(old_target_state):
             old_num = old_target_state.target_num_replicas
             new_num = self._target_state.target_num_replicas
