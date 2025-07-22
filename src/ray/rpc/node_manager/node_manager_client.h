@@ -34,10 +34,10 @@ class RayletClient;
 
 namespace rpc {
 
-/// TODO(dayshah): Kill this completely. This class is only used by the RayletClient which
-/// is just a wrapper around this. This exists for the legacy reason that all the function
-/// definitions in RayletClient have to change if you move the things in here into
-/// RayletClient.
+/// TODO(dayshah): https://github.com/ray-project/ray/issues/54816 Kill this completely.
+/// This class is only used by the RayletClient which is just a wrapper around this. This
+/// exists for the legacy reason that all the function definitions in RayletClient have to
+/// change if you move the things in here into RayletClient.
 class NodeManagerClient {
  public:
   friend class raylet::RayletClient;
