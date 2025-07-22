@@ -9,4 +9,3 @@ async-timeout; python_version < '3.11'
 typer
 meson
 pybind11
-lmcache>=0.3.2
