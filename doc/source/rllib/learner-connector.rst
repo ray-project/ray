@@ -341,7 +341,7 @@ Then, add these lines to your :py:class:`~ray.rllib.algorithms.algorithm_config.
             env_to_module_connector=lambda env, spaces, device: StackFourObservations(),
         )
         # And again on the Learner side.
-        config.learners(
+        config.training(
             learner_connector=lambda obs_space, act_space: StackFourObservations(
                 as_learner_connector=True
             ),
@@ -376,6 +376,6 @@ altered observation shape.
             env_to_module_connector=lambda env, spaces, device: FrameStacking(num_frames=N),
         )
         # Then again on the Learner side.
-        config.learners(
+        config.training(
             learner_connector=lambda obs_space, act_space: FrameStacking(num_frames=N, as_learner_connector=True),
         )
