@@ -3825,10 +3825,7 @@ def test_get_actor_timeout_multiplier(shutdown_only):
     list_options = ListApiOptions(timeout=test_timeout)
 
     # After __post_init__, both should have the same effective timeout
-    assert get_options.timeout == list_options.timeout, (
-        f"GetApiOptions timeout ({get_options.timeout}) should match "
-        f"ListApiOptions timeout ({list_options.timeout}) after applying multiplier"
-    )
+    assert get_options.timeout == list_options.timeout
 
     # Test that get_actor works with a 1-second timeout
     actors = list_actors()
