@@ -213,42 +213,39 @@ class TestCli(unittest.TestCase):
                 == f"{tmpdir}/requirements_test.txt"
             )
 
-    def test_expand_by_depset_name(self):
+    def test_expand(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             _copy_data_to_tmpdir(tmpdir)
-            result = CliRunner().invoke(
-                load,
-                [
-                    "test.config.yaml",
-                    "--workspace-dir",
-                    tmpdir,
-                    "--name",
-                    "general_depset",
-                ],
+            manager = DependencySetManager(
+                config_path="test.config.yaml",
+                workspace_dir=tmpdir,
             )
-
-            output_fp = Path(tmpdir) / "requirements_compiled_general.txt"
-            assert result.exit_code == 0
-            assert Path(output_fp).is_file()
-
-            result = CliRunner().invoke(
-                load,
-                [
-                    "test.config.yaml",
-                    "--workspace-dir",
-                    tmpdir,
-                    "--name",
-                    "expand_general_depset",
-                ],
+            manager.compile(
+                constraints=["requirement_constraints_test.txt"],
+                requirements=["requirements_test.txt"],
+                args=["--no-annotate", "--no-header"] + DEFAULT_UV_FLAGS.copy(),
+                name="general_depset",
+                output="requirements_compiled_general.txt",
             )
-
-            output_fp = Path(tmpdir) / "requirements_compiled_expand_general.txt"
-            assert result.exit_code == 0
-            assert Path(output_fp).is_file()
-            assert (
-                "Dependency set expand_general_depset compiled successfully"
-                in result.output
+            manager.compile(
+                constraints=[],
+                requirements=["requirements_expanded.txt"],
+                args=["--no-annotate", "--no-header"] + DEFAULT_UV_FLAGS.copy(),
+                name="expanded_depset",
+                output="requirements_compiled_expanded.txt",
             )
+            manager.expand(
+                depsets=["general_depset", "expanded_depset"],
+                constraints=["requirement_constraints_expand.txt"],
+                args=["--no-annotate", "--no-header"] + DEFAULT_UV_FLAGS.copy(),
+                name="expand_general_depset",
+                output="requirements_compiled_expand_general.txt",
+            )
+            output_file = Path(tmpdir) / "requirements_compiled_expand_general.txt"
+            output_text = output_file.read_text()
+            output_file_valid = Path(tmpdir) / "requirements_compiled_test_expand.txt"
+            output_text_valid = output_file_valid.read_text()
+            assert output_text == output_text_valid
 
 
 def _copy_data_to_tmpdir(tmpdir):

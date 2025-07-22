@@ -1,0 +1,3 @@
+six==1.17.0
+emoji==2.9.0
+pyperclip<=1.6.0

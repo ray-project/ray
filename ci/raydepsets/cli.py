@@ -81,6 +81,7 @@ class DependencySetManager:
             self.subset(
                 source_depset=depset.source_depset,
                 requirements=depset.requirements,
+                args=DEFAULT_UV_FLAGS.copy(),
                 name=depset.name,
                 output=depset.output,
             )
@@ -134,18 +135,19 @@ class DependencySetManager:
         self,
         depsets: List[str],
         constraints: List[str],
+        args: List[str],
         name: str,
         output: str = None,
     ):
         """Expand a dependency set."""
-        depset_list = []
+        depset_req_list = []
         for depset_name in depsets:
             depset = self.get_depset(depset_name)
-            depset_list.append(depset)
+            depset_req_list.extend(depset.requirements)
         self.compile(
             constraints=constraints,
-            requirements=[depset.output for depset in depset_list],
-            args=DEFAULT_UV_FLAGS.copy(),
+            requirements=depset_req_list,
+            args=args,
             name=name,
             output=output,
         )
