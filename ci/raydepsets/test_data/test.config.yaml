@@ -11,7 +11,7 @@ depsets:
     requirements:
       - requirements_test.txt
     output: requirements_compiled_general.txt
-  - name: subset_base_test_depset
+  - name: subset_general_depset
     operation: subset
     source_depset: general_depset
     requirements:
