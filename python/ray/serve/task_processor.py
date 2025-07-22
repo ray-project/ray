@@ -77,7 +77,7 @@ class CeleryTaskProcessorAdapter(TaskProcessorAdapter):
         self._app.conf.update(
             loglevel="info",
             worker_pool="threads",
-            worker_concurrency=10,
+            worker_concurrency=config.adapter_config.worker_concurrency,
             task_max_retries=config.max_retry,
             task_default_queue=config.queue_name,
             task_ignore_result=False,
@@ -100,7 +100,11 @@ class CeleryTaskProcessorAdapter(TaskProcessorAdapter):
 
     def enqueue_task(self, task_name, args=None, kwargs=None, **options) -> TaskResult:
         task_response = self._app.send_task(
-            task_name, args=args, queue=self._config.queue_name
+            task_name,
+            args=args,
+            kwargs=kwargs,
+            queue=self._config.queue_name,
+            **options,
         )
 
         return TaskResult(

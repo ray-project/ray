@@ -11,16 +11,16 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 @PublicAPI(stability="alpha")
-def task_consumer(*, taskProcessorConfig: TaskProcessorConfig):
+def task_consumer(*, task_processor_config: TaskProcessorConfig):
     """
     Decorator to mark a class as a TaskConsumer.
 
     Args:
-        taskProcessorConfig: Configuration for the task processor (required)
+        task_processor_config: Configuration for the task processor (required)
 
     Note:
         This decorator must be used with parentheses:
-        @task_consumer(taskProcessorConfig=config)
+        @task_consumer(task_processor_config=config)
 
     Returns:
         A wrapper class that inherits from the target class and implements the task consumer functionality.
@@ -31,8 +31,7 @@ def task_consumer(*, taskProcessorConfig: TaskProcessorConfig):
             def __init__(self, *args, **kwargs):
                 target_cls.__init__(self, *args, **kwargs)
 
-                self._adapter = get_task_adapter(taskProcessorConfig)
-                self._adapter.initialize(config=taskProcessorConfig)
+                self._adapter = get_task_adapter(task_processor_config)
 
                 for name, method in inspect.getmembers(
                     target_cls, predicate=inspect.isfunction
@@ -41,7 +40,7 @@ def task_consumer(*, taskProcessorConfig: TaskProcessorConfig):
                         task_name = getattr(method, "_task_name", name)
 
                         # Create a callable that properly binds the method to this instance
-                        bound_method = getattr(self, task_name)
+                        bound_method = getattr(self, name)
 
                         self._adapter.register_task_handle(bound_method, task_name)
 

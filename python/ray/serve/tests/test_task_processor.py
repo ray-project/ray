@@ -87,7 +87,7 @@ class TestTaskConsumerWithRayServe:
             assert result.status in ("PENDING", "FAILED", "SUCCESS")
 
         @serve.deployment
-        @task_consumer(taskProcessorConfig=processor_config)
+        @task_consumer(task_processor_config=processor_config)
         class ServeTaskConsumer:
             def __init__(self):
                 self.data_received = None
@@ -173,7 +173,7 @@ class TestTaskConsumerWithRayServe:
             return celery_adapter.get_task_status(task_id)
 
         @serve.deployment
-        @task_consumer(taskProcessorConfig=processor_config)
+        @task_consumer(task_processor_config=processor_config)
         class ServeTaskConsumer:
             def __init__(self):
                 self.data_received = None
