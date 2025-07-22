@@ -342,6 +342,19 @@ RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S = float(
     os.environ.get("RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S", 10.0)
 )
 
+# Backoff seconds when choosing router failed, backoff time is calculated as
+# initial_backoff_s * backoff_multiplier ** attempt.
+# The default backoff time is [0.025, 0.05, 0.1, 0.2, 0.4, 0.5, 0.5 ... ].
+RAY_SERVE_ROUTER_RETRY_INITIAL_BACKOFF_S = float(
+    os.environ.get("RAY_SERVE_ROUTER_RETRY_INITIAL_BACKOFF_S", 0.025)
+)
+RAY_SERVE_ROUTER_RETRY_BACKOFF_MULTIPLIER = int(
+    os.environ.get("RAY_SERVE_ROUTER_RETRY_BACKOFF_MULTIPLIER", 2)
+)
+RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S = float(
+    os.environ.get("RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S", 0.5)
+)
+
 # The default autoscaling policy to use if none is specified.
 DEFAULT_AUTOSCALING_POLICY = "ray.serve.autoscaling_policy:default_autoscaling_policy"
 
