@@ -41,13 +41,7 @@ class GPUTestActor:
 
     def get_num_gpu_objects(self):
         gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
-        gpu_object_store = gpu_object_manager.gpu_object_store
-        print(
-            "get_num_gpu_objects",
-            gpu_object_store.gpu_object_store,
-            gpu_object_store.gpu_object_id_to_num_readers,
-        )
-        return len(gpu_object_store.gpu_object_store)
+        return len(gpu_object_manager.gpu_object_store.gpu_object_store)
 
 
 @pytest.mark.parametrize("data_size_bytes", [100])
