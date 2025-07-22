@@ -4,6 +4,7 @@ import threading
 from collections import defaultdict
 from dataclasses import dataclass
 import time
+from requests.exceptions import ConnectionError
 
 _logger = logging.getLogger(__name__)
 
@@ -46,9 +47,9 @@ class _RayMetricFamily:
 _ray_metric_families = {
     family.name: family
     for family in [
-        _RayMetricFamily("ray_tasks", [_RayMetricLabels.STATE, _RayMetricLabels.IS_RETRY], None),
-        _RayMetricFamily("ray_actors", [_RayMetricLabels.STATE], None),
-        _RayMetricFamily("ray_resources", [_RayMetricLabels.NAME, _RayMetricLabels.STATE], None),
+        _RayMetricFamily("ray_tasks", [_RayMetricLabels.NAME, _RayMetricLabels.STATE, _RayMetricLabels.IS_RETRY], None),
+        _RayMetricFamily("ray_actors", [_RayMetricLabels.NAME, _RayMetricLabels.STATE], None),
+        _RayMetricFamily("ray_resources", [_RayMetricLabels.NAME, _RayMetricLabels.STATE, _RayMetricLabels.NODE_ADDR], None),
         _RayMetricFamily("ray_object_store_memory", [
             _RayMetricLabels.LOCATION, _RayMetricLabels.OBJECT_STATE,
         ],  _RayMetricLabels.NODE_ADDR),
@@ -178,6 +179,9 @@ class RayMetricsMonitor:
     def collect_metrics(self):
         try:
             return collect_ray_metrics(self._ray_head_ip, self._metrics_export_port)
+        except ConnectionError:
+            # Ray metrics exporter endpoint is not ready yet.
+            pass
         except Exception as e:
             _logger.warning(f"Failed to collect Ray metrics: {e}")
             return {}
