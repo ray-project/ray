@@ -1,0 +1,386 @@
+"""GPU providers for monitoring GPU usage in Ray dashboard.
+
+This module provides an object-oriented interface for different GPU providers
+(NVIDIA, AMD) to collect GPU utilization information.
+"""
+
+import abc
+import logging
+import subprocess
+from typing import List, Optional, Union, TypedDict
+
+logger = logging.getLogger(__name__)
+
+# Constants
+MB = 1024 * 1024
+
+# Types
+Percentage = int
+Megabytes = int
+Bytes = int
+
+
+class ProcessGPUInfo(TypedDict):
+    """Information about GPU usage for a single process."""
+
+    pid: int
+    gpu_memory_usage: Megabytes
+
+
+class GpuUtilizationInfo(TypedDict):
+    """GPU utilization information for a single GPU device."""
+
+    index: int
+    name: str
+    uuid: str
+    utilization_gpu: Optional[Percentage]
+    memory_used: Megabytes
+    memory_total: Megabytes
+    processes_pids: Optional[List[ProcessGPUInfo]]
+
+
+# tpu utilization for google tpu
+class TpuUtilizationInfo(TypedDict):
+    index: int
+    name: str
+    tpu_type: str
+    tpu_topology: str
+    tensorcore_utilization: Percentage
+    hbm_utilization: Percentage
+    duty_cycle: Percentage
+    memory_used: Bytes
+    memory_total: Bytes
+
+
+class GpuProvider(abc.ABC):
+    """Abstract base class for GPU providers."""
+
+    def __init__(self):
+        self._initialized = False
+
+    @abc.abstractmethod
+    def get_provider_name(self) -> str:
+        """Return the name of the GPU provider (e.g., 'nvidia', 'amd')."""
+        pass
+
+    @abc.abstractmethod
+    def is_available(self) -> bool:
+        """Check if the GPU provider is available on this system."""
+        pass
+
+    @abc.abstractmethod
+    def initialize(self) -> bool:
+        """Initialize the GPU provider. Returns True if successful."""
+        pass
+
+    @abc.abstractmethod
+    def shutdown(self):
+        """Shutdown the GPU provider and clean up resources."""
+        pass
+
+    @abc.abstractmethod
+    def get_gpu_utilization(self) -> List[GpuUtilizationInfo]:
+        """Get GPU utilization information for all available GPUs."""
+        pass
+
+    @staticmethod
+    def decode(b: Union[str, bytes]) -> str:
+        """Decode bytes to string for Python 3 compatibility."""
+        if isinstance(b, bytes):
+            return b.decode("utf-8")
+        return b
+
+
+class NvidiaGpuProvider(GpuProvider):
+    """NVIDIA GPU provider using pynvml."""
+
+    def __init__(self):
+        super().__init__()
+        self._pynvml = None
+
+    def get_provider_name(self) -> str:
+        return "nvidia"
+
+    def is_available(self) -> bool:
+        """Check if NVIDIA GPUs are available."""
+        try:
+            import ray._private.thirdparty.pynvml as pynvml
+
+            pynvml.nvmlInit()
+            pynvml.nvmlShutdown()
+            return True
+        except Exception as e:
+            logger.debug(f"NVIDIA GPU not available: {e}")
+            return False
+
+    def initialize(self) -> bool:
+        """Initialize the NVIDIA GPU provider."""
+        if self._initialized:
+            return True
+
+        try:
+            import ray._private.thirdparty.pynvml as pynvml
+
+            self._pynvml = pynvml
+            self._pynvml.nvmlInit()
+            self._initialized = True
+            return True
+        except Exception as e:
+            logger.debug(f"Failed to initialize NVIDIA GPU provider: {e}")
+            return False
+
+    def shutdown(self):
+        """Shutdown the NVIDIA GPU provider."""
+        if self._initialized and self._pynvml:
+            try:
+                self._pynvml.nvmlShutdown()
+            except Exception as e:
+                logger.debug(f"Error shutting down NVIDIA GPU provider: {e}")
+            finally:
+                self._initialized = False
+
+    def get_gpu_utilization(self) -> List[GpuUtilizationInfo]:
+        """Get GPU utilization information for all NVIDIA GPUs."""
+        if not self._initialized:
+            if not self.initialize():
+                return []
+
+        gpu_utilizations = []
+
+        try:
+            num_gpus = self._pynvml.nvmlDeviceGetCount()
+
+            for i in range(num_gpus):
+                gpu_handle = self._pynvml.nvmlDeviceGetHandleByIndex(i)
+                memory_info = self._pynvml.nvmlDeviceGetMemoryInfo(gpu_handle)
+
+                # Get GPU utilization
+                utilization = None
+                try:
+                    utilization_info = self._pynvml.nvmlDeviceGetUtilizationRates(
+                        gpu_handle
+                    )
+                    utilization = int(utilization_info.gpu)
+                except self._pynvml.NVMLError as e:
+                    logger.debug(f"Failed to retrieve GPU utilization: {e}")
+
+                # Get running processes
+                processes_pids = None
+                try:
+                    nv_comp_processes = (
+                        self._pynvml.nvmlDeviceGetComputeRunningProcesses(gpu_handle)
+                    )
+                    nv_graphics_processes = (
+                        self._pynvml.nvmlDeviceGetGraphicsRunningProcesses(gpu_handle)
+                    )
+
+                    processes_pids = [
+                        ProcessGPUInfo(
+                            pid=int(nv_process.pid),
+                            gpu_memory_usage=(
+                                int(nv_process.usedGpuMemory) // MB
+                                if nv_process.usedGpuMemory
+                                else 0
+                            ),
+                        )
+                        for nv_process in (nv_comp_processes + nv_graphics_processes)
+                    ]
+                except self._pynvml.NVMLError as e:
+                    logger.debug(f"Failed to retrieve GPU processes: {e}")
+
+                info = GpuUtilizationInfo(
+                    index=i,
+                    name=self.decode(self._pynvml.nvmlDeviceGetName(gpu_handle)),
+                    uuid=self.decode(self._pynvml.nvmlDeviceGetUUID(gpu_handle)),
+                    utilization_gpu=utilization,
+                    memory_used=int(memory_info.used) // MB,
+                    memory_total=int(memory_info.total) // MB,
+                    processes_pids=processes_pids,
+                )
+                gpu_utilizations.append(info)
+
+        except Exception as e:
+            logger.debug(f"Error getting NVIDIA GPU utilization: {e}")
+        finally:
+            self.shutdown()
+
+        return gpu_utilizations
+
+
+class AmdGpuProvider(GpuProvider):
+    """AMD GPU provider using pyamdsmi."""
+
+    def __init__(self):
+        super().__init__()
+        self._pyamdsmi = None
+
+    def get_provider_name(self) -> str:
+        return "amd"
+
+    def is_available(self) -> bool:
+        """Check if AMD GPUs are available."""
+        try:
+            import ray._private.thirdparty.pyamdsmi as pyamdsmi
+
+            pyamdsmi.smi_initialize()
+            pyamdsmi.smi_shutdown()
+            return True
+        except Exception as e:
+            logger.debug(f"AMD GPU not available: {e}")
+            return False
+
+    def initialize(self) -> bool:
+        """Initialize the AMD GPU provider."""
+        if self._initialized:
+            return True
+
+        try:
+            import ray._private.thirdparty.pyamdsmi as pyamdsmi
+
+            self._pyamdsmi = pyamdsmi
+            self._pyamdsmi.smi_initialize()
+            self._initialized = True
+            return True
+        except Exception as e:
+            logger.debug(f"Failed to initialize AMD GPU provider: {e}")
+            return False
+
+    def shutdown(self):
+        """Shutdown the AMD GPU provider."""
+        if self._initialized and self._pyamdsmi:
+            try:
+                self._pyamdsmi.smi_shutdown()
+            except Exception as e:
+                logger.debug(f"Error shutting down AMD GPU provider: {e}")
+            finally:
+                self._initialized = False
+
+    def get_gpu_utilization(self) -> List[GpuUtilizationInfo]:
+        """Get GPU utilization information for all AMD GPUs."""
+        if not self._initialized:
+            if not self.initialize():
+                return []
+
+        gpu_utilizations = []
+
+        try:
+            num_gpus = self._pyamdsmi.smi_get_device_count()
+            processes = self._pyamdsmi.smi_get_device_compute_process()
+
+            for i in range(num_gpus):
+                utilization = self._pyamdsmi.smi_get_device_utilization(i)
+                if utilization == -1:
+                    utilization = None
+
+                # Get running processes
+                processes_pids = []
+                for process in self._pyamdsmi.smi_get_compute_process_info_by_device(
+                    i, processes
+                ):
+                    if process.vram_usage:
+                        processes_pids.append(
+                            ProcessGPUInfo(
+                                pid=int(process.process_id),
+                                gpu_memory_usage=int(process.vram_usage) // MB,
+                            )
+                        )
+
+                info = GpuUtilizationInfo(
+                    index=i,
+                    name=self.decode(self._pyamdsmi.smi_get_device_name(i)),
+                    uuid=hex(self._pyamdsmi.smi_get_device_unique_id(i)),
+                    utilization_gpu=utilization,
+                    memory_used=int(self._pyamdsmi.smi_get_device_memory_used(i)) // MB,
+                    memory_total=int(self._pyamdsmi.smi_get_device_memory_total(i))
+                    // MB,
+                    processes_pids=processes_pids,
+                )
+                gpu_utilizations.append(info)
+
+        except Exception as e:
+            logger.debug(f"Error getting AMD GPU utilization: {e}")
+        finally:
+            self.shutdown()
+
+        return gpu_utilizations
+
+
+class GpuManager:
+    """Manager class for GPU providers."""
+
+    def __init__(self):
+        self._provider: Optional[GpuProvider] = None
+        self._enable_gpu_usage_check = True
+        self._providers = [NvidiaGpuProvider(), AmdGpuProvider()]
+
+    def _detect_gpu_provider(self) -> Optional[GpuProvider]:
+        """Detect and return the first available GPU provider."""
+        for provider in self._providers:
+            if provider.is_available():
+                return provider
+        return None
+
+    def _should_disable_gpu_check(self, nvidia_error: Exception) -> bool:
+        """
+        Check if we should disable GPU usage check based on the error.
+
+        On machines without GPUs, pynvml.nvmlInit() can run subprocesses that
+        spew to stderr. Then with log_to_driver=True, we get log spew from every
+        single raylet. To avoid this, disable the GPU usage check on certain errors.
+
+        See: https://github.com/ray-project/ray/issues/14305
+        """
+        if type(nvidia_error).__name__ != "NVMLError_DriverNotLoaded":
+            return False
+
+        try:
+            result = subprocess.check_output(
+                "cat /sys/module/amdgpu/initstate |grep live",
+                shell=True,
+                stderr=subprocess.DEVNULL,
+            )
+            # If AMD GPU module is not live and NVIDIA driver not loaded,
+            # disable GPU check
+            return len(str(result)) == 0
+        except Exception:
+            return False
+
+    def get_gpu_usage(self) -> List[GpuUtilizationInfo]:
+        """Get GPU usage information from the available provider."""
+        if not self._enable_gpu_usage_check:
+            return []
+
+        if self._provider is None:
+            self._provider = self._detect_gpu_provider()
+
+            if self._provider is None:
+                # Check if we should disable GPU check entirely
+                try:
+                    # Try NVIDIA first to check for the specific error condition
+                    nvidia_provider = NvidiaGpuProvider()
+                    nvidia_provider.initialize()
+                except Exception as e:
+                    if self._should_disable_gpu_check(e):
+                        self._enable_gpu_usage_check = False
+                return []
+
+        try:
+            gpu_info_list = self._provider.get_gpu_utilization()
+            return gpu_info_list  # Return TypedDict instances directly
+        except Exception as e:
+            logger.debug(
+                f"Error getting GPU usage from {self._provider.get_provider_name()}: {e}"
+            )
+            return []
+
+    def get_provider_name(self) -> Optional[str]:
+        """Get the name of the current GPU provider."""
+        return self._provider.get_provider_name() if self._provider else None
+
+    def disable_gpu_usage_check(self):
+        """Disable GPU usage checking."""
+        self._enable_gpu_usage_check = False
+
+    def is_gpu_usage_check_enabled(self) -> bool:
+        """Check if GPU usage checking is enabled."""
+        return self._enable_gpu_usage_check
