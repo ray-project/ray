@@ -213,16 +213,16 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
   int assigned_port = 0;
 
   Status raylet_client_status = RegisterWorkerToRaylet(*raylet_conn,
-                                                        GetWorkerID(),
-                                                        options_.worker_type,
-                                                        worker_context_.GetCurrentJobID(),
-                                                        options_.runtime_env_hash,
-                                                        options_.language,
-                                                        options_.node_ip_address,
-                                                        options_.serialized_job_config,
-                                                        options_.startup_token,
-                                                        &local_raylet_id,
-                                                        &assigned_port);
+                                                       worker_context->GetWorkerID(),
+                                                       options.worker_type,
+                                                       worker_context->GetCurrentJobID(),
+                                                       options.runtime_env_hash,
+                                                       options.language,
+                                                       options.node_ip_address,
+                                                       options.serialized_job_config,
+                                                       options.startup_token,
+                                                       &local_raylet_id,
+                                                       &assigned_port);
   if (!raylet_client_status.ok()) {
     // Avoid using FATAL log or RAY_CHECK here because they may create a core dump file.
     RAY_LOG(ERROR).WithField(worker_id)
@@ -239,12 +239,12 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
   // so that the worker (java/python .etc) can retrieve and handle the error
   // instead of crashing.
 
-  local_raylet_client_ =
-    std::make_shared<raylet::RayletClient>(std::move(raylet_conn),
-                                          options_.raylet_ip_address,
-                                          options_.node_manager_port,
-                                          *client_call_manager_,
-                                          GetWorkerID());
+  auto local_raylet_client =
+      std::make_shared<raylet::RayletClient>(std::move(raylet_conn),
+                                             options.raylet_ip_address,
+                                             options.node_manager_port,
+                                             *client_call_manager,
+                                             worker_context->GetWorkerID());
   auto connected = true;
 
   auto core_worker_server =
@@ -285,7 +285,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
                 [this](const std::string &node_manager_address, int32_t port) {
                   const auto &core_worker = GetCoreWorker();
                   return std::make_shared<raylet::RayletClient>(
-                    node_manager_address, port, *client_call_manager_);
+                      node_manager_address, port, *core_worker->client_call_manager_);
                 },
                 addr));
       });
@@ -459,8 +459,9 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       });
 
   auto raylet_client_factory = [this](const std::string &ip_address, int port) {
+    const auto &core_worker = GetCoreWorker();
     return std::make_shared<raylet::RayletClient>(
-      ip_address, port, *client_call_manager_);
+        ip_address, port, *core_worker->client_call_manager_);
   };
 
   auto on_excess_queueing = [this](const ActorID &actor_id, uint64_t num_queued) {

@@ -262,61 +262,6 @@ void TaskCounter::UnsetMetricStatus(const std::string &func_name,
   }
 }
 
-Status CoreWorker::RegisterWorkerToRayletWithPort(
-    raylet::RayletConnection &conn,
-    const WorkerID &worker_id,
-    rpc::WorkerType worker_type,
-    const JobID &job_id,
-    int runtime_env_hash,
-    const Language &language,
-    const std::string &ip_address,
-    const std::string &serialized_job_config,
-    const StartupToken &startup_token,
-    int port) {
-  flatbuffers::FlatBufferBuilder fbb;
-  // TODO(suquark): Use `WorkerType` in `common.proto` without converting to int.
-  auto register_client_request =
-      protocol::CreateRegisterClientRequest(fbb,
-                                            static_cast<int>(worker_type),
-                                            to_flatbuf(fbb, worker_id),
-                                            getpid(),
-                                            startup_token,
-                                            to_flatbuf(fbb, job_id),
-                                            runtime_env_hash,
-                                            language,
-                                            fbb.CreateString(ip_address),
-                                            /*port=*/port,
-                                            fbb.CreateString(serialized_job_config));
-  auto announce_port_message =
-      protocol::CreateAnnounceWorkerPort(fbb, port, fbb.CreateString(""));
-  auto message_with_port = protocol::CreateRegisterWorkerWithPortRequest(
-      fbb, std::move(register_client_request), std::move(announce_port_message));
-  fbb.Finish(message_with_port);
-
-  // Register the process ID with the raylet.
-  // NOTE(swang): If raylet exits and we are registered as a worker, we will get killed.
-  std::vector<uint8_t> reply;
-  auto request_status =
-      conn.AtomicRequestReply(MessageType::RegisterWorkerWithPortRequest,
-                              MessageType::RegisterWorkerWithPortReply,
-                              &reply,
-                              &fbb);
-  if (!request_status.ok()) {
-    return Status(
-        request_status.code(),
-        std::string("[RayletClient] Unable to register worker with port to raylet. ") +
-            request_status.message());
-  }
-  auto reply_message =
-      flatbuffers::GetRoot<protocol::RegisterWorkerWithPortReply>(reply.data());
-  bool success = reply_message->success();
-  if (!success) {
-    return Status::Invalid(string_from_flatbuf(*reply_message->failure_reason()));
-  }
-
-  return Status::OK();
-}
-
 CoreWorker::CoreWorker(
     CoreWorkerOptions options,
     std::unique_ptr<WorkerContext> worker_context,
