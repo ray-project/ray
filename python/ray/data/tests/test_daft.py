@@ -19,7 +19,12 @@ from ray.air.util.tensor_extensions.arrow import (
 
 @pytest.fixture(scope="module")
 def ray_start(request):
-    # Force the serialization format to JSON
+    # TODO: Remove this once Daft issue is fixed to default to Cloudpickle
+    # serialization format.
+    # Force the serialization format to JSON for this test.
+    # Refer Daft issue https://github.com/Eventual-Inc/Daft/issues/4828
+    # and Ray issue https://github.com/ray-project/ray/issues/54837
+    # for more details.
     original_format = arrow_module.ARROW_EXTENSION_SERIALIZATION_FORMAT
     arrow_module.ARROW_EXTENSION_SERIALIZATION_FORMAT = SerializationFormat.JSON
 
