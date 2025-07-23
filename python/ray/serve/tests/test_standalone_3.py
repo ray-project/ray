@@ -33,13 +33,13 @@ def shutdown_ray():
 
 @contextmanager
 def start_and_shutdown_ray_cli():
-    # Instead of using ray CLI, use ray.init() directly to avoid version mismatches
-    # This approach ensures we use the same Ray version as the test process
-    try:
-        ray.init()
-        yield
-    finally:
-        ray.shutdown()
+    subprocess.check_output(
+        ["ray", "start", "--head"],
+    )
+    yield
+    subprocess.check_output(
+        ["ray", "stop", "--force"],
+    )
 
 
 @pytest.fixture(scope="function")
