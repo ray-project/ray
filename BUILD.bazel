@@ -1111,22 +1111,14 @@ pkg_files(
 pkg_zip(
     name = "ray_pkg_zip",
     srcs = [
-        ":core_py_proto_files",
         ":gcs_server_files",
         ":jemalloc_files",
         ":raylet_files",
         ":raylet_so_files",
         ":redis_files",
-        ":serve_py_proto_files",
     ],
     out = "ray_pkg.zip",
     visibility = ["//visibility:private"],
-)
-
-copy_to_workspace(
-    name = "cp_raylet_so",
-    srcs = ["python/ray/_raylet.so"],
-    dstdir = "python/ray",
 )
 
 copy_to_workspace(
@@ -1142,27 +1134,6 @@ copy_to_workspace(
 )
 
 copy_to_workspace(
-    name = "cp_redis",
-    srcs = [
-        ":redis-cli",
-        ":redis-server",
-    ],
-    dstdir = "python/ray/core/src/ray/thirdparty/redis/src",
-)
-
-copy_to_workspace(
-    name = "cp_raylet",
-    srcs = [":raylet"],
-    dstdir = "python/ray/core/src/ray/raylet",
-)
-
-copy_to_workspace(
-    name = "cp_gcs_server",
-    srcs = ["//src/ray/gcs/gcs_server"],
-    dstdir = "python/ray/core/src/ray/gcs",
-)
-
-copy_to_workspace(
     name = "cp_jemalloc",
     srcs = ["@jemalloc//:shared"],
     dstdir = "python/ray/core/",
@@ -1173,6 +1144,11 @@ genrule(
     srcs = [
         ":cp_core_py_proto",
         ":cp_serve_py_proto",
+
+        # Adding these pkg files rules make sure that there are no naming
+        # conflicts between the generated files and the pkg files.
+        ":core_py_proto_files",
+        ":serve_py_proto_files",
     ],
     outs = ["install_py_proto.out"],
     cmd = """
@@ -1199,12 +1175,9 @@ genrule(
 genrule(
     name = "ray_pkg",
     srcs = [
-        ":cp_raylet_so",
         ":python_sources",
         ":install_py_proto",
-        ":cp_redis",
-        ":cp_raylet",
-        ":cp_gcs_server",
+        ":ray_pkg_zip",
     ] + select({
         ":jemalloc": [
             ":cp_jemalloc",
@@ -1213,7 +1186,9 @@ genrule(
     }),
     outs = ["ray_pkg.out"],
     cmd = """
-        if [ "$${OSTYPE-}" = "msys" ]; then
+        unzip -q $(location :ray_pkg_zip) -d "python/ray"
+
+        if [[ "$${OSTYPE-}" == "msys" ]]; then
             ln -P -f -- python/ray/_raylet.so python/ray/_raylet.pyd
         fi
         echo "$${PWD}" > $@
