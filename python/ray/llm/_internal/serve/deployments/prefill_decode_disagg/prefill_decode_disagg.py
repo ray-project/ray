@@ -5,7 +5,6 @@ import uuid
 from typing import Any, AsyncGenerator, Dict, Union
 
 from pydantic import BaseModel, Field
-from vllm.config import KVTransferConfig
 
 from ray import serve
 from ray.llm._internal.serve.configs.openai_api_models import (
@@ -192,7 +191,7 @@ def build_app(pd_serving_args: dict) -> Application:
         if "kv_transfer_config" not in config.engine_kwargs:
             config.engine_kwargs.update(
                 {
-                    "kv_transfer_config": KVTransferConfig(
+                    "kv_transfer_config": dict(
                         kv_connector="NixlConnector",
                         kv_role="kv_both",
                         engine_id=str(uuid.uuid4()),
