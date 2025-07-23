@@ -37,7 +37,7 @@ def test_resolved_false_until_resolve():
     ), patch(
         "ray._private.utils.get_shared_memory_bytes", return_value=50000
     ), patch.object(
-        ResourceAndLabelSpec, "_get_current_node_accelerator", return_value=None
+        ResourceAndLabelSpec, "_get_current_node_accelerator", return_value=(None, 0)
     ), patch(
         "ray._private.usage.usage_lib.record_hardware_usage", lambda *_: None
     ):
@@ -73,8 +73,7 @@ def test_get_current_node_accelerator_auto_detect(mock_all_names, mock_get_mgr):
     mock_mgr.get_current_process_visible_accelerator_ids.return_value = [0, 1, 3, 4]
     mock_get_mgr.return_value = mock_mgr
 
-    spec = ResourceAndLabelSpec(resources={})
-    result = spec._get_current_node_accelerator()
+    result = ResourceAndLabelSpec._get_current_node_accelerator(None, resources={})
     assert result == (mock_mgr, 4)
 
 
@@ -85,8 +84,7 @@ def test_get_current_node_accelerator_from_resources(mock_all_names, mock_get_mg
     mock_mgr = MagicMock()
     mock_get_mgr.return_value = mock_mgr
 
-    spec = ResourceAndLabelSpec(resources={"A100": 3})
-    result = spec._get_current_node_accelerator()
+    result = ResourceAndLabelSpec._get_current_node_accelerator(None, {"A100": 3})
     assert result == (mock_mgr, 3)
 
 
@@ -101,8 +99,7 @@ def test_get_current_node_accelerator_with_visibility_limit(
     mock_mgr.get_current_process_visible_accelerator_ids.return_value = ["0", "1"]
     mock_get_mgr.return_value = mock_mgr
 
-    spec = ResourceAndLabelSpec(resources={})
-    result = spec._get_current_node_accelerator()
+    result = ResourceAndLabelSpec._get_current_node_accelerator(None, {})
     assert result == (mock_mgr, 2)
 
 
@@ -115,9 +112,8 @@ def test_get_current_node_accelerator_none(mock_all_names, mock_get_mgr):
     mock_mgr.get_current_process_visible_accelerator_ids.return_value = []
     mock_get_mgr.side_effect = lambda name: mock_mgr
 
-    spec = ResourceAndLabelSpec(resources={})
-    result = spec._get_current_node_accelerator()
-    assert result is None
+    result = ResourceAndLabelSpec._get_current_node_accelerator(None, {})
+    assert result[0] is None and result[1] == 0
 
 
 def test_load_override_env_labels_merges_and_logs(monkeypatch):
@@ -130,27 +126,25 @@ def test_load_override_env_labels_merges_and_logs(monkeypatch):
 
 @patch("ray._private.usage.usage_lib.record_hardware_usage", lambda *_: None)
 def test_resolve_accelerator_resources_sets_num_gpus():
-    # num-gpus not passed in but detected from _resolve_accelerator_resources
-    spec = ResourceAndLabelSpec(resources={})
+    # num-gpus passed in to spec and not detected from AcceleratorManager
+    spec = ResourceAndLabelSpec(resources={}, num_gpus=2)
     mock_mgr = MagicMock()
-    mock_mgr.get_resource_name.return_value = "GPU"
-    mock_mgr.get_current_node_accelerator_type.return_value = "A100"
     mock_mgr.get_current_process_visible_accelerator_ids.return_value = None
     spec._resolve_accelerator_resources(mock_mgr, 2)
     assert spec.num_gpus == 2
-    assert any("A100" in key for key in spec.resources.keys())
+    assert not any("GPU" in key for key in spec.resources.keys())
 
 
 @patch("ray._private.usage.usage_lib.record_hardware_usage", lambda *_: None)
-def test_resolve_accelerator_resources_respects_configured_num_gpus():
-    # num-gpus value set by user should be respected
+def test_resolve_accelerator_resources_with_gpu_auto_detected():
+    # num-gpus not passed in but detected from _resolve_accelerator_resources
     spec = ResourceAndLabelSpec(num_gpus=0, resources={})
     mock_mgr = MagicMock()
     mock_mgr.get_resource_name.return_value = "GPU"
     mock_mgr.get_current_node_accelerator_type.return_value = "H100"
     mock_mgr.get_current_process_visible_accelerator_ids.return_value = None
     spec._resolve_accelerator_resources(mock_mgr, 4)
-    assert spec.num_gpus == 0
+    assert spec.num_gpus == 4
 
 
 if __name__ == "__main__":
