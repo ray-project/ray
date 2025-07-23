@@ -235,7 +235,7 @@ class ProcessFD {
     pid = fork();
 
     if (pid == 0) {
-      // Child process (or intermediate process if decoupled).
+      // --- Child Process (or Intermediate Process if decoupled) ---
       close(status_pipe[0]);  // Child only writes to the status pipe.
       if (pipe_to_stdin) {
         close(parent_lifetime_pipe[1]);  // Child only reads from the lifetime pipe.
@@ -245,22 +245,27 @@ class ProcessFD {
 
       if (decouple) {
         if (fork() != 0) {
-          // Intermediate parent exits. Grandchild is orphaned.
+          // --- Intermediate Parent ---
+          // This process must close ALL inherited pipe FDs before exiting
+          // to prevent leaking them to the grandchild or holding pipes open.
+          close(status_pipe[1]);
+          if (pipe_to_stdin) {
+            close(parent_lifetime_pipe[0]);
+          }
           _exit(0);
         }
       }
 
-      // Grandchild (if decoupled) or direct child (if not) continues here.
+      // --- Grandchild (if decoupled) or Direct Child (if not) ---
       if (pipe_to_stdin) {
         if (dup2(parent_lifetime_pipe[0], STDIN_FILENO) == -1) {
-          // If dup2 fails, we can't health check, so exit.
           _exit(errno);
         }
+        // After dup2, this original FD is no longer needed.
         close(parent_lifetime_pipe[0]);
       }
 
-      // Set FD_CLOEXEC on the status pipe's write end. If execve succeeds,
-      // this FD will be closed, and the parent will read EOF.
+      // If execve succeeds, this FD will be closed automatically.
       SetFdCloseOnExec(status_pipe[1]);
 
       if (decouple) {
@@ -278,43 +283,62 @@ class ProcessFD {
       _exit(err);
 
     } else if (pid > 0) {
-      // Parent process.
+      // --- Parent Process ---
       close(status_pipe[1]);  // Parent only reads from the status pipe.
       if (pipe_to_stdin) {
         close(parent_lifetime_pipe[0]);  // Parent only writes to the lifetime pipe.
       }
 
       if (!decouple) {
+        // Simple case for non-decoupled process
         int err_from_child;
         ssize_t bytes_read =
             ReadBytesFromFd(status_pipe[0], &err_from_child, sizeof(err_from_child));
         if (bytes_read == 0) {
           // Success: exec'd, pipe closed by CLOEXEC.
           ec = std::error_code();
-        } else if (bytes_read == sizeof(err_from_child)) {
-          ec = std::error_code(err_from_child, std::system_category());
-          waitpid(pid, NULL, 0);
-          pid = -1;
         } else {
-          ec = std::error_code(bytes_read < 0 ? errno : EPIPE, std::system_category());
+          // Failure: got an error or pipe broke.
+          ec = std::error_code(bytes_read > 0 ? err_from_child : errno,
+                               std::system_category());
           waitpid(pid, NULL, 0);
           pid = -1;
         }
         close(status_pipe[0]);
-      } else {                  // Decoupled
-        waitpid(pid, NULL, 0);  // Reap the intermediate child.
-        ssize_t bytes_read = ReadBytesFromFd(status_pipe[0], &pid, sizeof(pid));
-        if (bytes_read != sizeof(pid)) {
-          // Failed to get grandchild's PID.
+      } else {
+        waitpid(pid, NULL, 0);  // Reap intermediate child.
+
+        // Read the grandchild's PID from the pipe.
+        ssize_t bytes_read_pid = ReadBytesFromFd(status_pipe[0], &pid, sizeof(pid));
+        if (bytes_read_pid != sizeof(pid)) {
+          // If we can't get the PID, it's a startup failure.
           ec = std::error_code(ECHILD, std::system_category());
           pid = -1;
+          close(status_pipe[0]);
         } else {
-          // Use the status pipe as the lifetime tracking fd.
-          fd = status_pipe[0];
+          // We got the PID. Now, do a NON-BLOCKING read to check for an exec error.
+          int flags = fcntl(status_pipe[0], F_GETFL, 0);
+          fcntl(status_pipe[0], F_SETFL, flags | O_NONBLOCK);
+          int exec_errno = 0;
+          ssize_t bytes_read_errno =
+              read(status_pipe[0], &exec_errno, sizeof(exec_errno));
+          fcntl(status_pipe[0], F_SETFL, flags);  // Restore original flags.
+
+          if (bytes_read_errno == sizeof(exec_errno)) {
+            // We got an error code back. Launch failed.
+            ec = std::error_code(exec_errno, std::system_category());
+            pid = -1;
+            close(status_pipe[0]);
+          } else {
+            // No error code was present. Launch was successful.
+            // Use the status pipe for lifetime tracking.
+            ec = std::error_code();
+            fd = status_pipe[0];
+          }
         }
       }
     } else {
-      // fork() failed.
+      // --- Fork Failed ---
       ec = std::error_code(errno, std::system_category());
       close(status_pipe[0]);
       close(status_pipe[1]);
