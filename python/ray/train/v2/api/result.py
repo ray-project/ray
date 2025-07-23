@@ -7,7 +7,7 @@ import pyarrow
 
 import ray
 from ray.air.result import Result as ResultV1
-from ray.train.v2.api.exceptions import TrainingFailedError
+from ray.train.v2.api.exceptions import WorkerOrControllerError
 from ray.util.annotations import Deprecated, PublicAPI
 
 logger = logging.getLogger(__name__)
@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class Result(ResultV1):
     checkpoint: Optional["ray.train.Checkpoint"]
-    error: Optional[TrainingFailedError]
+    error: Optional[WorkerOrControllerError]
     best_checkpoints: Optional[
         List[Tuple["ray.train.Checkpoint", Dict[str, Any]]]
     ] = None

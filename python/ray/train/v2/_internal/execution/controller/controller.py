@@ -500,7 +500,7 @@ class TrainController:
         return Result(
             metrics=latest_metrics,
             checkpoint=latest_checkpoint,
-            error=self.get_training_failed_error(),
+            error=self.get_worker_or_controller_error(),
             path=storage.experiment_fs_path,
             best_checkpoints=best_checkpoints,
             metrics_dataframe=metrics_dataframe,
@@ -518,16 +518,16 @@ class TrainController:
 
         return self._build_result()
 
-    def get_training_failed_error(self) -> Optional[TrainingFailedError]:
-        """Get the training failed error from the controller state.
+    def get_worker_or_controller_error(self) -> Optional[WorkerOrControllerError]:
+        """Get the worker or controller error from the state.
 
         Returns:
-            The training failed error if the controller is in an errored state,
+            The worker or controller error if the controller is in an errored state,
             None otherwise.
         """
         controller_state = self.get_state()
 
         if isinstance(controller_state, ErroredState):
-            return controller_state.training_failed_error
+            return controller_state.error
 
         return None
