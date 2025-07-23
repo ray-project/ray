@@ -18,7 +18,7 @@ from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.tensor_extensions.arrow import ArrowTensorArray
 from ray.data import Schema
 from ray.data.block import BlockExecStats, BlockMetadata
-from ray.data.context import DataContext, ShuffleStrategy
+from ray.data.context import DEFAULT_TARGET_MAX_BLOCK_SIZE, DataContext, ShuffleStrategy
 from ray.data.tests.mock_server import *  # noqa
 
 # Trigger pytest hook to automatically zip test cluster logs to archive dir on failure
@@ -360,7 +360,7 @@ def target_max_block_size(request):
     ctx.target_max_block_size = original
 
 
-@pytest.fixture
+@pytest.fixture(params=[None, DEFAULT_TARGET_MAX_BLOCK_SIZE])
 def target_max_block_size_none():
     """Fixture that sets target_max_block_size to None and resets after test finishes."""
     ctx = ray.data.context.DataContext.get_current()
