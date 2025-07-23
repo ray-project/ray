@@ -85,7 +85,7 @@ serveConfigV2: |
     route_prefix: "/"
 ```
 
-In particular, this configuration loads the model from `deepseek-ai/DeepSeek-R1` and sets its `model_id` to `deepseek`. The `LLMDeployment` initializes the underlying LLM engine using the `engine_kwargs` field. The LLMDeployment initializes the underlying LLM engine using the engine_kwargs field, which includes key performance tuning parameters:
+In particular, this configuration loads the model from `deepseek-ai/DeepSeek-R1` and sets its `model_id` to `deepseek`. The `LLMDeployment` initializes the underlying LLM engine using the `engine_kwargs` field, which includes key performance tuning parameters:
 
 - `tensor_parallel_size: 8`
 
@@ -93,7 +93,7 @@ In particular, this configuration loads the model from `deepseek-ai/DeepSeek-R1`
 
 - `pipeline_parallel_size: 2`
   
-  This setting enables pipeline parallelism, dividing the model's entire set of layers into 2 sequential stages. This variable should be adjusted according to the cluster nodes numbers.
+  This setting enables pipeline parallelism, dividing the model's entire set of layers into 2 sequential stages. This variable should be adjusted according to the cluster worker node numbers.
 
 
 The `deployment_config` section sets the desired number of engine replicas. See [Serving LLMs](serving_llms) and the [Ray Serve config documentation](serve-in-production-config-file) for more information.
