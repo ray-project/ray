@@ -1186,7 +1186,7 @@ genrule(
     }),
     outs = ["ray_pkg.out"],
     cmd = """
-        unzip -q $(location :ray_pkg_zip) -d "python/ray"
+        unzip -o -q $(location :ray_pkg_zip) -d "python"
 
         if [[ "$${OSTYPE-}" == "msys" ]]; then
             ln -P -f -- python/ray/_raylet.so python/ray/_raylet.pyd
