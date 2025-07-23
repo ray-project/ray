@@ -530,14 +530,10 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
   // Start a process and measure the startup time.
   Process proc = StartProcess(worker_command_args, env, ec);
   if (ec) {
-    if (ec.value() == E2BIG) {
-      RAY_LOG(ERROR) << "E2BIG error occurred when starting worker process. Worker "
+    RAY_CHECK(ec.value() == E2BIG);
+    RAY_LOG(WARNING) << "E2BIG error occurred when starting worker process. Worker "
                         "command arguments likely too long.";
-      *status = PopWorkerStatus::ArgumentListTooLong;
-      return {Process(), (StartupToken)-1};
-    }
-    RAY_LOG(ERROR) << "Failed to start worker process: " << ec.message();
-    *status = PopWorkerStatus::RuntimeEnvCreationFailed;
+    *status = PopWorkerStatus::ArgumentListTooLong;
     return {Process(), (StartupToken)-1};
   }
   stats::NumWorkersStarted.Record(1);
@@ -684,8 +680,10 @@ Process WorkerPool::StartProcess(const std::vector<std::string> &worker_command_
 
   Process child(argv.data(), io_service_, ec, /*decouple=*/false, env);
   if (!child.IsValid() || ec) {
-    // errorcode 24: Too many files. This is caused by ulimit.
-    if (ec.value() == 24) {
+    if (ec.value() == E2BIG) {
+      // Do nothing here; the error code `ec` will be propagated to the caller.
+    } else if (ec.value() == 24) {
+      // errorcode 24: Too many files. This is caused by ulimit.
       RAY_LOG(FATAL) << "Too many workers, failed to create a file. Try setting "
                      << "`ulimit -n <num_files>` then restart Ray.";
     } else {

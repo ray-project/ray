@@ -51,30 +51,25 @@ using WorkerCommandMap =
 
 enum PopWorkerStatus {
   // OK.
-  // A registered worker will be returned with callback.
   OK = 0,
   // Job config is not found.
-  // A nullptr worker will be returned with callback.
   JobConfigMissing = 1,
   // Worker process startup rate is limited.
-  // A nullptr worker will be returned with callback.
   TooManyStartingWorkerProcesses = 2,
   // Worker process has been started, but the worker did not register at the raylet within
   // the timeout.
-  // A nullptr worker will be returned with callback.
   WorkerPendingRegistration = 3,
   // Any fails of runtime env creation.
-  // A nullptr worker will be returned with callback.
   RuntimeEnvCreationFailed = 4,
   // The task's job has finished.
-  // A nullptr worker will be returned with callback.
   JobFinished = 5,
   // The worker process failed to launch because the OS returned an `E2BIG`
   // (Argument list too long) error. This typically occurs when a `runtime_env`
   // is so large that its serialized context exceeds the kernel's command-line
   // argument size limit.
-  // A nullptr worker will be returned with callback.
   ArgumentListTooLong = 6,
+  // The worker process failed to launch.
+  WorkerLaunchFailed = 7,
 };
 
 /// \param[in] worker The started worker instance. Nullptr if worker is not started.
