@@ -14,6 +14,7 @@ import pyarrow as pa
 import ray
 from ray._common.utils import get_or_create_event_loop
 from ray._private.ray_constants import env_integer
+from ray.data._expression_evaluator import eval_expr
 from ray.data._internal.compute import get_compute
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.interfaces.task_context import TaskContext
@@ -106,17 +107,41 @@ def plan_project_op(
 
     columns = op.cols
     columns_rename = op.cols_rename
+    exprs = op.exprs
 
     def fn(block: Block) -> Block:
         try:
-            if not BlockAccessor.for_block(block).num_rows():
+            block_accessor = BlockAccessor.for_block(block)
+            if not block_accessor.num_rows():
                 return block
+
+            # 1. evaluate / add expressions
+            if exprs:
+                block_accessor = BlockAccessor.for_block(block)
+                new_columns = {}
+                for col_name in block_accessor.column_names():
+                    # For Arrow blocks, block[col_name] gives us a ChunkedArray
+                    # For Pandas blocks, block[col_name] gives us a Series
+                    new_columns[col_name] = block[col_name]
+
+                # Add/update with expression results
+                for name, expr in exprs.items():
+                    result = eval_expr(expr, block)
+                    new_columns[name] = result
+
+                # Create a new block from the combined columns and add it
+                block = BlockAccessor.batch_to_block(new_columns)
+
+            # 2. (optional) column projection
             if columns:
                 block = BlockAccessor.for_block(block).select(columns)
+
+            # 3. (optional) rename
             if columns_rename:
                 block = block.rename_columns(
                     [columns_rename.get(col, col) for col in block.schema.names]
                 )
+
             return block
         except Exception as e:
             _try_wrap_udf_exception(e, block)
@@ -149,6 +174,7 @@ def plan_streaming_repartition_op(
     transform_fn = BuildOutputBlocksMapTransformFn.for_blocks()
     transform_fn.set_target_num_rows_per_block(op.target_num_rows_per_block)
     map_transformer = MapTransformer([transform_fn])
+    # Disable fusion for streaming repartition with the downstream op.
     return MapOperator.create(
         map_transformer,
         input_physical_dag,
@@ -157,6 +183,7 @@ def plan_streaming_repartition_op(
         compute_strategy=compute,
         ray_remote_args=op._ray_remote_args,
         ray_remote_args_fn=op._ray_remote_args_fn,
+        supports_fusion=False,
     )
 
 

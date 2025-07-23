@@ -123,36 +123,6 @@ def copy_to_workspace(name, srcs, dstdir = ""):
         tags = ["no-cache"],
     )
 
-def native_java_binary(module_name, name, native_binary_name):
-    """Copy native binary file to different path based on operating systems"""
-    copy_file(
-        name = name + "_darwin",
-        src = native_binary_name,
-        out = module_name + "/src/main/resources/native/darwin/" + name,
-    )
-
-    copy_file(
-        name = name + "_linux",
-        src = native_binary_name,
-        out = module_name + "/src/main/resources/native/linux/" + name,
-    )
-
-    copy_file(
-        name = name + "_windows",
-        src = native_binary_name,
-        out = module_name + "/src/main/resources/native/windows/" + name,
-    )
-
-    native.filegroup(
-        name = name,
-        srcs = select({
-            "@platforms//os:osx": [name + "_darwin"],
-            "@platforms//os:windows": [name + "_windows"],
-            "//conditions:default": [name + "_linux"],
-        }),
-        visibility = ["//visibility:public"],
-    )
-
 def native_java_library(module_name, name, native_library_name):
     """Copy native library file to different path based on operating systems"""
     copy_file(

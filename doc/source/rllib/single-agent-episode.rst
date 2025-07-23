@@ -11,7 +11,7 @@ RLlib stores and transports all trajectory data in the form of `Episodes`, in pa
 :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` for single-agent setups
 and :py:class:`~ray.rllib.env.multi_agent_episode.MultiAgentEpisode` for multi-agent setups.
 The data is translated from this `Episode` format to tensor batches (including a possible move to the GPU)
-only immediately before a neural network forward pass by so called "connector pipelines".
+only immediately before a neural network forward pass by so called :ref:`connector pipelines <connector-v2-docs>`.
 
 .. figure:: images/episodes/usage_of_episodes.svg
     :width: 750
@@ -20,9 +20,9 @@ only immediately before a neural network forward pass by so called "connector pi
     **Episodes** are the main vehicle to store and transport trajectory data across the different components
     of RLlib (for example from `EnvRunner` to `Learner` or from `ReplayBuffer` to `Learner`).
     One of the main design principles of RLlib's new API stack is that all trajectory data is kept in such episodic form
-    for as long as possible. Only immediately before the neural network passes, "connector pipelines" translate lists
-    of Episodes into tensor batches. See the :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` class for
-    more details (documentation of which is still work in progress).
+    for as long as possible. Only immediately before the neural network passes, :ref:`connector pipelines <connector-v2-docs>`
+    translate lists of Episodes into tensor batches. See the section on :ref:`Connectors and Connector pipelines here <connector-v2-docs>`
+    for more details.
 
 
 The main advantage of collecting and moving around data in such a trajectory-as-a-whole format

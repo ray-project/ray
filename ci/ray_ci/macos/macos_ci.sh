@@ -18,12 +18,12 @@ filter_out_flaky_tests() {
     # Test DB is disabled, so simply passthrough and run everything.
     cat
   else
-    bazel run ci/ray_ci/automation:filter_tests -- --state_filter=-flaky --prefix=darwin:
+    bazel run --config=ci ci/ray_ci/automation:filter_tests -- --state_filter=-flaky --prefix=darwin:
   fi
 }
 
 select_flaky_tests() {
-  bazel run ci/ray_ci/automation:filter_tests -- --state_filter=flaky --prefix=darwin:
+  bazel run --config=ci ci/ray_ci/automation:filter_tests -- --state_filter=flaky --prefix=darwin:
 }
 
 run_tests() {
@@ -107,6 +107,13 @@ _prelude() {
   fi
   . ./ci/ci.sh init && source ~/.zshenv
   source ~/.zshrc
+
+  if [[ -d /opt/homebrew/opt/miniforge/bin ]]; then
+    # Makes sure that miniforge's bin directory is the first one in PATH
+    # Otherwise, python/python3 might point to ones under /opt/homebrew/bin/
+    export PATH="/opt/homebrew/opt/miniforge/bin:$PATH"
+  fi
+
   ./ci/ci.sh build
   ./ci/env/env_info.sh
 }

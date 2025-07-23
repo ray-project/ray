@@ -44,10 +44,6 @@ def __ray_fetch_gpu_object__(self, obj_id: str):
         obj_id
     ), f"obj_id={obj_id} not found in GPU object store"
     tensors = gpu_object_store.get_gpu_object(obj_id)
-    # TODO(kevin85421): The current garbage collection implementation for the
-    # in-actor object store is naive. We garbage collect each object after it
-    # is consumed once.
-    gpu_object_store.remove_gpu_object(obj_id)
     return tensors
 
 

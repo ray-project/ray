@@ -190,7 +190,7 @@ def _get_or_create_telemetry_agent() -> TelemetryAgent:
             LLM_SERVE_TELEMETRY_ACTOR_NAME, namespace=LLM_SERVE_TELEMETRY_NAMESPACE
         )
     except ValueError:
-        from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
+        from ray._common.constants import HEAD_NODE_RESOURCE_NAME
         from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
         telemetry_agent = TelemetryAgent.options(

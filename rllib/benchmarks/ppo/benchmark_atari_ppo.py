@@ -2,7 +2,7 @@
 
 How to run this script
 ----------------------
-`python [script-name].py --enable-new-api-stack --stop-timesteps 12000000
+`python [script-name].py --stop-timesteps 12000000
 --num-learners=4 --num-gpus-per-learner --num-env-runners=95`
 
 In order to only run individual or lists of envs, you can provide a list of env-strings
@@ -98,7 +98,6 @@ if __name__ == "__main__":
     base_commands = [
         "python",
         "../../tuned_examples/ppo/atari_ppo.py",
-        "--enable-new-api-stack",
         f"--num-env-runners={args.num_env_runners}" if args.num_env_runners else "",
         f"--num-learners={args.num_learners}",
         f"--num-gpus-per-learner={args.num_gpus_per_learner}",

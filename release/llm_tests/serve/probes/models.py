@@ -97,11 +97,11 @@ def is_release_test_model(model: "openai.types.model.Model") -> bool:
 
 def is_finetuned_model(model: "openai.types.model.Model") -> bool:
     # If base_model_id is set, this is a finetuned model
-    return model.rayllm_metadata.get("base_model_id") is not None
+    return model.model_dump().get("metadata", {}).get("base_model_id") is not None
 
 
 def is_vision_language_model(model: "openai.types.model.Model") -> bool:
-    return model.rayllm_metadata.get("input_modality") == "image"
+    return model.model_dump().get("metadata", {}).get("input_modality") == "image"
 
 
 def is_rate_liming_test_model(model: "openai.types.model.Model") -> bool:
@@ -130,7 +130,7 @@ def is_completions_only_model(model: "openai.types.model.Model") -> bool:
 
 def supports_function_calling_via_prompt(model: "openai.types.model.Model") -> bool:
     # True if tool template is specified in the generation config
-    gen_config = model.rayllm_metadata.get("generation", False)
+    gen_config = model.model_dump().get("metadata", {}).get("generation", False)
 
     if not gen_config:
         return False

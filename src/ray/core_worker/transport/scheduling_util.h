@@ -40,12 +40,12 @@ class InboundRequest {
 
   void Accept();
   void Cancel(const Status &status);
-  bool CanExecute() const;
   ray::TaskID TaskID() const;
   uint64_t AttemptNumber() const;
   const std::string &ConcurrencyGroupName() const;
   ray::FunctionDescriptor FunctionDescriptor() const;
-  void MarkDependenciesSatisfied();
+  bool DependenciesResolved() const;
+  void MarkDependenciesResolved();
   const std::vector<rpc::ObjectReference> &PendingDependencies() const;
   const TaskSpecification &TaskSpec() const;
 

@@ -432,9 +432,9 @@ For each usage pattern, we provide a server and client code snippet.
 Multi-LoRA Deployment
 ~~~~~~~~~~~~~~~~~~~~~
 
-You can use LoRA (Low-Rank Adaptation) to efficiently fine-tune models by configuring the :class:`LoraConfig <ray.serve.llm.LoraConfig>`.
+You can use our multi-LoRA (Low-Rank Adaptation) feature to efficiently serve multiple fine-tuned models by configuring the :class:`LoraConfig <ray.serve.llm.LoraConfig>`.
 We use Ray Serve's multiplexing feature to serve multiple LoRA checkpoints from the same model.
-This allows the weights to be loaded on each replica on-the-fly and be cached via an LRU mechanism.
+When a request for a given LoRA adapter arrives, Ray Serve first checks if any replica has already loaded that adapter. If a replica with the adapter is found and is not overloaded, the request is routed to it. If all replicas with the adapter are overloaded, the request is routed to a less busy replica, which will then load the adapter on the new replica. If no replica has the adapter loaded, the request is routed to a replica according to the default request router logic (for example Power of 2) and loaded there so that the next time it will be cached. This ensures the adapter is cached for subsequent requests. The cache of LoRA adapters on each replica is controlled via a Least Recently Used (LRU) mechanism with a max size controlled by the ``max_num_adapters_per_replica`` variable.
 
 .. tab-set::
 
@@ -507,6 +507,9 @@ You can generate embeddings by selecting the embed task in the engine arguments.
 Models supporting this use case are listed at
 `vLLM text embedding models <https://docs.vllm.ai/en/stable/models/supported_models.html#text-embedding-task-embed>`_.
 
+
+Note: You need to set the `VLLM_USE_V1` environment variable to `0`, since the VLLM V1 still does not fully support the embedding endpoints.
+
 .. tab-set::
 
     .. tab-item:: Server
@@ -524,6 +527,11 @@ Models supporting this use case are listed at
                 ),
                 engine_kwargs=dict(
                     task="embed",
+                ),
+                runtime_env=dict(
+                    env_vars={
+                        "VLLM_USE_V1": "0",
+                    }
                 ),
             )
 
@@ -906,19 +914,6 @@ An example config is shown below:
       import_path: ray.serve.llm:build_openai_app
       name: llm_app
       route_prefix: "/"
-
-
-There are some differences between `vllm serve` cli and Ray Serve LLM endpoint behavior. How do I work around that?
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-We have opened an issue to track and fix this: https://github.com/ray-project/ray/issues/53533. Please add comments to this issue thread if you are facing problems that fall under this category. We have identified the following example issues so far: 
-
-- Tool calling is not supported in the same way it is supported in `vllm serve` CLI. This is due to the extra logical pieces of code that map CLI args to extra layers in the API server critical path. 
-
-- vLLM has a different critical path for dealing with the tokenizer of Mistral models. This logic has not been copied over to Ray Serve LLM, because we want to find a more maintainable solution.
-
-- Some sampling parameters, like `max_completion_tokens`, are supported differently in Ray Serve LLM and `vllm serve` CLI.
-
 
 
 Usage Data Collection

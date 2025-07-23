@@ -3620,9 +3620,7 @@ class AutoscalingTest(unittest.TestCase):
         worker_ip = self.provider.non_terminated_node_ips(WORKER_FILTER)[0]
         # Mark the node as idle
         lm.update(worker_ip, mock_raylet_id(), {"CPU": 1}, {"CPU": 1}, 20)
-        assert lm.is_active(worker_ip)
         autoscaler.update()
-        assert not lm.is_active(worker_ip)
         assert self.provider.internal_ip("1") == worker_ip
         events = autoscaler.event_summarizer.summary()
         assert "Removing 1 nodes of type worker (idle)." in events, events
@@ -3823,6 +3821,55 @@ class AutoscalingTest(unittest.TestCase):
             == "node-specific-worker-image:latest"
         )
         assert "--gpus=all" in updater.docker_config.get("worker_run_options")
+
+    def test_node_becomes_inactive_after_heartbeat_timeout(self):
+        cluster_config = copy.deepcopy(MOCK_DEFAULT_CONFIG)
+        cluster_config["available_node_types"]["ray.worker.default"]["min_workers"] = 1
+        cluster_config["worker_start_ray_commands"] = ["ray_start_cmd"]
+
+        cluster_config["head_node_type"] = ["ray.worker.default"]
+        del cluster_config["available_node_types"]["ray.head.default"]
+        del cluster_config["docker"]
+
+        config_path = self.write_config(cluster_config)
+
+        self.provider = MockProvider()
+        runner = MockProcessRunner()
+        lm = LoadMetrics()
+        mock_gcs_client = MockGcsClient()
+        autoscaler = MockAutoscaler(
+            config_path,
+            lm,
+            mock_gcs_client,
+            max_failures=0,
+            process_runner=runner,
+            update_interval_s=0,
+        )
+
+        autoscaler.update()
+        self.waitForNodes(1, tag_filters=WORKER_FILTER)
+        self.provider.finish_starting_nodes()
+        autoscaler.update()
+        self.waitForNodes(
+            1, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE, **WORKER_FILTER}
+        )
+
+        self.waitForUpdatersToFinish(autoscaler)
+        autoscaler.update()
+
+        assert not autoscaler.updaters
+
+        worker_ip = self.provider.non_terminated_node_ips(WORKER_FILTER)[0]
+        now = time.time()
+        past_heartbeat = now - AUTOSCALER_HEARTBEAT_TIMEOUT_S - 1
+        lm.last_heartbeat_time_by_ip[worker_ip] = past_heartbeat
+
+        autoscaler.update()
+        self.waitForNodes(
+            1, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE, **WORKER_FILTER}
+        )
+        events = autoscaler.summary()
+        assert events.failed_nodes == [("172.0.0.0", "ray.worker.default")]
 
 
 def test_import():
