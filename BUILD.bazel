@@ -1020,13 +1020,6 @@ filegroup(
     visibility = ["//visibility:private"],
 )
 
-genrule(
-    name = "core_py_proto_filelist",
-    srcs = ["//src/ray/protobuf:core_py_proto"],
-    outs = ["core_py_proto_filelist.txt"],
-    cmd = "for f in $(SRCS); do echo $$f; done > $@",
-)
-
 filegroup(
     name = "serve_py_proto",
     srcs = ["//src/ray/protobuf:serve_py_proto"],
