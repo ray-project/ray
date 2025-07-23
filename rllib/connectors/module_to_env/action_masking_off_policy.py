@@ -7,9 +7,13 @@ from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.numpy import softmax
 from ray.rllib.utils.torch_utils import FLOAT_MIN
 from ray.rllib.utils.typing import EpisodeType
 from ray.util.annotations import PublicAPI
+
+torch, _ = try_import_torch()
 
 
 @PublicAPI(stability="alpha")
@@ -64,73 +68,46 @@ class ActionMaskingOffPolicy(ConnectorV2):
         self,
         *,
         rl_module: RLModule,
-        data: Any,
+        batch: Any,
         episodes: List[EpisodeType],
         explore: Optional[bool] = None,
         shared_data: Optional[dict] = None,
         **kwargs,
     ) -> Any:
-        logits = data.get(Columns.ACTION_DIST_INPUTS)
-
-        if logits is None:
+        if batch.get(Columns.ACTION_DIST_INPUTS) is None:
             raise ValueError(
-                f"`data` (RLModule output) must already have a column named "
+                f"`batch` (RLModule output) must already have a column named "
                 " {Columns.ACTION_DIST_INPUTS} in it for this connector to work!"
             )
 
+        allowed_actions = []
         for sa_episode in self.single_agent_episode_iterator(episodes):
-            self.add_batch_item(
-                batch=data,
-                column="_tmp_allowed_actions",
-                item_to_add=getattr(
+            allowed_actions.append(
+                getattr(
                     sa_episode,
                     # Call `get_observations` or `get_infos` method.
                     f"get_{self.allowed_actions_location}",
-                )(indices=-1)[self.allowed_actions_key],
-                single_agent_episode=sa_episode,
+                )(indices=-1)[self.allowed_actions_key]
             )
-            #self.add_batch_item(
-            #    batch=data,
-            #    column="_dist_inputs_to_sample_from",
-            #    item_to_add=getattr(
-            #        sa_episode,
-            #        # Call `get_observations` or `get_infos` method.
-            #        f"get_{self.allowed_actions_location}",
-            #    )(indices=-1)[self.allowed_actions_key],
-            #    single_agent_episode=sa_episode,
-            #)
+        for i, (action, allowed, logits) in enumerate(zip(
+            list(batch[Columns.ACTIONS]),
+            allowed_actions,
+            list(batch[Columns.ACTION_DIST_INPUTS]),
+        )):
+            if action in allowed:
+                continue
+            action_mask = np.zeros(shape=(logits.shape[0],), dtype=np.float32)
+            for j in allowed:
+                action_mask[j] = 1.0
+            # Convert action_mask into a [0.0 || -inf]-type mask.
+            action_mask = np.clip(np.log(action_mask), a_min=FLOAT_MIN, a_max=None)
 
-        self.foreach_batch_item_change_in_place(
-            batch=data,
-            column=[Columns.ACTION_DIST_INPUTS, "_tmp_allowed_actions"],
-            func=self._change_logits_in_place,
-        )
+            # Create new logits and just sample from them using numpy.
+            new_logits = logits.detach().numpy() + action_mask
+            new_action = np.random.choice(
+                np.arange(0, len(new_logits)),
+                p=softmax(new_logits, epsilon=FLOAT_MIN),
+            )
+            batch[Columns.ACTIONS][i] = new_action
 
-        # Cleanup: Remove structured allowed-actions data from batch again.
-        data.pop("_tmp_allowed_actions")
-
-        return data
-
-    @staticmethod
-    def _change_logits_in_place(logits_and_allowed, env_idx, agent_id, module_id):
-        logits, allowed = logits_and_allowed
-
-        action_mask = np.zeros(shape=(logits.shape[0],), dtype=np.float32)
-        for i in allowed:
-            action_mask[i] = 1.0
-        # Convert action_mask into a [0.0 || -inf]-type mask.
-        action_mask = np.clip(np.log(action_mask), a_min=FLOAT_MIN, a_max=None)
-
-        # Masked logits to be returned. First mask everything.
-        changed_logits = logits + action_mask
-        #changed_logits = np.full(
-        #    shape=(logits.shape[0],),
-        #    fill_value=FLOAT_MIN,
-        #    dtype=np.float32,
-        #)
-        # Then unmask those action slots that are allowed back to their original
-        # (RLModule produced) logit values.
-        #for i in allowed:
-        #    changed_logits[i] = logits[i]
-        return (changed_logits, allowed)
-
+        return batch

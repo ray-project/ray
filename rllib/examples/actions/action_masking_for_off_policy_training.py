@@ -44,7 +44,7 @@ if __name__ == "__main__":
             },
         )
         .env_runners(
-            module_to_env_connector=lambda env: ActionMaskingOffPolicy(
+            module_to_env_connector=lambda env, spaces: ActionMaskingOffPolicy(
                 allowed_actions_key=allowed_actions_key,
                 allowed_actions_location=allowed_actions_location,
             ),
