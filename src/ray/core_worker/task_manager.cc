@@ -24,11 +24,11 @@
 #include "absl/strings/match.h"
 #include "ray/common/buffer.h"
 #include "ray/common/common_protocol.h"
+#include "ray/common/grpc_util.h"
 #include "ray/core_worker/actor_manager.h"
 #include "ray/gcs/pb_util.h"
 #include "ray/util/exponential_backoff.h"
 #include "ray/util/util.h"
-#include "ray/common/grpc_util.h"
 
 namespace ray {
 namespace core {
