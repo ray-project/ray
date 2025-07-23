@@ -1,4 +1,4 @@
-# Deploy custom MCP servers with Ray Serve and Anyscale Services
+# Deploy MCP servers
 
 <div align="left">
 <a target="_blank" href="https://console.anyscale.com/"><img src="https://img.shields.io/badge/🚀 Run_on-Anyscale-9hf"></a>&nbsp;
