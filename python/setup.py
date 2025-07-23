@@ -268,6 +268,7 @@ if setup_spec.type == SetupType.RAY:
             "starlette",
             "fastapi",
             "watchfiles",
+            "celery",
         ],
         "tune": [
             "pandas",
