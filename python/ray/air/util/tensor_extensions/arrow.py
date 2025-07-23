@@ -41,16 +41,16 @@ NUM_BYTES_PER_UNICODE_CHAR = 4
 
 
 class _SerializationFormat(Enum):
+    # JSON format is legacy and inefficient, only kept for backward compatibility
     JSON = 0
     CLOUDPICKLE = 1
 
 
 # Set the default serialization format for Arrow extension types.
 ARROW_EXTENSION_SERIALIZATION_FORMAT = _SerializationFormat(
-    env_integer(
-        "RAY_ARROW_EXTENSION_SERIALIZATION_FORMAT",
-        _SerializationFormat.CLOUDPICKLE.value,
-    )
+    _SerializationFormat.JSON  # legacy
+    if env_integer("RAY_DATA_ARROW_EXTENSION_SERIALIZATION_LEGACY_JSON_FORMAT", 0) == 1
+    else _SerializationFormat.CLOUDPICKLE  # default
 )
 
 

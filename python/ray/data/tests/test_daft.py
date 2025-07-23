@@ -1,42 +1,44 @@
 import os
 
-# Set environment variable before any imports
-os.environ["RAY_ARROW_EXTENSION_SERIALIZATION_FORMAT"] = "0"
-
-import sys
-
-import daft
-import numpy as np
-import pandas as pd
 import pytest
-
-import ray
-import ray.air.util.tensor_extensions.arrow as arrow_module
-from ray.air.util.tensor_extensions.arrow import (
-    _SerializationFormat,
-)
 
 
 @pytest.fixture(scope="module")
 def ray_start(request):
+    """Initialize Ray with proper serialization format."""
     # TODO: Remove this once Daft issue is fixed to default to Cloudpickle
     # serialization format.
     # Force the serialization format to JSON for this test.
     # Refer Daft issue https://github.com/Eventual-Inc/Daft/issues/4828
     # and Ray issue https://github.com/ray-project/ray/issues/54837
     # for more details.
-    original_format = arrow_module.ARROW_EXTENSION_SERIALIZATION_FORMAT
+
+    # Set environment variable before importing ray
+    os.environ["RAY_DATA_ARROW_EXTENSION_SERIALIZATION_LEGACY_JSON_FORMAT"] = "1"
+
+    import ray
+    import ray.air.util.tensor_extensions.arrow as arrow_module
+    from ray.air.util.tensor_extensions.arrow import _SerializationFormat
+
+    # Force the serialization format to JSON after import
     arrow_module.ARROW_EXTENSION_SERIALIZATION_FORMAT = _SerializationFormat.JSON
 
     try:
-        yield ray.init(num_cpus=16)
+        # Set environment variable for Ray workers
+        yield ray.init(
+            num_cpus=16,
+        )
     finally:
         ray.shutdown()
-        # Restore original format
-        arrow_module.ARROW_EXTENSION_SERIALIZATION_FORMAT = original_format
 
 
 def test_daft_round_trip(ray_start):
+    import daft
+    import numpy as np
+    import pandas as pd
+
+    import ray
+
     data = {
         "int_col": list(range(128)),
         "str_col": [str(i) for i in range(128)],
