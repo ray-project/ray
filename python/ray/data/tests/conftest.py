@@ -361,7 +361,7 @@ def target_max_block_size(request):
 
 
 @pytest.fixture(params=[None, DEFAULT_TARGET_MAX_BLOCK_SIZE])
-def target_max_block_size_none(request):
+def target_max_block_size_infinite_or_default(request):
     """Fixture that sets target_max_block_size to None/DEFAULT_TARGET_MAX_BLOCK_SIZE and resets after test finishes."""
     ctx = ray.data.context.DataContext.get_current()
     original = ctx.target_max_block_size

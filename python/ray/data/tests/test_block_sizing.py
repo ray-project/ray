@@ -252,7 +252,7 @@ def test_shuffle(shutdown_only, restore_data_context, shuffle_op):
     )
 
 
-def test_target_max_block_size_none_disables_splitting_globally(
+def test_target_max_block_size_infinite_or_default_disables_splitting_globally(
     shutdown_only, restore_data_context
 ):
     """Test that setting target_max_block_size to None disables block splitting globally."""
