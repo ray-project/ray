@@ -1,5 +1,3 @@
-"""Tests for the NIXL connector backend setup method."""
-
 import os
 import uuid
 from unittest.mock import patch
