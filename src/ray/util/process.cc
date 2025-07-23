@@ -86,8 +86,9 @@ void SetFdCloseOnExec(int fd) {
 static inline ssize_t ReadBytesFromFd(int fd, void *buffer, size_t count) {
   ssize_t total_bytes_read = 0;
   while (total_bytes_read < (ssize_t)count) {
-    ssize_t bytes_read =
-        read(fd, (char *)buffer + total_bytes_read, count - total_bytes_read);
+    ssize_t bytes_read = read(fd,
+                              reinterpret_cast<char *>(buffer) + total_bytes_read,
+                              count - total_bytes_read);
     if (bytes_read == 0) {
       // EOF reached before all bytes were read.
       return total_bytes_read;
@@ -231,11 +232,9 @@ class ProcessFD {
       }
     }
 
-    if (!decouple) {
-      // This is the simple case for non-decoupled processes.
-      // Use a pipe with FD_CLOEXEC to synchronously report execvpe status.
-      SetFdCloseOnExec(pipefds[1]);
-    }
+    // Set the write-end of the pipe to close on exec. This is crucial for the parent
+    // to detect a successful execve, as the pipe will close automatically.
+    SetFdCloseOnExec(pipefds[1]);
 
     pid = fork();
 
