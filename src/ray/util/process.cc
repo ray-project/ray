@@ -301,12 +301,16 @@ class ProcessFD {
           // Failure: got an error or pipe broke.
           ec = std::error_code(bytes_read > 0 ? err_from_child : errno,
                                std::system_category());
-          waitpid(pid, NULL, 0);
+          while (waitpid(pid, NULL, 0) == -1 && errno == EINTR) {
+            continue;
+          }
           pid = -1;
         }
         close(status_pipe[0]);
       } else {
-        waitpid(pid, NULL, 0);  // Reap intermediate child.
+        while (waitpid(pid, NULL, 0) == -1 && errno == EINTR) {
+          continue;
+        }
 
         // Read the grandchild's PID from the pipe.
         ssize_t bytes_read_pid = ReadBytesFromFd(status_pipe[0], &pid, sizeof(pid));

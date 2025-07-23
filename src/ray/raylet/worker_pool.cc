@@ -536,7 +536,6 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
       *status = PopWorkerStatus::ArgumentListTooLong;
       return {Process(), (StartupToken)-1};
     }
-    // Other errors are fatal to preserve existing behavior.
     RAY_LOG(ERROR) << "Failed to start worker process: " << ec.message();
     *status = PopWorkerStatus::RuntimeEnvCreationFailed;
     return {Process(), (StartupToken)-1};
