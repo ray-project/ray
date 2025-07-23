@@ -1,6 +1,6 @@
 from functools import partial
 
-from ray.rllib.connectors.common.frame_stacking import _FrameStacking
+from ray.rllib.connectors.common.frame_stacking import FrameStacking
 
 
-FrameStackingEnvToModule = partial(_FrameStacking, as_learner_connector=False)
+FrameStackingEnvToModule = partial(FrameStacking, as_learner_connector=False)
