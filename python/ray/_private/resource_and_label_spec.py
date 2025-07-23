@@ -372,7 +372,7 @@ class ResourceAndLabelSpec:
             if accelerator_manager is None:
                 continue
             # Respect configured value for GPUs if set
-            if resource_name == "GPU" and self.num_gpus is not None:
+            if resource_name == "GPU":
                 num_accelerators = self.num_gpus
             else:
                 num_accelerators = self.resources.get(resource_name)
