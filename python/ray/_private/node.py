@@ -1444,7 +1444,7 @@ class Node:
 
         # Make sure we don't call `determine_plasma_store_config` multiple
         # times to avoid printing multiple warnings.
-        resource_spec = self.get_resource_and_label_spec()
+        resource_and_label_spec = self.get_resource_and_label_spec()
 
         (
             plasma_directory,
