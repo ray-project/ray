@@ -251,6 +251,10 @@ class TestCli(unittest.TestCase):
             == "--emit-find-links --extra-index-url https://download.pytorch.org/whl/cu128"
         )
 
+    def test_join_args_invalid_type(self):
+        with self.assertRaises(TypeError):
+            _join_args(["--emit-find-links", 12])
+
 
 def _copy_data_to_tmpdir(tmpdir):
     shutil.copytree(
