@@ -17,6 +17,7 @@ from ray import serve
 from ray._common.test_utils import wait_for_condition
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
 from ray.serve._private.test_utils import (
+    get_application_url,
     ping_fruit_stand,
     ping_grpc_another_method,
     ping_grpc_call_method,
@@ -35,7 +36,8 @@ def ping_endpoint(endpoint: str, params: str = ""):
     endpoint = endpoint.lstrip("/")
 
     try:
-        return httpx.get(f"http://localhost:8000/{endpoint}{params}").text
+        base_url = get_application_url("HTTP", use_localhost=True)
+        return httpx.get(f"{base_url}/{endpoint}{params}").text
     except httpx.HTTPError:
         return CONNECTION_ERROR_MSG
 
@@ -52,7 +54,8 @@ def check_app_running(app_name: str):
 
 
 def check_http_response(expected_text: str, json: Optional[Dict] = None):
-    resp = httpx.post("http://localhost:8000/", json=json)
+    base_url = get_application_url("HTTP", use_localhost=True)
+    resp = httpx.post(f"{base_url}/", json=json)
     assert resp.text == expected_text
     return True
 
