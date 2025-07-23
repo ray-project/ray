@@ -2,6 +2,8 @@
 
 set -euo pipefail
 
+: "${GITHUB_TOKEN:?GITHUB_TOKEN is required but not set}"
+
 FOSSA_BIN="$HOME/fossa/fossa"
 
 FOSSA_API_KEY="$(
