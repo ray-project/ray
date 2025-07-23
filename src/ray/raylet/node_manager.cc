@@ -2020,9 +2020,6 @@ void NodeManager::HandleResizeLocalResourceInstances(
     }
   }
 
-  // Trigger scheduling to account for the new resources
-  cluster_task_manager_.ScheduleAndDispatchTasks();
-
   // Get updated resource state and populate reply
   const auto updated_resources =
       cluster_resource_scheduler_.GetLocalResourceManager().GetLocalResources();
@@ -2032,8 +2029,8 @@ void NodeManager::HandleResizeLocalResourceInstances(
                                    .ToNodeResourceSet()
                                    .GetResourceMap();
 
-  // Log the updated resources
   if (!delta_resource_map.empty()) {
+    // Log the updated resources
     RAY_LOG(INFO) << "Successfully resized local resources. Current Total resources:";
     for (const auto &[resource_name, updated_value] : updated_total_map) {
       RAY_LOG(INFO) << "  " << resource_name << ": " << updated_value;
@@ -2042,6 +2039,11 @@ void NodeManager::HandleResizeLocalResourceInstances(
     for (const auto &[resource_name, updated_value] : updated_available_map) {
       RAY_LOG(INFO) << "  " << resource_name << ": " << updated_value;
     }
+    // Trigger scheduling to account for the new resources
+    cluster_task_manager_.ScheduleAndDispatchTasks();
+    // Trigger immediate resource broadcasting to GCS
+    // instead of waiting for the periodic report (which happens every 100ms by default)
+    ray_syncer_.OnDemandBroadcasting(syncer::MessageType::RESOURCE_VIEW);
   }
 
   // Populate the reply with current resource state
