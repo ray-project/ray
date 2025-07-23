@@ -509,5 +509,43 @@ std::string GcsNodeManager::DebugString() const {
   return stream.str();
 }
 
+void GcsNodeManager::UpdateNode(
+    const NodeID &node_id,
+    const syncer::ResourceViewSyncMessage &resource_view_sync_message) {
+  auto maybe_node_info = GetAliveNode(node_id);
+  if (maybe_node_info == absl::nullopt) {
+    return;
+  }
+
+  auto snapshot = maybe_node_info.value()->mutable_state_snapshot();
+
+  if (resource_view_sync_message.idle_duration_ms() > 0) {
+    snapshot->set_state(rpc::NodeSnapshot::IDLE);
+    snapshot->set_idle_duration_ms(resource_view_sync_message.idle_duration_ms());
+  } else {
+    snapshot->set_state(rpc::NodeSnapshot::ACTIVE);
+    snapshot->mutable_node_activity()->CopyFrom(
+        resource_view_sync_message.node_activity());
+  }
+  if (resource_view_sync_message.is_draining()) {
+    snapshot->set_state(rpc::NodeSnapshot::DRAINING);
+  }
+
+  auto resources_total = maybe_node_info.value()->mutable_resources_total();
+  auto &new_resources = resource_view_sync_message.resources_total();
+  // Check if resources_total has changed
+  if (!MapEqual(*resources_total, new_resources)) {
+    // Update total resources
+    *resources_total = new_resources;
+    // Publish the updated node info to notify subscribers
+    auto status =
+        gcs_publisher_->PublishNodeInfo(node_id, *maybe_node_info.value(), nullptr);
+    if (!status.ok()) {
+      RAY_LOG(WARNING).WithField(node_id)
+          << "Failed to publish node info update: " << status.ToString();
+    }
+  }
+}
+
 }  // namespace gcs
 }  // namespace ray
