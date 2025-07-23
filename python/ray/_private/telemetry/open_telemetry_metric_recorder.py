@@ -26,6 +26,7 @@ class OpenTelemetryMetricRecorder:
         self._lock = threading.Lock()
         self._registered_instruments = {}
         self._observations_by_name = defaultdict(dict)
+        self._histogram_bucket_midpoints = defaultdict(list)
 
         prometheus_reader = PrometheusMetricReader()
         provider = MeterProvider(metric_readers=[prometheus_reader])
@@ -99,6 +100,53 @@ class OpenTelemetryMetricRecorder:
             )
             self._registered_instruments[name] = instrument
 
+    def register_histogram_metric(
+        self, name: str, description: str, buckets: List[float]
+    ) -> None:
+        """
+        Register a histogram metric with the given name and description.
+        """
+        with self._lock:
+            if name in self._registered_instruments:
+                # Histogram with the same name is already registered. This is a common
+                # case when metrics are exported from multiple Ray components (e.g.,
+                # raylet, worker, etc.) running in the same node. Since each component
+                # may export metrics with the same name, the same metric might be
+                # registered multiple times.
+                return
+
+            instrument = self.meter.create_histogram(
+                name=f"{NAMESPACE}_{name}",
+                description=description,
+                unit="1",
+                explicit_bucket_boundaries_advisory=buckets,
+            )
+            self._registered_instruments[name] = instrument
+
+            # calculate the bucket midpoints; this is used for converting histogram
+            # internal representation to approximated histogram data points.
+            for i in range(len(buckets)):
+                if i == 0:
+                    lower_bound = 0.0 if buckets[0] > 0 else buckets[0] * 2.0
+                    self._histogram_bucket_midpoints[name].append(
+                        lower_bound + buckets[0] / 2.0
+                    )
+                else:
+                    self._histogram_bucket_midpoints[name].append(
+                        (buckets[i] + buckets[i - 1]) / 2.0
+                    )
+            # Approximated mid point for Inf+ bucket. Inf+ bucket is an implicit bucket
+            # that is not part of buckets.
+            self._histogram_bucket_midpoints[name].append(
+                1.0 if buckets[-1] <= 0 else buckets[-1] * 2.0
+            )
+
+    def get_histogram_bucket_midpoints(self, name: str) -> List[float]:
+        """
+        Get the bucket midpoints for a histogram metric with the given name.
+        """
+        return self._histogram_bucket_midpoints[name]
+
     def set_metric_value(self, name: str, tags: dict, value: float):
         """
         Set the value of a metric with the given name and tags. If the metric is not
@@ -119,6 +167,8 @@ class OpenTelemetryMetricRecorder:
                     instrument.add(value, attributes=tags)
                 elif isinstance(instrument, metrics.UpDownCounter):
                     instrument.add(value, attributes=tags)
+                elif isinstance(instrument, metrics.Histogram):
+                    instrument.record(value, attributes=tags)
                 else:
                     logger.warning(
                         f"Unsupported synchronous instrument type for metric: {name}."

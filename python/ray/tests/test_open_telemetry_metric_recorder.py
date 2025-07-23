@@ -2,7 +2,7 @@ import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
-from opentelemetry.metrics import NoOpCounter, NoOpUpDownCounter
+from opentelemetry.metrics import NoOpCounter, NoOpUpDownCounter, NoOpHistogram
 
 from ray._private.telemetry.open_telemetry_metric_recorder import (
     OpenTelemetryMetricRecorder,
@@ -87,6 +87,33 @@ def test_register_sum_metric(
     assert "test_sum" in recorder._registered_instruments
     recorder.set_metric_value(
         name="test_sum",
+        tags={"label_key": "label_value"},
+        value=10.0,
+    )
+    mock_logger_warning.assert_not_called()
+
+
+@patch("ray._private.telemetry.open_telemetry_metric_recorder.logger.warning")
+@patch("opentelemetry.metrics.set_meter_provider")
+@patch("opentelemetry.metrics.get_meter")
+def test_register_histogram_metric(
+    mock_get_meter, mock_set_meter_provider, mock_logger_warning
+):
+    """
+    Test the register_histogram_metric method of OpenTelemetryMetricRecorder.
+    - Test that it registers a histogram metric with the correct name and description.
+    - Test that a value can be set for the histogram metric successfully without warnings.
+    """
+    mock_meter = MagicMock()
+    mock_meter.create_histogram.return_value = NoOpHistogram(name="test_histogram")
+    mock_get_meter.return_value = mock_meter
+    recorder = OpenTelemetryMetricRecorder()
+    recorder.register_histogram_metric(
+        name="test_histogram", description="Test Histogram", buckets=[1.0, 2.0, 3.0]
+    )
+    assert "test_histogram" in recorder._registered_instruments
+    recorder.set_metric_value(
+        name="test_histogram",
         tags={"label_key": "label_value"},
         value=10.0,
     )

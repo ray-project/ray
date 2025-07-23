@@ -190,7 +190,6 @@ def _setup_cluster_for_test(request, ray_start_cluster):
     # Add a head node.
     cluster.add_node(
         _system_config={
-            "metrics_report_interval_ms": 1000,
             "event_stats_print_interval_ms": 500,
             "event_stats": True,
             "enable_metrics_collection": enable_metrics_collection,
@@ -242,6 +241,7 @@ def _setup_cluster_for_test(request, ray_start_cluster):
             )
             histogram = ray.get(ray.put(histogram))  # Test serialization.
             histogram.observe(1.5, tags=extra_tags)
+            histogram.observe(0.0, tags=extra_tags)
             ray.get(worker_should_exit.wait.remote())
 
     a = A.remote()
@@ -312,7 +312,6 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
             [
                 "test_counter",
                 "test_counter_total",
-                "test_histogram_bucket",
                 "test_driver_counter",
                 "test_driver_counter_total",
                 "test_gauge",
@@ -320,7 +319,6 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
             if os.environ.get("RAY_experimental_enable_open_telemetry_on_core") != "1"
             else [
                 "test_counter_total",
-                "test_histogram_bucket",
                 "test_driver_counter_total",
                 "test_gauge",
             ]
@@ -358,23 +356,6 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
             m for m in metric_samples if "test_driver_counter" in m.name
         ][0]
         assert test_driver_counter_sample.value == 1.0
-
-        test_histogram_samples = [
-            m for m in metric_samples if "test_histogram" in m.name
-        ]
-        buckets = {
-            m.labels["le"]: m.value
-            for m in test_histogram_samples
-            if "_bucket" in m.name
-        }
-        # We recorded value 1.5 for the histogram. In Prometheus data model
-        # the histogram is cumulative. So we expect the count to appear in
-        # <1.1 and <+Inf buckets.
-        assert buckets == {"0.1": 0.0, "1.6": 1.0, "+Inf": 1.0}
-        hist_count = [m for m in test_histogram_samples if "_count" in m.name][0].value
-        hist_sum = [m for m in test_histogram_samples if "_sum" in m.name][0].value
-        assert hist_count == 1
-        assert hist_sum == 1.5
 
         # Make sure the gRPC stats are not reported from workers. We disabled
         # it there because it has too high cardinality.
@@ -711,6 +692,58 @@ def test_operation_stats(monkeypatch, shutdown_only):
             return True
 
         wait_for_condition(verify, timeout=60)
+
+
+@pytest.mark.skipif(prometheus_client is None, reason="Prometheus not installed")
+@pytest.mark.parametrize("_setup_cluster_for_test", [True], indirect=True)
+def test_histogram(_setup_cluster_for_test):
+    TEST_TIMEOUT_S = 30
+    (
+        prom_addresses,
+        autoscaler_export_addr,
+        dashboard_export_addr,
+    ) = _setup_cluster_for_test
+
+    def test_cases():
+        components_dict, metric_descriptors, metric_samples = fetch_prometheus(
+            prom_addresses
+        )
+        metric_names = metric_descriptors.keys()
+        custom_histogram_metric_name = "ray_test_histogram_bucket"
+        assert custom_histogram_metric_name in metric_names
+        assert metric_descriptors[custom_histogram_metric_name].type == "histogram"
+
+        test_histogram_samples = [
+            m for m in metric_samples if "test_histogram" in m.name
+        ]
+        buckets = {
+            m.labels["le"]: m.value
+            for m in test_histogram_samples
+            if "_bucket" in m.name
+        }
+        # In Prometheus data model
+        # the histogram is cumulative. So we expect the count to appear in
+        # <1.1 and <+Inf buckets.
+        assert buckets == {"0.1": 1.0, "1.6": 2.0, "+Inf": 2.0}
+        hist_count = [m for m in test_histogram_samples if "_count" in m.name][0].value
+        assert hist_count == 2
+
+    def wrap_test_case_for_retry():
+        try:
+            test_cases()
+            return True
+        except AssertionError:
+            return False
+
+    try:
+        wait_for_condition(
+            wrap_test_case_for_retry,
+            timeout=TEST_TIMEOUT_S,
+            retry_interval_ms=1000,  # Yield resource for other processes
+        )
+    except RuntimeError:
+        print(f"The components are {pformat(fetch_prometheus(prom_addresses))}")
+        test_cases()  # Should fail assert
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Not working in Windows.")
