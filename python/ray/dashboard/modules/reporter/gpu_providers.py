@@ -5,6 +5,7 @@ This module provides an object-oriented interface for different GPU providers
 """
 
 import abc
+import enum
 import logging
 import subprocess
 from typing import List, Optional, Union, TypedDict
@@ -18,6 +19,13 @@ MB = 1024 * 1024
 Percentage = int
 Megabytes = int
 Bytes = int
+
+
+class GpuProviderType(enum.Enum):
+    """Enum for GPU provider types."""
+
+    NVIDIA = "nvidia"
+    AMD = "amd"
 
 
 class ProcessGPUInfo(TypedDict):
@@ -59,8 +67,8 @@ class GpuProvider(abc.ABC):
         self._initialized = False
 
     @abc.abstractmethod
-    def get_provider_name(self) -> str:
-        """Return the name of the GPU provider (e.g., 'nvidia', 'amd')."""
+    def get_provider_name(self) -> GpuProviderType:
+        """Return the type of the GPU provider."""
         pass
 
     @abc.abstractmethod
@@ -69,12 +77,12 @@ class GpuProvider(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def initialize(self) -> bool:
+    def _initialize(self) -> bool:
         """Initialize the GPU provider. Returns True if successful."""
         pass
 
     @abc.abstractmethod
-    def shutdown(self):
+    def _shutdown(self):
         """Shutdown the GPU provider and clean up resources."""
         pass
 
@@ -84,7 +92,7 @@ class GpuProvider(abc.ABC):
         pass
 
     @staticmethod
-    def decode(b: Union[str, bytes]) -> str:
+    def _decode(b: Union[str, bytes]) -> str:
         """Decode bytes to string for Python 3 compatibility."""
         if isinstance(b, bytes):
             return b.decode("utf-8")
@@ -98,8 +106,8 @@ class NvidiaGpuProvider(GpuProvider):
         super().__init__()
         self._pynvml = None
 
-    def get_provider_name(self) -> str:
-        return "nvidia"
+    def get_provider_name(self) -> GpuProviderType:
+        return GpuProviderType.NVIDIA
 
     def is_available(self) -> bool:
         """Check if NVIDIA GPUs are available."""
@@ -113,7 +121,7 @@ class NvidiaGpuProvider(GpuProvider):
             logger.debug(f"NVIDIA GPU not available: {e}")
             return False
 
-    def initialize(self) -> bool:
+    def _initialize(self) -> bool:
         """Initialize the NVIDIA GPU provider."""
         if self._initialized:
             return True
@@ -129,7 +137,7 @@ class NvidiaGpuProvider(GpuProvider):
             logger.debug(f"Failed to initialize NVIDIA GPU provider: {e}")
             return False
 
-    def shutdown(self):
+    def _shutdown(self):
         """Shutdown the NVIDIA GPU provider."""
         if self._initialized and self._pynvml:
             try:
@@ -142,7 +150,7 @@ class NvidiaGpuProvider(GpuProvider):
     def get_gpu_utilization(self) -> List[GpuUtilizationInfo]:
         """Get GPU utilization information for all NVIDIA GPUs and MIG devices."""
         if not self._initialized:
-            if not self.initialize():
+            if not self._initialize():
                 return []
 
         gpu_utilizations = []
@@ -171,9 +179,9 @@ class NvidiaGpuProvider(GpuProvider):
                     gpu_utilizations.append(gpu_info)
 
         except Exception as e:
-            logger.debug(f"Error getting NVIDIA GPU utilization: {e}")
+            logger.warning(f"Error getting NVIDIA GPU utilization: {e}")
         finally:
-            self.shutdown()
+            self._shutdown()
 
         return gpu_utilizations
 
@@ -249,12 +257,12 @@ class NvidiaGpuProvider(GpuProvider):
 
             # Get MIG device UUID and name
             try:
-                mig_uuid = self.decode(self._pynvml.nvmlDeviceGetUUID(mig_handle))
-                mig_name = self.decode(self._pynvml.nvmlDeviceGetName(mig_handle))
+                mig_uuid = self._decode(self._pynvml.nvmlDeviceGetUUID(mig_handle))
+                mig_name = self._decode(self._pynvml.nvmlDeviceGetName(mig_handle))
             except self._pynvml.NVMLError:
                 # Fallback for older drivers
                 try:
-                    parent_name = self.decode(
+                    parent_name = self._decode(
                         self._pynvml.nvmlDeviceGetName(
                             self._pynvml.nvmlDeviceGetHandleByIndex(gpu_index)
                         )
@@ -320,8 +328,8 @@ class NvidiaGpuProvider(GpuProvider):
 
             return GpuUtilizationInfo(
                 index=gpu_index,
-                name=self.decode(self._pynvml.nvmlDeviceGetName(gpu_handle)),
-                uuid=self.decode(self._pynvml.nvmlDeviceGetUUID(gpu_handle)),
+                name=self._decode(self._pynvml.nvmlDeviceGetName(gpu_handle)),
+                uuid=self._decode(self._pynvml.nvmlDeviceGetUUID(gpu_handle)),
                 utilization_gpu=utilization,
                 memory_used=int(memory_info.used) // MB,
                 memory_total=int(memory_info.total) // MB,
@@ -340,8 +348,8 @@ class AmdGpuProvider(GpuProvider):
         super().__init__()
         self._pyamdsmi = None
 
-    def get_provider_name(self) -> str:
-        return "amd"
+    def get_provider_name(self) -> GpuProviderType:
+        return GpuProviderType.AMD
 
     def is_available(self) -> bool:
         """Check if AMD GPUs are available."""
@@ -355,7 +363,7 @@ class AmdGpuProvider(GpuProvider):
             logger.debug(f"AMD GPU not available: {e}")
             return False
 
-    def initialize(self) -> bool:
+    def _initialize(self) -> bool:
         """Initialize the AMD GPU provider."""
         if self._initialized:
             return True
@@ -371,7 +379,7 @@ class AmdGpuProvider(GpuProvider):
             logger.debug(f"Failed to initialize AMD GPU provider: {e}")
             return False
 
-    def shutdown(self):
+    def _shutdown(self):
         """Shutdown the AMD GPU provider."""
         if self._initialized and self._pyamdsmi:
             try:
@@ -384,7 +392,7 @@ class AmdGpuProvider(GpuProvider):
     def get_gpu_utilization(self) -> List[GpuUtilizationInfo]:
         """Get GPU utilization information for all AMD GPUs."""
         if not self._initialized:
-            if not self.initialize():
+            if not self._initialize():
                 return []
 
         gpu_utilizations = []
@@ -413,7 +421,7 @@ class AmdGpuProvider(GpuProvider):
 
                 info = GpuUtilizationInfo(
                     index=i,
-                    name=self.decode(self._pyamdsmi.smi_get_device_name(i)),
+                    name=self._decode(self._pyamdsmi.smi_get_device_name(i)),
                     uuid=hex(self._pyamdsmi.smi_get_device_unique_id(i)),
                     utilization_gpu=utilization,
                     memory_used=int(self._pyamdsmi.smi_get_device_memory_used(i)) // MB,
@@ -424,20 +432,41 @@ class AmdGpuProvider(GpuProvider):
                 gpu_utilizations.append(info)
 
         except Exception as e:
-            logger.debug(f"Error getting AMD GPU utilization: {e}")
+            logger.warning(f"Error getting AMD GPU utilization: {e}")
         finally:
-            self.shutdown()
+            self._shutdown()
 
         return gpu_utilizations
 
 
-class GpuManager:
-    """Manager class for GPU providers."""
+class GpuMetricProvider:
+    """Provider class for GPU metrics collection."""
 
     def __init__(self):
         self._provider: Optional[GpuProvider] = None
-        self._enable_gpu_usage_check = True
+        self._enable_metric_report = True
         self._providers = [NvidiaGpuProvider(), AmdGpuProvider()]
+        self._initialized = False
+
+    def initialize(self) -> bool:
+        """Initialize the GPU metric provider by detecting available GPU providers."""
+        if self._initialized:
+            return True
+
+        self._provider = self._detect_gpu_provider()
+
+        if self._provider is None:
+            # Check if we should disable GPU check entirely
+            try:
+                # Try NVIDIA first to check for the specific error condition
+                nvidia_provider = NvidiaGpuProvider()
+                nvidia_provider._initialize()
+            except Exception as e:
+                if self._should_disable_gpu_check(e):
+                    self._enable_metric_report = False
+
+        self._initialized = True
+        return self._provider is not None
 
     def _detect_gpu_provider(self) -> Optional[GpuProvider]:
         """Detect and return the first available GPU provider."""
@@ -473,40 +502,28 @@ class GpuManager:
 
     def get_gpu_usage(self) -> List[GpuUtilizationInfo]:
         """Get GPU usage information from the available provider."""
-        if not self._enable_gpu_usage_check:
+        if not self._enable_metric_report:
             return []
 
-        if self._provider is None:
-            self._provider = self._detect_gpu_provider()
+        if not self._initialized:
+            self.initialize()
 
-            if self._provider is None:
-                # Check if we should disable GPU check entirely
-                try:
-                    # Try NVIDIA first to check for the specific error condition
-                    nvidia_provider = NvidiaGpuProvider()
-                    nvidia_provider.initialize()
-                except Exception as e:
-                    if self._should_disable_gpu_check(e):
-                        self._enable_gpu_usage_check = False
-                return []
+        if self._provider is None:
+            return []
 
         try:
             gpu_info_list = self._provider.get_gpu_utilization()
             return gpu_info_list  # Return TypedDict instances directly
         except Exception as e:
             logger.debug(
-                f"Error getting GPU usage from {self._provider.get_provider_name()}: {e}"
+                f"Error getting GPU usage from {self._provider.get_provider_name().value}: {e}"
             )
             return []
 
     def get_provider_name(self) -> Optional[str]:
         """Get the name of the current GPU provider."""
-        return self._provider.get_provider_name() if self._provider else None
+        return self._provider.get_provider_name().value if self._provider else None
 
-    def disable_gpu_usage_check(self):
-        """Disable GPU usage checking."""
-        self._enable_gpu_usage_check = False
-
-    def is_gpu_usage_check_enabled(self) -> bool:
-        """Check if GPU usage checking is enabled."""
-        return self._enable_gpu_usage_check
+    def is_metric_report_enabled(self) -> bool:
+        """Check if GPU metric reporting is enabled."""
+        return self._enable_metric_report

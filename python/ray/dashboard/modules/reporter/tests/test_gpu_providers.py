@@ -5,9 +5,10 @@ from unittest.mock import Mock, patch
 
 from ray.dashboard.modules.reporter.gpu_providers import (
     GpuProvider,
+    GpuProviderType,
     NvidiaGpuProvider,
     AmdGpuProvider,
-    GpuManager,
+    GpuMetricProvider,
     ProcessGPUInfo,
     GpuUtilizationInfo,
     MB,
@@ -76,13 +77,13 @@ class TestGpuProvider(unittest.TestCase):
     """Test abstract GpuProvider class."""
 
     def test_decode_bytes(self):
-        """Test decode method with bytes input."""
-        result = GpuProvider.decode(b"test string")
+        """Test _decode method with bytes input."""
+        result = GpuProvider._decode(b"test string")
         self.assertEqual(result, "test string")
 
     def test_decode_string(self):
-        """Test decode method with string input."""
-        result = GpuProvider.decode("test string")
+        """Test _decode method with string input."""
+        result = GpuProvider._decode("test string")
         self.assertEqual(result, "test string")
 
     def test_abstract_methods_not_implemented(self):
@@ -104,7 +105,7 @@ class TestNvidiaGpuProvider(unittest.TestCase):
 
     def test_get_provider_name(self):
         """Test provider name."""
-        self.assertEqual(self.provider.get_provider_name(), "nvidia")
+        self.assertEqual(self.provider.get_provider_name(), GpuProviderType.NVIDIA)
 
     @patch("ray._private.thirdparty.pynvml", create=True)
     def test_is_available_success(self, mock_pynvml):
@@ -160,7 +161,7 @@ class TestNvidiaGpuProvider(unittest.TestCase):
         sys.modules["ray._private.thirdparty.pynvml"] = mock_pynvml
 
         try:
-            self.assertTrue(self.provider.initialize())
+            self.assertTrue(self.provider._initialize())
             self.assertTrue(self.provider._initialized)
             mock_pynvml.nvmlInit.assert_called_once()
         finally:
@@ -184,7 +185,7 @@ class TestNvidiaGpuProvider(unittest.TestCase):
         sys.modules["ray._private.thirdparty.pynvml"] = mock_pynvml
 
         try:
-            self.assertFalse(self.provider.initialize())
+            self.assertFalse(self.provider._initialize())
             self.assertFalse(self.provider._initialized)
         finally:
             # Restore original modules
@@ -196,7 +197,7 @@ class TestNvidiaGpuProvider(unittest.TestCase):
         """Test initialization when already initialized."""
         self.provider._initialized = True
 
-        self.assertTrue(self.provider.initialize())
+        self.assertTrue(self.provider._initialize())
         mock_pynvml.nvmlInit.assert_not_called()
 
     @patch("ray._private.thirdparty.pynvml", create=True)
@@ -205,7 +206,7 @@ class TestNvidiaGpuProvider(unittest.TestCase):
         self.provider._initialized = True
         self.provider._pynvml = mock_pynvml
 
-        self.provider.shutdown()
+        self.provider._shutdown()
 
         self.assertFalse(self.provider._initialized)
         mock_pynvml.nvmlShutdown.assert_called_once()
@@ -213,7 +214,7 @@ class TestNvidiaGpuProvider(unittest.TestCase):
     @patch("ray._private.thirdparty.pynvml", create=True)
     def test_shutdown_not_initialized(self, mock_pynvml):
         """Test shutdown when not initialized."""
-        self.provider.shutdown()
+        self.provider._shutdown()
         mock_pynvml.nvmlShutdown.assert_not_called()
 
     @patch("ray._private.thirdparty.pynvml", create=True)
@@ -389,7 +390,7 @@ class TestAmdGpuProvider(unittest.TestCase):
 
     def test_get_provider_name(self):
         """Test provider name."""
-        self.assertEqual(self.provider.get_provider_name(), "amd")
+        self.assertEqual(self.provider.get_provider_name(), GpuProviderType.AMD)
 
     @patch("ray._private.thirdparty.pyamdsmi", create=True)
     def test_is_available_success(self, mock_pyamdsmi):
@@ -413,7 +414,7 @@ class TestAmdGpuProvider(unittest.TestCase):
         """Test successful initialization."""
         mock_pyamdsmi.smi_initialize.return_value = None
 
-        self.assertTrue(self.provider.initialize())
+        self.assertTrue(self.provider._initialize())
         self.assertTrue(self.provider._initialized)
         mock_pyamdsmi.smi_initialize.assert_called_once()
 
@@ -459,18 +460,19 @@ class TestAmdGpuProvider(unittest.TestCase):
         self.assertEqual(gpu_info["processes_pids"][0]["gpu_memory_usage"], 512)
 
 
-class TestGpuManager(unittest.TestCase):
-    """Test GpuManager class."""
+class TestGpuMetricProvider(unittest.TestCase):
+    """Test GpuMetricProvider class."""
 
     def setUp(self):
         """Set up test fixtures."""
-        self.manager = GpuManager()
+        self.provider = GpuMetricProvider()
 
     def test_init(self):
-        """Test GpuManager initialization."""
-        self.assertIsNone(self.manager._provider)
-        self.assertTrue(self.manager._enable_gpu_usage_check)
-        self.assertEqual(len(self.manager._providers), 2)
+        """Test GpuMetricProvider initialization."""
+        self.assertIsNone(self.provider._provider)
+        self.assertTrue(self.provider._enable_metric_report)
+        self.assertEqual(len(self.provider._providers), 2)
+        self.assertFalse(self.provider._initialized)
 
     @patch.object(NvidiaGpuProvider, "is_available", return_value=True)
     @patch.object(AmdGpuProvider, "is_available", return_value=False)
@@ -478,7 +480,7 @@ class TestGpuManager(unittest.TestCase):
         self, mock_amd_available, mock_nvidia_available
     ):
         """Test GPU provider detection when NVIDIA is available."""
-        provider = self.manager._detect_gpu_provider()
+        provider = self.provider._detect_gpu_provider()
 
         self.assertIsInstance(provider, NvidiaGpuProvider)
         mock_nvidia_available.assert_called_once()
@@ -487,7 +489,7 @@ class TestGpuManager(unittest.TestCase):
     @patch.object(AmdGpuProvider, "is_available", return_value=True)
     def test_detect_gpu_provider_amd(self, mock_amd_available, mock_nvidia_available):
         """Test GPU provider detection when AMD is available."""
-        provider = self.manager._detect_gpu_provider()
+        provider = self.provider._detect_gpu_provider()
 
         self.assertIsInstance(provider, AmdGpuProvider)
         mock_nvidia_available.assert_called_once()
@@ -497,7 +499,7 @@ class TestGpuManager(unittest.TestCase):
     @patch.object(AmdGpuProvider, "is_available", return_value=False)
     def test_detect_gpu_provider_none(self, mock_amd_available, mock_nvidia_available):
         """Test GPU provider detection when no GPUs are available."""
-        provider = self.manager._detect_gpu_provider()
+        provider = self.provider._detect_gpu_provider()
 
         self.assertIsNone(provider)
 
@@ -513,7 +515,7 @@ class TestGpuManager(unittest.TestCase):
 
         error = MockNVMLError("NVIDIA driver not loaded")
 
-        result = self.manager._should_disable_gpu_check(error)
+        result = self.provider._should_disable_gpu_check(error)
         self.assertTrue(result)
 
     @patch("subprocess.check_output")
@@ -523,7 +525,7 @@ class TestGpuManager(unittest.TestCase):
 
         error = Exception("Some other error")
 
-        result = self.manager._should_disable_gpu_check(error)
+        result = self.provider._should_disable_gpu_check(error)
         self.assertFalse(result)
 
     @patch("subprocess.check_output")
@@ -538,30 +540,31 @@ class TestGpuManager(unittest.TestCase):
 
         error = MockNVMLError("NVIDIA driver not loaded")
 
-        result = self.manager._should_disable_gpu_check(error)
+        result = self.provider._should_disable_gpu_check(error)
         self.assertFalse(result)
 
     def test_get_gpu_usage_disabled(self):
         """Test get_gpu_usage when GPU usage check is disabled."""
-        self.manager._enable_gpu_usage_check = False
+        self.provider._enable_metric_report = False
 
-        result = self.manager.get_gpu_usage()
+        result = self.provider.get_gpu_usage()
         self.assertEqual(result, [])
 
-    @patch.object(GpuManager, "_detect_gpu_provider")
+    @patch.object(GpuMetricProvider, "_detect_gpu_provider")
     def test_get_gpu_usage_no_provider(self, mock_detect):
         """Test get_gpu_usage when no GPU provider is available."""
         mock_detect.return_value = None
 
         with patch.object(
-            NvidiaGpuProvider, "initialize", side_effect=Exception("No GPU")
+            NvidiaGpuProvider, "_initialize", side_effect=Exception("No GPU")
         ):
-            result = self.manager.get_gpu_usage()
+            result = self.provider.get_gpu_usage()
 
         self.assertEqual(result, [])
+        self.provider._initialized = False  # Reset for clean test
         mock_detect.assert_called_once()
 
-    @patch.object(GpuManager, "_detect_gpu_provider")
+    @patch.object(GpuMetricProvider, "_detect_gpu_provider")
     def test_get_gpu_usage_success(self, mock_detect):
         """Test successful get_gpu_usage."""
         mock_provider = Mock()
@@ -578,7 +581,7 @@ class TestGpuManager(unittest.TestCase):
         ]
         mock_detect.return_value = mock_provider
 
-        result = self.manager.get_gpu_usage()
+        result = self.provider.get_gpu_usage()
 
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0]["index"], 0)
@@ -587,29 +590,24 @@ class TestGpuManager(unittest.TestCase):
 
     def test_get_provider_name_no_provider(self):
         """Test get_provider_name when no provider is set."""
-        result = self.manager.get_provider_name()
+        result = self.provider.get_provider_name()
         self.assertIsNone(result)
 
     def test_get_provider_name_with_provider(self):
         """Test get_provider_name when provider is set."""
         mock_provider = Mock()
-        mock_provider.get_provider_name.return_value = "nvidia"
-        self.manager._provider = mock_provider
+        mock_provider.get_provider_name.return_value = GpuProviderType.NVIDIA
+        self.provider._provider = mock_provider
 
-        result = self.manager.get_provider_name()
+        result = self.provider.get_provider_name()
         self.assertEqual(result, "nvidia")
 
-    def test_disable_gpu_usage_check(self):
-        """Test disable_gpu_usage_check."""
-        self.manager.disable_gpu_usage_check()
-        self.assertFalse(self.manager._enable_gpu_usage_check)
+    def test_is_metric_report_enabled(self):
+        """Test is_metric_report_enabled."""
+        self.assertTrue(self.provider.is_metric_report_enabled())
 
-    def test_is_gpu_usage_check_enabled(self):
-        """Test is_gpu_usage_check_enabled."""
-        self.assertTrue(self.manager.is_gpu_usage_check_enabled())
-
-        self.manager._enable_gpu_usage_check = False
-        self.assertFalse(self.manager.is_gpu_usage_check_enabled())
+        self.provider._enable_metric_report = False
+        self.assertFalse(self.provider.is_metric_report_enabled())
 
 
 if __name__ == "__main__":

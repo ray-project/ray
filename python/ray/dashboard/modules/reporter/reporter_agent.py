@@ -30,7 +30,10 @@ from ray._common.utils import (
     get_user_temp_dir,
 )
 from ray._private.utils import get_system_memory
-from ray.dashboard.modules.reporter.gpu_providers import GpuManager
+from ray.dashboard.modules.reporter.gpu_providers import (
+    GpuMetricProvider,
+    TpuUtilizationInfo,
+)
 from ray._private import utils
 from ray._private.metrics_agent import Gauge, MetricsAgent, Record
 from ray._private.ray_constants import (
@@ -58,16 +61,10 @@ from ray.dashboard.modules.reporter.profile_manager import (
     CpuProfilingManager,
     MemoryProfilingManager,
 )
-from .gpu_providers import (
-    TpuUtilizationInfo,
-)
 
 import psutil
 
 logger = logging.getLogger(__name__)
-
-# Initialize GPU manager once for the lifetime of the agent
-gpu_manager = GpuManager()
 
 enable_tpu_usage_check = True
 
@@ -467,6 +464,9 @@ class ReporterAgent(
         )
         self._gpu_profiling_manager.start_monitoring_daemon()
 
+        # Create GPU metric provider instance
+        self._gpu_metric_provider = GpuMetricProvider()
+
     async def GetTraceback(self, request, context):
         pid = request.pid
         native = request.native
@@ -592,11 +592,9 @@ class ReporterAgent(
         else:
             return psutil.cpu_percent()
 
-    @staticmethod
-    def _get_gpu_usage():
-        """Get GPU usage information using the GPU manager."""
-        global gpu_manager
-        return gpu_manager.get_gpu_usage()
+    def _get_gpu_usage(self):
+        """Get GPU usage information using the GPU metric provider."""
+        return self._gpu_metric_provider.get_gpu_usage()
 
     @staticmethod
     def _get_tpu_usage() -> List[TpuUtilizationInfo]:
@@ -1583,6 +1581,9 @@ class ReporterAgent(
                 metrics_service_pb2_grpc.add_MetricsServiceServicer_to_server(
                     self, server
                 )
+
+        # Initialize GPU metric provider when the agent starts
+        self._gpu_metric_provider.initialize()
 
         await self._run_loop()
 

@@ -521,12 +521,20 @@ def smi_get_device_compute_process():
     else:
         return []
 
-def smi_get_compute_process_info_by_device(dev, proc_ids):
-    """returns list of process info running compute on the device provided by process ids"""
+def smi_get_compute_process_info_by_device(device_id: int, proc_ids: list) -> list:
+    """Returns list of process info running compute on the specified device by process IDs.
+
+    Args:
+        device_id: The device index to query
+        proc_ids: List of process IDs to get info for
+
+    Returns:
+        List of process info structures for the specified device and process IDs
+    """
     proc_infos = []
     for proc_id in proc_ids:
         proc_info = rsmi_process_info_t()
-        ret = rocm_lib.rsmi_compute_process_info_by_device_get(proc_id, dev, byref(proc_info))
+        ret = rocm_lib.rsmi_compute_process_info_by_device_get(proc_id, device_id, byref(proc_info))
         if rsmi_ret_ok(ret):
             proc_infos.append(proc_info)
     return proc_infos
