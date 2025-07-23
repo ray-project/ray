@@ -483,24 +483,3 @@ python_grpc_compile(
     name = "serve_py_proto",
     deps = [":serve_proto"],
 )
-
-python_grpc_compile(
-    name = "all_py_proto",
-    deps = [
-        ":autoscaler_proto",
-        ":common_proto",
-        ":core_worker_proto",
-        ":event_proto",
-        ":events_event_aggregator_service_proto",
-        ":export_event_proto",
-        ":gcs_proto",
-        ":gcs_service_proto",
-        ":instance_manager_proto",
-        ":node_manager_proto",
-        ":ray_client_proto",
-        ":reporter_proto",
-        ":runtime_env_agent_proto",
-        ":runtime_env_common_proto",
-        ":usage_proto",
-    ],
-)

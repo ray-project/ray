@@ -1021,9 +1021,9 @@ filegroup(
 )
 
 genrule(
-    name = "all_py_proto_filelist",
-    srcs = ["//src/ray/protobuf:all_py_proto"],
-    outs = ["all_py_proto_filelist.txt"],
+    name = "core_py_proto_filelist",
+    srcs = ["//src/ray/protobuf:core_py_proto"],
+    outs = ["core_py_proto_filelist.txt"],
     cmd = "for f in $(SRCS); do echo $$f; done > $@",
 )
 
@@ -1053,19 +1053,16 @@ pkg_files(
 )
 
 pkg_files(
-    name = "all_py_proto_files",
-    srcs = ["//src/ray/protobuf:all_py_proto"],
-    excludes = [
-        "opentelemetry/proto/metrics/v1/metrics_pb2.py",
-    ],
+    name = "core_py_proto_files",
+    srcs = ["//src/ray/protobuf:core_py_proto"],
     prefix = "ray/core/generated",
     visibility = ["//visibility:private"],
 )
 
 pkg_zip(
-    name = "all_py_proto_zip",
-    srcs = [":all_py_proto_files"],
-    out = "all_py_proto.zip",
+    name = "core_py_proto_zip",
+    srcs = [":core_py_proto_files"],
+    out = "core_py_proto.zip",
     visibility = ["//visibility:private"],
 )
 
@@ -1073,6 +1070,13 @@ pkg_files(
     name = "serve_py_proto_files",
     srcs = [":serve_py_proto"],
     prefix = "ray/serve/generated",
+    visibility = ["//visibility:private"],
+)
+
+pkg_zip(
+    name = "serve_py_proto_zip",
+    srcs = [":serve_py_proto_files"],
+    out = "serve_py_proto.zip",
     visibility = ["//visibility:private"],
 )
 
@@ -1114,7 +1118,7 @@ pkg_files(
 pkg_zip(
     name = "ray_pkg_zip",
     srcs = [
-        ":all_py_proto_files",
+        ":core_py_proto_files",
         ":gcs_server_files",
         ":jemalloc_files",
         ":raylet_files",
