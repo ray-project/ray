@@ -113,7 +113,7 @@ class TestCli(unittest.TestCase):
             compiled_file = Path(
                 _runfiles.Rlocation(f"{tmpdir}/requirement_constraints_test.txt")
             )
-            _replace_in_file(compiled_file, "emoji==2.10.0", "emoji==2.12.0")
+            _replace_in_file(compiled_file, "emoji==2.9.0", "emoji==2.10.0")
             output_file = Path(
                 _runfiles.Rlocation(f"{tmpdir}/requirements_compiled.txt")
             )
@@ -231,16 +231,6 @@ def _copy_data_to_tmpdir(tmpdir):
         tmpdir,
         dirs_exist_ok=True,
     )
-
-
-def _replace_in_file(filepath, old, new):
-    with open(filepath, "r") as f:
-        contents = f.read()
-
-    contents = contents.replace(old, new)
-
-    with open(filepath, "w") as f:
-        f.write(contents)
 
 
 def _replace_in_file(filepath, old, new):
