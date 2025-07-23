@@ -40,16 +40,16 @@ MIN_PYARROW_VERSION_CHUNKED_ARRAY_TO_NUMPY_ZERO_COPY_ONLY = parse_version("13.0.
 NUM_BYTES_PER_UNICODE_CHAR = 4
 
 
-class SerializationFormat(Enum):
+class _SerializationFormat(Enum):
     JSON = 0
     CLOUDPICKLE = 1
 
 
 # Set the default serialization format for Arrow extension types.
-ARROW_EXTENSION_SERIALIZATION_FORMAT = SerializationFormat(
+ARROW_EXTENSION_SERIALIZATION_FORMAT = _SerializationFormat(
     env_integer(
         "RAY_ARROW_EXTENSION_SERIALIZATION_FORMAT",
-        SerializationFormat.CLOUDPICKLE.value,
+        _SerializationFormat.CLOUDPICKLE.value,
     )
 )
 
@@ -484,9 +484,9 @@ class _BaseFixedShapeArrowTensorType(pa.ExtensionType, abc.ABC):
         )
 
     def __arrow_ext_serialize__(self):
-        if ARROW_EXTENSION_SERIALIZATION_FORMAT == SerializationFormat.CLOUDPICKLE:
+        if ARROW_EXTENSION_SERIALIZATION_FORMAT == _SerializationFormat.CLOUDPICKLE:
             return cloudpickle.dumps(self._shape)
-        elif ARROW_EXTENSION_SERIALIZATION_FORMAT == SerializationFormat.JSON:
+        elif ARROW_EXTENSION_SERIALIZATION_FORMAT == _SerializationFormat.JSON:
             return json.dumps(self._shape).encode()
         else:
             raise ValueError(
@@ -1072,9 +1072,9 @@ class ArrowVariableShapedTensorType(pa.ExtensionType):
         )
 
     def __arrow_ext_serialize__(self):
-        if ARROW_EXTENSION_SERIALIZATION_FORMAT == SerializationFormat.CLOUDPICKLE:
+        if ARROW_EXTENSION_SERIALIZATION_FORMAT == _SerializationFormat.CLOUDPICKLE:
             return cloudpickle.dumps(self._ndim)
-        elif ARROW_EXTENSION_SERIALIZATION_FORMAT == SerializationFormat.JSON:
+        elif ARROW_EXTENSION_SERIALIZATION_FORMAT == _SerializationFormat.JSON:
             return json.dumps(self._ndim).encode()
         else:
             raise ValueError(

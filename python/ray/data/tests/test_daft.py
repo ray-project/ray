@@ -13,7 +13,7 @@ import pytest
 import ray
 import ray.air.util.tensor_extensions.arrow as arrow_module
 from ray.air.util.tensor_extensions.arrow import (
-    SerializationFormat,
+    _SerializationFormat,
 )
 
 
@@ -26,7 +26,7 @@ def ray_start(request):
     # and Ray issue https://github.com/ray-project/ray/issues/54837
     # for more details.
     original_format = arrow_module.ARROW_EXTENSION_SERIALIZATION_FORMAT
-    arrow_module.ARROW_EXTENSION_SERIALIZATION_FORMAT = SerializationFormat.JSON
+    arrow_module.ARROW_EXTENSION_SERIALIZATION_FORMAT = _SerializationFormat.JSON
 
     try:
         yield ray.init(num_cpus=16)
