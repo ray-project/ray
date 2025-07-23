@@ -963,9 +963,9 @@ gitdb==4.0.11 \
     # via
     #   -c python/requirements_compiled_ray_test_py311_cpu.txt
     #   gitpython
-gitpython==3.1.40 \
-    --hash=sha256:22b126e9ffb671fdd0c129796343a02bf67bf2994b35449ffc9321aa755e18a4 \
-    --hash=sha256:cf14627d5a8049ffbf49915732e5eddbe8134c3bdb9d476e6182b676fc573f8a
+gitpython==3.1.44 \
+    --hash=sha256:9e0e10cda9bed1ee64bc9a6de50e7e38a9c9943241cd7f585f6df3ed28011110 \
+    --hash=sha256:c87e30b26253bf5418b01b0660f818967f3c503193838337fe5e573331249269
     # via
     #   -c python/requirements_compiled_ray_test_py311_cpu.txt
     #   -r python/requirements/cloud-requirements.txt

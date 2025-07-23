@@ -549,9 +549,7 @@ CoreWorker::CoreWorker(
   // Verify driver and worker are never mixed in the same process.
   RAY_CHECK_EQ(options_.worker_type != WorkerType::DRIVER, niced);
 #endif
-
-  // Tell the raylet the port that we are listening on, only do when port hasn't been
-  // announced.
+  // Tell the raylet the port that we are listening on.
   // NOTE: This also marks the worker as available in Raylet. We do this at the very end
   // in case there is a problem during construction.
   ConnectToRayletInternal();
@@ -615,8 +613,6 @@ void CoreWorker::ConnectToRayletInternal() {
         core_worker_server_->GetPort(), options_.entrypoint);
     RAY_CHECK_OK(status) << "Failed to announce driver's port to raylet and GCS";
   } else {
-    // TODO(hjiang): In the future this function should only accessed by driver, should
-    // delete worker branch.
     Status status =
         local_raylet_client_->AnnounceWorkerPortForWorker(core_worker_server_->GetPort());
     RAY_CHECK_OK(status) << "Failed to announce worker's port to raylet and GCS";

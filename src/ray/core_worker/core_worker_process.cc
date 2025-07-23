@@ -173,16 +173,6 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
   auto task_event_buffer = std::make_unique<worker::TaskEventBufferImpl>(
       std::make_shared<gcs::GcsClient>(options.gcs_options));
 
-  // Initialize raylet client.
-  // NOTE(edoakes): the core_worker_server_ must be running before registering with
-  // the raylet, as the raylet will start sending some RPC messages immediately.
-  // TODO(zhijunfu): currently RayletClient would crash in its constructor if it cannot
-  // connect to Raylet after a number of retries, this can be changed later
-  // so that the worker (java/python .etc) can retrieve and handle the error
-  // instead of crashing.
-  auto grpc_client = rpc::NodeManagerWorkerClient::make(
-      options.raylet_ip_address, options.node_manager_port, *client_call_manager);
-
   // Start the IO thread first to make sure the checker is working.
   boost::thread::attributes io_thread_attrs;
 #if defined(__APPLE__)
@@ -219,43 +209,42 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
   auto raylet_conn = std::make_unique<raylet::RayletConnection>(
       io_service_, options.raylet_socket, /*num_retries=*/-1, /*timeout=*/-1);
 
-  const bool raylet_id_assigned = options.assigned_raylet_id.has_value();
-  const bool worker_port_assigned = options.assigned_worker_port.has_value();
-  NodeID local_raylet_id = raylet_id_assigned ? *options.assigned_raylet_id : NodeID{};
-  int assigned_port = worker_port_assigned ? *options.assigned_worker_port : 0;
-  // Sanity check invariant: both should be assigned for worker, neither assigned for
-  // driver.
-  RAY_CHECK((raylet_id_assigned && worker_port_assigned) ||
-            (!raylet_id_assigned && !worker_port_assigned));
-  // TODO(hjiang): Use `is_worker` / `is_driver` boolean to replace repeated `has_value`
-  // check.
-  if (!options.assigned_worker_port.has_value()) {
-    // TODO(hjiang): In the next PR we will pass down port number and raylet id and use
-    // them directly. Then we need to rename `RegisterWorkerToRaylet` to
-    // `RegisterDriverToRaylet`.
-    Status raylet_client_status =
-        RegisterWorkerToRaylet(*raylet_conn,
-                               worker_context->GetWorkerID(),
-                               options.worker_type,
-                               worker_context->GetCurrentJobID(),
-                               options.runtime_env_hash,
-                               options.language,
-                               options.node_ip_address,
-                               options.serialized_job_config,
-                               options.startup_token,
-                               &local_raylet_id,
-                               &assigned_port);
-    if (!raylet_client_status.ok()) {
-      // Avoid using FATAL log or RAY_CHECK here because they may create a core dump file.
-      RAY_LOG(ERROR).WithField(worker_id)
-          << "Failed to register worker to Raylet: " << raylet_client_status;
-      QuickExit();
-    }
-    RAY_CHECK_GE(assigned_port, 0);
-  }
+  NodeID local_raylet_id;
+  int assigned_port = 0;
 
-  auto local_raylet_client = std::make_shared<raylet::RayletClient>(
-      std::move(raylet_conn), std::move(grpc_client), worker_context->GetWorkerID());
+  Status raylet_client_status = RegisterWorkerToRaylet(*raylet_conn,
+                                                        GetWorkerID(),
+                                                        options_.worker_type,
+                                                        worker_context_.GetCurrentJobID(),
+                                                        options_.runtime_env_hash,
+                                                        options_.language,
+                                                        options_.node_ip_address,
+                                                        options_.serialized_job_config,
+                                                        options_.startup_token,
+                                                        &local_raylet_id,
+                                                        &assigned_port);
+  if (!raylet_client_status.ok()) {
+    // Avoid using FATAL log or RAY_CHECK here because they may create a core dump file.
+    RAY_LOG(ERROR).WithField(worker_id)
+        << "Failed to register worker to Raylet: " << raylet_client_status;
+    QuickExit();
+  }
+  RAY_CHECK_GE(assigned_port, 0);
+
+  // Initialize raylet client.
+  // NOTE(edoakes): the core_worker_server_ must be running before registering with
+  // the raylet, as the raylet will start sending some RPC messages immediately.
+  // TODO(zhijunfu): currently RayletClient would crash in its constructor if it cannot
+  // connect to Raylet after a number of retries, this can be changed later
+  // so that the worker (java/python .etc) can retrieve and handle the error
+  // instead of crashing.
+
+  local_raylet_client_ =
+    std::make_shared<raylet::RayletClient>(std::move(raylet_conn),
+                                          options_.raylet_ip_address,
+                                          options_.node_manager_port,
+                                          *client_call_manager_,
+                                          GetWorkerID());
   auto connected = true;
 
   auto core_worker_server =
@@ -296,10 +285,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
                 [this](const std::string &node_manager_address, int32_t port) {
                   const auto &core_worker = GetCoreWorker();
                   return std::make_shared<raylet::RayletClient>(
-                      rpc::NodeManagerWorkerClient::make(
-                          node_manager_address,
-                          port,
-                          *core_worker->client_call_manager_));
+                    node_manager_address, port, *client_call_manager_);
                 },
                 addr));
       });
@@ -421,11 +407,9 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
         const auto &core_worker = GetCoreWorker();
         auto node_info = core_worker->gcs_client_->Nodes().Get(node_id);
         RAY_CHECK(node_info) << "No GCS info for node " << node_id;
-        auto grpc_client =
-            rpc::NodeManagerWorkerClient::make(node_info->node_manager_address(),
-                                               node_info->node_manager_port(),
-                                               client_call_manager);
-        return std::make_shared<raylet::RayletClient>(std::move(grpc_client));
+        return std::make_shared<raylet::RayletClient>(node_info->node_manager_address(),
+                                                      node_info->node_manager_port(),
+                                                      client_call_manager);
       };
   auto experimental_mutable_object_provider =
       std::make_shared<experimental::MutableObjectProvider>(
@@ -475,10 +459,8 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       });
 
   auto raylet_client_factory = [this](const std::string &ip_address, int port) {
-    const auto &core_worker = GetCoreWorker();
-    auto grpc_client = rpc::NodeManagerWorkerClient::make(
-        ip_address, port, *core_worker->client_call_manager_);
-    return std::make_shared<raylet::RayletClient>(std::move(grpc_client));
+    return std::make_shared<raylet::RayletClient>(
+      ip_address, port, *client_call_manager_);
   };
 
   auto on_excess_queueing = [this](const ActorID &actor_id, uint64_t num_queued) {
@@ -815,9 +797,8 @@ void CoreWorkerProcessImpl::InitializeSystemConfig() {
     boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
         io_service.get_executor());
     rpc::ClientCallManager client_call_manager(io_service, /*record_stats=*/false);
-    auto grpc_client = rpc::NodeManagerWorkerClient::make(
+    raylet::RayletClient raylet_client(
         options_.raylet_ip_address, options_.node_manager_port, client_call_manager);
-    raylet::RayletClient raylet_client(grpc_client);
 
     std::function<void(int64_t)> get_once = [this,
                                              &get_once,
