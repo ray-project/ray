@@ -50,6 +50,7 @@ ray_cc_library(
     deps = [
         ":ray_config",
         ":status",
+        "//src/ray/protobuf:common_cc_proto",
         "//src/ray/util",
         "//src/ray/util:logging",
         "//src/ray/util:type_traits",
