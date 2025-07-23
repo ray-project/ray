@@ -393,8 +393,6 @@ def test_one_hot_encoder_with_max_categories():
 def test_one_hot_encoder_mixed_data_types():
     """Tests OneHotEncoder functionality with mixed data types (strings and lists)."""
 
-    from ray.data.preprocessors.encoder import OneHotEncoder
-
     test_inputs = {"category": ["1", [1]]}
     test_pd_df = pd.DataFrame(test_inputs)
     test_data_for_fitting = {"category": ["1", "[1]", "a", "[]", "True"]}

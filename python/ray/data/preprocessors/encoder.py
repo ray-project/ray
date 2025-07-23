@@ -278,13 +278,13 @@ class OneHotEncoder(Preprocessor):
             num_categories = len(stats)
             one_hot = np.zeros((len(df), num_categories), dtype=int)
 
-            def safe_get(v, m):
+            def safe_get(v):
                 try:
-                    return m.get(v, -1)
+                    return stats.get(v, -1)
                 except TypeError:
                     return -1  # Unhashable type treated as a missing category
 
-            codes = df[column].apply(lambda v, m=stats: safe_get(v, m)).to_numpy()
+            codes = df[column].apply(safe_get).to_numpy()
             valid_rows = codes != -1
             one_hot[np.nonzero(valid_rows)[0], codes[valid_rows].astype(int)] = 1
             df[output_column] = one_hot.tolist()
