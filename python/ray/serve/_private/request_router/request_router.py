@@ -944,9 +944,14 @@ class RequestRouter(ABC):
                         self.num_routing_tasks_in_backoff
                     )
 
-                backoff_s = min(
-                    self.initial_backoff_s * self.backoff_multiplier**attempt,
-                    self.max_backoff_s,
+                backoff_s = (
+                    min(
+                        self.initial_backoff_s
+                        * self.backoff_multiplier ** (attempt - 1),
+                        self.max_backoff_s,
+                    )
+                    if attempt > 0
+                    else 0
                 )
                 await asyncio.sleep(backoff_s)
                 attempt += 1
