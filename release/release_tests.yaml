@@ -4360,7 +4360,7 @@
   cluster:
     byod:
       type: llm-cu128
-      post_build_script: byod_llm_lmcache_nixl.sh
+      post_build_script: byod_llm_lmcache_test.sh
     cluster_compute: llm_auto_select_worker.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
