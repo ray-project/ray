@@ -37,6 +37,7 @@ class MockGcsActorManager : public GcsActorManager {
             /*gcs_publisher=*/nullptr,
             runtime_env_manager,
             function_manager,
+            /*gcs_virtual_cluster_manager=*/mock_virtual_cluster_manager_do_not_use_,
             [](const ActorID &) {},
             [](const rpc::Address &) { return nullptr; }) {}
 
@@ -84,6 +85,11 @@ class MockGcsActorManager : public GcsActorManager {
               (override));
 
   instrumented_io_context mock_io_context_do_not_use_;
+  GcsVirtualClusterManager mock_virtual_cluster_manager_do_not_use_{
+      mock_io_context_do_not_use_, 
+      *static_cast<GcsTableStorage*>(nullptr), 
+      *static_cast<GcsPublisher*>(nullptr), 
+      *static_cast<const ClusterResourceManager*>(nullptr)};
 };
 
 }  // namespace gcs

@@ -43,6 +43,12 @@ class MockWorkerPool : public WorkerPoolInterface {
     callbacks[runtime_env_hash].push_back(callback);
   }
 
+  void PopWorker(const TaskSpecification &task_spec,
+                     const PopWorkerCallback &callback,
+                     const std::string &resource_spec) override {
+        PopWorker(task_spec, callback);
+  }
+
   void PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
     workers.push_front(worker);
   }

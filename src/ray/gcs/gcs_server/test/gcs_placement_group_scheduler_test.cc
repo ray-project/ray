@@ -25,6 +25,8 @@
 #include "ray/gcs/gcs_server/gcs_virtual_cluster_manager.h"
 #include "ray/util/counter_map.h"
 #include "mock/ray/pubsub/publisher.h"
+#include "ray/raylet/scheduling/cluster_resource_manager.h"
+#include "ray/gcs/gcs_server/gcs_virtual_cluster_manager.h"
 // clang-format on
 
 namespace ray {
@@ -310,6 +312,8 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::unique_ptr<rpc::NodeManagerClientPool> raylet_client_pool_;
   std::shared_ptr<CounterMap<rpc::PlacementGroupTableData::PlacementGroupState>> counter_;
+  std::unique_ptr<ray::ClusterResourceManager> cluster_resource_manager_;
+  std::unique_ptr<ray::gcs::GcsVirtualClusterManager> gcs_virtual_cluster_manager_;
 };
 
 TEST_F(GcsPlacementGroupSchedulerTest, TestSpreadScheduleFailedWithZeroNode) {

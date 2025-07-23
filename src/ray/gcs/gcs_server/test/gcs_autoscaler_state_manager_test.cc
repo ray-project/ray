@@ -25,6 +25,7 @@
 #include "mock/ray/gcs/gcs_server/gcs_placement_group_manager.h"
 #include "mock/ray/gcs/gcs_server/gcs_node_manager.h"
 #include "mock/ray/gcs/gcs_server/gcs_actor_manager.h"
+#include "mock/ray/gcs/gcs_server/gcs_resource_manager.h"
 #include "mock/ray/gcs/store_client/store_client.h"
 
 #include "ray/gcs/gcs_server/gcs_autoscaler_state_manager.h"
@@ -50,7 +51,7 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
   std::shared_ptr<GcsServerMocker::MockRayletClient> raylet_client_;
   std::shared_ptr<rpc::NodeManagerClientPool> client_pool_;
   std::unique_ptr<ClusterResourceManager> cluster_resource_manager_;
-  std::shared_ptr<GcsResourceManager> gcs_resource_manager_;
+  std::shared_ptr<MockGcsResourceManager> gcs_resource_manager_;
   std::shared_ptr<MockGcsNodeManager> gcs_node_manager_;
   std::unique_ptr<MockGcsActorManager> gcs_actor_manager_;
   std::unique_ptr<GcsAutoscalerStateManager> gcs_autoscaler_state_manager_;
@@ -76,10 +77,8 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
     gcs_actor_manager_ =
         std::make_unique<MockGcsActorManager>(*runtime_env_manager_, *function_manager_);
     gcs_resource_manager_ =
-        std::make_shared<GcsResourceManager>(io_service_,
-                                             *cluster_resource_manager_,
-                                             *gcs_node_manager_,
-                                             NodeID::FromRandom());
+          std::make_shared<MockGcsResourceManager>(*cluster_resource_manager_,
+                                                    *gcs_node_manager_);
 
     gcs_placement_group_manager_ =
         std::make_shared<MockGcsPlacementGroupManager>(*gcs_resource_manager_);

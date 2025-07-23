@@ -27,6 +27,8 @@
 #include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/rpc/node_manager/node_manager_client_pool.h"
 #include "mock/ray/pubsub/publisher.h"
+#include "ray/raylet/scheduling/cluster_resource_manager.h"
+#include "ray/gcs/gcs_server/gcs_virtual_cluster_manager.h"
 // clang-format on
 
 using json = nlohmann::json;
@@ -49,6 +51,10 @@ class GcsNodeManagerExportAPITest : public ::testing::Test {
     gcs_publisher_ = std::make_unique<gcs::GcsPublisher>(
         std::make_unique<ray::pubsub::MockPublisher>());
     gcs_table_storage_ = std::make_unique<gcs::InMemoryGcsTableStorage>();
+    cluster_resource_manager_ = std::make_unique<ray::ClusterResourceManager>(io_service_);
+    gcs_virtual_cluster_manager_ =
+        std::make_unique<ray::gcs::GcsVirtualClusterManager>(
+            io_service_, *gcs_table_storage_, *gcs_publisher_, *cluster_resource_manager_);
 
     RayConfig::instance().initialize(
         R"(
@@ -78,6 +84,8 @@ class GcsNodeManagerExportAPITest : public ::testing::Test {
   std::unique_ptr<rpc::NodeManagerClientPool> client_pool_;
   std::shared_ptr<gcs::GcsPublisher> gcs_publisher_;
   instrumented_io_context io_service_;
+  std::unique_ptr<ray::ClusterResourceManager> cluster_resource_manager_;
+  std::unique_ptr<ray::gcs::GcsVirtualClusterManager> gcs_virtual_cluster_manager_;
   std::string log_dir_;
 };
 
@@ -87,7 +95,8 @@ TEST_F(GcsNodeManagerExportAPITest, TestExportEventRegisterNode) {
                                    gcs_table_storage_.get(),
                                    io_service_,
                                    client_pool_.get(),
-                                   ClusterID::Nil());
+                                   ClusterID::Nil(),
+                                    *gcs_virtual_cluster_manager_);
   auto node = Mocker::GenNodeInfo();
 
   rpc::RegisterNodeRequest register_request;
@@ -112,7 +121,8 @@ TEST_F(GcsNodeManagerExportAPITest, TestExportEventUnregisterNode) {
                                    gcs_table_storage_.get(),
                                    io_service_,
                                    client_pool_.get(),
-                                   ClusterID::Nil());
+                                   ClusterID::Nil(),
+                                  *gcs_virtual_cluster_manager_);
   auto node = Mocker::GenNodeInfo();
   auto node_id = NodeID::FromBinary(node->node_id());
   node_manager.AddNode(node);

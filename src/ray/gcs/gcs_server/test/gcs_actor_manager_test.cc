@@ -24,6 +24,8 @@
 #include "mock/ray/gcs/gcs_server/gcs_kv_manager.h"
 #include "mock/ray/gcs/gcs_server/gcs_node_manager.h"
 #include "mock/ray/pubsub/publisher.h"
+#include "ray/raylet/scheduling/cluster_resource_manager.h"
+#include "ray/gcs/gcs_server/gcs_virtual_cluster_manager.h"
 // clang-format on
 
 namespace ray {
@@ -152,6 +154,10 @@ class GcsActorManagerTest : public ::testing::Test {
     function_manager_ = std::make_unique<gcs::GcsFunctionManager>(*kv_, io_service_);
     auto scheduler = std::make_unique<MockActorScheduler>();
     mock_actor_scheduler_ = scheduler.get();
+    cluster_resource_manager_ = std::make_unique<ray::ClusterResourceManager>(io_service_);
+    gcs_virtual_cluster_manager_ =
+        std::make_unique<ray::gcs::GcsVirtualClusterManager>(
+            io_service_, *gcs_table_storage_, *gcs_publisher_, *cluster_resource_manager_);
     gcs_actor_manager_ = std::make_unique<gcs::GcsActorManager>(
         std::move(scheduler),
         gcs_table_storage_.get(),
@@ -159,6 +165,7 @@ class GcsActorManagerTest : public ::testing::Test {
         gcs_publisher_.get(),
         *runtime_env_mgr_,
         *function_manager_,
+        *gcs_virtual_cluster_manager_,
         [](const ActorID &actor_id) {},
         [this](const rpc::Address &addr) { return worker_client_; });
 
@@ -294,6 +301,8 @@ class GcsActorManagerTest : public ::testing::Test {
   std::unique_ptr<gcs::GcsFunctionManager> function_manager_;
   std::unique_ptr<gcs::MockInternalKVInterface> kv_;
   std::shared_ptr<PeriodicalRunner> periodical_runner_;
+  std::unique_ptr<ray::ClusterResourceManager> cluster_resource_manager_;
+  std::unique_ptr<ray::gcs::GcsVirtualClusterManager> gcs_virtual_cluster_manager_;
 };
 
 TEST_F(GcsActorManagerTest, TestBasic) {

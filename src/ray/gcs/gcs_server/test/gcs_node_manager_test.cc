@@ -22,6 +22,8 @@
 #include "ray/rpc/node_manager/node_manager_client_pool.h"
 #include "mock/ray/pubsub/publisher.h"
 #include "ray/common/asio/asio_util.h"
+#include "ray/raylet/scheduling/cluster_resource_manager.h"
+#include "ray/gcs/gcs_server/gcs_virtual_cluster_manager.h"
 // clang-format on
 
 namespace ray {
@@ -34,6 +36,10 @@ class GcsNodeManagerTest : public ::testing::Test {
     gcs_publisher_ = std::make_unique<gcs::GcsPublisher>(
         std::make_unique<ray::pubsub::MockPublisher>());
     io_context_ = std::make_unique<InstrumentedIOContextWithThread>("GcsNodeManagerTest");
+    cluster_resource_manager_ = std::make_unique<ray::ClusterResourceManager>(io_service_);
+    gcs_virtual_cluster_manager_ =
+        std::make_unique<ray::gcs::GcsVirtualClusterManager>(
+            io_service_, *gcs_table_storage_, *gcs_publisher_, *cluster_resource_manager_);
   }
 
  protected:
@@ -42,6 +48,9 @@ class GcsNodeManagerTest : public ::testing::Test {
   std::unique_ptr<rpc::NodeManagerClientPool> client_pool_;
   std::unique_ptr<gcs::GcsPublisher> gcs_publisher_;
   std::unique_ptr<InstrumentedIOContextWithThread> io_context_;
+  instrumented_io_context io_service_;
+  std::unique_ptr<ray::ClusterResourceManager> cluster_resource_manager_;
+  std::unique_ptr<ray::gcs::GcsVirtualClusterManager> gcs_virtual_cluster_manager_;
 };
 
 TEST_F(GcsNodeManagerTest, TestManagement) {
@@ -49,7 +58,8 @@ TEST_F(GcsNodeManagerTest, TestManagement) {
                                    gcs_table_storage_.get(),
                                    io_context_->GetIoService(),
                                    client_pool_.get(),
-                                   ClusterID::Nil());
+                                   ClusterID::Nil(),
+                                  *gcs_virtual_cluster_manager_);
   // Test Add/Get/Remove functionality.
   auto node = Mocker::GenNodeInfo();
   auto node_id = NodeID::FromBinary(node->node_id());
@@ -67,7 +77,8 @@ TEST_F(GcsNodeManagerTest, TestListener) {
                                    gcs_table_storage_.get(),
                                    io_context_->GetIoService(),
                                    client_pool_.get(),
-                                   ClusterID::Nil());
+                                   ClusterID::Nil(),
+                                  *gcs_virtual_cluster_manager_);
   // Test AddNodeAddedListener.
   int node_count = 1000;
   std::vector<std::shared_ptr<rpc::GcsNodeInfo>> added_nodes;
