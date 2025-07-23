@@ -34,6 +34,7 @@ from ray._private.ray_constants import (
     DEBUG_AUTOSCALING_STATUS,
     RAY_EXPERIMENTAL_ENABLE_OPEN_TELEMETRY_ON_AGENT,
     RAY_EXPERIMENTAL_ENABLE_OPEN_TELEMETRY_ON_CORE,
+    RAY_METRIC_ENABLE_GPU_PYNVML_FALLBACK,
     env_integer,
 )
 from ray._private.telemetry.open_telemetry_metric_recorder import (
@@ -829,14 +830,16 @@ class ReporterAgent(
             return gpus
         except subprocess.CalledProcessError as e:
             logger.debug(f"nvidia-smi failed to call: {e}. Is nvidia-smi installed?")
-            using_nvidia_smi = False
-            return ReporterAgent._get_pynvml_gpu_usage()
-        except Exception as e:
-            logger.debug(
-                f"nvidia-smi failed to retrieve GPU information: {e}. Using pynvml."
-            )
-            using_nvidia_smi = False
-            return ReporterAgent._get_pynvml_gpu_usage()
+            if RAY_METRIC_ENABLE_GPU_PYNVML_FALLBACK:
+                logger.debug("Using pynvml to collect GPU utilization metrics.")
+                using_nvidia_smi = False
+                return ReporterAgent._get_pynvml_gpu_usage()
+            else:
+                raise RuntimeError(
+                    f"Failed to collect GPU utilization metrics: {e}. "
+                    "To use pynvml as a fallback when nvidia-smi fails, set "
+                    "RAY_metric_enable_gpu_pynvml_fallback=1"
+                )
 
     @staticmethod
     def _get_tpu_usage() -> List[TpuUtilizationInfo]:

@@ -578,6 +578,14 @@ RAY_ENABLE_UV_RUN_RUNTIME_ENV = env_bool("RAY_ENABLE_UV_RUN_RUNTIME_ENV", True)
 #   WorkerId will be removed from all metrics.
 RAY_METRIC_CARDINALITY_LEVEL = os.environ.get("RAY_metric_cardinality_level", "legacy")
 
+# Whether enable the pynvml fallback. If set to True, the dashboard will use the
+# pynvml to collect the GPU utilization metrics if the nvidia-smi fails without the
+# utilization per process information. If set to False, error will be raised on
+# failure of nvidia-smi.
+RAY_METRIC_ENABLE_GPU_PYNVML_FALLBACK = env_bool(
+    "RAY_metric_enable_gpu_pynvml_fallback", False
+)
+
 # Whether enable OpenTelemetry as the metrics collection backend on the driver
 # component. This flag is only used during the migration of the  metric collection
 # backend from OpenCensus to OpenTelemetry. It will be removed in the future.
