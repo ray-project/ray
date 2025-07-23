@@ -120,9 +120,6 @@ python/ray/_private/ray_logging/__init__.py
     DOC101: Function `run_callback_on_events_in_ipython`: Docstring contains fewer arguments than in function signature.
     DOC103: Function `run_callback_on_events_in_ipython`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [event: str].
 --------------------
-python/ray/_private/ray_option_utils.py
-    DOC201: Function `_counting_option` does not have a return section in docstring
---------------------
 python/ray/_private/resource_isolation_config.py
     DOC101: Method `ResourceIsolationConfig.__init__`: Docstring contains fewer arguments than in function signature.
     DOC103: Method `ResourceIsolationConfig.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [cgroup_path: Optional[str], enable_resource_isolation: bool, system_reserved_cpu: Optional[float], system_reserved_memory: Optional[int]].
@@ -1096,9 +1093,6 @@ python/ray/data/_internal/equalize.py
     DOC101: Function `_equalize`: Docstring contains fewer arguments than in function signature.
     DOC103: Function `_equalize`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [owned_by_consumer: bool].
     DOC103: Function `_shave_all_splits`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [per_split_num_rows: List[List[int]]].
---------------------
-python/ray/data/_internal/execution/bundle_queue/bundle_queue.py
-    DOC201: Method `BundleQueue.pop` does not have a return section in docstring
 --------------------
 python/ray/data/_internal/execution/interfaces/execution_options.py
     DOC201: Method `ExecutionResources.for_limits` does not have a return section in docstring
