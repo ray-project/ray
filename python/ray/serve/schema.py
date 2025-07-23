@@ -1219,12 +1219,16 @@ class CeleryTaskProcessorConfig(BaseModel):
     )
 
 
+class MockTaskProcessorConfig(BaseModel):
+    pass
+
+
 @PublicAPI(stability="alpha")
 class TaskProcessorConfig(BaseModel):
     queue_name: str = Field(
         ..., description="The name of the queue to use for task processing."
     )
-    adapter_config: CeleryTaskProcessorConfig = Field(
+    adapter_config: Union[CeleryTaskProcessorConfig, MockTaskProcessorConfig] = Field(
         ..., description="The adapter config. Currently only Celery is supported."
     )
     max_retry: Optional[int] = Field(

@@ -3,11 +3,17 @@ import threading
 import time
 from abc import ABC, abstractmethod
 from typing import Any, Dict, Optional
+from unittest.mock import MagicMock
 
 from celery import Celery
 
 from ray.serve._private.constants import SERVE_LOGGER_NAME
-from ray.serve.schema import CeleryTaskProcessorConfig, TaskProcessorConfig, TaskResult
+from ray.serve.schema import (
+    CeleryTaskProcessorConfig,
+    MockTaskProcessorConfig,
+    TaskProcessorConfig,
+    TaskResult,
+)
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -170,6 +176,46 @@ class CeleryTaskProcessorAdapter(TaskProcessorAdapter):
         return self._app.control.ping()
 
 
+class MockTaskProcessorAdapter(TaskProcessorAdapter):
+    _start_consumer_received: bool = False
+    _stop_consumer_received: bool = False
+    _shutdown_received: bool = False
+
+    def __init__(self, config: TaskProcessorConfig):
+        self._config = config
+        self.register_task_handle_mock = MagicMock()
+
+    def initialize(self, config: TaskProcessorConfig):
+        pass
+
+    def register_task_handle(self, func, name=None):
+        self.register_task_handle_mock(func, name=name)
+
+    def enqueue_task(self, task_name, args=None, kwargs=None, **options) -> TaskResult:
+        pass
+
+    def get_task_status(self, task_id) -> Dict[str, Any]:
+        pass
+
+    def cancel_task(self, task_id) -> bool:
+        pass
+
+    def get_metrics(self) -> Dict[str, Any]:
+        pass
+
+    def start_consumer(self, **kwargs):
+        self._start_consumer_received = True
+
+    def stop_consumer(self, timeout: float = 10.0):
+        self._stop_consumer_received = True
+
+    def shutdown(self):
+        self._shutdown_received = True
+
+    def health_check(self):
+        pass
+
+
 def get_task_adapter(config: TaskProcessorConfig) -> TaskProcessorAdapter:
     """
     Factory function to instantiate the appropriate TaskProcessorAdapter
@@ -189,6 +235,12 @@ def get_task_adapter(config: TaskProcessorConfig) -> TaskProcessorAdapter:
 
     if isinstance(config.adapter_config, CeleryTaskProcessorConfig):
         adapter = CeleryTaskProcessorAdapter(config=config)
+        adapter.initialize(config=config)
+
+        return adapter
+
+    elif isinstance(config.adapter_config, MockTaskProcessorConfig):
+        adapter = MockTaskProcessorAdapter(config=config)
         adapter.initialize(config=config)
 
         return adapter

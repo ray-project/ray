@@ -1,6 +1,7 @@
 import inspect
 import logging
 from functools import wraps
+from typing import Callable, Optional
 
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve.schema import TaskProcessorConfig
@@ -24,6 +25,21 @@ def task_consumer(*, task_processor_config: TaskProcessorConfig):
 
     Returns:
         A wrapper class that inherits from the target class and implements the task consumer functionality.
+
+    Example:
+        .. code-block:: python
+
+            from ray import serve
+            from ray.serve.task_consumer import task_consumer, task_handler
+
+            @serve.deployment
+            @task_consumer(task_processor_config=config)
+            class MyTaskConsumer:
+
+                @task_handler(name="my_task")
+                def my_task(self, *args, **kwargs):
+                    pass
+
     """
 
     def decorator(target_cls):
@@ -53,6 +69,7 @@ def task_consumer(*, task_processor_config: TaskProcessorConfig):
 
             def __del__(self):
                 self._adapter.stop_consumer()
+                self._adapter.shutdown()
 
                 if hasattr(target_cls, "__del__"):
                     target_cls.__del__(self)
@@ -63,10 +80,34 @@ def task_consumer(*, task_processor_config: TaskProcessorConfig):
 
 
 @PublicAPI(stability="alpha")
-def task_handler(_func=None, *, name=None):
+def task_handler(
+    _func: Optional[Callable] = None, *, name: Optional[str] = None
+) -> Callable:
     """
     Decorator to mark a method as a task handler.
     Optionally specify a task name. Default is the method name.
+
+    Arguments:
+        _func: The function to decorate.
+        name: The name of the task.
+
+    Returns:
+        A wrapper function that is marked as a task handler.
+
+    Example:
+        .. code-block:: python
+
+            from ray import serve
+            from ray.serve.task_consumer import task_consumer, task_handler
+
+            @serve.deployment
+            @task_consumer(task_processor_config=config)
+            class MyTaskConsumer:
+
+                @task_handler(name="my_task")
+                def my_task(self, *args, **kwargs):
+                    pass
+
     """
 
     # Validate name parameter if provided
