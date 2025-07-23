@@ -26,6 +26,7 @@
 #include "ray/common/status.h"
 #include "ray/util/logging.h"
 #include "ray/util/type_traits.h"
+#include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
 
@@ -231,4 +232,12 @@ inline grpc::ChannelArguments CreateDefaultChannelArguments() {
   return arguments;
 }
 
+namespace rpc {
+
+// Overload operator<< for TaskStatus to enable readable logging
+inline std::ostream &operator<<(std::ostream &os, const TaskStatus &status) {
+  return os << TaskStatus_Name(status);
+}
+
+}  // namespace rpc
 }  // namespace ray
