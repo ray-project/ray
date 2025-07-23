@@ -77,12 +77,6 @@ class MockWorkerPool : public WorkerPoolInterface {
                StartupToken worker_startup_token,
                std::function<void(Status, int)> send_reply_callback),
               (override));
-  MOCK_METHOD(Status,
-              RegisterWorker,
-              (const std::shared_ptr<WorkerInterface> &worker,
-               pid_t pid,
-               StartupToken worker_startup_token),
-              (override));
   MOCK_METHOD(void,
               OnWorkerStarted,
               (const std::shared_ptr<WorkerInterface> &worker),
