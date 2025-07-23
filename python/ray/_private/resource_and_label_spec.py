@@ -116,7 +116,7 @@ class ResourceAndLabelSpec:
 
         return resources
 
-    def resolve(self, is_head: bool, node_ip_address: Optional[str] = None):
+    def resolve(self, is_head: bool, node_ip_address: Optional[str] = None) -> ResourceAndLabelSpec:
         """Fills out this ResourceAndLabelSpec instance with system defaults.
 
         Args:
