@@ -18,6 +18,7 @@ from opentelemetry.proto.collector.metrics.v1 import (
     metrics_service_pb2,
     metrics_service_pb2_grpc,
 )
+from opentelemetry.proto.metrics.v1.metrics_pb2 import Metric
 from grpc.aio import ServicerContext
 
 
@@ -565,6 +566,93 @@ class ReporterAgent(
             logger.error(traceback.format_exc())
         return reporter_pb2.ReportOCMetricsReply()
 
+    def _export_histogram_data(
+        self,
+        metric: Metric,
+    ) -> None:
+        """
+        TODO(can-anyscale): once we launch the new open-telemetry stack, we need to
+        document and communicate that the histogram metric is an approximation to users.
+        The approximation is good enough for the dashboard to display the histogram
+        distribution. Only the sum of all data points will be the approximation. See
+        https://github.com/ray-project/ray/issues/54538 for the complete backlog of Ray
+        metric infra improvements.
+
+        Export histogram data points to OpenTelemetry Metric Recorder. A histogram
+        metric is aggregated into several internal representations in C++ side:
+        - sum of all buckets
+        - count of all buckets
+        - count per bucket
+
+        We reconstruct the histogram data points from these internal representations
+        and export them to OpenTelemetry Metric Recorder. The reconstruction is an
+        approximation, but it is good enough for the dashboard to display the histogram
+        data points.
+        """
+        data_points = metric.histogram.data_points
+        if not data_points:
+            return
+        self._open_telemetry_metric_recorder.register_histogram_metric(
+            metric.name,
+            metric.description,
+            data_points[0].explicit_bounds,
+        )
+        for data_point in data_points:
+            if data_point.count == 0:
+                continue
+
+            bucket_midpoints = (
+                self._open_telemetry_metric_recorder.get_histogram_bucket_midpoints(
+                    metric.name
+                )
+            )
+            assert len(bucket_midpoints) == len(data_point.bucket_counts)
+            tags = {tag.key: tag.value.string_value for tag in data_point.attributes}
+            for i, bucket_count in enumerate(data_point.bucket_counts):
+                if bucket_count == 0:
+                    continue
+                bucket_midpoint = bucket_midpoints[i]
+                for _ in range(bucket_count):
+                    self._open_telemetry_metric_recorder.set_metric_value(
+                        metric.name,
+                        tags,
+                        bucket_midpoint,
+                    )
+
+    def _export_number_data(
+        self,
+        metric: Metric,
+    ) -> None:
+        data_points = []
+        if metric.WhichOneof("data") == "gauge":
+            self._open_telemetry_metric_recorder.register_gauge_metric(
+                metric.name,
+                metric.description,
+            )
+            data_points = metric.gauge.data_points
+        if metric.WhichOneof("data") == "sum":
+            if metric.sum.is_monotonic:
+                self._open_telemetry_metric_recorder.register_counter_metric(
+                    metric.name,
+                    metric.description,
+                )
+            else:
+                self._open_telemetry_metric_recorder.register_sum_metric(
+                    metric.name,
+                    metric.description,
+                )
+            data_points = metric.sum.data_points
+        for data_point in data_points:
+            self._open_telemetry_metric_recorder.set_metric_value(
+                metric.name,
+                {tag.key: tag.value.string_value for tag in data_point.attributes},
+                # Note that all data points received from other Ray components are
+                # always double values. This is because the c++ apis
+                # (open_telemetry_metric_recorder.cc) only create metrics with double
+                # values.
+                data_point.as_double,
+            )
+
     async def Export(
         self,
         request: metrics_service_pb2.ExportMetricsServiceRequest,
@@ -579,41 +667,10 @@ class ReporterAgent(
         for resource_metrics in request.resource_metrics:
             for scope_metrics in resource_metrics.scope_metrics:
                 for metric in scope_metrics.metrics:
-                    data_points = []
-                    # gauge metrics
-                    if metric.WhichOneof("data") == "gauge":
-                        self._open_telemetry_metric_recorder.register_gauge_metric(
-                            metric.name, metric.description or ""
-                        )
-                        data_points = metric.gauge.data_points
-                    # counter metrics
-                    if metric.WhichOneof("data") == "sum" and metric.sum.is_monotonic:
-                        self._open_telemetry_metric_recorder.register_counter_metric(
-                            metric.name, metric.description or ""
-                        )
-                        data_points = metric.sum.data_points
-                    # sum metrics
-                    if (
-                        metric.WhichOneof("data") == "sum"
-                        and not metric.sum.is_monotonic
-                    ):
-                        self._open_telemetry_metric_recorder.register_sum_metric(
-                            metric.name, metric.description or ""
-                        )
-                        data_points = metric.sum.data_points
-                    for data_point in data_points:
-                        self._open_telemetry_metric_recorder.set_metric_value(
-                            metric.name,
-                            {
-                                tag.key: tag.value.string_value
-                                for tag in data_point.attributes
-                            },
-                            # Note that all data points received from other Ray
-                            # components are always double values. This is because the
-                            # c++ apis (open_telemetry_metric_recorder.cc) only create
-                            # metrics with double values.
-                            data_point.as_double,
-                        )
+                    if metric.WhichOneof("data") == "histogram":
+                        self._export_histogram_data(metric)
+                    else:
+                        self._export_number_data(metric)
 
         return metrics_service_pb2.ExportMetricsServiceResponse()
 
