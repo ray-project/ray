@@ -188,6 +188,7 @@ class TestCli(unittest.TestCase):
 
     def test_env_substitution(self):
         with tempfile.TemporaryDirectory() as tmpdir:
+            os.environ["PY_VERSION"] = "py311"
             _copy_data_to_tmpdir(tmpdir)
             output_fp = Path(tmpdir) / "test.config.yaml"
             _replace_in_file(
@@ -202,11 +203,12 @@ class TestCli(unittest.TestCase):
             assert os.getenv("PY_VERSION") == "py311"
             assert (
                 "requirements_compiled_general_py311.txt"
-                == manager.get_depset("general_depset").output
+                == manager.get_depset("env_test_depset").output
             )
 
     def test_env_substitution_with_brackets(self):
         with tempfile.TemporaryDirectory() as tmpdir:
+            os.environ["PY_VERSION"] = "py311"
             _copy_data_to_tmpdir(tmpdir)
             output_fp = Path(tmpdir) / "test.config.yaml"
             _replace_in_file(
@@ -221,7 +223,7 @@ class TestCli(unittest.TestCase):
             assert os.getenv("PY_VERSION") == "py311"
             assert (
                 "requirements_compiled_general_py311.txt"
-                == manager.get_depset("general_depset").output
+                == manager.get_depset("env_test_depset").output
             )
 
 

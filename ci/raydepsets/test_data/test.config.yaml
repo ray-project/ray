@@ -12,3 +12,9 @@ depsets:
     requirements:
       - requirements_test.txt
     output: requirements_compiled_general.txt
+
+  - name: env_test_depset
+    operation: compile
+    requirements:
+      - requirements_test.txt
+    output: requirements_compiled_general_py311.txt
