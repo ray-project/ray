@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 class ResourceAndLabelSpec:
-    """Represents the resource configuration passed to a raylet.
+    """Represents the resource and label configuration passed to a raylet.
 
     All fields can be None. Before starting services, resolve() should be
     called to return a ResourceAndLabelSpec with unknown values filled in with
