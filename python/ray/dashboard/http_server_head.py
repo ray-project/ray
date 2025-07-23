@@ -101,12 +101,9 @@ class HttpServerDashboardHead:
             logger.info("Setup static dir for dashboard: %s", build_dir)
         except dashboard_utils.FrontendNotFoundError as ex:
             # Not to raise FrontendNotFoundError due to NPM incompatibilities
-            # with Windows or missing build files.
+            # with Windows.
             # Please refer to ci.sh::build_dashboard_front_end()
-            if sys.platform in [
-                "win32",
-                "cygwin",
-            ] or "build directory not found" in str(ex):
+            if sys.platform in ["win32", "cygwin"]:
                 logger.warning(ex)
             else:
                 raise ex

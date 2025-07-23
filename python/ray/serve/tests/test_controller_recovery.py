@@ -16,10 +16,13 @@ from ray.serve._private.common import DeploymentID, ReplicaState
 from ray.serve._private.constants import (
     SERVE_CONTROLLER_NAME,
     SERVE_DEFAULT_APP_NAME,
+    SERVE_NAMESPACE,
+    SERVE_PROXY_NAME,
 )
 from ray.serve._private.test_utils import check_replica_counts, get_application_url
 from ray.serve.schema import LoggingConfig, ServeDeploySchema
 from ray.serve.tests.test_failure import request_with_retries
+from ray.util.state import list_actors
 
 
 @pytest.mark.parametrize(
@@ -31,7 +34,7 @@ from ray.serve.tests.test_failure import request_with_retries
 )
 def test_recover_start_from_replica_actor_names(serve_instance, deployment_options):
     """Test controller is able to recover starting -> running replicas from
-    actor names using Serve's internal APIs.
+    actor names.
     """
 
     # Test failed to deploy with total of 2 replicas,
@@ -52,8 +55,7 @@ def test_recover_start_from_replica_actor_names(serve_instance, deployment_optio
             "/recover_start_from_replica_actor_names/", timeout=30, app_name="app"
         )
         assert response.text == "hii"
-
-    # Assert 2 replicas are running in deployment after partially
+    # Assert 2 replicas are running in deployment deployment after partially
     # successful deploy() call with transient error
     deployment_dict = ray.get(serve_instance._controller._all_running_replicas.remote())
     id = DeploymentID(name="recover_start_from_replica_actor_names", app_name="app")
@@ -70,19 +72,25 @@ def test_recover_start_from_replica_actor_names(serve_instance, deployment_optio
             "same code version and user config."
         )
 
-    # Get replica names using Serve's internal APIs
-    replicas = ray.get(
-        serve_instance._controller._dump_replica_states_for_testing.remote(id)
-    )
+    # Sample: [
+    # 'TransientConstructorFailureDeployment#xlituP',
+    # 'SERVE_CONTROLLER_ACTOR',
+    # 'TransientConstructorFailureDeployment#NosHNA',
+    # 'SERVE_CONTROLLER_ACTOR:SERVE_PROXY_ACTOR-node:192.168.86.165-0']
+    actor_infos = list_actors(filters=[("state", "=", "ALIVE")])
     replica_names = [
-        replica.actor_handle._actor_id.hex()
-        for replica in replicas.get(states=[ReplicaState.RUNNING])
+        actor_info["name"]
+        for actor_info in actor_infos
+        if (
+            SERVE_CONTROLLER_NAME not in actor_info["name"]
+            and SERVE_PROXY_NAME not in actor_info["name"]
+        )
     ]
     assert (
         len(replica_names) == 2
-    ), "Should have two running replicas fetched from Serve API."
+    ), "Should have two running replicas fetched from ray API."
 
-    # Kill the controller and wait for the endpoint to be available again
+    # Kill controller and wait for endpoint to be available again
     ray.kill(serve.context._global_client._controller, no_restart=False)
     wait_for_condition(
         lambda: get_application_url("HTTP", "app", use_localhost=True) is not None
@@ -93,21 +101,24 @@ def test_recover_start_from_replica_actor_names(serve_instance, deployment_optio
         )
         assert response.text == "hii"
 
-    # Ensure recovered replica names are the same using Serve's internal APIs
-    recovered_replicas = ray.get(
-        serve_instance._controller._dump_replica_states_for_testing.remote(id)
-    )
+    # Ensure recovered replica names are the same
+    recovered_actor_infos = list_actors(filters=[("state", "=", "ALIVE")])
     recovered_replica_names = [
-        replica.actor_handle._actor_id.hex()
-        for replica in recovered_replicas.get(states=[ReplicaState.RUNNING])
+        actor_info["name"]
+        for actor_info in recovered_actor_infos
+        if (
+            SERVE_CONTROLLER_NAME not in actor_info["name"]
+            and SERVE_PROXY_NAME not in actor_info["name"]
+        )
     ]
-    assert set(recovered_replica_names) == set(
-        replica_names
+    assert (
+        recovered_replica_names == replica_names
     ), "Running replica actor names after recovery must match"
 
     # Ensure recovered replica version has are the same
-    for replica in recovered_replicas.get(states=[ReplicaState.RUNNING]):
-        ref = replica.actor_handle.initialize_and_get_metadata.remote()
+    for replica_name in recovered_replica_names:
+        actor_handle = ray.get_actor(replica_name, namespace=SERVE_NAMESPACE)
+        ref = actor_handle.initialize_and_get_metadata.remote()
         _, version, _, _, _ = ray.get(ref)
         assert replica_version_hash == hash(
             version
@@ -118,7 +129,6 @@ def test_recover_rolling_update_from_replica_actor_names(serve_instance):
     """Test controller can recover replicas during rolling update.
 
     Replicas starting -> updating -> running
-    replicas from actor names, with right replica versions during rolling
     replicas from actor names, with right replica versions during rolling
     update.
     """
@@ -165,8 +175,8 @@ def test_recover_rolling_update_from_replica_actor_names(serve_instance):
         deployment_id=DeploymentID(name="test", app_name="app"),
         total=3,
         by_state=[
-            (ReplicaState.STOPPING, 1, lambda r: r.actor_pid in initial_pids),
-            (ReplicaState.RUNNING, 2, lambda r: r.actor_pid not in initial_pids),
+            (ReplicaState.STOPPING, 1, lambda r: r._actor.pid in initial_pids),
+            (ReplicaState.RUNNING, 2, lambda r: r._actor.pid not in initial_pids),
         ],
     )
 
@@ -194,19 +204,17 @@ def test_recover_rolling_update_from_replica_actor_names(serve_instance):
         deployment_id=DeploymentID(name="test", app_name="app"),
         total=2,
         by_state=(
-            [(ReplicaState.RUNNING, 2, lambda r: r.actor_pid not in initial_pids)]
+            [(ReplicaState.RUNNING, 2, lambda r: r._actor.pid not in initial_pids)]
         ),
     )
 
 
-def test_controller_recover_initializing_actor(ray_instance):
-    """Recover the actor which is under PENDING_INITIALIZATION using Serve APIs."""
-
-    # Start Serve using Python API
-    serve.start()
+def test_controller_recover_initializing_actor(serve_instance):
+    """Recover the actor which is under PENDING_INITIALIZATION"""
 
     signal = SignalActor.remote()
     signal2 = SignalActor.remote()
+    client = serve_instance
 
     @ray.remote
     def pending_init_indicator():
@@ -222,72 +230,30 @@ def test_controller_recover_initializing_actor(ray_instance):
         def __call__(self, request):
             return f"1|{os.getpid()}"
 
-    # Deploy using Python API
-    serve._run(V1.bind(), name="app", _blocking=False)
-
+    serve._run(V1.bind(), _blocking=False, name="app")
     ray.get(pending_init_indicator.remote())
 
     def get_actor_info(name: str):
-        if SERVE_CONTROLLER_NAME in name:
-            # For controller, we can't directly access the PID from the handle
-            # Instead, we'll return the actor ID and None for PID
-            controller_handle = serve.context._global_client._controller
-            return controller_handle._actor_id.hex(), None
-        else:
-            # For replicas, use the deployment API
-            deployment_id = DeploymentID(name="V1", app_name="app")
-            replicas = ray.get(
-                serve.context._global_client._controller._dump_replica_states_for_testing.remote(
-                    deployment_id
-                )
-            )
-            for replica in replicas.get(
-                states=[ReplicaState.RUNNING, ReplicaState.STARTING]
-            ):
-                if name in replica.actor_handle._actor_id.hex():
-                    return replica.actor_handle._actor_id.hex(), replica.actor_pid
-            return None, None
+        all_current_actors = list_actors(filters=[("state", "=", "ALIVE")])
+        for actor in all_current_actors:
+            if SERVE_PROXY_NAME in actor["name"]:
+                continue
+            if name in actor["name"]:
+                print(actor)
+                return actor["name"], actor["pid"]
 
     actor_tag, _ = get_actor_info(f"app#{V1.name}")
     _, controller1_pid = get_actor_info(SERVE_CONTROLLER_NAME)
     ray.kill(serve.context._global_client._controller, no_restart=False)
-
-    # wait for controller is alive again using Serve APIs
-    def check_controller_alive():
-        try:
-            ray.get(
-                serve.context._global_client._controller._get_logging_config.remote()
-            )
-            return True
-        except Exception:
-            return False
-
-    wait_for_condition(check_controller_alive)
-    # Skip PID comparison if we couldn't get the original controller PID
-    if controller1_pid is not None:
-        assert controller1_pid != get_actor_info(SERVE_CONTROLLER_NAME)[1]
+    # wait for controller is alive again
+    wait_for_condition(get_actor_info, name=SERVE_CONTROLLER_NAME)
+    assert controller1_pid != get_actor_info(SERVE_CONTROLLER_NAME)[1]
 
     # Let the actor proceed initialization
     ray.get(signal.send.remote())
-
-    # Wait for application to be running
-    def check_app_running():
-        try:
-            status = serve.status()
-            app_status = status.applications["app"].status
-            print(f"App 'app' status: {app_status}")
-            return app_status == "RUNNING"
-        except (KeyError, Exception) as e:
-            print(f"Exception checking app status: {e}")
-            return False
-
-    wait_for_condition(check_app_running, timeout=60)
-
+    client._wait_for_application_running("app")
     # Make sure the actor before controller dead is staying alive.
     assert actor_tag == get_actor_info(f"app#{V1.name}")[0]
-
-    # Clean up
-    serve.shutdown()
 
 
 def test_replica_deletion_after_controller_recover(serve_instance):
@@ -399,11 +365,11 @@ def test_recover_deleting_application(serve_instance):
     print("Finished killing the controller (with restart).")
 
     def check_controller_alive():
-        try:
-            ray.get(serve_instance._controller._get_logging_config.remote())
-            return True
-        except Exception:
-            return False
+        all_current_actors = list_actors(filters=[("state", "=", "ALIVE")])
+        for actor in all_current_actors:
+            if actor["class_name"] == "ServeController":
+                return True
+        return False
 
     wait_for_condition(check_controller_alive)
     print("Controller is back alive.")
@@ -421,23 +387,16 @@ def test_recover_deleting_application(serve_instance):
     replicas = ray.get(
         serve_instance._controller._dump_replica_states_for_testing.remote(id)
     )
-    try:
-        graceful_shutdown_ref = replicas.get()[0]._actor._graceful_shutdown_ref
-    except AttributeError:
-        # If graceful_shutdown_ref is not available, skip the graceful shutdown check
-        graceful_shutdown_ref = None
+    graceful_shutdown_ref = replicas.get()[0]._actor._graceful_shutdown_ref
 
     signal.send.remote()
     print("Sent signal to unblock deletion of application")
     wait_for_condition(check_deleted)
     print("Confirmed that application finished deleting and delete task has returned.")
 
-    # Make sure graceful shutdown ran successfully if we have the reference
-    if graceful_shutdown_ref is not None:
-        ray.get(graceful_shutdown_ref)
-        print("Confirmed that graceful shutdown ran successfully.")
-    else:
-        print("Skipped graceful shutdown check (reference not available).")
+    # Make sure graceful shutdown ran successfully
+    ray.get(graceful_shutdown_ref)
+    print("Confirmed that graceful shutdown ran successfully.")
 
 
 def test_controller_crashes_with_logging_config(serve_instance):
@@ -489,11 +448,11 @@ def test_controller_crashes_with_logging_config(serve_instance):
     ray.kill(client._controller, no_restart=False)
 
     def check_controller_alive():
-        try:
-            ray.get(client._controller._get_logging_config.remote())
-            return True
-        except Exception:
-            return False
+        all_current_actors = list_actors(filters=[("state", "=", "ALIVE")])
+        for actor in all_current_actors:
+            if actor["class_name"] == "ServeController":
+                return True
+        return False
 
     wait_for_condition(check_controller_alive)
 
