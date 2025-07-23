@@ -2,75 +2,69 @@ import json
 import logging
 import os
 import sys
-from collections import namedtuple
-from typing import Dict, Optional
+from typing import Dict, Optional, Tuple
 
 import ray
 import ray._private.ray_constants as ray_constants
 from ray._common.constants import HEAD_NODE_RESOURCE_NAME, NODE_ID_PREFIX
 from ray._common.utils import RESOURCE_CONSTRAINT_PREFIX
+from ray._private import accelerators
 from ray._private.accelerators import AcceleratorManager
-from ray._private.accelerators.utils import get_current_node_accelerator
 
 logger = logging.getLogger(__name__)
 
 
-class ResourceAndLabelSpec(
-    namedtuple(
-        "ResourceAndLabelSpec",
-        [
-            "num_cpus",
-            "num_gpus",
-            "memory",
-            "object_store_memory",
-            "resources",
-            "labels",
-        ],
-    )
-):
+class ResourceAndLabelSpec:
     """Represents the resource configuration passed to a raylet.
 
     All fields can be None. Before starting services, resolve() should be
     called to return a ResourceAndLabelSpec with unknown values filled in with
     defaults based on the local machine specifications.
-
-    Attributes:
-        num_cpus: The CPUs allocated for this raylet.
-        num_gpus: The GPUs allocated for this raylet.
-        memory: The memory allocated for this raylet.
-        object_store_memory: The object store memory allocated for this raylet.
-            Note that when calling to_resource_dict(), this will be scaled down
-            by 30% to account for the global plasma LRU reserve.
-        resources: The custom resources allocated for this raylet.
-        labels: The labels associated with this node. Labels can be used along
-            with resources for scheduling.
     """
 
-    def __new__(
-        cls,
-        num_cpus=None,
-        num_gpus=None,
-        memory=None,
-        object_store_memory=None,
-        resources=None,
-        labels=None,
+    def __init__(
+        self,
+        num_cpus: Optional[int] = None,
+        num_gpus: Optional[int] = None,
+        memory: Optional[float] = None,
+        object_store_memory: Optional[float] = None,
+        resources: Optional[Dict[str, float]] = None,
+        labels: Optional[Dict[str, str]] = None,
     ):
-        return super(ResourceAndLabelSpec, cls).__new__(
-            cls,
-            num_cpus,
-            num_gpus,
-            memory,
-            object_store_memory,
-            resources,
-            labels,
-        )
+        """
+        Initialize a ResourceAndLabelSpec
 
-    def resolved(self):
+        Args:
+            num_cpus: The CPUs allocated for this raylet.
+            num_gpus: The GPUs allocated for this raylet.
+            memory: The memory allocated for this raylet.
+            object_store_memory: The object store memory allocated for this raylet.
+                Note that when calling to_resource_dict(), this will be scaled down
+                by 30% to account for the global plasma LRU reserve.
+            resources: The custom resources allocated for this raylet.
+            labels: The labels associated with this node. Labels can be used along
+                with resources for scheduling.
+        """
+        self.num_cpus = num_cpus
+        self.num_gpus = num_gpus
+        self.memory = memory
+        self.object_store_memory = object_store_memory
+        self.resources = resources
+        self.labels = labels
+
+    def resolved(self) -> bool:
         """Returns if this ResourceAndLabelSpec has default values filled out."""
-        for v in self._asdict().values():
-            if v is None:
-                return False
-        return True
+        return all(
+            v is not None
+            for v in (
+                self.num_cpus,
+                self.num_gpus,
+                self.memory,
+                self.object_store_memory,
+                self.resources,
+                self.labels,
+            )
+        )
 
     def to_resource_dict(self):
         """Returns a dict suitable to pass to raylet initialization.
@@ -125,21 +119,19 @@ class ResourceAndLabelSpec(
         return resources
 
     def resolve(self, is_head: bool, node_ip_address: Optional[str] = None):
-        """Returns a copy with values filled out with system defaults.
+        """Fills out this ResourceAndLabelSpec instance with system defaults.
 
         Args:
             is_head: Whether this is the head node.
             node_ip_address: The IP address of the node that we are on.
                 This is used to automatically create a node id resource.
+
         Returns:
-            A new ResourceAndLabelSpec with resolved fields (e.g., CPU, GPU, memory).
+            ResourceAndLabelSpec: This instance with all defaults resolved.
         """
 
-        resources = (self.resources or {}).copy()
-        assert "CPU" not in resources, resources
-        assert "GPU" not in resources, resources
-        assert "memory" not in resources, resources
-        assert "object_store_memory" not in resources, resources
+        if self.resources is None:
+            self.resources = {}
 
         if node_ip_address is None:
             node_ip_address = ray.util.get_node_ip_address()
@@ -147,50 +139,162 @@ class ResourceAndLabelSpec(
         # Automatically create a node id resource on each node. This is
         # queryable with ray._private.state.node_ids() and
         # ray._private.state.current_node_id().
-        resources[NODE_ID_PREFIX + node_ip_address] = 1.0
+        self.resources[NODE_ID_PREFIX + node_ip_address] = 1.0
 
         # Automatically create a head node resource.
-        if HEAD_NODE_RESOURCE_NAME in resources:
+        if HEAD_NODE_RESOURCE_NAME in self.resources:
             raise ValueError(
                 f"{HEAD_NODE_RESOURCE_NAME}"
                 " is a reserved resource name, use another name instead."
             )
         if is_head:
-            resources[HEAD_NODE_RESOURCE_NAME] = 1.0
+            self.resources[HEAD_NODE_RESOURCE_NAME] = 1.0
 
-        num_cpus = self.num_cpus
-        if num_cpus is None:
-            num_cpus = ray._private.utils.get_num_cpus()
+        if self.num_cpus is None:
+            self.num_cpus = ray._private.utils.get_num_cpus()
 
-        # Resolve num_gpus and accelerator resources
-        accelerator_manager, num_accelerators = get_current_node_accelerator(
-            self.num_gpus, resources
+        # Resolve accelerator resources
+        accel_info = self._get_current_node_accelerator()
+        if accel_info:
+            accelerator_manager, num_accelerators = accel_info
+        else:
+            accelerator_manager, num_accelerators = None, 0
+        self._resolve_accelerator_resources(accelerator_manager, num_accelerators)
+
+        # Resolve node labels
+        self._resolve_labels(accelerator_manager)
+
+        # Resolve memory resources
+        self._resolve_memory_resources()
+
+        assert self.resolved()
+        return self
+
+    def _load_env_labels(self) -> Dict[str, str]:
+        env_override_labels = {}
+        env_override_labels_string = os.getenv(
+            ray_constants.LABELS_ENVIRONMENT_VARIABLE
         )
-        num_gpus = self.resolve_and_update_accelerator_resources(
-            accelerator_manager, num_accelerators, resources
+        if env_override_labels_string:
+            try:
+                env_override_labels = json.loads(env_override_labels_string)
+            except Exception:
+                logger.exception(f"Failed to load {env_override_labels_string}")
+                raise
+            logger.info(f"Autoscaler overriding labels: {env_override_labels}.")
+
+        return env_override_labels
+
+    def _get_default_labels(
+        self, accelerator_manager: Optional[AcceleratorManager]
+    ) -> Dict[str, str]:
+        default_labels = {}
+
+        # Get environment variables populated from K8s Pod Spec
+        node_group = os.environ.get(ray._raylet.NODE_TYPE_NAME_ENV, "")
+        market_type = os.environ.get(ray._raylet.NODE_MARKET_TYPE_ENV, "")
+        availability_region = os.environ.get(ray._raylet.NODE_REGION_ENV, "")
+        availability_zone = os.environ.get(ray._raylet.NODE_ZONE_ENV, "")
+
+        # Map environment variables to default ray node labels
+        if market_type:
+            default_labels[ray._raylet.RAY_NODE_MARKET_TYPE_KEY] = market_type
+        if node_group:
+            default_labels[ray._raylet.RAY_NODE_GROUP_KEY] = node_group
+        if availability_zone:
+            default_labels[ray._raylet.RAY_NODE_ZONE_KEY] = availability_zone
+        if availability_region:
+            default_labels[ray._raylet.RAY_NODE_REGION_KEY] = availability_region
+
+        # Get accelerator type from AcceleratorManager
+        if accelerator_manager:
+            accelerator_type = accelerator_manager.get_current_node_accelerator_type()
+            if accelerator_type:
+                default_labels[
+                    ray._raylet.RAY_NODE_ACCELERATOR_TYPE_KEY
+                ] = accelerator_type
+
+        return default_labels
+
+    def _resolve_labels(
+        self, accelerator_manager: Optional[AcceleratorManager]
+    ) -> None:
+        """Merge environment override, user-input from params, and Ray default labels in
+        that order of precedence."""
+
+        env_labels = self._load_env_labels()
+        merged = dict(self._get_default_labels(accelerator_manager) or {})
+
+        # Merge user-specified labels from Ray params
+        for key, val in (self.labels or {}).items():
+            if key in merged and merged[key] != val:
+                logger.warning(
+                    f"User label is overriding Ray default label: {key}: "
+                    f"{key}: {merged[key]} to "
+                    f"{key}: {self.labels[key]}."
+                )
+            merged[key] = val
+
+        # Merge autoscaler override labels from environment
+        for key, val in (env_labels or {}).items():
+            if key in merged and merged[key] != val:
+                logger.warning(
+                    "Autoscaler is overriding your label:"
+                    f"{key}: {merged[key]} to "
+                    f"{key}: {env_labels[key]}."
+                )
+            merged[key] = val
+
+        self.labels = merged
+
+    def _resolve_accelerator_resources(self, accelerator_manager, num_accelerators):
+        """Detect and update accelerator resources on a node."""
+        if not accelerator_manager:
+            if self.num_gpus is None:
+                self.num_gpus = num_accelerators or 0
+            return
+
+        accelerator_resource_name = accelerator_manager.get_resource_name()
+        visible_accelerator_ids = (
+            accelerator_manager.get_current_process_visible_accelerator_ids()
         )
-        labels = self.get_resolved_labels(accelerator_manager)
 
-            if num_accelerators:
-                if accelerator_resource_name == "GPU":
-                    num_gpus = num_accelerators
-                else:
-                    resources[accelerator_resource_name] = num_accelerators
+        # Check that the number of accelerators that the raylet wants doesn't
+        # exceed the amount allowed by visible accelerator ids.
+        if (
+            num_accelerators is not None
+            and visible_accelerator_ids is not None
+            and num_accelerators > len(visible_accelerator_ids)
+        ):
+            raise ValueError(
+                f"Attempting to start raylet with {num_accelerators} "
+                f"{accelerator_resource_name}, "
+                f"but {accelerator_manager.get_visible_accelerator_ids_env_var()} "
+                f"contains {visible_accelerator_ids}."
+            )
 
-                accelerator_type = (
-                    accelerator_manager.get_current_node_accelerator_type()
-                )
-                if accelerator_type:
-                    resources[f"{RESOURCE_CONSTRAINT_PREFIX}{accelerator_type}"] = 1
+        if num_accelerators:
+            if accelerator_resource_name == "GPU" and self.num_gpus is None:
+                self.num_gpus = num_accelerators
+            else:
+                self.resources[accelerator_resource_name] = num_accelerators
+                if self.num_gpus is None:
+                    self.num_gpus = 0
 
-                    from ray._common.usage import usage_lib
+            accelerator_type = accelerator_manager.get_current_node_accelerator_type()
+            if accelerator_type:
+                self.resources[f"{RESOURCE_CONSTRAINT_PREFIX}{accelerator_type}"] = 1
 
-                    usage_lib.record_hardware_usage(accelerator_type)
-                additional_resources = (
-                    accelerator_manager.get_current_node_additional_resources()
-                )
-                if additional_resources:
-                    resources.update(additional_resources)
+                from ray._private.usage import usage_lib
+
+                usage_lib.record_hardware_usage(accelerator_type)
+            additional_resources = (
+                accelerator_manager.get_current_node_additional_resources()
+            )
+            if additional_resources:
+                self.resources.update(additional_resources)
+
+    def _resolve_memory_resources(self):
         # Choose a default object store size.
         system_memory = ray._common.utils.get_system_memory()
         avail_memory = ray._private.utils.estimate_available_memory()
@@ -251,138 +355,42 @@ class ResourceAndLabelSpec(
                     )
                 )
 
-        spec = ResourceAndLabelSpec(
-            num_cpus,
-            num_gpus,
-            memory,
-            object_store_memory,
-            resources,
-            labels,
-        )
-        assert spec.resolved()
-        return spec
+        # Set the resolved memory and object_store_memory
+        self.object_store_memory = object_store_memory
+        self.memory = memory
 
-    def _load_env_labels(self) -> Dict[str, str]:
-        env_override_labels = {}
-        env_override_labels_string = os.getenv(
-            ray_constants.LABELS_ENVIRONMENT_VARIABLE
-        )
-        if env_override_labels_string:
-            try:
-                env_override_labels = json.loads(env_override_labels_string)
-            except Exception:
-                logger.exception(f"Failed to load {env_override_labels_string}")
-                raise
-            logger.info(f"Autoscaler overriding labels: {env_override_labels}.")
+    def _get_current_node_accelerator(self) -> Optional[Tuple[AcceleratorManager, int]]:
+        """
+        Returns the AcceleratorManager and accelerator count for the accelerator
+        associated with this node.
 
-        return env_override_labels
-
-    def _get_default_labels(
-        self, accelerator_manager: Optional[AcceleratorManager]
-    ) -> Dict[str, str]:
-        default_labels = {}
-
-        # Get environment variables populated from K8s Pod Spec
-        node_group = os.environ.get(ray._raylet.NODE_TYPE_NAME_ENV, "")
-        market_type = os.environ.get(ray._raylet.NODE_MARKET_TYPE_ENV, "")
-        availability_region = os.environ.get(ray._raylet.NODE_REGION_ENV, "")
-        availability_zone = os.environ.get(ray._raylet.NODE_ZONE_ENV, "")
-
-        # Map environment variables to default ray node labels
-        if market_type:
-            default_labels[ray._raylet.RAY_NODE_MARKET_TYPE_KEY] = market_type
-        if node_group:
-            default_labels[ray._raylet.RAY_NODE_GROUP_KEY] = node_group
-        if availability_zone:
-            default_labels[ray._raylet.RAY_NODE_ZONE_KEY] = availability_zone
-        if availability_region:
-            default_labels[ray._raylet.RAY_NODE_REGION_KEY] = availability_region
-
-        # Get accelerator type from AcceleratorManager
-        if accelerator_manager:
-            accelerator_type = accelerator_manager.get_current_node_accelerator_type()
-            if accelerator_type:
-                default_labels[
-                    ray._raylet.RAY_NODE_ACCELERATOR_TYPE_KEY
-                ] = accelerator_type
-
-        return default_labels
-
-    def get_resolved_labels(
-        self, accelerator_manager: Optional[AcceleratorManager]
-    ) -> Dict[str, str]:
-        """Merge environment override, user-input from params, and Ray default labels in
-        that order of precedence."""
-
-        env_labels = self._load_env_labels()
-        merged = dict(self._get_default_labels(accelerator_manager) or {})
-
-        # Merge user-specified labels from Ray params
-        for key, val in (self.labels or {}).items():
-            if key in merged and merged[key] != val:
-                logger.warning(
-                    f"User label is overriding Ray default label: {key}: "
-                    f"{key}: {merged[key]} to "
-                    f"{key}: {self.labels[key]}."
-                )
-            merged[key] = val
-
-        # Merge autoscaler override labels from environment
-        for key, val in (env_labels or {}).items():
-            if key in merged and merged[key] != val:
-                logger.warning(
-                    "Autoscaler is overriding your label:"
-                    f"{key}: {merged[key]} to "
-                    f"{key}: {env_labels[key]}."
-                )
-            merged[key] = val
-
-        return merged
-
-    def resolve_and_update_accelerator_resources(
-        self, accelerator_manager, num_accelerators, resources: Dict[str, float]
-    ) -> int:
-        """Detect and update accelerator resources on a node."""
-        if not accelerator_manager:
-            return num_accelerators or 0
-
-        accelerator_resource_name = accelerator_manager.get_resource_name()
-        visible_accelerator_ids = (
-            accelerator_manager.get_current_process_visible_accelerator_ids()
-        )
-
-        # Check that the number of accelerators that the raylet wants doesn't
-        # exceed the amount allowed by visible accelerator ids.
-        if (
-            num_accelerators is not None
-            and visible_accelerator_ids is not None
-            and num_accelerators > len(visible_accelerator_ids)
-        ):
-            raise ValueError(
-                f"Attempting to start raylet with {num_accelerators} "
-                f"{accelerator_resource_name}, "
-                f"but {accelerator_manager.get_visible_accelerator_ids_env_var()} "
-                f"contains {visible_accelerator_ids}."
+        This assumes each node has at most one accelerator type. If no accelerators
+        are present, returns None.
+        """
+        for resource_name in accelerators.get_all_accelerator_resource_names():
+            accelerator_manager = accelerators.get_accelerator_manager_for_resource(
+                resource_name
             )
-
-        num_gpus = self.num_gpus
-        if num_accelerators:
-            if accelerator_resource_name == "GPU":
-                num_gpus = num_accelerators
+            if accelerator_manager is None:
+                continue
+            # Respect configured value for GPUs if set
+            if resource_name == "GPU" and self.num_gpus is not None:
+                num_accelerators = self.num_gpus
             else:
-                resources[accelerator_resource_name] = num_accelerators
+                num_accelerators = self.resources.get(resource_name)
+            if num_accelerators is None:
+                num_accelerators = (
+                    accelerator_manager.get_current_node_num_accelerators()
+                )
+                visible_accelerator_ids = (
+                    accelerator_manager.get_current_process_visible_accelerator_ids()
+                )
+                if visible_accelerator_ids is not None:
+                    num_accelerators = min(
+                        num_accelerators, len(visible_accelerator_ids)
+                    )
 
-            accelerator_type = accelerator_manager.get_current_node_accelerator_type()
-            if accelerator_type:
-                resources[f"{RESOURCE_CONSTRAINT_PREFIX}{accelerator_type}"] = 1
+            if num_accelerators > 0:
+                return accelerator_manager, num_accelerators
 
-                from ray._private.usage import usage_lib
-
-                usage_lib.record_hardware_usage(accelerator_type)
-            additional_resources = (
-                accelerator_manager.get_current_node_additional_resources()
-            )
-            if additional_resources:
-                resources.update(additional_resources)
-
-        return num_gpus or 0
+        return None
