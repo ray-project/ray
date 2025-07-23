@@ -70,36 +70,42 @@ std::shared_ptr<CoreWorkerClientInterface> CoreWorkerClientPool::GetOrConnect(
   RemoveIdleClients();
 
   CoreWorkerClientEntry entry;
-  auto id = WorkerID::FromBinary(addr_proto.worker_id());
-  auto it = client_map_.find(id);
-  if (it != client_map_.end()) {
+  auto node_id = NodeID::FromBinary(addr_proto.raylet_id());
+  auto worker_id = WorkerID::FromBinary(addr_proto.worker_id());
+  auto it = worker_client_map_.find(worker_id);
+  if (it != worker_client_map_.end()) {
     entry = *it->second;
     client_list_.erase(it->second);
   } else {
-    entry = CoreWorkerClientEntry(id, core_worker_client_factory_(addr_proto));
+    entry = CoreWorkerClientEntry(
+        worker_id, node_id, core_worker_client_factory_(addr_proto));
   }
   client_list_.emplace_front(entry);
-  client_map_[id] = client_list_.begin();
+  worker_client_map_[worker_id] = client_list_.begin();
+  node_clients_map_[node_id][worker_id] = client_list_.begin();
 
-  RAY_LOG(DEBUG) << "Connected to worker " << id << " with address "
+  RAY_LOG(DEBUG) << "Connected to worker " << worker_id << " with address "
                  << addr_proto.ip_address() << ":" << addr_proto.port();
   return entry.core_worker_client;
 }
 
 void CoreWorkerClientPool::RemoveIdleClients() {
   while (!client_list_.empty()) {
-    auto id = client_list_.back().worker_id;
+    auto worker_id = client_list_.back().worker_id;
+    auto node_id = client_list_.back().node_id;
     // The last client in the list is the least recent accessed client.
     if (client_list_.back().core_worker_client->IsIdleAfterRPCs()) {
-      client_map_.erase(id);
+      worker_client_map_.erase(worker_id);
+      EraseFromNodeClientMap(node_id, worker_id);
       client_list_.pop_back();
-      RAY_LOG(DEBUG) << "Remove idle client to worker " << id
+      RAY_LOG(DEBUG) << "Remove idle client to worker " << worker_id
                      << " , num of clients is now " << client_list_.size();
     } else {
       auto entry = client_list_.back();
       client_list_.pop_back();
       client_list_.emplace_front(entry);
-      client_map_[id] = client_list_.begin();
+      worker_client_map_[worker_id] = client_list_.begin();
+      node_clients_map_[node_id][worker_id] = client_list_.begin();
       break;
     }
   }
@@ -107,12 +113,40 @@ void CoreWorkerClientPool::RemoveIdleClients() {
 
 void CoreWorkerClientPool::Disconnect(ray::WorkerID id) {
   absl::MutexLock lock(&mu_);
-  auto it = client_map_.find(id);
-  if (it == client_map_.end()) {
+  auto it = worker_client_map_.find(id);
+  if (it == worker_client_map_.end()) {
     return;
   }
+  EraseFromNodeClientMap(it->second->node_id, /*worker_id=*/id);
   client_list_.erase(it->second);
-  client_map_.erase(it);
+  worker_client_map_.erase(it);
+}
+
+void CoreWorkerClientPool::Disconnect(ray::NodeID node_id) {
+  absl::MutexLock lock(&mu_);
+  auto node_client_map_it = node_clients_map_.find(node_id);
+  if (node_client_map_it == node_clients_map_.end()) {
+    return;
+  }
+  auto &node_worker_id_client_map = node_client_map_it->second;
+  for (auto &[worker_id, client_iterator] : node_worker_id_client_map) {
+    worker_client_map_.erase(worker_id);
+    client_list_.erase(client_iterator);
+  }
+  node_clients_map_.erase(node_client_map_it);
+}
+
+void CoreWorkerClientPool::EraseFromNodeClientMap(const NodeID &node_id,
+                                                  const WorkerID &worker_id) {
+  auto node_client_map_it = node_clients_map_.find(node_id);
+  if (node_client_map_it == node_clients_map_.end()) {
+    return;
+  }
+  auto &node_worker_id_client_map = node_client_map_it->second;
+  node_worker_id_client_map.erase(worker_id);
+  if (node_worker_id_client_map.empty()) {
+    node_clients_map_.erase(node_client_map_it);
+  }
 }
 
 }  // namespace rpc

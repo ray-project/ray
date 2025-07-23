@@ -15,7 +15,6 @@ import pytest
 import ray
 from ray import tune
 from ray.air.constants import TIME_THIS_ITER_S, TRAINING_ITERATION
-from ray.tune import CheckpointConfig
 from ray.train._internal.session import shutdown_session
 from ray.train._internal.storage import (
     StorageContext,
@@ -25,6 +24,7 @@ from ray.train._internal.storage import (
 from ray.train.constants import CHECKPOINT_DIR_NAME
 from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
 from ray.tune import (
+    CheckpointConfig,
     Stopper,
     Trainable,
     TuneError,

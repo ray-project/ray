@@ -6,31 +6,28 @@ from google.protobuf.descriptor import FieldDescriptor
 from google.protobuf.message import Message
 
 from ray import cloudpickle
-from ray._common.utils import import_attr
-from ray._private import ray_option_utils
-from ray._private.pydantic_compat import (
+from ray._common import ray_option_utils
+from ray._common.pydantic_compat import (
     BaseModel,
     Field,
     NonNegativeFloat,
     NonNegativeInt,
     PositiveFloat,
     PositiveInt,
-    root_validator,
     validator,
 )
+from ray._common.utils import resources_from_ray_options
 from ray._private.serialization import pickle_dumps
-from ray._private.utils import resources_from_ray_options
 from ray.serve._private.constants import (
     DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S,
     DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S,
     DEFAULT_HEALTH_CHECK_PERIOD_S,
     DEFAULT_HEALTH_CHECK_TIMEOUT_S,
     DEFAULT_MAX_ONGOING_REQUESTS,
-    DEFAULT_REQUEST_ROUTER_PATH,
     MAX_REPLICAS_PER_NODE_MAX_VALUE,
 )
 from ray.serve._private.utils import DEFAULT, DeploymentOptionUpdateType
-from ray.serve.config import AutoscalingConfig
+from ray.serve.config import AutoscalingConfig, RequestRouterConfig
 from ray.serve.generated.serve_pb2 import (
     AutoscalingConfig as AutoscalingConfigProto,
     DeploymentConfig as DeploymentConfigProto,
@@ -38,6 +35,7 @@ from ray.serve.generated.serve_pb2 import (
     EncodingType as EncodingTypeProto,
     LoggingConfig as LoggingConfigProto,
     ReplicaConfig as ReplicaConfigProto,
+    RequestRouterConfig as RequestRouterConfigProto,
 )
 from ray.util.placement_group import validate_placement_group
 
@@ -124,6 +122,7 @@ class DeploymentConfig(BaseModel):
         logging_config: Configuration for deployment logs.
         user_configured_option_names: The names of options manually
             configured by the user.
+        request_router_config: Configuration for deployment request router.
     """
 
     num_replicas: Optional[NonNegativeInt] = Field(
@@ -163,6 +162,11 @@ class DeploymentConfig(BaseModel):
         default=None, update_type=DeploymentOptionUpdateType.NeedsActorReconfigure
     )
 
+    request_router_config: RequestRouterConfig = Field(
+        default=RequestRouterConfig(),
+        update_type=DeploymentOptionUpdateType.NeedsActorReconfigure,
+    )
+
     # This flag is used to let replica know they are deployed from
     # a different language.
     is_cross_language: bool = False
@@ -183,14 +187,6 @@ class DeploymentConfig(BaseModel):
 
     # Contains the names of deployment options manually set by the user
     user_configured_option_names: Set[str] = set()
-
-    # Cloudpickled request router class.
-    serialized_request_router_cls: bytes = Field(default=b"")
-
-    # Custom request router config. Defaults to the power of two request router.
-    request_router_class: Union[str, Callable] = Field(
-        default=DEFAULT_REQUEST_ROUTER_PATH
-    )
 
     class Config:
         validate_assignment = True
@@ -235,33 +231,6 @@ class DeploymentConfig(BaseModel):
 
         return v
 
-    @root_validator
-    def import_and_serialize_request_router_cls(cls, values) -> Dict[str, Any]:
-        """Import and serialize request router class with cloudpickle.
-
-        Import the request router if it's passed in as a string import path.
-        Then cloudpickle the request router and set to
-        `serialized_request_router_cls`.
-        """
-        request_router_class = values.get("request_router_class")
-        if isinstance(request_router_class, Callable):
-            request_router_class = (
-                f"{request_router_class.__module__}.{request_router_class.__name__}"
-            )
-
-        request_router_path = request_router_class or DEFAULT_REQUEST_ROUTER_PATH
-        request_router_class = import_attr(request_router_path)
-
-        values["serialized_request_router_cls"] = cloudpickle.dumps(
-            request_router_class
-        )
-        values["request_router_class"] = request_router_path
-        return values
-
-    def get_request_router_class(self) -> Callable:
-        """Deserialize request router from cloudpickled bytes."""
-        return cloudpickle.loads(self.serialized_request_router_cls)
-
     def needs_pickle(self):
         return _needs_pickle(self.deployment_language, self.is_cross_language)
 
@@ -274,12 +243,29 @@ class DeploymentConfig(BaseModel):
             data["autoscaling_config"] = AutoscalingConfigProto(
                 **data["autoscaling_config"]
             )
+        if data.get("request_router_config"):
+            router_kwargs = data["request_router_config"].get("request_router_kwargs")
+            if router_kwargs is not None:
+                if not router_kwargs:
+                    data["request_router_config"]["request_router_kwargs"] = b""
+                elif self.needs_pickle():
+                    # Protobuf requires bytes, so we need to pickle
+                    data["request_router_config"][
+                        "request_router_kwargs"
+                    ] = cloudpickle.dumps(router_kwargs)
+                else:
+                    raise ValueError(
+                        "Non-empty request_router_kwargs not supported"
+                        f"for cross-language deployments. Got: {router_kwargs}"
+                    )
+            data["request_router_config"] = RequestRouterConfigProto(
+                **data["request_router_config"]
+            )
         if data.get("logging_config"):
             if "encoding" in data["logging_config"]:
                 data["logging_config"]["encoding"] = EncodingTypeProto.Value(
                     data["logging_config"]["encoding"]
                 )
-
             data["logging_config"] = LoggingConfigProto(**data["logging_config"])
         data["user_configured_option_names"] = list(
             data["user_configured_option_names"]
@@ -292,23 +278,45 @@ class DeploymentConfig(BaseModel):
     @classmethod
     def from_proto(cls, proto: DeploymentConfigProto):
         data = _proto_to_dict(proto)
+        deployment_language = (
+            data["deployment_language"]
+            if "deployment_language" in data
+            else DeploymentLanguage.PYTHON
+        )
+        is_cross_language = (
+            data["is_cross_language"] if "is_cross_language" in data else False
+        )
+        needs_pickle = _needs_pickle(deployment_language, is_cross_language)
         if "user_config" in data:
             if data["user_config"] != b"":
-                deployment_language = (
-                    data["deployment_language"]
-                    if "deployment_language" in data
-                    else DeploymentLanguage.PYTHON
-                )
-                is_cross_language = (
-                    data["is_cross_language"] if "is_cross_language" in data else False
-                )
-                needs_pickle = _needs_pickle(deployment_language, is_cross_language)
                 if needs_pickle:
                     data["user_config"] = cloudpickle.loads(proto.user_config)
                 else:
                     data["user_config"] = proto.user_config
             else:
                 data["user_config"] = None
+        if "request_router_config" in data:
+            if "request_router_kwargs" in data["request_router_config"]:
+                request_router_kwargs = data["request_router_config"][
+                    "request_router_kwargs"
+                ]
+                if request_router_kwargs != b"":
+                    if needs_pickle:
+                        data["request_router_config"][
+                            "request_router_kwargs"
+                        ] = cloudpickle.loads(
+                            proto.request_router_config.request_router_kwargs
+                        )
+                    else:
+                        data["request_router_config"][
+                            "request_router_kwargs"
+                        ] = proto.request_router_config.request_router_kwargs
+                else:
+                    data["request_router_config"]["request_router_kwargs"] = {}
+
+            data["request_router_config"] = RequestRouterConfig(
+                **data["request_router_config"]
+            )
         if "autoscaling_config" in data:
             if not data["autoscaling_config"].get("upscale_smoothing_factor"):
                 data["autoscaling_config"]["upscale_smoothing_factor"] = None

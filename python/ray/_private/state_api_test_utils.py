@@ -14,7 +14,7 @@ from typing import Callable, Dict, List, Optional, Tuple, Union
 import numpy as np
 
 import ray
-import ray._private.test_utils as test_utils
+import ray._common.test_utils as test_utils
 from ray._private.gcs_utils import GcsChannel
 from ray._raylet import GcsClient
 from ray.actor import ActorHandle
@@ -390,7 +390,7 @@ def summarize_worker_startup_time():
 
 
 def verify_failed_task(
-    name: str, error_type: str, error_message: Union[str, List[str]]
+    name: str, error_type: str, error_message: Union[str, List[str], None] = None
 ) -> bool:
     """
     Check if a task with 'name' has failed with the exact error type 'error_type'
@@ -401,10 +401,11 @@ def verify_failed_task(
     t = tasks[0]
     assert t["state"] == "FAILED", t
     assert t["error_type"] == error_type, t
-    if isinstance(error_message, str):
-        error_message = [error_message]
-    for msg in error_message:
-        assert msg in t.get("error_message", None), t
+    if error_message is not None:
+        if isinstance(error_message, str):
+            error_message = [error_message]
+        for msg in error_message:
+            assert msg in t.get("error_message", None), t
     return True
 
 

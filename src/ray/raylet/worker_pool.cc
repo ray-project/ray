@@ -45,6 +45,10 @@ DEFINE_stats(worker_register_time_ms,
              ({1, 10, 100, 1000, 10000}),
              ray::stats::HISTOGRAM);
 
+namespace ray {
+
+namespace raylet {
+
 namespace {
 
 std::shared_ptr<ray::raylet::WorkerInterface> GetWorker(
@@ -84,10 +88,6 @@ bool OptionalsMatchOrEitherEmpty(const std::optional<bool> &ask,
 
 }  // namespace
 
-namespace ray {
-
-namespace raylet {
-
 WorkerPool::WorkerPool(instrumented_io_context &io_service,
                        const NodeID &node_id,
                        std::string node_address,
@@ -97,7 +97,7 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
                        int min_worker_port,
                        int max_worker_port,
                        const std::vector<int> &worker_ports,
-                       std::shared_ptr<gcs::GcsClient> gcs_client,
+                       gcs::GcsClient &gcs_client,
                        const WorkerCommandMap &worker_commands,
                        std::string native_library_path,
                        std::function<void()> starting_worker_timeout_callback,
@@ -115,7 +115,7 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
               // Overwrite the maximum concurrency.
               RayConfig::instance().worker_maximum_startup_concurrency()
               : maximum_startup_concurrency),
-      gcs_client_(std::move(gcs_client)),
+      gcs_client_(gcs_client),
       native_library_path_(std::move(native_library_path)),
       starting_worker_timeout_callback_(std::move(starting_worker_timeout_callback)),
       ray_debugger_external(ray_debugger_external),
@@ -1719,7 +1719,7 @@ void WorkerPool::WarnAboutSize() {
 
       auto error_data_ptr = gcs::CreateErrorTableData(
           "worker_pool_large", warning_message_str, get_time_());
-      RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
+      gcs_client_.Errors().AsyncReportJobError(error_data_ptr, nullptr);
     }
   }
 }

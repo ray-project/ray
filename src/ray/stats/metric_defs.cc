@@ -262,8 +262,8 @@ DEFINE_stats(pull_manager_object_request_time_ms,
              ray::stats::HISTOGRAM);
 
 /// Push Manager
-DEFINE_stats(push_manager_in_flight_pushes,
-             "Number of in flight object push requests.",
+DEFINE_stats(push_manager_num_pushes_remaining,
+             "Number of pushes not completed.",
              (),
              (),
              ray::stats::GAUGE);

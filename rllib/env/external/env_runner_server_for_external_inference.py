@@ -73,7 +73,7 @@ class EnvRunnerServerForExternalInference(EnvRunner, Checkpointable):
             port: The base port number. The server socket is then actually bound to
                 `port` + self.worker_index.
         """
-        super().__init__(config=config)
+        super().__init__(config=config, **kwargs)
 
         self.worker_index: int = kwargs.get("worker_index", 0)
 

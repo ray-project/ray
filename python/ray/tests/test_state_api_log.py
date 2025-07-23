@@ -7,6 +7,7 @@ from typing import List
 from unittest.mock import MagicMock, AsyncMock
 
 import grpc
+from ray._common.test_utils import wait_for_condition
 import requests
 import pytest
 import urllib
@@ -15,7 +16,6 @@ from click.testing import CliRunner
 import ray
 from ray._private.test_utils import (
     format_web_url,
-    wait_for_condition,
     wait_until_server_available,
 )
 from ray.util.state.state_cli import logs_state_cli_group

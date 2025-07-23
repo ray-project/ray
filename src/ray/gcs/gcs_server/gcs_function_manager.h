@@ -22,16 +22,21 @@
 namespace ray {
 namespace gcs {
 
-/// GcsFunctionManager is a class to manage exported functions in runtime.
-/// Right now it only hanldes resource cleanup when it's not needed any more.
-/// But for the long term, we should put all function/actor management into
-/// this class, includes:
-///    - function/actor exporting
-///    - function/actor importing
-///    - function/actor code life cycle management.
-class GcsFunctionManager {
+/// GCSFunctionManager manages the lifecycle of job-associated function and actor
+/// metadata.
+///
+/// This class tracks job reference counts to determine when a job is truly finished
+/// (i.e., job has exited AND all detached actors from the job are dead), and performs
+/// cleanup of exported functions, actor classes, and worker setup hooks when jobs
+/// complete.
+///
+/// Key responsibilities:
+///   - Job reference counting for accurate job completion detection
+///   - Cleanup of function/actor metadata from KV store when jobs finish
+///   - Handling network retry scenarios for distributed job management
+class GCSFunctionManager {
  public:
-  explicit GcsFunctionManager(InternalKVInterface &kv,
+  explicit GCSFunctionManager(InternalKVInterface &kv,
                               instrumented_io_context &io_context)
       : kv_(kv), io_context_(io_context) {}
 
@@ -39,7 +44,11 @@ class GcsFunctionManager {
 
   void RemoveJobReference(const JobID &job_id) {
     auto iter = job_counter_.find(job_id);
-    RAY_CHECK(iter != job_counter_.end()) << "No such job: " << job_id;
+    if (iter == job_counter_.end()) {
+      // Job already removed - this is OK for duplicate calls from network retries
+      return;
+    }
+
     --iter->second;
     if (iter->second == 0) {
       job_counter_.erase(job_id);
@@ -59,16 +68,12 @@ class GcsFunctionManager {
             {[](auto) {}, io_context_});
   }
 
-  // Handler for internal KV
-  InternalKVInterface &kv_;
-  instrumented_io_context &io_context_;
-  // Counter to check whether the job has finished or not.
-  // A job is defined to be in finished status if
-  //   1. the job has exited
-  //   2. no detached actor from this job is alive
-  // Ideally this counting logic should belong to gcs GC manager, but
-  // right now, only function manager is using this, it should be ok
-  // to just put it here.
+  InternalKVInterface &kv_;              // KV store interface for function/actor cleanup
+  instrumented_io_context &io_context_;  // IO context for async operations
+
+  /// Reference count per job. A job is considered finished when:
+  /// 1. The job/driver has exited, AND 2. All detached actors from the job are dead.
+  /// When count reaches zero, function/actor metadata cleanup is triggered.
   absl::flat_hash_map<JobID, size_t> job_counter_;
 };
 

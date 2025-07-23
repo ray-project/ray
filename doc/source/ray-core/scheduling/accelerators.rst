@@ -622,9 +622,8 @@ This also lets the multi-node-type autoscaler know that there is demand for that
 
     ray.shutdown()
     import ray.util.accelerators
-    import ray._private.ray_constants as ray_constants
 
-    v100_resource_name = f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}{ray.util.accelerators.NVIDIA_TESLA_V100}"
+    v100_resource_name = f"accelerator_type:{ray.util.accelerators.NVIDIA_TESLA_V100}"
     ray.init(num_gpus=4, resources={v100_resource_name: 1})
 
 .. testcode::

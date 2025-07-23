@@ -30,6 +30,8 @@
 #include "absl/container/flat_hash_map.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/ray_config.h"
+#include "ray/common/status.h"
+#include "ray/common/status_or.h"
 #include "ray/object_manager/plasma/connection.h"
 #include "ray/object_manager/plasma/plasma.h"
 #include "ray/object_manager/plasma/protocol.h"
@@ -71,7 +73,7 @@ class RAY_NO_EXPORT PlasmaMutableBuffer : public SharedMemoryBuffer {
   PlasmaMutableBuffer(std::shared_ptr<PlasmaClient::Impl> client,
                       uint8_t *mutable_data,
                       int64_t data_size)
-      : SharedMemoryBuffer(mutable_data, data_size), client_(client) {}
+      : SharedMemoryBuffer(mutable_data, data_size), client_(std::move(client)) {}
 
  private:
   std::shared_ptr<PlasmaClient::Impl> client_;
@@ -97,6 +99,7 @@ struct ObjectInUseEntry {
 class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Impl> {
  public:
   Impl();
+  explicit Impl(bool exit_on_connection_failure);
   ~Impl();
 
   // PlasmaClient method implementations
@@ -161,7 +164,7 @@ class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Imp
 
   Status Disconnect();
 
-  std::string DebugString();
+  StatusOr<std::string> GetMemoryUsage();
 
   bool IsInUse(const ObjectID &object_id);
 
@@ -235,11 +238,17 @@ class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Imp
   std::unordered_set<ObjectID> deletion_cache_;
   /// A mutex which protects this class.
   std::recursive_mutex client_mutex_;
+  /// Whether the current process should exit when read or write to the connection fails.
+  /// It should only be turned on when the plasma client is in a core worker.
+  bool exit_on_connection_failure_;
 };
 
 PlasmaBuffer::~PlasmaBuffer() { RAY_UNUSED(client_->Release(object_id_)); }
 
-PlasmaClient::Impl::Impl() : store_capacity_(0) {}
+PlasmaClient::Impl::Impl() : store_capacity_(0), exit_on_connection_failure_(false) {}
+
+PlasmaClient::Impl::Impl(bool exit_on_connection_failure)
+    : store_capacity_(0), exit_on_connection_failure_(exit_on_connection_failure) {}
 
 PlasmaClient::Impl::~Impl() {}
 
@@ -868,7 +877,7 @@ Status PlasmaClient::Impl::Connect(const std::string &store_socket_name,
   /// The local stream socket that connects to store.
   ray::local_stream_socket socket(main_service_);
   RAY_RETURN_NOT_OK(ray::ConnectSocketRetry(socket, store_socket_name));
-  store_conn_.reset(new StoreConn(std::move(socket)));
+  store_conn_.reset(new StoreConn(std::move(socket), exit_on_connection_failure_));
   // Send a ConnectRequest to the store to get its memory capacity.
   RAY_RETURN_NOT_OK(SendConnectRequest(store_conn_));
   std::vector<uint8_t> buffer;
@@ -891,26 +900,34 @@ Status PlasmaClient::Impl::Disconnect() {
   return Status::OK();
 }
 
-std::string PlasmaClient::Impl::DebugString() {
+StatusOr<std::string> PlasmaClient::Impl::GetMemoryUsage() {
   std::lock_guard<std::recursive_mutex> guard(client_mutex_);
-  if (!SendGetDebugStringRequest(store_conn_).ok()) {
-    return "error sending request";
+  auto request_status = SendGetDebugStringRequest(store_conn_);
+  if (!request_status.ok()) {
+    return StatusOr<std::string>(request_status);
   }
   std::vector<uint8_t> buffer;
-  if (!PlasmaReceive(store_conn_, MessageType::PlasmaGetDebugStringReply, &buffer).ok()) {
-    return "error receiving reply";
+  auto recv_status =
+      PlasmaReceive(store_conn_, MessageType::PlasmaGetDebugStringReply, &buffer);
+  if (!recv_status.ok()) {
+    return StatusOr<std::string>(recv_status);
   }
   std::string debug_string;
-  if (!ReadGetDebugStringReply(buffer.data(), buffer.size(), &debug_string).ok()) {
-    return "error parsing reply";
+  auto response_status =
+      ReadGetDebugStringReply(buffer.data(), buffer.size(), &debug_string);
+  if (!response_status.ok()) {
+    return StatusOr<std::string>(response_status);
   }
-  return debug_string;
+  return StatusOr<std::string>(debug_string);
 }
 
 // ----------------------------------------------------------------------
 // PlasmaClient
 
 PlasmaClient::PlasmaClient() : impl_(std::make_shared<PlasmaClient::Impl>()) {}
+
+PlasmaClient::PlasmaClient(bool exit_on_connection_failure)
+    : impl_(std::make_shared<PlasmaClient::Impl>(exit_on_connection_failure)) {}
 
 Status PlasmaClient::Connect(const std::string &store_socket_name,
                              const std::string &manager_socket_name,
@@ -1003,7 +1020,7 @@ Status PlasmaClient::Delete(const std::vector<ObjectID> &object_ids) {
 
 Status PlasmaClient::Disconnect() { return impl_->Disconnect(); }
 
-std::string PlasmaClient::DebugString() { return impl_->DebugString(); }
+StatusOr<std::string> PlasmaClient::GetMemoryUsage() { return impl_->GetMemoryUsage(); }
 
 bool PlasmaClient::IsInUse(const ObjectID &object_id) {
   return impl_->IsInUse(object_id);

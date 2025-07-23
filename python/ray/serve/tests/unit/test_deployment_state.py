@@ -279,12 +279,15 @@ class MockReplicaActorWrapper:
     def check_stopped(self) -> bool:
         return self.done_stopping
 
-    def force_stop(self):
+    def force_stop(self, log_shutdown_message: bool = False):
         self.force_stopped_counter += 1
 
     def check_health(self):
         self.health_check_called = True
         return self.healthy
+
+    def get_routing_stats(self) -> Dict[str, Any]:
+        return {}
 
 
 def deployment_info(

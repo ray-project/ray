@@ -115,6 +115,7 @@ def _actor_table_data_to_dict(message):
         "reprName",
         "placementGroupId",
         "callSite",
+        "labelSelector",
     }
     light_message = {k: v for (k, v) in orig_message.items() if k in fields}
     light_message["actorClass"] = orig_message["className"]
@@ -135,7 +136,7 @@ def _actor_table_data_to_dict(message):
     light_message["startTime"] = int(light_message["startTime"])
     light_message["endTime"] = int(light_message["endTime"])
     light_message["requiredResources"] = dict(message.required_resources)
-
+    light_message["labelSelector"] = dict(message.label_selector)
     return light_message
 
 
@@ -151,6 +152,8 @@ class NodeHead(SubprocessModule):
         # The time it takes until the head node is registered. None means
         # head node hasn't been registered.
         self._head_node_registration_time_s = None
+        # The node ID of the current head node
+        self._registered_head_node_id = None
         # Queue of dead nodes to be removed, up to MAX_DEAD_NODES_TO_CACHE
         self._dead_node_queue = deque()
 
@@ -232,7 +235,19 @@ class NodeHead(SubprocessModule):
 
     async def _update_node(self, node: dict):
         node_id = node["nodeId"]  # hex
-        if node["isHeadNode"] and not self._head_node_registration_time_s:
+        if (
+            node["isHeadNode"]
+            and node["state"] == "ALIVE"
+            and self._registered_head_node_id != node_id
+        ):
+            if self._registered_head_node_id is not None:
+                logger.warning(
+                    "A new head node has become ALIVE. New head node ID: %s, old head node ID: %s, internal states: %s",
+                    node_id,
+                    self._registered_head_node_id,
+                    self.get_internal_states(),
+                )
+            self._registered_head_node_id = node_id
             self._head_node_registration_time_s = time.time() - self._module_start_time
             # Put head node ID in the internal KV to be read by JobAgent.
             # TODO(architkulkarni): Remove once State API exposes which

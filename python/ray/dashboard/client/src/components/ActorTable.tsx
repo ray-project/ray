@@ -20,6 +20,7 @@ import Pagination from "@mui/material/Pagination";
 import _ from "lodash";
 import React, { useMemo, useState } from "react";
 import { Link as RouterLink } from "react-router-dom";
+import { CodeDialogButtonWithPreview } from "../common/CodeDialogButton";
 import { DurationText, getDurationVal } from "../common/DurationText";
 import { ActorLink, generateNodeLink } from "../common/links";
 import {
@@ -162,6 +163,14 @@ const ActorTable = ({
     { label: "" },
     { label: "ID" },
     {
+      label: "Worker ID",
+      helpInfo: (
+        <Typography>
+          The ID of the worker process that hosts this actor.
+        </Typography>
+      ),
+    },
+    {
       label: "Class",
       helpInfo: (
         <Typography>
@@ -245,9 +254,9 @@ const ActorTable = ({
           Hardware CPU usage of this Actor (from Worker Process).
           <br />
           <br />
-          Node’s CPU usage is calculated against all CPU cores. Worker Process’s
+          Node's CPU usage is calculated against all CPU cores. Worker Process's
           CPU usage is calculated against 1 CPU core. As a result, the sum of
-          CPU usage from all Worker Processes is not equal to the Node’s CPU
+          CPU usage from all Worker Processes is not equal to the Node's CPU
           usage.
         </Typography>
       ),
@@ -318,6 +327,10 @@ const ActorTable = ({
           <br />
         </Typography>
       ),
+    },
+    {
+      label: "Label selector",
+      helpInfo: <Typography>The label selector of the actor.</Typography>,
     },
     {
       label: "Exit detail",
@@ -406,6 +419,21 @@ const ActorTable = ({
           InputProps={{
             onChange: ({ target: { value } }) => {
               changeFilter("name", value.trim());
+            },
+            endAdornment: (
+              <InputAdornment position="end">
+                <SearchOutlined />
+              </InputAdornment>
+            ),
+          }}
+        />
+        <TextField
+          style={{ margin: 8, width: 120 }}
+          label="Worker ID"
+          size="small"
+          InputProps={{
+            onChange: ({ target: { value } }) => {
+              changeFilter("workerId", value.trim());
             },
             endAdornment: (
               <InputAdornment position="end">
@@ -550,6 +578,7 @@ const ActorTable = ({
                 gpus,
                 processStats,
                 mem,
+                labelSelector,
               }) => (
                 <ExpandableTableRow
                   length={
@@ -585,6 +614,24 @@ const ActorTable = ({
                         />
                       </Box>
                     </Tooltip>
+                  </TableCell>
+                  <TableCell align="center">
+                    {actors[actorId]?.workerId ? (
+                      <Tooltip title={actors[actorId].workerId} arrow>
+                        <Box
+                          sx={{
+                            maxWidth: "120px",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {actors[actorId].workerId}
+                        </Box>
+                      </Tooltip>
+                    ) : (
+                      "-"
+                    )}
                   </TableCell>
                   <TableCell align="center">{actorClass}</TableCell>
                   <TableCell align="center">{name ? name : "-"}</TableCell>
@@ -702,23 +749,26 @@ const ActorTable = ({
                     </Tooltip>
                   </TableCell>
                   <TableCell align="center">
-                    <Tooltip
-                      title={Object.entries(requiredResources || {}).map(
-                        ([key, val]) => (
-                          <div style={{ margin: 4 }}>
-                            {key}: {val}
-                          </div>
-                        ),
-                      )}
-                      arrow
-                    >
-                      <OverflowCollapsibleCell
-                        text={Object.entries(requiredResources || {})
-                          .map(([key, val]) => `${key}: ${val}`)
-                          .join(", ")}
-                        wordBreak="break-all"
+                    {Object.entries(requiredResources || {}).length > 0 ? (
+                      <CodeDialogButtonWithPreview
+                        sx={{ maxWidth: 200 }}
+                        title="Required resources"
+                        code={JSON.stringify(requiredResources, undefined, 2)}
                       />
-                    </Tooltip>
+                    ) : (
+                      "{}"
+                    )}
+                  </TableCell>
+                  <TableCell align="center">
+                    {Object.entries(labelSelector || {}).length > 0 ? (
+                      <CodeDialogButtonWithPreview
+                        sx={{ maxWidth: 200 }}
+                        title="Label selector"
+                        code={JSON.stringify(labelSelector, undefined, 2)}
+                      />
+                    ) : (
+                      "{}"
+                    )}
                   </TableCell>
                   <TableCell align="center">
                     <OverflowCollapsibleCell text={exitDetail} />

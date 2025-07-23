@@ -24,6 +24,7 @@
 
 #include "ray/common/buffer.h"
 #include "ray/common/status.h"
+#include "ray/common/status_or.h"
 #include "ray/object_manager/common.h"
 #include "ray/object_manager/plasma/common.h"
 #include "ray/util/visibility.h"
@@ -35,6 +36,7 @@ using ray::Buffer;
 using ray::PlasmaObjectHeader;
 using ray::SharedMemoryBuffer;
 using ray::Status;
+using ray::StatusOr;
 
 struct MutableObject {
   MutableObject(uint8_t *base_ptr, const PlasmaObject &object_info)
@@ -242,6 +244,8 @@ class PlasmaClient : public PlasmaClientInterface {
  public:
   PlasmaClient();
 
+  explicit PlasmaClient(bool exit_on_connection_failure);
+
   Status Connect(const std::string &store_socket_name,
                  const std::string &manager_socket_name = "",
                  int num_retries = -1) override;
@@ -289,8 +293,8 @@ class PlasmaClient : public PlasmaClientInterface {
 
   /// Get the current debug string from the plasma store server.
   ///
-  /// \return The debug string.
-  std::string DebugString();
+  /// \return the debug string if successful, otherwise return an error status.
+  StatusOr<std::string> GetMemoryUsage();
 
   /// Get the memory capacity of the store.
   ///

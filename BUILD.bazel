@@ -325,7 +325,7 @@ ray_cc_library(
         ":object_manager_cc_grpc",
         "//src/ray/common:asio",
         "//src/ray/common:status",
-        "//src/ray/object_manager:object_manager_grpc_stub_manager",
+        "//src/ray/object_manager:object_manager_grpc_client_manager",
         "@boost//:asio",
         "@com_github_grpc_grpc//:grpc++",
     ],
@@ -568,10 +568,21 @@ ray_cc_library(
 )
 
 ray_cc_library(
+    name = "local_object_manager_interface",
+    hdrs = ["src/ray/raylet/local_object_manager_interface.h"],
+    deps = [
+        "//src/ray/common:id",
+        "//src/ray/common:ray_object",
+        "//src/ray/protobuf:node_manager_cc_proto",
+    ],
+)
+
+ray_cc_library(
     name = "local_object_manager",
     srcs = ["src/ray/raylet/local_object_manager.cc"],
     hdrs = ["src/ray/raylet/local_object_manager.h"],
     deps = [
+        ":local_object_manager_interface",
         ":worker_pool",
         ":worker_rpc",
         "//src/ray/common:id",
@@ -616,6 +627,7 @@ ray_cc_library(
     }),
     deps = [
         ":local_object_manager",
+        ":local_object_manager_interface",
         ":node_manager_fbs",
         ":node_manager_rpc",
         ":raylet_agent_manager",
@@ -683,6 +695,7 @@ ray_cc_test(
     ],
     tags = ["team:core"],
     deps = [
+        ":ray_mock",
         ":raylet_lib",
         "@com_google_googletest//:gtest_main",
     ],
@@ -697,6 +710,7 @@ ray_cc_test(
         "team:core",
     ],
     deps = [
+        ":ray_mock",
         ":worker_pool",
         "@com_google_googletest//:gtest_main",
     ],
@@ -762,8 +776,10 @@ ray_cc_test(
     srcs = ["src/ray/raylet/test/node_manager_test.cc"],
     tags = ["team:core"],
     deps = [
+        ":local_object_manager_interface",
         ":ray_mock",
         ":raylet_lib",
+        "//src/ray/util:macros",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -901,31 +917,6 @@ cc_proto_library(
     deps = [":extra_actions_base_proto_lib"],
 )
 
-ray_cc_library(
-    name = "sha256",
-    srcs = [
-        "src/ray/thirdparty/sha256.c",
-    ],
-    hdrs = [
-        "src/ray/thirdparty/sha256.h",
-    ],
-)
-
-ray_cc_library(
-    name = "aligned_alloc",
-    srcs = [
-        "src/ray/thirdparty/aligned_alloc.c",
-    ],
-    hdrs = [
-        "src/ray/thirdparty/aligned_alloc.h",
-    ],
-)
-
-ray_cc_library(
-    name = "dlmalloc",
-    hdrs = ["src/ray/thirdparty/dlmalloc.c"],
-)
-
 alias(
     name = "hiredis",
     actual = "@com_github_redis_hiredis//:hiredis",
@@ -941,12 +932,13 @@ flatbuffer_cc_library(
 pyx_library(
     name = "_raylet",
     srcs = glob([
+        "python/ray/includes/*.pxd",
+        "python/ray/includes/*.pxi",
+    ]) + [
         "python/ray/__init__.py",
         "python/ray/_raylet.pxd",
         "python/ray/_raylet.pyx",
-        "python/ray/includes/*.pxd",
-        "python/ray/includes/*.pxi",
-    ]),
+    ],
     # Export ray ABI symbols, which can then be used by _streaming.so.
     # We need to dlopen this lib with RTLD_GLOBAL to use ABI in this
     # shared lib, see python/ray/__init__.py.
@@ -954,6 +946,8 @@ pyx_library(
         srcs = PYX_SRCS,
         # cython code is auto-generated, which is out of our control.
         copts = COPTS + PYX_COPTS,
+        # This is needed since Windows has long file path issues and command length limits
+        features = ["compiler_param_file"],
         # see https://github.com/tensorflow/tensorflow/blob/r2.1/tensorflow/lite/BUILD#L444
         linkopts = select({
             "@platforms//os:osx": [
@@ -977,6 +971,7 @@ pyx_library(
         "//src/ray/gcs/gcs_client:global_state_accessor_lib",
         "//src/ray/gcs/gcs_server:gcs_server_lib",
         "//src/ray/protobuf:serialization_cc_proto",
+        "//src/ray/thirdparty/setproctitle",
         "//src/ray/util",
         "//src/ray/util:memory",
         "//src/ray/util:stream_redirection",
@@ -988,25 +983,17 @@ filegroup(
     name = "python_sources",
     srcs = glob([
         "python/ray/*.py",
-        "python/ray/autoscaler/*.py",
-        "python/ray/autoscaler/_private/*.py",
-        "python/ray/autoscaler/_private/_azure/*.json",
-        "python/ray/autoscaler/aws/defaults.yaml",
-        "python/ray/autoscaler/azure/defaults.yaml",
-        "python/ray/autoscaler/gcp/defaults.yaml",
-        "python/ray/autoscaler/local/defaults.yaml",
-        "python/ray/autoscaler/vsphere/defaults.yaml",
         "python/ray/cloudpickle/*.py",
-        "python/ray/core/__init__.py",
-        "python/ray/core/generated/__init__.py",
-        "python/ray/core/generated/ray/__init__.py",
-        "python/ray/core/generated/ray/protocol/__init__.py",
         "python/ray/dashboard/**/*.py",
         "python/ray/experimental/*.py",
         "python/ray/util/*.py",
         "python/ray/internal/*.py",
-        "python/ray/workers/default_worker.py",
-    ]),
+    ]) + [
+        "python/ray/core/__init__.py",
+        "//python/ray/_private:src_files",
+        "//python/ray/autoscaler:default_configs",
+        "//python/ray/autoscaler:src_files",
+    ],
 )
 
 alias(
@@ -1026,32 +1013,15 @@ alias(
 )
 
 filegroup(
-    name = "all_py_proto",
-    srcs = [
-        "//src/ray/protobuf:autoscaler_py_proto",
-        "//src/ray/protobuf:common_py_proto",
-        "//src/ray/protobuf:core_worker_py_proto",
-        "//src/ray/protobuf:event_py_proto",
-        "//src/ray/protobuf:events_event_aggregator_service_py_proto",
-        "//src/ray/protobuf:export_event_py_proto",
-        "//src/ray/protobuf:gcs_py_proto",
-        "//src/ray/protobuf:gcs_service_py_proto",
-        "//src/ray/protobuf:instance_manager_py_proto",
-        "//src/ray/protobuf:node_manager_py_proto",
-        "//src/ray/protobuf:metrics_service_py_proto",
-        "//src/ray/protobuf:ray_client_py_proto",
-        "//src/ray/protobuf:reporter_py_proto",
-        "//src/ray/protobuf:runtime_env_agent_py_proto",
-        "//src/ray/protobuf:runtime_env_common_py_proto",
-        "//src/ray/protobuf:usage_py_proto",
-    ],
+    name = "core_py_proto",
+    srcs = ["//src/ray/protobuf:core_py_proto"],
+    visibility = ["//visibility:private"],
 )
 
 filegroup(
     name = "serve_py_proto",
-    srcs = [
-        "//src/ray/protobuf:serve_py_proto",
-    ],
+    srcs = ["//src/ray/protobuf:serve_py_proto"],
+    visibility = ["//visibility:private"],
 )
 
 # This is a dummy test dependency that causes the python tests to be
@@ -1072,8 +1042,8 @@ copy_to_workspace(
 )
 
 copy_to_workspace(
-    name = "cp_all_py_proto",
-    srcs = [":all_py_proto"],
+    name = "cp_core_py_proto",
+    srcs = [":core_py_proto"],
     dstdir = "python/ray/core/generated",
 )
 
@@ -1113,7 +1083,7 @@ copy_to_workspace(
 genrule(
     name = "install_py_proto",
     srcs = [
-        ":cp_all_py_proto",
+        ":cp_core_py_proto",
         ":cp_serve_py_proto",
     ],
     outs = ["install_py_proto.out"],

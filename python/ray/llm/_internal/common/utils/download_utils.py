@@ -12,7 +12,7 @@ from ray.llm._internal.common.utils.cloud_utils import (
     CloudModelAccessor,
     is_remote_path,
 )
-from ray.llm._internal.utils import try_import
+from ray.llm._internal.common.utils.import_utils import try_import
 
 torch = try_import("torch")
 

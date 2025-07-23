@@ -6,7 +6,7 @@ from itertools import chain
 from typing import Any, Dict, List, Optional, Tuple
 
 import ray
-from ray._private.utils import binary_to_hex
+from ray._common.utils import binary_to_hex
 from ray._raylet import GcsClient
 from ray.autoscaler._private import constants
 from ray.autoscaler._private.util import (
