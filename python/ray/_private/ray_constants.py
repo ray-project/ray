@@ -582,9 +582,7 @@ RAY_METRIC_CARDINALITY_LEVEL = os.environ.get("RAY_metric_cardinality_level", "l
 # pynvml to collect the GPU utilization metrics if the nvidia-smi fails without the
 # utilization per process information. If set to False, error will be raised on
 # failure of nvidia-smi.
-RAY_METRIC_ENABLE_GPU_PYNVML_FALLBACK = env_bool(
-    "RAY_metric_enable_gpu_pynvml_fallback", False
-)
+RAY_METRIC_ENABLE_GPU_NVSMI = env_bool("RAY_metric_enable_gpu_nvsmi", False)
 
 # Whether enable OpenTelemetry as the metrics collection backend on the driver
 # component. This flag is only used during the migration of the  metric collection
