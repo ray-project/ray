@@ -691,16 +691,9 @@ def test_replica_placement_group_options(ray_start_stop):
     def check_application_status():
         cli_output = subprocess.check_output(["serve", "status"])
         try:
-            # Clean the output by removing ANSI escape codes and other special characters
-            cleaned_output = remove_ansi_escape_sequences(cli_output.decode("utf-8"))
-            status = yaml.safe_load(cleaned_output)["applications"]
-        except yaml.YAMLError as e:
-            print(f"YAML parsing error: {e}")
-            print(f"Raw output: {cli_output}")
-            return False
-        except Exception as e:
-            print(f"Unexpected error: {e}")
-            print(f"Raw output: {cli_output}")
+            status = clean_and_parse_yaml(cli_output)["applications"]
+        except (yaml.YAMLError, Exception):
+            # clean_and_parse_yaml will print the error.
             return False
         assert (
             status["valid"]["status"] == "RUNNING"
