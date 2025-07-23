@@ -24,11 +24,11 @@
 #include "absl/strings/match.h"
 #include "ray/common/buffer.h"
 #include "ray/common/common_protocol.h"
-#include "src/ray/protobuf/common.pb.h"
 #include "ray/core_worker/actor_manager.h"
 #include "ray/gcs/pb_util.h"
 #include "ray/util/exponential_backoff.h"
 #include "ray/util/util.h"
+#include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
 namespace core {
@@ -1502,7 +1502,8 @@ void TaskManager::MarkDependenciesResolved(const TaskID &task_id) {
   }
 
   RAY_CHECK(it->second.GetStatus() == rpc::TaskStatus::PENDING_ARGS_AVAIL)
-      << ", task ID = " << it->first << ", status = " << rpc::TaskStatus_Name(it->second.GetStatus());
+      << ", task ID = " << it->first
+      << ", status = " << rpc::TaskStatus_Name(it->second.GetStatus());
   SetTaskStatus(it->second, rpc::TaskStatus::PENDING_NODE_ASSIGNMENT);
 }
 
@@ -1515,7 +1516,8 @@ void TaskManager::MarkTaskWaitingForExecution(const TaskID &task_id,
     return;
   }
   RAY_CHECK(it->second.GetStatus() == rpc::TaskStatus::PENDING_NODE_ASSIGNMENT)
-      << ", task ID = " << it->first << ", status = " << rpc::TaskStatus_Name(it->second.GetStatus());
+      << ", task ID = " << it->first
+      << ", status = " << rpc::TaskStatus_Name(it->second.GetStatus());
   it->second.SetNodeId(node_id);
   SetTaskStatus(it->second,
                 rpc::TaskStatus::SUBMITTED_TO_WORKER,
@@ -1529,7 +1531,8 @@ void TaskManager::SetTaskStatus(
     bool include_task_info,
     std::optional<int32_t> attempt_number) {
   RAY_LOG(DEBUG).WithField(task_entry.spec.TaskId())
-      << "Setting task status from " << rpc::TaskStatus_Name(task_entry.GetStatus()) << " to " << rpc::TaskStatus_Name(status);
+      << "Setting task status from " << rpc::TaskStatus_Name(task_entry.GetStatus())
+      << " to " << rpc::TaskStatus_Name(status);
   task_entry.SetStatus(status);
 
   const int32_t attempt_number_to_record =
