@@ -810,7 +810,10 @@ class HashShufflingOperatorBase(PhysicalOperator):
         assert partition_size_hint is None or partition_size_hint > 0
 
         aggregator_total_memory_required = 0
-        if self.data_context.target_max_block_size is not None:
+        if (
+            self.data_context.target_max_block_size is not None
+            or partition_size_hint is not None
+        ):
             aggregator_total_memory_required = self._estimate_aggregator_memory_allocation(
                 num_aggregators=num_aggregators,
                 num_partitions=num_partitions,

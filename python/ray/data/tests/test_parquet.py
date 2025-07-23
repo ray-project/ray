@@ -1703,6 +1703,7 @@ def test_max_block_size_none_respects_override_num_blocks(
 ):
     """
     When `DataContext.target_max_block_size` is explicitly set to ``None``,
+    TODO override_num_blocks should always be respected even when target_max_block_size isn't set to None.
     read_parquet must still honour ``override_num_blocks``.
     The read should yield the specified number of input blocks and – after a pivot –
     one output row per block (since all rows have the same ID).

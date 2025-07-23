@@ -271,7 +271,11 @@ def test_target_max_block_size_none_disables_splitting_globally(
     # Now test with target_max_block_size = None (should not split)
     ctx.target_max_block_size = None  # Disable block size limit
 
-    ds_unlimited = ray.data.range(large_data_size, override_num_blocks=1).materialize()
+    ds_unlimited = (
+        ray.data.range(large_data_size, override_num_blocks=1)
+        .map(lambda x: x)
+        .materialize()
+    )
     blocks_unlimited = ds_unlimited._plan.initial_num_blocks()
 
     # Verify that unlimited creates fewer blocks (no splitting)
