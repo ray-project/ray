@@ -116,7 +116,9 @@ class ResourceAndLabelSpec:
 
         return resources
 
-    def resolve(self, is_head: bool, node_ip_address: Optional[str] = None) -> ResourceAndLabelSpec:
+    def resolve(
+        self, is_head: bool, node_ip_address: Optional[str] = None
+    ) -> "ResourceAndLabelSpec":
         """Fills out this ResourceAndLabelSpec instance with system defaults.
 
         Args:
@@ -151,12 +153,16 @@ class ResourceAndLabelSpec:
         if self.num_cpus is None:
             self.num_cpus = ray._private.utils.get_num_cpus()
 
+        if self.num_gpus is None:
+            self.num_gpus = 0
+
         # Resolve accelerator resources
-        accel_info = self._get_current_node_accelerator()
-        if accel_info:
-            accelerator_manager, num_accelerators = accel_info
-        else:
-            accelerator_manager, num_accelerators = None, 0
+        (
+            accelerator_manager,
+            num_accelerators,
+        ) = ResourceAndLabelSpec._get_current_node_accelerator(
+            self.num_gpus, self.resources
+        )
         self._resolve_accelerator_resources(accelerator_manager, num_accelerators)
 
         # Resolve node labels
@@ -220,8 +226,8 @@ class ResourceAndLabelSpec:
         """Merge environment override, user-input from params, and Ray default labels in
         that order of precedence."""
 
-        env_labels = self._load_env_labels()
-        merged = dict(self._get_default_labels(accelerator_manager) or {})
+        # Start with a dictionary filled out with Ray default labels
+        merged = self._get_default_labels(accelerator_manager)
 
         # Merge user-specified labels from Ray params
         for key, val in (self.labels or {}).items():
@@ -234,6 +240,7 @@ class ResourceAndLabelSpec:
             merged[key] = val
 
         # Merge autoscaler override labels from environment
+        env_labels = self._load_env_labels()
         for key, val in (env_labels or {}).items():
             if key in merged and merged[key] != val:
                 logger.warning(
@@ -248,8 +255,6 @@ class ResourceAndLabelSpec:
     def _resolve_accelerator_resources(self, accelerator_manager, num_accelerators):
         """Detect and update accelerator resources on a node."""
         if not accelerator_manager:
-            if self.num_gpus is None:
-                self.num_gpus = num_accelerators or 0
             return
 
         accelerator_resource_name = accelerator_manager.get_resource_name()
@@ -271,26 +276,23 @@ class ResourceAndLabelSpec:
                 f"contains {visible_accelerator_ids}."
             )
 
-        if num_accelerators:
-            if accelerator_resource_name == "GPU" and self.num_gpus is None:
-                self.num_gpus = num_accelerators
-            else:
-                self.resources[accelerator_resource_name] = num_accelerators
-                if self.num_gpus is None:
-                    self.num_gpus = 0
+        if accelerator_resource_name == "GPU":
+            self.num_gpus = num_accelerators
+        else:
+            self.resources[accelerator_resource_name] = num_accelerators
 
-            accelerator_type = accelerator_manager.get_current_node_accelerator_type()
-            if accelerator_type:
-                self.resources[f"{RESOURCE_CONSTRAINT_PREFIX}{accelerator_type}"] = 1
+        accelerator_type = accelerator_manager.get_current_node_accelerator_type()
+        if accelerator_type:
+            self.resources[f"{RESOURCE_CONSTRAINT_PREFIX}{accelerator_type}"] = 1
 
-                from ray._private.usage import usage_lib
+            from ray._private.usage import usage_lib
 
-                usage_lib.record_hardware_usage(accelerator_type)
-            additional_resources = (
-                accelerator_manager.get_current_node_additional_resources()
-            )
-            if additional_resources:
-                self.resources.update(additional_resources)
+            usage_lib.record_hardware_usage(accelerator_type)
+        additional_resources = (
+            accelerator_manager.get_current_node_additional_resources()
+        )
+        if additional_resources:
+            self.resources.update(additional_resources)
 
     def _resolve_memory_resources(self):
         # Choose a default object store size.
@@ -357,13 +359,22 @@ class ResourceAndLabelSpec:
         self.object_store_memory = object_store_memory
         self.memory = memory
 
-    def _get_current_node_accelerator(self) -> Optional[Tuple[AcceleratorManager, int]]:
+    @staticmethod
+    def _get_current_node_accelerator(
+        num_gpus: int, resources: Dict[str, float]
+    ) -> Tuple[AcceleratorManager, int]:
         """
         Returns the AcceleratorManager and accelerator count for the accelerator
-        associated with this node.
+        associated with this node. This assumes each node has at most one accelerator type.
+        If no accelerators are present, returns None.
 
-        This assumes each node has at most one accelerator type. If no accelerators
-        are present, returns None.
+        Args:
+            num_gpus: GPU count (if provided by user).
+            resources: Resource dictionary containing custom resource keys.
+
+        Returns:
+            Tuple[Optional[AcceleratorManager], int]: A tuple containing the accelerator
+            manager (or None) and the detected accelerator count (0 if none found).
         """
         for resource_name in accelerators.get_all_accelerator_resource_names():
             accelerator_manager = accelerators.get_accelerator_manager_for_resource(
@@ -373,9 +384,9 @@ class ResourceAndLabelSpec:
                 continue
             # Respect configured value for GPUs if set
             if resource_name == "GPU":
-                num_accelerators = self.num_gpus
+                num_accelerators = num_gpus
             else:
-                num_accelerators = self.resources.get(resource_name)
+                num_accelerators = resources.get(resource_name)
             if num_accelerators is None:
                 num_accelerators = (
                     accelerator_manager.get_current_node_num_accelerators()
@@ -391,4 +402,4 @@ class ResourceAndLabelSpec:
             if num_accelerators > 0:
                 return accelerator_manager, num_accelerators
 
-        return None
+        return None, 0

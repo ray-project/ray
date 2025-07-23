@@ -1448,7 +1448,7 @@ class Node:
             fallback_directory,
             object_store_memory,
         ) = ray._private.services.determine_plasma_store_config(
-            resource_spec.object_store_memory,
+            resource_and_label_spec.object_store_memory,
             self._temp_dir,
             plasma_directory=self._ray_params.plasma_directory,
             fallback_directory=self._fallback_directory,
