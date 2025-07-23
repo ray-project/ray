@@ -138,6 +138,7 @@ class A:
         import os
         return os.getpid()
 
+
 a = A.remote()
 ray.get(a.pid.remote())
     """
