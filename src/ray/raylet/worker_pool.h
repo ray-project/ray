@@ -229,10 +229,6 @@ class WorkerPoolInterface : public IOWorkerPoolInterface {
                                 StartupToken worker_startup_token,
                                 std::function<void(Status, int)> send_reply_callback) = 0;
 
-  virtual Status RegisterWorker(const std::shared_ptr<WorkerInterface> &worker,
-                                pid_t pid,
-                                StartupToken worker_startup_token) = 0;
-
   virtual boost::optional<const rpc::JobConfig &> GetJobConfig(
       const JobID &job_id) const = 0;
 
@@ -380,12 +376,6 @@ class WorkerPool : public WorkerPoolInterface {
                         pid_t pid,
                         StartupToken worker_startup_token,
                         std::function<void(Status, int)> send_reply_callback) override;
-
-  // Similar to the above function overload, but the port has been assigned, but directly
-  // returns registration status without taking a callback.
-  Status RegisterWorker(const std::shared_ptr<WorkerInterface> &worker,
-                        pid_t pid,
-                        StartupToken worker_startup_token) override;
 
   /// To be invoked when a worker is started. This method should be called when the worker
   /// announces its port.
