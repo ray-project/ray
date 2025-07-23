@@ -1154,9 +1154,6 @@ Status NodeManager::RegisterForNewWorker(
     pid_t pid,
     const StartupToken &worker_startup_token,
     std::function<void(Status, int)> send_reply_callback) {
-  RAY_CHECK_GE(pid, 0);
-  RAY_CHECK(send_reply_callback);
-
   Status status =
       worker_pool_.RegisterWorker(worker, pid, worker_startup_token, send_reply_callback);
   if (!status.ok()) {
@@ -1174,9 +1171,6 @@ Status NodeManager::RegisterForNewDriver(
     const JobID &job_id,
     const ray::protocol::RegisterClientRequest *message,
     std::function<void(Status, int)> send_reply_callback) {
-  RAY_CHECK_GE(pid, 0);
-  RAY_CHECK(send_reply_callback);
-
   worker->SetProcess(Process::FromPid(pid));
   // Compute a dummy driver task id from a given driver.
   // The task id set in the worker here should be consistent with the task
