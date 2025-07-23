@@ -1147,8 +1147,8 @@ genrule(
 
         # Adding these pkg files rules make sure that there are no naming
         # conflicts between the generated files and the pkg files.
-        ":core_py_proto_files",
-        ":serve_py_proto_files",
+        ":core_py_proto_zip",
+        ":serve_py_proto_zip",
     ],
     outs = ["install_py_proto.out"],
     cmd = """
