@@ -753,6 +753,12 @@ def test_deployment_contains_utils(serve_instance):
         lambda: httpx.post("http://localhost:8000/").text == "hello_from_utils"
     )
 
-
+def test_serve_config_no_config_prints_warning():
+    """Test that `serve config` prints a warning when no config is available."""
+    with pytest.raises(subprocess.CalledProcessError) as e:
+        subprocess.check_output(["serve", "config"], stderr=subprocess.STDOUT)
+    output = e.value.output.decode("utf-8")
+    assert "No config was provided during `serve run`. Nothing to display." in output
+    return True
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
