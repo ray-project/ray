@@ -28,7 +28,7 @@
 #include "ray/gcs/pb_util.h"
 #include "ray/util/exponential_backoff.h"
 #include "ray/util/util.h"
-#include "src/ray/protobuf/common.pb.h"
+#include "ray/protobuf/common.pb.h"
 
 namespace ray {
 namespace core {
