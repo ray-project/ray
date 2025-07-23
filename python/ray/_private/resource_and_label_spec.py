@@ -39,8 +39,6 @@ class ResourceAndLabelSpec:
             num_gpus: The GPUs allocated for this raylet.
             memory: The memory allocated for this raylet.
             object_store_memory: The object store memory allocated for this raylet.
-                Note that when calling to_resource_dict(), this will be scaled down
-                by 30% to account for the global plasma LRU reserve.
             resources: The custom resources allocated for this raylet.
             labels: The labels associated with this node. Labels can be used along
                 with resources for scheduling.
