@@ -312,11 +312,6 @@ RAY_SERVE_ENABLE_MEMORY_PROFILING = (
     os.environ.get("RAY_SERVE_ENABLE_MEMORY_PROFILING", "0") == "1"
 )
 
-# Enable cProfile in all Serve actors.
-RAY_SERVE_ENABLE_CPU_PROFILING = (
-    os.environ.get("RAY_SERVE_ENABLE_CPU_PROFILING", "0") == "1"
-)
-
 # Max value allowed for max_replicas_per_node option.
 # TODO(jjyao) the <= 100 limitation is an artificial one
 # and is due to the fact that Ray core only supports resource
@@ -345,6 +340,19 @@ RAY_SERVE_MAX_QUEUE_LENGTH_RESPONSE_DEADLINE_S = float(
 # Length of time to respect entries in the queue length cache when routing requests.
 RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S = float(
     os.environ.get("RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S", 10.0)
+)
+
+# Backoff seconds when choosing router failed, backoff time is calculated as
+# initial_backoff_s * backoff_multiplier ** attempt.
+# The default backoff time is [0.025, 0.05, 0.1, 0.2, 0.4, 0.5, 0.5 ... ].
+RAY_SERVE_ROUTER_RETRY_INITIAL_BACKOFF_S = float(
+    os.environ.get("RAY_SERVE_ROUTER_RETRY_INITIAL_BACKOFF_S", 0.025)
+)
+RAY_SERVE_ROUTER_RETRY_BACKOFF_MULTIPLIER = int(
+    os.environ.get("RAY_SERVE_ROUTER_RETRY_BACKOFF_MULTIPLIER", 2)
+)
+RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S = float(
+    os.environ.get("RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S", 0.5)
 )
 
 # The default autoscaling policy to use if none is specified.
