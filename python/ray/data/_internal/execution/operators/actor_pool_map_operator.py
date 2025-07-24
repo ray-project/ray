@@ -396,7 +396,9 @@ class ActorPoolMapOperator(MapOperator):
             memory=memory_per_actor * min_actors,
             # To ensure that all actors are utilized, reserve enough resource budget
             # to launch one task for each worker.
-            object_store_memory=self._metrics.obj_store_mem_max_pending_output_per_task
+            object_store_memory=(
+                self._metrics.obj_store_mem_max_pending_output_per_task or 0
+            )
             * min_actors,
         )
 

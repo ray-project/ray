@@ -582,7 +582,11 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
             return None
 
         bytes_per_output = self.average_bytes_per_output
+        # If we don’t have a sample yet and the limit is “unlimited”, we can’t
+        # estimate – just bail out.
         if bytes_per_output is None:
+            if context.target_max_block_size is None:
+                return None
             bytes_per_output = context.target_max_block_size
 
         num_pending_outputs = context._max_num_blocks_in_streaming_gen_buffer

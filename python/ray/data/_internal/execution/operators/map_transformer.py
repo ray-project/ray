@@ -89,8 +89,7 @@ class MapTransformFn:
     def output_block_size_option(self):
         return self._output_block_size_option
 
-    def set_target_max_block_size(self, target_max_block_size: int):
-        assert target_max_block_size is not None
+    def set_target_max_block_size(self, target_max_block_size: Optional[int]):
         self._output_block_size_option = OutputBlockSizeOption(
             target_max_block_size=target_max_block_size
         )
@@ -220,9 +219,6 @@ class MapTransformer:
         ctx: TaskContext,
     ) -> Iterable[Block]:
         """Apply the transform functions to the input blocks."""
-        assert (
-            self.target_max_block_size is not None
-        ), "target_max_block_size must be set before running"
         for transform_fn in self._transform_fns:
             if not transform_fn.output_block_size_option:
                 transform_fn.set_target_max_block_size(self.target_max_block_size)

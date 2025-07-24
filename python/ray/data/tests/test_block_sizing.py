@@ -252,6 +252,38 @@ def test_shuffle(shutdown_only, restore_data_context, shuffle_op):
     )
 
 
+def test_target_max_block_size_infinite_or_default_disables_splitting_globally(
+    shutdown_only, restore_data_context
+):
+    """Test that setting target_max_block_size to None disables block splitting globally."""
+    ray.init(num_cpus=2)
+
+    # Create a large dataset that would normally trigger block splitting
+    large_data_size = 10_000_000  # 10MB worth of data
+
+    # First, test with normal target_max_block_size (should split into multiple blocks)
+    ctx = DataContext.get_current()
+    ctx.target_max_block_size = 1_000_000  # 1MB - much smaller than data
+
+    ds_with_limit = ray.data.range(large_data_size, override_num_blocks=1).materialize()
+    blocks_with_limit = ds_with_limit._plan.initial_num_blocks()
+
+    # Now test with target_max_block_size = None (should not split)
+    ctx.target_max_block_size = None  # Disable block size limit
+
+    ds_unlimited = (
+        ray.data.range(large_data_size, override_num_blocks=1)
+        .map(lambda x: x)
+        .materialize()
+    )
+    blocks_unlimited = ds_unlimited._plan.initial_num_blocks()
+
+    # Verify that unlimited creates fewer blocks (no splitting)
+    assert blocks_unlimited <= blocks_with_limit
+    # With target_max_block_size=None, it should maintain the original block structure
+    assert blocks_unlimited == 1
+
+
 if __name__ == "__main__":
     import sys
 
