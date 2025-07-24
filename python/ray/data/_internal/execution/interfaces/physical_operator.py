@@ -318,9 +318,12 @@ class PhysicalOperator(Operator):
             return self._output_block_size_option.target_max_block_size
 
     @property
-    def actual_target_max_block_size(self) -> int:
+    def actual_target_max_block_size(self) -> Optional[int]:
         """
         The actual target max block size output by this operator.
+        Returns:
+            `None` if the target max block size is not set, otherwise the target max block size.
+            `None` means the block size is infinite.
         """
         target_max_block_size = self.target_max_block_size
         if target_max_block_size is None:
