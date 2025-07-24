@@ -2168,8 +2168,8 @@ bool NodeManager::FinishAssignedTask(const std::shared_ptr<WorkerInterface> &wor
   return !spec.IsActorCreationTask();
 }
 
-void NodeManager::FinishAssignedActorCreationTask(const std::shared_ptr<WorkerInterface> &worker,
-                                                  const RayTask &task) {
+void NodeManager::FinishAssignedActorCreationTask(
+    const std::shared_ptr<WorkerInterface> &worker, const RayTask &task) {
   RAY_LOG(DEBUG) << "Finishing assigned actor creation task";
   const TaskSpecification task_spec = task.GetTaskSpecification();
   ActorID actor_id = task_spec.ActorCreationId();
