@@ -493,19 +493,21 @@ def read_fragments(
             get_batch_iterable, "load batch", match=ctx.retried_io_errors
         ):
             table = pa.Table.from_batches([batch], schema=schema)
+
             if include_paths:
                 table = BlockAccessor.for_block(table).fill_column(
                     "path", fragment.path
                 )
+
             if partitions:
                 table = _add_partitions_to_table(partitions, table)
 
-            # If the table is empty, drop it.
+            if block_udf is not None:
+                table = block_udf(table)
+
+            # If the table is empty, skip it
             if table.num_rows > 0:
-                if block_udf is not None:
-                    yield block_udf(table)
-                else:
-                    yield table
+                yield table
 
 
 def _deserialize_fragments_with_retry(fragments):

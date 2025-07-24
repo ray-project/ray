@@ -504,9 +504,14 @@ class PhysicalOperator(Operator):
 
         Subclasses should override `_get_next_inner` instead of this method.
         """
-        output = self._get_next_inner()
-        self._metrics.on_output_taken(output)
-        return output
+        output_bundle = self._get_next_inner()
+
+        assert (
+            output_bundle.num_rows() > 0
+        ), f"Operator {self.name} produced en empty bundle"
+
+        self._metrics.on_output_taken(output_bundle)
+        return output_bundle
 
     def _get_next_inner(self) -> RefBundle:
         """Subclasses should override this method to implement `get_next`."""

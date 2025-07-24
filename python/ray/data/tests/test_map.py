@@ -1501,27 +1501,18 @@ def test_map_batches_combine_empty_blocks(ray_start_regular_shared):
     assert ds1.take_all() == ds2.take_all()
 
 
-def test_map_batches_preserves_empty_block_format(ray_start_regular_shared):
-    """Tests that the block format for empty blocks are not modified."""
-
+def test_empty_blocks_being_skipped(ray_start_regular_shared):
     def empty_pandas(batch):
         return pd.DataFrame({"x": []})
 
     df = pd.DataFrame({"x": [1, 2, 3]})
 
-    # First map_batches creates the empty Pandas block.
-    # Applying subsequent map_batches should not change the type of the empty block.
-    ds = (
-        ray.data.from_pandas(df)
-        .map_batches(empty_pandas)
-        .map_batches(lambda x: x, batch_size=None)
-    )
+    ds = ray.data.from_pandas(df).map_batches(empty_pandas)
 
     bundles = ds.iter_internal_ref_bundles()
     block_refs = _ref_bundles_iterator_to_block_refs_list(bundles)
 
-    assert len(block_refs) == 1
-    assert type(ray.get(block_refs[0])) is pd.DataFrame
+    assert len(block_refs) == 0
 
 
 def test_map_with_objects_and_tensors(ray_start_regular_shared):

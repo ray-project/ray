@@ -548,24 +548,37 @@ def _map_task(
         ctx.op_name,
         ctx.task_idx,
     )
+
     DataContext._set_current(data_context)
     ctx.kwargs.update(kwargs)
     TaskContext.set_current(ctx)
-    stats = BlockExecStats.builder()
+
     map_transformer.set_target_max_block_size(ctx.target_max_block_size)
+
     with MemoryProfiler(data_context.memory_usage_poll_interval_s) as profiler:
-        for b_out in map_transformer.apply_transform(iter(blocks), ctx):
-            # TODO(Clark): Add input file propagation from input blocks.
-            m_out = BlockAccessor.for_block(b_out).get_metadata()
-            s_out = BlockAccessor.for_block(b_out).schema()
-            m_out.exec_stats = stats.build()
-            m_out.exec_stats.udf_time_s = map_transformer.udf_time()
-            m_out.exec_stats.task_idx = ctx.task_idx
-            m_out.exec_stats.max_uss_bytes = profiler.estimate_max_uss()
-            meta_with_schema = BlockMetadataWithSchema(metadata=m_out, schema=s_out)
-            yield b_out
-            yield meta_with_schema
-            stats = BlockExecStats.builder()
+        stats_builder = BlockExecStats.builder()
+
+        for block in map_transformer.apply_transform(iter(blocks), ctx):
+            block_accessor = BlockAccessor.for_block(block)
+
+            assert (
+                block_accessor.num_rows() > 0
+            ), f"Operator {ctx.op_name} produced an empty block ({map_transformer.get_transform_fns()})"
+
+            # Collect the execution stats
+            stats = stats_builder.build()
+            stats.udf_time_s = map_transformer.udf_time()
+            stats.task_idx = ctx.task_idx
+            stats.max_uss_bytes = profiler.estimate_max_uss()
+
+            meta = block_accessor.get_metadata(exec_stats=stats)
+            schema = block_accessor.schema()
+
+            yield block
+            yield BlockMetadataWithSchema(metadata=meta, schema=schema)
+
+            # Reset telemetry collectors
+            stats_builder = BlockExecStats.builder()
             profiler.reset()
 
     TaskContext.reset_current()
