@@ -59,7 +59,7 @@ $ gcloud beta container node-pools create ${NODEPOOL_NAME} \
 
 ## Step 2: Install the KubeRay operator
 
-Connect to the cluster, then install the most recent stable KubeRay operator from the Helm repository by following [Deploy a KubeRay operator](../getting-started/kuberay-operator-installation.md). The Kubernetes `NoSchedule` taint in the example config prevents the KubeRay operator pod from running on a GPU node.
+Connect to the cluster, then install the most recent stable KubeRay operator from the Helm repository by following [Deploy a KubeRay operator](kuberay-operator-deploy). The Kubernetes `NoSchedule` taint in the example config prevents the KubeRay operator Pod from running on a GPU node.
 
 ## Step 3: Deploy a RayService
 
