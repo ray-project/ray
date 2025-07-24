@@ -44,7 +44,7 @@ steps:
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}"
         --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --build-name data9build
-        --except-tags data_integration,doctest,data_non_parallel,dask
+        --except-tags data_integration,doctest,data_non_parallel,dask,needs_credentials
     depends_on: data9build
 
   - label: ":database: data: arrow v9 tests (data_non_parallel)"
@@ -69,7 +69,7 @@ steps:
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}"
         --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --build-name datalbuild
-        --except-tags data_integration,doctest,data_non_parallel,dask
+        --except-tags data_integration,doctest,data_non_parallel,dask,needs_credentials
     depends_on: datalbuild
 
   - label: ":database: data: arrow v20 tests (data_non_parallel)"
@@ -94,7 +94,7 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //python/ray/air/... data
         --workers 2 --worker-id {{matrix.worker_id}} --parallelism-per-worker 3
         --python-version {{matrix.python}}
-        --except-tags data_integration,doctest,data_non_parallel,dask
+        --except-tags data_integration,doctest,data_non_parallel,dask,needs_credentials
     depends_on: databuild-multipy
     matrix:
       setup:
@@ -128,7 +128,7 @@ steps:
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}"
         --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --build-name datanbuild
-        --except-tags data_integration,doctest,data_non_parallel,dask
+        --except-tags data_integration,doctest,data_non_parallel,dask,needs_credentials
     depends_on: datanbuild
     soft_fail: true
 
