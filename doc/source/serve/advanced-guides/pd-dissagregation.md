@@ -15,6 +15,8 @@ vLLM v1 supports two main KV transfer backends:
 
 ## Prerequisites
 
+Make sure that you are using vLLM v1 by setting `VLLM_USE_V1=1` environment variable.
+
 For LMCacheConnectorV1, also install LMCache:
 
 ```bash
@@ -63,7 +65,7 @@ decode_config = LLMConfig(
 
 Here's a complete configuration file for NIXLConnector:
 
-```{literalinclude} ../serve/doc_code/pd_dissagregation/nixl_example.yaml
+```{literalinclude} ../doc_code/pd_dissagregation/nixl_example.yaml
 :language: yaml
 ```
 
@@ -85,7 +87,7 @@ LMCacheConnectorV1 provides a more advanced caching solution with support for mu
 
 This configuration uses LMCache with a NIXL-based storage backend for network communication.
 
-```{literalinclude} ../serve/doc_code/pd_dissagregation/lmcache_nixl_example.yaml
+```{literalinclude} ../doc_code/pd_dissagregation/lmcache_nixl_example.yaml
 :language: yaml
 ```
 
@@ -93,13 +95,13 @@ This configuration uses LMCache with a NIXL-based storage backend for network co
 
 Create `lmcache_prefiller.yaml`:
 
-```{literalinclude} ../serve/doc_code/pd_dissagregation/lmcache/nixl/prefiller.yaml
+```{literalinclude} ../doc_code/pd_dissagregation/lmcache/nixl/prefiller.yaml
 :language: yaml
 ```
 
 Create `lmcache_decoder.yaml`:
 
-```{literalinclude} ../serve/doc_code/pd_dissagregation/lmcache/nixl/decoder.yaml
+```{literalinclude} ../doc_code/pd_dissagregation/lmcache/nixl/decoder.yaml
 :language: yaml
 ```
 
@@ -109,7 +111,7 @@ Create `lmcache_decoder.yaml`:
 
 This configuration uses LMCache with Mooncake store, a high-performance distributed storage system.
 
-```{literalinclude} ../serve/doc_code/pd_dissagregation/lmcache_mooncake_example.yaml
+```{literalinclude} ../doc_code/pd_dissagregation/lmcache_mooncake_example.yaml
 :language: yaml
 ```
 
@@ -117,7 +119,7 @@ This configuration uses LMCache with Mooncake store, a high-performance distribu
 
 Create `lmcache_mooncake.yaml`:
 
-```{literalinclude} ../serve/doc_code/pd_dissagregation/lmcache/mooncake.yaml
+```{literalinclude} ../doc_code/pd_dissagregation/lmcache/mooncake.yaml
 :language: yaml
 ```
 
