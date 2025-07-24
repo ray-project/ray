@@ -174,7 +174,7 @@ class PDProxyServer(LLMServer):
         return serve.deployment()(cls)
 
 
-def build_app(pd_serving_args: dict) -> Application:
+def build_pd_openai_app(pd_serving_args: dict) -> Application:
     """Build a deployable application utilizing P/D disaggregation."""
 
     pd_config = PDServingArgs.model_validate(pd_serving_args).parse_args()

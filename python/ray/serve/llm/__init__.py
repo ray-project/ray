@@ -263,6 +263,96 @@ def build_openai_app(llm_serving_args: "LLMServingArgs") -> "Application":
     return build_openai_app(llm_serving_args=llm_serving_args)
 
 
+@PublicAPI(stability="alpha")
+def build_pd_openai_app(pd_serving_args: dict) -> "Application":
+    """Build a deployable application utilizing P/D disaggregation.
+
+
+    Examples:
+        .. code-block:: python
+            :caption: Example usage in code.
+
+            from ray import serve
+            from ray.serve.llm import LLMConfig, build_pd_openai_app
+
+            config = LLMConfig(
+                model_loading_config=dict(
+                    model_id="qwen-0.5b",
+                    model_source="Qwen/Qwen2.5-0.5B-Instruct",
+                ),
+                deployment_config=dict(
+                    autoscaling_config=dict(
+                        min_replicas=1, max_replicas=2,
+                    )
+                ),
+                accelerator_type="A10G",
+            )
+
+            # Deploy the application
+            llm_app = build_pd_openai_app(
+                dict(
+                    prefill_config=config,
+                    decode_config=config,
+                )
+            )
+
+            serve.run(llm_app)
+
+
+            # Querying the model via openai client
+            from openai import OpenAI
+
+            # Initialize client
+            client = OpenAI(base_url="http://localhost:8000/v1", api_key="fake-key")
+
+            # Basic completion
+            response = client.chat.completions.create(
+                model="qwen-0.5b",
+                messages=[{"role": "user", "content": "Hello!"}]
+            )
+
+        .. code-block:: yaml
+            :caption: Example usage in YAML.
+
+            # config.yaml
+            applications:
+            - args:
+                prefill_config:
+                    model_loading_config:
+                        model_id: qwen-0.5b
+                        model_source: Qwen/Qwen2.5-0.5B-Instruct
+                    accelerator_type: A10G
+                    deployment_config:
+                        autoscaling_config:
+                            min_replicas: 1
+                            max_replicas: 2
+                decode_config:
+                    model_loading_config:
+                    model_id: qwen-1.5b
+                    model_source: Qwen/Qwen2.5-1.5B-Instruct
+                    accelerator_type: A10G
+                    deployment_config:
+                    autoscaling_config:
+                        min_replicas: 1
+                        max_replicas: 2
+              import_path: ray.serve.llm:build_pd_openai_app
+              name: llm_app
+              route_prefix: "/"
+
+
+    Args:
+        pd_serving_args: The dictionary containing prefill and decode configs.
+
+    Returns:
+        The configured Ray Serve Application router.
+    """
+    from ray.llm._internal.serve.deployments.prefill_decode_disagg.prefill_decode_disagg import (
+        build_pd_openai_app as _build_pd_openai_app,
+    )
+
+    return _build_pd_openai_app(pd_serving_args=pd_serving_args)
+
+
 __all__ = [
     "LLMConfig",
     "LLMServingArgs",
