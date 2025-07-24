@@ -1,4 +1,5 @@
-from typing import Dict, List, Optional, Tuple, Set
+from dataclasses import dataclass
+from typing import Dict, List, Optional, Tuple
 
 import ray.util.collective as collective
 from ray._private.custom_types import TensorTransportEnum
@@ -94,26 +95,32 @@ def __ray_fetch_gpu_object__(self, obj_id: str):
     return tensors
 
 
+@dataclass
+class GPUObjectMetadata:
+    # A list of tensors representing the GPU object.
+    data: List["torch.Tensor"]
+    # Whether the GPU object is the primary copy.
+    is_primary: bool
+    # The number of readers for the GPU object.
+    # This is used to implement garbage collection for receiver actors,
+    # handling cases where the same GPU object reference is passed to the
+    # same actor task multiple times. For sender actors, we still rely on
+    # the object store's reference counting mechanism.
+    num_readers: Optional[int] = None
+
+
 class GPUObjectStore:
     def __init__(self):
         # A dictionary that maps from an object ID to a list of tensors.
         #
         # Note: Currently, `gpu_object_store` is only supported for Ray Actors.
-        self.gpu_object_store: Dict[str, List["torch.Tensor"]] = {}
-        # A set of object IDs that are the primary copy.
-        self.primary_gpu_object_ids: Set[str] = set()
-        # A dictionary that maps an object ID to the number of readers.
-        # This is used to implement garbage collection for receiver actors,
-        # handling cases where the same GPU object reference is passed to the
-        # same actor task multiple times. For sender actors, we still rely on
-        # the object store's reference counting mechanism.
-        self.gpu_object_id_to_num_readers: Dict[str, int] = {}
+        self.gpu_object_store: Dict[str, GPUObjectMetadata] = {}
 
     def has_gpu_object(self, obj_id: str) -> bool:
         return obj_id in self.gpu_object_store
 
     def get_gpu_object(self, obj_id: str) -> Optional[List["torch.Tensor"]]:
-        return self.gpu_object_store[obj_id]
+        return self.gpu_object_store[obj_id].data
 
     def add_gpu_object(
         self,
@@ -128,18 +135,19 @@ class GPUObjectStore:
         Args:
             obj_id: The object ID of the GPU object.
             gpu_object: A list of tensors representing the GPU object.
-            num_readers: The number of readers for the GPU object. It should only
-              be set for receiver actors.
+            num_readers: The number of readers for the GPU object. The GPU
+              object store will automatically clean up the object after
+              `num_readers` calls to `decrement_num_readers()`.
             is_primary: Whether the GPU object is the primary copy.
         """
-        if is_primary:
-            self.primary_gpu_object_ids.add(obj_id)
-        self.gpu_object_store[obj_id] = gpu_object
-        if num_readers is not None:
-            self.gpu_object_id_to_num_readers[obj_id] = num_readers
+        self.gpu_object_store[obj_id] = GPUObjectMetadata(
+            gpu_object,
+            is_primary,
+            num_readers,
+        )
 
     def is_primary_copy(self, obj_id: str) -> bool:
-        return obj_id in self.primary_gpu_object_ids
+        return self.gpu_object_store[obj_id].is_primary
 
     def remove_gpu_object(self, obj_id: str):
         """
@@ -152,13 +160,10 @@ class GPUObjectStore:
             obj_id in self.gpu_object_store
         ), f"obj_id={obj_id} not found in GPU object store"
         del self.gpu_object_store[obj_id]
-        if obj_id in self.primary_gpu_object_ids:
-            self.primary_gpu_object_ids.remove(obj_id)
 
     def decrement_num_readers(self, obj_id: str):
         """
-        Decrement the number of readers for a GPU object. This function should
-        only be called by the receiver actor.
+        Decrement the number of readers for a GPU object.
 
         Args:
             obj_id: The object ID of the GPU object.
@@ -166,7 +171,6 @@ class GPUObjectStore:
         assert (
             obj_id in self.gpu_object_store
         ), f"obj_id={obj_id} not found in GPU object store"
-        self.gpu_object_id_to_num_readers[obj_id] -= 1
-        if self.gpu_object_id_to_num_readers[obj_id] == 0:
+        self.gpu_object_store[obj_id].num_readers -= 1
+        if self.gpu_object_store[obj_id].num_readers == 0:
             del self.gpu_object_store[obj_id]
-            del self.gpu_object_id_to_num_readers[obj_id]
