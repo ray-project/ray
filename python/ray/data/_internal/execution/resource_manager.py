@@ -6,6 +6,7 @@ from abc import ABC, abstractmethod
 from collections import defaultdict
 from typing import TYPE_CHECKING, Callable, Dict, Iterable, List, Optional
 
+from ray._private.ray_constants import env_float
 from ray.data._internal.execution.interfaces.execution_options import (
     ExecutionOptions,
     ExecutionResources,
@@ -44,7 +45,9 @@ class ResourceManager:
     # The fraction of the object store capacity that will be used as the default object
     # store memory limit for the streaming executor,
     # when `ReservationOpResourceAllocator` is enabled.
-    DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION = 0.5
+    DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION = env_float(
+        "RAY_DATA_OBJECT_STORE_MEMORY_LIMIT_FRACTION", 0.5
+    )
 
     # The fraction of the object store capacity that will be used as the default object
     # store memory limit for the streaming executor,
