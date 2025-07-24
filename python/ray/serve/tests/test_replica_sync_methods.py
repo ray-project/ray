@@ -99,7 +99,8 @@ def test_context_vars_propagated(serve_instance, use_fastapi: bool):
 
     serve.run(D.bind())
 
-    r = httpx.get(f"{get_application_url()}/", headers={"X-Request-Id": "TEST-ID"})
+    base_url = get_application_url()
+    r = httpx.get(f"{base_url}/", headers={"X-Request-Id": "TEST-ID"})
     r.raise_for_status()
     # If context vars weren't propagated, the request ID would be empty.
     assert r.text == "TEST-ID"
