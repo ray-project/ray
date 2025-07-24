@@ -69,7 +69,7 @@ void GrpcServer::Run() {
   // the requests sent to this port may be handled by any of the workers.
   // However we need it to allow restarting a server quickly after shutting it down
   // https://github.com/grpc/grpc/issues/39910
-  builder.AddChannelArgument(GRPC_ARG_ALLOW_REUSEPORT, 1);
+  builder.AddChannelArgument(GRPC_ARG_ALLOW_REUSEPORT, 0);
   builder.AddChannelArgument(GRPC_ARG_MAX_SEND_MESSAGE_LENGTH,
                              RayConfig::instance().max_grpc_message_size());
   builder.AddChannelArgument(GRPC_ARG_MAX_RECEIVE_MESSAGE_LENGTH,
