@@ -258,22 +258,7 @@ void GcsResourceManager::UpdateNodeResourceUsage(
     const syncer::ResourceViewSyncMessage &resource_view_sync_message) {
   // Note: This may be inconsistent with autoscaler state, which is
   // not reported as often as a Ray Syncer message.
-  if (auto maybe_node_info = gcs_node_manager_.GetAliveNode(node_id);
-      maybe_node_info != absl::nullopt) {
-    auto snapshot = maybe_node_info.value()->mutable_state_snapshot();
-
-    if (resource_view_sync_message.idle_duration_ms() > 0) {
-      snapshot->set_state(rpc::NodeSnapshot::IDLE);
-      snapshot->set_idle_duration_ms(resource_view_sync_message.idle_duration_ms());
-    } else {
-      snapshot->set_state(rpc::NodeSnapshot::ACTIVE);
-      snapshot->mutable_node_activity()->CopyFrom(
-          resource_view_sync_message.node_activity());
-    }
-    if (resource_view_sync_message.is_draining()) {
-      snapshot->set_state(rpc::NodeSnapshot::DRAINING);
-    }
-  }
+  gcs_node_manager_.UpdateAliveNode(node_id, resource_view_sync_message);
 
   auto iter = node_resource_usages_.find(node_id);
   if (iter == node_resource_usages_.end()) {
