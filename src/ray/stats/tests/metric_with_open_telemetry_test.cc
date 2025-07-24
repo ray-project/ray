@@ -147,9 +147,7 @@ struct GaugeMetricCase {
 
 class GaugeMetricTest : public MetricTest,
                         public ::testing::WithParamInterface<GaugeMetricCase> {
-  void TearDown() override {
-    StatsConfig::instance().SetGlobalTags({});
-  }
+  void TearDown() override { StatsConfig::instance().SetGlobalTags({}); }
 };
 
 TEST_P(GaugeMetricTest, RecordsValueAndTagsForAllMetricTypes) {
@@ -180,25 +178,28 @@ INSTANTIATE_TEST_SUITE_P(
         // Gauge metric without global tags
         GaugeMetricCase{"metric_gauge_test",
                         42.0,
-                        {{stats::TagKeyType::Register("Tag1"), "Value1"}, {stats::TagKeyType::Register("Tag2"), "Value1"}},
+                        {{stats::TagKeyType::Register("Tag1"), "Value1"},
+                         {stats::TagKeyType::Register("Tag2"), "Value1"}},
                         {},  // no global tags
                         {{"Tag1", "Value1"}, {"Tag2", "Value1"}},
                         42.0},
         // Gauge metric with global tags
         GaugeMetricCase{"metric_gauge_test",
                         52.0,
-                        {{stats::TagKeyType::Register("Tag1"), "Value2"}, {stats::TagKeyType::Register("Tag2"), "Value2"}},
+                        {{stats::TagKeyType::Register("Tag1"), "Value2"},
+                         {stats::TagKeyType::Register("Tag2"), "Value2"}},
                         {{stats::TagKeyType::Register("Tag3"), "Global"}},
                         {{"Tag1", "Value2"}, {"Tag2", "Value2"}, {"Tag3", "Global"}},
                         52.0},
         // Gauge metric recorded with unsupported tag
-        GaugeMetricCase{
-            "metric_gauge_test",
-            62.0,
-            {{stats::TagKeyType::Register("Tag1"), "Value3"}, {stats::TagKeyType::Register("Tag2"), "Value3"}, {stats::TagKeyType::Register("UnSupportedTag"), "Value"}},
-            {},  // no global tags
-            {{"Tag1", "Value3"},{"Tag2", "Value3"}},  // Unsupported tag will not be recorded
-            62.0}
-          ));
+        GaugeMetricCase{"metric_gauge_test",
+                        62.0,
+                        {{stats::TagKeyType::Register("Tag1"), "Value3"},
+                         {stats::TagKeyType::Register("Tag2"), "Value3"},
+                         {stats::TagKeyType::Register("UnSupportedTag"), "Value"}},
+                        {},  // no global tags
+                        {{"Tag1", "Value3"},
+                         {"Tag2", "Value3"}},  // Unsupported tag will not be recorded
+                        62.0}));
 }  // namespace telemetry
 }  // namespace ray
