@@ -108,7 +108,7 @@ class Node:
             # instance provided.
             if len(external_redis) == 1:
                 external_redis.append(external_redis[0])
-            [primary_redis_ip, port] = external_redis[0].rsplit(":", 1)
+            [primary_redis_ip, port] = ray._private.network_utils.parse_address(external_redis[0])
             ray_params.external_addresses = external_redis
             ray_params.num_redis_shards = len(external_redis) - 1
 
@@ -1228,7 +1228,7 @@ class Node:
         # e.g. https://github.com/ray-project/ray/issues/15780
         # TODO(mwtian): figure out a way to use 127.0.0.1 for local connection
         # when possible.
-        self._gcs_address = f"{self._node_ip_address}:" f"{gcs_server_port}"
+        self._gcs_address = ray._private.network_utils.build_address(self._node_ip_address, gcs_server_port)
 
     def start_raylet(
         self,

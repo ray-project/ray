@@ -76,14 +76,14 @@ class AutoscalerMonitor:
         self.gcs_client = GcsClient(address=self.gcs_address)
 
         if monitor_ip:
-            monitor_addr = f"{monitor_ip}:{AUTOSCALER_METRIC_PORT}"
+            monitor_addr = ray._private.network_utils.build_address(monitor_ip, AUTOSCALER_METRIC_PORT)
             self.gcs_client.internal_kv_put(
                 b"AutoscalerMetricsAddress", monitor_addr.encode(), True, None
             )
         self._session_name = self._get_session_name(self.gcs_client)
         logger.info(f"session_name: {self._session_name}")
         worker.set_mode(SCRIPT_MODE)
-        head_node_ip = self.gcs_address.rsplit(":", 1)[0]
+        head_node_ip = ray._private.network_utils.parse_address(self.gcs_address)[0]
 
         self.autoscaler = None
         if log_dir:

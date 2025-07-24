@@ -70,6 +70,12 @@ inline std::vector<std::string> SplitIpPort(const std::string &address) {
   }
 
   result.push_back(address.substr(0, found));
+  if (result[0].front() == '[') {
+    result[0].erase(0, 1);  // Remove the leading '[' if present.
+  }
+  if (result[0].back() == ']') {
+    result[0].pop_back();  // Remove the trailing ']' if present.
+  }
   result.push_back(address.substr(found + 1));
   return result;
 }

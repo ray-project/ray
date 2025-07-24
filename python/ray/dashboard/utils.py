@@ -345,7 +345,7 @@ def to_posix_time(dt):
 def address_tuple(address):
     if isinstance(address, tuple):
         return address
-    ip, port = address.rsplit(":", 1)
+    ip, port = ray._private.network_utils.parse_address(address)
     return ip, int(port)
 
 

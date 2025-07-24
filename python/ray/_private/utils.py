@@ -4,7 +4,6 @@ import json
 import logging
 import multiprocessing
 import os
-import ipaddress
 import platform
 import re
 import signal
@@ -1625,15 +1624,3 @@ def is_in_test():
             for env_var in ("PYTEST_CURRENT_TEST", "BUILDKITE")
         )
     return in_test
-
-
-def is_ipv6_address(ip):
-    if ip is None:
-        return False
-    if len(ip) >= 2 and ip[0] == "[":
-        ip = ip[1:-1]
-    try:
-        ip_obj = ipaddress.ip_address(ip)
-        return ip_obj.version == 6
-    except ValueError:
-        return False

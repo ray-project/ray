@@ -146,6 +146,7 @@ ray_cc_library(
         ":rpc_chaos",
         ":rpc_client_call",
         "//src/ray/common:grpc_util",
+        "//src/ray/common:network",
         "//src/ray/common:ray_config",
         "//src/ray/common:status",
     ],

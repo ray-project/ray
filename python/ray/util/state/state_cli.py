@@ -807,7 +807,7 @@ def _get_head_node_ip(address: Optional[str] = None):
     """
     try:
         address = services.canonicalize_bootstrap_address_or_die(address)
-        return address.rsplit(":", 1)[0]
+        return ray._private.network_utils.parse_address(address)[0]
     except (ConnectionError, ValueError) as e:
         # Hide all the stack trace
         raise click.UsageError(str(e))

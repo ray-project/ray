@@ -2799,7 +2799,7 @@ cdef class _GcsSubscriber:
         # subscriber_id needs to match the binary format of a random
         # SubscriberID / UniqueID, which is 28 (kUniqueIDSize) random bytes.
         subscriber_id = bytes(bytearray(random.getrandbits(8) for _ in range(28)))
-        gcs_address, gcs_port = address.rsplit(":", 1)
+        gcs_address, gcs_port = ray._private.network_utils.parse_address(address)
         self.inner.reset(new CPythonGcsSubscriber(
             gcs_address, int(gcs_port), channel, subscriber_id, c_worker_id))
 

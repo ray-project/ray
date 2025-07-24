@@ -88,7 +88,7 @@ class HttpServerDashboardHead:
         self.http_host = http_host
         self.http_port = http_port
         self.http_port_retries = http_port_retries
-        self.head_node_ip = gcs_address.rsplit(":", 1)[0]
+        self.head_node_ip = ray._private.network_utils.parse_address(gcs_address)[0]
         self.metrics = metrics
         self._session_name = session_name
 

@@ -45,7 +45,7 @@ class Rendezvous:
         self._context = context
         redis_address = ray._private.worker._global_node.redis_address
         (self._redis_ip_address, self._redis_port) = (
-            redis_address.rsplit(":", 1) if store_type == "redis" else (None, None)
+            ray._private.network_utils.parse_address(redis_address) if store_type == "redis" else (None, None)
         )
         self._process_ip_address = ray.util.get_node_ip_address()
         logger.debug(

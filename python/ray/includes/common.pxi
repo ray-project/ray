@@ -15,6 +15,7 @@ from ray.includes.common cimport (
     kGcsAutoscalerClusterConfigKey,
     kGcsPidKey,
 )
+from ray._private import network_utils
 
 from ray.exceptions import (
     RayActorError,
@@ -50,7 +51,7 @@ cdef class GcsClientOptions:
             c_cluster_id = CClusterID.FromHex(cluster_id_hex)
         self = GcsClientOptions()
         try:
-            ip, port = gcs_address.rsplit(":", 1)
+            ip, port = network_utils.parse_address(gcs_address)
             port = int(port)
             self.inner.reset(
                 new CGcsClientOptions(
