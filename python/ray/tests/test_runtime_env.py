@@ -168,6 +168,10 @@ def test_runtime_env_config(start_cluster_shared):
         run(runtime_env)
 
 
+@pytest.mark.skipif(
+    sys.platform != "linux",
+    reason="The process spawning and error code passing behavior is Linux-specific",
+)
 def test_large_runtime_env_fails_fast(start_cluster_shared):
     """
     Tests that a task with a runtime_env that is too large fails quickly
