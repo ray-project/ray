@@ -138,9 +138,14 @@ def BroadcastJoinOperator(
     """
     from ray.data._internal.compute import ActorPoolStrategy
     from ray.data._internal.execution.operators.map_transformer import (
-        BatchUDFMapTransformFn,
+        BatchMapTransformFn,
+        BlocksToBatchesMapTransformFn,
+        BuildOutputBlocksMapTransformFn,
+        MapTransformCallable,
         MapTransformer,
     )
+    from ray.data._internal.execution.interfaces.task_context import TaskContext
+    from ray.data.block import DataBatch
 
     # Create the broadcast join function that materializes the right dataset immediately
     join_fn = BroadcastJoinFunction(
@@ -153,19 +158,28 @@ def BroadcastJoinOperator(
         right_columns_suffix=right_columns_suffix,
     )
 
-    # Create batch UDF transform function
-    batch_fn = BatchUDFMapTransformFn(
-        fn=join_fn,
-        batch_size=None,  # Use entire blocks as batches
-        batch_format="pyarrow",
-        zero_copy_batch=False,
-        fn_args=None,
-        fn_kwargs=None,
-        fn_constructor_args=None,
-        fn_constructor_kwargs=None,
-    )
+    # Create a composite transform function that applies the join function to batches
+    # following the same pattern as in plan_udf_map_op.py
+    def batch_join_fn(
+        batches: "Iterable[DataBatch]", _: TaskContext
+    ) -> "Iterable[DataBatch]":
+        for batch in batches:
+            yield join_fn(batch)
 
-    map_transformer = MapTransformer([batch_fn])
+    # Use the same pattern as _create_map_transformer_for_map_batches_op
+    transform_fns = [
+        # Convert input blocks to batches.
+        BlocksToBatchesMapTransformFn(
+            batch_size=None,  # Use entire blocks as batches
+            batch_format="pyarrow",
+            zero_copy_batch=False,
+        ),
+        # Apply the UDF.
+        BatchMapTransformFn(batch_join_fn, is_udf=True),
+        # Convert output batches to blocks.
+        BuildOutputBlocksMapTransformFn.for_batches(),
+    ]
+    map_transformer = MapTransformer(transform_fns)
 
     # Use ActorPoolStrategy with concurrency equal to num_partitions
     compute_strategy = ActorPoolStrategy(size=num_partitions)
