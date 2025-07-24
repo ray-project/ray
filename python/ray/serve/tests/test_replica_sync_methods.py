@@ -11,6 +11,7 @@ import ray
 from ray import serve
 from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.constants import RAY_SERVE_RUN_SYNC_IN_THREADPOOL
+from ray.serve._private.test_utils import get_application_url
 
 
 @pytest.mark.skipif(
@@ -40,7 +41,7 @@ def test_not_running_in_asyncio_loop(serve_instance, use_fastapi: bool):
 
     serve.run(D.bind())
     # Would error if the check fails.
-    httpx.get("http://localhost:8000/").raise_for_status()
+    httpx.get(f"{get_application_url()}/").raise_for_status()
 
 
 @pytest.mark.skipif(
@@ -97,7 +98,7 @@ def test_context_vars_propagated(serve_instance, use_fastapi: bool):
 
     serve.run(D.bind())
 
-    r = httpx.get("http://localhost:8000/", headers={"X-Request-Id": "TEST-ID"})
+    r = httpx.get(f"{get_application_url()}/", headers={"X-Request-Id": "TEST-ID"})
     r.raise_for_status()
     # If context vars weren't propagated, the request ID would be empty.
     assert r.text == "TEST-ID"
