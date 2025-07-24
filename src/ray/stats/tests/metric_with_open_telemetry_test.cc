@@ -23,6 +23,7 @@ namespace telemetry {
 using namespace std::literals;
 using OpenTelemetryMetricRecorder = ray::telemetry::OpenTelemetryMetricRecorder;
 using StatsConfig = ray::stats::StatsConfig;
+using TagsMap = absl::flat_hash_map<std::string,std::string>;
 
 DECLARE_stats(metric_gauge_test);
 DEFINE_stats(metric_gauge_test,
@@ -66,73 +67,7 @@ class MetricTest : public ::testing::Test {
     }
     StatsConfig::instance().SetIsInitialized(true);
   }
-
-  std::optional<double> GetObservableMetricValue(
-      const std::string &name,
-      const absl::flat_hash_map<std::string, std::string> &tags) {
-    auto &recorder = OpenTelemetryMetricRecorder::GetInstance();
-    std::lock_guard<std::mutex> lock(recorder.mutex_);
-    auto it = recorder.observations_by_name_.find(name);
-    if (it == recorder.observations_by_name_.end()) {
-      return std::nullopt;  // Not registered
-    }
-    auto tag_it = it->second.find(tags);
-    if (tag_it != it->second.end()) {
-      return tag_it->second;  // Get the value
-    }
-    return std::nullopt;
-  }
-
-  std::optional<absl::flat_hash_map<std::string, std::string> &> GetObservableMetricTags(
-      const std::string &name) {
-    auto &recorder = OpenTelemetryMetricRecorder::GetInstance();
-    std::lock_guard<std::mutex> lock(recorder.mutex_);
-    auto it = recorder.observations_by_name_.find(name);
-    if (it == recorder.observations_by_name_.end()) {
-      return std::nullopt;  // Not registered
-    }
-    return it->second;
-  }
 };
-
-TEST_F(MetricTest, TestGaugeMetric) {
-  StatsConfig::instance().SetGlobalTags({{"Tag3", "GlobalValue"}});
-
-  ASSERT_TRUE(
-      OpenTelemetryMetricRecorder::GetInstance().IsMetricRegistered("metric_gauge_test"));
-  STATS_metric_gauge_test.Record(
-      42.0, {{"Tag1", "Value1"}, {"Tag2", "Value2"}, {"UnsupportedTag", "Value"}});
-  LegacyMetricGaugeTest.Record(24.0, {{"Tag1"sv, "Value1"}, {"Tag2"sv, "Value2"}});
-  // Test valid tags for a registered metric.
-  ASSERT_EQ(GetObservableMetricValue("metric_gauge_test",
-                                     {{"Tag1", "Value1"}, {"Tag2", "Value2"}}),
-            42.0);
-  // Test invalid tags for a registered metric.
-  ASSERT_EQ(GetObservableMetricValue("metric_gauge_test",
-                                     {{"Tag1", "Value1"}, {"Tag2", "Value3"}}),
-            std::nullopt);
-  // Test unregistered metric.
-  ASSERT_EQ(GetObservableMetricValue("metric_gauge_test_unregistered",
-                                     {{"Tag1", "Value1"}, {"Tag2", "Value2"}}),
-            std::nullopt);
-  // Test valid tags for a legacy metric.
-  ASSERT_EQ(GetObservableMetricValue("legacy_metric_gauge_test",
-                                     {{"Tag1", "Value1"}, {"Tag2", "Value2"}}),
-            24.0);
-  // Test invalid tags for a legacy metric.
-  ASSERT_EQ(GetObservableMetricValue("legacy_metric_gauge_test",
-                                     {{"Tag1", "Value1"}, {"Tag2", "Value3"}}),
-            std::nullopt);
-
-  // Verify that global tags are applied to a registered metric.
-  // 'UnsupportedTag' is ignored because it wasn't part of the metric definition.
-  ASSERT_EQ(GetObservableMetricTags("metric_gauge_test"),
-            {{"Tag1", "Value1"}, {"Tag2", "Value3"}, {"Tag3", "GlobalValue"}});
-
-  // Verify that global tags are also applied to a legacy metric.
-  ASSERT_EQ(GetObservableMetricTags("legacy_metric_gauge_test"),
-            {{"Tag1", "Value1"}, {"Tag2", "Value3"}, {"Tag3", "GlobalValue"}});
-}
 
 TEST_F(MetricTest, TestCounterMetric) {
   StatsConfig::instance().SetGlobalTags({});
@@ -160,5 +95,114 @@ TEST_F(MetricTest, TestSumMetric) {
       "legacy_metric_sum_test"));
 }
 
+// Parameterized test for different possible cases when using gauge metrics
+struct GaugeMetricCase {
+  std::string metric_name;
+  double record_value;
+  TagsMap record_tags;
+  TagsMap global_tags;
+  TagsMap expected_tags;
+  double expected_value;
+};
+
+struct MetricObservations {
+  double value; // Recorded metric value
+  TagsMap tags; // Recorded tags
+};
+
+class GaugeMetricTest : public MetricTest,
+                        public ::testing::WithParamInterface<GaugeMetricCase> {
+  public:
+  // void TearDown() override {
+  //   // Manually clear recorder state via friend access
+  //   auto &rec = OpenTelemetryMetricRecorder::GetInstance();
+  //   std::lock_guard<std::mutex> lock(rec.mutex_);
+  //   rec.observations_by_name_.clear();
+  //   rec.registered_instruments_.clear();
+  //   rec.gauge_metric_names_.clear();
+  //   // Restore global tags
+  //   StatsConfig::instance().SetGlobalTags(saved_tags_);
+  // }
+
+  // Fetch both the recorded value and the actual tag map used for a given metric.
+  std::optional<MetricObservations> getMetricObservations(const std::string &metric_name) {
+    auto &recorder = OpenTelemetryMetricRecorder::GetInstance();
+    std::lock_guard<std::mutex> lock(recorder.mutex_);
+
+    auto metric_it = recorder.observations_by_name_.find(metric_name);
+    if (metric_it == recorder.observations_by_name_.end()) {
+      return std::nullopt;  // Not registered
+    }
+    auto &obs_it = metric_it->second;
+
+    // Return the value and the tag-key used in the recorder
+    return MetricObservations{obs_it->second, obs_it->first};
+  }
+
+  // Number of distinct metrics with at least one observation
+  size_t getNumRecordedMetrics() {
+    auto &rec = OpenTelemetryMetricRecorder::GetInstance();
+    std::lock_guard<std::mutex> lock(rec.mutex_);
+    return rec.observations_by_name_.size();
+  }
+};
+
+TEST_P(GaugeMetricTest, RecordsValueAndTagsForAllMetricTypes) {
+  const auto &tc = GetParam();
+  // Apply per-case global tags
+  StatsConfig::instance().SetGlobalTags(tc.global_tags);
+
+  // Record the metric
+  STATS_metric_gauge_test.Record(tc.record_value, tc.record_tags);
+  LegacyMetricGaugeTest.Record(tc.record_value, tc.record_tags);
+
+  // Verify that just two metrics have been recorded
+  ASSERT_TRUE(getNumRecordedMetrics()==2);
+
+  // Verify observations
+  auto opt = getMetricObservations(tc.metric_name);
+  ASSERT_TRUE(opt.has_value());
+  EXPECT_EQ(opt->value, tc.expected_value);
+  EXPECT_THAT(opt->tags, ::testing::UnorderedElementsAreArray(tc.expected_tags));
+
+  // verify legacy metric observations
+  auto legacy_opt = getMetricObservations(legacy_name, tc.record_tags);
+  ASSERT_TRUE(legacy_opt.has_value());
+  EXPECT_EQ(legacy_opt->value, tc.expected_value);
+  EXPECT_THAT(legacy_opt->tags, ::testing::UnorderedElementsAreArray(tc.expected_tags));
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    GaugeMetric,
+    GaugeMetricTest,
+    ::testing::Values(
+        // Gauge metric without global tags
+        GaugeMetricCase{
+            "metric_gauge_test",
+            42.0,
+            {{"Tag1","Value1"}, {"Tag2","Value2"}},
+            {},  // no global tags
+            {{"Tag1","Value1"}, {"Tag2","Value2"}},
+            42.0
+        },
+        // Gauge metric with global tags
+        GaugeMetricCase{
+            "metric_gauge_test",
+            42.0,
+            {{"Tag1","Value1"}, {"Tag2","Value2"}},
+            {{"Tag3","Global"}},
+            {{"Tag1","Value1"}, {"Tag2","Value2"},{"Tag3","Global"}},
+            42.0
+        },
+        // Gauge metric recorded with unsupported tag
+        GaugeMetricCase{
+            "metric_gauge_test",
+            42.0,
+            {{"Tag1","Value1"}, {"Tag2","Value2"}, {"UnSupportedTag","Value"}},
+            {},  // no global tags
+            {{"Tag1","Value1"}, {"Tag2","Value2"}}, // Unsupported tag will not be recorded
+            42.0
+        }
+    ));
 }  // namespace telemetry
 }  // namespace ray

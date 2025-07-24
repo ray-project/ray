@@ -149,6 +149,7 @@ class OpenTelemetryMetricRecorder {
   // Declare the test class as a friend to allow access to private members for testing.
   friend class MetricTest_TestGaugeMetric_Test;
   friend class MetricTest;
+  friend class GaugeMetricTest;
   friend class OpenTelemetryMetricRecorderTest;
   friend class OpenTelemetryMetricRecorderTest_TestGaugeMetric_Test;
 };
