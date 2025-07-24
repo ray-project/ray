@@ -5,7 +5,6 @@ import logging
 import os
 import requests
 import socket
-import subprocess
 import sys
 import traceback
 from collections import defaultdict
