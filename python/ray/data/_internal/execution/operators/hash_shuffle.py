@@ -1269,7 +1269,7 @@ class AggregatorPool:
         if self._issue_detector is not None:
             try:
                 # Tell the actor to stop monitoring
-                self._issue_detector.stop_monitoring.remote()
+                ray.wait(self._issue_detector.stop_monitoring.remote())
             except Exception:
                 pass  # Actor might already be dead
 
