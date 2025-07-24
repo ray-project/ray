@@ -466,15 +466,14 @@ def test_controller_crashes_with_logging_config(serve_instance):
     # Check proxy logging
     def check_proxy_handle_in_controller():
         proxy_handles = ray.get(client._controller.get_proxies.remote())
-        assert len(proxy_handles) == 1
-        return True
+        return len(proxy_handles) == 1
 
     wait_for_condition(check_proxy_handle_in_controller)
     proxy_handles = ray.get(client._controller.get_proxies.remote())
     proxy_handle = list(proxy_handles.values())[0]
     file_path = ray.get(proxy_handle._get_logging_config.remote())
     # Send request, we should see json logging and debug log message in proxy log.
-    resp = httpx.get("http://127.0.0.1:8000")
+    resp = httpx.get("http://localhost:8000")
     assert resp.status_code == 200
     wait_for_condition(
         check_log_file, log_file=file_path, expected_regex=['.*"message":.*GET / 200.*']
@@ -506,7 +505,7 @@ def test_controller_recover_and_deploy(serve_instance):
 
     # When controller restarts, it should redeploy config automatically
     wait_for_condition(
-        lambda: httpx.get("http://localhost:8000/").text == "hello world"
+        lambda: httpx.get(f"{get_application_url()}/").text == "hello world"
     )
 
 
