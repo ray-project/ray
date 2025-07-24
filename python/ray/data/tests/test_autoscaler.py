@@ -16,6 +16,7 @@ from ray.data._internal.execution.operators.actor_pool_map_operator import _Acto
 from ray.data._internal.execution.operators.base_physical_operator import (
     InternalQueueOperatorMixin,
 )
+from ray.data._internal.execution.resource_manager import ResourceManager
 from ray.data._internal.execution.streaming_executor_state import OpState
 from ray.data.context import (
     AutoscalingConfig,
@@ -25,8 +26,6 @@ from ray.data.context import (
 def test_actor_pool_scaling():
     """Test `_actor_pool_should_scale_up` and `_actor_pool_should_scale_down`
     in `DefaultAutoscaler`"""
-
-    from ray.data._internal.execution.resource_manager import ResourceManager
 
     resource_manager = MagicMock(
         spec=ResourceManager, get_budget=MagicMock(return_value=None)
