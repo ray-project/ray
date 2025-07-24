@@ -15,10 +15,8 @@ import yaml
 import ray
 from ray import serve
 from ray._common.test_utils import wait_for_condition
-from ray.serve._private.common import RequestProtocol
-from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
+from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
 from ray.serve._private.test_utils import (
-    get_application_url,
     ping_fruit_stand,
     ping_grpc_another_method,
     ping_grpc_call_method,
@@ -28,37 +26,23 @@ from ray.serve._private.test_utils import (
     ping_grpc_streaming,
 )
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
-from ray.serve.scripts import remove_ansi_escape_sequences
 from ray.util.state import list_actors
 
 CONNECTION_ERROR_MSG = "connection error"
 
 
-def _clean_and_parse_yaml(cli_output):
-    """Clean CLI output and parse as YAML."""
-    try:
-        # Clean the output by removing ANSI escape codes and other special characters
-        cleaned_output = remove_ansi_escape_sequences(cli_output.decode("utf-8"))
-        return yaml.safe_load(cleaned_output)
-    except (Exception, yaml.YAMLError) as e:
-        print(f"YAML parsing error while reading CLI output: {e}")
-        print(f"Raw output: {cli_output}")
-        raise
-
-
-def ping_endpoint(url: str, endpoint: str, params: str = ""):
+def ping_endpoint(endpoint: str, params: str = ""):
     endpoint = endpoint.lstrip("/")
 
     try:
-        res = httpx.get(f"{url}/{endpoint}{params}").text
-        return res
+        return httpx.get(f"http://localhost:8000/{endpoint}{params}").text
     except httpx.HTTPError:
         return CONNECTION_ERROR_MSG
 
 
 def check_app_status(app_name: str, expected_status: str):
     status_response = subprocess.check_output(["serve", "status"])
-    status = _clean_and_parse_yaml(status_response)["applications"]
+    status = yaml.safe_load(status_response)["applications"]
     assert status[app_name]["status"] == expected_status
     return True
 
@@ -122,7 +106,7 @@ def test_shutdown(ray_start_stop):
 
     def num_live_deployments():
         status_response = subprocess.check_output(["serve", "status"])
-        serve_status = _clean_and_parse_yaml(status_response)["applications"][
+        serve_status = yaml.safe_load(status_response)["applications"][
             SERVE_DEFAULT_APP_NAME
         ]
         return len(serve_status["deployments"])
@@ -143,10 +127,10 @@ def test_shutdown(ray_start_stop):
 
         # `serve config` and `serve status` should print non-empty schemas
         config_response = subprocess.check_output(["serve", "config"])
-        _clean_and_parse_yaml(config_response)
+        yaml.safe_load(config_response)
 
         status_response = subprocess.check_output(["serve", "status"])
-        status = _clean_and_parse_yaml(status_response)
+        status = yaml.safe_load(status_response)
         assert len(status["applications"])
         print("`serve config` and `serve status` print non-empty responses.\n")
 
@@ -157,14 +141,11 @@ def test_shutdown(ray_start_stop):
         # nothing is deployed
         def serve_config_empty():
             config_response = subprocess.check_output(["serve", "config"])
-            decoded = config_response.decode("utf-8", errors="ignore")
-            # Remove ANSI escape sequences
-            clean_output = re.sub(r"\x1b\[[0-9;]*m", "", decoded).strip()
-            return len(clean_output) == 0
+            return len(config_response) == 0
 
         def serve_status_empty():
             status_response = subprocess.check_output(["serve", "status"])
-            status = _clean_and_parse_yaml(status_response)
+            status = yaml.safe_load(status_response)
             return len(status["applications"]) == 0
 
         wait_for_condition(serve_config_empty)
@@ -195,7 +176,7 @@ def test_deploy_with_http_options(ray_start_stop):
 
     # Config should contain matching host and port options
     info_response = subprocess.check_output(["serve", "config"])
-    info = _clean_and_parse_yaml(info_response)
+    info = yaml.safe_load(info_response)
 
     # TODO(zcin): the assertion should just be `info == config` here but the output
     # formatting removes a lot of info.
@@ -225,21 +206,17 @@ def test_build_multi_app(ray_start_stop):
 
         subprocess.check_output(["serve", "deploy", tmp.name])
         print("Deploy succeeded!")
-        url = get_application_url()
-
         wait_for_condition(
-            lambda: ping_endpoint(url, "app1") == "wonderful world", timeout=15
+            lambda: ping_endpoint("app1") == "wonderful world", timeout=15
         )
         print("App 1 is live and reachable over HTTP.")
         wait_for_condition(
-            lambda: ping_endpoint(url, "app2") == "wonderful world", timeout=15
+            lambda: ping_endpoint("app2") == "wonderful world", timeout=15
         )
         print("App 2 is live and reachable over HTTP.")
 
         app_name = "app3"
-        channel = grpc.insecure_channel(
-            get_application_url(protocol=RequestProtocol.GRPC, app_name=app_name)
-        )
+        channel = grpc.insecure_channel("localhost:9000")
         stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
         request = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
         metadata = (("application", app_name),)
@@ -249,10 +226,9 @@ def test_build_multi_app(ray_start_stop):
 
         print("Deleting applications.")
         subprocess.check_output(["serve", "shutdown", "-y"])
-
         wait_for_condition(
-            lambda: ping_endpoint(url, "app1") == CONNECTION_ERROR_MSG
-            and ping_endpoint(url, "app2") == CONNECTION_ERROR_MSG,
+            lambda: ping_endpoint("app1") == CONNECTION_ERROR_MSG
+            and ping_endpoint("app2") == CONNECTION_ERROR_MSG,
             timeout=15,
         )
         print("Delete succeeded! Node is no longer reachable over HTTP.")
@@ -269,18 +245,8 @@ def test_idempotence_after_controller_death(ray_start_stop, use_command: bool):
     deploy_response = subprocess.check_output(["serve", "deploy", config_file_name])
     assert success_message_fragment in deploy_response
 
-    # Restore testing controller - handle cluster ID mismatch
-    try:
-        serve.start()
-    except ray.exceptions.RaySystemError as e:
-        if "WrongClusterID" in str(e):
-            # Re-establish connection after controller death
-            ray.shutdown()
-            ray.init(address="auto", ignore_reinit_error=True)
-            serve.start()
-        else:
-            raise
-
+    ray.init(address="auto", namespace=SERVE_NAMESPACE)
+    serve.start()
     wait_for_condition(
         lambda: len(list_actors(filters=[("state", "=", "ALIVE")])) == 4,
         timeout=15,
@@ -293,7 +259,7 @@ def test_idempotence_after_controller_death(ray_start_stop, use_command: bool):
         serve.shutdown()
 
     status_response = subprocess.check_output(["serve", "status"])
-    status_info = _clean_and_parse_yaml(status_response)
+    status_info = yaml.safe_load(status_response)
 
     assert len(status_info["applications"]) == 0
 
@@ -329,9 +295,7 @@ def test_serving_request_through_grpc_proxy(ray_start_stop):
     app1 = "app1"
     app_names = [app1]
 
-    channel = grpc.insecure_channel(
-        get_application_url(protocol=RequestProtocol.GRPC, app_name=app1)
-    )
+    channel = grpc.insecure_channel("localhost:9000")
 
     # Ensures ListApplications method succeeding.
     wait_for_condition(
@@ -373,9 +337,7 @@ def test_grpc_proxy_model_composition(ray_start_stop):
     app = "app1"
     app_names = [app]
 
-    channel = grpc.insecure_channel(
-        get_application_url(protocol=RequestProtocol.GRPC, app_name=app)
-    )
+    channel = grpc.insecure_channel("localhost:9000")
 
     # Ensures ListApplications method succeeding.
     wait_for_condition(
@@ -397,11 +359,9 @@ def test_control_c_shutdown_serve_components(ray_start_stop):
 
     # Make sure Serve components are up and running
     wait_for_condition(check_app_running, app_name=SERVE_DEFAULT_APP_NAME)
-    assert ping_endpoint(get_application_url(), "/-/healthz") == "success"
-    assert json.loads(ping_endpoint(get_application_url(), "/-/routes")) == {
-        "/": "default"
-    }
-    assert ping_endpoint(get_application_url(), "/") == "hello"
+    assert ping_endpoint("/-/healthz") == "success"
+    assert json.loads(ping_endpoint("/-/routes")) == {"/": "default"}
+    assert ping_endpoint("/") == "hello"
 
     # Send ctrl+c to shutdown Serve components
     p.send_signal(signal.SIGINT)
@@ -409,7 +369,7 @@ def test_control_c_shutdown_serve_components(ray_start_stop):
 
     # Make sure Serve components are shutdown
     status_response = subprocess.check_output(["serve", "status"])
-    status = _clean_and_parse_yaml(status_response)
+    status = yaml.safe_load(status_response)
     assert status == {"applications": {}, "proxies": {}, "target_capacity": None}
 
 
@@ -464,9 +424,7 @@ class TestRayReinitialization:
         cause error.
         """
         p = subprocess.Popen(["serve", "run", import_file_name])
-        wait_for_condition(
-            lambda: ping_endpoint(get_application_url(), "") == "foobar", timeout=10
-        )
+        wait_for_condition(lambda: ping_endpoint("") == "foobar", timeout=10)
         p.send_signal(signal.SIGINT)
         p.wait()
 
@@ -481,9 +439,7 @@ class TestRayReinitialization:
         p = subprocess.Popen(
             ["serve", "run", "--address=127.0.0.1:6379", import_file_name]
         )
-        wait_for_condition(
-            lambda: ping_endpoint(get_application_url(), "") == "foobar", timeout=10
-        )
+        wait_for_condition(lambda: ping_endpoint("") == "foobar", timeout=10)
         p.send_signal(signal.SIGINT)
         p.wait()
 
@@ -502,9 +458,7 @@ class TestRayReinitialization:
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
         )
-        wait_for_condition(
-            lambda: ping_endpoint(get_application_url(), "") == "foobar", timeout=10
-        )
+        wait_for_condition(lambda: ping_endpoint("") == "foobar", timeout=10)
         p.send_signal(signal.SIGINT)
         p.wait()
         process_output, _ = p.communicate()
@@ -532,9 +486,7 @@ class TestRayReinitialization:
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
         )
-        wait_for_condition(
-            lambda: ping_endpoint(get_application_url(), "") == "foobar", timeout=10
-        )
+        wait_for_condition(lambda: ping_endpoint("") == "foobar", timeout=10)
         p.send_signal(signal.SIGINT)
         p.wait()
         process_output, _ = p.communicate()
