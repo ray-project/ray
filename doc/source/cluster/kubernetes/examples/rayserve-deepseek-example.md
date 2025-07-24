@@ -5,7 +5,9 @@
 This guide provides a step-by-step guide for deploying a Large Language Model (LLM) using Ray Serve LLM on Kubernetes. Leveraging KubeRay, Ray Serve, and vLLM, this guide deploys the  `deepseek-ai/DeepSeek-R1` model from Hugging Face, enabling scalable, efficient, and OpenAI-compatible LLM serving within a Kubernetes environment. See [Serving LLMs](serving_llms) for information on Ray Serve LLM.
 
 ## Prerequisites
-As a large-scale model, DeepSeek requires deployment on nodes with GPU accelerators within a GKE cluster, such as the A3 High or A3 Mega machine types.
+A DeepSeek model requires 2 nodes, each equipped with 8 H100 80GB GPUs.
+It should be deployable on Kubernetes clusters that meet this requirement.
+In this guide, we provide instructions for setting up a GKE cluster using A3 High or A3 Mega machine types.
 
 Before creating the cluster, please ensure that your project has sufficient quota for the required accelerators.
 
