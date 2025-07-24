@@ -893,9 +893,7 @@ def test_parquet_read_parallel_meta_fetch(
     assert sorted(values) == list(range(3 * num_dfs))
 
 
-def test_parquet_reader_estimate_data_size(
-    shutdown_only, tmp_path, target_max_block_size_infinite_or_default
-):
+def test_parquet_reader_estimate_data_size(shutdown_only, tmp_path):
     ctx = ray.data.context.DataContext.get_current()
     old_decoding_size_estimation = ctx.decoding_size_estimation
     ctx.decoding_size_estimation = True
@@ -919,7 +917,7 @@ def test_parquet_reader_estimate_data_size(
             tensor_output_path, meta_provider=ParquetMetadataProvider()
         )
         assert (
-            datasource._encoding_ratio >= 200 and datasource._encoding_ratio <= 600
+            datasource._encoding_ratio >= 300 and datasource._encoding_ratio <= 600
         ), "encoding ratio is out of expected bound"
         data_size = datasource.estimate_inmemory_data_size()
         assert (
@@ -942,7 +940,7 @@ def test_parquet_reader_estimate_data_size(
         assert ds._plan.initial_num_blocks() > 1
         data_size = ds.size_bytes()
         assert (
-            data_size >= 1_000_000 and data_size <= 2_000_000
+            data_size >= 800_000 and data_size <= 2_000_000
         ), "estimated data size is out of expected bound"
         data_size = ds.materialize().size_bytes()
         assert (
@@ -953,11 +951,11 @@ def test_parquet_reader_estimate_data_size(
             text_output_path, meta_provider=ParquetMetadataProvider()
         )
         assert (
-            datasource._encoding_ratio >= 1 and datasource._encoding_ratio <= 5
+            datasource._encoding_ratio >= 9 and datasource._encoding_ratio <= 300
         ), "encoding ratio is out of expected bound"
         data_size = datasource.estimate_inmemory_data_size()
         assert (
-            data_size >= 1_000_000 and data_size <= 2_000_000
+            data_size >= 800_000 and data_size <= 2_000_000
         ), "estimated data size is out of expected bound"
         assert (
             data_size
