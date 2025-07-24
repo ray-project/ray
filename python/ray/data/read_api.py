@@ -16,10 +16,8 @@ from typing import (
 )
 
 import numpy as np
-from packaging.version import parse as parse_version
 
 import ray
-from ray._private.arrow_utils import get_pyarrow_version
 from ray._private.auto_init_hook import wrap_auto_init
 from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
 from ray.data._internal.datasource.audio_datasource import AudioDatasource
@@ -2654,14 +2652,6 @@ def from_daft(df: "daft.DataFrame") -> Dataset:
     Returns:
         A :class:`~ray.data.Dataset` holding rows read from the DataFrame.
     """
-    pyarrow_version = get_pyarrow_version()
-    assert pyarrow_version is not None
-    if pyarrow_version >= parse_version("14.0.0"):
-        raise RuntimeError(
-            "`from_daft` only works with PyArrow 13 or lower. For more details, see "
-            "https://github.com/ray-project/ray/issues/53278."
-        )
-
     # NOTE: Today this returns a MaterializedDataset. We should also integrate Daft such
     # that we can stream object references into a Ray dataset. Unfortunately this is
     # very tricky today because of the way Ray Datasources are implemented with a fully-
@@ -3571,7 +3561,7 @@ def read_lance(
 ) -> Dataset:
     """
     Create a :class:`~ray.data.Dataset` from a
-    `Lance Dataset <https://lancedb.github.io/lance/api/py_modules.html#lance.dataset.LanceDataset>`_.
+    `Lance Dataset <https://lancedb.github.io/lance-python-doc/all-modules.html#lance.LanceDataset>`_.
 
     Examples:
         >>> import ray
@@ -3590,11 +3580,11 @@ def read_lance(
         storage_options: Extra options that make sense for a particular storage
             connection. This is used to store connection parameters like credentials,
             endpoint, etc. For more information, see `Object Store Configuration <https\
-                ://lancedb.github.io/lance/object_store.html#object-store-configuration>`_.
+                ://lancedb.github.io/lance/guide/object_store/>`_.
         scanner_options: Additional options to configure the `LanceDataset.scanner()`
             method, such as `batch_size`. For more information,
-            see `LanceDB API doc <https://lancedb.github.io/\
-                lance/api/py_modules.html#lance.LanceDataset.scanner>`_
+            see `LanceDB API doc <https://lancedb.github.io\
+            /lance-python-doc/all-modules.html#lance.LanceDataset.scanner>`_
         ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the

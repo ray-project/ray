@@ -10,12 +10,16 @@ import sys
 import traceback
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
-from typing import Dict, List, Optional, Tuple, TypedDict, Union
+from typing import List, Optional, Tuple
 
 from opencensus.stats import stats as stats_module
 from prometheus_client.core import REGISTRY
 from prometheus_client.parser import text_string_to_metric_families
-from opentelemetry.proto.collector.metrics.v1 import metrics_service_pb2
+from opentelemetry.proto.collector.metrics.v1 import (
+    metrics_service_pb2,
+    metrics_service_pb2_grpc,
+)
+from opentelemetry.proto.metrics.v1.metrics_pb2 import Metric
 from grpc.aio import ServicerContext
 
 
@@ -25,8 +29,13 @@ import ray.dashboard.modules.reporter.reporter_consts as reporter_consts
 import ray.dashboard.utils as dashboard_utils
 from ray._common.utils import (
     get_or_create_event_loop,
-    get_system_memory,
     get_user_temp_dir,
+)
+from ray._private.utils import get_system_memory
+from ray.dashboard.modules.reporter.gpu_providers import (
+    GpuMetricProvider,
+    GpuUtilizationInfo,
+    TpuUtilizationInfo,
 )
 from ray._private import utils
 from ray._private.metrics_agent import Gauge, MetricsAgent, Record
@@ -34,14 +43,13 @@ from ray._private.ray_constants import (
     DEBUG_AUTOSCALING_STATUS,
     RAY_EXPERIMENTAL_ENABLE_OPEN_TELEMETRY_ON_AGENT,
     RAY_EXPERIMENTAL_ENABLE_OPEN_TELEMETRY_ON_CORE,
-    RAY_METRIC_ENABLE_GPU_NVSMI,
     env_integer,
 )
 from ray._private.telemetry.open_telemetry_metric_recorder import (
     OpenTelemetryMetricRecorder,
 )
 from ray._raylet import GCS_PID_KEY, WorkerID
-from ray.core.generated import metrics_service_pb2_grpc, reporter_pb2, reporter_pb2_grpc
+from ray.core.generated import reporter_pb2, reporter_pb2_grpc
 from ray.dashboard import k8s_utils
 from ray.dashboard.consts import (
     CLUSTER_TAG_KEYS,
@@ -61,9 +69,6 @@ from ray.dashboard.modules.reporter.profile_manager import (
 import psutil
 
 logger = logging.getLogger(__name__)
-
-enable_gpu_usage_check = True
-using_nvidia_smi = RAY_METRIC_ENABLE_GPU_NVSMI
 
 enable_tpu_usage_check = True
 
@@ -379,44 +384,6 @@ PSUTIL_PROCESS_ATTRS = (
     else []
 )
 
-MB = 1024 * 1024
-
-# Types
-Percentage = int
-Megabytes = int
-Bytes = int
-
-
-# gpu utilization for nvidia gpu from a single process
-class ProcessGPUInfo(TypedDict):
-    pid: int
-    gpu_memory_usage: Megabytes
-    gpu_utilization: Optional[Percentage]
-
-
-# gpu utilization for nvidia gpu
-class GpuUtilizationInfo(TypedDict):
-    index: int
-    name: str
-    uuid: str
-    utilization_gpu: Optional[Percentage]
-    memory_used: Megabytes
-    memory_total: Megabytes
-    processes_pids: Optional[List[ProcessGPUInfo]]
-
-
-# tpu utilization for google tpu
-class TpuUtilizationInfo(TypedDict):
-    index: int
-    name: str
-    tpu_type: str
-    tpu_topology: str
-    tensorcore_utilization: Percentage
-    hbm_utilization: Percentage
-    duty_cycle: Percentage
-    memory_used: Bytes
-    memory_total: Bytes
-
 
 class ReporterAgent(
     dashboard_utils.DashboardAgentModule,
@@ -514,6 +481,9 @@ class ReporterAgent(
         )
         self._gpu_profiling_manager.start_monitoring_daemon()
 
+        # Create GPU metric provider instance
+        self._gpu_metric_provider = GpuMetricProvider()
+
     async def GetTraceback(self, request, context):
         pid = request.pid
         native = request.native
@@ -580,6 +550,93 @@ class ReporterAgent(
             logger.error(traceback.format_exc())
         return reporter_pb2.ReportOCMetricsReply()
 
+    def _export_histogram_data(
+        self,
+        metric: Metric,
+    ) -> None:
+        """
+        TODO(can-anyscale): once we launch the new open-telemetry stack, we need to
+        document and communicate that the histogram metric is an approximation to users.
+        The approximation is good enough for the dashboard to display the histogram
+        distribution. Only the sum of all data points will be the approximation. See
+        https://github.com/ray-project/ray/issues/54538 for the complete backlog of Ray
+        metric infra improvements.
+
+        Export histogram data points to OpenTelemetry Metric Recorder. A histogram
+        metric is aggregated into several internal representations in C++ side:
+        - sum of all buckets
+        - count of all buckets
+        - count per bucket
+
+        We reconstruct the histogram data points from these internal representations
+        and export them to OpenTelemetry Metric Recorder. The reconstruction is an
+        approximation, but it is good enough for the dashboard to display the histogram
+        data points.
+        """
+        data_points = metric.histogram.data_points
+        if not data_points:
+            return
+        self._open_telemetry_metric_recorder.register_histogram_metric(
+            metric.name,
+            metric.description,
+            data_points[0].explicit_bounds,
+        )
+        for data_point in data_points:
+            if data_point.count == 0:
+                continue
+
+            bucket_midpoints = (
+                self._open_telemetry_metric_recorder.get_histogram_bucket_midpoints(
+                    metric.name
+                )
+            )
+            assert len(bucket_midpoints) == len(data_point.bucket_counts)
+            tags = {tag.key: tag.value.string_value for tag in data_point.attributes}
+            for i, bucket_count in enumerate(data_point.bucket_counts):
+                if bucket_count == 0:
+                    continue
+                bucket_midpoint = bucket_midpoints[i]
+                for _ in range(bucket_count):
+                    self._open_telemetry_metric_recorder.set_metric_value(
+                        metric.name,
+                        tags,
+                        bucket_midpoint,
+                    )
+
+    def _export_number_data(
+        self,
+        metric: Metric,
+    ) -> None:
+        data_points = []
+        if metric.WhichOneof("data") == "gauge":
+            self._open_telemetry_metric_recorder.register_gauge_metric(
+                metric.name,
+                metric.description,
+            )
+            data_points = metric.gauge.data_points
+        if metric.WhichOneof("data") == "sum":
+            if metric.sum.is_monotonic:
+                self._open_telemetry_metric_recorder.register_counter_metric(
+                    metric.name,
+                    metric.description,
+                )
+            else:
+                self._open_telemetry_metric_recorder.register_sum_metric(
+                    metric.name,
+                    metric.description,
+                )
+            data_points = metric.sum.data_points
+        for data_point in data_points:
+            self._open_telemetry_metric_recorder.set_metric_value(
+                metric.name,
+                {tag.key: tag.value.string_value for tag in data_point.attributes},
+                # Note that all data points received from other Ray components are
+                # always double values. This is because the c++ apis
+                # (open_telemetry_metric_recorder.cc) only create metrics with double
+                # values.
+                data_point.as_double,
+            )
+
     async def Export(
         self,
         request: metrics_service_pb2.ExportMetricsServiceRequest,
@@ -594,41 +651,10 @@ class ReporterAgent(
         for resource_metrics in request.resource_metrics:
             for scope_metrics in resource_metrics.scope_metrics:
                 for metric in scope_metrics.metrics:
-                    data_points = []
-                    # gauge metrics
-                    if metric.WhichOneof("data") == "gauge":
-                        self._open_telemetry_metric_recorder.register_gauge_metric(
-                            metric.name, metric.description or ""
-                        )
-                        data_points = metric.gauge.data_points
-                    # counter metrics
-                    if metric.WhichOneof("data") == "sum" and metric.sum.is_monotonic:
-                        self._open_telemetry_metric_recorder.register_counter_metric(
-                            metric.name, metric.description or ""
-                        )
-                        data_points = metric.sum.data_points
-                    # sum metrics
-                    if (
-                        metric.WhichOneof("data") == "sum"
-                        and not metric.sum.is_monotonic
-                    ):
-                        self._open_telemetry_metric_recorder.register_sum_metric(
-                            metric.name, metric.description or ""
-                        )
-                        data_points = metric.sum.data_points
-                    for data_point in data_points:
-                        self._open_telemetry_metric_recorder.set_metric_value(
-                            metric.name,
-                            {
-                                tag.key: tag.value.string_value
-                                for tag in data_point.attributes
-                            },
-                            # Note that all data points received from other Ray
-                            # components are always double values. This is because the
-                            # c++ apis (open_telemetry_metric_recorder.cc) only create
-                            # metrics with double values.
-                            data_point.as_double,
-                        )
+                    if metric.WhichOneof("data") == "histogram":
+                        self._export_histogram_data(metric)
+                    else:
+                        self._export_number_data(metric)
 
         return metrics_service_pb2.ExportMetricsServiceResponse()
 
@@ -639,201 +665,9 @@ class ReporterAgent(
         else:
             return psutil.cpu_percent()
 
-    @staticmethod
-    def _test_pynvml_init():
-        global enable_gpu_usage_check
-        import ray._private.thirdparty.pynvml as pynvml
-
-        try:
-            pynvml.nvmlInit()
-            pynvml.nvmlShutdown()
-            return True
-        except Exception as e:
-            logger.debug(f"pynvml failed to retrieve GPU information: {e}")
-            if type(e).__name__ == "NVMLError_DriverNotLoaded":
-                enable_gpu_usage_check = False
-            return False
-
-    @staticmethod
-    def _get_pynvml_gpu_usage() -> List[GpuUtilizationInfo]:
-        global enable_gpu_usage_check
-        import ray._private.thirdparty.pynvml as pynvml
-
-        gpu_utilizations = []
-
-        def decode(b: Union[str, bytes]) -> str:
-            if isinstance(b, bytes):
-                return b.decode("utf-8")  # for python3, to unicode
-            return b
-
-        try:
-            pynvml.nvmlInit()
-        except Exception as e:
-            logger.debug(f"pynvml failed to retrieve GPU information: {e}")
-
-            # On machines without GPUs, pynvml.nvmlInit() can run subprocesses that
-            # spew to stderr. Then with log_to_driver=True, we get log spew from every
-            # single raylet. To avoid this, disable the GPU usage check on
-            # certain errors.
-            # https://github.com/ray-project/ray/issues/14305
-            # https://github.com/ray-project/ray/pull/21686
-            if type(e).__name__ == "NVMLError_DriverNotLoaded":
-                enable_gpu_usage_check = False
-            return gpu_utilizations
-
-        num_gpus = pynvml.nvmlDeviceGetCount()
-        for i in range(num_gpus):
-            gpu_handle = pynvml.nvmlDeviceGetHandleByIndex(i)
-            memory_info = pynvml.nvmlDeviceGetMemoryInfo(gpu_handle)
-            utilization = None
-            try:
-                utilization_info = pynvml.nvmlDeviceGetUtilizationRates(gpu_handle)
-                utilization = int(utilization_info.gpu)
-            except pynvml.NVMLError as e:
-                logger.debug(f"pynvml failed to retrieve GPU utilization: {e}")
-
-            # processes pids
-            processes_pids = None
-            try:
-                nv_comp_processes = pynvml.nvmlDeviceGetComputeRunningProcesses(
-                    gpu_handle
-                )
-                nv_graphics_processes = pynvml.nvmlDeviceGetGraphicsRunningProcesses(
-                    gpu_handle
-                )
-                processes_pids = [
-                    ProcessGPUInfo(
-                        pid=int(nv_process.pid),
-                        gpu_memory_usage=(
-                            int(nv_process.usedGpuMemory) // MB
-                            if nv_process.usedGpuMemory
-                            else 0
-                        ),
-                        gpu_utilization=None,  # Not available in pynvml
-                    )
-                    for nv_process in (nv_comp_processes + nv_graphics_processes)
-                ]
-            except pynvml.NVMLError as e:
-                logger.debug(f"pynvml failed to retrieve GPU processes: {e}")
-
-            info = GpuUtilizationInfo(
-                index=i,
-                name=decode(pynvml.nvmlDeviceGetName(gpu_handle)),
-                uuid=decode(pynvml.nvmlDeviceGetUUID(gpu_handle)),
-                utilization_gpu=utilization,
-                memory_used=int(memory_info.used) // MB,
-                memory_total=int(memory_info.total) // MB,
-                processes_pids=processes_pids,
-            )
-            gpu_utilizations.append(info)
-        pynvml.nvmlShutdown()
-
-        return gpu_utilizations
-
-    @staticmethod
-    def _parse_nvsmi_output(nvsmi_stdout: str) -> Dict[int, List[Tuple[int, int, int]]]:
-        """Parse the output of nvidia-smi pmon -c 1."""
-        process_utilizations = defaultdict(list)
-        lines = nvsmi_stdout.splitlines()
-        # Get the first line that is started with #
-        table_header = None
-        for line in lines:
-            if line.startswith("#"):
-                table_header = line
-                break
-        if not table_header:
-            logger.debug("nvidia-smi pmon -c 1 output is empty.")
-            return process_utilizations
-        table_header = table_header.lower().split()[1:]
-        # Base on different versions, the header may be different.
-        gpu_id_index = table_header.index("gpu")
-        pid_index = table_header.index("pid")
-        sm_index = table_header.index("sm")
-        mem_index = table_header.index("mem")
-        for line in lines:
-            if line.startswith("#") or not line.strip():
-                continue
-
-            columns = line.split()
-            if len(columns) < max(gpu_id_index, pid_index, sm_index, mem_index) + 1:
-                continue
-
-            gpu_id, pid, sm, mem = (
-                int(columns[gpu_id_index]),
-                0 if columns[pid_index] == "-" else int(columns[pid_index]),
-                0 if columns[sm_index] == "-" else int(columns[sm_index]),
-                0 if columns[mem_index] == "-" else int(columns[mem_index]),
-            )
-            if pid == 0:  # no process on this GPU
-                continue
-            pinfo = (pid, mem, sm)
-            process_utilizations[gpu_id].append(pinfo)
-        return process_utilizations
-
-    @staticmethod
-    def _get_gpu_process_usages() -> List[GpuUtilizationInfo]:
-        # Start a subprocess to get GPU usage
-        # Some information i.e utilization per process is
-        # not available in pynvml
-        global enable_gpu_usage_check, using_nvidia_smi
-        if not enable_gpu_usage_check:
-            return []
-        if not using_nvidia_smi:
-            return ReporterAgent._get_pynvml_gpu_usage()
-        try:
-            gpu_info = subprocess.run(
-                [
-                    "nvidia-smi",
-                    "--query-gpu=index,name,uuid,utilization.gpu,memory.used,memory.total",
-                    "--format=csv,noheader,nounits",
-                ],
-                check=True,
-                capture_output=True,
-                text=True,
-            )
-            gpus = []
-            for line in gpu_info.stdout.strip().split("\n"):
-                index, name, uuid, util, mem_used, mem_total = line.split(", ")
-                gpus.append(
-                    GpuUtilizationInfo(
-                        index=int(index),
-                        name=name,
-                        uuid=uuid,
-                        utilization_gpu=int(util),
-                        memory_used=int(mem_used),
-                        memory_total=int(mem_total),
-                        processes_pids=[],
-                    )
-                )
-
-            processes_info = subprocess.run(
-                ["nvidia-smi", "pmon", "-c", "1"],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                check=True,
-                text=True,
-            )
-            processes_info = ReporterAgent._parse_nvsmi_output(processes_info.stdout)
-            for gpu in gpus:
-                gpu_id = gpu["index"]
-                if gpu_id in processes_info:
-                    for pid, mem, sm in processes_info[gpu_id]:
-                        gpu["processes_pids"].append(
-                            ProcessGPUInfo(
-                                pid=int(pid),
-                                gpu_memory_usage=int(
-                                    mem * gpu["memory_total"] / 100
-                                ),  # MB
-                                gpu_utilization=int(sm),
-                            )
-                        )
-            return gpus
-        except subprocess.CalledProcessError as e:
-            logger.debug(
-                f"nvidia-smi failed to call: {e}. Is nvidia-smi installed? Falling back to pynvml."
-            )
-            using_nvidia_smi = False
-            return ReporterAgent._get_pynvml_gpu_usage()
+    def _get_gpu_usage(self):
+        """Get GPU usage information using the GPU metric provider."""
+        return self._gpu_metric_provider.get_gpu_usage()
 
     @staticmethod
     def _get_tpu_usage() -> List[TpuUtilizationInfo]:
@@ -1844,9 +1678,6 @@ class ReporterAgent(
         """Get any changes to the log files and push updates to kv."""
         loop = get_or_create_event_loop()
 
-        # Test if the GPU present
-        self._test_pynvml_init()
-
         while True:
             try:
                 # Fetch autoscaler debug status
@@ -1928,6 +1759,9 @@ class ReporterAgent(
                 metrics_service_pb2_grpc.add_MetricsServiceServicer_to_server(
                     self, server
                 )
+
+        # Initialize GPU metric provider when the agent starts
+        self._gpu_metric_provider.initialize()
 
         await self._run_loop()
 

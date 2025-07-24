@@ -1,11 +1,15 @@
-load("//bazel:ray.bzl", "define_java_module", "native_java_library")
-load("@rules_proto_grpc//java:defs.bzl", "java_proto_compile")
 load(
     "@com_github_johnynek_bazel_jar_jar//:jar_jar.bzl",
     "jar_jar",
 )
+load("@rules_java//java:java_binary.bzl", "java_binary")
+load("@rules_java//java:java_import.bzl", "java_import")
+load("@rules_java//java:java_library.bzl", "java_library")
+load("@rules_java//java:java_test.bzl", "java_test")
 load("@rules_pkg//pkg:mappings.bzl", "pkg_files")
 load("@rules_pkg//pkg:zip.bzl", "pkg_zip")
+load("@rules_proto_grpc//java:defs.bzl", "java_proto_compile")
+load("//bazel:ray.bzl", "define_java_module", "native_java_library")
 
 exports_files([
     "testng.xml",
@@ -276,60 +280,60 @@ pkg_files(
     name = "api_pom_files",
     srcs = ["io_ray_ray_api_pom"],
     prefix = "java/api/",
-    visibility = ["//visibility:private"],
     renames = {
         "io_ray_ray_api_pom.xml": "pom.xml",
     },
+    visibility = ["//visibility:private"],
 )
 
 pkg_files(
     name = "runtime_pom_files",
     srcs = ["io_ray_ray_runtime_pom"],
     prefix = "java/runtime/",
-    visibility = ["//visibility:private"],
     renames = {
         "io_ray_ray_runtime_pom.xml": "pom.xml",
     },
+    visibility = ["//visibility:private"],
 )
 
 pkg_files(
     name = "test_pom_files",
     srcs = ["io_ray_ray_test_pom"],
     prefix = "java/test/",
-    visibility = ["//visibility:private"],
     renames = {
         "io_ray_ray_test_pom.xml": "pom.xml",
     },
+    visibility = ["//visibility:private"],
 )
 
 pkg_files(
     name = "performance_test_pom_files",
     srcs = ["io_ray_ray_performance_test_pom"],
     prefix = "java/performance_test/",
-    visibility = ["//visibility:private"],
     renames = {
         "io_ray_ray_performance_test_pom.xml": "pom.xml",
     },
+    visibility = ["//visibility:private"],
 )
 
 pkg_files(
     name = "serve_pom_files",
     srcs = ["io_ray_ray_serve_pom"],
     prefix = "java/serve/",
-    visibility = ["//visibility:private"],
     renames = {
         "io_ray_ray_serve_pom.xml": "pom.xml",
     },
+    visibility = ["//visibility:private"],
 )
 
 pkg_zip(
     name = "pom_files",
     srcs = [
         ":api_pom_files",
-        ":runtime_pom_files",
-        ":test_pom_files",
         ":performance_test_pom_files",
+        ":runtime_pom_files",
         ":serve_pom_files",
+        ":test_pom_files",
     ],
     visibility = ["//visibility:private"],
 )
@@ -471,10 +475,10 @@ pkg_files(
 
 pkg_zip(
     name = "ray_java_pkg_zip",
-    out = "ray_java_pkg.zip",
     srcs = [
         ":ray_java_pkg_files",
     ],
+    out = "ray_java_pkg.zip",
     visibility = ["//visibility:private"],
 )
 

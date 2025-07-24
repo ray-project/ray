@@ -23,6 +23,7 @@ from ray._private.test_utils import (
     wait_until_server_available,
 )
 from ray.core.generated.metrics_pb2 import Metric
+from ray.dashboard.modules.reporter.gpu_providers import NvidiaGpuProvider
 from ray.dashboard.modules.reporter.reporter_agent import (
     ReporterAgent,
     MB,
@@ -548,7 +549,7 @@ def test_report_per_component_stats_gpu():
         "    0       7175     C     84     26      -      -      -      -    ray::TorchGPUWo\n"
         "    1       7175     C     86     26      -      -      -      -    ray::TorchGPUWo\n"
     )
-    STATS_TEMPLATE["gpu_processes"] = ReporterAgent._parse_nvsmi_output(
+    STATS_TEMPLATE["gpu_processes"] = NvidiaGpuProvider._parse_nvsmi_output(
         NVSMI_OUTPUT_TWO_TASK_ON_TWO_GPUS
     )
     records = agent._to_records(STATS_TEMPLATE, {})
