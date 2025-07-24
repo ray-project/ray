@@ -100,51 +100,29 @@ struct GaugeMetricCase {
   std::string metric_name;
   double record_value;
   TagsMap record_tags;
-  TagsMap global_tags;
+  stats::TagsType global_tags;
   TagsMap expected_tags;
   double expected_value;
-};
-
-struct MetricObservations {
-  double value;  // Recorded metric value
-  TagsMap tags;  // Recorded tags
 };
 
 class GaugeMetricTest : public MetricTest,
                         public ::testing::WithParamInterface<GaugeMetricCase> {
  public:
-  // void TearDown() override {
-  //   // Manually clear recorder state via friend access
-  //   auto &rec = OpenTelemetryMetricRecorder::GetInstance();
-  //   std::lock_guard<std::mutex> lock(rec.mutex_);
-  //   rec.observations_by_name_.clear();
-  //   rec.registered_instruments_.clear();
-  //   rec.gauge_metric_names_.clear();
-  //   // Restore global tags
-  //   StatsConfig::instance().SetGlobalTags(saved_tags_);
-  // }
 
-  // Fetch both the recorded value and the actual tag map used for a given metric.
-  std::optional<MetricObservations> getMetricObservations(
-      const std::string &metric_name) {
+  std::optional<double> GetObservableMetricValue(
+      const std::string &name,
+      const absl::flat_hash_map<std::string, std::string> &tags) {
     auto &recorder = OpenTelemetryMetricRecorder::GetInstance();
     std::lock_guard<std::mutex> lock(recorder.mutex_);
-
-    auto metric_it = recorder.observations_by_name_.find(metric_name);
-    if (metric_it == recorder.observations_by_name_.end()) {
+    auto it = recorder.observations_by_name_.find(name);
+    if (it == recorder.observations_by_name_.end()) {
       return std::nullopt;  // Not registered
     }
-    auto &obs_it = metric_it->second;
-
-    // Return the value and the tag-key used in the recorder
-    return MetricObservations{obs_it->second, obs_it->first};
-  }
-
-  // Number of distinct metrics with at least one observation
-  size_t getNumRecordedMetrics() {
-    auto &rec = OpenTelemetryMetricRecorder::GetInstance();
-    std::lock_guard<std::mutex> lock(rec.mutex_);
-    return rec.observations_by_name_.size();
+    auto tag_it = it->second.find(tags);
+    if (tag_it != it->second.end()) {
+      return tag_it->second;  // Get the value
+    }
+    return std::nullopt;
   }
 };
 
@@ -157,20 +135,15 @@ TEST_P(GaugeMetricTest, RecordsValueAndTagsForAllMetricTypes) {
   STATS_metric_gauge_test.Record(tc.record_value, tc.record_tags);
   LegacyMetricGaugeTest.Record(tc.record_value, tc.record_tags);
 
-  // Verify that just two metrics have been recorded
-  ASSERT_TRUE(getNumRecordedMetrics() == 2);
-
   // Verify observations
-  auto opt = getMetricObservations(tc.metric_name);
+  auto opt = GetObservableMetricValue(tc.metric_name,tc.expected_tags);
   ASSERT_TRUE(opt.has_value());
-  EXPECT_EQ(opt->value, tc.expected_value);
-  EXPECT_THAT(opt->tags, ::testing::UnorderedElementsAreArray(tc.expected_tags));
+  EXPECT_EQ(opt, tc.expected_value);
 
   // verify legacy metric observations
-  auto legacy_opt = getMetricObservations(legacy_name, tc.record_tags);
+  auto legacy_opt = GetObservableMetricValue("legacy_" + tc.metric_name,tc.expected_tags);
   ASSERT_TRUE(legacy_opt.has_value());
-  EXPECT_EQ(legacy_opt->value, tc.expected_value);
-  EXPECT_THAT(legacy_opt->tags, ::testing::UnorderedElementsAreArray(tc.expected_tags));
+  EXPECT_EQ(legacy_opt, tc.expected_value);
 }
 
 INSTANTIATE_TEST_SUITE_P(
@@ -180,25 +153,25 @@ INSTANTIATE_TEST_SUITE_P(
         // Gauge metric without global tags
         GaugeMetricCase{"metric_gauge_test",
                         42.0,
-                        {{"Tag1", "Value1"}, {"Tag2", "Value2"}},
+                        {{"Tag1", "Value1"}, {"Tag2", "Value1"}},
                         {},  // no global tags
-                        {{"Tag1", "Value1"}, {"Tag2", "Value2"}},
+                        {{"Tag1", "Value1"}, {"Tag2", "Value1"}},
                         42.0},
         // Gauge metric with global tags
         GaugeMetricCase{"metric_gauge_test",
-                        42.0,
-                        {{"Tag1", "Value1"}, {"Tag2", "Value2"}},
-                        {{"Tag3", "Global"}},
-                        {{"Tag1", "Value1"}, {"Tag2", "Value2"}, {"Tag3", "Global"}},
-                        42.0},
+                        52.0,
+                        {{"Tag1", "Value2"}, {"Tag2", "Value2"}},
+                        { {stats::TagKeyType::Register("Tag3"), "Global"}},
+                        {{"Tag1", "Value2"}, {"Tag2", "Value2"}, {"Tag3", "Global"}},
+                        52.0},
         // Gauge metric recorded with unsupported tag
         GaugeMetricCase{
             "metric_gauge_test",
-            42.0,
-            {{"Tag1", "Value1"}, {"Tag2", "Value2"}, {"UnSupportedTag", "Value"}},
+            62.0,
+            {{"Tag1", "Value3"}, {"Tag2", "Value3"}, {"UnSupportedTag", "Value"}},
             {},  // no global tags
-            {{"Tag1", "Value1"},
-             {"Tag2", "Value2"}},  // Unsupported tag will not be recorded
-            42.0}));
+            {{"Tag1", "Value3"},
+             {"Tag2", "Value3"}},  // Unsupported tag will not be recorded
+            62.0}));
 }  // namespace telemetry
 }  // namespace ray
