@@ -23,7 +23,7 @@ namespace telemetry {
 using namespace std::literals;
 using OpenTelemetryMetricRecorder = ray::telemetry::OpenTelemetryMetricRecorder;
 using StatsConfig = ray::stats::StatsConfig;
-using TagsMap = absl::flat_hash_map<std::string,std::string>;
+using TagsMap = absl::flat_hash_map<std::string, std::string>;
 
 DECLARE_stats(metric_gauge_test);
 DEFINE_stats(metric_gauge_test,
@@ -106,13 +106,13 @@ struct GaugeMetricCase {
 };
 
 struct MetricObservations {
-  double value; // Recorded metric value
-  TagsMap tags; // Recorded tags
+  double value;  // Recorded metric value
+  TagsMap tags;  // Recorded tags
 };
 
 class GaugeMetricTest : public MetricTest,
                         public ::testing::WithParamInterface<GaugeMetricCase> {
-  public:
+ public:
   // void TearDown() override {
   //   // Manually clear recorder state via friend access
   //   auto &rec = OpenTelemetryMetricRecorder::GetInstance();
@@ -125,7 +125,8 @@ class GaugeMetricTest : public MetricTest,
   // }
 
   // Fetch both the recorded value and the actual tag map used for a given metric.
-  std::optional<MetricObservations> getMetricObservations(const std::string &metric_name) {
+  std::optional<MetricObservations> getMetricObservations(
+      const std::string &metric_name) {
     auto &recorder = OpenTelemetryMetricRecorder::GetInstance();
     std::lock_guard<std::mutex> lock(recorder.mutex_);
 
@@ -157,7 +158,7 @@ TEST_P(GaugeMetricTest, RecordsValueAndTagsForAllMetricTypes) {
   LegacyMetricGaugeTest.Record(tc.record_value, tc.record_tags);
 
   // Verify that just two metrics have been recorded
-  ASSERT_TRUE(getNumRecordedMetrics()==2);
+  ASSERT_TRUE(getNumRecordedMetrics() == 2);
 
   // Verify observations
   auto opt = getMetricObservations(tc.metric_name);
@@ -177,32 +178,27 @@ INSTANTIATE_TEST_SUITE_P(
     GaugeMetricTest,
     ::testing::Values(
         // Gauge metric without global tags
-        GaugeMetricCase{
-            "metric_gauge_test",
-            42.0,
-            {{"Tag1","Value1"}, {"Tag2","Value2"}},
-            {},  // no global tags
-            {{"Tag1","Value1"}, {"Tag2","Value2"}},
-            42.0
-        },
+        GaugeMetricCase{"metric_gauge_test",
+                        42.0,
+                        {{"Tag1", "Value1"}, {"Tag2", "Value2"}},
+                        {},  // no global tags
+                        {{"Tag1", "Value1"}, {"Tag2", "Value2"}},
+                        42.0},
         // Gauge metric with global tags
-        GaugeMetricCase{
-            "metric_gauge_test",
-            42.0,
-            {{"Tag1","Value1"}, {"Tag2","Value2"}},
-            {{"Tag3","Global"}},
-            {{"Tag1","Value1"}, {"Tag2","Value2"},{"Tag3","Global"}},
-            42.0
-        },
+        GaugeMetricCase{"metric_gauge_test",
+                        42.0,
+                        {{"Tag1", "Value1"}, {"Tag2", "Value2"}},
+                        {{"Tag3", "Global"}},
+                        {{"Tag1", "Value1"}, {"Tag2", "Value2"}, {"Tag3", "Global"}},
+                        42.0},
         // Gauge metric recorded with unsupported tag
         GaugeMetricCase{
             "metric_gauge_test",
             42.0,
-            {{"Tag1","Value1"}, {"Tag2","Value2"}, {"UnSupportedTag","Value"}},
+            {{"Tag1", "Value1"}, {"Tag2", "Value2"}, {"UnSupportedTag", "Value"}},
             {},  // no global tags
-            {{"Tag1","Value1"}, {"Tag2","Value2"}}, // Unsupported tag will not be recorded
-            42.0
-        }
-    ));
+            {{"Tag1", "Value1"},
+             {"Tag2", "Value2"}},  // Unsupported tag will not be recorded
+            42.0}));
 }  // namespace telemetry
 }  // namespace ray
