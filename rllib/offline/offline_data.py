@@ -129,6 +129,7 @@ class OfflineData:
         return_iterator: bool = False,
         num_shards: int = 1,
         module_state: Dict[str, Any] = None,
+        as_multi_agent_batch: bool = True,
     ):
         # Materialize the mapped data, if necessary. This runs for all the
         # data the `OfflinePreLearner` logic and maps them to `MultiAgentBatch`es.
@@ -233,28 +234,36 @@ class OfflineData:
                     self.batch_iterators = self.data.iterator()
                 # Otherwise, the user wants batches returned.
                 else:
-                    # Define a collate (last-mile) transformation that maps batches
-                    # to RLlib's `MultiAgentBatch`.
-                    def _collate_fn(_batch: Dict[str, np.ndarray]) -> MultiAgentBatch:
-                        _batch = unflatten_dict(_batch)
-                        return MultiAgentBatch(
-                            {
-                                module_id: SampleBatch(module_data)
-                                for module_id, module_data in _batch.items()
-                            },
-                            env_steps=sum(
-                                len(next(iter(module_data.values())))
-                                for module_data in _batch.values()
-                            ),
-                        )
+                    if as_multi_agent_batch:
+                        # Define a collate (last-mile) transformation that maps batches
+                        # to RLlib's `MultiAgentBatch`.
+                        def _collate_fn(
+                            _batch: Dict[str, np.ndarray]
+                        ) -> MultiAgentBatch:
+                            _batch = unflatten_dict(_batch)
+                            return MultiAgentBatch(
+                                {
+                                    module_id: SampleBatch(module_data)
+                                    for module_id, module_data in _batch.items()
+                                },
+                                env_steps=sum(
+                                    len(next(iter(module_data.values())))
+                                    for module_data in _batch.values()
+                                ),
+                            )
 
-                    # If no iterator should be returned, or if we want to return a single
-                    # batch iterator, we instantiate the batch iterator once, here.
-                    self.batch_iterators = self.data.iter_batches(
-                        batch_size=num_samples,
-                        _collate_fn=_collate_fn,
-                        **self.iter_batches_kwargs,
-                    )
+                        # If no iterator should be returned, or if we want to return a single
+                        # batch iterator, we instantiate the batch iterator once, here.
+                        self.batch_iterators = self.data.iter_batches(
+                            batch_size=num_samples,
+                            _collate_fn=_collate_fn,
+                            **self.iter_batches_kwargs,
+                        )
+                    else:
+                        self.batch_iterators = self.data.iter_batches(
+                            batch_size=num_samples,
+                            **self.iter_batches_kwargs,
+                        )
                     self.batch_iterators = iter(self.batch_iterators)
 
         # Do we want to return an iterator or a single batch?
