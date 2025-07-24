@@ -30,8 +30,9 @@ class TestHTTPRoute:
 
         # Configured route prefix should be set.
         serve.run(A.bind(), route_prefix="/prefix")
-        assert httpx.get(f"{get_application_url()}/prefix").text == "/prefix"
-        assert httpx.get(f"{get_application_url()}/prefix/subpath").text == "/prefix"
+        base_url = get_application_url(exclude_route_prefix=True)
+        assert httpx.get(f"{base_url}/prefix").text == "/prefix"
+        assert httpx.get(f"{base_url}/prefix/subpath").text == "/prefix"
 
     def test_matching_fastapi_route(self):
         fastapi_app = FastAPI()
