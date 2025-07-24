@@ -9,8 +9,7 @@ def get_max_scale_up(
     actor_pool: AutoscalingActorPool,
     budget: Optional[ExecutionResources],
 ) -> Optional[int]:
-    """
-    Get the maximum number of actors that can be scaled up.
+    """Get the maximum number of actors that can be scaled up.
 
     Args:
         actor_pool: The actor pool to scale up.
