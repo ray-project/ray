@@ -61,7 +61,7 @@ Connect to the cluster, then install the most recent stable KubeRay operator fro
 
 ## Step 3: Deploy a RayService
 
-Deploy the Ray Serve deepseek service config .yaml file using the following command:
+Create a RayService custom resource by running the following instruction:
 
 ```sh
 $ kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-service.deepseek.yaml
