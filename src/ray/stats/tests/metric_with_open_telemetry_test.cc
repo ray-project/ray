@@ -74,16 +74,32 @@ class MetricTest : public ::testing::Test {
  public:
   MetricTest() = default;
   static void SetUpTestSuite() {
+    StatsConfig::instance().SetGlobalTags({});
     StatsConfig::instance().SetIsDisableStats(false);
     for (auto &f : StatsConfig::instance().PopInitializers()) {
       f();
     }
     StatsConfig::instance().SetIsInitialized(true);
   }
+
+  std::optional<double> GetObservableMetricValue(
+      const std::string &name,
+      const absl::flat_hash_map<std::string, std::string> &tags) {
+    auto &recorder = OpenTelemetryMetricRecorder::GetInstance();
+    std::lock_guard<std::mutex> lock(recorder.mutex_);
+    auto it = recorder.observations_by_name_.find(name);
+    if (it == recorder.observations_by_name_.end()) {
+      return std::nullopt;  // Not registered
+    }
+    auto tag_it = it->second.find(tags);
+    if (tag_it != it->second.end()) {
+      return tag_it->second;  // Get the value
+    }
+    return std::nullopt;
+  }
 };
 
 TEST_F(MetricTest, TestCounterMetric) {
-  StatsConfig::instance().SetGlobalTags({});
   ASSERT_TRUE(OpenTelemetryMetricRecorder::GetInstance().IsMetricRegistered(
       "metric_counter_test"));
   // We only test that recording is not crashing. The actual value is not checked
@@ -96,7 +112,6 @@ TEST_F(MetricTest, TestCounterMetric) {
 }
 
 TEST_F(MetricTest, TestSumMetric) {
-  StatsConfig::instance().SetGlobalTags({});
   ASSERT_TRUE(
       OpenTelemetryMetricRecorder::GetInstance().IsMetricRegistered("metric_sum_test"));
   // We only test that recording is not crashing. The actual value is not checked
@@ -124,7 +139,7 @@ TEST_F(MetricTest, TestHistogramMetric) {
 struct GaugeMetricCase {
   std::string metric_name;
   double record_value;
-  TagsMap record_tags;
+  stats::TagsType record_tags;
   stats::TagsType global_tags;
   TagsMap expected_tags;
   double expected_value;
@@ -132,21 +147,8 @@ struct GaugeMetricCase {
 
 class GaugeMetricTest : public MetricTest,
                         public ::testing::WithParamInterface<GaugeMetricCase> {
- public:
-  std::optional<double> GetObservableMetricValue(
-      const std::string &name,
-      const absl::flat_hash_map<std::string, std::string> &tags) {
-    auto &recorder = OpenTelemetryMetricRecorder::GetInstance();
-    std::lock_guard<std::mutex> lock(recorder.mutex_);
-    auto it = recorder.observations_by_name_.find(name);
-    if (it == recorder.observations_by_name_.end()) {
-      return std::nullopt;  // Not registered
-    }
-    auto tag_it = it->second.find(tags);
-    if (tag_it != it->second.end()) {
-      return tag_it->second;  // Get the value
-    }
-    return std::nullopt;
+  void TearDown() override {
+    StatsConfig::instance().SetGlobalTags({});
   }
 };
 
@@ -178,14 +180,14 @@ INSTANTIATE_TEST_SUITE_P(
         // Gauge metric without global tags
         GaugeMetricCase{"metric_gauge_test",
                         42.0,
-                        {{"Tag1", "Value1"}, {"Tag2", "Value1"}},
+                        {{stats::TagKeyType::Register("Tag1"), "Value1"}, {stats::TagKeyType::Register("Tag2"), "Value1"}},
                         {},  // no global tags
                         {{"Tag1", "Value1"}, {"Tag2", "Value1"}},
                         42.0},
         // Gauge metric with global tags
         GaugeMetricCase{"metric_gauge_test",
                         52.0,
-                        {{"Tag1", "Value2"}, {"Tag2", "Value2"}},
+                        {{stats::TagKeyType::Register("Tag1"), "Value2"}, {stats::TagKeyType::Register("Tag2"), "Value2"}},
                         {{stats::TagKeyType::Register("Tag3"), "Global"}},
                         {{"Tag1", "Value2"}, {"Tag2", "Value2"}, {"Tag3", "Global"}},
                         52.0},
@@ -193,10 +195,10 @@ INSTANTIATE_TEST_SUITE_P(
         GaugeMetricCase{
             "metric_gauge_test",
             62.0,
-            {{"Tag1", "Value3"}, {"Tag2", "Value3"}, {"UnSupportedTag", "Value"}},
+            {{stats::TagKeyType::Register("Tag1"), "Value3"}, {stats::TagKeyType::Register("Tag2"), "Value3"}, {stats::TagKeyType::Register("UnSupportedTag"), "Value"}},
             {},  // no global tags
-            {{"Tag1", "Value3"},
-             {"Tag2", "Value3"}},  // Unsupported tag will not be recorded
-            62.0}));
+            {{"Tag1", "Value3"},{"Tag2", "Value3"}},  // Unsupported tag will not be recorded
+            62.0}
+          ));
 }  // namespace telemetry
 }  // namespace ray
