@@ -370,6 +370,16 @@ def target_max_block_size_infinite_or_default(request):
     ctx.target_max_block_size = original
 
 
+@pytest.fixture(params=[None])
+def target_max_block_size_infinite(request):
+    """Fixture that sets target_max_block_size to None and resets after test finishes."""
+    ctx = ray.data.context.DataContext.get_current()
+    original = ctx.target_max_block_size
+    ctx.target_max_block_size = request.param
+    yield
+    ctx.target_max_block_size = original
+
+
 # ===== Pandas dataset formats =====
 @pytest.fixture(scope="function")
 def ds_pandas_single_column_format(ray_start_regular_shared):

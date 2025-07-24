@@ -1708,7 +1708,7 @@ def test_max_block_size_none_respects_override_num_blocks(
     ray_start_regular_shared,
     tmp_path,
     override_num_blocks,
-    target_max_block_size_infinite_or_default,
+    target_max_block_size_infinite,
 ):
     """
     When `DataContext.target_max_block_size` is explicitly set to ``None``,
