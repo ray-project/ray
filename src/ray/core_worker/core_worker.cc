@@ -2200,7 +2200,7 @@ void CoreWorker::TriggerGlobalGC() {
 Status CoreWorker::GetPlasmaUsage(std::string &output) {
   StatusOr<std::string> response = plasma_store_provider_->GetMemoryUsage();
   if (response.ok()) {
-    output = response.value();
+    output = std::move(response.value());
   }
   return response.status();
 }
@@ -3192,7 +3192,7 @@ Status CoreWorker::AllocateReturnObject(const ObjectID &object_id,
                                        owner_address,
                                        &data_buffer,
                                        /*created_by_worker=*/true));
-      object_already_exists = !data_buffer;
+      object_already_exists = data_buffer == nullptr;
     }
   }
   // Leave the return object as a nullptr if the object already exists.
@@ -3216,8 +3216,11 @@ Status CoreWorker::ExecuteTask(
     std::string *application_error) {
   RAY_LOG(DEBUG) << "Executing task, task info = " << task_spec.DebugString();
 
-  // If the worker is exited via Exit API, we shouldn't execute
-  // tasks anymore.
+  for (size_t i = 0; i < task_spec.NumReturns(); i++) {
+    return_objects->emplace_back(task_spec.ReturnId(i), nullptr);
+  }
+
+  // If the worker is exited via Exit API, we shouldn't execute tasks anymore.
   if (IsExiting()) {
     absl::MutexLock lock(&mutex_);
     return Status::IntentionalSystemExit(
@@ -3272,12 +3275,10 @@ Status CoreWorker::ExecuteTask(
   std::vector<ObjectID> borrowed_ids;
   RAY_CHECK_OK(GetAndPinArgsForExecutor(task_spec, &args, &arg_refs, &borrowed_ids));
 
-  for (size_t i = 0; i < task_spec.NumReturns(); i++) {
-    return_objects->emplace_back(task_spec.ReturnId(i), nullptr);
-  }
   // For dynamic tasks, pass the return IDs that were dynamically generated on
   // the first execution.
   if (!task_spec.ReturnsDynamic()) {
+    RAY_LOG(ERROR) << "ReturnsDynamic is false";
     dynamic_return_objects = nullptr;
   } else if (task_spec.AttemptNumber() > 0) {
     for (const auto &dynamic_return_id : task_spec.DynamicReturnIds()) {
@@ -3295,7 +3296,6 @@ Status CoreWorker::ExecuteTask(
     }
   }
 
-  Status status;
   TaskType task_type = TaskType::NORMAL_TASK;
   if (task_spec.IsActorCreationTask()) {
     task_type = TaskType::ACTOR_CREATION_TASK;
@@ -3327,7 +3327,7 @@ Status CoreWorker::ExecuteTask(
     name_of_concurrency_group_to_execute = task_spec.ConcurrencyGroupName();
   }
 
-  status = options_.task_execution_callback(
+  Status status = options_.task_execution_callback(
       task_spec.CallerAddress(),
       task_type,
       task_spec.GetName(),

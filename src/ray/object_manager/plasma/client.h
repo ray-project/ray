@@ -302,21 +302,6 @@ class PlasmaClient : public PlasmaClientInterface {
   int64_t store_capacity();
 
  private:
-  /// Retry a previous create call using the returned request ID.
-  ///
-  /// \param object_id The ID to use for the newly created object.
-  /// \param request_id The request ID returned by the previous Create call.
-  /// \param metadata The object's metadata. If there is no metadata, this
-  /// pointer should be NULL.
-  /// \param retry_with_request_id If the request is not yet fulfilled, this
-  ///        will be set to a unique ID with which the client should retry.
-  /// \param data The address of the newly created object will be written here.
-  Status RetryCreate(const ObjectID &object_id,
-                     uint64_t request_id,
-                     const uint8_t *metadata,
-                     uint64_t *retry_with_request_id,
-                     std::shared_ptr<Buffer> *data);
-
   friend class PlasmaBuffer;
   friend class PlasmaMutableBuffer;
   bool IsInUse(const ObjectID &object_id);
