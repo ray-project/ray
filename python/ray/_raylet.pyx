@@ -2748,52 +2748,35 @@ cdef void terminate_asyncio_thread() nogil:
 cdef void call_actor_shutdown() noexcept nogil:
     """C++ wrapper function that calls the Python actor shutdown callback."""
     with gil:
-        try:
-            logger.info(">>> Calling actor shutdown")
-            _call_actor_shutdown()
-        except:
-            # Swallow all exceptions to prevent them from propagating to C++
-            # The inner method handles user code exceptions with proper logging,
-            # but this catches any system-level exceptions (e.g., GIL issues, worker state)
-            pass
+        _call_actor_shutdown()
 
 
 def _call_actor_shutdown():
     """Internal function that calls actor's __ray_shutdown__ method."""
-    worker = ray._private.worker.global_worker
+    try:
+        worker = ray._private.worker.global_worker
 
-    logger.info(">>> Invoking actor shutdown callback")
+        if not worker.actors:
+            return
 
-    # During shutdown, core_worker might be in inconsistent state
-    # Just iterate through worker.actors since there should be exactly one actor
-    if not worker.actors:
-        logger.error(">>> No actors found in worker.actors dict")
-        return
-
-    for actor_id, actor_instance in worker.actors.items():
-        logger.info(f">>> Processing actor ID: {actor_id}")
+        actor_id, actor_instance = next(iter(worker.actors.items()))
         if actor_instance is not None:
             try:
-                # This callback is only registered when __ray_shutdown__ exists
-                logger.info(f">>> Calling __ray_shutdown__ for actor {actor_id}")
                 actor_instance.__ray_shutdown__()
-                logger.info(f"Actor {actor_id} __ray_shutdown__ method completed successfully")
-            except Exception as e:
-                logger.error(f"Error during actor __ray_shutdown__ method: {e}")
+            except Exception:
+                logger.exception("Error during actor __ray_shutdown__ method")
             finally:
                 worker.actors.pop(actor_id, None)
-        break  # There should be only one actor
+    except Exception:
+        # Catch any system-level exceptions to prevent propagation to C++
+        logger.exception("System error during actor shutdown callback")
 
 
 def _register_actor_shutdown_callback():
     """Register callback to shutdown actor instance before shutdown."""
     worker = ray._private.worker.global_worker
     core_worker = worker.core_worker
-
-    # Only register for actors
     actor_id = core_worker.get_actor_id()
-    if actor_id.is_nil():
-        return
 
     # Only register callback if actor has __ray_shutdown__ method
     # This preserves backward compatibility: actors without __ray_shutdown__
@@ -2801,9 +2784,6 @@ def _register_actor_shutdown_callback():
     actor_instance = worker.actors.get(actor_id)
     if actor_instance is not None and hasattr(actor_instance, '__ray_shutdown__') and callable(getattr(actor_instance, '__ray_shutdown__')):
         core_worker.set_actor_shutdown_callback(_call_actor_shutdown)
-        logger.info(f"Actor {actor_id} registered __ray_shutdown__ callback")
-    else:
-        logger.info(f"Actor {actor_id} has no __ray_shutdown__ method - using normal Python exit")
 
 
 cdef class StreamRedirector:
