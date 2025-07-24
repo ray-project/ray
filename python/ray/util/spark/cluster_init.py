@@ -98,6 +98,7 @@ class RayClusterOnSpark:
         spark_job_server,
         global_cluster_lock_fd,
         ray_client_server_port,
+        ray_metrics_monitor=None,
     ):
         self.address = address
         self.head_proc = head_proc
@@ -110,6 +111,7 @@ class RayClusterOnSpark:
         self.spark_job_server = spark_job_server
         self.global_cluster_lock_fd = global_cluster_lock_fd
         self.ray_client_server_port = ray_client_server_port
+        self.ray_metrics_monitor = ray_metrics_monitor
 
         self.is_shutdown = False
         self.spark_job_is_canceled = False
@@ -255,6 +257,9 @@ class RayClusterOnSpark:
                 _logger.warning(
                     "An Error occurred during shutdown of ray head node: " f"{repr(e)}"
                 )
+
+            if self.ray_metrics_monitor is not None:
+                self.ray_metrics_monitor.finish()
             self.is_shutdown = True
 
     def __enter__(self):
@@ -464,6 +469,11 @@ def _create_hook_entry(is_global):
         return RayOnSparkStartHook(is_global)
 
 
+def _ray_system_metrics_logging_enabled():
+    from ray._private.ray_constants import env_bool
+    return env_bool("LOG_RAY_SYSTEM_METRICS", False)
+
+
 def _setup_ray_cluster(
     *,
     max_worker_nodes: int,
@@ -532,6 +542,16 @@ def _setup_ray_cluster(
         exclude_list=port_exclude_list,
     )
     port_exclude_list.append(spark_job_server_port)
+
+    if _ray_system_metrics_logging_enabled():
+        metrics_export_port = get_random_unused_port(
+            ray_head_ip,
+            min_port=9000,
+            max_port=10000,
+            exclude_list=port_exclude_list,
+        )
+        port_exclude_list.append(metrics_export_port)
+        head_node_options["metrics_export_port"] = metrics_export_port
 
     if include_dashboard is None or include_dashboard is True:
         if ray_dashboard_port is None:
@@ -695,6 +715,12 @@ def _setup_ray_cluster(
     # Set RAY_ADDRESS environment variable to the cluster address.
     os.environ["RAY_ADDRESS"] = cluster_address
 
+    if _ray_system_metrics_logging_enabled():
+        from ray.util.spark.ray_metrics_monitor import RayMetricsMonitor
+        ray_metrics_monitor = RayMetricsMonitor(
+            ray_head_ip, head_node_options["metrics_export_port"]
+        )
+        ray_metrics_monitor.start()
     ray_cluster_handler = RayClusterOnSpark(
         address=cluster_address,
         head_proc=ray_head_proc,
@@ -707,6 +733,7 @@ def _setup_ray_cluster(
         spark_job_server=spark_job_server,
         global_cluster_lock_fd=global_cluster_lock_fd,
         ray_client_server_port=ray_client_server_port,
+        ray_metrics_monitor=ray_metrics_monitor
     )
 
     start_hook.on_cluster_created(ray_cluster_handler)
@@ -1246,6 +1273,14 @@ def setup_ray_cluster(
     Note: If the active ray cluster haven't shut down, you cannot create a new ray
     cluster.
 
+    Environment variable settings:
+     - LOG_RAY_SYSTEM_METRICS: If true, a MLflow run will be created when creating the
+       Ray on Spark cluster, and the Ray system metrics are logged to the MLflow run,
+       and it will set environment variable `MLFLOW_RUN_ID` to the created run ID,
+       so that user code can reuse the created mlflow run to log other data.
+       Note: if enabling this functionality, ensure that when calling
+       `setup_ray_cluster`, there is no active MLflow run.
+
     Args:
         max_worker_nodes: This argument represents maximum ray worker nodes to start
             for the ray cluster. you can
@@ -1344,6 +1379,7 @@ def setup_ray_cluster(
             or referenced objects (either in-memory or spilled to disk). This parameter
             does not affect the head node.
             Default value is 1.0, minimum value is 0
+
     Returns:
         returns a tuple of (address, remote_connection_address)
         "address" is in format of "<ray_head_node_ip>:<port>"
@@ -1505,8 +1541,12 @@ def _start_ray_worker_nodes(
     spark_job_server_port = spark_job_server.server_address[1]
     ray_node_custom_env = spark_job_server.ray_node_custom_env
 
+    metrics_logging_enabled = _ray_system_metrics_logging_enabled()
+    mlflow_run_id = os.environ.get("MLFLOW_RUN_ID")
+
     def ray_cluster_job_mapper(_):
         from pyspark.taskcontext import TaskContext
+        from mlflow.system_metrics.system_metrics_monitor import SystemMetricsMonitor
 
         _worker_logger = logging.getLogger("ray.util.spark.worker")
 
@@ -1611,6 +1651,19 @@ def _start_ray_worker_nodes(
                 },
             )
 
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as tmp_sock:
+                tmp_sock.connect((ray_head_ip, spark_job_server_port))
+                ray_node_ip = tmp_sock.getsockname()[0]
+
+            if metrics_logging_enabled:
+                # Because MLFlow builtin `SystemMetricsMonitor` only monitors
+                # local node, so that in all remote Ray nodes, we need to
+                # launch a new MLflow SystemMetricsMonitor to log remote node's
+                # general system metrics.
+                os.environ["MLFLOW_SYSTEM_METRICS_NODE_ID"] = ray_node_ip
+                mlflow_sys_metrics_monitor = SystemMetricsMonitor(run_id=mlflow_run_id)
+                mlflow_sys_metrics_monitor.start()
+
             # Note:
             # When a pyspark job cancelled, the UDF python worker process are killed by
             # signal "SIGKILL", then `start_ray_node` process will detect the parent
@@ -1641,6 +1694,10 @@ def _start_ray_worker_nodes(
             _logger.warning(err_msg)
 
             yield err_msg, is_task_reschedule_failure
+        finally:
+            if metrics_logging_enabled:
+                mlflow_sys_metrics_monitor.finish()
+                del os.environ["MLFLOW_SYSTEM_METRICS_NODE_ID"]
 
     spark.sparkContext.setJobGroup(
         spark_job_group_id,

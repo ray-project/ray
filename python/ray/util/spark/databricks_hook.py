@@ -89,9 +89,23 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
         return _DATABRICKS_DEFAULT_TMP_ROOT_DIR
 
     def on_ray_dashboard_created(self, port):
+        import ray.util.spark.cluster_init
         display_databricks_driver_proxy_url(
             get_spark_session().sparkContext, port, "Ray Cluster Dashboard"
         )
+
+        ray_metrics_monitor = ray.util.spark.cluster_init._active_ray_cluster.ray_metrics_monitor
+        if ray_metrics_monitor is not None:
+            mlflow_exp_id = ray_metrics_monitor.mlflow_experiment_id
+            mlflow_run_id = ray_metrics_monitor.run_id
+            link_url = f"ml/experiments/{mlflow_exp_id}/runs/{mlflow_run_id}/system-metrics"
+            get_databricks_display_html_function()(f"""
+              <div style="margin-top: 16px;margin-bottom: 16px">
+                  <a href="{link_url}">
+                      View Ray system metrics in a new tab
+                  </a>
+              </div>
+            """)
 
     def on_cluster_created(self, ray_cluster_handler):
         db_api_entry = get_db_entry_point()
@@ -176,6 +190,7 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
         db_api_entry.registerBackgroundSparkJobGroup(job_group_id)
 
     def custom_environment_variables(self):
+        from ray.util.spark.cluster_init import _ray_system_metrics_logging_enabled
         conf = {
             **super().custom_environment_variables(),
             # Hardcode `GLOO_SOCKET_IFNAME` to `eth0` for Databricks runtime.
@@ -214,6 +229,13 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
                 "<a href='https://docs.databricks.com/en/dev-tools/auth/"
                 "oauth-m2m.html'>Databricks OAuth</a>."
             )
+
+            if _ray_system_metrics_logging_enabled():
+                raise RuntimeError(
+                    "Ray system metrics logging is enabled, but it requires MLflow "
+                    "credential configurations: " + warn_msg
+                )
+
             get_databricks_display_html_function()(
                 f"<b style='color:red;'>{warn_msg}<br></b>"
             )
