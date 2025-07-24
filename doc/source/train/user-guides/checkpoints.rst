@@ -136,7 +136,7 @@ Here are a few examples of saving checkpoints with different training frameworks
 
         Note that :class:`~ray.train.huggingface.transformers.RayTrainReportCallback`
         binds the latest metrics and checkpoints together,
-        so users can properly configure ``logging_strategy``, ``save_strategy`` and ``evaluation_strategy``
+        so users can properly configure ``logging_strategy``, ``save_strategy`` and ``eval_strategy``
         to ensure the monitoring metric is logged at the same step as checkpoint saving.
 
         For example, the evaluation metrics (``eval_loss`` in this case) are logged during
@@ -148,13 +148,13 @@ Here are a few examples of saving checkpoints with different training frameworks
 
             args = TrainingArguments(
                 ...,
-                evaluation_strategy="epoch",
+                eval_strategy="epoch",
                 save_strategy="epoch",
             )
 
             args = TrainingArguments(
                 ...,
-                evaluation_strategy="steps",
+                eval_strategy="steps",
                 save_strategy="steps",
                 eval_steps=50,
                 save_steps=100,
