@@ -273,6 +273,7 @@ steps:
         --only-tags gpu,gpu_only
     depends_on: docgpubuild
   - label: ":data: postmerge authenticated tests"
+    key: data_postmerge_authenticated_tests
     tags:
       - python
       - data
