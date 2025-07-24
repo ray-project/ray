@@ -5,7 +5,7 @@ from typing import Callable, Optional
 
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve.schema import TaskProcessorConfig
-from ray.serve.task_processor import get_task_adapter
+from ray.serve.task_processor import TaskProcessorAdapter, get_task_adapter
 from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -44,6 +44,8 @@ def task_consumer(*, task_processor_config: TaskProcessorConfig):
 
     def decorator(target_cls):
         class TaskConsumerWrapper(target_cls):
+            _adapter: TaskProcessorAdapter
+
             def __init__(self, *args, **kwargs):
                 target_cls.__init__(self, *args, **kwargs)
 

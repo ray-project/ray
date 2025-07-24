@@ -20,7 +20,7 @@ def config():
 class TestTaskHandlerDecorator:
     """Test the task_handler decorator."""
 
-    def test_task_handler_decorator_with_name():
+    def test_task_handler_decorator_with_name(self):
         mock = MagicMock()
 
         @task_handler(name="my_task")
@@ -32,7 +32,7 @@ class TestTaskHandlerDecorator:
         assert mock.call_count == 1
         assert my_task_handler._task_name == "my_task"
 
-    def test_task_handler_decorator_without_name():
+    def test_task_handler_decorator_without_name(self):
         mock = MagicMock()
 
         @task_handler
@@ -44,7 +44,7 @@ class TestTaskHandlerDecorator:
         assert mock.call_count == 1
         assert my_task_handler._task_name == "my_task_handler"
 
-    def test_task_handler_decorator_invalid_name():
+    def test_task_handler_decorator_invalid_name(self):
         with pytest.raises(
             ValueError, match="Task name must be a non-empty string when provided"
         ):
@@ -69,7 +69,7 @@ class TestTaskHandlerDecorator:
             def my_task_handler_with_invalid_type():
                 pass
 
-    def test_task_handler_on_callable_object_without_name_attr():
+    def test_task_handler_on_callable_object_without_name_attr(self):
         """Test that AttributeError is raised for callables with no __name__."""
 
         class MyCallable:
@@ -87,7 +87,7 @@ class TestTaskHandlerDecorator:
 class TestTaskConsumerDecorator:
     """Test the task_consumer decorator."""
 
-    def test_task_consumer_basic(config):
+    def test_task_consumer_basic(self, config):
         """Test basic functionality of the task_consumer decorator."""
 
         @task_consumer(task_processor_config=config)
@@ -106,7 +106,7 @@ class TestTaskConsumerDecorator:
 
         del consumer_instance
 
-    def test_task_consumer_multiple_handlers(config):
+    def test_task_consumer_multiple_handlers(self, config):
         """Test with multiple task handlers."""
 
         @task_consumer(task_processor_config=config)
@@ -134,7 +134,7 @@ class TestTaskConsumerDecorator:
 
         del consumer_instance
 
-    def test_task_consumer_custom_names(config):
+    def test_task_consumer_custom_names(self, config):
         """Test task handlers with and without custom names."""
 
         @task_consumer(task_processor_config=config)
@@ -162,7 +162,7 @@ class TestTaskConsumerDecorator:
 
         del consumer_instance
 
-    def test_task_consumer_init_args(config):
+    def test_task_consumer_init_args(self, config):
         """Test that __init__ arguments are passed correctly."""
 
         @task_consumer(task_processor_config=config)
@@ -176,7 +176,7 @@ class TestTaskConsumerDecorator:
 
         del consumer_instance
 
-    def test_task_consumer_no_handlers(config):
+    def test_task_consumer_no_handlers(self, config):
         """Test with a class that has no task handlers."""
 
         @task_consumer(task_processor_config=config)
@@ -192,7 +192,7 @@ class TestTaskConsumerDecorator:
 
         del consumer_instance
 
-    def test_task_consumer_inheritance(config):
+    def test_task_consumer_inheritance(self, config):
         """Test that inherited task handlers are registered."""
 
         class BaseConsumer:
@@ -221,7 +221,7 @@ class TestTaskConsumerDecorator:
 
         del consumer_instance
 
-    def test_task_consumer_no_args_decorator():
+    def test_task_consumer_no_args_decorator(self, config):
         """Test using @task_consumer without arguments raises TypeError."""
         with pytest.raises(TypeError):
 

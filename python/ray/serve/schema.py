@@ -1219,6 +1219,7 @@ class CeleryTaskProcessorConfig(BaseModel):
     )
 
 
+@PublicAPI(stability="alpha")
 class MockTaskProcessorConfig(BaseModel):
     pass
 
