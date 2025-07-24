@@ -869,27 +869,6 @@ class Worker:
         for e in out:
             _unhandled_error_handler(e)
 
-    def _deserialize_out_of_band_tensors(self, object_id: str) -> List["torch.Tensor"]:
-        gpu_object_manager = self.gpu_object_manager
-        gpu_object_store = gpu_object_manager.gpu_object_store
-        if gpu_object_manager.is_managed_object(object_id):
-            gpu_object_manager.fetch_object(object_id)
-
-        # If the GPU object is the primary copy, it means the transfer is intra-actor.
-        # In this case, we should not remove the GPU object after it is consumed once,
-        # because the GPU object reference may be used again.
-        # Instead, we should wait for the GC callback to clean it up.
-        pop_object = not gpu_object_store.is_primary_copy(object_id)
-        if pop_object:
-            tensors = gpu_object_manager.gpu_object_store.wait_and_pop_object(
-                object_id, timeout=ray_constants.FETCH_FAIL_TIMEOUT_SECONDS
-            )
-        else:
-            tensors = gpu_object_manager.gpu_object_store.wait_and_get_object(
-                object_id, timeout=ray_constants.FETCH_FAIL_TIMEOUT_SECONDS
-            )
-        return tensors
-
     def deserialize_objects(self, serialized_objects, object_refs):
         out_of_band_tensors: Dict[str, List["torch.Tensor"]] = {}
         for obj_ref, (_, _, tensor_transport) in zip(object_refs, serialized_objects):
@@ -902,9 +881,9 @@ class Worker:
                 continue
 
             object_id = obj_ref.hex()
-            out_of_band_tensors[object_id] = self._deserialize_out_of_band_tensors(
+            out_of_band_tensors[
                 object_id
-            )
+            ] = self.gpu_object_manager.get_out_of_band_tensors(object_id)
 
         # Function actor manager or the import thread may call pickle.loads
         # at the same time which can lead to failed imports
