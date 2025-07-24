@@ -43,38 +43,6 @@ from ray.llm._internal.serve.observability.usage_telemetry.usage import (
     push_telemetry_report_for_all_models,
 )
 
-# Monkey patch asyncio.run to handle event loop conflicts
-original_asyncio_run = asyncio.run
-
-
-def _run_async_in_event_loop(coro):
-    """Helper to run async code within an existing event loop."""
-    try:
-        # Try normal asyncio.run first
-        return original_asyncio_run(coro)
-    except RuntimeError as e:
-        if "cannot be called from a running event loop" in str(e):
-            # Handle the case where we're already in an event loop (Ray Serve deployments)
-            import concurrent.futures
-
-            def run_in_thread():
-                new_loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(new_loop)
-                try:
-                    return new_loop.run_until_complete(coro)
-                finally:
-                    new_loop.close()
-
-            with concurrent.futures.ThreadPoolExecutor() as executor:
-                future = executor.submit(run_in_thread)
-                return future.result()
-        else:
-            raise
-
-
-# Apply monkey patch
-asyncio.run = _run_async_in_event_loop
-
 if TYPE_CHECKING:
     from ray.llm._internal.serve.configs.openai_api_models import (
         ChatCompletionRequest,
@@ -152,6 +120,23 @@ class LLMServer(_LLMServerBase):
     2. Request id handing from serve context.
     3. Batching in case of streaming (only for chat and completions).
     4. Telemetry reporting.
+
+    Usage Patterns (Ed's Pattern):
+
+    1. Basic pattern:
+        server = LLMServer(llm_config)  # Sync constructor only
+        await server.start()  # Must explicitly start
+
+    2. Convenience method (same as #1):
+        server = LLMServer.sync_init(llm_config)
+        await server.start()
+
+    3. Async context (fully initialized):
+        server = await LLMServer.async_init(llm_config)  # Ready to use
+
+    4. Ray Serve deployment:
+        # Deployments handle the start() call appropriately
+        deployment = LLMDeployment(llm_config)
     """
 
     _default_engine_cls = VLLMEngine
@@ -163,10 +148,10 @@ class LLMServer(_LLMServerBase):
         engine_cls: Optional[Type[LLMEngine]] = None,
         model_downloader: Optional[Type[LoraModelLoader]] = None,
     ):
-        """Constructor of LLMServer.
+        """Constructor of LLMServer - sync only following Ed's pattern.
 
-        Only the llm_config is public api, the other arguments are private
-        and used for testing.
+        This constructor only does synchronous initialization. The engine
+        must be started explicitly with await start().
 
         Args:
             llm_config: LLMConfig for the model.
@@ -176,14 +161,73 @@ class LLMServer(_LLMServerBase):
                 Defaults to `LoraModelLoader`.
         """
         super().__init__()
-        self._llm_config = llm_config
+        self._init_shared(llm_config, engine_cls, model_downloader)
 
+    def _init_shared(
+        self,
+        llm_config: LLMConfig,
+        engine_cls: Optional[Type[LLMEngine]] = None,
+        model_downloader: Optional[Type[LoraModelLoader]] = None,
+    ):
+        """Shared initialization logic between constructors."""
+        self._llm_config = llm_config
         self._engine_cls = engine_cls or self._get_default_engine_class()
         self.engine: Optional[LLMEngine] = None
         self._init_multiplex_loader(model_downloader)
 
-        # Bridge to async operations
-        asyncio.run(self.start())
+    @classmethod
+    def sync_init(
+        cls,
+        llm_config: LLMConfig,
+        *,
+        engine_cls: Optional[Type[LLMEngine]] = None,
+        model_downloader: Optional[Type[LoraModelLoader]] = None,
+    ) -> "LLMServer":
+        """Synchronous constructor that returns an unstarted instance.
+
+        This is useful for testing and scenarios where you want to control
+        when the async initialization happens.
+
+        Args:
+            llm_config: LLMConfig for the model.
+            engine_cls: Dependency injection for the vllm engine class.
+                Defaults to `VLLMEngine`.
+            model_downloader: Dependency injection for the model downloader.
+                Defaults to `LoraModelLoader`.
+
+        Returns:
+            An LLMServer instance. You must call `await instance.start()` before use.
+        """
+        return cls(llm_config, engine_cls=engine_cls, model_downloader=model_downloader)
+
+    @classmethod
+    async def async_init(
+        cls,
+        llm_config: LLMConfig,
+        *,
+        engine_cls: Optional[Type[LLMEngine]] = None,
+        model_downloader: Optional[Type[LoraModelLoader]] = None,
+    ) -> "LLMServer":
+        """Asynchronous constructor that returns a fully started instance.
+
+        This is useful when you're already in an async context and want
+        a fully initialized server.
+
+        Args:
+            llm_config: LLMConfig for the model.
+            engine_cls: Dependency injection for the vllm engine class.
+                Defaults to `VLLMEngine`.
+            model_downloader: Dependency injection for the model downloader.
+                Defaults to `LoraModelLoader`.
+
+        Returns:
+            A fully started LLMServer instance ready for use.
+        """
+        instance = cls(
+            llm_config, engine_cls=engine_cls, model_downloader=model_downloader
+        )
+        await instance.start()
+        return instance
 
     async def start(self):
         """Start the engine asynchronously."""
