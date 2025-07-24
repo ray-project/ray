@@ -5,8 +5,8 @@ from ray.util.annotations import PublicAPI
 
 
 @PublicAPI(stability="alpha")
-class TrainingFailedError(RayTrainError):
-    """Exception raised from the training workers.
+class WorkerGroupError(RayTrainError):
+    """Exception raised from the worker group during training.
 
     Args:
         error_message: A human-readable error message describing the training worker failures.
@@ -41,4 +41,4 @@ class ControllerError(RayTrainError):
         return (self.__class__, (self.controller_failure,))
 
 
-WorkerOrControllerError = Union[TrainingFailedError, ControllerError]
+TrainingFailedError = Union[WorkerGroupError, ControllerError]

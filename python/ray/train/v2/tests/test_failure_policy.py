@@ -42,7 +42,7 @@ def test_max_failures(max_failures):
     for _ in range(max_failures):
         assert (
             policy.make_decision(
-                error=TrainingFailedError(
+                training_failed_error=TrainingFailedError(
                     error_message=status.get_error_string(),
                     worker_failures=status.errors,
                 )
@@ -67,7 +67,8 @@ def test_reschedule(controller_failure_limit):
     controller_error = _worker_group_resize_status_from_errors()
     for _ in range(controller_failure_limit):
         assert (
-            policy.make_decision(error=controller_error) == FailureDecision.RESCHEDULE
+            policy.make_decision(training_failed_error=controller_error)
+            == FailureDecision.RETRY
         )
     assert policy.make_decision(error=controller_error) == FailureDecision.RAISE
 
@@ -80,7 +81,7 @@ def test_infinite_retry():
     for _ in range(10):
         assert (
             policy.make_decision(
-                error=TrainingFailedError(
+                training_failed_error=TrainingFailedError(
                     error_message=status.get_error_string(),
                     worker_failures=status.errors,
                 )
@@ -92,7 +93,10 @@ def test_infinite_retry():
 def test_non_retryable_scheduling_error():
     policy = create_failure_policy(FailureConfig(controller_failure_limit=10))
     controller_error = _non_retryable_scheduling_error()
-    assert policy.make_decision(error=controller_error) == FailureDecision.RAISE
+    assert (
+        policy.make_decision(training_failed_error=controller_error)
+        == FailureDecision.RAISE
+    )
 
 
 def test_infinite_reschedule():
@@ -100,7 +104,8 @@ def test_infinite_reschedule():
     controller_error = _worker_group_resize_status_from_errors()
     for _ in range(10):
         assert (
-            policy.make_decision(error=controller_error) == FailureDecision.RESCHEDULE
+            policy.make_decision(training_failed_error=controller_error)
+            == FailureDecision.RESCHEDULE
         )
 
 

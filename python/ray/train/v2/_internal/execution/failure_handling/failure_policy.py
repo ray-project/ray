@@ -2,12 +2,11 @@ import abc
 from enum import Enum
 
 from ray.train.v2.api.config import FailureConfig
-from ray.train.v2.api.exceptions import WorkerOrControllerError
+from ray.train.v2.api.exceptions import TrainingFailedError
 
 
 class FailureDecision(Enum):
-    RESTART = "RESTART"
-    RESCHEDULE = "RESCHEDULE"
+    RETRY = "RETRY"
     RAISE = "RAISE"
     NOOP = "NOOP"
 
@@ -25,6 +24,6 @@ class FailurePolicy(abc.ABC):
     @abc.abstractmethod
     def make_decision(
         self,
-        error: WorkerOrControllerError,
+        training_failed_error: TrainingFailedError,
     ) -> FailureDecision:
         raise NotImplementedError

@@ -100,6 +100,7 @@ class FailureConfig(FailureConfigV1):
     """
 
     fail_fast: Union[bool, str] = _DEPRECATED
+    # TODO(xgui): rename max_failures to max_worker_group_failures
     controller_failure_limit: int = -1
 
     def __post_init__(self):

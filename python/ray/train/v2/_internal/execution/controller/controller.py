@@ -3,7 +3,7 @@ import logging
 import os
 import uuid
 from dataclasses import dataclass
-from typing import Callable, List, Optional
+from typing import Callable, List, Optional, Union
 
 import pandas as pd
 
@@ -64,7 +64,7 @@ from ray.train.v2.api.callback import RayTrainCallback
 from ray.train.v2.api.exceptions import (
     ControllerError,
     TrainingFailedError,
-    WorkerOrControllerError,
+    WorkerGroupError,
 )
 from ray.train.v2.api.result import Result
 
@@ -78,7 +78,7 @@ class TrainControllerLoopIterationResult:
     run_attempt_id: str
     previous_state: TrainControllerState
     next_state: TrainControllerState
-    error: Optional[WorkerOrControllerError] = None
+    training_failed_error: Optional[TrainingFailedError] = None
 
     def __repr__(self) -> str:
         return (
@@ -86,7 +86,7 @@ class TrainControllerLoopIterationResult:
             f"    run_attempt_id={self.run_attempt_id},\n"
             f"    previous_state={self.previous_state._state_type.state_name},\n"
             f"    next_state={self.next_state._state_type.state_name}\n"
-            f"    error={self.error}\n"
+            f"    training_failed_error={self.training_failed_error}\n"
             f")"
         )
 
@@ -192,7 +192,7 @@ class TrainController:
             )
             return self._execute_failure_decision(
                 failure_decision,
-                error=optional_controller_error,
+                training_failed_error=optional_controller_error,
             )
         else:
             return TrainControllerLoopIterationResult(
@@ -201,10 +201,24 @@ class TrainController:
                 next_state=RunningState(),
             )
 
+    def _get_retry_state(
+        self,
+        controller_state: Union[RunningState, ResizingState],
+        training_failed_error: TrainingFailedError,
+    ) -> TrainControllerState:
+        assert isinstance(controller_state, (RunningState, ResizingState))
+
+        if isinstance(controller_state, RunningState):
+            return RestartingState(training_failed_error=training_failed_error)
+        elif isinstance(controller_state, ResizingState):
+            return ReschedulingState(training_failed_error=training_failed_error)
+        else:
+            raise ValueError(f"Unexpected controller state: {controller_state}")
+
     def _execute_failure_decision(
         self,
         failure_decision: FailureDecision,
-        error: WorkerOrControllerError,
+        training_failed_error: TrainingFailedError,
     ) -> TrainControllerLoopIterationResult:
         """Executes failure handling decisions for a scheduling or poll error."""
 
@@ -220,30 +234,26 @@ class TrainController:
                 run_attempt_id=self._get_run_attempt_id(),
                 previous_state=controller_state,
                 next_state=controller_state,
-                error=error,
+                training_failed_error=training_failed_error,
             )
 
-        if failure_decision == FailureDecision.RESTART:
+        if failure_decision == FailureDecision.RETRY:
             return TrainControllerLoopIterationResult(
                 run_attempt_id=self._get_run_attempt_id(),
                 previous_state=controller_state,
-                next_state=RestartingState(error=error),
-            )
-        elif failure_decision == FailureDecision.RESCHEDULE:
-            return TrainControllerLoopIterationResult(
-                run_attempt_id=self._get_run_attempt_id(),
-                previous_state=controller_state,
-                next_state=ReschedulingState(error=error),
+                next_state=self._get_retry_state(
+                    controller_state, training_failed_error
+                ),
             )
         elif failure_decision == FailureDecision.RAISE:
             next_state = ErroredState(
-                error=error,
+                training_failed_error=training_failed_error,
             )
             return TrainControllerLoopIterationResult(
                 run_attempt_id=self._get_run_attempt_id(),
                 previous_state=controller_state,
                 next_state=next_state,
-                error=error,
+                training_failed_error=training_failed_error,
             )
         else:
             raise ValueError(f"Unexpected failure decision: {failure_decision}")
@@ -364,7 +374,7 @@ class TrainController:
         controller_state = self.get_state()
 
         if isinstance(
-            controller_state, (InitializingState, ReschedulingState, RestartingState)
+            controller_state, (InitializingState, RestartingState, ReschedulingState)
         ):
             return self._make_and_handle_scaling_decision_for_non_running_worker_group(
                 controller_state
@@ -382,15 +392,15 @@ class TrainController:
                     next_state=FinishedState(),
                 )
             if worker_group_status.errors:
-                training_failed_error = TrainingFailedError(
+                worker_group_error = WorkerGroupError(
                     error_message=worker_group_status.get_error_string(),
                     worker_failures=worker_group_status.errors,
                 )
                 failure_decision = self._failure_policy.make_decision(
-                    error=training_failed_error,
+                    error=worker_group_error,
                 )
                 return self._execute_failure_decision(
-                    failure_decision, training_failed_error
+                    failure_decision, training_failed_error=worker_group_error
                 )
             else:
                 scaling_decision = self._scaling_policy.make_decision_for_running_worker_group(
@@ -500,7 +510,7 @@ class TrainController:
         return Result(
             metrics=latest_metrics,
             checkpoint=latest_checkpoint,
-            error=self.get_worker_or_controller_error(),
+            error=self.get_training_failed_error(),
             path=storage.experiment_fs_path,
             best_checkpoints=best_checkpoints,
             metrics_dataframe=metrics_dataframe,
@@ -518,16 +528,16 @@ class TrainController:
 
         return self._build_result()
 
-    def get_worker_or_controller_error(self) -> Optional[WorkerOrControllerError]:
-        """Get the worker or controller error from the state.
+    def get_training_failed_error(self) -> Optional[TrainingFailedError]:
+        """Get the training failed error from the controller state.
 
         Returns:
-            The worker or controller error if the controller is in an errored state,
+            The training failed error if the controller is in an errored state,
             None otherwise.
         """
         controller_state = self.get_state()
 
         if isinstance(controller_state, ErroredState):
-            return controller_state.error
+            return controller_state.training_failed_error
 
         return None

@@ -12,7 +12,6 @@ from ray.train.v2._internal.execution.controller.state import (
     ErroredState,
     FinishedState,
     InitializingState,
-    ReschedulingState,
     ResizingState,
     RestartingState,
     RunningState,
@@ -39,7 +38,7 @@ from ray.train.v2._internal.state.state_actor import (
 )
 from ray.train.v2._internal.state.state_manager import TrainStateManager
 from ray.train.v2._internal.state.util import _DEAD_CONTROLLER_ABORT_STATUS_DETAIL
-from ray.train.v2.api.exceptions import ControllerError, TrainingFailedError
+from ray.train.v2.api.exceptions import ControllerError, WorkerGroupError
 from ray.train.v2.tests.util import (
     create_dummy_run_context,
     create_mock_train_run,
@@ -486,7 +485,7 @@ def test_callback_controller_state_transitions(ray_start_regular, callback):
         ),
         RunningState(),
         RestartingState(
-            error=TrainingFailedError(error_message="", worker_failures={})
+            training_failed_error=WorkerGroupError(error_message="", worker_failures={})
         ),
         SchedulingState(
             scaling_decision=ResizeDecision(num_workers=2, resources_per_worker={})
@@ -498,7 +497,9 @@ def test_callback_controller_state_transitions(ray_start_regular, callback):
         SchedulingState(
             scaling_decision=ResizeDecision(num_workers=4, resources_per_worker={})
         ),
-        ReschedulingState(error=ControllerError(WorkerGroupStartupTimeoutError(0))),
+        RestartingState(
+            training_failed_error=ControllerError(WorkerGroupStartupTimeoutError(0))
+        ),
         SchedulingState(
             scaling_decision=ResizeDecision(num_workers=2, resources_per_worker={})
         ),

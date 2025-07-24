@@ -98,7 +98,7 @@ class StateManagerCallback(ControllerCallback, WorkerGroupCallback):
         elif isinstance(current_state, ErroredState):
             self._state_manager.update_train_run_errored(
                 run_id=self._run_id,
-                status_detail=str(current_state.error),
+                status_detail=str(current_state.training_failed_error),
             )
 
         elif isinstance(current_state, FinishedState):
