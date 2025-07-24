@@ -509,7 +509,7 @@ std::string GcsNodeManager::DebugString() const {
   return stream.str();
 }
 
-void GcsNodeManager::UpdateNode(
+void GcsNodeManager::UpdateAliveNode(
     const NodeID &node_id,
     const syncer::ResourceViewSyncMessage &resource_view_sync_message) {
   auto maybe_node_info = GetAliveNode(node_id);

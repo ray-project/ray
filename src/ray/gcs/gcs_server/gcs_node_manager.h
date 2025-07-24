@@ -172,14 +172,14 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   /// This is technically not draining a node. It should be just called "kill node".
   virtual void DrainNode(const NodeID &node_id);
 
-  /// Update node state and resources from a resource view sync message.
+  /// Update node state and resources from a resource view sync message if the node is alive.
   /// Publish the GcsNodeInfo to the GCS clients if resources are updated.
   ///
   /// \param node_id The ID of the node to update.
   /// \param resource_view_sync_message The sync message containing the new state and
   /// resource data.
-  void UpdateNode(const NodeID &node_id,
-                  const syncer::ResourceViewSyncMessage &resource_view_sync_message);
+  void UpdateAliveNode(const NodeID &node_id,
+                       const syncer::ResourceViewSyncMessage &resource_view_sync_message);
 
  private:
   /// Add the dead node to the cache. If the cache is full, the earliest dead node is

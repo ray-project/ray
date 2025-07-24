@@ -108,7 +108,7 @@ TEST_F(GcsNodeManagerTest, TestListener) {
   }
 }
 
-TEST_F(GcsNodeManagerTest, TestUpdateNode) {
+TEST_F(GcsNodeManagerTest, TestUpdateAliveNode) {
   gcs::GcsNodeManager node_manager(gcs_publisher_.get(),
                                    gcs_table_storage_.get(),
                                    io_context_->GetIoService(),
@@ -137,7 +137,7 @@ TEST_F(GcsNodeManagerTest, TestUpdateNode) {
         dynamic_cast<ray::pubsub::MockPublisher &>(gcs_publisher_->GetPublisher());
     EXPECT_CALL(mock_pub_ref, Publish).Times(0);
 
-    node_manager.UpdateNode(node_id, sync_message);
+    node_manager.UpdateAliveNode(node_id, sync_message);
 
     auto updated_node = node_manager.GetAliveNode(node_id);
     EXPECT_TRUE(updated_node.has_value());
@@ -156,7 +156,7 @@ TEST_F(GcsNodeManagerTest, TestUpdateNode) {
         dynamic_cast<ray::pubsub::MockPublisher &>(gcs_publisher_->GetPublisher());
     EXPECT_CALL(mock_pub_ref, Publish).Times(0);
 
-    node_manager.UpdateNode(node_id, sync_message);
+    node_manager.UpdateAliveNode(node_id, sync_message);
 
     auto updated_node = node_manager.GetAliveNode(node_id);
     EXPECT_TRUE(updated_node.has_value());
@@ -177,7 +177,7 @@ TEST_F(GcsNodeManagerTest, TestUpdateNode) {
         dynamic_cast<ray::pubsub::MockPublisher &>(gcs_publisher_->GetPublisher());
     EXPECT_CALL(mock_pub_ref, Publish).Times(0);
 
-    node_manager.UpdateNode(node_id, sync_message);
+    node_manager.UpdateAliveNode(node_id, sync_message);
 
     auto updated_node = node_manager.GetAliveNode(node_id);
     EXPECT_TRUE(updated_node.has_value());
@@ -195,7 +195,7 @@ TEST_F(GcsNodeManagerTest, TestUpdateNode) {
         dynamic_cast<ray::pubsub::MockPublisher &>(gcs_publisher_->GetPublisher());
     EXPECT_CALL(mock_pub_ref, Publish).Times(1);
 
-    node_manager.UpdateNode(node_id, sync_message);
+    node_manager.UpdateAliveNode(node_id, sync_message);
 
     auto updated_node = node_manager.GetAliveNode(node_id);
     EXPECT_TRUE(updated_node.has_value());

@@ -2136,15 +2136,12 @@ void NodeManager::AsyncResolveObjectsFinish(
   dependency_manager_.CancelGetRequest(worker->WorkerId());
 }
 
-bool NodeManager::FinishAssignedTask(const std::shared_ptr<WorkerInterface> &worker_ptr) {
-  // TODO(Alex): We should standardize to pass
-  // std::shared_ptr<WorkerInterface> instead of refs.
-  auto &worker = *worker_ptr;
-  TaskID task_id = worker.GetAssignedTaskId();
+bool NodeManager::FinishAssignedTask(const std::shared_ptr<WorkerInterface> &worker) {
+  TaskID task_id = worker->GetAssignedTaskId();
   RAY_LOG(DEBUG).WithField(task_id) << "Finished task ";
 
   RayTask task;
-  local_task_manager_.TaskFinished(worker_ptr, &task);
+  local_task_manager_.TaskFinished(worker, &task);
 
   const auto &spec = task.GetTaskSpecification();  //
   if ((spec.IsActorCreationTask())) {
@@ -2154,31 +2151,31 @@ bool NodeManager::FinishAssignedTask(const std::shared_ptr<WorkerInterface> &wor
   } else {
     // If this was a non-actor task, then cancel any ray.wait calls that were
     // made during the task execution.
-    dependency_manager_.CancelWaitRequest(worker.WorkerId());
+    dependency_manager_.CancelWaitRequest(worker->WorkerId());
   }
 
   // Notify the task dependency manager that this task has finished execution.
-  dependency_manager_.CancelGetRequest(worker.WorkerId());
+  dependency_manager_.CancelGetRequest(worker->WorkerId());
 
   if (!spec.IsActorCreationTask()) {
     // Unset the worker's assigned task. We keep the assigned task ID for
     // actor creation calls because this ID is used later if the actor
     // requires objects from plasma.
-    worker.AssignTaskId(TaskID::Nil());
-    worker.SetOwnerAddress(rpc::Address());
+    worker->AssignTaskId(TaskID::Nil());
+    worker->SetOwnerAddress(rpc::Address());
   }
   // Actors will be assigned tasks via the core worker and therefore are not idle.
   return !spec.IsActorCreationTask();
 }
 
-void NodeManager::FinishAssignedActorCreationTask(WorkerInterface &worker,
-                                                  const RayTask &task) {
+void NodeManager::FinishAssignedActorCreationTask(
+    const std::shared_ptr<WorkerInterface> &worker, const RayTask &task) {
   RAY_LOG(DEBUG) << "Finishing assigned actor creation task";
   const TaskSpecification task_spec = task.GetTaskSpecification();
   ActorID actor_id = task_spec.ActorCreationId();
 
   // This was an actor creation task. Convert the worker to an actor.
-  worker.AssignActorId(actor_id);
+  worker->AssignActorId(actor_id);
 
   if (task_spec.IsDetachedActor()) {
     auto job_id = task.GetTaskSpecification().JobId();

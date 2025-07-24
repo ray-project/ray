@@ -258,7 +258,7 @@ void GcsResourceManager::UpdateNodeResourceUsage(
     const syncer::ResourceViewSyncMessage &resource_view_sync_message) {
   // Note: This may be inconsistent with autoscaler state, which is
   // not reported as often as a Ray Syncer message.
-  gcs_node_manager_.UpdateNode(node_id, resource_view_sync_message);
+  gcs_node_manager_.UpdateAliveNode(node_id, resource_view_sync_message);
 
   auto iter = node_resource_usages_.find(node_id);
   if (iter == node_resource_usages_.end()) {

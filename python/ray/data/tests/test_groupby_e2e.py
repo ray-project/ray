@@ -48,7 +48,9 @@ def _sort_series_of_lists_elements(s: pd.Series):
 
 
 def test_grouped_dataset_repr(
-    ray_start_regular_shared_2_cpus, disable_fallback_to_object_extension
+    ray_start_regular_shared_2_cpus,
+    disable_fallback_to_object_extension,
+    target_max_block_size_infinite_or_default,
 ):
     ds = ray.data.from_items([{"key": "spam"}, {"key": "ham"}, {"key": "spam"}])
     assert repr(ds.groupby("key")) == f"GroupedData(dataset={ds!r}, key='key')"
@@ -58,6 +60,7 @@ def test_groupby_arrow(
     ray_start_regular_shared_2_cpus,
     configure_shuffle_method,
     disable_fallback_to_object_extension,
+    target_max_block_size_infinite_or_default,
 ):
     # Test empty dataset.
     agg_ds = ray.data.range(10).filter(lambda r: r["id"] > 10).groupby("value").count()
@@ -68,6 +71,7 @@ def test_groupby_none(
     ray_start_regular_shared_2_cpus,
     configure_shuffle_method,
     disable_fallback_to_object_extension,
+    target_max_block_size_infinite_or_default,
 ):
     ds = ray.data.range(10)
     assert ds.groupby(None).min().take_all() == [{"min(id)": 0}]
@@ -75,7 +79,9 @@ def test_groupby_none(
 
 
 def test_groupby_errors(
-    ray_start_regular_shared_2_cpus, disable_fallback_to_object_extension
+    ray_start_regular_shared_2_cpus,
+    disable_fallback_to_object_extension,
+    target_max_block_size_infinite_or_default,
 ):
     ds = ray.data.range(100)
     ds.groupby(None).count().show()  # OK
@@ -86,7 +92,10 @@ def test_groupby_errors(
 
 
 def test_map_groups_with_gpus(
-    shutdown_only, configure_shuffle_method, disable_fallback_to_object_extension
+    shutdown_only,
+    configure_shuffle_method,
+    disable_fallback_to_object_extension,
+    target_max_block_size_infinite_or_default,
 ):
     ray.shutdown()
     ray.init(num_gpus=1)
@@ -102,6 +111,7 @@ def test_map_groups_with_actors(
     ray_start_regular_shared_2_cpus,
     configure_shuffle_method,
     disable_fallback_to_object_extension,
+    target_max_block_size_infinite_or_default,
 ):
     class Identity:
         def __call__(self, batch):
@@ -208,6 +218,7 @@ def test_groupby_nans(
     ds_format,
     configure_shuffle_method,
     disable_fallback_to_object_extension,
+    target_max_block_size_infinite_or_default,
 ):
     ds = ray.data.from_items(
         [
@@ -237,6 +248,7 @@ def test_groupby_tabular_count(
     num_parts,
     configure_shuffle_method,
     disable_fallback_to_object_extension,
+    target_max_block_size_infinite_or_default,
 ):
     # Test built-in count aggregation
     seed = int(time.time())
@@ -781,6 +793,7 @@ def test_groupby_map_groups_perf(
     ray_start_regular_shared_2_cpus,
     configure_shuffle_method,
     disable_fallback_to_object_extension,
+    target_max_block_size_infinite_or_default,
 ):
     data_list = [x % 100 for x in range(5000000)]
     ds = ray.data.from_pandas(pd.DataFrame({"A": data_list}))
@@ -934,7 +947,9 @@ def test_groupby_map_groups_multiple_batch_formats(
 
 
 def test_groupby_map_groups_ray_remote_args_fn(
-    ray_start_regular_shared_2_cpus, configure_shuffle_method
+    ray_start_regular_shared_2_cpus,
+    configure_shuffle_method,
+    target_max_block_size_infinite_or_default,
 ):
     ds = ray.data.from_items(
         [
@@ -962,6 +977,7 @@ def test_groupby_map_groups_extra_args(
     ray_start_regular_shared_2_cpus,
     configure_shuffle_method,
     disable_fallback_to_object_extension,
+    target_max_block_size_infinite_or_default,
 ):
     ds = ray.data.from_items(
         [

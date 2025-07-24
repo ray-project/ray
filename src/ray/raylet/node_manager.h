@@ -363,13 +363,14 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \param worker The worker that finished the task.
   /// \return Whether the worker should be returned to the idle pool. This is
   /// only false for actor creation calls, which should never be returned to idle.
-  bool FinishAssignedTask(const std::shared_ptr<WorkerInterface> &worker_ptr);
+  bool FinishAssignedTask(const std::shared_ptr<WorkerInterface> &worker);
 
   /// Handle a worker finishing an assigned actor creation task.
   /// \param worker The worker that finished the task.
   /// \param task The actor task or actor creation task.
   /// \return Void.
-  void FinishAssignedActorCreationTask(WorkerInterface &worker, const RayTask &task);
+  void FinishAssignedActorCreationTask(const std::shared_ptr<WorkerInterface> &worker,
+                                       const RayTask &task);
 
   /// Handle blocking gets of objects. This could be a task assigned to a worker,
   /// an out-of-band task (e.g., a thread created by the application), or a
