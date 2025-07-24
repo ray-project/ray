@@ -116,7 +116,7 @@ class DependencySetManager:
     ):
         """Subset a dependency set."""
         source_depset = self.get_depset(source_depset)
-        self.check_if_subset_exists(source_depset, requirements)
+        self.check_subset_exists(source_depset, requirements)
         self.compile(
             constraints=[source_depset.output],
             requirements=requirements,
@@ -128,7 +128,7 @@ class DependencySetManager:
     def get_path(self, path: str) -> str:
         return (Path(self.workspace.dir) / path).as_posix()
 
-    def check_if_subset_exists(self, source_depset: Depset, requirements: List[str]):
+    def check_subset_exists(self, source_depset: Depset, requirements: List[str]):
         for req in requirements:
             if req not in source_depset.requirements:
                 raise RuntimeError(
