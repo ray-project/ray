@@ -188,7 +188,7 @@ def test_large_runtime_env_fails_fast(start_cluster_shared):
 
     # The E2BIG error from the raylet is propagated to the
     # driver, which should raise a RuntimeEnvSetupError.
-    with pytest.raises(RuntimeEnvSetupError):
+    with pytest.raises(RuntimeEnvSetupError, match="Worker command arguments too long"):
         ray.get(f.options(runtime_env=runtime_env).remote())
 
 

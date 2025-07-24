@@ -298,9 +298,16 @@ class ProcessFD {
           // Success: exec'd, pipe closed by CLOEXEC.
           ec = std::error_code();
         } else {
-          // Failure: got an error or pipe broke.
-          ec = std::error_code(bytes_read > 0 ? err_from_child : errno,
-                               std::system_category());
+          // Failure: got an error from child or pipe broke.
+          if (bytes_read == sizeof(err_from_child)) {
+            // We received a full error code from the child.
+            ec = std::error_code(err_from_child, std::system_category());
+          } else {
+            // The pipe was closed before we could read the full error.
+            // This can happen if the child crashes.
+            // If read() returned an error, use that errno. Otherwise, use EPIPE.
+            ec = std::error_code(bytes_read < 0 ? errno : EPIPE, std::system_category());
+          }
           while (waitpid(pid, NULL, 0) == -1 && errno == EINTR) {
             continue;
           }
