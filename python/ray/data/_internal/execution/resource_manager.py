@@ -20,9 +20,9 @@ from ray.data._internal.execution.operators.base_physical_operator import (
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.zip_operator import ZipOperator
 from ray.data._internal.execution.util import memory_string
+from ray.data._internal.util import GiB
 from ray.data.context import DataContext
 from ray.util.debug import log_once
-from ray.data._internal.util import GiB
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.streaming_executor_state import OpState, Topology
