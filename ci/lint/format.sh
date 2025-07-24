@@ -97,7 +97,7 @@ fi
 if command -v java >/dev/null; then
   if [ ! -f "$GOOGLE_JAVA_FORMAT_JAR" ]; then
     echo "Java code format tool google-java-format.jar is not installed, start to install it."
-    wget https://github.com/google/google-java-format/releases/download/google-java-format-1.7/google-java-format-1.7-all-deps.jar -O "$GOOGLE_JAVA_FORMAT_JAR"
+    curl -L https://github.com/google/google-java-format/releases/download/google-java-format-1.7/google-java-format-1.7-all-deps.jar -o "$GOOGLE_JAVA_FORMAT_JAR"
   fi
 else
     echo "WARNING:java is not installed, skip format java files!"
