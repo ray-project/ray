@@ -300,4 +300,4 @@ def _save_packages_to_file(filepath, packages):
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-vv", __file__]))
+    sys.exit(pytest.main(["-v", __file__]))
