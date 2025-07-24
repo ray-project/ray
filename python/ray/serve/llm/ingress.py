@@ -22,7 +22,9 @@ class OpenAIIngress(_LLMRouter):
 
 
             from ray import serve
-            from ray.serve.llm import LLMConfig, LLMServer, LLMRouter
+            from ray.serve.llm import LLMConfig
+            from ray.serve.llm.deployment import LLMServer
+            from ray.serve.llm.ingress import OpenAIIngress
             from ray.serve.llm.openai_api_models import ChatCompletionRequest
 
 
@@ -52,7 +54,7 @@ class OpenAIIngress(_LLMRouter):
             # Deploy the application
             vllm_deployment1 = LLMServer.as_deployment(llm_config1.get_serve_options()).bind(llm_config1)
             vllm_deployment2 = LLMServer.as_deployment(llm_config2.get_serve_options()).bind(llm_config2)
-            llm_app = LLMRouter.as_deployment().bind([vllm_deployment1, vllm_deployment2])
+            llm_app = OpenAIIngress.as_deployment().bind([vllm_deployment1, vllm_deployment2])
             serve.run(llm_app)
     """
 
