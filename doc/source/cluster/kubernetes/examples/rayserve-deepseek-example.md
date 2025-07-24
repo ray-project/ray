@@ -13,60 +13,65 @@ Before creating the cluster, please ensure that your project has sufficient quot
 
 Afterward, refer to the [guide](https://cloud.google.com/cluster-toolkit/docs/deploy/deploy-a3-mega-cluster#create-reservation) (using A3 Mega as an example) to create a corresponding placement policy and reservation.
 
-## Step 1: Create a Kubernetes cluster with accelerators
-Please export all variables that would be used in cluster creation:
+Before start, please export variables that would be used in cluster creation:
 
 ```sh
-export CLUSTER_NAME = my_cluster # replace this with your own cluster name
-export CLUSTER_LOCATION = australia-southeast1-c # The region or zone where your GKE cluster is located (e.g., us-central1 or us-central1-a).
-export NODE_NUMBER = 2 # The number of worker nodes to create in the node pool, ideally should be >=2.
-export PROJECT_ID = project_id # replace this with your project id
-export NODEPOOL_NAME = my_nodepool_name # The name for the new node pool you are creating.
-export RESERVATION_NAME = reservation_name # The name of the Compute Engine reservation to ensure capacity for your nodes.
-export SERVICE_ACCOUNT = service_account # The IAM service account that the nodes will use for permissions.
-export NODE_LOCATION = australia-southeast1-c # The specific zone where the nodes in this node pool will be created.
-export PLACEMENT_POLICY_NAME = placement_policy # The name of the compact placement policy.
+export PROJECT_ID=<your project id>
+export RESERVATION_NAME=<your reservation id>
+export SERVICE_ACCOUNT=<your service account>
+export PLACEMENT_POLICY_NAME=<your placement policy name>
 ```
-Use the following command to create a cluster with default system nodepools. (using A3 Mega as an example)
+
+## Step 1: Create a Kubernetes cluster on GKE
+Run this command and all following commands on your local machine or on the [Google Cloud Shell](https://cloud.google.com/shell). If running from your local machine, you need to install the [Google Cloud SDK](https://cloud.google.com/sdk/docs/install). 
+The following command creates a Kubernetes cluster named `kuberay-gpu-cluster` with 1 default CPU node in the `asia-east1-c` zone. This example uses the `e2-standard-16` machine type, which has 16 vCPUs and 64 GB memory.
 
 ```sh
-$ gcloud container clusters create ${CLUSTER_NAME} \
+gcloud container clusters create kuberay-gpu-cluster \
     --addons GcsFuseCsiDriver \
-    --location=${CLUSTER_LOCATION} \
+    --location=asia-east1-c \
     --machine-type=e2-standard-16 \
-    --release-channel=rapid \
-    --cluster-version=1.32 \
-    --num-nodes=${NODE_NUMBER} \
+    --num-nodes=1 \
     --workload-pool=${PROJECT_ID}.svc.id.goog \ 
     --enable-image-streaming
 ```
 
+After that, Run the following command to create a GPU node pool for Ray GPU workers.
+
 ```sh
-$ gcloud beta container node-pools create ${NODEPOOL_NAME} \
-    --cluster ${CLUSTER_NAME} \ 
+gcloud beta container node-pools create gpu-node-pool \
+    --cluster kuberay-gpu-cluster \ 
     --machine-type a3-megagpu-8g \
     --reservation ${RESERVATION_NAME} \
     --reservation-affinity specific \
-    --num-nodes ${NODE_NUMBER} \
+    --num-nodes 2 \
     --accelerator "type=nvidia-h100-mega-80gb,count=8" \
     --service-account ${SERVICE_ACCOUNT} \
     --project ${PROJECT_ID} \
-    --location ${CLUSTER_LOCATION} \
-    --node-locations ${NODE_LOCATION} \
+    --location asia-east1-c \
+    --node-locations asia-east1-c \
     --host-maintenance-interval=PERIODIC \
     --placement-policy ${PLACEMENT_POLICY_NAME}
 ```
 
+The `--accelerator` flag specifies the type and number of GPUs for each node in the node pool. This example uses the [A3 Mega](https://cloud.google.com/compute/docs/gpus#h100-gpus) GPU. The machine type `a3-megagpu-8g` has 8 GPU, 640 GB GPU Memory, 208 vCPUs and 1872 GB RAM.
+
+Finally, run the following command to download Google Cloud credentials and configure the Kubernetes CLI to use them.
+
+```sh
+gcloud container clusters get-credentials kuberay-gpu-cluster --zone asia-east1-c
+```
+
 ## Step 2: Install the KubeRay operator
 
-Connect to the cluster, then install the most recent stable KubeRay operator from the Helm repository by following [Deploy a KubeRay operator](kuberay-operator-deploy). The Kubernetes `NoSchedule` taint in the example config prevents the KubeRay operator Pod from running on a GPU node.
+Install the most recent stable KubeRay operator from the Helm repository by following [Deploy a KubeRay operator](kuberay-operator-deploy). The Kubernetes `NoSchedule` taint in the example config prevents the KubeRay operator Pod from running on a GPU node.
 
 ## Step 3: Deploy a RayService
 
 Create a RayService custom resource by running the following instruction:
 
 ```sh
-$ kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-service.deepseek.yaml
+kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-service.deepseek.yaml
 ```
 
 This step sets up a custom Ray Serve app to serve the `deepseek-ai/DeepSeek-R1` model on 2 worker nodes. You can inspect and modify the `serveConfigV2` section in the YAML file to learn more about the Serve app:
@@ -115,7 +120,7 @@ The `deployment_config` section sets the desired number of engine replicas. See 
 
 Wait for the RayService resource to become healthy. You can confirm its status by running the following command:
 ```sh
-$ kubectl get rayservice deepseek-r1 -o yaml
+kubectl get rayservice deepseek-r1 -o yaml
 ```
 
 After a few minutes, the result should be similar to the following:
@@ -136,7 +141,7 @@ status:
 
 To send requests to the Ray Serve deployment, port-forward port 8000 from the Serve app service:
 ```sh
-$ kubectl port-forward svc/deepseek-r1-serve-svc 8000
+kubectl port-forward svc/deepseek-r1-serve-svc 8000
 ```
 
 Note that this Kubernetes service comes up only after Ray Serve apps are running and ready.
@@ -148,7 +153,7 @@ $ curl http://localhost:8000/v1/chat/completions     -H "Content-Type: applicati
       "messages": [
         {
           "role": "user", 
-          "content": "who are you?"}
+          "content": "I have four boxes. I put the red box on the bottom and put the blue box on top. Then I put the yellow box on top the blue. Then I take the blue box out and put it on top. And finally I put the green box on the top. Give me the final order of the boxes from bottom to top. Show your reasoning but be brief"}
       ],
       "temperature": 0.7
     }'
@@ -158,9 +163,9 @@ The output should be in the following format:
 
 ```
 {
-  "id": "deepseek-35a3aca1-5186-4156-b43d-d07e3eee361e",
+  "id": "deepseek-653881a7-18f3-493b-a43f-adc8501f01f8",
   "object": "chat.completion",
-  "created": 1753293398,
+  "created": 1753345252,
   "model": "deepseek",
   "choices": [
     {
@@ -168,7 +173,7 @@ The output should be in the following format:
       "message": {
         "role": "assistant",
         "reasoning_content": null,
-        "content": "Greetings! I'm DeepSeek-R1, an artificial intelligence assistant created by DeepSeek. I'm at your service and would be delighted to assist you with any inquiries or tasks you may have.\n</think>\n\nGreetings! I'm DeepSeek-R1, an artificial intelligence assistant created by DeepSeek. I'm at your service and would be delighted to assist you with any inquiries or tasks you may have.",
+        "content": "Okay, let's break this down step by step. The user has four boxes: red, blue, yellow, and green. The starting point is putting the red box on the bottom. Then blue is placed on top of red. Next, yellow goes on top of blue. At this point, the order is red (bottom), blue, yellow. \n\nThen the instruction says to take the blue box out and put it on top. Wait, when they take the blue box out from where? The current stack is red, blue, yellow. If we remove blue from between red and yellow, that leaves red and yellow. Then placing blue on top would make the stack red, yellow, blue. But the problem is, when you remove a box from the middle, the boxes above it should fall down, right? So after removing blue, yellow would be on top of red. Then putting blue on top of that stack would make it red, yellow, blue.\n\nThen the final step is putting the green box on top. So the final order would be red (bottom), yellow, blue, green. Let me verify again to make sure I didn't miss anything. Start with red at bottom. Blue on top of red: red, blue. Yellow on top of blue: red, blue, yellow. Remove blue from the middle, so yellow moves down to be on red, then put blue on top: red, yellow, blue. Finally, add green on top: red, yellow, blue, green. Yes, that seems right.\n</think>\n\nThe final order from bottom to top is: red, yellow, blue, green.\n\n1. Start with red at the bottom.  \n2. Add blue on top: red → blue.  \n3. Add yellow on top: red → blue → yellow.  \n4. **Remove blue** from between red and yellow; yellow drops to second position. Now: red → yellow.  \n5. Place blue back on top: red → yellow → blue.  \n6. Add green on top: red → yellow → blue → green.",
         "tool_calls": []
       },
       "logprobs": null,
@@ -177,9 +182,9 @@ The output should be in the following format:
     }
   ],
   "usage": {
-    "prompt_tokens": 10,
-    "total_tokens": 97,
-    "completion_tokens": 87,
+    "prompt_tokens": 81,
+    "total_tokens": 505,
+    "completion_tokens": 424,
     "prompt_tokens_details": null
   },
   "prompt_logprobs": null
@@ -191,9 +196,11 @@ The output should be in the following format:
 
 
 ```sh
-$ kubectl get service
-$ SERVICE_NAME=$(kubectl get service -n default | grep "deepseek-r1-raycluster-.*-head-svc" | awk '{print $1}')
-$ kubectl port-forward svc/${SERVICE_NAME} 8265:8265
+# Export ray cluster head service name
+SERVICE_NAME=$(kubectl get service -n default | grep "deepseek-r1-raycluster-.*-head-svc" | awk '{print $1}')
+
+# Forward the service port
+kubectl port-forward svc/${SERVICE_NAME} 8265:8265
 ```
 
 Once forwarded, navigate to the Serve tab on the dashboard to review application status, deployments, routers, logs, and other relevant features.
