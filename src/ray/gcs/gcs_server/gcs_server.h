@@ -228,7 +228,7 @@ class GcsServer {
   const StorageType storage_type_;
   /// The grpc server
   rpc::GrpcServer rpc_server_;
-  /// The `ClientCallManager` object that is shared by all `NodeManagerWorkerClient`s.
+  /// The `ClientCallManager` object that is shared by all `RayletClient`s.
   rpc::ClientCallManager client_call_manager_;
   /// Node manager client pool.
   std::unique_ptr<rpc::NodeManagerClientPool> raylet_client_pool_;

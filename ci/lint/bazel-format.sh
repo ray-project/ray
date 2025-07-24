@@ -50,7 +50,7 @@ BAZEL_FILES=(
   BUILD.bazel
   java/BUILD.bazel
   cpp/BUILD.bazel
-  cpp/example/BUILD.bazel
+  cpp/example/_BUILD.bazel
   WORKSPACE
 )
 

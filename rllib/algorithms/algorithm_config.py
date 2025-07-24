@@ -1052,8 +1052,8 @@ class AlgorithmConfig(_Config):
             else:
                 raise ValueError(
                     "`AlgorithmConfig.env_runners(env_to_module_connector=..)` must "
-                    "return a ConnectorV2 object or a list thereof (to be added to a "
-                    f"pipeline)! Your function returned {val_}."
+                    "return a ConnectorV2 object or a list thereof to be added to a "
+                    f"connector pipeline! Your function returned {val_}."
                 )
 
         if env is not None:
@@ -1158,8 +1158,8 @@ class AlgorithmConfig(_Config):
             else:
                 raise ValueError(
                     "`AlgorithmConfig.env_runners(module_to_env_connector=..)` must "
-                    "return a ConnectorV2 object or a list thereof (to be added to a "
-                    f"pipeline)! Your function returned {val_}."
+                    "return a ConnectorV2 object or a list thereof to be added to a "
+                    f"connector pipeline! Your function returned {val_}."
                 )
 
         if env is not None:
@@ -1265,9 +1265,9 @@ class AlgorithmConfig(_Config):
             # Unsupported return value.
             else:
                 raise ValueError(
-                    "`AlgorithmConfig.training(learner_connector=..)` must return "
-                    "a ConnectorV2 object or a list thereof (to be added to a "
-                    f"pipeline)! Your function returned {val_}."
+                    "`AlgorithmConfig.learners(learner_connector=..)` must return "
+                    "a ConnectorV2 object or a list thereof to be added to a connector "
+                    f"pipeline! Your function returned {val_}."
                 )
 
         pipeline = LearnerConnectorPipeline(
@@ -2343,17 +2343,18 @@ class AlgorithmConfig(_Config):
         shuffle_batch_per_epoch: Optional[bool] = NotProvided,
         model: Optional[dict] = NotProvided,
         optimizer: Optional[dict] = NotProvided,
+        # Deprecated args.
+        num_aggregator_actors_per_learner=DEPRECATED_VALUE,
+        max_requests_in_flight_per_aggregator_actor=DEPRECATED_VALUE,
+        num_sgd_iter=DEPRECATED_VALUE,
+        max_requests_in_flight_per_sampler_worker=DEPRECATED_VALUE,
+        # Moved to `learners()` method.
         learner_class: Optional[Type["Learner"]] = NotProvided,
         learner_connector: Optional[
             Callable[["RLModule"], Union["ConnectorV2", List["ConnectorV2"]]]
         ] = NotProvided,
         add_default_connectors_to_learner_pipeline: Optional[bool] = NotProvided,
         learner_config_dict: Optional[Dict[str, Any]] = NotProvided,
-        # Deprecated args.
-        num_aggregator_actors_per_learner=DEPRECATED_VALUE,
-        max_requests_in_flight_per_aggregator_actor=DEPRECATED_VALUE,
-        num_sgd_iter=DEPRECATED_VALUE,
-        max_requests_in_flight_per_sampler_worker=DEPRECATED_VALUE,
     ) -> "AlgorithmConfig":
         """Sets the training related configuration.
 
@@ -2417,35 +2418,41 @@ class AlgorithmConfig(_Config):
                 TODO: Provide ModelConfig objects instead of dicts.
             optimizer: Arguments to pass to the policy optimizer. This setting is not
                 used when `enable_rl_module_and_learner=True`.
-            learner_class: The `Learner` class to use for (distributed) updating of the
-                RLModule. Only used when `enable_rl_module_and_learner=True`.
-            learner_connector: A callable taking an env observation space and an env
-                action space as inputs and returning a learner ConnectorV2 (might be
-                a pipeline) object.
-            add_default_connectors_to_learner_pipeline: If True (default), RLlib's
-                Learners automatically add the default Learner ConnectorV2
-                pieces to the LearnerPipeline. These automatically perform:
-                a) adding observations from episodes to the train batch, if this has not
-                already been done by a user-provided connector piece
-                b) if RLModule is stateful, add a time rank to the train batch, zero-pad
-                the data, and add the correct state inputs, if this has not already been
-                done by a user-provided connector piece.
-                c) add all other information (actions, rewards, terminateds, etc..) to
-                the train batch, if this has not already been done by a user-provided
-                connector piece.
-                Only if you know exactly what you are doing, you
-                should set this setting to False.
-                Note that this setting is only relevant if the new API stack is used
-                (including the new EnvRunner classes).
-            learner_config_dict: A dict to insert any settings accessible from within
-                the Learner instance. This should only be used in connection with custom
-                Learner subclasses and in case the user doesn't want to write an extra
-                `AlgorithmConfig` subclass just to add a few settings to the base Algo's
-                own config class.
 
         Returns:
             This updated AlgorithmConfig object.
         """
+        if learner_class is not NotProvided:
+            deprecation_warning(
+                old="config.training(learner_class=..)",
+                new="config.learners(learner_class=..)",
+                error=False,
+            )
+            self._learner_class = learner_class
+        if learner_connector is not NotProvided:
+            deprecation_warning(
+                old="config.training(learner_connector=..)",
+                new="config.learners(learner_connector=..)",
+                error=False,
+            )
+            self._learner_connector = learner_connector
+        if add_default_connectors_to_learner_pipeline is not NotProvided:
+            deprecation_warning(
+                old="config.training(add_default_connectors_to_learner_pipeline=..)",
+                new="config.learners(add_default_connectors_to_learner_pipeline=..)",
+                error=False,
+            )
+            self.add_default_connectors_to_learner_pipeline = (
+                add_default_connectors_to_learner_pipeline
+            )
+        if learner_config_dict is not NotProvided:
+            deprecation_warning(
+                old="config.training(learner_config_dict=..)",
+                new="config.learners(learner_config_dict=..)",
+                error=False,
+            )
+            self.learner_config_dict.update(learner_config_dict)
+
         if num_aggregator_actors_per_learner != DEPRECATED_VALUE:
             deprecation_warning(
                 old="config.training(num_aggregator_actors_per_learner=..)",
@@ -2523,19 +2530,8 @@ class AlgorithmConfig(_Config):
                     # Error out if user tries to enable this.
                     error=model["_use_default_native_models"],
                 )
-
         if optimizer is not NotProvided:
             self.optimizer = merge_dicts(self.optimizer, optimizer)
-        if learner_class is not NotProvided:
-            self._learner_class = learner_class
-        if learner_connector is not NotProvided:
-            self._learner_connector = learner_connector
-        if add_default_connectors_to_learner_pipeline is not NotProvided:
-            self.add_default_connectors_to_learner_pipeline = (
-                add_default_connectors_to_learner_pipeline
-            )
-        if learner_config_dict is not NotProvided:
-            self.learner_config_dict.update(learner_config_dict)
 
         return self
 
@@ -6164,18 +6160,59 @@ class DifferentiableAlgorithmConfig(AlgorithmConfig):
     def learners(
         self,
         *,
+        learner_class: Optional[Type["Learner"]] = NotProvided,
+        learner_connector: Optional[
+            Callable[["RLModule"], Union["ConnectorV2", List["ConnectorV2"]]]
+        ] = NotProvided,
+        add_default_connectors_to_learner_pipeline: Optional[bool] = NotProvided,
+        learner_config_dict: Optional[Dict[str, Any]] = NotProvided,
         differentiable_learner_configs: List[DifferentiableLearnerConfig] = NotProvided,
         **kwargs,
     ) -> "DifferentiableAlgorithmConfig":
         """Sets the configurations for differentiable learners.
 
         Args:
+            learner_class: The `Learner` class to use for (distributed) updating of the
+                RLModule. Only used when `enable_rl_module_and_learner=True`.
+            learner_connector: A callable taking an env observation space and an env
+                action space as inputs and returning a learner ConnectorV2 (might be
+                a pipeline) object.
+            add_default_connectors_to_learner_pipeline: If True (default), RLlib's
+                Learners automatically add the default Learner ConnectorV2
+                pieces to the LearnerPipeline. These automatically perform:
+                a) adding observations from episodes to the train batch, if this has not
+                already been done by a user-provided connector piece
+                b) if RLModule is stateful, add a time rank to the train batch, zero-pad
+                the data, and add the correct state inputs, if this has not already been
+                done by a user-provided connector piece.
+                c) add all other information (actions, rewards, terminateds, etc..) to
+                the train batch, if this has not already been done by a user-provided
+                connector piece.
+                Only if you know exactly what you are doing, you
+                should set this setting to False.
+                Note that this setting is only relevant if the new API stack is used
+                (including the new EnvRunner classes).
+            learner_config_dict: A dict to insert any settings accessible from within
+                the Learner instance. This should only be used in connection with custom
+                Learner subclasses and in case the user doesn't want to write an extra
+                `AlgorithmConfig` subclass just to add a few settings to the base Algo's
+                own config class.
             differentiable_learner_configs: A list of `DifferentiableLearnerConfig` instances
                 defining the `DifferentiableLearner` classes used for the nested updates in
                 `Algorithm`'s learner.
         """
         super().learners(**kwargs)
 
+        if learner_class is not NotProvided:
+            self._learner_class = learner_class
+        if learner_connector is not NotProvided:
+            self._learner_connector = learner_connector
+        if add_default_connectors_to_learner_pipeline is not NotProvided:
+            self.add_default_connectors_to_learner_pipeline = (
+                add_default_connectors_to_learner_pipeline
+            )
+        if learner_config_dict is not NotProvided:
+            self.learner_config_dict.update(learner_config_dict)
         if differentiable_learner_configs is not NotProvided:
             self.differentiable_learner_configs = differentiable_learner_configs
 
