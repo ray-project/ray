@@ -212,8 +212,8 @@ class TrainContext:
         return get_internal_train_context().get_storage()
 
     @DeveloperAPI
-    def is_running_local_testing(self) -> bool:
-        """Check if the current run is running without Ray Train, e.g. python running locally, torchrun, etc.
+    def is_running_locally(self) -> bool:
+        """Check if the current run is running locally without Ray Train, e.g. torchrun.
 
         NOTE: This is a developer API, and local testing mode is under development.
         """
