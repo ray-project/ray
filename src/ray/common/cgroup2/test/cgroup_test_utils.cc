@@ -102,6 +102,7 @@ ray::StatusOr<std::unique_ptr<TempDirectory>> TempDirectory::Create() {
       std::make_unique<TempDirectory>(std::move(path));
   return ray::StatusOr<std::unique_ptr<TempDirectory>>(std::move(temp_dir));
 }
+
 TempDirectory::~TempDirectory() { std::filesystem::remove_all(path_); }
 
 ray::Status TerminateChildProcessAndWaitForTimeout(pid_t pid, int fd, int timeout_ms) {
@@ -148,6 +149,9 @@ ray::Status TerminateChildProcessAndWaitForTimeout(pid_t pid, int fd, int timeou
   };
   return ray::Status::OK();
 }
+
+#ifdef FALSE
+
 ray::StatusOr<std::pair<pid_t, int>> StartChildProcessInCgroup(
     const std::string &cgroup_path) {
   int cgroup_fd = open(cgroup_path.c_str(), O_RDONLY);
@@ -196,6 +200,70 @@ ray::StatusOr<std::pair<pid_t, int>> StartChildProcessInCgroup(
                  << ", child_pid=" << child_pid << ", child_pidfd=" << child_pidfd << ".";
   return ray::StatusOr<std::pair<pid_t, int>>({child_pid, static_cast<int>(child_pidfd)});
 }
+
+#else
+// Fallback for older kernels. Uses fork/exec instead.
+ray::StatusOr<std::pair<pid_t, int>> StartChildProcessInCgroup(
+    const std::string &cgroup_path) {
+  int new_pid = fork();
+
+  if (new_pid == -1) {
+    return ray::Status::Invalid(
+        absl::StrFormat("Failed to fork process with error %s", strerror(errno)));
+  }
+
+  if (new_pid == 0) {
+    // Child process will pause and wait for parent to terminate and reap it.
+    RAY_LOG(ERROR) << "Spawned child in cgroup " << cgroup_path << " with PID "
+                   << getpid();
+    pause();
+    RAY_LOG(ERROR) << "Unpaused child in cgroup " << cgroup_path << " with PID "
+                   << getpid();
+    _exit(0);
+  }
+
+  std::string cgroup_proc_file_path = cgroup_path + "/cgroup.procs";
+
+  // Parent process has to move the process into a cgroup.
+  int cgroup_fd = open(cgroup_proc_file_path.c_str(), O_RDWR);
+
+  if (cgroup_fd == -1) {
+    return ray::Status::Invalid(
+        absl::StrFormat("Failed to open cgroup procs file %s with error %s",
+                        cgroup_proc_file_path,
+                        strerror(errno)));
+  }
+
+  std::string pid_to_write = std::to_string(new_pid);
+
+  if (write(cgroup_fd, pid_to_write.c_str(), pid_to_write.size()) == -1) {
+    // Best effort killing of the child process.
+    kill(SIGKILL, new_pid);
+    close(cgroup_fd);
+    return ray::Status::Invalid(
+        absl::StrFormat("Failed to write pid %i to cgroup procs file %s with error %s",
+                        new_pid,
+                        cgroup_proc_file_path,
+                        strerror(errno)));
+  }
+
+  close(cgroup_fd);
+
+  int child_pidfd = (int)syscall(SYS_pidfd_open, new_pid, 0);
+  if (child_pidfd == -1) {
+    // Best effort killing of the child process.
+    kill(SIGKILL, new_pid);
+    close(cgroup_fd);
+    return ray::Status::Invalid(
+        absl::StrFormat("Failed to create process fd for pid %i with error %s",
+                        new_pid,
+                        strerror(errno)));
+  }
+
+  return ray::StatusOr<std::pair<pid_t, int>>({new_pid, child_pidfd});
+}
+
+#endif
 
 TempFile::TempFile(std::string path) {
   path_ = path;
