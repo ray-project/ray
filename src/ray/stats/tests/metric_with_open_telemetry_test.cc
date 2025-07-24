@@ -83,7 +83,7 @@ class MetricTest : public ::testing::Test {
     return std::nullopt;
   }
 
-  std::optional<absl::flat_hash_map<std::string, std::string>& > GetObservableMetricTags(
+  std::optional<absl::flat_hash_map<std::string, std::string> &> GetObservableMetricTags(
       const std::string &name) {
     auto &recorder = OpenTelemetryMetricRecorder::GetInstance();
     std::lock_guard<std::mutex> lock(recorder.mutex_);
