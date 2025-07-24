@@ -171,14 +171,13 @@ def test_runtime_env_config(start_cluster_shared):
 def test_large_runtime_env_fails_fast(start_cluster_shared):
     """
     Tests that a task with a runtime_env that is too large fails quickly
-    instead of hanging. This is a regression test for #47432.
+    instead of hanging. This is a regression test for GitHub issue #47432.
     """
     cluster, address = start_cluster_shared
     ray.init(address)
 
     # Create a runtime_env with a very large environment variable to trigger
-    # the E2BIG error. The exact limit for process arguments depends on the OS,
-    # but ~400KB should exceed it on most systems.
+    # a E2BIG error.
     large_env_vars = {"MY_HUGE_VAR": "X" * 4096 * 100}
     runtime_env = {"env_vars": large_env_vars}
 
@@ -187,7 +186,7 @@ def test_large_runtime_env_fails_fast(start_cluster_shared):
         # This code should not be reached.
         return 1
 
-    # The PR ensures the E2BIG error from the raylet is propagated to the
+    # The E2BIG error from the raylet is propagated to the
     # driver, which should raise a RuntimeEnvSetupError.
     with pytest.raises(RuntimeEnvSetupError):
         ray.get(f.options(runtime_env=runtime_env).remote())
