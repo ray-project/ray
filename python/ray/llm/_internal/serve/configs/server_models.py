@@ -396,14 +396,8 @@ class LLMConfig(BaseModelExtended):
                 "Use scaling_config to configure replica placement group."
             )
 
-        # TODO (Kourosh): There is some test code leakage happening here that should be removed.
         try:
-            # resources.mock_resource is a special key we used in tests to skip placement
-            # group on the gpu nodes.
-            if "mock_resource" in ray_actor_options.get("resources", {}):
-                bundles = []
-            else:
-                bundles = engine_config.placement_bundles
+            bundles = engine_config.placement_bundles
         except ValueError:
             # May happen if all bundles are empty.
             bundles = []

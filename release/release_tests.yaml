@@ -937,7 +937,7 @@
         cluster_compute: tpl_gce_1x16.yaml
     - __suffix__: kuberay
       env: kuberay
-      frequency: manual
+      frequency: nightly
       cluster:
         cluster_compute: kuberay.yaml
 
@@ -2954,7 +2954,7 @@
   group: core-daily-test
   working_dir: nightly_tests
 
-  frequency: nightly
+  frequency: manual # was nightly
   team: core
   # https://github.com/ray-project/ray/issues/39165
   stable: false
@@ -2983,7 +2983,7 @@
   group: core-daily-test
   working_dir: nightly_tests
 
-  frequency: nightly
+  frequency: manual # was nightly
   team: data
 
   cluster:
@@ -3002,7 +3002,7 @@
 
 
   smoke_test:
-    frequency: nightly
+    frequency: manual # was nightly
     cluster:
       cluster_compute: dask_on_ray/large_scale_dask_on_ray_compute_template.yaml
 
@@ -3310,7 +3310,7 @@
   group: core-daily-test
   working_dir: nightly_tests
 
-  frequency: nightly-3x
+  frequency: manual # was nightly-3x
   team: core
 
   cluster:
@@ -3844,7 +3844,7 @@
   group: data-tests
   working_dir: nightly_tests
 
-  frequency: nightly
+  frequency: manual # was nightly
   team: data
 
   cluster:
@@ -3873,7 +3873,7 @@
   group: data-tests
   working_dir: nightly_tests
 
-  frequency: nightly
+  frequency: manual # was nightly
   team: data
 
   cluster:

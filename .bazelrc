@@ -1,6 +1,8 @@
 # Must be first. Enables build:windows, build:linux, build:macos, build:freebsd, build:openbsd
 build --enable_platform_specific_config
 
+build:linux --workspace_status_command="bash ./bazel/workspace_status.sh"
+
 # Provides users an option to turn on strict action env.
 # TODO(aslonnie): make this default; fix the python tests..
 build:strict --incompatible_strict_action_env

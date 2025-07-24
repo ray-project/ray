@@ -1,3 +1,4 @@
+import inspect
 import json
 import logging
 import os
@@ -40,6 +41,7 @@ from ray.serve._private.utils import (
     override_runtime_envs_except_env_vars,
     validate_route_prefix,
 )
+from ray.serve.api import ASGIAppReplicaWrapper
 from ray.serve.config import AutoscalingConfig
 from ray.serve.exceptions import RayServeException
 from ray.serve.generated.serve_pb2 import (
@@ -327,6 +329,13 @@ class ApplicationState:
             deleting=checkpoint_data.deleting,
         )
 
+        # Restore route prefix and docs path from checkpointed deployments when
+        # the imperatively started application is restarting with controller.
+        if checkpoint_data.deployment_infos is not None:
+            self._route_prefix, self._docs_path = self._check_routes(
+                checkpoint_data.deployment_infos
+            )
+
     def _set_target_state(
         self,
         deployment_infos: Optional[Dict[str, DeploymentInfo]],
@@ -468,6 +477,7 @@ class ApplicationState:
             or docs path.
         """
 
+        self._check_ingress_deployments(deployment_infos)
         # Check routes are unique in deployment infos
         self._route_prefix, self._docs_path = self._check_routes(deployment_infos)
 
@@ -704,6 +714,28 @@ class ApplicationState:
             )
             return None, BuildAppStatus.FAILED, error_msg
 
+    def _check_ingress_deployments(
+        self, deployment_infos: Dict[str, DeploymentInfo]
+    ) -> None:
+        """Check @serve.ingress of deployments in app.
+
+        Raises: RayServeException if more than one @serve.ingress
+            is found among deployments.
+        """
+        num_ingress_deployments = 0
+        for info in deployment_infos.values():
+            if inspect.isclass(info.replica_config.deployment_def) and issubclass(
+                info.replica_config.deployment_def, ASGIAppReplicaWrapper
+            ):
+                num_ingress_deployments += 1
+
+        if num_ingress_deployments > 1:
+            raise RayServeException(
+                f'Found multiple FastAPI deployments in application "{self._name}".'
+                "Please only include one deployment with @serve.ingress"
+                "in your application to avoid this issue."
+            )
+
     def _check_routes(
         self, deployment_infos: Dict[str, DeploymentInfo]
     ) -> Tuple[str, str]:
@@ -721,6 +753,9 @@ class ApplicationState:
         num_route_prefixes = 0
         num_docs_paths = 0
         route_prefix = None
+        # TODO(Ziy1-Tan): `docs_path` will be removed when
+        # https://github.com/ray-project/ray/issues/53023 is resolved.
+        # We can get it from DeploymentStateManager directly.
         docs_path = None
         for info in deployment_infos.values():
             # Update route prefix of application, which may be updated
@@ -1177,7 +1212,12 @@ def build_serve_application(
             name=name,
             default_runtime_env=ray.get_runtime_context().runtime_env,
         )
+        num_ingress_deployments = 0
         for deployment in built_app.deployments:
+            if inspect.isclass(deployment.func_or_class) and issubclass(
+                deployment.func_or_class, ASGIAppReplicaWrapper
+            ):
+                num_ingress_deployments += 1
             is_ingress = deployment.name == built_app.ingress_deployment_name
             deploy_args_list.append(
                 get_deploy_args(
@@ -1189,6 +1229,12 @@ def build_serve_application(
                     route_prefix="/" if is_ingress else None,
                     docs_path=deployment._docs_path,
                 )
+            )
+        if num_ingress_deployments > 1:
+            return None, (
+                f'Found multiple FastAPI deployments in application "{built_app.name}". '
+                "Please only include one deployment with @serve.ingress "
+                "in your application to avoid this issue."
             )
         return deploy_args_list, None
     except KeyboardInterrupt:

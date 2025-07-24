@@ -49,7 +49,7 @@ Follow [this document](kuberay-operator-deploy) to install the latest stable Kub
 ### Step 3: Install a RayCluster with GCS FT enabled
 
 ```sh
-curl -LO https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-cluster.external-redis.yaml
+curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.4.0/ray-operator/config/samples/ray-cluster.external-redis.yaml
 kubectl apply -f ray-cluster.external-redis.yaml
 ```
 
@@ -110,7 +110,7 @@ The `ray-example` ConfigMap houses two Python scripts: `detached_actor.py` and `
 ### Step 5: Create a detached actor
 
 ```sh
-# Step 4.1: Create a detached actor with the name, `counter_actor`.
+# Step 5.1: Create a detached actor with the name, `counter_actor`.
 export HEAD_POD=$(kubectl get pods --selector=ray.io/node-type=head -o custom-columns=POD:metadata.name --no-headers)
 kubectl exec -it $HEAD_POD -- python3 /home/ray/samples/detached_actor.py
 
@@ -118,7 +118,7 @@ kubectl exec -it $HEAD_POD -- python3 /home/ray/samples/detached_actor.py
 # 2025-04-18 02:51:25,361	INFO worker.py:1654 -- Connecting to existing Ray cluster at address: 10.244.0.8:6379...
 # 2025-04-18 02:51:25,557	INFO worker.py:1832 -- Connected to Ray cluster. View the dashboard at 10.244.0.8:8265 
 
-# Step 4.2: Increment the counter.
+# Step 5.2: Increment the counter.
 kubectl exec -it $HEAD_POD -- python3 /home/ray/samples/increment_counter.py
 
 # 2025-04-18 02:51:29,069	INFO worker.py:1514 -- Using address 127.0.0.1:6379 set in the environment variable RAY_ADDRESS

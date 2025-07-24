@@ -6,8 +6,8 @@ from packaging.version import parse as parse_version
 
 from ray._private.arrow_utils import get_pyarrow_version
 from ray._private.ray_constants import env_integer
+from ray._private.utils import INT32_MAX
 from ray.air.util.tensor_extensions.arrow import (
-    INT32_OVERFLOW_THRESHOLD,
     MIN_PYARROW_VERSION_CHUNKED_ARRAY_TO_NUMPY_ZERO_COPY_ONLY,
     PYARROW_VERSION,
 )
@@ -18,6 +18,8 @@ except ImportError:
     pyarrow = None
 
 
+# Minimum version support {String,List,Binary}View types
+MIN_PYARROW_VERSION_VIEW_TYPES = parse_version("16.0.0")
 MIN_PYARROW_VERSION_TYPE_PROMOTION = parse_version("14.0.0")
 
 
@@ -790,8 +792,35 @@ def combine_chunked_array(
         return _try_combine_chunks_safe(array)
 
 
+# List of variable-width types using int64 offsets
+_VARIABLE_WIDTH_INT64_OFFSET_PA_TYPE_PREDICATES = [
+    pyarrow.types.is_large_list,
+    pyarrow.types.is_large_string,
+    pyarrow.types.is_large_binary,
+]
+
+
+# List of variable-width types using int32 offsets
+_VARIABLE_WIDTH_INT32_OFFSET_PA_TYPE_PREDICATES = [
+    pyarrow.types.is_string,
+    pyarrow.types.is_binary,
+    pyarrow.types.is_list,
+    # Modeled as list<struct<key, val>>
+    pyarrow.types.is_map,
+]
+
+if PYARROW_VERSION > MIN_PYARROW_VERSION_VIEW_TYPES:
+    _VARIABLE_WIDTH_INT32_OFFSET_PA_TYPE_PREDICATES.extend(
+        [
+            pyarrow.types.is_string_view,
+            pyarrow.types.is_binary_view,
+            pyarrow.types.is_list_view,
+        ]
+    )
+
+
 def _try_combine_chunks_safe(
-    array: "pyarrow.ChunkedArray", max_chunk_size=INT32_OVERFLOW_THRESHOLD
+    array: "pyarrow.ChunkedArray",
 ) -> Union["pyarrow.Array", "pyarrow.ChunkedArray"]:
     """This method provides a safe way of combining `ChunkedArray`s exceeding 2 GiB
     in size, which aren't using "large_*" types (and therefore relying on int32
@@ -809,10 +838,13 @@ def _try_combine_chunks_safe(
         with potentially smaller number of chunks that have resulted from clumping
         the original ones)
 
+    Args:
+        array: The PyArrow ChunkedArray to safely combine.
+
     Returns:
-        - pa.Array if it's possible to combine provided pa.ChunkedArray into single
-        contiguous array
-        - pa.ChunkedArray (albeit with chunks re-combined) if it's not possible to
+        - ``pyarrow.Array`` if it's possible to combine provided ``pyarrow.ChunkedArray``
+        into single contiguous array
+        - ``pyarrow.ChunkedArray`` (albeit with chunks re-combined) if it's not possible to
         produce single pa.Array
     """
 
@@ -824,53 +856,53 @@ def _try_combine_chunks_safe(
         array
     ), f"Arrow `ExtensionType`s are not accepted (got {array.type})"
 
-    int64_type_predicates = [
-        pa.types.is_large_list,
-        pa.types.is_large_string,
-        pa.types.is_large_binary,
-        pa.types.is_large_unicode,
-    ]
-
-    if array.nbytes < max_chunk_size or any(
-        p(array.type) for p in int64_type_predicates
+    # It's safe to combine provided `ChunkedArray` in either of 2 cases:
+    #   - It's type is NOT a variable-width type (list, binary, string, map),
+    #     using int32 offsets into underlying data (bytes) array
+    #   - It's type is a variable-width type using int64 offsets (large_list,
+    #     large_string, etc)
+    #   - It's cumulative byte-size is < INT32_MAX
+    if (
+        not any(p(array.type) for p in _VARIABLE_WIDTH_INT32_OFFSET_PA_TYPE_PREDICATES)
+        or any(p(array.type) for p in _VARIABLE_WIDTH_INT64_OFFSET_PA_TYPE_PREDICATES)
+        or array.nbytes < INT32_MAX
     ):
-        # It's safe to combine provided `ChunkedArray` in either of 2 cases:
-        #   - It's cumulative size is < 2 GiB
-        #   - It's of 'large' kind (ie one using int64 offsets internally)
         return array.combine_chunks()
 
     # In this case it's actually *NOT* safe to try to directly combine
     # Arrow's `ChunkedArray` and is impossible to produce single, contiguous
     # `Array` since
-    #     - It's estimated to hold > 2 GiB
-    #     - Its type is not of the "large" kind (and hence is using int32
-    #       offsets internally, which would overflow)
+    #     - It's of variable-width type that uses int32 offsets
+    #     - It's cumulative estimated byte-size is > INT32_MAX (2 GiB)
     #
     # In this case instead of combining into single contiguous array, we
-    # instead just "clump" existing chunks into bigger ones, but no bigger
-    # than 2 GiB each.
+    # instead "clump" existing chunks into ones such that each of these is < INT32_MAX.
     #
     # NOTE: This branch actually returns `ChunkedArray` and not an `Array`
 
-    # To stay under 2 GiB limit we are slicing provided list of chunks into
-    # slices no larger than 2 GiB (as compared to just directly using `concat_arrays`)
-    slices = []
+    new_chunks = []
 
-    cur_slice_start = 0
-    cur_slice_size_bytes = 0
+    cur_chunk_group = []
+    cur_chunk_group_size = 0
 
-    for i, chunk in enumerate(array.chunks):
+    for chunk in array.chunks:
         chunk_size = chunk.nbytes
 
-        if cur_slice_size_bytes + chunk_size > max_chunk_size:
-            slices.append(array.chunks[cur_slice_start:i])
+        assert chunk_size <= INT32_MAX
 
-            cur_slice_start = i
-            cur_slice_size_bytes = 0
+        if cur_chunk_group_size + chunk_size > INT32_MAX:
+            # Combine an accumulated group, append to the new list of chunks
+            if cur_chunk_group:
+                new_chunks.append(pa.concat_arrays(cur_chunk_group))
 
-        cur_slice_size_bytes += chunk_size
+            cur_chunk_group = []
+            cur_chunk_group_size = 0
+
+        cur_chunk_group.append(chunk)
+        cur_chunk_group_size += chunk_size
 
     # Add remaining chunks as last slice
-    slices.append(array.chunks[cur_slice_start:])
+    if cur_chunk_group:
+        new_chunks.append(pa.concat_arrays(cur_chunk_group))
 
-    return pa.chunked_array([pa.concat_arrays(s) for s in slices])
+    return pa.chunked_array(new_chunks)

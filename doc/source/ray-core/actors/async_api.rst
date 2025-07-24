@@ -104,7 +104,7 @@ Instead of:
     ray.get(some_task.remote())
     ray.wait([some_task.remote()])
 
-you can do:
+you can wait on the ref with Python 3.9 and Python 3.10:
 
 .. testcode::
 
@@ -121,10 +121,7 @@ you can do:
 
     asyncio.run(await_obj_ref())
 
-Please refer to `asyncio doc <https://docs.python.org/3/library/asyncio-task.html>`__
-for more `asyncio` patterns including timeouts and ``asyncio.gather``.
-
-If you need to directly access the future object, you can call:
+or the Future object directly with Python 3.11+:
 
 .. testcode::
 
@@ -139,6 +136,10 @@ If you need to directly access the future object, you can call:
 .. testoutput::
 
     1
+
+
+See the `asyncio doc <https://docs.python.org/3/library/asyncio-task.html>`__
+for more `asyncio` patterns including timeouts and ``asyncio.gather``.
 
 .. _async-ref-to-futures:
 

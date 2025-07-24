@@ -32,7 +32,7 @@
     timeout: 3600
     script: >
       python read_and_consume_benchmark.py
-      s3://ray-benchmark-data-internal/imagenet/parquet --format parquet
+      s3://ray-benchmark-data-internal-us-west-2/imagenet/parquet --format parquet
       --iter-bundles
 
 - name: "read_images_{{scaling}}"
@@ -55,7 +55,7 @@
     timeout: 3600
     script: >
       python read_and_consume_benchmark.py
-      s3://ray-benchmark-data-internal/imagenet/tfrecords --format tfrecords
+      s3://ray-benchmark-data-internal-us-west-2/imagenet/tfrecords --format tfrecords
       --iter-bundles
 
 - name: "read_from_uris_{{scaling}}"

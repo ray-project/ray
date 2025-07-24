@@ -20,7 +20,7 @@ from ray.serve._private.constants import (
     SERVE_PROXY_NAME,
 )
 from ray.serve._private.test_utils import check_replica_counts
-from ray.serve.schema import LoggingConfig
+from ray.serve.schema import LoggingConfig, ServeDeploySchema
 from ray.serve.tests.test_failure import request_with_retries
 from ray.util.state import list_actors
 
@@ -475,6 +475,35 @@ def test_controller_crashes_with_logging_config(serve_instance):
     assert resp.status_code == 200
     wait_for_condition(
         check_log_file, log_file=file_path, expected_regex=['.*"message":.*GET / 200.*']
+    )
+
+
+def test_controller_recover_and_deploy(serve_instance):
+    """Ensure that in-progress deploy can finish even after controller dies."""
+    client = serve_instance
+    signal = SignalActor.options(name="signal123").remote()
+
+    config_json = {
+        "applications": [
+            {
+                "name": SERVE_DEFAULT_APP_NAME,
+                "import_path": "ray.serve.tests.test_config_files.hangs.app",
+            }
+        ]
+    }
+    config = ServeDeploySchema.parse_obj(config_json)
+    client.deploy_apps(config)
+
+    wait_for_condition(
+        lambda: serve.status().applications["default"].status == "DEPLOYING"
+    )
+    ray.kill(client._controller, no_restart=False)
+
+    signal.send.remote()
+
+    # When controller restarts, it should redeploy config automatically
+    wait_for_condition(
+        lambda: httpx.get("http://localhost:8000/").text == "hello world"
     )
 
 

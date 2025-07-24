@@ -1,3 +1,4 @@
+import time
 import signal
 import json
 import os
@@ -13,7 +14,18 @@ from unittest.mock import MagicMock
 import numpy as np
 import pytest
 
+from google.protobuf.timestamp_pb2 import Timestamp
 import ray
+from ray.dashboard.modules.aggregator.tests.test_aggregator_agent import (
+    get_event_aggregator_grpc_stub,
+)
+from ray.core.generated.common_pb2 import TaskAttempt
+from ray.core.generated.events_base_event_pb2 import RayEvent
+from ray.core.generated.events_event_aggregator_service_pb2 import (
+    AddEventRequest,
+    RayEventsData,
+    TaskEventsMetadata,
+)
 from ray.util.state import list_nodes
 from ray._private.metrics_agent import PrometheusServiceDiscoveryWriter
 from ray._private.metrics_agent import Gauge as MetricsAgentGauge
@@ -123,6 +135,13 @@ _DASHBOARD_METRICS = [
     "ray_dashboard_api_requests_count_requests_created",
     "ray_component_cpu_percentage",
     "ray_component_uss_mb",
+]
+
+_EVENT_AGGREGATOR_METRICS = [
+    "ray_event_aggregator_agent_events_received_total",
+    "ray_event_aggregator_agent_events_dropped_at_core_worker_total",
+    "ray_event_aggregator_agent_events_dropped_at_event_aggregator_total",
+    "ray_event_aggregator_agent_events_published_total",
 ]
 
 _NODE_METRICS = [
@@ -448,6 +467,106 @@ def test_metrics_export_node_metrics(shutdown_only):
 
     wait_for_condition(verify_node_metrics)
     wait_for_condition(verify_dashboard_metrics)
+
+
+@pytest.fixture(scope="session")
+def httpserver_listen_address():
+    return ("127.0.0.1", 12345)
+
+
+@pytest.mark.parametrize(
+    "ray_start_cluster_head_with_env_vars",
+    [
+        {
+            "env_vars": {
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_MAX_EVENT_BUFFER_SIZE": 1,
+            },
+        },
+    ],
+    indirect=True,
+)
+def test_metrics_export_event_aggregator_agent(
+    ray_start_cluster_head_with_env_vars, httpserver
+):
+    cluster = ray_start_cluster_head_with_env_vars
+    stub = get_event_aggregator_grpc_stub(
+        cluster.webui_url, cluster.gcs_address, cluster.head_node.node_id
+    )
+    httpserver.expect_request("/", method="POST").respond_with_data("", status=200)
+
+    metrics_export_port = cluster.head_node.metrics_export_port
+    addr = cluster.head_node.raylet_ip_address
+    prom_addresses = [f"{addr}:{metrics_export_port}"]
+
+    def test_case_stats_exist():
+        _, metric_descriptors, _ = fetch_prometheus(prom_addresses)
+        metrics_names = metric_descriptors.keys()
+        event_aggregator_metrics = [
+            "ray_event_aggregator_agent_events_received_total",
+            "ray_event_aggregator_agent_events_dropped_at_core_worker_total",
+            "ray_event_aggregator_agent_events_dropped_at_event_aggregator_total",
+            "ray_event_aggregator_agent_events_published_total",
+        ]
+        return all(metric in metrics_names for metric in event_aggregator_metrics)
+
+    def test_case_value_correct():
+        _, _, metric_samples = fetch_prometheus(prom_addresses)
+        expected_metrics_values = {
+            "ray_event_aggregator_agent_events_received_total": 2.0,
+            "ray_event_aggregator_agent_events_dropped_at_core_worker_total": 1.0,
+            "ray_event_aggregator_agent_events_dropped_at_event_aggregator_total": 1.0,
+            "ray_event_aggregator_agent_events_published_total": 1.0,
+        }
+        for descriptor, expected_value in expected_metrics_values.items():
+            samples = [m for m in metric_samples if m.name == descriptor]
+            if not samples:
+                return False
+            if samples[0].value != expected_value:
+                return False
+        return True
+
+    wait_for_condition(test_case_stats_exist, timeout=30, retry_interval_ms=1000)
+
+    now = time.time_ns()
+    seconds, nanos = divmod(now, 10**9)
+    timestamp = Timestamp(seconds=seconds, nanos=nanos)
+    request = AddEventRequest(
+        events_data=RayEventsData(
+            events=[
+                RayEvent(
+                    event_id=b"1",
+                    source_type=RayEvent.SourceType.CORE_WORKER,
+                    event_type=RayEvent.EventType.TASK_DEFINITION_EVENT,
+                    timestamp=timestamp,
+                    severity=RayEvent.Severity.INFO,
+                    message="hello",
+                ),
+                RayEvent(
+                    event_id=b"2",
+                    source_type=RayEvent.SourceType.CORE_WORKER,
+                    event_type=RayEvent.EventType.TASK_DEFINITION_EVENT,
+                    timestamp=timestamp,
+                    severity=RayEvent.Severity.INFO,
+                    message="hello 2",
+                ),
+            ],
+            task_events_metadata=TaskEventsMetadata(
+                dropped_task_attempts=[
+                    TaskAttempt(
+                        task_id=b"1",
+                        attempt_number=1,
+                    ),
+                ],
+            ),
+        )
+    )
+
+    reply = stub.AddEvents(request)
+    assert reply.status.status_code == 5
+    assert reply.status.status_message == "event 1 dropped because event buffer full"
+    wait_for_condition(lambda: len(httpserver.log) == 1)
+
+    wait_for_condition(test_case_value_correct, timeout=30, retry_interval_ms=1000)
 
 
 def test_operation_stats(monkeypatch, shutdown_only):
@@ -1038,7 +1157,12 @@ def test_metrics_disablement(_setup_cluster_for_test):
                 return False
 
         # Make sure metrics are not there.
-        for metric in _METRICS + _AUTOSCALER_METRICS + _DASHBOARD_METRICS:
+        for metric in (
+            _METRICS
+            + _AUTOSCALER_METRICS
+            + _DASHBOARD_METRICS
+            + _EVENT_AGGREGATOR_METRICS
+        ):
             if metric in metric_names:
                 print("f{metric} exists although it should not.")
                 return False

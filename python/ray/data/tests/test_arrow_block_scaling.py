@@ -52,6 +52,7 @@ def parquet_dataset_single_column_gt_2gb():
         "map_batches",
     ],
 )
+@pytest.mark.timeout(300)
 def test_arrow_batch_gt_2gb(
     ray_start_regular,
     parquet_dataset_single_column_gt_2gb,

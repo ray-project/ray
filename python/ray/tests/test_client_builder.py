@@ -13,7 +13,6 @@ import ray.util.client.server.server as ray_client_server
 from ray._private.test_utils import (
     run_string_as_driver,
     run_string_as_driver_nonblocking,
-    skip_flaky_core_test_premerge,
 )
 from ray.util.state import list_workers
 
@@ -55,7 +54,6 @@ def test_client(address):
         assert builder.address == address.replace("ray://", "")
 
 
-@skip_flaky_core_test_premerge("https://github.com/ray-project/ray/issues/38224")
 def test_namespace(ray_start_cluster):
     """
     Most of the "checks" in this test case rely on the fact that
@@ -342,7 +340,6 @@ def has_client_deprecation_warn(warning: Warning, expected_replacement: str) -> 
 @pytest.mark.filterwarnings(
     "default:Starting a connection through `ray.client` will be deprecated"
 )
-@skip_flaky_core_test_premerge("https://github.com/ray-project/ray/issues/38224")
 def test_client_deprecation_warn():
     """
     Tests that calling ray.client directly raises a deprecation warning with

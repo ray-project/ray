@@ -7,6 +7,7 @@ from typing import Any, Callable, Dict, List, Optional, Union
 import ray
 from ray._private.ray_constants import env_bool
 from ray._private.usage import usage_lib
+from ray.actor import ActorHandle
 from ray.air._internal.usage import tag_train_v2_trainer
 from ray.train import (
     BackendConfig,
@@ -29,6 +30,7 @@ from ray.train.v2._internal.callbacks import (
     WorkingDirectorySetupCallback,
 )
 from ray.train.v2._internal.callbacks.datasets import GenDataset
+from ray.train.v2._internal.callbacks.env_callback import _initialize_env_callbacks
 from ray.train.v2._internal.callbacks.metrics import (
     ControllerMetricsCallback,
     WorkerMetricsCallback,
@@ -141,6 +143,9 @@ class DataParallelTrainer:
         return result
 
     def _create_default_callbacks(self) -> List[RayTrainCallback]:
+        # Initialize callbacks from environment variable
+        callbacks = _initialize_env_callbacks()
+
         accelerator_setup_callback = AcceleratorSetupCallback(
             self.backend_config, self.scaling_config
         )
@@ -150,11 +155,13 @@ class DataParallelTrainer:
             data_config=self.data_config,
             scaling_config=self.scaling_config,
         )
-        callbacks = [
-            accelerator_setup_callback,
-            backend_setup_callback,
-            datasets_setup_callback,
-        ]
+        callbacks.extend(
+            [
+                accelerator_setup_callback,
+                backend_setup_callback,
+                datasets_setup_callback,
+            ]
+        )
         if env_bool(RAY_CHDIR_TO_TRIAL_DIR, True):
             working_directory_setup_callback = WorkingDirectorySetupCallback()
             callbacks.append(working_directory_setup_callback)
@@ -166,9 +173,13 @@ class DataParallelTrainer:
         if env_bool(RAY_TRAIN_ENABLE_STATE_TRACKING, False):
             callbacks.append(StateManagerCallback())
 
+        run_config_callbacks = (
+            self.run_config.callbacks if self.run_config.callbacks is not None else []
+        )
+
         # Add internal callback that invokes all user-defined callbacks.
         user_callbacks = [
-            cb for cb in self.run_config.callbacks if isinstance(cb, UserCallback)
+            cb for cb in run_config_callbacks if isinstance(cb, UserCallback)
         ]
         callbacks.append(
             UserCallbackHandler(
@@ -179,7 +190,7 @@ class DataParallelTrainer:
         # Append all other callbacks to the full list. This allows custom workarounds
         # built on top of internal callbacks to work.
         callbacks.extend(
-            [cb for cb in self.run_config.callbacks if not isinstance(cb, UserCallback)]
+            [cb for cb in run_config_callbacks if not isinstance(cb, UserCallback)]
         )
         return callbacks
 
@@ -208,21 +219,31 @@ class DataParallelTrainer:
             asyncio.run(controller.run())
             return controller.get_result()
 
-    def _register_sigint_handler(self, controller: TrainController):
+    def _register_sigint_handler(self, controller: ActorHandle[TrainController]):
         """Register SIGINT handler so user Ctrl C gracefully aborts run."""
+        sigint_count = 0
 
         def sigint_handler(signum, frame):
-            try:
+            logger.info(
+                "Received SIGINT. Gracefully aborting the training run — this "
+                "may take a few seconds. To forcefully abort immediately, you "
+                "can send a different signal, such as SIGKILL."
+            )
+            nonlocal sigint_count
+            sigint_count += 1
+            if sigint_count >= 3:
                 logger.info(
-                    "Received SIGINT. Gracefully aborting the training run — this "
-                    "may take a few seconds. To forcefully abort immediately, you "
-                    "can send a different signal, such as SIGKILL."
+                    "Received SIGINT at least 3 times. "
+                    "Forcefully aborting the training run."
                 )
-                ray.get(controller.abort.remote())
-            except ray.exceptions.ActorDiedError:
-                # We catch the error and exit 0 to indicate graceful termination.
-                # However, for some reason the process still exits with 1.
                 sys.exit(0)
+            if sigint_count <= 1:
+                try:
+                    ray.get(controller.abort.remote())
+                except ray.exceptions.ActorDiedError:
+                    # We catch the error and exit 0 to indicate graceful termination.
+                    # However, for some reason the process still exits with 1.
+                    sys.exit(0)
 
         signal.signal(signal.SIGINT, sigint_handler)
 
