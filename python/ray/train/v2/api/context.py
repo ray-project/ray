@@ -2,7 +2,6 @@ from typing import Any, Dict
 
 from ray.train.v2._internal.execution.context import (
     get_train_context as get_internal_train_context,
-    is_running_local_testing,
 )
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 
@@ -218,4 +217,4 @@ class TrainContext:
 
         NOTE: This is a developer API, and local testing mode is under development.
         """
-        return is_running_local_testing()
+        return get_internal_train_context().is_running_locally()

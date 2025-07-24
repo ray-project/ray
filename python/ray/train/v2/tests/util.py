@@ -6,6 +6,7 @@ from unittest.mock import MagicMock
 from ray.train.context import TrainContext
 from ray.train.v2._internal.execution.context import (
     DistributedContext,
+    DistributedTrainContext,
     TrainRunContext,
 )
 from ray.train.v2._internal.execution.failure_handling import (
@@ -230,7 +231,7 @@ def create_dummy_run_context(**kwargs: dict) -> TrainRunContext:
     return TrainRunContext(**config)
 
 
-class DummyTrainContext(TrainContext):
+class DummyTrainContext(DistributedTrainContext):
     """A dummy TrainContext subclass for testing."""
 
     def __init__(self):

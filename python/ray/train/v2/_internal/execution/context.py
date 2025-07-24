@@ -129,9 +129,14 @@ class TrainContext(ABC):
     ):
         pass
 
+    @abstractmethod
+    def is_running_locally(self) -> bool:
+        """Returns True if the training run is running locally without the Ray instance, False otherwise."""
+        pass
+
 
 @dataclass
-class RayTrainContext(TrainContext):
+class DistributedTrainContext(TrainContext):
     """The TrainContext for the training run with Ray Train."""
 
     train_run_context: TrainRunContext
@@ -319,39 +324,43 @@ class RayTrainContext(TrainContext):
             # training result to be consumed by the controller.
             self.get_result_queue().put(training_result)
 
+    def is_running_locally(self) -> bool:
+        return False
 
-class LocalTestingTrainContext(TrainContext):
+
+@dataclass
+class LocalTrainContext(TrainContext):
     """The TrainContext for the training run for local testing (python running locally, torchrun, etc.)"""
 
-    def __init__(
-        self, world_size: int, world_rank: int, dataset_shards: Dict[str, DataIterator]
-    ):
-        self.world_size = world_size
-        self.world_rank = world_rank
-        self.dataset_shards = dataset_shards
+    local_world_size: int
+    local_rank: int
+    experiment_name: str
+    dataset_shards: Dict[str, DataIterator]
+    storage_context: StorageContext
 
     def get_experiment_name(self) -> str:
-        return "local_testing_experiment"
+        return self.experiment_name
 
     def get_world_size(self) -> int:
-        return self.world_size
+        """The number of nodes for the local training is always 1, so the world size is always equal to the local world size."""
+        return self.local_world_size
 
     def get_world_rank(self) -> int:
-        return self.world_rank
+        """The number of nodes for the local training is always 1, so the world rank is always equal to the local rank."""
+        return self.local_rank
 
     def get_local_rank(self) -> int:
-        return self.world_rank
+        return self.local_rank
 
     def get_local_world_size(self) -> int:
-        return self.world_size
+        return self.local_world_size
 
     def get_node_rank(self) -> int:
+        """The number of nodes for the local training is always 1."""
         return 0
 
     def get_storage(self):
-        raise NotImplementedError(
-            "LocalTestingTrainContext does not support get_storage"
-        )
+        return self.storage_context
 
     def get_dataset_shard(self, dataset_name: str) -> DataIterator:
         return self.dataset_shards[dataset_name]
@@ -365,6 +374,9 @@ class LocalTestingTrainContext(TrainContext):
         logger.info(
             f"Report metrics: {metrics}, checkpoint: {checkpoint}, checkpoint_dir_name: {checkpoint_dir_name}"
         )
+
+    def is_running_locally(self) -> bool:
+        return True
 
 
 # The global variable holding the current TrainContext
@@ -385,7 +397,3 @@ def set_train_context(context) -> None:
     global _train_context
     with _context_lock:
         _train_context = context
-
-
-def is_running_local_testing() -> bool:
-    return isinstance(get_train_context(), LocalTestingTrainContext)
