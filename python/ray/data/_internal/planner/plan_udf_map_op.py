@@ -33,6 +33,8 @@ from ray.data._internal.execution.operators.map_transformer import (
 from ray.data._internal.execution.util import make_callable_class_concurrent
 from ray.data._internal.logical.operators.map_operator import (
     AbstractUDFMap,
+    DropNa,
+    FillNa,
     Filter,
     FlatMap,
     MapBatches,
@@ -823,14 +825,13 @@ def _generate_transform_fn_for_async_map(
 
 
 def plan_fillna_op(
-    op: "FillNa",
+    op: FillNa,
     physical_children: List[PhysicalOperator],
     data_context: DataContext,
 ) -> MapOperator:
     """Plan a FillNa logical operator."""
     import pyarrow as pa
     import pyarrow.compute as pc
-    from ray.data._internal.logical.operators.map_operator import FillNa
 
     assert len(physical_children) == 1
     input_physical_dag = physical_children[0]
@@ -875,13 +876,12 @@ def plan_fillna_op(
     transform_fn = _generate_transform_fn_for_map_block(fn)
     map_transformer = _create_map_transformer_for_block_based_map_op(
         transform_fn,
-        batch_format="pyarrow",
-        zero_copy_batch=True,
     )
 
     return MapOperator.create(
         map_transformer,
         input_physical_dag,
+        data_context,
         name="FillNa",
         compute_strategy=compute,
         ray_remote_args=op._ray_remote_args,
@@ -889,14 +889,13 @@ def plan_fillna_op(
 
 
 def plan_dropna_op(
-    op: "DropNa",
+    op: DropNa,
     physical_children: List[PhysicalOperator],
     data_context: DataContext,
 ) -> MapOperator:
     """Plan a DropNa logical operator."""
     import pyarrow as pa
     import pyarrow.compute as pc
-    from ray.data._internal.logical.operators.map_operator import DropNa
 
     assert len(physical_children) == 1
     input_physical_dag = physical_children[0]
@@ -957,13 +956,12 @@ def plan_dropna_op(
     transform_fn = _generate_transform_fn_for_map_block(fn)
     map_transformer = _create_map_transformer_for_block_based_map_op(
         transform_fn,
-        batch_format="pyarrow",
-        zero_copy_batch=True,
     )
 
     return MapOperator.create(
         map_transformer,
         input_physical_dag,
+        data_context,
         name="DropNa",
         compute_strategy=compute,
         ray_remote_args=op._ray_remote_args,
