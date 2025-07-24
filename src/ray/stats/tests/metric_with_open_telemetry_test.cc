@@ -160,15 +160,15 @@ TEST_P(GaugeMetricTest, RecordsValueAndTagsForAllMetricTypes) {
   LegacyMetricGaugeTest.Record(tc.record_value, tc.record_tags);
 
   // Verify observations
-  auto opt = GetObservableMetricValue(tc.metric_name, tc.expected_tags);
-  ASSERT_TRUE(opt.has_value());
-  EXPECT_EQ(opt, tc.expected_value);
+  auto actual = GetObservableMetricValue(tc.metric_name, tc.expected_tags);
+  ASSERT_TRUE(actual.has_value());
+  EXPECT_EQ(actual, tc.expected_value);
 
   // verify legacy metric observations
-  auto legacy_opt =
+  auto legacy_actual =
       GetObservableMetricValue("legacy_" + tc.metric_name, tc.expected_tags);
-  ASSERT_TRUE(legacy_opt.has_value());
-  EXPECT_EQ(legacy_opt, tc.expected_value);
+  ASSERT_TRUE(legacy_actual.has_value());
+  EXPECT_EQ(legacy_actual, tc.expected_value);
 }
 
 INSTANTIATE_TEST_SUITE_P(
