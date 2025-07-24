@@ -2196,9 +2196,6 @@ cdef execute_task_with_cancellation_handler(
         actor = actor_class.__new__(actor_class)
         worker.actors[actor_id] = actor
 
-        # Register cleanup callback after actor is created
-        _register_actor_shutdown_callback()
-
         # Record the actor class via :actor_name: magic token in the log.
         #
         # (Phase 1): this covers code run before __init__ finishes.
@@ -2258,6 +2255,10 @@ cdef execute_task_with_cancellation_handler(
 
         # Check for cancellation.
         PyErr_CheckSignals()
+
+        # Register cleanup callback after actor is fully initialized (including __init__)
+        if <int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK:
+            _register_actor_shutdown_callback()
 
     except KeyboardInterrupt as e:
         # Catch and handle task cancellation, which will result in an interrupt being
@@ -2748,6 +2749,7 @@ cdef void call_actor_shutdown() noexcept nogil:
     """C++ wrapper function that calls the Python actor shutdown callback."""
     with gil:
         try:
+            logger.info(">>> Calling actor shutdown")
             _call_actor_shutdown()
         except:
             # Swallow all exceptions to prevent them from propagating to C++
@@ -2759,28 +2761,28 @@ cdef void call_actor_shutdown() noexcept nogil:
 def _call_actor_shutdown():
     """Internal function that calls actor's __ray_shutdown__ method."""
     worker = ray._private.worker.global_worker
-    core_worker = worker.core_worker
 
-    # Get the actor instance from worker.actors
-    actor_id = core_worker.get_actor_id()
-    if actor_id.is_nil():
+    logger.info(">>> Invoking actor shutdown callback")
+
+    # During shutdown, core_worker might be in inconsistent state
+    # Just iterate through worker.actors since there should be exactly one actor
+    if not worker.actors:
+        logger.error(">>> No actors found in worker.actors dict")
         return
 
-    actor_instance = worker.actors.get(actor_id)
-
-    if actor_instance is not None:
-        try:
-            # Call the actor's __ray_shutdown__ method if it exists
-            if hasattr(actor_instance, '__ray_shutdown__') and callable(getattr(actor_instance, '__ray_shutdown__')):
+    for actor_id, actor_instance in worker.actors.items():
+        logger.info(f">>> Processing actor ID: {actor_id}")
+        if actor_instance is not None:
+            try:
+                # This callback is only registered when __ray_shutdown__ exists
+                logger.info(f">>> Calling __ray_shutdown__ for actor {actor_id}")
                 actor_instance.__ray_shutdown__()
                 logger.info(f"Actor {actor_id} __ray_shutdown__ method completed successfully")
-            else:
-                logger.debug(f"Actor {actor_id} has no __ray_shutdown__ method - skipping cleanup")
-        except Exception as e:
-            logger.error(f"Error during actor __ray_shutdown__ method: {e}")
-        finally:
-            # Remove from actors dict to prevent double cleanup
-            worker.actors.pop(actor_id, None)
+            except Exception as e:
+                logger.error(f"Error during actor __ray_shutdown__ method: {e}")
+            finally:
+                worker.actors.pop(actor_id, None)
+        break  # There should be only one actor
 
 
 def _register_actor_shutdown_callback():
@@ -2793,8 +2795,15 @@ def _register_actor_shutdown_callback():
     if actor_id.is_nil():
         return
 
-    # Register the shutdown callback
-    core_worker.set_actor_shutdown_callback(_call_actor_shutdown)
+    # Only register callback if actor has __ray_shutdown__ method
+    # This preserves backward compatibility: actors without __ray_shutdown__
+    # will use Python's normal exit flow (including atexit handlers)
+    actor_instance = worker.actors.get(actor_id)
+    if actor_instance is not None and hasattr(actor_instance, '__ray_shutdown__') and callable(getattr(actor_instance, '__ray_shutdown__')):
+        core_worker.set_actor_shutdown_callback(_call_actor_shutdown)
+        logger.info(f"Actor {actor_id} registered __ray_shutdown__ callback")
+    else:
+        logger.info(f"Actor {actor_id} has no __ray_shutdown__ method - using normal Python exit")
 
 
 cdef class StreamRedirector:
