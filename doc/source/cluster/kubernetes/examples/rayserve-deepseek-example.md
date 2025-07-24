@@ -1,6 +1,6 @@
 (kuberay-rayservice-deepseek-example)=
 
-# Serve Deepseek R1 using Ray Serve LLM on GKE
+# Serve Deepseek R1 using Ray Serve LLM
 
 This guide provides a step-by-step guide for deploying a Large Language Model (LLM) using Ray Serve LLM on Kubernetes. Leveraging KubeRay, Ray Serve, and vLLM, this guide deploys the  `deepseek-ai/DeepSeek-R1` model from Hugging Face, enabling scalable, efficient, and OpenAI-compatible LLM serving within a Kubernetes environment. See [Serving LLMs](serving_llms) for information on Ray Serve LLM.
 
