@@ -16,11 +16,10 @@ from ray.llm._internal.serve.deployments.routers.router import (
     LLMRouter as _LLMRouter,
 )
 
-
-from ray.util.annotations import PublicAPI
 # Using Deprecated from rllib since they are retuning better messages.
 # TODO: Ray core should inherit that.
 from ray.rllib.utils.deprecation import Deprecated
+from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.serve.deployment import Application
@@ -65,27 +64,26 @@ class LoraConfig(_LoraConfig):
 
     pass
 
+
 #############
 # Deployments
 #############
 
+
 @Deprecated(
-    old="ray.serve.llm.LLMServer", 
-    new="ray.serve.llm.deployment.LLMServer", 
-    error=False
+    old="ray.serve.llm.LLMServer", new="ray.serve.llm.deployment.LLMServer", error=False
 )
 class LLMServer(_LLMServer):
     pass
 
 
 @Deprecated(
-    old="ray.serve.llm.LLMRouter", 
-    new="ray.serve.llm.ingress.OpenAIIngress", 
-    error=False
+    old="ray.serve.llm.LLMRouter",
+    new="ray.serve.llm.ingress.OpenAIIngress",
+    error=False,
 )
 class LLMRouter(_LLMRouter):
     pass
-
 
 
 ##########
@@ -263,8 +261,6 @@ def build_openai_app(llm_serving_args: "LLMServingArgs") -> "Application":
     from ray.llm._internal.serve.builders import build_openai_app
 
     return build_openai_app(llm_serving_args=llm_serving_args)
-
-
 
 
 __all__ = [

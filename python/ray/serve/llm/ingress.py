@@ -3,6 +3,7 @@ from ray.llm._internal.serve.deployments.routers.router import (
 )
 from ray.util.annotations import PublicAPI
 
+
 @PublicAPI(stability="alpha")
 class OpenAIIngress(_LLMRouter):
 
@@ -56,4 +57,3 @@ class OpenAIIngress(_LLMRouter):
     """
 
     pass
-

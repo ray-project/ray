@@ -1,12 +1,12 @@
-
 from ray.llm._internal.serve.deployments.llm.llm_server import (
     LLMServer as InternalLLMServer,
 )
 
 # TODO (Kourosh): Update the internal namespace.
-from ray.llm._internal.serve.deployments.prefill_decode_disagg.prefill_decode_disagg import PDProxyServer
+from ray.llm._internal.serve.deployments.prefill_decode_disagg.prefill_decode_disagg import (
+    PDProxyServer,
+)
 from ray.util.annotations import PublicAPI
-
 
 #############
 # Deployments
@@ -62,9 +62,10 @@ class LLMServer(InternalLLMServer):
             response = ray.get(model_handle.chat(request))
             print(response)
     """
+
     pass
+
 
 @PublicAPI(stability="alpha")
 class PDServer(PDProxyServer):
     pass
-
