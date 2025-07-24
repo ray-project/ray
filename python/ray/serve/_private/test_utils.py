@@ -735,6 +735,7 @@ def get_application_urls(
         The URLs of the application.
     """
     client = _get_global_client()
+
     serve_details = client.get_serve_details()
     if app_name not in serve_details["applications"]:
         return [client.root_url]

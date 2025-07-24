@@ -180,6 +180,13 @@ def check_ray_stop():
         return True
 
 
+def check_ray_start():
+    if httpx.get("http://localhost:8265/api/ray/version").status_code == 200:
+        return True
+
+    return False
+
+
 @pytest.fixture(scope="function")
 def ray_start_stop():
     subprocess.check_output(["ray", "stop", "--force"])
@@ -189,14 +196,14 @@ def ray_start_stop():
     )
     subprocess.check_output(["ray", "start", "--head"])
     wait_for_condition(
-        lambda: httpx.get("http://localhost:8265/api/ray/version").status_code == 200,
+        check_ray_start,
         timeout=15,
     )
     yield
     subprocess.check_output(["ray", "stop", "--force"])
     wait_for_condition(
         check_ray_stop,
-        timeout=15,
+        timeout=30,
     )
 
 
