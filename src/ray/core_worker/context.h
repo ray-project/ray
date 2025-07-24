@@ -103,16 +103,19 @@ class WorkerContext {
   /// Returns whether the current thread is the main worker thread.
   bool CurrentThreadIsMain() const;
 
-  /// Returns whether we should Block/Unblock through the raylet on Get/Wait.
-  /// This only applies to direct task calls.
+  /// Returns whether we should notify the Raylet to release our assigned resources
+  /// when blocked in a Get or Wait call.
+  ///
+  /// This only applies to normal tasks and only for calls made from the main thread.
+  ///  - Drivers don't have resources assigned to release.
+  ///  - Actors' resources are acquired for their full lifetime.
   bool ShouldReleaseResourcesOnBlockingCalls() const;
 
-  /// Returns whether we are in a direct call actor.
-  bool CurrentActorIsDirectCall() const ABSL_LOCKS_EXCLUDED(mutex_);
+  /// Returns true if this is a worker that has executed any normal tasks.
+  bool IsNormalTaskWorker() const ABSL_LOCKS_EXCLUDED(mutex_);
 
-  /// Returns whether we are in a direct call task. This encompasses both direct
-  /// actor and normal tasks.
-  bool CurrentTaskIsDirectCall() const ABSL_LOCKS_EXCLUDED(mutex_);
+  /// Returns true if this is a worker that has executed an actor creation task.
+  bool IsActorWorker() const ABSL_LOCKS_EXCLUDED(mutex_);
 
   int CurrentActorMaxConcurrency() const ABSL_LOCKS_EXCLUDED(mutex_);
 
@@ -136,11 +139,6 @@ class WorkerContext {
 
   int64_t GetTaskDepth() const;
 
- protected:
-  // allow unit test to set.
-  bool current_actor_is_direct_call_ = false;
-  bool current_task_is_direct_call_ = false;
-
  private:
   const WorkerType worker_type_;
   const WorkerID worker_id_;
@@ -150,6 +148,7 @@ class WorkerContext {
   std::optional<rpc::JobConfig> job_config_ ABSL_GUARDED_BY(mutex_);
 
   int64_t task_depth_ ABSL_GUARDED_BY(mutex_) = 0;
+  bool is_normal_task_worker_ ABSL_GUARDED_BY(mutex_) = false;
   ActorID current_actor_id_ ABSL_GUARDED_BY(mutex_);
   int current_actor_max_concurrency_ ABSL_GUARDED_BY(mutex_) = 1;
   bool current_actor_is_asyncio_ ABSL_GUARDED_BY(mutex_) = false;
