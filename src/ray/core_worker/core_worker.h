@@ -163,7 +163,7 @@ class TaskToRetryDescComparator {
 /// The root class that contains all the core and language-independent functionalities
 /// of the worker. This class is supposed to be used to implement app-language (Java,
 /// Python, etc) workers.
-class CoreWorker : public rpc::CoreWorkerServiceHandler {
+class CoreWorker {
  public:
   /// Construct a CoreWorker instance.
   ///
@@ -210,7 +210,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// If the core worker is initiated at a driver, the driver is responsible for calling
   /// the shutdown API before terminating. If the core worker is initiated at a worker,
   /// shutdown must be called before terminating the task execution loop.
-  ~CoreWorker() override;
+  ~CoreWorker();
 
   void operator=(CoreWorker const &other) = delete;
 
@@ -797,10 +797,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Implements gRPC server handler.
   /// If an executor can generator task return before the task is finished,
   /// it invokes this endpoint via ReportGeneratorItemReturns RPC.
-  void HandleReportGeneratorItemReturns(
-      rpc::ReportGeneratorItemReturnsRequest request,
-      rpc::ReportGeneratorItemReturnsReply *reply,
-      rpc::SendReplyCallback send_reply_callback) override;
+  void HandleReportGeneratorItemReturns(rpc::ReportGeneratorItemReturnsRequest request,
+                                        rpc::ReportGeneratorItemReturnsReply *reply,
+                                        rpc::SendReplyCallback send_reply_callback);
 
   ///
   /// Public methods related to task submission.
@@ -1161,127 +1160,124 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Implements gRPC server handler.
   void HandlePushTask(rpc::PushTaskRequest request,
                       rpc::PushTaskReply *reply,
-                      rpc::SendReplyCallback send_reply_callback) override;
+                      rpc::SendReplyCallback send_reply_callback);
 
   /// Implements gRPC server handler.
-  void HandleActorCallArgWaitComplete(
-      rpc::ActorCallArgWaitCompleteRequest request,
-      rpc::ActorCallArgWaitCompleteReply *reply,
-      rpc::SendReplyCallback send_reply_callback) override;
+  void HandleActorCallArgWaitComplete(rpc::ActorCallArgWaitCompleteRequest request,
+                                      rpc::ActorCallArgWaitCompleteReply *reply,
+                                      rpc::SendReplyCallback send_reply_callback);
 
   /// Implements gRPC server handler.
   void HandleRayletNotifyGCSRestart(rpc::RayletNotifyGCSRestartRequest request,
                                     rpc::RayletNotifyGCSRestartReply *reply,
-                                    rpc::SendReplyCallback send_reply_callback) override;
+                                    rpc::SendReplyCallback send_reply_callback);
 
   /// Implements gRPC server handler.
   void HandleGetObjectStatus(rpc::GetObjectStatusRequest request,
                              rpc::GetObjectStatusReply *reply,
-                             rpc::SendReplyCallback send_reply_callback) override;
+                             rpc::SendReplyCallback send_reply_callback);
 
   /// Implements gRPC server handler.
   void HandleWaitForActorRefDeleted(rpc::WaitForActorRefDeletedRequest request,
                                     rpc::WaitForActorRefDeletedReply *reply,
-                                    rpc::SendReplyCallback send_reply_callback) override;
+                                    rpc::SendReplyCallback send_reply_callback);
 
   // Implements gRPC server handler.
   void HandlePubsubLongPolling(rpc::PubsubLongPollingRequest request,
                                rpc::PubsubLongPollingReply *reply,
-                               rpc::SendReplyCallback send_reply_callback) override;
+                               rpc::SendReplyCallback send_reply_callback);
 
   // Implements gRPC server handler.
   void HandlePubsubCommandBatch(rpc::PubsubCommandBatchRequest request,
                                 rpc::PubsubCommandBatchReply *reply,
-                                rpc::SendReplyCallback send_reply_callback) override;
+                                rpc::SendReplyCallback send_reply_callback);
 
   // Implements gRPC server handler.
-  void HandleUpdateObjectLocationBatch(
-      rpc::UpdateObjectLocationBatchRequest request,
-      rpc::UpdateObjectLocationBatchReply *reply,
-      rpc::SendReplyCallback send_reply_callback) override;
+  void HandleUpdateObjectLocationBatch(rpc::UpdateObjectLocationBatchRequest request,
+                                       rpc::UpdateObjectLocationBatchReply *reply,
+                                       rpc::SendReplyCallback send_reply_callback);
 
   /// Implements gRPC server handler.
   void HandleGetObjectLocationsOwner(rpc::GetObjectLocationsOwnerRequest request,
                                      rpc::GetObjectLocationsOwnerReply *reply,
-                                     rpc::SendReplyCallback send_reply_callback) override;
+                                     rpc::SendReplyCallback send_reply_callback);
 
   /// Implements gRPC server handler.
   void HandleKillActor(rpc::KillActorRequest request,
                        rpc::KillActorReply *reply,
-                       rpc::SendReplyCallback send_reply_callback) override;
+                       rpc::SendReplyCallback send_reply_callback);
 
   /// Implements gRPC server handler.
   void HandleCancelTask(rpc::CancelTaskRequest request,
                         rpc::CancelTaskReply *reply,
-                        rpc::SendReplyCallback send_reply_callback) override;
+                        rpc::SendReplyCallback send_reply_callback);
 
   /// Implements gRPC server handler.
   void HandleRemoteCancelTask(rpc::RemoteCancelTaskRequest request,
                               rpc::RemoteCancelTaskReply *reply,
-                              rpc::SendReplyCallback send_reply_callback) override;
+                              rpc::SendReplyCallback send_reply_callback);
 
   /// Implements gRPC server handler.
   void HandlePlasmaObjectReady(rpc::PlasmaObjectReadyRequest request,
                                rpc::PlasmaObjectReadyReply *reply,
-                               rpc::SendReplyCallback send_reply_callback) override;
+                               rpc::SendReplyCallback send_reply_callback);
 
   /// Creates a new mutable object.
-  void HandleRegisterMutableObjectReader(
-      rpc::RegisterMutableObjectReaderRequest request,
-      rpc::RegisterMutableObjectReaderReply *reply,
-      rpc::SendReplyCallback send_reply_callback) override;
+  void HandleRegisterMutableObjectReader(rpc::RegisterMutableObjectReaderRequest request,
+                                         rpc::RegisterMutableObjectReaderReply *reply,
+                                         rpc::SendReplyCallback send_reply_callback);
 
   /// Get statistics from core worker.
   void HandleGetCoreWorkerStats(rpc::GetCoreWorkerStatsRequest request,
                                 rpc::GetCoreWorkerStatsReply *reply,
-                                rpc::SendReplyCallback send_reply_callback) override;
+                                rpc::SendReplyCallback send_reply_callback);
 
   /// Trigger local GC on this worker.
   void HandleLocalGC(rpc::LocalGCRequest request,
                      rpc::LocalGCReply *reply,
-                     rpc::SendReplyCallback send_reply_callback) override;
+                     rpc::SendReplyCallback send_reply_callback);
 
   /// Delete objects explicitly.
   void HandleDeleteObjects(rpc::DeleteObjectsRequest request,
                            rpc::DeleteObjectsReply *reply,
-                           rpc::SendReplyCallback send_reply_callback) override;
+                           rpc::SendReplyCallback send_reply_callback);
 
   // Spill objects to external storage.
   void HandleSpillObjects(rpc::SpillObjectsRequest request,
                           rpc::SpillObjectsReply *reply,
-                          rpc::SendReplyCallback send_reply_callback) override;
+                          rpc::SendReplyCallback send_reply_callback);
 
   // Restore objects from external storage.
   void HandleRestoreSpilledObjects(rpc::RestoreSpilledObjectsRequest request,
                                    rpc::RestoreSpilledObjectsReply *reply,
-                                   rpc::SendReplyCallback send_reply_callback) override;
+                                   rpc::SendReplyCallback send_reply_callback);
 
   // Delete objects from external storage.
   void HandleDeleteSpilledObjects(rpc::DeleteSpilledObjectsRequest request,
                                   rpc::DeleteSpilledObjectsReply *reply,
-                                  rpc::SendReplyCallback send_reply_callback) override;
+                                  rpc::SendReplyCallback send_reply_callback);
 
   // Make the this worker exit.
   // This request fails if the core worker owns any object.
   void HandleExit(rpc::ExitRequest request,
                   rpc::ExitReply *reply,
-                  rpc::SendReplyCallback send_reply_callback) override;
+                  rpc::SendReplyCallback send_reply_callback);
 
   // Set local worker as the owner of object.
   // Request by borrower's worker, execute by owner's worker.
   void HandleAssignObjectOwner(rpc::AssignObjectOwnerRequest request,
                                rpc::AssignObjectOwnerReply *reply,
-                               rpc::SendReplyCallback send_reply_callback) override;
+                               rpc::SendReplyCallback send_reply_callback);
 
   // Get the number of pending tasks.
   void HandleNumPendingTasks(rpc::NumPendingTasksRequest request,
                              rpc::NumPendingTasksReply *reply,
-                             rpc::SendReplyCallback send_reply_callback) override;
+                             rpc::SendReplyCallback send_reply_callback);
 
   // Free GPU objects from the in-actor GPU object store.
   void HandleFreeActorObject(rpc::FreeActorObjectRequest request,
                              rpc::FreeActorObjectReply *reply,
-                             rpc::SendReplyCallback send_reply_callback) override;
+                             rpc::SendReplyCallback send_reply_callback);
 
   ///
   /// Public methods related to async actor call. This should only be used when
@@ -1616,14 +1612,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
     }
   }
 
-  /// Wait until the worker is initialized.
-  void WaitUntilInitialized() override {
-    absl::MutexLock lock(&initialize_mutex_);
-    while (!initialized_) {
-      intialize_cv_.WaitWithTimeout(&initialize_mutex_, absl::Seconds(1));
-    }
-  }
-
   const CoreWorkerOptions options_;
 
   /// Callback to get the current language (e.g., Python) call site.
@@ -1730,11 +1718,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   TaskID main_thread_task_id_ ABSL_GUARDED_BY(mutex_);
 
   std::string main_thread_task_name_ ABSL_GUARDED_BY(mutex_);
-
-  /// States that used for initialization.
-  absl::Mutex initialize_mutex_;
-  absl::CondVar intialize_cv_;
-  bool initialized_ ABSL_GUARDED_BY(initialize_mutex_) = false;
 
   /// Event loop where the IO events are handled. e.g. async GCS operations.
   instrumented_io_context &io_service_;

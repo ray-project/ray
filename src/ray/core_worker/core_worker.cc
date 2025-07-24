@@ -332,13 +332,6 @@ CoreWorker::CoreWorker(
       task_event_buffer_(std::move(task_event_buffer)),
       pid_(pid),
       runtime_env_json_serialization_cache_(kDefaultSerializationCacheCap) {
-  // Notify that core worker is initialized.
-  absl::Cleanup initialzed_scope_guard = [this] {
-    absl::MutexLock lock(&initialize_mutex_);
-    initialized_ = true;
-    intialize_cv_.SignalAll();
-  };
-
   // Initialize task receivers.
   if (options_.worker_type == WorkerType::WORKER || options_.is_local_mode) {
     RAY_CHECK(options_.task_execution_callback != nullptr);
@@ -361,20 +354,7 @@ CoreWorker::CoreWorker(
         options_.initialize_thread_callback,
         [this] { return local_raylet_client_->ActorCreationTaskDone(); });
   }
-  // Start RPC server after all the task receivers are properly initialized and we have
-  // our assigned port from the raylet.
-  core_worker_server_->RegisterService(
-      std::make_unique<rpc::CoreWorkerGrpcService>(io_service_, *this),
-      false /* token_auth */);
-  core_worker_server_->Run();
 
-  // Update rpc_address_ with the actual assigned port
-  int actual_port = core_worker_server_->GetPort();
-  rpc_address_.set_port(actual_port);
-  reference_counter_->SetOwnerAddress(rpc_address_);
-  normal_task_submitter_->SetOwnerAddress(rpc_address_);
-  future_resolver_->SetOwnerAddress(rpc_address_);
-  object_recovery_manager_->SetOwnerAddress(rpc_address_);
   RegisterToGcs(options_.worker_launch_time_ms, options_.worker_launched_time_ms);
 
   // Create an entry for the driver task in the task table. This task is

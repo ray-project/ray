@@ -25,6 +25,7 @@ namespace ray {
 namespace core {
 
 class CoreWorker;
+class CoreWorkerServiceHandlerProxy;
 
 /// Lifecycle management of the `CoreWorker` instance in a process.
 ///
@@ -187,6 +188,9 @@ class CoreWorkerProcessImpl {
 
   // Thread that runs a boost::asio service to process IO events.
   boost::thread io_thread_;
+
+  /// The proxy service handler that routes the RPC calls to the core worker.
+  std::unique_ptr<CoreWorkerServiceHandlerProxy> service_handler_;
 };
 }  // namespace core
 }  // namespace ray

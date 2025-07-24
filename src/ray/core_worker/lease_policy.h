@@ -46,8 +46,6 @@ class LeasePolicyInterface {
       const TaskSpecification &spec) = 0;
 
   virtual ~LeasePolicyInterface() = default;
-
-  virtual void SetOwnerAddress(const rpc::Address &owner_address) = 0;
 };
 
 using NodeAddrFactory = std::function<std::optional<rpc::Address>(const NodeID &node_id)>;
@@ -68,10 +66,6 @@ class LocalityAwareLeasePolicy : public LeasePolicyInterface {
   /// Get the address of the best worker node for a lease request for the provided task.
   std::pair<rpc::Address, bool> GetBestNodeForTask(
       const TaskSpecification &spec) override;
-
-  void SetOwnerAddress(const rpc::Address &owner_address) override {
-    fallback_rpc_address_ = owner_address;
-  }
 
  private:
   /// Get the best worker node for a lease request for the provided task.
@@ -99,10 +93,6 @@ class LocalLeasePolicy : public LeasePolicyInterface {
   /// Get the address of the local node for a lease request for the provided task.
   std::pair<rpc::Address, bool> GetBestNodeForTask(
       const TaskSpecification &spec) override;
-
-  void SetOwnerAddress(const rpc::Address &owner_address) override {
-    local_node_rpc_address_ = owner_address;
-  }
 
  private:
   /// RPC address of the local node.

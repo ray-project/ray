@@ -31,6 +31,7 @@
 #include "ray/common/runtime_env_common.h"
 #include "ray/common/task/task_util.h"
 #include "ray/core_worker/core_worker.h"
+#include "ray/core_worker/core_worker_service_handler_proxy.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/gcs/pb_util.h"
 #include "ray/stats/stats.h"
@@ -133,6 +134,9 @@ std::shared_ptr<CoreWorker> CoreWorkerProcess::TryGetWorker() {
 
 std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
     CoreWorkerOptions options, const WorkerID &worker_id) {
+  // Notify that core worker is initialized.
+  absl::Cleanup initialzed_scope_guard = [this] { service_handler_->SetInitialized(); };
+
   /// Event loop where the IO events are handled. e.g. async GCS operations.
   auto client_call_manager =
       std::make_unique<rpc::ClientCallManager>(io_service_, /*record_stats=*/false);
@@ -211,7 +215,6 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
 
   NodeID local_raylet_id;
   int assigned_port = 0;
-
   Status raylet_client_status = RegisterWorkerToRaylet(*raylet_conn,
                                                        worker_context->GetWorkerID(),
                                                        options.worker_type,
@@ -238,7 +241,6 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
   // connect to Raylet after a number of retries, this can be changed later
   // so that the worker (java/python .etc) can retrieve and handle the error
   // instead of crashing.
-
   auto local_raylet_client =
       std::make_shared<raylet::RayletClient>(std::move(raylet_conn),
                                              options.raylet_ip_address,
@@ -246,11 +248,16 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
                                              *client_call_manager,
                                              worker_context->GetWorkerID());
   auto connected = true;
-
   auto core_worker_server =
       std::make_unique<rpc::GrpcServer>(WorkerTypeString(options.worker_type),
                                         assigned_port,
                                         options.node_ip_address == "127.0.0.1");
+  // Start RPC server after all the task receivers are properly initialized and we have
+  // our assigned port from the raylet.
+  core_worker_server->RegisterService(
+      std::make_unique<rpc::CoreWorkerGrpcService>(io_service_, *service_handler_),
+      false /* token_auth */);
+  core_worker_server->Run();
 
   // Set our own address.
   RAY_CHECK(!local_raylet_id.IsNil());
@@ -646,7 +653,9 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
                      ? ComputeDriverIdFromJob(options_.job_id)
                      : WorkerID::FromRandom()),
       io_work_(io_service_.get_executor()),
-      task_execution_service_work_(task_execution_service_.get_executor()) {
+      task_execution_service_work_(task_execution_service_.get_executor()),
+      service_handler_(std::make_unique<CoreWorkerServiceHandlerProxy>(
+          [this]() -> const std::shared_ptr<CoreWorker> & { return GetCoreWorker(); })) {
   if (options_.enable_logging) {
     // Setup logging for worker system logging.
     {
