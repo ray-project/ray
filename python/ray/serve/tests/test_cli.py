@@ -34,7 +34,7 @@ def get_safe_application_url(app_name: str = SERVE_DEFAULT_APP_NAME) -> str:
     """Get the application URL safely, falling back to localhost if the app doesn't exist."""
     try:
         return get_application_url(app_name=app_name)
-    except Exception:
+    except (KeyError, ValueError):
         # Fall back to localhost if the application doesn't exist or there's an error
         return "http://localhost:8000"
 
