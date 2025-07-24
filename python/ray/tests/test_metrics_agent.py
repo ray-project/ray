@@ -485,7 +485,7 @@ def test_metrics_export_node_metrics(shutdown_only):
 _EVENT_AGGREGATOR_AGENT_TARGET_PORT = find_free_port()
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="module")
 def httpserver_listen_address():
     return ("127.0.0.1", _EVENT_AGGREGATOR_AGENT_TARGET_PORT)
 
