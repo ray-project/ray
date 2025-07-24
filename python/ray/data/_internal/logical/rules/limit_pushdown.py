@@ -3,6 +3,7 @@ from collections import deque
 from typing import Iterable, List
 
 from ray.data._internal.logical.interfaces import LogicalOperator, LogicalPlan, Rule
+from ray.data._internal.logical.operators.map_operator import MapBatches
 from ray.data._internal.logical.operators.n_ary_operator import Union
 from ray.data._internal.logical.operators.one_to_one_operator import (
     AbstractOneToOne,
@@ -19,7 +20,6 @@ class LimitPushdownRule(Rule):
     push through operators that we know for certain do not modify row counts:
     - Project operations (column selection)
     - MapRows operations (row-wise transformations that preserve row count)
-    - MapBatches operations (batch-wise transformations that preserve row count)
     - Union operations (limits are prepended to each branch)
 
     We stop at:
@@ -115,6 +115,8 @@ class LimitPushdownRule(Rule):
             isinstance(new_input_into_limit, AbstractOneToOne)
             and not isinstance(new_input_into_limit, Read)
             and not new_input_into_limit.can_modify_num_rows()
+            and not isinstance(new_input_into_limit, MapBatches)
+            # MapBatches can modify the row count TODO: add a flag in map_batches that allows the user to opt in ensure row preservation
         ):
             new_input_into_limit_copy = copy.copy(new_input_into_limit)
             ops_between_new_input_and_limit.append(new_input_into_limit_copy)

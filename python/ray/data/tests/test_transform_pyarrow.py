@@ -894,9 +894,9 @@ _PYARROW_SUPPORTS_TYPE_PROMOTION = (
     "op, data, should_fail, expected_type",
     [
         # Case A: Upon serializing to Arrow fallback to `ArrowPythonObjectType`
-        ("map_batches", [2**100, 1], False, ArrowPythonObjectType()),
-        ("map_batches", [2**100, 1.0], False, ArrowPythonObjectType()),
-        ("map_batches", [2**100, "1.0"], False, ArrowPythonObjectType()),
+        ("map_batches", [1, 2**100], False, ArrowPythonObjectType()),
+        ("map_batches", [1.0, 2**100], False, ArrowPythonObjectType()),
+        ("map_batches", ["1.0", 2**100], False, ArrowPythonObjectType()),
         # Case B: No fallback to `ArrowPythonObjectType`, but type promotion allows
         #         int to be promoted to a double
         (
@@ -920,12 +920,13 @@ def test_pyarrow_conversion_error_handling(
     # based on the first *block* produced by UDF.
     #
     # These tests simulate following scenarios
-    #   1. (Case A) Since schema() is calling limit(1) and there's limit pushdown,
-    #      the first block is coerced to ArrowPythonObjectExtensionType.
-    #
+    #   1. (Case A) Type of the value of the first block is deduced as Arrow scalar
+    #      type, but second block carries value that overflows pa.int64 representation,
+    #      and column henceforth will be serialized as `ArrowPythonObjectExtensionType`
+    #      coercing first block to it as well
     #   2. (Case B) Both blocks carry proper Arrow scalars which, however, have
     #      diverging types and therefore Arrow fails during merging of these blocks
-    #      into 1.
+    #      into 1
     ds = _create_dataset(op, data)
 
     if should_fail:

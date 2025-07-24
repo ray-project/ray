@@ -1089,11 +1089,11 @@ def test_limit_pushdown_conservative(ray_start_regular_shared_2_cpus):
         ds, "Read[ReadRange] -> Limit[limit=1] -> MapRows[Map(f1)]", [{"id": 0}]
     )
 
-    # Test 3: Limit should push through MapBatches operations (safe)
+    # Test 3: Limit should not push through MapBatches operations
     ds = ray.data.range(100, override_num_blocks=100).map_batches(f2).limit(1)
     _check_valid_plan_and_result(
         ds,
-        "Read[ReadRange] -> Limit[limit=1] -> MapBatches[MapBatches(f2)]",
+        "Read[ReadRange] -> MapBatches[MapBatches(f2)] -> Limit[limit=1]",
         [{"id": 0}],
     )
 
@@ -1167,7 +1167,7 @@ def test_limit_pushdown_correctness(ray_start_regular_shared_2_cpus):
     expected = [{"id": i * 2} for i in range(5)]
     assert result == expected
 
-    # Test 4: MapBatches operations should get limit pushed (safe)
+    # Test 4: MapBatches operations should not get limit pushed
     ds = ray.data.range(100).map_batches(lambda batch: {"id": batch["id"] * 2}).limit(5)
     result = ds.take_all()
     expected = [{"id": i * 2} for i in range(5)]
@@ -1299,60 +1299,6 @@ def test_limit_pushdown_scan_efficiency(ray_start_regular_shared_2_cpus):
     assert rows_produced_3 < 200
 
 
-def test_limit_pushdown_mapbatches(ray_start_regular_shared_2_cpus):
-    """Test limit pushdown through MapBatches operations specifically."""
-
-    # Test 1: Simple MapBatches + Limit
-    ds = ray.data.range(100).map_batches(lambda batch: batch).limit(10)
-    result = ds.take_all()
-    expected = [{"id": i} for i in range(10)]
-    assert result == expected
-
-    # The plan should show limit pushed through MapBatches
-    plan_str = ds._plan._logical_plan.dag.dag_str
-    assert (
-        "Read[ReadRange] -> Limit[limit=10] -> MapBatches[MapBatches(<lambda>)]"
-        == plan_str
-    )
-
-    # Test 2: Multiple MapBatches + Limit
-    ds = (
-        ray.data.range(100)
-        .map_batches(lambda batch: {"id": batch["id"] * 2})
-        .map_batches(lambda batch: {"id": batch["id"] + 1})
-        .limit(5)
-    )
-    result = ds.take_all()
-    expected = [{"id": i * 2 + 1} for i in range(5)]
-    assert result == expected
-
-    # The plan should show limit pushed through both MapBatches
-    plan_str = ds._plan._logical_plan.dag.dag_str
-    assert (
-        "Read[ReadRange] -> Limit[limit=5] -> MapBatches[MapBatches(<lambda>)] -> MapBatches[MapBatches(<lambda>)]"
-        == plan_str
-    )
-
-    # Test 3: Mixed operations (MapRows, MapBatches, Project) + Limit
-    ds = (
-        ray.data.range(100)
-        .map(lambda x: {"id": x["id"], "doubled": x["id"] * 2})
-        .map_batches(lambda batch: {"id": batch["id"], "doubled": batch["doubled"]})
-        .select_columns(["id"])
-        .limit(7)
-    )
-    result = ds.take_all()
-    expected = [{"id": i} for i in range(7)]
-    assert result == expected
-
-    # The plan should show limit pushed through all operations
-    plan_str = ds._plan._logical_plan.dag.dag_str
-    assert (
-        "Read[ReadRange] -> Limit[limit=7] -> MapRows[Map(<lambda>)] -> MapBatches[MapBatches(<lambda>)] -> Project[Project]"
-        == plan_str
-    )
-
-
 def test_limit_pushdown_union(ray_start_regular_shared_2_cpus):
     """Test limit pushdown behavior with Union operations."""
 
@@ -1472,7 +1418,7 @@ def test_limit_pushdown_union_maps_projects(ray_start_regular_shared_2_cpus):
          \                               /
           --------   Union   -------------   → Limit
     The limit should be pushed in front of each branch
-    (past MapBatches, MapRows, Project) while the original
+    (past MapRows, Project) while the original
     global Limit is preserved after the Union.
     """
     # Left branch.
@@ -1494,11 +1440,11 @@ def test_limit_pushdown_union_maps_projects(ray_start_regular_shared_2_cpus):
     ds = left.union(right).limit(3)
 
     expected_plan = (
-        "Read[ReadRange] -> Limit[limit=3] -> "
-        "MapBatches[MapBatches(<lambda>)] -> MapRows[Map(<lambda>)] -> "
+        "Read[ReadRange] -> "
+        "MapBatches[MapBatches(<lambda>)] -> Limit[limit=3] -> MapRows[Map(<lambda>)] -> "
         "Project[Project], "
-        "Read[ReadRange] -> Limit[limit=3] -> "
-        "MapBatches[MapBatches(<lambda>)] -> MapRows[Map(<lambda>)] -> "
+        "Read[ReadRange] -> "
+        "MapBatches[MapBatches(<lambda>)] -> Limit[limit=3] -> MapRows[Map(<lambda>)] -> "
         "Project[Project] -> Union[Union] -> Limit[limit=3]"
     )
 
