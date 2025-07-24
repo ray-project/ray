@@ -125,7 +125,9 @@ class MockFailurePolicy(FailurePolicy):
 
         super().__init__(failure_config)
 
-    def make_decision(self, error: TrainingFailedError) -> FailureDecision:
+    def make_decision(
+        self, training_failed_error: TrainingFailedError
+    ) -> FailureDecision:
         if self._decision_queue:
             return self._decision_queue.pop(0)
         return FailureDecision.NOOP

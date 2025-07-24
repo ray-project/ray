@@ -188,7 +188,7 @@ class TrainController:
 
         if optional_controller_error:
             failure_decision = self._failure_policy.make_decision(
-                error=optional_controller_error,
+                training_failed_error=optional_controller_error,
             )
             return self._execute_failure_decision(
                 failure_decision,
@@ -397,7 +397,7 @@ class TrainController:
                     worker_failures=worker_group_status.errors,
                 )
                 failure_decision = self._failure_policy.make_decision(
-                    error=worker_group_error,
+                    training_failed_error=worker_group_error,
                 )
                 return self._execute_failure_decision(
                     failure_decision, training_failed_error=worker_group_error

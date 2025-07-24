@@ -24,7 +24,7 @@ RETRYABLE_CONTROLLER_ERRORS = (
 class DefaultFailurePolicy(FailurePolicy):
     def __init__(self, failure_config: FailureConfig):
         super().__init__(failure_config)
-        self._running_failures = 0
+        self._worker_group_failures = 0
         self._controller_failures = 0
 
     def _log_decision(
@@ -68,8 +68,8 @@ class DefaultFailurePolicy(FailurePolicy):
                     else float("inf")
                 )
             else:
-                self._running_failures += 1
-                error_count = self._running_failures
+                self._worker_group_failures += 1
+                error_count = self._worker_group_failures
                 retry_limit = (
                     self.failure_config.max_failures
                     if self.failure_config.max_failures != -1

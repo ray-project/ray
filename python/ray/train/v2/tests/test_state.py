@@ -12,6 +12,7 @@ from ray.train.v2._internal.execution.controller.state import (
     ErroredState,
     FinishedState,
     InitializingState,
+    ReschedulingState,
     ResizingState,
     RestartingState,
     RunningState,
@@ -497,7 +498,7 @@ def test_callback_controller_state_transitions(ray_start_regular, callback):
         SchedulingState(
             scaling_decision=ResizeDecision(num_workers=4, resources_per_worker={})
         ),
-        RestartingState(
+        ReschedulingState(
             training_failed_error=ControllerError(WorkerGroupStartupTimeoutError(0))
         ),
         SchedulingState(
@@ -515,7 +516,7 @@ def test_callback_controller_state_transitions(ray_start_regular, callback):
         RunStatus.RUNNING,
         RunStatus.RESIZING,
         RunStatus.SCHEDULING,
-        RunStatus.SCHEDULING,
+        RunStatus.SCHEDULING,  # Rescheduling
         RunStatus.SCHEDULING,
         RunStatus.RUNNING,
         RunStatus.FINISHED,
