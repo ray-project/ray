@@ -299,12 +299,5 @@ def _save_packages_to_file(filepath, packages):
             f.write(package + "\n")
 
 
-def _save_file_as(input_file, output_file):
-    with open(input_file, "r") as f:
-        contents = f.read()
-    with open(output_file, "w") as f:
-        f.write(contents)
-
-
 if __name__ == "__main__":
     sys.exit(pytest.main(["-vv", __file__]))
