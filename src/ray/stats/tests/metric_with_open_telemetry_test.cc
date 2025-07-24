@@ -25,8 +25,11 @@ using OpenTelemetryMetricRecorder = ray::telemetry::OpenTelemetryMetricRecorder;
 using StatsConfig = ray::stats::StatsConfig;
 
 DECLARE_stats(metric_gauge_test);
-DEFINE_stats(
-    metric_gauge_test, "A test gauge metric", ("Tag1", "Tag2", "Tag3"), (), ray::stats::GAUGE);
+DEFINE_stats(metric_gauge_test,
+             "A test gauge metric",
+             ("Tag1", "Tag2", "Tag3"),
+             (),
+             ray::stats::GAUGE);
 
 static ray::stats::Gauge LegacyMetricGaugeTest("legacy_metric_gauge_test",
                                                "A legacy test gauge metric",
@@ -93,11 +96,12 @@ class MetricTest : public ::testing::Test {
 };
 
 TEST_F(MetricTest, TestGaugeMetric) {
-  StatsConfig::instance().SetGlobalTags({{"Tag3","GlobalValue"}});
+  StatsConfig::instance().SetGlobalTags({{"Tag3", "GlobalValue"}});
 
   ASSERT_TRUE(
       OpenTelemetryMetricRecorder::GetInstance().IsMetricRegistered("metric_gauge_test"));
-  STATS_metric_gauge_test.Record(42.0, {{"Tag1", "Value1"}, {"Tag2", "Value2"}, {"UnsupportedTag", "Value"}});
+  STATS_metric_gauge_test.Record(
+      42.0, {{"Tag1", "Value1"}, {"Tag2", "Value2"}, {"UnsupportedTag", "Value"}});
   LegacyMetricGaugeTest.Record(24.0, {{"Tag1"sv, "Value1"}, {"Tag2"sv, "Value2"}});
   // Test valid tags for a registered metric.
   ASSERT_EQ(GetObservableMetricValue("metric_gauge_test",
@@ -122,11 +126,11 @@ TEST_F(MetricTest, TestGaugeMetric) {
 
   // Verify that global tags are applied to a registered metric.
   // 'UnsupportedTag' is ignored because it wasn't part of the metric definition.
-  ASSERT_EQ(GetObservableMetricTag("metric_gauge_test"),
+  ASSERT_EQ(GetObservableMetricTags("metric_gauge_test"),
             {{"Tag1", "Value1"}, {"Tag2", "Value3"}, {"Tag3", "GlobalValue"}});
 
   // Verify that global tags are also applied to a legacy metric.
-  ASSERT_EQ(GetObservableMetricTag("legacy_metric_gauge_test"),
+  ASSERT_EQ(GetObservableMetricTags("legacy_metric_gauge_test"),
             {{"Tag1", "Value1"}, {"Tag2", "Value3"}, {"Tag3", "GlobalValue"}});
 }
 
