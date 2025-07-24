@@ -69,13 +69,14 @@ class LLMServer(InternalLLMServer):
 @PublicAPI(stability="alpha")
 class PDServer(PDProxyServer):
     """A server for prefill-decode disaggregation.
-    
-    This server acts as a proxy in a prefill-decode disaggregated system. 
-    For chat and completions, proxy sends the request to the prefill server 
+
+    This server acts as a proxy in a prefill-decode disaggregated system.
+    For chat and completions, proxy sends the request to the prefill server
     with max_tokens=1 and then sends the returned metadata to the decode server.
-    
+
     Args:
         prefill_server: The prefill server deployment handle.
         decode_server: The decode server deployment handle.
     """
+
     pass
