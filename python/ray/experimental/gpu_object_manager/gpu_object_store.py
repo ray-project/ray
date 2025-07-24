@@ -172,6 +172,8 @@ class GPUObjectStore:
     def _decrement_num_readers(self, obj_id: str):
         """
         Decrement the number of readers for a GPU object.
+        If `num_readers` reaches 0, the GPU object will be removed from the
+        GPU object store.
 
         Args:
             obj_id: The object ID of the GPU object.
