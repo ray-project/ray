@@ -5,22 +5,22 @@ from typing import List
 import subprocess
 import platform
 import runfiles
-from typing import Optional, Union
+from typing import Optional
 
-DEFAULT_UV_FLAGS = [
-    "--generate-hashes",
-    "--strip-extras",
-    "--no-strip-markers",
-    "--emit-index-url",
-    "--emit-find-links",
-    ["--unsafe-package", "ray"],
-    ["--unsafe-package", "grpcio-tools"],
-    ["--unsafe-package", "setuptools"],
-    ["--index-url", "https://pypi.org/simple"],
-    ["--extra-index-url", "https://download.pytorch.org/whl/cpu"],
-    ["--index-strategy", "unsafe-best-match"],
-    "--quiet",
-]
+DEFAULT_UV_FLAGS = """
+    --generate-hashes
+    --strip-extras
+    --no-strip-markers
+    --emit-index-url
+    --emit-find-links
+    --unsafe-package ray
+    --unsafe-package grpcio-tools
+    --unsafe-package setuptools
+    --index-url https://pypi.org/simple
+    --extra-index-url https://download.pytorch.org/whl/cpu
+    --index-strategy unsafe-best-match
+    --quiet
+""".split()
 
 
 @click.group(name="raydepsets")
@@ -57,7 +57,7 @@ class DependencySetManager:
         raise KeyError(f"Dependency set {name} not found")
 
     def exec_uv_cmd(self, cmd: str, args: List[str]) -> str:
-        cmd = f"{uv_binary()} pip {cmd} {_join_args(args)}"
+        cmd = f"{uv_binary()} pip {cmd} {' '.join(args)}"
         click.echo(f"Executing command: {cmd}")
         status = subprocess.run(cmd, shell=True)
         if status.returncode != 0:
@@ -109,46 +109,37 @@ class DependencySetManager:
         return (Path(self.workspace.dir) / path).as_posix()
 
 
-def _join_args(args: List[Union[str, List[str]]]) -> str:
-    flat_parts = []
-    for arg in args:
-        if isinstance(arg, str):
-            flat_parts.append(arg)
-        elif isinstance(arg, list):
-            flat_parts.extend(arg)
-        else:
-            raise TypeError(f"Unsupported type: {type(arg)}")
-    return " ".join(flat_parts)
-
-
-def _override_uv_flags(
-    flags: List[str], args: List[Union[str, List[str]]]
-) -> List[str]:
-    split_flags = _create_arg_list(flags)
-    for flag in split_flags:
+def _override_uv_flags(flags: List[str], args: List[str]) -> List[str]:
+    for flag in flags:
         for arg in args:
-            if isinstance(arg, str):
+            if flag.startswith("--"):
                 if flag == arg:
                     args.remove(arg)
-            elif isinstance(arg, list):
-                key = arg[0]
-                if flag[0] == key:
+            else:
+                if flag[0] == arg:
                     args.remove(arg)
-    return args + split_flags
+
+    return args + flags
 
 
-def _create_arg_list(flags: List[str]) -> List[Union[str, List[str]]]:
-    args = []
-    for flag in flags:
-        split_flag = flag.split(" ")
-        if len(split_flag) == 1:
-            args.append(split_flag[0])
-        else:
-            args.append([split_flag[0], split_flag[1]])
-    return args
+def _override_uv_flags(flags: List[str], args: List[str]) -> List[str]:
+    flag_names = {f.split()[0] for f in flags if f.startswith("--")}
+    new_args = []
+    skip_next = False
+
+    for arg in args:
+        if skip_next:
+            skip_next = False
+            continue
+        if arg in flag_names:
+            skip_next = True
+            continue
+        new_args.append(arg)
+
+    return new_args + flags
 
 
-def _append_uv_flags(flags: List[str], args: List[Union[str, List[str]]]) -> List[str]:
+def _append_uv_flags(flags: List[str], args: List[str]) -> List[str]:
     args.extend(flags)
     return args
 
