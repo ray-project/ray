@@ -1261,7 +1261,7 @@ class StandardAutoscaler:
             process_runner=self.process_runner,
             use_internal_ip=True,
             is_head_node=False,
-            docker_config=self.config.get("docker"),
+            docker_config=self._get_node_specific_docker_config(node_id),
             node_resources=self._node_resources(node_id),
             node_labels=self._node_labels(node_id),
             for_recovery=True,
@@ -1444,7 +1444,7 @@ class StandardAutoscaler:
         non_failed = set()
 
         node_type_mapping = {}
-
+        now = time.time()
         for node_id in self.non_terminated_nodes.all_node_ids:
             ip = self.provider.internal_ip(node_id)
             node_tags = self.provider.node_tags(node_id)
@@ -1467,9 +1467,7 @@ class StandardAutoscaler:
 
             node_type_mapping[ip] = node_type
 
-            # TODO (Alex): If a node's raylet has died, it shouldn't be marked
-            # as active.
-            is_active = self.load_metrics.is_active(ip)
+            is_active = self.heartbeat_on_time(node_id, now)
             if is_active:
                 active_nodes[node_type] += 1
                 non_failed.add(node_id)

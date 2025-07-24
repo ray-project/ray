@@ -25,7 +25,6 @@ spec:
         cpu: "500m"
         memory: "512Mi"
   headGroupSpec:
-    rayStartParams: {}
     template:
       spec:
         containers:
@@ -55,7 +54,6 @@ spec:
     minReplicas: 1
     maxReplicas: 10
     groupName: small-group
-    rayStartParams: {}
     template:
       spec:
         containers:

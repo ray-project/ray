@@ -7,8 +7,10 @@ import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pytest
+from packaging.version import parse as parse_version
 
 import ray
+from ray._private.arrow_utils import get_pyarrow_version
 from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
 from ray.data._internal.execution.interfaces.op_runtime_metrics import OpRuntimeMetrics
 from ray.data._internal.execution.operators.base_physical_operator import (
@@ -59,6 +61,24 @@ from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.test_util import _check_usage_record, get_parquet_read_logical_op
 from ray.data.tests.util import column_udf, extract_values, named_values
 from ray.tests.conftest import *  # noqa
+
+
+def _should_skip_huggingface_test():
+    """Check if we should skip the HuggingFace test due to version incompatibility."""
+    pyarrow_version = get_pyarrow_version()
+    if pyarrow_version is None:
+        return False
+
+    try:
+        datasets_version = __import__("datasets").__version__
+        if datasets_version is None:
+            return False
+
+        return pyarrow_version < parse_version("12.0.0") and parse_version(
+            datasets_version
+        ) >= parse_version("3.0.0")
+    except (ImportError, AttributeError):
+        return False
 
 
 def _check_valid_plan_and_result(
@@ -815,24 +835,6 @@ def test_zip_e2e(ray_start_regular_shared_2_cpus, num_blocks1, num_blocks2):
     _check_usage_record(["ReadRange", "Zip"])
 
 
-def test_from_dask_e2e(ray_start_regular_shared_2_cpus):
-    import dask.dataframe as dd
-
-    df = pd.DataFrame({"one": list(range(100)), "two": list(range(100))})
-    ddf = dd.from_pandas(df, npartitions=10)
-    ds = ray.data.from_dask(ddf)
-    # `ds.take_all()` triggers execution with new backend, which is
-    # needed for checking operator usage below.
-    assert len(ds.take_all()) == len(df)
-    dfds = ds.to_pandas()
-    assert df.equals(dfds)
-
-    # Underlying implementation uses `FromPandas` operator
-    assert "FromPandas" in ds.stats()
-    assert ds._plan._logical_plan.dag.name == "FromPandas"
-    _check_usage_record(["FromPandas"])
-
-
 def test_from_modin_e2e(ray_start_regular_shared_2_cpus):
     import modin.pandas as mopd
 
@@ -955,6 +957,10 @@ def test_from_arrow_refs_e2e(ray_start_regular_shared_2_cpus):
     _check_usage_record(["FromArrow"])
 
 
+@pytest.mark.skipif(
+    _should_skip_huggingface_test,
+    reason="Skip due to HuggingFace datasets >= 3.0.0 requiring pyarrow >= 12.0.0",
+)
 def test_from_huggingface_e2e(ray_start_regular_shared_2_cpus):
     import datasets
 

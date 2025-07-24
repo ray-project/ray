@@ -25,7 +25,6 @@
 #include "ray/gcs/pb_util.h"
 #include "ray/stats/stats.h"
 #include "ray/util/event.h"
-#include "ray/util/event_label.h"
 #include "ray/util/logging.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
@@ -408,7 +407,7 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
           << " has missed too many heartbeats from it. This can happen when a "
              "\t(1) raylet crashes unexpectedly (OOM, etc.) \n"
           << "\t(2) raylet has lagging heartbeats due to slow network or busy workload.";
-      RAY_EVENT(ERROR, EL_RAY_NODE_REMOVED)
+      RAY_EVENT(ERROR, "RAY_NODE_REMOVED")
               .WithField("node_id", node_id.Hex())
               .WithField("ip", removed_node->node_manager_address())
           << error_message.str();
@@ -508,6 +507,29 @@ std::string GcsNodeManager::DebugString() const {
          << "\n- GetAllNodeInfo request count: "
          << counts_[CountType::GET_ALL_NODE_INFO_REQUEST];
   return stream.str();
+}
+
+void GcsNodeManager::UpdateAliveNode(
+    const NodeID &node_id,
+    const syncer::ResourceViewSyncMessage &resource_view_sync_message) {
+  auto maybe_node_info = GetAliveNode(node_id);
+  if (maybe_node_info == absl::nullopt) {
+    return;
+  }
+
+  auto snapshot = maybe_node_info.value()->mutable_state_snapshot();
+
+  if (resource_view_sync_message.idle_duration_ms() > 0) {
+    snapshot->set_state(rpc::NodeSnapshot::IDLE);
+    snapshot->set_idle_duration_ms(resource_view_sync_message.idle_duration_ms());
+  } else {
+    snapshot->set_state(rpc::NodeSnapshot::ACTIVE);
+    snapshot->mutable_node_activity()->CopyFrom(
+        resource_view_sync_message.node_activity());
+  }
+  if (resource_view_sync_message.is_draining()) {
+    snapshot->set_state(rpc::NodeSnapshot::DRAINING);
+  }
 }
 
 }  // namespace gcs

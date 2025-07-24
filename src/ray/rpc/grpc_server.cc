@@ -42,8 +42,7 @@ void GrpcServer::Init() {
 }
 
 void GrpcServer::Shutdown() {
-  if (!is_closed_) {
-    shutdown_ = true;
+  if (!is_shutdown_) {
     // Drain the executor threads.
     // Shutdown the server with an immediate deadline.
     // TODO(edoakes): do we want to do this in all cases?
@@ -54,7 +53,7 @@ void GrpcServer::Shutdown() {
     for (auto &polling_thread : polling_threads_) {
       polling_thread.join();
     }
-    is_closed_ = true;
+    is_shutdown_ = true;
     RAY_LOG(DEBUG) << "gRPC server of " << name_ << " shutdown.";
     server_.reset();
   }
@@ -169,7 +168,7 @@ void GrpcServer::Run() {
     polling_threads_.emplace_back(&GrpcServer::PollEventsFromCompletionQueue, this, i);
   }
   // Set the server as running.
-  is_closed_ = false;
+  is_shutdown_ = false;
 }
 
 void GrpcServer::RegisterService(std::unique_ptr<grpc::Service> &&grpc_service) {
@@ -197,11 +196,9 @@ void GrpcServer::PollEventsFromCompletionQueue(int index) {
     auto deadline = gpr_time_add(gpr_now(GPR_CLOCK_REALTIME),
                                  gpr_time_from_millis(250, GPR_TIMESPAN));
     auto status = cqs_[index]->AsyncNext(&tag, &ok, deadline);
-    if (status == grpc::CompletionQueue::SHUTDOWN ||
-        (status == grpc::CompletionQueue::TIMEOUT && shutdown_)) {
-      // If we timed out and shutdown, then exit immediately. This should not
-      // be needed, but gRPC seems to not return SHUTDOWN correctly in these
-      // cases (e.g., test_wait will hang on shutdown without this check).
+    if (status == grpc::CompletionQueue::SHUTDOWN) {
+      // If the completion queue status is SHUTDOWN, meaning the queue has been
+      // drained. We can now exit the loop.
       break;
     } else if (status == grpc::CompletionQueue::TIMEOUT) {
       continue;

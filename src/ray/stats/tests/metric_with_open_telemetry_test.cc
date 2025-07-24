@@ -20,6 +20,7 @@
 namespace ray {
 namespace telemetry {
 
+using namespace std::literals;
 using OpenTelemetryMetricRecorder = ray::telemetry::OpenTelemetryMetricRecorder;
 using StatsConfig = ray::stats::StatsConfig;
 
@@ -27,12 +28,43 @@ DECLARE_stats(metric_gauge_test);
 DEFINE_stats(
     metric_gauge_test, "A test gauge metric", ("Tag1", "Tag2"), (), ray::stats::GAUGE);
 
+static ray::stats::Gauge LegacyMetricGaugeTest("legacy_metric_gauge_test",
+                                               "A legacy test gauge metric",
+                                               "",
+                                               {"Tag1", "Tag2"});
+
 DECLARE_stats(metric_counter_test);
 DEFINE_stats(metric_counter_test,
              "A test counter metric",
              ("Tag1", "Tag2"),
              (),
              ray::stats::COUNT);
+
+static ray::stats::Count LegacyMetricCounterTest("legacy_metric_counter_test",
+                                                 "A legacy test counter metric",
+                                                 "",
+                                                 {"Tag1", "Tag2"});
+
+DECLARE_stats(metric_sum_test);
+DEFINE_stats(metric_sum_test, "A test sum metric", ("Tag1", "Tag2"), (), ray::stats::SUM);
+
+static ray::stats::Sum LegacyMetricSumTest("legacy_metric_sum_test",
+                                           "A legacy test sum metric",
+                                           "",
+                                           {"Tag1", "Tag2"});
+
+DECLARE_stats(metric_histogram_test);
+DEFINE_stats(metric_histogram_test,
+             "A test histogram metric",
+             ("Tag1", "Tag2"),
+             ({1, 10, 100, 1000, 10000}),
+             ray::stats::HISTOGRAM);
+
+static ray::stats::Histogram LegacyMetricHistogramTest("legacy_metric_histogram_test",
+                                                       "A legacy test histogram metric",
+                                                       "",
+                                                       {1, 10, 100, 1000, 10000},
+                                                       {"Tag1", "Tag2"});
 
 class MetricTest : public ::testing::Test {
  public:
@@ -45,15 +77,49 @@ class MetricTest : public ::testing::Test {
     }
     StatsConfig::instance().SetIsInitialized(true);
   }
+
+  std::optional<double> GetObservableMetricValue(
+      const std::string &name,
+      const absl::flat_hash_map<std::string, std::string> &tags) {
+    auto &recorder = OpenTelemetryMetricRecorder::GetInstance();
+    std::lock_guard<std::mutex> lock(recorder.mutex_);
+    auto it = recorder.observations_by_name_.find(name);
+    if (it == recorder.observations_by_name_.end()) {
+      return std::nullopt;  // Not registered
+    }
+    auto tag_it = it->second.find(tags);
+    if (tag_it != it->second.end()) {
+      return tag_it->second;  // Get the value
+    }
+    return std::nullopt;
+  }
 };
 
 TEST_F(MetricTest, TestGaugeMetric) {
   ASSERT_TRUE(
       OpenTelemetryMetricRecorder::GetInstance().IsMetricRegistered("metric_gauge_test"));
   STATS_metric_gauge_test.Record(42.0, {{"Tag1", "Value1"}, {"Tag2", "Value2"}});
-  ASSERT_EQ(OpenTelemetryMetricRecorder::GetInstance().GetObservableMetricValue(
-                "metric_gauge_test", {{"Tag1", "Value1"}, {"Tag2", "Value2"}}),
+  LegacyMetricGaugeTest.Record(24.0, {{"Tag1"sv, "Value1"}, {"Tag2"sv, "Value2"}});
+  // Test valid tags for a registered metric.
+  ASSERT_EQ(GetObservableMetricValue("metric_gauge_test",
+                                     {{"Tag1", "Value1"}, {"Tag2", "Value2"}}),
             42.0);
+  // Test invalid tags for a registered metric.
+  ASSERT_EQ(GetObservableMetricValue("metric_gauge_test",
+                                     {{"Tag1", "Value1"}, {"Tag2", "Value3"}}),
+            std::nullopt);
+  // Test unregistered metric.
+  ASSERT_EQ(GetObservableMetricValue("metric_gauge_test_unregistered",
+                                     {{"Tag1", "Value1"}, {"Tag2", "Value2"}}),
+            std::nullopt);
+  // Test valid tags for a legacy metric.
+  ASSERT_EQ(GetObservableMetricValue("legacy_metric_gauge_test",
+                                     {{"Tag1", "Value1"}, {"Tag2", "Value2"}}),
+            24.0);
+  // Test invalid tags for a legacy metric.
+  ASSERT_EQ(GetObservableMetricValue("legacy_metric_gauge_test",
+                                     {{"Tag1", "Value1"}, {"Tag2", "Value3"}}),
+            std::nullopt);
 }
 
 TEST_F(MetricTest, TestCounterMetric) {
@@ -63,6 +129,33 @@ TEST_F(MetricTest, TestCounterMetric) {
   // because open telemetry does not provide a way to retrieve the value of a counter.
   // Checking value is performed via e2e tests instead (e.g., in test_metrics_agent.py).
   STATS_metric_counter_test.Record(100.0, {{"Tag1", "Value1"}, {"Tag2", "Value2"}});
+  LegacyMetricCounterTest.Record(100.0, {{"Tag1"sv, "Value1"}, {"Tag2"sv, "Value2"}});
+  ASSERT_TRUE(OpenTelemetryMetricRecorder::GetInstance().IsMetricRegistered(
+      "legacy_metric_counter_test"));
+}
+
+TEST_F(MetricTest, TestSumMetric) {
+  ASSERT_TRUE(
+      OpenTelemetryMetricRecorder::GetInstance().IsMetricRegistered("metric_sum_test"));
+  // We only test that recording is not crashing. The actual value is not checked
+  // because open telemetry does not provide a way to retrieve the value of a counter.
+  // Checking value is performed via e2e tests instead (e.g., in test_metrics_agent.py).
+  STATS_metric_sum_test.Record(200.0, {{"Tag1", "Value1"}, {"Tag2", "Value2"}});
+  LegacyMetricSumTest.Record(200.0, {{"Tag1"sv, "Value1"}, {"Tag2"sv, "Value2"}});
+  ASSERT_TRUE(OpenTelemetryMetricRecorder::GetInstance().IsMetricRegistered(
+      "legacy_metric_sum_test"));
+}
+
+TEST_F(MetricTest, TestHistogramMetric) {
+  ASSERT_TRUE(OpenTelemetryMetricRecorder::GetInstance().IsMetricRegistered(
+      "metric_histogram_test"));
+  // We only test that recording is not crashing. The actual value is not checked
+  // because open telemetry does not provide a way to retrieve the value of a counter.
+  // Checking value is performed via e2e tests instead (e.g., in test_metrics_agent.py).
+  STATS_metric_histogram_test.Record(300.0, {{"Tag1", "Value1"}, {"Tag2", "Value2"}});
+  LegacyMetricHistogramTest.Record(300.0, {{"Tag1"sv, "Value1"}, {"Tag2"sv, "Value2"}});
+  ASSERT_TRUE(OpenTelemetryMetricRecorder::GetInstance().IsMetricRegistered(
+      "legacy_metric_histogram_test"));
 }
 
 }  // namespace telemetry

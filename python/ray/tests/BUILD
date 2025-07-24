@@ -211,7 +211,6 @@ py_test_module_list(
         "test_list_actors_3.py",
         "test_list_actors_4.py",
         "test_multiprocessing.py",
-        "test_object_assign_owner.py",
         "test_placement_group.py",
         "test_placement_group_2.py",
         "test_placement_group_3.py",
@@ -506,7 +505,6 @@ py_test_module_list(
         "test_actor_out_of_order.py",
         "test_annotations.py",
         "test_args.py",
-        "test_array.py",
         "test_async_compat.py",
         "test_asyncio_cluster.py",
         "test_autoscaling_policy.py",
@@ -852,7 +850,6 @@ py_test_module_list(
         "test_dataclient_disconnect.py",
         "test_iter.py",
         "test_placement_group.py",
-        "test_scheduling_performance.py",
         "test_state_api_2.py",
         "test_task_events.py",
         "test_unavailable_actors.py",
@@ -1228,6 +1225,7 @@ py_test(
         "exclusive",
         "medium_size_python_tests_k_to_z",
         "no_windows",
+        "serve_tracing",
         "team:serve",
     ],
     deps = [
@@ -1290,7 +1288,6 @@ py_test_module_list(
         "RAY_DEBUG_MODE": "1",
     },
     files = [
-        "test_array.py",
         "test_object_spilling.py",
         "test_object_spilling_2.py",
         "test_object_spilling_3.py",
@@ -1312,7 +1309,6 @@ py_test_module_list(
 py_test_module_list(
     size = "large",
     files = [
-        "test_array.py",
         "test_object_spilling.py",
         "test_object_spilling_2.py",
         "test_object_spilling_3.py",
