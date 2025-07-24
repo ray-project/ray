@@ -21,6 +21,7 @@ from ray.data._internal.execution.operators.base_physical_operator import (
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.zip_operator import ZipOperator
 from ray.data._internal.execution.util import memory_string
+from ray.data._internal.util import GiB
 from ray.data.context import DataContext
 from ray.util.debug import log_once
 
@@ -132,8 +133,8 @@ class ResourceManager:
             ):
                 logger.warning(
                     f"{WARN_PREFIX} Ray's object store is configured to use only "
-                    f"{object_store_fraction:.1%} of available memory ({object_store_memory/1e9:.1f}GB "
-                    f"out of {total_memory/1e9:.1f}GB total). For optimal Ray Data performance, "
+                    f"{object_store_fraction:.1%} of available memory ({object_store_memory/GiB:.1f}GiB "
+                    f"out of {total_memory/GiB:.1f}GiB total). For optimal Ray Data performance, "
                     f"we recommend setting the object store to at least 50% of available memory. "
                     f"You can do this by setting the 'object_store_memory' parameter when calling "
                     f"ray.init() or by setting the RAY_DEFAULT_OBJECT_STORE_MEMORY_PROPORTION environment variable."
