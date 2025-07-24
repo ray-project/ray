@@ -341,7 +341,7 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
     }
   }
 
-  bool release_resources_during_get = 
+  bool release_resources_during_get =
       (raylet_client_ != nullptr && ctx.ShouldReleaseResourcesOnBlockingCalls());
   // Wait for remaining objects (or timeout).
   if (release_resources_during_get) {
