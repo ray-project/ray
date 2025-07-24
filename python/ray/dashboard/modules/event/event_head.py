@@ -6,7 +6,7 @@ from collections import OrderedDict, defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from itertools import islice
-from typing import Dict, Union, List
+from typing import Dict, List, Union
 
 import aiohttp.web
 
@@ -23,8 +23,8 @@ from ray.dashboard.consts import (
 )
 from ray.dashboard.modules.event.event_utils import monitor_events, parse_event_strings
 from ray.dashboard.state_api_utils import do_filter, handle_list_api
-from ray.dashboard.subprocesses.routes import SubprocessRouteTable as routes
 from ray.dashboard.subprocesses.module import SubprocessModule
+from ray.dashboard.subprocesses.routes import SubprocessRouteTable as routes
 from ray.util.state.common import ClusterEventState, ListApiOptions, ListApiResponse
 
 logger = logging.getLogger(__name__)

@@ -67,6 +67,11 @@ class TorchDistribution(Distribution, abc.ABC):
         )
         return rsample
 
+    @classmethod
+    @override(Distribution)
+    def from_logits(cls, logits: TensorType, **kwargs) -> "TorchDistribution":
+        return cls(logits=logits, **kwargs)
+
 
 @DeveloperAPI
 class TorchCategorical(TorchDistribution):
@@ -96,7 +101,7 @@ class TorchCategorical(TorchDistribution):
 
     Args:
         logits: Event log probabilities (unnormalized)
-        probs: The probablities of each event.
+        probs: The probabilities of each event.
         temperature: In case of using logits, this parameter can be used to determine
             the sharpness of the distribution. i.e.
             ``probs = softmax(logits / temperature)``. The temperature must be strictly
@@ -147,11 +152,6 @@ class TorchCategorical(TorchDistribution):
             )
         one_hot_sample = self._one_hot.sample(sample_shape)
         return (one_hot_sample - self.probs).detach() + self.probs
-
-    @classmethod
-    @override(Distribution)
-    def from_logits(cls, logits: TensorType, **kwargs) -> "TorchCategorical":
-        return TorchCategorical(logits=logits, **kwargs)
 
     def to_deterministic(self) -> "TorchDeterministic":
         if self.probs is not None:
@@ -234,7 +234,7 @@ class TorchDiagGaussian(TorchDistribution):
     def from_logits(cls, logits: TensorType, **kwargs) -> "TorchDiagGaussian":
         loc, log_std = logits.chunk(2, dim=-1)
         scale = log_std.exp()
-        return TorchDiagGaussian(loc=loc, scale=scale)
+        return cls(loc=loc, scale=scale)
 
     def to_deterministic(self) -> "TorchDeterministic":
         return TorchDeterministic(loc=self.loc)
@@ -334,7 +334,7 @@ class TorchSquashedGaussian(TorchDistribution):
         # Assert that `low` is smaller than `high`.
         assert np.all(np.less(low, high))
         # Return class instance.
-        return TorchSquashedGaussian(loc=loc, scale=scale, low=low, high=high)
+        return cls(loc=loc, scale=scale, low=low, high=high, **kwargs)
 
     def to_deterministic(self) -> Distribution:
         return TorchDeterministic(loc=self.loc)
@@ -407,11 +407,6 @@ class TorchDeterministic(Distribution):
     def required_input_dim(space: gym.Space, **kwargs) -> int:
         assert isinstance(space, gym.spaces.Box)
         return int(np.prod(space.shape, dtype=np.int32))
-
-    @classmethod
-    @override(Distribution)
-    def from_logits(cls, logits: TensorType, **kwargs) -> "TorchDeterministic":
-        return TorchDeterministic(loc=logits)
 
     def to_deterministic(self) -> "TorchDeterministic":
         return self
@@ -507,19 +502,47 @@ class TorchMultiCategorical(Distribution):
             for logits in torch.split(logits, input_lens, dim=-1)
         ]
 
-        return TorchMultiCategorical(categoricals=categoricals)
+        return cls(categoricals=categoricals)
 
     def to_deterministic(self) -> "TorchDeterministic":
-        if self._cats[0].probs is not None:
-            probs_or_logits = nn.utils.rnn.pad_sequence(
-                [cat.logits.t() for cat in self._cats], padding_value=-torch.inf
-            )
-        else:
-            probs_or_logits = nn.utils.rnn.pad_sequence(
-                [cat.logits.t() for cat in self._cats], padding_value=-torch.inf
-            )
+        """Converts `TorchMultiCategorical` into `TorchDeterministic`."""
+        logits_list = [cat.logits for cat in self._cats]
+        # Check, if the module is recurrent.
+        is_recurrent = logits_list[0].dim() == 3  # (B, T, K_i)
 
-        return TorchDeterministic(loc=torch.argmax(probs_or_logits, dim=0))
+        # Determine max number of categories across all categorical distributions
+        max_K = max(logits.shape[-1] for logits in logits_list)
+
+        padded_logits = []
+        for logits in logits_list:
+            # Pad last dimension (category dim) to max_K
+            pad_width = max_K - logits.shape[-1]
+            # If the distributions have different number of categories, pad.
+            if pad_width > 0:
+                # Pad only last dimension
+                pad_dims = (0, pad_width)
+                logits = nn.functional.pad(logits, pad_dims, value=-float("inf"))
+            padded_logits.append(logits)
+
+        # Stack along new dim=0 (categorical dimension).
+        # Shape: (num_components, B, T, max_K) or (num_components, B, max_K)
+        stacked = torch.stack(padded_logits, dim=0)
+
+        # Move categorical dim (0) to last if needed, and take argmax.
+        if is_recurrent:
+            # Current shape is (num_components, B, T, K) and we want to have
+            # (B, T, num_components) via argmax over last dimension. So take
+            # argmax over last dim (K), then permute.
+            argmax = torch.argmax(stacked, dim=-1)  # shape: (num_components, B, T)
+            loc = argmax.permute(1, 2, 0)  # (B, T, num_components)
+        else:
+            # stacked: (num_components, B, K)
+            # → argmax over last dim (K), shape: (num_components, B)
+            # → transpose to (B, num_components)
+            argmax = torch.argmax(stacked, dim=-1)  # (num_components, B)
+            loc = argmax.transpose(0, 1)  # (B, num_components)
+
+        return TorchDeterministic(loc=loc)
 
 
 @DeveloperAPI
@@ -670,7 +693,7 @@ class TorchMultiDistribution(Distribution):
             child_distribution_cls_struct, child_distribution_list
         )
 
-        return TorchMultiDistribution(
+        return cls(
             child_distribution_struct=child_distribution_struct,
         )
 

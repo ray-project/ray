@@ -5,11 +5,7 @@ import pandas as pd
 
 from ray.data import Dataset
 from ray.data.preprocessor import Preprocessor
-from ray.data.preprocessors.utils import (
-    TokenCounter,
-    simple_hash,
-    simple_split_tokenizer,
-)
+from ray.data.preprocessors.utils import simple_hash, simple_split_tokenizer
 from ray.util.annotations import PublicAPI
 
 
@@ -258,14 +254,20 @@ class CountVectorizer(Preprocessor):
         )
 
     def _fit(self, dataset: Dataset) -> Preprocessor:
-        agg_fns = [
-            TokenCounter(on=col, tokenization_fn=self.tokenization_fn)
-            for col in self.columns
-        ]
-        aggregated_counts = dataset.aggregate(*agg_fns)
-        total_counts = {
-            col: aggregated_counts[f"token_counter({col})"] for col in self.columns
-        }
+        def get_pd_value_counts(df: pd.DataFrame) -> List[Counter]:
+            def get_token_counts(col):
+                token_series = df[col].apply(self.tokenization_fn)
+                tokens = token_series.sum()
+                return Counter(tokens)
+
+            return {col: [get_token_counts(col)] for col in self.columns}
+
+        value_counts = dataset.map_batches(get_pd_value_counts, batch_format="pandas")
+        total_counts = {col: Counter() for col in self.columns}
+        for batch in value_counts.iter_batches(batch_size=None):
+            for col, counters in batch.items():
+                for counter in counters:
+                    total_counts[col].update(counter)
 
         def most_common(counter: Counter, n: int):
             return Counter(dict(counter.most_common(n)))

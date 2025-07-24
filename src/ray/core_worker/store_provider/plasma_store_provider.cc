@@ -21,6 +21,8 @@
 #include <vector>
 
 #include "ray/common/ray_config.h"
+#include "ray/common/status.h"
+#include "ray/common/status_or.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
@@ -65,7 +67,13 @@ CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
     bool warmup,
     std::function<std::string()> get_current_call_site)
     : raylet_client_(raylet_client),
-      store_client_(std::make_shared<plasma::PlasmaClient>()),
+      // We can turn on exit_on_connection_failure on for the core worker plasma
+      // client to early exit core worker after the raylet's death because on the
+      // raylet side, we never proactively close the plasma store connection even
+      // during shutdown. So any error from the raylet side should be a sign of raylet
+      // death.
+      store_client_(
+          std::make_shared<plasma::PlasmaClient>(/*exit_on_connection_failure*/ true)),
       reference_counter_(reference_counter),
       check_signals_(std::move(check_signals)) {
   if (get_current_call_site != nullptr) {
@@ -136,11 +144,13 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
                                             /*device_num=*/0);
 
   if (status.IsObjectStoreFull()) {
+    StatusOr<std::string> memory_usage = GetMemoryUsage();
+    RAY_CHECK_OK(memory_usage.status()) << "Unable to communicate with the Plasma Store.";
     RAY_LOG(ERROR) << "Failed to put object " << object_id
                    << " in object store because it "
                    << "is full. Object size is " << data_size << " bytes.\n"
                    << "Plasma store status:\n"
-                   << MemoryUsageString() << "\n---\n"
+                   << memory_usage.value() << "\n---\n"
                    << "--- Tip: Use the `ray memory` command to list active objects "
                       "in the cluster."
                    << "\n---\n";
@@ -425,8 +435,8 @@ Status CoreWorkerPlasmaStoreProvider::Delete(
   return raylet_client_->FreeObjects(object_id_vector, local_only);
 }
 
-std::string CoreWorkerPlasmaStoreProvider::MemoryUsageString() {
-  return store_client_->DebugString();
+StatusOr<std::string> CoreWorkerPlasmaStoreProvider::GetMemoryUsage() {
+  return store_client_->GetMemoryUsage();
 }
 
 absl::flat_hash_map<ObjectID, std::pair<int64_t, std::string>>

@@ -76,15 +76,16 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
  public:
   ActorTaskSubmitter(rpc::CoreWorkerClientPool &core_worker_client_pool,
                      CoreWorkerMemoryStore &store,
-                     TaskFinisherInterface &task_finisher,
+                     TaskManagerInterface &task_manager,
                      ActorCreatorInterface &actor_creator,
+                     const TensorTransportGetter &tensor_transport_getter,
                      std::function<void(const ActorID &, int64_t)> warn_excess_queueing,
                      instrumented_io_context &io_service,
                      std::shared_ptr<ReferenceCounterInterface> reference_counter)
       : core_worker_client_pool_(core_worker_client_pool),
         actor_creator_(actor_creator),
-        resolver_(store, task_finisher, actor_creator),
-        task_finisher_(task_finisher),
+        resolver_(store, task_manager, actor_creator, tensor_transport_getter),
+        task_manager_(task_manager),
         warn_excess_queueing_(warn_excess_queueing),
         io_service_(io_service),
         reference_counter_(reference_counter) {
@@ -249,6 +250,11 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
   /// Retry the CancelTask in milliseconds.
   void RetryCancelTask(TaskSpecification task_spec, bool recursive, int64_t milliseconds);
 
+  /// Queue the streaming generator up for resubmission.
+  /// \return true if the task is still executing and the submitter agrees to resubmit
+  /// when it finishes. false case is a TODO.
+  bool QueueGeneratorForResubmit(const TaskSpecification &spec);
+
  private:
   struct PendingTaskWaitingForDeathInfo {
     int64_t deadline_ms;
@@ -266,13 +272,13 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
           status(std::move(status)),
           timeout_error_info(std::move(timeout_error_info)) {}
   };
-  /// A helper function to get task finisher without holding mu_
+  /// A helper function to get task manager without holding mu_
   /// We should use this function when access
   /// - FailOrRetryPendingTask
   /// - FailPendingTask
-  TaskFinisherInterface &GetTaskFinisherWithoutMu() {
+  TaskManagerInterface &GetTaskManagerWithoutMu() {
     mu_.AssertNotHeld();
-    return task_finisher_;
+    return task_manager_;
   }
 
   struct ClientQueue {
@@ -400,8 +406,9 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
   /// Disconnect the RPC client for an actor.
   void DisconnectRpcClient(ClientQueue &queue) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
-  /// Fail all in-flight tasks.
-  void FailInflightTasks(
+  /// Mark all in-flight tasks as failed if the actor was restarted. This will cause the
+  /// tasks to be retried as usual.
+  void FailInflightTasksOnRestart(
       const absl::flat_hash_map<TaskAttempt, rpc::ClientCallback<rpc::PushTaskReply>>
           &inflight_task_callbacks) ABSL_LOCKS_EXCLUDED(mu_);
 
@@ -423,11 +430,14 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
 
   absl::flat_hash_map<ActorID, ClientQueue> client_queues_ ABSL_GUARDED_BY(mu_);
 
+  // Generators that are currently running and need to be resubmitted.
+  absl::flat_hash_set<TaskID> generators_to_resubmit_ ABSL_GUARDED_BY(mu_);
+
   /// Resolve object dependencies.
   LocalDependencyResolver resolver_;
 
   /// Used to complete tasks.
-  TaskFinisherInterface &task_finisher_;
+  TaskManagerInterface &task_manager_;
 
   /// Used to warn of excessive queueing.
   std::function<void(const ActorID &, uint64_t num_queued)> warn_excess_queueing_;

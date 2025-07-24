@@ -1,7 +1,10 @@
-# Entity Recognition with LLMs
+# LLM training and inference
 
+<a href="https://console.anyscale.com/register/ha?render_flow=ray&utm_source=ray_docs&utm_medium=docs&utm_campaign=entity-recognition-with-llms&redirectTo=/v2/template-preview/entity-recognition-with-llms\">
+<img src="https://raw.githubusercontent.com/ray-project/ray/c34b74c22a9390aa89baf80815ede59397786d2e/doc/source/_static/img/run-on-anyscale.svg" alt=\"Run on Anyscale\">
+</a>
+<br></br>
 <div align="left">
-<a target="_blank" href="https://console.anyscale.com/"><img src="https://img.shields.io/badge/🚀 Run_on-Anyscale-9hf"></a>&nbsp;
 <a href="https://github.com/anyscale/e2e-llm-workflows" role="button"><img src="https://img.shields.io/static/v1?label=&amp;message=View%20On%20GitHub&amp;color=586069&amp;logo=github&amp;labelColor=2f363d"></a>&nbsp;
 </div>
 
@@ -459,7 +462,7 @@ USE_RAY=1 llamafactory-cli train lora_sft_ray.yaml
         │ train_loop_config/args/ray_run_name                                                     lora_sft_ray │
         │ train_loop_config/args/ray_storage_path                                         ...orage/viggo/saves │
         │ train_loop_config/args/resources_per_worker/GPU                                                    1 │
-        │ train_loop_config/args/resources_per_worker/anyscale/accelerator_shape:4xL4                      1 │
+        │ train_loop_config/args/resources_per_worker/anyscale/accelerator_shape:4xA10G                      1 │
         │ train_loop_config/args/resume_from_checkpoint                                                        │
         │ train_loop_config/args/save_only_model                                                         False │
         │ train_loop_config/args/save_steps                                                                500 │
@@ -1034,7 +1037,7 @@ And of course, you can observe the running service, the deployments, and metrics
 
 <div class="alert alert-info">
 
-💡 See [more examples](https://docs.ray.io/en/latest/serve/llm/overview.html) and the [API reference](https://docs.ray.io/en/latest/serve/llm/api.html) for advanced guides on topics like structured outputs (like JSON), vision LMs, multi-LoRA on shared base models, using other inference engines (like `sglang`), fast model loading, etc.
+💡 See [more examples](https://docs.ray.io/en/latest/serve/llm/serving-llms.html) and the [API reference](https://docs.ray.io/en/latest/serve/llm/api.html) for advanced guides on topics like structured outputs (like JSON), vision LMs, multi-LoRA on shared base models, using other inference engines (like `sglang`), fast model loading, etc.
 
 </div>
 

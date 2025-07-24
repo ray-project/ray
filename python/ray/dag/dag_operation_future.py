@@ -1,10 +1,8 @@
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, Generic, Optional, TypeVar, Dict
+from typing import Any, Generic, TypeVar, Dict
 from ray.util.annotations import DeveloperAPI
+from ray.experimental.channel.accelerator_context import AcceleratorContext
 
-
-if TYPE_CHECKING:
-    import cupy as cp
 
 T = TypeVar("T")
 
@@ -100,25 +98,21 @@ class GPUFuture(DAGOperationFuture[Any]):
         if fut_id in GPUFuture.gpu_futures:
             GPUFuture.gpu_futures.pop(fut_id).destroy_event()
 
-    def __init__(
-        self, buf: Any, fut_id: int, stream: Optional["cp.cuda.Stream"] = None
-    ):
+    def __init__(self, buf: Any, fut_id: int, stream: Any = None):
         """
         Initialize a GPU future on the given stream.
 
         Args:
             buf: The buffer to return when the future is resolved.
             fut_id: The future ID to cache the future.
-            stream: The CUDA stream to record the event on, this event is waited
+            stream: The torch stream to record the event on, this event is waited
                 on when the future is resolved. If None, the current stream is used.
         """
-        import cupy as cp
-
         if stream is None:
-            stream = cp.cuda.get_current_stream()
+            stream = AcceleratorContext.get().current_stream()
 
         self._buf = buf
-        self._event = cp.cuda.Event()
+        self._event = AcceleratorContext.get().create_event()
         self._event.record(stream)
         self._fut_id = fut_id
         self._waited: bool = False
@@ -131,9 +125,7 @@ class GPUFuture(DAGOperationFuture[Any]):
         Wait for the future on the current CUDA stream and return the result from
         the GPU operation. This operation does not block CPU.
         """
-        import cupy as cp
-
-        current_stream = cp.cuda.get_current_stream()
+        current_stream = AcceleratorContext.get().current_stream()
         if not self._waited:
             self._waited = True
             current_stream.wait_event(self._event)
@@ -146,11 +138,7 @@ class GPUFuture(DAGOperationFuture[Any]):
         """
         Destroy the CUDA event associated with this future.
         """
-        import cupy as cp
-
         if self._event is None:
             return
 
-        cp.cuda.runtime.eventDestroy(self._event.ptr)
-        self._event.ptr = 0
         self._event = None

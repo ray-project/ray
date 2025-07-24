@@ -4,27 +4,15 @@ steps:
     wanda: ci/docker/k8s.build.wanda.yaml
     depends_on:
       - oss-ci-base_build
+    tags: cibase
 
   - label: ":kubernetes: operator"
     tags:
       - python
       - docker
-    instance_type: medium
+    instance_type: large
     commands:
       - bash ci/k8s/run-operator-tests.sh
-    docker_network: "host"
-    depends_on:
-      - k8sbuild
-      - manylinux
-      - forge
-      - raycpubase
-
-  - label: ":kubernetes: kuberay doc tests"
-    tags:
-      - k8s_doc
-    instance_type: medium
-    commands:
-      - bash ci/k8s/run-kuberay-doc-tests.sh
     docker_network: "host"
     depends_on:
       - k8sbuild

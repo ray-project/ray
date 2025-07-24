@@ -1,18 +1,18 @@
 import asyncio
 import json
-import pytest
 import math
 import sys
-from unittest.mock import MagicMock, AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 from pydantic import BaseModel
 
 from ray.llm._internal.batch.stages.vllm_engine_stage import (
     vLLMEngineStage,
     vLLMEngineStageUDF,
     vLLMEngineWrapper,
+    vLLMTaskType,
 )
-from ray.llm._internal.batch.stages.vllm_engine_stage import vLLMTaskType
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 
@@ -49,6 +49,16 @@ def mock_vllm_wrapper():
             )
 
         mock_instance.generate_async.side_effect = mock_generate
+
+        # Configure the scheduler config mock
+        mock_scheduler_config = MagicMock()
+        mock_scheduler_config.max_num_seqs = 128  # Current vLLM default
+        mock_instance.get_scheduler_config.return_value = mock_scheduler_config
+
+        # Configure the engine mock
+        mock_engine = MagicMock()
+        mock_engine.do_log_stats = AsyncMock()
+        mock_instance.engine = mock_engine
 
         # Make the wrapper class return our mock instance
         mock_wrapper.return_value = mock_instance
@@ -112,12 +122,15 @@ async def test_vllm_engine_udf_basic(mock_vllm_wrapper, model_llama_3_2_216M):
         expected_input_keys=["prompt", "sampling_params"],
         model=model_llama_3_2_216M,
         task_type=vLLMTaskType.GENERATE,
+        batch_size=32,
+        max_concurrent_batches=4,
         engine_kwargs={
             # Test that this should be overridden by the stage.
             "model": "random-model",
             # Test that this should be overridden by the stage.
             "task": vLLMTaskType.EMBED,
             "max_num_seqs": 100,
+            "disable_log_stats": False,
         },
     )
 
@@ -137,7 +150,7 @@ async def test_vllm_engine_udf_basic(mock_vllm_wrapper, model_llama_3_2_216M):
 
     responses = []
     async for response in udf(batch):
-        responses.append(response["__data"][0])
+        responses.extend(response["__data"])
 
     assert len(responses) == 2
     assert all("batch_uuid" in r for r in responses)
@@ -157,12 +170,13 @@ async def test_vllm_engine_udf_basic(mock_vllm_wrapper, model_llama_3_2_216M):
         task=vLLMTaskType.GENERATE,
         max_num_seqs=100,
         dynamic_lora_loading_path=None,
+        disable_log_requests=True,
     )
 
 
 @pytest.mark.asyncio
 async def test_vllm_wrapper_semaphore(model_llama_3_2_216M):
-    from vllm.outputs import RequestOutput, CompletionOutput
+    from vllm.outputs import CompletionOutput, RequestOutput
 
     max_pending_requests = 2
 

@@ -7,10 +7,10 @@ from fastapi.exceptions import RequestValidationError
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.responses import JSONResponse, Response
 
-from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.deployments.utils.server_utils import (
     get_response_for_error,
 )
+from ray.llm._internal.serve.observability.logging import get_logger
 
 logger = get_logger(__file__)
 
@@ -70,7 +70,7 @@ def _uncaught_exception_handler(request: Request, e: Exception):
     response_payload = get_response_for_error(e, request_id)
 
     return JSONResponse(
-        content=response_payload.model_dump(), status_code=response_payload.error.code
+        content=response_payload.model_dump(), status_code=response_payload.code
     )
 
 
@@ -115,7 +115,7 @@ def add_exception_handling_middleware(router: FastAPI):
 
             return JSONResponse(
                 content=response_payload.model_dump(),
-                status_code=response_payload.error.code,
+                status_code=response_payload.code,
             )
 
     # This adds last-resort uncaught exception handler into Starlette

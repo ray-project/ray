@@ -4,8 +4,8 @@ set -euo pipefail
 
 # Clone pinned KubeRay commit to temporary directory, copy the CRD definitions
 # into the autoscaler folder.
-KUBERAY_BRANCH="v1.2.2"
-OPERATOR_TAG="v1.2.2"
+KUBERAY_BRANCH="v1.4.2"
+OPERATOR_TAG="v1.4.2"
 
 # Requires Kustomize
 if ! command -v kustomize &> /dev/null
@@ -24,6 +24,7 @@ DIR=$(mktemp -d -t "kuberay-XXXXXX")
     (
         cd kuberay/ray-operator/config/default
         kustomize edit set image kuberay/operator=quay.io/kuberay/operator:"$OPERATOR_TAG"
+        kustomize edit set namespace kuberay-system
     )
     cp -r kuberay/ray-operator/config "$SCRIPT_DIR/"
 )

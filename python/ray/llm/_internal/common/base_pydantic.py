@@ -1,6 +1,7 @@
-from pydantic import BaseModel, ConfigDict
 from typing import Type, TypeVar
+
 import yaml
+from pydantic import BaseModel, ConfigDict
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
 

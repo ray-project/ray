@@ -21,7 +21,7 @@ kind create cluster
 
 ```sh
 # Path: kuberay/
-./install/prometheus/install.sh
+./install/prometheus/install.sh --auto-load-dashboard true
 
 # Check the installation
 kubectl get all -n prometheus-system
@@ -33,7 +33,9 @@ kubectl get all -n prometheus-system
 # deployment.apps/prometheus-kube-state-metrics         1/1     1            1           46s
 ```
 
-* KubeRay provides an [install.sh script](https://github.com/ray-project/kuberay/blob/master/install/prometheus/install.sh) to install the [kube-prometheus-stack v48.2.1](https://github.com/prometheus-community/helm-charts/tree/kube-prometheus-stack-48.2.1/charts/kube-prometheus-stack) chart and related custom resources, including **PodMonitor** and **PrometheusRule**, in the namespace `prometheus-system` automatically.
+* KubeRay provides an [install.sh script](https://github.com/ray-project/kuberay/blob/master/install/prometheus/install.sh) to:
+  * Install the [kube-prometheus-stack v48.2.1](https://github.com/prometheus-community/helm-charts/tree/kube-prometheus-stack-48.2.1/charts/kube-prometheus-stack) chart and related custom resources, including **PodMonitor** for Ray Pods and **PrometheusRule**, in the namespace `prometheus-system` automatically. 
+  * Import Ray Dashboard's [Grafana JSON files](https://github.com/ray-project/kuberay/tree/master/config/grafana) into Grafana using the `--auto-load-dashboard true` flag. If the flag isn't set, the following step also provides instructions for manual import. See [Step 12: Import Grafana dashboards manually (optional)](#step-12-import-grafana-dashboards-manually-optional) for more details.
 
 * We made some modifications to the original `values.yaml` in kube-prometheus-stack chart to allow embedding Grafana panels in Ray Dashboard. See [overrides.yaml](https://github.com/ray-project/kuberay/tree/master/install/prometheus/overrides.yaml) for more details.
   ```yaml
@@ -51,6 +53,19 @@ kubectl get all -n prometheus-system
 ## Step 3: Install a KubeRay operator
 
 * Follow [this document](kuberay-operator-deploy) to install the latest stable KubeRay operator via Helm repository.
+* Set `metrics.serviceMonitor.enabled=true` when installing the KubeRay operator with Helm to create a ServiceMonitor that scrapes metrics exposed by the KubeRay operator's service.
+  ```sh
+  # Enable the ServiceMonitor and set the label `release: prometheus` to the ServiceMonitor so that Prometheus can discover it
+  helm install kuberay-operator kuberay/kuberay-operator --version 1.4.2 \
+    --set metrics.serviceMonitor.enabled=true \ 
+    --set metrics.serviceMonitor.selector.release=prometheus 
+  ```
+  You can verify the ServiceMonitor creation with:
+  ```sh
+  kubectl get servicemonitor
+  # NAME               AGE
+  # kuberay-operator   11s
+  ```
 
 ## Step 4: Install a RayCluster
 
@@ -89,7 +104,7 @@ curl localhost:8080
   * `# HELP`: Describe the meaning of this metric.
   * `# TYPE`: See [this document](https://prometheus.io/docs/concepts/metric_types/) for more details.
 
-* Three required environment variables are defined in [ray-cluster.embed-grafana.yaml](https://github.com/ray-project/kuberay/blob/v1.3.0/ray-operator/config/samples/ray-cluster.embed-grafana.yaml). See [Configuring and Managing Ray Dashboard](https://docs.ray.io/en/latest/cluster/configure-manage-dashboard.html) for more details about these environment variables.
+* Three required environment variables are defined in [ray-cluster.embed-grafana.yaml](https://github.com/ray-project/kuberay/blob/v1.4.2/ray-operator/config/samples/ray-cluster.embed-grafana.yaml). See [Configuring and Managing Ray Dashboard](https://docs.ray.io/en/latest/cluster/configure-manage-dashboard.html) for more details about these environment variables.
   ```yaml
   env:
     - name: RAY_GRAFANA_IFRAME_HOST
@@ -225,7 +240,18 @@ spec:
   # raycluster-kuberay-worker-workergroup-5stpm   1/1     Running   0          3h16m
   ```
 
-## Step 7: Collect custom metrics with Recording Rules
+## Step 7: Scrape KubeRay metrics with ServiceMonitor
+
+* See the official [ServiceMonitor doc](https://github.com/prometheus-operator/prometheus-operator/blob/main/Documentation/api-reference/api.md#servicemonitor) for more details about configurations.
+* KubeRay operator provides metrics for RayCluster, RayService, and RayJob. See {ref}`kuberay-metrics-references` for more details.
+* Prometheus uses `namespaceSelector` and `selector` to select Kubernetes Service.
+```sh
+kubectl get service -n default -l app.kubernetes.io/name=kuberay-operator 
+NAME               TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)    AGE
+kuberay-operator   ClusterIP   10.96.205.229   <none>        8080/TCP   53m
+```
+
+## Step 8: Collect custom metrics with recording rules
 
 [Recording Rules](https://prometheus.io/docs/prometheus/latest/configuration/recording_rules/) allow KubeRay to precompute frequently needed or computationally expensive [PromQL](https://prometheus.io/docs/prometheus/latest/querying/basics/) expressions and save their result as custom metrics. Note that this behavior is different from [Custom application-level metrics](application-level-metrics), which are for the visibility of Ray applications.
 
@@ -273,7 +299,7 @@ $$\frac{ number\ of\ update\ resource\ usage\ RPCs\ that\ have\ RTT\ smaller\ th
 * PrometheusRule can be reloaded at runtime. Use `kubectl apply {modified prometheusRules.yaml}` to reconfigure the rules if needed.
 
 
-## Step 8: Define Alert Conditions with Alerting Rules
+## Step 9: Define Alert Conditions with alerting rules (optional)
 
 [Alerting rules](https://prometheus.io/docs/prometheus/latest/configuration/alerting_rules/) allow us to define alert conditions based on [PromQL](https://prometheus.io/docs/prometheus/latest/querying/basics/) expressions and to send notifications about firing alerts to [Alertmanager](https://prometheus.io/docs/alerting/latest/alertmanager) which adds summarization, notification rate limiting, silencing and alert dependencies on top of the simple alert definitions.
 
@@ -318,7 +344,7 @@ spec:
 
 * Alerting rules are configured in the same way as recording rules.
 
-## Step 9: Access Prometheus Web UI
+## Step 10: Access Prometheus Web UI
 
 ```sh
 # Forward the port of Prometheus Web UI in the Prometheus server Pod.
@@ -339,7 +365,7 @@ kubectl port-forward -n prometheus-system service/prometheus-kube-prometheus-pro
 - Go to `${YOUR_IP}:9090/alerts`. You should be able to see:
   - Alerting Rules (e.g. `MissingMetricRayGlobalControlStore`).
 
-## Step 10: Access Grafana
+## Step 11: Access Grafana
 
 ```sh
 # Forward the Grafana port
@@ -355,19 +381,21 @@ Refer to [this Grafana document](https://grafana.com/tutorials/run-grafana-behin
 
 * The default password is defined by `grafana.adminPassword` in the [values.yaml](https://github.com/prometheus-community/helm-charts/blob/main/charts/kube-prometheus-stack/values.yaml) of the kube-prometheus-stack chart.
 
-* After logging in to Grafana successfully, we can import Ray Dashboard into Grafana via **dashboard_default.json**.
+## Step 12: Import Grafana dashboards manually (optional)
+
+If `--auto-load-dashboard true` is set when running `install.sh`, you can skip this step.
+
+* Import Grafana dashboards manually
   * Click "Dashboards" icon in the left panel.
   * Click "New".
   * Click "Import".
   * Click "Upload JSON file".
   * Choose a JSON file.
-    * Case 1: If you are using Ray 2.9.0, you can use [the sample config files in GitHub repository](https://github.com/ray-project/kuberay/tree/master/config/grafana). The file names have a pattern of `xxx_grafana_dashboard.json`.
+    * Case 1: If you are using Ray 2.41.0, you can use [the sample config files in GitHub repository](https://github.com/ray-project/kuberay/tree/master/config/grafana). The file names have a pattern of `xxx_grafana_dashboard.json`.
     * Case 2: Otherwise, import the JSON files from the head Pod's `/tmp/ray/session_latest/metrics/grafana/dashboards/` directory. You can use `kubectl cp` to copy the files from the head Pod to your local machine. `kubectl cp $(kubectl get pods --selector ray.io/node-type=head,ray.io/cluster=raycluster-embed-grafana -o jsonpath={..metadata.name}):/tmp/ray/session_latest/metrics/grafana/dashboards/ /tmp/`
   * Click "Import".
 
-* TODO: Note that importing the dashboard manually is not ideal. We should find a way to import the dashboard automatically.
-
-## Step 11: View metrics from different RayCluster CRs
+## Step 13: View metrics from different RayCluster CRs
 
 Once the Ray Dashboard is imported into Grafana, you can filter metrics by using the `Cluster` variable. Ray Dashboard automatically applies this variable by default when you use the provided `PodMonitor` configuration. You don't need any additional setup for this labeling.
 
@@ -379,7 +407,14 @@ For example, in the following figures, one selects the metrics from the RayClust
 
 ![Grafana Ray Dashboard2](../images/grafana_ray_dashboard2.png)
 
-## Step 12: Embed Grafana panels in Ray Dashboard
+## Step 14: View the KubeRay operator dashboard
+
+After importing the KubeRay operator dashboard into Grafana, you can monitor metrics from the KubeRay operator. The dashboard includes a dropdown menu that lets you filter and view controller runtime metrics for specific Ray custom resources CRs: `RayCluster`, `RayJob`, and `RayService`.
+
+The KubeRay operator dashboard should look like this:
+![Grafana KubeRay operator Controller Runtime dashboard](../images/kuberay-dashboard-controller-runtime.png)
+
+## Step 15: Embed Grafana panels in the Ray dashboard (optional)
 
 ```sh
 kubectl port-forward service/raycluster-embed-grafana-head-svc dashboard

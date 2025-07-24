@@ -21,7 +21,7 @@ HELLO_WORLD_RESPONSES_BY_MODEL = {
 }
 
 COUNTING_PATTERN_RESPONSES_BY_MODEL = {
-    "default": ["Five", "five", "Five.", "five."],
+    "default": ("Five", "five", "Five.", "five."),
 }
 
 

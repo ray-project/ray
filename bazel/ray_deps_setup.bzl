@@ -172,6 +172,10 @@ def ray_deps_setup():
         # If you update the Boost version, remember to update the 'boost' rule.
         url = "https://github.com/nelhage/rules_boost/archive/57c99395e15720e287471d79178d36a85b64d6f6.tar.gz",
         sha256 = "490d11425393eed068966a4990ead1ff07c658f823fd982fddac67006ccc44ab",
+        patches = [
+            "//thirdparty/patches:boost-headers.patch",
+        ],
+        patch_args = ["-p1"],
     )
 
     http_archive(
@@ -228,6 +232,7 @@ def ray_deps_setup():
         urls = ["https://github.com/open-telemetry/opentelemetry-proto/archive/refs/tags/v1.2.0.zip"],
         strip_prefix = "opentelemetry-proto-1.2.0",
         build_file = "@io_opentelemetry_cpp//bazel:opentelemetry_proto.BUILD",
+        sha256 = "b3cf4fefa4eaea43879ade612639fa7029c624c1b959f019d553b86ad8e01e82",
     )
 
     # OpenCensus depends on Abseil so we have to explicitly pull it in.

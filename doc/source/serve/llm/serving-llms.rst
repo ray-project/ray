@@ -371,7 +371,7 @@ For visualization, Ray ships with a Serve LLM-specific dashboard, which is autom
 
 Engine Metrics
 ---------------------
-All engine metrics, including vLLM, are available through the Ray metrics export endpoint and are queryable using Prometheus. See `vLLM metrics <https://docs.vllm.ai/en/stable/serving/metrics.html>`_ for a complete list. These are also visualized by the Serve LLM Grafana dashboard. Dashboard panels include: time per output token (TPOT), time to first token (TTFT), and GPU cache utilization.
+All engine metrics, including vLLM, are available through the Ray metrics export endpoint and are queryable using Prometheus. See `vLLM metrics <https://docs.vllm.ai/en/stable/usage/metrics.html>`_ for a complete list. These are also visualized by the Serve LLM Grafana dashboard. Dashboard panels include: time per output token (TPOT), time to first token (TTFT), and GPU cache utilization.
 
 Engine metric logging is off by default, and must be manually enabled. In addition, you must enable the vLLM V1 engine to use engine metrics. To enable engine-level metric logging, set `log_engine_metrics: True` when configuring the LLM deployment. For example:
 
@@ -432,9 +432,9 @@ For each usage pattern, we provide a server and client code snippet.
 Multi-LoRA Deployment
 ~~~~~~~~~~~~~~~~~~~~~
 
-You can use LoRA (Low-Rank Adaptation) to efficiently fine-tune models by configuring the :class:`LoraConfig <ray.serve.llm.LoraConfig>`.
+You can use our multi-LoRA (Low-Rank Adaptation) feature to efficiently serve multiple fine-tuned models by configuring the :class:`LoraConfig <ray.serve.llm.LoraConfig>`.
 We use Ray Serve's multiplexing feature to serve multiple LoRA checkpoints from the same model.
-This allows the weights to be loaded on each replica on-the-fly and be cached via an LRU mechanism.
+When a request for a given LoRA adapter arrives, Ray Serve first checks if any replica has already loaded that adapter. If a replica with the adapter is found and is not overloaded, the request is routed to it. If all replicas with the adapter are overloaded, the request is routed to a less busy replica, which will then load the adapter on the new replica. If no replica has the adapter loaded, the request is routed to a replica according to the default request router logic (for example Power of 2) and loaded there so that the next time it will be cached. This ensures the adapter is cached for subsequent requests. The cache of LoRA adapters on each replica is controlled via a Least Recently Used (LRU) mechanism with a max size controlled by the ``max_num_adapters_per_replica`` variable.
 
 .. tab-set::
 
@@ -463,6 +463,7 @@ This allows the weights to be loaded on each replica on-the-fly and be cached vi
                 ),
                 engine_kwargs=dict(
                     enable_lora=True,
+                    max_loras=16, # Need to set this to the same value as `max_num_adapters_per_replica`.
                 ),
                 deployment_config=dict(
                     autoscaling_config=dict(
@@ -506,6 +507,9 @@ You can generate embeddings by selecting the embed task in the engine arguments.
 Models supporting this use case are listed at
 `vLLM text embedding models <https://docs.vllm.ai/en/stable/models/supported_models.html#text-embedding-task-embed>`_.
 
+
+Note: You need to set the `VLLM_USE_V1` environment variable to `0`, since the VLLM V1 still does not fully support the embedding endpoints.
+
 .. tab-set::
 
     .. tab-item:: Server
@@ -523,6 +527,11 @@ Models supporting this use case are listed at
                 ),
                 engine_kwargs=dict(
                     task="embed",
+                ),
+                runtime_env=dict(
+                    env_vars={
+                        "VLLM_USE_V1": "0",
+                    }
                 ),
             )
 
@@ -905,6 +914,7 @@ An example config is shown below:
       import_path: ray.serve.llm:build_openai_app
       name: llm_app
       route_prefix: "/"
+
 
 Usage Data Collection
 --------------------------

@@ -9,7 +9,7 @@ import gc
 from unittest.mock import patch, Mock
 
 import ray
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import wait_for_condition
 from ray.experimental.state.api import list_objects
 from ray._raylet import ObjectRefGenerator, ObjectRefStreamEndOfStreamError
 from ray.cloudpickle import dumps

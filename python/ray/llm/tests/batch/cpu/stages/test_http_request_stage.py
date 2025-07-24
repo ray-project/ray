@@ -1,11 +1,12 @@
+import asyncio
 import sys
+from unittest.mock import AsyncMock, call, patch
 
+import aiohttp
 import aiohttp.web_exceptions
 import pytest
-from unittest.mock import AsyncMock, patch, call
+
 from ray.llm._internal.batch.stages.http_request_stage import HttpRequestUDF
-import asyncio
-import aiohttp
 
 
 @pytest.fixture
@@ -72,7 +73,7 @@ async def test_http_request_udf_with_qps(mock_session):
 
         results = []
         async for result in udf(batch):
-            results.append(result)
+            results.extend(result["__data"])
 
         assert len(results) == 2
         assert mock_sleep.called  # Should have called sleep for QPS limiting
@@ -112,7 +113,7 @@ async def test_http_request_udf_with_retry(mock_response):
     with patch("asyncio.sleep") as mock_sleep:
         results = []
         async for result in udf(batch):
-            results.append(result)
+            results.extend(result["__data"])
 
         assert len(results) == 2
         mock_sleep.assert_called()

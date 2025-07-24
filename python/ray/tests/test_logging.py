@@ -16,6 +16,7 @@ import colorama
 import pytest
 
 import ray
+from ray._common.test_utils import wait_for_condition
 from ray._private import ray_constants
 from ray._private.ray_constants import (
     PROCESS_TYPE_DASHBOARD,
@@ -45,7 +46,6 @@ from ray._private.test_utils import (
     get_log_data,
     init_log_pubsub,
     run_string_as_driver,
-    wait_for_condition,
 )
 from ray.cross_language import java_actor_class
 from ray.autoscaler._private.cli_logger import cli_logger
@@ -1063,7 +1063,6 @@ def test_ray_does_not_break_makeRecord():
         ("ray.serve", logging.INFO),
         ("ray.train", logging.INFO),
         ("ray.tune", logging.INFO),
-        ("ray.workflow", logging.INFO),
     ),
 )
 @pytest.mark.parametrize(

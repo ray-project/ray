@@ -1,5 +1,5 @@
 load("@py_deps_buildkite//:requirements.bzl", ci_require = "requirement")
-load("@rules_python//python:defs.bzl", "py_test")
+load("@rules_python//python:defs.bzl", "py_library", "py_test")
 
 py_library(
     name = "determine_tests_to_run",

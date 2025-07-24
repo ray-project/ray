@@ -53,6 +53,9 @@ const MOCK_ACTORS: { [actorId: string]: ActorDetail } = {
       },
       pid: 25321,
     },
+    labelSelector: {
+      "test-label-key": "test-label-value",
+    },
   },
   ACTOR_2: {
     actorId: "ACTOR_2",
@@ -101,6 +104,7 @@ const MOCK_ACTORS: { [actorId: string]: ActorDetail } = {
       },
       pid: 25322,
     },
+    labelSelector: {},
   },
 };
 
@@ -184,6 +188,9 @@ describe("ActorTable", () => {
 
     expect(within(actor1Row).getByText("ACTOR_1")).toBeInTheDocument();
     expect(within(actor2Row).getByText("ACTOR_2")).toBeInTheDocument();
+    expect(
+      screen.queryByText('{ "test-label-key": "test-label-value" }'),
+    ).toBeInTheDocument();
 
     expect(actor2Row.compareDocumentPosition(actor1Row)).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,

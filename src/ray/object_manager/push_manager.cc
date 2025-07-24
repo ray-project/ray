@@ -14,7 +14,6 @@
 
 #include "ray/object_manager/push_manager.h"
 
-#include <memory>
 #include <string>
 #include <utility>
 
@@ -29,73 +28,86 @@ void PushManager::StartPush(const NodeID &dest_id,
   auto push_id = std::make_pair(dest_id, obj_id);
   RAY_CHECK(num_chunks > 0);
 
-  auto it = push_info_.find(push_id);
-  if (it == push_info_.end()) {
+  auto &dest_map = push_state_map_[dest_id];
+  auto it = dest_map.find(obj_id);
+  if (it == dest_map.end()) {
     chunks_remaining_ += num_chunks;
-    auto push_state = std::make_unique<PushState>(num_chunks, send_chunk_fn);
-    push_requests_with_chunks_to_send_.push_back(
-        std::make_pair(push_id, push_state.get()));
-    push_info_[push_id] = std::move(push_state);
+    dest_map[obj_id] = push_requests_with_chunks_to_send_.emplace(
+        push_requests_with_chunks_to_send_.end(),
+        dest_id,
+        obj_id,
+        num_chunks,
+        std::move(send_chunk_fn));
   } else {
     RAY_LOG(DEBUG) << "Duplicate push request " << push_id.first << ", " << push_id.second
                    << ", resending all the chunks.";
-    if (it->second->NoChunksToSend()) {
-      // if all the chunks have been sent, the push request needs to be re-added to
-      // `push_requests_with_chunks_to_send_`.
-      push_requests_with_chunks_to_send_.push_back(
-          std::make_pair(push_id, it->second.get()));
-    }
-    chunks_remaining_ += it->second->ResendAllChunks(send_chunk_fn);
+    RAY_CHECK_NE(it->second->num_chunks_to_send, 0);
+    chunks_remaining_ += it->second->ResendAllChunks(std::move(send_chunk_fn));
   }
   ScheduleRemainingPushes();
 }
 
-void PushManager::OnChunkComplete(const NodeID &dest_id, const ObjectID &obj_id) {
-  auto push_id = std::make_pair(dest_id, obj_id);
+void PushManager::OnChunkComplete() {
   chunks_in_flight_ -= 1;
   chunks_remaining_ -= 1;
-  push_info_[push_id]->OnChunkComplete();
-  if (push_info_[push_id]->AllChunksComplete()) {
-    push_info_.erase(push_id);
-    RAY_LOG(DEBUG) << "Push for " << push_id.first << ", " << push_id.second
-                   << " completed, remaining: " << NumPushesInFlight();
-  }
   ScheduleRemainingPushes();
 }
 
 void PushManager::ScheduleRemainingPushes() {
-  bool keep_looping = true;
-  // Loop over all active pushes for approximate round-robin prioritization.
   // TODO(ekl) this isn't the best implementation of round robin, we should
   // consider tracking the number of chunks active per-push and balancing those.
+  // TODO(dayshah): Does round-robin even make sense here? We should probably finish
+  // pushes in the order they were asked for, so that some finish and some work can start.
+  // Otherwise all work will be halted for a period of time
+
+  // Loop over all active pushes for approximate round-robin prioritization.
+  bool keep_looping = true;
   while (chunks_in_flight_ < max_chunks_in_flight_ && keep_looping) {
     // Loop over each active push and try to send another chunk.
-    auto it = push_requests_with_chunks_to_send_.begin();
+    // If we could push out a chunk and haven't reached the chunks_in_flight_ limit,
+    // we'll loop again to try to send more chunks.
     keep_looping = false;
-    while (it != push_requests_with_chunks_to_send_.end() &&
+    auto iter = push_requests_with_chunks_to_send_.begin();
+    while (iter != push_requests_with_chunks_to_send_.end() &&
            chunks_in_flight_ < max_chunks_in_flight_) {
-      auto push_id = it->first;
-      auto &info = it->second;
-      if (info->SendOneChunk()) {
-        chunks_in_flight_ += 1;
-        keep_looping = true;
-        RAY_LOG(DEBUG) << "Sending chunk " << info->next_chunk_id << " of "
-                       << info->num_chunks << " for push " << push_id.first << ", "
-                       << push_id.second << ", chunks in flight " << NumChunksInFlight()
-                       << " / " << max_chunks_in_flight_
-                       << " max, remaining chunks: " << NumChunksRemaining();
-      }
-      if (info->NoChunksToSend()) {
-        it = push_requests_with_chunks_to_send_.erase(it);
+      auto &push_state = *iter;
+      push_state.SendOneChunk();
+      chunks_in_flight_ += 1;
+      if (push_state.num_chunks_to_send == 0) {
+        auto push_state_map_iter = push_state_map_.find(push_state.node_id);
+        RAY_CHECK(push_state_map_iter != push_state_map_.end());
+
+        auto &dest_map = push_state_map_iter->second;
+        auto dest_map_iter = dest_map.find(push_state.object_id);
+        RAY_CHECK(dest_map_iter != dest_map.end());
+
+        iter = push_requests_with_chunks_to_send_.erase(dest_map_iter->second);
+        dest_map.erase(dest_map_iter);
+        if (dest_map.empty()) {
+          push_state_map_.erase(push_state_map_iter);
+        }
       } else {
-        it++;
+        keep_looping = true;
+        iter++;
       }
     }
   }
 }
 
+void PushManager::HandleNodeRemoved(const NodeID &node_id) {
+  auto push_state_map_iter = push_state_map_.find(node_id);
+  if (push_state_map_iter == push_state_map_.end()) {
+    return;
+  }
+  for (auto &[_, push_state_iter] : push_state_map_iter->second) {
+    push_requests_with_chunks_to_send_.erase(push_state_iter);
+  }
+  push_state_map_.erase(node_id);
+}
+
 void PushManager::RecordMetrics() const {
-  ray::stats::STATS_push_manager_in_flight_pushes.Record(NumPushesInFlight());
+  ray::stats::STATS_push_manager_num_pushes_remaining.Record(
+      NumPushRequestsWithChunksToSend());
   ray::stats::STATS_push_manager_chunks.Record(NumChunksInFlight(), "InFlight");
   ray::stats::STATS_push_manager_chunks.Record(NumChunksRemaining(), "Remaining");
 }
@@ -103,7 +115,7 @@ void PushManager::RecordMetrics() const {
 std::string PushManager::DebugString() const {
   std::stringstream result;
   result << "PushManager:";
-  result << "\n- num pushes in flight: " << NumPushesInFlight();
+  result << "\n- num pushes remaining: " << NumPushRequestsWithChunksToSend();
   result << "\n- num chunks in flight: " << NumChunksInFlight();
   result << "\n- num chunks remaining: " << NumChunksRemaining();
   result << "\n- max chunks allowed: " << max_chunks_in_flight_;

@@ -91,7 +91,7 @@ class CPUCommBarrier:
 
 class CPUCommunicator(Communicator):
     """
-    Uses a CPU-based communicator actor instead of a NCCL group.
+    Uses a CPU-based communicator actor instead of an accelerator group like NCCL.
     """
 
     def __init__(self, world_size: int, actor_handles: List["ray.actor.ActorHandle"]):
@@ -199,3 +199,9 @@ class CPUCommunicator(Communicator):
 
     def send_stream(self):
         raise NotImplementedError
+
+    @classmethod
+    def generate_communicator_id(cls) -> str:
+        import uuid
+
+        return str(uuid.uuid4())

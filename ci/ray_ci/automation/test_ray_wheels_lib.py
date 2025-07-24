@@ -20,8 +20,8 @@ from ci.ray_ci.automation.ray_wheels_lib import (
 SAMPLE_WHEELS = [
     "ray-1.0.0-cp39-cp39-manylinux2014_x86_64",
     "ray-1.0.0-cp39-cp39-manylinux2014_aarch64",
-    "ray-1.0.0-cp39-cp39-macosx_10_15_x86_64",
-    "ray-1.0.0-cp39-cp39-macosx_11_0_arm64",
+    "ray-1.0.0-cp39-cp39-macosx_12_0_x86_64",
+    "ray-1.0.0-cp39-cp39-macosx_12_0_arm64",
     "ray-1.0.0-cp39-cp39-win_amd64",
 ]
 
@@ -57,8 +57,8 @@ def test_check_downloaded_wheels():
         wheels = [
             "ray-1.0.0-cp39-cp39-manylinux2014_x86_64",
             "ray-1.0.0-cp39-cp39-manylinux2014_aarch64",
-            "ray-1.0.0-cp39-cp39-macosx_10_15_x86_64",
-            "ray-1.0.0-cp39-cp39-macosx_11_0_arm64",
+            "ray-1.0.0-cp39-cp39-macosx_12_0_x86_64",
+            "ray-1.0.0-cp39-cp39-macosx_12_0_arm64",
             "ray-1.0.0-cp39-cp39-win_amd64",
         ]
 
@@ -74,8 +74,8 @@ def test_check_downloaded_wheels_fail():
         wheels = [
             "ray-1.0.0-cp39-cp39-manylinux2014_x86_64",
             "ray-1.0.0-cp39-cp39-manylinux2014_aarch64",
-            "ray-1.0.0-cp39-cp39-macosx_10_15_x86_64",
-            "ray-1.0.0-cp39-cp39-macosx_11_0_arm64",
+            "ray-1.0.0-cp39-cp39-macosx_12_0_x86_64",
+            "ray-1.0.0-cp39-cp39-macosx_12_0_arm64",
             "ray-1.0.0-cp39-cp39-win_amd64",
         ]
 
@@ -93,8 +93,8 @@ def test_download_wheel_from_s3(mock_boto3_client):
         keys = [
             "releases/1.0.0/1234567/ray-1.0.0-cp39-cp39-manylinux2014_x86_64.whl",
             "releases/1.0.0/1234567/ray-1.0.0-cp39-cp39-manylinux2014_aarch64.whl",
-            "releases/1.0.0/1234567/ray-1.0.0-cp39-cp39-macosx_10_15_x86_64.whl",
-            "releases/1.0.0/1234567/ray-1.0.0-cp39-cp39-macosx_11_0_arm64.whl",
+            "releases/1.0.0/1234567/ray-1.0.0-cp39-cp39-macosx_12_0_x86_64.whl",
+            "releases/1.0.0/1234567/ray-1.0.0-cp39-cp39-macosx_12_0_arm64.whl",
             "releases/1.0.0/1234567/ray-1.0.0-cp39-cp39-win_amd64.whl",
         ]
         for key in keys:

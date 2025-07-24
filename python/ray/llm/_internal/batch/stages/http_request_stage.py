@@ -1,13 +1,14 @@
 """HTTP Request Stage"""
 
-import aiohttp
 import asyncio
 import time
-import aiohttp.web_exceptions
-from aiohttp.client_exceptions import ClientPayloadError
-import numpy as np
 import traceback
-from typing import Any, Dict, AsyncIterator, Optional, List, Type, Callable
+from typing import Any, AsyncIterator, Callable, Dict, List, Optional, Type
+
+import aiohttp
+import aiohttp.web_exceptions
+import numpy as np
+from aiohttp.client_exceptions import ClientPayloadError
 
 from ray.llm._internal.batch.stages.base import StatefulStage, StatefulStageUDF
 

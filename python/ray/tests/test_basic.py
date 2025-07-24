@@ -11,8 +11,8 @@ import pytest
 
 import ray
 import ray.cluster_utils
+from ray._common.test_utils import SignalActor
 from ray._private.test_utils import (
-    SignalActor,
     client_test_enabled,
     run_string_as_driver,
 )
@@ -466,7 +466,7 @@ def test_invalid_arguments():
 
 def test_options():
     """General test of option keywords in Ray."""
-    from ray._private import ray_option_utils
+    from ray._common import ray_option_utils
 
     def f():
         return 1

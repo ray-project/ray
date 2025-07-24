@@ -1,7 +1,7 @@
 from typing import Callable, Optional, Tuple
 
 import ray
-from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
+from ray._common.constants import HEAD_NODE_RESOURCE_NAME
 from ray._raylet import GcsClient
 from ray.serve._private.cluster_node_info_cache import (
     ClusterNodeInfoCache,
@@ -82,6 +82,12 @@ def create_replica_impl(**kwargs):
     from ray.serve._private.replica import Replica
 
     return Replica(**kwargs)
+
+
+def create_replica_metrics_manager(**kwargs):
+    from ray.serve._private.replica import ReplicaMetricsManager
+
+    return ReplicaMetricsManager(**kwargs)
 
 
 def create_dynamic_handle_options(**kwargs):

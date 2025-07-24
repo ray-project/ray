@@ -26,10 +26,10 @@ from ray.dashboard.state_api_utils import (
     handle_summary_api,
     options_from_req,
 )
-from ray.dashboard.utils import RateLimitedModule
-from ray.dashboard.subprocesses.routes import SubprocessRouteTable as routes
 from ray.dashboard.subprocesses.module import SubprocessModule
+from ray.dashboard.subprocesses.routes import SubprocessRouteTable as routes
 from ray.dashboard.subprocesses.utils import ResponseType
+from ray.dashboard.utils import RateLimitedModule
 from ray.util.state.common import (
     DEFAULT_DOWNLOAD_FILENAME,
     DEFAULT_LOG_LIMIT,

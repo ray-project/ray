@@ -18,7 +18,6 @@
 #include <string>
 #include <unordered_set>
 #include <utility>
-#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "ray/common/asio/instrumented_io_context.h"
@@ -43,14 +42,10 @@ class OwnershipBasedObjectDirectory : public IObjectDirectory {
   /// information from.
   OwnershipBasedObjectDirectory(
       instrumented_io_context &io_service,
-      std::shared_ptr<gcs::GcsClient> &gcs_client,
+      gcs::GcsClient &gcs_client,
       pubsub::SubscriberInterface *object_location_subscriber,
       rpc::CoreWorkerClientPool *owner_client_pool,
       std::function<void(const ObjectID &, const rpc::ErrorType &)> mark_as_failed);
-
-  void LookupRemoteConnectionInfo(RemoteConnectionInfo &connection_info) const override;
-
-  std::vector<RemoteConnectionInfo> LookupAllRemoteConnections() const override;
 
   void HandleNodeRemoved(const NodeID &node_id) override;
 
@@ -114,7 +109,7 @@ class OwnershipBasedObjectDirectory : public IObjectDirectory {
   /// Reference to the event loop.
   instrumented_io_context &io_service_;
   /// Reference to the gcs client.
-  std::shared_ptr<gcs::GcsClient> gcs_client_;
+  gcs::GcsClient &gcs_client_;
   /// Info about subscribers to object locations.
   absl::flat_hash_map<ObjectID, LocationListenerState> listeners_;
   /// The client call manager used to create the RPC clients.

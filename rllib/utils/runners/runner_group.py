@@ -135,6 +135,7 @@ class RunnerGroup(metaclass=abc.ABCMeta):
                 runner_index=0,
                 num_runners=num_runners,
                 config=self._local_config,
+                **kwargs,
             )
 
     def add_runners(self, num_runners: int, validate: bool = False, **kwargs) -> None:

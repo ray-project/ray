@@ -4,29 +4,33 @@ import random
 import sys
 import time
 
+import httpx
 import pytest
-import requests
 
 import ray
 from ray import serve
-from ray._private.test_utils import SignalActor, wait_for_condition
+from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.exceptions import RayActorError
 from ray.serve._private.common import DeploymentID
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve._private.test_utils import (
     Counter,
     check_num_replicas_eq,
+    get_application_url,
     get_deployment_details,
     tlog,
 )
 
 
-def request_with_retries(endpoint, timeout=30):
+def request_with_retries(endpoint, timeout=30, app_name=SERVE_DEFAULT_APP_NAME):
     start = time.time()
     while True:
         try:
-            return requests.get("http://127.0.0.1:8000" + endpoint, timeout=timeout)
-        except requests.RequestException:
+            return httpx.get(
+                get_application_url("HTTP", app_name=app_name) + endpoint,
+                timeout=timeout,
+            )
+        except (httpx.RequestError, IndexError):
             if time.time() - start > timeout:
                 raise TimeoutError
             time.sleep(0.1)
@@ -233,7 +237,7 @@ def test_no_available_replicas_does_not_block_proxy(serve_instance):
 
     @ray.remote
     def make_blocked_request():
-        r = requests.get("http://localhost:8000/")
+        r = httpx.get("http://localhost:8000/")
         r.raise_for_status()
         return r.text
 
@@ -253,10 +257,9 @@ def test_no_available_replicas_does_not_block_proxy(serve_instance):
         blocked_ref = make_blocked_request.remote()
         with pytest.raises(TimeoutError):
             ray.get(blocked_ref, timeout=1)
-
         # If the proxy's loop was blocked, these would hang.
-        requests.get("http://localhost:8000/-/routes").raise_for_status()
-        requests.get("http://localhost:8000/-/healthz").raise_for_status()
+        httpx.get("http://localhost:8000/-/routes").raise_for_status()
+        httpx.get("http://localhost:8000/-/healthz").raise_for_status()
 
         # Signal the replica to finish starting; request should complete.
         ray.get(finish_starting_actor.send.remote())

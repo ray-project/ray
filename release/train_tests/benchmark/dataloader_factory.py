@@ -3,7 +3,6 @@ from typing import Any, Dict, Iterator, Tuple
 import logging
 
 import torch
-from ray.data import Dataset
 
 from config import BenchmarkConfig, DataLoaderConfig
 
@@ -29,8 +28,4 @@ class BaseDataLoaderFactory(ABC):
 
     def get_metrics(self) -> Dict[str, Any]:
         """Return metrics about dataloader performance."""
-        return {}
-
-    def get_ray_datasets(self) -> Dict[str, Dataset]:
-        """Get Ray datasets if this loader type uses Ray Data."""
         return {}

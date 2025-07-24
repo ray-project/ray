@@ -1,15 +1,13 @@
 import os
-from typing import List, Dict
+from typing import Dict, List
 
 import yaml
-from ray.llm._internal.serve.configs.server_models import GPUType
-
 
 from ray.llm._internal.serve.config_generator.utils.constants import (
     DEFAULT_DEPLOYMENT_CONFIGS_FILE,
     TEMPLATE_DIR,
 )
-
+from ray.llm._internal.serve.configs.server_models import GPUType
 
 # All practical GPUs
 ALL_GPU_TYPES = [

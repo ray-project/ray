@@ -1,6 +1,8 @@
 # Must be first. Enables build:windows, build:linux, build:macos, build:freebsd, build:openbsd
 build --enable_platform_specific_config
 
+build:linux --workspace_status_command="bash ./bazel/workspace_status.sh"
+
 # Provides users an option to turn on strict action env.
 # TODO(aslonnie): make this default; fix the python tests..
 build:strict --incompatible_strict_action_env
@@ -57,6 +59,7 @@ build:clang-cl --per_file_copt="-\\.(asm|S)$@-Werror"
 build:msvc-cl     --per_file_copt="-\\.(asm|S)$@-WX"
 # Ignore warnings for protobuf generated files and external projects.
 build --per_file_copt="\\.pb\\.cc$@-w"
+build --per_file_copt="src/ray/thirdparty/.*$@-w"
 build:linux --per_file_copt="-\\.(asm|S)$,external/.*@-w,-Wno-error=implicit-function-declaration,-Wno-error=unused-function"
 build:macos --per_file_copt="-\\.(asm|S)$,external/.*@-w,-Wno-error=implicit-function-declaration,-Wno-error=unused-function,-Wno-missing-template-arg-list-after-template-kw"
 # Ignore warnings for host tools, which we generally can't control.
@@ -67,8 +70,6 @@ build:clang-cl --host_copt="-Wno-inconsistent-missing-override"
 build:clang-cl --host_copt="-Wno-microsoft-unqualified-friend"
 # This workaround is needed due to https://github.com/bazelbuild/bazel/issues/4341
 build --per_file_copt="-\\.(asm|S)$,external/com_github_grpc_grpc/.*@-DGRPC_BAZEL_BUILD"
-# Don't generate warnings about kernel features we don't need https://github.com/ray-project/ray/issues/6832
-build:linux --per_file_copt="-\\.(asm|S)$,external/com_github_grpc_grpc/.*@-DGPR_MANYLINUX1"
 # Ignore wchar_t -> char conversion warning on MSVC
 build:msvc-cl --per_file_copt="external/boost/libs/regex/src/wc_regex_traits\\.cpp@-wd4244"
 build --http_timeout_scaling=5.0

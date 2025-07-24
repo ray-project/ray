@@ -377,10 +377,36 @@ def test_one_hot_encoder_with_max_categories():
     encoder = OneHotEncoder(["B", "C"], max_categories={"B": 2})
 
     ds_out = encoder.fit_transform(ds)
+    df_out = ds_out.to_pandas()
     assert len(ds_out.to_pandas().columns) == 3
 
-    assert len(ds_out.to_pandas()["B"].iloc[0]) == 2
-    assert len(ds_out.to_pandas()["C"].iloc[0]) == 3
+    expected_df = pd.DataFrame(
+        {
+            "A": col_a,
+            "B": [[0, 0], [1, 0], [0, 1], [1, 0]],
+            "C": [[1, 0, 0], [0, 0, 1], [0, 1, 0], [0, 0, 1]],
+        }
+    )
+    pd.testing.assert_frame_equal(df_out, expected_df, check_like=True)
+
+
+def test_one_hot_encoder_mixed_data_types():
+    """Tests OneHotEncoder functionality with mixed data types (strings and lists)."""
+
+    test_inputs = {"category": ["1", [1]]}
+    test_pd_df = pd.DataFrame(test_inputs)
+    test_data_for_fitting = {"category": ["1", "[1]", "a", "[]", "True"]}
+    test_ray_dataset_for_fitting = ray.data.from_pandas(
+        pd.DataFrame(test_data_for_fitting)
+    )
+
+    encoder = OneHotEncoder(columns=["category"])
+    encoder.fit(test_ray_dataset_for_fitting)
+
+    pandas_output = encoder.transform_batch(test_pd_df)
+    expected_output = pd.DataFrame({"category": [[1, 0, 0, 0, 0], [0, 0, 0, 0, 0]]})
+
+    pd.testing.assert_frame_equal(pandas_output, expected_output)
 
 
 def test_multi_hot_encoder():

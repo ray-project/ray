@@ -111,7 +111,7 @@ class AggregateFnV2(AggregateFn, abc.ABC):
     `AggregateFnV2` instances are passed to a Dataset's ``.aggregate(...)`` method to
     perform distributed aggregations. To create a custom aggregation, you should subclass
     `AggregateFnV2` and implement the `aggregate_block` and `combine` methods.
-    The `_finalize` method can also be overridden if the final accumulated state
+    The `finalize` method can also be overridden if the final accumulated state
     needs further transformation.
 
     Aggregation follows these steps:
@@ -123,7 +123,7 @@ class AggregateFnV2(AggregateFn, abc.ABC):
     3. **Combination**: The `combine` method is used to merge these partial
        results (or an existing accumulated result with a new partial result)
        into a single, combined accumulator.
-    4. **Finalization**: Optionally, the `_finalize` method transforms the
+    4. **Finalization**: Optionally, the `finalize` method transforms the
        final combined accumulator into the desired output format.
 
     Args:
@@ -209,7 +209,7 @@ class AggregateFnV2(AggregateFn, abc.ABC):
             A partial aggregation result for the input block. The type of this
             result (`AggType`) should be consistent with the `current_accumulator`
             and `new` arguments of the `combine` method, and the `accumulator`
-            argument of the `_finalize` method.
+            argument of the `finalize` method.
         """
         ...
 
@@ -225,7 +225,7 @@ class AggregateFnV2(AggregateFn, abc.ABC):
         accumulator as is (which is the default behavior).
 
         For other aggregations, like Mean, this method is crucial.
-        A Mean aggregation might accumulate `[sum, count]`. The `_finalize`
+        A Mean aggregation might accumulate `[sum, count]`. The `finalize`
         method would then compute `sum / count` to get the final mean.
 
         Args:

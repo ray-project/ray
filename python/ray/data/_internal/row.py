@@ -1,5 +1,6 @@
+import abc
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, Dict
 
 
 class TableRow(Mapping):
@@ -24,10 +25,13 @@ class TableRow(Mapping):
         """
         self._row = row
 
-    def as_pydict(self) -> dict:
+    @abc.abstractmethod
+    def as_pydict(self) -> Dict[str, Any]:
+        """Convert to a normal Python dict.
+
+        This can create a new copy of the row.
         """
-        Convert to a normal Python dict. This will create a new copy of the row."""
-        return dict(self.items())
+        ...
 
     def __str__(self):
         return str(self.as_pydict())

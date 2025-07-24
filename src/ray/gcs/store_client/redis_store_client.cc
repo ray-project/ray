@@ -507,7 +507,8 @@ bool RedisDelKeyPrefixSync(const std::string &host,
   RedisClientOptions options(host, port, username, password, use_ssl);
   auto cli = std::make_unique<RedisClient>(options);
 
-  instrumented_io_context io_service;
+  instrumented_io_context io_service{/*enable_lag_probe=*/false,
+                                     /*running_on_single_thread=*/true};
 
   auto thread = std::make_unique<std::thread>([&]() {
     boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(

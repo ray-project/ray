@@ -4,7 +4,7 @@ from copy import deepcopy
 from typing import Any, Dict, List, Optional
 from zlib import crc32
 
-from ray._private.pydantic_compat import BaseModel
+from ray._common.pydantic_compat import BaseModel
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.utils import DeploymentOptionUpdateType, get_random_string
 from ray.serve.config import AutoscalingConfig
@@ -185,6 +185,13 @@ class DeploymentVersion:
                     )
                 elif isinstance(reconfigure_dict[option_name], BaseModel):
                     reconfigure_dict[option_name] = reconfigure_dict[option_name].dict()
+
+        # Can't serialize bytes. The request router class is already
+        # included in the serialized config as request_router_class.
+        if "request_router_config" in reconfigure_dict:
+            reconfigure_dict["request_router_config"].pop(
+                "_serialized_request_router_cls", None
+            )
 
         if (
             isinstance(self.deployment_config.user_config, bytes)

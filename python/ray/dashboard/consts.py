@@ -1,6 +1,6 @@
 import os
 
-from ray._private.ray_constants import env_bool, env_integer, env_float
+from ray._private.ray_constants import env_bool, env_float, env_integer
 
 DASHBOARD_LOG_FILENAME = "dashboard.log"
 DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX = "DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX:"
@@ -67,6 +67,11 @@ DASHBOARD_METRIC_PORT = env_integer("DASHBOARD_METRIC_PORT", 44227)
 
 NODE_TAG_KEYS = ["ip", "Version", "SessionName", "IsHeadNode"]
 GPU_TAG_KEYS = NODE_TAG_KEYS + ["GpuDeviceName", "GpuIndex"]
+
+# TpuDeviceName and TpuIndex are expected to be equal to the number of TPU
+# chips in the cluster. TpuType and TpuTopology are proportional to the number
+# of node pools.
+TPU_TAG_KEYS = NODE_TAG_KEYS + ["TpuDeviceName", "TpuIndex", "TpuType", "TpuTopology"]
 CLUSTER_TAG_KEYS = ["node_type", "Version", "SessionName"]
 COMPONENT_METRICS_TAG_KEYS = ["ip", "pid", "Version", "Component", "SessionName"]
 
