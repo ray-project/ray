@@ -128,8 +128,7 @@ Range-partitioning shuffle
 Range-partitioning based shuffle also is a classical algorithm, based on the dataset being split into target number of ranges as determined by boundaries approximating
 the real ranges of the totally ordered (sorted) dataset.
 
-1. **Sampling phase:** every input block is randomly sampled for (10) rows. Samples are combined into a single dataset, which is then sorted and split into
-target number of partitions defining approximate *range boundaries*.
+1. **Sampling phase:** every input block is randomly sampled for (10) rows. Samples are combined into a single dataset, which is then sorted and split into target number of partitions defining approximate *range boundaries*.
 2. **Partition phase:** every block is sorted and split into partitions based on the *range boundaries* derived in the previous step.
 3. **Reduce phase:** individual partitions within the same range are then recombined to produce the resulting block.
 
