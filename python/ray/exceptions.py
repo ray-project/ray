@@ -1,7 +1,8 @@
 import logging
 import os
+import sys
 from traceback import format_exception
-from typing import Optional, Type, Union
+from typing import Optional, Union
 
 import colorama
 
@@ -18,7 +19,6 @@ from ray.core.generated.common_pb2 import (
 )
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
-import setproctitle
 
 logger = logging.getLogger(__name__)
 
@@ -120,7 +120,7 @@ class RayTaskError(RayError):
         if proctitle:
             self.proctitle = proctitle
         else:
-            self.proctitle = setproctitle.getproctitle()
+            self.proctitle = ray._raylet.getproctitle()
         self.pid = pid or os.getpid()
         self.ip = ip or ray.util.get_node_ip_address()
         self.function_name = function_name
@@ -147,19 +147,31 @@ class RayTaskError(RayError):
 
         assert traceback_str is not None
 
-    def make_dual_exception_type(self) -> Type:
-        """Makes a Type that inherits from both RayTaskError and the type of
+    def make_dual_exception_instance(self) -> "RayTaskError":
+        """Makes a object instance that inherits from both RayTaskError and the type of
         `self.cause`. Raises TypeError if the cause class can't be subclassed"""
+        # For normal user Exceptions, we subclass from both
+        # RayTaskError and the user exception. For ExceptionGroup,
+        # we special handle it because it has a different __new__()
+        # signature from Exception.
+        # Ref: https://docs.python.org/3/library/exceptions.html#exception-groups
+        if sys.version_info >= (3, 11) and isinstance(
+            self.cause, ExceptionGroup  # noqa: F821
+        ):
+            return self._make_exceptiongroup_dual_exception_instance()
+        return self._make_normal_dual_exception_instance()
+
+    def _make_normal_dual_exception_instance(self) -> "RayTaskError":
         cause_cls = self.cause.__class__
         error_msg = str(self)
 
         class cls(RayTaskError, cause_cls):
             def __init__(self, cause):
                 self.cause = cause
-                # BaseException implements a __reduce__ method that returns
-                # a tuple with the type and the value of self.args.
-                # https://stackoverflow.com/a/49715949/2213289
                 self.args = (cause,)
+
+            def __reduce__(self):
+                return (cls, self.args)
 
             def __getattr__(self, name):
                 return getattr(self.cause, name)
@@ -171,7 +183,35 @@ class RayTaskError(RayError):
         cls.__name__ = name
         cls.__qualname__ = name
 
-        return cls
+        return cls(self.cause)
+
+    def _make_exceptiongroup_dual_exception_instance(self) -> "RayTaskError":
+        cause_cls = self.cause.__class__
+        error_msg = str(self)
+
+        class cls(RayTaskError, cause_cls):
+            def __new__(cls, cause):
+                self = super().__new__(cls, cause.message, cause.exceptions)
+                return self
+
+            def __init__(self, cause):
+                self.cause = cause
+                self.args = (cause,)
+
+            def __reduce__(self):
+                return (cls, self.args)
+
+            def __getattr__(self, name):
+                return getattr(self.cause, name)
+
+            def __str__(self):
+                return error_msg
+
+        name = f"RayTaskError({cause_cls.__name__})"
+        cls.__name__ = name
+        cls.__qualname__ = name
+
+        return cls(self.cause)
 
     def as_instanceof_cause(self):
         """Returns an exception that's an instance of the cause's class.
@@ -187,8 +227,7 @@ class RayTaskError(RayError):
             return self  # already satisfied
 
         try:
-            dual_cls = self.make_dual_exception_type()
-            return dual_cls(self.cause)
+            return self.make_dual_exception_instance()
         except TypeError as e:
             logger.warning(
                 f"User exception type {type(self.cause)} in RayTaskError can't"
@@ -333,9 +372,9 @@ class ActorDiedError(RayActorError):
         cause: The cause of the actor error. `RayTaskError` type means
             the actor has died because of an exception within `__init__`.
             `ActorDiedErrorContext` means the actor has died because of
-            unexepected system error. None means the cause is not known.
-            Theoretically, this should not happen,
-            but it is there as a safety check.
+            an unexpected system error. None means the cause isn't known.
+            Theoretically, this shouldn't happen,
+            but it's there as a safety check.
     """
 
     BASE_ERROR_MSG = "The actor died unexpectedly before finishing this task."
@@ -405,8 +444,8 @@ class ActorUnavailableError(RayActorError):
     def __init__(self, error_message: str, actor_id: Optional[bytes]):
         actor_id = ActorID(actor_id).hex() if actor_id is not None else None
         error_msg = (
-            f"The actor {actor_id} is unavailable: {error_message}. The task may or may"
-            "not have been executed on the actor."
+            f"The actor {actor_id} is unavailable: {error_message}. The task may or "
+            "may not have been executed on the actor."
         )
         actor_init_failed = False
         preempted = False
@@ -829,6 +868,38 @@ class ObjectRefStreamEndOfStreamError(RayError):
     pass
 
 
+@DeveloperAPI
+class OufOfBandObjectRefSerializationException(RayError):
+    """Raised when an `ray.ObjectRef` is out of band serialized by
+    `ray.cloudpickle`. It is an anti pattern.
+    """
+
+    pass
+
+
+@PublicAPI(stability="alpha")
+class RayChannelError(RaySystemError):
+    """Indicates that Ray encountered a system error related
+    to ray.experimental.channel.
+    """
+
+    pass
+
+
+@PublicAPI(stability="alpha")
+class RayChannelTimeoutError(RayChannelError, TimeoutError):
+    """Raised when the Compiled Graph channel operation times out."""
+
+    pass
+
+
+@PublicAPI(stability="alpha")
+class RayCgraphCapacityExceeded(RaySystemError):
+    """Raised when the Compiled Graph channel's buffer is at max capacity"""
+
+    pass
+
+
 RAY_EXCEPTION_TYPES = [
     PlasmaObjectNotAvailable,
     RayError,
@@ -854,4 +925,8 @@ RAY_EXCEPTION_TYPES = [
     ActorDiedError,
     ActorUnschedulableError,
     ActorUnavailableError,
+    RayChannelError,
+    RayChannelTimeoutError,
+    OufOfBandObjectRefSerializationException,
+    RayCgraphCapacityExceeded,
 ]

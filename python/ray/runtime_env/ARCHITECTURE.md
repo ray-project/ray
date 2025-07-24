@@ -15,7 +15,7 @@ See also the relevant [design doc](https://docs.google.com/document/d/1x1JAHg7c0
 ![Runtime Env Architecture](https://images.ctfassets.net/xjan103pcp94/2rQtidzPR9WG3xEXS2fUMj/f26dff1edc596003c24bcf0e387e2614/1362157_IllustrationsForTechnicalBlogPost_V2_050522_5_050522.jpg)
 
 
-Runtime environment creation is handled by a "dashboard agent" process (`RuntimeEnvAgent`) that runs on each node of the cluster (dashboard/modules/runtime_env/runtime_env_agent.py).  
+Runtime environment creation is handled by a "dashboard agent" process (`RuntimeEnvAgent`) that runs on each node of the cluster (python/ray/dashboard/modules/runtime_env/runtime_env_agent.py).
 
 The dashboard agent fate-shares with the Raylet process (for more on the Raylet, see the [Ray whitepaper](https://docs.google.com/document/d/1tBw9A4j62ruI5omIJbMxly-la5w4q_TjyJgJL_jN2fI/preview)). The reason is that if the dashboard agent fails, then runtime env creation will fail, so the Raylet will no longer be able to set up the environment for its workers.  The fate sharing simplifies the failure model and because it is a core component for scheduling tasks and actors.
 
@@ -42,7 +42,7 @@ The `RuntimeEnvAgent` exposes gRPC endpoints for `runtime_env` creation and dele
 
 The agent manager (src/ray/raylet/agent_manager.cc) runs in the Raylet and manages the connection to the agent, and calls the creation and deletion endpoints.
 
-The worker pool holds a reference to the agent manager, and uses it to send `CreateRuntimeEnvIfNeeded` and `DeleteRuntimeEnvIfPossible` requests to the `RuntimeEnvAgent` as needed for new worker processes or when worker processes are removed. 
+The worker pool holds a reference to the agent manager, and uses it to send `CreateRuntimeEnvIfNeeded` and `DeleteRuntimeEnvIfPossible` requests to the `RuntimeEnvAgent` as needed for new worker processes or when worker processes are removed.
 
 ## Starting a new worker process
 
@@ -64,7 +64,7 @@ When a reference count reaches 0, the file is deleted.
 
 #### The "temporary reference" for Ray Jobs API and Ray Client
 
-When the user specifies a local directory in `working_dir` or `py_modules`, it is zipped and uploaded to the GCS as a URI by Ray.  However, as described above, the reference count is ordinarily only incremented when a driver (or detached actor) is started that uses that URI.  In the case of Ray Jobs API and Ray Client, this uploading happens before the driver starts.  
+When the user specifies a local directory in `working_dir` or `py_modules`, it is zipped and uploaded to the GCS as a URI by Ray.  However, as described above, the reference count is ordinarily only incremented when a driver (or detached actor) is started that uses that URI.  In the case of Ray Jobs API and Ray Client, this uploading happens before the driver starts.
 
 To prevent the file from being garbage collected before the driver starts, a special "temporary reference" is added for the URI when it is uploaded.  This reference is removed after a configurable timeout (controlled by the env var `RAY_RUNTIME_ENV_TEMPORARY_REFERENCE_EXPIRATION_S` on the head node, default 600 seconds).
 

@@ -498,10 +498,7 @@ class VectorEnvWrapper(BaseEnv):
         if not as_dict:
             return self.vector_env.get_sub_environments()
         else:
-            return {
-                _id: env
-                for _id, env in enumerate(self.vector_env.get_sub_environments())
-            }
+            return dict(enumerate(self.vector_env.get_sub_environments()))
 
     @override(BaseEnv)
     def try_render(self, env_id: Optional[EnvID] = None) -> None:
@@ -517,16 +514,6 @@ class VectorEnvWrapper(BaseEnv):
     @override(BaseEnv)
     def action_space(self) -> gym.Space:
         return self._action_space
-
-    @override(BaseEnv)
-    def action_space_sample(self, agent_id: list = None) -> MultiEnvDict:
-        del agent_id
-        return {0: {_DUMMY_AGENT_ID: self._action_space.sample()}}
-
-    @override(BaseEnv)
-    def observation_space_sample(self, agent_id: list = None) -> MultiEnvDict:
-        del agent_id
-        return {0: {_DUMMY_AGENT_ID: self._observation_space.sample()}}
 
     @override(BaseEnv)
     def get_agent_ids(self) -> Set[AgentID]:

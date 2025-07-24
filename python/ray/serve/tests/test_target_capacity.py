@@ -7,13 +7,12 @@ import pytest
 
 import ray
 from ray import serve
-from ray._private.pydantic_compat import BaseModel
-from ray._private.test_utils import SignalActor, wait_for_condition
+from ray._common.pydantic_compat import BaseModel
+from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.exceptions import RayActorError
 from ray.serve import Application
 from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.common import (
-    ApplicationStatus,
     DeploymentStatus,
     DeploymentStatusTrigger,
     ReplicaState,
@@ -22,7 +21,11 @@ from ray.serve._private.common import (
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
 from ray.serve.config import AutoscalingConfig
 from ray.serve.context import _get_global_client
-from ray.serve.schema import ServeApplicationSchema, ServeDeploySchema
+from ray.serve.schema import (
+    ApplicationStatus,
+    ServeApplicationSchema,
+    ServeDeploySchema,
+)
 
 INGRESS_DEPLOYMENT_NAME = "ingress"
 INGRESS_DEPLOYMENT_NUM_REPLICAS = 6
@@ -368,11 +371,6 @@ def test_autoscaling_scale_to_zero(
         },
     )
 
-    # TODO(edoakes): for some reason, the deployment does not actually scale down to
-    # zero here, so skipping this part for now. Instead it repeatedly scales down and
-    # then back up. Seems to have something to do with the handle-side queue metric.
-    return
-
     # Cancel all of the requests, should scale down to zero.
     [r.cancel() for r in responses]
     wait_for_condition(
@@ -643,7 +641,9 @@ class TestTargetCapacityUpdateAndServeStatus:
         self, shutdown_ray_and_serve, client: ServeControllerClient
     ):
         """Check Serve's status when target_capacity changes while autoscaling."""
-
+        # TODO(landscapepainter): This test fails locally due to the stall for replica initialization
+        # during upscaling and delayed response from serve.status(). It does not fail from
+        # buildkite, but need to investigate why it fails locally.
         app_name = "controlled_app"
         deployment_name = "controlled"
         min_replicas = 10
@@ -894,6 +894,9 @@ class TestInitialReplicasHandling:
     def test_initial_replicas_scales_down(
         self, shutdown_ray_and_serve, client: ServeControllerClient
     ):
+        # TODO(landscapepainter): This test fails locally due to the stall for replica initialization
+        # during upscaling and delayed response from serve.status(). It does not fail from
+        # buildkite, but need to investigate why it fails locally.
         deployment_name = "start_at_ten"
         min_replicas = 5
         initial_replicas = 10
@@ -939,6 +942,9 @@ class TestInitialReplicasHandling:
     def test_initial_replicas_scales_up_and_down(
         self, shutdown_ray_and_serve, client: ServeControllerClient
     ):
+        # TODO(landscapepainter): This test fails locally due to the stall for replica initialization
+        # during upscaling and delayed response from serve.status(). It does not fail from
+        # buildkite, but need to investigate why it fails locally.
         deployment_name = "start_at_ten"
         min_replicas = 0
         initial_replicas = 10
@@ -1025,6 +1031,9 @@ class TestInitialReplicasHandling:
     def test_initial_replicas_new_configs(
         self, shutdown_ray_and_serve, client: ServeControllerClient
     ):
+        # TODO(landscapepainter): This test fails locally due to the stall for replica initialization
+        # during upscaling and delayed response from serve.status(). It does not fail from
+        # buildkite, but need to investigate why it fails locally.
         deployment_name = "start_at_ten"
         min_replicas = 0
         initial_replicas = 20

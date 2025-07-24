@@ -5,7 +5,7 @@ import ray
 import time
 from ray._raylet import GcsClient
 from ray.core.generated import autoscaler_pb2, common_pb2
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import wait_for_condition
 from ray.util.scheduling_strategies import (
     NodeAffinitySchedulingStrategy,
     PlacementGroupSchedulingStrategy,
@@ -104,7 +104,7 @@ def test_preemption(ray_start_cluster):
 
     gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
 
-    with pytest.raises(ray.exceptions.RpcError):
+    with pytest.raises(ray.exceptions.RaySystemError):
         # Test invalid draining deadline
         gcs_client.drain_node(
             worker_node_id,
@@ -435,9 +435,5 @@ def test_draining_reason(ray_start_cluster, graceful):
 
 
 if __name__ == "__main__":
-    import os
 
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

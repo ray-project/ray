@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, List, Optional, Union
+from typing import TYPE_CHECKING, List, Optional
 
 import ray.cloudpickle as cloudpickle
 from ray.data._internal.util import call_with_retry
@@ -12,7 +12,7 @@ from ray.util.annotations import DeveloperAPI
 if TYPE_CHECKING:
     import pyarrow
 
-    from ray.data.datasource.parquet_datasource import _SerializedFragment
+    from ray.data._internal.datasource.parquet_datasource import SerializedFragment
 
 
 FRAGMENTS_PER_META_FETCH = 6
@@ -66,7 +66,6 @@ class ParquetMetadataProvider(FileMetadataProvider):
     def _get_block_metadata(
         self,
         paths: List[str],
-        schema: Optional[Union[type, "pyarrow.lib.Schema"]],
         *,
         num_fragments: int,
         prefetched_metadata: Optional[List["_ParquetFileFragmentMetaData"]],
@@ -75,8 +74,6 @@ class ParquetMetadataProvider(FileMetadataProvider):
 
         Args:
             paths: The file paths for a single dataset block.
-            schema: The user-provided or inferred schema for the given file
-                paths, if any.
             num_fragments: The number of Parquet file fragments derived from the input
                 file paths.
             prefetched_metadata: Metadata previously returned from
@@ -96,7 +93,6 @@ class ParquetMetadataProvider(FileMetadataProvider):
             block_metadata = BlockMetadata(
                 num_rows=sum(m.num_rows for m in prefetched_metadata),
                 size_bytes=sum(m.total_byte_size for m in prefetched_metadata),
-                schema=schema,
                 input_files=paths,
                 exec_stats=None,
             )  # Exec stats filled in later.
@@ -106,7 +102,6 @@ class ParquetMetadataProvider(FileMetadataProvider):
             block_metadata = BlockMetadata(
                 num_rows=None,
                 size_bytes=None,
-                schema=schema,
                 input_files=paths,
                 exec_stats=None,
             )
@@ -131,11 +126,11 @@ class ParquetMetadataProvider(FileMetadataProvider):
             must be returned in the same order as all input file fragments, such
             that `metadata[i]` always contains the metadata for `fragments[i]`.
         """
-        from ray.data.datasource.parquet_datasource import _SerializedFragment
+        from ray.data._internal.datasource.parquet_datasource import SerializedFragment
 
         if len(fragments) > PARALLELIZE_META_FETCH_THRESHOLD:
             # Wrap Parquet fragments in serialization workaround.
-            fragments = [_SerializedFragment(fragment) for fragment in fragments]
+            fragments = [SerializedFragment(fragment) for fragment in fragments]
             # Fetch Parquet metadata in parallel using Ray tasks.
 
             def fetch_func(fragments):
@@ -162,12 +157,14 @@ class ParquetMetadataProvider(FileMetadataProvider):
 
 
 def _fetch_metadata_serialization_wrapper(
-    fragments: List["_SerializedFragment"],
+    fragments: List["SerializedFragment"],
     retry_match: Optional[List[str]],
     retry_max_attempts: int,
     retry_max_interval: int,
 ) -> List["pyarrow.parquet.FileMetaData"]:
-    from ray.data.datasource.parquet_datasource import _deserialize_fragments_with_retry
+    from ray.data._internal.datasource.parquet_datasource import (
+        _deserialize_fragments_with_retry,
+    )
 
     deserialized_fragments = _deserialize_fragments_with_retry(fragments)
     try:
@@ -187,24 +184,24 @@ def _fetch_metadata_serialization_wrapper(
             "To increase the maximum number of attempts, configure "
             "`RETRY_MAX_ATTEMPTS_FOR_META_FETCH_TASK`. For example:\n"
             "```\n"
-            "ray.data.datasource.parquet_datasource.RETRY_MAX_ATTEMPTS_FOR_META_FETCH_TASK = 64\n"  # noqa: E501
+            "ray.data._internal.datasource.parquet_datasource.RETRY_MAX_ATTEMPTS_FOR_META_FETCH_TASK = 64\n"  # noqa: E501
             "```\n"
             "To increase the maximum retry backoff interval, configure "
             "`RETRY_MAX_BACKOFF_S_FOR_META_FETCH_TASK`. For example:\n"
             "```\n"
-            "ray.data.datasource.parquet_datasource.RETRY_MAX_BACKOFF_S_FOR_META_FETCH_TASK = 128\n"  # noqa: E501
+            "ray.data._internal.datasource.parquet_datasource.RETRY_MAX_BACKOFF_S_FOR_META_FETCH_TASK = 128\n"  # noqa: E501
             "```\n"
             "If the error continues to occur, you can also try decresasing the "
             "concurency of metadata fetching tasks by setting "
             "`NUM_CPUS_FOR_META_FETCH_TASK` to a larger value. For example:\n"
             "```\n"
-            "ray.data.datasource.parquet_datasource.NUM_CPUS_FOR_META_FETCH_TASK = 4.\n"  # noqa: E501
+            "ray.data._internal.datasource.parquet_datasource.NUM_CPUS_FOR_META_FETCH_TASK = 4.\n"  # noqa: E501
             "```\n"
             "To change which exceptions to retry on, set "
             "`RETRY_EXCEPTIONS_FOR_META_FETCH_TASK` to a list of error messages. For "
             "example:\n"
             "```\n"
-            'ray.data.datasource.parquet_datasource.RETRY_EXCEPTIONS_FOR_META_FETCH_TASK = ["AWS Error ACCESS_DENIED", "Timeout"]\n'  # noqa: E501
+            'ray.data._internal.datasource.parquet_datasource.RETRY_EXCEPTIONS_FOR_META_FETCH_TASK = ["AWS Error ACCESS_DENIED", "Timeout"]\n'  # noqa: E501
             "```"
         ) from e
     return metadata

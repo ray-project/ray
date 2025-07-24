@@ -50,8 +50,7 @@ class TestE2ERLModuleLoad(unittest.TestCase):
 
         config = (
             PPOConfig()
-            .experimental(_enable_new_api_stack=True)
-            .rollouts(rollout_fragment_length=4)
+            .env_runners(rollout_fragment_length=4)
             .environment(MultiAgentCartPole, env_config={"num_agents": num_agents})
             .training(num_sgd_iter=1, train_batch_size=8, sgd_minibatch_size=8)
             .multi_agent(policies=policies, policy_mapping_fn=policy_mapping_fn)
@@ -86,7 +85,6 @@ class TestE2ERLModuleLoad(unittest.TestCase):
                 module_specs=module_specs,
                 load_state_path=marl_checkpoint_path,
             )
-            config.experimental(_enable_new_api_stack=True)
             config.rl_module(rl_module_spec=marl_module_spec_from_checkpoint)
 
             # Create the algorithm with multiple nodes and check if the weights
@@ -146,7 +144,6 @@ class TestE2ERLModuleLoad(unittest.TestCase):
                 module_specs=module_specs,
                 load_state_path=marl_checkpoint_path,
             )
-            config.experimental(_enable_new_api_stack=True)
             config.rl_module(rl_module_spec=marl_module_spec_from_checkpoint)
 
             # create the algorithm with multiple nodes and check if the weights
@@ -178,8 +175,7 @@ class TestE2ERLModuleLoad(unittest.TestCase):
 
         config = (
             PPOConfig()
-            .experimental(_enable_new_api_stack=True)
-            .rollouts(rollout_fragment_length=4)
+            .env_runners(rollout_fragment_length=4)
             .environment("CartPole-v1")
             .training(num_sgd_iter=1, train_batch_size=8, sgd_minibatch_size=8)
             .resources(**scaling_config)
@@ -208,8 +204,6 @@ class TestE2ERLModuleLoad(unittest.TestCase):
                 catalog_class=PPOCatalog,
                 load_state_path=module_ckpt_path,
             )
-
-            config.experimental(_enable_new_api_stack=True)
             config.rl_module(rl_module_spec=module_to_load_spec)
 
             # create the algorithm with multiple nodes and check if the weights
@@ -282,7 +276,6 @@ class TestE2ERLModuleLoad(unittest.TestCase):
                     "policy_0",
                 },
             )
-            config.experimental(_enable_new_api_stack=True)
             config.rl_module(rl_module_spec=marl_module_spec_from_checkpoint)
 
             # create the algorithm with multiple nodes and check if the weights

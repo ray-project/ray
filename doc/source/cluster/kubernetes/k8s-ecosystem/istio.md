@@ -66,7 +66,7 @@ In this mode, you _must_ disable the KubeRay init container injection by setting
 
 ```bash
 # Set ENABLE_INIT_CONTAINER_INJECTION=false on the KubeRay operator.
-helm upgrade kuberay-operator kuberay/kuberay-operator --version 1.1.1 \
+helm upgrade kuberay-operator kuberay/kuberay-operator --version 1.4.2 \
   --set env\[0\].name=ENABLE_INIT_CONTAINER_INJECTION \
   --set-string env\[0\].value=false
 
@@ -165,7 +165,7 @@ Kubernetes Service doesn't support specifying ports in ranges. You _must_ set th
 :::
 
 :::{warning}
-The default Ray worker port range, from 10002 to 19999, is too large to specify in the service manifest and can cause memory issues in Kubernetes. Set a smaller `max-worker-port` to work with Istio.
+The default Ray worker port range, from 10002 to 19999, is too large to specify in the service manifest and can cause memory issues in Kubernetes. Set a smaller `max-worker-port` to work with Istio. Note that by default every sidecar in the service mesh caches these ports, which could lead to sidecar OOMs if you create too many headless services. 
 :::
 
 ## Step 4: Create the RayCluster
@@ -173,9 +173,6 @@ The default Ray worker port range, from 10002 to 19999, is too large to specify 
 The upcoming RayCluster _must_ use exactly the same ports listed in the previous Headless Service, including the `max-worker-port`.
 In addition, the `node-ip-address` _must_ be set to the Pod FQDN of the Headless Service to enable Istio L7 observability.
 
-  ::::{tab-set}
-
-  :::{tab-item} ARM64 (Apple Silicon)
   ```bash
   kubectl apply -f - <<EOF
   apiVersion: ray.io/v1
@@ -183,7 +180,7 @@ In addition, the `node-ip-address` _must_ be set to the Pod FQDN of the Headless
   metadata:
     name: raycluster-istio
   spec:
-    rayVersion: '2.10.0'
+    rayVersion: '2.46.0'
     headGroupSpec:
       rayStartParams:
         num-cpus: '1'
@@ -199,7 +196,7 @@ In addition, the `node-ip-address` _must_ be set to the Pod FQDN of the Headless
         spec:
           containers:
           - name: ray-head
-            image: rayproject/ray:2.10.0-aarch64
+            image: rayproject/ray:2.46.0
     workerGroupSpecs:
       - replicas: 1
         minReplicas: 1
@@ -219,61 +216,9 @@ In addition, the `node-ip-address` _must_ be set to the Pod FQDN of the Headless
           spec:
             containers:
             - name: ray-worker
-              image: rayproject/ray:2.10.0-aarch64
+              image: rayproject/ray:2.46.0
   EOF
   ```
-  :::
-
-  :::{tab-item} x86-64 (Intel/Linux)
-  ```bash
-  kubectl apply -f - <<EOF
-  apiVersion: ray.io/v1
-  kind: RayCluster
-  metadata:
-    name: raycluster-istio
-  spec:
-    rayVersion: '2.10.0'
-    headGroupSpec:
-      rayStartParams:
-        num-cpus: '1'
-        node-manager-port: '6380'
-        object-manager-port: '6381'
-        runtime-env-agent-port: '6382'
-        dashboard-agent-grpc-port: '6383'
-        dashboard-agent-listen-port: '52365'
-        metrics-export-port: '8080'
-        max-worker-port: '10012'
-        node-ip-address: \$(hostname -I | tr -d ' ' | sed 's/\./-/g').raycluster-istio-headless-svc.default.svc.cluster.local
-      template:
-        spec:
-          containers:
-          - name: ray-head
-            image: rayproject/ray:2.10.0
-    workerGroupSpecs:
-      - replicas: 1
-        minReplicas: 1
-        maxReplicas: 1
-        groupName: small-group
-        rayStartParams:
-          num-cpus: '1'
-          node-manager-port: '6380'
-          object-manager-port: '6381'
-          runtime-env-agent-port: '6382'
-          dashboard-agent-grpc-port: '6383'
-          dashboard-agent-listen-port: '52365'
-          metrics-export-port: '8080'
-          max-worker-port: '10012'
-          node-ip-address: \$(hostname -I | tr -d ' ' | sed 's/\./-/g').raycluster-istio-headless-svc.default.svc.cluster.local
-        template:
-          spec:
-            containers:
-            - name: ray-worker
-              image: rayproject/ray:2.10.0
-  EOF
-  ```
-  :::
-
-  ::::
 
 :::{note}
 The Pod FQDN of the Headless service should be in the format of `pod-ipv4-address.service.namespace.svc.zone.` or the format of `pod-hostname.service.namespace.svc.zone.` depending on your implementation of the [Kubernetes DNS specification](https://github.com/kubernetes/dns/blob/master/docs/specification.md).
@@ -310,7 +255,8 @@ Run the following command to start the Jaeger dashboard:
 istioctl dashboard jaeger
 ```
 
-Go to the Jaeger dashboard with the `service=raycluster-istio.default` query: [http://localhost:16686/jaeger/search?limit=1000&lookback=1h&maxDuration&minDuration&service=raycluster-istio.default](http://localhost:16686/jaeger/search?limit=1000&lookback=1h&maxDuration&minDuration&service=raycluster-istio.default)
+<!-- TODO: Change the following link to markdown syntax after this issue  https://github.com/executablebooks/MyST-Parser/issues/760 is resolved -->
+Go to the Jaeger dashboard with the `service=raycluster-istio.default` query: <a class="reference external" href="http://localhost:16686/jaeger/search?limit=1000&lookback=1h&maxDuration&minDuration&service=raycluster-istio.default">http://localhost:16686/jaeger/search?limit=1000&lookback=1h&maxDuration&minDuration&service=raycluster-istio.default</a>
 
 ![Istio Jaeger Overview](../images/istio-jaeger-1.png)
 

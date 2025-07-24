@@ -87,7 +87,9 @@ class GlueTest(unittest.TestCase):
         self.sdk.returns["get_cloud"] = APIDict(result=APIDict(provider="AWS"))
 
         self.writeClusterEnv("{'env': true}")
-        self.writeClusterCompute("{'compute': true}")
+        self.writeClusterCompute(
+            "{'head_node_type': {'name': 'head_node', 'instance_type': 'm5a.4xlarge'}, 'worker_node_types': []}"
+        )
 
         with open(os.path.join(self.tempdir, "driver_fail.sh"), "wt") as f:
             f.write("exit 1\n")
@@ -116,9 +118,14 @@ class GlueTest(unittest.TestCase):
                 project_id: str,
                 sdk=None,
                 smoke_test: bool = False,
+                log_streaming_limit: int = 100,
             ):
                 super(MockClusterManager, self).__init__(
-                    test_name, project_id, this_sdk, smoke_test=smoke_test
+                    test_name,
+                    project_id,
+                    this_sdk,
+                    smoke_test=smoke_test,
+                    log_streaming_limit=log_streaming_limit,
                 )
                 self.return_dict = this_cluster_manager_return
                 this_instances["cluster_manager"] = self
@@ -168,6 +175,23 @@ class GlueTest(unittest.TestCase):
                 cluster_compute="cluster_compute.yaml",
                 byod={},
             ),
+            alert="unit_test_alerter",
+        )
+        self.kuberay_test = MockTest(
+            name="unit_test_end_to_end_kuberay",
+            run=dict(
+                type="unit_test",
+                prepare="prepare_cmd",
+                script="test_cmd",
+                wait_for_nodes=dict(num_nodes=4, timeout=40),
+            ),
+            working_dir=self.tempdir,
+            cluster=dict(
+                cluster_env="cluster_env.yaml",
+                cluster_compute="cluster_compute.yaml",
+                byod={},
+            ),
+            env="kuberay",
             alert="unit_test_alerter",
         )
         self.anyscale_project = "prj_unit12345678"
@@ -232,17 +256,27 @@ class GlueTest(unittest.TestCase):
 
         self.mock_alert_return = None
 
-    def _run(self, result: Result, **kwargs):
-        run_release_test(
-            test=self.test,
-            anyscale_project=self.anyscale_project,
-            result=result,
-            **kwargs
-        )
+    def _run(self, result: Result, kuberay: bool = False, **kwargs):
+        if kuberay:
+            run_release_test(
+                test=self.kuberay_test,
+                result=result,
+                log_streaming_limit=1000,
+                **kwargs
+            )
+        else:
+            run_release_test(
+                test=self.test,
+                anyscale_project=self.anyscale_project,
+                result=result,
+                log_streaming_limit=1000,
+                **kwargs
+            )
 
     def testInvalidClusterCompute(self):
         result = Result()
 
+        # Test with regular run
         with patch(
             "ray_release.glue.load_test_cluster_compute",
             _fail_on_call(ReleaseTestConfigError),
@@ -250,10 +284,21 @@ class GlueTest(unittest.TestCase):
             self._run(result)
         self.assertEqual(result.return_code, ExitCode.CONFIG_ERROR.value)
 
+        # Test with kuberay run
+        with patch(
+            "ray_release.glue.load_test_cluster_compute",
+            _fail_on_call(ReleaseTestConfigError),
+        ), self.assertRaises(ReleaseTestConfigError):
+            self._run(result, True)
+        self.assertEqual(result.return_code, ExitCode.CONFIG_ERROR.value)
+
         # Fails because file not found
         os.unlink(os.path.join(self.tempdir, "cluster_compute.yaml"))
         with self.assertRaisesRegex(ReleaseTestConfigError, "Path not found"):
             self._run(result)
+        self.assertEqual(result.return_code, ExitCode.CONFIG_ERROR.value)
+        with self.assertRaisesRegex(ReleaseTestConfigError, "Path not found"):
+            self._run(result, True)
         self.assertEqual(result.return_code, ExitCode.CONFIG_ERROR.value)
 
         # Fails because invalid jinja template
@@ -261,12 +306,17 @@ class GlueTest(unittest.TestCase):
         with self.assertRaisesRegex(ReleaseTestConfigError, "yaml template"):
             self._run(result)
         self.assertEqual(result.return_code, ExitCode.CONFIG_ERROR.value)
+        with self.assertRaisesRegex(ReleaseTestConfigError, "yaml template"):
+            self._run(result, True)
+        self.assertEqual(result.return_code, ExitCode.CONFIG_ERROR.value)
 
         # Fails because invalid json
         self.writeClusterCompute("{'test': true, 'fail}")
         with self.assertRaisesRegex(ReleaseTestConfigError, "quoted scalar"):
             self._run(result)
-
+        self.assertEqual(result.return_code, ExitCode.CONFIG_ERROR.value)
+        with self.assertRaisesRegex(ReleaseTestConfigError, "quoted scalar"):
+            self._run(result, True)
         self.assertEqual(result.return_code, ExitCode.CONFIG_ERROR.value)
 
     def testStartClusterFails(self):
@@ -473,6 +523,7 @@ class GlueTest(unittest.TestCase):
 
         self.assertEqual(result.return_code, ExitCode.COMMAND_ALERT.value)
         self.assertEqual(result.status, "error")
+        self.assertEqual(self.instances["cluster_manager"].log_streaming_limit, 1000)
 
         # Ensure cluster was terminated
         self.assertGreaterEqual(self.sdk.call_counter["terminate_cluster"], 1)

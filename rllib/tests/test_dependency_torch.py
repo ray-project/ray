@@ -3,6 +3,7 @@
 import os
 import sys
 
+
 if __name__ == "__main__":
     # Do not import torch for testing purposes.
     os.environ["RLLIB_TEST_NO_TORCH_IMPORT"] = "1"
@@ -21,6 +22,10 @@ if __name__ == "__main__":
     # Note: No ray.init(), to test it works without Ray
     config = (
         PPOConfig()
+        .api_stack(
+            enable_env_runner_and_connector_v2=False,
+            enable_rl_module_and_learner=False,
+        )
         .environment("CartPole-v1")
         .framework("tf")
         .env_runners(num_env_runners=0)

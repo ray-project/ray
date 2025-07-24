@@ -135,7 +135,7 @@ def main():
             # Get the metadata.
             ray.get([actor.get_metadata.remote() for actor in actors])
             # Get the result.
-            pb = ProgressBar("Computing Pi", num_cpus)
+            pb = ProgressBar("Computing Pi", num_cpus, "actor")
             results = [actor.get_pi.remote() for actor in actors]
             pb.fetch_until_complete(results)
             pb.close()

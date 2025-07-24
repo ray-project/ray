@@ -3,13 +3,15 @@ import numpy as np
 import sys
 import time
 import gc
+import os
+import signal
 import random
 import asyncio
 from typing import Optional
 from pydantic import BaseModel
 
 import ray
-from ray._private.test_utils import SignalActor
+from ray._common.test_utils import SignalActor
 
 RECONSTRUCTION_CONFIG = {
     "health_check_failure_threshold": 10,
@@ -34,15 +36,147 @@ def assert_no_leak():
     assert core_worker.get_memory_store_size() == 0
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="SIGKILL is not available on Windows"
+)
+def test_caller_death(monkeypatch, shutdown_only):
+    """
+    Test the case where caller of a streaming generator actor task dies
+    while the streaming generator task is executing. The streaming
+    generator task should still finish and won't block other actor tasks.
+    This means that `ReportGeneratorItemReturns` RPC should fail and it shouldn't
+    be retried indefinitely.
+    """
+    monkeypatch.setenv("RAY_core_worker_rpc_server_reconnect_timeout_s", "1")
+    ray.init()
+
+    @ray.remote
+    class Callee:
+        def gen(self, caller_pid):
+            os.kill(caller_pid, signal.SIGKILL)
+            yield [1] * 1024 * 1024
+
+        def ping(self):
+            pass
+
+    @ray.remote
+    def caller(callee):
+        ray.get(callee.gen.remote(os.getpid()))
+
+    callee = Callee.remote()
+    o = caller.remote(callee)
+    ray.wait([o])
+    # Make sure gen will finish and ping can run.
+    ray.get(callee.ping.remote())
+
+
+def test_intermediate_generator_object_recovery_while_generator_running(
+    ray_start_cluster,
+):
+    """
+    1. Streaming producer starts on worker1.
+    2. consumer consumes value 1 from producer on worker2 and finishes.
+    3. Run an extra consumer on worker2 to track when reconstruction is triggered.
+    4. Add worker3.
+    5. worker2 dies.
+    6. Try to get consumer output.
+    7. Therefore Ray tries to reconstruct value 1 from producer.
+    8. Get the reconstructed extra_consumer_ref (assures 7 happened).
+    9. Streaming producer should be cancelled and resubmitted.
+    10. Retry for consumer should complete.
+    """
+
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=0)  # head
+    ray.init(address=cluster.address)
+    cluster.add_node(num_cpus=1, resources={"producer": 1})  # worker1
+    worker2 = cluster.add_node(num_cpus=1, resources={"consumer": 1})
+
+    @ray.remote(num_cpus=1, resources={"producer": 1})
+    def producer():
+        for _ in range(3):
+            yield np.zeros(10 * 1024 * 1024, dtype=np.uint8)
+
+    @ray.remote(num_cpus=1, resources={"consumer": 1})
+    def consumer(np_arr):
+        return np_arr
+
+    streaming_ref = producer.options(_generator_backpressure_num_objects=1).remote()
+    consumer_ref = consumer.remote(next(streaming_ref))
+    extra_consumer_ref = consumer.remote(np.zeros(10 * 1024 * 1024, dtype=np.uint8))
+
+    ray.wait([consumer_ref, extra_consumer_ref], num_returns=2, fetch_local=False)
+
+    cluster.add_node(num_cpus=1, resources={"consumer": 1})  # worker3
+    cluster.remove_node(worker2, allow_graceful=True)
+
+    # Make sure reconstruction was triggered.
+    assert ray.get(extra_consumer_ref).size == (10 * 1024 * 1024)
+    # Allow first streaming generator attempt to finish
+    ray.get([next(streaming_ref), next(streaming_ref)])
+
+    assert ray.get(consumer_ref).size == (10 * 1024 * 1024)
+
+
+def test_actor_intermediate_generator_object_recovery_while_generator_running(
+    ray_start_cluster,
+):
+    """
+    1. Producer actor and its generator producer task start on worker1.
+    2. consumer consumes value 1 from producer on worker2 and finishes.
+    3. Run an extra consumer on worker2 to track when reconstruction is triggered.
+    4. Add worker3.
+    5. worker2 dies.
+    6. Ray tries to reconstruct value 1 from producer.
+    7. Get the reconstructed extra_consumer_ref (assures 6 happened).
+    8. Ray tries and fails to cancel the producer task.
+    9. Get the next two values to relieve backpressure and allow producer to finish.
+    10. Ray resubmits the producer generator task.
+    11. Retry for consumer should complete.
+    """
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=0)  # head
+    ray.init(address=cluster.address)
+    cluster.add_node(num_cpus=1, resources={"producer": 1})  # worker 1
+    worker2 = cluster.add_node(num_cpus=1, resources={"consumer": 1})
+
+    @ray.remote(num_cpus=1, resources={"producer": 1}, max_task_retries=-1)
+    class Producer:
+        def producer(self):
+            for _ in range(3):
+                yield np.zeros(10 * 1024 * 1024, dtype=np.uint8)
+
+    @ray.remote(num_cpus=1, resources={"consumer": 1})
+    def consumer(np_arr):
+        return np_arr
+
+    producer_actor = Producer.remote()
+    streaming_ref = producer_actor.producer.options(
+        _generator_backpressure_num_objects=1
+    ).remote()
+    consumer_ref = consumer.remote(next(streaming_ref))
+    extra_consumer_ref = consumer.remote(np.zeros(10 * 1024 * 1024, dtype=np.uint8))
+
+    ray.wait([consumer_ref, extra_consumer_ref], num_returns=2, fetch_local=False)
+
+    cluster.add_node(num_cpus=1, resources={"consumer": 1})  # worker 3
+    cluster.remove_node(worker2, allow_graceful=True)
+
+    # Make sure reconstruction was triggered.
+    ray.get(extra_consumer_ref)
+    # Allow first streaming generator attempt to finish
+    ray.get([next(streaming_ref), next(streaming_ref)])
+
+    assert ray.get(consumer_ref).size == (10 * 1024 * 1024)
+
+
 @pytest.mark.parametrize("backpressure", [False, True])
 @pytest.mark.parametrize("delay_latency", [0.1, 1])
 @pytest.mark.parametrize("threshold", [1, 3])
-def test_ray_datasetlike_mini_stress_test(
+def test_many_tasks_lineage_reconstruction_mini_stress_test(
     monkeypatch, ray_start_cluster, backpressure, delay_latency, threshold
 ):
-    """
-    Test a workload that's like ray dataset + lineage reconstruction.
-    """
+    """Test a workload that spawns many tasks and relies on lineage reconstruction."""
     if not backpressure:
         if delay_latency == 0.1 and threshold == 1:
             return
@@ -53,6 +187,10 @@ def test_ray_datasetlike_mini_stress_test(
         m.setenv(
             "RAY_testing_asio_delay_us",
             "CoreWorkerService.grpc_server.ReportGeneratorItemReturns=10000:1000000",
+        )
+        m.setenv(
+            "RAY_testing_rpc_failure",
+            "CoreWorkerService.grpc_client.ReportGeneratorItemReturns=5:25:25",
         )
         cluster = ray_start_cluster
         cluster.add_node(
@@ -261,9 +399,4 @@ def test_cancel(shutdown_only, use_asyncio):
 
 
 if __name__ == "__main__":
-    import os
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

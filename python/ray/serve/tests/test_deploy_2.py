@@ -6,48 +6,32 @@ import time
 from concurrent.futures.thread import ThreadPoolExecutor
 from typing import Dict
 
+import httpx
 import pytest
-import requests
 
 import ray
 from ray import serve
-from ray._private.pydantic_compat import ValidationError
-from ray._private.test_utils import SignalActor, wait_for_condition
-from ray.serve._private.common import ApplicationStatus, DeploymentStatus
+from ray._common.test_utils import SignalActor, wait_for_condition
+from ray.serve._private.common import DeploymentStatus
 from ray.serve._private.logging_utils import get_serve_logs_dir
-from ray.serve._private.test_utils import check_deployment_status, check_num_replicas_eq
+from ray.serve._private.test_utils import (
+    check_deployment_status,
+    check_num_replicas_eq,
+    get_application_url,
+)
 from ray.serve._private.utils import get_component_file_name
+from ray.serve.schema import ApplicationStatus
 from ray.util.state import list_actors
 
 
-@pytest.mark.parametrize("prefixes", [[None, "/f", None], ["/f", None, "/f"]])
-def test_deploy_nullify_route_prefix(serve_instance, prefixes):
-    # With multi dags support, dag driver will receive all route
-    # prefix when route_prefix is "None", since "None" will be converted
-    # to "/" internally.
-    # Note: the expose http endpoint will still be removed for internal
-    # dag node by setting "None" to route_prefix
-    @serve.deployment
-    def f(*args):
-        return "got me"
-
-    for prefix in prefixes:
-        dag = f.options(route_prefix=prefix).bind()
-        handle = serve.run(dag)
-        assert requests.get("http://localhost:8000/f").status_code == 200
-        assert requests.get("http://localhost:8000/f").text == "got me"
-        assert handle.remote().result() == "got me"
-
-
-@pytest.mark.timeout(10, method="thread")
-def test_deploy_empty_bundle(serve_instance):
+def test_deploy_zero_cpus(serve_instance):
     @serve.deployment(ray_actor_options={"num_cpus": 0})
     class D:
-        def hello(self, _):
+        def hello(self):
             return "hello"
 
-    # This should succesfully terminate within the provided time-frame.
-    serve.run(D.bind())
+    h = serve.run(D.bind())
+    assert h.hello.remote().result() == "hello"
 
 
 def test_deployment_error_handling(serve_instance):
@@ -55,9 +39,7 @@ def test_deployment_error_handling(serve_instance):
     def f():
         pass
 
-    with pytest.raises(
-        ValidationError, match="1 validation error for RayActorOptionsSchema.*"
-    ):
+    with pytest.raises(RuntimeError):
         # This is an invalid configuration since dynamic upload of working
         # directories is not supported. The error this causes in the controller
         # code should be caught and reported back to the `deploy` caller.
@@ -131,12 +113,10 @@ def test_http_proxy_request_cancellation(serve_instance):
 
     serve.run(A.bind())
 
-    url = "http://127.0.0.1:8000/A"
+    url = get_application_url("HTTP")
     with ThreadPoolExecutor() as pool:
         # Send the first request, it should block for the result
-        first_blocking_fut = pool.submit(
-            functools.partial(requests.get, url, timeout=100)
-        )
+        first_blocking_fut = pool.submit(functools.partial(httpx.get, url, timeout=100))
         time.sleep(1)
         assert not first_blocking_fut.done()
 
@@ -145,7 +125,7 @@ def test_http_proxy_request_cancellation(serve_instance):
         # They should all disconnect from http connection.
         # These requests should never reach the replica.
         rest_blocking_futs = [
-            pool.submit(functools.partial(requests.get, url, timeout=0.5))
+            pool.submit(functools.partial(httpx.get, url, timeout=0.5))
             for _ in range(3)
         ]
         time.sleep(1)
@@ -157,7 +137,7 @@ def test_http_proxy_request_cancellation(serve_instance):
 
     # Sending another request to verify that only one request has been
     # processed so far.
-    assert requests.get(url).text == "2"
+    assert httpx.get(url).text == "2"
 
 
 def test_nonserializable_deployment(serve_instance):
@@ -263,7 +243,7 @@ def test_deploy_bad_pip_package_deployment(serve_instance):
         assert "No matching distribution found for does_not_exist" in deployment_message
         return True
 
-    wait_for_condition(check_fail, timeout=15)
+    wait_for_condition(check_fail, timeout=20)
 
 
 def test_deploy_same_deployment_name_different_app(serve_instance):
@@ -278,10 +258,15 @@ def test_deploy_same_deployment_name_different_app(serve_instance):
     serve.run(Model.bind("alice"), name="app1", route_prefix="/app1")
     serve.run(Model.bind("bob"), name="app2", route_prefix="/app2")
 
-    assert requests.get("http://localhost:8000/app1").text == "hello alice"
-    assert requests.get("http://localhost:8000/app2").text == "hello bob"
-    routes = requests.get("http://localhost:8000/-/routes").json()
+    url = get_application_url("HTTP", app_name="app1")
+    assert httpx.get(f"{url}").text == "hello alice"
+    proxy_url = "http://localhost:8000/-/routes"
+    routes = httpx.get(proxy_url).json()
     assert routes["/app1"] == "app1"
+
+    url = get_application_url("HTTP", app_name="app2")
+    assert httpx.get(f"{url}").text == "hello bob"
+    routes = httpx.get(proxy_url).json()
     assert routes["/app2"] == "app2"
 
     app1_status = serve.status().applications["app1"]
@@ -320,7 +305,6 @@ def test_num_replicas_auto_api(serve_instance, use_options):
     assert deployment_config["autoscaling_config"] == {
         # Set by `num_replicas="auto"`
         "target_ongoing_requests": 2.0,
-        "target_num_ongoing_requests_per_replica": 2.0,
         "min_replicas": 1,
         "max_replicas": 100,
         # Untouched defaults
@@ -373,7 +357,6 @@ def test_num_replicas_auto_basic(serve_instance, use_options):
     assert deployment_config["autoscaling_config"] == {
         # Set by `num_replicas="auto"`
         "target_ongoing_requests": 2.0,
-        "target_num_ongoing_requests_per_replica": 2.0,
         "min_replicas": 1,
         "max_replicas": 100,
         # Overrided by `autoscaling_config`

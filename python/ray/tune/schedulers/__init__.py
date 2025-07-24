@@ -1,6 +1,6 @@
 import inspect
 
-from ray._private.utils import get_function_args
+from ray._common.utils import get_function_args
 from ray.tune.schedulers.async_hyperband import ASHAScheduler, AsyncHyperBandScheduler
 from ray.tune.schedulers.hb_bohb import HyperBandForBOHB
 from ray.tune.schedulers.hyperband import HyperBandScheduler

@@ -14,6 +14,9 @@
 
 #pragma once
 
+#include <memory>
+#include <vector>
+
 #include "gtest/gtest.h"
 #include "ray/common/id.h"
 #include "ray/common/test_util.h"
@@ -102,14 +105,14 @@ class GcsTableStorageTestBase : public ::testing::Test {
   void Put(TABLE &table, const KEY &key, const VALUE &value) {
     auto on_done = [this](const Status &status) { --pending_count_; };
     ++pending_count_;
-    RAY_CHECK_OK(table.Put(key, value, on_done));
+    RAY_CHECK_OK(table.Put(key, value, {on_done, *(io_service_pool_->Get())}));
     WaitPendingDone();
   }
 
   template <typename TABLE, typename KEY, typename VALUE>
   int Get(TABLE &table, const KEY &key, std::vector<VALUE> &values) {
     auto on_done = [this, &values](const Status &status,
-                                   const boost::optional<VALUE> &result) {
+                                   const std::optional<VALUE> &result) {
       RAY_CHECK_OK(status);
       values.clear();
       if (result) {
@@ -121,7 +124,7 @@ class GcsTableStorageTestBase : public ::testing::Test {
       --pending_count_;
     };
     ++pending_count_;
-    RAY_CHECK_OK(table.Get(key, on_done));
+    RAY_CHECK_OK(table.Get(key, {on_done, *(io_service_pool_->Get())}));
     WaitPendingDone();
     return values.size();
   }
@@ -144,7 +147,7 @@ class GcsTableStorageTestBase : public ::testing::Test {
       --pending_count_;
     };
     ++pending_count_;
-    RAY_CHECK_OK(table.GetByJobId(job_id, on_done));
+    RAY_CHECK_OK(table.GetByJobId(job_id, {on_done, *(io_service_pool_->Get())}));
     WaitPendingDone();
     return values.size();
   }
@@ -156,7 +159,7 @@ class GcsTableStorageTestBase : public ::testing::Test {
       --pending_count_;
     };
     ++pending_count_;
-    RAY_CHECK_OK(table.Delete(key, on_done));
+    RAY_CHECK_OK(table.Delete(key, {on_done, *(io_service_pool_->Get())}));
     WaitPendingDone();
   }
 
@@ -167,7 +170,7 @@ class GcsTableStorageTestBase : public ::testing::Test {
       --pending_count_;
     };
     ++pending_count_;
-    RAY_CHECK_OK(table.BatchDelete(keys, on_done));
+    RAY_CHECK_OK(table.BatchDelete(keys, {on_done, *(io_service_pool_->Get())}));
     WaitPendingDone();
   }
 

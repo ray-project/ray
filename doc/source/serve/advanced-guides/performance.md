@@ -55,7 +55,25 @@ proper backpressure. You can increase the value in the deployment decorator; e.g
 
 By default, Serve lets client HTTP requests run to completion no matter how long they take. However, slow requests could bottleneck the replica processing, blocking other requests that are waiting. Set an end-to-end timeout, so slow requests can be terminated and retried.
 
-You can set an end-to-end timeout for HTTP requests by setting the `request_timeout_s` in the `http_options` field of the Serve config. HTTP Proxies wait for that many seconds before terminating an HTTP request. This config is global to your Ray cluster, and it can't be updated during runtime. Use [client-side retries](serve-best-practices-http-requests) to retry requests that time out due to transient failures.
+You can set an end-to-end timeout for HTTP requests by setting the `request_timeout_s` parameter
+in the `http_options` field of the Serve config. HTTP Proxies wait for that many
+seconds before terminating an HTTP request. This config is global to your Ray cluster,
+and you can't update it during runtime. Use [client-side retries](serve-best-practices-http-requests)
+to retry requests that time out due to transient failures.
+
+:::{note}
+Serve returns a response with status code `408` when a request times out. Clients can retry when they receive this `408` response.
+:::
+
+
+### Set backoff time when choosing replica
+
+Ray Serve allows you to fine-tune the backoff behavior of the request router, which can help reduce latency when waiting for replicas to become ready. It uses exponential backoff strategy when retrying to route requests to replicas that are temporarily unavailable. You can optimize this behavior for your workload by configuring the following environment variables:
+
+- `RAY_SERVE_ROUTER_RETRY_INITIAL_BACKOFF_S`: The initial backoff time (in seconds) before retrying a request. Default is `0.025`.
+- `RAY_SERVE_ROUTER_RETRY_BACKOFF_MULTIPLIER`: The multiplier applied to the backoff time after each retry. Default is `2`.
+- `RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S`: The maximum backoff time (in seconds) between retries. Default is `0.5`.
+
 
 ### Give the Serve Controller more time to process requests
 

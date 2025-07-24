@@ -65,10 +65,8 @@ def test_deploy_with_partial_constructor_failure(serve_instance):
                 else:
                     with open(file_path) as f:
                         content = f.read()
-                        if content == serve.get_replica_context().replica_id.unique_id:
-                            raise RuntimeError("Consistently throwing on same replica.")
-                        else:
-                            return True
+                    if content == serve.get_replica_context().replica_id.unique_id:
+                        raise RuntimeError("Consistently throwing on same replica.")
 
             async def serve(self, request):
                 return "hi"
@@ -92,11 +90,10 @@ def test_deploy_with_transient_constructor_failure(serve_instance):
         class TransientConstructorFailureDeployment:
             def __init__(self):
                 if os.path.exists(file_path):
-                    return True
-                else:
-                    with open(file_path, "w") as f:
-                        f.write("ONE")
-                    raise RuntimeError("Intentionally throw on first try.")
+                    return
+                with open(file_path, "w") as f:
+                    f.write("ONE")
+                raise RuntimeError("Intentionally throw on first try.")
 
             async def serve(self, request):
                 return "hi"

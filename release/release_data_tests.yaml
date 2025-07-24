@@ -1,0 +1,585 @@
+- name: DEFAULTS
+  group: data-tests
+  working_dir: nightly_tests/dataset
+
+  frequency: nightly
+  team: data
+
+  cluster:
+    byod:
+      runtime_env:
+        # Enable verbose stats for resource manager (to troubleshoot autoscaling)
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+
+      # 'type: gpu' means: use the 'ray-ml' image.
+      type: gpu
+    cluster_compute: fixed_size_cpu_compute.yaml
+
+###############
+# Reading tests
+###############
+
+- name: "read_parquet_{{scaling}}"
+
+  cluster:
+    cluster_compute: "{{scaling}}_cpu_compute.yaml"
+
+  matrix:
+    setup:
+      scaling: [fixed_size, autoscaling]
+
+  run:
+    timeout: 3600
+    script: >
+      python read_and_consume_benchmark.py
+      s3://ray-benchmark-data-internal-us-west-2/imagenet/parquet --format parquet
+      --iter-bundles
+
+- name: "read_images_{{scaling}}"
+
+  cluster:
+    cluster_compute: "{{scaling}}_cpu_compute.yaml"
+
+  matrix:
+    setup:
+      scaling: [fixed_size, autoscaling]
+
+  run:
+    timeout: 3600
+    script: >
+      python read_and_consume_benchmark.py
+      s3://anyscale-imagenet/ILSVRC/Data/CLS-LOC/ --format image --iter-bundles
+
+- name: read_tfrecords
+  run:
+    timeout: 3600
+    script: >
+      python read_and_consume_benchmark.py
+      s3://ray-benchmark-data-internal-us-west-2/imagenet/tfrecords --format tfrecords
+      --iter-bundles
+
+- name: "read_from_uris_{{scaling}}"
+
+  cluster:
+    cluster_compute: "{{scaling}}_cpu_compute.yaml"
+
+  matrix:
+    setup:
+      scaling: [fixed_size, autoscaling]
+
+  run:
+    timeout: 5400
+    script: python read_from_uris_benchmark.py
+
+- name: read_images_comparison_microbenchmark_single_node
+  frequency: manual
+
+  cluster:
+    byod:
+      post_build_script: byod_install_mosaicml.sh
+    cluster_compute: single_worker_node_0_head_node_benchmark_compute.yaml
+
+  run:
+    timeout: 1800
+    script: bash run_image_loader_microbenchmark.sh
+
+###############
+# Writing tests
+###############
+
+- name: write_parquet
+  run:
+    timeout: 3600
+    script: >
+      python read_and_consume_benchmark.py
+      s3://ray-benchmark-data/tpch/parquet/sf1000/lineitem --format parquet --write
+
+###################
+# Aggregation tests
+###################
+
+- name: "count_parquet_{{scaling}}"
+
+  cluster:
+    cluster_compute: "{{scaling}}_cpu_compute.yaml"
+
+  matrix:
+    setup:
+      scaling: [fixed_size, autoscaling]
+
+  run:
+    timeout: 600
+    script: >
+      python read_and_consume_benchmark.py
+      s3://ray-benchmark-data/tpch/parquet/sf10000/lineitem --format parquet --count
+
+###############
+# Groupby tests
+###############
+
+# The groupby tests use the TPC-H lineitem table. Here are the columns used for the
+# groupbys and their corresponding TPC-H column names:
+#
+# | Our dataset     | TPC-H column name |
+# |-----------------|-------------------|
+# | column02        | l_suppkey         |
+# | column08        | l_returnflag      |
+# | column13        | l_shipinstruct    |
+# | column14        | l_shipmode        |
+#
+# Here are the number of groups for different groupby columns in SF 1000:
+#
+# | Groupby columns                  | Number of groups |
+# |----------------------------------|------------------|
+# | column08, column13, column14     | 84               |
+# | column02, column14               | 7,000,000        |
+#
+# The SF (scale factor) 1000 lineitem table contains ~6B rows.
+
+# TODO: Bump the scale from SF10 to SF1000 once we handle the scale.
+
+- name: "aggregate_groups_{{scaling}}_{{shuffle_strategy}}_{{columns}}"
+
+  matrix:
+    setup:
+      scaling: [fixed_size, autoscaling]
+      shuffle_strategy: [sort_shuffle_pull_based]
+      columns:
+        - "column08 column13 column14"   # 84 groups
+        - "column02 column14"  # 7M groups
+
+  cluster:
+    cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
+
+  run:
+    timeout: 3600
+    script: >
+      python groupby_benchmark.py --sf 10 --aggregate --group-by {{columns}}
+      --shuffle-strategy {{shuffle_strategy}}
+
+
+- name: "map_groups_{{scaling}}_{{shuffle_strategy}}_{{columns}}"
+
+  matrix:
+    setup:
+      # This test consistently fails on fixed-size clusters due to head OOM from
+      # too many objects references on the head node. So, we only run it on
+      # autoscaling clusters.
+      scaling: [autoscaling]
+      shuffle_strategy: [sort_shuffle_pull_based]
+      columns:
+        - "column08 column13 column14"   # 84 groups
+        - "column02 column14"  # 7M groups
+
+  cluster:
+    cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
+
+  run:
+    timeout: 3600
+    script: >
+      python groupby_benchmark.py --sf 10 --map-groups --group-by {{columns}}
+      --shuffle-strategy {{shuffle_strategy}}
+
+###############
+# Join tests
+###############
+
+# NOTE:
+# Joining on Benchmark TPCH parquet datasets
+# Left dataset 'LINEITEM' = SF*6M rows
+# Right dataset 'ORDERS' = SF*1.5M rows
+# Join key = 'l_orderkey', 'o_orderkey' respectively from 'LINEITEM', 'ORDERS' dataset. In the generated dataset,
+# * For 'LINEITEM' dataset, 'column_00' corresponds to l_orderkey
+# * For 'ORDERS' dataset, 'column_0' corresponds to o_orderkey.
+# Join type = inner, left_join, right_join and full_join
+#
+# Dataset TPCH Scale Factor (SF) for CSV files. Note that parquet files will be low smaller with column compression.
+# SF1 = 1GB
+# SF10 = 10GB
+# SF100 = 100GB
+# SF1000 = 1TB
+# SF10000 = 10TB
+#
+# Do adjust timeout below based on SF above.
+#
+
+- name: joins_{{dataset}}_{{join_type}}
+
+  cluster:
+    cluster_compute: fixed_size_100_cpu_compute.yaml
+
+  matrix:
+    setup:
+      dataset: [sf100]
+      join_type: [inner, left_outer, right_outer, full_outer]
+
+  run:
+    timeout: 3600
+    script: >
+      python join_benchmark.py
+      --left_dataset s3://ray-benchmark-data/tpch/parquet/{{dataset}}/lineitem
+      --right_dataset s3://ray-benchmark-data/tpch/parquet/{{dataset}}/orders
+      --left_join_keys column00
+      --right_join_keys column0
+      --join_type {{join_type}}
+      --num_partitions 50
+
+#######################
+# Streaming split tests
+#######################
+
+- name: streaming_split
+
+  run:
+    timeout: 300
+    script: python streaming_split_benchmark.py --num-workers 10
+    wait_for_nodes:
+      num_nodes: 10
+
+  variations:
+    - __suffix__: regular
+    - __suffix__: early_stop
+      # This test case will early stop the data ingestion iteration on the GPU actors.
+      # This is a common usage in PyTorch Lightning
+      # (https://lightning.ai/docs/pytorch/stable/common/trainer.html#limit-train-batches).
+      # There was a bug in Ray Data that caused GPU memory leak (see #34819).
+      # We add this test case to cover this scenario.
+      run:
+        script: python streaming_split_benchmark.py --num-workers 10 --early-stop
+
+################
+# Training tests
+################
+
+- name: distributed_training
+  working_dir: nightly_tests
+
+  cluster:
+    byod:
+      post_build_script: byod_install_mosaicml.sh
+    cluster_compute: dataset/multi_node_train_16_workers.yaml
+
+  run:
+    timeout: 3600
+    script: >
+      python dataset/multi_node_train_benchmark.py --num-workers 16 --file-type parquet
+      --target-worker-gb 50 --use-gpu
+
+  variations:
+    - __suffix__: regular
+    - __suffix__: chaos
+      run:
+        prepare: >
+          python setup_chaos.py --kill-interval 200 --max-to-kill 1 --task-names
+          "_RayTrainWorker__execute.get_next"
+
+#################
+# Iteration tests
+#################
+
+- name: "iter_batches_{{format}}"
+
+  matrix:
+    setup:
+      format: [numpy, pandas, pyarrow]
+
+  run:
+    timeout: 2400
+    script: >
+      python read_and_consume_benchmark.py
+      s3://ray-benchmark-data/tpch/parquet/sf10/lineitem --format parquet
+      --iter-batches {{format}}
+
+- name: to_tf
+
+  run:
+    timeout: 2400
+    script: >
+      python read_and_consume_benchmark.py
+      s3://air-example-data-2/100G-image-data-synthetic-raw/ --format image
+      --to-tf image image
+
+- name: iter_torch_batches
+
+  cluster:
+    cluster_compute: fixed_size_gpu_head_compute.yaml
+
+  run:
+    timeout: 2400
+    script: >
+      python read_and_consume_benchmark.py
+      s3://air-example-data-2/100G-image-data-synthetic-raw/ --format image
+      --iter-torch-batches
+
+###########
+# Map tests
+###########
+
+- name: map
+  run:
+    timeout: 1800
+    script: python map_benchmark.py --api map --sf 10
+
+- name: flat_map
+  run:
+    timeout: 1800
+    script: python map_benchmark.py --api flat_map --sf 10
+
+- name: "map_batches_{{scaling}}_{{compute}}_{{format}}_{{repeat_map_batches}}"
+
+  matrix:
+    setup:
+      # Fixed-size task tests with different formats.
+      format: [numpy, pandas, pyarrow]
+      compute: [tasks]
+      scaling: [fixed_size]
+      repeat_map_batches: [once, repeat]
+    adjustments:
+      # Fixed-size actor test.
+      - with:
+          format: numpy
+          compute: actors
+          scaling: fixed_size
+          repeat_map_batches: once
+      # Autoscaling task test
+      - with:
+          format: numpy
+          compute: tasks
+          scaling: autoscaling
+          repeat_map_batches: once
+      # Autoscaling actor test
+      - with:
+          format: numpy
+          compute: actors
+          scaling: autoscaling
+          repeat_map_batches: once
+
+  cluster:
+    cluster_compute: "{{scaling}}_cpu_compute.yaml"
+
+  run:
+    timeout: 10800
+    script: >
+      python map_benchmark.py --api map_batches --batch-format {{format}}
+      --compute {{compute}} --sf 1000 --repeat-map-batches {{repeat_map_batches}}
+
+
+########################
+# Sort and shuffle tests
+########################
+
+- name: "random_shuffle_{{scaling}}"
+
+  matrix:
+    setup:
+      # This release test consistently fails on autoscaling clusters. So, we only run
+      # it on fixed-size clusters. The reason for the failure is unclear.
+      scaling: [fixed_size]
+
+  cluster:
+    byod:
+      runtime_env:
+        - RAY_worker_killing_policy=retriable_lifo
+      pip:
+        - ray[default]
+    cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
+
+  run:
+    timeout: 10800
+    script: >
+      python sort_benchmark.py --num-partitions=1000 --partition-size=1e9 --shuffle
+
+
+- name: random_shuffle_chaos
+  working_dir: nightly_tests
+  stable: False
+
+  cluster:
+    byod:
+      runtime_env:
+        - RAY_worker_killing_policy=retriable_lifo
+      pip:
+        - ray[default]
+    cluster_compute: dataset/autoscaling_all_to_all_compute.yaml
+
+  run:
+    timeout: 10800
+    prepare: >
+      python setup_chaos.py --chaos TerminateEC2Instance --kill-interval 600
+      --max-to-kill 2
+    script: >
+      python dataset/sort_benchmark.py --num-partitions=1000 --partition-size=1e9
+      --shuffle
+
+
+- name: "sort_{{scaling}}"
+
+  matrix:
+    setup:
+      scaling: [fixed_size, autoscaling]
+
+  cluster:
+    byod:
+      runtime_env:
+        - RAY_worker_killing_policy=retriable_lifo
+      pip:
+        - ray[default]
+    cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
+
+  run:
+    timeout: 10800
+    script: python sort_benchmark.py --num-partitions=1000 --partition-size=1e9
+
+
+- name: sort_chaos
+  working_dir: nightly_tests
+  stable: False
+
+  cluster:
+    byod:
+      runtime_env:
+        - RAY_worker_killing_policy=retriable_lifo
+      pip:
+        - ray[default]
+    cluster_compute: dataset/autoscaling_all_to_all_compute.yaml
+
+  run:
+    timeout: 10800
+    prepare: >
+      python setup_chaos.py --chaos TerminateEC2Instance --kill-interval 900
+      --max-to-kill 3
+    script: python dataset/sort_benchmark.py --num-partitions=1000 --partition-size=1e9
+
+
+#######################
+# Batch inference tests
+#######################
+
+# 300 GB image classification parquet data up to 10 GPUs
+# 10 g4dn.12xlarge.
+- name: "batch_inference_{{scaling}}"
+
+  cluster:
+    cluster_compute: "{{scaling}}_gpu_compute.yaml"
+
+  matrix:
+    setup:
+      scaling: [fixed_size, autoscaling]
+
+  run:
+    timeout: 1800
+    script: >
+      python gpu_batch_inference.py
+      --data-directory 300G-image-data-synthetic-raw-parquet --data-format parquet
+
+- name: batch_inference_from_metadata
+  # This benchmark errors because of the issues described in PLAN-383.
+  frequency: manual
+
+  cluster:
+    cluster_compute: autoscaling_hetero_compute.yaml
+
+  run:
+    timeout: 1800
+    script: python batch_inference_benchmark.py
+
+- name: batch_inference_chaos
+  stable: False
+  # Don't use 'nightly_tests/dataset' as the working directory because we need to run
+  # the 'setup_chaos.py' script.
+  working_dir: nightly_tests
+
+  cluster:
+    cluster_compute: dataset/autoscaling_gpu_compute.yaml
+
+  run:
+    timeout: 1800
+    prepare: python setup_chaos.py --chaos TerminateEC2Instance --batch-size-to-kill 2 --max-to-kill 6 --kill-delay 30
+    script: >
+      python dataset/gpu_batch_inference.py
+      --data-directory 300G-image-data-synthetic-raw-parquet --data-format parquet --chaos-test
+
+- name: batch_inference_chaos_no_scale_back
+  stable: False
+  working_dir: nightly_tests
+
+  cluster:
+    cluster_compute: dataset/autoscaling_gpu_compute.yaml
+
+  run:
+    timeout: 1800
+    prepare: python setup_cluster_compute_config_updater.py --updates worker_nodes.0.max_nodes:5:240
+    script: >
+      python dataset/gpu_batch_inference.py
+      --data-directory 300G-image-data-synthetic-raw-parquet --data-format parquet --chaos-test
+
+# 10 TB image classification parquet data with autoscaling heterogenous cluster
+# 10 g4dn.12xlarge, 10 m5.16xlarge
+- name: batch_inference_hetero
+  frequency: weekly
+
+  cluster:
+    cluster_compute: autoscaling_hetero_compute.yaml
+
+  run:
+    timeout: 7200
+    script: >
+      python gpu_batch_inference.py
+      --data-directory 10T-image-data-synthetic-raw-parquet --data-format parquet
+
+- name: batch_inference_mock_image_pipeline
+  frequency: manual
+  working_dir: nightly_tests
+
+  cluster:
+    cluster_compute: dataset/autoscaling_100_cpu_compute.yaml
+
+  run:
+    timeout: 3600
+    script: >
+      python dataset/batch_inference_mock_image_pipeline.py
+
+  variations:
+    - __suffix__: regular
+    - __suffix__: chaos
+      run:
+        prepare: >
+          python setup_chaos.py --chaos TerminateEC2InstanceWithGracePeriod
+          --batch-size-to-kill 10 --max-to-kill 100 --kill-delay 120
+
+- name: batch_inference_mock_image_pipeline_fixed
+  frequency: manual
+  working_dir: nightly_tests
+
+  cluster:
+    cluster_compute: dataset/fixed_size_100_cpu_compute.yaml
+
+  run:
+    timeout: 3600
+    script: >
+      python dataset/batch_inference_mock_image_pipeline.py
+
+  variations:
+    - __suffix__: regular
+    - __suffix__: chaos
+      run:
+        prepare: >
+          python setup_chaos.py --chaos TerminateEC2InstanceWithGracePeriod
+          --batch-size-to-kill 10 --max-to-kill 100 --kill-delay 120
+
+##############
+# TPCH Queries
+##############
+
+- name: "tpch_q1_{{scaling}}"
+
+  matrix:
+    setup:
+      scaling: [fixed_size, autoscaling]
+
+  cluster:
+    cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
+
+  run:
+    timeout: 5400
+    script: python tpch_q1.py --sf 100

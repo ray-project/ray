@@ -13,7 +13,7 @@ This example
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack`
+`python [script file name].py`
 
 Control the number of environments per `EnvRunner` via `--num-envs-per-env-runner`.
 This will increase sampling speed.
@@ -97,14 +97,14 @@ if __name__ == "__main__":
     # If PPO set additional configurations.
     if args.run == "PPO":
         config.rl_module(
-            model_config_dict={
+            model_config={
                 "fcnet_hiddens": [32],
                 "fcnet_activation": "linear",
                 "vf_share_layers": True,
             }
         )
         config.training(
-            sgd_minibatch_size=128,
+            minibatch_size=128,
             train_batch_size_per_learner=10000,
         )
     # If IMPALA set additional arguments.

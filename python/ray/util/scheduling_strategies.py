@@ -71,6 +71,22 @@ class NodeAffinitySchedulingStrategy:
         self._spill_on_unavailable = _spill_on_unavailable
         self._fail_on_unavailable = _fail_on_unavailable
 
+        self._validate_attributes()
+
+    def _validate_attributes(self):
+        if self._spill_on_unavailable and not self.soft:
+            raise ValueError(
+                "Invalid NodeAffinitySchedulingStrategy attribute. "
+                "_spill_on_unavailable cannot be set when soft is "
+                "False. Please set soft to True to use _spill_on_unavailable."
+            )
+        if self._fail_on_unavailable and self.soft:
+            raise ValueError(
+                "Invalid NodeAffinitySchedulingStrategy attribute. "
+                "_fail_on_unavailable cannot be set when soft is "
+                "True. Please set soft to False to use _fail_on_unavailable."
+            )
+
 
 def _validate_label_match_operator_values(values, operator):
     if not values:
@@ -133,11 +149,12 @@ LabelMatchExpressionsT = Dict[str, Union[In, NotIn, Exists, DoesNotExist]]
 
 @PublicAPI(stability="alpha")
 class NodeLabelSchedulingStrategy:
-    """Label based node affinity scheduling strategy
+    """
+    Label based node affinity scheduling strategy
 
     scheduling_strategy=NodeLabelSchedulingStrategy({
-          "region": In("us"),
-          "gpu_type": Exists()
+        "region": In("us"),
+        "gpu_type": Exists(),
     })
     """
 

@@ -43,9 +43,9 @@ class FilterManager:
         logger.debug(f"Synchronizing filters: {local_filters}")
 
         # Get the filters from the remote workers.
-        remote_filters = worker_set.foreach_worker(
+        remote_filters = worker_set.foreach_env_runner(
             func=lambda worker: worker.get_filters(flush_after=True),
-            local_worker=False,
+            local_env_runner=False,
             timeout_seconds=timeout_seconds,
         )
         if len(remote_filters) != worker_set.num_healthy_remote_workers():
@@ -69,9 +69,9 @@ class FilterManager:
             remote_copy = ray.put(copies)
 
             logger.debug("Updating remote filters ...")
-            results = worker_set.foreach_worker(
+            results = worker_set.foreach_env_runner(
                 func=lambda worker: worker.sync_filters(ray.get(remote_copy)),
-                local_worker=False,
+                local_env_runner=False,
                 timeout_seconds=timeout_seconds,
             )
             if len(results) != worker_set.num_healthy_remote_workers():

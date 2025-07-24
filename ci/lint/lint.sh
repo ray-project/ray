@@ -10,6 +10,47 @@ clang_format() {
   ./ci/lint/check-git-clang-format-output.sh
 }
 
+pre_commit() {
+  # Run pre-commit on all files
+  # TODO(MortalHappiness): Run all pre-commit checks because currently we only run some of them.
+  pip install -c python/requirements_compiled.txt pre-commit clang-format
+
+  HOOKS=(
+    python-no-log-warn
+    ruff
+    check-added-large-files
+    check-ast
+    check-toml
+    black
+    prettier
+    mypy
+    rst-directive-colons
+    rst-inline-touching-normal
+    python-check-mock-methods
+    clang-format
+    shellcheck
+    docstyle
+    check-import-order
+    check-cpp-files-inclusion
+    end-of-file-fixer
+    check-json
+    trailing-whitespace
+    cpplint
+    buildifier
+    buildifier-lint
+  )
+
+  for HOOK in "${HOOKS[@]}"; do
+    pre-commit run "$HOOK" --all-files --show-diff-on-failure
+  done
+}
+
+pre_commit_pydoclint() {
+  # Run pre-commit pydoclint on all files
+  pip install -c python/requirements_compiled.txt pre-commit clang-format
+  pre-commit run pydoclint --all-files --show-diff-on-failure
+}
+
 code_format() {
   pip install -c python/requirements_compiled.txt -r python/requirements/lint-requirements.txt
   FORMAT_SH_PRINT_DIFF=1 ./ci/lint/format.sh --all-scripts
@@ -62,10 +103,13 @@ api_annotations() {
   ./ci/lint/check_api_annotations.py
 }
 
-api_discrepancy() {
+api_policy_check() {
+  # install ray and compile doc to generate API files
+  make -C doc/ html
   RAY_DISABLE_EXTRA_CPP=1 pip install -e "python[all]"
-  # TODO(can): run this check with other ray packages
-  bazel run //ci/ray_ci/doc:cmd_check_api_discrepancy -- ray.data
+
+  # validate the API files
+  bazel run //ci/ray_ci/doc:cmd_check_api_discrepancy -- /ray "$@"
 }
 
 documentation_style() {

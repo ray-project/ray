@@ -29,7 +29,7 @@ class Module:
         Depth-first search through the module and its children to find annotated classes
         and functions.
         """
-        if module in self._visited:
+        if module.__hash__ in self._visited:
             return
         self._visited.add(module.__hash__)
 

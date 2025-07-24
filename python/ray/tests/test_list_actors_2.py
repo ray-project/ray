@@ -3,7 +3,7 @@ import pytest
 import sys
 
 import ray
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import wait_for_condition
 
 
 def test_list_named_actors_restarting_actor(ray_start_regular):
@@ -22,7 +22,4 @@ def test_list_named_actors_restarting_actor(ray_start_regular):
 
 if __name__ == "__main__":
     # Test suite is timing out. Disable on windows for now.
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

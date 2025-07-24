@@ -1,14 +1,14 @@
-from typing import Any, List, Optional
-
-import gymnasium as gym
+from typing import Any, Dict, List, Optional
 
 from ray.rllib.core.columns import Columns
 from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import EpisodeType
+from ray.util.annotations import PublicAPI
 
 
+@PublicAPI(stability="alpha")
 class AddNextObservationsFromEpisodesToTrainBatch(ConnectorV2):
     """Adds the NEXT_OBS column with the correct episode observations to train batch.
 
@@ -55,7 +55,7 @@ class AddNextObservationsFromEpisodesToTrainBatch(ConnectorV2):
         # simplify here for the sake of this example.
         output_data = connector(
             rl_module=None,
-            data={},
+            batch={},
             episodes=episodes,
             explore=True,
             shared_data={},
@@ -73,33 +73,20 @@ class AddNextObservationsFromEpisodesToTrainBatch(ConnectorV2):
         )
     """
 
-    def __init__(
-        self,
-        input_observation_space: Optional[gym.Space] = None,
-        input_action_space: Optional[gym.Space] = None,
-        **kwargs,
-    ):
-        """Initializes a AddNextObservationsFromEpisodesToTrainBatch instance."""
-        super().__init__(
-            input_observation_space=input_observation_space,
-            input_action_space=input_action_space,
-            **kwargs,
-        )
-
     @override(ConnectorV2)
     def __call__(
         self,
         *,
         rl_module: RLModule,
-        data: Optional[Any],
+        batch: Dict[str, Any],
         episodes: List[EpisodeType],
         explore: Optional[bool] = None,
         shared_data: Optional[dict] = None,
         **kwargs,
     ) -> Any:
-        # If "obs" already in data, early out.
-        if Columns.NEXT_OBS in data:
-            return data
+        # If "obs" already in `batch`, early out.
+        if Columns.NEXT_OBS in batch:
+            return batch
 
         for sa_episode in self.single_agent_episode_iterator(
             # This is a Learner-only connector -> Get all episodes (for train batch).
@@ -107,10 +94,10 @@ class AddNextObservationsFromEpisodesToTrainBatch(ConnectorV2):
             agents_that_stepped_only=False,
         ):
             self.add_n_batch_items(
-                data,
+                batch,
                 Columns.NEXT_OBS,
                 items_to_add=sa_episode.get_observations(slice(1, len(sa_episode) + 1)),
                 num_items=len(sa_episode),
                 single_agent_episode=sa_episode,
             )
-        return data
+        return batch

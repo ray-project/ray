@@ -95,7 +95,7 @@ def test_traceback_tuner(ray_start_2_cpus):
 
     tuner = Tuner(failing)
     results = tuner.fit()
-    assert len(str(results[0].error).split("\n")) <= 12
+    assert len(str(results[0].error).split("\n")) <= 20
 
 
 def test_traceback_trainer(ray_start_2_cpus):

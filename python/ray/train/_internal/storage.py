@@ -19,6 +19,12 @@ except (ImportError, ModuleNotFoundError) as e:
         "pyarrow is a required dependency of Ray Train and Ray Tune. "
         "Please install with: `pip install pyarrow`"
     ) from e
+
+try:
+    # check if Arrow has S3 support
+    from pyarrow.fs import S3FileSystem
+except ImportError:
+    S3FileSystem = None
 # isort: on
 
 import fnmatch
@@ -98,7 +104,7 @@ class _ExcludingLocalFilesystem(LocalFileSystem):
 def _pyarrow_fs_copy_files(
     source, destination, source_filesystem=None, destination_filesystem=None, **kwargs
 ):
-    if isinstance(destination_filesystem, pyarrow.fs.S3FileSystem):
+    if S3FileSystem and isinstance(destination_filesystem, pyarrow.fs.S3FileSystem):
         # Workaround multi-threading issue with pyarrow. Note that use_threads=True
         # is safe for download, just not for uploads, see:
         # https://github.com/apache/arrow/issues/32372
@@ -233,12 +239,15 @@ def _upload_to_uri_with_exclude_fsspec(
 def _list_at_fs_path(
     fs: pyarrow.fs.FileSystem,
     fs_path: str,
-    file_filter: Callable[[pyarrow.fs.FileInfo], bool] = lambda x: True,
+    file_filter: Optional[Callable[[pyarrow.fs.FileInfo], bool]] = None,
 ) -> List[str]:
     """Returns the list of filenames at (fs, fs_path), similar to os.listdir.
 
     If the path doesn't exist, returns an empty list.
     """
+    if file_filter is None:
+        file_filter = lambda x: True  # noqa: E731
+
     selector = pyarrow.fs.FileSelector(fs_path, allow_not_found=True, recursive=False)
     return [
         os.path.relpath(file_info.path.lstrip("/"), start=fs_path.lstrip("/"))
@@ -520,7 +529,6 @@ class StorageContext:
             Checkpoint: A Checkpoint pointing to the persisted checkpoint location.
         """
         # TODO(justinvyu): Fix this cyclical import.
-        from ray.train._checkpoint import Checkpoint
 
         logger.debug(
             "Copying checkpoint files to storage path:\n"
@@ -546,7 +554,7 @@ class StorageContext:
             destination_filesystem=self.storage_filesystem,
         )
 
-        persisted_checkpoint = Checkpoint(
+        persisted_checkpoint = checkpoint.__class__(
             filesystem=self.storage_filesystem,
             path=self.checkpoint_fs_path,
         )

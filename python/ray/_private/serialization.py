@@ -2,20 +2,26 @@ import io
 import logging
 import threading
 import traceback
-from typing import Any
+from typing import TYPE_CHECKING, Any, List, Optional, Tuple, Union
+
+if TYPE_CHECKING:
+    import torch
 
 import google.protobuf.message
 
 import ray._private.utils
 import ray.cloudpickle as pickle
+import ray.exceptions
 from ray._private import ray_constants
+from ray._private.custom_types import TensorTransportEnum
 from ray._raylet import (
+    DynamicObjectRefGenerator,
     MessagePackSerializedObject,
     MessagePackSerializer,
-    DynamicObjectRefGenerator,
     Pickle5SerializedObject,
     Pickle5Writer,
     RawSerializedObject,
+    SerializedRayObject,
     split_buffer,
     unpack_pickle5_buffers,
 )
@@ -28,30 +34,33 @@ from ray.exceptions import (
     LocalRayletDiedError,
     NodeDiedError,
     ObjectFetchTimedOutError,
+    ObjectFreedError,
     ObjectLostError,
     ObjectReconstructionFailedError,
     ObjectReconstructionFailedLineageEvictedError,
     ObjectReconstructionFailedMaxAttemptsExceededError,
+    ObjectRefStreamEndOfStreamError,
     OutOfDiskError,
+    OutOfMemoryError,
     OwnerDiedError,
     PlasmaObjectNotAvailable,
     RayError,
     RaySystemError,
     RayTaskError,
     ReferenceCountingAssertionError,
-    ObjectFreedError,
     RuntimeEnvSetupError,
     TaskCancelledError,
     TaskPlacementGroupRemoved,
     TaskUnschedulableError,
     WorkerCrashedError,
-    OutOfMemoryError,
-    ObjectRefStreamEndOfStreamError,
 )
-from ray.util import serialization_addons
-from ray.util import inspect_serializability
+from ray.experimental.compiled_dag_ref import CompiledDAGRef
+from ray.util import inspect_serializability, serialization_addons
 
 logger = logging.getLogger(__name__)
+ALLOW_OUT_OF_BAND_OBJECT_REF_SERIALIZATION = ray_constants.env_bool(
+    "RAY_allow_out_of_band_object_ref_serialization", True
+)
 
 
 class DeserializationError(Exception):
@@ -64,11 +73,14 @@ def pickle_dumps(obj: Any, error_msg: str):
     """
     try:
         return pickle.dumps(obj)
-    except TypeError as e:
+    except (TypeError, ray.exceptions.OufOfBandObjectRefSerializationException) as e:
         sio = io.StringIO()
         inspect_serializability(obj, print_file=sio)
         msg = f"{error_msg}:\n{sio.getvalue()}"
-        raise TypeError(msg) from e
+        if isinstance(e, TypeError):
+            raise TypeError(msg) from e
+        else:
+            raise ray.exceptions.OufOfBandObjectRefSerializationException(msg)
 
 
 def _object_ref_deserializer(binary, call_site, owner_address, object_status):
@@ -126,15 +138,31 @@ class SerializationContext:
             serialized, actor_handle_id, weak_ref = obj._serialization_helper()
             # Update ref counting for the actor handle
             if not weak_ref:
-                self.add_contained_object_ref(actor_handle_id)
+                self.add_contained_object_ref(
+                    actor_handle_id,
+                    # Right now, so many tests are failing when this is set.
+                    # Allow it for now, but we should eventually disallow it here.
+                    allow_out_of_band_serialization=True,
+                )
             return _actor_handle_deserializer, (serialized, weak_ref)
 
         self._register_cloudpickle_reducer(ray.actor.ActorHandle, actor_handle_reducer)
 
+        def compiled_dag_ref_reducer(obj):
+            raise TypeError("Serialization of CompiledDAGRef is not supported.")
+
+        self._register_cloudpickle_reducer(CompiledDAGRef, compiled_dag_ref_reducer)
+
         def object_ref_reducer(obj):
             worker = ray._private.worker.global_worker
             worker.check_connected()
-            self.add_contained_object_ref(obj)
+            self.add_contained_object_ref(
+                obj,
+                allow_out_of_band_serialization=(
+                    ALLOW_OUT_OF_BAND_OBJECT_REF_SERIALIZATION
+                ),
+                call_site=obj.call_site(),
+            )
             obj, owner_address, object_status = worker.core_worker.serialize_object_ref(
                 obj
             )
@@ -193,7 +221,13 @@ class SerializationContext:
         self._thread_local.object_refs = set()
         return object_refs
 
-    def add_contained_object_ref(self, object_ref):
+    def add_contained_object_ref(
+        self,
+        object_ref: "ray.ObjectRef",
+        *,
+        allow_out_of_band_serialization: bool,
+        call_site: Optional[str] = None,
+    ):
         if self.is_in_band_serialization():
             # This object ref is being stored in an object. Add the ID to the
             # list of IDs contained in the object so that we keep the inner
@@ -202,15 +236,70 @@ class SerializationContext:
                 self._thread_local.object_refs = set()
             self._thread_local.object_refs.add(object_ref)
         else:
-            # If this serialization is out-of-band (e.g., from a call to
-            # cloudpickle directly or captured in a remote function/actor),
-            # then pin the object for the lifetime of this worker by adding
-            # a local reference that won't ever be removed.
-            ray._private.worker.global_worker.core_worker.add_object_ref_reference(
-                object_ref
-            )
+            if not allow_out_of_band_serialization:
+                raise ray.exceptions.OufOfBandObjectRefSerializationException(
+                    f"It is not allowed to serialize ray.ObjectRef {object_ref.hex()}. "
+                    "If you want to allow serialization, "
+                    "set `RAY_allow_out_of_band_object_ref_serialization=1.` "
+                    "If you set the env var, the object is pinned forever in the "
+                    "lifetime of the worker process and can cause Ray object leaks. "
+                    "See the callsite and trace to find where the serialization "
+                    "occurs.\nCallsite: "
+                    f"{call_site or 'Disabled. Set RAY_record_ref_creation_sites=1'}"
+                )
+            else:
+                # If this serialization is out-of-band (e.g., from a call to
+                # cloudpickle directly or captured in a remote function/actor),
+                # then pin the object for the lifetime of this worker by adding
+                # a local reference that won't ever be removed.
+                ray._private.worker.global_worker.core_worker.add_object_ref_reference(
+                    object_ref
+                )
 
-    def _deserialize_pickle5_data(self, data):
+    def _deserialize_pickle5_data(
+        self,
+        data: Any,
+        tensor_transport: TensorTransportEnum,
+        object_id: Optional[str] = None,
+    ) -> Any:
+        """
+
+        Args:
+            data: The data to deserialize.
+            tensor_transport: The tensor transport to use. If not equal to OBJECT_STORE,
+                it means that any tensors in the object are sent out-of-band
+                instead of through the object store. In this case, we need to
+                retrieve the tensors from the in-actor object store. Then, we
+                deserialize `data` with the retrieved tensors in the
+                serialization context.
+            object_id: The object ID to use as the key for the in-actor object store
+                to retrieve tensors.
+
+        Returns:
+            Any: The deserialized object.
+        """
+        from ray.experimental.channel import ChannelContext
+
+        ctx = ChannelContext.get_current().serialization_context
+
+        enable_gpu_objects = tensor_transport != TensorTransportEnum.OBJECT_STORE
+        if enable_gpu_objects:
+            gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
+            if not gpu_object_manager.gpu_object_store.has_gpu_object(object_id):
+                assert gpu_object_manager.is_managed_gpu_object(
+                    object_id
+                ), f"obj_id={object_id} not found in GPU object store. This error is unexpected. Please report this issue on GitHub: https://github.com/ray-project/ray/issues/new/choose"
+                gpu_object_manager.fetch_gpu_object(object_id)
+            tensors = gpu_object_manager.gpu_object_store.get_gpu_object(object_id)
+            ctx.reset_out_of_band_tensors(tensors)
+            gpu_object_store = gpu_object_manager.gpu_object_store
+            # If the GPU object is the primary copy, it means the transfer is intra-actor.
+            # In this case, we should not remove the GPU object after it is consumed once,
+            # because the GPU object reference may be used again.
+            # Instead, we should wait for the GC callback to clean it up.
+            if not gpu_object_store.is_primary_copy(object_id):
+                gpu_object_store.remove_gpu_object(object_id)
+
         try:
             in_band, buffers = unpack_pickle5_buffers(data)
             if len(buffers) > 0:
@@ -220,13 +309,26 @@ class SerializationContext:
         # cloudpickle does not provide error types
         except pickle.pickle.PicklingError:
             raise DeserializationError()
+        finally:
+            if enable_gpu_objects:
+                ctx.reset_out_of_band_tensors([])
         return obj
 
-    def _deserialize_msgpack_data(self, data, metadata_fields):
+    def _deserialize_msgpack_data(
+        self,
+        data,
+        metadata_fields,
+        object_id: Optional[str] = None,
+        tensor_transport: Optional[
+            TensorTransportEnum
+        ] = TensorTransportEnum.OBJECT_STORE,
+    ):
         msgpack_data, pickle5_data = split_buffer(data)
 
         if metadata_fields[0] == ray_constants.OBJECT_METADATA_TYPE_PYTHON:
-            python_objects = self._deserialize_pickle5_data(pickle5_data)
+            python_objects = self._deserialize_pickle5_data(
+                pickle5_data, tensor_transport, object_id
+            )
         else:
             python_objects = []
 
@@ -264,14 +366,24 @@ class SerializationContext:
                 cause=ray_error_info.actor_died_error.actor_died_error_context
             )
 
-    def _deserialize_object(self, data, metadata, object_ref):
+    def _deserialize_object(
+        self,
+        data,
+        metadata,
+        object_ref,
+        tensor_transport: Optional[TensorTransportEnum],
+    ):
+        if tensor_transport is None:
+            tensor_transport = TensorTransportEnum.OBJECT_STORE
         if metadata:
             metadata_fields = metadata.split(b",")
             if metadata_fields[0] in [
                 ray_constants.OBJECT_METADATA_TYPE_CROSS_LANGUAGE,
                 ray_constants.OBJECT_METADATA_TYPE_PYTHON,
             ]:
-                return self._deserialize_msgpack_data(data, metadata_fields)
+                return self._deserialize_msgpack_data(
+                    data, metadata_fields, object_ref.hex(), tensor_transport
+                )
             # Check if the object should be returned as raw bytes.
             if metadata_fields[0] == ray_constants.OBJECT_METADATA_TYPE_RAW:
                 if data is None:
@@ -403,18 +515,24 @@ class SerializationContext:
             # throws an exception.
             return PlasmaObjectNotAvailable
 
-    def deserialize_objects(self, data_metadata_pairs, object_refs):
-        assert len(data_metadata_pairs) == len(object_refs)
+    def deserialize_objects(
+        self, serialized_ray_objects: List[SerializedRayObject], object_refs
+    ):
+        assert len(serialized_ray_objects) == len(object_refs)
         # initialize the thread-local field
         if not hasattr(self._thread_local, "object_ref_stack"):
             self._thread_local.object_ref_stack = []
         results = []
-        for object_ref, (data, metadata) in zip(object_refs, data_metadata_pairs):
+        for object_ref, (data, metadata, tensor_transport_value) in zip(
+            object_refs, serialized_ray_objects
+        ):
             try:
                 # Push the object ref to the stack, so the object under
                 # the object ref knows where it comes from.
                 self._thread_local.object_ref_stack.append(object_ref)
-                obj = self._deserialize_object(data, metadata, object_ref)
+                obj = self._deserialize_object(
+                    data, metadata, object_ref, tensor_transport_value
+                )
             except Exception as e:
                 logger.exception(e)
                 obj = RaySystemError(e, traceback.format_exc())
@@ -498,11 +616,45 @@ class SerializationContext:
             metadata, msgpack_data, contained_object_refs, pickle5_serialized_object
         )
 
-    def serialize(self, value):
+    def serialize_and_store_gpu_objects(
+        self,
+        value: Any,
+        obj_id: bytes,
+    ) -> MessagePackSerializedObject:
+        """Retrieve GPU data from `value` and store it in the GPU object store. Then, return the serialized value.
+
+        Args:
+            value: The value to serialize.
+            obj_id: The object ID of the value. `obj_id` is required, and the GPU data (e.g. tensors) in `value`
+                will be stored in the GPU object store with the key `obj_id`.
+
+        Returns:
+            Serialized value.
+        """
+        assert (
+            obj_id is not None
+        ), "`obj_id` is required, and it is the key to retrieve corresponding tensors from the GPU object store."
+        serialized_val, tensors = self._serialize_and_retrieve_tensors(value)
+        if tensors:
+            obj_id = obj_id.decode("ascii")
+            worker = ray._private.worker.global_worker
+            gpu_object_manager = worker.gpu_object_manager
+            gpu_object_manager.gpu_object_store.add_gpu_object(
+                obj_id, tensors, is_primary=True
+            )
+
+        return serialized_val
+
+    def serialize(
+        self, value: Any
+    ) -> Union[RawSerializedObject, MessagePackSerializedObject]:
         """Serialize an object.
 
         Args:
             value: The value to serialize.
+
+        Returns:
+            Serialized value.
         """
         if isinstance(value, bytes):
             # If the object is a byte array, skip serializing it and
@@ -511,3 +663,23 @@ class SerializationContext:
             return RawSerializedObject(value)
         else:
             return self._serialize_to_msgpack(value)
+
+    def _serialize_and_retrieve_tensors(
+        self, value: Any
+    ) -> Tuple[MessagePackSerializedObject, List["torch.Tensor"]]:
+        """
+        Serialize `value` and return the serialized value and any tensors retrieved from `value`.
+        This is only used for GPU objects.
+        """
+        from ray.experimental.channel import ChannelContext
+
+        ctx = ChannelContext.get_current().serialization_context
+        prev_use_external_transport = ctx.use_external_transport
+        ctx.set_use_external_transport(True)
+        try:
+            serialized_val = self._serialize_to_msgpack(value)
+        finally:
+            ctx.set_use_external_transport(prev_use_external_transport)
+
+        tensors, _ = ctx.reset_out_of_band_tensors([])
+        return serialized_val, tensors

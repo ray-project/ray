@@ -73,7 +73,7 @@ class HybridSchedulingPolicy : public ISchedulingPolicy {
   };
 
   /// Return true if the node is alive and its total resource
-  /// satisify the filter and resource requrement.
+  /// satisfy the filter and resource requirement.
   bool IsNodeFeasible(const scheduling::NodeID &node_id,
                       const NodeFilter &node_filter,
                       const NodeResources &node_resources,

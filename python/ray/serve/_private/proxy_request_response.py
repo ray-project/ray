@@ -2,7 +2,7 @@ import logging
 import pickle
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, AsyncIterator, Awaitable, Callable, List, Tuple, Union
+from typing import Any, AsyncIterator, List, Tuple, Union
 
 import grpc
 from starlette.types import Receive, Scope, Send
@@ -58,7 +58,8 @@ class ASGIProxyRequest(ProxyRequest):
 
     @property
     def method(self) -> str:
-        return self.scope.get("method", "websocket").upper()
+        # WebSocket messages don't have a 'method' field.
+        return self.scope.get("method", "WS").upper()
 
     @property
     def route_path(self) -> str:
@@ -94,12 +95,14 @@ class ASGIProxyRequest(ProxyRequest):
     def set_root_path(self, root_path: str):
         self.scope["root_path"] = root_path
 
-    def request_object(
-        self, receive_asgi_messages: Callable[[str], Awaitable[bytes]]
-    ) -> StreamingHTTPRequest:
-        return StreamingHTTPRequest(
-            pickled_asgi_scope=pickle.dumps(self.scope),
-            receive_asgi_messages=receive_asgi_messages,
+    def serialized_replica_arg(self, proxy_actor_name: str) -> bytes:
+        # NOTE(edoakes): it's important that the request is sent as raw bytes to
+        # skip the Ray cloudpickle serialization codepath for performance.
+        return pickle.dumps(
+            StreamingHTTPRequest(
+                asgi_scope=self.scope,
+                proxy_actor_name=proxy_actor_name,
+            )
         )
 
 
@@ -113,7 +116,7 @@ class gRPCProxyRequest(ProxyRequest):
         service_method: str,
         stream: bool,
     ):
-        self.request = request_proto
+        self._request_proto = request_proto
         self.context = context
         self.service_method = service_method
         self.stream = stream
@@ -129,7 +132,6 @@ class gRPCProxyRequest(ProxyRequest):
     def setup_variables(self):
         if not self.is_route_request and not self.is_health_request:
             service_method_split = self.service_method.split("/")
-            self.request = pickle.dumps(self.request)
             self.method_name = service_method_split[-1]
             for key, value in self.context.invocation_metadata():
                 if key == "application":
@@ -159,20 +161,16 @@ class gRPCProxyRequest(ProxyRequest):
     def is_health_request(self) -> bool:
         return self.service_method == "/ray.serve.RayServeAPIService/Healthz"
 
-    @property
-    def user_request(self) -> bytes:
-        return self.request
-
     def send_request_id(self, request_id: str):
         # Setting the trailing metadata on the ray_serve_grpc_context object, so it's
         # not overriding the ones set from the user and will be sent back to the
         # client altogether.
         self.ray_serve_grpc_context.set_trailing_metadata([("request_id", request_id)])
 
-    def request_object(self) -> gRPCRequest:
-        return gRPCRequest(
-            grpc_user_request=self.user_request,
-        )
+    def serialized_replica_arg(self) -> bytes:
+        # NOTE(edoakes): it's important that the request is sent as raw bytes to
+        # skip the Ray cloudpickle serialization codepath for performance.
+        return pickle.dumps(gRPCRequest(user_request_proto=self._request_proto))
 
 
 @dataclass(frozen=True)

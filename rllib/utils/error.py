@@ -49,8 +49,8 @@ Try one of the following:
 a) For Atari support: `pip install gym[atari] autorom[accept-rom-license]`.
    For PyBullet support: `pip install pybullet`.
 b) To register your custom env, do `from ray import tune;
-   tune.register('[name]', lambda cfg: [return env obj from here using cfg])`.
-   Then in your config, do `config['env'] = [name]`.
+   tune.register_env('[name]', lambda cfg: [return env obj from here using cfg])`.
+   Then in your config, do `config.environment(env='[name]').
 c) Make sure you provide a fully qualified classpath, e.g.:
    `ray.rllib.examples.envs.classes.repeat_after_me_env.RepeatAfterMeEnv`
 """
@@ -121,8 +121,6 @@ ERR_MSG_TORCH_POLICY_CANNOT_SAVE_MODEL = """Could not save torch model under sel
 
 # HOWTO change the RLlib config, depending on how user runs the job.
 HOWTO_CHANGE_CONFIG = """
-To change the config for the `rllib train|rollout` command, use
-  `--config={'[key]': '[value]'}` on the command line.
 To change the config for `tune.Tuner().fit()` in a script: Modify the python dict
   passed to `tune.Tuner(param_space=[...]).fit()`.
 To change the config for an RLlib Algorithm instance: Modify the python dict

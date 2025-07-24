@@ -58,8 +58,8 @@ def test_get_pypi_token_fail(mock_boto3_client):
 def test_upload_wheels_to_pypi(mock_subprocess, mock_get_pypi_url, mock_get_pypi_token):
     pypi_env = "test"
     wheels = [
-        "ray_cpp-2.9.3-cp310-cp310-macosx_11_0_arm64.whl",
-        "ray_cpp-2.9.3-cp311-cp311-macosx_11_0_arm64.whl",
+        "ray_cpp-2.9.3-cp310-cp310-macosx_12_0_arm64.whl",
+        "ray_cpp-2.9.3-cp311-cp311-macosx_12_0_arm64.whl",
     ]
     mock_get_pypi_token.return_value = "test_token"
     mock_get_pypi_url.return_value = "test_pypi_url"
@@ -97,8 +97,8 @@ def test_upload_wheels_to_pypi_fail_twine_upload(
 ):
     pypi_env = "test"
     wheels = [
-        "ray_cpp-2.9.3-cp310-cp310-macosx_11_0_arm64.whl",
-        "ray_cpp-2.9.3-cp311-cp311-macosx_11_0_arm64.whl",
+        "ray_cpp-2.9.3-cp310-cp310-macosx_12_0_arm64.whl",
+        "ray_cpp-2.9.3-cp311-cp311-macosx_12_0_arm64.whl",
     ]
     mock_get_pypi_token.return_value = "test_token"
     mock_get_pypi_url.return_value = "test_pypi_url"
@@ -117,8 +117,8 @@ def test_upload_wheels_to_pypi_fail_twine_upload(
 def test_upload_wheels_to_pypi_fail_get_pypi(mock_get_pypi_url, mock_get_pypi_token):
     pypi_env = "test"
     wheels = [
-        "ray_cpp-2.9.3-cp310-cp310-macosx_11_0_arm64.whl",
-        "ray_cpp-2.9.3-cp311-cp311-macosx_11_0_arm64.whl",
+        "ray_cpp-2.9.3-cp310-cp310-macosx_12_0_arm64.whl",
+        "ray_cpp-2.9.3-cp311-cp311-macosx_12_0_arm64.whl",
     ]
     mock_get_pypi_token.side_effect = ValueError("Invalid pypi_env: test")
     mock_get_pypi_url.side_effect = ValueError("Invalid pypi_env: test")

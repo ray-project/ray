@@ -77,10 +77,7 @@ class TestEpisodeV2(unittest.TestCase):
         ev = RolloutWorker(
             env_creator=lambda _: MockEnv3(NUM_STEPS),
             default_policy_class=EchoPolicy,
-            config=AlgorithmConfig().env_runners(
-                enable_connectors=True,
-                num_env_runners=0,
-            ),
+            config=AlgorithmConfig().env_runners(num_env_runners=0),
         )
         ma_batch = ev.sample()
         self.assertEqual(ma_batch.count, 200)
@@ -101,7 +98,7 @@ class TestEpisodeV2(unittest.TestCase):
                     str(agent_id)
                 ),
             )
-            .env_runners(enable_connectors=True, num_env_runners=0),
+            .env_runners(num_env_runners=0),
         )
         sample_batches = ev.sample()
         self.assertEqual(len(sample_batches.policy_batches), 4)

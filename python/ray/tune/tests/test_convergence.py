@@ -1,18 +1,19 @@
 import math
+import sys
 import unittest
 
 import numpy as np
 import pytest
 
 import ray
-from ray import train, tune
+from ray import tune
 from ray.tune.search import ConcurrencyLimiter
 from ray.tune.stopper import ExperimentPlateauStopper
 
 
 def loss(config):
     x = config.get("x")
-    train.report({"loss": x**2})  # A simple function to optimize
+    tune.report({"loss": x**2})  # A simple function to optimize
 
 
 class ConvergenceTest(unittest.TestCase):
@@ -79,6 +80,9 @@ class ConvergenceTest(unittest.TestCase):
         assert len(analysis.trials) < 50
         assert math.isclose(analysis.best_config["x"], 0, abs_tol=1e-5)
 
+    @pytest.mark.skipif(
+        sys.version_info >= (3, 12), reason="HEBO doesn't support py312"
+    )
     def testConvergenceHEBO(self):
         from ray.tune.search.hebo import HEBOSearch
 
@@ -137,6 +141,4 @@ class ConvergenceTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import sys
-
     sys.exit(pytest.main(["-v", __file__]))

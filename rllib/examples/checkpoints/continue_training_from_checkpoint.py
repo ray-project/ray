@@ -18,7 +18,7 @@ This example:
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack --num-agents=[0 or 2]
+`python [script file name].py --num-agents=[0 or 2]
 --stop-reward-crash=[the episode return after which the algo should crash]
 --stop-reward=[the final episode return to achieve after(!) restoration from the
 checkpoint]
@@ -84,9 +84,9 @@ And if you are using the `--as-test` option, you should see a finel message:
 import re
 import time
 
-from ray import train, tune
+from ray import tune
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.callbacks.callbacks import RLlibCallback
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.utils.metrics import (
@@ -111,10 +111,13 @@ parser.add_argument(
     help="Mean episode return after which the Algorithm should crash.",
 )
 # By default, set `args.checkpoint_freq` to 1 and `args.checkpoint_at_end` to True.
-parser.set_defaults(checkpoint_freq=1, checkpoint_at_end=True)
+parser.set_defaults(
+    checkpoint_freq=1,
+    checkpoint_at_end=True,
+)
 
 
-class CrashAfterNIters(DefaultCallbacks):
+class CrashAfterNIters(RLlibCallback):
     """Callback that makes the algo crash after a certain avg. return is reached."""
 
     def __init__(self):
@@ -148,10 +151,6 @@ if __name__ == "__main__":
     config = (
         get_trainable_cls(args.algo)
         .get_default_config()
-        .api_stack(
-            enable_rl_module_and_learner=args.enable_new_api_stack,
-            enable_env_runner_and_connector_v2=args.enable_new_api_stack,
-        )
         .environment("CartPole-v1" if args.num_agents == 0 else "ma_cart")
         .env_runners(create_env_on_local_worker=True)
         .training(lr=0.0001)
@@ -200,9 +199,9 @@ if __name__ == "__main__":
     tuner = tune.Tuner(
         trainable=config.algo_class,
         param_space=config,
-        run_config=train.RunConfig(
+        run_config=tune.RunConfig(
             callbacks=tune_callbacks,
-            checkpoint_config=train.CheckpointConfig(
+            checkpoint_config=tune.CheckpointConfig(
                 checkpoint_frequency=args.checkpoint_freq,
                 checkpoint_at_end=args.checkpoint_at_end,
             ),
@@ -235,13 +234,13 @@ if __name__ == "__main__":
     assert (
         test_eval_results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]
         >= args.stop_reward_crash
-    )
+    ), test_eval_results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]
     # Train one iteration to make sure, the performance does not collapse (e.g. due
     # to the optimizer weights not having been restored properly).
     test_results = test_algo.train()
     assert (
         test_results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN] >= args.stop_reward_crash
-    )
+    ), test_results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]
     # Stop the test algorithm again.
     test_algo.stop()
 

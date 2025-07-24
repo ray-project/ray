@@ -1,11 +1,12 @@
 import contextlib
 
-from ray import ObjectRef
 from collections import namedtuple, defaultdict
 from datetime import datetime
 from typing import Any, List, Optional
 
 from dask.callbacks import Callback
+
+import ray
 
 # The names of the Ray-specific callbacks. These are the kwarg names that
 # RayDaskCallback will accept on construction, and is considered the
@@ -102,7 +103,7 @@ class RayDaskCallback(Callback):
         """
         pass
 
-    def _ray_postsubmit(self, task, key, deps, object_ref: ObjectRef):
+    def _ray_postsubmit(self, task, key, deps, object_ref: ray.ObjectRef):
         """Run after submitting a Ray task.
 
         Args:
@@ -119,7 +120,7 @@ class RayDaskCallback(Callback):
         """
         pass
 
-    def _ray_pretask(self, key, object_refs: List[ObjectRef]):
+    def _ray_pretask(self, key, object_refs: List[ray.ObjectRef]):
         """Run before executing a Dask task within a Ray task.
 
         This method executes after Ray submits the task within a Ray
@@ -151,7 +152,7 @@ class RayDaskCallback(Callback):
         """
         pass
 
-    def _ray_postsubmit_all(self, object_refs: List[ObjectRef], dsk):
+    def _ray_postsubmit_all(self, object_refs: List[ray.ObjectRef], dsk):
         """Run after Ray submits all tasks.
 
         Args:
@@ -231,8 +232,6 @@ def local_ray_callbacks(callbacks=None):
 
 class ProgressBarCallback(RayDaskCallback):
     def __init__(self):
-        import ray
-
         @ray.remote
         class ProgressBarActor:
             def __init__(self):

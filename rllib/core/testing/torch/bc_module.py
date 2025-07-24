@@ -1,29 +1,22 @@
-from typing import Any, Mapping
+from typing import Any, Dict
 
 from ray.rllib.core.columns import Columns
-from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleConfig
+from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.models.torch.torch_distributions import TorchCategorical
-from ray.rllib.core.rl_module.marl_module import (
-    MultiAgentRLModule,
-    MultiAgentRLModuleConfig,
-)
+from ray.rllib.core.rl_module.multi_rl_module import MultiRLModule
 from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
 from ray.rllib.core.models.specs.typing import SpecType
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.nested_dict import NestedDict
 
 torch, nn = try_import_torch()
 
 
 class DiscreteBCTorchModule(TorchRLModule):
-    def __init__(self, config: RLModuleConfig) -> None:
-        super().__init__(config)
-
     def setup(self):
-        input_dim = self.config.observation_space.shape[0]
-        hidden_dim = self.config.model_config_dict["fcnet_hiddens"][0]
-        output_dim = self.config.action_space.n
+        input_dim = self.observation_space.shape[0]
+        hidden_dim = self.model_config["fcnet_hiddens"][0]
+        output_dim = self.action_space.n
 
         self.policy = nn.Sequential(
             nn.Linear(input_dim, hidden_dim),
@@ -55,17 +48,17 @@ class DiscreteBCTorchModule(TorchRLModule):
         return [Columns.ACTION_DIST_INPUTS]
 
     @override(RLModule)
-    def _forward_inference(self, batch: NestedDict) -> Mapping[str, Any]:
+    def _forward_inference(self, batch: Dict[str, Any]) -> Dict[str, Any]:
         with torch.no_grad():
             return self._forward_train(batch)
 
     @override(RLModule)
-    def _forward_exploration(self, batch: NestedDict) -> Mapping[str, Any]:
+    def _forward_exploration(self, batch: Dict[str, Any]) -> Dict[str, Any]:
         with torch.no_grad():
             return self._forward_train(batch)
 
     @override(RLModule)
-    def _forward_train(self, batch: NestedDict) -> Mapping[str, Any]:
+    def _forward_train(self, batch: Dict[str, Any]) -> Dict[str, Any]:
         action_logits = self.policy(batch["obs"])
         return {Columns.ACTION_DIST_INPUTS: action_logits}
 
@@ -84,9 +77,14 @@ class BCTorchRLModuleWithSharedGlobalEncoder(TorchRLModule):
     """
 
     def __init__(
-        self, encoder: nn.Module, local_dim: int, hidden_dim: int, action_dim: int
+        self,
+        encoder: nn.Module,
+        local_dim: int,
+        hidden_dim: int,
+        action_dim: int,
+        config=None,
     ) -> None:
-        super().__init__(config=None)
+        super().__init__(config=config)
 
         self.encoder = encoder
         self.policy_head = nn.Sequential(
@@ -131,10 +129,7 @@ class BCTorchRLModuleWithSharedGlobalEncoder(TorchRLModule):
         return {Columns.ACTION_DIST_INPUTS: action_logits}
 
 
-class BCTorchMultiAgentModuleWithSharedEncoder(MultiAgentRLModule):
-    def __init__(self, config: MultiAgentRLModuleConfig) -> None:
-        super().__init__(config)
-
+class BCTorchMultiAgentModuleWithSharedEncoder(MultiRLModule):
     def setup(self):
         module_specs = self.config.modules
         module_spec = next(iter(module_specs.values()))
@@ -149,6 +144,7 @@ class BCTorchMultiAgentModuleWithSharedEncoder(MultiAgentRLModule):
         rl_modules = {}
         for module_id, module_spec in module_specs.items():
             rl_modules[module_id] = module_spec.module_class(
+                config=self.config.modules[module_id].get_rl_module_config(),
                 encoder=shared_encoder,
                 local_dim=module_spec.observation_space["local"].shape[0],
                 hidden_dim=hidden_dim,

@@ -62,10 +62,11 @@ EOF
 install_ray() {
   # TODO(mehrdadn): This function should be unified with the one in ci/ci.sh.
   (
-    pip install wheel
+    pip install wheel delvewheel
 
-    pushd dashboard/client
-      choco install nodejs  -y
+
+    pushd python/ray/dashboard/client
+      choco install nodejs --version=22.4.1 -y
       refreshenv
       # https://stackoverflow.com/questions/69692842/error-message-error0308010cdigital-envelope-routinesunsupported
       export NODE_OPTIONS=--openssl-legacy-provider
@@ -74,14 +75,17 @@ install_ray() {
     popd
 
     cd "${WORKSPACE_DIR}"/python
-    "${WORKSPACE_DIR}"/ci/keep_alive pip install -v -e .
+    pip install -v -e .
   )
 }
 
 uninstall_ray() {
   pip uninstall -y ray
 
-  python -s -c "import runpy, sys; runpy.run_path(sys.argv.pop(), run_name='__api__')" clean "${ROOT_DIR}"/setup.py
+  # Cleanup generated thirdparty files.
+  python -c $'import shutil; import sys; \nfor d in sys.argv[1:]: shutil.rmtree(d, ignore_errors=True);' \
+    "${ROOT_DIR}/ray/thirdparty_files" \
+    "${ROOT_DIR}/ray/_private/runtime_env/agent/thirdparty_files"
 }
 
 build_wheel_windows() {
@@ -90,13 +94,13 @@ build_wheel_windows() {
 
   local local_dir="python/dist"
   {
-    echo "build --announce_rc";  
+    echo "build --announce_rc";
     echo "build --config=ci";
     echo "startup --output_user_root=c:/raytmp";
     echo "build --remote_cache=${BUILDKITE_BAZEL_CACHE_URL}";
   } >> ~/.bazelrc
 
-  if [[ "$BUILDKITE_PIPELINE_ID" == "0189942e-0876-4b8f-80a4-617f988ec59b" || "$BUILDKITE_CACHE_READONLY" == "true" ]]; then
+  if [[ "${BUILDKITE_PIPELINE_ID:-}" == "0189942e-0876-4b8f-80a4-617f988ec59b" || "${BUILDKITE_CACHE_READONLY:-}" == "true" ]]; then
     # Do not upload cache results for premerge pipeline
     echo "build --remote_upload_local_results=false" >> ~/.bazelrc
   fi
@@ -131,9 +135,12 @@ build_wheel_windows() {
         exit 1
       fi
       # build ray wheel
-      python setup.py --quiet bdist_wheel
+      python -m pip wheel -q -w dist . --no-deps
+      # Pack any needed system dlls like msvcp140.dll
+      delvewheel repair dist/ray-*.whl
       # build ray-cpp wheel
-      RAY_INSTALL_CPP=1 python setup.py --quiet bdist_wheel
+      RAY_INSTALL_CPP=1 python -m pip wheel -q -w dist . --no-deps
+      # No extra dlls are needed, do not call delvewheel
       uninstall_ray
     )
   done

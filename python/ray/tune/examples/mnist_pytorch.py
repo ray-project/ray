@@ -13,8 +13,8 @@ from filelock import FileLock
 from torchvision import datasets, transforms
 
 import ray
-from ray import train, tune
-from ray.train import Checkpoint
+from ray import tune
+from ray.tune import Checkpoint
 from ray.tune.schedulers import AsyncHyperBandScheduler
 
 # Change these values if you want the training to run quicker or slower.
@@ -113,9 +113,9 @@ def train_mnist(config):
         if should_checkpoint:
             with tempfile.TemporaryDirectory() as tempdir:
                 torch.save(model.state_dict(), os.path.join(tempdir, "model.pt"))
-                train.report(metrics, checkpoint=Checkpoint.from_directory(tempdir))
+                tune.report(metrics, checkpoint=Checkpoint.from_directory(tempdir))
         else:
-            train.report(metrics)
+            tune.report(metrics)
 
 
 if __name__ == "__main__":
@@ -142,7 +142,7 @@ if __name__ == "__main__":
             scheduler=sched,
             num_samples=1 if args.smoke_test else 50,
         ),
-        run_config=train.RunConfig(
+        run_config=tune.RunConfig(
             name="exp",
             stop={
                 "mean_accuracy": 0.98,

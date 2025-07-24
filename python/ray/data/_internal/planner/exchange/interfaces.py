@@ -1,12 +1,17 @@
 import logging
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 
 import ray._private.worker
+from ray.air.util.data_batch_conversion import BatchFormat
 from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.stats import StatsDict
 from ray.data._internal.util import convert_bytes_to_human_readable_str
-from ray.data.block import Block, BlockMetadata
+from ray.data.block import Block, BlockType
 from ray.data.context import DataContext
+
+if TYPE_CHECKING:
+
+    from ray.data.block import BlockMetadataWithSchema
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +48,7 @@ class ExchangeTaskSpec:
         idx: int,
         block: Block,
         output_num_blocks: int,
-    ) -> List[Union[BlockMetadata, Block]]:
+    ) -> List[Union[Block, "BlockMetadataWithSchema"]]:
         """
         Map function to be run on each input block.
 
@@ -55,7 +60,7 @@ class ExchangeTaskSpec:
     def reduce(
         *mapper_outputs: List[Block],
         partial_reduce: bool = False,
-    ) -> Tuple[Block, BlockMetadata]:
+    ) -> Tuple[Block, "BlockMetadataWithSchema"]:
         """
         Reduce function to be run for each output block.
 
@@ -67,6 +72,17 @@ class ExchangeTaskSpec:
             The reduced block and its metadata.
         """
         raise NotImplementedError
+
+    @staticmethod
+    def _derive_target_block_type(batch_format: str) -> Optional[BlockType]:
+        if batch_format == BatchFormat.ARROW:
+            return BlockType.ARROW
+        elif batch_format == BatchFormat.PANDAS:
+            return BlockType.PANDAS
+        else:
+            # NOTE: Unless desired batch-format is specified, avoid
+            #       overriding existing one
+            return None
 
 
 class ExchangeTaskScheduler:

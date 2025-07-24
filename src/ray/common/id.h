@@ -26,6 +26,7 @@
 
 #include "ray/common/constants.h"
 #include "ray/util/logging.h"
+#include "ray/util/random.h"
 #include "ray/util/util.h"
 #include "ray/util/visibility.h"
 
@@ -550,6 +551,41 @@ std::string BaseID<T>::Hex() const {
   return result;
 }
 
+template <>
+struct DefaultLogKey<JobID> {
+  constexpr static std::string_view key = kLogKeyJobID;
+};
+
+template <>
+struct DefaultLogKey<WorkerID> {
+  constexpr static std::string_view key = kLogKeyWorkerID;
+};
+
+template <>
+struct DefaultLogKey<NodeID> {
+  constexpr static std::string_view key = kLogKeyNodeID;
+};
+
+template <>
+struct DefaultLogKey<ActorID> {
+  constexpr static std::string_view key = kLogKeyActorID;
+};
+
+template <>
+struct DefaultLogKey<TaskID> {
+  constexpr static std::string_view key = kLogKeyTaskID;
+};
+
+template <>
+struct DefaultLogKey<ObjectID> {
+  constexpr static std::string_view key = kLogKeyObjectID;
+};
+
+template <>
+struct DefaultLogKey<PlacementGroupID> {
+  constexpr static std::string_view key = kLogKeyPlacementGroupID;
+};
+
 }  // namespace ray
 
 namespace std {
@@ -557,10 +593,6 @@ namespace std {
 #define DEFINE_UNIQUE_ID(type)                                           \
   template <>                                                            \
   struct hash<::ray::type> {                                             \
-    size_t operator()(const ::ray::type &id) const { return id.Hash(); } \
-  };                                                                     \
-  template <>                                                            \
-  struct hash<const ::ray::type> {                                       \
     size_t operator()(const ::ray::type &id) const { return id.Hash(); } \
   };
 

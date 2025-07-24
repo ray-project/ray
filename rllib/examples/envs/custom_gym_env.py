@@ -14,7 +14,7 @@ To see more details on which env we are building for this example, take a look a
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack`
+`python [script file name].py`
 
 Use the `--corridor-length` option to set a custom length for the corridor. Note that
 for extremely long corridors, the algorithm should take longer to learn.
@@ -45,12 +45,16 @@ You should see results similar to the following in your console output:
 |          18.3034 | 28000 | 0.908918 |            12.9676 |
 +------------------+-------+----------+--------------------+
 """
+# These tags allow extracting portions of this script on Anyscale.
+# ws-template-imports-start
 import gymnasium as gym
 from gymnasium.spaces import Discrete, Box
 import numpy as np
 import random
 
 from typing import Optional
+
+# ws-template-imports-end
 
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
@@ -60,7 +64,9 @@ from ray.tune.registry import get_trainable_cls, register_env  # noqa
 
 
 parser = add_rllib_example_script_args(
-    default_reward=0.9, default_iters=50, default_timesteps=100000
+    default_reward=0.9,
+    default_iters=50,
+    default_timesteps=100000,
 )
 parser.add_argument(
     "--corridor-length",
@@ -71,6 +77,8 @@ parser.add_argument(
 )
 
 
+# These tags allow extracting portions of this script on Anyscale.
+# ws-template-code-start
 class SimpleCorridor(gym.Env):
     """Example of a custom env in which the agent has to walk down a corridor.
 
@@ -100,7 +108,7 @@ class SimpleCorridor(gym.Env):
         random.seed(seed)
         self.cur_pos = 0
         # Return obs and (empty) info dict.
-        return np.array([self.cur_pos], np.float32), {}
+        return np.array([self.cur_pos], np.float32), {"env_state": "reset"}
 
     def step(self, action):
         assert action in [0, 1], action
@@ -125,6 +133,8 @@ class SimpleCorridor(gym.Env):
             infos,
         )
 
+
+# ws-template-code-end
 
 if __name__ == "__main__":
     args = parser.parse_args()

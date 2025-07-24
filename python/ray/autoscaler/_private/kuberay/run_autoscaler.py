@@ -7,7 +7,7 @@ import ray
 from ray._private import ray_constants
 from ray._private.ray_logging import setup_component_logger
 from ray._private.services import get_node_ip_address
-from ray._private.utils import try_to_create_directory
+from ray._common.utils import try_to_create_directory
 from ray._raylet import GcsClient
 from ray.autoscaler._private.kuberay.autoscaling_config import AutoscalingConfigProducer
 from ray.autoscaler._private.monitor import Monitor
@@ -21,7 +21,7 @@ BACKOFF_S = 5
 
 def _get_log_dir() -> str:
     return os.path.join(
-        ray._private.utils.get_ray_temp_dir(),
+        ray._common.utils.get_ray_temp_dir(),
         ray._private.ray_constants.SESSION_LATEST,
         "logs",
     )
@@ -44,12 +44,12 @@ def run_kuberay_autoscaler(cluster_name: str, cluster_namespace: str):
                     "--skip-version-check",
                 ]
             )
-            # Logging is not ready yet. Print to stdout for now.
-            print("The Ray head is ready. Starting the autoscaler.")
+            logger.info("The Ray head is ready. Starting the autoscaler.")
             break
         except subprocess.CalledProcessError:
-            print("The Ray head is not yet ready.")
-            print(f"Will check again in {BACKOFF_S} seconds.")
+            logger.warning(
+                f"The Ray head is not ready. Will check again in {BACKOFF_S} seconds."
+            )
             time.sleep(BACKOFF_S)
 
     # The Ray head container sets up the log directory. Thus, we set up logging
@@ -98,7 +98,7 @@ def _setup_logging() -> None:
 
     # Write logs at info level to monitor.log.
     setup_component_logger(
-        logging_level=ray_constants.LOGGER_LEVEL,  # info
+        logging_level=ray_constants.LOGGER_LEVEL,
         logging_format=ray_constants.LOGGER_FORMAT,
         log_dir=log_dir,
         filename=ray_constants.MONITOR_LOG_FILE_NAME,  # monitor.log

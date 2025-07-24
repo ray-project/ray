@@ -18,13 +18,13 @@ class RayServegRPCContext:
         self._auth_context = grpc_context.auth_context()
         self._code = grpc_context.code()
         self._details = grpc_context.details()
-        self._invocation_metadata = [
+        self._invocation_metadata = [  # noqa: C416
             (key, value) for key, value in grpc_context.invocation_metadata()
         ]
         self._peer = grpc_context.peer()
         self._peer_identities = grpc_context.peer_identities()
         self._peer_identity_key = grpc_context.peer_identity_key()
-        self._trailing_metadata = [
+        self._trailing_metadata = [  # noqa: C416
             (key, value) for key, value in grpc_context.trailing_metadata()
         ]
         self._compression = None
@@ -120,12 +120,12 @@ class RayServegRPCContext:
     def set_details(self, details: str):
         """Sets the value to be used as detail string upon RPC completion.
 
-        This method need not be called by method implementations if they have
-        no details to transmit.
+        Calling this method is only needed if method implementations have
+        details to transmit.
 
         Args:
           details: A UTF-8-encodable string to be sent to the client upon
-          termination of the RPC.
+                   termination of the RPC.
         """
         self._details = details
 

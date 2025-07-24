@@ -1,0 +1,10 @@
+model_loading_config:
+  model_id: meta-llama/Llama-3.1-8B-Instruct
+
+accelerator_type: A10G
+
+engine_kwargs:
+  max_model_len: 8192
+  tensor_parallel_size: 2
+  # NOTE: This is used for perf testing as well, so cuda graph must be enabled.
+  enforce_eager: false

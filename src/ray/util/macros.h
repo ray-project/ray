@@ -30,8 +30,8 @@
 // the absence of better information (ie. -fprofile-arcs).
 //
 #if defined(__GNUC__)
-#define RAY_PREDICT_FALSE(x) (__builtin_expect(x, 0))
-#define RAY_PREDICT_TRUE(x) (__builtin_expect(!!(x), 1))
+#define RAY_PREDICT_FALSE(x) (__builtin_expect(false || (x), false))
+#define RAY_PREDICT_TRUE(x) (__builtin_expect(false || (x), true))
 #define RAY_NORETURN __attribute__((noreturn))
 #define RAY_PREFETCH(addr) __builtin_prefetch(addr)
 #elif defined(_MSC_VER)
@@ -65,4 +65,11 @@
 #define __suppress_ubsan__(type) __attribute__((no_sanitize_undefined))
 #else
 #define __suppress_ubsan__(type)
+#endif
+
+// Portable code for unreachable
+#if defined(_MSC_VER)
+#define UNREACHABLE __assume(0)
+#else
+#define UNREACHABLE __builtin_unreachable()
 #endif

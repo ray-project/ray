@@ -2,12 +2,13 @@ from ray.rllib.utils.deprecation import Deprecated
 from ray.util.annotations import _mark_annotated
 
 
-def override(cls):
+def override(parent_cls):
     """Decorator for documenting method overrides.
 
     Args:
-        cls: The superclass that provides the overridden method. If this
-            cls does not actually have the method, an error is raised.
+        parent_cls: The superclass that provides the overridden method. If
+            `parent_class` does not actually have the method or the class, in which
+            method is defined is not a subclass of `parent_class`, an error is raised.
 
     .. testcode::
         :skipif: True
@@ -25,12 +26,34 @@ def override(cls):
 
     """
 
-    def check_override(method):
-        if method.__name__ not in dir(cls):
-            raise NameError("{} does not override any method of {}".format(method, cls))
+    class OverrideCheck:
+        def __init__(self, func, expected_parent_cls):
+            self.func = func
+            self.expected_parent_cls = expected_parent_cls
+
+        def __set_name__(self, owner, name):
+            # Check if the owner (the class) is a subclass of the expected base class
+            if not issubclass(owner, self.expected_parent_cls):
+                raise TypeError(
+                    f"When using the @override decorator, {owner.__name__} must be a "
+                    f"subclass of {parent_cls.__name__}!"
+                )
+            # Set the function as a regular method on the class.
+            setattr(owner, name, self.func)
+
+    def decorator(method):
+        # Check, whether `method` is actually defined by the parent class.
+        if method.__name__ not in dir(parent_cls):
+            raise NameError(
+                f"When using the @override decorator, {method.__name__} must override "
+                f"the respective method (with the same name) of {parent_cls.__name__}!"
+            )
+
+        # Check if the class is a subclass of the expected base class
+        OverrideCheck(method, parent_cls)
         return method
 
-    return check_override
+    return decorator
 
 
 def PublicAPI(obj):
@@ -148,7 +171,7 @@ def OverrideToImplementCustomLogic(obj):
             ...
 
     """
-    obj.__is_overriden__ = False
+    obj.__is_overridden__ = False
     return obj
 
 
@@ -173,7 +196,7 @@ def OverrideToImplementCustomLogic_CallToSuperRecommended(obj):
             super().setup(config)
             # ... or here (after having called super()'s setup method.
     """
-    obj.__is_overriden__ = False
+    obj.__is_overridden__ = False
     return obj
 
 
@@ -183,7 +206,7 @@ def is_overridden(obj):
     Note, this only works for API calls decorated with OverrideToImplementCustomLogic
     or OverrideToImplementCustomLogic_CallToSuperRecommended.
     """
-    return getattr(obj, "__is_overriden__", True)
+    return getattr(obj, "__is_overridden__", True)
 
 
 # Backward compatibility.

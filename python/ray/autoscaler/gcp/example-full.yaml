@@ -70,7 +70,7 @@ available_node_types:
                 initializeParams:
                   diskSizeGb: 50
                   # See https://cloud.google.com/compute/docs/images for more images
-                  sourceImage: projects/deeplearning-platform-release/global/images/family/common-cpu
+                  sourceImage: projects/deeplearning-platform-release/global/images/common-cpu-v20240922
 
             # Additional options can be found in in the compute docs at
             # https://cloud.google.com/compute/docs/reference/rest/v1/instances/insert
@@ -105,7 +105,7 @@ available_node_types:
                 initializeParams:
                   diskSizeGb: 50
                   # See https://cloud.google.com/compute/docs/images for more images
-                  sourceImage: projects/deeplearning-platform-release/global/images/family/common-cpu
+                  sourceImage: projects/deeplearning-platform-release/global/images/common-cpu-v20240922
             # Run workers on preemtible instance by default.
             # Comment this out to use on-demand.
             scheduling:

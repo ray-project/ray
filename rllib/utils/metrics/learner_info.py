@@ -3,8 +3,8 @@ import numpy as np
 import tree  # pip install dm_tree
 from typing import Dict
 
-from ray.util.annotations import DeveloperAPI
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
+from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.typing import PolicyID
 
 # Instant metrics (keys for metrics.info).
@@ -14,7 +14,7 @@ LEARNER_INFO = "learner"
 LEARNER_STATS_KEY = "learner_stats"
 
 
-@DeveloperAPI
+@OldAPIStack
 class LearnerInfoBuilder:
     def __init__(self, num_devices: int = 1):
         self.num_devices = num_devices
@@ -90,6 +90,7 @@ class LearnerInfoBuilder:
         return info
 
 
+@OldAPIStack
 def _all_tower_reduce(path, *tower_data):
     """Reduces stats across towers based on their stats-dict paths."""
     # TD-errors: Need to stay per batch item in order to be able to update

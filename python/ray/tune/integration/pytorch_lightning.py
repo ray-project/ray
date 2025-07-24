@@ -6,8 +6,8 @@ import warnings
 from contextlib import contextmanager
 from typing import Dict, List, Optional, Type, Union
 
-from ray import train
-from ray.train import Checkpoint
+import ray.tune
+from ray.tune import Checkpoint
 from ray.util import log_once
 from ray.util.annotations import Deprecated, PublicAPI
 
@@ -55,9 +55,9 @@ class TuneCallback(Callback):
     """Base class for Tune's PyTorch Lightning callbacks.
 
     Args:
-        When to trigger checkpoint creations. Must be one of
-        the PyTorch Lightning event hooks (less the ``on_``), e.g.
-        "train_batch_start", or "train_end". Defaults to "validation_end"
+        on: When to trigger checkpoint creations. Must be one of
+            the PyTorch Lightning event hooks (less the ``on_``), e.g.
+            "train_batch_start", or "train_end". Defaults to "validation_end"
     """
 
     def __init__(self, on: Union[str, List[str]] = "validation_end"):
@@ -176,7 +176,7 @@ class TuneReportCheckpointCallback(TuneCallback):
             return
 
         with self._get_checkpoint(trainer) as checkpoint:
-            train.report(report_dict, checkpoint=checkpoint)
+            ray.tune.report(report_dict, checkpoint=checkpoint)
 
 
 class _TuneCheckpointCallback(TuneCallback):

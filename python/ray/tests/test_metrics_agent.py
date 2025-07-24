@@ -1,32 +1,45 @@
+import time
 import signal
 import json
 import os
 import pathlib
 import sys
+import re
 import requests
+import warnings
 from collections import defaultdict
-
 from pprint import pformat
 from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
 
+from google.protobuf.timestamp_pb2 import Timestamp
 import ray
+from ray.dashboard.modules.aggregator.tests.test_aggregator_agent import (
+    get_event_aggregator_grpc_stub,
+)
+from ray.core.generated.common_pb2 import TaskAttempt
+from ray.core.generated.events_base_event_pb2 import RayEvent
+from ray.core.generated.events_event_aggregator_service_pb2 import (
+    AddEventRequest,
+    RayEventsData,
+    TaskEventsMetadata,
+)
 from ray.util.state import list_nodes
 from ray._private.metrics_agent import PrometheusServiceDiscoveryWriter
+from ray._private.metrics_agent import Gauge as MetricsAgentGauge
 from ray._private.ray_constants import PROMETHEUS_SERVICE_DISCOVERY_FILE
+from ray._common.test_utils import SignalActor, wait_for_condition
 from ray._private.test_utils import (
-    SignalActor,
     fetch_prometheus,
     fetch_prometheus_metrics,
     get_log_batch,
-    wait_for_condition,
     raw_metrics,
 )
 from ray.autoscaler._private.constants import AUTOSCALER_METRIC_PORT
 from ray.dashboard.consts import DASHBOARD_METRIC_PORT
-from ray.util.metrics import Counter, Gauge, Histogram
+from ray.util.metrics import Counter, Gauge, Histogram, Metric
 
 os.environ["RAY_event_stats"] = "1"
 
@@ -59,7 +72,9 @@ _METRICS = [
     "ray_internal_num_spilled_tasks",
     # "ray_unintentional_worker_failures_total",
     # "ray_node_failure_total",
-    "ray_grpc_server_req_process_time_ms",
+    "ray_grpc_server_req_process_time_ms_sum",
+    "ray_grpc_server_req_process_time_ms_bucket",
+    "ray_grpc_server_req_process_time_ms_count",
     "ray_grpc_server_req_new_total",
     "ray_grpc_server_req_handling_total",
     "ray_grpc_server_req_finished_total",
@@ -69,7 +84,7 @@ _METRICS = [
     "ray_pull_manager_requests",
     "ray_pull_manager_active_bundles",
     "ray_pull_manager_retries_total",
-    "ray_push_manager_in_flight_pushes",
+    "ray_push_manager_num_pushes_remaining",
     "ray_push_manager_chunks",
     "ray_scheduler_failed_worker_startup_total",
     "ray_scheduler_tasks",
@@ -122,6 +137,13 @@ _DASHBOARD_METRICS = [
     "ray_component_uss_mb",
 ]
 
+_EVENT_AGGREGATOR_METRICS = [
+    "ray_event_aggregator_agent_events_received_total",
+    "ray_event_aggregator_agent_events_dropped_at_core_worker_total",
+    "ray_event_aggregator_agent_events_dropped_at_event_aggregator_total",
+    "ray_event_aggregator_agent_events_published_total",
+]
+
 _NODE_METRICS = [
     "ray_node_cpu_utilization",
     "ray_node_cpu_count",
@@ -168,10 +190,17 @@ def _setup_cluster_for_test(request, ray_start_cluster):
     # Add a head node.
     cluster.add_node(
         _system_config={
-            "metrics_report_interval_ms": 1000,
             "event_stats_print_interval_ms": 500,
             "event_stats": True,
             "enable_metrics_collection": enable_metrics_collection,
+            "experimental_enable_open_telemetry_on_agent": os.getenv(
+                "RAY_experimental_enable_open_telemetry_on_agent"
+            )
+            == "1",
+            "experimental_enable_open_telemetry_on_core": os.getenv(
+                "RAY_experimental_enable_open_telemetry_on_core"
+            )
+            == "1",
         }
     )
     # Add worker nodes.
@@ -212,6 +241,7 @@ def _setup_cluster_for_test(request, ray_start_cluster):
             )
             histogram = ray.get(ray.put(histogram))  # Test serialization.
             histogram.observe(1.5, tags=extra_tags)
+            histogram.observe(0.0, tags=extra_tags)
             ray.get(worker_should_exit.wait.remote())
 
     a = A.remote()
@@ -243,6 +273,11 @@ def _setup_cluster_for_test(request, ray_start_cluster):
 
 
 @pytest.mark.skipif(prometheus_client is None, reason="Prometheus not installed")
+@pytest.mark.skipif(
+    os.environ.get("RAY_experimental_enable_open_telemetry_on_core") == "1"
+    and sys.platform == "darwin",
+    reason="OpenTelemetry is not working on macOS yet.",
+)
 @pytest.mark.parametrize("_setup_cluster_for_test", [True], indirect=True)
 def test_metrics_export_end_to_end(_setup_cluster_for_test):
     TEST_TIMEOUT_S = 30
@@ -271,16 +306,26 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
         assert any(
             "core_worker" in components for components in components_dict.values()
         )
+        # The list of custom or user defined metrics. Open Telemetry backend does not
+        # support exporting Counter as Gauge, so we skip some metrics in that case.
+        custom_metrics = (
+            [
+                "test_counter",
+                "test_counter_total",
+                "test_driver_counter",
+                "test_driver_counter_total",
+                "test_gauge",
+            ]
+            if os.environ.get("RAY_experimental_enable_open_telemetry_on_core") != "1"
+            else [
+                "test_counter_total",
+                "test_driver_counter_total",
+                "test_gauge",
+            ]
+        )
 
         # Make sure our user defined metrics exist and have the correct types
-        for metric_name in [
-            "test_counter",
-            "test_counter_total",
-            "test_histogram_bucket",
-            "test_driver_counter",
-            "test_driver_counter_total",
-            "test_gauge",
-        ]:
+        for metric_name in custom_metrics:
             metric_name = f"ray_{metric_name}"
             assert metric_name in metric_names
             if metric_name.endswith("_total"):
@@ -312,27 +357,12 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
         ][0]
         assert test_driver_counter_sample.value == 1.0
 
-        test_histogram_samples = [
-            m for m in metric_samples if "test_histogram" in m.name
-        ]
-        buckets = {
-            m.labels["le"]: m.value
-            for m in test_histogram_samples
-            if "_bucket" in m.name
-        }
-        # We recorded value 1.5 for the histogram. In Prometheus data model
-        # the histogram is cumulative. So we expect the count to appear in
-        # <1.1 and <+Inf buckets.
-        assert buckets == {"0.1": 0.0, "1.6": 1.0, "+Inf": 1.0}
-        hist_count = [m for m in test_histogram_samples if "_count" in m.name][0].value
-        hist_sum = [m for m in test_histogram_samples if "_sum" in m.name][0].value
-        assert hist_count == 1
-        assert hist_sum == 1.5
-
         # Make sure the gRPC stats are not reported from workers. We disabled
         # it there because it has too high cardinality.
         grpc_metrics = [
-            "ray_grpc_server_req_process_time_ms",
+            "ray_grpc_server_req_process_time_ms_sum",
+            "ray_grpc_server_req_process_time_ms_bucket",
+            "ray_grpc_server_req_process_time_ms_count",
             "ray_grpc_server_req_new_total",
             "ray_grpc_server_req_handling_total",
             "ray_grpc_server_req_finished_total",
@@ -401,7 +431,7 @@ def test_metrics_export_node_metrics(shutdown_only):
             samples = avail_metrics[metric]
             for sample in samples:
                 components.add(sample.labels["Component"])
-        assert components == {"raylet", "agent", "ray::IDLE"}
+        assert components == {"gcs", "raylet", "agent", "ray::IDLE"}
 
         avail_metrics = set(avail_metrics)
 
@@ -417,7 +447,6 @@ def test_metrics_export_node_metrics(shutdown_only):
         list_nodes()
 
         # Verify metrics exist.
-        avail_metrics = avail_metrics
         for metric in _DASHBOARD_METRICS:
             # Metric name should appear with some suffix (_count, _total,
             # etc...) in the list of all names
@@ -425,12 +454,112 @@ def test_metrics_export_node_metrics(shutdown_only):
 
             samples = avail_metrics[metric]
             for sample in samples:
-                assert sample.labels["Component"] == "dashboard"
+                assert sample.labels["Component"].startswith("dashboard")
 
         return True
 
     wait_for_condition(verify_node_metrics)
     wait_for_condition(verify_dashboard_metrics)
+
+
+@pytest.fixture(scope="session")
+def httpserver_listen_address():
+    return ("127.0.0.1", 12345)
+
+
+@pytest.mark.parametrize(
+    "ray_start_cluster_head_with_env_vars",
+    [
+        {
+            "env_vars": {
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_MAX_EVENT_BUFFER_SIZE": 1,
+            },
+        },
+    ],
+    indirect=True,
+)
+def test_metrics_export_event_aggregator_agent(
+    ray_start_cluster_head_with_env_vars, httpserver
+):
+    cluster = ray_start_cluster_head_with_env_vars
+    stub = get_event_aggregator_grpc_stub(
+        cluster.webui_url, cluster.gcs_address, cluster.head_node.node_id
+    )
+    httpserver.expect_request("/", method="POST").respond_with_data("", status=200)
+
+    metrics_export_port = cluster.head_node.metrics_export_port
+    addr = cluster.head_node.raylet_ip_address
+    prom_addresses = [f"{addr}:{metrics_export_port}"]
+
+    def test_case_stats_exist():
+        _, metric_descriptors, _ = fetch_prometheus(prom_addresses)
+        metrics_names = metric_descriptors.keys()
+        event_aggregator_metrics = [
+            "ray_event_aggregator_agent_events_received_total",
+            "ray_event_aggregator_agent_events_dropped_at_core_worker_total",
+            "ray_event_aggregator_agent_events_dropped_at_event_aggregator_total",
+            "ray_event_aggregator_agent_events_published_total",
+        ]
+        return all(metric in metrics_names for metric in event_aggregator_metrics)
+
+    def test_case_value_correct():
+        _, _, metric_samples = fetch_prometheus(prom_addresses)
+        expected_metrics_values = {
+            "ray_event_aggregator_agent_events_received_total": 2.0,
+            "ray_event_aggregator_agent_events_dropped_at_core_worker_total": 1.0,
+            "ray_event_aggregator_agent_events_dropped_at_event_aggregator_total": 1.0,
+            "ray_event_aggregator_agent_events_published_total": 1.0,
+        }
+        for descriptor, expected_value in expected_metrics_values.items():
+            samples = [m for m in metric_samples if m.name == descriptor]
+            if not samples:
+                return False
+            if samples[0].value != expected_value:
+                return False
+        return True
+
+    wait_for_condition(test_case_stats_exist, timeout=30, retry_interval_ms=1000)
+
+    now = time.time_ns()
+    seconds, nanos = divmod(now, 10**9)
+    timestamp = Timestamp(seconds=seconds, nanos=nanos)
+    request = AddEventRequest(
+        events_data=RayEventsData(
+            events=[
+                RayEvent(
+                    event_id=b"1",
+                    source_type=RayEvent.SourceType.CORE_WORKER,
+                    event_type=RayEvent.EventType.TASK_DEFINITION_EVENT,
+                    timestamp=timestamp,
+                    severity=RayEvent.Severity.INFO,
+                    message="hello",
+                ),
+                RayEvent(
+                    event_id=b"2",
+                    source_type=RayEvent.SourceType.CORE_WORKER,
+                    event_type=RayEvent.EventType.TASK_DEFINITION_EVENT,
+                    timestamp=timestamp,
+                    severity=RayEvent.Severity.INFO,
+                    message="hello 2",
+                ),
+            ],
+            task_events_metadata=TaskEventsMetadata(
+                dropped_task_attempts=[
+                    TaskAttempt(
+                        task_id=b"1",
+                        attempt_number=1,
+                    ),
+                ],
+            ),
+        )
+    )
+
+    reply = stub.AddEvents(request)
+    assert reply.status.code == 5
+    assert reply.status.message == "event 1 dropped because event buffer full"
+    wait_for_condition(lambda: len(httpserver.log) == 1)
+
+    wait_for_condition(test_case_value_correct, timeout=30, retry_interval_ms=1000)
 
 
 def test_operation_stats(monkeypatch, shutdown_only):
@@ -565,8 +694,64 @@ def test_operation_stats(monkeypatch, shutdown_only):
         wait_for_condition(verify, timeout=60)
 
 
+@pytest.mark.skipif(prometheus_client is None, reason="Prometheus not installed")
+@pytest.mark.parametrize("_setup_cluster_for_test", [True], indirect=True)
+def test_histogram(_setup_cluster_for_test):
+    TEST_TIMEOUT_S = 30
+    (
+        prom_addresses,
+        autoscaler_export_addr,
+        dashboard_export_addr,
+    ) = _setup_cluster_for_test
+
+    def test_cases():
+        components_dict, metric_descriptors, metric_samples = fetch_prometheus(
+            prom_addresses
+        )
+        metric_names = metric_descriptors.keys()
+        custom_histogram_metric_name = "ray_test_histogram_bucket"
+        assert custom_histogram_metric_name in metric_names
+        assert metric_descriptors[custom_histogram_metric_name].type == "histogram"
+
+        test_histogram_samples = [
+            m for m in metric_samples if "test_histogram" in m.name
+        ]
+        buckets = {
+            m.labels["le"]: m.value
+            for m in test_histogram_samples
+            if "_bucket" in m.name
+        }
+        # In Prometheus data model
+        # the histogram is cumulative. So we expect the count to appear in
+        # <1.1 and <+Inf buckets.
+        assert buckets == {"0.1": 1.0, "1.6": 2.0, "+Inf": 2.0}
+        hist_count = [m for m in test_histogram_samples if "_count" in m.name][0].value
+        assert hist_count == 2
+
+    def wrap_test_case_for_retry():
+        try:
+            test_cases()
+            return True
+        except AssertionError:
+            return False
+
+    try:
+        wait_for_condition(
+            wrap_test_case_for_retry,
+            timeout=TEST_TIMEOUT_S,
+            retry_interval_ms=1000,  # Yield resource for other processes
+        )
+    except RuntimeError:
+        print(f"The components are {pformat(fetch_prometheus(prom_addresses))}")
+        test_cases()  # Should fail assert
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="Not working in Windows.")
-def test_counter(shutdown_only):
+@pytest.mark.skipif(
+    os.environ.get("RAY_experimental_enable_open_telemetry_on_core") == "1",
+    reason="OpenTelemetry backend does not support Counter exported as gauge.",
+)
+def test_counter_exported_as_gauge(shutdown_only):
     # Test to make sure Counter emits the right Prometheus metrics
     context = ray.init()
 
@@ -617,7 +802,7 @@ def test_counter(shutdown_only):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Not working in Windows.")
-def test_counter_without_export_counter_as_gauge(monkeypatch, shutdown_only):
+def test_counter(monkeypatch, shutdown_only):
     # Test to make sure we don't export counter as gauge
     # if RAY_EXPORT_COUNTER_AS_GAUGE is 0
     monkeypatch.setenv("RAY_EXPORT_COUNTER_AS_GAUGE", "0")
@@ -679,6 +864,13 @@ def test_per_func_name_stats(shutdown_only):
 
     ray.get(a.__ray_ready__.remote())
     ray.get(b.__ray_ready__.remote())
+
+    # Run a short lived task to make sure there's a ray::IDLE component.
+    @ray.remote
+    def do_nothing():
+        pass
+
+    ray.get(do_nothing.remote())
 
     def verify_components():
         metrics = raw_metrics(addr)
@@ -1014,7 +1206,12 @@ def test_metrics_disablement(_setup_cluster_for_test):
                 return False
 
         # Make sure metrics are not there.
-        for metric in _METRICS + _AUTOSCALER_METRICS + _DASHBOARD_METRICS:
+        for metric in (
+            _METRICS
+            + _AUTOSCALER_METRICS
+            + _DASHBOARD_METRICS
+            + _EVENT_AGGREGATOR_METRICS
+        ):
             if metric in metric_names:
                 print("f{metric} exists although it should not.")
                 return False
@@ -1028,11 +1225,35 @@ def test_metrics_disablement(_setup_cluster_for_test):
         time.sleep(1)
 
 
-if __name__ == "__main__":
-    import sys
+_FAULTY_METRIC_REGEX = re.compile(".*Invalid metric name.*")
 
-    # Test suite is timing out. Disable on windows for now.
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+
+def test_invalid_application_metric_names():
+    warnings.simplefilter("always")
+    with pytest.raises(
+        ValueError, match="Empty name is not allowed. Please provide a metric name."
+    ):
+        Metric("")
+    with pytest.warns(UserWarning, match=_FAULTY_METRIC_REGEX):
+        Metric("name-cannot-have-dashes")
+    with pytest.warns(UserWarning, match=_FAULTY_METRIC_REGEX):
+        Metric("1namecannotstartwithnumber")
+    with pytest.warns(UserWarning, match=_FAULTY_METRIC_REGEX):
+        Metric("name.cannot.have.dots")
+
+
+def test_invalid_system_metric_names(caplog):
+    with pytest.raises(
+        ValueError, match="Empty name is not allowed. Please provide a metric name."
+    ):
+        MetricsAgentGauge("", "", "", [])
+    with pytest.raises(ValueError, match=_FAULTY_METRIC_REGEX):
+        MetricsAgentGauge("name-cannot-have-dashes", "", "", [])
+    with pytest.raises(ValueError, match=_FAULTY_METRIC_REGEX):
+        MetricsAgentGauge("1namecannotstartwithnumber", "", "", [])
+    with pytest.raises(ValueError, match=_FAULTY_METRIC_REGEX):
+        MetricsAgentGauge("name.cannot.have.dots", "", "", [])
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-sv", __file__]))

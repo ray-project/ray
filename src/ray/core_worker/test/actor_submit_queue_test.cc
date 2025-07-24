@@ -13,6 +13,8 @@
 // limitations under the License.
 
 #include <thread>
+#include <utility>
+#include <vector>
 
 #include "gtest/gtest.h"
 #include "ray/common/test_util.h"
@@ -21,34 +23,37 @@
 namespace ray {
 namespace core {
 namespace {
+
 TaskSpecification BuildTaskSpec(uint64_t seq) {
   TaskSpecification spec;
   spec.GetMutableMessage().set_task_id(TaskID::FromRandom(JobID()).Binary());
   spec.GetMutableMessage().set_type(ray::rpc::TaskType::ACTOR_TASK);
-  spec.GetMutableMessage().mutable_actor_task_spec()->set_actor_counter(seq);
+  spec.GetMutableMessage().mutable_actor_task_spec()->set_sequence_number(seq);
   return spec;
 }
+
 }  // namespace
 
 TEST(OutofOrderActorSubmitQueueTest, PassThroughTest) {
   OutofOrderActorSubmitQueue queue(ActorID{});
   // insert request 0 1 2 3 4
+  std::vector<TaskID> task_ids;
   for (uint64_t i = 0; i < 5; i++) {
-    EXPECT_TRUE(queue.Emplace(i, BuildTaskSpec(i)));
+    auto spec = BuildTaskSpec(i);
+    task_ids.push_back(spec.TaskId());
+    queue.Emplace(i, std::move(spec));
   }
-  // insert request 0 again fails
-  EXPECT_FALSE(queue.Emplace(0, BuildTaskSpec(0)));
   // contains and gets
   for (uint64_t i = 0; i < 5; i++) {
     EXPECT_TRUE(queue.Contains(i));
-    EXPECT_FALSE(queue.Get(i).second);
+    EXPECT_FALSE(queue.DependenciesResolved(i));
   }
   // dependency failure remove request 4
   queue.MarkDependencyFailed(4);
   for (uint64_t i = 0; i < 5; i++) {
     if (i != 4) {
       EXPECT_TRUE(queue.Contains(i));
-      EXPECT_FALSE(queue.Get(i).second);
+      EXPECT_FALSE(queue.DependenciesResolved(i));
     } else {
       EXPECT_FALSE(queue.Contains(i));
     }
@@ -63,35 +68,32 @@ TEST(OutofOrderActorSubmitQueueTest, PassThroughTest) {
   for (uint64_t i = 0; i < 4; i++) {
     EXPECT_TRUE(queue.Contains(i));
     if (i == 1 || i == 3) {
-      EXPECT_TRUE(queue.Get(i).second);
+      EXPECT_TRUE(queue.DependenciesResolved(i));
     } else {
-      EXPECT_FALSE(queue.Get(i).second);
+      EXPECT_FALSE(queue.DependenciesResolved(i));
     }
   }
 
   // task 1 and task 3 is ready to send.
-  EXPECT_EQ(queue.PopNextTaskToSend()->first.ActorCounter(), 1);
-  EXPECT_EQ(queue.PopNextTaskToSend()->first.ActorCounter(), 3);
+  EXPECT_EQ(queue.PopNextTaskToSend()->first.SequenceNumber(), 1);
+  EXPECT_EQ(queue.PopNextTaskToSend()->first.SequenceNumber(), 3);
   EXPECT_FALSE(queue.PopNextTaskToSend().has_value());
-
-  EXPECT_TRUE(queue.PopAllOutOfOrderCompletedTasks().empty());
 
   // only contains task 2 and 4.
   for (uint64_t i = 0; i < 5; i++) {
     if (i == 0 || i == 2) {
       EXPECT_TRUE(queue.Contains(i));
-      EXPECT_FALSE(queue.Get(i).second);
+      EXPECT_FALSE(queue.DependenciesResolved(i));
     } else {
       EXPECT_FALSE(queue.Contains(i));
     }
   }
 
   queue.MarkDependencyResolved(2);
-  std::vector<TaskID> task_ids = {queue.Get(0).first.TaskId(),
-                                  queue.Get(2).first.TaskId()};
+  std::vector<TaskID> expected_cleared_task_ids = {task_ids[0], task_ids[2]};
   // clear all tasks.
   auto ret = queue.ClearAllTasks();
-  EXPECT_EQ(ret, task_ids);
+  EXPECT_EQ(ret, expected_cleared_task_ids);
   for (uint64_t i = 0; i < 5; i++) {
     EXPECT_FALSE(queue.Contains(i));
   }

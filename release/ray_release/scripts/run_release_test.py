@@ -9,6 +9,7 @@ from ray_release.config import (
     as_smoke_test,
     find_test,
     read_and_validate_release_test_collection,
+    RELEASE_TEST_CONFIG_FILES,
 )
 from ray_release.configs.global_config import init_global_config
 from ray_release.env import DEFAULT_ENVIRONMENT, load_environment, populate_os_env
@@ -20,6 +21,7 @@ from ray_release.reporter.db import DBReporter
 from ray_release.reporter.ray_test_db import RayTestDBReporter
 from ray_release.reporter.log import LogReporter
 from ray_release.result import Result
+from ray_release.anyscale_util import LAST_LOGS_LENGTH
 
 
 @click.command()
@@ -89,6 +91,18 @@ from ray_release.result import Result
     type=str,
     help="Root of the test definition files. Default is the root of the repo.",
 )
+@click.option(
+    "--log-streaming-limit",
+    default=LAST_LOGS_LENGTH,
+    type=int,
+    help="Limit of log streaming in number of lines. Set to -1 to stream all logs.",
+)
+@click.option(
+    "--image",
+    default=None,
+    type=str,
+    help="Image to use for the test.",
+)
 def main(
     test_name: str,
     test_collection_file: Tuple[str],
@@ -100,13 +114,15 @@ def main(
     global_config: str = "oss_config.yaml",
     no_terminate: bool = False,
     test_definition_root: Optional[str] = None,
+    log_streaming_limit: int = LAST_LOGS_LENGTH,
+    image: Optional[str] = None,
 ):
     global_config_file = os.path.join(
         os.path.dirname(__file__), "..", "configs", global_config
     )
     init_global_config(global_config_file)
     test_collection = read_and_validate_release_test_collection(
-        test_collection_file or ["release/release_tests.yaml"],
+        test_collection_file or RELEASE_TEST_CONFIG_FILES,
         test_definition_root,
     )
     test = find_test(test_collection, test_name)
@@ -124,7 +140,7 @@ def main(
     env_dict = load_environment(env_to_use)
     populate_os_env(env_dict)
     anyscale_project = os.environ.get("ANYSCALE_PROJECT", None)
-    if not anyscale_project:
+    if not test.is_kuberay() and not anyscale_project:
         raise ReleaseTestCLIError(
             "You have to set the ANYSCALE_PROJECT environment variable!"
         )
@@ -148,7 +164,7 @@ def main(
 
     try:
         result = run_release_test(
-            test,
+            test=test,
             anyscale_project=anyscale_project,
             result=result,
             reporters=reporters,
@@ -157,6 +173,8 @@ def main(
             cluster_env_id=cluster_env_id,
             no_terminate=no_terminate,
             test_definition_root=test_definition_root,
+            log_streaming_limit=log_streaming_limit,
+            image=image,
         )
         return_code = result.return_code
     except ReleaseTestError as e:

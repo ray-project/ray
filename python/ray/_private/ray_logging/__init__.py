@@ -1,21 +1,23 @@
-import colorama
-from dataclasses import dataclass
 import logging
+import logging.handlers
 import os
 import re
 import sys
 import threading
 import time
-from typing import Callable, Dict, List, Set, Tuple, Any, Optional, Union, Iterable
+from dataclasses import dataclass
+from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Tuple, Union
+
+import colorama
 
 import ray
-from ray.experimental.tqdm_ray import RAY_TQDM_MAGIC
 from ray._private.ray_constants import (
     RAY_DEDUP_LOGS,
     RAY_DEDUP_LOGS_AGG_WINDOW_S,
     RAY_DEDUP_LOGS_ALLOW_REGEX,
     RAY_DEDUP_LOGS_SKIP_REGEX,
 )
+from ray.experimental.tqdm_ray import RAY_TQDM_MAGIC
 from ray.util.debug import log_once
 
 
@@ -123,7 +125,8 @@ def run_callback_on_events_in_ipython(event: str, cb: Callable):
 All components underneath here is used specifically for the default_worker.py.
 """
 
-
+# It's worth noticing that filepath format should be kept in sync with function
+# `GetWorkerOutputFilepath` under file "src/ray/core_worker/core_worker_process.cc".
 def get_worker_log_file_name(worker_type, job_id=None):
     if job_id is None:
         job_id = os.environ.get("RAY_JOB_ID")

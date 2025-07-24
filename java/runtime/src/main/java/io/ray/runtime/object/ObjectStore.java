@@ -167,7 +167,7 @@ public abstract class ObjectStore {
    *     returning it as ready. If false, ray.wait() will not trigger fetching of objects to the
    *     local node and will return immediately once the object is available anywhere in the
    *     cluster.
-   * @return A bitset that indicates each object has appeared or not.
+   * @return A list of booleans that indicates each object has appeared or not.
    */
   public abstract List<Boolean> wait(
       List<ObjectId> objectIds, int numObjects, long timeoutMs, boolean fetchLocal);

@@ -103,9 +103,9 @@ def _gym_env_creator(
     except (AttributeError, ModuleNotFoundError, ImportError):
         pass
 
-    # If env descriptor is a str, starting with "ALE/", for now, register all ALE envs
-    # from ale_py.
-    if isinstance(env_descriptor, str) and env_descriptor.startswith("ALE/"):
+    # If env descriptor is a str, starting with "ale_py:ALE/", for now, register all ALE
+    # envs from ale_py.
+    if isinstance(env_descriptor, str) and env_descriptor.startswith("ale_py:ALE/"):
         import ale_py
 
         gym.register_envs(ale_py)

@@ -7,7 +7,7 @@ if TYPE_CHECKING:
     from anyscale.sdk.anyscale_client.sdk import AnyscaleSDK
 
 
-LAST_LOGS_LENGTH = 30
+LAST_LOGS_LENGTH = 100
 
 
 def find_cloud_by_name(

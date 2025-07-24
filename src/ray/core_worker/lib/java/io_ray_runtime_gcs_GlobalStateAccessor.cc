@@ -16,8 +16,10 @@
 
 #include <jni.h>
 
+#include <string>
+
 #include "boost/algorithm/string.hpp"
-#include "jni_utils.h"
+#include "jni_utils.h"  // NOLINT(build/include_subdir)
 #include "ray/common/ray_config.h"
 #include "ray/core_worker/common.h"
 #include "ray/gcs/gcs_client/global_state_accessor.h"
@@ -27,11 +29,19 @@ extern "C" {
 #endif
 JNIEXPORT jlong JNICALL
 Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeCreateGlobalStateAccessor(
-    JNIEnv *env, jobject o, jstring j_bootstrap_address, jstring j_redis_passowrd) {
+    JNIEnv *env,
+    jobject o,
+    jstring j_bootstrap_address,
+    jstring j_redis_username,
+    jstring j_redis_password) {
   std::string bootstrap_address = JavaStringToNativeString(env, j_bootstrap_address);
-  std::string redis_password = JavaStringToNativeString(env, j_redis_passowrd);
+  std::string redis_username = JavaStringToNativeString(env, j_redis_username);
+  std::string redis_password = JavaStringToNativeString(env, j_redis_password);
   gcs::GlobalStateAccessor *gcs_accessor = nullptr;
-  ray::gcs::GcsClientOptions client_options(bootstrap_address);
+  ray::gcs::GcsClientOptions client_options(bootstrap_address,
+                                            ray::ClusterID::Nil(),
+                                            /*allow_cluster_id_nil=*/true,
+                                            /*fetch_cluster_id_if_nil=*/false);
   gcs_accessor = new gcs::GlobalStateAccessor(client_options);
   return reinterpret_cast<jlong>(gcs_accessor);
 }

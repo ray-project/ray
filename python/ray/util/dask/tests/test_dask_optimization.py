@@ -1,16 +1,34 @@
+import sys
+
 import dask
 import dask.dataframe as dd
-from dask.dataframe.shuffle import SimpleShuffleLayer
 from unittest import mock
 import numpy as np
 import pandas as pd
 import pytest
+from packaging.version import Version
 
 from ray.tests.conftest import *  # noqa
 from ray.util.dask import dataframe_optimize
-from ray.util.dask.optimizations import (
-    rewrite_simple_shuffle_layer,
-    MultipleReturnSimpleShuffleLayer,
+
+try:
+    import dask_expr  # noqa: F401
+
+    DASK_EXPR_INSTALLED = True
+except ImportError:
+    DASK_EXPR_INSTALLED = False
+    pass
+
+if Version(dask.__version__) < Version("2025.1") and not DASK_EXPR_INSTALLED:
+    from dask.dataframe.shuffle import SimpleShuffleLayer
+    from ray.util.dask.optimizations import (
+        rewrite_simple_shuffle_layer,
+        MultipleReturnSimpleShuffleLayer,
+    )
+
+pytestmark = pytest.mark.skipif(
+    Version(dask.__version__) >= Version("2025.1") or DASK_EXPR_INSTALLED,
+    reason="Skip dask tests for Dask 2025.1+",
 )
 
 
@@ -61,6 +79,4 @@ def test_dataframe_optimize(mock_rewrite, ray_start_regular_shared):
 
 
 if __name__ == "__main__":
-    import sys
-
     sys.exit(pytest.main(["-v", __file__]))

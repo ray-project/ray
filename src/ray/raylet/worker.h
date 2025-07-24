@@ -15,6 +15,8 @@
 #pragma once
 
 #include <memory>
+#include <optional>
+#include <string>
 
 #include "absl/memory/memory.h"
 #include "absl/time/clock.h"
@@ -44,6 +46,7 @@ class WorkerInterface {
   virtual rpc::WorkerType GetWorkerType() const = 0;
   virtual void MarkDead() = 0;
   virtual bool IsDead() const = 0;
+  virtual void KillAsync(instrumented_io_context &io_service, bool force = false) = 0;
   virtual void MarkBlocked() = 0;
   virtual void MarkUnblocked() = 0;
   virtual bool IsBlocked() const = 0;
@@ -67,17 +70,18 @@ class WorkerInterface {
   virtual void AssignTaskId(const TaskID &task_id) = 0;
   virtual const TaskID &GetAssignedTaskId() const = 0;
   virtual const JobID &GetAssignedJobId() const = 0;
+  virtual std::optional<bool> GetIsGpu() const = 0;
+  virtual std::optional<bool> GetIsActorWorker() const = 0;
   virtual int GetRuntimeEnvHash() const = 0;
   virtual void AssignActorId(const ActorID &actor_id) = 0;
   virtual const ActorID &GetActorId() const = 0;
   virtual const std::string GetTaskOrActorIdAsDebugString() const = 0;
-  virtual void MarkDetachedActor() = 0;
   virtual bool IsDetachedActor() const = 0;
   virtual const std::shared_ptr<ClientConnection> Connection() const = 0;
   virtual void SetOwnerAddress(const rpc::Address &address) = 0;
   virtual const rpc::Address &GetOwnerAddress() const = 0;
 
-  virtual void DirectActorCallArgWaitComplete(int64_t tag) = 0;
+  virtual void ActorCallArgWaitComplete(int64_t tag) = 0;
 
   virtual const BundleID &GetBundleId() const = 0;
   virtual void SetBundleId(const BundleID &bundle_id) = 0;
@@ -133,12 +137,12 @@ class WorkerInterface {
 /// Worker class encapsulates the implementation details of a worker. A worker
 /// is the execution container around a unit of Ray work, such as a task or an
 /// actor. Ray units of work execute in the context of a Worker.
-class Worker : public WorkerInterface {
+class Worker : public std::enable_shared_from_this<Worker>, public WorkerInterface {
  public:
   /// A constructor that initializes a worker object.
   /// NOTE: You MUST manually set the worker process.
   Worker(const JobID &job_id,
-         const int runtime_env_hash,
+         int runtime_env_hash,
          const WorkerID &worker_id,
          const Language &language,
          rpc::WorkerType worker_type,
@@ -147,10 +151,16 @@ class Worker : public WorkerInterface {
          rpc::ClientCallManager &client_call_manager,
          StartupToken startup_token);
   /// A destructor responsible for freeing all worker state.
-  ~Worker() {}
+  ~Worker() = default;
   rpc::WorkerType GetWorkerType() const;
   void MarkDead();
   bool IsDead() const;
+  /// Kill the worker process. This is idempotent.
+  /// \param io_service for scheduling the graceful period timer.
+  /// \param force true to kill immediately, false to give time for the worker to clean up
+  /// and exit gracefully.
+  /// \return Void.
+  void KillAsync(instrumented_io_context &io_service, bool force = false);
   void MarkBlocked();
   void MarkUnblocked();
   bool IsBlocked() const;
@@ -174,19 +184,20 @@ class Worker : public WorkerInterface {
   void AssignTaskId(const TaskID &task_id);
   const TaskID &GetAssignedTaskId() const;
   const JobID &GetAssignedJobId() const;
+  std::optional<bool> GetIsGpu() const;
+  std::optional<bool> GetIsActorWorker() const;
   int GetRuntimeEnvHash() const;
   void AssignActorId(const ActorID &actor_id);
   const ActorID &GetActorId() const;
   // Creates the debug string for the ID of the task or actor depending on which is
   // running.
   const std::string GetTaskOrActorIdAsDebugString() const;
-  void MarkDetachedActor();
   bool IsDetachedActor() const;
   const std::shared_ptr<ClientConnection> Connection() const;
   void SetOwnerAddress(const rpc::Address &address);
   const rpc::Address &GetOwnerAddress() const;
 
-  void DirectActorCallArgWaitComplete(int64_t tag);
+  void ActorCallArgWaitComplete(int64_t tag);
 
   const BundleID &GetBundleId() const;
   void SetBundleId(const BundleID &bundle_id);
@@ -219,8 +230,15 @@ class Worker : public WorkerInterface {
   RayTask &GetAssignedTask() { return assigned_task_; };
 
   void SetAssignedTask(const RayTask &assigned_task) {
+    const auto &task_spec = assigned_task.GetTaskSpecification();
+    SetJobId(task_spec.JobId());
+    SetBundleId(task_spec.PlacementGroupBundleId());
+    SetOwnerAddress(task_spec.CallerAddress());
+    AssignTaskId(task_spec.TaskId());
+    SetIsGpu(task_spec.GetRequiredResources().Get(scheduling::ResourceID::GPU()) > 0);
+    RAY_CHECK(!task_spec.IsActorTask());
+    SetIsActorWorker(task_spec.IsActorCreationTask());
     assigned_task_ = assigned_task;
-    task_assign_time_ = absl::Now();
     root_detached_actor_id_ = assigned_task.GetTaskSpecification().RootDetachedActorId();
   }
 
@@ -241,6 +259,8 @@ class Worker : public WorkerInterface {
   }
 
   void SetJobId(const JobID &job_id);
+  void SetIsGpu(bool is_gpu);
+  void SetIsActorWorker(bool is_actor_worker);
 
  protected:
   void SetStartupToken(StartupToken startup_token);
@@ -282,8 +302,8 @@ class Worker : public WorkerInterface {
   /// The worker's placement group bundle. It is used to detect if the worker is
   /// associated with a placement group bundle.
   BundleID bundle_id_;
-  /// Whether the worker is dead.
-  bool dead_;
+  /// Whether the worker is being killed by the KillAsync or MarkDead method.
+  std::atomic<bool> killing_;
   /// Whether the worker is blocked. Workers become blocked in a `ray.get`, if
   /// they require a data dependency while executing a task.
   bool blocked_;
@@ -292,9 +312,6 @@ class Worker : public WorkerInterface {
   rpc::ClientCallManager &client_call_manager_;
   /// The rpc client to send tasks to this worker.
   std::shared_ptr<rpc::CoreWorkerClientInterface> rpc_client_;
-  /// Whether the worker is detached. This is applies when the worker is actor.
-  /// Detached actor means the actor's creator can exit without killing this actor.
-  bool is_detached_actor_;
   /// The address of this worker's owner. The owner is the worker that
   /// currently holds the lease on this worker, if any.
   rpc::Address owner_address_;
@@ -308,6 +325,12 @@ class Worker : public WorkerInterface {
   RayTask assigned_task_;
   /// Time when the last task was assigned to this worker.
   absl::Time task_assign_time_;
+  /// Whether this worker ever holded a GPU resource. Once it holds a GPU or non-GPU task
+  /// it can't switch to the other type.
+  std::optional<bool> is_gpu_ = std::nullopt;
+  /// Whether this worker can hold an actor. Once it holds an actor or a normal task, it
+  /// can't switch to the other type.
+  std::optional<bool> is_actor_worker_ = std::nullopt;
   /// If true, a RPC need to be sent to notify the worker about GCS restarting.
   bool notify_gcs_restarted_ = false;
 };

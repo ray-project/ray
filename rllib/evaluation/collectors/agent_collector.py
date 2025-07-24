@@ -80,7 +80,7 @@ class AgentCollector:
             intial_states: The initial states from the policy.get_initial_states()
             is_policy_recurrent: If True, the policy is recurrent.
             is_training: Sets the is_training flag for the buffers. if True, all the
-                timesteps are stored in the buffers until explictly build_for_training
+                timesteps are stored in the buffers until explicitly build_for_training
                 () is called. if False, only the content required for the last time
                 step is stored in the buffers. This will save memory during inference.
                 You can change the behavior at runtime by calling is_training(mode).
@@ -402,8 +402,8 @@ class AgentCollector:
 
         Args:
             view_requirements: The viewrequirements dict needed to build the
-            SampleBatch from the raw buffers (which may have data shifts as well as
-            mappings from view-col to data-col in them).
+                SampleBatch from the raw buffers, which may have data shifts as well as
+                mappings from view-col to data-col in them.
 
         Returns:
             SampleBatch: The built SampleBatch for this agent, ready to go into

@@ -17,14 +17,16 @@
 #include <boost/asio.hpp>
 #include <boost/chrono.hpp>
 #include <boost/date_time/posix_time/posix_time.hpp>
-#include <boost/optional.hpp>
 #include <boost/thread.hpp>
 #include <cstdlib>
+#include <memory>
 #include <unordered_map>
+#include <unordered_set>
+#include <vector>
 
-using namespace boost;
-using namespace boost::asio;
-using namespace boost::asio::ip;
+using namespace boost;            // NOLINT
+using namespace boost::asio;      // NOLINT
+using namespace boost::asio::ip;  // NOLINT
 
 #include <ray/rpc/grpc_server.h>
 
@@ -35,7 +37,7 @@ using namespace boost::asio::ip;
 #include "ray/gcs/gcs_server/gcs_health_check_manager.h"
 
 int GetFreePort() {
-  io_service io_service;
+  io_context io_service;
   tcp::acceptor acceptor(io_service);
   tcp::endpoint endpoint;
 
@@ -48,16 +50,17 @@ int GetFreePort() {
   return port;
 }
 
-using namespace ray;
-using namespace std::literals::chrono_literals;
+using namespace ray;                             // NOLINT
+using namespace std::literals::chrono_literals;  // NOLINT
 
 class GcsHealthCheckManagerTest : public ::testing::Test {
  protected:
-  GcsHealthCheckManagerTest() {}
+  GcsHealthCheckManagerTest() = default;
+  ~GcsHealthCheckManagerTest() = default;
   void SetUp() override {
     grpc::EnableDefaultHealthCheckService(true);
 
-    health_check = std::make_unique<gcs::GcsHealthCheckManager>(
+    health_check = gcs::GcsHealthCheckManager::Create(
         io_service,
         [this](const NodeID &id) { dead_nodes.insert(id); },
         initial_delay_ms,
@@ -133,7 +136,7 @@ class GcsHealthCheckManagerTest : public ::testing::Test {
   }
 
   instrumented_io_context io_service;
-  std::unique_ptr<gcs::GcsHealthCheckManager> health_check;
+  std::shared_ptr<gcs::GcsHealthCheckManager> health_check;
   std::unordered_map<NodeID, std::shared_ptr<rpc::GrpcServer>> servers;
   std::unordered_set<NodeID> dead_nodes;
   const int64_t initial_delay_ms = 100;
@@ -161,6 +164,19 @@ TEST_F(GcsHealthCheckManagerTest, TestBasic) {
 
   ASSERT_EQ(1, dead_nodes.size());
   ASSERT_TRUE(dead_nodes.count(node_id));
+}
+
+TEST_F(GcsHealthCheckManagerTest, MarkHealthAndSkipCheck) {
+  auto node_id = AddServer();
+  Run(0);  // Initial run
+  ASSERT_TRUE(dead_nodes.empty());
+
+  // Run the first health check: even we mark node down, health check is skipped due to
+  // fresh enough information.
+  StopServing(node_id);
+  health_check->MarkNodeHealthy(node_id);
+  Run(0);
+  ASSERT_TRUE(dead_nodes.empty());
 }
 
 TEST_F(GcsHealthCheckManagerTest, StoppedAndResume) {
@@ -249,7 +265,8 @@ TEST_F(GcsHealthCheckManagerTest, StressTest) {
 #ifdef _RAY_TSAN_BUILD
   GTEST_SKIP() << "Disabled in tsan because of performance";
 #endif
-  boost::asio::io_service::work work(io_service);
+  boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
+      io_service.get_executor());
   std::srand(std::time(nullptr));
   auto t = std::make_unique<std::thread>([this]() { this->io_service.run(); });
 
@@ -271,18 +288,4 @@ TEST_F(GcsHealthCheckManagerTest, StressTest) {
   RAY_LOG(INFO) << "Finished!";
   io_service.stop();
   t->join();
-}
-
-int main(int argc, char **argv) {
-  InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
-                                         ray::RayLog::ShutDownRayLog,
-                                         argv[0],
-                                         ray::RayLogLevel::INFO,
-                                         /*log_dir=*/"");
-
-  ray::RayLog::InstallFailureSignalHandler(argv[0]);
-  ray::RayLog::InstallTerminateHandler();
-
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
 }

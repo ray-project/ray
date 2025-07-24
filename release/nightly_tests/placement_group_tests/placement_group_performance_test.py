@@ -166,6 +166,6 @@ if __name__ == "__main__":
         run_full_benchmark(args.num_pending_pgs)
 
     if "TEST_OUTPUT_JSON" in os.environ:
-        out_file = open(os.environ["TEST_OUTPUT_JSON"], "w")
-        results = {"success": 1}
-        json.dump(results, out_file)
+        with open(os.environ["TEST_OUTPUT_JSON"], "w") as out_file:
+            results = {"success": 1}
+            json.dump(results, out_file)

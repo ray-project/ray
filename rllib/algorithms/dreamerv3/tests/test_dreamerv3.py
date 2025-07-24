@@ -22,7 +22,7 @@ from ray.rllib.algorithms.dreamerv3 import dreamerv3
 from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.numpy import one_hot
-from ray.rllib.utils.test_utils import check, framework_iterator
+from ray.rllib.utils.test_utils import check
 from ray import tune
 
 _, tf, _ = try_import_tf()
@@ -87,9 +87,9 @@ class TestDreamerV3(unittest.TestCase):
 
             config.environment(env)
             algo = config.build()
-            obs_space = algo.workers.local_worker().env.single_observation_space
-            act_space = algo.workers.local_worker().env.single_action_space
-            rl_module = algo.workers.local_worker().module
+            obs_space = algo.env_runner.env.single_observation_space
+            act_space = algo.env_runner.env.single_action_space
+            rl_module = algo.env_runner.module
 
             for i in range(num_iterations):
                 results = algo.train()
@@ -223,75 +223,49 @@ class TestDreamerV3(unittest.TestCase):
         for model_size in ["XS", "S", "M", "L", "XL"]:
             config.model_size = model_size
 
-            for fw in framework_iterator(config, frameworks=("tf2", "torch")):
-                # Atari and CartPole spaces.
-                for obs_space, num_actions, env_name in [
-                    (gym.spaces.Box(-1.0, 0.0, (4,), np.float32), 2, "cartpole"),
-                    (gym.spaces.Box(-1.0, 0.0, (64, 64, 3), np.float32), 6, "atari"),
-                ]:
-                    print(f"Testing model_size={model_size} on env-type: {env_name} ..")
-                    config.environment(
-                        observation_space=obs_space,
-                        action_space=gym.spaces.Discrete(num_actions),
-                    )
+            # Atari and CartPole spaces.
+            for obs_space, num_actions, env_name in [
+                (gym.spaces.Box(-1.0, 0.0, (4,), np.float32), 2, "cartpole"),
+                (gym.spaces.Box(-1.0, 0.0, (64, 64, 3), np.float32), 6, "atari"),
+            ]:
+                print(f"Testing model_size={model_size} on env-type: {env_name} ..")
+                config.environment(
+                    observation_space=obs_space,
+                    action_space=gym.spaces.Discrete(num_actions),
+                )
 
-                    # Create our RLModule to compute actions with.
-                    policy_dict, _ = config.get_multi_agent_setup()
-                    module_spec = config.get_marl_module_spec(policy_dict=policy_dict)
-                    rl_module = module_spec.build()[DEFAULT_MODULE_ID]
+                # Create our RLModule to compute actions with.
+                policy_dict, _ = config.get_multi_agent_setup()
+                module_spec = config.get_multi_rl_module_spec(policy_dict=policy_dict)
+                rl_module = module_spec.build()[DEFAULT_MODULE_ID]
 
-                    # Count the generated RLModule's parameters and compare to the
-                    # paper's reported numbers ([1] and [3]).
-                    if fw == "torch":
-                        num_params_world_model = sum(
-                            np.prod(v.shape)
-                            for v in rl_module.world_model.parameters()
-                            if v.requires_grad
-                        )
-                        num_params_actor = sum(
-                            np.prod(v.shape)
-                            for v in rl_module.actor.parameters()
-                            if v.requires_grad
-                        )
-                        num_params_critic = sum(
-                            np.prod(v.shape)
-                            for v in rl_module.critic.parameters()
-                            if v.requires_grad
-                        )
-                        assert (
-                            rl_module.dreamer_model.world_model is rl_module.world_model
-                        )
-                        assert rl_module.dreamer_model.actor is rl_module.actor
-                        assert rl_module.dreamer_model.critic is rl_module.critic
-                        assert rl_module.encoder is rl_module.world_model.encoder
-                        assert rl_module.decoder is rl_module.world_model.decoder
-                    else:
-                        num_params_world_model = sum(
-                            np.prod(v.shape.as_list())
-                            for v in rl_module.world_model.trainable_variables
-                        )
-                        num_params_actor = sum(
-                            np.prod(v.shape.as_list())
-                            for v in rl_module.actor.trainable_variables
-                        )
-                        num_params_critic = sum(
-                            np.prod(v.shape.as_list())
-                            for v in rl_module.critic.trainable_variables
-                        )
-
-                    self.assertEqual(
-                        num_params_world_model,
-                        expected_num_params_world_model[f"{model_size}_{env_name}"],
-                    )
-                    self.assertEqual(
-                        num_params_actor,
-                        expected_num_params_actor[f"{model_size}_{env_name}"],
-                    )
-                    self.assertEqual(
-                        num_params_critic,
-                        expected_num_params_critic[f"{model_size}_{env_name}"],
-                    )
-                    print("\tok")
+                # Count the generated RLModule's parameters and compare to the
+                # paper's reported numbers ([1] and [3]).
+                num_params_world_model = sum(
+                    np.prod(v.shape.as_list())
+                    for v in rl_module.world_model.trainable_variables
+                )
+                self.assertEqual(
+                    num_params_world_model,
+                    expected_num_params_world_model[f"{model_size}_{env_name}"],
+                )
+                num_params_actor = sum(
+                    np.prod(v.shape.as_list())
+                    for v in rl_module.actor.trainable_variables
+                )
+                self.assertEqual(
+                    num_params_actor,
+                    expected_num_params_actor[f"{model_size}_{env_name}"],
+                )
+                num_params_critic = sum(
+                    np.prod(v.shape.as_list())
+                    for v in rl_module.critic.trainable_variables
+                )
+                self.assertEqual(
+                    num_params_critic,
+                    expected_num_params_critic[f"{model_size}_{env_name}"],
+                )
+                print("\tok")
 
     def test_dreamer_v3_tf_vs_torch_model_outputs(self):
         config = (

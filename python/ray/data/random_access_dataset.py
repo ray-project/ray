@@ -8,6 +8,9 @@ from typing import TYPE_CHECKING, Any, List, Optional
 import numpy as np
 
 import ray
+from ray.data._internal.execution.interfaces.ref_bundle import (
+    _ref_bundles_iterator_to_block_refs_list,
+)
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
@@ -51,7 +54,8 @@ class RandomAccessDataset:
         logger.info("[setup] Indexing dataset by sort key.")
         sorted_ds = ds.sort(key)
         get_bounds = cached_remote_fn(_get_bounds)
-        blocks = sorted_ds.get_internal_block_refs()
+        bundles = sorted_ds.iter_internal_ref_bundles()
+        blocks = _ref_bundles_iterator_to_block_refs_list(bundles)
 
         logger.info("[setup] Computing block range bounds.")
         bounds = ray.get([get_bounds.remote(b, key) for b in blocks])
@@ -230,8 +234,10 @@ class _RandomAccessWorker:
             col = block[self.key_field]
             indices = np.searchsorted(col, keys)
             acc = BlockAccessor.for_block(block)
-            result = [acc._get_row(i) for i in indices]
-            # assert result == [self._get(i, k) for i, k in zip(block_indices, keys)]
+            result = [
+                acc._get_row(i) if k1.as_py() == k2 else None
+                for i, k1, k2 in zip(indices, col.take(indices), keys)
+            ]
         else:
             result = [self._get(i, k) for i, k in zip(block_indices, keys)]
         self.total_time += time.perf_counter() - start

@@ -1,6 +1,6 @@
 import numpy as np
 import pprint
-from typing import Any, Mapping
+from typing import Any
 
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils.annotations import DeveloperAPI
@@ -26,7 +26,7 @@ def summarize(obj: Any) -> Any:
 
 
 def _summarize(obj):
-    if isinstance(obj, Mapping):
+    if isinstance(obj, dict):
         return {k: _summarize(v) for k, v in obj.items()}
     elif hasattr(obj, "_asdict"):
         return {

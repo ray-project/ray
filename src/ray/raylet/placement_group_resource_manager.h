@@ -14,6 +14,10 @@
 
 #pragma once
 
+#include <memory>
+#include <unordered_set>
+#include <vector>
+
 #include "absl/container/flat_hash_map.h"
 #include "ray/common/bundle_spec.h"
 #include "ray/common/id.h"
@@ -47,7 +51,7 @@ class PlacementGroupResourceManager {
  public:
   /// Prepare a list of bundles. It is guaranteed that all bundles are atomically
   /// prepared.
-  ///(e.g., if one of bundle cannot be prepared, all bundles are failed to be prepared)
+  /// (e.g., if one of bundle cannot be prepared, all bundles are failed to be prepared)
   ///
   /// \param bundle_specs A set of bundles that waiting to be prepared.
   /// \return bool True if all bundles successfully reserved resources, otherwise false.
@@ -57,7 +61,7 @@ class PlacementGroupResourceManager {
   /// Convert the required resources to placement group resources(like CPU ->
   /// CPU_group_i). This is phase two of 2PC.
   ///
-  /// \param bundle_spec Specification of bundle whose resources will be commited.
+  /// \param bundle_spec Specification of bundle whose resources will be committed.
   virtual void CommitBundles(
       const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs) = 0;
 
@@ -88,8 +92,8 @@ class NewPlacementGroupResourceManager : public PlacementGroupResourceManager {
   /// Create a new placement group resource manager.
   ///
   /// \param cluster_resource_scheduler_: The resource allocator of new scheduler.
-  NewPlacementGroupResourceManager(
-      std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler);
+  explicit NewPlacementGroupResourceManager(
+      ClusterResourceScheduler &cluster_resource_scheduler);
 
   virtual ~NewPlacementGroupResourceManager() = default;
 
@@ -101,12 +105,12 @@ class NewPlacementGroupResourceManager : public PlacementGroupResourceManager {
 
   Status ReturnBundle(const BundleSpecification &bundle_spec) override;
 
-  const std::shared_ptr<ClusterResourceScheduler> GetResourceScheduler() const {
+  const ClusterResourceScheduler &GetResourceScheduler() const {
     return cluster_resource_scheduler_;
   }
 
  private:
-  std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
+  ClusterResourceScheduler &cluster_resource_scheduler_;
 
   /// Tracking placement group bundles and their states. This mapping is the source of
   /// truth for the new scheduler.

@@ -37,6 +37,7 @@ DEFAULT_PYTHON_VERSION = tuple(
 )
 DATAPLANE_ECR_REPO = "anyscale/ray"
 DATAPLANE_ECR_ML_REPO = "anyscale/ray-ml"
+DATAPLANE_ECR_LLM_REPO = "anyscale/ray-llm"
 
 MACOS_TEST_PREFIX = "darwin:"
 LINUX_TEST_PREFIX = "linux:"
@@ -93,6 +94,7 @@ class TestResult:
     timestamp: int
     pull_request: str
     rayci_step_id: str
+    duration_ms: Optional[float] = None
 
     @classmethod
     def from_result(cls, result: Result):
@@ -104,6 +106,7 @@ class TestResult:
             timestamp=int(time.time() * 1000),
             pull_request=os.environ.get("BUILDKITE_PULL_REQUEST", ""),
             rayci_step_id=os.environ.get("RAYCI_STEP_ID", ""),
+            duration_ms=result.runtime,
         )
 
     @classmethod
@@ -116,6 +119,9 @@ class TestResult:
                 buildkite_url=(
                     f"{os.environ.get('BUILDKITE_BUILD_URL')}"
                     f"#{os.environ.get('BUILDKITE_JOB_ID')}"
+                ),
+                runtime=cls._to_float_or_none(
+                    event["testResult"].get("testAttemptDurationMillis")
                 ),
             )
         )
@@ -130,7 +136,15 @@ class TestResult:
             timestamp=result["timestamp"],
             pull_request=result.get("pull_request", ""),
             rayci_step_id=result.get("rayci_step_id", ""),
+            duration_ms=result.get("duration_ms"),
         )
+
+    @classmethod
+    def _to_float_or_none(cls, s: str) -> Optional[float]:
+        try:
+            return float(s)
+        except (ValueError, TypeError):
+            return None
 
     def is_failing(self) -> bool:
         return not self.is_passing()
@@ -368,6 +382,12 @@ class Test(dict):
         """
         return self.get("env") == "gce"
 
+    def is_kuberay(self) -> bool:
+        """
+        Returns whether this test is running on KubeRay.
+        """
+        return self.get("env") == "kuberay"
+
     def is_high_impact(self) -> bool:
         # a test is high impact if it catches regressions frequently, this field is
         # populated by the determine_microcheck_tests.py script
@@ -393,11 +413,20 @@ class Test(dict):
             return WINDOWS_BISECT_DAILY_RATE_LIMIT
         return BISECT_DAILY_RATE_LIMIT
 
-    def get_byod_type(self) -> Optional[str]:
+    def get_byod_type(self) -> str:
         """
         Returns the type of the BYOD cluster.
         """
         return self["cluster"]["byod"].get("type", "cpu")
+
+    def get_tag_suffix(self) -> str:
+        """
+        Returns the tag suffix for the BYOD image.
+        """
+        byod_type = self.get_byod_type()
+        if byod_type.startswith("llm-"):
+            return byod_type[len("llm-") :]
+        return byod_type
 
     def get_byod_post_build_script(self) -> Optional[str]:
         """
@@ -411,6 +440,11 @@ class Test(dict):
         """
         default = {
             "RAY_BACKEND_LOG_JSON": "1",
+            # Logs the full stack trace from Ray Data in case of exception,
+            # which is useful for debugging failures.
+            "RAY_DATA_LOG_INTERNAL_STACK_TRACE_TO_STDOUT": "1",
+            # To make ray data compatible across multiple pyarrow versions.
+            "RAY_DATA_AUTOLOAD_PYEXTENSIONTYPE": "1",
         }
         default.update(
             _convert_env_list_to_dict(self["cluster"]["byod"].get("runtime_env", []))
@@ -523,7 +557,7 @@ class Test(dict):
             release_name = branch[len("releases/") :]
             ray_version = f"{release_name}.{ray_version}"
         python_version = f"py{self.get_python_version().replace('.',   '')}"
-        return f"{ray_version}-{python_version}-{self.get_byod_type()}"
+        return f"{ray_version}-{python_version}-{self.get_tag_suffix()}"
 
     def get_byod_image_tag(self) -> str:
         """
@@ -540,19 +574,24 @@ class Test(dict):
         """Returns whether to use the ML image for this test."""
         return self.get_byod_type() == "gpu"
 
+    def use_byod_llm_image(self) -> bool:
+        return self.get_byod_type().startswith("llm-")
+
     def get_byod_repo(self) -> str:
         """
         Returns the byod repo to use for this test.
         """
         if self.use_byod_ml_image():
             return DATAPLANE_ECR_ML_REPO
+        if self.use_byod_llm_image():
+            return DATAPLANE_ECR_LLM_REPO
         return DATAPLANE_ECR_REPO
 
     def get_byod_ecr(self) -> str:
         """
         Returns the anyscale byod ecr to use for this test.
         """
-        if self.is_gce():
+        if self.is_gce() or self.is_kuberay():
             return get_global_config()["byod_gcp_cr"]
         byod_ecr = get_global_config()["byod_aws_cr"]
         if byod_ecr:
@@ -567,6 +606,8 @@ class Test(dict):
         repo = self.get_byod_repo()
         if repo == DATAPLANE_ECR_REPO:
             repo_name = config["byod_ray_cr_repo"]
+        elif repo == DATAPLANE_ECR_LLM_REPO:
+            repo_name = config["byod_ray_llm_cr_repo"]
         elif repo == DATAPLANE_ECR_ML_REPO:
             repo_name = config["byod_ray_ml_cr_repo"]
         else:

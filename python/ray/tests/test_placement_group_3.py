@@ -1,9 +1,13 @@
+import os
 import sys
 import time
+from typing import List
 
 import pytest
 
 import ray
+from ray import ObjectRef
+from ray._common.test_utils import wait_for_condition
 import ray._private.gcs_utils as gcs_utils
 import ray.cluster_utils
 import ray.experimental.internal_kv as internal_kv
@@ -19,11 +23,9 @@ from ray._private.test_utils import (
     kill_actor_and_wait_for_failure,
     reset_autoscaler_v2_enabled_cache,
     run_string_as_driver,
-    wait_for_condition,
 )
 from ray.autoscaler._private.commands import debug_status
 from ray.exceptions import RaySystemError
-from ray.util.client.ray_client_helpers import connect_to_client_or_not
 from ray.util.placement_group import placement_group, remove_placement_group
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
@@ -127,29 +129,25 @@ def test_placement_group_wait_api_timeout(shutdown_only):
     assert 5 <= time.time() - start
 
 
-@pytest.mark.parametrize("connect_to_client", [False, True])
-def test_schedule_placement_groups_at_the_same_time(connect_to_client):
+def test_schedule_placement_groups_at_the_same_time(shutdown_only):
     ray.init(num_cpus=4)
 
-    with connect_to_client_or_not(connect_to_client):
-        pgs = [placement_group([{"CPU": 2}]) for _ in range(6)]
+    pgs = [placement_group([{"CPU": 2}]) for _ in range(6)]
 
-        wait_pgs = {pg.ready(): pg for pg in pgs}
+    wait_pgs = {pg.ready(): pg for pg in pgs}
 
-        def is_all_placement_group_removed():
-            ready, _ = ray.wait(list(wait_pgs.keys()), timeout=0.5)
-            if ready:
-                ready_pg = wait_pgs[ready[0]]
-                remove_placement_group(ready_pg)
-                del wait_pgs[ready[0]]
+    def is_all_placement_group_removed():
+        ready, _ = ray.wait(list(wait_pgs.keys()), timeout=0.5)
+        if ready:
+            ready_pg = wait_pgs[ready[0]]
+            remove_placement_group(ready_pg)
+            del wait_pgs[ready[0]]
 
-            if len(wait_pgs) == 0:
-                return True
-            return False
+        if len(wait_pgs) == 0:
+            return True
+        return False
 
-        wait_for_condition(is_all_placement_group_removed)
-
-    ray.shutdown()
+    wait_for_condition(is_all_placement_group_removed)
 
 
 def test_detached_placement_group(ray_start_cluster):
@@ -352,36 +350,33 @@ ray.shutdown()
     assert error_count == 1
 
 
-@pytest.mark.parametrize("connect_to_client", [False, True])
-def test_placement_group_synchronous_registration(ray_start_cluster, connect_to_client):
+def test_placement_group_synchronous_registration(ray_start_cluster):
     cluster = ray_start_cluster
     # One node which only has one CPU.
     cluster.add_node(num_cpus=1)
     cluster.wait_for_nodes()
     ray.init(address=cluster.address)
 
-    with connect_to_client_or_not(connect_to_client):
-        # Create a placement group that has two bundles and `STRICT_PACK`
-        # strategy so its registration will successful but scheduling failed.
-        placement_group = ray.util.placement_group(
-            name="name",
-            strategy="STRICT_PACK",
-            bundles=[
-                {
-                    "CPU": 1,
-                },
-                {"CPU": 1},
-            ],
-        )
-        # Make sure we can properly remove it immediately
-        # as its registration is synchronous.
-        ray.util.remove_placement_group(placement_group)
+    # Create a placement group that has two bundles and `STRICT_PACK`
+    # strategy so its registration will successful but scheduling failed.
+    placement_group = ray.util.placement_group(
+        name="name",
+        strategy="STRICT_PACK",
+        bundles=[
+            {
+                "CPU": 1,
+            },
+            {"CPU": 1},
+        ],
+    )
+    # Make sure we can properly remove it immediately
+    # as its registration is synchronous.
+    ray.util.remove_placement_group(placement_group)
 
-        wait_for_condition(lambda: is_placement_group_removed(placement_group))
+    wait_for_condition(lambda: is_placement_group_removed(placement_group))
 
 
-@pytest.mark.parametrize("connect_to_client", [False, True])
-def test_placement_group_gpu_set(ray_start_cluster, connect_to_client):
+def test_placement_group_gpu_set(ray_start_cluster):
     cluster = ray_start_cluster
     # One node which only has one CPU.
     cluster.add_node(num_cpus=1, num_gpus=1)
@@ -389,36 +384,34 @@ def test_placement_group_gpu_set(ray_start_cluster, connect_to_client):
     cluster.wait_for_nodes()
     ray.init(address=cluster.address)
 
-    with connect_to_client_or_not(connect_to_client):
-        placement_group = ray.util.placement_group(
-            name="name",
-            strategy="PACK",
-            bundles=[{"CPU": 1, "GPU": 1}, {"CPU": 1, "GPU": 1}],
+    placement_group = ray.util.placement_group(
+        name="name",
+        strategy="PACK",
+        bundles=[{"CPU": 1, "GPU": 1}, {"CPU": 1, "GPU": 1}],
+    )
+
+    @ray.remote(num_gpus=1)
+    def get_gpus():
+        return ray.get_gpu_ids()
+
+    result = get_gpus.options(
+        scheduling_strategy=PlacementGroupSchedulingStrategy(
+            placement_group=placement_group, placement_group_bundle_index=0
         )
+    ).remote()
+    result = ray.get(result)
+    assert result == [0]
 
-        @ray.remote(num_gpus=1)
-        def get_gpus():
-            return ray.get_gpu_ids()
-
-        result = get_gpus.options(
-            scheduling_strategy=PlacementGroupSchedulingStrategy(
-                placement_group=placement_group, placement_group_bundle_index=0
-            )
-        ).remote()
-        result = ray.get(result)
-        assert result == [0]
-
-        result = get_gpus.options(
-            scheduling_strategy=PlacementGroupSchedulingStrategy(
-                placement_group=placement_group, placement_group_bundle_index=1
-            )
-        ).remote()
-        result = ray.get(result)
-        assert result == [0]
+    result = get_gpus.options(
+        scheduling_strategy=PlacementGroupSchedulingStrategy(
+            placement_group=placement_group, placement_group_bundle_index=1
+        )
+    ).remote()
+    result = ray.get(result)
+    assert result == [0]
 
 
-@pytest.mark.parametrize("connect_to_client", [False, True])
-def test_placement_group_gpu_assigned(ray_start_cluster, connect_to_client):
+def test_placement_group_gpu_assigned(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_gpus=2)
     ray.init(address=cluster.address)
@@ -426,50 +419,44 @@ def test_placement_group_gpu_assigned(ray_start_cluster, connect_to_client):
 
     @ray.remote(num_gpus=1, num_cpus=0)
     def f():
-        import os
-
         return os.environ["CUDA_VISIBLE_DEVICES"]
 
-    with connect_to_client_or_not(connect_to_client):
-        pg1 = ray.util.placement_group([{"GPU": 1}])
-        pg2 = ray.util.placement_group([{"GPU": 1}])
+    pg1 = ray.util.placement_group([{"GPU": 1}])
+    pg2 = ray.util.placement_group([{"GPU": 1}])
 
-        assert pg1.wait(10)
-        assert pg2.wait(10)
+    assert pg1.wait(10)
+    assert pg2.wait(10)
 
-        gpu_ids_res.add(
-            ray.get(
-                f.options(
-                    scheduling_strategy=PlacementGroupSchedulingStrategy(
-                        placement_group=pg1
-                    )
-                ).remote()
-            )
+    gpu_ids_res.add(
+        ray.get(
+            f.options(
+                scheduling_strategy=PlacementGroupSchedulingStrategy(
+                    placement_group=pg1
+                )
+            ).remote()
         )
-        gpu_ids_res.add(
-            ray.get(
-                f.options(
-                    scheduling_strategy=PlacementGroupSchedulingStrategy(
-                        placement_group=pg2
-                    )
-                ).remote()
-            )
+    )
+    gpu_ids_res.add(
+        ray.get(
+            f.options(
+                scheduling_strategy=PlacementGroupSchedulingStrategy(
+                    placement_group=pg2
+                )
+            ).remote()
         )
+    )
 
-        assert len(gpu_ids_res) == 2
+    assert len(gpu_ids_res) == 2
 
 
-@pytest.mark.repeat(3)
-def test_actor_scheduling_not_block_with_placement_group(ray_start_cluster):
-    """Tests the scheduling of lots of actors will not be blocked
-    when using placement groups.
+def test_incremental_pg_and_actor_scheduling(ray_start_cluster):
+    """Tests that actors in pending PGs are scheduled as resources become available.
 
     For more detailed information please refer to:
     https://github.com/ray-project/ray/issues/15801.
     """
-
     cluster = ray_start_cluster
-    cluster.add_node(num_cpus=1)
+    cluster.add_node(num_cpus=0)
     ray.init(address=cluster.address)
 
     @ray.remote(num_cpus=1)
@@ -477,48 +464,37 @@ def test_actor_scheduling_not_block_with_placement_group(ray_start_cluster):
         def ready(self):
             pass
 
-    actor_num = 1000
-    pgs = [ray.util.placement_group([{"CPU": 1}]) for _ in range(actor_num)]
+    # Schedule a large number of placement groups and actors that should be placed in
+    # those groups. Initially, none are schedulable.
+    pgs = [ray.util.placement_group([{"CPU": 1}]) for _ in range(1000)]
+    pg_refs = [pg.ready() for pg in pgs]
     actors = [
         A.options(
             scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg)
         ).remote()
         for pg in pgs
     ]
-    refs = [actor.ready.remote() for actor in actors]
+    actor_refs = [actor.ready.remote() for actor in actors]
 
-    expected_created_num = 1
+    ready_pgs, _ = ray.wait(pg_refs, timeout=0.1)
+    assert len(ready_pgs) == 0
+    ready_actors, _ = ray.wait(actor_refs, timeout=0.1)
+    assert len(ready_actors) == 0
 
-    def is_actor_created_number_correct():
-        ready, not_ready = ray.wait(refs, num_returns=len(refs), timeout=1)
-        return len(ready) == expected_created_num
+    def check_num_refs_ready(refs: List[ObjectRef], expected: int) -> bool:
+        ready, _ = ray.wait(refs, num_returns=expected, timeout=1)
+        return len(ready) == expected
 
-    def is_pg_created_number_correct():
-        created_pgs = [
-            pg
-            for _, pg in ray.util.placement_group_table().items()
-            if pg["state"] == "CREATED"
-        ]
-        return len(created_pgs) == expected_created_num
-
-    wait_for_condition(is_pg_created_number_correct, timeout=3)
-    wait_for_condition(is_actor_created_number_correct, timeout=30, retry_interval_ms=0)
-
-    # NOTE: we don't need to test all the actors create successfully.
-    for _ in range(20):
-        expected_created_num += 1
+    # Iteratively add nodes to the cluster so that some of the placement groups (and
+    # therefore actors) can be scheduled. Verify that the PGs and actors are scheduled
+    # incrementally as their required resources become available.
+    for i in range(5):
         cluster.add_node(num_cpus=1)
-
-        wait_for_condition(is_pg_created_number_correct, timeout=10)
-        # Make sure the node add event will cause a waiting actor
-        # to create successfully in time.
-        wait_for_condition(
-            is_actor_created_number_correct, timeout=30, retry_interval_ms=0
-        )
+        wait_for_condition(lambda: check_num_refs_ready(pg_refs, i + 1), timeout=30)
+        wait_for_condition(lambda: check_num_refs_ready(actor_refs, i + 1), timeout=30)
 
 
-@pytest.mark.parametrize("connect_to_client", [False, True])
-def test_placement_group_gpu_unique_assigned(ray_start_cluster, connect_to_client):
+def test_placement_group_gpu_unique_assigned(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_gpus=4, num_cpus=4)
     ray.init(address=cluster.address)
@@ -765,9 +741,4 @@ def test_fractional_resources_handle_correct(ray_start_cluster):
 
 
 if __name__ == "__main__":
-    import os
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

@@ -9,7 +9,7 @@ The environment is MultiAgentCartPole, in which there are n agents both policies
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack --num-agents=2`
+`python [script file name].py --num-agents=2`
 
 For debugging, use the following additional command line options
 `--no-tune --num-env-runners=0`
@@ -42,8 +42,8 @@ better than "random":
 """
 
 from ray.rllib.algorithms.ppo import PPOConfig
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
+from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 from ray.rllib.examples.rl_modules.classes.random_rlm import RandomRLModule
 from ray.rllib.utils.test_utils import (
@@ -56,15 +56,15 @@ from ray.tune.registry import register_env
 parser = add_rllib_example_script_args(
     default_iters=40, default_reward=500.0, default_timesteps=200000
 )
+parser.set_defaults(
+    num_agents=2,
+)
 
 
 if __name__ == "__main__":
     args = parser.parse_args()
 
     assert args.num_agents == 2, "Must set --num-agents=2 when running this script!"
-    assert (
-        args.enable_new_api_stack
-    ), "Must set --enable-new-api-stack when running this script!"
 
     # Simple environment with n independent cartpole entities.
     register_env(
@@ -88,10 +88,10 @@ if __name__ == "__main__":
             policies_to_train=["learnable_policy"],
         )
         .rl_module(
-            rl_module_spec=MultiAgentRLModuleSpec(
-                module_specs={
-                    "learnable_policy": SingleAgentRLModuleSpec(),
-                    "random": SingleAgentRLModuleSpec(module_class=RandomRLModule),
+            rl_module_spec=MultiRLModuleSpec(
+                rl_module_specs={
+                    "learnable_policy": RLModuleSpec(),
+                    "random": RLModuleSpec(module_class=RandomRLModule),
                 }
             ),
         )

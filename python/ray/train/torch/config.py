@@ -6,9 +6,10 @@ from typing import Optional
 
 import torch
 import torch.distributed as dist
+from packaging.version import Version
 
 import ray
-from ray._private.accelerators.hpu import HPU_PACKAGE_AVAILABLE
+from ray.air._internal.device_manager import register_custom_torch_dist_backend
 from ray.train._internal.utils import get_address_and_port
 from ray.train._internal.worker_group import WorkerGroup
 from ray.train.backend import Backend, BackendConfig
@@ -90,24 +91,26 @@ def _setup_torch_process_group(
         )
     logger.debug(f"using {backend}")
 
-    # See the `timeout` arg in https://pytorch.org/docs/master/
-    # distributed.html#torch.distributed.init_process_group for description of
-    # NCCL_ASYNC_ERROR_HANDLING. We do not use NCCL_BLOCKING_WAIT due to performance
-    # overhead.
-    if (
-        backend == "nccl"
-        and "NCCL_ASYNC_ERROR_HANDLING" not in os.environ
-        and "NCCL_BLOCKING_WAIT" not in os.environ
-    ):
-        logger.debug(
-            "Setting NCCL_ASYNC_ERROR_HANDLING to fail if NCCL collective "
-            "communication operations are timing out. "
-            "To override this behavior, you can set NCCL_ASYNC_ERROR_HANDLING=0."
-        )
-        os.environ["NCCL_ASYNC_ERROR_HANDLING"] = "1"
-    elif backend == "hccl" and HPU_PACKAGE_AVAILABLE:
-        import habana_frameworks.torch.core as htcore  # noqa: F401
-        import habana_frameworks.torch.distributed.hccl as hpu_dist  # noqa: F401
+    if backend == "nccl":
+        # See https://github.com/pytorch/pytorch/blob/c263bd43e8e8502d4726643bc6fd046f0130ac0e/torch/distributed/distributed_c10d.py#L803-L823 # noqa: E501
+        # We do not use TORCH_NCCL_BLOCKING_WAIT due to performance overhead.
+        if Version(torch.__version__) < Version("2.2.0"):
+            TORCH_NCCL_ASYNC_ERROR_HANDLING_ENV_VAR = "NCCL_ASYNC_ERROR_HANDLING"
+            TORCH_NCCL_BLOCKING_WAIT_ENV_VAR = "NCCL_BLOCKING_WAIT"
+        else:
+            TORCH_NCCL_ASYNC_ERROR_HANDLING_ENV_VAR = "TORCH_NCCL_ASYNC_ERROR_HANDLING"
+            TORCH_NCCL_BLOCKING_WAIT_ENV_VAR = "TORCH_NCCL_BLOCKING_WAIT"
+        if (
+            TORCH_NCCL_ASYNC_ERROR_HANDLING_ENV_VAR not in os.environ
+            and TORCH_NCCL_BLOCKING_WAIT_ENV_VAR not in os.environ
+        ):
+            logger.debug(
+                f"Setting {TORCH_NCCL_ASYNC_ERROR_HANDLING_ENV_VAR}=1 to fail if NCCL collective communication operations are timing out. "  # noqa: E501
+                f"To override this behavior, you can set {TORCH_NCCL_ASYNC_ERROR_HANDLING_ENV_VAR}=0."  # noqa: E501
+            )
+            os.environ[TORCH_NCCL_ASYNC_ERROR_HANDLING_ENV_VAR] = "1"
+    elif backend == "hccl":
+        register_custom_torch_dist_backend(backend)
 
     dist.init_process_group(
         backend=backend,

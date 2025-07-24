@@ -173,7 +173,7 @@ Network overhead in Ray Tune
 
 Running Ray Tune on a distributed setup leads to network communication overhead. This is mostly due to
 trial synchronization, where results and checkpoints are periodically synchronized and sent via the network.
-Per default this happens via SSH, where connnection initialization can take between 1 and 2 seconds each time.
+Per default this happens via SSH, where connection initialization can take between 1 and 2 seconds each time.
 Since this is a blocking operation that happens on a per-trial basis, running many concurrent trials
 quickly becomes bottlenecked by this synchronization.
 
