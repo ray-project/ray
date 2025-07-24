@@ -593,8 +593,8 @@ RAY_EXPERIMENTAL_ENABLE_OPEN_TELEMETRY_ON_CORE = env_bool(
     "RAY_experimental_enable_open_telemetry_on_core", False
 )
 
-# How long to wait for a fetch to complete during ray.get before warning the
-# user.
+# How long to wait for a fetch to complete during ray.get before timing out and raising an exception to the user.
+#
 # NOTE: This must be kept in sync with the C++ definition of
 # `RayConfig::fetch_fail_timeout_milliseconds`.
 FETCH_FAIL_TIMEOUT_SECONDS = (
