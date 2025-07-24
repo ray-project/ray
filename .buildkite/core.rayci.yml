@@ -269,7 +269,7 @@ steps:
         --test-env=RAY_MINIMAL=1
         --test-env=EXPECTED_PYTHON_VERSION={{matrix}}
         --only-tags minimal
-        --except-tags basic_test,manual || true
+        --except-tags basic_test,manual
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dashboard/... core
         --parallelism-per-worker 3
         --build-name minbuild-core-py{{matrix}}
@@ -277,7 +277,7 @@ steps:
         --test-env=EXPECTED_PYTHON_VERSION={{matrix}}
         --only-tags minimal
         --except-tags no_basic_test,manual
-        --skip-ray-installation || true
+        --skip-ray-installation
       # core redis tests
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dashboard/... core
         --parallelism-per-worker 3
@@ -287,15 +287,14 @@ steps:
         --test-env=EXPECTED_PYTHON_VERSION={{matrix}}
         --only-tags minimal
         --except-tags no_basic_test,manual
-        --skip-ray-installation || true
+        --skip-ray-installation
       # serve tests
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dashboard/... serve
         --parallelism-per-worker 3
         --build-name minbuild-core-py{{matrix}}
         --test-env=RAY_MINIMAL=1
         --only-tags minimal
-        --skip-ray-installation || true
-      - sleep 1000000000
+        --skip-ray-installation
     depends_on:
       - minbuild-core
     matrix:
