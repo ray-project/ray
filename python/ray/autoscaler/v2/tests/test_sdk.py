@@ -30,6 +30,7 @@ from ray.autoscaler.v2.tests.util import (
 )
 from ray.core.generated import autoscaler_pb2, autoscaler_pb2_grpc
 from ray.core.generated.autoscaler_pb2 import ClusterResourceState, NodeStatus
+from ray.core.generated.common_pb2 import LabelSelectorOperator
 from ray.util.state.api import list_nodes
 
 
@@ -311,25 +312,31 @@ def test_request_cluster_resources_with_label_selectors(shutdown_only):
         assert_cluster_resource_constraints(state, bundles, [1, 1])
 
         # Check that requests carry expected label selectors
-        requests = state.cluster_resource_constraint.resource_requests
+        requests = state.cluster_resource_constraints[0].resource_requests
 
         # First resource request
         label_selectors_0 = requests[0].request.label_selectors
-        assert len(label_selectors_0) == 1
         selector_0 = label_selectors_0[0]
         constraints_0 = {
             c.label_key: list(c.label_values) for c in selector_0.label_constraints
         }
         assert constraints_0 == {"region": ["us-west1"]}
+        assert (
+            selector_0.label_constraints[0].operator
+            == LabelSelectorOperator.LABEL_OPERATOR_IN
+        )
 
         # Second resource request
         label_selectors_1 = requests[1].request.label_selectors
-        assert len(label_selectors_1) == 1
         selector_1 = label_selectors_1[0]
         constraints_1 = {
             c.label_key: list(c.label_values) for c in selector_1.label_constraints
         }
-        assert constraints_1 == {"accelerator-type": ["!in(A100)"]}
+        assert constraints_1 == {"accelerator-type": ["A100"]}
+        assert (
+            selector_1.label_constraints[0].operator
+            == LabelSelectorOperator.LABEL_OPERATOR_NOT_IN
+        )
 
         return True
 
