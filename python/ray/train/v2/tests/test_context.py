@@ -1,5 +1,7 @@
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from ray.train.v2._internal.execution.context import (
     LocalTrainContext,
     get_train_context,
@@ -159,3 +161,9 @@ class TestLocalTrainContext:
 
         # Test dataset access works
         assert context.get_dataset_shard("data") is not None
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", "-x", __file__]))
