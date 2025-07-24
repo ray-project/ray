@@ -166,7 +166,7 @@ class GPUObjectStore:
         self, obj_id: str, timeout: Optional[float] = None
     ) -> List["torch.Tensor"]:
         """Atomically waits for the GPU object to be present in the GPU object
-        store, then gets it.  If the object is not present after the optional
+        store, then gets it. If the object is not present after the optional
         timeout, raise a TimeoutError.
 
         Args:
