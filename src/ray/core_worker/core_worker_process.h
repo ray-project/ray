@@ -138,7 +138,7 @@ class CoreWorkerProcessImpl {
   /// the core worker is nullptr.
   ///
   /// \return The `CoreWorker` instance.
-  const std::shared_ptr<CoreWorker> &GetCoreWorker() const;
+  std::shared_ptr<CoreWorker> GetCoreWorker() const;
 
   /// Run worker execution loop.
   void RunWorkerTaskExecutionLoop();

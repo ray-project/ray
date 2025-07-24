@@ -34,7 +34,7 @@ namespace core {
 class CoreWorkerServiceHandlerProxy : public rpc::CoreWorkerServiceHandler {
  public:
   CoreWorkerServiceHandlerProxy(
-      std::function<const std::shared_ptr<CoreWorker> &()> get_core_worker)
+      std::function<std::shared_ptr<CoreWorker>()> get_core_worker)
       : get_core_worker_(get_core_worker) {}
 
   RAY_CORE_WORKER_RPC_PROXY(PushTask)
@@ -65,6 +65,7 @@ class CoreWorkerServiceHandlerProxy : public rpc::CoreWorkerServiceHandler {
 
   /// Wait until the worker is initialized.
   void WaitUntilInitialized() override {
+    // TODO(joshlee): investigate and remove the 1 second timeout
     absl::MutexLock lock(&initialize_mutex_);
     while (!initialized_) {
       intialize_cv_.WaitWithTimeout(&initialize_mutex_, absl::Seconds(1));
@@ -78,7 +79,7 @@ class CoreWorkerServiceHandlerProxy : public rpc::CoreWorkerServiceHandler {
   }
 
  private:
-  std::function<const std::shared_ptr<CoreWorker> &()> get_core_worker_;
+  std::function<std::shared_ptr<CoreWorker>()> get_core_worker_;
 
   /// States that used for initialization.
   absl::Mutex initialize_mutex_;

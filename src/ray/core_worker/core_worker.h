@@ -177,7 +177,6 @@ class CoreWorker {
              std::shared_ptr<PeriodicalRunner> periodical_runner,
              std::unique_ptr<rpc::GrpcServer> core_worker_server,
              rpc::Address rpc_address,
-             bool connected,
              std::shared_ptr<gcs::GcsClient> gcs_client,
              std::shared_ptr<raylet::RayletClient> local_raylet_client,
              boost::thread &io_thread,
