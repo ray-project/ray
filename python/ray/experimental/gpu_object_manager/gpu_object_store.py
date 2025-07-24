@@ -120,7 +120,15 @@ class GPUObjectStore:
         return obj_id in self.gpu_object_store
 
     def get_gpu_object(self, obj_id: str) -> Optional[List["torch.Tensor"]]:
-        return self.gpu_object_store[obj_id].data
+        gpu_object_metadata = self.gpu_object_store[obj_id]
+        # If the GPU object is the primary copy, it means the transfer
+        # is intra-actor. In this case, we should not remove the GPU
+        # object after it is consumed `num_readers` times, because the
+        # GPU object reference may be used again. Instead, we should
+        # wait for the GC callback to clean it up.
+        if not gpu_object_metadata.is_primary:
+            self._decrement_num_readers(obj_id)
+        return gpu_object_metadata.data
 
     def add_gpu_object(
         self,
@@ -161,7 +169,7 @@ class GPUObjectStore:
         ), f"obj_id={obj_id} not found in GPU object store"
         del self.gpu_object_store[obj_id]
 
-    def decrement_num_readers(self, obj_id: str):
+    def _decrement_num_readers(self, obj_id: str):
         """
         Decrement the number of readers for a GPU object.
 
