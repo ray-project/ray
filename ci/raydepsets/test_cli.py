@@ -277,6 +277,18 @@ class TestCli(unittest.TestCase):
     def test_expand(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             _copy_data_to_tmpdir(tmpdir)
+            _save_packages_to_file(
+                Path(tmpdir) / "requirements_expanded.txt",
+                ["six"],
+            )
+            _save_file_as(
+                Path(tmpdir) / "requirement_constraints_test.txt",
+                Path(tmpdir) / "requirement_constraints_expand.txt",
+            )
+            _append_to_file(
+                Path(tmpdir) / "requirement_constraints_expand.txt",
+                "six==1.17.0",
+            )
             manager = DependencySetManager(
                 config_path="test.config.yaml",
                 workspace_dir=tmpdir,
@@ -338,6 +350,11 @@ def _save_file_as(input_file, output_file):
         contents = f.read()
     with open(output_file, "w") as f:
         f.write(contents)
+
+
+def _append_to_file(filepath, new):
+    with open(filepath, "a") as f:
+        f.write(new + "\n")
 
 
 if __name__ == "__main__":
