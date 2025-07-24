@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Set
 
 import ray.util.collective as collective
 from ray._private.custom_types import TensorTransportEnum
@@ -99,6 +99,8 @@ class GPUObjectStore:
         #
         # Note: Currently, `gpu_object_store` is only supported for Ray Actors.
         self.gpu_object_store: Dict[str, List["torch.Tensor"]] = {}
+        # A set of object IDs that are the primary copy.
+        self.primary_gpu_object_ids: Set[str] = set()
 
     def has_gpu_object(self, obj_id: str) -> bool:
         return obj_id in self.gpu_object_store
@@ -106,8 +108,37 @@ class GPUObjectStore:
     def get_gpu_object(self, obj_id: str) -> Optional[List["torch.Tensor"]]:
         return self.gpu_object_store[obj_id]
 
-    def add_gpu_object(self, obj_id: str, gpu_object: List["torch.Tensor"]):
+    def add_gpu_object(
+        self,
+        obj_id: str,
+        gpu_object: List["torch.Tensor"],
+        is_primary: bool = False,
+    ):
+        """
+        Add a GPU object to the GPU object store.
+
+        Args:
+            obj_id: The object ID of the GPU object.
+            gpu_object: A list of tensors representing the GPU object.
+            is_primary: Whether the GPU object is the primary copy.
+        """
+        if is_primary:
+            self.primary_gpu_object_ids.add(obj_id)
         self.gpu_object_store[obj_id] = gpu_object
 
+    def is_primary_copy(self, obj_id: str) -> bool:
+        return obj_id in self.primary_gpu_object_ids
+
     def remove_gpu_object(self, obj_id: str):
+        """
+        Remove the GPU object from the GPU object store.
+
+        Args:
+            obj_id: The object ID of the GPU object.
+        """
+        assert (
+            obj_id in self.gpu_object_store
+        ), f"obj_id={obj_id} not found in GPU object store"
         del self.gpu_object_store[obj_id]
+        if obj_id in self.primary_gpu_object_ids:
+            self.primary_gpu_object_ids.remove(obj_id)
