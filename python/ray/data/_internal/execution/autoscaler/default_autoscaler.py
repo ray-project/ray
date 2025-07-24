@@ -129,10 +129,27 @@ class DefaultAutoscaler(Autoscaler):
         for op, state in self._topology.items():
             actor_pools = op.get_autoscaling_actor_pools()
             for actor_pool in actor_pools:
-                # Trigger auto-scaling
-                actor_pool.scale(
-                    self._derive_target_scaling_config(actor_pool, op, state)
+                scaling_config = self._derive_target_scaling_config(
+                    actor_pool, op, state
                 )
+                # respect op budget
+                if (
+                    self._resource_manager.op_resource_allocator_enabled()
+                    and scaling_config.delta > 0
+                ):
+                    budget = self._resource_manager.get_budget(op)
+                    if budget is not None:
+                        max_scale_up = self._get_max_scale_up_wrt_budget(
+                            actor_pool, budget
+                        )
+                        if max_scale_up is not None:
+                            # clamp delta to max_scale_up
+                            scaling_config = ActorPoolScalingRequest(
+                                delta=min(scaling_config.delta, max_scale_up),
+                                reason=scaling_config.reason,
+                            )
+                # Trigger auto-scaling
+                actor_pool.scale(scaling_config)
 
     def _try_scale_up_cluster(self):
         """Try to scale up the cluster to accomodate the provided in-progress workload.
