@@ -551,8 +551,7 @@ int main(int argc, char *argv[]) {
                   worker_rpc_pool.get(),
                   [&](const std::string &node_manager_address, int32_t port) {
                     return std::make_shared<ray::raylet::RayletClient>(
-                        ray::rpc::NodeManagerWorkerClient::make(
-                            node_manager_address, port, *client_call_manager));
+                        node_manager_address, port, *client_call_manager);
                   },
                   addr));
         });
@@ -768,15 +767,14 @@ int main(int argc, char *argv[]) {
                                                           announce_infeasible_task,
                                                           *local_task_manager);
 
-    auto raylet_client_factory = [&](const NodeID &id,
+    auto raylet_client_factory = [&](const NodeID &node_id,
                                      ray::rpc::ClientCallManager &client_call_mgr) {
-      const ray::rpc::GcsNodeInfo *node_info = gcs_client->Nodes().Get(id);
-      RAY_CHECK(node_info) << "No GCS info for node " << id;
-      std::shared_ptr<ray::rpc::NodeManagerWorkerClient> raylet_client =
-          ray::rpc::NodeManagerWorkerClient::make(node_info->node_manager_address(),
-                                                  node_info->node_manager_port(),
-                                                  client_call_mgr);
-      return std::make_shared<ray::raylet::RayletClient>(std::move(raylet_client));
+      const ray::rpc::GcsNodeInfo *node_info = gcs_client->Nodes().Get(node_id);
+      RAY_CHECK(node_info) << "No GCS info for node " << node_id;
+      return std::make_shared<ray::raylet::RayletClient>(
+          node_info->node_manager_address(),
+          node_info->node_manager_port(),
+          client_call_mgr);
     };
 
     plasma_client = std::make_unique<plasma::PlasmaClient>();
