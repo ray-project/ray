@@ -15,6 +15,7 @@ from ray.train.v2._internal.execution.controller.state import (
     AbortedState,
     ErroredState,
     InitializingState,
+    ReschedulingState,
     ResizingState,
     RestartingState,
     RunningState,
@@ -201,7 +202,7 @@ async def test_worker_group_start_failure(monkeypatch, error_type):
     # and should go into RESCHEDULING state.
     failure_policy.queue_decision(FailureDecision.RETRY)
     await controller._run_control_loop_iteration()
-    assert isinstance(controller.get_state(), RestartingState)
+    assert isinstance(controller.get_state(), ReschedulingState)
 
     # Let the worker group start successfully the 2nd time.
     DummyWorkerGroup.set_start_failure(None)

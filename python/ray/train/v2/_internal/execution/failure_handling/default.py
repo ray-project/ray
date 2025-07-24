@@ -9,6 +9,7 @@ from ray.train.v2.api.config import FailureConfig
 from ray.train.v2.api.exceptions import (
     ControllerError,
     TrainingFailedError,
+    WorkerGroupError,
 )
 
 logger = logging.getLogger(__name__)
@@ -31,13 +32,22 @@ class DefaultFailurePolicy(FailurePolicy):
         decision: FailureDecision,
         training_failed_error: TrainingFailedError,
         error_count: int,
-        error_limit: int,
+        retry_limit: int,
     ):
         logger.info(
             f"[FailurePolicy] Decision: {decision}, "
-            f"Error count: {error_count} / {error_limit}, "
+            f"Error count over retry limit: {error_count} / {retry_limit}, "
             f"Error: {training_failed_error}"
         )
+
+    def _is_retryable_error(self, training_failed_error: TrainingFailedError) -> bool:
+        if isinstance(training_failed_error, WorkerGroupError):
+            return True
+        elif isinstance(training_failed_error, ControllerError):
+            return isinstance(
+                training_failed_error.controller_failure, RETRYABLE_CONTROLLER_ERRORS
+            )
+        return False
 
     def make_decision(
         self,
@@ -46,26 +56,30 @@ class DefaultFailurePolicy(FailurePolicy):
 
         if not self._is_retryable_error(training_failed_error):
             decision = FailureDecision.RAISE
+            error_count = 1
+            retry_limit = 0
         else:
             if isinstance(training_failed_error, ControllerError):
-                error_count = self._controller_failures + 1
-                error_limit = (
+                self._controller_failures += 1
+                error_count = self._controller_failures
+                retry_limit = (
                     self.failure_config.controller_failure_limit
                     if self.failure_config.controller_failure_limit != -1
                     else float("inf")
                 )
             else:
-                error_count = self._running_failures + 1
-                error_limit = (
+                self._running_failures += 1
+                error_count = self._running_failures
+                retry_limit = (
                     self.failure_config.max_failures
                     if self.failure_config.max_failures != -1
                     else float("inf")
                 )
 
-            if error_count >= error_limit:
+            if error_count > retry_limit:
                 decision = FailureDecision.RAISE
             else:
                 decision = FailureDecision.RETRY
 
-        self._log_decision(decision, training_failed_error, error_count, error_limit)
+        self._log_decision(decision, training_failed_error, error_count, retry_limit)
         return decision

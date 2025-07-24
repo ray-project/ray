@@ -203,14 +203,14 @@ class TrainController:
 
     def _get_retry_state(
         self,
-        controller_state: Union[RunningState, ResizingState],
+        controller_state: Union[RunningState, SchedulingState],
         training_failed_error: TrainingFailedError,
     ) -> TrainControllerState:
-        assert isinstance(controller_state, (RunningState, ResizingState))
+        assert isinstance(controller_state, (RunningState, SchedulingState))
 
         if isinstance(controller_state, RunningState):
             return RestartingState(training_failed_error=training_failed_error)
-        elif isinstance(controller_state, ResizingState):
+        elif isinstance(controller_state, SchedulingState):
             return ReschedulingState(training_failed_error=training_failed_error)
         else:
             raise ValueError(f"Unexpected controller state: {controller_state}")

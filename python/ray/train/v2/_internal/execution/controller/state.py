@@ -94,7 +94,7 @@ class ReschedulingState(TrainControllerState):
         self,
         training_failed_error: TrainingFailedError,
     ):
-        super().__init__(state_type=TrainControllerStateType.RESTARTING)
+        super().__init__(state_type=TrainControllerStateType.RESCHEDULING)
         self.training_failed_error = training_failed_error
 
 

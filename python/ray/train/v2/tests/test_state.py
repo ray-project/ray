@@ -515,7 +515,7 @@ def test_callback_controller_state_transitions(ray_start_regular, callback):
         RunStatus.RUNNING,
         RunStatus.RESIZING,
         RunStatus.SCHEDULING,
-        RunStatus.SCHEDULING,  # Rescheduling
+        RunStatus.SCHEDULING,
         RunStatus.SCHEDULING,
         RunStatus.RUNNING,
         RunStatus.FINISHED,
@@ -532,7 +532,9 @@ def test_callback_controller_state_transitions(ray_start_regular, callback):
 
 def test_callback_error_state_transition(ray_start_regular, callback):
     error_msg = "Test error"
-    error_state = ErroredState(error=ControllerError(Exception(error_msg)))
+    error_state = ErroredState(
+        training_failed_error=ControllerError(Exception(error_msg))
+    )
     callback.after_controller_state_update(RunningState(), error_state)
 
     state_actor = get_state_actor()

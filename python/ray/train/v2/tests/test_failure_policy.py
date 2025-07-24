@@ -10,7 +10,7 @@ from ray.train.v2._internal.execution.worker_group import (
     WorkerGroupPollStatus,
     WorkerStatus,
 )
-from ray.train.v2.api.exceptions import ControllerError, TrainingFailedError
+from ray.train.v2.api.exceptions import ControllerError, WorkerGroupError
 
 
 def _worker_group_status_from_errors(errors):
@@ -42,16 +42,16 @@ def test_max_failures(max_failures):
     for _ in range(max_failures):
         assert (
             policy.make_decision(
-                training_failed_error=TrainingFailedError(
+                training_failed_error=WorkerGroupError(
                     error_message=status.get_error_string(),
                     worker_failures=status.errors,
                 )
             )
-            == FailureDecision.RESTART
+            == FailureDecision.RETRY
         )
     assert (
         policy.make_decision(
-            error=TrainingFailedError(
+            training_failed_error=WorkerGroupError(
                 error_message=status.get_error_string(), worker_failures=status.errors
             )
         )
@@ -60,7 +60,7 @@ def test_max_failures(max_failures):
 
 
 @pytest.mark.parametrize("controller_failure_limit", [0, 1, 10])
-def test_reschedule(controller_failure_limit):
+def test_retry_controller_error(controller_failure_limit):
     policy = create_failure_policy(
         FailureConfig(controller_failure_limit=controller_failure_limit)
     )
@@ -70,7 +70,10 @@ def test_reschedule(controller_failure_limit):
             policy.make_decision(training_failed_error=controller_error)
             == FailureDecision.RETRY
         )
-    assert policy.make_decision(error=controller_error) == FailureDecision.RAISE
+    assert (
+        policy.make_decision(training_failed_error=controller_error)
+        == FailureDecision.RAISE
+    )
 
 
 def test_infinite_retry():
@@ -81,12 +84,12 @@ def test_infinite_retry():
     for _ in range(10):
         assert (
             policy.make_decision(
-                training_failed_error=TrainingFailedError(
+                training_failed_error=WorkerGroupError(
                     error_message=status.get_error_string(),
                     worker_failures=status.errors,
                 )
             )
-            == FailureDecision.RESTART
+            == FailureDecision.RETRY
         )
 
 
@@ -105,7 +108,7 @@ def test_infinite_reschedule():
     for _ in range(10):
         assert (
             policy.make_decision(training_failed_error=controller_error)
-            == FailureDecision.RESCHEDULE
+            == FailureDecision.RETRY
         )
 
 
