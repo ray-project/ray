@@ -1,7 +1,7 @@
-from ray.llm._internal.serve.observability import setup_observability
 from ray.llm._internal.common.observability.logging_utils import (
     disable_vllm_custom_ops_logger_on_cpu_nodes,
 )
+from ray.llm._internal.serve.observability import setup_observability
 
 # Set up observability
 disable_vllm_custom_ops_logger_on_cpu_nodes()

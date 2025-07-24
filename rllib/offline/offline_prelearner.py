@@ -1,6 +1,8 @@
+import copy
 import gymnasium as gym
 import logging
 import numpy as np
+import tree
 import uuid
 
 from typing import Any, Dict, List, Optional, Union, Set, Tuple, TYPE_CHECKING
@@ -8,7 +10,7 @@ from typing import Any, Dict, List, Optional, Union, Set, Tuple, TYPE_CHECKING
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec, MultiRLModule
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
-from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
+from ray.rllib.utils import flatten_dict
 from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
@@ -137,7 +139,7 @@ class OfflinePreLearner:
             )
 
     @OverrideToImplementCustomLogic
-    def __call__(self, batch: Dict[str, np.ndarray]) -> Dict[str, List[EpisodeType]]:
+    def __call__(self, batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
         """Prepares plain data batches for training with `Learner`'s.
 
         Args:
@@ -212,7 +214,7 @@ class OfflinePreLearner:
                 self._is_multi_agent,
                 batch,
                 schema=SCHEMA | self.config.input_read_schema,
-                to_numpy=True,
+                to_numpy=False,
                 input_compress_columns=self.config.input_compress_columns,
                 observation_space=self.observation_space,
                 action_space=self.action_space,
@@ -255,28 +257,14 @@ class OfflinePreLearner:
             #  LearnerConnector pipeline.
             metrics=None,
         )
-        # Convert to `MultiAgentBatch`.
-        batch = MultiAgentBatch(
-            {
-                module_id: SampleBatch(module_data)
-                for module_id, module_data in batch.items()
-            },
-            # TODO (simon): This can be run once for the batch and the
-            # metrics, but we run it twice: here and later in the learner.
-            env_steps=sum(e.env_steps() for e in episodes),
-        )
         # Remove all data from modules that should not be trained. We do
-        # not want to pass around more data than necessaty.
-        for module_id in list(batch.policy_batches.keys()):
+        # not want to pass around more data than necessary.
+        for module_id in batch:
             if not self._should_module_be_updated(module_id, batch):
-                del batch.policy_batches[module_id]
+                del batch[module_id]
 
-        # TODO (simon): Log steps trained for metrics (how?). At best in learner
-        # and not here. But we could precompute metrics here and pass it to the learner
-        # for logging. Like this we do not have to pass around episode lists.
-
-        # TODO (simon): episodes are only needed for logging here.
-        return {"batch": [batch]}
+        # Flatten the dictionary to increase serialization performance.
+        return flatten_dict(batch)
 
     @property
     def default_prelearner_buffer_class(self) -> ReplayBuffer:
@@ -356,6 +344,7 @@ class OfflinePreLearner:
         schema: Dict[str, str] = SCHEMA,
         to_numpy: bool = False,
         input_compress_columns: Optional[List[str]] = None,
+        ignore_final_observation: Optional[bool] = False,
         observation_space: gym.Space = None,
         action_space: gym.Space = None,
         **kwargs: Dict[str, Any],
@@ -399,17 +388,19 @@ class OfflinePreLearner:
                 # TODO (simon): Add support for multi-agent episodes.
                 pass
             else:
-                # Build a single-agent episode with a single row of the batch.
-                episode = SingleAgentEpisode(
-                    id_=str(batch[schema[Columns.EPS_ID]][i]),
-                    agent_id=agent_id,
-                    # Observations might be (a) serialized and/or (b) converted
-                    # to a JSONable (when a composite space was used). We unserialize
-                    # and then reconvert from JSONable to space sample.
-                    observations=[
-                        convert(unpack_if_needed(obs), observation_space)
-                        if Columns.OBS in input_compress_columns
-                        else convert(obs, observation_space),
+                # Unpack observations, if needed.
+                unpacked_obs = (
+                    convert(unpack_if_needed(obs), observation_space)
+                    if Columns.OBS in input_compress_columns
+                    else convert(obs, observation_space)
+                )
+                # Set the next observation.
+                if ignore_final_observation:
+                    unpacked_next_obs = tree.map_structure(
+                        lambda x: 0 * x, copy.deepcopy(unpacked_obs)
+                    )
+                else:
+                    unpacked_next_obs = (
                         convert(
                             unpack_if_needed(batch[schema[Columns.NEXT_OBS]][i]),
                             observation_space,
@@ -417,8 +408,18 @@ class OfflinePreLearner:
                         if Columns.OBS in input_compress_columns
                         else convert(
                             batch[schema[Columns.NEXT_OBS]][i], observation_space
-                        ),
-                    ],
+                        )
+                    )
+                # Build a single-agent episode with a single row of the batch.
+                episode = SingleAgentEpisode(
+                    id_=str(batch[schema[Columns.EPS_ID]][i])
+                    if schema[Columns.EPS_ID] in batch
+                    else uuid.uuid4().hex,
+                    agent_id=agent_id,
+                    # Observations might be (a) serialized and/or (b) converted
+                    # to a JSONable (when a composite space was used). We unserialize
+                    # and then reconvert from JSONable to space sample.
+                    observations=[unpacked_obs, unpacked_next_obs],
                     infos=[
                         {},
                         batch[schema[Columns.INFOS]][i]

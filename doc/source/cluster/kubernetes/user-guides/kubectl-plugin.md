@@ -78,10 +78,10 @@ By default it only creates one worker group. You can use `kubectl ray create wor
 $ kubectl ray create workergroup example-group --ray-cluster raycluster-sample --worker-memory 5Gi
 ```
 
-You can use `kubectl ray get cluster` and `kubectl ray get workergroup` to get the status of RayClusters and worker groups.
+You can use `kubectl ray get cluster`, `kubectl ray get workergroup`, and `kubectl ray get node` to get the status of RayClusters, worker groups, and Ray nodes, respectively.
 
 ```text
-$ kubectl ray get cluster 
+$ kubectl ray get cluster
 NAME                  NAMESPACE   DESIRED WORKERS   AVAILABLE WORKERS   CPUS   GPUS   TPUS   MEMORY   AGE
 raycluster-sample     default     2                 2                   6      0      0      13Gi     3m56s
 raycluster-sample-2   default     2                 2                   6      0      0      12Gi     3m51s
@@ -91,6 +91,29 @@ NAME            REPLICAS   CPUS   GPUS   TPUS   MEMORY   CLUSTER
 default-group   1/1        2      0      0      4Gi      raycluster-sample
 example-group   1/1        2      0      0      5Gi      raycluster-sample
 default-group   2/2        4      0      0      8Gi      raycluster-sample-2
+
+$ kubectl ray get nodes
+NAME                                        CPUS   GPUS   TPUS   MEMORY   CLUSTER               TYPE     WORKER GROUP    AGE
+raycluster-sample-default-group-4lb5w       2      0      0      4Gi      raycluster-sample     worker   default-group   3m56s
+raycluster-sample-example-group-vnkkc       2      0      0      5Gi      raycluster-sample     worker   example-group   3m56s
+raycluster-sample-head-vplcq                2      0      0      4Gi      raycluster-sample     head     headgroup       3m56s
+raycluster-sample-2-default-group-74nd4     2      0      0      4Gi      raycluster-sample-2   worker   default-group   3m51s
+raycluster-sample-2-default-group-vnkkc     2      0      0      4Gi      raycluster-sample-2   worker   default-group   3m51s
+raycluster-sample-2-head-pwsrm              2      0      0      4Gi      raycluster-sample-2   head     headgroup       3m51s
+```
+
+You can scale a cluster's worker group like so.
+
+```shell
+$ kubectl ray scale cluster raycluster-sample \
+  --worker-group default-group \
+  --replicas 2
+Scaled worker group default-group in Ray cluster raycluster-sample in namespace default from 1 to 2 replicas
+
+# verify the worker group scaled up
+$ kubectl ray get workergroup default-group --ray-cluster raycluster-sample
+NAME            REPLICAS   CPUS   GPUS   TPUS   MEMORY   CLUSTER
+default-group   2/2        4      0      0      8Gi      raycluster-sample
 ```
 
 The `kubectl ray session` command can forward local ports to Ray resources, allowing users to avoid remembering which ports Ray resources exposes.
@@ -163,7 +186,7 @@ Submitted RayJob rayjob-sample.
 Waiting for RayCluster
 ...
 2025-01-06 11:53:34,806	INFO worker.py:1634 -- Connecting to existing Ray cluster at address: 10.12.0.9:6379...
-2025-01-06 11:53:34,814	INFO worker.py:1810 -- Connected to Ray cluster. View the dashboard at 10.12.0.9:8265 
+2025-01-06 11:53:34,814	INFO worker.py:1810 -- Connected to Ray cluster. View the dashboard at 10.12.0.9:8265
 [0, 1, 4, 9]
 2025-01-06 11:53:38,368	SUCC cli.py:63 -- ------------------------------------------
 2025-01-06 11:53:38,368	SUCC cli.py:64 -- Job 'raysubmit_9NfCvwcmcyMNFCvX' succeeded
@@ -184,7 +207,7 @@ Submitted RayJob rayjob-interactive-mode.
 Waiting for RayCluster
 ...
 2025-01-06 12:44:43,542	INFO worker.py:1634 -- Connecting to existing Ray cluster at address: 10.12.0.10:6379...
-2025-01-06 12:44:43,551	INFO worker.py:1810 -- Connected to Ray cluster. View the dashboard at 10.12.0.10:8265 
+2025-01-06 12:44:43,551	INFO worker.py:1810 -- Connected to Ray cluster. View the dashboard at 10.12.0.10:8265
 [0, 1, 4, 9]
 2025-01-06 12:44:47,830	SUCC cli.py:63 -- ------------------------------------------
 2025-01-06 12:44:47,830	SUCC cli.py:64 -- Job 'raysubmit_fuBdjGnecFggejhR' succeeded

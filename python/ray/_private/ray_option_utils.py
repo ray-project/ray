@@ -5,12 +5,15 @@ from typing import Any, Callable, Dict, Optional, Tuple, Union
 
 import ray
 from ray._private import ray_constants
+from ray._private.label_utils import (
+    validate_label_selector,
+)
 from ray._private.utils import get_ray_doc_version
 from ray.util.placement_group import PlacementGroup
 from ray.util.scheduling_strategies import (
     NodeAffinitySchedulingStrategy,
-    PlacementGroupSchedulingStrategy,
     NodeLabelSchedulingStrategy,
+    PlacementGroupSchedulingStrategy,
 )
 
 
@@ -120,6 +123,7 @@ def _validate_resources(resources: Optional[Dict[str, float]]) -> Optional[str]:
 
 
 _common_options = {
+    "label_selector": Option((dict, type(None)), lambda x: validate_label_selector(x)),
     "accelerator_type": Option((str, type(None))),
     "memory": _resource_option("memory"),
     "name": Option((str, type(None))),

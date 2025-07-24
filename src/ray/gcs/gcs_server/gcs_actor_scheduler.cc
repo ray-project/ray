@@ -14,6 +14,11 @@
 
 #include "ray/gcs/gcs_server/gcs_actor_scheduler.h"
 
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/ray_config.h"
@@ -161,8 +166,8 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsActorScheduler::SelectNodeRandomly() const 
   int key_index = distribution(gen_);
   int index = 0;
   auto iter = alive_nodes.begin();
-  for (; index != key_index && iter != alive_nodes.end(); ++index, ++iter)
-    ;
+  for (; index != key_index && iter != alive_nodes.end(); ++index, ++iter) {
+  }
   return iter->second;
 }
 
@@ -550,6 +555,9 @@ bool GcsActorScheduler::KillActorOnWorker(const rpc::Address &worker_address,
   cli->KillActor(request, [actor_id](auto &status, auto &&) {
     RAY_LOG(DEBUG) << "Killing actor " << actor_id
                    << " with return status: " << status.ToString();
+    if (!status.ok() && !status.IsInvalid()) {
+      RAY_LOG(ERROR) << "Failed to kill actor " << actor_id << ", status: " << status;
+    }
   });
   return true;
 }

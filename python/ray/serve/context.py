@@ -77,8 +77,8 @@ def _get_global_client(
         set to False, returns None.
 
     Raises:
-        RayServeException: if there is no running Serve controller actor
-        and raise_if_no_controller_running is set to True.
+        RayServeException: If there is no running Serve controller actor
+            and raise_if_no_controller_running is set to True.
     """
 
     try:
@@ -127,9 +127,10 @@ def _connect(raise_if_no_controller_running: bool = True) -> ServeControllerClie
         existing Serve application's Serve Controller. None if there is
         no running Serve controller actor and raise_if_no_controller_running
         is set to False.
+
     Raises:
-        RayServeException: if there is no running Serve controller actor
-        and raise_if_no_controller_running is set to True.
+        RayServeException: If there is no running Serve controller actor
+            and raise_if_no_controller_running is set to True.
     """
 
     # Initialize ray if needed.

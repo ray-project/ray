@@ -107,8 +107,9 @@ py_library(
     ],
     visibility = ["//ci/ray_ci/automation:__subpackages__"],
     deps = [
-        ci_require("requests"),
         "//ci/ray_ci:ray_ci_lib",
+        ci_require("docker"),
+        ci_require("requests"),
         ci_require("bazel-runfiles"),
     ],
 )
@@ -117,6 +118,9 @@ py_test(
     name = "test_docker_tags_lib",
     size = "small",
     srcs = ["test_docker_tags_lib.py"],
+    data = [
+        "@registry_x86_64//:file",
+    ],
     exec_compatible_with = ["//:hermetic_python"],
     tags = [
         "ci_unit",
@@ -124,7 +128,6 @@ py_test(
     ],
     deps = [
         ci_require("pytest"),
-        ci_require("docker"),
         ":docker_tags_lib",
     ],
 )
@@ -191,6 +194,16 @@ py_binary(
 py_binary(
     name = "list_docker_tags",
     srcs = ["list_docker_tags.py"],
+    exec_compatible_with = ["//:hermetic_python"],
+    deps = [
+        ":docker_tags_lib",
+        ci_require("click"),
+    ],
+)
+
+py_binary(
+    name = "generate_index",
+    srcs = ["generate_index.py"],
     exec_compatible_with = ["//:hermetic_python"],
     deps = [
         ":docker_tags_lib",

@@ -62,9 +62,9 @@ def resume_workflow_task(
 
     Args:
         job_id: The ID of the job that submits the workflow execution. The ID
-        is used to identify the submitter of the workflow.
+                is used to identify the submitter of the workflow.
         workflow_id: The ID of the workflow job. The ID is used to identify
-            the workflow.
+                the workflow.
         task_id: The task to resume in the workflow.
 
     Raises:

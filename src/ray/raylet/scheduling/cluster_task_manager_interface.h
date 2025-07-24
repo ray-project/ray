@@ -51,8 +51,16 @@ class ClusterTaskManagerInterface {
           rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
       const std::string &scheduling_failure_message = "") = 0;
 
-  virtual bool CancelAllTaskOwnedBy(
+  /// Cancel all tasks owned by a specific worker.
+  virtual bool CancelAllTasksOwnedBy(
       const WorkerID &worker_id,
+      rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type =
+          rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
+      const std::string &scheduling_failure_message = "") = 0;
+
+  /// Cancel all tasks owned by a worker on the specific node.
+  virtual bool CancelAllTasksOwnedBy(
+      const NodeID &node_id,
       rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type =
           rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
       const std::string &scheduling_failure_message = "") = 0;
@@ -94,17 +102,14 @@ class ClusterTaskManagerInterface {
                                     rpc::RequestWorkerLeaseReply *reply,
                                     rpc::SendReplyCallback send_reply_callback) = 0;
 
-  /// Return if any tasks are pending resource acquisition.
+  /// Return with an exemplar if any tasks are pending resource acquisition.
   ///
-  /// \param[in] exemplar An example task that is deadlocking.
   /// \param[in] num_pending_actor_creation Number of pending actor creation tasks.
   /// \param[in] num_pending_tasks Number of pending tasks.
-  /// \param[in] any_pending True if there's any pending exemplar.
-  /// \return True if any progress is any tasks are pending.
-  virtual bool AnyPendingTasksForResourceAcquisition(RayTask *exemplar,
-                                                     bool *any_pending,
-                                                     int *num_pending_actor_creation,
-                                                     int *num_pending_tasks) const = 0;
+  /// \return An example task that is deadlocking if any tasks are pending resource
+  /// acquisition.
+  virtual const RayTask *AnyPendingTasksForResourceAcquisition(
+      int *num_pending_actor_creation, int *num_pending_tasks) const = 0;
 
   /// The helper to dump the debug state of the cluster task manater.
   virtual std::string DebugStr() const = 0;

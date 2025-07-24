@@ -14,6 +14,8 @@
 
 #include "ray/gcs/gcs_server/state_util.h"
 
+#include <string>
+
 namespace ray {
 namespace gcs {
 

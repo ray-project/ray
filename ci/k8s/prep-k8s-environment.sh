@@ -12,7 +12,11 @@ set -x # Be more verbose now.
 # Delete dangling clusters
 kind delete clusters --all
 
-# Create the cluster
+# Exit directly if SKIP_CREATE_KIND_CLUSTER is set
+if [[ -n "${SKIP_CREATE_KIND_CLUSTER:-}" ]]; then
+  echo "SKIP_CREATE_KIND_CLUSTER is set. Skipping creating kind cluster."
+  exit 0
+fi
 kind create cluster --wait 120s --config ci/k8s/kind.config.yaml
 
 # Verify the kubectl works

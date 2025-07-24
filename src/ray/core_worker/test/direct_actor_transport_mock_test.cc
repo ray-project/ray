@@ -14,6 +14,9 @@
 
 // clang-format off
 #include "ray/core_worker/transport/task_receiver.h"
+
+#include <memory>
+
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "ray/core_worker/actor_creator.h"
@@ -26,10 +29,11 @@
 
 namespace ray {
 namespace core {
-using namespace ::testing;
+using ::testing::_;
+
 class DirectTaskTransportTest : public ::testing::Test {
  public:
-  DirectTaskTransportTest() : io_work(io_context) {}
+  DirectTaskTransportTest() : io_work(io_context.get_executor()) {}
 
   void SetUp() override {
     gcs_client = std::make_shared<ray::gcs::MockGcsClient>();
@@ -76,7 +80,7 @@ class DirectTaskTransportTest : public ::testing::Test {
 
  protected:
   instrumented_io_context io_context;
-  boost::asio::io_service::work io_work;
+  boost::asio::executor_work_guard<boost::asio::io_context::executor_type> io_work;
   std::unique_ptr<ActorTaskSubmitter> actor_task_submitter;
   std::shared_ptr<rpc::CoreWorkerClientPool> client_pool;
   std::unique_ptr<CoreWorkerMemoryStore> memory_store;

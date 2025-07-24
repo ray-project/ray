@@ -39,8 +39,7 @@ def test_used_on_import(reset_usage_lib, callsite: TelemetryCallsite):
     check_library_usage_telemetry(
         _use_rllib,
         callsite=callsite,
-        # TODO(edoakes): train shouldn't be marked used every time rllib is used.
-        expected_library_usages=[{"rllib", "train"}, {"core", "rllib", "train"}],
+        expected_library_usages=[{"rllib"}, {"core", "rllib"}],
     )
 
 

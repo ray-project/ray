@@ -480,6 +480,7 @@ def test_fault_tolerance_nested_actors_failed(shutdown_only):
         verify_tasks_running_or_terminated,
         task_pids=ray.get(pid_actor.get_pids.remote()),
         expect_num_tasks=4,
+        timeout=30,
     )
 
 
@@ -1303,7 +1304,4 @@ class TestIsActorTaskRunning:
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

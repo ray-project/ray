@@ -44,7 +44,6 @@
 #include "absl/debugging/symbolize.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_format.h"
-#include "nlohmann/json.hpp"
 #include "ray/util/event_label.h"
 #include "ray/util/string_utils.h"
 #include "ray/util/thread_utils.h"

@@ -14,7 +14,6 @@
 
 #pragma once
 
-#include <type_traits>
 #include <utility>
 
 #include "absl/synchronization/mutex.h"

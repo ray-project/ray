@@ -150,7 +150,9 @@ if __name__ == "__main__":
         .env_runners(
             # num_envs_per_env_runner=10,
             env_to_module_connector=(
-                lambda env: FlattenObservations(multi_agent=not args.flat)
+                lambda env, spaces, device: (
+                    FlattenObservations(multi_agent=not args.flat)
+                )
             ),
         )
         .training(

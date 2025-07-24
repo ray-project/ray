@@ -489,12 +489,11 @@ Status SendDeleteReply(const std::shared_ptr<Client> &client,
                        const std::vector<PlasmaError> &errors) {
   RAY_DCHECK(object_ids.size() == errors.size());
   flatbuffers::FlatBufferBuilder fbb;
-  auto message = fb::CreatePlasmaDeleteReply(
-      fbb,
-      static_cast<int32_t>(object_ids.size()),
-      ToFlatbuffer(&fbb, &object_ids[0], object_ids.size()),
-      fbb.CreateVector(MakeNonNull(reinterpret_cast<const int32_t *>(errors.data())),
-                       object_ids.size()));
+  auto message =
+      fb::CreatePlasmaDeleteReply(fbb,
+                                  static_cast<int32_t>(object_ids.size()),
+                                  ToFlatbuffer(&fbb, &object_ids[0], object_ids.size()),
+                                  fbb.CreateVector(errors.data(), errors.size()));
   return PlasmaSend(client, MessageType::PlasmaDeleteReply, &fbb, message);
 }
 
@@ -579,36 +578,6 @@ Status ReadConnectReply(uint8_t *data, size_t size, int64_t *memory_capacity) {
   auto message = flatbuffers::GetRoot<fb::PlasmaConnectReply>(data);
   RAY_DCHECK(VerifyFlatbuffer(message, data, size));
   *memory_capacity = message->memory_capacity();
-  return Status::OK();
-}
-
-// Evict messages.
-
-Status SendEvictRequest(const std::shared_ptr<StoreConn> &store_conn, int64_t num_bytes) {
-  flatbuffers::FlatBufferBuilder fbb;
-  auto message = fb::CreatePlasmaEvictRequest(fbb, num_bytes);
-  return PlasmaSend(store_conn, MessageType::PlasmaEvictRequest, &fbb, message);
-}
-
-Status ReadEvictRequest(const uint8_t *data, size_t size, int64_t *num_bytes) {
-  RAY_DCHECK(data);
-  auto message = flatbuffers::GetRoot<fb::PlasmaEvictRequest>(data);
-  RAY_DCHECK(VerifyFlatbuffer(message, data, size));
-  *num_bytes = message->num_bytes();
-  return Status::OK();
-}
-
-Status SendEvictReply(const std::shared_ptr<Client> &client, int64_t num_bytes) {
-  flatbuffers::FlatBufferBuilder fbb;
-  auto message = fb::CreatePlasmaEvictReply(fbb, num_bytes);
-  return PlasmaSend(client, MessageType::PlasmaEvictReply, &fbb, message);
-}
-
-Status ReadEvictReply(uint8_t *data, size_t size, int64_t &num_bytes) {
-  RAY_DCHECK(data);
-  auto message = flatbuffers::GetRoot<fb::PlasmaEvictReply>(data);
-  RAY_DCHECK(VerifyFlatbuffer(message, data, size));
-  num_bytes = message->num_bytes();
   return Status::OK();
 }
 

@@ -107,18 +107,17 @@ class PublisherTest : public ::testing::Test {
   std::shared_ptr<rpc::PubsubLongPollingReply> FlushSubscriber(
       SubscriberState *subscriber, int64_t max_processed_sequence_id = -1) {
     rpc::PubsubLongPollingRequest request;
-    auto reply = std::make_shared<rpc::PubsubLongPollingReply>();
+    auto pubsub_reply = std::make_shared<rpc::PubsubLongPollingReply>();
     request.set_publisher_id(kDefaultPublisherId.Binary());
     if (max_processed_sequence_id >= 0) {
       request.set_max_processed_sequence_id(max_processed_sequence_id);
     }
-    rpc::SendReplyCallback send_reply_callback = [reply](Status status,
-                                                         std::function<void()> success,
-                                                         std::function<void()> failure) {
-    };
-    subscriber->ConnectToSubscriber(request, reply.get(), send_reply_callback);
+    rpc::SendReplyCallback callback = [pubsub_reply](Status status,
+                                                     std::function<void()> success,
+                                                     std::function<void()> failure) {};
+    subscriber->ConnectToSubscriber(request, pubsub_reply.get(), callback);
     subscriber->PublishIfPossible();
-    return reply;
+    return pubsub_reply;
   }
 
   instrumented_io_context io_service_;
@@ -392,8 +391,8 @@ TEST_F(PublisherTest, TestSubscriber) {
   // Since there's no connection, objects won't be published.
   ASSERT_FALSE(subscriber->PublishIfPossible());
   subscriber->ConnectToSubscriber(request_, &reply, send_reply_callback);
-  for (auto oid : published_objects) {
-    ASSERT_TRUE(object_ids_published.contains(oid));
+  for (auto cur_oid : published_objects) {
+    ASSERT_TRUE(object_ids_published.contains(cur_oid));
   }
 
   // Queue is not cleaned up if max_processed_sequence_id hasn't
@@ -1172,32 +1171,37 @@ TEST_F(PublisherTest, TestMaxBufferSizeAllEntities) {
   subscription_index.AddEntry("", subscriber);
 
   rpc::PubMessage pub_message;
-  pub_message.set_key_id("aaa");
-  pub_message.set_channel_type(rpc::ChannelType::RAY_ERROR_INFO_CHANNEL);
-  pub_message.mutable_error_info_message()->set_error_message(std::string(4000, 'a'));
-  pub_message.set_sequence_id(GetNextSequenceId());
+  {
+    pub_message.set_key_id("aaa");
+    pub_message.set_channel_type(rpc::ChannelType::RAY_ERROR_INFO_CHANNEL);
+    pub_message.mutable_error_info_message()->set_error_message(std::string(4000, 'a'));
+    pub_message.set_sequence_id(GetNextSequenceId());
 
-  // Buffer is available.
-  EXPECT_TRUE(subscription_index.Publish(std::make_shared<rpc::PubMessage>(pub_message),
-                                         /*msg_size=*/pub_message.ByteSizeLong()));
+    // Buffer is available.
+    EXPECT_TRUE(subscription_index.Publish(std::make_shared<rpc::PubMessage>(pub_message),
+                                           /*msg_size=*/pub_message.ByteSizeLong()));
+  }
 
   // Buffer is still available.
-  pub_message.set_key_id("bbb");
-  pub_message.mutable_error_info_message()->set_error_message(std::string(4000, 'b'));
-  pub_message.set_sequence_id(GetNextSequenceId());
-  EXPECT_TRUE(subscription_index.Publish(std::make_shared<rpc::PubMessage>(pub_message),
-                                         /*msg_size=*/pub_message.ByteSizeLong()));
+  {
+    pub_message.set_key_id("bbb");
+    pub_message.mutable_error_info_message()->set_error_message(std::string(4000, 'b'));
+    pub_message.set_sequence_id(GetNextSequenceId());
+    EXPECT_TRUE(subscription_index.Publish(std::make_shared<rpc::PubMessage>(pub_message),
+                                           /*msg_size=*/pub_message.ByteSizeLong()));
+  }
 
   // Buffer is full.
-  pub_message.set_key_id("ccc");
-  pub_message.mutable_error_info_message()->set_error_message(std::string(4000, 'c'));
-  pub_message.set_sequence_id(GetNextSequenceId());
-  EXPECT_TRUE(subscription_index.Publish(std::make_shared<rpc::PubMessage>(pub_message),
-                                         /*msg_size=*/pub_message.ByteSizeLong()));
+  {
+    pub_message.set_key_id("ccc");
+    pub_message.mutable_error_info_message()->set_error_message(std::string(4000, 'c'));
+    pub_message.set_sequence_id(GetNextSequenceId());
+    EXPECT_TRUE(subscription_index.Publish(std::make_shared<rpc::PubMessage>(pub_message),
+                                           /*msg_size=*/pub_message.ByteSizeLong()));
+  }
 
   {
     // Publishing individual messages that are too large fails.
-    rpc::PubMessage pub_message;
     pub_message.set_key_id("ddd");
     pub_message.set_channel_type(rpc::ChannelType::RAY_ERROR_INFO_CHANNEL);
     pub_message.mutable_error_info_message()->set_error_message(std::string(12000, 'a'));

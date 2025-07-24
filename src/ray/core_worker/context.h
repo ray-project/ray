@@ -16,6 +16,7 @@
 
 #include <boost/thread.hpp>
 #include <memory>
+#include <string>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/synchronization/mutex.h"
@@ -62,7 +63,7 @@ class WorkerContext {
 
   TaskID GetMainThreadOrActorCreationTaskID() const;
 
-  const PlacementGroupID &GetCurrentPlacementGroupId() const ABSL_LOCKS_EXCLUDED(mutex_);
+  PlacementGroupID GetCurrentPlacementGroupId() const ABSL_LOCKS_EXCLUDED(mutex_);
 
   bool ShouldCaptureChildTasksInPlacementGroup() const ABSL_LOCKS_EXCLUDED(mutex_);
 
@@ -97,7 +98,7 @@ class WorkerContext {
 
   const ActorID &GetCurrentActorID() const ABSL_LOCKS_EXCLUDED(mutex_);
 
-  const ActorID &GetRootDetachedActorID() const ABSL_LOCKS_EXCLUDED(mutex_);
+  ActorID GetRootDetachedActorID() const ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Returns whether the current thread is the main worker thread.
   bool CurrentThreadIsMain() const;

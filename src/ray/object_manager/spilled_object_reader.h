@@ -30,7 +30,7 @@ class SpilledObjectReader : public IObjectReader {
   /// malformed url; corrupted/deleted file.
   ///
   /// \param object_url the object url in the form of {path}?offset={offset}&size={size}
-  static absl::optional<SpilledObjectReader> CreateSpilledObjectReader(
+  static std::optional<SpilledObjectReader> CreateSpilledObjectReader(
       const std::string &object_url);
 
   uint64_t GetDataSize() const override;
@@ -39,10 +39,12 @@ class SpilledObjectReader : public IObjectReader {
 
   const rpc::Address &GetOwnerAddress() const override;
 
-  bool ReadFromDataSection(uint64_t offset, uint64_t size, char *output) const override;
+  bool ReadFromDataSection(uint64_t offset,
+                           uint64_t size,
+                           std::string &output) const override;
   bool ReadFromMetadataSection(uint64_t offset,
                                uint64_t size,
-                               char *output) const override;
+                               std::string &output) const override;
 
  private:
   SpilledObjectReader(std::string file_path,

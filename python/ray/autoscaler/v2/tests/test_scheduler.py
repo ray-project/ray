@@ -563,6 +563,100 @@ def test_max_workers_per_type():
     )
 
 
+def test_terminate_max_allocated_workers_per_type():
+    scheduler = ResourceDemandScheduler(event_logger)
+    node_type_configs = {
+        "type_1": NodeTypeConfig(
+            name="type_1",
+            resources={"CPU": 1},
+            min_worker_nodes=0,
+            max_worker_nodes=2,
+        ),
+    }
+
+    request = sched_request(
+        node_type_configs=node_type_configs,
+    )
+
+    reply = scheduler.schedule(request)
+
+    # No instances created, no-op.
+    expected_to_terminate = []
+    _, actual_to_terminate = _launch_and_terminate(reply)
+    assert sorted(actual_to_terminate) == sorted(expected_to_terminate)
+
+    instances = [
+        make_autoscaler_instance(
+            ray_node=NodeState(
+                ray_node_type_name="type_0",
+                available_resources={"CPU": 1},
+                total_resources={"CPU": 1},
+                node_id=b"r0",
+            ),
+            im_instance=Instance(
+                instance_type="type_1",
+                status=Instance.ALLOCATED,
+                instance_id="0",
+                node_id="r0",
+            ),
+        ),
+        make_autoscaler_instance(
+            ray_node=NodeState(
+                ray_node_type_name="type_1",
+                available_resources={"CPU": 1},
+                total_resources={"CPU": 1},
+                node_id=b"r1",
+            ),
+            im_instance=Instance(
+                instance_type="type_1",
+                status=Instance.ALLOCATED,
+                instance_id="1",
+                node_id="r1",
+            ),
+        ),
+    ]
+
+    # 2 nodes in allocated state with max of 2 allowed for type 1.
+    # Scheduler should leave all of the allocated instances.
+    request = sched_request(
+        node_type_configs=node_type_configs,
+        instances=instances,
+    )
+
+    reply = scheduler.schedule(request)
+    _, actual_to_terminate = _launch_and_terminate(reply)
+    assert actual_to_terminate == []
+
+    # Max nodes is now 0 for type 1, scheduler should terminate
+    # both allocated instances to conform with max num nodes per type.
+    node_type_configs = {
+        "type_1": NodeTypeConfig(
+            name="type_1",
+            resources={"CPU": 1},
+            min_worker_nodes=0,
+            max_worker_nodes=0,
+        ),
+    }
+
+    request = sched_request(
+        node_type_configs=node_type_configs,
+        instances=instances,
+    )
+
+    reply = scheduler.schedule(request)
+    _, actual_to_terminate = _launch_and_terminate(reply)
+    assert sorted(actual_to_terminate) == sorted(
+        [
+            (
+                "0",
+                "",
+                TerminationRequest.Cause.MAX_NUM_NODE_PER_TYPE,
+            ),  # allocated instance
+            ("1", "", TerminationRequest.Cause.MAX_NUM_NODE_PER_TYPE),
+        ]
+    )
+
+
 def test_max_num_nodes():
     scheduler = ResourceDemandScheduler(event_logger)
     node_type_configs = {
@@ -1247,7 +1341,14 @@ def test_outdated_nodes(disable_launch_config_check):
 
 @pytest.mark.parametrize("idle_timeout_s", [1, 2, 10])
 @pytest.mark.parametrize("has_resource_constraints", [True, False])
-def test_idle_termination(idle_timeout_s, has_resource_constraints):
+@pytest.mark.parametrize("has_resource_requests", [True, False])
+@pytest.mark.parametrize("has_gang_resource_requests", [True, False])
+def test_idle_termination(
+    idle_timeout_s,
+    has_resource_constraints,
+    has_resource_requests,
+    has_gang_resource_requests,
+):
     """
     Test that idle nodes are terminated.
     """
@@ -1271,11 +1372,23 @@ def test_idle_termination(idle_timeout_s, has_resource_constraints):
     }
 
     idle_time_s = 5
-    constraints = (
-        []
-        if not has_resource_constraints
-        else [ResourceRequestUtil.make({"CPU": 1})] * 2
-    )
+    constraints = []
+    if has_resource_constraints:
+        constraints = [ResourceRequestUtil.make({"CPU": 1})] * 2
+
+    resource_requests = []
+    if has_resource_requests:
+        resource_requests = [ResourceRequestUtil.make({"CPU": 1})] * 2
+
+    ANTI_AFFINITY = ResourceRequestUtil.PlacementConstraintType.ANTI_AFFINITY
+    gang_resource_requests = []
+    if has_gang_resource_requests:
+        gang_resource_requests = [
+            [  # This is a strict spread placement group that requires 2 nodes.
+                ResourceRequestUtil.make({"CPU": 1}, [(ANTI_AFFINITY, "pg", "")]),
+                ResourceRequestUtil.make({"CPU": 1}, [(ANTI_AFFINITY, "pg", "")]),
+            ]
+        ]
 
     request = sched_request(
         node_type_configs=node_type_configs,
@@ -1338,11 +1451,18 @@ def test_idle_termination(idle_timeout_s, has_resource_constraints):
         ],
         idle_timeout_s=idle_timeout_s,
         cluster_resource_constraints=constraints,
+        resource_requests=resource_requests,
+        gang_resource_requests=gang_resource_requests,
     )
 
     reply = scheduler.schedule(request)
     _, to_terminate = _launch_and_terminate(reply)
-    if idle_timeout_s <= idle_time_s and not has_resource_constraints:
+    if (
+        idle_timeout_s <= idle_time_s
+        and not has_resource_constraints
+        and not has_resource_requests
+        and not has_gang_resource_requests
+    ):
         assert len(to_terminate) == 1
         assert to_terminate == [("i-2", "r-2", TerminationRequest.Cause.IDLE)]
     else:

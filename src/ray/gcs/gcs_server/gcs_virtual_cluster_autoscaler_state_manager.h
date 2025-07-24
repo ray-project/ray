@@ -30,6 +30,7 @@ class GcsVirtualClusterAutoscalerStateManager : public GcsAutoscalerStateManager
       rpc::NodeManagerClientPool &raylet_client_pool,
       InternalKVInterface &kv,
       instrumented_io_context &io_context,
+      GcsPublisher *gcs_publisher,
       std::shared_ptr<GcsVirtualClusterManager> gcs_virtual_cluster_manager);
 
   void HandleGetClusterResourceState(

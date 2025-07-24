@@ -20,7 +20,7 @@ check_java_version() {
   local VERSION
   VERSION=$(java  -version 2>&1 | awk -F '"' '/version/ {print $2}')
   if [[ ! $VERSION =~ 1.8 ]]; then
-    echo "Java version is $VERSION. Please install jkd8."
+    echo "Java version is $VERSION. Please install jdk8."
     exit 1
   fi
 }

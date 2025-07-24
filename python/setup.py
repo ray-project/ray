@@ -34,7 +34,6 @@ SUPPORTED_PYTHONS = [(3, 9), (3, 10), (3, 11), (3, 12), (3, 13)]
 
 ROOT_DIR = os.path.dirname(__file__)
 BUILD_JAVA = os.getenv("RAY_INSTALL_JAVA") == "1"
-BUILD_CPP = os.getenv("RAY_INSTALL_CPP") == "1"
 SKIP_BAZEL_BUILD = os.getenv("SKIP_BAZEL_BUILD") == "1"
 BAZEL_ARGS = os.getenv("BAZEL_ARGS")
 BAZEL_LIMIT_CPUS = os.getenv("BAZEL_LIMIT_CPUS")
@@ -270,6 +269,9 @@ if setup_spec.type == SetupType.RAY:
             "grpcio >= 1.32.0; python_version < '3.10'",  # noqa:E501
             "grpcio >= 1.42.0; python_version >= '3.10'",  # noqa:E501
             "opencensus",
+            "opentelemetry-sdk",
+            "opentelemetry-exporter-prometheus",
+            "opentelemetry-proto",
             pydantic_dep,
             "prometheus_client >= 0.7.1",
             "smart_open",
@@ -375,7 +377,7 @@ if setup_spec.type == SetupType.RAY:
     setup_spec.extras["llm"] = list(
         set(
             [
-                "vllm>=0.7.2",
+                "vllm>=0.8.5",
                 "jsonref>=1.1.0",
                 "jsonschema",
                 "ninja",
@@ -404,8 +406,6 @@ if setup_spec.type == SetupType.RAY:
         "packaging",
         "protobuf >= 3.15.3, != 3.19.5",
         "pyyaml",
-        "aiosignal",
-        "frozenlist",
         "requests",
         "redis >= 3.5.0, <= 4.5.5",
     ]
@@ -713,7 +713,7 @@ def pip_run(build_ext):
     if SKIP_BAZEL_BUILD:
         build(False, False, False)
     else:
-        build(True, BUILD_JAVA, BUILD_CPP or BUILD_JAVA)
+        build(True, BUILD_JAVA, True)
 
     if setup_spec.type == SetupType.RAY:
         setup_spec.files_to_include += ray_files

@@ -1,9 +1,9 @@
 import logging
 import os
 import shutil
-from pathlib import Path
-from typing import Any, Dict, List, Optional
 from contextlib import contextmanager
+from pathlib import Path
+from typing import Any, Callable, Dict, List, Optional
 
 import ray._private.ray_constants as ray_constants
 import ray._private.runtime_env.agent.runtime_env_consts as runtime_env_consts
@@ -25,6 +25,7 @@ from ray._private.utils import (
     try_to_create_directory,
     try_to_symlink,
 )
+from ray._raylet import GcsClient
 from ray.exceptions import RuntimeEnvSetupError
 
 default_logger = logging.getLogger(__name__)
@@ -36,7 +37,7 @@ def upload_working_dir_if_needed(
     runtime_env: Dict[str, Any],
     scratch_dir: Optional[str] = os.getcwd(),
     logger: Optional[logging.Logger] = default_logger,
-    upload_fn=None,
+    upload_fn: Optional[Callable[[str, Optional[List[str]]], None]] = None,
 ) -> Dict[str, Any]:
     """Uploads the working_dir and replaces it with a URI.
 
@@ -133,13 +134,11 @@ class WorkingDirPlugin(RuntimeEnvPlugin):
     working_dir_placeholder = "$WORKING_DIR_PLACEHOLDER"
     job_dir_placeholder = "$JOB_DIR_PLACEHOLDER"
 
-    def __init__(
-        self, resources_dir: str, gcs_aio_client: "GcsAioClient"  # noqa: F821
-    ):
+    def __init__(self, resources_dir: str, gcs_client: GcsClient):
         self._resources_dir = os.path.join(resources_dir, "working_dir_files")
         self._working_dirs = os.path.join(resources_dir, "working_dirs")
         self._job_dirs = os.path.join(resources_dir, "job_dirs")
-        self._gcs_aio_client = gcs_aio_client
+        self._gcs_client = gcs_client
         try_to_create_directory(self._resources_dir)
 
     def delete_uri(
@@ -173,7 +172,7 @@ class WorkingDirPlugin(RuntimeEnvPlugin):
         local_dir = await download_and_unpack_package(
             uri,
             self._resources_dir,
-            self._gcs_aio_client,
+            self._gcs_client,
             logger=logger,
             overwrite=True,
         )

@@ -80,14 +80,14 @@ class ImageDatasource(FileBasedDatasource):
         except UnidentifiedImageError as e:
             raise ValueError(f"PIL couldn't load image file at path '{path}'.") from e
 
-        if self.size is not None:
+        if self.size is not None and image.size != tuple(reversed(self.size)):
             height, width = self.size
             image = image.resize((width, height), resample=Image.BILINEAR)
-        if self.mode is not None:
+        if self.mode is not None and image.mode != self.mode:
             image = image.convert(self.mode)
 
         builder = DelegatingBlockBuilder()
-        array = np.array(image)
+        array = np.asarray(image)
         item = {"image": array}
         builder.add(item)
         block = builder.build()

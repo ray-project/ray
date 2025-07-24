@@ -32,22 +32,33 @@ async frameworks like aiohttp, aioredis, etc.
 
     @ray.remote
     class AsyncActor:
-        # multiple invocation of this method can be running in
-        # the event loop at the same time
+        def __init__(self, expected_num_tasks: int):
+            self._event = asyncio.Event()
+            self._curr_num_tasks = 0
+            self._expected_num_tasks = expected_num_tasks
+
+        # Multiple invocations of this method can run concurrently on the same event loop.
         async def run_concurrent(self):
-            print("started")
-            await asyncio.sleep(2) # concurrent workload here
-            print("finished")
+            self._curr_num_tasks += 1
+            if self._curr_num_tasks == self._expected_num_tasks:
+                print("All coroutines are executing concurrently, unblocking.")
+                self._event.set()
+            else:
+                print("Waiting for other coroutines to start.")
 
-    actor = AsyncActor.remote()
+            await self._event.wait()
+            print("All coroutines ran concurrently.")
 
-    # regular ray.get
-    ray.get([actor.run_concurrent.remote() for _ in range(4)])
+    actor = AsyncActor.remote(4)
+    refs = [actor.run_concurrent.remote() for _ in range(4)]
 
-    # async ray.get
-    async def async_get():
-        await actor.run_concurrent.remote()
-    asyncio.run(async_get())
+    # Fetch results using regular `ray.get`.
+    ray.get(refs)
+
+    # Fetch results using `asyncio` APIs.
+    async def get_async():
+        return await asyncio.gather(*refs)
+    asyncio.run(get_async())
 
 .. testoutput::
     :options: +MOCK
@@ -65,10 +76,10 @@ async frameworks like aiohttp, aioredis, etc.
     :hide:
 
     # NOTE: The outputs from the previous code block can show up in subsequent tests.
-    # To prevent flakiness, we wait for the async calls finish.
+    # To prevent flakiness, we wait for a grace period.
     import time
     print("Sleeping...")
-    time.sleep(3)
+    time.sleep(1)
 
 .. testoutput::
 
@@ -160,33 +171,45 @@ By using `async` method definitions, Ray will automatically detect whether an ac
 
 .. testcode::
 
+    import ray
     import asyncio
+
 
     @ray.remote
     class AsyncActor:
-        async def run_task(self):
-            print("started")
-            await asyncio.sleep(2) # Network, I/O task here
-            print("ended")
+        def __init__(self, expected_num_tasks: int):
+            self._event = asyncio.Event()
+            self._curr_num_tasks = 0
+            self._expected_num_tasks = expected_num_tasks
 
-    actor = AsyncActor.remote()
-    # All 5 tasks should start at once. After 2 second they should all finish.
-    # they should finish at the same time
+        async def run_task(self):
+            print("Started task")
+            self._curr_num_tasks += 1
+            if self._curr_num_tasks == self._expected_num_tasks:
+                self._event.set()
+            else:
+                # Yield the event loop for multiple coroutines to run concurrently.
+                await self._event.wait()
+
+            print("Finished task")
+
+    actor = AsyncActor.remote(5)
+    # All 5 tasks will start at once and run concurrently.
     ray.get([actor.run_task.remote() for _ in range(5)])
 
 .. testoutput::
     :options: +MOCK
 
-    (AsyncActor pid=3456) started
-    (AsyncActor pid=3456) started
-    (AsyncActor pid=3456) started
-    (AsyncActor pid=3456) started
-    (AsyncActor pid=3456) started
-    (AsyncActor pid=3456) ended
-    (AsyncActor pid=3456) ended
-    (AsyncActor pid=3456) ended
-    (AsyncActor pid=3456) ended
-    (AsyncActor pid=3456) ended
+    (AsyncActor pid=3456) Started task
+    (AsyncActor pid=3456) Started task
+    (AsyncActor pid=3456) Started task
+    (AsyncActor pid=3456) Started task
+    (AsyncActor pid=3456) Started task
+    (AsyncActor pid=3456) Finished task
+    (AsyncActor pid=3456) Finished task
+    (AsyncActor pid=3456) Finished task
+    (AsyncActor pid=3456) Finished task
+    (AsyncActor pid=3456) Finished task
 
 Under the hood, Ray runs all of the methods inside a single python event loop.
 Please note that running blocking ``ray.get`` or ``ray.wait`` inside async
@@ -204,38 +227,52 @@ You can set the number of "concurrent" task running at once using the
 .. testcode::
 
     import asyncio
+    import ray
 
     @ray.remote
     class AsyncActor:
+        def __init__(self, batch_size: int):
+            self._event = asyncio.Event()
+            self._curr_tasks = 0
+            self._batch_size = batch_size
+
         async def run_task(self):
-            print("started")
-            await asyncio.sleep(1) # Network, I/O task here
-            print("ended")
+            print("Started task")
+            self._curr_tasks += 1
+            if self._curr_tasks == self._batch_size:
+                self._event.set()
+            else:
+                await self._event.wait()
+                self._event.clear()
+                self._curr_tasks = 0
 
-    actor = AsyncActor.options(max_concurrency=2).remote()
+            print("Finished task")
 
-    # Only 2 tasks will be running concurrently. Once 2 finish, the next 2 should run.
+    actor = AsyncActor.options(max_concurrency=2).remote(2)
+
+    # Only 2 tasks will run concurrently.
+    # Once 2 finish, the next 2 should run.
     ray.get([actor.run_task.remote() for _ in range(8)])
 
 .. testoutput::
     :options: +MOCK
 
-    (AsyncActor pid=5859) started
-    (AsyncActor pid=5859) started
-    (AsyncActor pid=5859) ended
-    (AsyncActor pid=5859) ended
-    (AsyncActor pid=5859) started
-    (AsyncActor pid=5859) started
-    (AsyncActor pid=5859) ended
-    (AsyncActor pid=5859) ended
-    (AsyncActor pid=5859) started
-    (AsyncActor pid=5859) started
-    (AsyncActor pid=5859) ended
-    (AsyncActor pid=5859) ended
-    (AsyncActor pid=5859) started
-    (AsyncActor pid=5859) started
-    (AsyncActor pid=5859) ended
-    (AsyncActor pid=5859) ended
+    (AsyncActor pid=5859) Started task
+    (AsyncActor pid=5859) Started task
+    (AsyncActor pid=5859) Finished task
+    (AsyncActor pid=5859) Finished task
+    (AsyncActor pid=5859) Started task
+    (AsyncActor pid=5859) Started task
+    (AsyncActor pid=5859) Finished task
+    (AsyncActor pid=5859) Finished task
+    (AsyncActor pid=5859) Started task
+    (AsyncActor pid=5859) Started task
+    (AsyncActor pid=5859) Finished task
+    (AsyncActor pid=5859) Finished task
+    (AsyncActor pid=5859) Started task
+    (AsyncActor pid=5859) Started task
+    (AsyncActor pid=5859) Finished task
+    (AsyncActor pid=5859) Finished task
 
 .. _threaded-actors:
 

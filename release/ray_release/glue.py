@@ -18,10 +18,9 @@ from ray_release.config import (
     DEFAULT_CLUSTER_TIMEOUT,
     DEFAULT_COMMAND_TIMEOUT,
     DEFAULT_WAIT_FOR_NODES_TIMEOUT,
-    RELEASE_PACKAGE_DIR,
     DEFAULT_AUTOSUSPEND_MINS,
 )
-from ray_release.template import load_test_cluster_compute
+from ray_release.template import load_test_cluster_compute, get_working_dir
 from ray_release.exception import (
     ReleaseTestConfigError,
     ReleaseTestSetupError,
@@ -90,9 +89,9 @@ def _load_test_configuration(
     result.buildkite_job_id = buildkite_job_id
 
     # Setting up working directory
-    working_dir = test["working_dir"]
-    new_wd = os.path.join(test_definition_root or RELEASE_PACKAGE_DIR, working_dir)
-    os.chdir(new_wd)
+
+    working_dir = get_working_dir(test)
+    os.chdir(working_dir)
 
     run_type = test["run"].get("type", DEFAULT_RUN_TYPE)
 

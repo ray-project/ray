@@ -1,11 +1,9 @@
 # coding: utf-8
 import collections
 import logging
-import platform
 import subprocess
 import sys
 import time
-import unittest
 
 import numpy as np
 import pytest
@@ -225,9 +223,7 @@ def test_load_balancing_with_dependencies(ray_start_cluster):
     attempt_to_load_balance(f, [x], 100, num_nodes, 20)
 
 
-@pytest.mark.skipif(
-    platform.system() == "Windows", reason="Failing on Windows. Multi node."
-)
+@pytest.mark.skipif(sys.platform == "win32", reason="Fails on Windows (multi node).")
 def test_spillback_waiting_task_on_oom(ray_start_cluster):
     # This test ensures that tasks are spilled if they are not schedulable due
     # to lack of object store memory.
@@ -435,7 +431,10 @@ def test_locality_aware_leasing_borrowed_objects(ray_start_cluster):
     )
 
 
-@unittest.skipIf(sys.platform == "win32", "Failing on Windows.")
+@pytest.mark.skipif(
+    ray._private.client_mode_hook.is_client_mode_enabled, reason="Fails w/ Ray Client."
+)
+@pytest.mark.skipif(sys.platform == "win32", reason="Fails on Windows.")
 def test_lease_request_leak(shutdown_only):
     ray.init(num_cpus=1, _system_config={"object_timeout_milliseconds": 200})
 
@@ -751,10 +750,4 @@ def test_scheduling_class_depth(ray_start_regular):
 
 
 if __name__ == "__main__":
-    import os
-    import pytest
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

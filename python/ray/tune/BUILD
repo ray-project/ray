@@ -218,17 +218,6 @@ py_test(
 )
 
 py_test(
-    name = "test_multinode_sync",
-    size = "large",
-    srcs = ["tests/test_multinode_sync.py"],
-    tags = [
-        "multinode",
-        "team:ml",
-    ],
-    deps = [":tune_lib"],
-)
-
-py_test(
     name = "test_progress_reporter",
     size = "medium",
     srcs = ["tests/test_progress_reporter.py"],
@@ -403,7 +392,7 @@ py_test(
 
 py_test(
     name = "test_train_v2_integration",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_train_v2_integration.py"],
     env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [

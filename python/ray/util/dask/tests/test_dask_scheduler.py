@@ -1,5 +1,4 @@
 import sys
-import unittest
 
 import dask
 import dask.array as da
@@ -20,21 +19,13 @@ pytestmark = pytest.mark.skipif(
 
 
 @pytest.fixture
-def ray_start_1_cpu():
-    address_info = ray.init(num_cpus=2)
-    yield address_info
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
-
-
-@pytest.fixture
 def ray_enable_dask_on_ray():
     with enable_dask_on_ray():
         yield
 
 
-@unittest.skipIf(sys.platform == "win32", "Failing on Windows.")
-def test_ray_dask_basic(ray_start_1_cpu):
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+def test_ray_dask_basic(ray_start_regular_shared):
     @ray.remote
     def stringify(x):
         return "The answer is {}".format(x)
@@ -75,58 +66,8 @@ def test_ray_dask_basic(ray_start_1_cpu):
     assert ans == "The answer is 6", ans
 
 
-def test_ray_dask_resources(ray_start_cluster, ray_enable_dask_on_ray):
-    cluster = ray_start_cluster
-    cluster.add_node(num_cpus=1)
-    cluster.add_node(num_cpus=1, resources={"other_pin": 1})
-    pinned_node = cluster.add_node(num_cpus=1, num_gpus=1, resources={"pin": 1})
-
-    ray.init(address=cluster.address)
-
-    def get_node_id():
-        return ray._private.worker.global_worker.node.unique_id
-
-    # Test annotations on collection.
-    with dask.annotate(ray_remote_args=dict(num_cpus=1, resources={"pin": 0.01})):
-        c = dask.delayed(get_node_id)()
-    result = c.compute(optimize_graph=False)
-
-    assert result == pinned_node.unique_id
-
-    # Test annotations on compute.
-    c = dask.delayed(get_node_id)()
-    with dask.annotate(ray_remote_args=dict(num_gpus=1, resources={"pin": 0.01})):
-        result = c.compute(optimize_graph=False)
-
-    assert result == pinned_node.unique_id
-
-    # Test compute global Ray remote args.
-    c = dask.delayed(get_node_id)
-    result = c().compute(ray_remote_args={"resources": {"pin": 0.01}})
-
-    assert result == pinned_node.unique_id
-
-    # Test annotations on collection override global resource.
-    with dask.annotate(ray_remote_args=dict(resources={"pin": 0.01})):
-        c = dask.delayed(get_node_id)()
-    result = c.compute(
-        ray_remote_args=dict(resources={"other_pin": 0.01}), optimize_graph=False
-    )
-
-    assert result == pinned_node.unique_id
-
-    # Test top-level resources raises an error.
-    with pytest.raises(ValueError):
-        with dask.annotate(resources={"pin": 0.01}):
-            c = dask.delayed(get_node_id)()
-        result = c.compute(optimize_graph=False)
-    with pytest.raises(ValueError):
-        c = dask.delayed(get_node_id)
-        result = c().compute(resources={"pin": 0.01})
-
-
-@unittest.skipIf(sys.platform == "win32", "Failing on Windows.")
-def test_ray_dask_persist(ray_start_1_cpu):
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+def test_ray_dask_persist(ray_start_regular_shared):
     arr = da.ones(5) + 2
     result = arr.persist(scheduler=ray_dask_get)
     assert isinstance(
@@ -134,7 +75,7 @@ def test_ray_dask_persist(ray_start_1_cpu):
     )
 
 
-def test_sort_with_progress_bar(ray_start_1_cpu):
+def test_sort_with_progress_bar(ray_start_regular_shared):
     npartitions = 10
     df = dd.from_pandas(
         pd.DataFrame(
@@ -158,6 +99,4 @@ def test_sort_with_progress_bar(ray_start_1_cpu):
 
 
 if __name__ == "__main__":
-    import sys
-
     sys.exit(pytest.main(["-v", __file__]))

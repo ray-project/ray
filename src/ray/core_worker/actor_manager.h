@@ -16,7 +16,10 @@
 
 #include <gtest/gtest_prod.h>
 
+#include <memory>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "ray/core_worker/actor_creator.h"

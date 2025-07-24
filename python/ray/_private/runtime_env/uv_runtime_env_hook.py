@@ -1,8 +1,8 @@
 import argparse
 import copy
 import os
-from pathlib import Path
 import sys
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import psutil
@@ -67,19 +67,51 @@ def _check_working_dir_files(
         )
 
 
+def _get_uv_run_cmdline() -> Optional[List[str]]:
+    """
+    Return the command line of the first ancestor process that was run with
+    "uv run" and None if there is no such ancestor.
+
+    uv spawns the python process as a child process, so we first check the
+    parent process command line. We also check our parent's parents since
+    the Ray driver might be run as a subprocess of the 'uv run' process.
+    """
+    parents = psutil.Process().parents()
+    for parent in parents:
+        try:
+            cmdline = parent.cmdline()
+            if (
+                len(cmdline) > 1
+                and os.path.basename(cmdline[0]) == "uv"
+                and cmdline[1] == "run"
+            ):
+                return cmdline
+        except psutil.NoSuchProcess:
+            continue
+        except psutil.AccessDenied:
+            continue
+    return None
+
+
 def hook(runtime_env: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     """Hook that detects if the driver is run in 'uv run' and sets the runtime environment accordingly."""
 
     runtime_env = copy.deepcopy(runtime_env) or {}
 
-    # uv spawns the python process as a child process, so to determine if
-    # we are running under 'uv run', we check the parent process commandline.
-    parent = psutil.Process().parent()
-    cmdline = parent.cmdline()
-    if os.path.basename(cmdline[0]) != "uv" or cmdline[1] != "run":
-        # This means the driver was not run with 'uv run' -- in this case
+    cmdline = _get_uv_run_cmdline()
+    if not cmdline:
+        # This means the driver was not run in a 'uv run' environment -- in this case
         # we leave the runtime environment unchanged
         return runtime_env
+
+    # First check that the "uv" and "pip" runtime environments are not used.
+    if "uv" in runtime_env or "pip" in runtime_env:
+        raise RuntimeError(
+            "You are using the 'pip' or 'uv' runtime environments together with "
+            "'uv run'. These are not compatible since 'uv run' will run the workers "
+            "in an isolated environment -- please add the 'pip' or 'uv' dependencies to your "
+            "'uv run' environment e.g. by including them in your pyproject.toml."
+        )
 
     # Extract the arguments of 'uv run' that are not arguments of the script.
     # First we get the arguments of this script (without the executable):
@@ -112,6 +144,16 @@ if __name__ == "__main__":
     test_parser = argparse.ArgumentParser()
     test_parser.add_argument("runtime_env")
     args = test_parser.parse_args()
+
+    # If the env variable is set, add one more level of subprocess indirection
+    if os.environ.get("RAY_TEST_UV_ADD_SUBPROCESS_INDIRECTION") == "1":
+        import subprocess
+
+        env = os.environ.copy()
+        env.pop("RAY_TEST_UV_ADD_SUBPROCESS_INDIRECTION")
+        subprocess.check_call([sys.executable] + sys.argv, env=env)
+        sys.exit(0)
+
     # We purposefully modify sys.argv here to make sure the hook is robust
     # against such modification.
     sys.argv.pop(1)

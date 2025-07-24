@@ -3,9 +3,10 @@ import logging
 import os
 import sys
 import tempfile
-from typing import Dict, Any
 import unittest
 import urllib
+from typing import Dict, Any
+from unittest import mock
 from unittest.mock import MagicMock, Mock, patch
 
 import jsonschema
@@ -13,7 +14,6 @@ import pytest
 import yaml
 from click.exceptions import ClickException
 
-from unittest import mock
 from ray._private.test_utils import load_test_config, recursive_fnmatch
 from ray.autoscaler._private._azure.config import (
     _configure_key_pair as _azure_configure_key_pair,
@@ -516,7 +516,7 @@ class AutoscalingConfigTest(unittest.TestCase):
         )
 
         # Configure subnets modifies configs in place so we need to copy
-        # the configs for comparision after passing into the method.
+        # the configs for comparison after passing into the method.
         config_subnets_configured_post = copy.deepcopy(config_subnets_configured)
         config_subnets_worker_configured_post = copy.deepcopy(
             config_subnets_worker_configured
@@ -650,9 +650,4 @@ class AutoscalingConfigTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import sys
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

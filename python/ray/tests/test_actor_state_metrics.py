@@ -1,8 +1,10 @@
 import asyncio
-from collections import defaultdict
-import pytest
 import time
+import sys
+from collections import defaultdict
 from typing import Dict
+
+import pytest
 
 import ray
 from ray._private.utils import hex_to_binary
@@ -317,10 +319,4 @@ def test_get_all_actors_info(shutdown_only):
 
 
 if __name__ == "__main__":
-    import sys
-    import os
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

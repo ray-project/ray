@@ -1,8 +1,7 @@
-from typing import TYPE_CHECKING
-
 import asyncio
 import base64
 import io
+from typing import TYPE_CHECKING
 
 import aiohttp
 

@@ -36,7 +36,7 @@
 #include "ray/object_manager/plasma/create_request_queue.h"
 #include "ray/object_manager/plasma/eviction_policy.h"
 #include "ray/object_manager/plasma/get_request_queue.h"
-#include "ray/object_manager/plasma/object_lifecycle_manager.h"
+#include "ray/object_manager/plasma/obj_lifecycle_mgr.h"
 #include "ray/object_manager/plasma/object_store.h"
 #include "ray/object_manager/plasma/plasma.h"
 #include "ray/object_manager/plasma/plasma_allocator.h"

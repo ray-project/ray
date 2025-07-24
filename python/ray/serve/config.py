@@ -4,6 +4,7 @@ from enum import Enum
 from typing import Any, Callable, List, Optional, Union
 
 from ray import cloudpickle
+from ray._common.utils import import_attr
 from ray._private.pydantic_compat import (
     BaseModel,
     Field,
@@ -14,7 +15,6 @@ from ray._private.pydantic_compat import (
     PrivateAttr,
     validator,
 )
-from ray._common.utils import import_attr
 from ray.serve._private.constants import (
     DEFAULT_AUTOSCALING_POLICY,
     DEFAULT_GRPC_PORT,
@@ -304,10 +304,12 @@ class gRPCOptions(BaseModel):
             Serve's gRPC proxy. Default to empty list, which means no gRPC methods will
             be added and no gRPC server will be started. The servicer functions need to
             be importable from the context of where Serve is running.
+        request_timeout_s: End-to-end timeout for gRPC requests.
     """
 
     port: int = DEFAULT_GRPC_PORT
     grpc_servicer_functions: List[str] = []
+    request_timeout_s: Optional[float] = None
 
     @property
     def grpc_servicer_func_callable(self) -> List[Callable]:

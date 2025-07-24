@@ -3,6 +3,7 @@ from enum import Enum
 from typing import TYPE_CHECKING, AsyncIterator, Optional
 
 from pydantic import BaseModel
+
 from ray.util import metrics
 from ray.util.metrics import Counter
 

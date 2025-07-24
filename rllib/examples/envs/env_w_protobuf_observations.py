@@ -71,7 +71,9 @@ if __name__ == "__main__":
         # Plugin our custom ConnectorV2 piece to translate protobuf observations
         # (box of dtype uint8) into NN-readible ones (1D tensor of dtype flaot32).
         .env_runners(
-            env_to_module_connector=lambda env: ProtobufCartPoleObservationDecoder(),
+            env_to_module_connector=(
+                lambda env, spaces, device: ProtobufCartPoleObservationDecoder()
+            ),
         )
     )
 

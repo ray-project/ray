@@ -6,7 +6,7 @@ ray_cc_test(
     srcs = ["opentelemetry_metrics_test.cc"],
     tags = ["team:core"],
     deps = [
-        "//:stats_opentelemetry",
+        "//src/ray/stats:stats_opentelemetry",
         "@com_google_googletest//:gtest_main",
     ],
 )

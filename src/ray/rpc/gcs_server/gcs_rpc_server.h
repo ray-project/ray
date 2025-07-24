@@ -232,9 +232,10 @@ class ActorInfoGcsServiceHandler {
                                    RegisterActorReply *reply,
                                    SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleRestartActor(RestartActorRequest request,
-                                  RestartActorReply *reply,
-                                  SendReplyCallback send_reply_callback) = 0;
+  virtual void HandleRestartActorForLineageReconstruction(
+      RestartActorForLineageReconstructionRequest request,
+      RestartActorForLineageReconstructionReply *reply,
+      SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleCreateActor(CreateActorRequest request,
                                  CreateActorReply *reply,
@@ -285,7 +286,7 @@ class ActorInfoGrpcService : public GrpcService {
     /// Register/Create Actor RPC takes long time, we shouldn't limit them to avoid
     /// distributed deadlock.
     ACTOR_INFO_SERVICE_RPC_HANDLER(RegisterActor, -1);
-    ACTOR_INFO_SERVICE_RPC_HANDLER(RestartActor, -1);
+    ACTOR_INFO_SERVICE_RPC_HANDLER(RestartActorForLineageReconstruction, -1);
     ACTOR_INFO_SERVICE_RPC_HANDLER(CreateActor, -1);
 
     /// Others need back pressure.

@@ -5,7 +5,7 @@ Distributed fine-tuning of Llama 3.1 8B on AWS Trainium with Ray and PyTorch Lig
 
 .. raw:: html
 
-    <a id="try-anyscale-quickstart-aws-trainium-llama3" target="_blank" href="https://www.anyscale.com/ray-on-anyscale?utm_source=ray_docs&utm_medium=docs&utm_campaign=aws-trainium-llama3">
+    <a id="try-anyscale-quickstart-aws-trainium-llama3" target="_blank" href="https://console.anyscale.com/register/ha?render_flow=ray&utm_source=ray_docs&utm_medium=docs&utm_campaign=aws-trainium-llama3">
       <img src="../../../_static/img/run-on-anyscale.svg" alt="Run on Anyscale" />
       <br/><br/>
     </a>

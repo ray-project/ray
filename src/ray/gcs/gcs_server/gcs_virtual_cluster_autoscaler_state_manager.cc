@@ -16,7 +16,7 @@
 
 #include "ray/gcs/gcs_server/gcs_actor_manager.h"
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
-#include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
+#include "ray/gcs/gcs_server/gcs_placement_group_mgr.h"
 #include "ray/gcs/pb_util.h"
 
 namespace ray {
@@ -30,6 +30,7 @@ GcsVirtualClusterAutoscalerStateManager::GcsVirtualClusterAutoscalerStateManager
     rpc::NodeManagerClientPool &raylet_client_pool,
     InternalKVInterface &kv,
     instrumented_io_context &io_context,
+    GcsPublisher *gcs_publisher,
     std::shared_ptr<GcsVirtualClusterManager> gcs_virtual_cluster_manager)
     : GcsAutoscalerStateManager(session_name,
                                 gcs_node_manager,
@@ -37,7 +38,8 @@ GcsVirtualClusterAutoscalerStateManager::GcsVirtualClusterAutoscalerStateManager
                                 gcs_placement_group_manager,
                                 raylet_client_pool,
                                 kv,
-                                io_context),
+                                io_context,
+                                gcs_publisher),
       gcs_virtual_cluster_manager_(gcs_virtual_cluster_manager) {}
 
 void GcsVirtualClusterAutoscalerStateManager::HandleGetClusterResourceState(

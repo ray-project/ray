@@ -7,8 +7,8 @@ import pytest
 
 import ray
 from ray import ObjectRef, ObjectRefGenerator
+from ray._common.utils import get_or_create_event_loop
 from ray._private.test_utils import SignalActor
-from ray._private.utils import get_or_create_event_loop
 from ray.serve._private.common import (
     DeploymentID,
     ReplicaID,
@@ -16,8 +16,8 @@ from ray.serve._private.common import (
     RequestMetadata,
     RunningReplicaInfo,
 )
-from ray.serve._private.replica_scheduler.common import PendingRequest
-from ray.serve._private.replica_scheduler.replica_wrapper import RunningReplica
+from ray.serve._private.request_router.common import PendingRequest
+from ray.serve._private.request_router.replica_wrapper import RunningReplica
 from ray.serve._private.test_utils import send_signal_on_cancellation
 
 

@@ -147,6 +147,10 @@ class MsPacmanHeatmapCallback(RLlibCallback):
         yx_pos = self._get_pacman_yx_pos(env)
         self._episode_start_position[episode.id_] = yx_pos
 
+        # Create two lists holding custom per-timestep data.
+        episode.custom_data["pacman_yx_pos"] = []
+        episode.custom_data["pacman_dist_travelled"] = []
+
     def on_episode_step(
         self,
         *,
@@ -168,7 +172,7 @@ class MsPacmanHeatmapCallback(RLlibCallback):
             return
 
         yx_pos = self._get_pacman_yx_pos(env)
-        episode.add_temporary_timestep_data("pacman_yx_pos", yx_pos)
+        episode.custom_data["pacman_yx_pos"].append(yx_pos)
 
         # Compute distance to start position.
         dist_travelled = np.sqrt(
@@ -179,7 +183,7 @@ class MsPacmanHeatmapCallback(RLlibCallback):
                 )
             )
         )
-        episode.add_temporary_timestep_data("pacman_dist_travelled", dist_travelled)
+        episode.custom_data["pacman_dist_travelled"].append(dist_travelled)
 
     def on_episode_end(
         self,
@@ -203,7 +207,7 @@ class MsPacmanHeatmapCallback(RLlibCallback):
         del self._episode_start_position[episode.id_]
 
         # Get all pacman y/x-positions from the episode.
-        yx_positions = episode.get_temporary_timestep_data("pacman_yx_pos")
+        yx_positions = episode.custom_data["pacman_yx_pos"]
         # h x w
         heatmap = np.zeros((80, 100), dtype=np.int32)
         for yx_pos in yx_positions:
@@ -228,9 +232,7 @@ class MsPacmanHeatmapCallback(RLlibCallback):
         )
 
         # Get the max distance travelled for this episode.
-        dist_travelled = np.max(
-            episode.get_temporary_timestep_data("pacman_dist_travelled")
-        )
+        dist_travelled = np.max(episode.custom_data["pacman_dist_travelled"])
 
         # Log the max. dist travelled in this episode (window=100).
         metrics_logger.log_value(

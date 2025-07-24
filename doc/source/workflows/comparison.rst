@@ -21,12 +21,12 @@ Specifying the workflow id allows for resuming of the workflow by its id in case
 Other Workflow Engines
 ----------------------
 
-Note: these comparisons are inspired by the `Serverless workflows comparisons repo <https://github.com/serverlessworkflow/specification/tree/main/comparisons>`__.
+Note: these comparisons are inspired by the `Serverless workflows comparisons repo <https://github.com/serverlessworkflow/specification/tree/0.9.x/comparisons>`__.
 
 Argo API Comparison
 ~~~~~~~~~~~~~~~~~~~
 
-The original source of these comparisons can be `found here <https://github.com/serverlessworkflow/specification/blob/main/comparisons/comparison-argo.md>`__.
+The original source of these comparisons can be `found here <https://github.com/serverlessworkflow/specification/blob/0.9.x/comparisons/comparison-argo.md>`__.
 
 Conditionals
 ^^^^^^^^^^^^
@@ -162,7 +162,7 @@ Trip Booking
 Google Cloud Workflows API Comparison
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The original source of these comparisons can be `found here <https://github.com/serverlessworkflow/specification/blob/main/comparisons/comparison-google-cloud-workflows.md>`__.
+The original source of these comparisons can be `found here <https://github.com/serverlessworkflow/specification/blob/0.9.x/comparisons/comparison-google-cloud-workflows.md>`__.
 
 Data Conditional
 ^^^^^^^^^^^^^^^^

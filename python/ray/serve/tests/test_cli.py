@@ -125,7 +125,7 @@ def test_deploy_basic(ray_start_stop):
 
         print("Deploying arithmetic config.")
         deploy_response = subprocess.check_output(
-            ["serve", "deploy", arithmetic_file_name, "-a", "http://localhost:52365/"]
+            ["serve", "deploy", arithmetic_file_name, "-a", "http://localhost:8265/"]
         )
         assert success_message_fragment in deploy_response
         print("Deploy request sent successfully.")
@@ -503,7 +503,7 @@ def test_status_basic(ray_start_stop):
         lambda: num_live_deployments(SERVE_DEFAULT_APP_NAME) == 3, timeout=15
     )
     status_response = subprocess.check_output(
-        ["serve", "status", "-a", "http://localhost:52365/"]
+        ["serve", "status", "-a", "http://localhost:8265/"]
     )
     serve_status = yaml.safe_load(status_response)
     default_app = serve_status["applications"][SERVE_DEFAULT_APP_NAME]
@@ -529,7 +529,7 @@ def test_status_basic(ray_start_stop):
 
     def proxy_healthy():
         status_response = subprocess.check_output(
-            ["serve", "status", "-a", "http://localhost:52365/"]
+            ["serve", "status", "-a", "http://localhost:8265/"]
         )
         proxy_status = yaml.safe_load(status_response)["proxies"]
         return len(proxy_status) and all(p == "HEALTHY" for p in proxy_status.values())
@@ -549,7 +549,7 @@ def test_status_error_msg_format(ray_start_stop):
 
     def check_for_failed_deployment():
         cli_output = subprocess.check_output(
-            ["serve", "status", "-a", "http://localhost:52365/"]
+            ["serve", "status", "-a", "http://localhost:8265/"]
         )
         cli_status = yaml.safe_load(cli_output)["applications"][SERVE_DEFAULT_APP_NAME]
         api_status = serve.status().applications[SERVE_DEFAULT_APP_NAME]
@@ -579,7 +579,7 @@ def test_status_invalid_runtime_env(ray_start_stop):
 
     def check_for_failed_deployment():
         cli_output = subprocess.check_output(
-            ["serve", "status", "-a", "http://localhost:52365/"]
+            ["serve", "status", "-a", "http://localhost:8265/"]
         )
         cli_status = yaml.safe_load(cli_output)["applications"][SERVE_DEFAULT_APP_NAME]
         assert cli_status["status"] == "DEPLOY_FAILED"
@@ -601,7 +601,7 @@ def test_status_syntax_error(ray_start_stop):
 
     def check_for_failed_deployment():
         cli_output = subprocess.check_output(
-            ["serve", "status", "-a", "http://localhost:52365/"]
+            ["serve", "status", "-a", "http://localhost:8265/"]
         )
         status = yaml.safe_load(cli_output)["applications"][SERVE_DEFAULT_APP_NAME]
         assert status["status"] == "DEPLOY_FAILED"
@@ -626,7 +626,7 @@ def test_status_constructor_error(ray_start_stop):
 
     def check_for_failed_deployment():
         cli_output = subprocess.check_output(
-            ["serve", "status", "-a", "http://localhost:52365/"]
+            ["serve", "status", "-a", "http://localhost:8265/"]
         )
         status = yaml.safe_load(cli_output)["applications"][SERVE_DEFAULT_APP_NAME]
         assert status["status"] == "DEPLOY_FAILED"
@@ -654,7 +654,7 @@ def test_status_constructor_retry_error(ray_start_stop):
 
     def check_for_failed_deployment():
         cli_output = subprocess.check_output(
-            ["serve", "status", "-a", "http://localhost:52365/"]
+            ["serve", "status", "-a", "http://localhost:8265/"]
         )
         status = yaml.safe_load(cli_output)["applications"][SERVE_DEFAULT_APP_NAME]
         assert status["status"] == "DEPLOYING"
@@ -682,7 +682,7 @@ def test_status_package_unavailable_in_controller(ray_start_stop):
 
     def check_for_failed_deployment():
         cli_output = subprocess.check_output(
-            ["serve", "status", "-a", "http://localhost:52365/"]
+            ["serve", "status", "-a", "http://localhost:8265/"]
         )
         status = yaml.safe_load(cli_output)["applications"][SERVE_DEFAULT_APP_NAME]
         assert status["status"] == "DEPLOY_FAILED"
@@ -704,7 +704,7 @@ def test_max_replicas_per_node(ray_start_stop):
 
     def check_application_status():
         cli_output = subprocess.check_output(
-            ["serve", "status", "-a", "http://localhost:52365/"]
+            ["serve", "status", "-a", "http://localhost:8265/"]
         )
         status = yaml.safe_load(cli_output)["applications"]
         assert (
@@ -728,7 +728,7 @@ def test_replica_placement_group_options(ray_start_stop):
 
     def check_application_status():
         cli_output = subprocess.check_output(
-            ["serve", "status", "-a", "http://localhost:52365/"]
+            ["serve", "status", "-a", "http://localhost:8265/"]
         )
         status = yaml.safe_load(cli_output)["applications"]
         assert (
