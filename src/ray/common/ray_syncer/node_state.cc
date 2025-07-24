@@ -14,6 +14,8 @@
 
 #include "ray/common/ray_syncer/node_state.h"
 
+#include <string>
+
 #include "ray/common/id.h"
 #include "ray/common/ray_syncer/ray_syncer.h"
 
