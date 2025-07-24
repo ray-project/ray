@@ -17,6 +17,7 @@ from ray import serve
 from ray._common.test_utils import wait_for_condition
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
 from ray.serve._private.test_utils import (
+    get_application_url,
     ping_fruit_stand,
     ping_grpc_another_method,
     ping_grpc_call_method,
@@ -35,7 +36,7 @@ def ping_endpoint(endpoint: str, params: str = ""):
     endpoint = endpoint.lstrip("/")
 
     try:
-        return httpx.get(f"http://localhost:8000/{endpoint}{params}").text
+        return httpx.get(f"{get_application_url()}/{endpoint}{params}").text
     except httpx.HTTPError:
         return CONNECTION_ERROR_MSG
 
@@ -52,7 +53,7 @@ def check_app_running(app_name: str):
 
 
 def check_http_response(expected_text: str, json: Optional[Dict] = None):
-    resp = httpx.post("http://localhost:8000/", json=json)
+    resp = httpx.post(f"{get_application_url()}/", json=json)
     assert resp.text == expected_text
     return True
 
@@ -216,7 +217,7 @@ def test_build_multi_app(ray_start_stop):
         print("App 2 is live and reachable over HTTP.")
 
         app_name = "app3"
-        channel = grpc.insecure_channel("localhost:9000")
+        channel = grpc.insecure_channel(get_application_url("gRPC"))
         stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
         request = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
         metadata = (("application", app_name),)
@@ -295,7 +296,7 @@ def test_serving_request_through_grpc_proxy(ray_start_stop):
     app1 = "app1"
     app_names = [app1]
 
-    channel = grpc.insecure_channel("localhost:9000")
+    channel = grpc.insecure_channel(get_application_url("gRPC"))
 
     # Ensures ListApplications method succeeding.
     wait_for_condition(
@@ -337,7 +338,7 @@ def test_grpc_proxy_model_composition(ray_start_stop):
     app = "app1"
     app_names = [app]
 
-    channel = grpc.insecure_channel("localhost:9000")
+    channel = grpc.insecure_channel(get_application_url("gRPC"))
 
     # Ensures ListApplications method succeeding.
     wait_for_condition(
