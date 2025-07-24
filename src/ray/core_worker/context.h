@@ -146,9 +146,9 @@ class WorkerContext {
 
   int64_t task_depth_ ABSL_GUARDED_BY(mutex_) = 0;
   // `true` if the worker has ever begun executing a normal (non-actor) task.
-  bool current_task_is_direct_call_ = false;
+  bool current_task_is_direct_call_ ABSL_GUARDED_BY(mutex_) = false;
   // `true` if the worker has ever begun executing an actor creation task.
-  bool current_actor_is_direct_call_ = false;
+  bool current_actor_is_direct_call_ ABSL_GUARDED_BY(mutex_) = false;
   ActorID current_actor_id_ ABSL_GUARDED_BY(mutex_);
   int current_actor_max_concurrency_ ABSL_GUARDED_BY(mutex_) = 1;
   bool current_actor_is_asyncio_ ABSL_GUARDED_BY(mutex_) = false;
