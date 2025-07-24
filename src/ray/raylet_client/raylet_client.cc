@@ -155,6 +155,7 @@ Status RayletClient::FetchOrReconstruct(const std::vector<ObjectID> &object_ids,
 }
 
 Status RayletClient::NotifyUnblocked(const TaskID &current_task_id) {
+  RAY_CHECK(false) << "sigh :(";
   flatbuffers::FlatBufferBuilder fbb;
   auto message = protocol::CreateNotifyUnblocked(fbb, to_flatbuf(fbb, current_task_id));
   fbb.Finish(message);
