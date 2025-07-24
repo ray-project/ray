@@ -9,11 +9,11 @@ from ray.llm._internal.serve.configs.server_models import (
 )
 
 # For backward compatibility
-from ray.serve.llm.deployment import LLMServer
-from ray.serve.llm.ingress import OpenAIIngress as LLMRouter
+from ray.serve.llm.deployment import LLMServer as _LLMServer
+from ray.serve.llm.ingress import OpenAIIngress as _LLMRouter
 
 
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import PublicAPI, Deprecated
 
 if TYPE_CHECKING:
     from ray.serve.deployment import Application
@@ -57,6 +57,21 @@ class LoraConfig(_LoraConfig):
     """The configuration for loading an LLM model with LoRA."""
 
     pass
+
+#############
+# Deployments
+#############
+
+
+@Deprecated(message="Use ray.serve.llm.deployment.LLMServer instead")
+class LLMServer(_LLMServer):
+    pass
+
+
+@Deprecated(message="Use ray.serve.llm.ingress.OpenAIIngress instead")
+class LLMRouter(_LLMRouter):
+    pass
+
 
 
 ##########
