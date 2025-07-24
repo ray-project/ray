@@ -41,7 +41,8 @@ def test_not_running_in_asyncio_loop(serve_instance, use_fastapi: bool):
 
     serve.run(D.bind())
     # Would error if the check fails.
-    httpx.get(f"{get_application_url()}/").raise_for_status()
+    base_url = get_application_url()
+    httpx.get(f"{base_url}/").raise_for_status()
 
 
 @pytest.mark.skipif(
