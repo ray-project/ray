@@ -492,18 +492,16 @@ Status PlasmaClient::Impl::GetBuffers(
     } else {
       PlasmaObject *object = &object_entry->second->object;
 
-      std::shared_ptr<Buffer> physical_buf;
       RAY_LOG(DEBUG) << "Plasma Get " << object_ids[i]
                      << ", data size: " << object->data_size
                      << ", metadata size: " << object->metadata_size;
-      if (object->device_num == 0) {
-        uint8_t *data = LookupMmappedFile(object->store_fd);
-        physical_buf = std::make_shared<SharedMemoryBuffer>(
-            data + object->data_offset, object->data_size + object->metadata_size);
-      } else {
-        RAY_LOG(FATAL) << "GPU library is not enabled.";
-      }
+      RAY_CHECK(object->device_num == 0) << "GPU library is not enabled.";
+
+      uint8_t *data = LookupMmappedFile(object->store_fd);
+      auto physical_buf = std::make_shared<SharedMemoryBuffer>(
+          data + object->data_offset, object->data_size + object->metadata_size);
       physical_buf = wrap_buffer(object_ids[i], physical_buf);
+
       object_buffers[i].data =
           SharedMemoryBuffer::Slice(physical_buf, 0, object->data_size);
       object_buffers[i].metadata = SharedMemoryBuffer::Slice(
@@ -532,13 +530,13 @@ Status PlasmaClient::Impl::GetBuffers(
   std::vector<PlasmaObject> object_data(num_objects);
   std::vector<MEMFD_TYPE> store_fds;
   std::vector<int64_t> mmap_sizes;
-  RAY_RETURN_NOT_OK(ReadGetReply(buffer.data(),
-                                 buffer.size(),
-                                 received_object_ids.data(),
-                                 object_data.data(),
-                                 num_objects,
-                                 store_fds,
-                                 mmap_sizes));
+  ReadGetReply(buffer.data(),
+               buffer.size(),
+               received_object_ids.data(),
+               object_data.data(),
+               num_objects,
+               store_fds,
+               mmap_sizes);
 
   // We mmap all of the file descriptors here so that we can avoid look them up
   // in the subsequent loop based on just the store file descriptor and without
@@ -574,18 +572,16 @@ Status PlasmaClient::Impl::GetBuffers(
       }
       auto &object_entry = objects_in_use_[received_object_ids[i]];
 
-      std::shared_ptr<Buffer> physical_buf;
       RAY_LOG(DEBUG) << "Plasma Get " << received_object_ids[i]
                      << ", data size: " << object_entry->object.data_size
                      << ", metadata size: " << object_entry->object.metadata_size;
-      if (object_entry->object.device_num == 0) {
-        uint8_t *data = LookupMmappedFile(object_entry->object.store_fd);
-        physical_buf = std::make_shared<SharedMemoryBuffer>(
-            data + object_entry->object.data_offset,
-            object_entry->object.data_size + object_entry->object.metadata_size);
-      } else {
-        RAY_LOG(FATAL) << "Arrow GPU library is not enabled.";
-      }
+      RAY_CHECK(object_entry->object.device_num == 0)
+          << "Arrow GPU library is not enabled.";
+      uint8_t *data = LookupMmappedFile(object_entry->object.store_fd);
+      auto physical_buf = std::make_shared<SharedMemoryBuffer>(
+          data + object_entry->object.data_offset,
+          object_entry->object.data_size + object_entry->object.metadata_size);
+
       // Finish filling out the return values.
       physical_buf = wrap_buffer(object_ids[i], physical_buf);
       object_buffers[i].data =
@@ -666,14 +662,18 @@ Status PlasmaClient::Impl::Get(const std::vector<ObjectID> &object_ids,
                                bool is_from_worker) {
   std::lock_guard<std::recursive_mutex> guard(client_mutex_);
 
-  const auto wrap_buffer = [=](const ObjectID &object_id,
-                               const std::shared_ptr<Buffer> &buffer) {
+  const auto wrap_buffer = [this](const ObjectID &object_id,
+                                  const std::shared_ptr<Buffer> &buffer) {
     return std::make_shared<PlasmaBuffer>(shared_from_this(), object_id, buffer);
   };
   const size_t num_objects = object_ids.size();
   *out = std::vector<ObjectBuffer>(num_objects);
-  return GetBuffers(
-      &object_ids[0], num_objects, timeout_ms, wrap_buffer, &(*out)[0], is_from_worker);
+  return GetBuffers(object_ids.data(),
+                    num_objects,
+                    timeout_ms,
+                    wrap_buffer,
+                    out->data(),
+                    is_from_worker);
 }
 
 Status PlasmaClient::Impl::MarkObjectUnused(const ObjectID &object_id) {
