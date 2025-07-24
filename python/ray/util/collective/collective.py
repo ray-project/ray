@@ -1,4 +1,5 @@
 """APIs exposed under the namespace ray.util.collective."""
+
 import logging
 import os
 from typing import List
@@ -18,13 +19,6 @@ try:
 except ImportError:
     _NCCL_AVAILABLE = False
     _LOG_NCCL_WARNING = True
-
-try:
-    from ray.util.collective.collective_group.gloo_collective_group import GLOOGroup
-
-    _GLOO_AVAILABLE = True
-except ImportError:
-    _GLOO_AVAILABLE = False
 
 
 try:
@@ -47,10 +41,6 @@ def nccl_available():
         )
         _LOG_NCCL_WARNING = False
     return _NCCL_AVAILABLE
-
-
-def gloo_available():
-    return _GLOO_AVAILABLE
 
 
 def torch_distributed_available():
@@ -80,24 +70,14 @@ class GroupManager(object):
         backend = types.Backend(backend)
         if backend == types.Backend.MPI:
             raise RuntimeError("Ray does not support MPI.")
-        elif backend == types.Backend.GLOO:
-            logger.debug("Creating GLOO group: '{}'...".format(group_name))
-            g = GLOOGroup(
-                world_size,
-                rank,
-                group_name,
-                store_type="ray_internal_kv",
-                device_type="tcp",
-                gloo_timeout=gloo_timeout,
-            )
-        elif backend == types.Backend.NCCL:
-            logger.debug("Creating NCCL group: '{}'...".format(group_name))
-            g = NCCLGroup(world_size, rank, group_name)
-        elif backend == types.Backend.TORCH_GLOO:
+        elif backend == types.Backend.GLOO or backend == types.Backend.TORCH_GLOO:
             logger.debug(
                 "Creating torch.distributed GLOO group: '{}'...".format(group_name)
             )
             g = TorchGLOOGroup(world_size, rank, group_name)
+        elif backend == types.Backend.NCCL:
+            logger.debug("Creating NCCL group: '{}'...".format(group_name))
+            g = NCCLGroup(world_size, rank, group_name)
         else:
             raise RuntimeError(f"Unexpected backend: {backend}")
 
@@ -772,15 +752,12 @@ def _check_single_tensor_input(tensor):
 
 def _check_backend_availability(backend: types.Backend):
     """Check whether the backend is available."""
-    if backend == types.Backend.GLOO:
-        if not gloo_available():
-            raise RuntimeError("GLOO is not available.")
+    if backend == types.Backend.GLOO or backend == types.Backend.TORCH_GLOO:
+        if not torch_distributed_available():
+            raise RuntimeError("torch.distributed is not available.")
     elif backend == types.Backend.NCCL:
         if not nccl_available():
             raise RuntimeError("NCCL is not available.")
-    elif backend == types.Backend.TORCH_GLOO:
-        if not torch_distributed_available():
-            raise RuntimeError("torch.distributed is not available.")
 
 
 def _check_inside_actor():
