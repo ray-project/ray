@@ -9,11 +9,18 @@ from ray.llm._internal.serve.configs.server_models import (
 )
 
 # For backward compatibility
-from ray.serve.llm.deployment import LLMServer as _LLMServer
-from ray.serve.llm.ingress import OpenAIIngress as _LLMRouter
+from ray.llm._internal.serve.deployments.llm.llm_server import (
+    LLMServer as _LLMServer,
+)
+from ray.llm._internal.serve.deployments.routers.router import (
+    LLMRouter as _LLMRouter,
+)
 
 
-from ray.util.annotations import PublicAPI, Deprecated
+from ray.util.annotations import PublicAPI
+# Using Deprecated from rllib since they are retuning better messages.
+# TODO: Ray core should inherit that.
+from ray.rllib.utils.deprecation import Deprecated
 
 if TYPE_CHECKING:
     from ray.serve.deployment import Application
@@ -62,13 +69,20 @@ class LoraConfig(_LoraConfig):
 # Deployments
 #############
 
-
-@Deprecated(message="Use ray.serve.llm.deployment.LLMServer instead")
+@Deprecated(
+    old="ray.serve.llm.LLMServer", 
+    new="ray.serve.llm.deployment.LLMServer", 
+    error=False
+)
 class LLMServer(_LLMServer):
     pass
 
 
-@Deprecated(message="Use ray.serve.llm.ingress.OpenAIIngress instead")
+@Deprecated(
+    old="ray.serve.llm.LLMRouter", 
+    new="ray.serve.llm.ingress.OpenAIIngress", 
+    error=False
+)
 class LLMRouter(_LLMRouter):
     pass
 
