@@ -197,12 +197,14 @@ class ResourceRequestUtil(ProtobufUtil):
         """
         Make a resource request from the given resources map.
         Args:
-            resources_map: the resources map
-            constraints: optional list of placement constraints (affinity/anti-affinity)
-            label_selectors: optional list of label selectors.
-                             Each selector is a list of (label_key, operator, label_values)
+            resources_map: Mapping of resource names to quantities.
+            constraints: Optional placement constraints. Each tuple consists of
+                (constraint_type, label_key, label_value), where `constraint_type`
+                is a PlacementConstraintType (AFFINITY or ANTI_AFFINITY).
+            label_selectors: Optional list of label selectors. Each selector is
+                a list of (label_key, operator_enum, label_values) tuples.
         Returns:
-            request: the resource request
+            request: the ResourceRequest object
         """
         request = ResourceRequest()
         for resource_name, quantity in resources_map.items():
