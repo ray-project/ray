@@ -1050,7 +1050,7 @@ class ReporterAgent(
         self._disk_io_stats_hist.append((now, disk_stats))
         disk_speed_stats = self._compute_speed_from_hist(self._disk_io_stats_hist)
 
-        gpus = self._get_gpu_process_usages()
+        gpus = self._get_gpu_usage()
         stats = {
             "now": now,
             "hostname": self._hostname,
@@ -1225,7 +1225,7 @@ class ReporterAgent(
         if total_gpu_percentage > 0.0:
             records.append(
                 Record(
-                    gauge=METRICS_GAUGES["component_gpu_utilization"],
+                    gauge=METRICS_GAUGES["component_gpu_percentage"],
                     value=total_gpu_percentage,
                     tags=tags,
                 )
@@ -1255,7 +1255,7 @@ class ReporterAgent(
         )
         records.append(
             Record(
-                gauge=METRICS_GAUGES["component_gpu_utilization"],
+                gauge=METRICS_GAUGES["component_gpu_percentage"],
                 value=0.0,
                 tags=tags,
             )
