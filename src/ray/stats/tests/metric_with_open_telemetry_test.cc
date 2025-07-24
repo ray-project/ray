@@ -133,7 +133,6 @@ struct GaugeMetricCase {
 class GaugeMetricTest : public MetricTest,
                         public ::testing::WithParamInterface<GaugeMetricCase> {
  public:
-
   std::optional<double> GetObservableMetricValue(
       const std::string &name,
       const absl::flat_hash_map<std::string, std::string> &tags) {
@@ -161,12 +160,13 @@ TEST_P(GaugeMetricTest, RecordsValueAndTagsForAllMetricTypes) {
   LegacyMetricGaugeTest.Record(tc.record_value, tc.record_tags);
 
   // Verify observations
-  auto opt = GetObservableMetricValue(tc.metric_name,tc.expected_tags);
+  auto opt = GetObservableMetricValue(tc.metric_name, tc.expected_tags);
   ASSERT_TRUE(opt.has_value());
   EXPECT_EQ(opt, tc.expected_value);
 
   // verify legacy metric observations
-  auto legacy_opt = GetObservableMetricValue("legacy_" + tc.metric_name,tc.expected_tags);
+  auto legacy_opt =
+      GetObservableMetricValue("legacy_" + tc.metric_name, tc.expected_tags);
   ASSERT_TRUE(legacy_opt.has_value());
   EXPECT_EQ(legacy_opt, tc.expected_value);
 }
@@ -186,7 +186,7 @@ INSTANTIATE_TEST_SUITE_P(
         GaugeMetricCase{"metric_gauge_test",
                         52.0,
                         {{"Tag1", "Value2"}, {"Tag2", "Value2"}},
-                        { {stats::TagKeyType::Register("Tag3"), "Global"}},
+                        {{stats::TagKeyType::Register("Tag3"), "Global"}},
                         {{"Tag1", "Value2"}, {"Tag2", "Value2"}, {"Tag3", "Global"}},
                         52.0},
         // Gauge metric recorded with unsupported tag
