@@ -160,6 +160,15 @@ class TestCli(unittest.TestCase):
     def test_subset(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             _copy_data_to_tmpdir(tmpdir)
+            _save_file_as(
+                Path(tmpdir) / "requirement_constraints_test.txt",
+                Path(tmpdir) / "requirement_constraints_subset.txt",
+            )
+            _replace_in_file(
+                Path(tmpdir) / "requirement_constraints_subset.txt",
+                "pyperclip<=1.6.0",
+                "",
+            )
             manager = DependencySetManager(
                 config_path="test.config.yaml",
                 workspace_dir=tmpdir,
@@ -181,6 +190,50 @@ class TestCli(unittest.TestCase):
             output_file = Path(tmpdir) / "requirements_compiled_subset_general.txt"
             output_text = output_file.read_text()
             output_file_valid = Path(tmpdir) / "requirements_compiled_test_subset.txt"
+            output_text_valid = output_file_valid.read_text()
+
+            assert output_text == output_text_valid
+
+    def test_subset_with_new_package(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _copy_data_to_tmpdir(tmpdir)
+            _save_file_as(
+                Path(tmpdir) / "requirement_constraints_test.txt",
+                Path(tmpdir) / "requirement_constraints_subset.txt",
+            )
+            _save_file_as(
+                Path(tmpdir) / "requirements_test.txt",
+                Path(tmpdir) / "requirements_test_general.txt",
+            )
+            # Remove pyperclip from requirements_test_general.txt
+            _replace_in_file(
+                Path(tmpdir) / "requirements_test_general.txt",
+                "pyperclip",
+                "",
+            )
+            manager = DependencySetManager(
+                config_path="test.config.yaml",
+                workspace_dir=tmpdir,
+            )
+            # Compile general_depset with only the emoji package
+            manager.compile(
+                constraints=["requirement_constraints_test.txt"],
+                requirements=["requirements_test_general.txt"],
+                args=["--no-annotate", "--no-header"] + DEFAULT_UV_FLAGS.copy(),
+                name="general_depset",
+                output="requirements_compiled_general.txt",
+            )
+            # Subset general_depset with the new package pyperclip in requirement_constraints_subset.txt
+            manager.subset(
+                source_depset="general_depset",
+                requirements=["requirement_constraints_subset.txt"],
+                args=["--no-annotate", "--no-header"] + DEFAULT_UV_FLAGS.copy(),
+                name="subset_general_depset",
+                output="requirements_compiled_subset_general.txt",
+            )
+            output_file = Path(tmpdir) / "requirements_compiled_subset_general.txt"
+            output_text = output_file.read_text()
+            output_file_valid = Path(tmpdir) / "requirements_compiled_test.txt"
             output_text_valid = output_file_valid.read_text()
 
             assert output_text == output_text_valid
@@ -229,6 +282,23 @@ def _replace_in_file(filepath, old, new):
     contents = contents.replace(old, new)
 
     with open(filepath, "w") as f:
+        f.write(contents)
+
+
+def _append_to_file(filepath, new):
+    with open(filepath, "r") as f:
+        contents = f.read()
+
+    contents = contents + new
+
+    with open(filepath, "w") as f:
+        f.write(contents)
+
+
+def _save_file_as(input_file, output_file):
+    with open(input_file, "r") as f:
+        contents = f.read()
+    with open(output_file, "w") as f:
         f.write(contents)
 
 
