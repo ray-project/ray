@@ -176,10 +176,7 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
       }
     } else {
       RAY_CHECK(objects_valid);
-      // This is a product of status being too large of an enum. If this was constrained
-      // to just the 3 possible errors we wouldn't need this ray check to check our work
-      // and the type system would be enforcing for us.
-      RAY_CHECK(status.ok());
+      RAY_CHECK_OK(status);
       send_reply_callback(Status::OK(), nullptr, nullptr);
     }
   };

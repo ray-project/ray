@@ -3216,10 +3216,6 @@ Status CoreWorker::ExecuteTask(
     std::string *application_error) {
   RAY_LOG(DEBUG) << "Executing task, task info = " << task_spec.DebugString();
 
-  for (size_t i = 0; i < task_spec.NumReturns(); i++) {
-    return_objects->emplace_back(task_spec.ReturnId(i), nullptr);
-  }
-
   // If the worker is exited via Exit API, we shouldn't execute tasks anymore.
   if (IsExiting()) {
     absl::MutexLock lock(&mutex_);
@@ -3275,10 +3271,12 @@ Status CoreWorker::ExecuteTask(
   std::vector<ObjectID> borrowed_ids;
   RAY_CHECK_OK(GetAndPinArgsForExecutor(task_spec, &args, &arg_refs, &borrowed_ids));
 
+  for (size_t i = 0; i < task_spec.NumReturns(); i++) {
+    return_objects->emplace_back(task_spec.ReturnId(i), nullptr);
+  }
   // For dynamic tasks, pass the return IDs that were dynamically generated on
   // the first execution.
   if (!task_spec.ReturnsDynamic()) {
-    RAY_LOG(ERROR) << "ReturnsDynamic is false";
     dynamic_return_objects = nullptr;
   } else if (task_spec.AttemptNumber() > 0) {
     for (const auto &dynamic_return_id : task_spec.DynamicReturnIds()) {
