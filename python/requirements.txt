@@ -26,7 +26,7 @@ numpy>=1.20
 pyarrow >= 9.0.0
 
 # ray[all]
-smart_open
+smart_open[s3]
 lz4
 numpy>=1.20
 aiorwlock

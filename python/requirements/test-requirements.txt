@@ -10,7 +10,7 @@ azure-mgmt-network==25.4.0
 azure-mgmt-resource==23.1.1
 msrestazure==0.6.4
 beautifulsoup4==4.11.1
-boto3==1.26.76
+boto3==1.28.0
 # Todo: investigate if we can get rid of this and exchange for ray.cloudpickle
 cloudpickle==2.2.0 ; python_version < "3.12"
 cloudpickle==3.0.0 ; python_version >= "3.12"
