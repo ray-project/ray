@@ -1739,7 +1739,7 @@ Status CoreWorker::ExperimentalRegisterMutableObjectReaderRemote(
     conn->RegisterMutableObjectReader(
         req,
         [&promise, num_replied, num_requests, addr](
-            const Status &status, const rpc::RegisterMutableObjectReaderReply &reply) {
+            const Status &status, const rpc::RegisterMutableObjectReaderReply &) {
           RAY_CHECK_OK(status);
           *num_replied += 1;
           if (*num_replied == num_requests) {
@@ -2254,8 +2254,8 @@ json CoreWorker::OverrideRuntimeEnv(const json &child,
 
 std::shared_ptr<rpc::RuntimeEnvInfo> CoreWorker::OverrideTaskOrActorRuntimeEnvInfo(
     const std::string &serialized_runtime_env_info) const {
-  auto factory = [this](const std::string &serialized_runtime_env_info) {
-    return OverrideTaskOrActorRuntimeEnvInfoImpl(serialized_runtime_env_info);
+  auto factory = [this](const std::string &runtime_env_info_str) {
+    return OverrideTaskOrActorRuntimeEnvInfoImpl(runtime_env_info_str);
   };
   return runtime_env_json_serialization_cache_.GetOrCreate(serialized_runtime_env_info,
                                                            std::move(factory));
@@ -3531,12 +3531,12 @@ bool CoreWorker::PinExistingReturnObject(const ObjectID &return_id,
         owner_address,
         {return_id},
         generator_id,
-        [return_id, pinned_return_object](const Status &status,
+        [return_id, pinned_return_object](const Status &pin_object_status,
                                           const rpc::PinObjectIDsReply &reply) {
           // RPC to the local raylet should never fail.
-          if (!status.ok()) {
+          if (!pin_object_status.ok()) {
             RAY_LOG(ERROR) << "Request to local raylet to pin object failed: "
-                           << status.ToString();
+                           << pin_object_status.ToString();
             return;
           }
           if (!reply.successes(0)) {

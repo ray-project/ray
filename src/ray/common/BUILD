@@ -290,6 +290,7 @@ ray_cc_library(
     srcs = ["status.cc"],
     hdrs = ["status.h"],
     deps = [
+        ":macros",
         ":source_location",
         "//src/ray/util:logging",
         "//src/ray/util:macros",
