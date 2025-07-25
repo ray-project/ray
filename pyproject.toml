@@ -1,0 +1,7 @@
+[project]
+name = "d4rllib"
+version = "0.1.0"
+
+[build-system]
+requires = ["setuptools>=61.0"] # Or "hatchling", "flit-core", etc.
+build-backend = "setuptools.build_meta" # Or appropriate build backend
