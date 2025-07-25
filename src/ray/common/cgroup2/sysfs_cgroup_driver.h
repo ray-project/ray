@@ -25,7 +25,7 @@
 // Used to identify if a filesystem is mounted using cgroupv2.
 // See: https://docs.kernel.org/admin-guide/cgroup-v2.html#mounting
 #ifndef CGROUP2_SUPER_MAGIC
-#define CGROUP2_SUPER_MAGIC = 0x63677270
+#define CGROUP2_SUPER_MAGIC 0x63677270
 #endif
 
 namespace ray {

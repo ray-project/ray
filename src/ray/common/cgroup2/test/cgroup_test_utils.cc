@@ -108,7 +108,7 @@ TempDirectory::~TempDirectory() { std::filesystem::remove_all(path_); }
 ray::Status TerminateChildProcessAndWaitForTimeout(pid_t pid, int fd, int timeout_ms) {
   if (kill(pid, SIGTERM) == -1) {
     return ray::Status::Invalid(
-        absl::StrFormat("Failed to send SIGKILL to pid: %i.\n"
+        absl::StrFormat("Failed to send SIGTERM to pid: %i.\n"
                         "Error: %s",
                         pid,
                         strerror(errno)));

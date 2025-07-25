@@ -137,7 +137,7 @@ class CgroupDriverInterface {
     1) the cgroup must have the relevant controller enabled e.g. memory.min cannot be
     enabled if the memory controller is not enabled.
     2) the constraint must be supported in Ray (@see supported_constraints_).
-    3) the constraint value must be in the correct range (@see supported_constriants_).
+    3) the constraint value must be in the correct range (@see supported_constraints_).
 
     @param cgroup is an absolute path to the cgroup.
     @param constraint the name of the constraint.
@@ -183,14 +183,14 @@ class CgroupDriverInterface {
       const std::string &cgroup) = 0;
 
   struct Constraint {
-    std::pair<int, int> range;
+    std::pair<size_t, size_t> range;
     std::string controller;
   };
 
  protected:
   const std::unordered_map<std::string, Constraint> supported_constraints_ = {
       {"cpu.weight", {{1, 10000}, "cpu"}},
-      {"memory.min", {{0, std::numeric_limits<int>::max()}, "memory"}},
+      {"memory.min", {{0, std::numeric_limits<size_t>::max()}, "memory"}},
   };
   const std::unordered_set<std::string> supported_controllers_ = {"cpu", "memory"};
 };
