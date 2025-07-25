@@ -183,6 +183,7 @@ def check_ray_stop():
 @pytest.fixture(scope="function")
 def ray_start_stop():
     subprocess.check_output(["ray", "stop", "--force"])
+    ray.shutdown()
     wait_for_condition(
         check_ray_stop,
         timeout=15,
@@ -192,7 +193,10 @@ def ray_start_stop():
         lambda: httpx.get("http://localhost:8265/api/ray/version").status_code == 200,
         timeout=15,
     )
+    ray.init("auto")
     yield
+    serve.shutdown()
+    ray.shutdown()
     subprocess.check_output(["ray", "stop", "--force"])
     wait_for_condition(
         check_ray_stop,
@@ -253,6 +257,7 @@ def ray_instance(request):
         },
     )
 
+    serve.shutdown()
     ray.shutdown()
 
     os.environ.clear()
