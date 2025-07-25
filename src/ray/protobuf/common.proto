@@ -615,10 +615,6 @@ message TaskInfoEntry {
   map<string, string> label_selector = 28;
 }
 
-message LabelSelector {
-  map<string, string> label_selector_dict = 1;
-}
-
 message TaskAttempt {
   // The task id of the task attempt.
   bytes task_id = 1;
@@ -1029,6 +1025,32 @@ enum PlacementStrategy {
   // The group is not allowed to deploy more than one bundle on a node.
   STRICT_SPREAD = 3;
 }
+
+// The type of operator to use for the label constraint.
+enum LabelSelectorOperator {
+  // This is to support equality or in semantics.
+  LABEL_OPERATOR_IN = 0;
+  // This is to support not equal or not in semantics.
+  LABEL_OPERATOR_NOT_IN = 1;
+}
+
+// A node label constraint with a key, one or a list of values and an operator.
+message LabelSelectorConstraint {
+  // The key of the label
+  string label_key = 1;
+  // The operator to use for the label constraint.
+  LabelSelectorOperator operator = 2;
+  // The values to check against.
+  repeated string label_values = 3;
+}
+
+// A list of node label constraints to specify the label requirements in a
+// resource request.
+message LabelSelector {
+  // The list of node label constraints with AND semantics.
+  repeated LabelSelectorConstraint label_constraints = 1;
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 
 // Info about a named actor.
