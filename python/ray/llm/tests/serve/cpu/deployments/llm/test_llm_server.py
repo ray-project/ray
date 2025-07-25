@@ -137,7 +137,7 @@ class TestLLMServer:
         LLMResponseValidator.validate_embedding_response(chunks[0], dimensions)
 
     @pytest.mark.asyncio
-    async def test_check_health(self, create_server, mock_llm_config):
+    async def test_check_health(self, mock_llm_config):
         """Test health check functionality."""
 
         # Mock the engine's check_health method
@@ -150,7 +150,7 @@ class TestLLMServer:
                 self.check_health_called = True
 
         # Create a server with a mocked engine
-        server = create_server(mock_llm_config, engine_cls=LocalMockEngine)
+        server = LLMServer.sync_init(mock_llm_config, engine_cls=LocalMockEngine)
         await server.start()
 
         # Perform the health check, no exceptions should be raised
@@ -160,9 +160,9 @@ class TestLLMServer:
         assert server.engine.check_health_called
 
     @pytest.mark.asyncio
-    async def test_llm_config_property(self, create_server, mock_llm_config):
+    async def test_llm_config_property(self, mock_llm_config):
         """Test the llm_config property."""
-        server = create_server(mock_llm_config, engine_cls=MockVLLMEngine)
+        server = LLMServer.sync_init(mock_llm_config, engine_cls=MockVLLMEngine)
         await server.start()
         llm_config = await server.llm_config()
         assert isinstance(llm_config, type(mock_llm_config))
@@ -257,12 +257,12 @@ class TestLLMServer:
             )
 
     @pytest.mark.asyncio
-    async def test_push_telemetry(self, create_server, mock_llm_config):
+    async def test_push_telemetry(self, mock_llm_config):
         """Test that the telemetry push is called properly."""
         with patch(
             "ray.llm._internal.serve.deployments.llm.llm_server.push_telemetry_report_for_all_models"
         ) as mock_push_telemetry:
-            server = create_server(mock_llm_config, engine_cls=MockVLLMEngine)
+            server = LLMServer.sync_init(mock_llm_config, engine_cls=MockVLLMEngine)
             await server.start()
             mock_push_telemetry.assert_called_once()
 

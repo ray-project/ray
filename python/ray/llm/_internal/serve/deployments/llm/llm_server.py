@@ -121,7 +121,7 @@ class LLMServer(_LLMServerBase):
     3. Batching in case of streaming (only for chat and completions).
     4. Telemetry reporting.
 
-    Usage Patterns (Ed's Pattern):
+    Usage Patterns:
 
     1. Basic pattern (for testing):
         server = LLMServer.sync_init(llm_config)  # Sync constructor, unstarted
@@ -181,7 +181,7 @@ class LLMServer(_LLMServerBase):
     ) -> "LLMServer":
         """Synchronous constructor that returns an unstarted instance.
 
-        This is used for testing Edward's pattern where initialization
+        This is used for testing the new pattern where initialization
         and starting are explicitly separated.
 
         Args:
@@ -310,9 +310,9 @@ class LLMServer(_LLMServerBase):
         Returns:
             An AsyncGenerator of the response. If stream is True and batching is enabled, then the generator will yield a list of streaming responses (strings of the format data: {response_json}\n\n). Otherwise, it will yield the non-streaming response from engine directly.
         """
-        if self._llm_config.multiplex_config is not None:
-            await self._maybe_add_request_id_to_request(request)
-            await self._maybe_resolve_lora_from_multiplex()
+
+        await self._maybe_add_request_id_to_request(request)
+        await self._maybe_resolve_lora_from_multiplex()
 
         is_stream = hasattr(request, "stream") and request.stream
         if is_stream and batch_output_stream:
