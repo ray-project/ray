@@ -93,7 +93,7 @@ def test_infinite_retry():
         )
 
 
-def test_non_retryable_scheduling_error():
+def test_non_retryable_error():
     policy = create_failure_policy(FailureConfig(controller_failure_limit=10))
     controller_error = _non_retryable_scheduling_error()
     assert (
