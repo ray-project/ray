@@ -57,9 +57,9 @@ class DependencySetManager:
         raise KeyError(f"Dependency set {name} not found")
 
     def exec_uv_cmd(self, cmd: str, args: List[str]) -> str:
-        cmd = f"{uv_binary()} pip {cmd} {' '.join(args)}"
+        cmd = [uv_binary(), "pip", cmd, *args]
         click.echo(f"Executing command: {cmd}")
-        status = subprocess.run(cmd, shell=True)
+        status = subprocess.run(cmd, cwd=self.workspace.dir)
         if status.returncode != 0:
             raise RuntimeError(f"Failed to execute command: {cmd}")
         return status.stdout
