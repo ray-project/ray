@@ -60,7 +60,7 @@ def test_max_failures(max_failures):
 
 
 @pytest.mark.parametrize("controller_failure_limit", [0, 1, 10])
-def test_retry_controller_error(controller_failure_limit):
+def test_max_controller_failures(controller_failure_limit):
     policy = create_failure_policy(
         FailureConfig(controller_failure_limit=controller_failure_limit)
     )
