@@ -64,7 +64,6 @@ from ray.train.v2.api.callback import RayTrainCallback
 from ray.train.v2.api.exceptions import (
     ControllerError,
     TrainingFailedError,
-    WorkerGroupError,
 )
 from ray.train.v2.api.result import Result
 
@@ -383,7 +382,7 @@ class TrainController:
             assert isinstance(controller_state.scaling_decision, ResizeDecision)
             return self._execute_resize_decision(controller_state.scaling_decision)
         elif isinstance(controller_state, RunningState):
-            worker_group_status = await self._poll_workers()
+            worker_group_status: WorkerGroupPollStatus = await self._poll_workers()
 
             if worker_group_status.finished and not worker_group_status.errors:
                 return TrainControllerLoopIterationResult(
@@ -392,10 +391,7 @@ class TrainController:
                     next_state=FinishedState(),
                 )
             if worker_group_status.errors:
-                worker_group_error = WorkerGroupError(
-                    error_message=worker_group_status.get_error_string(),
-                    worker_failures=worker_group_status.errors,
-                )
+                worker_group_error = worker_group_status.get_worker_group_error()
                 failure_decision = self._failure_policy.make_decision(
                     training_failed_error=worker_group_error,
                 )

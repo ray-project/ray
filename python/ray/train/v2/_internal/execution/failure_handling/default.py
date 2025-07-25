@@ -67,7 +67,7 @@ class DefaultFailurePolicy(FailurePolicy):
                     if self.failure_config.controller_failure_limit != -1
                     else float("inf")
                 )
-            else:
+            elif isinstance(training_failed_error, WorkerGroupError):
                 self._worker_group_failures += 1
                 error_count = self._worker_group_failures
                 retry_limit = (
@@ -75,6 +75,8 @@ class DefaultFailurePolicy(FailurePolicy):
                     if self.failure_config.max_failures != -1
                     else float("inf")
                 )
+            else:
+                raise ValueError(f"Unknown error type: {type(training_failed_error)}")
 
             if error_count > retry_limit:
                 decision = FailureDecision.RAISE
