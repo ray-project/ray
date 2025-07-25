@@ -15,6 +15,7 @@ import onnxruntime
 
 from ray.rllib.core import (
     Columns,
+    COMPONENT_METRICS_LOGGER,
     COMPONENT_RL_MODULE,
     DEFAULT_AGENT_ID,
     DEFAULT_MODULE_ID,
@@ -230,6 +231,10 @@ class TcpClientInferenceEnvRunner(EnvRunner, Checkpointable):
             # Update our weights_seq_no, if the new one is > 0.
             if weights_seq_no > 0:
                 self._weights_seq_no = weights_seq_no
+
+        # Update all metrics logger states.
+        if COMPONENT_METRICS_LOGGER in state:
+            self.metrics.set_state(state[COMPONENT_METRICS_LOGGER])
 
         if self._blocked_on_state is True:
             self._send_set_state_message()
