@@ -1,0 +1,24 @@
+Obtaining file:///home/nick/python/ray/python
+  Preparing metadata (setup.py): started
+  Preparing metadata (setup.py): finished with status 'done'
+Requirement already satisfied: click>=7.0 in /mnt/anaconda3/base/envs/py311/lib/python3.11/site-packages (from ray==3.0.0.dev0) (8.2.1)
+Requirement already satisfied: filelock in /mnt/anaconda3/base/envs/py311/lib/python3.11/site-packages (from ray==3.0.0.dev0) (3.18.0)
+Requirement already satisfied: jsonschema in /mnt/anaconda3/base/envs/py311/lib/python3.11/site-packages (from ray==3.0.0.dev0) (4.25.0)
+Requirement already satisfied: msgpack<2.0.0,>=1.0.0 in /mnt/anaconda3/base/envs/py311/lib/python3.11/site-packages (from ray==3.0.0.dev0) (1.1.1)
+Requirement already satisfied: packaging in /mnt/anaconda3/base/envs/py311/lib/python3.11/site-packages (from ray==3.0.0.dev0) (25.0)
+Requirement already satisfied: protobuf!=3.19.5,>=3.15.3 in /mnt/anaconda3/base/envs/py311/lib/python3.11/site-packages (from ray==3.0.0.dev0) (6.31.1)
+Requirement already satisfied: pyyaml in /mnt/anaconda3/base/envs/py311/lib/python3.11/site-packages (from ray==3.0.0.dev0) (6.0.2)
+Requirement already satisfied: requests in /mnt/anaconda3/base/envs/py311/lib/python3.11/site-packages (from ray==3.0.0.dev0) (2.32.4)
+Requirement already satisfied: attrs>=22.2.0 in /mnt/anaconda3/base/envs/py311/lib/python3.11/site-packages (from jsonschema->ray==3.0.0.dev0) (25.3.0)
+Requirement already satisfied: jsonschema-specifications>=2023.03.6 in /mnt/anaconda3/base/envs/py311/lib/python3.11/site-packages (from jsonschema->ray==3.0.0.dev0) (2025.4.1)
+Requirement already satisfied: referencing>=0.28.4 in /mnt/anaconda3/base/envs/py311/lib/python3.11/site-packages (from jsonschema->ray==3.0.0.dev0) (0.36.2)
+Requirement already satisfied: rpds-py>=0.7.1 in /mnt/anaconda3/base/envs/py311/lib/python3.11/site-packages (from jsonschema->ray==3.0.0.dev0) (0.26.0)
+Requirement already satisfied: typing-extensions>=4.4.0 in /mnt/anaconda3/base/envs/py311/lib/python3.11/site-packages (from referencing>=0.28.4->jsonschema->ray==3.0.0.dev0) (4.14.1)
+Requirement already satisfied: charset_normalizer<4,>=2 in /mnt/anaconda3/base/envs/py311/lib/python3.11/site-packages (from requests->ray==3.0.0.dev0) (3.4.2)
+Requirement already satisfied: idna<4,>=2.5 in /mnt/anaconda3/base/envs/py311/lib/python3.11/site-packages (from requests->ray==3.0.0.dev0) (3.10)
+Requirement already satisfied: urllib3<3,>=1.21.1 in /mnt/anaconda3/base/envs/py311/lib/python3.11/site-packages (from requests->ray==3.0.0.dev0) (2.5.0)
+Requirement already satisfied: certifi>=2017.4.17 in /mnt/anaconda3/base/envs/py311/lib/python3.11/site-packages (from requests->ray==3.0.0.dev0) (2025.7.14)
+Installing collected packages: ray
+  DEPRECATION: Legacy editable install of ray==3.0.0.dev0 from file:///home/nick/python/ray/python (setup.py develop) is deprecated. pip 25.3 will enforce this behaviour change. A possible replacement is to add a pyproject.toml or enable --use-pep517, and use setuptools >= 64. If the resulting installation is not behaving as expected, try using --config-settings editable_mode=compat. Please consult the setuptools documentation for more information. Discussion can be found at https://github.com/pypa/pip/issues/11457
+  Running setup.py develop for ray
+Successfully installed ray-3.0.0.dev0
