@@ -102,7 +102,7 @@ def test_non_retryable_scheduling_error():
     )
 
 
-def test_infinite_reschedule():
+def test_infinite_controller_failure_retry():
     policy = create_failure_policy(FailureConfig(controller_failure_limit=-1))
     controller_error = _worker_group_resize_status_from_errors()
     for _ in range(10):
