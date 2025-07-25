@@ -238,6 +238,19 @@ blake3==1.0.4 \
     # via
     #   -c python/requirements_compiled_rayllm_test_py311_cu121.txt
     #   vllm
+boto3==1.28.54 \
+    --hash=sha256:22e37d8c4f2d97b5e5c6ccc1d9edc7760717990b0ba8b8ea17a58cc87e57c5c9 \
+    --hash=sha256:3cb2aee317a1b8686e3b23674e4099b8ff7451bd8acc61b9719acff86fa024d1
+    # via
+    #   -c python/requirements_compiled_rayllm_test_py311_cu121.txt
+    #   smart-open
+botocore==1.31.85 \
+    --hash=sha256:b8f35d65f2b45af50c36fc25cc1844d6bd61d38d2148b2ef133b8f10e198555d \
+    --hash=sha256:ce58e688222df73ec5691f934be1a2122a52c9d11d3037b586b3fff16ed6d25f
+    # via
+    #   -c python/requirements_compiled_rayllm_test_py311_cu121.txt
+    #   boto3
+    #   s3transfer
 cachetools==5.5.2 \
     --hash=sha256:1a661caa9175d26759571b2e19580f9d6393969e5dfca11fdb1f947a23e640d4 \
     --hash=sha256:d26a22bcc62eb95c3beabd9f1ee5e820d3d2704fe2967cbe350e20c8ffcd3f0a
@@ -1112,6 +1125,13 @@ jiter==0.8.2 \
     # via
     #   -c python/requirements_compiled_rayllm_test_py311_cu121.txt
     #   openai
+jmespath==1.0.1 \
+    --hash=sha256:02e2e4cc71b5bcab88332eebf907519190dd9e6e82107fa7f83b1003a6252980 \
+    --hash=sha256:90261b206d6defd58fdd5e85f478bf633a2901798906be2ad389150c5c60edbe
+    # via
+    #   -c python/requirements_compiled_rayllm_test_py311_cu121.txt
+    #   boto3
+    #   botocore
 jsonref==1.1.0 \
     --hash=sha256:32fe8e1d85af0fdefbebce950af85590b22b60f9e95443176adbde4e1ecea552 \
     --hash=sha256:590dc7773df6c21cbf948b5dac07a72a251db28b0238ceecce0a2abfa8ec30a9
@@ -2569,6 +2589,7 @@ python-dateutil==2.8.2 \
     --hash=sha256:961d03dc3453ebbc59dbdea9e4e11c5651520a876d0f4db161e8674aae935da9
     # via
     #   -c python/requirements_compiled_rayllm_test_py311_cu121.txt
+    #   botocore
     #   pandas
 python-dotenv==1.0.1 \
     --hash=sha256:e324ee90a023d808f1959c46bcbc04446a10ced277783dc6ee09987c37ec10ca \
@@ -2992,6 +3013,12 @@ rsa==4.7.2 \
     # via
     #   -c python/requirements_compiled_rayllm_test_py311_cu121.txt
     #   google-auth
+s3transfer==0.6.2 \
+    --hash=sha256:b014be3a8a2aab98cfe1abc7229cc5a9a0cf05eb9c1f2b86b230fd8df3f78084 \
+    --hash=sha256:cab66d3380cca3e70939ef2255d01cd8aece6a4907a9528740f668c4b0611861
+    # via
+    #   -c python/requirements_compiled_rayllm_test_py311_cu121.txt
+    #   boto3
 safetensors==0.5.2 \
     --hash=sha256:03c937100f38c9ff4c1507abea9928a6a9b02c9c1c9c3609ed4fb2bf413d4975 \
     --hash=sha256:1506e4c2eda1431099cebe9abf6c76853e95d0b7a95addceaa74c6019c65d8cf \
@@ -3385,6 +3412,7 @@ urllib3==1.26.19 \
     --hash=sha256:3e3d753a8618b86d7de333b4223005f68720bcd6a7d2bcb9fbd2229ec7c1e429
     # via
     #   -c python/requirements_compiled_rayllm_test_py311_cu121.txt
+    #   botocore
     #   requests
 uvicorn==0.22.0 \
     --hash=sha256:79277ae03db57ce7d9aa0567830bbb51d7a612f54d6e1e3e92da3ef24c2c8ed8 \

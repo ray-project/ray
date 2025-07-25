@@ -211,7 +211,7 @@ boltons==21.0.0
     #   semgrep
 boto==2.49.0
     # via gcs-oauth2-boto-plugin
-boto3==1.28.0
+boto3>=1.28.0
     # via
     #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements/test-requirements.txt
@@ -221,7 +221,7 @@ boto3==1.28.0
     #   moto
     #   smart-open
     #   snowflake-connector-python
-botocore==1.29.76
+botocore>=1.29.76
     # via
     #   -r python/requirements/cloud-requirements.txt
     #   aiobotocore

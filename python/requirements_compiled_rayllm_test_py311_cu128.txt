@@ -326,15 +326,16 @@ bleach==6.1.0 \
     # via
     #   -c python/requirements_compiled_ray_test_py311_cu128.txt
     #   nbconvert
-boto3==1.26.76 \
-    --hash=sha256:30c7d967ed1c6b5a05643e42cae9d4d36c3f1cb6782637ddc7007a104cfd9027 \
-    --hash=sha256:b4c2969b7677762914394b8273cc1905dfe5b71f250741c1a575487ae357e729
+boto3==1.28.54 \
+    --hash=sha256:22e37d8c4f2d97b5e5c6ccc1d9edc7760717990b0ba8b8ea17a58cc87e57c5c9 \
+    --hash=sha256:3cb2aee317a1b8686e3b23674e4099b8ff7451bd8acc61b9719acff86fa024d1
     # via
     #   -c python/requirements_compiled_ray_test_py311_cu128.txt
     #   -r python/requirements/cloud-requirements.txt
-botocore==1.29.76 \
-    --hash=sha256:70735b00cd529f152992231ca6757e458e5ec25db43767b3526e9a35b2f143b7 \
-    --hash=sha256:c2f67b6b3f8acf2968eafca06526f07b9fb0d27bac4c68a635d51abb675134a7
+    #   smart-open
+botocore==1.31.85 \
+    --hash=sha256:b8f35d65f2b45af50c36fc25cc1844d6bd61d38d2148b2ef133b8f10e198555d \
+    --hash=sha256:ce58e688222df73ec5691f934be1a2122a52c9d11d3037b586b3fff16ed6d25f
     # via
     #   -c python/requirements_compiled_ray_test_py311_cu128.txt
     #   -r python/requirements/cloud-requirements.txt
