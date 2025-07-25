@@ -9,7 +9,6 @@ from xgboost.core import Booster
 
 import ray.train
 from ray.train import Checkpoint
-from ray.tune import Checkpoint as RayTuneCheckpoint
 from ray.tune.utils import flatten_dict
 from ray.util.annotations import PublicAPI
 
@@ -55,7 +54,7 @@ class RayReportCallback(TrainingCallback):
     @classmethod
     def get_model(
         cls,
-        checkpoint: Union[Checkpoint, RayTuneCheckpoint],
+        checkpoint: Checkpoint,
         filename: str = CHECKPOINT_NAME,
     ) -> Booster:
         """Retrieve the model stored in a checkpoint reported by this callback.
@@ -100,50 +99,20 @@ class RayReportCallback(TrainingCallback):
         return report_dict
 
     @abstractmethod
-    def _get_checkpoint(
-        self, model: Booster
-    ) -> Union[Optional[Checkpoint], Optional[RayTuneCheckpoint]]:
+    def _get_checkpoint(self, model: Booster) -> Optional[Checkpoint]:
         """Get checkpoint from model.
 
         This method needs to be implemented by subclasses.
         """
         pass
 
+    @abstractmethod
     def after_iteration(self, model: Booster, epoch: int, evals_log: Dict):
-        self._evals_log = evals_log
+        pass
 
-        checkpointing_disabled = self._frequency == 0
-        # Ex: if frequency=2, checkpoint at epoch 1, 3, 5, ... (counting from 0)
-        should_checkpoint = (
-            not checkpointing_disabled and (epoch + 1) % self._frequency == 0
-        )
-
-        report_dict = self._get_report_dict(evals_log)
-        if should_checkpoint:
-            self._last_checkpoint_iteration = epoch
-            with self._get_checkpoint(model=model) as checkpoint:
-                self.report_fn(report_dict, checkpoint=checkpoint)
-
-        else:
-            self.report_fn(report_dict)
-
+    @abstractmethod
     def after_training(self, model: Booster) -> Booster:
-        if not self._checkpoint_at_end:
-            return model
-
-        if (
-            self._last_checkpoint_iteration is not None
-            and model.num_boosted_rounds() - 1 == self._last_checkpoint_iteration
-        ):
-            # Avoids a duplicate checkpoint if the checkpoint frequency happens
-            # to align with the last iteration.
-            return model
-
-        report_dict = self._get_report_dict(self._evals_log) if self._evals_log else {}
-        with self._get_checkpoint(model=model) as checkpoint:
-            self.report_fn(report_dict, checkpoint=checkpoint)
-
-        return model
+        pass
 
 
 @PublicAPI(stability="beta")
@@ -224,7 +193,6 @@ class RayTrainReportCallback(RayReportCallback):
             checkpoint_at_end=checkpoint_at_end,
             results_postprocessing_fn=results_postprocessing_fn,
         )
-        self.report_fn = ray.train.report
 
     @contextmanager
     def _get_checkpoint(self, model: Booster) -> Optional[Checkpoint]:
@@ -235,3 +203,39 @@ class RayTrainReportCallback(RayReportCallback):
                 yield Checkpoint(temp_checkpoint_dir)
         else:
             yield None
+
+    def after_iteration(self, model: Booster, epoch: int, evals_log: Dict):
+        self._evals_log = evals_log
+
+        checkpointing_disabled = self._frequency == 0
+        # Ex: if frequency=2, checkpoint at epoch 1, 3, 5, ... (counting from 0)
+        should_checkpoint = (
+            not checkpointing_disabled and (epoch + 1) % self._frequency == 0
+        )
+
+        report_dict = self._get_report_dict(evals_log)
+        if should_checkpoint:
+            self._last_checkpoint_iteration = epoch
+            with self._get_checkpoint(model=model) as checkpoint:
+                ray.train.report(report_dict, checkpoint=checkpoint)
+
+        else:
+            ray.train.report(report_dict)
+
+    def after_training(self, model: Booster) -> Booster:
+        if not self._checkpoint_at_end:
+            return model
+
+        if (
+            self._last_checkpoint_iteration is not None
+            and model.num_boosted_rounds() - 1 == self._last_checkpoint_iteration
+        ):
+            # Avoids a duplicate checkpoint if the checkpoint frequency happens
+            # to align with the last iteration.
+            return model
+
+        report_dict = self._get_report_dict(self._evals_log) if self._evals_log else {}
+        with self._get_checkpoint(model=model) as checkpoint:
+            ray.train.report(report_dict, checkpoint=checkpoint)
+
+        return model

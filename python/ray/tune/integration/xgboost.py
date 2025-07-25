@@ -8,7 +8,6 @@ from xgboost.core import Booster
 import ray.tune
 from ray.train.xgboost._xgboost_utils import RayReportCallback
 from ray.tune import Checkpoint
-from ray.tune.trainable.trainable_fn_utils import _in_tune_session
 from ray.util.annotations import Deprecated, PublicAPI
 
 
@@ -78,16 +77,48 @@ class TuneReportCheckpointCallback(RayReportCallback):
             checkpoint_at_end=checkpoint_at_end,
             results_postprocessing_fn=results_postprocessing_fn,
         )
-        self.report_fn = ray.tune.report
 
     @contextmanager
     def _get_checkpoint(self, model: Booster) -> Optional[Checkpoint]:
-        if _in_tune_session():
-            with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
-                model.save_model(Path(temp_checkpoint_dir, self._filename).as_posix())
-                yield Checkpoint(temp_checkpoint_dir)
+        with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
+            model.save_model(Path(temp_checkpoint_dir, self._filename).as_posix())
+            yield Checkpoint(temp_checkpoint_dir)
+
+    def after_iteration(self, model: Booster, epoch: int, evals_log: Dict):
+        self._evals_log = evals_log
+
+        checkpointing_disabled = self._frequency == 0
+        # Ex: if frequency=2, checkpoint at epoch 1, 3, 5, ... (counting from 0)
+        should_checkpoint = (
+            not checkpointing_disabled and (epoch + 1) % self._frequency == 0
+        )
+
+        report_dict = self._get_report_dict(evals_log)
+        if should_checkpoint:
+            self._last_checkpoint_iteration = epoch
+            with self._get_checkpoint(model=model) as checkpoint:
+                ray.tune.report(report_dict, checkpoint=checkpoint)
+
         else:
-            yield None
+            ray.tune.report(report_dict)
+
+    def after_training(self, model: Booster) -> Booster:
+        if not self._checkpoint_at_end:
+            return model
+
+        if (
+            self._last_checkpoint_iteration is not None
+            and model.num_boosted_rounds() - 1 == self._last_checkpoint_iteration
+        ):
+            # Avoids a duplicate checkpoint if the checkpoint frequency happens
+            # to align with the last iteration.
+            return model
+
+        report_dict = self._get_report_dict(self._evals_log) if self._evals_log else {}
+        with self._get_checkpoint(model=model) as checkpoint:
+            ray.tune.report(report_dict, checkpoint=checkpoint)
+
+        return model
 
 
 @Deprecated
