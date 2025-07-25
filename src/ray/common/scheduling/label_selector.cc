@@ -19,16 +19,33 @@
 
 namespace ray {
 
-// Constructor to parse LabelSelector data type from proto.
-StatusOr<LabelSelector> LabelSelector::FromProto(
+// Legacy constructor to parse LabelSelector data type from proto.
+LabelSelector::LabelSelector(
     const google::protobuf::Map<std::string, std::string> &label_selector) {
-  LabelSelector selector;
   for (const auto &[key, value] : label_selector) {
+    if (key.empty()) {
+      RAY_LOG(ERROR) << "Empty Label Selector key.";
+    }
+
+    AddConstraint(key, value);
+  }
+}
+
+StatusOr<LabelSelector> LabelSelector::StrictParse(
+    const google::protobuf::Map<std::string, std::string> &label_selector_map) {
+  LabelSelector selector;
+
+  for (const auto &[key, value] : label_selector_map) {
     if (key.empty()) {
       return Status::InvalidArgument("Empty label selector key is not supported.");
     }
-    RAY_RETURN_NOT_OK(selector.AddConstraint(key, value));
+
+    Status status = selector.AddConstraint(key, value);
+    if (!status.ok()) {
+      return status;  // Propagate first failure (e.g., bad "in()" syntax).
+    }
   }
+
   return selector;
 }
 

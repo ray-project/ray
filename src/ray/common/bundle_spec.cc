@@ -16,7 +16,7 @@
 
 namespace ray {
 
-void BundleSpecification::ComputeResources() {
+Status BundleSpecification::ComputeResources() {
   auto unit_resource = MapFromProtobuf(message_->unit_resources());
 
   if (unit_resource.empty()) {
@@ -30,11 +30,19 @@ void BundleSpecification::ComputeResources() {
 
     // Set LabelSelector required for scheduling this bundle if specified.
     // Parses string map from proto to LabelSelector data type.
-    unit_resource_->SetLabelSelector(LabelSelector(message_->label_selector()));
+    auto selector_status = LabelSelector::StrictParse(message_->label_selector());
+    if (!selector_status.ok()) {
+      RAY_LOG(ERROR) << "Invalid label selector for bundle: "
+                     << selector_status.status().ToString();
+      return selector_status.status();
+    }
+    unit_resource_->SetLabelSelector(std::move(selector_status.value()));
   }
 
   // Generate placement group bundle labels.
   ComputeBundleResourceLabels();
+
+  return Status::OK();
 }
 
 void BundleSpecification::ComputeBundleResourceLabels() {

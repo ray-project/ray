@@ -132,9 +132,13 @@ Status TaskSpecification::ComputeResources() {
   // Set LabelSelector required for scheduling if specified. Parses string map
   // from proto to LabelSelector data type. Returns an InvalidArgument Status if
   // a malformed label selector is passed to the Task.
-  RAY_ASSIGN_OR_RETURN(auto label_selector,
-                       LabelSelector::FromProto(message_->label_selector()));
-  label_selector_ = std::make_shared<LabelSelector>(std::move(label_selector));
+  auto selector_status = LabelSelector::StrictParse(message_->label_selector());
+  if (!selector_status.ok()) {
+    RAY_LOG(ERROR) << "Invalid label selector for task " << TaskId() << ": "
+                   << selector_status.status().ToString();
+    return selector_status.status();
+  }
+  label_selector_ = std::make_shared<LabelSelector>(std::move(selector_status.value()));
 
   return Status::OK();
 }

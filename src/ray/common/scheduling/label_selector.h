@@ -21,6 +21,7 @@
 #include "google/protobuf/map.h"
 #include "ray/common/status.h"
 #include "ray/common/status_or.h"
+#include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
 
@@ -59,7 +60,10 @@ class LabelSelector {
  public:
   LabelSelector() = default;
 
-  static StatusOr<LabelSelector> FromProto(
+  explicit LabelSelector(
+      const google::protobuf::Map<std::string, std::string> &label_selector);
+
+  static StatusOr<LabelSelector> StrictParse(
       const google::protobuf::Map<std::string, std::string> &label_selector_dict);
 
   Status AddConstraint(const std::string &key, const std::string &value);
