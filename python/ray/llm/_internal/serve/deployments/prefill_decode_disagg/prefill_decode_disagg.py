@@ -175,8 +175,7 @@ class PDProxyServer(LLMServer):
 
 
 def build_pd_openai_app(pd_serving_args: dict) -> Application:
-    """Build a deployable application utilizing prefill/decode disaggregation.
-    """
+    """Build a deployable application utilizing prefill/decode disaggregation."""
 
     pd_config = PDServingArgs.model_validate(pd_serving_args).parse_args()
 
