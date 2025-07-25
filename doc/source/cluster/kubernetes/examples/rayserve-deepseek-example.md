@@ -43,7 +43,7 @@ The `--accelerator` flag specifies the type and number of GPUs for each node in 
 ```{admonition} Note
 :class: note
 
-To create a node pool that uses reservations, you can specify the following parameters when trying to create nodepools:
+To create a node pool that uses reservations, you can specify the following parameters:
 * `--reservation-affinity=specific`
 * `--reservation=RESERVATION_NAME`
 * `--placement-policy=PLACEMENT_POLICY_NAME` (Optional)
