@@ -87,5 +87,5 @@ class GetActions(ConnectorV2):
 
             # For convenience and if possible, compute action logp from distribution
             # and add to output.
-            if Columns.ACTION_LOGP not in batch:
-                batch[Columns.ACTION_LOGP] = action_dist.logp(actions)
+            #if Columns.ACTION_LOGP not in batch:
+            #    batch[Columns.ACTION_LOGP] = action_dist.logp(actions)
