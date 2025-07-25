@@ -15,6 +15,8 @@
 #pragma once
 
 #include <boost/range/adaptor/map.hpp>
+#include <memory>
+#include <set>
 #include <string>
 #include <unordered_map>
 
