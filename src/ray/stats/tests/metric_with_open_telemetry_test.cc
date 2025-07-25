@@ -150,7 +150,7 @@ class GaugeMetricTest : public MetricTest,
   void TearDown() override { StatsConfig::instance().SetGlobalTags({}); }
 };
 
-TEST_P(GaugeMetricTest, RecordsValueAndTagsForAllMetricTypes) {
+TEST_P(GaugeMetricTest, TestGaugeMetricValidCases) {
   const auto &tc = GetParam();
   // Apply per-case global tags
   StatsConfig::instance().SetGlobalTags(tc.global_tags);
