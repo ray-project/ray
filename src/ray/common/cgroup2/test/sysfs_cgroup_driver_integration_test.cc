@@ -425,7 +425,7 @@ TEST_F(SysFsCgroupDriverIntegrationTest,
   EXPECT_EQ(controllers.size(), 0);
 }
 
-TEST_F(SysFsCgroupDriverIntegrationTest, MoveProcessesFailsIfSourceDoesntExist) {
+TEST_F(SysFsCgroupDriverIntegrationTest, MoveAllProcessesFailsIfSourceDoesntExist) {
   auto ancestor_cgroup_or_status =
       TempCgroupDirectory::Create(testing_cgroup_->GetPath(), S_IRWXU);
   ASSERT_TRUE(ancestor_cgroup_or_status.ok()) << ancestor_cgroup_or_status.ToString();
@@ -438,11 +438,11 @@ TEST_F(SysFsCgroupDriverIntegrationTest, MoveProcessesFailsIfSourceDoesntExist) 
   std::string non_existent_path =
       ancestor_cgroup->GetPath() + std::filesystem::path::preferred_separator + "nope";
   SysFsCgroupDriver driver;
-  Status s = driver.MoveProcesses(non_existent_path, dest_cgroup->GetPath());
+  Status s = driver.MoveAllProcesses(non_existent_path, dest_cgroup->GetPath());
   EXPECT_TRUE(s.IsNotFound()) << s.ToString();
 }
 
-TEST_F(SysFsCgroupDriverIntegrationTest, MoveProcessesFailsIfDestDoesntExist) {
+TEST_F(SysFsCgroupDriverIntegrationTest, MoveAllProcessesFailsIfDestDoesntExist) {
   auto ancestor_cgroup_or_status =
       TempCgroupDirectory::Create(testing_cgroup_->GetPath(), S_IRWXU);
   ASSERT_TRUE(ancestor_cgroup_or_status.ok()) << ancestor_cgroup_or_status.ToString();
@@ -455,12 +455,12 @@ TEST_F(SysFsCgroupDriverIntegrationTest, MoveProcessesFailsIfDestDoesntExist) {
   std::string non_existent_path =
       ancestor_cgroup->GetPath() + std::filesystem::path::preferred_separator + "nope";
   SysFsCgroupDriver driver;
-  Status s = driver.MoveProcesses(source_cgroup->GetPath(), non_existent_path);
+  Status s = driver.MoveAllProcesses(source_cgroup->GetPath(), non_existent_path);
   EXPECT_TRUE(s.IsNotFound()) << s.ToString();
 }
 
 TEST_F(SysFsCgroupDriverIntegrationTest,
-       MoveProcessesFailsIfNotReadWriteExecPermissionsForSource) {
+       MoveAllProcessesFailsIfNotReadWriteExecPermissionsForSource) {
   auto ancestor_cgroup_or_status =
       TempCgroupDirectory::Create(testing_cgroup_->GetPath(), S_IRWXU);
   ASSERT_TRUE(ancestor_cgroup_or_status.ok()) << ancestor_cgroup_or_status.ToString();
@@ -474,12 +474,12 @@ TEST_F(SysFsCgroupDriverIntegrationTest,
   ASSERT_TRUE(dest_cgroup_or_status.ok()) << dest_cgroup_or_status.ToString();
   auto dest_cgroup = std::move(dest_cgroup_or_status.value());
   SysFsCgroupDriver driver;
-  Status s = driver.MoveProcesses(source_cgroup->GetPath(), dest_cgroup->GetPath());
+  Status s = driver.MoveAllProcesses(source_cgroup->GetPath(), dest_cgroup->GetPath());
   EXPECT_TRUE(s.IsPermissionDenied()) << s.ToString();
 }
 
 TEST_F(SysFsCgroupDriverIntegrationTest,
-       MoveProcessesFailsIfNotReadWriteExecPermissionsForDest) {
+       MoveAllProcessesFailsIfNotReadWriteExecPermissionsForDest) {
   auto ancestor_cgroup_or_status =
       TempCgroupDirectory::Create(testing_cgroup_->GetPath(), S_IRWXU);
   ASSERT_TRUE(ancestor_cgroup_or_status.ok()) << ancestor_cgroup_or_status.ToString();
@@ -493,12 +493,12 @@ TEST_F(SysFsCgroupDriverIntegrationTest,
   ASSERT_TRUE(dest_cgroup_or_status.ok()) << dest_cgroup_or_status.ToString();
   auto dest_cgroup = std::move(dest_cgroup_or_status.value());
   SysFsCgroupDriver driver;
-  Status s = driver.MoveProcesses(source_cgroup->GetPath(), dest_cgroup->GetPath());
+  Status s = driver.MoveAllProcesses(source_cgroup->GetPath(), dest_cgroup->GetPath());
   EXPECT_TRUE(s.IsPermissionDenied()) << s.ToString();
 }
 
 TEST_F(SysFsCgroupDriverIntegrationTest,
-       MoveProcessesFailsIfNotReadWriteExecPermissionsForAncestor) {
+       MoveAllProcessesFailsIfNotReadWriteExecPermissionsForAncestor) {
   auto ancestor_cgroup_or_status =
       TempCgroupDirectory::Create(testing_cgroup_->GetPath(), S_IRWXU);
   ASSERT_TRUE(ancestor_cgroup_or_status.ok()) << ancestor_cgroup_or_status.ToString();
@@ -515,7 +515,7 @@ TEST_F(SysFsCgroupDriverIntegrationTest,
       << "Failed to chmod cgroup directory " << ancestor_cgroup->GetPath()
       << "\n Error: " << strerror(errno);
   SysFsCgroupDriver driver;
-  Status s = driver.MoveProcesses(source_cgroup->GetPath(), dest_cgroup->GetPath());
+  Status s = driver.MoveAllProcesses(source_cgroup->GetPath(), dest_cgroup->GetPath());
   EXPECT_TRUE(s.IsPermissionDenied()) << s.ToString();
   // Change the permissions back read, write, and execute so cgroup can be deleted.
   ASSERT_EQ(chmod(ancestor_cgroup->GetPath().c_str(), S_IRWXU), 0)
@@ -524,7 +524,7 @@ TEST_F(SysFsCgroupDriverIntegrationTest,
 }
 
 TEST_F(SysFsCgroupDriverIntegrationTest,
-       MoveProcessesSucceedsWithCorrectPermissionsAndValidCgroups) {
+       MoveAllProcessesSucceedsWithCorrectPermissionsAndValidCgroups) {
   auto source_cgroup_or_status =
       TempCgroupDirectory::Create(testing_cgroup_->GetPath(), S_IRWXU);
   ASSERT_TRUE(source_cgroup_or_status.ok()) << source_cgroup_or_status.ToString();
@@ -538,7 +538,7 @@ TEST_F(SysFsCgroupDriverIntegrationTest,
   ASSERT_TRUE(child_process_s.ok()) << child_process_s.ToString();
   auto [child_pid, child_pidfd] = child_process_s.value();
   SysFsCgroupDriver driver;
-  Status s = driver.MoveProcesses(source_cgroup->GetPath(), dest_cgroup->GetPath());
+  Status s = driver.MoveAllProcesses(source_cgroup->GetPath(), dest_cgroup->GetPath());
   ASSERT_TRUE(s.ok()) << s.ToString();
   // Assert that the child's pid is actually in the new file.
   std::string dest_cgroup_procs_file_path = dest_cgroup->GetPath() +

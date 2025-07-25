@@ -159,7 +159,7 @@ class SysFsCgroupDriver : public CgroupDriverInterface {
     @return InvalidArgument if process files could not be opened, read from, or written to
     correctly, ok otherwise.
     */
-  Status MoveProcesses(const std::string &from, const std::string &to) override;
+  Status MoveAllProcesses(const std::string &from, const std::string &to) override;
 
   /**
       The cgroup.subtree_control file has the list of all currently enabled

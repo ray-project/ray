@@ -182,7 +182,8 @@ StatusOr<std::unordered_set<std::string>> SysFsCgroupDriver::GetEnabledControlle
   return ReadControllerFile(controller_file_path);
 }
 
-Status SysFsCgroupDriver::MoveProcesses(const std::string &from, const std::string &to) {
+Status SysFsCgroupDriver::MoveAllProcesses(const std::string &from,
+                                           const std::string &to) {
   RAY_RETURN_NOT_OK(CheckCgroup(from));
   RAY_RETURN_NOT_OK(CheckCgroup(to));
   std::filesystem::path from_procs_file_path =
@@ -329,7 +330,7 @@ Status SysFsCgroupDriver::AddConstraint(const std::string &cgroup,
 
   // Check if the constraint value is out of range and therefore invalid.
   auto [low, high] = constraint_it->second.range;
-  int value = std::stoi(constraint_value);
+  size_t value = static_cast<size_t>(std::stoi(constraint_value));
   if (value < low || value > high) {
     return Status::InvalidArgument(absl::StrFormat(
         "Failed to apply constraint %s=%s to cgroup %s. %s can only have values "

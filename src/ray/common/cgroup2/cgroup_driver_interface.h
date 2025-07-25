@@ -93,7 +93,7 @@ class CgroupDriverInterface {
     PermissionDenied if current user doesn't have read, write, and execute permissions.
     Invalid if any errors occur while reading from and writing to cgroups.
    */
-  virtual Status MoveProcesses(const std::string &from, const std::string &to) = 0;
+  virtual Status MoveAllProcesses(const std::string &from, const std::string &to) = 0;
 
   /**
     Enables an available controller in a cgroup. A controller can be enabled if the
