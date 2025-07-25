@@ -273,6 +273,17 @@ class ParquetDatasink(_FileDatasink):
 
         basename_template = self._get_basename_template(filename, write_uuid)
 
+        import os
+
+        import pyarrow as pa
+
+        cpu_count = os.cpu_count()
+        num_tables = len(tables)
+        num_threads = min(max(1, num_tables // cpu_count), cpu_count)
+
+        pa.set_io_thread_count(num_threads)
+        pa.set_cpu_count(num_threads)
+
         ds.write_dataset(
             data=tables,
             base_dir=self.path,
@@ -283,7 +294,7 @@ class ParquetDatasink(_FileDatasink):
             format=FILE_FORMAT,
             existing_data_behavior=existing_data_behavior,
             partitioning_flavor="hive",
-            use_threads=False,  # Setting it to `False` to avoid running into thread contention issues at a node level.
+            use_threads=True,
             min_rows_per_group=min_rows_per_group,
             max_rows_per_group=max_rows_per_group,
             max_rows_per_file=max_rows_per_file,
