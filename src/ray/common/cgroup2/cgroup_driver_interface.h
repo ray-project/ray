@@ -96,7 +96,7 @@ class CgroupDriverInterface {
   virtual Status MoveAllProcesses(const std::string &from, const std::string &to) = 0;
 
   /**
-    Enables an available controller in a cgroup. A controller can be enabled if the
+    Enables an available controller on a cgroup. A controller can be enabled if the
     1) controller is enabled in the parent of the cgroup.
     2) cgroup has no children i.e. it's a leaf node.
 
