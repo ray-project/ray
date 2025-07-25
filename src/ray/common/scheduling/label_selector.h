@@ -19,6 +19,7 @@
 
 #include "absl/container/flat_hash_set.h"
 #include "google/protobuf/map.h"
+#include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
 
@@ -60,6 +61,8 @@ class LabelSelector {
   explicit LabelSelector(
       const google::protobuf::Map<std::string, std::string> &label_selector);
 
+  void ToProto(rpc::LabelSelector *out) const;
+
   void AddConstraint(const std::string &key, const std::string &value);
 
   void AddConstraint(LabelConstraint constraint) {
@@ -75,4 +78,32 @@ class LabelSelector {
   std::vector<LabelConstraint> constraints_;
 };
 
+inline bool operator==(const LabelConstraint &lhs, const LabelConstraint &rhs) {
+  return lhs.GetLabelKey() == rhs.GetLabelKey() &&
+         lhs.GetOperator() == rhs.GetOperator() &&
+         lhs.GetLabelValues() == rhs.GetLabelValues();
+}
+
+inline bool operator==(const LabelSelector &lhs, const LabelSelector &rhs) {
+  return lhs.GetConstraints() == rhs.GetConstraints();
+}
+
 }  // namespace ray
+
+namespace std {
+template <>
+struct hash<ray::LabelSelector> {
+  size_t operator()(ray::LabelSelector const &label_selector) const noexcept {
+    size_t seed = label_selector.GetConstraints().size();
+    // Add constraint key, operator, and values to hash seed
+    for (auto const &constraint : label_selector.GetConstraints()) {
+      seed ^= std::hash<std::string>()(constraint.GetLabelKey());
+      seed ^= std::hash<int>()(static_cast<int>(constraint.GetOperator()));
+      for (auto const &value : constraint.GetLabelValues()) {
+        seed ^= std::hash<std::string>()(value);
+      }
+    }
+    return seed;
+  }
+};
+}  // namespace std
