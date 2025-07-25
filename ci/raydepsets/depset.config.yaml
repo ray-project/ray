@@ -13,3 +13,9 @@ depsets:
     requirements:
       - python/requirements.txt
     output: python/test/requirements_compiled_general_py311_cpu.txt
+  - name: subset_general_depset
+    operation: subset
+    source_depset: general_depset
+    requirements:
+      - ci/raydepsets/cloud-requirements.txt
+    output: python/test/requirements_compiled_subset_general_py311_cpu.txt
