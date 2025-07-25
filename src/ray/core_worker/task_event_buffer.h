@@ -41,6 +41,9 @@ namespace core {
 namespace worker {
 
 using TaskAttempt = std::pair<TaskID, int32_t>;
+/// A pair of task definition event and task execution event.
+using RayEventsPair =
+    std::pair<std::optional<rpc::events::RayEvent>, std::optional<rpc::events::RayEvent>>;
 
 /// A wrapper class that will be converted to protobuf task events representation.
 ///
@@ -81,9 +84,7 @@ class TaskEvent {
   ///
   /// \param[out] ray_events The pair of TaskDefinitionEvent and TaskExecutionEvent to be
   /// filled.
-  virtual void ToRpcRayEvents(
-      std::pair<std::optional<rpc::events::RayEvent>,
-                std::optional<rpc::events::RayEvent>> &ray_events) = 0;
+  virtual void ToRpcRayEvents(RayEventsPair &ray_events) = 0;
 
   /// If it is a profile event.
   virtual bool IsProfileEvent() const = 0;
@@ -159,9 +160,7 @@ class TaskStatusEvent : public TaskEvent {
   void ToRpcTaskExportEvents(
       std::shared_ptr<rpc::ExportTaskEventData> rpc_task_export_event_data) override;
 
-  void ToRpcRayEvents(
-      std::pair<std::optional<rpc::events::RayEvent>,
-                std::optional<rpc::events::RayEvent>> &ray_events) override;
+  void ToRpcRayEvents(RayEventsPair &ray_events) override;
 
   bool IsProfileEvent() const override { return false; }
 
@@ -214,9 +213,7 @@ class TaskProfileEvent : public TaskEvent {
   void ToRpcTaskExportEvents(
       std::shared_ptr<rpc::ExportTaskEventData> rpc_task_export_event_data) override;
 
-  void ToRpcRayEvents(
-      std::pair<std::optional<rpc::events::RayEvent>,
-                std::optional<rpc::events::RayEvent>> &ray_events) override;
+  void ToRpcRayEvents(RayEventsPair &ray_events) override;
 
   bool IsProfileEvent() const override { return true; }
 
@@ -421,25 +418,20 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   /// \param agg_task_events The aggregated task events.
   /// \param dropped_task_attempts_to_send The task attempts that were dropped due to
   ///        status events being dropped.
-  /// \param[out] data The task event data to be sent.
-  void CreateTaskEventDataToSend(
+  /// \return data The task event data to be sent.
+  std::unique_ptr<rpc::TaskEventData> CreateTaskEventDataToSend(
       absl::flat_hash_map<TaskAttempt, rpc::TaskEvents> &agg_task_events,
-      const absl::flat_hash_set<TaskAttempt> &dropped_task_attempts_to_send,
-      std::unique_ptr<rpc::TaskEventData> &data);
+      const absl::flat_hash_set<TaskAttempt> &dropped_task_attempts_to_send);
 
   /// Create the ray event data to send.
   ///
   /// \param agg_task_events The aggregated task events.
   /// \param dropped_task_attempts_to_send The task attempts that were dropped due to
   ///        status events being dropped.
-  /// \param[out] data The ray event data to be sent.
-  void CreateRayEventsDataToSend(
-      absl::flat_hash_map<TaskAttempt,
-                          std::pair<std::optional<rpc::events::RayEvent>,
-                                    std::optional<rpc::events::RayEvent>>>
-          &&agg_task_events,
-      const absl::flat_hash_set<TaskAttempt> &dropped_task_attempts_to_send,
-      std::unique_ptr<rpc::events::RayEventsData> &data);
+  /// \return data The ray event data to be sent.
+  std::unique_ptr<rpc::events::RayEventsData> CreateRayEventsDataToSend(
+      absl::flat_hash_map<TaskAttempt, RayEventsPair> &&agg_task_events,
+      const absl::flat_hash_set<TaskAttempt> &dropped_task_attempts_to_send);
 
   /// Reset the metrics counters for flush.
   void ResetCountersForFlush();
@@ -567,7 +559,7 @@ class TaskEventBufferImpl : public TaskEventBuffer {
 
   FRIEND_TEST(TaskEventBufferTestManualStart, TestGcsClientFail);
   FRIEND_TEST(TaskEventBufferTestBatchSendDifferentDestination, TestBatchedSend);
-  FRIEND_TEST(TaskEventBufferTest, TestAddEvent);
+  FRIEND_TEST(TaskEventBufferTest, TestAddEvents);
   FRIEND_TEST(TaskEventBufferTestDifferentDestination, TestFlushEvents);
   FRIEND_TEST(TaskEventBufferTestDifferentDestination, TestFailedFlush);
   FRIEND_TEST(TaskEventBufferTestDifferentDestination, TestBackPressure);

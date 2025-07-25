@@ -397,7 +397,7 @@ class GcsRpcClient {
   VOID_GCS_RPC_CLIENT_METHOD_FULL(ray::rpc,
                                   ray::rpc::events,
                                   EventExportGcsService,
-                                  AddEvent,
+                                  AddEvents,
                                   event_export_grpc_client_,
                                   /*method_timeout_ms*/ -1,
                                   /*handle_payload_status=*/true, )

@@ -28,6 +28,8 @@
 
 namespace ray {
 namespace rpc {
+using ray::rpc::events::AddEventsReply;
+using ray::rpc::events::AddEventsRequest;
 
 /// Client used for sending ray events to the event aggregator server in the dashboard
 /// agent.
@@ -35,9 +37,8 @@ class EventAggregatorClient {
  public:
   virtual ~EventAggregatorClient() = default;
 
-  virtual Status AsyncAddRayEventsData(
-      std::unique_ptr<rpc::events::RayEventsData> data_ptr,
-      std::function<void(Status status)> callback) = 0;
+  virtual void AddEvents(const rpc::events::AddEventsRequest &request,
+                         const ClientCallback<rpc::events::AddEventsReply> &callback) = 0;
 };
 
 class EventAggregatorClientImpl : public EventAggregatorClient {
@@ -52,35 +53,13 @@ class EventAggregatorClientImpl : public EventAggregatorClient {
         "127.0.0.1", port, client_call_manager);
   };
 
-  Status AsyncAddRayEventsData(std::unique_ptr<rpc::events::RayEventsData> data_ptr,
-                               std::function<void(Status status)> callback) override {
-    rpc::events::AddEventRequest request;
-    *request.mutable_events_data() = std::move(*data_ptr);
-    AddEvents(request,
-              [callback](const Status &status, const rpc::events::AddEventReply &reply) {
-                callback(status);
-                if (!status.ok()) {
-                  RAY_LOG(DEBUG)
-                      << "Failed to add Ray events to the event aggregator. Status: "
-                      << status;
-                }
-              });
-
-    return Status::OK();
-  }
+  VOID_RPC_CLIENT_METHOD(rpc::events::EventAggregatorService,
+                         AddEvents,
+                         grpc_client_,
+                         /*method_timeout_ms*/ -1,
+                         override)
 
  private:
-  void AddEvents(const rpc::events::AddEventRequest &request,
-                 const ClientCallback<rpc::events::AddEventReply> &callback) {
-    grpc_client_->CallMethod<rpc::events::AddEventRequest, rpc::events::AddEventReply>(
-        &rpc::events::EventAggregatorService::Stub::PrepareAsyncAddEvents,
-        request,
-        callback,
-        "EventAggregatorService.grpc_client.AddEvents",
-        // TODO(myan): Add timeout and retry logic.
-        /*timeout_ms*/ -1);
-  }
-
   // The RPC client.
   std::unique_ptr<GrpcClient<rpc::events::EventAggregatorService>> grpc_client_;
 };
