@@ -2167,7 +2167,9 @@ cdef execute_task_with_cancellation_handler(
     # Once actor is created, users can change the visible accelerator ids within
     # an actor task and we don't want to reset it.
     if (<int>task_type != <int>TASK_TYPE_ACTOR_TASK):
-        ray._private.utils.set_visible_accelerator_ids()
+        visible_accelerator_env_vars_overriden = ray._private.utils.set_visible_accelerator_ids()
+    else:
+        visible_accelerator_env_vars_overriden = None
 
     # Automatically configure OMP_NUM_THREADS to the assigned CPU number.
     # It will be unset after the task execution if it was overwridden here.
@@ -2275,6 +2277,11 @@ cdef execute_task_with_cancellation_handler(
         if omp_num_threads_overriden:
             # Reset the OMP_NUM_THREADS environ if it was set.
             os.environ.pop("OMP_NUM_THREADS", None)
+
+        if visible_accelerator_env_vars_overriden:
+            # Reset the visible_accelerator_ids if it was set.
+            ray._private.utils.reset_visible_accelerator_env_vars(visible_accelerator_env_vars_overriden)
+
 
     if execution_info.max_calls != 0:
         # Reset the state of the worker for the next task to execute.
