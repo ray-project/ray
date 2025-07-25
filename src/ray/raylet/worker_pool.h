@@ -68,8 +68,6 @@ enum PopWorkerStatus {
   // is so large that its serialized context exceeds the kernel's command-line
   // argument size limit.
   ArgumentListTooLong = 6,
-  // The worker process failed to launch.
-  WorkerLaunchFailed = 7,
 };
 
 /// \param[in] worker The started worker instance. Nullptr if worker is not started.
