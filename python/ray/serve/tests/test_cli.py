@@ -30,21 +30,12 @@ def assert_deployments_live(ids: List[DeploymentID]):
         assert any(prefix in actor_name for actor_name in running_actor_names), msg
 
 
-def get_safe_application_url(app_name: str = SERVE_DEFAULT_APP_NAME) -> str:
-    """Get the application URL safely, falling back to localhost if the app doesn't exist."""
-    try:
-        return get_application_url(app_name=app_name)
-    except (KeyError, ValueError):
-        # Fall back to localhost if the application doesn't exist or there's an error
-        return "http://localhost:8000"
-
-
 def check_http_response(
     expected_text: str,
     json: Optional[Dict] = None,
     app_name: str = SERVE_DEFAULT_APP_NAME,
 ):
-    url = get_safe_application_url(app_name)
+    url = get_application_url(app_name=app_name)
     resp = httpx.post(f"{url}/", json=json)
     assert resp.text == expected_text
     return True
@@ -151,14 +142,14 @@ def test_deploy_multi_app_basic(serve_instance):
         # Test add and mul for each of the two apps
         wait_for_condition(
             lambda: httpx.post(
-                f"{get_safe_application_url('app1')}", json=["ADD", 2]
+                f"{get_application_url(app_name='app1')}", json=["ADD", 2]
             ).text
             == "3 pizzas please!",
             timeout=15,
         )
         wait_for_condition(
             lambda: httpx.post(
-                f"{get_safe_application_url('app1')}", json=["MUL", 2]
+                f"{get_application_url(app_name='app1')}", json=["MUL", 2]
             ).text
             == "2 pizzas please!",
             timeout=15,
@@ -166,14 +157,14 @@ def test_deploy_multi_app_basic(serve_instance):
         print('Application "app1" is reachable over HTTP.')
         wait_for_condition(
             lambda: httpx.post(
-                f"{get_safe_application_url('app2')}", json=["ADD", 2]
+                f"{get_application_url(app_name='app2')}", json=["ADD", 2]
             ).text
             == "5 pizzas please!",
             timeout=15,
         )
         wait_for_condition(
             lambda: httpx.post(
-                f"{get_safe_application_url('app2')}", json=["MUL", 2]
+                f"{get_application_url(app_name='app2')}", json=["MUL", 2]
             ).text
             == "4 pizzas please!",
             timeout=15,
@@ -198,21 +189,21 @@ def test_deploy_multi_app_basic(serve_instance):
 
         # Test app1 (simple wonderful world) and app2 (add + mul)
         wait_for_condition(
-            lambda: httpx.post(f"{get_safe_application_url('app1')}").text
+            lambda: httpx.post(f"{get_application_url(app_name='app1')}").text
             == "wonderful world",
             timeout=15,
         )
         print('Application "app1" is reachable over HTTP.')
         wait_for_condition(
             lambda: httpx.post(
-                f"{get_safe_application_url('app2')}", json=["ADD", 2]
+                f"{get_application_url(app_name='app2')}", json=["ADD", 2]
             ).text
             == "12 pizzas please!",
             timeout=15,
         )
         wait_for_condition(
             lambda: httpx.post(
-                f"{get_safe_application_url('app2')}", json=["MUL", 2]
+                f"{get_application_url(app_name='app2')}", json=["MUL", 2]
             ).text
             == "20 pizzas please!",
             timeout=15,
@@ -295,25 +286,23 @@ def test_deploy_multi_app_builder_with_args(serve_instance):
     subprocess.check_output(["serve", "deploy", apps_with_args])
 
     wait_for_condition(
-        lambda: httpx.post(f"{get_safe_application_url()}/untyped_default").text
+        lambda: httpx.post(f"{get_application_url()}/untyped_default").text
         == "DEFAULT",
         timeout=10,
     )
 
     wait_for_condition(
-        lambda: httpx.post(f"{get_safe_application_url()}/untyped_hello").text
-        == "hello",
+        lambda: httpx.post(f"{get_application_url()}/untyped_hello").text == "hello",
         timeout=10,
     )
 
     wait_for_condition(
-        lambda: httpx.post(f"{get_safe_application_url()}/typed_default").text
-        == "DEFAULT",
+        lambda: httpx.post(f"{get_application_url()}/typed_default").text == "DEFAULT",
         timeout=10,
     )
 
     wait_for_condition(
-        lambda: httpx.post(f"{get_safe_application_url()}/typed_hello").text == "hello",
+        lambda: httpx.post(f"{get_application_url()}/typed_hello").text == "hello",
         timeout=10,
     )
 
@@ -781,7 +770,7 @@ def test_deployment_contains_utils(serve_instance):
 
     subprocess.check_output(["serve", "deploy", config_file], stderr=subprocess.STDOUT)
     wait_for_condition(
-        lambda: httpx.post(f"{get_safe_application_url()}/").text == "hello_from_utils"
+        lambda: httpx.post(f"{get_application_url()}/").text == "hello_from_utils"
     )
 
 
