@@ -746,6 +746,7 @@ void NodeInfoAccessor::HandleNotification(rpc::GcsNodeInfo &&node_info) {
   } else {
     node.set_node_id(node_info.node_id());
     node.set_state(rpc::GcsNodeInfo::DEAD);
+    node.mutable_death_info()->CopyFrom(node_info.death_info());
     node.set_end_time_ms(node_info.end_time_ms());
   }
 

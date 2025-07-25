@@ -1089,7 +1089,23 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
     } else {
       if (num_retries_left > 0) {
         will_retry = true;
-        task_entry.num_retries_left--;
+        if (error_info.error_type() != rpc::ErrorType::NODE_DIED) {
+          task_entry.num_retries_left--;
+        } else {
+          // For AUTOSCALER_DRAIN_PREEMPTED errors, we don't decrement retries
+          // Check if the node death was due to preemption from the gcs client cache
+          auto node_info = gcs_client_->Nodes().Get(task_entry.GetNodeId(),
+                                                    /*filter_dead_nodes=*/false);
+          if (node_info != nullptr && node_info->has_death_info() &&
+              node_info->death_info().reason() ==
+                  rpc::NodeDeathInfo::AUTOSCALER_DRAIN_PREEMPTED) {
+            RAY_LOG(INFO) << "Task " << task_id
+                          << " failed due to node preemption on node "
+                          << task_entry.GetNodeId() << ", not counting against retries";
+          } else {
+            task_entry.num_retries_left--;
+          }
+        }
       } else if (num_retries_left == -1) {
         will_retry = true;
       } else {

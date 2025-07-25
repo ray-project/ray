@@ -5,7 +5,7 @@ import ray
 import time
 from ray._raylet import GcsClient
 from ray.core.generated import autoscaler_pb2, common_pb2
-from ray._common.test_utils import wait_for_condition
+from ray._common.test_utils import wait_for_condition, SignalActor
 from ray.util.scheduling_strategies import (
     NodeAffinitySchedulingStrategy,
     PlacementGroupSchedulingStrategy,
@@ -432,6 +432,64 @@ def test_draining_reason(ray_start_cluster, graceful):
         if graceful:
             assert "The actor died because its node has died." in str(e)
             assert "the actor's node was preempted: " + drain_reason_message in str(e)
+
+
+def test_drain_node_task_retry(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=1, resources={"head": 100})
+    ray.init(address=cluster.address)
+
+    cur_worker = cluster.add_node(num_cpus=1, resources={"worker": 1})
+    cluster.wait_for_nodes()
+
+    gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
+
+    @ray.remote(resources={"head": 1})
+    class NodeTracker:
+        def __init__(self):
+            self._node_ids = set()
+
+        def add_node(self, node_id):
+            self._node_ids.add(node_id)
+
+        def num_nodes(self):
+            return len(self._node_ids)
+
+    num_retry = 1
+
+    @ray.remote(max_retries=num_retry, resources={"worker": 1})
+    def func(signal, nodes):
+        node_id = ray.get_runtime_context().get_node_id()
+        ray.get(nodes.add_node.remote(node_id))
+        ray.get(signal.wait.remote())
+        return node_id
+
+    signal = SignalActor.options(resources={"head": 1}).remote()
+    node_tracker = NodeTracker.remote()
+    r1 = func.remote(signal, node_tracker)
+
+    for i in range(num_retry + 1):
+        wait_for_condition(lambda: ray.get(node_tracker.num_nodes.remote()) == i + 1)
+        new_worker = cluster.add_node(num_cpus=1, resources={"worker": 1})
+        cluster.wait_for_nodes()
+
+        # Preemption is always accepted.
+        is_accepted, _ = gcs_client.drain_node(
+            cur_worker.node_id,
+            autoscaler_pb2.DrainNodeReason.Value("DRAIN_NODE_REASON_PREEMPTION"),
+            "preemption",
+            1,
+        )
+        assert is_accepted
+
+        # Simulate autoscaler terminates the worker node after the draining deadline.
+        cluster.remove_node(cur_worker, True)
+
+        cur_worker = new_worker
+
+    ray.get(signal.send.remote())
+    assert ray.get(r1) == cur_worker.node_id
+    assert ray.get(node_tracker.num_nodes.remote()) == num_retry + 2
 
 
 if __name__ == "__main__":
