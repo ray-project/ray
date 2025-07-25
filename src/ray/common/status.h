@@ -34,7 +34,7 @@
 
 #include "absl/strings/str_cat.h"
 #include "ray/common/source_location.h"
-#include "ray/util/logging.h"
+//#include "ray/util/logging.h"
 #include "ray/util/macros.h"
 #include "ray/util/visibility.h"
 
@@ -101,6 +101,9 @@ enum class StatusCode : char {
   ChannelError = 35,
   // Indicates that a read or write on a channel (a mutable plasma object) timed out.
   ChannelTimeoutError = 36,
+  // The result of a mathematical calculation is not representable in the given type.
+  // Equivalent of ERANGE in POSIX and std::errc::result_out_of_range in the cpp standard.
+  ResultOutOfRange = 37
   // If you add to this list, please also update kCodeToStr in status.cc.
 };
 
@@ -254,6 +257,10 @@ class RAY_EXPORT Status {
     return Status(StatusCode::ChannelTimeoutError, msg);
   }
 
+  static Status ResultOutOfRange(const std::string &msg) {
+    return Status(StatusCode::ResultOutOfRange, msg);
+  }
+
   static StatusCode StringToCode(const std::string &str);
 
   // Returns true iff the status indicates success.
@@ -308,6 +315,7 @@ class RAY_EXPORT Status {
   bool IsChannelError() const { return code() == StatusCode::ChannelError; }
 
   bool IsChannelTimeoutError() const { return code() == StatusCode::ChannelTimeoutError; }
+  bool IsResultOutOfRange() const { return code() == StatusCode::ResultOutOfRange; }
 
   // Return a string representation of this status suitable for printing.
   // Returns the string "OK" for success.

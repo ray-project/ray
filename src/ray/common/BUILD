@@ -291,7 +291,7 @@ ray_cc_library(
     hdrs = ["status.h"],
     deps = [
         ":source_location",
-        "//src/ray/util:logging",
+        # "//src/ray/util:logging",
         "//src/ray/util:macros",
         "//src/ray/util:visibility",
         "@boost//:system",

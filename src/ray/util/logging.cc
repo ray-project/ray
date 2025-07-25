@@ -16,6 +16,8 @@
 
 #include <string.h>
 
+#include <filesystem>
+
 #ifdef _WIN32
 #include <process.h>
 #else
