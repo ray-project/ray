@@ -5,11 +5,16 @@ import tempfile
 import subprocess
 import shutil
 import runfiles
-from ci.raydepsets.cli import load, DependencySetManager, uv_binary
+from ci.raydepsets.cli import (
+    load,
+    DependencySetManager,
+    uv_binary,
+    Depset,
+    DEFAULT_UV_FLAGS,
+)
 from ci.raydepsets.workspace import Workspace
 from click.testing import CliRunner
 from pathlib import Path
-from ci.raydepsets.cli import DEFAULT_UV_FLAGS
 
 _REPO_NAME = "com_github_ray_project_ray"
 _runfiles = runfiles.Create()
@@ -157,6 +162,90 @@ class TestCli(unittest.TestCase):
                 in result.output
             )
 
+    def test_subset(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _copy_data_to_tmpdir(tmpdir)
+            # Add six to requirements_test_subset.txt
+            _save_packages_to_file(
+                Path(tmpdir) / "requirements_test_subset.txt",
+                ["six==1.16.0"],
+            )
+            manager = DependencySetManager(
+                config_path="test.config.yaml",
+                workspace_dir=tmpdir,
+            )
+            # Compile general_depset with requirements_test.txt and requirements_test_subset.txt
+            manager.compile(
+                constraints=["requirement_constraints_test.txt"],
+                requirements=["requirements_test.txt", "requirements_test_subset.txt"],
+                args=["--no-annotate", "--no-header"] + DEFAULT_UV_FLAGS.copy(),
+                name="general_depset",
+                output="requirements_compiled_general.txt",
+            )
+            # Subset general_depset with requirements_test.txt (should lock emoji & pyperclip)
+            manager.subset(
+                source_depset="general_depset",
+                requirements=["requirements_test.txt"],
+                args=["--no-annotate", "--no-header"] + DEFAULT_UV_FLAGS.copy(),
+                name="subset_general_depset",
+                output="requirements_compiled_subset_general.txt",
+            )
+            output_file = Path(tmpdir) / "requirements_compiled_subset_general.txt"
+            output_text = output_file.read_text()
+            output_file_valid = Path(tmpdir) / "requirements_compiled_test.txt"
+            output_text_valid = output_file_valid.read_text()
+
+            assert output_text == output_text_valid
+
+    def test_subset_does_not_exist(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _copy_data_to_tmpdir(tmpdir)
+            # Add six to requirements_test_subset.txt
+            _save_packages_to_file(
+                Path(tmpdir) / "requirements_test_subset.txt",
+                ["six==1.16.0"],
+            )
+            manager = DependencySetManager(
+                config_path="test.config.yaml",
+                workspace_dir=tmpdir,
+            )
+            manager.compile(
+                constraints=["requirement_constraints_test.txt"],
+                requirements=["requirements_test.txt", "requirements_test_subset.txt"],
+                args=["--no-annotate", "--no-header"] + DEFAULT_UV_FLAGS.copy(),
+                name="general_depset",
+                output="requirements_compiled_general.txt",
+            )
+
+            with self.assertRaises(RuntimeError):
+                manager.subset(
+                    source_depset="general_depset",
+                    requirements=["requirements_compiled_test.txt"],
+                    args=["--no-annotate", "--no-header"] + DEFAULT_UV_FLAGS.copy(),
+                    name="subset_general_depset",
+                    output="requirements_compiled_subset_general.txt",
+                )
+
+    def test_check_if_subset_exists(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _copy_data_to_tmpdir(tmpdir)
+            manager = DependencySetManager(
+                config_path="test.config.yaml",
+                workspace_dir=tmpdir,
+            )
+            source_depset = Depset(
+                name="general_depset",
+                operation="compile",
+                requirements=["requirements_1.txt", "requirements_2.txt"],
+                constraints=["requirement_constraints_1.txt"],
+                output="requirements_compiled_general.txt",
+            )
+            with self.assertRaises(RuntimeError):
+                manager.check_subset_exists(
+                    source_depset=source_depset,
+                    requirements=["requirements_3.txt"],
+                )
+
     def test_compile_bad_requirements(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             _copy_data_to_tmpdir(tmpdir)
@@ -204,5 +293,11 @@ def _replace_in_file(filepath, old, new):
         f.write(contents)
 
 
+def _save_packages_to_file(filepath, packages):
+    with open(filepath, "w") as f:
+        for package in packages:
+            f.write(package + "\n")
+
+
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-vv", __file__]))
+    sys.exit(pytest.main(["-v", __file__]))
