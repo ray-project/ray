@@ -19,6 +19,7 @@ from unittest import mock
 import psutil
 import pytest
 import copy
+import random
 
 import ray
 from ray._common.test_utils import wait_for_condition
@@ -284,22 +285,22 @@ def _find_available_ports(start: int, end: int, *, num: int = 1) -> List[int]:
 def start_redis_with_sentinel(db_dir):
     temp_dir = ray._common.utils.get_ray_temp_dir()
 
-    redis_ports = _find_available_ports(49159, 55535, num=redis_sentinel_replicas() + 1)
-    sentinel_port = redis_ports[0]
-    master_port = redis_ports[1]
+    redis_ports = _find_available_ports(49159, 55535, num=redis_sentinel_replicas())
     redis_processes = [
         start_redis_instance(temp_dir, p, listen_to_localhost_only=True, db_dir=db_dir)[
             1
         ]
-        for p in redis_ports[1:]
+        for p in redis_ports
     ]
 
     # ensure all redis servers are up
-    for port in redis_ports[1:]:
+    for port in redis_ports:
         wait_for_condition(redis_alive, 3, 100, port=port, enable_tls=False)
 
     # setup replicas of the master
-    for port in redis_ports[2:]:
+    sentinel_port = _find_available_ports(49159, 55535, num=1)
+    master_port = redis_ports[0]
+    for port in redis_ports[1:]:
         redis_cli = get_redis_cli(port, False)
         redis_cli.replicaof("127.0.0.1", master_port)
         sentinel_process = start_redis_sentinel_instance(
@@ -345,24 +346,25 @@ def start_redis(db_dir):
                 ):
                     proc.process.kill()
 
-                # TODO (mengjin) Here we added more debug logs here to help further
+                # TODO (mengjin) Here we added more debug logs to help further
                 # troubleshoot the potential race condition where the available port
-                # we found above is taken by another process and the Redis server
-                # cannot be started. Here we won't fail the test but we can check the
-                # output log of the test to further investigate the issue if needed.
-                if "Redis process exited unexpectedly" in str(e):
-                    # Output the process that listens to the port
-                    processes = find_user_process_by_port_and_status(
-                        port, [psutil.CONN_LISTEN]
+                # we found above is taken by another process and the Redis server cannot
+                # be started. Here we won't fail the test but we can check the output log
+                # of the test to further investigate the issue if needed.
+                processes = find_user_process_by_port_and_status(
+                    port, [psutil.CONN_LISTEN]
+                )
+
+                # Output the process that listens to the port
+                for process in processes:
+                    print(
+                        f"Another process({process.pid}) with command"
+                        f"\"{' '.join(process.args)}\" is listening on the port"
+                        f"{port}"
                     )
 
-                    for process in processes:
-                        print(
-                            f"Another process({process.pid}) with command"
-                            f"\"{' '.join(process.args)}\" is listening on the port"
-                            f"{port}"
-                        )
-
+                # Add a random delay before retrying
+                time.sleep(random.uniform(0, 0.1))
                 continue
 
             redis_ports.append(port)
