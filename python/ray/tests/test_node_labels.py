@@ -162,37 +162,14 @@ def test_ray_start_set_node_labels_from_file(shutdown_only):
         os.remove(test_file_path)
 
 
-@pytest.fixture
-def ray_node_labels_env():
-    # Ray default node label keys and TPU accelerator env key
-    keys = [
-        "RAY_NODE_MARKET_TYPE",
-        "RAY_NODE_TYPE_NAME",
-        "RAY_NODE_REGION",
-        "RAY_NODE_ZONE",
-        "TPU_ACCELERATOR_TYPE",
-    ]
+def test_get_default_ray_node_labels(shutdown_only, monkeypatch):
+    # Set env vars for this test
+    monkeypatch.setenv("RAY_NODE_MARKET_TYPE", "spot")
+    monkeypatch.setenv("RAY_NODE_TYPE_NAME", "worker-group-1")
+    monkeypatch.setenv("RAY_NODE_REGION", "us-central2")
+    monkeypatch.setenv("RAY_NODE_ZONE", "us-central2-b")
+    monkeypatch.setenv("TPU_ACCELERATOR_TYPE", "v4-16")
 
-    # Save original vals for env vars under test
-    original_env = {k: os.environ.get(k) for k in keys}
-
-    # Set env var values for test
-    os.environ["RAY_NODE_MARKET_TYPE"] = "spot"
-    os.environ["RAY_NODE_TYPE_NAME"] = "worker-group-1"
-    os.environ["RAY_NODE_REGION"] = "us-central2"
-    os.environ["RAY_NODE_ZONE"] = "us-central2-b"
-    os.environ["TPU_ACCELERATOR_TYPE"] = "v4-16"
-
-    yield
-    # Restore original values
-    for k in keys:
-        if original_env[k] is None:
-            os.environ.pop(k, None)
-        else:
-            os.environ[k] = original_env[k]
-
-
-def test_get_default_ray_node_labels(shutdown_only, ray_node_labels_env):
     ray.init(resources={"TPU": 4})
     node_info = ray.nodes()[0]
     labels = node_info["Labels"]
