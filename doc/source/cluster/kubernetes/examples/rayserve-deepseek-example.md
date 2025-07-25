@@ -190,7 +190,10 @@ The output should be in the following format:
 
 ```sh
 # Export ray cluster head service name
-SERVICE_NAME=$(kubectl get service -n default | grep "deepseek-r1-raycluster-.*-head-svc" | awk '{print $1}')
+SERVICE_NAME=$(kubectl get service -n default -l 'ray.io/node-type=head' \
+  -o=custom-columns=NAME:.metadata.name,CLUSTER:.metadata.labels.ray\.io/cluster \
+  | grep "deepseek-r1-raycluster" \
+  | awk '{print $1}')
 
 # Forward the service port
 kubectl port-forward svc/${SERVICE_NAME} 8265:8265
