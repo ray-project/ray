@@ -16,6 +16,8 @@ To run this example, install the following:
 pip install "ray[llm]==2.46.0"
 ```
 
+Note: Deploying DeepSeek-R1 requires at least 720GB free disk space per worker node to store model weights.
+
 ## Deployment
 
 ### Quick Deployment
