@@ -266,7 +266,10 @@ class ProcessFD {
       }
 
       // If execve succeeds, this FD will be closed automatically.
-      SetFdCloseOnExec(status_pipe[1]);
+      if (!decouple) {
+        // Only set FD_CLOEXEC in the non-decouple case
+        SetFdCloseOnExec(status_pipe[1]);
+      }
 
       if (decouple) {
         pid_t my_pid = getpid();
@@ -342,9 +345,17 @@ class ProcessFD {
             close(status_pipe[0]);
           } else {
             // No error code was present. Launch was successful.
-            // Use the status pipe for lifetime tracking.
+            // For backward compatibility with tests, we need to keep the pipe
+            // open but NOT mark it with FD_CLOEXEC, so that child processes
+            // inherit it and it stays open until all descendants exit.
             ec = std::error_code();
             fd = status_pipe[0];
+
+            // Remove the FD_CLOEXEC flag that was set earlier
+            flags = fcntl(fd, F_GETFD, 0);
+            if (flags != -1) {
+              fcntl(fd, F_SETFD, flags & ~FD_CLOEXEC);
+            }
           }
         }
       }
