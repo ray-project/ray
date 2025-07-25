@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Dict
 import ray
 from .autoscaler import Autoscaler
 from .autoscaling_actor_pool import ActorPoolScalingRequest, AutoscalingActorPool
+from .util import get_max_scale_up
 from ray.data._internal.execution.autoscaling_requester import (
     get_or_create_autoscaling_requester_actor,
 )
@@ -97,6 +98,9 @@ class DefaultAutoscaler(Autoscaler):
                 return ActorPoolScalingRequest.no_op(
                     reason="operator exceeding resource quota"
                 )
+            budget = self._resource_manager.get_budget(op)
+            if get_max_scale_up(actor_pool, budget) == 0:
+                return ActorPoolScalingRequest.no_op(reason="exceeded resource limits")
 
             return ActorPoolScalingRequest.upscale(
                 delta=1,

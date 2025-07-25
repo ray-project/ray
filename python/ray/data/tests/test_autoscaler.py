@@ -16,6 +16,7 @@ from ray.data._internal.execution.operators.actor_pool_map_operator import _Acto
 from ray.data._internal.execution.operators.base_physical_operator import (
     InternalQueueOperatorMixin,
 )
+from ray.data._internal.execution.resource_manager import ResourceManager
 from ray.data._internal.execution.streaming_executor_state import OpState
 from ray.data.context import (
     AutoscalingConfig,
@@ -26,9 +27,12 @@ def test_actor_pool_scaling():
     """Test `_actor_pool_should_scale_up` and `_actor_pool_should_scale_down`
     in `DefaultAutoscaler`"""
 
+    resource_manager = MagicMock(
+        spec=ResourceManager, get_budget=MagicMock(return_value=None)
+    )
     autoscaler = DefaultAutoscaler(
         topology=MagicMock(),
-        resource_manager=MagicMock(),
+        resource_manager=resource_manager,
         execution_id="execution_id",
         config=AutoscalingConfig(
             actor_pool_util_upscaling_threshold=1.0,
@@ -47,6 +51,7 @@ def test_actor_pool_scaling():
         num_pending_actors=MagicMock(return_value=0),
         num_free_task_slots=MagicMock(return_value=5),
         num_tasks_in_flight=MagicMock(return_value=15),
+        per_actor_resource_usage=MagicMock(return_value=ExecutionResources(cpu=1)),
         _max_actor_concurrency=1,
         get_pool_util=MagicMock(
             # NOTE: Unittest mocking library doesn't support proxying to actual
@@ -188,6 +193,13 @@ def test_actor_pool_scaling():
         assert_autoscaling_action(
             delta=-1,
             expected_reason="pool exceeding max size",
+        )
+
+    # Should no-op because the op has no budget.
+    with patch(resource_manager, "get_budget", ExecutionResources.zero()):
+        assert_autoscaling_action(
+            delta=0,
+            expected_reason="exceeded resource limits",
         )
 
 
