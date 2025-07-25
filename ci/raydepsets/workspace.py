@@ -1,6 +1,6 @@
 import yaml
 from dataclasses import dataclass, field
-from typing import List
+from typing import List, Optional
 import os
 
 
@@ -11,6 +11,7 @@ class Depset:
     requirements: List[str]
     constraints: List[str]
     output: str
+    source_depset: Optional[str] = None
 
 
 @dataclass
@@ -27,6 +28,7 @@ class Config:
                 constraints=values.get("constraints", []),
                 operation=values.get("operation", "compile"),
                 output=values.get("output"),
+                source_depset=values.get("source_depset"),
             )
             for values in raw_depsets
         ]

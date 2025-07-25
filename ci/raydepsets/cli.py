@@ -77,7 +77,15 @@ class DependencySetManager:
                 name=depset.name,
                 output=depset.output,
             )
-            click.echo(f"Dependency set {depset.name} compiled successfully")
+        elif depset.operation == "subset":
+            self.subset(
+                source_depset=depset.source_depset,
+                requirements=depset.requirements,
+                args=DEFAULT_UV_FLAGS.copy(),
+                name=depset.name,
+                output=depset.output,
+            )
+        click.echo(f"Dependency set {depset.name} compiled successfully")
 
     def compile(
         self,
@@ -98,8 +106,34 @@ class DependencySetManager:
             args.extend(["-o", self.get_path(output)])
         self.exec_uv_cmd("compile", args)
 
+    def subset(
+        self,
+        source_depset: str,
+        requirements: List[str],
+        args: List[str],
+        name: str,
+        output: str = None,
+    ):
+        """Subset a dependency set."""
+        source_depset = self.get_depset(source_depset)
+        self.check_subset_exists(source_depset, requirements)
+        self.compile(
+            constraints=[source_depset.output],
+            requirements=requirements,
+            args=args,
+            name=name,
+            output=output,
+        )
+
     def get_path(self, path: str) -> str:
         return (Path(self.workspace.dir) / path).as_posix()
+
+    def check_subset_exists(self, source_depset: Depset, requirements: List[str]):
+        for req in requirements:
+            if req not in source_depset.requirements:
+                raise RuntimeError(
+                    f"Requirement {req} is not a subset of {source_depset.name}"
+                )
 
 
 def uv_binary():
