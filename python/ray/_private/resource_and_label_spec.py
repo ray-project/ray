@@ -127,7 +127,7 @@ class ResourceAndLabelSpec:
                 This is used to automatically create a node id resource.
 
         Returns:
-            ResourceAndLabelSpec: This instance with all defaults resolved.
+            ResourceAndLabelSpec: This instance with all fields resolved.
         """
 
         if self.resources is None:
