@@ -306,10 +306,7 @@ def test_databricks_uc_datasource():
 
             assert False, "Invalid request."
 
-        with mock.patch(
-            "ray._private.accelerators.tpu.TPUAcceleratorManager.get_current_node_accelerator_type",
-            return_value=None,
-        ), mock.patch("requests.get", request_get_mock), mock.patch(
+        with mock.patch("requests.get", request_get_mock), mock.patch(
             "requests.post", request_post_mock
         ), mock.patch.dict(
             os.environ,
