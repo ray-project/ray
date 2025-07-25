@@ -85,13 +85,22 @@ run_core_dashboard_test() {
     //:all python/ray/dashboard/... -python/ray/serve/... -rllib/...) || exit 42
 }
 
-run_ray_cpp_and_java() {
+run_ray_java_tests() {
   # clang-format is needed by java/test.sh
   # 42 is the universal rayci exit code for test failures
   pip install clang-format==12.0.1
   export JAVA_HOME=/Library/Java/JavaVirtualMachines/temurin-8.jdk/Contents/Home
   ./java/test.sh || exit 42
+}
+
+run_ray_cpp_tests() {
+  # 42 is the universal rayci exit code for test failures
   ./ci/ci.sh test_cpp || exit 42
+}
+
+run_ray_cpp_and_java() {
+  run_ray_java_tests
+  run_ray_cpp_tests
 }
 
 bisect() {
