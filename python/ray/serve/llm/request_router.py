@@ -1,12 +1,12 @@
-# TODO (Kourosh): Internally rename PrefixAwarePow2ReplicaRouter to something else.
+# TODO (Kourosh): Internally rename PrefixCacheAffinityRouter to something else.
 from ray.llm._internal.serve.request_router.prefix_aware.prefix_aware_router import (
-    PrefixAwarePow2ReplicaRouter,
+    PrefixCacheAffinityRouter as _PrefixCacheAffinityRouter
 )
 from ray.util.annotations import PublicAPI
 
 
 @PublicAPI(stability="alpha")
-class KVRouter(PrefixAwarePow2ReplicaRouter):
+class PrefixCacheAffinityRouter(_PrefixCacheAffinityRouter):
     """A request router that is aware of the KV cache.
 
     This router optimizes request routing by considering KV cache locality,
