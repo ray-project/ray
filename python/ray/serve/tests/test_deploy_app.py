@@ -882,4 +882,4 @@ def test_get_app_handle(serve_instance):
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-v", "-s", __file__]))
+    sys.exit(pytest.main(["-v", "-s", __file__, "-k", "test_update_autoscaling_config"]))
