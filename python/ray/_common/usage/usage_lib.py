@@ -666,7 +666,7 @@ def get_cluster_status_to_report(gcs_client: GcsClient) -> ClusterStatusToReport
     It is a blocking API.
 
     Params:
-        gcs_client: The GCS client.
+        gcs_client: The GCS client to perform KV operation GET.
 
     Returns:
         The current cluster status or empty if it fails to get that information.
