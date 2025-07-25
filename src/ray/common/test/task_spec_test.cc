@@ -315,4 +315,29 @@ TEST(TaskSpecTest, TestNodeLabelSchedulingStrategy) {
   ASSERT_FALSE(absl::Hash<rpc::SchedulingStrategy>()(scheduling_strategy_1) ==
                absl::Hash<rpc::SchedulingStrategy>()(scheduling_strategy_5));
 }
+
+TEST(TaskSpecTest, TestInvalidLabelSelectorPropagatesStatus) {
+  // Create a TaskSpec with an invalid label selector.
+  rpc::TaskSpec task_spec_proto;
+  task_spec_proto.mutable_required_resources()->insert({"CPU", 1.0});
+  (*task_spec_proto.mutable_label_selector())[""] = "us-east1";  // Invalid key.
+
+  TaskSpecification task_spec(task_spec_proto);
+
+  // ComputeResources when called should propogate InvalidArgument.
+  Status status = task_spec.ComputeResources();
+  ASSERT_TRUE(status.IsInvalidArgument());
+  ASSERT_NE(status.message().find("Empty label selector key"), std::string::npos);
+}
+
+TEST(TaskSpecTest, TestValidLabelSelectorSucceeds) {
+  rpc::TaskSpec task_spec_proto;
+  task_spec_proto.mutable_required_resources()->insert({"CPU", 1.0});
+  (*task_spec_proto.mutable_label_selector())["accelerator-type"] = "A100";
+
+  TaskSpecification task_spec(task_spec_proto);
+
+  Status status = task_spec.ComputeResources();
+  ASSERT_TRUE(status.ok());
+}
 }  // namespace ray

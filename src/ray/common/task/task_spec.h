@@ -592,6 +592,9 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   static absl::flat_hash_map<SchedulingClass, SchedulingClassDescriptor> sched_id_to_cls_
       ABSL_GUARDED_BY(mutex_);
   static int next_sched_id_ ABSL_GUARDED_BY(mutex_);
+
+  FRIEND_TEST(TaskSpecTest, TestInvalidLabelSelectorPropagatesStatus);
+  FRIEND_TEST(TaskSpecTest, TestValidLabelSelectorSucceeds);
 };
 
 // Get a Hash for the runtime environment string.

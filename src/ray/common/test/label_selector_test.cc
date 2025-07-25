@@ -23,7 +23,7 @@ TEST(LabelSelectorTest, BasicConstruction) {
   label_selector_dict["market-type"] = "spot";
   label_selector_dict["region"] = "us-east";
 
-  auto result = LabelSelector::FromProto(label_selector_dict);
+  auto result = LabelSelector::StrictParse(label_selector_dict);
   ASSERT_TRUE(result.ok()) << result.status().ToString();
   auto selector = std::move(result.value());
 
@@ -91,7 +91,7 @@ TEST(LabelSelectorTest, ErrorLogsOnEmptyKey) {
   google::protobuf::Map<std::string, std::string> label_selector_dict;
   label_selector_dict[""] = "value";
 
-  auto result = LabelSelector::FromProto(label_selector_dict);
+  auto result = LabelSelector::StrictParse(label_selector_dict);
 
   ASSERT_FALSE(result.ok());
   ASSERT_EQ(result.status().message(), "Empty label selector key is not supported.");
@@ -104,5 +104,4 @@ TEST(LabelSelectorTest, ErrorLogsOnEmptyInList) {
   ASSERT_FALSE(status.ok());
   ASSERT_EQ(status.message(), "No values provided for Label Selector 'in' operator.");
 }
-
 }  // namespace ray

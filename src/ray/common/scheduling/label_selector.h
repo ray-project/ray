@@ -59,7 +59,10 @@ class LabelSelector {
  public:
   LabelSelector() = default;
 
-  static StatusOr<LabelSelector> FromProto(
+  explicit LabelSelector(
+      const google::protobuf::Map<std::string, std::string> &label_selector);
+
+  static StatusOr<LabelSelector> StrictParse(
       const google::protobuf::Map<std::string, std::string> &label_selector_dict);
 
   rpc::LabelSelector ToProto() const;
