@@ -43,15 +43,10 @@ The `--accelerator` flag specifies the type and number of GPUs for each node in 
 ```{admonition} Note
 :class: note
 
-To create a node pool that uses reservations, or spot VMs, you can specify the following parameters when trying to create nodepools.
-
-**For Reservations:**
+To create a node pool that uses reservations, you can specify the following parameters when trying to create nodepools:
 * `--reservation-affinity=specific`
 * `--reservation=RESERVATION_NAME`
 * `--placement-policy=PLACEMENT_POLICY_NAME` (Optional)
-
-**For Spot VMs:**
-* `--spot`
 ```
 
 Finally, run the following command to download Google Cloud credentials and configure the Kubernetes CLI to use them.
