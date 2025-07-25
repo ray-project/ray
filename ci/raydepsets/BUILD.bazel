@@ -7,11 +7,15 @@ py_library(
         "cli.py",
         "workspace.py",
     ],
-    data = ["@uv_x86_64//:file"],
+    data = [
+        ".env",
+        "@uv_x86_64//:file",
+    ],
     deps = [
         ci_require("bazel-runfiles"),
         ci_require("click"),
         ci_require("pyyaml"),
+        ci_require("python-dotenv"),
     ],
 )
 
