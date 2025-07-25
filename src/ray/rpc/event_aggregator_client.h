@@ -58,6 +58,7 @@ class EventAggregatorClientImpl : public EventAggregatorClient {
                          /*method_timeout_ms*/ -1,
                          override)
 
+ private:
   // The RPC client.
   std::unique_ptr<GrpcClient<rpc::events::EventAggregatorService>> grpc_client_;
 };
