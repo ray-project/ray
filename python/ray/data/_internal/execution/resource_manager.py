@@ -705,9 +705,12 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             if op.min_max_resource_requirements()[1].gpu > 0:
                 # If an operator needs GPU, we just allocate all GPUs to it.
                 # TODO(hchen): allocate resources across multiple GPU operators.
-                self._op_budgets[op].gpu = (
-                    self._resource_manager.get_global_limits().gpu
-                    - self._resource_manager.get_op_usage(op).gpu
+                self._op_budgets[op].gpu = max(
+                    0,
+                    (
+                        self._resource_manager.get_global_limits().gpu
+                        - self._resource_manager.get_op_usage(op).gpu
+                    ),
                 )
             else:
                 self._op_budgets[op].gpu = 0
