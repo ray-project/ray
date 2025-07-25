@@ -1,10 +1,8 @@
-import random
-import os
-import string
-from decimal import Decimal
-from typing import Any, Dict, List, Tuple
-from unittest.mock import MagicMock, patch
 import base64
+import os
+import random
+import string
+from typing import Any, Dict, List, Tuple
 
 import pytest
 from snowflake.connector import connect
@@ -95,6 +93,7 @@ def execute(
 
     Args:
         query: The SQL query to execute.
+        connection_parameters: Connection params for snowflake.
 
     Returns:
         A two-tuple containing the column names and rows.

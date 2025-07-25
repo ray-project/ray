@@ -2470,6 +2470,7 @@ def read_snowflake(
         connection_parameters: Keyword arguments to pass to
             ``snowflake.connector.connect``. To view supported parameters, read
             https://docs.snowflake.com/developer-guide/python-connector/python-connector-api#functions.
+        shard_keys: The keys to shard the data by.
         ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
