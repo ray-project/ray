@@ -20,7 +20,9 @@ class TestProcessGPUInfo(unittest.TestCase):
 
     def test_creation(self):
         """Test ProcessGPUInfo creation."""
-        process_info = ProcessGPUInfo(pid=1234, gpu_memory_usage=256, gpu_utilization=None)
+        process_info = ProcessGPUInfo(
+            pid=1234, gpu_memory_usage=256, gpu_utilization=None
+        )
 
         self.assertEqual(process_info["pid"], 1234)
         self.assertEqual(process_info["gpu_memory_usage"], 256)
@@ -583,7 +585,11 @@ class TestGpuMetricProvider(unittest.TestCase):
                 utilization_gpu=50,
                 memory_used=1024,
                 memory_total=2048,
-                processes_pids={1234: ProcessGPUInfo(pid=1234, gpu_memory_usage=1024, gpu_utilization=None)},
+                processes_pids={
+                    1234: ProcessGPUInfo(
+                        pid=1234, gpu_memory_usage=1024, gpu_utilization=None
+                    )
+                },
             )
         ]
         mock_detect.return_value = mock_provider
