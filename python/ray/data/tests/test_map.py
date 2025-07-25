@@ -583,7 +583,7 @@ def test_add_column(ray_start_regular_shared):
 
     # Test with numpy batch format
     ds = ray.data.range(5).add_column(
-        "foo", lambda x: np.array([1] * len(list(x.keys())[0])), batch_format="numpy"
+        "foo", lambda x: np.array([1] * len(x[list(x.keys())[0]])), batch_format="numpy"
     )
     assert ds.take(1) == [{"id": 0, "foo": 1}]
 

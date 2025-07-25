@@ -924,7 +924,6 @@ def test_pyarrow_conversion_error_handling(
     #      type, but second block carries value that overflows pa.int64 representation,
     #      and column henceforth will be serialized as `ArrowPythonObjectExtensionType`
     #      coercing first block to it as well
-    #
     #   2. (Case B) Both blocks carry proper Arrow scalars which, however, have
     #      diverging types and therefore Arrow fails during merging of these blocks
     #      into 1
