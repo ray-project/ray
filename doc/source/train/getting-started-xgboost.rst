@@ -38,13 +38,6 @@ Compare a XGBoost training script with and without Ray Train.
 
 .. tab-set::
 
-    .. tab-item:: XGBoost
-
-        .. literalinclude:: ./doc_code/xgboost_quickstart.py
-            :language: python
-            :start-after: __xgboost_start__
-            :end-before: __xgboost_end__
-
     .. tab-item:: XGBoost + Ray Train
 
         .. literalinclude:: ./doc_code/xgboost_quickstart.py
@@ -52,6 +45,13 @@ Compare a XGBoost training script with and without Ray Train.
             :language: python
             :start-after: __xgboost_ray_start__
             :end-before: __xgboost_ray_end__
+
+    .. tab-item:: XGBoost
+
+        .. literalinclude:: ./doc_code/xgboost_quickstart.py
+            :language: python
+            :start-after: __xgboost_start__
+            :end-before: __xgboost_end__
 
 
 Set up a training function
