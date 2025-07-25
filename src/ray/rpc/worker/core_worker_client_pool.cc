@@ -59,11 +59,41 @@ std::function<void()> CoreWorkerClientPool::GetDefaultUnavailableTimeoutCallback
           });
     };
 
+    auto gcs_check_node_alive =
+        [check_worker_alive, node_id, worker_id, worker_client_pool, gcs_client]() {
+          gcs_client->Nodes().AsyncGetAll(
+              [check_worker_alive = std::move(check_worker_alive),
+               worker_id,
+               node_id,
+               worker_client_pool](const Status &status,
+                                   std::vector<rpc::GcsNodeInfo> &&nodes) {
+                if (!status.ok()) {
+                  // Will try again when unavailable timeout callback is retried.
+                  RAY_LOG(INFO) << "Failed to get node info from GCS";
+                  return;
+                }
+                if (nodes.empty() || nodes[0].state() != rpc::GcsNodeInfo::ALIVE) {
+                  // The node is dead or the GCS has erased the info for this node. It
+                  // erases based on maximum_gcs_dead_node_cached_count. There's no way
+                  // for the a component to know about a remote node unless the gcs has
+                  // registered it.
+                  RAY_LOG(INFO).WithField(worker_id).WithField(node_id)
+                      << "Disconnecting core worker client because its node is dead";
+                  worker_client_pool->Disconnect(worker_id);
+                  return;
+                }
+                check_worker_alive(nodes[0]);
+              },
+              -1,
+              node_id);
+        };
+
     if (gcs_client->Nodes().IsSubscribedToNodeChange()) {
       auto *node_info = gcs_client->Nodes().Get(node_id, /*filter_dead_nodes=*/false);
       if (node_info == nullptr) {
-        // Node info hasn't come in yet for this node, will try again when unavailable
-        // timeout callback is retried.
+        // Node could be dead or info may have not made it to the subscriber cache yet.
+        // Check with the GCS to confirm if the node is dead.
+        gcs_check_node_alive();
         return;
       }
       if (node_info->state() == rpc::GcsNodeInfo::DEAD) {
@@ -76,33 +106,8 @@ std::function<void()> CoreWorkerClientPool::GetDefaultUnavailableTimeoutCallback
       check_worker_alive(*node_info);
       return;
     }
-
-    gcs_client->Nodes().AsyncGetAll(
-        [check_worker_alive = std::move(check_worker_alive),
-         worker_id,
-         node_id,
-         worker_client_pool](const Status &status,
-                             std::vector<rpc::GcsNodeInfo> &&nodes) {
-          if (!status.ok()) {
-            // Will try again when unavailable timeout callback is retried.
-            RAY_LOG(INFO) << "Failed to get node info from GCS";
-            return;
-          }
-          if (nodes.empty()) {
-            // Node info hasn't come in yet for this node, will try again when unavailable
-            // timeout callback is retried.
-            return;
-          }
-          if (nodes[0].state() != rpc::GcsNodeInfo::ALIVE) {
-            RAY_LOG(INFO).WithField(worker_id).WithField(node_id)
-                << "Disconnecting core worker client because its node is dead";
-            worker_client_pool->Disconnect(worker_id);
-            return;
-          }
-          check_worker_alive(nodes[0]);
-        },
-        -1,
-        node_id);
+    // Not subscribed so ask GCS.
+    gcs_check_node_alive();
   };
 }
 

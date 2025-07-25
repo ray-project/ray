@@ -139,9 +139,18 @@ class DefaultUnavailableTimeoutCallbackTest : public ::testing::TestWithParam<bo
 
 TEST_P(DefaultUnavailableTimeoutCallbackTest, NodeDeadWithCache) {
   // Add the client to the pool.
-  // 1st call - Node info hasn't come in yet.
+  // 1st call - Node info hasn't been cached yet, but GCS knows it's alive.
   // 2nd call - Node is alive and worker is alive.
   // 3rd call - Node is dead, client should be disconnected.
+
+  auto invoke_with_node_info_vector = [](std::vector<rpc::GcsNodeInfo> node_info_vector) {
+    return Invoke(
+        [node_info_vector](const gcs::MultiItemCallback<rpc::GcsNodeInfo> &callback,
+                           int64_t,
+                           std::optional<NodeID>) {
+          callback(Status::OK(), node_info_vector);
+        });
+  };
 
   auto core_worker_client = client_pool_->GetOrConnect(CreateRandomAddress("1"));
   ASSERT_EQ(client_pool_->Size(), 1);
@@ -155,27 +164,19 @@ TEST_P(DefaultUnavailableTimeoutCallbackTest, NodeDeadWithCache) {
         .WillOnce(Return(nullptr))
         .WillOnce(Return(&node_info_alive))
         .WillOnce(Return(&node_info_dead));
-  } else {
-    auto invoke_with_node_info_vector =
-        [](std::vector<rpc::GcsNodeInfo> node_info_vector) {
-          return Invoke(
-              [node_info_vector](const gcs::MultiItemCallback<rpc::GcsNodeInfo> &callback,
-                                 int64_t,
-                                 std::optional<NodeID>) {
-                callback(Status::OK(), node_info_vector);
-              });
-        };
     EXPECT_CALL(gcs_client_.MockNodeAccessor(), AsyncGetAll(_, _, _))
-        .WillOnce(invoke_with_node_info_vector(std::vector<rpc::GcsNodeInfo>{}))
-        .WillOnce(
-            invoke_with_node_info_vector(std::vector<rpc::GcsNodeInfo>{node_info_alive}))
-        .WillOnce(
-            invoke_with_node_info_vector(std::vector<rpc::GcsNodeInfo>{node_info_dead}));
+        .WillOnce(invoke_with_node_info_vector({node_info_alive}));
+  } else {
+    EXPECT_CALL(gcs_client_.MockNodeAccessor(), AsyncGetAll(_, _, _))
+        .WillOnce(invoke_with_node_info_vector({node_info_alive}))
+        .WillOnce(invoke_with_node_info_vector({node_info_alive}))
+        .WillOnce(invoke_with_node_info_vector({node_info_dead}));
   }
 
   // Worker is alive when node is alive.
   EXPECT_CALL(*raylet_client_, IsLocalWorkerDead(_, _))
-      .WillOnce(
+      .Times(2)
+      .WillRepeatedly(
           Invoke([](const WorkerID &,
                     const rpc::ClientCallback<rpc::IsLocalWorkerDeadReply> &callback) {
             rpc::IsLocalWorkerDeadReply reply;
@@ -212,12 +213,10 @@ TEST_P(DefaultUnavailableTimeoutCallbackTest, WorkerDeadWithCache) {
   } else {
     EXPECT_CALL(gcs_client_.MockNodeAccessor(), AsyncGetAll(_, _, _))
         .Times(2)
-        .WillRepeatedly(
-            Invoke([&](const gcs::MultiItemCallback<rpc::GcsNodeInfo> &callback,
-                       int64_t,
-                       std::optional<NodeID>) {
-              callback(Status::OK(), std::vector<rpc::GcsNodeInfo>{node_info_alive});
-            }));
+        .WillRepeatedly(Invoke(
+            [&](const gcs::MultiItemCallback<rpc::GcsNodeInfo> &callback,
+                int64_t,
+                std::optional<NodeID>) { callback(Status::OK(), {node_info_alive}); }));
   }
 
   EXPECT_CALL(*raylet_client_, IsLocalWorkerDead(_, _))
