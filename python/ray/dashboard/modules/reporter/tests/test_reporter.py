@@ -23,10 +23,9 @@ from ray._private.test_utils import (
     wait_until_server_available,
 )
 from ray.core.generated.metrics_pb2 import Metric
-from ray.dashboard.modules.reporter.gpu_providers import NvidiaGpuProvider
+from ray.dashboard.modules.reporter.gpu_providers import NvidiaGpuProvider, MB
 from ray.dashboard.modules.reporter.reporter_agent import (
     ReporterAgent,
-    MB,
     TpuUtilizationInfo,
 )
 from ray.dashboard.tests.conftest import *  # noqa
@@ -509,13 +508,13 @@ def test_report_per_component_stats_gpu():
             "utilization_gpu": 0,  # NOTE: this is a dummy value
             "memory_used": 0,
             "memory_total": GPU_MEMORY,
-            "processes_pids": [
-                {
+            "processes_pids": {
+                2297322: {
                     "pid": 2297322,
                     "gpu_memory_usage": 26,
                     "gpu_utilization": None,
                 }
-            ],
+            },
         },
         {
             "index": 1,
@@ -524,13 +523,13 @@ def test_report_per_component_stats_gpu():
             "utilization_gpu": 1,
             "memory_used": 1,
             "memory_total": GPU_MEMORY,
-            "processes_pids": [
-                {
+            "processes_pids": {
+                2297332: {
                     "pid": 2297332,
                     "gpu_memory_usage": 26,
                     "gpu_utilization": None,
                 }
-            ],
+            },
         },
     ]
     gpu_worker = STATS_TEMPLATE["workers"][0].copy()
@@ -549,8 +548,8 @@ def test_report_per_component_stats_gpu():
         "    0       7175     C     84     26      -      -      -      -    ray::TorchGPUWo\n"
         "    1       7175     C     86     26      -      -      -      -    ray::TorchGPUWo\n"
     )
-    STATS_TEMPLATE["gpu_processes"] = NvidiaGpuProvider._parse_nvsmi_output(
-        NVSMI_OUTPUT_TWO_TASK_ON_TWO_GPUS
+    STATS_TEMPLATE["gpu_processes"] = NvidiaGpuProvider._parse_nvsmi_pmon_output(
+        NVSMI_OUTPUT_TWO_TASK_ON_TWO_GPUS, STATS_TEMPLATE["gpus"]
     )
     records = agent._to_records(STATS_TEMPLATE, {})
 
@@ -579,13 +578,13 @@ def test_report_per_component_stats_gpu():
         "    0       7176     C     77     22      -      -      -      -    ray::TorchGPUWo\n"
         "    1          -     -      -      -      -      -      -      -    -      \n"
     )
-    STATS_TEMPLATE["gpu_processes"] = ReporterAgent._parse_nvsmi_output(
-        NVSMI_OUTPUT_TWO_TASK_ON_ONE_GPUS
+    STATS_TEMPLATE["gpu_processes"] = NvidiaGpuProvider._parse_nvsmi_pmon_output(
+        NVSMI_OUTPUT_TWO_TASK_ON_ONE_GPUS, STATS_TEMPLATE["gpus"]
     )
-    STATS_TEMPLATE["gpus"][0]["processes_pids"].append(
-        STATS_TEMPLATE["gpus"][1]["processes_pids"][0]
-    )
-    STATS_TEMPLATE["gpus"][1]["processes_pids"] = []
+    # Move process from GPU 1 to GPU 0
+    gpu1_process = STATS_TEMPLATE["gpus"][1]["processes_pids"][2297332]
+    STATS_TEMPLATE["gpus"][0]["processes_pids"][2297332] = gpu1_process
+    STATS_TEMPLATE["gpus"][1]["processes_pids"] = {}
 
     gpu_worker = gpu_worker.copy()
     gpu_worker.update(

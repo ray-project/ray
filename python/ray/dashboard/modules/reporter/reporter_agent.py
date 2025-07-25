@@ -920,16 +920,13 @@ class ReporterAgent(
             # the Raylet.
             self._workers.pop(self._generate_worker_key(self._get_agent_proc()))
             # Build process ID -> GPU info mapping for faster lookups
-            gpu_pid_mapping = {}
+            gpu_pid_mapping = defaultdict(list)
             if gpus is not None:
                 for gpu in gpus:
-                    if not gpu.get("processes_pids"):
-                        continue
-                    for proc in gpu["processes_pids"]:
-                        pid = proc["pid"]
-                        if pid not in gpu_pid_mapping:
-                            gpu_pid_mapping[pid] = []
-                        gpu_pid_mapping[pid].append(proc)
+                    processes = gpu.get("processes_pids")
+                    if processes:
+                        for proc in processes.values():
+                            gpu_pid_mapping[proc.pid].
 
             result = []
             for w in self._workers.values():
