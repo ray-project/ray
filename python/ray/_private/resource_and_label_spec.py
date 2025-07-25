@@ -368,13 +368,17 @@ class ResourceAndLabelSpec:
         associated with this node. This assumes each node has at most one accelerator type.
         If no accelerators are present, returns None.
 
+        The resolved accelerator count uses num_gpus (for GPUs) or resources if set, and
+        otherwise falls back to the count auto-detected by the AcceleratorManager. The
+        resolved accelerator count is capped by the number of visible accelerators.
+
         Args:
             num_gpus: GPU count (if provided by user).
             resources: Resource dictionary containing custom resource keys.
 
         Returns:
             Tuple[Optional[AcceleratorManager], int]: A tuple containing the accelerator
-            manager (or None) and the detected accelerator count (0 if none found).
+            manager (or None) the final resolved accelerator count.
         """
         for resource_name in accelerators.get_all_accelerator_resource_names():
             accelerator_manager = accelerators.get_accelerator_manager_for_resource(
@@ -384,7 +388,7 @@ class ResourceAndLabelSpec:
                 continue
             # Respect configured value for GPUs if set
             if resource_name == "GPU":
-                num_accelerators = num_gpus
+                num_accelerators = num_gpus or None
             else:
                 num_accelerators = resources.get(resource_name)
             if num_accelerators is None:
