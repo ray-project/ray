@@ -2279,7 +2279,7 @@ cdef execute_task_with_cancellation_handler(
             os.environ.pop("OMP_NUM_THREADS", None)
 
         if visible_accelerator_env_vars_overriden:
-            # Reset the visible_accelerator_ids if it was set.
+            # Reset the visible accelerator env vars.
             ray._private.utils.reset_visible_accelerator_env_vars(visible_accelerator_env_vars_overriden)
 
 

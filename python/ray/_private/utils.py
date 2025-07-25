@@ -293,8 +293,7 @@ def set_visible_accelerator_ids() -> Mapping[str, Optional[str]]:
 def reset_visible_accelerator_env_vars(
     visible_accelerator_env_vars_overriden: Mapping[str, Optional[str]]
 ) -> None:
-    """Reset the visible accelerator ids to the original values."""
-    print(f"resetting original_mappings: {visible_accelerator_env_vars_overriden}")
+    """Reset the visible accelerator env vars to the original values."""
     for env_var, env_value in visible_accelerator_env_vars_overriden.items():
         if env_value is None:
             os.environ.pop(env_var, None)
@@ -362,10 +361,9 @@ def _get_docker_cpus(
     # See: https://bugs.openjdk.java.net/browse/JDK-8146115
     if os.path.exists(cpu_quota_file_name) and os.path.exists(cpu_period_file_name):
         try:
-            with (
-                open(cpu_quota_file_name, "r") as quota_file,
-                open(cpu_period_file_name, "r") as period_file,
-            ):
+            with open(cpu_quota_file_name, "r") as quota_file, open(
+                cpu_period_file_name, "r"
+            ) as period_file:
                 cpu_quota = float(quota_file.read()) / float(period_file.read())
         except Exception:
             logger.exception("Unexpected error calculating docker cpu quota.")
