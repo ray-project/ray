@@ -253,11 +253,11 @@ cc_grpc_library(
 # Node manager server and client.
 ray_cc_library(
     name = "node_manager_rpc",
-    srcs = ["src/ray/rpc/node_manager/node_manager_client_pool.cc"],
+    srcs = ["src/ray/rpc/node_manager/raylet_client_pool.cc"],
     hdrs = [
         "src/ray/rpc/node_manager/node_manager_client.h",
-        "src/ray/rpc/node_manager/node_manager_client_pool.h",
         "src/ray/rpc/node_manager/node_manager_server.h",
+        "src/ray/rpc/node_manager/raylet_client_pool.h",
     ],
     deps = [
         ":grpc_common_lib",

@@ -33,6 +33,7 @@
 #include "ray/core_worker/transport/dependency_resolver.h"
 #include "ray/core_worker/transport/task_receiver.h"
 #include "ray/raylet_client/raylet_client.h"
+#include "ray/rpc/node_manager/raylet_client_pool.h"
 #include "ray/rpc/worker/core_worker_client.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
 
@@ -82,7 +83,7 @@ class NormalTaskSubmitter {
       rpc::Address rpc_address,
       std::shared_ptr<WorkerLeaseInterface> lease_client,
       std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool,
-      LeaseClientFactoryFn lease_client_factory,
+      std::shared_ptr<rpc::RayletClientPool> raylet_client_pool,
       std::unique_ptr<LeasePolicyInterface> lease_policy,
       std::shared_ptr<CoreWorkerMemoryStore> store,
       TaskManagerInterface &task_manager,
@@ -96,7 +97,7 @@ class NormalTaskSubmitter {
       boost::asio::steady_timer cancel_timer)
       : rpc_address_(std::move(rpc_address)),
         local_lease_client_(std::move(lease_client)),
-        lease_client_factory_(std::move(lease_client_factory)),
+        raylet_client_pool_(std::move(raylet_client_pool)),
         lease_policy_(std::move(lease_policy)),
         resolver_(*store, task_manager, *actor_creator, tensor_transport_getter),
         task_manager_(task_manager),
@@ -256,8 +257,8 @@ class NormalTaskSubmitter {
   absl::flat_hash_map<NodeID, std::shared_ptr<WorkerLeaseInterface>> remote_lease_clients_
       ABSL_GUARDED_BY(mu_);
 
-  /// Factory for producing new clients to request leases from remote nodes.
-  LeaseClientFactoryFn lease_client_factory_;
+  /// Raylet client pool for producing new clients to request leases from remote nodes.
+  std::shared_ptr<rpc::RayletClientPool> raylet_client_pool_;
 
   /// Provider of worker leasing decisions for the first lease request (not on
   /// spillback).
