@@ -474,6 +474,9 @@ class RLModule(Checkpointable, abc.ABC):
             if "'NoneType' object has no attribute " in e.args[0]:
                 raise (self._catalog_ctor_error or e)
         self._is_setup = True
+        # Cache value for returning from `is_stateful` so we don't have to call
+        # the module's `get_initial_state()` method all the time (might be expensive).
+        self._is_stateful = None
 
     @OverrideToImplementCustomLogic
     def setup(self):
@@ -667,12 +670,14 @@ class RLModule(Checkpointable, abc.ABC):
         state is an empty dict and recurrent otherwise.
         This behavior can be customized by overriding this method.
         """
-        initial_state = self.get_initial_state()
-        assert isinstance(initial_state, dict), (
-            "The initial state of an RLModule must be a dict, but is "
-            f"{type(initial_state)} instead."
-        )
-        return bool(initial_state)
+        if self._is_stateful is None:
+            initial_state = self.get_initial_state()
+            assert isinstance(initial_state, dict), (
+                "The initial state of an RLModule must be a dict, but is "
+                f"{type(initial_state)} instead."
+            )
+            self._is_stateful = bool(initial_state)
+        return self._is_stateful
 
     @OverrideToImplementCustomLogic
     @override(Checkpointable)

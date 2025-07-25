@@ -2964,6 +2964,13 @@ py_test(
 )
 
 py_test(
+    name = "utils/tests/test_tf_utils",
+    tags = ["team:rllib", "utils"],
+    size = "small",
+    srcs = ["utils/tests/test_tf_utils.py"]
+)
+
+py_test(
     name = "test_torch_utils",
     size = "medium",
     srcs = ["utils/tests/test_torch_utils.py"],

@@ -8,11 +8,6 @@ from typing import Any, Dict
 import gymnasium as gym
 import numpy as np
 
-from ray.rllib.algorithms.dreamerv3.utils import do_symlog_obs
-from ray.rllib.algorithms.dreamerv3.tf.models.actor_network import ActorNetwork
-from ray.rllib.algorithms.dreamerv3.tf.models.critic_network import CriticNetwork
-from ray.rllib.algorithms.dreamerv3.tf.models.dreamer_model import DreamerModel
-from ray.rllib.algorithms.dreamerv3.tf.models.world_model import WorldModel
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.policy.eager_tf_policy import _convert_to_tf
