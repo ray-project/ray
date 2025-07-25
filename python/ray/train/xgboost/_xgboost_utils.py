@@ -23,8 +23,6 @@ except ImportError:
 class RayReportCallback(TrainingCallback):
     CHECKPOINT_NAME = "model.ubj"
 
-    report_fn: Callable[[Dict, Optional[Checkpoint]], None] = ray.train.report
-
     def __init__(
         self,
         metrics: Optional[Union[str, List[str], Dict[str, str]]] = None,
