@@ -1434,8 +1434,6 @@ void GcsActorManager::RestartActor(const ActorID &actor_id,
   // so that the actor will never be rescheduled.
   int64_t max_restarts = mutable_actor_table_data->max_restarts();
   uint64_t num_restarts = mutable_actor_table_data->num_restarts();
-  uint64_t num_restarts_due_to_node_preemption =
-      mutable_actor_table_data->num_restarts_due_to_node_preemption();
 
   int64_t remaining_restarts;
   // Destroy placement group owned by this actor.
@@ -1445,8 +1443,7 @@ void GcsActorManager::RestartActor(const ActorID &actor_id,
   } else if (max_restarts == -1) {
     remaining_restarts = -1;
   } else {
-    // Restarts due to node preemption do not count towards max_restarts.
-    int64_t remaining = max_restarts - num_restarts + num_restarts_due_to_node_preemption;
+    int64_t remaining = max_restarts - num_restarts;
     remaining_restarts = std::max(remaining, static_cast<int64_t>(0));
   }
 
@@ -1459,11 +1456,11 @@ void GcsActorManager::RestartActor(const ActorID &actor_id,
   if (remaining_restarts != 0) {
     // num_restarts must be set before updating GCS, or num_restarts will be inconsistent
     // between memory cache and storage.
-    if (mutable_actor_table_data->preempted()) {
-      mutable_actor_table_data->set_num_restarts_due_to_node_preemption(
-          num_restarts_due_to_node_preemption + 1);
+    if (!mutable_actor_table_data->preempted()) {
+      mutable_actor_table_data->set_num_restarts(num_restarts + 1);
+    } else {
+      mutable_actor_table_data->set_preempted(false);
     }
-    mutable_actor_table_data->set_num_restarts(num_restarts + 1);
     actor->UpdateState(rpc::ActorTableData::RESTARTING);
     // Make sure to reset the address before flushing to GCS. Otherwise,
     // GCS will mistakenly consider this lease request succeeds when restarting.
