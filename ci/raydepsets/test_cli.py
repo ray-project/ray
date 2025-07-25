@@ -11,6 +11,7 @@ from ci.raydepsets.cli import (
     uv_binary,
     _override_uv_flags,
     _append_uv_flags,
+    _flatten_flags,
 )
 from ci.raydepsets.workspace import Workspace
 from click.testing import CliRunner
@@ -204,7 +205,7 @@ class TestCli(unittest.TestCase):
 
     def test_override_uv_flag(self):
         assert _override_uv_flags(
-            ["--extra-index-url", "https://download.pytorch.org/whl/cu128"],
+            ["--extra-index-url https://download.pytorch.org/whl/cu128"],
             DEFAULT_UV_FLAGS.copy(),
         ) == [
             "--generate-hashes",
@@ -223,6 +224,24 @@ class TestCli(unittest.TestCase):
             "--index-strategy",
             "unsafe-best-match",
             "--quiet",
+            "--extra-index-url",
+            "https://download.pytorch.org/whl/cu128",
+        ]
+
+    def test_flatten_flags(self):
+        assert _flatten_flags(["--no-annotate", "--no-header"]) == [
+            "--no-annotate",
+            "--no-header",
+        ]
+        assert _flatten_flags(
+            [
+                "--no-annotate",
+                "--no-header",
+                "--extra-index-url https://download.pytorch.org/whl/cu128",
+            ]
+        ) == [
+            "--no-annotate",
+            "--no-header",
             "--extra-index-url",
             "https://download.pytorch.org/whl/cu128",
         ]

@@ -109,24 +109,17 @@ class DependencySetManager:
         return (Path(self.workspace.dir) / path).as_posix()
 
 
-def _override_uv_flags(flags: List[str], args: List[str]) -> List[str]:
+def _flatten_flags(flags: List[str]) -> List[str]:
+    flattened_flags = []
     for flag in flags:
-        for arg in args:
-            if flag.startswith("--"):
-                if flag == arg:
-                    args.remove(arg)
-            else:
-                if flag[0] == arg:
-                    args.remove(arg)
-
-    return args + flags
+        flattened_flags.extend(flag.split())
+    return flattened_flags
 
 
 def _override_uv_flags(flags: List[str], args: List[str]) -> List[str]:
     flag_names = {f.split()[0] for f in flags if f.startswith("--")}
     new_args = []
     skip_next = False
-
     for arg in args:
         if skip_next:
             skip_next = False
@@ -136,7 +129,7 @@ def _override_uv_flags(flags: List[str], args: List[str]) -> List[str]:
             continue
         new_args.append(arg)
 
-    return new_args + flags
+    return new_args + _flatten_flags(flags)
 
 
 def _append_uv_flags(flags: List[str], args: List[str]) -> List[str]:
