@@ -7,7 +7,6 @@ py_test_module_list(
         "test_ray_option_utils.py",
         "test_signal_semaphore_utils.py",
         "test_signature.py",
-        "test_usage_stats.py",
         "test_utils.py",
         "test_wait_for_condition.py",
     ],
