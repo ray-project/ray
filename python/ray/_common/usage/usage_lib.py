@@ -518,7 +518,7 @@ def set_usage_stats_enabled_via_env_var(enabled) -> None:
     os.environ[usage_constant.USAGE_STATS_ENABLED_ENV_VAR] = "1" if enabled else "0"
 
 
-def put_cluster_metadata(gcs_client: GcsClient, *, ray_init_cluster: bool) -> None:
+def put_cluster_metadata(gcs_client: GcsClient, *, ray_init_cluster: bool) -> dict:
     """Generate the cluster metadata and store it to GCS.
 
     It is a blocking API.
