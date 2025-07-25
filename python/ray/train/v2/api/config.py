@@ -94,7 +94,7 @@ class FailureConfig(FailureConfigV1):
             Will recover from the latest checkpoint if present.
             Setting to -1 will lead to infinite recovery retries.
             Setting to 0 will disable retries. Defaults to 0.
-        controller_failure_limit: The maximum number of controller failures to tolerate.
+        controller_failure_limit: [DeveloperAPI] The maximum number of controller failures to tolerate.
             Setting to -1 will lead to infinite controller retries.
             Setting to 0 will disable controller retries. Defaults to -1.
     """
