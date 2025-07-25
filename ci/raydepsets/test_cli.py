@@ -203,7 +203,7 @@ class TestCli(unittest.TestCase):
             ["--no-annotate", "--no-header"], DEFAULT_UV_FLAGS.copy()
         ) == DEFAULT_UV_FLAGS.copy() + ["--no-annotate", "--no-header"]
 
-    def test_override_uv_flag(self):
+    def test_override_uv_flag_single_flag(self):
         assert _override_uv_flags(
             ["--extra-index-url https://download.pytorch.org/whl/cu128"],
             DEFAULT_UV_FLAGS.copy(),
@@ -226,6 +226,27 @@ class TestCli(unittest.TestCase):
             "--quiet",
             "--extra-index-url",
             "https://download.pytorch.org/whl/cu128",
+        ]
+
+    def test_override_uv_flag_multiple_flags(self):
+        assert _override_uv_flags(
+            ["--unsafe-package dummy"],
+            DEFAULT_UV_FLAGS.copy(),
+        ) == [
+            "--generate-hashes",
+            "--strip-extras",
+            "--no-strip-markers",
+            "--emit-index-url",
+            "--emit-find-links",
+            "--index-url",
+            "https://pypi.org/simple",
+            "--extra-index-url",
+            "https://download.pytorch.org/whl/cpu",
+            "--index-strategy",
+            "unsafe-best-match",
+            "--quiet",
+            "--unsafe-package",
+            "dummy",
         ]
 
     def test_flatten_flags(self):
