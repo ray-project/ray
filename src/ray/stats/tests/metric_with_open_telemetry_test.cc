@@ -183,7 +183,7 @@ INSTANTIATE_TEST_SUITE_P(
                         {},  // no global tags
                         {{"Tag1", "Value1"}, {"Tag2", "Value1"}},
                         42.0},
-        // Gauge metric with global tags
+        // Gauge metric with global tags, global tag is a metric specific tag
         GaugeMetricCase{"metric_gauge_test",
                         52.0,
                         {{stats::TagKeyType::Register("Tag1"), "Value2"},
@@ -191,6 +191,28 @@ INSTANTIATE_TEST_SUITE_P(
                         {{stats::TagKeyType::Register("Tag3"), "Global"}},
                         {{"Tag1", "Value2"}, {"Tag2", "Value2"}, {"Tag3", "Global"}},
                         52.0},
+        // Gauge metric with global tags, global tag is not a metric specific tag
+        GaugeMetricCase{"metric_gauge_test",
+                        52.0,
+                        {{stats::TagKeyType::Register("Tag1"), "Value2"},
+                         {stats::TagKeyType::Register("Tag2"), "Value2"}},
+                        {{stats::TagKeyType::Register("Tag4"),
+                          "Global"}},  // Tag4 is not registered during metric definition
+                        {{"Tag1", "Value2"}, {"Tag2", "Value2"}, {"Tag4", "Global"}},
+                        52.0},
+        // Gauge metric with global tags, global tag overwrites user specified values
+        GaugeMetricCase{
+            "metric_gauge_test",
+            52.0,
+            {{stats::TagKeyType::Register("Tag1"), "Value2"},
+             {stats::TagKeyType::Register("Tag2"), "Value2"},
+             {stats::TagKeyType::Register("Tag3"), "local"}},
+            {{stats::TagKeyType::Register("Tag3"), "Global"}},
+            {{"Tag1", "Value2"},
+             {"Tag2", "Value2"},
+             {"Tag3",
+              "Global"}},  // global tag takes precedence over locally specified value
+            52.0},
         // Gauge metric recorded with unsupported tag
         GaugeMetricCase{"metric_gauge_test",
                         62.0,
