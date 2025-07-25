@@ -117,13 +117,16 @@ def task_handler(
         raise ValueError("Task name must be a non-empty string when provided")
 
     def decorator(f):
-        @wraps(f)
-        def wrapper(*args, **kwargs):
-            return f(*args, **kwargs)
+        # async functions are not supported yet in celery `threads` worker pool
+        if not inspect.iscoroutinefunction(f):
 
-        wrapper._is_task_handler = True  # type: ignore
-        wrapper._task_name = name or f.__name__  # type: ignore
-        return wrapper
+            @wraps(f)
+            def wrapper(*args, **kwargs):
+                return f(*args, **kwargs)
+
+            wrapper._is_task_handler = True  # type: ignore
+            wrapper._task_name = name or f.__name__  # type: ignore
+            return wrapper
 
     if _func is not None:
         # Used without arguments: @task_handler

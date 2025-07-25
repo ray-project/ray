@@ -1,3 +1,4 @@
+import asyncio
 import sys
 import tempfile
 import time
@@ -81,7 +82,9 @@ class TestTaskConsumerWithRayServe:
         @ray.remote(num_cpus=2)
         def send_request_to_queue(data):
             celery_adapter = get_task_adapter(config=processor_config)
-            result = celery_adapter.enqueue_task("process_request", args=[data])
+            result = asyncio.run(
+                celery_adapter.enqueue_task("process_request", args=[data])
+            )
 
             assert result.id is not None
             assert result.status in ("PENDING", "FAILED", "SUCCESS")
@@ -162,7 +165,9 @@ class TestTaskConsumerWithRayServe:
         @ray.remote(num_cpus=2)
         def send_request_to_queue(data):
             celery_adapter = get_task_adapter(config=processor_config)
-            result = celery_adapter.enqueue_task("process_request", args=[data])
+            result = asyncio.run(
+                celery_adapter.enqueue_task("process_request", args=[data])
+            )
 
             assert result.id is not None
             return result.id
@@ -170,7 +175,7 @@ class TestTaskConsumerWithRayServe:
         @ray.remote
         def get_task_status(task_id):
             celery_adapter = get_task_adapter(config=processor_config)
-            return celery_adapter.get_task_status(task_id)
+            return asyncio.run(celery_adapter.get_task_status(task_id))
 
         @serve.deployment
         @task_consumer(task_processor_config=processor_config)
@@ -204,6 +209,85 @@ class TestTaskConsumerWithRayServe:
                 return False
 
         wait_for_condition(assert_result, timeout=5)
+
+    def test_task_consumer_as_serve_deployment_with_async_task_handler(
+        self, temp_queue_directory, serve_instance
+    ):
+        """Test that task consumers can be used as Ray Serve deployments with async task handlers."""
+
+        backend_url = "rpc://"
+        broker_url = "filesystem://"
+        queue_name = "my_default_app_queue"
+        data_folder_queue = temp_queue_directory["queue_path"]
+        control_path = temp_queue_directory["control_path"]
+
+        transport_options = {
+            "data_folder_in": data_folder_queue,
+            "data_folder_out": data_folder_queue,
+            "data_folder_processed": data_folder_queue,
+            "control_folder": control_path,
+        }
+
+        processor_config = TaskProcessorConfig(
+            queue_name=queue_name,
+            adapter_config=CeleryTaskProcessorConfig(
+                broker_url=broker_url,
+                backend_url=backend_url,
+                broker_transport_options=transport_options,
+            ),
+        )
+
+        @ray.remote(num_cpus=2)
+        def send_request_to_queue(data):
+            celery_adapter = get_task_adapter(config=processor_config)
+            result = asyncio.run(
+                celery_adapter.enqueue_task("process_request", args=[data])
+            )
+
+            assert result.id is not None
+            assert result.status in ("PENDING", "FAILED", "SUCCESS")
+
+        @serve.deployment
+        @task_consumer(task_processor_config=processor_config)
+        class ServeTaskConsumer:
+            def __init__(self):
+                self.data_received = None
+                self.task_received = False
+
+            # async task handler is not supported yet, so we should not receive the task
+            @task_handler(name="process_request")
+            async def process_request(self, data):
+                self.task_received = True
+                self.data_received = data
+
+            def assert_task_not_received(self):
+                assert self.task_received is False
+                assert self.data_received is None
+
+            async def __call__(self, request: Request):
+                if request.url.path == "/assert-result":
+                    try:
+                        self.assert_task_not_received()
+                        return JSONResponse({"status": "success"}, status_code=200)
+                    except Exception as e:
+                        return JSONResponse(
+                            {"status": "error", "detail": str(e)}, status_code=500
+                        )
+
+        # Deploy the consumer as a Serve deployment
+        serve.run(ServeTaskConsumer.bind())
+        send_request_to_queue.remote("test_data_1")
+
+        time.sleep(5)  # wait for the task to be processed
+
+        def assert_result():
+            response = httpx.get("http://localhost:8000/assert-result")
+            if response.status_code == 200:
+                return True
+            else:
+                return False
+
+        wait_for_condition(assert_result)
 
 
 if __name__ == "__main__":

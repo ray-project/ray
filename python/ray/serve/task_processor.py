@@ -28,19 +28,21 @@ class TaskProcessorAdapter(ABC):
         pass
 
     @abstractmethod
-    def enqueue_task(self, task_name, args=None, kwargs=None, **options) -> TaskResult:
+    async def enqueue_task(
+        self, task_name, args=None, kwargs=None, **options
+    ) -> TaskResult:
         pass
 
     @abstractmethod
-    def get_task_status(self, task_id) -> Dict[str, Any]:
+    async def get_task_status(self, task_id) -> Dict[str, Any]:
         pass
 
     @abstractmethod
-    def cancel_task(self, task_id) -> bool:
+    async def cancel_task(self, task_id) -> bool:
         pass
 
     @abstractmethod
-    def get_metrics(self) -> Dict[str, Any]:
+    async def get_metrics(self) -> Dict[str, Any]:
         pass
 
     @abstractmethod
@@ -56,7 +58,7 @@ class TaskProcessorAdapter(ABC):
         pass
 
     @abstractmethod
-    def health_check(self):
+    async def health_check(self):
         pass
 
 
@@ -104,7 +106,9 @@ class CeleryTaskProcessorAdapter(TaskProcessorAdapter):
         else:
             self._app.task(func)
 
-    def enqueue_task(self, task_name, args=None, kwargs=None, **options) -> TaskResult:
+    async def enqueue_task(
+        self, task_name, args=None, kwargs=None, **options
+    ) -> TaskResult:
         task_response = self._app.send_task(
             task_name,
             args=args,
@@ -120,7 +124,7 @@ class CeleryTaskProcessorAdapter(TaskProcessorAdapter):
             result=task_response.result,
         )
 
-    def get_task_status(self, task_id) -> Dict[str, Any]:
+    async def get_task_status(self, task_id) -> Dict[str, Any]:
         task_details = self._app.AsyncResult(task_id)
         return {
             "id": task_details.id,
@@ -128,10 +132,10 @@ class CeleryTaskProcessorAdapter(TaskProcessorAdapter):
             "status": task_details.status,
         }
 
-    def cancel_task(self, task_id) -> bool:
+    async def cancel_task(self, task_id) -> bool:
         return self._app.AsyncResult(task_id).cancel()
 
-    def get_metrics(self) -> Dict[str, Any]:
+    async def get_metrics(self) -> Dict[str, Any]:
         return self._app.control.inspect().stats()
 
     def start_consumer(self, **kwargs):
@@ -172,7 +176,7 @@ class CeleryTaskProcessorAdapter(TaskProcessorAdapter):
     def shutdown(self):
         self._app.control.shutdown()
 
-    def health_check(self):
+    async def health_check(self):
         return self._app.control.ping()
 
 
@@ -191,16 +195,18 @@ class MockTaskProcessorAdapter(TaskProcessorAdapter):
     def register_task_handle(self, func, name=None):
         self.register_task_handle_mock(func, name=name)
 
-    def enqueue_task(self, task_name, args=None, kwargs=None, **options) -> TaskResult:
+    async def enqueue_task(
+        self, task_name, args=None, kwargs=None, **options
+    ) -> TaskResult:
         pass
 
-    def get_task_status(self, task_id) -> Dict[str, Any]:
+    async def get_task_status(self, task_id) -> Dict[str, Any]:
         pass
 
-    def cancel_task(self, task_id) -> bool:
+    async def cancel_task(self, task_id) -> bool:
         pass
 
-    def get_metrics(self) -> Dict[str, Any]:
+    async def get_metrics(self) -> Dict[str, Any]:
         pass
 
     def start_consumer(self, **kwargs):
@@ -212,7 +218,7 @@ class MockTaskProcessorAdapter(TaskProcessorAdapter):
     def shutdown(self):
         self._shutdown_received = True
 
-    def health_check(self):
+    async def health_check(self):
         pass
 
 
