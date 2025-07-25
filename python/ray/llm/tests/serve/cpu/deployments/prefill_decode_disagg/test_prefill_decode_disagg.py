@@ -9,7 +9,8 @@ from ray.serve.llm import LLMConfig
 
 
 class TestServingArgsParsing:
-    def test_parse_dict(self):
+    @pytest.mark.parametrize("kv_connector", ["NixlConnector", "LMCacheConnectorV1"])
+    def test_parse_dict(self, kv_connector: str):
         prefill_config = LLMConfig(
             model_loading_config=dict(
                 model_id="qwen-0.5b",
