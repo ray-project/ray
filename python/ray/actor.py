@@ -22,7 +22,7 @@ except ImportError:
     from typing_extensions import ParamSpec
     from typing_extensions import Concatenate
 
-import ray._private.ray_constants as ray_constants
+import ray._common.ray_constants as ray_constants
 import ray._common.signature as signature
 import ray._raylet
 from ray import ActorClassID, Language, cross_language, ObjectRef
@@ -1541,7 +1541,7 @@ class ActorClass(Generic[T]):
         worker.check_connected()
 
         if worker.mode != ray._private.worker.WORKER_MODE:
-            from ray._private.usage import usage_lib
+            from ray._common.usage import usage_lib
 
             usage_lib.record_library_usage("core")
 

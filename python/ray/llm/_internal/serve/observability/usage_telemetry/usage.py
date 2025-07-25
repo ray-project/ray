@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Sequence
 
 import ray
 from ray import serve
-from ray._private.usage.usage_lib import (
+from ray._common.usage.usage_lib import (
     get_hardware_usages_to_report,
     record_extra_usage_tag,
 )
@@ -170,7 +170,7 @@ class TelemetryAgent:
 
     def record(self, model: Optional[TelemetryModel] = None) -> None:
         """Record telemetry model."""
-        from ray._private.usage.usage_lib import TagKey
+        from ray._common.usage.usage_lib import TagKey
 
         if model:
             self.models.append(model)

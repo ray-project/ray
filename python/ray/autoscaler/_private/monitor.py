@@ -13,8 +13,7 @@ from dataclasses import asdict
 from typing import Any, Callable, Dict, Optional, Union
 
 import ray
-import ray._private.ray_constants as ray_constants
-import ray._private.utils
+import ray._common.ray_constants as ray_constants
 from ray._private.event.event_logger import get_event_logger
 from ray._private.ray_logging import setup_component_logger
 from ray._raylet import GcsClient

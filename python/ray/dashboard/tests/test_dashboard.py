@@ -25,7 +25,7 @@ import ray.dashboard.modules
 import ray.dashboard.utils as dashboard_utils
 import ray.scripts.scripts as scripts
 from ray._common.utils import get_or_create_event_loop
-from ray._private import ray_constants
+from ray._common import ray_constants
 from ray._private.ray_constants import (
     DEBUG_AUTOSCALING_ERROR,
     DEBUG_AUTOSCALING_STATUS_LEGACY,

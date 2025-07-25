@@ -8,7 +8,7 @@ import traceback
 from typing import Optional, Set
 
 import ray
-import ray._private.ray_constants as ray_constants
+import ray._common.ray_constants as ray_constants
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.head as dashboard_head
 import ray.dashboard.utils as dashboard_utils

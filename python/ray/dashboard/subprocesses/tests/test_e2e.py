@@ -7,7 +7,7 @@ from typing import List
 import pytest
 
 from ray._common.test_utils import wait_for_condition
-import ray._private.ray_constants as ray_constants
+import ray._common.ray_constants as ray_constants
 import ray.dashboard.consts as dashboard_consts
 from ray._common.test_utils import async_wait_for_condition
 from ray.dashboard.optional_deps import aiohttp

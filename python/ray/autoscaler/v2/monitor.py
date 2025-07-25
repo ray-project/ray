@@ -12,11 +12,10 @@ import time
 from typing import Optional
 
 import ray
-import ray._private.ray_constants as ray_constants
-import ray._private.utils
+import ray._common.ray_constants as ray_constants
 from ray._private.event.event_logger import get_event_logger
 from ray._private.ray_logging import setup_component_logger
-from ray._private.usage.usage_lib import record_extra_usage_tag
+from ray._common.usage.usage_lib import record_extra_usage_tag
 from ray._private.worker import SCRIPT_MODE
 from ray._raylet import GcsClient
 from ray.autoscaler._private.constants import (
