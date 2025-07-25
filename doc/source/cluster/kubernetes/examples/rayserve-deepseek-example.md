@@ -7,7 +7,7 @@ This guide provides a step-by-step guide for deploying a Large Language Model (L
 ## Prerequisites
 A DeepSeek model requires 2 nodes, each equipped with 8 H100 80 GB GPUs.
 It should be deployable on Kubernetes clusters that meet this requirement.
-This guide provides instructions for setting up a GKE cluster using A3 High or A3 Mega machine types.
+This guide provides instructions for setting up a GKE cluster using [A3 High](https://cloud.google.com/compute/docs/gpus#a3-high) or [A3 Mega](https://cloud.google.com/compute/docs/gpus#a3-mega) machine types.
 
 Before creating the cluster, ensure that your project has sufficient [quota](https://pantheon.corp.google.com/iam-admin/quotas) for the required accelerators.
 
@@ -23,7 +23,7 @@ gcloud container clusters create kuberay-gpu-cluster \
     --enable-image-streaming
 ```
 
-After that, Run the following command to create an on-demand GPU node pool for Ray GPU workers.
+Run the following command to create an on-demand GPU node pool for Ray GPU workers.
 
 ```sh
 gcloud beta container node-pools create gpu-node-pool \
@@ -49,7 +49,7 @@ To create a node pool that uses reservations, you can specify the following para
 * `--placement-policy=PLACEMENT_POLICY_NAME` (Optional)
 ```
 
-Finally, run the following command to download Google Cloud credentials and configure the Kubernetes CLI to use them.
+Run the following `gcloud` command to configure `kubectl` to communicate with your cluster:
 
 ```sh
 gcloud container clusters get-credentials kuberay-gpu-cluster --zone us-east5-a
@@ -67,7 +67,7 @@ Create a RayService custom resource by running the following instruction:
 kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-service.deepseek.yaml
 ```
 
-This step sets up a custom Ray Serve app to serve the `deepseek-ai/DeepSeek-R1` model on 2 worker nodes. You can inspect and modify the `serveConfigV2` section in the YAML file to learn more about the Serve app:
+This step sets up a custom Ray Serve application to serve the `deepseek-ai/DeepSeek-R1` model on 2 worker nodes. You can inspect and modify the `serveConfigV2` section in the YAML file to learn more about the Serve application:
 ```yaml
 serveConfigV2: |
   applications:
@@ -190,10 +190,7 @@ The output should be in the following format:
 
 ```sh
 # Export ray cluster head service name
-SERVICE_NAME=$(kubectl get service -n default -l 'ray.io/node-type=head' \
-  -o=custom-columns=NAME:.metadata.name,CLUSTER:.metadata.labels.ray\.io/cluster \
-  | grep "deepseek-r1-raycluster" \
-  | awk '{print $1}')
+SERVICE_NAME="$(kubectl get rayservice deepseek-r1 -n default -o jsonpath='{.status.activeServiceStatus.rayClusterName}')-head-svc"
 
 # Forward the service port
 kubectl port-forward svc/${SERVICE_NAME} 8265:8265
