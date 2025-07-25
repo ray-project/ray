@@ -119,7 +119,7 @@ class ResourceAndLabelSpec:
     def resolve(
         self, is_head: bool, node_ip_address: Optional[str] = None
     ) -> "ResourceAndLabelSpec":
-        """Fills out this ResourceAndLabelSpec instance with system defaults.
+        """Fills out this ResourceAndLabelSpec instance with merged values from system defaults and user specification.
 
         Args:
             is_head: Whether this is the head node.
