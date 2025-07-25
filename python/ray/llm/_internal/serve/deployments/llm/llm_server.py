@@ -123,35 +123,30 @@ class LLMServer(_LLMServerBase):
 
     Usage Patterns (Ed's Pattern):
 
-    1. Basic pattern:
-        server = LLMServer(llm_config)  # Sync constructor only
+    1. Basic pattern (for testing):
+        server = LLMServer.sync_init(llm_config)  # Sync constructor, unstarted
         await server.start()  # Must explicitly start
 
-    2. Convenience method (same as #1):
-        server = LLMServer.sync_init(llm_config)
-        await server.start()
+    2. Async context (default, used by Ray Serve):
+        server = await LLMServer(llm_config)  # Async constructor, fully started
 
-    3. Async context (fully initialized):
-        server = await LLMServer.async_init(llm_config)  # Ready to use
-
-    4. Ray Serve deployment:
-        # Deployments handle the start() call appropriately
-        deployment = LLMDeployment(llm_config)
+    3. Ray Serve deployment:
+        # Ray Serve calls the async constructor directly
+        deployment = serve.deployment(LLMServer).bind(llm_config)
     """
 
     _default_engine_cls = VLLMEngine
 
-    def __init__(
+    async def __init__(
         self,
         llm_config: LLMConfig,
         *,
         engine_cls: Optional[Type[LLMEngine]] = None,
         model_downloader: Optional[Type[LoraModelLoader]] = None,
     ):
-        """Constructor of LLMServer - sync only following Ed's pattern.
+        """Asynchronous constructor that returns a fully started instance.
 
-        This constructor only does synchronous initialization. The engine
-        must be started explicitly with await start().
+        This is the default constructor used by Ray Serve deployments.
 
         Args:
             llm_config: LLMConfig for the model.
@@ -162,6 +157,7 @@ class LLMServer(_LLMServerBase):
         """
         super().__init__()
         self._init_shared(llm_config, engine_cls, model_downloader)
+        await self.start()
 
     def _init_shared(
         self,
@@ -185,8 +181,8 @@ class LLMServer(_LLMServerBase):
     ) -> "LLMServer":
         """Synchronous constructor that returns an unstarted instance.
 
-        This is useful for testing and scenarios where you want to control
-        when the async initialization happens.
+        This is used for testing Edward's pattern where initialization
+        and starting are explicitly separated.
 
         Args:
             llm_config: LLMConfig for the model.
@@ -196,41 +192,15 @@ class LLMServer(_LLMServerBase):
                 Defaults to `LoraModelLoader`.
 
         Returns:
-            An LLMServer instance. You must call `await instance.start()` before use.
+            An unstarted LLMServer instance. Caller must call await start().
         """
-        return cls(llm_config, engine_cls=engine_cls, model_downloader=model_downloader)
-
-    @classmethod
-    async def async_init(
-        cls,
-        llm_config: LLMConfig,
-        *,
-        engine_cls: Optional[Type[LLMEngine]] = None,
-        model_downloader: Optional[Type[LoraModelLoader]] = None,
-    ) -> "LLMServer":
-        """Asynchronous constructor that returns a fully started instance.
-
-        This is useful when you're already in an async context and want
-        a fully initialized server.
-
-        Args:
-            llm_config: LLMConfig for the model.
-            engine_cls: Dependency injection for the vllm engine class.
-                Defaults to `VLLMEngine`.
-            model_downloader: Dependency injection for the model downloader.
-                Defaults to `LoraModelLoader`.
-
-        Returns:
-            A fully started LLMServer instance ready for use.
-        """
-        instance = cls(
-            llm_config, engine_cls=engine_cls, model_downloader=model_downloader
-        )
-        await instance.start()
+        instance = cls.__new__(cls)
+        _LLMServerBase.__init__(instance)
+        instance._init_shared(llm_config, engine_cls, model_downloader)
         return instance
 
     async def start(self):
-        """Start the engine asynchronously."""
+        """Start the underlying engine. This handles async initialization."""
         if self._engine_cls is not None:
             self.engine = self._engine_cls(self._llm_config)
             await asyncio.wait_for(self._start_engine(), timeout=ENGINE_START_TIMEOUT_S)
@@ -340,8 +310,9 @@ class LLMServer(_LLMServerBase):
         Returns:
             An AsyncGenerator of the response. If stream is True and batching is enabled, then the generator will yield a list of streaming responses (strings of the format data: {response_json}\n\n). Otherwise, it will yield the non-streaming response from engine directly.
         """
-        await self._maybe_add_request_id_to_request(request)
-        await self._maybe_resolve_lora_from_multiplex()
+        if self._llm_config.multiplex_config is not None:
+            await self._maybe_add_request_id_to_request(request)
+            await self._maybe_resolve_lora_from_multiplex()
 
         is_stream = hasattr(request, "stream") and request.stream
         if is_stream and batch_output_stream:

@@ -151,6 +151,7 @@ class TestLLMServer:
 
         # Create a server with a mocked engine
         server = create_server(mock_llm_config, engine_cls=LocalMockEngine)
+        await server.start()
 
         # Perform the health check, no exceptions should be raised
         await server.check_health()
@@ -162,6 +163,7 @@ class TestLLMServer:
     async def test_llm_config_property(self, create_server, mock_llm_config):
         """Test the llm_config property."""
         server = create_server(mock_llm_config, engine_cls=MockVLLMEngine)
+        await server.start()
         llm_config = await server.llm_config()
         assert isinstance(llm_config, type(mock_llm_config))
 
@@ -260,7 +262,8 @@ class TestLLMServer:
         with patch(
             "ray.llm._internal.serve.deployments.llm.llm_server.push_telemetry_report_for_all_models"
         ) as mock_push_telemetry:
-            create_server(mock_llm_config, engine_cls=MockVLLMEngine)
+            server = create_server(mock_llm_config, engine_cls=MockVLLMEngine)
+            await server.start()
             mock_push_telemetry.assert_called_once()
 
 

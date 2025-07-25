@@ -182,7 +182,8 @@ def create_server():
     """Create an LLMServer instance."""
 
     def creator(*args, **kwargs):
-        # Use regular constructor
-        return LLMServer(*args, **kwargs)
+        # Use sync init and manually start (outside of this fixture) for Ed's pattern
+        server = LLMServer.sync_init(*args, **kwargs)
+        return server
 
     return creator
