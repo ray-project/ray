@@ -193,35 +193,33 @@ INSTANTIATE_TEST_SUITE_P(
                         52.0},
         // Gauge metric with global tags, global tag is not a metric specific tag
         GaugeMetricCase{"metric_gauge_test",
-                        52.0,
-                        {{stats::TagKeyType::Register("Tag1"), "Value2"},
-                         {stats::TagKeyType::Register("Tag2"), "Value2"}},
-                        {{stats::TagKeyType::Register("Tag4"),
-                          "Global"}},  // Tag4 is not registered during metric definition
-                        {{"Tag1", "Value2"}, {"Tag2", "Value2"}, {"Tag4", "Global"}},
-                        52.0},
-        // Gauge metric with global tags, global tag overwrites user specified values
-        GaugeMetricCase{
-            "metric_gauge_test",
-            52.0,
-            {{stats::TagKeyType::Register("Tag1"), "Value2"},
-             {stats::TagKeyType::Register("Tag2"), "Value2"},
-             {stats::TagKeyType::Register("Tag3"), "local"}},
-            {{stats::TagKeyType::Register("Tag3"), "Global"}},
-            {{"Tag1", "Value2"},
-             {"Tag2", "Value2"},
-             {"Tag3",
-              "Global"}},  // global tag takes precedence over locally specified value
-            52.0},
-        // Gauge metric recorded with unsupported tag
-        GaugeMetricCase{"metric_gauge_test",
                         62.0,
                         {{stats::TagKeyType::Register("Tag1"), "Value3"},
-                         {stats::TagKeyType::Register("Tag2"), "Value3"},
+                         {stats::TagKeyType::Register("Tag2"), "Value3"}},
+                        {{stats::TagKeyType::Register("Tag4"),
+                          "Global"}},  // Tag4 is not registered during metric definition
+                        {{"Tag1", "Value3"}, {"Tag2", "Value3"}, {"Tag4", "Global"}},
+                        62.0},
+        // Gauge metric with global tags, global tag overwrites user specified values
+        GaugeMetricCase{"metric_gauge_test",
+                        72.0,
+                        {{stats::TagKeyType::Register("Tag1"), "Value4"},
+                         {stats::TagKeyType::Register("Tag2"), "Value4"},
+                         {stats::TagKeyType::Register("Tag3"), "local"}},
+                        {{stats::TagKeyType::Register("Tag3"), "Global"}},
+                        {{"Tag1", "Value4"},
+                         {"Tag2", "Value4"},
+                         {"Tag3", "Global"}},  // global tag config takes precedence
+                        72.0},
+        // Gauge metric recorded with unsupported tag
+        GaugeMetricCase{"metric_gauge_test",
+                        82.0,
+                        {{stats::TagKeyType::Register("Tag1"), "Value5"},
+                         {stats::TagKeyType::Register("Tag2"), "Value5"},
                          {stats::TagKeyType::Register("UnSupportedTag"), "Value"}},
                         {},  // no global tags
-                        {{"Tag1", "Value3"},
-                         {"Tag2", "Value3"}},  // Unsupported tag will not be recorded
-                        62.0}));
+                        {{"Tag1", "Value5"},
+                         {"Tag2", "Value5"}},  // Unsupported tag will not be recorded
+                        82.0}));
 }  // namespace telemetry
 }  // namespace ray
