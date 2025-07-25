@@ -5,61 +5,59 @@
 This guide provides a step-by-step guide for deploying a Large Language Model (LLM) using Ray Serve LLM on Kubernetes. Leveraging KubeRay, Ray Serve, and vLLM, this guide deploys the  `deepseek-ai/DeepSeek-R1` model from Hugging Face, enabling scalable, efficient, and OpenAI-compatible LLM serving within a Kubernetes environment. See [Serving LLMs](serving_llms) for information on Ray Serve LLM.
 
 ## Prerequisites
-A DeepSeek model requires 2 nodes, each equipped with 8 H100 80GB GPUs.
+A DeepSeek model requires 2 nodes, each equipped with 8 H100 80 GB GPUs.
 It should be deployable on Kubernetes clusters that meet this requirement.
-In this guide, we provide instructions for setting up a GKE cluster using A3 High or A3 Mega machine types.
+This guide provides instructions for setting up a GKE cluster using A3 High or A3 Mega machine types.
 
-Before creating the cluster, please ensure that your project has sufficient quota for the required accelerators.
-
-Afterward, refer to the [guide](https://cloud.google.com/cluster-toolkit/docs/deploy/deploy-a3-mega-cluster#create-reservation) (using A3 Mega as an example) to create a corresponding placement policy and reservation.
-
-Before start, please export variables that would be used in cluster creation:
-
-```sh
-export PROJECT_ID=<your project id>
-export RESERVATION_NAME=<your reservation id>
-export SERVICE_ACCOUNT=<your service account>
-export PLACEMENT_POLICY_NAME=<your placement policy name>
-```
+Before creating the cluster, ensure that your project has sufficient [quota](https://pantheon.corp.google.com/iam-admin/quotas) for the required accelerators.
 
 ## Step 1: Create a Kubernetes cluster on GKE
 Run this command and all following commands on your local machine or on the [Google Cloud Shell](https://cloud.google.com/shell). If running from your local machine, you need to install the [Google Cloud SDK](https://cloud.google.com/sdk/docs/install). 
-The following command creates a Kubernetes cluster named `kuberay-gpu-cluster` with 1 default CPU node in the `asia-east1-c` zone. This example uses the `e2-standard-16` machine type, which has 16 vCPUs and 64 GB memory.
+The following command creates a Kubernetes cluster named `kuberay-gpu-cluster` with 1 default CPU node in the `us-east5-a` zone. This example uses the `e2-standard-16` machine type, which has 16 vCPUs and 64 GB memory.
 
 ```sh
-gcloud container clusters create kuberay-gpu-cluster \
-    --addons GcsFuseCsiDriver \
-    --location=asia-east1-c \
-    --machine-type=e2-standard-16 \
-    --num-nodes=1 \
-    --workload-pool=${PROJECT_ID}.svc.id.goog \ 
+gcloud container clusters create kuberay-gpu-cluster \ 
+    --location=us-east5-a \ 
+    --machine-type=e2-standard-16 \ 
+    --num-nodes=1 \ 
     --enable-image-streaming
 ```
 
-After that, Run the following command to create a GPU node pool for Ray GPU workers.
+After that, Run the following command to create an on-demand GPU node pool for Ray GPU workers.
 
 ```sh
 gcloud beta container node-pools create gpu-node-pool \
-    --cluster kuberay-gpu-cluster \ 
-    --machine-type a3-megagpu-8g \
-    --reservation ${RESERVATION_NAME} \
-    --reservation-affinity specific \
+    --cluster kuberay-gpu-cluster \
+    --machine-type a3-high-8g \ 
+    --reservation-affinity=none \ 
     --num-nodes 2 \
     --accelerator "type=nvidia-h100-mega-80gb,count=8" \
-    --service-account ${SERVICE_ACCOUNT} \
-    --project ${PROJECT_ID} \
-    --location asia-east1-c \
-    --node-locations asia-east1-c \
-    --host-maintenance-interval=PERIODIC \
-    --placement-policy ${PLACEMENT_POLICY_NAME}
+    --zone us-east5-a \
+    --node-locations us-east5-a \
+    --host-maintenance-interval=PERIODIC
 ```
 
-The `--accelerator` flag specifies the type and number of GPUs for each node in the node pool. This example uses the [A3 Mega](https://cloud.google.com/compute/docs/gpus#h100-gpus) GPU. The machine type `a3-megagpu-8g` has 8 GPU, 640 GB GPU Memory, 208 vCPUs and 1872 GB RAM.
+The `--accelerator` flag specifies the type and number of GPUs for each node in the node pool. This example uses the [A3 High](https://cloud.google.com/compute/docs/gpus#a3-high) GPU. The machine type `a3-highgpu-8g` has 8 GPU, 640 GB GPU Memory, 208 vCPUs and 1872 GB RAM.
+
+
+```{admonition} Note
+:class: note
+
+To create a node pool that uses reservations, or spot VMs, you can specify the following parameters when trying to create nodepools.
+
+**For Reservations:**
+* `--reservation-affinity=specific`
+* `--reservation=RESERVATION_NAME`
+* `--placement-policy=PLACEMENT_POLICY_NAME` (Optional)
+
+**For Spot VMs:**
+* `--spot`
+```
 
 Finally, run the following command to download Google Cloud credentials and configure the Kubernetes CLI to use them.
 
 ```sh
-gcloud container clusters get-credentials kuberay-gpu-cluster --zone asia-east1-c
+gcloud container clusters get-credentials kuberay-gpu-cluster --zone us-east5-a
 ```
 
 ## Step 2: Install the KubeRay operator
@@ -109,11 +107,11 @@ In particular, this configuration loads the model from `deepseek-ai/DeepSeek-R1`
 
 - `tensor_parallel_size: 8`
 
-  This setting enables tensor parallelism, splitting individual large layers of the model across 8 GPUs. This variable should be adjusted according to the number of GPUs used by cluster nodes.
+  This setting enables tensor parallelism, splitting individual large layers of the model across 8 GPUs. Adjust this variable according to the number of GPUs used by cluster nodes.
 
 - `pipeline_parallel_size: 2`
   
-  This setting enables pipeline parallelism, dividing the model's entire set of layers into 2 sequential stages. This variable should be adjusted according to the cluster worker node numbers.
+  This setting enables pipeline parallelism, dividing the model's entire set of layers into 2 sequential stages. Adjust this variable according to cluster worker node numbers.
 
 
 The `deployment_config` section sets the desired number of engine replicas. See [Serving LLMs](serving_llms) and the [Ray Serve config documentation](serve-in-production-config-file) for more information.
