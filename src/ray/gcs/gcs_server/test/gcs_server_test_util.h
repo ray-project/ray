@@ -467,18 +467,15 @@ struct GcsServerMocker {
       return node_info;
     }
 
-    Status AsyncRegister(const rpc::GcsNodeInfo &node_info,
-                         const gcs::StatusCallback &callback) override {
-      return Status::NotImplemented("");
-    }
+    void AsyncRegister(const rpc::GcsNodeInfo &node_info,
+                       const gcs::StatusCallback &callback) override {}
 
-    Status AsyncGetAll(const gcs::MultiItemCallback<rpc::GcsNodeInfo> &callback,
-                       int64_t timeout_ms,
-                       std::optional<NodeID> node_id = std::nullopt) override {
+    void AsyncGetAll(const gcs::MultiItemCallback<rpc::GcsNodeInfo> &callback,
+                     int64_t timeout_ms,
+                     std::optional<NodeID> node_id = std::nullopt) override {
       if (callback) {
         callback(Status::OK(), {});
       }
-      return Status::OK();
     }
 
     Status AsyncSubscribeToNodeChange(

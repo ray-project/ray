@@ -18,6 +18,9 @@ from ray._common.utils import import_attr
 from ray.llm._internal.serve.configs.constants import (
     DEFAULT_HEALTH_CHECK_PERIOD_S,
     DEFAULT_HEALTH_CHECK_TIMEOUT_S,
+    DEFAULT_MAX_ONGOING_REQUESTS,
+    DEFAULT_MAX_REPLICAS,
+    DEFAULT_MAX_TARGET_ONGOING_REQUESTS,
     ENGINE_START_TIMEOUT_S,
     MODEL_RESPONSE_BATCH_TIMEOUT_MS,
     RAYLLM_VLLM_ENGINE_CLS_ENV,
@@ -277,7 +280,9 @@ class LLMServer(_LLMServerBase):
             An AsyncGenerator of the response. If stream is True and batching is enabled, then the generator will yield a list of chat streaming responses (strings of the format data: {response_json}\n\n). Otherwise, it will yield the ChatCompletionResponse object directly.
         """
         return await self._run_request(
-            request, engine_method="chat", batch_output_stream=True
+            request,
+            engine_method="chat",
+            batch_output_stream=True,
         )
 
     async def completions(
@@ -294,7 +299,9 @@ class LLMServer(_LLMServerBase):
             An AsyncGenerator of the response. If stream is True and batching is enabled, then the generator will yield a list of completion streaming responses (strings of the format data: {response_json}\n\n). Otherwise, it will yield the CompletionResponse object directly.
         """
         return await self._run_request(
-            request, engine_method="completions", batch_output_stream=True
+            request,
+            engine_method="completions",
+            batch_output_stream=True,
         )
 
     async def embeddings(
@@ -351,17 +358,10 @@ class LLMServer(_LLMServerBase):
     autoscaling_config={
         "min_replicas": 1,
         "initial_replicas": 1,
-        "max_replicas": 10,
-        "target_ongoing_requests": int(
-            os.environ.get(
-                "RAYLLM_ROUTER_TARGET_ONGOING_REQUESTS",
-                os.environ.get(
-                    "RAYLLM_ROUTER_TARGET_NUM_ONGOING_REQUESTS_PER_REPLICA", 10
-                ),
-            )
-        ),
+        "max_replicas": DEFAULT_MAX_REPLICAS,
+        "target_ongoing_requests": DEFAULT_MAX_TARGET_ONGOING_REQUESTS,
     },
-    max_ongoing_requests=20,  # Maximum backlog for a single replica
+    max_ongoing_requests=DEFAULT_MAX_ONGOING_REQUESTS,
     health_check_period_s=DEFAULT_HEALTH_CHECK_PERIOD_S,
     health_check_timeout_s=DEFAULT_HEALTH_CHECK_TIMEOUT_S,
 )
