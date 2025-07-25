@@ -139,8 +139,9 @@ void GcsNodeManager::HandleCheckAlive(rpc::CheckAliveRequest request,
                                       rpc::CheckAliveReply *reply,
                                       rpc::SendReplyCallback send_reply_callback) {
   reply->set_ray_version(kRayVersion);
-  for (const auto &addr : request.raylet_address()) {
-    bool is_alive = node_map_.right.count(addr) != 0;
+  for (const auto &id : request.raylet_id()) {
+    NodeID node_id = NodeID::FromBinary(id);
+    bool is_alive = alive_nodes_.count(node_id) != 0;
     reply->mutable_raylet_alive()->Add(is_alive);
   }
 

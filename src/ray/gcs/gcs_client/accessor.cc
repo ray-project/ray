@@ -532,11 +532,9 @@ void NodeInfoAccessor::AsyncRegister(const rpc::GcsNodeInfo &node_info,
 
 void NodeInfoAccessor::AsyncCheckSelfAlive(
     const std::function<void(Status, bool)> &callback, int64_t timeout_ms = -1) {
-  std::vector<std::string> raylet_addresses = {
-      local_node_info_.node_manager_address() + ":" +
-      std::to_string(local_node_info_.node_manager_port())};
+  std::vector<std::string> raylet_ids = {local_node_info_.node_id()};
 
-  AsyncCheckAlive(raylet_addresses,
+  AsyncCheckAlive(raylet_ids,
                   timeout_ms,
                   [callback](const Status &status, const std::vector<bool> &nodes_alive) {
                     if (!status.ok()) {
@@ -549,14 +547,14 @@ void NodeInfoAccessor::AsyncCheckSelfAlive(
                   });
 }
 
-void NodeInfoAccessor::AsyncCheckAlive(const std::vector<std::string> &raylet_addresses,
+void NodeInfoAccessor::AsyncCheckAlive(const std::vector<std::string> &raylet_ids,
                                        int64_t timeout_ms,
                                        const MultiItemCallback<bool> &callback) {
   rpc::CheckAliveRequest request;
-  for (const auto &raylet_address : raylet_addresses) {
-    request.add_raylet_address(raylet_address);
+  for (const auto &raylet_id : raylet_ids) {
+    request.add_raylet_id(raylet_id);
   }
-  size_t num_raylets = raylet_addresses.size();
+  size_t num_raylets = raylet_ids.size();
   client_impl_->GetGcsRpcClient().CheckAlive(
       request,
       [num_raylets, callback](const Status &status, rpc::CheckAliveReply &&reply) {
@@ -687,12 +685,12 @@ StatusOr<std::vector<rpc::GcsNodeInfo>> NodeInfoAccessor::GetAllNoCacheWithFilte
   return VectorFromProtobuf(std::move(*reply.mutable_node_info_list()));
 }
 
-Status NodeInfoAccessor::CheckAlive(const std::vector<std::string> &raylet_addresses,
+Status NodeInfoAccessor::CheckAlive(const std::vector<std::string> &raylet_ids,
                                     int64_t timeout_ms,
                                     std::vector<bool> &nodes_alive) {
   std::promise<Status> ret_promise;
   AsyncCheckAlive(
-      raylet_addresses,
+      raylet_ids,
       timeout_ms,
       [&ret_promise, &nodes_alive](Status status, const std::vector<bool> &alive) {
         nodes_alive = alive;

@@ -271,28 +271,28 @@ cdef class InnerGcsClient:
     # NodeInfo methods
     #############################################################
     def check_alive(
-        self, node_ips: List[bytes], timeout: Optional[int | float] = None
+        self, node_ids: List[bytes], timeout: Optional[int | float] = None
     ) -> List[bool]:
         cdef:
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-            c_vector[c_string] c_node_ips = [ip for ip in node_ips]
+            c_vector[c_string] c_node_ids = [node_id for node_id in node_ids]
             c_vector[c_bool] results
             CRayStatus status
         with nogil:
             status = self.inner.get().Nodes().CheckAlive(
-                c_node_ips, timeout_ms, results)
+                c_node_ids, timeout_ms, results)
         return raise_or_return(convert_multi_bool(status, move(results)))
 
     def async_check_alive(
-        self, node_ips: List[bytes], timeout: Optional[int | float] = None
+        self, node_ids: List[bytes], timeout: Optional[int | float] = None
     ) -> Future[List[bool]]:
         cdef:
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-            c_vector[c_string] c_node_ips = [ip for ip in node_ips]
+            c_vector[c_string] c_node_ids = [node_id for node_id in node_ids]
             fut = incremented_fut()
         with nogil:
             self.inner.get().Nodes().AsyncCheckAlive(
-                c_node_ips, timeout_ms,
+                c_node_ids, timeout_ms,
                 MultiItemPyCallback[c_bool](
                     &convert_multi_bool,
                     assign_and_decrement_fut,
