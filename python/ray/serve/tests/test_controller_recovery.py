@@ -466,7 +466,8 @@ def test_controller_crashes_with_logging_config(serve_instance):
     # Check proxy logging
     def check_proxy_handle_in_controller():
         proxy_handles = ray.get(client._controller.get_proxies.remote())
-        return len(proxy_handles) == 1
+        assert len(proxy_handles) == 1
+        return True
 
     wait_for_condition(check_proxy_handle_in_controller)
     proxy_handles = ray.get(client._controller.get_proxies.remote())
