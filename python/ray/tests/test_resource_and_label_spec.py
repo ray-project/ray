@@ -147,5 +147,55 @@ def test_resolve_accelerator_resources_with_gpu_auto_detected():
     assert spec.num_gpus == 4
 
 
+@patch("ray._private.usage.usage_lib.record_hardware_usage", lambda *_: None)
+def test_resolve_num_gpus_when_unset_and_not_detected():
+    # Tests that the ResourceAndLabelSpec defaults num_gpus to 0 when not specified by the user
+    # and not detected by the AcceleratorManager
+    spec = ResourceAndLabelSpec(resources={})
+    with patch.object(
+        ResourceAndLabelSpec, "_get_current_node_accelerator", return_value=(None, 0)
+    ), patch("ray._private.utils.get_num_cpus", return_value=4), patch(
+        "ray.util.get_node_ip_address", return_value="127.0.0.1"
+    ), patch(
+        "ray._private.utils.estimate_available_memory", return_value=10000000
+    ), patch(
+        "ray._common.utils.get_system_memory", return_value=20000000
+    ), patch(
+        "ray._private.utils.get_shared_memory_bytes", return_value=50000
+    ):
+        spec.resolve(is_head=True)
+
+    assert spec.num_gpus == 0
+    assert spec.resolved()
+
+
+@patch("ray._private.usage.usage_lib.record_hardware_usage", lambda *_: None)
+def test_resolve_accelerator_resources_adds_accelerator_type_label():
+    # Verify that accelerator type gets added as a resource
+    spec = ResourceAndLabelSpec(resources={})
+    mock_mgr = MagicMock()
+    mock_mgr.get_resource_name.return_value = "GPU"
+    mock_mgr.get_current_node_accelerator_type.return_value = "H100"
+    mock_mgr.get_current_process_visible_accelerator_ids.return_value = None
+
+    spec._resolve_accelerator_resources(mock_mgr, 4)
+
+    # num_gpus should be set and accelerator type should be added
+    assert spec.num_gpus == 4
+    assert any("H100" in key for key in spec.resources)
+
+
+@patch("ray._private.usage.usage_lib.record_hardware_usage", lambda *_: None)
+def test_resolve_accelerator_resources_raises_if_exceeds_visible_devices():
+    # Raise a ValueError when requested accelerators > # visible IDs
+    spec = ResourceAndLabelSpec(resources={})
+    mock_mgr = MagicMock()
+    mock_mgr.get_resource_name.return_value = "GPU"
+    mock_mgr.get_current_process_visible_accelerator_ids.return_value = ["0", "1"]
+
+    with pytest.raises(ValueError, match="Attempting to start raylet"):
+        spec._resolve_accelerator_resources(mock_mgr, 3)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))

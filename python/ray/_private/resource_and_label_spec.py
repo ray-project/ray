@@ -153,9 +153,6 @@ class ResourceAndLabelSpec:
         if self.num_cpus is None:
             self.num_cpus = ray._private.utils.get_num_cpus()
 
-        if self.num_gpus is None:
-            self.num_gpus = 0
-
         # Resolve accelerator resources
         (
             accelerator_manager,
@@ -164,6 +161,10 @@ class ResourceAndLabelSpec:
             self.num_gpus, self.resources
         )
         self._resolve_accelerator_resources(accelerator_manager, num_accelerators)
+
+        # Default num_gpus value if unset by user and unable to auto-detect.
+        if self.num_gpus is None:
+            self.num_gpus = 0
 
         # Resolve node labels
         self._resolve_labels(accelerator_manager)
@@ -361,7 +362,7 @@ class ResourceAndLabelSpec:
 
     @staticmethod
     def _get_current_node_accelerator(
-        num_gpus: int, resources: Dict[str, float]
+        num_gpus: Optional[int], resources: Dict[str, float]
     ) -> Tuple[AcceleratorManager, int]:
         """
         Returns the AcceleratorManager and accelerator count for the accelerator
@@ -388,7 +389,7 @@ class ResourceAndLabelSpec:
                 continue
             # Respect configured value for GPUs if set
             if resource_name == "GPU":
-                num_accelerators = num_gpus or None
+                num_accelerators = num_gpus
             else:
                 num_accelerators = resources.get(resource_name)
             if num_accelerators is None:
