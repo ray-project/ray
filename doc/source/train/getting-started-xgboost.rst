@@ -48,7 +48,7 @@ Compare a XGBoost training script with and without Ray Train.
     .. tab-item:: XGBoost + Ray Train
 
         .. literalinclude:: ./doc_code/xgboost_quickstart.py
-            :emphasize-lines: 3-4, 15-16, 48, 53, 56-64
+            :emphasize-lines: 3-4, 7-8, 11, 15-16, 48, 53, 56-64
             :language: python
             :start-after: __xgboost_ray_start__
             :end-before: __xgboost_ray_end__
