@@ -428,7 +428,6 @@ class Stats {
     if (StatsConfig::instance().IsStatsDisabled() || !measure_) {
       return;
     }
-
     TagsType combined_tags = StatsConfig::instance().GetGlobalTags();
     for (auto const &[tag_key, tag_val] : tags) {
       CheckPrintableChar(tag_val);
@@ -446,14 +445,6 @@ class Stats {
                             << " in " << val;
     }
 #endif  // NDEBUG
-  }
-
-  bool IsTagKeySupported(const opencensus::tags::TagKey &tag_key) const {
-    std::unordered_set<std::string> allowed_tag_names;
-    for (const auto &tag_key : tag_keys_) {
-      allowed_tag_names.insert(tag_key.name());
-    }
-    return allowed_tag_names.find(tag_key.name()) != allowed_tag_names.end();
   }
 
   const std::string name_;
