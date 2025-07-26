@@ -200,11 +200,9 @@ class ParquetDatasource(Datasource):
 
         self._local_scheduling = None
         if not self._supports_distributed_reads:
-            from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
-
-            self._local_scheduling = NodeAffinitySchedulingStrategy(
-                ray.get_runtime_context().get_node_id(), soft=False
-            )
+            self._local_scheduling = {
+                "ray.io/node-id": ray.get_runtime_context().get_node_id()
+            }
 
         self._unresolved_paths = paths
         paths, self._filesystem = _resolve_paths_and_filesystem(paths, filesystem)
@@ -274,7 +272,7 @@ class ParquetDatasource(Datasource):
             prefetch_remote_args = {}
             prefetch_remote_args["num_cpus"] = NUM_CPUS_FOR_META_FETCH_TASK
             if self._local_scheduling:
-                prefetch_remote_args["scheduling_strategy"] = self._local_scheduling
+                prefetch_remote_args["label_selector"] = self._local_scheduling
             else:
                 # Use the scheduling strategy ("SPREAD" by default) provided in
                 # `DataContext``, to spread out prefetch tasks in cluster, avoid

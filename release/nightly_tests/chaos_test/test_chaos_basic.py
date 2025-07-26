@@ -12,7 +12,6 @@ import ray
 from ray._common.test_utils import wait_for_condition
 from ray._private.test_utils import monitor_memory_usage
 from ray.data._internal.progress_bar import ProgressBar
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 
 def run_task_workload(total_num_cpus, smoke):
@@ -91,11 +90,7 @@ def run_actor_workload(total_num_cpus, smoke):
     TOTAL_TASKS = int(300 * multiplier)
     head_node_id = ray.get_runtime_context().get_node_id()
     db_actors = [
-        DBActor.options(
-            scheduling_strategy=NodeAffinitySchedulingStrategy(
-                node_id=head_node_id, soft=False
-            )
-        ).remote()
+        DBActor.options(label_selector={"ray.io/node-id": head_node_id}).remote()
         for _ in range(NUM_CPUS)
     ]
 
