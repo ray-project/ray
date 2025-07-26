@@ -340,7 +340,6 @@ void GcsNodeManager::AddNode(std::shared_ptr<rpc::GcsNodeInfo> node) {
   if (iter == alive_nodes_.end()) {
     auto node_addr =
         node->node_manager_address() + ":" + std::to_string(node->node_manager_port());
-    node_map_.insert(NodeIDAddrBiMap::value_type(node_id, node_addr));
     alive_nodes_.emplace(node_id, node);
     // Notify all listeners.
     for (auto &listener : node_added_listeners_) {
@@ -391,7 +390,6 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
     stats::NodeFailureTotal.Record(1);
     // Remove from alive nodes.
     alive_nodes_.erase(iter);
-    node_map_.left.erase(node_id);
     // Remove from draining nodes if present.
     draining_nodes_.erase(node_id);
     if (death_info->reason() == rpc::NodeDeathInfo::UNEXPECTED_TERMINATION) {
