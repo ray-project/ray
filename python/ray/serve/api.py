@@ -141,10 +141,8 @@ def shutdown():
 @DeveloperAPI
 def get_replica_context() -> ReplicaContext:
     """Returns the deployment and replica tag from within a replica at runtime.
-
     A replica tag uniquely identifies a single replica for a Ray Serve
     deployment.
-
     Raises:
         RayServeException: if not called from within a Ray Serve deployment.
 
@@ -159,6 +157,10 @@ def get_replica_context() -> ReplicaContext:
                     # Prints "MyDeployment"
                     print(serve.get_replica_context().deployment)
 
+    Returns:
+        ReplicaContext containing information about the current deployment
+        and replica.
+
     """
     internal_replica_context = _get_internal_replica_context()
     if internal_replica_context is None:
@@ -168,6 +170,43 @@ def get_replica_context() -> ReplicaContext:
             "Ray Serve deployment."
         )
     return internal_replica_context
+
+
+@PublicAPI(stability="beta")
+def get_replica_rank() -> Optional[int]:
+    """Get the rank of the current replica within its deployment.
+
+    Ranks are integers starting from 0 up to (num_replicas-1) and are
+    scoped to a deployment. They are useful for scatter-gather operations
+    across replicas similar to how NCCL operates.
+
+    Returns:
+        The rank of the current replica (0 to num_replicas-1), or None if
+        rank assignment failed.
+
+    Raises:
+        RayServeException: if not called from within a deployment.
+    """
+    replica_context = get_replica_context()
+    return replica_context.rank
+
+
+@PublicAPI(stability="beta")
+def get_world_size() -> int:
+    """Get the total number of replicas in the current deployment.
+
+    This is the "world size" for scatter-gather operations - the total
+    number of replicas that participate in collective operations.
+
+    Returns:
+        The total number of replicas in the deployment.
+
+    Raises:
+        RayServeException: if not called from within a deployment.
+    """
+    # Get the deployment configuration from the replica context
+    replica_context = get_replica_context()
+    return replica_context._deployment_config.num_replicas
 
 
 @PublicAPI(stability="stable")
