@@ -324,11 +324,9 @@ class ParquetDatasource(Datasource):
 
         self._local_scheduling = None
         if not self._supports_distributed_reads:
-            from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
-
-            self._local_scheduling = NodeAffinitySchedulingStrategy(
-                ray.get_runtime_context().get_node_id(), soft=False
-            )
+            self._local_scheduling = {
+                "ray.io/node-id": ray.get_runtime_context().get_node_id()
+            }
 
         # Need this property for lineage tracking. We should not directly assign paths
         # to self since it is captured every read_task_fn during serialization and

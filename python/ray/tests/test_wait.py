@@ -95,15 +95,11 @@ def test_wait_always_fetch_local(monkeypatch, ray_start_cluster):
     def small_local_task():
         return 1
 
-    put_on_head = ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy(
-        head_node.node_id, soft=False
-    )
-    put_on_worker = ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy(
-        worker_node.node_id, soft=False
-    )
-    x = small_local_task.options(scheduling_strategy=put_on_head).remote()
-    y = return_large_object.options(scheduling_strategy=put_on_worker).remote()
-    z = return_large_object.options(scheduling_strategy=put_on_worker).remote()
+    put_on_head = {"ray.io/node-id": head_node.node_id}
+    put_on_worker = {"ray.io/node-id": worker_node.node_id}
+    x = small_local_task.options(label_selector=put_on_head).remote()
+    y = return_large_object.options(label_selector=put_on_worker).remote()
+    z = return_large_object.options(label_selector=put_on_worker).remote()
 
     # will return when tasks are done
     ray.wait([x, y, z], num_returns=3, fetch_local=False)

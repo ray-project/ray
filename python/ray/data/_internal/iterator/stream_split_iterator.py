@@ -14,7 +14,6 @@ from ray.data.context import DataContext
 from ray.data.iterator import DataIterator
 from ray.types import ObjectRef
 from ray.util.debug import log_once
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 if TYPE_CHECKING:
     import pyarrow
@@ -44,9 +43,7 @@ class StreamSplitDataIterator(DataIterator):
         # We add 1 to the concurrency to allow for a shutdown_executor thread to run.
         coord_actor = SplitCoordinator.options(
             max_concurrency=n + 1,
-            scheduling_strategy=NodeAffinitySchedulingStrategy(
-                ray.get_runtime_context().get_node_id(), soft=False
-            ),
+            label_selector={"ray.io/node-id": ray.get_runtime_context().get_node_id()},
         ).remote(base_dataset, n, locality_hints)
 
         return [

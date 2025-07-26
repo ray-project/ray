@@ -109,9 +109,7 @@ class DashboardTestAtScale:
         node = nodes[0]
         # Schedule on a head node.
         self.tester = DashboardTester.options(
-            scheduling_strategy=NodeAffinitySchedulingStrategy(
-                node_id=node["node_id"], soft=False
-            )
+            label_selector={"ray.io/node-id": node["node_id"]}
         ).remote()
 
         self.tester.run.remote()

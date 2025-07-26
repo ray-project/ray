@@ -306,10 +306,9 @@ class WorkerGroup(ExecutionGroup):
 
             # Initialize the synchronization actor on the driver node
             sync_actor = SynchronizationActor.options(
-                scheduling_strategy=NodeAffinitySchedulingStrategy(
-                    node_id=ray.get_runtime_context().get_node_id(),
-                    soft=False,
-                )
+                label_selector={
+                    "ray.io/node-id": ray.get_runtime_context().get_node_id()
+                }
             ).remote(
                 timeout_s=self._collective_timeout_s,
                 warn_interval_s=self._collective_warn_interval_s,

@@ -24,7 +24,6 @@ assert len(nodes) == 4
 # cluster.
 driver_script = f"""
 import ray
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 ray.init()
 
@@ -42,10 +41,8 @@ class Actor(object):
 for _ in range(5):
     for node in nodes:
         assert ray.get(
-            f.options(scheduling_strategy=NodeAffinitySchedulingStrategy(
-                node, soft=False)).remote()) == 1
-        actor = Actor.options(scheduling_strategy=NodeAffinitySchedulingStrategy(
-            node, soft=False)).remote()
+            f.options(label_selector={{"ray.io/node-id": node}}).remote()) == 1
+        actor = Actor.options(label_selector={{"ray.io/node-id": node}}).remote())
         assert ray.get(actor.method.remote()) == 1
 
 print("success")
@@ -60,9 +57,7 @@ def run_driver():
 
 iteration = 0
 running_ids = [
-    run_driver.options(
-        scheduling_strategy=NodeAffinitySchedulingStrategy(node, soft=False)
-    ).remote()
+    run_driver.options(label_selector={"ray.io/node-id": node}).remote()
     for node in nodes
 ]
 start_time = time.time()
@@ -92,9 +87,7 @@ while True:
 
     running_ids.append(
         run_driver.options(
-            scheduling_strategy=NodeAffinitySchedulingStrategy(
-                nodes[iteration % len(nodes)], soft=False
-            )
+            label_selector={"ray.io/node-id": nodes[iteration % len(nodes)]}
         ).remote()
     )
 
