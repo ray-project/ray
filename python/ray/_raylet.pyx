@@ -4275,44 +4275,6 @@ cdef class CoreWorker:
                 c_owner_address,
                 serialized_object_status))
 
-    cdef store_task_output(self, serialized_object, const CObjectID &return_id,
-                           const CObjectID &generator_id,
-                           size_t data_size, shared_ptr[CBuffer] &metadata,
-                           const c_vector[CObjectID] &contained_id,
-                           const CAddress &caller_address,
-                           int64_t *task_output_inlined_bytes,
-                           shared_ptr[CRayObject] *return_ptr):
-        """Store a task return value in plasma or as an inlined object."""
-        with nogil:
-            check_status(
-                CCoreWorkerProcess.GetCoreWorker().AllocateReturnObject(
-                    return_id, data_size, metadata, contained_id, caller_address,
-                    task_output_inlined_bytes, return_ptr))
-
-        if return_ptr.get() != NULL:
-            if return_ptr.get().HasData():
-                (<SerializedObject>serialized_object).write_to(
-                    Buffer.make(return_ptr.get().GetData()))
-            if self.is_local_mode:
-                check_status(
-                    CCoreWorkerProcess.GetCoreWorker().Put(
-                        CRayObject(return_ptr.get().GetData(),
-                                   return_ptr.get().GetMetadata(),
-                                   c_vector[CObjectReference]()),
-                        c_vector[CObjectID](), return_id))
-            else:
-                with nogil:
-                    check_status(
-                        CCoreWorkerProcess.GetCoreWorker().SealReturnObject(
-                            return_id, return_ptr[0], generator_id, caller_address))
-            return True
-        else:
-            with nogil:
-                success = (
-                    CCoreWorkerProcess.GetCoreWorker().PinExistingReturnObject(
-                        return_id, return_ptr, generator_id, caller_address))
-            return success
-
     cdef store_task_outputs(self,
                             worker, outputs,
                             const CAddress &caller_address,
@@ -4410,20 +4372,46 @@ cdef class CoreWorker:
             contained_id = ObjectRefsToVector(
                 serialized_object.contained_object_refs)
 
-            if not self.store_task_output(
-                    serialized_object, return_id,
-                    c_ref_generator_id,
-                    data_size, metadata, contained_id, caller_address,
-                    &task_output_inlined_bytes, return_ptr):
-                # If the object already exists, but we fail to pin the copy, it
-                # means the existing copy might've gotten evicted. Try to
-                # create another copy.
-                self.store_task_output(
-                        serialized_object, return_id,
-                        c_ref_generator_id,
-                        data_size, metadata,
-                        contained_id, caller_address, &task_output_inlined_bytes,
-                        return_ptr)
+            # It's possible for success to be False when the object already exists,
+            # but we fail the pin the copy. We can fail to pin the copy if the copy
+            # is not sealed yet or if the copy has been evicted. It's possible to go
+            # through this loop multiple times if another copy of this object is
+            # being written during this time (exists but not sealed yet).
+            success = False
+            while not success:
+                with nogil:
+                    check_status(
+                        CCoreWorkerProcess.GetCoreWorker().AllocateReturnObject(
+                            return_id, data_size, metadata, contained_id, caller_address,
+                            &task_output_inlined_bytes, return_ptr))
+
+                if return_ptr.get() != NULL:
+                    if return_ptr.get().HasData():
+                        (<SerializedObject>serialized_object).write_to(
+                            Buffer.make(return_ptr.get().GetData()))
+                    if self.is_local_mode:
+                        check_status(
+                            CCoreWorkerProcess.GetCoreWorker().Put(
+                                CRayObject(
+                                    return_ptr.get().GetData(),
+                                    return_ptr.get().GetMetadata(),
+                                    c_vector[CObjectReference]()),
+                                c_vector[CObjectID](),
+                                c_ref_generator_id))
+                    else:
+                        with nogil:
+                            check_status(
+                                CCoreWorkerProcess.GetCoreWorker().SealReturnObject(
+                                    return_id, return_ptr[0], c_ref_generator_id, caller_address))
+                    success = True
+                else:
+                    # The object already exists in plasma, will be a success based on whether
+                    # the object is sealed or not.
+                    with nogil:
+                        c_success = (
+                            CCoreWorkerProcess.GetCoreWorker().PinExistingReturnObject(
+                                return_id, return_ptr, c_ref_generator_id, caller_address))
+                    success = c_success
             num_outputs_stored += 1
 
         i += 1

@@ -139,14 +139,6 @@ cdef class CoreWorker:
         object event_loop_executor
 
     cdef unique_ptr[CAddress] _convert_python_address(self, address=*)
-    cdef store_task_output(
-            self, serialized_object,
-            const CObjectID &return_id,
-            const CObjectID &generator_id,
-            size_t data_size, shared_ptr[CBuffer] &metadata, const c_vector[CObjectID]
-            &contained_id, const CAddress &caller_address,
-            int64_t *task_output_inlined_bytes,
-            shared_ptr[CRayObject] *return_ptr)
     cdef store_task_outputs(
             self,
             worker, outputs,
