@@ -1,5 +1,6 @@
 from typing import Optional
 
+from ray._common.utils import hex_to_binary
 from ray._raylet import GcsClient
 
 
@@ -14,7 +15,7 @@ class HealthChecker:
 
         # Convert hex string node ID to raw bytes before sending
         liveness = await self._gcs_client.async_check_alive(
-            [bytes.fromhex(self._local_node_id)], 0.1
+            [hex_to_binary(self._local_node_id)], 0.1
         )
         return liveness[0]
 

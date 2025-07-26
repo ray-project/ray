@@ -275,9 +275,11 @@ cdef class InnerGcsClient:
     ) -> List[bool]:
         cdef:
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-            c_vector[c_string] c_node_ids = [node_id for node_id in node_ids]
+            c_vector[CNodeID] c_node_ids;
             c_vector[c_bool] results
             CRayStatus status
+        for node_id in node_ids:
+            c_node_ids.push_back(<CNodeID>CUniqueID.FromBinary(node_id))
         with nogil:
             status = self.inner.get().Nodes().CheckAlive(
                 c_node_ids, timeout_ms, results)
@@ -288,8 +290,10 @@ cdef class InnerGcsClient:
     ) -> Future[List[bool]]:
         cdef:
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-            c_vector[c_string] c_node_ids = [node_id for node_id in node_ids]
+            c_vector[c_string] c_node_ids;
             fut = incremented_fut()
+        for node_id in node_ids:
+            c_node_ids.push_back(<CNodeID>CUniqueID.FromBinary(node_id))
         with nogil:
             self.inner.get().Nodes().AsyncCheckAlive(
                 c_node_ids, timeout_ms,
