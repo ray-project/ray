@@ -265,8 +265,9 @@ def check_ray_started():
 def check_deployment_status(
     name: str, expected_status: DeploymentStatus, app_name=SERVE_DEFAULT_APP_NAME
 ) -> bool:
-    app_status = serve.status().applications[app_name]
-    assert app_status.deployments[name].status == expected_status
+    client = _get_global_client(_health_check_controller=True)
+    app_status = client.get_serve_status(app_name)
+    assert app_status.get_deployment_status(name).status == expected_status
     return True
 
 

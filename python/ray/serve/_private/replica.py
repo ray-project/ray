@@ -393,6 +393,8 @@ class ReplicaBase(ABC):
         # `ASGIAppReplicaWrapper` (i.e., they are using the FastAPI integration).
         self._user_callable_asgi_app: Optional[ASGIApp] = None
 
+        self._rank: Optional[int] = None
+
         # Set metadata for logs and metrics.
         # servable_object will be populated in `initialize_and_get_metadata`.
         self._set_internal_replica_context(servable_object=None)
@@ -428,6 +430,7 @@ class ReplicaBase(ABC):
             replica_id=self._replica_id,
             servable_object=servable_object,
             _deployment_config=self._deployment_config,
+            rank=self._rank,
         )
 
     def _configure_logger_and_profilers(
@@ -713,6 +716,28 @@ class ReplicaBase(ABC):
         except Exception:
             raise RuntimeError(traceback.format_exc()) from None
 
+    async def update_replica_rank(self, rank: int) -> bool:
+        """Update replica rank with the provided rank value.
+
+        This is called by the deployment state to notify replicas of their
+        current rank after autoscaling operations.
+
+        Args:
+            rank: The current rank of this replica.
+
+        Returns:
+            True if rank update was successful, False otherwise.
+        """
+        try:
+            self._rank = rank
+            self._set_internal_replica_context(
+                servable_object=self._user_callable_wrapper._callable,
+            )
+            return True
+        except Exception as e:
+            logger.warning(f"Failed to update rank for replica {self._replica_id}: {e}")
+            return False
+
     async def reconfigure(self, deployment_config: DeploymentConfig):
         try:
             user_config_changed = (
@@ -832,7 +857,7 @@ class ReplicaBase(ABC):
             f = self._user_callable_wrapper.call_user_health_check()
             if f is not None:
                 await f
-            self._healthy = True
+            self._healthy = True and self._rank is not None
         except Exception as e:
             logger.warning("Replica health check failed.")
             self._healthy = False
@@ -1002,6 +1027,20 @@ class ReplicaActor:
 
     async def record_routing_stats(self) -> Dict[str, Any]:
         return await self._replica_impl.record_routing_stats()
+
+    async def update_replica_rank(self, rank: int) -> bool:
+        """Update replica rank with the provided rank value.
+
+        This can be called remotely to refresh the replica's rank after
+        autoscaling operations.
+
+        Args:
+            rank: The current rank of this replica.
+
+        Returns:
+            bool: True if rank update was successful, False otherwise.
+        """
+        return await self._replica_impl.update_replica_rank(rank)
 
     async def reconfigure(self, deployment_config) -> ReplicaMetadata:
         await self._replica_impl.reconfigure(deployment_config)
