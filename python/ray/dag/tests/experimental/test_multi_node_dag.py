@@ -281,9 +281,7 @@ def test_payload_large(ray_start_cluster, monkeypatch):
     assert len(nodes) == 2
 
     def create_actor(node):
-        return Actor.options(
-            scheduling_strategy=NodeAffinitySchedulingStrategy(node, soft=False)
-        ).remote(0)
+        return Actor.options(label_selector={"ray.io/node-id": node}).remote(0)
 
     def get_node_id(self):
         return ray.get_runtime_context().get_node_id()
@@ -384,9 +382,9 @@ def test_multi_node_dag_from_actor(ray_start_cluster):
     class DriverActor:
         def __init__(self):
             self._base_actor = SameNodeActor.options(
-                scheduling_strategy=NodeAffinitySchedulingStrategy(
-                    ray.get_runtime_context().get_node_id(), soft=False
-                )
+                label_selector={
+                    "ray.io/node-id": ray.get_runtime_context().get_node_id()
+                }
             ).remote()
             self._refiner_actor = RemoteNodeActor.remote()
 
