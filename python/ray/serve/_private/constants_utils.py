@@ -1,3 +1,4 @@
+import os
 from typing import List
 
 
@@ -41,3 +42,74 @@ def parse_latency_buckets(bucket_str: str, default_buckets: List[float]) -> List
             f"Invalid format for `{bucket_str}`. "
             f"Expected comma-separated positive numbers in ascending order. Error: {str(e)}"
         ) from e
+
+
+def get_env_int(name: str, default: int) -> int:
+    """Get an integer value from an environment variable.
+
+    Args:
+        name: The name of the environment variable.
+        default: Default value to use if the environment variable is not set.
+
+    Returns:
+        The integer value of the environment variable or the default.
+
+    Raises:
+        ValueError: If the environment variable value cannot be converted to an integer.
+    """
+    value = os.environ.get(name, default)
+    try:
+        return int(value)
+    except ValueError:
+        raise ValueError(
+            f"Environment variable `{name}` value `{value}` cannot be converted to int!"
+        )
+
+
+def get_env_float(name: str, default: float) -> float:
+    """Get a float value from an environment variable.
+
+    Args:
+        name: The name of the environment variable.
+        default: Default value to use if the environment variable is not set.
+
+    Returns:
+        The float value of the environment variable or the default.
+
+    Raises:
+        ValueError: If the environment variable value cannot be converted to a float.
+    """
+    value = os.environ.get(name, default)
+    try:
+        return float(value)
+    except ValueError:
+        raise ValueError(
+            f"Environment variable `{name}` value `{value}` cannot be converted to float!"
+        )
+
+
+def get_env_str(name: str, default: str | None) -> str:
+    """Get a string value from an environment variable.
+
+    Args:
+        name: The name of the environment variable.
+        default: Default value to use if the environment variable is not set.
+
+    Returns:
+        The string value of the environment variable or the default.
+    """
+    return os.environ.get(name, default)
+
+
+def get_env_bool(name: str, default: str) -> bool:
+    """Get a boolean value from an environment variable.
+
+    Args:
+        name: The name of the environment variable.
+        default: Default value to use if the environment variable is not set.
+               "1" will evaluate to True, anything else to False.
+
+    Returns:
+        True if the environment variable value is "1", otherwise False.
+    """
+    return os.environ.get(name, default) == "1"

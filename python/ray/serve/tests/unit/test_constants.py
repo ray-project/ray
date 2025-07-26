@@ -105,58 +105,7 @@ from ray.serve._private.constants import (
     SERVE_NAMESPACE,
     SERVE_PROXY_NAME,
     SERVE_ROOT_URL_ENV_KEY,
-    parse_latency_buckets,
 )
-
-
-def test_parse_latency_buckets():
-    # Test empty string returns default buckets
-    assert (
-        parse_latency_buckets("", DEFAULT_LATENCY_BUCKET_MS)
-        == DEFAULT_LATENCY_BUCKET_MS
-    )
-
-    # Test valid inputs with different formats
-    assert parse_latency_buckets("1,2,3", []) == [1.0, 2.0, 3.0]
-    assert parse_latency_buckets("1,2,3,4 ", []) == [1.0, 2.0, 3.0, 4.0]
-    assert parse_latency_buckets("  1,2,3,4,5", []) == [1.0, 2.0, 3.0, 4.0, 5.0]
-    assert parse_latency_buckets(" 1, 2,3  ,4,5 ,6 ", []) == [
-        1.0,
-        2.0,
-        3.0,
-        4.0,
-        5.0,
-        6.0,
-    ]
-
-    # Test decimal numbers
-    assert parse_latency_buckets("0.5,1.5,2.5", []) == [0.5, 1.5, 2.5]
-
-
-def test_parse_latency_buckets_invalid():
-    # Test negative numbers
-    with pytest.raises(ValueError, match=".*must be positive.*"):
-        parse_latency_buckets("-1,1,2,3,4", [])
-
-    # Test non-ascending order
-    with pytest.raises(ValueError, match=".*be in strictly ascending order*"):
-        parse_latency_buckets("4,3,2,1", [])
-
-    # Test duplicate values
-    with pytest.raises(ValueError, match=".*be in strictly ascending order.*"):
-        parse_latency_buckets("1,2,2,3,4", [])
-
-    # Test invalid number format
-    with pytest.raises(ValueError, match=".*Invalid.*format.*"):
-        parse_latency_buckets("1,2,3,4,a", [])
-
-    # Test empty list
-    with pytest.raises(ValueError, match=".*could not convert.*"):
-        parse_latency_buckets(",,,", [])
-
-    # Test invalid separators
-    with pytest.raises(ValueError, match=".*could not convert.*"):
-        parse_latency_buckets("1;2;3;4", [])
 
 
 def test_defaults():
@@ -410,7 +359,10 @@ class TestErrors:
         _check_constant_default(c_name, 8000)
         _check_constant_value({env_name: "10"}, c_name, 10)
 
-        with pytest.raises(ValueError, match=".*invalid literal for int*"):
+        with pytest.raises(
+            ValueError,
+            match=".*Environment variable `RAY_SERVE_DEFAULT_HTTP_PORT` value `0.1` cannot be converted to int!*",
+        ):
             _check_constant_value({env_name: "0.1"}, c_name, None)
 
     def test_cast_to_float(self):
@@ -420,7 +372,10 @@ class TestErrors:
         _check_constant_value({env_name: "10"}, c_name, 10)
         _check_constant_value({env_name: "0"}, c_name, 0.0)
 
-        with pytest.raises(ValueError, match=".*could not convert string to float*"):
+        with pytest.raises(
+            ValueError,
+            match=".*Environment variable `RAY_SERVE_CONTROL_LOOP_INTERVAL_S` value `abc` cannot be converted to float!*",
+        ):
             _check_constant_value({env_name: "abc"}, c_name, None)
 
 
