@@ -66,10 +66,7 @@ from ray.util.placement_group import (
     placement_group,
     remove_placement_group,
 )
-from ray.util.scheduling_strategies import (
-    NodeAffinitySchedulingStrategy,
-    PlacementGroupSchedulingStrategy,
-)
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -302,10 +299,9 @@ class WorkerGroup:
 
             # Initialize the synchronization actor on the driver node
             sync_actor = SynchronizationActor.options(
-                scheduling_strategy=NodeAffinitySchedulingStrategy(
-                    node_id=ray.get_runtime_context().get_node_id(),
-                    soft=False,
-                )
+                label_selector={
+                    "ray.io/node-id": ray.get_runtime_context().get_node_id()
+                }
             ).remote(
                 timeout_s=self._report_barrier_timeout_s,
                 warn_interval_s=self._report_barrier_warn_interval_s,

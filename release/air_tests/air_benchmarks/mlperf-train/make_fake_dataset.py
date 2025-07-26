@@ -11,7 +11,6 @@ import sys
 import tensorflow.compat.v1 as tf
 import time
 
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 import ray
 
 DEFAULT_IMAGE_URL = "https://air-example-data-2.s3.us-west-2.amazonaws.com/1G-image-data-synthetic-raw/dog.jpg"  # noqa: E501
@@ -259,9 +258,7 @@ if __name__ == "__main__":
             continue
         results.append(
             generate_local_files.options(
-                scheduling_strategy=NodeAffinitySchedulingStrategy(
-                    node["NodeID"], soft=False
-                )
+                label_selector={"ray.io/node-id": node["NodeID"]}
             ).remote(
                 args.num_shards,
                 args.num_images_per_shard,
