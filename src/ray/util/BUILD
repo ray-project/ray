@@ -163,7 +163,9 @@ ray_cc_library(
     srcs = ["string_utils.cc"],
     hdrs = ["string_utils.h"],
     deps = [
+        "//src/ray/common:status_or",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 
@@ -223,6 +225,7 @@ ray_cc_library(
         ":logging",
         ":macros",
         ":process",
+        ":string_utils",
         "//src/ray/thirdparty:sha256",
         "@boost//:asio",
         "@com_google_absl//absl/container:flat_hash_map",

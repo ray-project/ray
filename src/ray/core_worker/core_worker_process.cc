@@ -25,6 +25,7 @@
 #include "ray/util/process.h"
 #include "ray/util/stream_redirection.h"
 #include "ray/util/stream_redirection_options.h"
+#include "ray/util/string_utils.h"
 #include "ray/util/util.h"
 
 namespace ray {

@@ -389,3 +389,15 @@ ray_cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+ray_cc_test(
+    name = "string_utils_test",
+    size = "small",
+    srcs = ["string_utils_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/common:status_or",
+        "//src/ray/util:string_utils",
+        "@com_google_googletest//:gtest_main",
+    ],
+)

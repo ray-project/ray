@@ -14,11 +14,14 @@
 
 #pragma once
 
+#include <charconv>
 #include <filesystem>
 #include <string>
 #include <vector>
 
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
+#include "ray/common/status_or.h"
 
 namespace ray {
 
@@ -74,6 +77,43 @@ inline std::string VectorToString(const std::vector<T> &vec, const F &debug_stri
   }
   absl::StrAppend(&result, "]");
   return result;
+}
+
+/**
+  Usage:
+    StatusOr<int64_t> parsed_int = StringToInt<int64_t>("12345");
+    if (!parsed_int.ok()) {
+      // handle the error
+    }
+    // Otherwise safe to use.
+    DoHardMath(*parsed_int)
+
+  @tparam IntType any signed or unsigned integer type.
+  @param str the string to convert to an integer type.
+
+  @return OK if the conversion was successful,
+  InvalidArgument if the string contains non-integer characters.
+  OutOfRange if the integer overflows based on the type.
+*/
+template <typename IntType>
+StatusOr<IntType> StringToInt(const std::string &str) noexcept {
+  IntType value;
+  auto ret = std::from_chars(str.data(), str.data() + str.size(), value);
+  if (ret.ec == std::errc::invalid_argument) {
+    return Status::InvalidArgument(
+        absl::StrFormat("Failed to convert %s to an integer type because the input "
+                        "contains invalid characters.",
+                        str));
+  }
+  if (ret.ec == std::errc::result_out_of_range) {
+    // There isn't a straightforward and portable way to print out the unmangled type
+    // information.
+    return Status::ResultOutOfRange(
+        absl::StrFormat("Failed to convert %s into the integer "
+                        "type. The result is too large to fit into the type provided.",
+                        str));
+  }
+  return StatusOr<IntType>(value);
 }
 
 }  // namespace ray

@@ -148,7 +148,6 @@ class StatusOr {
   }
 
   ABSL_MUST_USE_RESULT StatusCode code() const { return status_.code(); }
-
   ABSL_MUST_USE_RESULT std::string message() const { return status_.message(); }
 
   std::string StatusString() const { return status_.StatusString(); }
@@ -242,6 +241,13 @@ class StatusOr {
 
   static_assert(std::is_default_constructible_v<T>,
                 "StatusOr<T>::value_or_default: T must by default constructable");
+
+  // Return a string representation of this status suitable for printing.
+  // Returns the string "OK" for success.
+  std::string ToString() const { return status_.ToString(); }
+
+  bool IsInvalidArgument() const { return code() == StatusCode::InvalidArgument; }
+  bool IsResultOutOfRange() const { return code() == StatusCode::ResultOutOfRange; }
 
  private:
   T &get() { return data_; }
