@@ -543,8 +543,11 @@ class NormalTaskSubmitterTest : public testing::Test {
   NormalTaskSubmitterTest()
       : raylet_client_pool(std::make_shared<rpc::RayletClientPool>(
             [](const rpc::Address &) { return std::make_shared<MockRayletClient>(); })),
+        raylet_client(std::make_shared<MockRayletClient>()),
         worker_client(std::make_shared<MockWorkerClient>()),
         store(DefaultCoreWorkerMemoryStoreWithThread::CreateShared()),
+        client_pool(std::make_shared<rpc::CoreWorkerClientPool>(
+            [&](const rpc::Address &) { return worker_client; })),
         task_manager(std::make_unique<MockTaskManager>()),
         actor_creator(std::make_shared<MockActorCreator>()),
         lease_policy(std::make_unique<MockLeasePolicy>()),
@@ -562,7 +565,7 @@ class NormalTaskSubmitterTest : public testing::Test {
     }
     if (lease_client_factory == nullptr) {
       raylet_client_pool = std::make_shared<rpc::RayletClientPool>(
-          [](const rpc::Address &addr) { return std::make_shared<MockRayletClient>(); });
+          [](const rpc::Address &) { return std::make_shared<MockRayletClient>(); });
     } else {
       raylet_client_pool = std::make_shared<rpc::RayletClientPool>(lease_client_factory);
     }

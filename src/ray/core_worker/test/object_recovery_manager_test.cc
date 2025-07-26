@@ -237,7 +237,7 @@ class ObjectRecoveryManagerTestBase : public ::testing::Test {
         memory_store_(
             std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService())),
         raylet_client_pool_(std::make_shared<rpc::RayletClientPool>(
-            [](const rpc::Address &) { return std::make_shared<MockRayletClient>(); })),
+            [&](const rpc::Address &) { return raylet_client_; })),
         raylet_client_(std::make_shared<MockRayletClient>()),
         task_manager_(std::make_shared<MockTaskManager>()),
         ref_counter_(std::make_shared<ReferenceCounter>(
