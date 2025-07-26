@@ -1,6 +1,8 @@
 import os
 from typing import List
 
+from ray.serve._private.constants_utils import parse_latency_buckets, str_to_list
+
 #: Logger used by serve components
 SERVE_LOGGER_NAME = "ray.serve"
 
@@ -88,27 +90,6 @@ DEFAULT_LATENCY_BUCKET_MS = [
     # 10 min
     600000,
 ]
-
-
-def parse_latency_buckets(bucket_str: str, default_buckets: list) -> list:
-    if bucket_str.strip() == "":
-        return default_buckets
-    try:
-        # Convert string to list of floats
-        buckets = [float(x.strip()) for x in bucket_str.split(",")]
-        if not buckets:
-            raise ValueError("Empty bucket list")
-        if any(x <= 0 for x in buckets):
-            raise ValueError("Bucket values must be positive")
-        if sorted(set(buckets)) != buckets:
-            raise ValueError("Bucket values must be in strictly ascending order")
-        return buckets
-    except Exception as e:
-        raise ValueError(
-            f"Invalid format for {bucket_str}. "
-            f"Expected comma-separated positive numbers in ascending order. Error: {str(e)}"
-        )
-
 
 # Example usage:
 # RAY_SERVE_REQUEST_LATENCY_BUCKET_MS="1,2,3,4"
@@ -397,15 +378,6 @@ RAY_SERVE_ENABLE_TASK_EVENTS = (
 RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY = (
     os.environ.get("RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY", "0") == "1"
 )
-
-
-def str_to_list(s: str) -> List[str]:
-    """Return a list from a comma-separated string.
-
-    Trims whitespace and skips empty entries.
-    """
-    return [r.strip() for r in s.split(",") if r.strip()]
-
 
 # Comma-separated list of custom resources prioritized in scheduling. Sorted from highest to lowest priority.
 # Example: "customx,customy"
