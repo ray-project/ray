@@ -534,6 +534,11 @@ def _sample_fragment(
     # Sample the first rows batch from file fragment `serialized_fragment`.
     fragment = _deserialize_fragments_with_retry([file_fragment])[0]
 
+    # If the fragment has no row groups, it's an empty or metadata-only file.
+    # Skip it by returning empty sample info.
+    if fragment.metadata.num_row_groups == 0:
+        return _SampleInfo(actual_bytes_per_row=None, estimated_bytes_per_row=None)
+
     # Only sample the first row group.
     fragment = fragment.subset(row_group_ids=[0])
     batch_size = max(
