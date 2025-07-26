@@ -25,7 +25,7 @@ class GPUObjectMeta(NamedTuple):
 
 
 def __ray_get_tensor_meta__(
-    self: "ray.actor.ActorHandle", obj_id: str, tensor_transport_backend: Backend
+    self: "ray.actor.ActorHandle", obj_id: str, tensor_transport: TensorTransportEnum
 ) -> TensorTransportMetadata:
     """Helper function that runs on the source actor to get tensor metadata.
 
@@ -36,7 +36,7 @@ def __ray_get_tensor_meta__(
     Args:
         self: The actor that runs this function.
         obj_id: The ID of the GPU object to get metadata for
-        tensor_transport_backend: The backend to use for tensor transport
+        tensor_transport: The tensor transport protocol to use for the GPU object.
 
     Returns:
         TensorMetadata: A named tuple containing the tensor metadata.
@@ -51,7 +51,7 @@ def __ray_get_tensor_meta__(
         obj_id
     ), f"obj_id={obj_id} not found in GPU object store"
     tensors = gpu_object_store.get_gpu_object(obj_id)
-    if tensor_transport_backend == Backend.NIXL:
+    if tensor_transport == TensorTransportEnum.NIXL:
         from ray.util.collective.collective_group.nixl_backend import NixlBackend
 
         nixl_backend: NixlBackend = collective.get_group_handle("nixl")
@@ -107,14 +107,14 @@ class GPUObjectManager:
         self,
         src_actor: "ray.actor.ActorHandle",
         obj_id: str,
-        transport_backend: Backend,
+        tensor_transport: TensorTransportEnum,
     ) -> ObjectRef:
         # Submit a Ray actor task to the source actor to get the tensor metadata.
         # The metadata is a list of tuples, where each tuple contains the shape and dtype
         # of a tensor in the GPU object store. This function returns an ObjectRef that
         # points to the tensor metadata.
         return src_actor.__ray_call__.remote(
-            __ray_get_tensor_meta__, obj_id, transport_backend
+            __ray_get_tensor_meta__, obj_id, tensor_transport
         )
 
     def is_managed_gpu_object(self, obj_id: str) -> bool:
@@ -153,7 +153,7 @@ class GPUObjectManager:
             tensor_transport
         )
         obj_id = obj_ref.hex()
-        tensor_meta = self._get_tensor_meta(src_actor, obj_id, tensor_transport_backend)
+        tensor_meta = self._get_tensor_meta(src_actor, obj_id, tensor_transport)
         self.managed_gpu_object_metadata[obj_id] = GPUObjectMeta(
             src_actor=src_actor,
             tensor_transport_backend=tensor_transport_backend,
