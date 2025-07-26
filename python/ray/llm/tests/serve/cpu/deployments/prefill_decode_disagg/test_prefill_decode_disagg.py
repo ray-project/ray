@@ -3,7 +3,7 @@ import sys
 import pytest
 
 from ray.llm._internal.serve.deployments.prefill_decode_disagg.prefill_decode_disagg import (
-    build_app,
+    build_pd_openai_app,
 )
 from ray.serve.llm import LLMConfig
 
@@ -44,7 +44,7 @@ class TestServingArgsParsing:
 
         pd_config = {"prefill_config": prefill_config, "decode_config": decode_config}
 
-        app = build_app(pd_config)
+        app = build_pd_openai_app(pd_config)
         assert app is not None
 
 
