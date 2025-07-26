@@ -2495,26 +2495,18 @@ class DeploymentState:
 
         # Check if we need full reassignment (only during scaling operations)
         needs_full_reassignment = False
-
-        # Full reassignment only when target replica count changes and we've reached steady state
-        current_rank_count = len(self._replica_ranks)
         target_count = self._target_state.target_num_replicas
+        assert (
+            active_replica_count == target_count
+        ), "Active replica count does not match target count"
 
-        if active_replica_count == target_count and current_rank_count != target_count:
+        current_ranks = set(self._replica_ranks.values())
+        expected_ranks = set(range(target_count))
+        if current_ranks != expected_ranks:
             needs_full_reassignment = True
             logger.info(
-                f"Target replica count changed: need full rank reassignment for deployment {self._id}"
+                f"Ranks are non-contiguous after scaling: {sorted(current_ranks)} != {sorted(expected_ranks)}, triggering full reassignment for deployment {self._id}"
             )
-
-        # Also check if ranks are non-contiguous after reaching target state (autoscaling case)
-        if active_replica_count == target_count and current_rank_count == target_count:
-            current_ranks = set(self._replica_ranks.values())
-            expected_ranks = set(range(target_count))
-            if current_ranks != expected_ranks:
-                needs_full_reassignment = True
-                logger.info(
-                    f"Ranks are non-contiguous after scaling: {sorted(current_ranks)} != {sorted(expected_ranks)}, triggering full reassignment for deployment {self._id}"
-                )
 
         if needs_full_reassignment:
             logger.info(f"Triggering full rank reassignment for deployment {self._id}")
@@ -2719,24 +2711,14 @@ class DeploymentState:
         # Filter out replicas that are no longer present
         active_replica_ids = set(running_replicas)
 
-        # Remove ranks for replicas that no longer exist
-        for replica_id in list(self._replica_ranks.keys()):
-            if replica_id not in active_replica_ids:
-                self.release_replica_rank(replica_id)
+        # Get all active replicas with their current ranks
+        # (caller ensures all active replicas have ranks assigned)
+        replicas_with_ranks = [
+            (replica_id, self._replica_ranks[replica_id])
+            for replica_id in active_replica_ids
+        ]
 
-        # Get ALL active replicas (including those without ranks)
-        replicas_with_ranks = []
-        replicas_without_ranks = []
-
-        for replica_id in active_replica_ids:
-            if replica_id in self._replica_ranks:
-                replicas_with_ranks.append(
-                    (replica_id, self._replica_ranks[replica_id])
-                )
-            else:
-                replicas_without_ranks.append(replica_id)
-
-        # Sort replicas with ranks by their current rank to maintain stability
+        # Sort replicas by their current rank to maintain stability
         replicas_with_ranks.sort(key=lambda x: x[1])
 
         # Clear existing assignments
@@ -2747,29 +2729,17 @@ class DeploymentState:
         new_assignments = []
         current_rank = 0
 
-        # First assign ranks to replicas that already had ranks (maintaining order)
+        # Assign contiguous ranks to all replicas (maintaining relative order)
         for replica_id, old_rank in replicas_with_ranks:
             self._replica_ranks[replica_id] = current_rank
             new_assignments.append((replica_id, old_rank, current_rank))
-            current_rank += 1
-
-        # Then assign ranks to new replicas (those without ranks)
-        for replica_id in replicas_without_ranks:
-            self._replica_ranks[replica_id] = current_rank
-            new_assignments.append(
-                (replica_id, None, current_rank)
-            )  # None indicates new assignment
             current_rank += 1
 
         self._next_rank = current_rank
 
         # Log rank changes
         for replica_id, old_rank, new_rank in new_assignments:
-            if old_rank is None:
-                logger.info(
-                    f"Assigned new rank {new_rank} to replica {replica_id} in deployment {self._id}"
-                )
-            elif old_rank != new_rank:
+            if old_rank != new_rank:
                 logger.info(
                     f"Reassigned rank for replica {replica_id}: {old_rank} -> {new_rank} in deployment {self._id}"
                 )
