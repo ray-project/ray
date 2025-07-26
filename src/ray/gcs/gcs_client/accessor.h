@@ -360,10 +360,9 @@ class NodeInfoAccessor {
   /// added or a node is removed. The callback needs to be idempotent because it will also
   /// be called for existing nodes.
   /// \param done Callback that will be called when subscription is complete.
-  /// \return Status
-  virtual Status AsyncSubscribeToNodeChange(
-      const SubscribeCallback<NodeID, rpc::GcsNodeInfo> &subscribe,
-      const StatusCallback &done);
+  virtual void AsyncSubscribeToNodeChange(
+      std::function<void(NodeID, const rpc::GcsNodeInfo &)> subscribe,
+      StatusCallback done);
 
   /// Get node information from local cache.
   /// Non-thread safe.
@@ -443,29 +442,26 @@ class NodeInfoAccessor {
   }
 
  private:
-  /// Save the subscribe operation in this function, so we can call it again when PubSub
-  /// server restarts from a failure.
-  SubscribeOperation subscribe_node_operation_;
-
   /// Save the fetch data operation in this function, so we can call it again when GCS
   /// server restarts from a failure.
   FetchDataOperation fetch_node_data_operation_;
 
   GcsClient *client_impl_;
 
-  using NodeChangeCallback =
-      std::function<void(const NodeID &id, rpc::GcsNodeInfo &&node_info)>;
-
   rpc::GcsNodeInfo local_node_info_;
   NodeID local_node_id_;
 
   /// The callback to call when a new node is added or a node is removed.
-  NodeChangeCallback node_change_callback_{nullptr};
+  std::function<void(NodeID, const rpc::GcsNodeInfo &)> node_change_callback_ = nullptr;
 
   /// A cache for information about all nodes.
   absl::flat_hash_map<NodeID, rpc::GcsNodeInfo> node_cache_;
   /// The set of removed nodes.
   std::unordered_set<NodeID> removed_nodes_;
+
+  // TODO(dayshah): Need to refactor gcs client / accessor to avoid this.
+  // https://github.com/ray-project/ray/issues/54805
+  FRIEND_TEST(NodeInfoAccessorTest, TestHandleNotification);
 };
 
 /// \class NodeResourceInfoAccessor
