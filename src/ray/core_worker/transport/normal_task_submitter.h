@@ -40,9 +40,6 @@
 namespace ray {
 namespace core {
 
-using LeaseClientFactoryFn =
-    std::function<std::shared_ptr<WorkerLeaseInterface>(const std::string &, int)>;
-
 // The task queues are keyed on resource shape & function descriptor
 // (encapsulated in SchedulingClass) to defer resource allocation decisions to the raylet
 // and ensure fairness between different tasks, as well as plasma task dependencies as

@@ -25,6 +25,9 @@
 namespace ray {
 namespace core {
 
+using LeaseClientFactoryFn =
+    std::function<std::shared_ptr<RayletClientInterface>(const rpc::Address &)>;
+
 Status NormalTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
   RAY_CHECK(task_spec.IsNormalTask());
   RAY_LOG(DEBUG) << "Submit task " << task_spec.TaskId();

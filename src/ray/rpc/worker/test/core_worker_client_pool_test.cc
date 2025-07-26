@@ -103,17 +103,19 @@ class MockGcsClient : public gcs::GcsClient {
 
 TEST_F(CoreWorkerClientPoolTest, TestGetDefaultUnavailableTimeoutCallbackNodeDead) {
   auto gcs_client = std::make_unique<MockGcsClient>();
-  auto raylet_client = std::make_shared<MockRayletClientInterface>();
+  auto raylet_client_pool =
+      std::make_unique<rpc::RayletClientPool>([](const rpc::Address &addr) {
+        return std::make_shared<MockRayletClientInterface>();
+      });
+  auto raylet_client = std::dynamic_pointer_cast<MockRayletClientInterface>(
+      raylet_client_pool->GetOrConnectByAddress(CreateRandomAddress("1")));
   auto node_info = std::make_unique<rpc::GcsNodeInfo>();
 
   std::unique_ptr<CoreWorkerClientPool> client_pool;
   client_pool = std::make_unique<CoreWorkerClientPool>([&](const rpc::Address &addr) {
     return std::make_shared<MockCoreWorkerClient>(
         CoreWorkerClientPool::GetDefaultUnavailableTimeoutCallback(
-            gcs_client.get(),
-            client_pool.get(),
-            [&raylet_client](const std::string &, int32_t) { return raylet_client; },
-            addr));
+            gcs_client.get(), client_pool.get(), raylet_client_pool.get(), addr));
   });
 
   auto core_worker_client = client_pool->GetOrConnect(CreateRandomAddress("1"));
@@ -148,17 +150,19 @@ TEST_F(CoreWorkerClientPoolTest, TestGetDefaultUnavailableTimeoutCallbackNodeDea
 
 TEST_F(CoreWorkerClientPoolTest, TestGetDefaultUnavailableTimeoutCallbackWorkerDead) {
   auto gcs_client = std::make_unique<MockGcsClient>();
-  auto raylet_client = std::make_shared<MockRayletClientInterface>();
   auto node_info = std::make_unique<rpc::GcsNodeInfo>();
 
+  auto raylet_client_pool =
+      std::make_unique<rpc::RayletClientPool>([](const rpc::Address &addr) {
+        return std::make_shared<MockRayletClientInterface>();
+      });
+  auto raylet_client = std::dynamic_pointer_cast<MockRayletClientInterface>(
+      raylet_client_pool->GetOrConnectByAddress(CreateRandomAddress("1")));
   std::unique_ptr<CoreWorkerClientPool> client_pool;
   client_pool = std::make_unique<CoreWorkerClientPool>([&](const rpc::Address &addr) {
     return std::make_shared<MockCoreWorkerClient>(
         CoreWorkerClientPool::GetDefaultUnavailableTimeoutCallback(
-            gcs_client.get(),
-            client_pool.get(),
-            [&raylet_client](const std::string &, int32_t) { return raylet_client; },
-            addr));
+            gcs_client.get(), client_pool.get(), raylet_client_pool.get(), addr));
   });
   auto core_worker_client = client_pool->GetOrConnect(CreateRandomAddress("1"));
   ASSERT_EQ(client_pool->Size(), 1);
