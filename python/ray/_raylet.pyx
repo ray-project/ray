@@ -2184,6 +2184,7 @@ cdef execute_task_with_cancellation_handler(
         actor_id = core_worker.get_actor_id()
         actor = actor_class.__new__(actor_class)
         worker.actors[actor_id] = actor
+
         # Record the actor class via :actor_name: magic token in the log.
         #
         # (Phase 1): this covers code run before __init__ finishes.
@@ -2243,6 +2244,10 @@ cdef execute_task_with_cancellation_handler(
 
         # Check for cancellation.
         PyErr_CheckSignals()
+
+        # Register cleanup callback after actor is fully initialized (including __init__)
+        if <int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK:
+            _register_actor_shutdown_callback()
 
     except KeyboardInterrupt as e:
         # Catch and handle task cancellation, which will result in an interrupt being
@@ -2731,6 +2736,48 @@ cdef void terminate_asyncio_thread() nogil:
     with gil:
         core_worker = ray._private.worker.global_worker.core_worker
         core_worker.stop_and_join_asyncio_threads_if_exist()
+
+
+cdef void call_actor_shutdown() noexcept nogil:
+    """C++ wrapper function that calls the Python actor shutdown callback."""
+    with gil:
+        _call_actor_shutdown()
+
+
+def _call_actor_shutdown():
+    """Internal function that calls actor's __ray_shutdown__ method."""
+    try:
+        worker = ray._private.worker.global_worker
+
+        if not worker.actors:
+            return
+
+        actor_id, actor_instance = next(iter(worker.actors.items()))
+        if actor_instance is not None:
+            try:
+                actor_instance.__ray_shutdown__()
+            except Exception:
+                logger.exception("Error during actor __ray_shutdown__ method")
+            finally:
+                worker.actors.pop(actor_id, None)
+    except Exception:
+        # Catch any system-level exceptions to prevent propagation to C++
+        logger.exception("System error during actor shutdown callback")
+
+
+def _register_actor_shutdown_callback():
+    """Register callback to shutdown actor instance before shutdown."""
+    worker = ray._private.worker.global_worker
+    core_worker = worker.core_worker
+    actor_id = core_worker.get_actor_id()
+
+    # Only register callback if actor has __ray_shutdown__ method
+    # This preserves backward compatibility: actors without __ray_shutdown__
+    # will use Python's normal exit flow (including atexit handlers)
+    actor_instance = worker.actors.get(actor_id)
+    if actor_instance is not None and hasattr(actor_instance, '__ray_shutdown__') and callable(getattr(actor_instance, '__ray_shutdown__')):
+        core_worker.set_actor_shutdown_callback(_call_actor_shutdown)
+
 
 cdef class StreamRedirector:
     @staticmethod
@@ -4629,6 +4676,11 @@ cdef class CoreWorker:
     def set_current_actor_should_exit(self):
         return (CCoreWorkerProcess.GetCoreWorker().GetWorkerContext()
                 .SetCurrentActorShouldExit())
+
+    def set_actor_shutdown_callback(self, callback):
+        """Set the callback to shutdown actor instance before shutdown."""
+        cdef function[void()] c_callback = call_actor_shutdown
+        CCoreWorkerProcess.GetCoreWorker().SetActorShutdownCallback(c_callback)
 
     def get_current_actor_should_exit(self):
         return (CCoreWorkerProcess.GetCoreWorker().GetWorkerContext()
