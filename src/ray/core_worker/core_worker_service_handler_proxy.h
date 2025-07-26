@@ -31,6 +31,14 @@ namespace core {
     get_core_worker_()->Handle##METHOD(request, reply, send_reply_callback); \
   }
 
+// This class was introduced as a result of changes in
+// https://github.com/ray-project/ray/pull/54759, where the dependencies of CoreWorker
+// were refactored into CoreWorkerProcessImpl. Previously, CoreWorker inherited from
+// CoreWorkerServiceHandler, but this design made it impossible to run the gRPC server
+// within CoreWorkerProcessImpl despite the fact that several CoreWorker subclasses rely
+// on the server's port, which is only known when the server is running. To address this,
+// we created this service handler which can be created before CoreWorker is done
+// initializing.
 class CoreWorkerServiceHandlerProxy : public rpc::CoreWorkerServiceHandler {
  public:
   CoreWorkerServiceHandlerProxy(
