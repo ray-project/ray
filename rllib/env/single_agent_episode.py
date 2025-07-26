@@ -616,7 +616,7 @@ class SingleAgentEpisode:
         other.validate()
 
         # Make sure, end matches other episode chunk's beginning.
-        assert np.all(other.observations[0] == self.observations[-1])
+        np.testing.assert_equal(other.observations[0], self.observations[-1])
         # Pop out our last observations and infos (as these are identical
         # to the first obs and infos in the next episode).
         self.observations.pop()
