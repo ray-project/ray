@@ -140,27 +140,36 @@ def shutdown():
 
 @DeveloperAPI
 def get_replica_context() -> ReplicaContext:
-    """Get the current replica context for the executing deployment.
+    """Returns the deployment and replica tag from within a replica at runtime.
+    A replica tag uniquely identifies a single replica for a Ray Serve
+    deployment.
+    Raises:
+        RayServeException: if not called from within a Ray Serve deployment.
 
-    This can be used to access the deployment and application name, replica
-    ID, and user config within a deployment at runtime.
+    Example:
+
+        .. code-block:: python
+
+            from ray import serve
+            @serve.deployment
+            class MyDeployment:
+                def __init__(self):
+                    # Prints "MyDeployment"
+                    print(serve.get_replica_context().deployment)
 
     Returns:
         ReplicaContext containing information about the current deployment
         and replica.
 
-    Raises:
-        RayServeException: if not called from within a deployment.
     """
-
-    replica_context = ray.serve.context._get_internal_replica_context()
-    if replica_context is None:
+    internal_replica_context = _get_internal_replica_context()
+    if internal_replica_context is None:
         raise RayServeException(
-            "`serve.get_replica_context()` may only be called from within a "
+            "`serve.get_replica_context()` "
+            "may only be called from within a "
             "Ray Serve deployment."
         )
-
-    return replica_context
+    return internal_replica_context
 
 
 @PublicAPI(stability="beta")

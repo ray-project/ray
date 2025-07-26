@@ -2496,17 +2496,16 @@ class DeploymentState:
         # Check if we need full reassignment (only during scaling operations)
         needs_full_reassignment = False
         target_count = self._target_state.target_num_replicas
-        assert (
-            active_replica_count == target_count
-        ), "Active replica count does not match target count"
 
-        current_ranks = set(self._replica_ranks.values())
-        expected_ranks = set(range(target_count))
-        if current_ranks != expected_ranks:
-            needs_full_reassignment = True
-            logger.info(
-                f"Ranks are non-contiguous after scaling: {sorted(current_ranks)} != {sorted(expected_ranks)}, triggering full reassignment for deployment {self._id}"
-            )
+        # System is in steady state, check if ranks are non-contiguous
+        if active_replica_count == target_count:
+            current_ranks = set(self._replica_ranks.values())
+            expected_ranks = set(range(target_count))
+            if current_ranks != expected_ranks:
+                needs_full_reassignment = True
+                logger.info(
+                    f"Ranks are non-contiguous after scaling: {sorted(current_ranks)} != {sorted(expected_ranks)}, triggering full reassignment for deployment {self._id}"
+                )
 
         if needs_full_reassignment:
             logger.info(f"Triggering full rank reassignment for deployment {self._id}")

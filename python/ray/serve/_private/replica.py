@@ -728,15 +728,11 @@ class ReplicaBase(ABC):
         Returns:
             True if rank update was successful, False otherwise.
         """
-        try:
-            self._rank = rank
-            self._set_internal_replica_context(
-                servable_object=self._user_callable_wrapper._callable,
-            )
-            return True
-        except Exception as e:
-            logger.warning(f"Failed to update rank for replica {self._replica_id}: {e}")
-            return False
+        self._rank = rank
+        self._set_internal_replica_context(
+            servable_object=self._user_callable_wrapper._callable,
+        )
+        return True
 
     async def reconfigure(self, deployment_config: DeploymentConfig):
         try:
