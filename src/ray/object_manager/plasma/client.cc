@@ -140,8 +140,6 @@ class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Imp
              ObjectBuffer *object_buffers,
              bool is_from_worker);
 
-  Status ExperimentalMutableObjectRegisterWriter(const ObjectID &object_id);
-
   Status GetExperimentalMutableObject(const ObjectID &object_id,
                                       std::unique_ptr<MutableObject> *mutable_object);
 
@@ -189,8 +187,6 @@ class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Imp
   Status GetBuffers(const ObjectID *object_ids,
                     int64_t num_objects,
                     int64_t timeout_ms,
-                    const std::function<std::shared_ptr<Buffer>(
-                        const ObjectID &, const std::shared_ptr<Buffer> &)> &wrap_buffer,
                     ObjectBuffer *object_buffers,
                     bool is_from_worker);
 
@@ -464,14 +460,11 @@ Status PlasmaClient::Impl::TryCreateImmediately(const ObjectID &object_id,
       object_id, /*is_experimental_mutable_object=*/false, metadata, nullptr, data);
 }
 
-Status PlasmaClient::Impl::GetBuffers(
-    const ObjectID *object_ids,
-    int64_t num_objects,
-    int64_t timeout_ms,
-    const std::function<std::shared_ptr<Buffer>(
-        const ObjectID &, const std::shared_ptr<Buffer> &)> &wrap_buffer,
-    ObjectBuffer *object_buffers,
-    bool is_from_worker) {
+Status PlasmaClient::Impl::GetBuffers(const ObjectID *object_ids,
+                                      int64_t num_objects,
+                                      int64_t timeout_ms,
+                                      ObjectBuffer *object_buffers,
+                                      bool is_from_worker) {
   // Fill out the info for the objects that are already in use locally.
   bool all_present = true;
   for (int64_t i = 0; i < num_objects; ++i) {
@@ -498,9 +491,11 @@ Status PlasmaClient::Impl::GetBuffers(
       RAY_CHECK(object->device_num == 0) << "GPU library is not enabled.";
 
       uint8_t *data = LookupMmappedFile(object->store_fd);
-      auto physical_buf = std::make_shared<SharedMemoryBuffer>(
-          data + object->data_offset, object->data_size + object->metadata_size);
-      physical_buf = wrap_buffer(object_ids[i], physical_buf);
+      auto physical_buf = std::make_shared<PlasmaBuffer>(
+          shared_from_this(),
+          object_ids[i],
+          std::make_shared<SharedMemoryBuffer>(
+              data + object->data_offset, object->data_size + object->metadata_size));
 
       object_buffers[i].data =
           SharedMemoryBuffer::Slice(physical_buf, 0, object->data_size);
@@ -578,12 +573,14 @@ Status PlasmaClient::Impl::GetBuffers(
       RAY_CHECK(object_entry->object.device_num == 0)
           << "Arrow GPU library is not enabled.";
       uint8_t *data = LookupMmappedFile(object_entry->object.store_fd);
-      auto physical_buf = std::make_shared<SharedMemoryBuffer>(
-          data + object_entry->object.data_offset,
-          object_entry->object.data_size + object_entry->object.metadata_size);
 
       // Finish filling out the return values.
-      physical_buf = wrap_buffer(object_ids[i], physical_buf);
+      auto physical_buf = std::make_shared<PlasmaBuffer>(
+          shared_from_this(),
+          object_ids[i],
+          std::make_shared<SharedMemoryBuffer>(
+              data + object_entry->object.data_offset,
+              object_entry->object.data_size + object_entry->object.metadata_size));
       object_buffers[i].data =
           SharedMemoryBuffer::Slice(physical_buf, 0, object_entry->object.data_size);
       object_buffers[i].metadata =
@@ -598,31 +595,6 @@ Status PlasmaClient::Impl::GetBuffers(
       RAY_DCHECK(!object_buffers[i].data);
     }
   }
-  return Status::OK();
-}
-
-Status PlasmaClient::Impl::ExperimentalMutableObjectRegisterWriter(
-    const ObjectID &object_id) {
-#if 0
-  plasma::ObjectBuffer object_buffer;
-  const auto wrap_buffer = [=](const ObjectID &object_id,
-                               const std::shared_ptr<Buffer> &buffer) {
-    return std::make_shared<PlasmaBuffer>(shared_from_this(), object_id, buffer);
-  };
-  RAY_RETURN_NOT_OK(GetBuffers(&object_id,
-                    /*num_objects=*/1,
-                    /*timeout_ms=*/-1,
-                    wrap_buffer,
-                     &object_buffer,
-                     /*is_from_worker=*/false));
-
-  std::lock_guard<std::recursive_mutex> guard(client_mutex_);
-  auto object_entry = objects_in_use_.find(object_id);
-  if (object_entry == objects_in_use_.end()) {
-    return Status::Invalid(
-        "Plasma buffer for mutable object is not local.");
-  }
-#endif
   return Status::OK();
 }
 
@@ -651,8 +623,8 @@ Status PlasmaClient::Impl::GetExperimentalMutableObject(
   IncrementObjectCount(object_id);
 
   const auto &object = object_entry->second->object;
-  *mutable_object = std::unique_ptr<MutableObject>(
-      new MutableObject(LookupMmappedFile(object.store_fd), object));
+  *mutable_object =
+      std::make_unique<MutableObject>(LookupMmappedFile(object.store_fd), object);
   return Status::OK();
 }
 
@@ -661,19 +633,10 @@ Status PlasmaClient::Impl::Get(const std::vector<ObjectID> &object_ids,
                                std::vector<ObjectBuffer> *out,
                                bool is_from_worker) {
   std::lock_guard<std::recursive_mutex> guard(client_mutex_);
-
-  const auto wrap_buffer = [this](const ObjectID &object_id,
-                                  const std::shared_ptr<Buffer> &buffer) {
-    return std::make_shared<PlasmaBuffer>(shared_from_this(), object_id, buffer);
-  };
   const size_t num_objects = object_ids.size();
   *out = std::vector<ObjectBuffer>(num_objects);
-  return GetBuffers(object_ids.data(),
-                    num_objects,
-                    timeout_ms,
-                    wrap_buffer,
-                    out->data(),
-                    is_from_worker);
+  return GetBuffers(
+      object_ids.data(), num_objects, timeout_ms, out->data(), is_from_worker);
 }
 
 Status PlasmaClient::Impl::MarkObjectUnused(const ObjectID &object_id) {
@@ -962,10 +925,6 @@ Status PlasmaClient::Get(const std::vector<ObjectID> &object_ids,
                          std::vector<ObjectBuffer> *object_buffers,
                          bool is_from_worker) {
   return impl_->Get(object_ids, timeout_ms, object_buffers, is_from_worker);
-}
-
-Status PlasmaClient::ExperimentalMutableObjectRegisterWriter(const ObjectID &object_id) {
-  return impl_->ExperimentalMutableObjectRegisterWriter(object_id);
 }
 
 Status PlasmaClient::GetExperimentalMutableObject(
