@@ -19,7 +19,7 @@ class ResourceAndLabelSpec:
 
     All fields can be None. Before starting services, resolve() should be
     called to return a ResourceAndLabelSpec with unknown values filled in with
-    defaults based on the local machine specifications.
+    merged values based on the local machine and user specifications.
     """
 
     def __init__(
@@ -49,9 +49,15 @@ class ResourceAndLabelSpec:
         self.object_store_memory = object_store_memory
         self.resources = resources
         self.labels = labels
+        self._is_resolved = False
 
     def resolved(self) -> bool:
-        """Returns if this ResourceAndLabelSpec has default values filled out."""
+        """Returns if resolve() has been called for this ResourceAndLabelSpec
+        and default values are filled out."""
+        return self._is_resolved
+
+    def all_fields_set(self) -> bool:
+        """Returns whether all fields in this ResourceAndLabelSpec are not None."""
         return all(
             v is not None
             for v in (
@@ -130,8 +136,25 @@ class ResourceAndLabelSpec:
             ResourceAndLabelSpec: This instance with all fields resolved.
         """
 
-        if self.resources is None:
-            self.resources = {}
+        # Load environment override resources and merge with resources passed
+        # in from Ray Params. Separates special case params if found in env.
+        env_resources = self._load_env_resources()
+        (
+            num_cpus,
+            num_gpus,
+            memory,
+            object_store_memory,
+            merged_resources,
+        ) = self._merge_resources(env_resources, self.resources or {})
+        self.num_cpus = self.num_cpus if num_cpus is None else num_cpus
+        self.num_gpus = self.num_gpus if num_gpus is None else num_gpus
+        self.memory = self.memory if memory is None else memory
+        self.object_store_memory = (
+            self.object_store_memory
+            if object_store_memory is None
+            else object_store_memory
+        )
+        self.resources = merged_resources
 
         if node_ip_address is None:
             node_ip_address = ray.util.get_node_ip_address()
@@ -166,14 +189,51 @@ class ResourceAndLabelSpec:
         if self.num_gpus is None:
             self.num_gpus = 0
 
-        # Resolve node labels
-        self._resolve_labels(accelerator_manager)
+        # Resolve and merge node labels from all sources (params, env, and default).
+        self._merge_labels(accelerator_manager)
 
         # Resolve memory resources
         self._resolve_memory_resources()
 
-        assert self.resolved()
+        self._is_resolved = True
+        assert self.all_fields_set()
         return self
+
+    def _load_env_resources(self) -> Dict[str, float]:
+        """Load resource overrides from the environment, if present."""
+        env_resources = {}
+        env_string = os.getenv(ray_constants.RESOURCES_ENVIRONMENT_VARIABLE)
+        if env_string:
+            try:
+                env_resources = json.loads(env_string)
+            except Exception:
+                logger.exception(f"Failed to load {env_string}")
+                raise
+            logger.debug(f"Autoscaler overriding resources: {env_resources}.")
+        return env_resources
+
+    def _merge_resources(
+        self, env_dict: Dict[str, float], params_dict: Dict[str, float]
+    ):
+        """Merge environment and Ray param-provided resources, with env values taking precedence.
+        Returns separated special case params (CPU/GPU/memory) and the merged resource dict.
+        """
+        num_cpus = env_dict.pop("CPU", None)
+        num_gpus = env_dict.pop("GPU", None)
+        memory = env_dict.pop("memory", None)
+        object_store_memory = env_dict.pop("object_store_memory", None)
+
+        result = params_dict.copy()
+        result.update(env_dict)
+
+        for key in set(env_dict.keys()).intersection(params_dict or {}):
+            if params_dict[key] != env_dict[key]:
+                logger.warning(
+                    f"Autoscaler is overriding your resource: {key}: "
+                    f"{params_dict[key]} with {env_dict[key]}."
+                )
+
+        return num_cpus, num_gpus, memory, object_store_memory, result
 
     def _load_env_labels(self) -> Dict[str, str]:
         env_override_labels = {}
@@ -221,9 +281,7 @@ class ResourceAndLabelSpec:
 
         return default_labels
 
-    def _resolve_labels(
-        self, accelerator_manager: Optional[AcceleratorManager]
-    ) -> None:
+    def _merge_labels(self, accelerator_manager: Optional[AcceleratorManager]) -> None:
         """Merge environment override, user-input from params, and Ray default labels in
         that order of precedence."""
 
