@@ -34,26 +34,26 @@ SERVE_LLM_GRAFANA_PANELS = [
         id=2,
         title="vLLM: Time Per Output Token Latency",
         description="Time per output token latency in milliseconds.",
-        unit="milliseconds",
+        unit="ms",
         targets=[
             Target(
-                expr='1000 * histogram_quantile(0.99, sum by(le, model_name, WorkerId) (rate(ray_vllm:time_per_output_token_seconds_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[30s])))',
+                expr='histogram_quantile(0.99, sum by(le, model_name, WorkerId) (rate(ray_vllm:time_per_output_token_seconds_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[30s])))',
                 legend="P99 - {{model_name}} - {{WorkerId}}",
             ),
             Target(
-                expr='1000 * histogram_quantile(0.95, sum by(le, model_name, WorkerId) (rate(ray_vllm:time_per_output_token_seconds_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[30s])))',
+                expr='histogram_quantile(0.95, sum by(le, model_name, WorkerId) (rate(ray_vllm:time_per_output_token_seconds_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[30s])))',
                 legend="P95 - {{model_name}} - {{WorkerId}}",
             ),
             Target(
-                expr='1000 * histogram_quantile(0.9, sum by(le, model_name, WorkerId) (rate(ray_vllm:time_per_output_token_seconds_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[30s])))',
+                expr='histogram_quantile(0.9, sum by(le, model_name, WorkerId) (rate(ray_vllm:time_per_output_token_seconds_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[30s])))',
                 legend="P90 - {{model_name}} - {{WorkerId}}",
             ),
             Target(
-                expr='1000 * histogram_quantile(0.5, sum by(le, model_name, WorkerId) (rate(ray_vllm:time_per_output_token_seconds_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[30s])))',
+                expr='histogram_quantile(0.5, sum by(le, model_name, WorkerId) (rate(ray_vllm:time_per_output_token_seconds_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[30s])))',
                 legend="P50 - {{model_name}} - {{WorkerId}}",
             ),
             Target(
-                expr='1000 * (sum by(model_name, WorkerId) (rate(ray_vllm:time_per_output_token_seconds_sum{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[30s]))\n/\nsum by(model_name, WorkerId) (rate(ray_vllm:time_per_output_token_seconds_count{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[30s])))',
+                expr='(sum by(model_name, WorkerId) (rate(ray_vllm:time_per_output_token_seconds_sum{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[30s]))\n/\nsum by(model_name, WorkerId) (rate(ray_vllm:time_per_output_token_seconds_count{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[30s])))',
                 legend="Mean - {{model_name}} - {{WorkerId}}",
             ),
         ],
@@ -86,26 +86,26 @@ SERVE_LLM_GRAFANA_PANELS = [
         id=5,
         title="vLLM: Time To First Token Latency",
         description="P50, P90, P95, and P99 TTFT latency in milliseconds.",
-        unit="milliseconds",
+        unit="ms",
         targets=[
             Target(
-                expr='1000 * (sum by(model_name, WorkerId) (rate(ray_vllm:time_to_first_token_seconds_sum{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[30s]))\n/\nsum by(model_name, WorkerId) (rate(ray_vllm:time_to_first_token_seconds_count{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[30s])))',
+                expr='(sum by(model_name, WorkerId) (rate(ray_vllm:time_to_first_token_seconds_sum{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[30s]))\n/\nsum by(model_name, WorkerId) (rate(ray_vllm:time_to_first_token_seconds_count{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[30s])))',
                 legend="Average - {{model_name}} - {{WorkerId}}",
             ),
             Target(
-                expr='1000 * histogram_quantile(0.5, sum by(le, model_name, WorkerId)(rate(ray_vllm:time_to_first_token_seconds_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[30s])))',
+                expr='histogram_quantile(0.5, sum by(le, model_name, WorkerId)(rate(ray_vllm:time_to_first_token_seconds_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[30s])))',
                 legend="P50 - {{model_name}} - {{WorkerId}}",
             ),
             Target(
-                expr='1000 * histogram_quantile(0.9, sum by(le, model_name, WorkerId)(rate(ray_vllm:time_to_first_token_seconds_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[30s])))',
+                expr='histogram_quantile(0.9, sum by(le, model_name, WorkerId)(rate(ray_vllm:time_to_first_token_seconds_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[30s])))',
                 legend="P90 - {{model_name}} - {{WorkerId}}",
             ),
             Target(
-                expr='1000 * histogram_quantile(0.95, sum by(le, model_name, WorkerId) (rate(ray_vllm:time_to_first_token_seconds_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[30s])))',
+                expr='histogram_quantile(0.95, sum by(le, model_name, WorkerId) (rate(ray_vllm:time_to_first_token_seconds_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[30s])))',
                 legend="P95 - {{model_name}} - {{WorkerId}}",
             ),
             Target(
-                expr='1000 * histogram_quantile(0.99, sum by(le, model_name, WorkerId)(rate(ray_vllm:time_to_first_token_seconds_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[30s])))',
+                expr='histogram_quantile(0.99, sum by(le, model_name, WorkerId)(rate(ray_vllm:time_to_first_token_seconds_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[30s])))',
                 legend="P99 - {{model_name}} - {{WorkerId}}",
             ),
         ],
