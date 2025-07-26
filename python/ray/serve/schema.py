@@ -1202,3 +1202,53 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
                         )
 
         return values
+
+
+@PublicAPI(stability="alpha")
+class CeleryTaskProcessorConfig(BaseModel):
+    broker_url: str = Field(..., description="The URL of the broker to use for Celery.")
+    backend_url: str = Field(
+        ..., description="The URL of the backend to use for Celery."
+    )
+    broker_transport_options: Optional[Dict[str, Any]] = Field(
+        default=None, description="The broker transport options to use for Celery."
+    )
+    worker_concurrency: Optional[int] = Field(
+        default=10,
+        description="The number of concurrent worker threads for the task processor.",
+    )
+
+
+@PublicAPI(stability="alpha")
+class MockTaskProcessorConfig(BaseModel):
+    pass
+
+
+@PublicAPI(stability="alpha")
+class TaskProcessorConfig(BaseModel):
+    queue_name: str = Field(
+        ..., description="The name of the queue to use for task processing."
+    )
+    adapter_config: Union[CeleryTaskProcessorConfig, MockTaskProcessorConfig] = Field(
+        ..., description="The adapter config. Currently only Celery is supported."
+    )
+    max_retry: Optional[int] = Field(
+        default=3,
+        description="The maximum number of retries for a task before marking it as failed.",
+    )
+    failed_task_queue_name: Optional[str] = Field(
+        default=None,
+        description="The name of the failed task queue. This is used to move failed tasks to a dead-letter queue after max retries.",
+    )
+    unprocessable_task_queue_name: Optional[str] = Field(
+        default=None,
+        description="The name of the unprocessable task queue. This is used to move unprocessable tasks(like tasks with serialization issue, or missing handler) to a dead-letter queue.",
+    )
+
+
+@PublicAPI(stability="alpha")
+class TaskResult(BaseModel):
+    id: str = Field(..., description="The ID of the task.")
+    status: str = Field(..., description="The status of the task.")
+    created_at: float = Field(..., description="The timestamp of the task creation.")
+    result: Any = Field(..., description="The result of the task.")
