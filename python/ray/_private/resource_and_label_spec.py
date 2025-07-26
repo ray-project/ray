@@ -138,14 +138,14 @@ class ResourceAndLabelSpec:
 
         # Load environment override resources and merge with resources passed
         # in from Ray Params. Separates special case params if found in env.
-        env_resources = self._load_env_resources()
+        env_resources = ResourceAndLabelSpec._load_env_resources()
         (
             num_cpus,
             num_gpus,
             memory,
             object_store_memory,
             merged_resources,
-        ) = self._merge_resources(env_resources, self.resources or {})
+        ) = ResourceAndLabelSpec._merge_resources(env_resources, self.resources or {})
         self.num_cpus = self.num_cpus if num_cpus is None else num_cpus
         self.num_gpus = self.num_gpus if num_gpus is None else num_gpus
         self.memory = self.memory if memory is None else memory
@@ -190,7 +190,7 @@ class ResourceAndLabelSpec:
             self.num_gpus = 0
 
         # Resolve and merge node labels from all sources (params, env, and default).
-        self._merge_labels(accelerator_manager)
+        self._resolve_labels(accelerator_manager)
 
         # Resolve memory resources
         self._resolve_memory_resources()
@@ -199,7 +199,8 @@ class ResourceAndLabelSpec:
         assert self.all_fields_set()
         return self
 
-    def _load_env_resources(self) -> Dict[str, float]:
+    @staticmethod
+    def _load_env_resources() -> Dict[str, float]:
         """Load resource overrides from the environment, if present."""
         env_resources = {}
         env_string = os.getenv(ray_constants.RESOURCES_ENVIRONMENT_VARIABLE)
@@ -212,9 +213,8 @@ class ResourceAndLabelSpec:
             logger.debug(f"Autoscaler overriding resources: {env_resources}.")
         return env_resources
 
-    def _merge_resources(
-        self, env_dict: Dict[str, float], params_dict: Dict[str, float]
-    ):
+    @staticmethod
+    def _merge_resources(env_dict: Dict[str, float], params_dict: Dict[str, float]):
         """Merge environment and Ray param-provided resources, with env values taking precedence.
         Returns separated special case params (CPU/GPU/memory) and the merged resource dict.
         """
@@ -235,7 +235,8 @@ class ResourceAndLabelSpec:
 
         return num_cpus, num_gpus, memory, object_store_memory, result
 
-    def _load_env_labels(self) -> Dict[str, str]:
+    @staticmethod
+    def _load_env_labels() -> Dict[str, str]:
         env_override_labels = {}
         env_override_labels_string = os.getenv(
             ray_constants.LABELS_ENVIRONMENT_VARIABLE
@@ -250,8 +251,9 @@ class ResourceAndLabelSpec:
 
         return env_override_labels
 
+    @staticmethod
     def _get_default_labels(
-        self, accelerator_manager: Optional[AcceleratorManager]
+        accelerator_manager: Optional[AcceleratorManager],
     ) -> Dict[str, str]:
         default_labels = {}
 
@@ -281,12 +283,14 @@ class ResourceAndLabelSpec:
 
         return default_labels
 
-    def _merge_labels(self, accelerator_manager: Optional[AcceleratorManager]) -> None:
-        """Merge environment override, user-input from params, and Ray default labels in
-        that order of precedence."""
+    def _resolve_labels(
+        self, accelerator_manager: Optional[AcceleratorManager]
+    ) -> None:
+        """Resolve and merge environment override, user-input from params, and Ray default
+        labels in that order of precedence."""
 
         # Start with a dictionary filled out with Ray default labels
-        merged = self._get_default_labels(accelerator_manager)
+        merged = ResourceAndLabelSpec._get_default_labels(accelerator_manager)
 
         # Merge user-specified labels from Ray params
         for key, val in (self.labels or {}).items():
@@ -299,7 +303,7 @@ class ResourceAndLabelSpec:
             merged[key] = val
 
         # Merge autoscaler override labels from environment
-        env_labels = self._load_env_labels()
+        env_labels = ResourceAndLabelSpec._load_env_labels()
         for key, val in (env_labels or {}).items():
             if key in merged and merged[key] != val:
                 logger.warning(
