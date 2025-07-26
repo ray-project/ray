@@ -1,4 +1,5 @@
 import tempfile
+from abc import abstractmethod
 from collections import OrderedDict
 from contextlib import contextmanager
 from pathlib import Path
@@ -19,22 +20,101 @@ except ImportError:
         pass
 
 
-class TuneCallback(TrainingCallback):
-    # TODO(justinvyu): [code_removal] Remove this after enforcing min xgboost version.
-    """Base class for Tune's XGBoost callbacks."""
+class RayReportCallback(TrainingCallback):
+    CHECKPOINT_NAME = "model.ubj"
 
-    def __call__(self, env):
-        """Compatibility with xgboost<1.3"""
-        return self.after_iteration(
-            env.model, env.iteration, env.evaluation_result_list
-        )
+    def __init__(
+        self,
+        metrics: Optional[Union[str, List[str], Dict[str, str]]] = None,
+        filename: str = CHECKPOINT_NAME,
+        frequency: int = 0,
+        checkpoint_at_end: bool = True,
+        results_postprocessing_fn: Optional[
+            Callable[[Dict[str, Union[float, List[float]]]], Dict[str, float]]
+        ] = None,
+    ):
+        if isinstance(metrics, str):
+            metrics = [metrics]
+        self._metrics = metrics
+        self._filename = filename
+        self._frequency = frequency
+        self._checkpoint_at_end = checkpoint_at_end
+        self._results_postprocessing_fn = results_postprocessing_fn
 
+        # Keeps track of the eval metrics from the last iteration,
+        # so that the latest metrics can be reported with the checkpoint
+        # at the end of training.
+        self._evals_log = None
+        # Keep track of the last checkpoint iteration to avoid double-checkpointing
+        # when using `checkpoint_at_end=True`.
+        self._last_checkpoint_iteration = None
+
+    @classmethod
+    def get_model(
+        cls,
+        checkpoint: Checkpoint,
+        filename: str = CHECKPOINT_NAME,
+    ) -> Booster:
+        """Retrieve the model stored in a checkpoint reported by this callback.
+
+        Args:
+            checkpoint: The checkpoint object returned by a training run.
+                The checkpoint should be saved by an instance of this callback.
+            filename: The filename to load the model from, which should match
+                the filename used when creating the callback.
+
+        Returns:
+            The model loaded from the checkpoint.
+        """
+        with checkpoint.as_directory() as checkpoint_path:
+            booster = Booster()
+            booster.load_model(Path(checkpoint_path, filename).as_posix())
+            return booster
+
+    def _get_report_dict(self, evals_log):
+        if isinstance(evals_log, OrderedDict):
+            # xgboost>=1.3
+            result_dict = flatten_dict(evals_log, delimiter="-")
+            for k in list(result_dict):
+                result_dict[k] = result_dict[k][-1]
+        else:
+            # xgboost<1.3
+            result_dict = dict(evals_log)
+        if not self._metrics:
+            report_dict = result_dict
+        else:
+            report_dict = {}
+            for key in self._metrics:
+                if isinstance(self._metrics, dict):
+                    metric = self._metrics[key]
+                else:
+                    metric = key
+                report_dict[key] = result_dict[metric]
+
+        if self._results_postprocessing_fn:
+            report_dict = self._results_postprocessing_fn(report_dict)
+
+        return report_dict
+
+    @abstractmethod
+    def _get_checkpoint(self, model: Booster) -> Optional[Checkpoint]:
+        """Get checkpoint from model.
+
+        This method needs to be implemented by subclasses.
+        """
+        pass
+
+    @abstractmethod
     def after_iteration(self, model: Booster, epoch: int, evals_log: Dict):
-        raise NotImplementedError
+        pass
+
+    @abstractmethod
+    def after_training(self, model: Booster) -> Booster:
+        pass
 
 
 @PublicAPI(stability="beta")
-class RayTrainReportCallback(TuneCallback):
+class RayTrainReportCallback(RayReportCallback):
     """XGBoost callback to save checkpoints and report metrics.
 
     Args:
@@ -94,75 +174,23 @@ class RayTrainReportCallback(TuneCallback):
 
     """
 
-    CHECKPOINT_NAME = "model.ubj"
-
     def __init__(
         self,
         metrics: Optional[Union[str, List[str], Dict[str, str]]] = None,
-        filename: str = CHECKPOINT_NAME,
+        filename: str = RayReportCallback.CHECKPOINT_NAME,
         frequency: int = 0,
         checkpoint_at_end: bool = True,
         results_postprocessing_fn: Optional[
             Callable[[Dict[str, Union[float, List[float]]]], Dict[str, float]]
         ] = None,
     ):
-        if isinstance(metrics, str):
-            metrics = [metrics]
-        self._metrics = metrics
-        self._filename = filename
-        self._frequency = frequency
-        self._checkpoint_at_end = checkpoint_at_end
-        self._results_postprocessing_fn = results_postprocessing_fn
-
-        # Keeps track of the eval metrics from the last iteration,
-        # so that the latest metrics can be reported with the checkpoint
-        # at the end of training.
-        self._evals_log = None
-        # Keep track of the last checkpoint iteration to avoid double-checkpointing
-        # when using `checkpoint_at_end=True`.
-        self._last_checkpoint_iteration = None
-
-    @classmethod
-    def get_model(
-        cls, checkpoint: Checkpoint, filename: str = CHECKPOINT_NAME
-    ) -> Booster:
-        """Retrieve the model stored in a checkpoint reported by this callback.
-
-        Args:
-            checkpoint: The checkpoint object returned by a training run.
-                The checkpoint should be saved by an instance of this callback.
-            filename: The filename to load the model from, which should match
-                the filename used when creating the callback.
-        """
-        with checkpoint.as_directory() as checkpoint_path:
-            booster = Booster()
-            booster.load_model(Path(checkpoint_path, filename).as_posix())
-            return booster
-
-    def _get_report_dict(self, evals_log):
-        if isinstance(evals_log, OrderedDict):
-            # xgboost>=1.3
-            result_dict = flatten_dict(evals_log, delimiter="-")
-            for k in list(result_dict):
-                result_dict[k] = result_dict[k][-1]
-        else:
-            # xgboost<1.3
-            result_dict = dict(evals_log)
-        if not self._metrics:
-            report_dict = result_dict
-        else:
-            report_dict = {}
-            for key in self._metrics:
-                if isinstance(self._metrics, dict):
-                    metric = self._metrics[key]
-                else:
-                    metric = key
-                report_dict[key] = result_dict[metric]
-
-        if self._results_postprocessing_fn:
-            report_dict = self._results_postprocessing_fn(report_dict)
-
-        return report_dict
+        super().__init__(
+            metrics=metrics,
+            filename=filename,
+            frequency=frequency,
+            checkpoint_at_end=checkpoint_at_end,
+            results_postprocessing_fn=results_postprocessing_fn,
+        )
 
     @contextmanager
     def _get_checkpoint(self, model: Booster) -> Optional[Checkpoint]:
@@ -188,6 +216,7 @@ class RayTrainReportCallback(TuneCallback):
             self._last_checkpoint_iteration = epoch
             with self._get_checkpoint(model=model) as checkpoint:
                 ray.train.report(report_dict, checkpoint=checkpoint)
+
         else:
             ray.train.report(report_dict)
 
