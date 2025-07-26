@@ -669,6 +669,7 @@ _stats_actor_lock: threading.RLock = threading.RLock()
 
 
 def _get_or_create_stats_actor():
+    label_selector = {}
     if not ray.util.client.ray.is_connected():
         # Pin the stats actor to the local node
         # so it fate-shares with the driver.
