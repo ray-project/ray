@@ -1,3 +1,4 @@
+from collections import Counter
 import sys
 import pytest
 
@@ -441,23 +442,22 @@ def test_drain_node_task_retry(ray_start_cluster):
 
     cur_worker = cluster.add_node(num_cpus=1, resources={"worker": 1})
     cluster.wait_for_nodes()
+    node_ids = Counter([cur_worker.node_id])
 
     gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
 
     @ray.remote(resources={"head": 1})
     class NodeTracker:
         def __init__(self):
-            self._node_ids = set()
+            self._node_ids = Counter()
 
         def add_node(self, node_id):
-            self._node_ids.add(node_id)
+            self._node_ids.update([node_id])
 
-        def num_nodes(self):
-            return len(self._node_ids)
+        def nodes(self):
+            return self._node_ids
 
-    num_retry = 1
-
-    @ray.remote(max_retries=num_retry, resources={"worker": 1})
+    @ray.remote(max_retries=1, resources={"worker": 1})
     def func(signal, nodes):
         node_id = ray.get_runtime_context().get_node_id()
         ray.get(nodes.add_node.remote(node_id))
@@ -468,28 +468,36 @@ def test_drain_node_task_retry(ray_start_cluster):
     node_tracker = NodeTracker.remote()
     r1 = func.remote(signal, node_tracker)
 
-    for i in range(num_retry + 1):
-        wait_for_condition(lambda: ray.get(node_tracker.num_nodes.remote()) == i + 1)
-        new_worker = cluster.add_node(num_cpus=1, resources={"worker": 1})
-        cluster.wait_for_nodes()
+    # Verify the first node is added to the counter by the func.remote task.
+    wait_for_condition(lambda: ray.get(node_tracker.nodes.remote()) == node_ids)
+    cluster.remove_node(cur_worker, True)
 
-        # Preemption is always accepted.
-        is_accepted, _ = gcs_client.drain_node(
-            cur_worker.node_id,
-            autoscaler_pb2.DrainNodeReason.Value("DRAIN_NODE_REASON_PREEMPTION"),
-            "preemption",
-            1,
-        )
-        assert is_accepted
+    cur_worker = cluster.add_node(num_cpus=1, resources={"worker": 1})
+    node_ids.update([cur_worker.node_id])
 
-        # Simulate autoscaler terminates the worker node after the draining deadline.
-        cluster.remove_node(cur_worker, True)
+    # Verify the second node is added to the counter by the task after a retry.
+    wait_for_condition(lambda: ray.get(node_tracker.nodes.remote()) == node_ids)
 
-        cur_worker = new_worker
+    # Preemption is always accepted.
+    is_accepted, _ = gcs_client.drain_node(
+        cur_worker.node_id,
+        autoscaler_pb2.DrainNodeReason.Value("DRAIN_NODE_REASON_PREEMPTION"),
+        "preemption",
+        1,
+    )
+    assert is_accepted
+    cluster.remove_node(cur_worker, True)
 
-    ray.get(signal.send.remote())
-    assert ray.get(r1) == cur_worker.node_id
-    assert ray.get(node_tracker.num_nodes.remote()) == num_retry + 2
+    cur_worker = cluster.add_node(num_cpus=1, resources={"worker": 1})
+    node_ids.update([cur_worker.node_id])
+
+    # Verify the third node is added to the counter after a preemption retry.
+    wait_for_condition(lambda: ray.get(node_tracker.nodes.remote()) == node_ids)
+
+    cluster.remove_node(cur_worker, True)
+    # max_retries is reached, the task should fail.
+    with pytest.raises(ray.exceptions.NodeDiedError):
+        ray.get(r1)
 
 
 if __name__ == "__main__":

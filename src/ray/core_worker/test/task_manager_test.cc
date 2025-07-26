@@ -131,6 +131,7 @@ class TaskManagerTest : public ::testing::Test {
         publisher_(std::make_shared<pubsub::MockPublisher>()),
         subscriber_(std::make_shared<pubsub::MockSubscriber>()),
         task_event_buffer_mock_(std::make_unique<MockTaskEventBuffer>()),
+        mock_gcs_client_(std::make_shared<gcs::MockGcsClient>()),
         reference_counter_(std::make_shared<ReferenceCounter>(
             addr_,
             publisher_.get(),
@@ -164,7 +165,8 @@ class TaskManagerTest : public ::testing::Test {
             [](const ActorID &actor_id)
                 -> std::shared_ptr<ray::rpc::CoreWorkerClientInterface> {
               return nullptr;
-            }) {}
+            },
+            mock_gcs_client_) {}
 
   virtual void TearDown() { AssertNoLeaks(); }
 
@@ -201,6 +203,7 @@ class TaskManagerTest : public ::testing::Test {
   std::shared_ptr<pubsub::MockPublisher> publisher_;
   std::shared_ptr<pubsub::MockSubscriber> subscriber_;
   std::unique_ptr<MockTaskEventBuffer> task_event_buffer_mock_;
+  std::shared_ptr<gcs::MockGcsClient> mock_gcs_client_;
   std::shared_ptr<ReferenceCounter> reference_counter_;
   InstrumentedIOContextWithThread io_context_;
   std::shared_ptr<CoreWorkerMemoryStore> store_;
