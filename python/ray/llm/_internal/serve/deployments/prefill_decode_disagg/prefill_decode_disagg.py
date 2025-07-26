@@ -20,7 +20,6 @@ from ray.llm._internal.serve.configs.openai_api_models import (
 from ray.llm._internal.serve.configs.server_models import (
     parse_args as parse_llm_configs,
 )
-from ray.llm._internal.serve.deployments.llm.llm_server import _LLMServerBase
 from ray.serve.deployment import Application
 from ray.serve.handle import DeploymentHandle
 from ray.serve.llm import (
@@ -82,7 +81,7 @@ class PDProxyServer(LLMServer):
         decode_server: The decode server deployment handle.
     """
 
-    def __init__(
+    async def __init__(
         self,
         llm_config: LLMConfig,
         prefill_server: DeploymentHandle,
@@ -92,13 +91,9 @@ class PDProxyServer(LLMServer):
         # endpoint can work correctly.
         # TODO(lk-chen): refactor LLMRouter <-> LLMServer such that router query model_id through
         # API, instead of passing it in as an argument.
-
-        # Use sync initialization since PDProxyServer has no engine to start
-        # (it's just a proxy between prefill and decode servers)
-
-        # Initialize like LLMServer.sync_init but without returning
-        _LLMServerBase.__init__(self)
-        self._init_shared(llm_config, engine_cls=None, model_downloader=None)
+        await super().__init__(
+            llm_config,
+        )
 
         self.prefill_server = prefill_server.options(stream=True)
         self.decode_server = decode_server.options(stream=True)
