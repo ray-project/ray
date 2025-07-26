@@ -26,9 +26,7 @@ py_test_run_all_subdirectory(
 py_test(
     name = "test_runtime_env_validation",
     size = "small",
-    srcs = [
-        "test_runtime_env_validation.py",
-    ],
+    srcs = ["test_runtime_env_validation.py"],
     data = glob([
         "test_runtime_env_validation_*_schema.json",
     ]),
