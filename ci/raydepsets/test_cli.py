@@ -242,8 +242,8 @@ class TestCli(unittest.TestCase):
                 requirements=["requirements_1.txt", "requirements_2.txt"],
                 constraints=["requirement_constraints_1.txt"],
                 output="requirements_compiled_general.txt",
-                append_flags=None,
-                override_flags=None,
+                append_flags=[],
+                override_flags=[],
             )
             with self.assertRaises(RuntimeError):
                 manager.check_subset_exists(
