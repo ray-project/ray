@@ -458,7 +458,7 @@ class JobManager:
             "Head node ID found in GCS; scheduling job driver on "
             f"head node {head_node_id} using a label selector"
         )
-        return {"label_selector": {"ray.io/node-id": head_node_id}}
+        return {"ray.io/node-id": head_node_id}
 
     async def submit_job(
         self,
