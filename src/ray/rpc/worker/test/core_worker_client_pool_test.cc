@@ -137,12 +137,17 @@ class DefaultUnavailableTimeoutCallbackTest : public ::testing::TestWithParam<bo
   std::unique_ptr<CoreWorkerClientPool> client_pool_;
 };
 
-TEST_P(DefaultUnavailableTimeoutCallbackTest, NodeDeadWithCache) {
-  // Add the client to the pool.
-  // 1st call - Node info hasn't been cached yet, but GCS knows it's alive.
-  // 2nd call - Node is alive and worker is alive.
-  // 3rd call - Node is dead, client should be disconnected.
+TEST_P(DefaultUnavailableTimeoutCallbackTest, NodeDeath) {
+  // Add 2 worker clients to the pool.
+  // worker_client_1 unavailable calls:
+  // 1. Node info hasn't been cached yet, but GCS knows it's alive.
+  // 2. Node is alive and worker is alive.
+  // 3. Node is dead according to cache + GCS, should disconnect.
+  // worker_client_2 unavailable calls:
+  // 1. Subscriber cache and GCS don't know about node. Means the node is dead and the GCS
+  //    had to discard to keep its cache size in check, should disconnect.
 
+  auto &mock_node_accessor = gcs_client_.MockNodeAccessor();
   auto invoke_with_node_info_vector = [](std::vector<rpc::GcsNodeInfo> node_info_vector) {
     return Invoke(
         [node_info_vector](const gcs::MultiItemCallback<rpc::GcsNodeInfo> &callback,
@@ -152,25 +157,44 @@ TEST_P(DefaultUnavailableTimeoutCallbackTest, NodeDeadWithCache) {
         });
   };
 
-  auto core_worker_client = client_pool_->GetOrConnect(CreateRandomAddress("1"));
+  auto worker_1_address = CreateRandomAddress("1");
+  auto worker_2_address = CreateRandomAddress("2");
+  auto worker_1_client = dynamic_cast<MockCoreWorkerClient *>(
+      client_pool_->GetOrConnect(worker_1_address).get());
   ASSERT_EQ(client_pool_->Size(), 1);
+  auto worker_2_client = dynamic_cast<MockCoreWorkerClient *>(
+      client_pool_->GetOrConnect(worker_2_address).get());
+  ASSERT_EQ(client_pool_->Size(), 2);
+
+  auto worker_1_node_id = NodeID::FromBinary(worker_1_address.raylet_id());
+  auto worker_2_node_id = NodeID::FromBinary(worker_2_address.raylet_id());
 
   rpc::GcsNodeInfo node_info_alive;
   node_info_alive.set_state(rpc::GcsNodeInfo::ALIVE);
   rpc::GcsNodeInfo node_info_dead;
   node_info_dead.set_state(rpc::GcsNodeInfo::DEAD);
   if (is_subscribed_to_node_change_) {
-    EXPECT_CALL(gcs_client_.MockNodeAccessor(), Get(_, /*filter_dead_nodes=*/false))
+    EXPECT_CALL(mock_node_accessor, Get(worker_1_node_id, /*filter_dead_nodes=*/false))
         .WillOnce(Return(nullptr))
         .WillOnce(Return(&node_info_alive))
         .WillOnce(Return(&node_info_dead));
-    EXPECT_CALL(gcs_client_.MockNodeAccessor(), AsyncGetAll(_, _, _))
+    EXPECT_CALL(mock_node_accessor,
+                AsyncGetAll(_, _, std::make_optional(worker_1_node_id)))
         .WillOnce(invoke_with_node_info_vector({node_info_alive}));
+    EXPECT_CALL(mock_node_accessor, Get(worker_2_node_id, /*filter_dead_nodes=*/false))
+        .WillOnce(Return(nullptr));
+    EXPECT_CALL(mock_node_accessor,
+                AsyncGetAll(_, _, std::make_optional(worker_2_node_id)))
+        .WillOnce(invoke_with_node_info_vector({}));
   } else {
-    EXPECT_CALL(gcs_client_.MockNodeAccessor(), AsyncGetAll(_, _, _))
+    EXPECT_CALL(mock_node_accessor,
+                AsyncGetAll(_, _, std::make_optional(worker_1_node_id)))
         .WillOnce(invoke_with_node_info_vector({node_info_alive}))
         .WillOnce(invoke_with_node_info_vector({node_info_alive}))
         .WillOnce(invoke_with_node_info_vector({node_info_dead}));
+    EXPECT_CALL(mock_node_accessor,
+                AsyncGetAll(_, _, std::make_optional(worker_2_node_id)))
+        .WillOnce(invoke_with_node_info_vector({}));
   }
 
   // Worker is alive when node is alive.
@@ -184,24 +208,23 @@ TEST_P(DefaultUnavailableTimeoutCallbackTest, NodeDeadWithCache) {
             callback(Status::OK(), std::move(reply));
           }));
 
-  // Disconnects the third time.
-  dynamic_cast<MockCoreWorkerClient *>(core_worker_client.get())
-      ->unavailable_timeout_callback_();
+  worker_1_client->unavailable_timeout_callback_();
+  ASSERT_EQ(client_pool_->Size(), 2);
+  worker_1_client->unavailable_timeout_callback_();
+  ASSERT_EQ(client_pool_->Size(), 2);
+  worker_1_client->unavailable_timeout_callback_();
   ASSERT_EQ(client_pool_->Size(), 1);
-  dynamic_cast<MockCoreWorkerClient *>(core_worker_client.get())
-      ->unavailable_timeout_callback_();
-  ASSERT_EQ(client_pool_->Size(), 1);
-  dynamic_cast<MockCoreWorkerClient *>(core_worker_client.get())
-      ->unavailable_timeout_callback_();
+  worker_2_client->unavailable_timeout_callback_();
   ASSERT_EQ(client_pool_->Size(), 0);
 }
 
-TEST_P(DefaultUnavailableTimeoutCallbackTest, WorkerDeadWithCache) {
+TEST_P(DefaultUnavailableTimeoutCallbackTest, WorkerDeath) {
   // Add the client to the pool.
   // 1st call - Node is alive and worker is alive.
   // 2nd call - Node is alive and worker is dead, client should be disconnected.
 
-  auto core_worker_client = client_pool_->GetOrConnect(CreateRandomAddress("1"));
+  auto core_worker_client = dynamic_cast<MockCoreWorkerClient *>(
+      client_pool_->GetOrConnect(CreateRandomAddress("1")).get());
   ASSERT_EQ(client_pool_->Size(), 1);
 
   rpc::GcsNodeInfo node_info_alive;
@@ -236,11 +259,9 @@ TEST_P(DefaultUnavailableTimeoutCallbackTest, WorkerDeadWithCache) {
           }));
 
   // Disconnects the second time.
-  dynamic_cast<MockCoreWorkerClient *>(core_worker_client.get())
-      ->unavailable_timeout_callback_();
+  core_worker_client->unavailable_timeout_callback_();
   ASSERT_EQ(client_pool_->Size(), 1);
-  dynamic_cast<MockCoreWorkerClient *>(core_worker_client.get())
-      ->unavailable_timeout_callback_();
+  core_worker_client->unavailable_timeout_callback_();
   ASSERT_EQ(client_pool_->Size(), 0);
 }
 

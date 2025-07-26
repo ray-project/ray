@@ -73,10 +73,13 @@ std::function<void()> CoreWorkerClientPool::GetDefaultUnavailableTimeoutCallback
                   return;
                 }
                 if (nodes.empty() || nodes[0].state() != rpc::GcsNodeInfo::ALIVE) {
-                  // The node is dead or the GCS has erased the info for this node. It
-                  // erases based on maximum_gcs_dead_node_cached_count. There's no way
-                  // for the a component to know about a remote node unless the gcs has
-                  // registered it.
+                  // The node is dead or GCS doesn't know about this node.
+                  // There's only two reasons the GCS doesn't know about the node:
+                  // 1. The node isn't registered yet.
+                  // 2. The GCS erased the dead node based on
+                  //    maximum_gcs_dead_node_cached_count.
+                  // In this case, it must be 2 since there's no way for a component to
+                  // know about a remote node id until the gcs has registered it.
                   RAY_LOG(INFO).WithField(worker_id).WithField(node_id)
                       << "Disconnecting core worker client because its node is dead";
                   worker_client_pool->Disconnect(worker_id);
