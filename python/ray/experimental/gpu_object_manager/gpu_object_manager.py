@@ -1,30 +1,13 @@
-from typing import TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, NamedTuple, Optional, Tuple
 
 import ray
 from ray._private.custom_types import TensorTransportEnum
 from ray._raylet import ObjectRef
 import ray.util.collective as collective
-from ray.util.collective.types import Backend
-from dataclasses import dataclass
+from ray.util.collective.types import Backend, TensorTransportMetadata
 
 if TYPE_CHECKING:
-    import torch
     from ray.experimental.gpu_object_manager.gpu_object_store import GPUObjectStore
-
-
-@dataclass
-class TensorMetadata:
-    """Metadata for tensors stored in the GPU object store.
-
-    Args:
-        tensor_basic_meta: A list of tuples, each containing the shape and dtype of a tensor.
-        nixl_serialized_descs: Serialized NIXL descriptors for NIXL transport.
-        nixl_agent_meta: The additional metadata of the remote NIXL agent.
-    """
-
-    tensor_basic_meta: List[Tuple["torch.Size", "torch.dtype"]]
-    nixl_serialized_descs: Optional[bytes] = None
-    nixl_agent_meta: Optional[bytes] = None
 
 
 # GPUObjectMeta is a named tuple containing the source actor, tensor transport
@@ -38,12 +21,12 @@ class GPUObjectMeta(NamedTuple):
     # Must be a valid backend name as defined in
     # `ray.util.collective.types.Backend`.
     tensor_transport_backend: str
-    tensor_meta: TensorMetadata
+    tensor_transport_meta: TensorTransportMetadata
 
 
 def __ray_get_tensor_meta__(
-    self: "ray.actor.ActorHandle", obj_id: str, use_nixl: bool
-) -> TensorMetadata:
+    self: "ray.actor.ActorHandle", obj_id: str, tensor_transport_backend: Backend
+) -> TensorTransportMetadata:
     """Helper function that runs on the source actor to get tensor metadata.
 
     This function retrieves metadata about tensors stored in the GPU object store,
@@ -53,13 +36,10 @@ def __ray_get_tensor_meta__(
     Args:
         self: The actor that runs this function.
         obj_id: The ID of the GPU object to get metadata for
-        use_nixl: Whether to use NIXL transport and get NIXL metadata
+        tensor_transport_backend: The backend to use for tensor transport
 
     Returns:
         TensorMetadata: A named tuple containing the tensor metadata.
-        - tensor_basic_meta: A list of tuples, each containing the shape and dtype of a tensor.
-        - nixl_serialized_descs: Serialized NIXL descriptors for NIXL transport.
-        - nixl_agent_meta: The additional metadata of the remote NIXL agent.
 
     Raises:
         AssertionError: If the object ID is not found in the GPU object store
@@ -71,19 +51,19 @@ def __ray_get_tensor_meta__(
         obj_id
     ), f"obj_id={obj_id} not found in GPU object store"
     tensors = gpu_object_store.get_gpu_object(obj_id)
-    if use_nixl:
+    if tensor_transport_backend == Backend.NIXL:
         from ray.util.collective.collective_group.nixl_backend import NixlBackend
 
         nixl_backend: NixlBackend = collective.get_group_handle("nixl")
         serialized_descs, agent_meta = nixl_backend.get_nixl_metadata(tensors)
-        return TensorMetadata(
-            tensor_basic_meta=[(t.shape, t.dtype) for t in tensors],
+        return TensorTransportMetadata(
+            tensor_meta=[(t.shape, t.dtype) for t in tensors],
             nixl_serialized_descs=serialized_descs,
             nixl_agent_meta=agent_meta,
         )
     else:
-        return TensorMetadata(
-            tensor_basic_meta=[(t.shape, t.dtype) for t in tensors],
+        return TensorTransportMetadata(
+            tensor_meta=[(t.shape, t.dtype) for t in tensors],
             nixl_serialized_descs=None,
             nixl_agent_meta=None,
         )
@@ -124,13 +104,18 @@ class GPUObjectManager:
         return self._gpu_object_store
 
     def _get_tensor_meta(
-        self, src_actor: "ray.actor.ActorHandle", obj_id: str, use_nixl: bool
+        self,
+        src_actor: "ray.actor.ActorHandle",
+        obj_id: str,
+        transport_backend: Backend,
     ) -> ObjectRef:
         # Submit a Ray actor task to the source actor to get the tensor metadata.
         # The metadata is a list of tuples, where each tuple contains the shape and dtype
         # of a tensor in the GPU object store. This function returns an ObjectRef that
         # points to the tensor metadata.
-        return src_actor.__ray_call__.remote(__ray_get_tensor_meta__, obj_id, use_nixl)
+        return src_actor.__ray_call__.remote(
+            __ray_get_tensor_meta__, obj_id, transport_backend
+        )
 
     def is_managed_gpu_object(self, obj_id: str) -> bool:
         """
@@ -167,13 +152,12 @@ class GPUObjectManager:
         tensor_transport_backend = _tensor_transport_to_collective_backend(
             tensor_transport
         )
-        use_nixl = tensor_transport_backend == Backend.NIXL
         obj_id = obj_ref.hex()
-        tensor_meta = self._get_tensor_meta(src_actor, obj_id, use_nixl)
+        tensor_meta = self._get_tensor_meta(src_actor, obj_id, tensor_transport_backend)
         self.managed_gpu_object_metadata[obj_id] = GPUObjectMeta(
             src_actor=src_actor,
             tensor_transport_backend=tensor_transport_backend,
-            tensor_meta=tensor_meta,
+            tensor_transport_meta=tensor_meta,
         )
 
     def _get_gpu_object_metadata(self, obj_ref: ObjectRef) -> GPUObjectMeta:
@@ -199,7 +183,7 @@ class GPUObjectManager:
         dst_actor: "ray.actor.ActorHandle",
         obj_id: str,
         src_rank: int,
-        tensor_meta: TensorMetadata,
+        tensor_meta: TensorTransportMetadata,
     ):
         from ray.experimental.gpu_object_manager.gpu_object_store import __ray_recv__
 
@@ -276,7 +260,7 @@ class GPUObjectManager:
             gpu_object_meta = self._get_gpu_object_metadata(arg)
 
             src_actor = gpu_object_meta.src_actor
-            tensor_meta = gpu_object_meta.tensor_meta
+            tensor_meta = gpu_object_meta.tensor_transport_meta
             if src_actor._actor_id == dst_actor._actor_id:
                 # If the source and destination actors are the same, the tensors can
                 # be transferred intra-process, so we skip the out-of-band tensor

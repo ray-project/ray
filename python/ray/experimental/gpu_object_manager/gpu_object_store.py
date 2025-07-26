@@ -2,8 +2,10 @@ from typing import Dict, List, Optional, Set
 
 import ray.util.collective as collective
 from ray._private.custom_types import TensorTransportEnum
-from ray.util.collective.types import Backend, TensorTransportMetadata
-from ray.experimental.gpu_object_manager.gpu_object_manager import TensorMetadata
+from ray.util.collective.types import Backend
+from ray.experimental.gpu_object_manager.gpu_object_manager import (
+    TensorTransportMetadata,
+)
 
 try:
     import torch
@@ -67,7 +69,7 @@ def __ray_recv__(
     communicator_name: str,
     obj_id: str,
     src_rank: int,
-    tensor_meta: TensorMetadata,
+    tensor_transport_meta: TensorTransportMetadata,
 ):
     """Helper function that runs on the dst actor to receive tensors from the src actor."""
     from ray._private.worker import global_worker
@@ -75,24 +77,18 @@ def __ray_recv__(
     backend = collective.get_group_handle(communicator_name).backend()
 
     device = COLLECTIVE_BACKEND_TO_TORCH_DEVICE[backend]
-    tensor_basic_meta = tensor_meta.tensor_basic_meta
-    nixl_serialized_descs = tensor_meta.nixl_serialized_descs
-    nixl_agent_meta = tensor_meta.nixl_agent_meta
+    tensor_meta = tensor_transport_meta.tensor_meta
 
     gpu_object_store = global_worker.gpu_object_manager.gpu_object_store
     tensors = []
-    for meta in tensor_basic_meta:
+    for meta in tensor_meta:
         shape, dtype = meta
         tensor = torch.zeros(shape, dtype=dtype, device=device)
         tensors.append(tensor)
 
-    metadata = TensorTransportMetadata(
-        src_rank=src_rank,
-        nixl_serialized_descs=nixl_serialized_descs,
-        nixl_agent_meta=nixl_agent_meta,
+    collective.recv_multiple_tensors(
+        tensors, tensor_transport_meta, group_name=communicator_name
     )
-
-    collective.recv_multiple_tensors(tensors, metadata, group_name=communicator_name)
 
     gpu_object_store.add_gpu_object(obj_id, tensors)
 

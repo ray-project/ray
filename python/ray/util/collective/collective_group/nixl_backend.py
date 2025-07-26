@@ -11,7 +11,7 @@ if TYPE_CHECKING:
 class NixlBackend:
     """Backend implementation for NIXL tensor transport.
 
-    This class provides functionality for transferring tensors using NIXL . It handles
+    This class provides functionality for transferring tensors using NIXL. It handles
     initialization of the NIXL agent, receiving tensors, and managing NIXL metadata.
     """
 

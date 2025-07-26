@@ -3,11 +3,14 @@
 from enum import Enum
 from dataclasses import dataclass
 from datetime import timedelta
-from typing import Optional
+from typing import Optional, List, Tuple, TYPE_CHECKING
 
 _NUMPY_AVAILABLE = True
 _TORCH_AVAILABLE = True
 _CUPY_AVAILABLE = True
+
+if TYPE_CHECKING:
+    import torch
 
 try:
     import torch as th  # noqa: F401
@@ -52,15 +55,17 @@ class Backend(object):
 
 @dataclass
 class TensorTransportMetadata:
-    """Metadata for tensor transport.
+    """Metadata for tensors stored in the GPU object store.
 
     Args:
+        tensor_meta: A list of tuples, each containing the shape and dtype of a tensor.
         src_rank: The source rank that the tensor is being transported from. It's
             used in non-NIXL transport.
         nixl_serialized_descs: Serialized tensor descriptors for NIXL transport.
         nixl_agent_meta: The additional metadata of the remote NIXL agent.
     """
 
+    tensor_meta: List[Tuple["torch.Size", "torch.dtype"]]
     src_rank: Optional[int] = None
     nixl_serialized_descs: Optional[bytes] = None
     nixl_agent_meta: Optional[bytes] = None
