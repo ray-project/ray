@@ -6,7 +6,12 @@ import pytest
 
 import ray
 from ray.data import DataContext
-from ray.data._internal.metadata_exporter import Operator, Topology, sanitize_for_struct
+from ray.data._internal.metadata_exporter import (
+    DatasetState,
+    Operator,
+    Topology,
+    sanitize_for_struct,
+)
 from ray.data._internal.stats import _get_or_create_stats_actor
 from ray.tests.conftest import _ray_start
 
@@ -68,6 +73,9 @@ def dummy_dataset_topology():
                 uuid="uuid_0",
                 input_dependencies=[],
                 sub_stages=[],
+                execution_time=1.0,
+                end_time=1.0,
+                state="FINISHED",
             ),
             Operator(
                 name="ReadRange->Map(<lambda>)->Filter(<lambda>)",
@@ -75,6 +83,9 @@ def dummy_dataset_topology():
                 uuid="uuid_1",
                 input_dependencies=["Input_0"],
                 sub_stages=[],
+                execution_time=0.0,
+                end_time=0.0,
+                state="RUNNING",
             ),
         ],
     )
@@ -190,6 +201,9 @@ def test_export_multiple_datasets(
                 uuid="second_uuid_0",
                 input_dependencies=[],
                 sub_stages=[],
+                execution_time=1.0,
+                end_time=1.0,
+                state="FINISHED",
             ),
             Operator(
                 name="ReadRange->Map(<lambda>)",
@@ -197,6 +211,9 @@ def test_export_multiple_datasets(
                 uuid="second_uuid_1",
                 input_dependencies=["Input_0"],
                 sub_stages=[],
+                execution_time=2.0,
+                end_time=0.0,
+                state="RUNNING",
             ),
         ],
     )
@@ -257,6 +274,81 @@ def test_export_multiple_datasets(
     )
     assert second_entry["event_data"]["job_id"] == STUB_JOB_ID
     assert second_entry["event_data"]["start_time"] is not None
+
+
+def test_update_export_dataset_state(
+    ray_start_cluster_with_export_api_write, dummy_dataset_topology
+):
+    """Test dataset state update at the export API"""
+    stats_actor = _get_or_create_stats_actor()
+    # Register dataset
+    ray.get(
+        stats_actor.register_dataset.remote(
+            job_id=STUB_JOB_ID,
+            dataset_tag=STUB_DATASET_ID,
+            operator_tags=["Input_0", "ReadRange->Map(<lambda>)->Filter(<lambda>)_1"],
+            topology=dummy_dataset_topology,
+            data_context=DataContext.get_current(),
+        )
+    )
+    # Test update state to RUNNING
+    ray.get(
+        stats_actor.update_export_dataset_state.remote(
+            dataset_id=STUB_DATASET_ID, new_state=DatasetState.RUNNING.name
+        )
+    )
+    # Test update to FINISHED
+    ray.get(
+        stats_actor.update_export_dataset_state.remote(
+            dataset_id=STUB_DATASET_ID, new_state=DatasetState.FINISHED.name
+        )
+    )
+    # Check that export files were created as expected
+    data = _get_exported_data()
+    assert len(data) == 3
+    assert data[0]["event_data"]["state"] == DatasetState.PENDING.name
+    assert data[1]["event_data"]["state"] == DatasetState.RUNNING.name
+    assert data[1]["event_data"]["execution_time"] > 0
+    assert data[2]["event_data"]["state"] == DatasetState.FINISHED.name
+    assert data[2]["event_data"]["end_time"] > 0
+    assert (
+        data[2]["event_data"]["topology"]["operators"][1]["state"]
+        == DatasetState.FINISHED.name
+    )
+    assert data[2]["event_data"]["topology"]["operators"][1]["end_time"] > 0
+
+
+def test_update_export_operator_state(
+    ray_start_cluster_with_export_api_write, dummy_dataset_topology
+):
+    stats_actor = _get_or_create_stats_actor()
+    # Register dataset
+    ray.get(
+        stats_actor.register_dataset.remote(
+            dataset_tag=STUB_DATASET_ID,
+            operator_tags=["Input_0", "ReadRange->Map(<lambda>)->Filter(<lambda>)_1"],
+            topology=dummy_dataset_topology,
+            job_id=STUB_JOB_ID,
+            data_context=DataContext.get_current(),
+        )
+    )
+
+    # Test update to FINISHED
+    operator_uuid = "uuid_1"
+    ray.get(
+        stats_actor.update_export_operator_state.remote(
+            dataset_id=STUB_DATASET_ID,
+            operator_uuid=operator_uuid,
+            new_state=DatasetState.FINISHED.name,
+        )
+    )
+    data = _get_exported_data()
+    assert len(data) == 2
+    assert (
+        data[1]["event_data"]["topology"]["operators"][1]["state"]
+        == DatasetState.FINISHED.name
+    )
+    assert data[1]["event_data"]["topology"]["operators"][1]["end_time"] > 0
 
 
 if __name__ == "__main__":

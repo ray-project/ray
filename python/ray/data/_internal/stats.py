@@ -1,5 +1,4 @@
 import collections
-import enum
 import logging
 import threading
 import time
@@ -21,7 +20,12 @@ from ray.data._internal.execution.interfaces.op_runtime_metrics import (
     NodeMetrics,
     OpRuntimeMetrics,
 )
-from ray.data._internal.metadata_exporter import Topology, get_dataset_metadata_exporter
+from ray.data._internal.metadata_exporter import (
+    DatasetMetadata,
+    DatasetState,
+    Topology,
+    get_dataset_metadata_exporter,
+)
 from ray.data._internal.util import capfirst
 from ray.data.block import BlockStats
 from ray.data.context import DataContext
@@ -170,6 +174,7 @@ class _StatsActor:
 
         # Initialize the metadata exporter
         self._metadata_exporter = get_dataset_metadata_exporter()
+        self.export_metadata: Dict[str, DatasetMetadata] = {}
 
         # Ray Data dashboard metrics
         # Everything is a gauge because we need to reset all of
@@ -477,7 +482,7 @@ class _StatsActor:
         start_time = time.time()
         self.datasets[dataset_tag] = {
             "job_id": job_id,
-            "state": DatasetState.RUNNING.name,
+            "state": DatasetState.PENDING.name,
             "progress": 0,
             "total": 0,
             "total_rows": 0,
@@ -485,7 +490,7 @@ class _StatsActor:
             "end_time": None,
             "operators": {
                 operator: {
-                    "state": DatasetState.RUNNING.name,
+                    "state": DatasetState.PENDING.name,
                     "progress": 0,
                     "total": 0,
                     "queued_blocks": 0,
@@ -494,16 +499,19 @@ class _StatsActor:
             },
         }
         if self._metadata_exporter is not None:
-            from ray.data._internal.metadata_exporter import DatasetMetadata
-
-            dataset_metadata = DatasetMetadata(
+            self.export_metadata[dataset_tag] = DatasetMetadata(
                 job_id=job_id,
                 topology=topology,
                 dataset_id=dataset_tag,
                 start_time=start_time,
                 data_context=data_context,
+                execution_time=None,
+                end_time=None,
+                state=DatasetState.PENDING.name,
             )
-            self._metadata_exporter.export_dataset_metadata(dataset_metadata)
+            self._metadata_exporter.export_dataset_metadata(
+                self.export_metadata[dataset_tag]
+            )
 
     def update_dataset(self, dataset_tag: str, state: Dict[str, Any]):
         self.datasets[dataset_tag].update(state)
@@ -553,6 +561,49 @@ class _StatsActor:
         if not job_id:
             return self.datasets
         return {k: v for k, v in self.datasets.items() if v["job_id"] == job_id}
+
+    def update_export_dataset_state(self, dataset_id: str, new_state: str):
+        update_time = time.time()
+        dataset_metadata = self.export_metadata[dataset_id]
+        if dataset_metadata.state == new_state:
+            return
+        dataset_metadata.state = new_state
+        if new_state == DatasetState.RUNNING.name:
+            dataset_metadata.execution_time = update_time
+        elif new_state in (DatasetState.FINISHED.name, DatasetState.FAILED.name):
+            dataset_metadata.end_time = update_time
+            # Update metadata of running operators
+            for operator in dataset_metadata.topology.operators:
+                if operator.state == DatasetState.RUNNING.name:
+                    operator.state = new_state
+                    operator.end_time = update_time
+
+        self._metadata_exporter.export_dataset_metadata(dataset_metadata)
+
+    def update_export_operator_state(
+        self, dataset_id: str, operator_uuid: str, new_state: str
+    ):
+        update_time = time.time()
+        dataset_metadata = self.export_metadata[dataset_id]
+        operator_metadata = None
+        for operator in dataset_metadata.topology.operators:
+            if operator.uuid == operator_uuid:
+                operator_metadata = operator
+                break
+
+        if operator_metadata.state == new_state:
+            return
+        operator_metadata.state = new_state
+        if new_state == DatasetState.RUNNING.name:
+            operator_metadata.execution_time = update_time
+        elif new_state in (DatasetState.FINISHED.name, DatasetState.FAILED.name):
+            operator_metadata.end_time = update_time
+            # Handle outlier case for InputDataBuffer, which is marked as finished immediately and does not have a RUNNING state.
+            # Set the execution time the same as its end time
+            if operator.name == "Input":
+                operator_metadata.execution_time = update_time
+
+        self._metadata_exporter.export_dataset_metadata(dataset_metadata)
 
     def _create_tags(
         self,
@@ -803,28 +854,18 @@ class _StatsManager:
             # fall back to uuid4
             return uuid4().hex
 
+    def update_export_dataset_state(self, dataset_id: str, new_state: str):
+        self._stats_actor().update_export_dataset_state.remote(dataset_id, new_state)
+
+    def update_export_operator_state(
+        self, dataset_id: str, operator_uuid: str, new_state: str
+    ):
+        self._stats_actor().update_export_operator_state.remote(
+            dataset_id, operator_uuid, new_state
+        )
+
 
 StatsManager = _StatsManager()
-
-
-class DatasetState(enum.IntEnum):
-    """Enum representing the possible states of a dataset during execution."""
-
-    UNKNOWN = 0
-    RUNNING = 1
-    FINISHED = 2
-    FAILED = 3
-
-    def __str__(self):
-        return self.name
-
-    @classmethod
-    def from_string(cls, text):
-        """Get enum by name."""
-        try:
-            return cls[text]  # This uses the name to lookup the enum
-        except KeyError:
-            return cls.UNKNOWN
 
 
 class DatasetStats:
