@@ -54,7 +54,7 @@ def test_gc_gpu_object(ray_start_regular, data_size_bytes):
     """
     world_size = 2
     actors = [GPUTestActor.remote() for _ in range(world_size)]
-    create_collective_group(actors, backend="torch_gloo")
+    create_collective_group(actors, backend="gloo")
 
     small_tensor = torch.randn((1,))
     cpu_data = b"1" * data_size_bytes
@@ -96,7 +96,7 @@ def test_gc_del_ref_before_recv_finish(ray_start_regular, data_size_bytes):
     """
     world_size = 2
     actors = [GPUTestActor.remote() for _ in range(world_size)]
-    create_collective_group(actors, backend="torch_gloo")
+    create_collective_group(actors, backend="gloo")
 
     small_tensor = torch.randn((1,))
     cpu_data = b"1" * data_size_bytes
@@ -130,7 +130,7 @@ def test_gc_intra_actor_gpu_object(ray_start_regular):
     This test checks that passes a GPU object ref to the same actor multiple times.
     """
     actor = GPUTestActor.remote()
-    create_collective_group([actor], backend="torch_gloo")
+    create_collective_group([actor], backend="gloo")
 
     small_tensor = torch.randn((1,))
 
@@ -156,7 +156,7 @@ def test_gc_pass_ref_to_same_and_different_actors(ray_start_regular):
     """
     actor1 = GPUTestActor.remote()
     actor2 = GPUTestActor.remote()
-    create_collective_group([actor1, actor2], backend="torch_gloo")
+    create_collective_group([actor1, actor2], backend="gloo")
 
     small_tensor = torch.randn((1,))
 
@@ -184,7 +184,7 @@ def test_gc_pass_ref_to_same_and_different_actors(ray_start_regular):
 def test_p2p(ray_start_regular):
     world_size = 2
     actors = [GPUTestActor.remote() for _ in range(world_size)]
-    create_collective_group(actors, backend="torch_gloo")
+    create_collective_group(actors, backend="gloo")
 
     small_tensor = torch.randn((1,))
     sender = actors[0]
@@ -202,7 +202,7 @@ def test_p2p(ray_start_regular):
 
 def test_intra_gpu_tensor_transfer(ray_start_regular):
     actor = GPUTestActor.remote()
-    create_collective_group([actor], backend="torch_gloo")
+    create_collective_group([actor], backend="gloo")
 
     small_tensor = torch.randn((1,))
 
@@ -234,7 +234,7 @@ def test_intra_gpu_tensor_transfer(ray_start_regular):
 def test_mix_cpu_gpu_data(ray_start_regular):
     world_size = 2
     actors = [GPUTestActor.remote() for _ in range(world_size)]
-    create_collective_group(actors, backend="torch_gloo")
+    create_collective_group(actors, backend="gloo")
 
     tensor = torch.randn((1,))
     cpu_data = random.randint(0, 100)
@@ -252,7 +252,7 @@ def test_mix_cpu_gpu_data(ray_start_regular):
 def test_multiple_tensors(ray_start_regular):
     world_size = 2
     actors = [GPUTestActor.remote() for _ in range(world_size)]
-    create_collective_group(actors, backend="torch_gloo")
+    create_collective_group(actors, backend="gloo")
 
     tensor1 = torch.randn((1,))
     tensor2 = torch.randn((2,))
@@ -287,7 +287,7 @@ def test_multiple_tensors(ray_start_regular):
 def test_trigger_out_of_band_tensor_transfer(ray_start_regular):
     world_size = 2
     actors = [GPUTestActor.remote() for _ in range(world_size)]
-    create_collective_group(actors, backend="torch_gloo")
+    create_collective_group(actors, backend="gloo")
 
     src_actor, dst_actor = actors[0], actors[1]
 
@@ -317,7 +317,7 @@ def test_trigger_out_of_band_tensor_transfer(ray_start_regular):
 
 def test_fetch_gpu_object_to_driver(ray_start_regular):
     actor = GPUTestActor.remote()
-    create_collective_group([actor], backend="torch_gloo")
+    create_collective_group([actor], backend="gloo")
 
     tensor1 = torch.tensor([1, 2, 3])
     tensor2 = torch.tensor([4, 5, 6])
@@ -362,7 +362,7 @@ def test_invalid_tensor_transport(ray_start_regular):
 def test_tensordict_transfer(ray_start_regular):
     world_size = 2
     actors = [GPUTestActor.remote() for _ in range(world_size)]
-    create_collective_group(actors, backend="torch_gloo")
+    create_collective_group(actors, backend="gloo")
 
     td = TensorDict(
         {"action": torch.randn((2,)), "reward": torch.randn((2,))}, batch_size=[2]
@@ -383,7 +383,7 @@ def test_tensordict_transfer(ray_start_regular):
 def test_nested_tensordict(ray_start_regular):
     world_size = 2
     actors = [GPUTestActor.remote() for _ in range(world_size)]
-    create_collective_group(actors, backend="torch_gloo")
+    create_collective_group(actors, backend="gloo")
 
     inner_td = TensorDict(
         {"action": torch.randn((2,)), "reward": torch.randn((2,))}, batch_size=[2]
@@ -407,7 +407,7 @@ def test_nested_tensordict(ray_start_regular):
 )
 def test_tensor_extracted_from_tensordict_in_gpu_object_store(ray_start_regular):
     actor = GPUTestActor.remote()
-    create_collective_group([actor], backend="torch_gloo")
+    create_collective_group([actor], backend="gloo")
 
     td = TensorDict(
         {"action": torch.randn((2,)), "reward": torch.randn((2,))}, batch_size=[2]
