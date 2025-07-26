@@ -203,17 +203,35 @@ class JobSupervisor:
                     # Process died before we could get its pgid.
                     return child_process
 
+                import threading
+
+                def reap_child_process(proc):
+                    proc.wait()
+
                 # Open a new subprocess to kill the child process when the parent
                 # process dies kill -s 0 parent_pid will succeed if the parent is
                 # alive. If it fails, SIGKILL the child process group and exit
-                subprocess.Popen(
-                    f"while kill -s 0 {parent_pid}; do sleep 1; done; kill -9 -{child_pgid}",  # noqa: E501
+
+                # Use trap to process SIGTERM to ensure that the sleep process does not remain
+                kill_script = f"""
+                trap "exit" SIGTERM;
+                while kill -s 0 {parent_pid}; do sleep 1; done;
+                kill -9 -{child_pgid}
+                """
+
+                kill_process = subprocess.Popen(
+                    kill_script,
                     shell=True,
-                    # Suppress output
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
                 )
 
+                # Use daemon thread to wait for the Popen child process to end to prevent zombie processes
+                thread = threading.Thread(
+                    target=reap_child_process, args=(kill_process,)
+                )
+                thread.daemon = True
+                thread.start()
             elif sys.platform == "win32" and win32api:
                 # Create a JobObject to which the child process (and its children)
                 # will be connected. This job object can be used to kill the child
