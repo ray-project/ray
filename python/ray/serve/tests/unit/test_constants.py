@@ -276,9 +276,9 @@ class TestComplexConstants:
         _check_constant_default(c_name, 100)
         _check_constant_value({env_name: "10"}, c_name, 10)
 
-        with pytest.raises(AssertionError, match=".*must be positive.*"):
+        with pytest.raises(ValueError, match=".*Expected positive integer.*"):
             _check_constant_value({env_name: "0"}, c_name, None)
-        with pytest.raises(AssertionError, match=".*must be positive.*"):
+        with pytest.raises(ValueError, match=".*Expected positive integer.*"):
             _check_constant_value({env_name: "-1"}, c_name, None)
 
     def test_controller_max_concurrency(self):
@@ -287,9 +287,9 @@ class TestComplexConstants:
         _check_constant_default(c_name, 15_000)
         _check_constant_value({env_name: "10"}, c_name, 10)
 
-        with pytest.raises(AssertionError, match=".*must be positive.*"):
+        with pytest.raises(ValueError, match=".*Expected positive integer.*"):
             _check_constant_value({env_name: "0"}, c_name, None)
-        with pytest.raises(AssertionError, match=".*must be positive.*"):
+        with pytest.raises(ValueError, match=".*Expected positive integer.*"):
             _check_constant_value({env_name: "-1"}, c_name, None)
 
     def test_proxy_health_check_timeout(self):

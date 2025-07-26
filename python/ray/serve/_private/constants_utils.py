@@ -66,6 +66,27 @@ def get_env_int(name: str, default: int) -> int:
         )
 
 
+def get_env_int_positive(name: str, default: int) -> int:
+    """Get a positive integer value from an environment variable.
+
+    Args:
+        name: The name of the environment variable.
+        default: Default positive value to use if the environment variable is not set.
+
+    Returns:
+        The positive integer value of the environment variable or the default.
+
+    Raises:
+        ValueError: If the environment variable value is not a positive integer.
+    """
+    value = get_env_int(name, default)
+    if value <= 0:
+        raise ValueError(
+            f"Got unexpected value `{value}` for `{name}` environment variable! Expected positive integer."
+        )
+    return value
+
+
 def get_env_float(name: str, default: float) -> float:
     """Get a float value from an environment variable.
 

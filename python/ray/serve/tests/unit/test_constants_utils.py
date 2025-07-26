@@ -4,6 +4,7 @@ from ray.serve._private.constants_utils import (
     get_env_bool,
     get_env_float,
     get_env_int,
+    get_env_int_positive,
     get_env_str,
     parse_latency_buckets,
     str_to_list,
@@ -93,6 +94,18 @@ class TestEnvUtils:
         monkeypatch.setenv("TEST_INVALID_INT", "not_an_int")
         with pytest.raises(ValueError):
             get_env_int("TEST_INVALID_INT", 0)
+
+    def test_get_env_int_positive_zero(self, monkeypatch):
+        # Test when env var is set to zero
+        monkeypatch.setenv("TEST_VAR", "0")
+        with pytest.raises(ValueError, match="Expected positive integer"):
+            get_env_int_positive("TEST_VAR", 5)
+
+    def test_get_env_int_positive_negative(self, monkeypatch):
+        # Test when env var is set to negative value
+        monkeypatch.setenv("TEST_VAR", "-3")
+        with pytest.raises(ValueError, match="Expected positive integer"):
+            get_env_int_positive("TEST_VAR", 5)
 
     def test_get_env_float(self, monkeypatch):
         # Test with environment variable set to valid float
