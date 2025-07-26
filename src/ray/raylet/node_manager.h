@@ -174,9 +174,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                             const uint8_t *message_data);
 
   /// Subscribe to the relevant GCS tables and set up handlers.
-  ///
-  /// \return Status indicating whether this was done successfully or not.
-  ray::Status RegisterGcs();
+  void RegisterGcs();
 
   /// Get initial node manager configuration.
   const NodeManagerConfig &GetInitialConfig() const;

@@ -158,7 +158,7 @@ def _check_pyarrow_version():
 
 def _autodetect_parallelism(
     parallelism: int,
-    target_max_block_size: int,
+    target_max_block_size: Optional[int],
     ctx: DataContext,
     datasource_or_legacy_reader: Optional[Union["Datasource", "Reader"]] = None,
     mem_size: Optional[int] = None,
@@ -201,9 +201,14 @@ def _autodetect_parallelism(
     """
     min_safe_parallelism = 1
     max_reasonable_parallelism = sys.maxsize
+
     if mem_size is None and datasource_or_legacy_reader:
         mem_size = datasource_or_legacy_reader.estimate_inmemory_data_size()
-    if mem_size is not None and not np.isnan(mem_size):
+    if (
+        mem_size is not None
+        and not np.isnan(mem_size)
+        and target_max_block_size is not None
+    ):
         min_safe_parallelism = max(1, int(mem_size / target_max_block_size))
         max_reasonable_parallelism = max(1, int(mem_size / ctx.target_min_block_size))
 
@@ -242,13 +247,18 @@ def _autodetect_parallelism(
             reason = (
                 "output blocks of size at least "
                 "DataContext.get_current().target_min_block_size="
-                f"{ctx.target_min_block_size / (1024 * 1024)}MiB"
+                f"{ctx.target_min_block_size / MiB} MiB"
             )
         elif parallelism == min_safe_parallelism:
+            # Handle ``None`` (unlimited) gracefully in the log message.
+            if ctx.target_max_block_size is None:
+                display_val = "unlimited"
+            else:
+                display_val = f"{ctx.target_max_block_size / MiB} MiB"
             reason = (
                 "output blocks of size at most "
                 "DataContext.get_current().target_max_block_size="
-                f"{ctx.target_max_block_size / (1024 * 1024)}MiB"
+                f"{display_val}"
             )
         else:
             reason = (

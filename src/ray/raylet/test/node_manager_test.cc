@@ -530,7 +530,7 @@ class NodeManagerTest : public ::testing::Test {
 
 TEST_F(NodeManagerTest, TestRegisterGcsAndCheckSelfAlive) {
   EXPECT_CALL(*mock_gcs_client_->mock_node_accessor, AsyncSubscribeToNodeChange(_, _))
-      .WillOnce(Return(Status::OK()));
+      .Times(1);
   EXPECT_CALL(*mock_gcs_client_->mock_worker_accessor,
               AsyncSubscribeToWorkerFailures(_, _))
       .WillOnce(Return(Status::OK()));
@@ -545,7 +545,7 @@ TEST_F(NodeManagerTest, TestRegisterGcsAndCheckSelfAlive) {
   std::promise<void> promise;
   EXPECT_CALL(*mock_gcs_client_->mock_node_accessor, AsyncCheckSelfAlive(_, _))
       .WillOnce([&promise](const auto &, const auto &) { promise.set_value(); });
-  RAY_CHECK_OK(node_manager_->RegisterGcs());
+  node_manager_->RegisterGcs();
   std::thread thread{[this] {
     // Run the io_service in a separate thread to avoid blocking the main thread.
     auto work_guard = boost::asio::make_work_guard(io_service_);
@@ -559,7 +559,7 @@ TEST_F(NodeManagerTest, TestRegisterGcsAndCheckSelfAlive) {
 
 TEST_F(NodeManagerTest, TestDetachedWorkerIsKilledByFailedWorker) {
   EXPECT_CALL(*mock_gcs_client_->mock_node_accessor, AsyncSubscribeToNodeChange(_, _))
-      .WillOnce(Return(Status::OK()));
+      .Times(1);
   EXPECT_CALL(*mock_gcs_client_->mock_job_accessor, AsyncSubscribeAll(_, _))
       .WillOnce(Return(Status::OK()));
   EXPECT_CALL(mock_worker_pool_, GetAllRegisteredWorkers(_, _))
@@ -589,7 +589,7 @@ TEST_F(NodeManagerTest, TestDetachedWorkerIsKilledByFailedWorker) {
       });
 
   // Invoke RegisterGcs and wait until publish_worker_failure_callback is set.
-  RAY_CHECK_OK(node_manager_->RegisterGcs());
+  node_manager_->RegisterGcs();
   while (!publish_worker_failure_callback) {
     io_service_.run_one();
   }
@@ -664,11 +664,10 @@ TEST_F(NodeManagerTest, TestDetachedWorkerIsKilledByFailedNode) {
       .WillOnce([&](const gcs::SubscribeCallback<NodeID, rpc::GcsNodeInfo> &subscribe,
                     const gcs::StatusCallback &done) {
         publish_node_change_callback = subscribe;
-        return Status::OK();
       });
 
   // Invoke RegisterGcs and wait until publish_node_change_callback is set.
-  RAY_CHECK_OK(node_manager_->RegisterGcs());
+  node_manager_->RegisterGcs();
   while (!publish_node_change_callback) {
     io_service_.run_one();
   }
