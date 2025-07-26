@@ -139,7 +139,7 @@ boto3==1.28.54 \
     --hash=sha256:3cb2aee317a1b8686e3b23674e4099b8ff7451bd8acc61b9719acff86fa024d1
     # via
     #   -c python/requirements_compiled_ray_test_py311_cu128.txt
-    #   smart-open
+    #   -r python/requirements.txt
 botocore==1.31.85 \
     --hash=sha256:b8f35d65f2b45af50c36fc25cc1844d6bd61d38d2148b2ef133b8f10e198555d \
     --hash=sha256:ce58e688222df73ec5691f934be1a2122a52c9d11d3037b586b3fff16ed6d25f

@@ -224,7 +224,7 @@ boto3==1.28.54 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/cloud-requirements.txt
-    #   smart-open
+    #   -r python/requirements.txt
 botocore==1.31.85 \
     --hash=sha256:b8f35d65f2b45af50c36fc25cc1844d6bd61d38d2148b2ef133b8f10e198555d \
     --hash=sha256:ce58e688222df73ec5691f934be1a2122a52c9d11d3037b586b3fff16ed6d25f
