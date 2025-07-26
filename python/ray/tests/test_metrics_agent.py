@@ -36,6 +36,7 @@ from ray._private.test_utils import (
     fetch_prometheus_metrics,
     get_log_batch,
     raw_metrics,
+    find_free_port,
 )
 from ray.autoscaler._private.constants import AUTOSCALER_METRIC_PORT
 from ray.dashboard.consts import DASHBOARD_METRIC_PORT
@@ -462,9 +463,12 @@ def test_metrics_export_node_metrics(shutdown_only):
     wait_for_condition(verify_dashboard_metrics)
 
 
-@pytest.fixture(scope="session")
+_EVENT_AGGREGATOR_AGENT_TARGET_PORT = find_free_port()
+
+
+@pytest.fixture(scope="module")
 def httpserver_listen_address():
-    return ("127.0.0.1", 12345)
+    return ("127.0.0.1", _EVENT_AGGREGATOR_AGENT_TARGET_PORT)
 
 
 @pytest.mark.parametrize(
@@ -473,6 +477,7 @@ def httpserver_listen_address():
         {
             "env_vars": {
                 "RAY_DASHBOARD_AGGREGATOR_AGENT_MAX_EVENT_BUFFER_SIZE": 1,
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_SEND_PORT": _EVENT_AGGREGATOR_AGENT_TARGET_PORT,
             },
         },
     ],

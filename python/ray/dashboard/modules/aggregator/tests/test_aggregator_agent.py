@@ -15,6 +15,7 @@ from ray._raylet import GcsClient
 import ray.dashboard.consts as dashboard_consts
 from ray._private.test_utils import (
     wait_until_server_available,
+    find_free_port,
 )
 
 from ray.core.generated.events_event_aggregator_service_pb2_grpc import (
@@ -29,9 +30,27 @@ from ray.core.generated.events_base_event_pb2 import RayEvent
 from ray.core.generated.common_pb2 import TaskAttempt
 
 
-@pytest.fixture(scope="session")
+_EVENT_AGGREGATOR_AGENT_TARGET_PORT = find_free_port()
+
+
+@pytest.fixture(scope="module")
 def httpserver_listen_address():
-    return ("127.0.0.1", 12345)
+    return ("127.0.0.1", _EVENT_AGGREGATOR_AGENT_TARGET_PORT)
+
+
+_with_aggregator_port = pytest.mark.parametrize(
+    "ray_start_cluster_head_with_env_vars",
+    [
+        {
+            "env_vars": {
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_SEND_PORT": str(
+                    _EVENT_AGGREGATOR_AGENT_TARGET_PORT
+                ),
+            },
+        },
+    ],
+    indirect=True,
+)
 
 
 def get_event_aggregator_grpc_stub(webui_url, gcs_address, head_node_id):
@@ -56,10 +75,11 @@ def get_event_aggregator_grpc_stub(webui_url, gcs_address, head_node_id):
     return EventAggregatorServiceStub(channel)
 
 
+@_with_aggregator_port
 def test_aggregator_agent_receive_publish_events_normally(
-    ray_start_cluster_head, httpserver
+    ray_start_cluster_head_with_env_vars, httpserver
 ):
-    cluster = ray_start_cluster_head
+    cluster = ray_start_cluster_head_with_env_vars
     stub = get_event_aggregator_grpc_stub(
         cluster.webui_url, cluster.gcs_address, cluster.head_node.node_id
     )
@@ -112,6 +132,7 @@ def test_aggregator_agent_receive_publish_events_normally(
         {
             "env_vars": {
                 "RAY_DASHBOARD_AGGREGATOR_AGENT_MAX_EVENT_BUFFER_SIZE": 1,
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_SEND_PORT": _EVENT_AGGREGATOR_AGENT_TARGET_PORT,
             },
         },
     ],
@@ -158,10 +179,11 @@ def test_aggregator_agent_receive_event_full(
     assert reply.status.message == "event 1 dropped because event buffer full"
 
 
+@_with_aggregator_port
 def test_aggregator_agent_receive_dropped_at_core_worker(
-    ray_start_cluster_head, httpserver
+    ray_start_cluster_head_with_env_vars, httpserver
 ):
-    cluster = ray_start_cluster_head
+    cluster = ray_start_cluster_head_with_env_vars
     stub = get_event_aggregator_grpc_stub(
         cluster.webui_url, cluster.gcs_address, cluster.head_node.node_id
     )
@@ -210,11 +232,15 @@ def test_aggregator_agent_receive_dropped_at_core_worker(
     assert req_json[0]["message"] == "core worker event"
 
 
-def test_aggregator_agent_receive_multiple_events(ray_start_cluster_head, httpserver):
-    cluster = ray_start_cluster_head
+@_with_aggregator_port
+def test_aggregator_agent_receive_multiple_events(
+    ray_start_cluster_head_with_env_vars, httpserver
+):
+    cluster = ray_start_cluster_head_with_env_vars
     stub = get_event_aggregator_grpc_stub(
         cluster.webui_url, cluster.gcs_address, cluster.head_node.node_id
     )
+
     httpserver.expect_request("/", method="POST").respond_with_data("", status=200)
     now = time.time_ns()
     seconds, nanos = divmod(now, 10**9)
@@ -261,6 +287,7 @@ def test_aggregator_agent_receive_multiple_events(ray_start_cluster_head, httpse
         {
             "env_vars": {
                 "RAY_DASHBOARD_AGGREGATOR_AGENT_MAX_EVENT_BUFFER_SIZE": 1,
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_SEND_PORT": _EVENT_AGGREGATOR_AGENT_TARGET_PORT,
             },
         },
     ],
@@ -315,8 +342,11 @@ def test_aggregator_agent_receive_multiple_events_failures(
     )
 
 
-def test_aggregator_agent_receive_empty_events(ray_start_cluster_head, httpserver):
-    cluster = ray_start_cluster_head
+@_with_aggregator_port
+def test_aggregator_agent_receive_empty_events(
+    ray_start_cluster_head_with_env_vars, httpserver
+):
+    cluster = ray_start_cluster_head_with_env_vars
     stub = get_event_aggregator_grpc_stub(
         cluster.webui_url, cluster.gcs_address, cluster.head_node.node_id
     )

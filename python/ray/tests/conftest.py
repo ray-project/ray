@@ -19,6 +19,7 @@ from unittest import mock
 import psutil
 import pytest
 import copy
+from pytest_httpserver.httpserver import HTTPServer
 
 import ray
 from ray._common.test_utils import wait_for_condition
@@ -1458,3 +1459,28 @@ def random_ascii_file(request):
         fp.flush()
 
         yield fp
+
+
+"""
+pytest httpserver related test fixtures
+"""
+
+
+@pytest.fixture(scope="module")
+def make_httpserver(httpserver_listen_address, httpserver_ssl_context):
+    """
+    Module-scoped override of pytest-httpserver's make_httpserver fixture.
+    Copies the implementation the make_httpserver fixture.
+    """
+    host, port = httpserver_listen_address
+    if not host:
+        host = HTTPServer.DEFAULT_LISTEN_HOST
+    if not port:
+        port = HTTPServer.DEFAULT_LISTEN_PORT
+
+    server = HTTPServer(host=host, port=port, ssl_context=httpserver_ssl_context)
+    server.start()
+    yield server
+    server.clear()
+    if server.is_running():
+        server.stop()
