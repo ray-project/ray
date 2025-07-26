@@ -566,7 +566,7 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
       cluster_size_based_rate_limiter->OnNodeChanges(data);
     }
   };
-  RAY_CHECK_OK(gcs_client_->Nodes().AsyncSubscribeToNodeChange(on_node_change, nullptr));
+  gcs_client_->Nodes().AsyncSubscribeToNodeChange(std::move(on_node_change), nullptr);
 
   plasma_store_provider_ = std::make_shared<CoreWorkerPlasmaStoreProvider>(
       options_.store_socket,

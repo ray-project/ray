@@ -227,7 +227,7 @@ NodeManager::NodeManager(
                                         "NodeManager.GCTaskFailureReason");
 }
 
-ray::Status NodeManager::RegisterGcs() {
+void NodeManager::RegisterGcs() {
   auto on_node_change = [this](const NodeID &node_id, const GcsNodeInfo &data) {
     if (data.state() == GcsNodeInfo::ALIVE) {
       NodeAdded(data);
@@ -273,8 +273,8 @@ ray::Status NodeManager::RegisterGcs() {
         "NodeManager.CheckGC");
   };
   // Register a callback to monitor new nodes and a callback to monitor removed nodes.
-  RAY_RETURN_NOT_OK(gcs_client_.Nodes().AsyncSubscribeToNodeChange(
-      on_node_change, on_node_change_subscribe_done));
+  gcs_client_.Nodes().AsyncSubscribeToNodeChange(
+      std::move(on_node_change), std::move(on_node_change_subscribe_done));
 
   // Subscribe to all unexpected failure notifications from the local and
   // remote raylets. Note that this does not include workers that failed due to
@@ -303,7 +303,7 @@ ray::Status NodeManager::RegisterGcs() {
       HandleJobFinished(job_id, job_data);
     }
   };
-  RAY_RETURN_NOT_OK(gcs_client_.Jobs().AsyncSubscribeAll(job_subscribe_handler, nullptr));
+  RAY_CHECK_OK(gcs_client_.Jobs().AsyncSubscribeAll(job_subscribe_handler, nullptr));
 
   periodical_runner_->RunFnPeriodically(
       [this] {
@@ -379,7 +379,6 @@ ray::Status NodeManager::RegisterGcs() {
       },
       RayConfig::instance().raylet_liveness_self_check_interval_ms(),
       "NodeManager.GcsCheckAlive");
-  return ray::Status::OK();
 }
 
 void NodeManager::DestroyWorker(std::shared_ptr<WorkerInterface> worker,

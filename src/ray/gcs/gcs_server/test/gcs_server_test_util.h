@@ -478,10 +478,10 @@ struct GcsServerMocker {
       }
     }
 
-    Status AsyncSubscribeToNodeChange(
-        const gcs::SubscribeCallback<NodeID, rpc::GcsNodeInfo> &subscribe,
-        const gcs::StatusCallback &done) override {
-      return Status::NotImplemented("");
+    void AsyncSubscribeToNodeChange(
+        std::function<void(NodeID, const rpc::GcsNodeInfo &)> subscribe,
+        gcs::StatusCallback done) override {
+      RAY_LOG(FATAL) << "Not implemented";
     }
 
     const rpc::GcsNodeInfo *Get(const NodeID &node_id,

@@ -116,7 +116,7 @@ void GcsNodeManager::HandleRegisterNode(rpc::RegisterNodeRequest request,
       }
     }
 
-    assert(head_nodes.size() <= 1);
+    RAY_CHECK_LE(head_nodes.size(), 1UL);
     if (head_nodes.size() == 1) {
       OnNodeFailure(head_nodes[0],
                     [this, request, on_done, node_id](const Status &status) {
