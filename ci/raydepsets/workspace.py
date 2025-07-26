@@ -1,6 +1,6 @@
 import yaml
 from dataclasses import dataclass, field
-from typing import List
+from typing import List, Optional
 import os
 
 
@@ -13,6 +13,7 @@ class Depset:
     output: str
     override_flags: List[str]
     append_flags: List[str]
+    source_depset: Optional[str] = None
 
 
 @dataclass
@@ -29,6 +30,7 @@ class Config:
                 constraints=values.get("constraints", []),
                 operation=values.get("operation", "compile"),
                 output=values.get("output"),
+                source_depset=values.get("source_depset"),
                 override_flags=values.get("override_flags", []),
                 append_flags=values.get("append_flags", []),
             )

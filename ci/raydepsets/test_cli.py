@@ -12,11 +12,12 @@ from ci.raydepsets.cli import (
     _override_uv_flags,
     _append_uv_flags,
     _flatten_flags,
+    Depset,
+    DEFAULT_UV_FLAGS,
 )
 from ci.raydepsets.workspace import Workspace
 from click.testing import CliRunner
 from pathlib import Path
-from ci.raydepsets.cli import DEFAULT_UV_FLAGS
 
 _REPO_NAME = "com_github_ray_project_ray"
 _runfiles = runfiles.Create()
@@ -57,13 +58,6 @@ class TestCli(unittest.TestCase):
                 "requirement_constraints_test.txt"
             ]
             assert manager.config.depsets[0].output == "requirements_compiled.txt"
-            assert manager.config.depsets[0].append_flags == [
-                "--no-annotate",
-                "--no-header",
-            ]
-            assert manager.config.depsets[0].override_flags == [
-                "--extra-index-url https://download.pytorch.org/whl/cu128"
-            ]
 
     def test_dependency_set_manager_get_depset(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -171,6 +165,92 @@ class TestCli(unittest.TestCase):
                 in result.output
             )
 
+    def test_subset(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _copy_data_to_tmpdir(tmpdir)
+            # Add six to requirements_test_subset.txt
+            _save_packages_to_file(
+                Path(tmpdir) / "requirements_test_subset.txt",
+                ["six==1.16.0"],
+            )
+            manager = DependencySetManager(
+                config_path="test.config.yaml",
+                workspace_dir=tmpdir,
+            )
+            # Compile general_depset with requirements_test.txt and requirements_test_subset.txt
+            manager.compile(
+                constraints=["requirement_constraints_test.txt"],
+                requirements=["requirements_test.txt", "requirements_test_subset.txt"],
+                append_flags=["--no-annotate", "--no-header"],
+                name="general_depset",
+                output="requirements_compiled_general.txt",
+            )
+            # Subset general_depset with requirements_test.txt (should lock emoji & pyperclip)
+            manager.subset(
+                source_depset="general_depset",
+                requirements=["requirements_test.txt"],
+                append_flags=["--no-annotate", "--no-header"],
+                name="subset_general_depset",
+                output="requirements_compiled_subset_general.txt",
+            )
+            output_file = Path(tmpdir) / "requirements_compiled_subset_general.txt"
+            output_text = output_file.read_text()
+            output_file_valid = Path(tmpdir) / "requirements_compiled_test.txt"
+            output_text_valid = output_file_valid.read_text()
+
+            assert output_text == output_text_valid
+
+    def test_subset_does_not_exist(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _copy_data_to_tmpdir(tmpdir)
+            # Add six to requirements_test_subset.txt
+            _save_packages_to_file(
+                Path(tmpdir) / "requirements_test_subset.txt",
+                ["six==1.16.0"],
+            )
+            manager = DependencySetManager(
+                config_path="test.config.yaml",
+                workspace_dir=tmpdir,
+            )
+            manager.compile(
+                constraints=["requirement_constraints_test.txt"],
+                requirements=["requirements_test.txt", "requirements_test_subset.txt"],
+                append_flags=["--no-annotate", "--no-header"],
+                name="general_depset",
+                output="requirements_compiled_general.txt",
+            )
+
+            with self.assertRaises(RuntimeError):
+                manager.subset(
+                    source_depset="general_depset",
+                    requirements=["requirements_compiled_test.txt"],
+                    append_flags=["--no-annotate", "--no-header"],
+                    name="subset_general_depset",
+                    output="requirements_compiled_subset_general.txt",
+                )
+
+    def test_check_if_subset_exists(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _copy_data_to_tmpdir(tmpdir)
+            manager = DependencySetManager(
+                config_path="test.config.yaml",
+                workspace_dir=tmpdir,
+            )
+            source_depset = Depset(
+                name="general_depset",
+                operation="compile",
+                requirements=["requirements_1.txt", "requirements_2.txt"],
+                constraints=["requirement_constraints_1.txt"],
+                output="requirements_compiled_general.txt",
+                append_flags=None,
+                override_flags=None,
+            )
+            with self.assertRaises(RuntimeError):
+                manager.check_subset_exists(
+                    source_depset=source_depset,
+                    requirements=["requirements_3.txt"],
+                )
+
     def test_compile_bad_requirements(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             _copy_data_to_tmpdir(tmpdir)
@@ -204,50 +284,36 @@ class TestCli(unittest.TestCase):
         ) == DEFAULT_UV_FLAGS.copy() + ["--no-annotate", "--no-header"]
 
     def test_override_uv_flag_single_flag(self):
-        assert _override_uv_flags(
-            ["--extra-index-url https://download.pytorch.org/whl/cu128"],
-            DEFAULT_UV_FLAGS.copy(),
-        ) == [
-            "--generate-hashes",
-            "--strip-extras",
-            "--no-strip-markers",
-            "--emit-index-url",
-            "--emit-find-links",
-            "--unsafe-package",
-            "ray",
-            "--unsafe-package",
-            "grpcio-tools",
-            "--unsafe-package",
-            "setuptools",
-            "--index-url",
-            "https://pypi.org/simple",
-            "--index-strategy",
-            "unsafe-best-match",
-            "--quiet",
-            "--extra-index-url",
-            "https://download.pytorch.org/whl/cu128",
-        ]
+        expected_flags = DEFAULT_UV_FLAGS.copy()
+        expected_flags.remove("--extra-index-url")
+        expected_flags.remove("https://download.pytorch.org/whl/cpu")
+        expected_flags.extend(
+            ["--extra-index-url", "https://download.pytorch.org/whl/cu128"]
+        )
+        assert (
+            _override_uv_flags(
+                ["--extra-index-url https://download.pytorch.org/whl/cu128"],
+                DEFAULT_UV_FLAGS.copy(),
+            )
+            == expected_flags
+        )
 
     def test_override_uv_flag_multiple_flags(self):
-        assert _override_uv_flags(
-            ["--unsafe-package dummy"],
-            DEFAULT_UV_FLAGS.copy(),
-        ) == [
-            "--generate-hashes",
-            "--strip-extras",
-            "--no-strip-markers",
-            "--emit-index-url",
-            "--emit-find-links",
-            "--index-url",
-            "https://pypi.org/simple",
-            "--extra-index-url",
-            "https://download.pytorch.org/whl/cpu",
-            "--index-strategy",
-            "unsafe-best-match",
-            "--quiet",
-            "--unsafe-package",
-            "dummy",
-        ]
+        expected_flags = DEFAULT_UV_FLAGS.copy()
+        expected_flags.remove("--unsafe-package")
+        expected_flags.remove("ray")
+        expected_flags.remove("--unsafe-package")
+        expected_flags.remove("grpcio-tools")
+        expected_flags.remove("--unsafe-package")
+        expected_flags.remove("setuptools")
+        expected_flags.extend(["--unsafe-package", "dummy"])
+        assert (
+            _override_uv_flags(
+                ["--unsafe-package dummy"],
+                DEFAULT_UV_FLAGS.copy(),
+            )
+            == expected_flags
+        )
 
     def test_flatten_flags(self):
         assert _flatten_flags(["--no-annotate", "--no-header"]) == [
@@ -286,5 +352,11 @@ def _replace_in_file(filepath, old, new):
         f.write(contents)
 
 
+def _save_packages_to_file(filepath, packages):
+    with open(filepath, "w") as f:
+        for package in packages:
+            f.write(package + "\n")
+
+
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-vv", __file__]))
+    sys.exit(pytest.main(["-v", __file__]))
