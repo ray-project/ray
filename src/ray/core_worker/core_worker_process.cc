@@ -362,7 +362,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       cluster_size_based_rate_limiter->OnNodeChanges(data);
     }
   };
-  RAY_CHECK_OK(gcs_client->Nodes().AsyncSubscribeToNodeChange(on_node_change, nullptr));
+  gcs_client->Nodes().AsyncSubscribeToNodeChange(std::move(on_node_change), nullptr);
 
   auto plasma_store_provider = std::make_shared<CoreWorkerPlasmaStoreProvider>(
       options.store_socket,
