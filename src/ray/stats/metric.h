@@ -362,10 +362,24 @@ class Stats {
       return;
     }
 
-    absl::flat_hash_map<std::string, std::string> open_telemetry_tags;
-    for (auto &[tag_key, tag_val] : open_census_tags) {
-      open_telemetry_tags[tag_key.name()] = tag_val;
+    std::unordered_set<std::string> tag_keys_set;
+    for (const auto &tag_key : tag_keys_) {
+      tag_keys_set.insert(tag_key.name());
     }
+
+    absl::flat_hash_map<std::string, std::string> open_telemetry_tags;
+    // Insert metric-specific tags that match the expected keys.
+    for (const auto &tag : open_census_tags) {
+      const std::string &key = tag.first.name();
+      if (tag_keys_set.count(key) != 0) {
+        open_telemetry_tags[key] = tag.second;
+      }
+    }
+    // Add global tags, overwriting any existing tag keys.
+    for (const auto &tag : StatsConfig::instance().GetGlobalTags()) {
+      open_telemetry_tags[tag.first.name()] = tag.second;
+    }
+
     OpenTelemetryMetricRecorder::GetInstance().SetMetricValue(
         name_, std::move(open_telemetry_tags), val);
   }
