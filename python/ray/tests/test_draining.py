@@ -441,9 +441,7 @@ def test_drain_node_actor_restart(ray_start_cluster):
 
     gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
 
-    max_restarts = 1
-
-    @ray.remote(max_restarts=max_restarts)
+    @ray.remote(max_restarts=1)
     class Actor:
         def get_node_id(self):
             return ray.get_runtime_context().get_node_id()
@@ -454,34 +452,52 @@ def test_drain_node_actor_restart(ray_start_cluster):
 
     actor = Actor.options(num_cpus=0, resources={"worker": 1}).remote()
 
-    node_id = ray.get(actor.get_node_id.remote())
-    assert node_id == cur_worker.node_id
+    def actor_started():
+        node_id = ray.get(actor.get_node_id.remote())
+        return node_id == cur_worker.node_id
 
-    # Loop max_restarts + 1 times because this test is to ensure that the actor can be restarted
-    # regardless max_restarts if its worker node is drained.
-    for _ in range(max_restarts + 1):
-        # Prepare a new worker node for the actor to be restarted on later.
-        new_worker = cluster.add_node(num_cpus=1, resources={"worker": 1})
-        cluster.wait_for_nodes()
+    wait_for_condition(actor_started, timeout=5)
 
-        # preemption the previous worker node
-        is_accepted, _ = gcs_client.drain_node(
-            cur_worker.node_id,
-            autoscaler_pb2.DrainNodeReason.Value("DRAIN_NODE_REASON_PREEMPTION"),
-            "preemption",
-            1,
-        )
-        assert is_accepted
-        # Simulate autoscaler terminates the worker node after the draining deadline.
-        cluster.remove_node(cur_worker, True)
+    # Kill the current worker node.
+    cluster.remove_node(cur_worker, True)
 
-        cur_worker = new_worker
-        # Make sure the actor is restarted on the new worker node.
-        def actor_restarted():
-            node_id = ray.get(actor.get_node_id.remote())
-            return node_id == cur_worker.node_id
+    # Prepare a new worker node for the actor to be restarted on later.
+    cur_worker = cluster.add_node(num_cpus=1, resources={"worker": 1})
+    cluster.wait_for_nodes()
 
-        wait_for_condition(actor_restarted, timeout=10)
+    # Make sure the actor is restarted on the new worker node.
+    # This should be counted into the max_restarts of the actor.
+    wait_for_condition(actor_started, timeout=5)
+
+    # Preemption the current worker node.
+    is_accepted, _ = gcs_client.drain_node(
+        cur_worker.node_id,
+        autoscaler_pb2.DrainNodeReason.Value("DRAIN_NODE_REASON_PREEMPTION"),
+        "preemption",
+        1,
+    )
+    assert is_accepted
+    cluster.remove_node(cur_worker, True)
+
+    # Prepare a new worker node for the actor to be restarted on later.
+    cur_worker = cluster.add_node(num_cpus=1, resources={"worker": 1})
+    cluster.wait_for_nodes()
+
+    # Make sure the actor is restarted on the new worker node.
+    # This should not be counted into the max_restarts of the actor because the actor was preempted.
+    wait_for_condition(actor_started, timeout=5)
+
+    # Kill the current worker node.
+    cluster.remove_node(cur_worker, True)
+
+    # Prepare a new worker node, however, the actor should not be restarted on this node, since
+    # the max_restarts is reached.
+    cur_worker = cluster.add_node(num_cpus=1, resources={"worker": 1})
+    cluster.wait_for_nodes()
+
+    # The actor should not be restarted, thus an exception should be raised.
+    with pytest.raises(RuntimeError):
+        wait_for_condition(actor_started, timeout=5)
 
 
 if __name__ == "__main__":

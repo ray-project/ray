@@ -1453,13 +1453,14 @@ void GcsActorManager::RestartActor(const ActorID &actor_id,
       << ", death context type = " << GetActorDeathCauseString(death_cause)
       << ", remaining_restarts = " << remaining_restarts;
 
-  if (remaining_restarts != 0) {
+  if (remaining_restarts != 0 ||
+      (need_reschedule && max_restarts > 0 && mutable_actor_table_data->preempted())) {
     // num_restarts must be set before updating GCS, or num_restarts will be inconsistent
     // between memory cache and storage.
-    if (!mutable_actor_table_data->preempted()) {
-      mutable_actor_table_data->set_num_restarts(num_restarts + 1);
-    } else {
+    if (mutable_actor_table_data->preempted()) {
       mutable_actor_table_data->set_preempted(false);
+    } else {
+      mutable_actor_table_data->set_num_restarts(num_restarts + 1);
     }
     actor->UpdateState(rpc::ActorTableData::RESTARTING);
     // Make sure to reset the address before flushing to GCS. Otherwise,
