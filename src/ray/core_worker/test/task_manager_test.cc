@@ -2618,6 +2618,61 @@ TEST_F(TaskManagerTest, TestGPUObjectTaskSuccess) {
   ASSERT_EQ(removed[0], gpu_obj_ref);
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 1);
 }
+
+TEST_F(TaskManagerTest, TestTaskRetriedOnNodePreemption) {
+  rpc::Address caller_address;
+  auto spec = CreateTaskHelper(1, {});
+  spec.GetMutableMessage().set_max_retries(1);
+  int num_retries = 1;  // 1 normal retry allowed
+
+  manager_.AddPendingTask(caller_address, spec, "", num_retries);
+  ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
+
+  NodeID node_id = NodeID::FromRandom();
+  WorkerID worker_id = WorkerID::FromRandom();
+  manager_.MarkDependenciesResolved(spec.TaskId());
+  manager_.MarkTaskWaitingForExecution(spec.TaskId(), node_id, worker_id);
+
+  // First, fail the task with WORKER_DIED to consume the normal retry
+  rpc::RayErrorInfo worker_died_error;
+  worker_died_error.set_error_type(rpc::ErrorType::WORKER_DIED);
+
+  ASSERT_EQ(num_retries_, 0);
+  bool will_retry = manager_.RetryTaskIfPossible(spec.TaskId(), worker_died_error);
+  ASSERT_TRUE(will_retry);     // Should retry (consuming the 1 retry)
+  ASSERT_EQ(num_retries_, 1);  // Verify retry was called
+
+  // Reset and mark the task as waiting for execution again for the retry
+  manager_.MarkDependenciesResolved(spec.TaskId());
+  manager_.MarkTaskWaitingForExecution(spec.TaskId(), node_id, worker_id);
+
+  // Mock the GCS client to return the preempted node info
+  rpc::GcsNodeInfo node_info;
+  node_info.set_node_id(node_id.Binary());
+  node_info.mutable_death_info()->set_reason(
+      rpc::NodeDeathInfo::AUTOSCALER_DRAIN_PREEMPTED);
+  EXPECT_CALL(*mock_gcs_client_->mock_node_accessor, Get(node_id, false))
+      .WillOnce(::testing::Return(&node_info));
+
+  // Task should be retried because the node was preempted, even with 0 retries left
+  rpc::RayErrorInfo node_died_error;
+  node_died_error.set_error_type(rpc::ErrorType::NODE_DIED);
+  will_retry = manager_.RetryTaskIfPossible(spec.TaskId(), node_died_error);
+  ASSERT_TRUE(will_retry);     // Should retry despite 0 retries left due to preemption
+  ASSERT_EQ(num_retries_, 2);  // Verify retry was called again
+
+  // Reset the task state to test preemption scenario
+  manager_.MarkDependenciesResolved(spec.TaskId());
+  manager_.MarkTaskWaitingForExecution(spec.TaskId(), node_id, worker_id);
+
+  // Now the task has 0 retries left. Test that normal failure would not retry
+  will_retry = manager_.RetryTaskIfPossible(spec.TaskId(), worker_died_error);
+  ASSERT_FALSE(will_retry);    // Should NOT retry (no retries left)
+  ASSERT_EQ(num_retries_, 2);  // No additional retry called
+
+  // Cleanup
+  manager_.FailPendingTask(spec.TaskId(), rpc::ErrorType::WORKER_DIED);
+}
 }  // namespace core
 }  // namespace ray
 
