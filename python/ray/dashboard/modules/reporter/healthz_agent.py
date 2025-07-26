@@ -19,7 +19,7 @@ class HealthzAgent(dashboard_utils.DashboardAgentModule):
         super().__init__(dashboard_agent)
         self._health_checker = HealthChecker(
             dashboard_agent.gcs_client,
-            f"{dashboard_agent.ip}:{dashboard_agent.node_manager_port}",
+            dashboard_agent.node_id,
         )
 
     @routes.get("/api/local_raylet_healthz")

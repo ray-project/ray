@@ -287,7 +287,6 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   using NodeIDAddrBiMap =
       boost::bimap<boost::bimaps::unordered_set_of<NodeID, std::hash<NodeID>>,
                    boost::bimaps::unordered_multiset_of<std::string>>;
-  NodeIDAddrBiMap node_map_;
 
   /// If true, node events are exported for Export API
   bool export_event_write_enabled_ = false;
