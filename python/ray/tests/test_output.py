@@ -57,7 +57,6 @@ def test_dedup_error_warning_logs(ray_start_cluster, monkeypatch):
         script = """
 import ray
 import time
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 ray.init()
 

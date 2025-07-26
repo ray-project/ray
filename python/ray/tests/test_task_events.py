@@ -204,17 +204,14 @@ def test_failed_task_unschedulable(shutdown_only):
     ray.init(num_cpus=1, _system_config=_SYSTEM_CONFIG)
 
     node_id = ray.get_runtime_context().get_node_id()
-    policy = ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy(
-        node_id=node_id,
-        soft=False,
-    )
+    label_selector = {"ray.io/node-id": node_id}
 
     @ray.remote
     def task():
         pass
 
     task.options(
-        scheduling_strategy=policy,
+        label_selector=label_selector,
         name="task-unschedulable",
         num_cpus=2,
     ).remote()
@@ -224,7 +221,7 @@ def test_failed_task_unschedulable(shutdown_only):
         name="task-unschedulable",
         error_type="TASK_UNSCHEDULABLE_ERROR",
         error_message=(
-            "The node specified via NodeAffinitySchedulingStrategy"
+            "The node specified via label selector"
             " doesn't exist any more or is infeasible"
         ),
     )

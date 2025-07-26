@@ -321,11 +321,9 @@ class ParquetDatasource(Datasource):
 
         self._local_scheduling = None
         if not self._supports_distributed_reads:
-            from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
-
-            self._local_scheduling = NodeAffinitySchedulingStrategy(
-                ray.get_runtime_context().get_node_id(), soft=False
-            )
+            self._local_scheduling = {
+                "ray.io/node-id": ray.get_runtime_context().get_node_id()
+            }
         # Need this property for lineage tracking
         self._source_paths = paths
         paths, self._filesystem = _resolve_paths_and_filesystem(paths, filesystem)
