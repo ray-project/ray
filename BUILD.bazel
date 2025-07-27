@@ -1014,9 +1014,9 @@ alias(
 
 filegroup(
     name = "core_py_proto",
-    srcs = ["//src/ray/protobuf:core_py_proto"],
     visibility = ["//visibility:private"],
     srcs = [
+        "//src/ray/protobuf:core_py_proto",
         "//src/ray/protobuf:agent_manager_py_proto",
         "//src/ray/protobuf:autoscaler_py_proto",
         "//src/ray/protobuf:common_py_proto",
