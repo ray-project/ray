@@ -550,7 +550,7 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   const rpc::TensorTransport TensorTransport() const;
 
  private:
-  void ComputeResources();
+  Status ComputeResources();
 
   /// Field storing required resources. Initialized in constructor.
   /// TODO(ekl) consider optimizing the representation of ResourceSet for fast copies
@@ -574,6 +574,9 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   static absl::flat_hash_map<SchedulingClass, SchedulingClassDescriptor> sched_id_to_cls_
       ABSL_GUARDED_BY(mutex_);
   static int next_sched_id_ ABSL_GUARDED_BY(mutex_);
+
+  FRIEND_TEST(TaskSpecTest, TestInvalidLabelSelectorPropagatesStatus);
+  FRIEND_TEST(TaskSpecTest, TestValidLabelSelectorSucceeds);
 };
 
 // Get a Hash for the runtime environment string.

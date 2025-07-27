@@ -88,7 +88,7 @@ bool TaskSpecification::PlacementGroupCaptureChildTasks() const {
   }
 }
 
-void TaskSpecification::ComputeResources() {
+Status TaskSpecification::ComputeResources() {
   auto &required_resources = message_->required_resources();
 
   if (required_resources.empty()) {
@@ -130,8 +130,17 @@ void TaskSpecification::ComputeResources() {
   runtime_env_hash_ = CalculateRuntimeEnvHash(SerializedRuntimeEnv());
 
   // Set LabelSelector required for scheduling if specified. Parses string map
-  // from proto to LabelSelector data type.
-  label_selector_ = std::make_shared<LabelSelector>(message_->label_selector());
+  // from proto to LabelSelector data type. Returns an InvalidArgument Status if
+  // a malformed label selector is passed to the Task.
+  auto selector_status = LabelSelector::StrictParse(message_->label_selector());
+  if (!selector_status.ok()) {
+    RAY_LOG(ERROR) << "Invalid label selector for task " << TaskId() << ": "
+                   << selector_status.status().ToString();
+    return selector_status.status();
+  }
+  label_selector_ = std::make_shared<LabelSelector>(std::move(selector_status.value()));
+
+  return Status::OK();
 }
 
 // Task specification getter methods.
