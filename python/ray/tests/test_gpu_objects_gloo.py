@@ -14,7 +14,7 @@ if support_tensordict:
     from tensordict import TensorDict
 
 
-@ray.remote
+@ray.remote(enable_tensor_transport=True)
 class GPUTestActor:
     @ray.method(tensor_transport="gloo")
     def echo(self, data):

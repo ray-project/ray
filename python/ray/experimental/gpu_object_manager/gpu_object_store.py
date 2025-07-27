@@ -1,9 +1,11 @@
-from typing import Dict, List, Optional, Tuple, Set
+from typing import Dict, List, Optional, Set
 
 import ray.util.collective as collective
 from ray._private.custom_types import TensorTransportEnum
 from ray.util.collective.types import Backend
-
+from ray.experimental.gpu_object_manager.gpu_object_manager import (
+    TensorTransportMetadata,
+)
 
 try:
     import torch
@@ -16,11 +18,14 @@ except ImportError:
 TENSOR_TRANSPORT_TO_COLLECTIVE_BACKEND = {
     TensorTransportEnum.NCCL: Backend.NCCL,
     TensorTransportEnum.GLOO: Backend.TORCH_GLOO,
+    TensorTransportEnum.NIXL: Backend.NIXL,
 }
 
 COLLECTIVE_BACKEND_TO_TORCH_DEVICE = {
     Backend.NCCL: torch.device("cuda"),
     Backend.TORCH_GLOO: torch.device("cpu"),
+    # TODO(Qiaolin-Yu): NIXL could transfer tensors from CPU to GPU.
+    Backend.NIXL: torch.device("cuda"),
 }
 
 
@@ -43,6 +48,7 @@ def __ray_send__(self, communicator_name: str, obj_id: str, dst_rank: int):
     assert gpu_object_store.has_gpu_object(
         obj_id
     ), f"obj_id={obj_id} not found in GPU object store"
+
     tensors = gpu_object_store.get_gpu_object(obj_id)
 
     backend = collective.get_group_handle(communicator_name).backend()
@@ -63,21 +69,27 @@ def __ray_recv__(
     communicator_name: str,
     obj_id: str,
     src_rank: int,
-    tensor_meta: List[Tuple["torch.Size", "torch.dtype"]],
+    tensor_transport_meta: TensorTransportMetadata,
 ):
     """Helper function that runs on the dst actor to receive tensors from the src actor."""
     from ray._private.worker import global_worker
 
     backend = collective.get_group_handle(communicator_name).backend()
+
     device = COLLECTIVE_BACKEND_TO_TORCH_DEVICE[backend]
+    tensor_meta = tensor_transport_meta.tensor_meta
 
     gpu_object_store = global_worker.gpu_object_manager.gpu_object_store
     tensors = []
     for meta in tensor_meta:
         shape, dtype = meta
         tensor = torch.zeros(shape, dtype=dtype, device=device)
-        collective.recv(tensor, src_rank, group_name=communicator_name)
         tensors.append(tensor)
+
+    collective.recv_multiple_tensors(
+        tensors, tensor_transport_meta, group_name=communicator_name
+    )
+
     gpu_object_store.add_gpu_object(obj_id, tensors)
 
 
