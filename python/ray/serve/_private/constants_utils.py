@@ -181,7 +181,7 @@ def get_env_float_non_negative(name: str, default: float) -> float:
     return _get_env_value(name, default, float, lambda x: x >= 0, "non negative")
 
 
-def get_env_str(name: str, default: str | None) -> str:
+def get_env_str(name: str, default: Optional[str]) -> str:
     """Get environment variable as a string.
 
     Args:
@@ -194,7 +194,7 @@ def get_env_str(name: str, default: str | None) -> str:
     return os.environ.get(name, default)
 
 
-def get_env_bool(name: str, default: str) -> bool:
+def get_env_bool(name: str, default: Optional[str]) -> bool:
     """Get environment variable as a boolean.
 
     Environment variable values of "1" are interpreted as True, all others as False.
