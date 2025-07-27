@@ -1,5 +1,5 @@
 import os
-from typing import List
+from typing import Callable, List, Optional, Type, TypeVar
 
 
 def str_to_list(s: str) -> List[str]:
@@ -44,93 +44,166 @@ def parse_latency_buckets(bucket_str: str, default_buckets: List[float]) -> List
         ) from e
 
 
-def get_env_int(name: str, default: int) -> int:
-    """Get an integer value from an environment variable.
+T = TypeVar("T")
+
+
+def _get_env_value(
+    name: str,
+    default: T,
+    value_type: Type[T],
+    value_requirement: Optional[Callable[[T], bool]] = None,
+    error_message: str = None,
+) -> T:
+    """Get environment variable with type conversion and validation.
 
     Args:
         name: The name of the environment variable.
         default: Default value to use if the environment variable is not set.
+        value_type: Type to convert the environment variable value to.
+        value_requirement: Optional function to validate the converted value.
+        error_message: Error message description for validation failures.
 
     Returns:
-        The integer value of the environment variable or the default.
+        The converted and validated environment variable value.
 
     Raises:
-        ValueError: If the environment variable value cannot be converted to an integer.
+        ValueError: If type conversion fails or validation fails.
     """
-    value = os.environ.get(name, default)
+    raw = os.environ.get(name, default)
     try:
-        return int(value)
-    except ValueError:
+        value = value_type(raw)
+    except ValueError as e:
         raise ValueError(
-            f"Environment variable `{name}` value `{value}` cannot be converted to int!"
+            f"Environment variable `{name}` value `{raw}` cannot be converted to `{value_type.__name__}`!"
+        ) from e
+
+    if value_requirement and not value_requirement(value):
+        raise ValueError(
+            f"Got unexpected value `{value}` for `{name}` environment variable! Expected {error_message} `{value_type.__name__}`."
         )
 
-
-def get_env_int_positive(name: str, default: int) -> int:
-    """Get a positive integer value from an environment variable.
-
-    Args:
-        name: The name of the environment variable.
-        default: Default positive value to use if the environment variable is not set.
-
-    Returns:
-        The positive integer value of the environment variable or the default.
-
-    Raises:
-        ValueError: If the environment variable value is not a positive integer.
-    """
-    value = get_env_int(name, default)
-    if value <= 0:
-        raise ValueError(
-            f"Got unexpected value `{value}` for `{name}` environment variable! Expected positive integer."
-        )
     return value
 
 
-def get_env_float(name: str, default: float) -> float:
-    """Get a float value from an environment variable.
+def get_env_int(name: str, default: int) -> int:
+    """Get environment variable as an integer.
 
     Args:
         name: The name of the environment variable.
         default: Default value to use if the environment variable is not set.
 
     Returns:
-        The float value of the environment variable or the default.
+        The environment variable value as an integer.
 
     Raises:
-        ValueError: If the environment variable value cannot be converted to a float.
+        ValueError: If the value cannot be converted to an integer.
     """
-    value = os.environ.get(name, default)
-    try:
-        return float(value)
-    except ValueError:
-        raise ValueError(
-            f"Environment variable `{name}` value `{value}` cannot be converted to float!"
-        )
+    return _get_env_value(name, default, int)
+
+
+def get_env_int_positive(name: str, default: int) -> int:
+    """Get environment variable as a positive integer.
+
+    Args:
+        name: The name of the environment variable.
+        default: Default value to use if the environment variable is not set.
+
+    Returns:
+        The environment variable value as a positive integer.
+
+    Raises:
+        ValueError: If the value cannot be converted to an integer or is not positive.
+    """
+    return _get_env_value(name, default, int, lambda x: x > 0, "positive")
+
+
+def get_env_int_non_negative(name: str, default: int) -> int:
+    """Get environment variable as a non-negative integer.
+
+    Args:
+        name: The name of the environment variable.
+        default: Default value to use if the environment variable is not set.
+
+    Returns:
+        The environment variable value as a non-negative integer.
+
+    Raises:
+        ValueError: If the value cannot be converted to an integer or is negative.
+    """
+    return _get_env_value(name, default, int, lambda x: x >= 0, "non negative")
+
+
+def get_env_float(name: str, default: float) -> float:
+    """Get environment variable as a float.
+
+    Args:
+        name: The name of the environment variable.
+        default: Default value to use if the environment variable is not set.
+
+    Returns:
+        The environment variable value as a float.
+
+    Raises:
+        ValueError: If the value cannot be converted to a float.
+    """
+    return _get_env_value(name, default, float)
+
+
+def get_env_float_positive(name: str, default: float) -> float:
+    """Get environment variable as a positive float.
+
+    Args:
+        name: The name of the environment variable.
+        default: Default value to use if the environment variable is not set.
+
+    Returns:
+        The environment variable value as a positive float.
+
+    Raises:
+        ValueError: If the value cannot be converted to a float or is not positive.
+    """
+    return _get_env_value(name, default, float, lambda x: x > 0, "positive")
+
+
+def get_env_float_non_negative(name: str, default: float) -> float:
+    """Get environment variable as a non-negative float.
+
+    Args:
+        name: The name of the environment variable.
+        default: Default value to use if the environment variable is not set.
+
+    Returns:
+        The environment variable value as a non-negative float.
+
+    Raises:
+        ValueError: If the value cannot be converted to a float or is negative.
+    """
+    return _get_env_value(name, default, float, lambda x: x >= 0, "non negative")
 
 
 def get_env_str(name: str, default: str | None) -> str:
-    """Get a string value from an environment variable.
+    """Get environment variable as a string.
 
     Args:
         name: The name of the environment variable.
         default: Default value to use if the environment variable is not set.
 
     Returns:
-        The string value of the environment variable or the default.
+        The environment variable value as a string.
     """
     return os.environ.get(name, default)
 
 
 def get_env_bool(name: str, default: str) -> bool:
-    """Get a boolean value from an environment variable.
+    """Get environment variable as a boolean.
+
+    Environment variable values of "1" are interpreted as True, all others as False.
 
     Args:
         name: The name of the environment variable.
         default: Default value to use if the environment variable is not set.
-               "1" will evaluate to True, anything else to False.
 
     Returns:
-        True if the environment variable value is "1", otherwise False.
+        True if the environment variable value is "1", False otherwise.
     """
     return os.environ.get(name, default) == "1"

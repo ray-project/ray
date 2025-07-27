@@ -1,9 +1,15 @@
+import os
+from unittest.mock import patch
+
 import pytest
 
 from ray.serve._private.constants_utils import (
     get_env_bool,
     get_env_float,
+    get_env_float_non_negative,
+    get_env_float_positive,
     get_env_int,
+    get_env_int_non_negative,
     get_env_int_positive,
     get_env_str,
     parse_latency_buckets,
@@ -81,66 +87,103 @@ class TestParseLatencyBuckets:
             parse_latency_buckets("1;2;3;4", [])
 
 
-class TestEnvUtils:
-    def test_get_env_int(self, monkeypatch):
-        # Test with environment variable set to valid int
-        monkeypatch.setenv("TEST_INT", "42")
-        assert get_env_int("TEST_INT", 0) == 42
+@pytest.fixture
+def mock_environ():
+    with patch.dict(os.environ, {}, clear=True) as mock_env:
+        yield mock_env
 
-        # Test with environment variable not set
-        assert get_env_int("NONEXISTENT_VAR", 99) == 99
 
-        # Test with environment variable set to invalid int
-        monkeypatch.setenv("TEST_INVALID_INT", "not_an_int")
-        with pytest.raises(ValueError):
-            get_env_int("TEST_INVALID_INT", 0)
+class TestEnvValueFunctions:
+    def test_get_env_int(self, mock_environ):
+        assert 0 == get_env_int("TEST_VAR", 0)
 
-    def test_get_env_int_positive_zero(self, monkeypatch):
-        # Test when env var is set to zero
-        monkeypatch.setenv("TEST_VAR", "0")
-        with pytest.raises(ValueError, match="Expected positive integer"):
+        mock_environ["TEST_VAR"] = "42"
+        assert 42 == get_env_int("TEST_VAR", 0)
+
+        mock_environ["TEST_VAR"] = "-1"
+        assert -1 == get_env_int("TEST_VAR", 0)
+
+        mock_environ["TEST_VAR"] = "0.1"
+        with pytest.raises(ValueError, match=".*`0.1` cannot be converted to `int`!*"):
             get_env_int_positive("TEST_VAR", 5)
 
-    def test_get_env_int_positive_negative(self, monkeypatch):
-        # Test when env var is set to negative value
-        monkeypatch.setenv("TEST_VAR", "-3")
-        with pytest.raises(ValueError, match="Expected positive integer"):
+        mock_environ["TEST_VAR"] = "abc"
+        with pytest.raises(ValueError, match=".*`abc` cannot be converted to `int`!*"):
             get_env_int_positive("TEST_VAR", 5)
 
-    def test_get_env_float(self, monkeypatch):
-        # Test with environment variable set to valid float
-        monkeypatch.setenv("TEST_FLOAT", "3.14")
-        assert get_env_float("TEST_FLOAT", 0.0) == 3.14
+    def test_get_env_int_positive(self, mock_environ):
+        assert 1 == get_env_int_positive("TEST_VAR", 1)
 
-        # Test with environment variable not set
-        assert get_env_float("NONEXISTENT_VAR", 2.71) == 2.71
+        mock_environ["TEST_VAR"] = "42"
+        assert 42 == get_env_int_positive("TEST_VAR", 0)
 
-        # Test with environment variable set to invalid float
-        monkeypatch.setenv("TEST_INVALID_FLOAT", "not_a_float")
-        with pytest.raises(ValueError):
-            get_env_float("TEST_INVALID_FLOAT", 0.0)
+        mock_environ["TEST_VAR"] = "-1"
+        with pytest.raises(ValueError, match=".*Expected positive `int`.*"):
+            get_env_int_positive("TEST_VAR", 5)
 
-    def test_get_env_str(self, monkeypatch):
-        # Test with environment variable set
-        monkeypatch.setenv("TEST_STR", "hello")
+    def test_get_env_int_non_negative(self, mock_environ):
+        assert 0 == get_env_int_non_negative("TEST_VAR", 0)
+        assert 1 == get_env_int_non_negative("TEST_VAR", 1)
+
+        mock_environ["TEST_VAR"] = "42"
+        assert 42 == get_env_int_non_negative("TEST_VAR", 0)
+
+        mock_environ["TEST_VAR"] = "-1"
+        with pytest.raises(ValueError, match=".*Expected non negative `int`.*"):
+            get_env_int_non_negative("TEST_VAR", 5)
+
+    def test_get_env_float(self, mock_environ):
+        assert 0.0 == get_env_float("TEST_VAR", 0.0)
+
+        mock_environ["TEST_VAR"] = "3.14"
+        assert 3.14 == get_env_float("TEST_VAR", 0.0)
+
+        mock_environ["TEST_VAR"] = "-2.5"
+        assert -2.5 == get_env_float("TEST_VAR", 0.0)
+
+        mock_environ["TEST_VAR"] = "abc"
+        with pytest.raises(
+            ValueError, match=".*`abc` cannot be converted to `float`!*"
+        ):
+            get_env_float("TEST_VAR", 0.0)
+
+    def test_get_env_float_positive(self, mock_environ):
+        assert 1.5 == get_env_float_positive("TEST_VAR", 1.5)
+
+        mock_environ["TEST_VAR"] = "42.5"
+        assert 42.5 == get_env_float_positive("TEST_VAR", 0.0)
+
+        mock_environ["TEST_VAR"] = "-1.2"
+        with pytest.raises(ValueError, match=".*Expected positive `float`.*"):
+            get_env_float_positive("TEST_VAR", 5.0)
+
+    def test_get_env_float_non_negative(self, mock_environ):
+        assert 0.0 == get_env_float_non_negative("TEST_VAR", 0.0)
+        assert 1.5 == get_env_float_non_negative("TEST_VAR", 1.5)
+
+        mock_environ["TEST_VAR"] = "42.5"
+        assert 42.5 == get_env_float_non_negative("TEST_VAR", 0.0)
+
+        mock_environ["TEST_VAR"] = "-1.2"
+        with pytest.raises(ValueError, match=".*Expected non negative `float`.*"):
+            get_env_float_non_negative("TEST_VAR", 5.0)
+
+    def test_get_env_str(self, mock_environ):
+        mock_environ["TEST_STR"] = "hello"
         assert get_env_str("TEST_STR", "default") == "hello"
 
-        # Test with environment variable not set
         assert get_env_str("NONEXISTENT_VAR", "default_str") == "default_str"
 
-        # Test with None default
         assert get_env_str("NONEXISTENT_VAR", None) is None
 
-    def test_get_env_bool(self, monkeypatch):
-        # Test with value "1" (True)
-        monkeypatch.setenv("TEST_BOOL_TRUE", "1")
+    def test_get_env_bool(self, mock_environ):
+        mock_environ["TEST_BOOL_TRUE"] = "1"
         assert get_env_bool("TEST_BOOL_TRUE", "0") is True
 
         # Test with any other value (False)
-        monkeypatch.setenv("TEST_BOOL_FALSE", "true")
+        mock_environ["TEST_BOOL_FALSE"] = "true"
         assert get_env_bool("TEST_BOOL_FALSE", "0") is False
-
-        monkeypatch.setenv("TEST_BOOL_FALSE2", "yes")
+        mock_environ["TEST_BOOL_FALSE2"] = "yes"
         assert get_env_bool("TEST_BOOL_FALSE2", "0") is False
 
         # Test with default when environment variable not set

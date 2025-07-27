@@ -1,6 +1,7 @@
 from ray.serve._private.constants_utils import (
     get_env_bool,
     get_env_float,
+    get_env_float_non_negative,
     get_env_int,
     get_env_int_positive,
     get_env_str,
@@ -39,11 +40,8 @@ SERVE_DEFAULT_APP_NAME = "default"
 ASYNC_CONCURRENCY = int(1e6)
 
 # How long to sleep between control loop cycles on the controller.
-CONTROL_LOOP_INTERVAL_S = get_env_float("RAY_SERVE_CONTROL_LOOP_INTERVAL_S", 0.1)
-assert CONTROL_LOOP_INTERVAL_S >= 0, (
-    f"Got unexpected value {CONTROL_LOOP_INTERVAL_S} for "
-    "RAY_SERVE_CONTROL_LOOP_INTERVAL_S environment variable. "
-    "RAY_SERVE_CONTROL_LOOP_INTERVAL_S cannot be negative."
+CONTROL_LOOP_INTERVAL_S = get_env_float_non_negative(
+    "RAY_SERVE_CONTROL_LOOP_INTERVAL_S", 0.1
 )
 
 #: Max time to wait for HTTP proxy in `serve.start()`.

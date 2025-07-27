@@ -267,7 +267,7 @@ class TestComplexConstants:
         _check_constant_value({env_name: "10"}, c_name, 10)
         _check_constant_value({env_name: "0"}, c_name, 0.0)
 
-        with pytest.raises(AssertionError, match=".*cannot be negative.*"):
+        with pytest.raises(ValueError, match=".*Expected non negative `float`.*"):
             _check_constant_value({env_name: "-1"}, c_name, None)
 
     def test_max_cached_handles(self):
@@ -276,9 +276,9 @@ class TestComplexConstants:
         _check_constant_default(c_name, 100)
         _check_constant_value({env_name: "10"}, c_name, 10)
 
-        with pytest.raises(ValueError, match=".*Expected positive integer.*"):
+        with pytest.raises(ValueError, match=".*Expected positive `int`.*"):
             _check_constant_value({env_name: "0"}, c_name, None)
-        with pytest.raises(ValueError, match=".*Expected positive integer.*"):
+        with pytest.raises(ValueError, match=".*Expected positive `int`.*"):
             _check_constant_value({env_name: "-1"}, c_name, None)
 
     def test_controller_max_concurrency(self):
@@ -287,9 +287,9 @@ class TestComplexConstants:
         _check_constant_default(c_name, 15_000)
         _check_constant_value({env_name: "10"}, c_name, 10)
 
-        with pytest.raises(ValueError, match=".*Expected positive integer.*"):
+        with pytest.raises(ValueError, match=".*Expected positive `int`.*"):
             _check_constant_value({env_name: "0"}, c_name, None)
-        with pytest.raises(ValueError, match=".*Expected positive integer.*"):
+        with pytest.raises(ValueError, match=".*Expected positive `int`.*"):
             _check_constant_value({env_name: "-1"}, c_name, None)
 
     def test_proxy_health_check_timeout(self):
@@ -361,7 +361,7 @@ class TestErrors:
 
         with pytest.raises(
             ValueError,
-            match=".*Environment variable `RAY_SERVE_DEFAULT_HTTP_PORT` value `0.1` cannot be converted to int!*",
+            match=".*`0.1` cannot be converted to `int`!*",
         ):
             _check_constant_value({env_name: "0.1"}, c_name, None)
 
@@ -374,7 +374,7 @@ class TestErrors:
 
         with pytest.raises(
             ValueError,
-            match=".*Environment variable `RAY_SERVE_CONTROL_LOOP_INTERVAL_S` value `abc` cannot be converted to float!*",
+            match=".*`abc` cannot be converted to `float`*",
         ):
             _check_constant_value({env_name: "abc"}, c_name, None)
 
