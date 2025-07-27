@@ -8,7 +8,7 @@ archspec @ file:///home/conda/feedstock_root/build_artifacts/archspec_1737352602
 async-timeout==4.0.3
 attrs==25.1.0
 boltons @ file:///home/conda/feedstock_root/build_artifacts/boltons_1733827268945/work
-boto3==1.26.76
+boto3==1.28.0
 botocore==1.29.76
 Brotli @ file:///home/conda/feedstock_root/build_artifacts/brotli-split_1749229842835/work
 cachetools==5.5.2

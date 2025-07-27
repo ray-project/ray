@@ -256,7 +256,7 @@ if setup_spec.type == SetupType.RAY:
             "opentelemetry-proto",
             pydantic_dep,
             "prometheus_client >= 0.7.1",
-            "smart_open",
+            "smart_open[s3]",
             "virtualenv >=20.0.24, !=20.21.1",  # For pip runtime env.
         ],
         "observability": [
