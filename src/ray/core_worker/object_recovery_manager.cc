@@ -69,11 +69,11 @@ bool ObjectRecoveryManager::RecoverObject(const ObjectID &object_id) {
         });
     // Gets the node ids from reference_counter and then gets addresses from the local
     // gcs_client.
-    RAY_CHECK_OK(object_lookup_(
+    object_lookup_(
         object_id,
         [this](const ObjectID &object_id, std::vector<rpc::Address> locations) {
           PinOrReconstructObject(object_id, std::move(locations));
-        }));
+        });
   } else if (requires_recovery) {
     RAY_LOG(DEBUG).WithField(object_id) << "Recovery already started for object";
   } else {

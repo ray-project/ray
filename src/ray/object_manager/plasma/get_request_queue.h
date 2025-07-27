@@ -61,7 +61,7 @@ struct GetRequest {
   /// Mark that the get request is removed.
   void MarkRemoved();
 
-  bool IsRemoved() const;
+  bool DidNodeDie() const;
 
  private:
   /// The timer that will time out and cause this wait to return to

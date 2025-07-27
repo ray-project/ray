@@ -196,7 +196,7 @@ PlasmaError PlasmaStore::CreateObject(const ray::ObjectInfo &object_info,
 void PlasmaStore::ReturnFromGet(const std::shared_ptr<GetRequest> &get_request) {
   // If the get request is already removed, do no-op. This can happen because the boost
   // timer is not atomic. See https://github.com/ray-project/ray/pull/15071.
-  if (get_request->IsRemoved()) {
+  if (get_request->DidNodeDie()) {
     return;
   }
 

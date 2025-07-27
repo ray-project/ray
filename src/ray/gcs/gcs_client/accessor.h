@@ -425,7 +425,7 @@ class NodeInfoAccessor {
   ///
   /// \param node_id The id of the node to check.
   /// \return Whether the node is removed.
-  virtual bool IsRemoved(const NodeID &node_id) const;
+  virtual bool DidNodeDie(const NodeID &node_id) const;
 
   /// Reestablish subscription.
   /// This should be called when GCS server restarts from a failure.
@@ -457,7 +457,7 @@ class NodeInfoAccessor {
   /// A cache for information about all nodes.
   absl::flat_hash_map<NodeID, rpc::GcsNodeInfo> node_cache_;
   /// The set of removed nodes.
-  std::unordered_set<NodeID> removed_nodes_;
+  absl::flat_hash_set<NodeID> dead_nodes_;
 
   // TODO(dayshah): Need to refactor gcs client / accessor to avoid this.
   // https://github.com/ray-project/ray/issues/54805

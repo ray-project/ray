@@ -134,7 +134,7 @@ class ObjectRecoveryManagerTestBase : public ::testing::Test {
             rpc::Address(),
             publisher_.get(),
             subscriber_.get(),
-            [](const NodeID &node_id) { return true; },
+            /*did_node_die=*/[](const NodeID &) { return false; },
             /*lineage_pinning_enabled=*/lineage_enabled)),
         manager_(
             rpc::Address(),
@@ -142,7 +142,6 @@ class ObjectRecoveryManagerTestBase : public ::testing::Test {
             raylet_client_,
             [&](const ObjectID &object_id, const ObjectLookupCallback &callback) {
               object_directory_->AsyncGetLocations(object_id, callback);
-              return Status::OK();
             },
             *task_manager_,
             *ref_counter_,
