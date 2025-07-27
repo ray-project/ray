@@ -473,13 +473,12 @@ TEST_P(GcsClientTest, TestGcsClientCheckAlive) {
   node_info2->set_node_manager_port(31293);
 
   // Build a vector of NodeIDs for check alive.
-  std::vector<NodeID> node_ids = {
-      NodeID::FromBinary(node_info1->node_id()),
-      NodeID::FromBinary(node_info2->node_id())};
+  std::vector<NodeID> node_ids = {NodeID::FromBinary(node_info1->node_id()),
+                                  NodeID::FromBinary(node_info2->node_id())};
   {
     std::vector<bool> nodes_alive;
-    RAY_CHECK_OK(gcs_client_->Nodes().CheckAlive(
-        node_ids, /*timeout_ms=*/1000, nodes_alive));
+    RAY_CHECK_OK(
+        gcs_client_->Nodes().CheckAlive(node_ids, /*timeout_ms=*/1000, nodes_alive));
     ASSERT_EQ(nodes_alive.size(), 2);
     ASSERT_FALSE(nodes_alive[0]);
     ASSERT_FALSE(nodes_alive[1]);
@@ -488,8 +487,8 @@ TEST_P(GcsClientTest, TestGcsClientCheckAlive) {
   ASSERT_TRUE(RegisterNode(*node_info1));
   {
     std::vector<bool> nodes_alive;
-    RAY_CHECK_OK(gcs_client_->Nodes().CheckAlive(
-        node_ids, /*timeout_ms=*/1000, nodes_alive));
+    RAY_CHECK_OK(
+        gcs_client_->Nodes().CheckAlive(node_ids, /*timeout_ms=*/1000, nodes_alive));
     ASSERT_EQ(nodes_alive.size(), 2);
     ASSERT_TRUE(nodes_alive[0]);
     ASSERT_FALSE(nodes_alive[1]);
