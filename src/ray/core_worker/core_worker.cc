@@ -3414,8 +3414,8 @@ Status CoreWorker::ExecuteTask(
     Exit(rpc::WorkerExitType::SYSTEM_ERROR,
          absl::StrCat("Worker exits unexpectedly. ", status.message()),
          creation_task_exception_pb_bytes);
-  } else if (!status.ok()) {
-    RAY_LOG(FATAL) << "Unexpected task status type : " << status;
+  } else {
+    RAY_CHECK_OK(status) << "Unexpected task status type : " << status;
   }
   return status;
 }

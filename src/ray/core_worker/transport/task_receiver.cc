@@ -175,8 +175,8 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
         send_reply_callback(status, nullptr, nullptr);
       }
     } else {
-      RAY_CHECK(objects_valid);
       RAY_CHECK_OK(status);
+      RAY_CHECK(objects_valid);
       send_reply_callback(Status::OK(), nullptr, nullptr);
     }
   };
