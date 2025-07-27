@@ -4405,7 +4405,7 @@ cdef class CoreWorker:
             contained_id = ObjectRefsToVector(
                 serialized_object.contained_object_refs)
 
-            if not self.store_task_output(
+            while not self.store_task_output(
                     serialized_object,
                     return_id,
                     c_ref_generator_id,
@@ -4415,19 +4415,7 @@ cdef class CoreWorker:
                     caller_address,
                     &task_output_inlined_bytes,
                     return_ptr):
-                # If the object already exists, but we fail to pin the copy, it
-                # means the existing copy might've gotten evicted. Try to
-                # create another copy.
-                self.store_task_output(
-                        serialized_object,
-                        return_id,
-                        c_ref_generator_id,
-                        data_size,
-                        metadata,
-                        contained_id,
-                        caller_address,
-                        &task_output_inlined_bytes,
-                        return_ptr)
+                continue
             num_outputs_stored += 1
 
         i += 1
