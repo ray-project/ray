@@ -15,6 +15,7 @@ from typing import (
 
 from ray import serve
 from ray._common.utils import import_attr
+from ray.llm._internal.common.utils.lora_utils import LoraModelLoader
 from ray.llm._internal.serve.configs.constants import (
     DEFAULT_HEALTH_CHECK_PERIOD_S,
     DEFAULT_HEALTH_CHECK_TIMEOUT_S,
@@ -30,9 +31,6 @@ from ray.llm._internal.serve.configs.server_models import (
     LLMConfig,
 )
 from ray.llm._internal.serve.deployments.llm.llm_engine import LLMEngine
-from ray.llm._internal.serve.deployments.llm.multiplex.lora_model_loader import (
-    LoraModelLoader,
-)
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_engine import VLLMEngine
 from ray.llm._internal.serve.deployments.utils.batcher import Batcher
 from ray.llm._internal.serve.deployments.utils.server_utils import (
@@ -42,6 +40,7 @@ from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.observability.usage_telemetry.usage import (
     push_telemetry_report_for_all_models,
 )
+from ray.llm._internal.serve.utils.lora_serve_utils import get_lora_mirror_config
 
 if TYPE_CHECKING:
     from ray.llm._internal.serve.configs.openai_api_models import (
@@ -163,9 +162,12 @@ class LLMServer(_LLMServerBase):
             )
 
             async def _load_model(lora_model_id: str) -> DiskMultiplexConfig:
+                lora_mirror_config = await get_lora_mirror_config(
+                    lora_model_id, self._llm_config
+                )
                 return await model_downloader.load_model(
                     lora_model_id=lora_model_id,
-                    llm_config=self._llm_config,
+                    lora_mirror_config=lora_mirror_config,
                 )
 
             self._load_model = serve.multiplexed(

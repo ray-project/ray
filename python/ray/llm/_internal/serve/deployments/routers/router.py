@@ -20,6 +20,7 @@ from starlette.responses import JSONResponse, Response, StreamingResponse
 
 from ray import serve
 from ray._common.utils import get_or_create_event_loop
+from ray.llm._internal.common.utils.lora_utils import get_base_model_id
 from ray.llm._internal.serve.configs.constants import (
     DEFAULT_LLM_ROUTER_HTTP_TIMEOUT,
     DEFAULT_LLM_ROUTER_INITIAL_REPLICAS,
@@ -48,11 +49,6 @@ from ray.llm._internal.serve.configs.openai_api_models import (
     to_model_metadata,
 )
 from ray.llm._internal.serve.configs.server_models import LLMConfig
-from ray.llm._internal.serve.deployments.llm.multiplex.utils import (
-    get_base_model_id,
-    get_lora_model_ids,
-    get_lora_model_metadata,
-)
 from ray.llm._internal.serve.deployments.routers.middleware import (
     SetRequestIdMiddleware,
     add_exception_handling_middleware,
@@ -62,6 +58,10 @@ from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.observability.metrics.fast_api_metrics import (
     add_http_metrics_middleware,
     metrics_lifespan,
+)
+from ray.llm._internal.serve.utils.lora_serve_utils import (
+    get_lora_model_ids,
+    get_lora_model_metadata,
 )
 from ray.serve.config import AutoscalingConfig
 from ray.serve.handle import DeploymentHandle
