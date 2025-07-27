@@ -272,6 +272,8 @@ class ActorReplicaWrapper:
         self._last_record_routing_stats_time: float = 0.0
         self._ingress: bool = False
 
+        self._update_rank_ref: Optional[ObjectRef] = None
+
     @property
     def replica_id(self) -> str:
         return self._replica_id
@@ -945,6 +947,20 @@ class ActorReplicaWrapper:
 
         return self._healthy
 
+    def check_active_update_rank(self) -> bool:
+        """Check if the active update rank (if any)."""
+        if self._update_rank_ref is not None and check_obj_ref_ready_nowait(
+            self._update_rank_ref
+        ):
+            try:
+                res = ray.get(self._update_rank_ref)
+                return res
+            except Exception:
+                logger.warning(f"Failed to update rank for replica {self._replica_id}")
+                return False
+        # pass health check when rank has not been assigned yet
+        return True
+
     def get_routing_stats(self) -> Dict[str, Any]:
         """Get the routing stats for the replica."""
         if self._record_routing_stats_ref is None:
@@ -1008,13 +1024,7 @@ class ActorReplicaWrapper:
         Returns:
             bool: True if rank update was successful, False otherwise.
         """
-        try:
-            # Call the replica actor to update its rank
-            result = ray.get(self._actor_handle.update_replica_rank.remote(rank))
-            return result is not None
-        except Exception as e:
-            logger.warning(f"Failed to update rank for replica {self._replica_id}: {e}")
-            return False
+        self._update_rank_ref = self._actor_handle.update_replica_rank.remote(rank)
 
 
 class DeploymentReplica:
@@ -1227,7 +1237,7 @@ class DeploymentReplica:
 
         Returns `True` if the replica is healthy, else `False`.
         """
-        return self._actor.check_health()
+        return self._actor.check_health() and self._actor.check_active_update_rank()
 
     def update_rank(self, rank: int) -> bool:
         """Update the replica's rank with the provided rank value.

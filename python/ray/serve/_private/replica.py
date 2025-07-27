@@ -853,7 +853,7 @@ class ReplicaBase(ABC):
             f = self._user_callable_wrapper.call_user_health_check()
             if f is not None:
                 await f
-            self._healthy = True and self._rank is not None
+            self._healthy = True
         except Exception as e:
             logger.warning("Replica health check failed.")
             self._healthy = False
