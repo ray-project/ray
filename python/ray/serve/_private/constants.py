@@ -1,3 +1,5 @@
+from typing import List
+
 from ray.serve._private.constants_utils import (
     get_env_bool,
     get_env_float,
@@ -370,7 +372,7 @@ RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY = get_env_bool(
 
 # Comma-separated list of custom resources prioritized in scheduling. Sorted from highest to lowest priority.
 # Example: "customx,customy"
-RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES = str_to_list(
+RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES: List[str] = str_to_list(
     get_env_str("RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES", "")
 )
 
