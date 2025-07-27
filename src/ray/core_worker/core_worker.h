@@ -1002,6 +1002,14 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
     return normal_task_submitter_->GetNumLeasesRequested();
   }
 
+  int64_t GetNumPendingActorTasks(const ActorID &actor_id) const {
+    return actor_task_submitter_->NumPendingTasks(actor_id);
+  }
+
+  int64_t GetNumActorTasksInFlight(const ActorID &actor_id) const {
+    return actor_task_submitter_->NumTasksInFlight(actor_id);
+  }
+
  public:
   /// Allocate the return object for an executing task. The caller should write into the
   /// data buffer of the allocated buffer, then call SealReturnObject() to seal it.
