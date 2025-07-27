@@ -23,12 +23,12 @@ namespace core {
 namespace experimental {
 
 MutableObjectProvider::MutableObjectProvider(plasma::PlasmaClientInterface &plasma,
-                                             RayletFactory factory,
+                                             RayletFactory raylet_client_factory,
                                              std::function<Status(void)> check_signals)
     : plasma_(plasma),
       object_manager_(std::make_shared<ray::experimental::MutableObjectManager>(
           std::move(check_signals))),
-      raylet_client_factory_(std::move(std::move(factory))) {}
+      raylet_client_factory_(std::move(raylet_client_factory)) {}
 
 MutableObjectProvider::~MutableObjectProvider() {
   for (std::unique_ptr<boost::asio::executor_work_guard<
@@ -75,8 +75,7 @@ void MutableObjectProvider::RegisterWriterChannel(
     client_call_managers_.push_back(
         std::make_unique<rpc::ClientCallManager>(io_context, /*record_stats=*/false));
     std::shared_ptr<MutableObjectReaderInterface> reader =
-        raylet_client_factory_(node_id, *client_call_managers_.back());
-    RAY_CHECK(reader);
+        raylet_client_factory_(node_id);
     remote_readers->push_back(reader);
   }
 

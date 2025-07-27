@@ -26,12 +26,13 @@
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/task_manager.h"
 #include "ray/raylet_client/raylet_client.h"
+#include "ray/rpc/node_manager/raylet_client_pool.h"
 
 namespace ray {
 namespace core {
 
 using ObjectPinningClientFactoryFn = std::function<std::shared_ptr<PinObjectsInterface>(
-    const std::string &ip_address, int port)>;
+    const rpc::Address &raylet_address)>;
 
 using ObjectLookupCallback = std::function<void(
     const ObjectID &object_id, std::vector<rpc::Address> raylet_locations)>;
@@ -44,7 +45,7 @@ class ObjectRecoveryManager {
  public:
   ObjectRecoveryManager(
       rpc::Address rpc_address,
-      ObjectPinningClientFactoryFn client_factory,
+      std::shared_ptr<rpc::RayletClientPool> raylet_client_pool,
       std::shared_ptr<PinObjectsInterface> local_object_pinning_client,
       std::function<Status(const ObjectID &object_id,
                            const ObjectLookupCallback &callback)> object_lookup,
@@ -55,7 +56,7 @@ class ObjectRecoveryManager {
       : task_manager_(task_manager),
         reference_counter_(reference_counter),
         rpc_address_(std::move(rpc_address)),
-        client_factory_(std::move(client_factory)),
+        raylet_client_pool_(std::move(raylet_client_pool)),
         local_object_pinning_client_(std::move(local_object_pinning_client)),
         object_lookup_(std::move(object_lookup)),
         in_memory_store_(in_memory_store),
@@ -120,8 +121,8 @@ class ObjectRecoveryManager {
   /// Address of our RPC server.
   rpc::Address rpc_address_;
 
-  /// Factory for producing new clients to pin objects at remote nodes.
-  ObjectPinningClientFactoryFn client_factory_;
+  /// Raylet client pool for producing new clients to pin objects at remote nodes.
+  std::shared_ptr<rpc::RayletClientPool> raylet_client_pool_;
 
   // Client that can be used to pin objects from the local raylet.
   std::shared_ptr<PinObjectsInterface> local_object_pinning_client_;

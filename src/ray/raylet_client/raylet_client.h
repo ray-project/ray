@@ -261,6 +261,10 @@ class RayletClientInterface : public PinObjectsInterface,
       const rpc::ClientCallback<rpc::IsLocalWorkerDeadReply> &callback) = 0;
 
   virtual std::shared_ptr<grpc::Channel> GetChannel() const = 0;
+
+  virtual void GetNodeStats(
+      const rpc::GetNodeStatsRequest &request,
+      const rpc::ClientCallback<rpc::GetNodeStatsReply> &callback) = 0;
 };
 
 namespace raylet {
@@ -541,7 +545,7 @@ class RayletClient : public RayletClientInterface {
   int64_t GetPinsInFlight() const { return pins_in_flight_.load(); }
 
   void GetNodeStats(const rpc::GetNodeStatsRequest &request,
-                    const rpc::ClientCallback<rpc::GetNodeStatsReply> &callback);
+                    const rpc::ClientCallback<rpc::GetNodeStatsReply> &callback) override;
 
  private:
   /// gRPC client to the NodeManagerService.

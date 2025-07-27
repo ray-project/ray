@@ -25,6 +25,9 @@
 namespace ray {
 namespace core {
 
+using LeaseClientFactoryFn =
+    std::function<std::shared_ptr<RayletClientInterface>(const rpc::Address &)>;
+
 Status NormalTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
   RAY_CHECK(task_spec.IsNormalTask());
   RAY_LOG(DEBUG) << "Submit task " << task_spec.TaskId();
@@ -237,8 +240,7 @@ std::shared_ptr<WorkerLeaseInterface> NormalTaskSubmitter::GetOrConnectLeaseClie
       RAY_LOG(INFO) << "Connecting to raylet " << raylet_id;
       it = remote_lease_clients_
                .emplace(raylet_id,
-                        lease_client_factory_(raylet_address->ip_address(),
-                                              raylet_address->port()))
+                        raylet_client_pool_->GetOrConnectByAddress(*raylet_address))
                .first;
     }
     lease_client = it->second;

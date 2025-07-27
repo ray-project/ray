@@ -38,7 +38,7 @@ class GcsActorSchedulerTest : public ::testing::Test {
     io_context_ =
         std::make_unique<InstrumentedIOContextWithThread>("GcsActorSchedulerTest");
     raylet_client_ = std::make_shared<GcsServerMocker::MockRayletClient>();
-    raylet_client_pool_ = std::make_shared<rpc::NodeManagerClientPool>(
+    raylet_client_pool_ = std::make_shared<rpc::RayletClientPool>(
         [this](const rpc::Address &addr) { return raylet_client_; });
     worker_client_ = std::make_shared<GcsServerMocker::MockWorkerClient>();
     gcs_publisher_ = std::make_shared<gcs::GcsPublisher>(
@@ -171,7 +171,7 @@ class GcsActorSchedulerTest : public ::testing::Test {
   std::vector<std::shared_ptr<gcs::GcsActor>> success_actors_;
   std::shared_ptr<gcs::GcsPublisher> gcs_publisher_;
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
-  std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool_;
+  std::shared_ptr<rpc::RayletClientPool> raylet_client_pool_;
   NodeID local_node_id_;
 };
 

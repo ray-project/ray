@@ -260,6 +260,7 @@ int main(int argc, char *argv[]) {
   std::unique_ptr<ray::raylet::NodeManager> node_manager;
   std::unique_ptr<ray::rpc::ClientCallManager> client_call_manager;
   std::unique_ptr<ray::rpc::CoreWorkerClientPool> worker_rpc_pool;
+  std::unique_ptr<ray::rpc::RayletClientPool> raylet_client_pool;
   std::unique_ptr<ray::raylet::WorkerPoolInterface> worker_pool;
   /// Manages all local objects that are pinned (primary
   /// copies), freed, and/or spilled.
@@ -549,12 +550,12 @@ int main(int argc, char *argv[]) {
               ray::rpc::CoreWorkerClientPool::GetDefaultUnavailableTimeoutCallback(
                   gcs_client.get(),
                   worker_rpc_pool.get(),
-                  [&](const std::string &node_manager_address, int32_t port) {
-                    return std::make_shared<ray::raylet::RayletClient>(
-                        node_manager_address, port, *client_call_manager);
-                  },
+                  raylet_client_pool.get(),
                   addr));
         });
+
+    raylet_client_pool =
+        std::make_unique<ray::rpc::RayletClientPool>(*client_call_manager);
 
     core_worker_subscriber = std::make_unique<ray::pubsub::Subscriber>(
         raylet_node_id,
@@ -767,14 +768,14 @@ int main(int argc, char *argv[]) {
                                                           announce_infeasible_task,
                                                           *local_task_manager);
 
-    auto raylet_client_factory = [&](const NodeID &node_id,
-                                     ray::rpc::ClientCallManager &client_call_manager) {
+    auto raylet_client_factory = [&](const NodeID &node_id) {
       const ray::rpc::GcsNodeInfo *node_info = gcs_client->Nodes().Get(node_id);
       RAY_CHECK(node_info) << "No GCS info for node " << node_id;
-      return std::make_shared<ray::raylet::RayletClient>(
-          node_info->node_manager_address(),
-          node_info->node_manager_port(),
-          client_call_manager);
+      ray::rpc::Address addr;
+      addr.set_ip_address(node_info->node_manager_address());
+      addr.set_port(node_info->node_manager_port());
+      addr.set_raylet_id(node_id.Binary());
+      return raylet_client_pool->GetOrConnectByAddress(addr);
     };
 
     plasma_client = std::make_unique<plasma::PlasmaClient>();
@@ -786,6 +787,7 @@ int main(int argc, char *argv[]) {
         *gcs_client,
         *client_call_manager,
         *worker_rpc_pool,
+        *raylet_client_pool,
         *core_worker_subscriber,
         *cluster_resource_scheduler,
         *local_task_manager,

@@ -125,8 +125,7 @@ void ObjectRecoveryManager::PinExistingObjectCopy(
       RAY_LOG(DEBUG).WithField(node_id) << "Connecting to raylet";
       client_it = remote_object_pinning_clients_
                       .emplace(node_id,
-                               client_factory_(raylet_address.ip_address(),
-                                               raylet_address.port()))
+                               raylet_client_pool_->GetOrConnectByAddress(raylet_address))
                       .first;
     }
     client = client_it->second;

@@ -31,7 +31,7 @@
 #include "ray/raylet/scheduling/policy/scheduling_context.h"
 #include "ray/raylet_client/raylet_client.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
-#include "ray/rpc/node_manager/node_manager_client_pool.h"
+#include "ray/rpc/node_manager/raylet_client_pool.h"
 #include "ray/rpc/worker/core_worker_client.h"
 #include "src/ray/protobuf/gcs_service.pb.h"
 
@@ -299,7 +299,7 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
                              gcs::GcsTableStorage &gcs_table_storage,
                              const GcsNodeManager &gcs_node_manager,
                              ClusterResourceScheduler &cluster_resource_scheduler,
-                             rpc::NodeManagerClientPool &raylet_client_pool);
+                             rpc::RayletClientPool &raylet_client_pool);
 
   virtual ~GcsPlacementGroupScheduler() = default;
 
@@ -506,7 +506,7 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
       placement_group_leasing_in_progress_;
 
   /// The cached raylet clients used to communicate with raylets.
-  rpc::NodeManagerClientPool &raylet_client_pool_;
+  rpc::RayletClientPool &raylet_client_pool_;
 
   /// The nodes which are releasing unused bundles.
   absl::flat_hash_set<NodeID> nodes_of_releasing_unused_bundles_;

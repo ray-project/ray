@@ -487,6 +487,7 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
       RAY_CHECK(!task_event_buffer_->Enabled()) << "TaskEventBuffer should be disabled.";
     }
   }
+
   core_worker_client_pool_ =
       std::make_shared<rpc::CoreWorkerClientPool>([&](const rpc::Address &addr) {
         return std::make_shared<rpc::CoreWorkerClient>(
@@ -495,12 +496,11 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
             rpc::CoreWorkerClientPool::GetDefaultUnavailableTimeoutCallback(
                 gcs_client_.get(),
                 core_worker_client_pool_.get(),
-                [this](const std::string &node_manager_address, int32_t port) {
-                  return std::make_shared<raylet::RayletClient>(
-                      node_manager_address, port, *client_call_manager_);
-                },
+                raylet_client_pool_.get(),
                 addr));
       });
+
+  raylet_client_pool_ = std::make_shared<rpc::RayletClientPool>(*client_call_manager_);
 
   object_info_publisher_ = std::make_unique<pubsub::Publisher>(
       /*channels=*/
@@ -602,17 +602,15 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
       });
 
 #if defined(__APPLE__) || defined(__linux__)
-  // TODO(jhumphri): Combine with implementation in NodeManager.
-  // TODO(jhumphri): Pool these connections with the other clients in CoreWorker connected
-  // to the raylet.
-  auto raylet_channel_client_factory =
-      [this](const NodeID &node_id, rpc::ClientCallManager &client_call_manager) {
-        auto node_info = gcs_client_->Nodes().Get(node_id);
-        RAY_CHECK(node_info) << "No GCS info for node " << node_id;
-        return std::make_shared<raylet::RayletClient>(node_info->node_manager_address(),
-                                                      node_info->node_manager_port(),
-                                                      client_call_manager);
-      };
+  auto raylet_channel_client_factory = [this](const NodeID &node_id) {
+    auto node_info = gcs_client_->Nodes().Get(node_id);
+    RAY_CHECK(node_info) << "No GCS info for node " << node_id;
+    ray::rpc::Address addr;
+    addr.set_ip_address(node_info->node_manager_address());
+    addr.set_port(node_info->node_manager_port());
+    addr.set_raylet_id(node_id.Binary());
+    return raylet_client_pool_->GetOrConnectByAddress(addr);
+  };
   experimental_mutable_object_provider_ =
       std::make_shared<experimental::MutableObjectProvider>(
           *plasma_store_provider_->store_client(),
@@ -707,11 +705,6 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
     }
   }
 
-  auto raylet_client_factory = [this](const std::string &ip_address, int port) {
-    return std::make_shared<raylet::RayletClient>(
-        ip_address, port, *client_call_manager_);
-  };
-
   auto on_excess_queueing = [this](const ActorID &actor_id, uint64_t num_queued) {
     auto timestamp = std::chrono::duration_cast<std::chrono::seconds>(
                          std::chrono::system_clock::now().time_since_epoch())
@@ -762,7 +755,7 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
       rpc_address_,
       local_raylet_client_,
       core_worker_client_pool_,
-      raylet_client_factory,
+      raylet_client_pool_,
       std::move(lease_policy),
       memory_store_,
       *task_manager_,
@@ -821,7 +814,7 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
       };
   object_recovery_manager_ = std::make_unique<ObjectRecoveryManager>(
       rpc_address_,
-      raylet_client_factory,
+      raylet_client_pool_,
       local_raylet_client_,
       object_lookup_fn,
       *task_manager_,
