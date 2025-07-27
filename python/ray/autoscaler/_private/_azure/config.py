@@ -9,6 +9,7 @@ from azure.common.credentials import get_cli_profile
 from azure.identity import AzureCliCredential
 from azure.mgmt.resource import ResourceManagementClient
 from azure.mgmt.resource.resources.models import DeploymentMode
+import ray  # Import ray to get the version
 
 UNIQUE_ID_LEN = 4
 
@@ -47,7 +48,11 @@ def _configure_resource_group(config):
     subscription_id = config["provider"].get("subscription_id")
     if subscription_id is None:
         subscription_id = get_cli_profile().get_subscription_id()
-    resource_client = ResourceManagementClient(AzureCliCredential(), subscription_id)
+    ray_user_agent = f"ray/{ray.__version__}"
+    resource_client = ResourceManagementClient(
+        AzureCliCredential(), subscription_id, user_agent=ray_user_agent
+    )
+
     config["provider"]["subscription_id"] = subscription_id
     logger.info("Using subscription id: %s", subscription_id)
 
