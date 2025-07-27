@@ -825,6 +825,13 @@ size_t ActorTaskSubmitter::NumPendingTasks(const ActorID &actor_id) const {
   return it->second.cur_pending_calls;
 }
 
+size_t ActorTaskSubmitter::NumTasksInFlight(const ActorID &actor_id) const {
+  absl::MutexLock lock(&mu_);
+  auto it = client_queues_.find(actor_id);
+  RAY_CHECK(it != client_queues_.end());
+  return it->second.inflight_task_callbacks.size();
+}
+
 bool ActorTaskSubmitter::CheckActorExists(const ActorID &actor_id) const {
   absl::MutexLock lock(&mu_);
   return client_queues_.find(actor_id) != client_queues_.end();

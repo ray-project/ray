@@ -3552,6 +3552,22 @@ cdef class CoreWorker:
                     CObjectLocationPtrToDict(results[i].get())
         return object_locations
 
+    def _get_num_pending_actor_tasks(self, ActorID actor_id):
+        cdef:
+            CActorID c_actor_id = actor_id.native()
+            int64_t result = 0
+        with nogil:
+            result = CCoreWorkerProcess.GetCoreWorker().GetNumPendingActorTasks(c_actor_id)
+        return result
+
+    def _get_num_actor_tasks_in_flight(self, ActorID actor_id):
+        cdef:
+            CActorID c_actor_id = actor_id.native()
+            int64_t result = 0
+        with nogil:
+            result = CCoreWorkerProcess.GetCoreWorker().GetNumActorTasksInFlight(c_actor_id)
+        return result
+
     def global_gc(self):
         with nogil:
             CCoreWorkerProcess.GetCoreWorker().TriggerGlobalGC()
