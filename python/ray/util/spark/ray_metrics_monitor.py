@@ -56,7 +56,6 @@ _ray_metric_families = {
             _RayMetricLabels.LOCATION, _RayMetricLabels.OBJECT_STATE,
         ],  _RayMetricLabels.NODE_ADDR),
         _RayMetricFamily("ray_placement_groups", [_RayMetricLabels.STATE], None),
-        _RayMetricFamily("ray_memory_manager_worker_eviction_total", [_RayMetricLabels.TYPE], None),
         _RayMetricFamily("ray_component_uss_mb", [_RayMetricLabels.COMPONENT], None),
         _RayMetricFamily("ray_component_cpu_percentage", [
             _RayMetricLabels.COMPONENT,
@@ -120,43 +119,42 @@ class RayMetricsMonitor:
         sampling_interval: float, default to 10. The interval (in seconds) at which to pull system
             metrics.
     """
-    def __init__(self, ray_head_ip: str, metrics_export_port: int, sampling_interval: float = 10):
+    def __init__(
+        self,
+        node_ip: str,
+        ray_node_id,
+        metrics_export_port: int,
+        mlflow_run_id: str,
+        sampling_interval: float = 10
+    ):
         import mlflow
         from mlflow.tracking.client import MlflowClient
         from mlflow.utils.autologging_utils import BatchMetricsLogger
         from mlflow.system_metrics.system_metrics_monitor import SystemMetricsMonitor
 
-        self._ray_head_ip = ray_head_ip
+        self._node_ip = node_ip
+        self._ray_node_id = ray_node_id
         self._metrics_export_port = metrics_export_port
         self._mlflow_experiment_id = mlflow.tracking.fluent._get_experiment_id()
 
-        if mlflow.active_run() is not None:
-            raise RuntimeError(
-                "Before starting RayMetricsMonitor, ensure the current active MLflow run is "
-                "terminated."
-            )
-        self._run_id = mlflow.start_run().info.run_id
-
-        # export the MLflow run ID so that user code can log other data into
-        # the same run.
-        os.environ["MLFLOW_RUN_ID"] = self._run_id
+        self._mlflow_run_id = mlflow_run_id
 
         self._sampling_interval = sampling_interval
         self._logging_step = 0
-        self.mlflow_logger = BatchMetricsLogger(self._run_id)
+        self.mlflow_logger = BatchMetricsLogger(self._mlflow_run_id)
         self._shutdown_event = threading.Event()
         self._process = None
 
-        os.environ["MLFLOW_SYSTEM_METRICS_NODE_ID"] = ray_head_ip
-        self._mlflow_sys_metrics_monitor = SystemMetricsMonitor(run_id=self._run_id)
+        os.environ["MLFLOW_SYSTEM_METRICS_NODE_ID"] = node_ip
+        self._mlflow_sys_metrics_monitor = SystemMetricsMonitor(run_id=self._mlflow_run_id)
 
     @property
     def mlflow_experiment_id(self):
         return self._mlflow_experiment_id
 
     @property
-    def run_id(self):
-        return self._run_id
+    def mlflow_run_id(self):
+        return self._mlflow_run_id
 
     def start(self):
         """Start monitoring system metrics."""
@@ -180,7 +178,9 @@ class RayMetricsMonitor:
 
     def collect_metrics(self):
         try:
-            return collect_ray_metrics(self._ray_head_ip, self._metrics_export_port)
+            # Each Ray node starts the metric exporter endpoint
+            # locally on the `self._metrics_export_port` port
+            return collect_ray_metrics(self._node_ip, self._metrics_export_port)
         except ConnectionError:
             # Ray metrics exporter endpoint is not ready yet.
             pass
