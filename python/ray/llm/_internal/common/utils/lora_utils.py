@@ -14,39 +14,27 @@ import time
 from functools import wraps
 from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
 
+from ray.llm._internal.common.constants import (
+    CLOUD_OBJECT_EXISTS_EXPIRE_S,
+    CLOUD_OBJECT_MISSING_EXPIRE_S,
+    LORA_ADAPTER_CONFIG_NAME,
+)
+
+# Import the global ID manager from common models
+from ray.llm._internal.common.models import global_id_manager, make_async
 from ray.llm._internal.common.observability.logging import get_logger
 from ray.llm._internal.common.utils.cloud_utils import (
     CloudFileSystem,
     LoraMirrorConfig,
     remote_object_cache,
 )
-from ray.llm._internal.serve.configs.constants import (
-    CLOUD_OBJECT_EXISTS_EXPIRE_S,
-    CLOUD_OBJECT_MISSING_EXPIRE_S,
-    LORA_ADAPTER_CONFIG_NAME,
-)
 from ray.llm._internal.serve.configs.server_models import DiskMultiplexConfig
-from ray.llm._internal.serve.deployments.utils.server_utils import make_async
 
 logger = get_logger(__name__)
 
 CLOUD_OBJECT_MISSING = object()
 DEFAULT_LORA_MAX_TOTAL_TOKENS = 4096
 T = TypeVar("T")
-
-
-class _SimpleIdManager:
-    """Simple ID manager for LoRA assigned IDs."""
-
-    def __init__(self):
-        self._counter = 0
-
-    def next(self) -> int:
-        self._counter += 1
-        return self._counter
-
-
-_global_id_manager = _SimpleIdManager()
 
 
 def get_base_model_id(model_id: str) -> str:
@@ -193,7 +181,23 @@ def get_lora_model_ids(
     dynamic_lora_loading_path: str,
     base_model_id: str,
 ) -> List[str]:
-    """Get the model IDs of all the LoRA models."""
+    """Get the model IDs of all the LoRA models.
+
+    The dynamic_lora_loading_path is expected to hold subfolders each for
+    a different lora checkpoint. Each subfolder name will correspond to
+    the unique identifier for the lora checkpoint. The lora model is
+    accessible via <base_model_id>:<lora_id>. Therefore, we prepend
+    the base_model_id to each subfolder name.
+
+    Args:
+        dynamic_lora_loading_path: the cloud folder that contains all the LoRA
+            weights.
+        base_model_id: model ID of the base model.
+
+    Returns:
+        List of LoRA fine-tuned model IDs. Does not include the base model
+        itself.
+    """
     lora_subfolders = CloudFileSystem.list_subfolders(dynamic_lora_loading_path)
 
     lora_model_ids = []
@@ -201,15 +205,6 @@ def get_lora_model_ids(
         lora_model_ids.append(f"{base_model_id}:{subfolder}")
 
     return lora_model_ids
-
-
-async def download_multiplex_config_info(
-    model_id: str, base_path: str
-) -> tuple[str, int]:
-    """Downloads info needed to create a multiplex config."""
-    bucket_uri = f"{base_path}/{model_id}"
-    ft_context_length = await get_lora_finetuned_context_length(bucket_uri)
-    return bucket_uri, ft_context_length or DEFAULT_LORA_MAX_TOTAL_TOKENS
 
 
 def download_lora_adapter(
@@ -326,6 +321,6 @@ class LoraModelLoader:
                 "model_id": lora_mirror_config.lora_model_id,
                 "max_total_tokens": lora_mirror_config.max_total_tokens,
                 "local_path": local_path,
-                "lora_assigned_int_id": _global_id_manager.next(),
+                "lora_assigned_int_id": global_id_manager.next(),
             }
         )

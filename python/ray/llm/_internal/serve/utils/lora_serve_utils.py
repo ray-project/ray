@@ -7,12 +7,11 @@ between generic and serve-specific concerns.
 """
 
 import json
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 from fastapi import HTTPException
 
 from ray.llm._internal.common.utils.cloud_utils import (
-    CloudFileSystem,
     LoraMirrorConfig,
 )
 from ray.llm._internal.common.utils.lora_utils import (
@@ -119,33 +118,3 @@ async def get_lora_mirror_config(
         max_total_tokens=metadata["max_request_context_length"],
         sync_args=None,
     )
-
-
-def get_lora_model_ids(
-    dynamic_lora_loading_path: str,
-    base_model_id: str,
-) -> List[str]:
-    """Get the model IDs of all the LoRA models.
-
-    The dynamic_lora_loading_path is expected to hold subfolders each for
-    a different lora checkpoint. Each subfolder name will correspond to
-    the unique identifier for the lora checkpoint. The lora model is
-    accessible via <base_model_id>:<lora_id>. Therefore, we prepend
-    the base_model_id to each subfolder name.
-
-    Args:
-        dynamic_lora_loading_path: the cloud folder that contains all the LoRA
-            weights.
-        base_model_id: model ID of the base model.
-
-    Returns:
-        List of LoRA fine-tuned model IDs. Does not include the base model
-        itself.
-    """
-    lora_subfolders = CloudFileSystem.list_subfolders(dynamic_lora_loading_path)
-
-    lora_model_ids = []
-    for subfolder in lora_subfolders:
-        lora_model_ids.append(f"{base_model_id}:{subfolder}")
-
-    return lora_model_ids
