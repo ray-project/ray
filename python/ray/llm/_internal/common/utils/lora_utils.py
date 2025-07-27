@@ -6,13 +6,12 @@ It serves as the single source of truth for LoRA operations and builds on the ge
 download primitives from download_utils.py.
 """
 
-import asyncio
 import json
 import os
 import subprocess
 import time
 from functools import wraps
-from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
+from typing import Any, Callable, List, Optional, TypeVar, Union
 
 from ray.llm._internal.common.constants import (
     CLOUD_OBJECT_EXISTS_EXPIRE_S,
@@ -21,18 +20,23 @@ from ray.llm._internal.common.constants import (
 )
 
 # Import the global ID manager from common models
-from ray.llm._internal.common.models import global_id_manager, make_async
+from ray.llm._internal.common.models import make_async
 from ray.llm._internal.common.observability.logging import get_logger
 from ray.llm._internal.common.utils.cloud_utils import (
     CloudFileSystem,
-    LoraMirrorConfig,
+    is_remote_path,
     remote_object_cache,
 )
-from ray.llm._internal.serve.configs.server_models import DiskMultiplexConfig
+from ray.llm._internal.common.utils.download_utils import (
+    CloudMirrorConfig,
+    CloudModelDownloader,
+)
 
 logger = get_logger(__name__)
 
+# Sentinel object for missing cloud objects
 CLOUD_OBJECT_MISSING = object()
+
 DEFAULT_LORA_MAX_TOTAL_TOKENS = 4096
 T = TypeVar("T")
 
@@ -215,11 +219,6 @@ def download_lora_adapter(
 
     This maintains backward compatibility with existing code.
     """
-    from ray.llm._internal.common.utils.cloud_utils import is_remote_path
-    from ray.llm._internal.common.utils.download_utils import (
-        CloudMirrorConfig,
-        CloudModelDownloader,
-    )
 
     assert not is_remote_path(
         lora_name
@@ -232,95 +231,3 @@ def download_lora_adapter(
     mirror_config = CloudMirrorConfig(bucket_uri=lora_path)
     downloader = CloudModelDownloader(lora_name, mirror_config)
     return downloader.get_model(tokenizer_only=False)
-
-
-class LoraModelLoader:
-    """Download LoRA weights from remote storage and manage disk cache."""
-
-    def __init__(
-        self,
-        lora_root: Optional[str] = None,
-        download_timeout_s: Optional[float] = None,
-        max_tries: int = 1,
-    ):
-        self.lora_root = lora_root or "/tmp/ray/llm/lora/cache"
-        self.disk_cache: Dict[str, DiskMultiplexConfig] = {}
-        self.active_syncing_tasks: Dict[str, asyncio.Task[DiskMultiplexConfig]] = {}
-        if download_timeout_s is not None and download_timeout_s <= 0:
-            raise ValueError(
-                f"download_timeout_s must be None or >0, got {download_timeout_s}"
-            )
-        self.download_timeout_s = download_timeout_s
-        if max_tries < 1:
-            raise ValueError(f"max_tries must be >=1, got {max_tries}")
-        self.max_tries = max_tries
-
-    async def load_model(
-        self, lora_model_id: str, lora_mirror_config: LoraMirrorConfig
-    ) -> DiskMultiplexConfig:
-        """Load a LoRA model."""
-        if lora_model_id in self.disk_cache:
-            return self.disk_cache[lora_model_id]
-
-        if lora_model_id not in self.active_syncing_tasks:
-            task = asyncio.create_task(self._load_model_async(lora_mirror_config))
-            task.add_done_callback(
-                lambda result: self.active_syncing_tasks.pop(lora_model_id, None)
-            )
-            self.active_syncing_tasks[lora_model_id] = task
-        else:
-            task = self.active_syncing_tasks[lora_model_id]
-
-        disk_config = await asyncio.shield(task)
-        self.disk_cache[lora_model_id] = disk_config
-        return disk_config
-
-    async def _load_model_async(
-        self, lora_mirror_config: LoraMirrorConfig
-    ) -> DiskMultiplexConfig:
-        return await self._load_model(lora_mirror_config)
-
-    @make_async
-    def _load_model(self, lora_mirror_config: LoraMirrorConfig) -> DiskMultiplexConfig:
-        return self._load_model_sync(lora_mirror_config)
-
-    @make_async
-    def clear_cache(self):
-        """Clear the disk cache."""
-        clear_directory(self.lora_root)
-
-    def _model_dir_path(self, model_id: str) -> str:
-        """Construct the path for the lora weight."""
-        lora_id = get_lora_id(clean_model_id(model_id))
-        path = os.path.join(self.lora_root, lora_id)
-        os.makedirs(path, exist_ok=True)
-        return path
-
-    def _download_lora(self, lora_mirror_config: LoraMirrorConfig) -> str:
-        """Download LoRA weights using generic download primitives."""
-        model_local_path = self._model_dir_path(lora_mirror_config.lora_model_id)
-        sync_files_with_lock(
-            lora_mirror_config.bucket_uri,
-            model_local_path,
-            timeout=self.download_timeout_s,
-        )
-        return model_local_path
-
-    def _load_model_sync(
-        self, lora_mirror_config: LoraMirrorConfig
-    ) -> DiskMultiplexConfig:
-        """Load a model from the given mirror configuration."""
-        download_with_retries = retry_with_exponential_backoff(
-            max_tries=self.max_tries,
-            exception_to_check=Exception,
-        )(lambda config: self._download_lora(config))
-
-        local_path = download_with_retries(lora_mirror_config)
-        return DiskMultiplexConfig.model_validate(
-            {
-                "model_id": lora_mirror_config.lora_model_id,
-                "max_total_tokens": lora_mirror_config.max_total_tokens,
-                "local_path": local_path,
-                "lora_assigned_int_id": global_id_manager.next(),
-            }
-        )

@@ -5,13 +5,13 @@ from unittest.mock import Mock, patch
 import pytest
 
 from ray.llm._internal.common.utils.cloud_utils import LoraMirrorConfig
-from ray.llm._internal.common.utils.lora_utils import LoraModelLoader
 from ray.llm._internal.serve.configs.server_models import (
     LLMConfig,
     LLMEngine,
     LoraConfig,
     ModelLoadingConfig,
 )
+from ray.llm._internal.serve.utils.lora_serve_utils import LoraModelLoader
 
 
 class TestLoRAModelLoader:
@@ -57,7 +57,7 @@ class TestLoRAModelLoader:
         mock_sync_model = Mock()
 
         with patch(
-            "ray.llm._internal.common.utils.lora_utils.sync_files_with_lock",
+            "ray.llm._internal.serve.utils.lora_serve_utils.sync_files_with_lock",
             side_effect=mock_sync_model,
         ):
             # First load should download the model
@@ -102,7 +102,7 @@ class TestLoRAModelLoader:
             return None
 
         with patch(
-            "ray.llm._internal.common.utils.lora_utils.sync_files_with_lock",
+            "ray.llm._internal.serve.utils.lora_serve_utils.sync_files_with_lock",
             side_effect=Mock(side_effect=mock_sync_model),
         ):
             # First load should trigger a retry
@@ -149,7 +149,7 @@ class TestLoRAModelLoader:
             return None
 
         with patch(
-            "ray.llm._internal.common.utils.lora_utils.sync_files_with_lock",
+            "ray.llm._internal.serve.utils.lora_serve_utils.sync_files_with_lock",
             side_effect=Mock(side_effect=mock_sync_model),
         ):
             # Clear cache to force download
@@ -185,7 +185,7 @@ class TestLoRAModelLoader:
             raise RuntimeError("Simulated persistent failure")
 
         with patch(
-            "ray.llm._internal.common.utils.lora_utils.sync_files_with_lock",
+            "ray.llm._internal.serve.utils.lora_serve_utils.sync_files_with_lock",
             side_effect=Mock(side_effect=mock_sync_model_always_fails),
         ):
             # Should fail after max_tries (3) attempts

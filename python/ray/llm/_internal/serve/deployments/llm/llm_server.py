@@ -15,7 +15,6 @@ from typing import (
 
 from ray import serve
 from ray._common.utils import import_attr
-from ray.llm._internal.common.utils.lora_utils import LoraModelLoader
 from ray.llm._internal.serve.configs.constants import (
     DEFAULT_HEALTH_CHECK_PERIOD_S,
     DEFAULT_HEALTH_CHECK_TIMEOUT_S,
@@ -40,7 +39,10 @@ from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.observability.usage_telemetry.usage import (
     push_telemetry_report_for_all_models,
 )
-from ray.llm._internal.serve.utils.lora_serve_utils import get_lora_mirror_config
+from ray.llm._internal.serve.utils.lora_serve_utils import (
+    LoraModelLoader,
+    get_lora_mirror_config,
+)
 
 if TYPE_CHECKING:
     from ray.llm._internal.serve.configs.openai_api_models import (

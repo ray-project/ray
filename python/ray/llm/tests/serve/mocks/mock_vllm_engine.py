@@ -4,7 +4,6 @@ import random
 from random import randint
 from typing import AsyncGenerator, Dict, Union
 
-from ray.llm._internal.common.utils.lora_utils import LoraModelLoader
 from ray.llm._internal.serve.configs.openai_api_models import (
     ChatCompletionRequest,
     ChatCompletionResponse,
@@ -19,6 +18,7 @@ from ray.llm._internal.serve.configs.server_models import (
     LLMConfig,
 )
 from ray.llm._internal.serve.deployments.llm.llm_engine import LLMEngine
+from ray.llm._internal.serve.utils.lora_serve_utils import LoraModelLoader
 
 
 class MockVLLMEngine(LLMEngine):

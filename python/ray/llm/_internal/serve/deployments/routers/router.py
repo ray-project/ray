@@ -20,7 +20,10 @@ from starlette.responses import JSONResponse, Response, StreamingResponse
 
 from ray import serve
 from ray._common.utils import get_or_create_event_loop
-from ray.llm._internal.common.utils.lora_utils import get_base_model_id
+from ray.llm._internal.common.utils.lora_utils import (
+    get_base_model_id,
+    get_lora_model_ids,
+)
 from ray.llm._internal.serve.configs.constants import (
     DEFAULT_LLM_ROUTER_HTTP_TIMEOUT,
     DEFAULT_LLM_ROUTER_INITIAL_REPLICAS,
@@ -60,7 +63,6 @@ from ray.llm._internal.serve.observability.metrics.fast_api_metrics import (
     metrics_lifespan,
 )
 from ray.llm._internal.serve.utils.lora_serve_utils import (
-    get_lora_model_ids,
     get_lora_model_metadata,
 )
 from ray.serve.config import AutoscalingConfig
