@@ -235,17 +235,16 @@ async def test_check_liveness(monkeypatch, ray_start_cluster):
     n1 = cluster.add_node(node_manager_port=find_free_port())
     n2 = cluster.add_node(node_manager_port=find_free_port())
     gcs_client = GcsClient(address=cluster.address)
-    node_manager_addresses = [
-        f"{n.raylet_ip_address}:{n.node_manager_port}" for n in [h, n1, n2]
-    ]
+    # Use binary NodeID values for async_check_alive
+    node_ids = [bytes.fromhex(n.node_id) for n in [h, n1, n2]]
 
-    ret = await gcs_client.async_check_alive(node_manager_addresses)
+    ret = await gcs_client.async_check_alive(node_ids)
     assert ret == [True, True, True]
 
     cluster.remove_node(n1)
 
     async def check(expect_liveness):
-        ret = await gcs_client.async_check_alive(node_manager_addresses)
+        ret = await gcs_client.async_check_alive(node_ids)
         return ret == expect_liveness
 
     await async_wait_for_condition(check, expect_liveness=[True, False, True])
@@ -254,7 +253,7 @@ async def test_check_liveness(monkeypatch, ray_start_cluster):
     n2_raylet_process.kill()
 
     # GCS hasn't marked it as dead yet.
-    ret = await gcs_client.async_check_alive(node_manager_addresses)
+    ret = await gcs_client.async_check_alive(node_ids)
     assert ret == [True, False, True]
 
     # GCS will notice node dead soon

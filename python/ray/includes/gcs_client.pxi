@@ -290,7 +290,7 @@ cdef class InnerGcsClient:
     ) -> Future[List[bool]]:
         cdef:
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-            c_vector[c_string] c_node_ids;
+            c_vector[CNodeID] c_node_ids;
             fut = incremented_fut()
         for node_id in node_ids:
             c_node_ids.push_back(<CNodeID>CUniqueID.FromBinary(node_id))
