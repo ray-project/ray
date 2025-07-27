@@ -151,6 +151,11 @@ class TaskManagerInterface {
   /// \param[in] task_id The task that is now scheduled.
   virtual void MarkDependenciesResolved(const TaskID &task_id) = 0;
 
+  /// Set the task state to be no retry.
+  ///
+  /// \param[in] task_id to set no retry.
+  virtual void MarkTaskNoRetry(const TaskID &task_id) = 0;
+
   /// Set the task state to be canceled. Set the number of retries to zero.
   ///
   /// \param[in] task_id to cancel.
