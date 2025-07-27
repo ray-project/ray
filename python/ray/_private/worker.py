@@ -1619,7 +1619,7 @@ def init(
         passed_kwargs.update(kwargs)
         builder._init_args(**passed_kwargs)
         ctx = builder.connect()
-        from ray._private.usage import usage_lib
+        from ray._common.usage import usage_lib
 
         if passed_kwargs.get("allow_multiple") is True:
             with ctx:
@@ -1771,7 +1771,7 @@ def init(
         # In this case, we need to start a new cluster.
 
         # Don't collect usage stats in ray.init() unless it's a nightly wheel.
-        from ray._private.usage import usage_lib
+        from ray._common.usage import usage_lib
 
         if usage_lib.is_nightly_wheel():
             usage_lib.show_usage_stats_prompt(cli=False)

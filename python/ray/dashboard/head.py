@@ -12,7 +12,7 @@ import ray.experimental.internal_kv as internal_kv
 from ray._private import ray_constants
 from ray._private.async_utils import enable_monitor_loop_lag
 from ray._private.ray_constants import env_integer
-from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
+from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray._raylet import GcsClient
 from ray.dashboard.consts import (
     AVAILABLE_COMPONENT_NAMES_FOR_METRICS,

@@ -10,7 +10,7 @@ from packaging.version import Version
 
 import ray
 from ray import train
-from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
+from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.train import Checkpoint
 from ray.util import PublicAPI
 

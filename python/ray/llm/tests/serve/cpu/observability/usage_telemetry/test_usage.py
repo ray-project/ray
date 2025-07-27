@@ -3,7 +3,7 @@ import sys
 import pytest
 
 import ray
-from ray._private.usage.usage_lib import TagKey
+from ray._common.usage.usage_lib import TagKey
 from ray.llm._internal.serve.configs.server_models import (
     LLMConfig,
     LLMEngine,

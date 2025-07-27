@@ -18,3 +18,17 @@ py_test_module_list(
         "//:ray_lib",
     ],
 )
+
+py_test_module_list(
+    size = "large",
+    files = [
+        "test_usage_stats.py",
+    ],
+    tags = [
+        "exclusive",
+        "team:core",
+    ],
+    deps = [
+        "//:ray_lib",
+    ],
+)

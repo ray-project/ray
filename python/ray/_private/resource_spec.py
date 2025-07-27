@@ -204,7 +204,7 @@ class ResourceSpec(
                 if accelerator_type:
                     resources[f"{RESOURCE_CONSTRAINT_PREFIX}{accelerator_type}"] = 1
 
-                    from ray._private.usage import usage_lib
+                    from ray._common.usage import usage_lib
 
                     usage_lib.record_hardware_usage(accelerator_type)
                 additional_resources = (

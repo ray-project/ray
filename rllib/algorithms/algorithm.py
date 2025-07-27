@@ -35,7 +35,7 @@ import tree  # pip install dm_tree
 
 import ray
 from ray.tune.result import TRAINING_ITERATION
-from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
+from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.actor import ActorHandle
 from ray.tune import Checkpoint
 import ray.cloudpickle as pickle
