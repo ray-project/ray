@@ -669,7 +669,8 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
         auto addr = actor_task_submitter_->GetActorAddress(actor_id);
         RAY_CHECK(addr.has_value()) << "Actor address not found for actor " << actor_id;
         return core_worker_client_pool_->GetOrConnect(addr.value());
-      });
+      },
+      gcs_client_);
 
   // Create an entry for the driver task in the task table. This task is
   // added immediately with status RUNNING. This allows us to push errors
