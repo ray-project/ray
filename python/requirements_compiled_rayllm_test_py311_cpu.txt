@@ -326,9 +326,9 @@ bleach==6.1.0 \
     # via
     #   -c python/requirements_compiled_ray_test_py311_cpu.txt
     #   nbconvert
-boto3==1.28.54 \
-    --hash=sha256:22e37d8c4f2d97b5e5c6ccc1d9edc7760717990b0ba8b8ea17a58cc87e57c5c9 \
-    --hash=sha256:3cb2aee317a1b8686e3b23674e4099b8ff7451bd8acc61b9719acff86fa024d1
+boto3==1.28.0 \
+    --hash=sha256:8d43863e4769a5652efc32fd63430df58488cdb3fb85e614461b511358e47ec7 \
+    --hash=sha256:ef81f63d38be25137c3ae9c6db2841c4cde82d1c7da9f8cb9f42f410c242d4f2
     # via
     #   -c python/requirements_compiled_ray_test_py311_cpu.txt
     #   -r python/requirements/cloud-requirements.txt
