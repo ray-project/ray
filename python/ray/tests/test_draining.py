@@ -442,7 +442,7 @@ def test_drain_node_task_retry(ray_start_cluster):
 
     cur_worker = cluster.add_node(num_cpus=1, resources={"worker": 1})
     cluster.wait_for_nodes()
-    node_ids = Counter([cur_worker.node_id])
+    node_ids = Counter()
 
     gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
 
@@ -469,16 +469,18 @@ def test_drain_node_task_retry(ray_start_cluster):
     r1 = func.remote(signal, node_tracker)
 
     # Verify the first node is added to the counter by the func.remote task.
-    wait_for_condition(lambda: ray.get(node_tracker.nodes.remote()) == node_ids)
-    cluster.remove_node(cur_worker, True)
-
-    cur_worker = cluster.add_node(num_cpus=1, resources={"worker": 1})
     node_ids.update([cur_worker.node_id])
+    wait_for_condition(lambda: ray.get(node_tracker.nodes.remote()) == node_ids)
+
+    # Remove the current worker node and add a new one to trigger a retry.
+    cluster.remove_node(cur_worker, True)
+    cur_worker = cluster.add_node(num_cpus=1, resources={"worker": 1})
 
     # Verify the second node is added to the counter by the task after a retry.
+    node_ids.update([cur_worker.node_id])
     wait_for_condition(lambda: ray.get(node_tracker.nodes.remote()) == node_ids)
 
-    # Preemption is always accepted.
+    # Preempt the second node and add a new one to trigger a retry.
     is_accepted, _ = gcs_client.drain_node(
         cur_worker.node_id,
         autoscaler_pb2.DrainNodeReason.Value("DRAIN_NODE_REASON_PREEMPTION"),
@@ -487,14 +489,16 @@ def test_drain_node_task_retry(ray_start_cluster):
     )
     assert is_accepted
     cluster.remove_node(cur_worker, True)
-
     cur_worker = cluster.add_node(num_cpus=1, resources={"worker": 1})
-    node_ids.update([cur_worker.node_id])
 
     # Verify the third node is added to the counter after a preemption retry.
+    node_ids.update([cur_worker.node_id])
     wait_for_condition(lambda: ray.get(node_tracker.nodes.remote()) == node_ids)
 
+    # Remove the third node and add a new one, but the task should not retry.
     cluster.remove_node(cur_worker, True)
+    cur_worker = cluster.add_node(num_cpus=1, resources={"worker": 1})
+
     # max_retries is reached, the task should fail.
     with pytest.raises(ray.exceptions.NodeDiedError):
         ray.get(r1)
