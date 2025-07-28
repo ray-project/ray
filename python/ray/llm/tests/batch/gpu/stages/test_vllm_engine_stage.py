@@ -340,11 +340,8 @@ async def test_vllm_wrapper_lora(model_llama_3_2_216M, model_llama_3_2_216M_lora
         max_pending_requests=10,
         # Skip CUDA graph capturing to reduce the start time.
         enforce_eager=True,
-        gpu_memory_utilization=0.8,
         task=vLLMTaskType.GENERATE,
         max_model_len=2048,
-        # Older GPUs (e.g. T4) don't support bfloat16.
-        dtype="half",
         enable_lora=True,
         max_lora_rank=16,
     )
@@ -400,12 +397,9 @@ async def test_vllm_wrapper_json(model_llama_3_2_1B_instruct):
         max_pending_requests=10,
         # Skip CUDA graph capturing to reduce the start time.
         enforce_eager=True,
-        gpu_memory_utilization=0.8,
         task=vLLMTaskType.GENERATE,
         max_model_len=2048,
         guided_decoding_backend="xgrammar",
-        # Older GPUs (e.g. T4) don't support bfloat16.
-        dtype="half",
     )
 
     batch = [
