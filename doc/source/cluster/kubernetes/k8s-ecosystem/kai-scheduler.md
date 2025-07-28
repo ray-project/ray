@@ -117,7 +117,7 @@ kubectl get queues
 
 ## Step 4: Gang-Scheduling with KAI Scheduler
 
-The key pattern simply adding the queue label to your RayCluster. [Here's a basic example](https://github.com/ray-project/kuberay/tree/master/ray-operator/config/samples/ray-cluster.kai-scheduler.yaml), which you can also find in kuberay repository:
+The key pattern is to simply add the queue label to your RayCluster. [Here's a basic example](https://github.com/ray-project/kuberay/tree/master/ray-operator/config/samples/ray-cluster.kai-scheduler.yaml) from the KubeRay repository:
 
 ```yaml
 apiVersion: ray.io/v1
