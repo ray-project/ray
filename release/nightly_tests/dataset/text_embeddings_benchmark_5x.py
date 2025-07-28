@@ -231,7 +231,7 @@ def main(args):
 
     # Compute metrics for time and throughput without metadata fetch
     total_time_s_wo_metadata_fetch = time.time() - start_time_without_metadata_fetching
-    throughput_images_s_wo_metadata_fetch = (
+    throughput_rows_s_wo_metadata_fetch = (
         count / total_time_s_wo_metadata_fetch
         if total_time_s_wo_metadata_fetch > 0
         else 0.0
@@ -252,7 +252,7 @@ def main(args):
         "chunk_method": args.chunk_method,
         "start_time_without_metadata_fetching": start_time_without_metadata_fetching,
         "total_time_s_wo_metadata_fetch": total_time_s_wo_metadata_fetch,
-        "throughput_images_s_wo_metadata_fetch": throughput_images_s_wo_metadata_fetch,
+        "throughput_rows_s_wo_metadata_fetch": throughput_rows_s_wo_metadata_fetch,
         "chaos_test": args.chaos_test,
     }
 
