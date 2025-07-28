@@ -8,6 +8,7 @@ import runfiles
 from networkx import DiGraph, topological_sort
 
 DEFAULT_UV_FLAGS = [
+    "--generate-hashes",
     "--strip-extras",
     "--python-version=3.11",
     "--no-strip-markers",
@@ -104,6 +105,7 @@ class DependencySetManager:
             self.subset(
                 source_depset=depset.source_depset,
                 requirements=depset.requirements,
+                args=DEFAULT_UV_FLAGS.copy(),
                 name=depset.name,
                 output=depset.output,
             )
@@ -111,6 +113,7 @@ class DependencySetManager:
             self.expand(
                 depsets=depset.depsets,
                 constraints=depset.constraints,
+                args=DEFAULT_UV_FLAGS.copy(),
                 name=depset.name,
                 output=depset.output,
             )
@@ -122,7 +125,7 @@ class DependencySetManager:
         requirements: List[str],
         args: List[str],
         name: str,
-        output: str = None,
+        output: str,
     ):
         """Compile a dependency set."""
         if constraints:
@@ -131,25 +134,25 @@ class DependencySetManager:
         if requirements:
             for requirement in requirements:
                 args.extend([self.get_path(requirement)])
-        args.extend(["-o", self.get_path(output)])
-        try:
-            self.exec_uv_cmd("compile", args)
-        except RuntimeError as e:
-            raise RuntimeError(f"Error: {str(e)}")
+        if output:
+            args.extend(["-o", self.get_path(output)])
+        self.exec_uv_cmd("compile", args)
 
     def subset(
         self,
         source_depset: str,
         requirements: List[str],
+        args: List[str],
         name: str,
         output: str = None,
     ):
         """Subset a dependency set."""
         source_depset = self.get_depset(source_depset)
+        self.check_subset_exists(source_depset, requirements)
         self.compile(
             constraints=[source_depset.output],
             requirements=requirements,
-            args=DEFAULT_UV_FLAGS.copy(),
+            args=args,
             name=name,
             output=output,
         )
@@ -158,24 +161,32 @@ class DependencySetManager:
         self,
         depsets: List[str],
         constraints: List[str],
+        args: List[str],
         name: str,
         output: str = None,
     ):
         """Expand a dependency set."""
-        depset_list = []
+        depset_req_list = []
         for depset_name in depsets:
             depset = self.get_depset(depset_name)
-            depset_list.append(depset)
+            depset_req_list.extend(depset.requirements)
         self.compile(
             constraints=constraints,
-            requirements=[depset.output for depset in depset_list],
-            args=DEFAULT_UV_FLAGS.copy(),
+            requirements=depset_req_list,
+            args=args,
             name=name,
             output=output,
         )
 
     def get_path(self, path: str) -> str:
         return (Path(self.workspace.dir) / path).as_posix()
+
+    def check_subset_exists(self, source_depset: Depset, requirements: List[str]):
+        for req in requirements:
+            if req not in source_depset.requirements:
+                raise RuntimeError(
+                    f"Requirement {req} is not a subset of {source_depset.name}"
+                )
 
 
 def uv_binary():
