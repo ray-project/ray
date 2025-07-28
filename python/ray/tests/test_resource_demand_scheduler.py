@@ -949,6 +949,78 @@ def test_request_resources_existing_usage():
     assert not rem
 
 
+def test_do_not_add_nodes_based_on_object_store_memory():
+    provider = MockProvider()
+    TYPES = {
+        "ray.worker.4090.standard": {
+            "resources": {"CPU": 16, "GPU": 1, "memory": 30107260928, "gram": 24},
+            "max_workers": 5,
+        },
+        "ray.worker.4090.highmem": {
+            "resources": {"CPU": 16, "GPU": 1, "memory": 62277025792, "gram": 24},
+            "max_workers": 5,
+        },
+    }
+    provider.create_node(
+        {},
+        {
+            TAG_RAY_USER_NODE_TYPE: "ray.worker.4090.standard",
+            TAG_RAY_NODE_KIND: NODE_KIND_WORKER,
+            TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
+        },
+        1,
+    )
+    scheduler = ResourceDemandScheduler(
+        provider,
+        TYPES,
+        max_workers=100,
+        head_node_type="empty_node",
+        upscaling_speed=1,
+    )
+
+    ips = provider.non_terminated_node_ips({})
+    assert len(ips) == 1
+
+    unused_resources_by_ip = {
+        ips[0]: {
+            "CPU": 0.0,
+            "GPU": 0.0,
+            "memory": 0.0,
+            "gram": 0.0,
+        }
+    }
+    max_resources_by_ip = {
+        ips[0]: {
+            "CPU": 16.0,
+            "GPU": 1.0,
+            "memory": 30107260928.0,
+            "gram": 24.0,
+            "object_store_memory": 4933059335.0,
+        }
+    }
+    # At this point, there is one node of type "ray.worker.4090.standard" in the cluster,
+    # but all its resources are used.
+    # Now, we try to request a new resource_demand that matches "ray.worker.4090.standard".
+    # The scheduler should add a new node of type "ray.worker.4090.standard".
+    # This test ensures that the scheduler does not take "object_store_memory"
+    # into account when deciding which node type to add. Previously, the scheduler
+    # would consider "object_store_memory" from max_resources_by_ip, and as a result,
+    # choose "ray.worker.4090.highmem" instead of "ray.worker.4090.standard".
+    resource_demands = [{"CPU": 16, "GPU": 1, "memory": 30107260928, "gram": 24}]
+    to_launch, _ = scheduler.get_nodes_to_launch(
+        nodes=provider.non_terminated_nodes({}),
+        launching_nodes={},
+        resource_demands=resource_demands,
+        unused_resources_by_ip=unused_resources_by_ip,
+        pending_placement_groups=[],
+        max_resources_by_ip=max_resources_by_ip,
+        ensure_min_cluster_size=[],
+        node_availability_summary=NodeAvailabilitySummary(node_availabilities={}),
+    )
+    assert to_launch.get("ray.worker.4090.standard") == 1, to_launch
+    assert to_launch.get("ray.worker.4090.highmem") is None, to_launch
+
+
 def test_backlog_queue_impact_on_binpacking_time():
     new_types = copy.deepcopy(TYPES_A)
     new_types["p2.8xlarge"]["max_workers"] = 1000
