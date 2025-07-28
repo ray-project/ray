@@ -98,11 +98,6 @@ run_ray_cpp_tests() {
   ./ci/ci.sh test_cpp || exit 42
 }
 
-run_ray_cpp_and_java() {
-  run_ray_java_tests
-  run_ray_cpp_tests
-}
-
 bisect() {
   bazel run //ci/ray_ci/bisect:bisect_test -- "$@"
 }
