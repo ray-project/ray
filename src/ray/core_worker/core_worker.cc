@@ -738,7 +738,8 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
 
   auto node_addr_factory = [this](const NodeID &node_id) {
     std::optional<rpc::Address> address_opt;
-    if (auto node_info = gcs_client_->Nodes().Get(node_id)) {
+    if (auto node_info = gcs_client_->Nodes().Get(node_id);
+        node_info->state() != rpc::GcsNodeInfo::DEAD) {
       auto &address = address_opt.emplace();
       address.set_raylet_id(node_info->node_id());
       address.set_ip_address(node_info->node_manager_address());
@@ -808,7 +809,8 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
             // We're getting potentially stale locations directly from the reference
             // counter, so the location might be a dead node.
             RAY_LOG(DEBUG).WithField(object_id).WithField(node_id)
-                << "Object location is dead, not using it in the recovery of object";
+                << "Object location is dead or the GCS subscription cache doesn't have "
+                   "it, not using it in the recovery of object";
           }
         }
         callback(object_id, std::move(locations));

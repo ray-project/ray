@@ -656,14 +656,10 @@ void NodeInfoAccessor::AsyncSubscribeToNodeChange(
                    const Status &) { fetch_node_data_operation_(done); });
 }
 
-const rpc::GcsNodeInfo *NodeInfoAccessor::Get(const NodeID &node_id,
-                                              bool filter_dead_nodes) const {
+const rpc::GcsNodeInfo *NodeInfoAccessor::Get(const NodeID &node_id) const {
   RAY_CHECK(!node_id.IsNil());
   auto entry = node_cache_.find(node_id);
   if (entry != node_cache_.end()) {
-    if (filter_dead_nodes && entry->second.state() == rpc::GcsNodeInfo::DEAD) {
-      return nullptr;
-    }
     return &entry->second;
   }
   return nullptr;
