@@ -16,6 +16,7 @@
 
 #include <future>
 #include <memory>
+#include <queue>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -621,25 +622,35 @@ void NodeInfoAccessor::AsyncSubscribeToNodeChange(
   /**
   1. Subscribe to node info
   2. Once the subscription is made, ask for all node info.
-  3. Once all node info is received, call done callback.
-  4. HandleNotification can handle conflicts between the subscription updates and
-     GetAllNodeInfo because nodes can only go from alive to dead, never back to alive.
-     Note that this only works because state is the only mutable field, otherwise we'd
-     have to queue processing subscription updates until the initial population from
-     AsyncGetAll is done.
+  3. Once all node info is received, process any queued notifications and call done
+  callback.
+  4. Queue subscription updates until the initial population from AsyncGetAll is done
+     to avoid race conditions between subscription updates and initial data.
   */
 
   RAY_CHECK(node_change_callback_ == nullptr);
   node_change_callback_ = std::move(subscribe);
   RAY_CHECK(node_change_callback_ != nullptr);
 
-  fetch_node_data_operation_ = [this](const StatusCallback &done) {
+  auto queued_notifications = std::make_shared<std::queue<rpc::GcsNodeInfo>>();
+  auto initial_population_complete = std::make_shared<bool>(false);
+
+  fetch_node_data_operation_ = [this, queued_notifications, initial_population_complete](
+                                   const StatusCallback &done) {
     AsyncGetAll(
-        [this, done](const Status &status,
-                     std::vector<rpc::GcsNodeInfo> &&node_info_list) {
+        [this, queued_notifications, initial_population_complete, done](
+            const Status &status, std::vector<rpc::GcsNodeInfo> &&node_info_list) {
+          // Process all initial node info first
           for (auto &node_info : node_info_list) {
             HandleNotification(std::move(node_info));
           }
+          // Process any queued notifications
+          while (!queued_notifications->empty()) {
+            HandleNotification(std::move(queued_notifications->front()));
+            queued_notifications->pop();
+          }
+          // Mark initial population as complete
+          *initial_population_complete = true;
           if (done) {
             done(status);
           }
@@ -648,8 +659,14 @@ void NodeInfoAccessor::AsyncSubscribeToNodeChange(
   };
 
   client_impl_->GetGcsSubscriber().SubscribeAllNodeInfo(
-      /*subscribe=*/[this](
-                        rpc::GcsNodeInfo &&data) { HandleNotification(std::move(data)); },
+      /*subscribe=*/
+      [this, queued_notifications, initial_population_complete](rpc::GcsNodeInfo &&data) {
+        if (*initial_population_complete) {
+          HandleNotification(std::move(data));
+        } else {
+          queued_notifications->emplace(std::move(data));
+        }
+      },
       /*done=*/[this, done = std::move(done)](
                    const Status &) { fetch_node_data_operation_(done); });
 }
@@ -762,9 +779,44 @@ void NodeInfoAccessor::HandleNotification(rpc::GcsNodeInfo &&node_info) {
 void NodeInfoAccessor::AsyncResubscribe() {
   RAY_LOG(DEBUG) << "Reestablishing subscription for node info.";
   if (IsSubscribedToNodeChange()) {
+    auto queued_notifications = std::make_shared<std::queue<rpc::GcsNodeInfo>>();
+    auto initial_population_complete = std::make_shared<bool>(false);
+
+    // Update fetch_node_data_operation_ to use new shared state
+    fetch_node_data_operation_ =
+        [this, queued_notifications, initial_population_complete](
+            const StatusCallback &done) {
+          AsyncGetAll(
+              [this, queued_notifications, initial_population_complete, done](
+                  const Status &status, std::vector<rpc::GcsNodeInfo> &&node_info_list) {
+                // Process all initial node info first
+                for (auto &node_info : node_info_list) {
+                  HandleNotification(std::move(node_info));
+                }
+                // Process any queued notifications
+                while (!queued_notifications->empty()) {
+                  HandleNotification(std::move(queued_notifications->front()));
+                  queued_notifications->pop();
+                }
+                // Mark initial population as complete
+                *initial_population_complete = true;
+                if (done) {
+                  done(status);
+                }
+              },
+              /*timeout_ms=*/-1);
+        };
+
     client_impl_->GetGcsSubscriber().SubscribeAllNodeInfo(
-        /*subscribe=*/[this](rpc::GcsNodeInfo
-                                 &&data) { HandleNotification(std::move(data)); },
+        /*subscribe=*/
+        [this, queued_notifications, initial_population_complete](
+            rpc::GcsNodeInfo &&data) {
+          if (*initial_population_complete) {
+            HandleNotification(std::move(data));
+          } else {
+            queued_notifications->emplace(std::move(data));
+          }
+        },
         /*done=*/
         [this](const Status &) {
           fetch_node_data_operation_([](const Status &) {
