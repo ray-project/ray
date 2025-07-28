@@ -101,7 +101,7 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
             import mlflow
             mlflow_exp_id = mlflow.tracking.fluent._get_experiment_id()
             mlflow_run_id = mlflow.active_run().info.run_id
-            link_url = f"ml/experiments/{mlflow_exp_id}/runs/{mlflow_run_id}/system-metrics"
+            link_url = f"/ml/experiments/{mlflow_exp_id}/runs/{mlflow_run_id}/system-metrics"
             get_databricks_display_html_function()(f"""
               <div style="margin-top: 16px;margin-bottom: 16px">
                   <a href="{link_url}">
