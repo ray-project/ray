@@ -268,7 +268,7 @@ uint8_t *PlasmaClient::Impl::GetStoreFdAndMmap(MEMFD_TYPE store_fd_val,
 // process before.
 uint8_t *PlasmaClient::Impl::LookupMmappedFile(MEMFD_TYPE store_fd_val) const {
   auto entry = mmap_table_.find(store_fd_val);
-  RAY_CHECK_NE(entry, mmap_table_.end());
+  RAY_CHECK(entry != mmap_table_.end());
   return entry->second->pointer();
 }
 
@@ -299,7 +299,7 @@ void PlasmaClient::Impl::IncrementObjectCount(const ObjectID &object_id) {
   // Increment the count of the object to track the fact that it is being used.
   // The corresponding decrement should happen in PlasmaClient::Release.
   auto object_entry = objects_in_use_.find(object_id);
-  RAY_CHECK_NE(object_entry, objects_in_use_.end());
+  RAY_CHECK(object_entry != objects_in_use_.end());
   object_entry->second->count += 1;
   RAY_LOG(DEBUG) << "IncrementObjectCount " << object_id
                  << " count is now: " << object_entry->second->count;
@@ -377,7 +377,7 @@ Status PlasmaClient::Impl::HandleCreateReply(const ObjectID &object_id,
 
   // Create IPC was successful.
   auto object_entry = objects_in_use_.find(object_id);
-  RAY_CHECK_NE(object_entry, objects_in_use_.end());
+  RAY_CHECK(object_entry != objects_in_use_.end());
   auto &entry = object_entry->second;
   RAY_CHECK(!entry->is_sealed);
 
@@ -641,7 +641,7 @@ Status PlasmaClient::Impl::Get(const std::vector<ObjectID> &object_ids,
 
 Status PlasmaClient::Impl::MarkObjectUnused(const ObjectID &object_id) {
   auto object_entry = objects_in_use_.find(object_id);
-  RAY_CHECK_NE(object_entry, objects_in_use_.end());
+  RAY_CHECK(object_entry != objects_in_use_.end());
   RAY_CHECK_EQ(object_entry->second->count, 0);
 
   // Remove the entry from the hash table of objects currently in use.
@@ -657,7 +657,7 @@ Status PlasmaClient::Impl::Release(const ObjectID &object_id) {
     return Status::OK();
   }
   const auto object_entry = objects_in_use_.find(object_id);
-  RAY_CHECK_NE(object_entry, objects_in_use_.end());
+  RAY_CHECK(object_entry != objects_in_use_.end());
 
   object_entry->second->count -= 1;
   RAY_LOG(DEBUG) << "Decrement object count " << object_id << " count is now "
@@ -766,7 +766,7 @@ Status PlasmaClient::Impl::Seal(const ObjectID &object_id) {
 Status PlasmaClient::Impl::Abort(const ObjectID &object_id) {
   std::lock_guard<std::recursive_mutex> guard(client_mutex_);
   auto object_entry = objects_in_use_.find(object_id);
-  RAY_CHECK_NE(object_entry, objects_in_use_.end())
+  RAY_CHECK(object_entry != objects_in_use_.end())
       << "Plasma client called abort on an object without a reference to it";
   RAY_CHECK(!object_entry->second->is_sealed)
       << "Plasma client called abort on a sealed object";
