@@ -230,6 +230,11 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         description="Number of input blocks received by operator.",
         metrics_group=MetricsGroup.INPUTS,
     )
+    num_row_inputs_received: int = metric_field(
+        default=0,
+        description="Number of input rows received by operator.",
+        metrics_group=MetricsGroup.INPUTS,
+    )
     bytes_inputs_received: int = metric_field(
         default=0,
         description="Byte size of input blocks received by operator.",
@@ -577,7 +582,11 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
             return None
 
         bytes_per_output = self.average_bytes_per_output
+        # If we don’t have a sample yet and the limit is “unlimited”, we can’t
+        # estimate – just bail out.
         if bytes_per_output is None:
+            if context.target_max_block_size is None:
+                return None
             bytes_per_output = context.target_max_block_size
 
         num_pending_outputs = context._max_num_blocks_in_streaming_gen_buffer
@@ -629,6 +638,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
     def on_input_received(self, input: RefBundle):
         """Callback when the operator receives a new input."""
         self.num_inputs_received += 1
+        self.num_row_inputs_received += input.num_rows() or 0
         self.bytes_inputs_received += input.size_bytes()
 
     def on_input_queued(self, input: RefBundle):
