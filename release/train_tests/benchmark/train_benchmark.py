@@ -65,6 +65,7 @@ def main():
         raise ValueError(f"Unknown task: {benchmark_config.task}")
 
     dataloader_factory = factory.get_dataloader_factory()
+    end_time = time.perf_counter()
     if isinstance(dataloader_factory, RayDataLoaderFactory):
         datasets_with_times = dataloader_factory.get_ray_datasets()
         datasets = {key: dataset for key, (dataset, _) in datasets_with_times.items()}
@@ -72,10 +73,15 @@ def main():
             key: creation_time
             for key, (_, creation_time) in datasets_with_times.items()
         }
+        dataset_creation_times[DatasetKey.TRAIN] += end_time - start_time
+        dataset_creation_times[DatasetKey.VALID] += end_time - start_time
         data_config = dataloader_factory.get_ray_data_config()
     else:
         datasets = {}
-        dataset_creation_times = {DatasetKey.TRAIN: 0.0, DatasetKey.VALID: 0.0}
+        dataset_creation_times = {
+            DatasetKey.TRAIN: end_time - start_time,
+            DatasetKey.VALID: end_time - start_time,
+        }
         data_config = None
 
     trainer = TorchTrainer(
