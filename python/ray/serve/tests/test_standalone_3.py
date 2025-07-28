@@ -15,6 +15,7 @@ from ray.cluster_utils import AutoscalingCluster, Cluster
 from ray.exceptions import RayActorError
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_LOGGER_NAME
 from ray.serve._private.logging_utils import get_serve_logs_dir
+from ray.serve._private.test_utils import get_application_url
 from ray.serve._private.utils import get_head_node_id
 from ray.serve.context import _get_global_client
 from ray.serve.schema import ProxyStatus, ServeInstanceDetails
@@ -94,7 +95,7 @@ def test_long_poll_timeout_with_max_ongoing_requests(ray_instance):
 
     @ray.remote
     def do_req():
-        return httpx.get("http://localhost:8000").text
+        return httpx.get(get_application_url()).text
 
     # The request should be hanging waiting on the `SignalActor`.
     first_ref = do_req.remote()
@@ -203,10 +204,12 @@ def test_shutdown_remote(start_and_shutdown_ray_cli_function, tmp_path):
     # Ensure Serve can be restarted and shutdown with for loop
     for _ in range(2):
         subprocess.check_output([sys.executable, str(deploy_file)])
-        assert httpx.get("http://localhost:8000/f").text == "got f"
+        assert httpx.get(f"{get_application_url()}/f").text == "got f"
         subprocess.check_output([sys.executable, str(shutdown_file)])
-        with pytest.raises(httpx.ConnectError):
-            httpx.get("http://localhost:8000/f")
+
+        # If the application is deleted, no url should be retrieved
+        with pytest.raises(ray.serve.exceptions.RayServeException):
+            _ = get_application_url()
 
 
 def test_handle_early_detect_failure(shutdown_ray):
