@@ -9,7 +9,7 @@ from ray._private.usage.usage_lib import (
 )
 from ray.llm._internal.common.base_pydantic import BaseModelExtended
 from ray.llm._internal.common.observability.telemetry_utils import DEFAULT_GPU_TYPE
-from ray.llm._internal.serve.deployments.llm.multiplex.utils import get_lora_model_ids
+from ray.llm._internal.common.utils.lora_utils import get_lora_model_ids
 from ray.llm._internal.serve.observability.logging import get_logger
 
 if TYPE_CHECKING:
