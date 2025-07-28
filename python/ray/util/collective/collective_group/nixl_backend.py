@@ -62,6 +62,8 @@ class NixlBackend:
         state = nixl_agent.transfer(xfer_handle)
         if state == "ERR":
             raise RuntimeError("NIXL transfer got to Error state.")
+        # Since current nixl does not provide a better way, we need to check the state of
+        # the transfer continuously.
         while True:
             state = nixl_agent.check_xfer_state(xfer_handle)
             if state == "ERR":
@@ -70,6 +72,9 @@ class NixlBackend:
                 time.sleep(0.001)  # Avoid busy waiting
             elif state == "DONE":
                 break
+
+        nixl_agent.release_xfer_handle(xfer_handle)
+        nixl_agent.deregister_memory(local_descs)
 
     def get_nixl_metadata(self, tensors: List["torch.Tensor"]) -> Tuple[bytes, bytes]:
         """Get NIXL metadata for a set of tensors.
