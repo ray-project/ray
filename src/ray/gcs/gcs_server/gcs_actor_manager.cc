@@ -1426,6 +1426,16 @@ void GcsActorManager::RestartActor(const ActorID &actor_id,
     }
     return;
   }
+
+  if (iter->second->GetState() == rpc::ActorTableData::RESTARTING) {
+    RAY_LOG(DEBUG).WithField(actor_id.JobId()).WithField(actor_id)
+        << "Actor is already restarting, skipping restart";
+    if (done_callback) {
+      done_callback();
+    }
+    return;
+  }
+
   auto &actor = iter->second;
   auto node_id = actor->GetNodeID();
   auto worker_id = actor->GetWorkerID();
@@ -1458,6 +1468,8 @@ void GcsActorManager::RestartActor(const ActorID &actor_id,
     // num_restarts must be set before updating GCS, or num_restarts will be inconsistent
     // between memory cache and storage.
     if (mutable_actor_table_data->preempted()) {
+      // Restarting from preemptions only resets the preempted flag but does not
+      // increment num_restarts.
       mutable_actor_table_data->set_preempted(false);
     } else {
       mutable_actor_table_data->set_num_restarts(num_restarts + 1);
