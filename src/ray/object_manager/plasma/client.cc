@@ -333,7 +333,7 @@ Status PlasmaClient::Impl::HandleCreateReply(const ObjectID &object_id,
     uint64_t unused = 0;
     RAY_RETURN_NOT_OK(ReadCreateReply(
         buffer.data(), buffer.size(), &id, &unused, object.get(), &store_fd, &mmap_size));
-    RAY_CHECK_EQ(unused, 0);
+    RAY_CHECK_EQ(unused, 0ul);
   }
 
   // If the CreateReply included an error, then the store will not send a file
