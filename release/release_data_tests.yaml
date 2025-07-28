@@ -608,7 +608,7 @@
       python setup_chaos.py --chaos TerminateEC2InstanceWithGracePeriod
       --batch-size-to-kill 5 --max-to-kill 20 --kill-delay 30 --kill-interval 120
     script: >
-      python dataset/text_embeddings_benchmark_5x.py --chaos-test --output-path /tmp/text_embeddings_benchmark_5x_preemptible/
+      python dataset/text_embeddings_benchmark_5x.py --chaos-test --output-path /tmp/text_embeddings_benchmark_5x_{{scaling}}_preemptible/
 
 ##############
 # TPCH Queries
