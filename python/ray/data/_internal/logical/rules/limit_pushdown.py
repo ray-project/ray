@@ -54,14 +54,14 @@ class LimitPushdownRule(Rule):
         # ``_apply_transform`` returns the (potentially new) root of the DAG.
         return op._apply_transform(transform)
 
-    def _fuse_limit_into_sort(self, limit_op: Limit):
+    def _fuse_limit_into_sort(self, limit_op: Limit) -> LogicalOperator:
         sort_op = limit_op.input_dependency
 
         # Re-use the existing Sort op but annotate it with the limit.
         fused_sort = copy.copy(sort_op)
         fused_sort._limit = limit_op._limit
 
-        # ───── Re-wire DAG:  upstream → fused_sort → downstream ─────
+        # ───── Re-wire DAG: upstream → fused_sort → downstream ─────
         upstream = sort_op._input_dependencies[0]
 
         # reconnect upstream → fused_sort
