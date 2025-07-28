@@ -89,10 +89,13 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
         return _DATABRICKS_DEFAULT_TMP_ROOT_DIR
 
     def on_ray_dashboard_created(self, port):
-        import ray.util.spark.cluster_init
         display_databricks_driver_proxy_url(
             get_spark_session().sparkContext, port, "Ray Cluster Dashboard"
         )
+
+    def on_cluster_created(self, ray_cluster_handler):
+        import ray.util.spark.cluster_init
+        db_api_entry = get_db_entry_point()
 
         ray_metrics_monitor = ray.util.spark.cluster_init._active_ray_cluster.ray_metrics_monitor
         if ray_metrics_monitor is not None:
@@ -107,9 +110,6 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
                   </a>
               </div>
             """)
-
-    def on_cluster_created(self, ray_cluster_handler):
-        db_api_entry = get_db_entry_point()
 
         if self.is_global:
             # Disable auto shutdown if
