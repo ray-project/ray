@@ -394,7 +394,7 @@ def test_aggregator_agent_receive_profile_events(ray_start_cluster_head, httpser
     assert req_json[0]["severity"] == "INFO"
     assert req_json[0]["message"] == "profile event test"
     assert req_json[0]["timestamp"] == "2025-06-30T16:50:30.130457542Z"
-    
+
     # Verify profile event specific fields
     assert "taskProfileEvent" in req_json[0]
     profile_event = req_json[0]["taskProfileEvent"]
@@ -402,7 +402,7 @@ def test_aggregator_agent_receive_profile_events(ray_start_cluster_head, httpser
     assert profile_event["componentId"] == base64.b64encode(b"worker_123").decode()
     assert profile_event["nodeIpAddress"] == "127.0.0.1"
     assert len(profile_event["events"]) == 1
-    
+
     event_entry = profile_event["events"][0]
     assert event_entry["eventName"] == "task_execution"
     assert event_entry["startTime"] == "1751302230130000000"
