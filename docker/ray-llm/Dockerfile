@@ -139,10 +139,18 @@ NVSHMEM_VERSION="3.2.5-1"
     cd nvshmem_src
     # using a specific commit to make the build deterministic:
     # https://github.com/deepseek-ai/DeepEP/commit/bdd119f8b249953cab366f4d737ad39d4246fd7e
-    wget https://github.com/deepseek-ai/DeepEP/raw/bdd119f8b249953cab366f4d737ad39d4246fd7e/third-party/nvshmem.patch
+    for i in {1..5}; do
+        wget https://github.com/deepseek-ai/DeepEP/raw/bdd119f8b249953cab366f4d737ad39d4246fd7e/third-party/nvshmem.patch && break
+        echo "Download failed, retrying in 5 seconds... (attempt $i/5)"
+        sleep 5
+    done
     git init
     git apply -vvv nvshmem.patch
-    wget https://github.com/vllm-project/vllm/raw/releases/v0.10.0/tools/ep_kernels/elastic_ep/eep_nvshmem.patch
+    for i in {1..5}; do
+        wget https://github.com/vllm-project/vllm/raw/releases/v0.10.0/tools/ep_kernels/elastic_ep/eep_nvshmem.patch && break
+        echo "Download failed, retrying in 5 seconds... (attempt $i/5)"
+        sleep 5
+    done
     git apply --reject --whitespace=fix eep_nvshmem.patch
 
     # disable all features except IBGDA
