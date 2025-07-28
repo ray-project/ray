@@ -1,6 +1,7 @@
 import decimal
 import json
 import logging
+import os
 import time
 from itertools import chain
 from typing import Any, Dict, Optional
@@ -49,9 +50,20 @@ class AutoscalingConfigProducer:
     """
 
     def __init__(self, ray_cluster_name, ray_cluster_namespace):
-        self.kubernetes_api_client = node_provider.KubernetesHttpApiClient(
-            namespace=ray_cluster_namespace
-        )
+        kuberay_http_api_enabled = os.getenv("KUBERAY_HTTP_API_ENABLED", "0") == "1"
+        kuberay_operator_address = os.getenv("KUBERAY_OPERATOR_ADDRESS")
+        if kuberay_http_api_enabled and kuberay_operator_address is not None:
+            logger.info(
+                "Autoscaler is using KubeRayHttpApiClient to get autoscaling config."
+            )
+            self.kubernetes_api_client = node_provider.KubeRayHttpApiClient(
+                namespace=ray_cluster_namespace,
+                kuberay_operator_address=kuberay_operator_address,
+            )
+        else:
+            self.kubernetes_api_client = node_provider.KubernetesHttpApiClient(
+                namespace=ray_cluster_namespace
+            )
         self._ray_cr_path = f"rayclusters/{ray_cluster_name}"
 
     def __call__(self):
