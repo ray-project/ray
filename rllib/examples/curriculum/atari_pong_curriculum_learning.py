@@ -110,14 +110,13 @@ def _env_creator(cfg):
 # and the agent must therefore act faster.
 def _remote_fn(env_runner, new_task: int):
     # Override the env_config with the new setting.
-    env_config = env_runner.config.env_config.update(
+    env_runner.config.env_config.update(
         {
             "frameskip": new_task,
         }
     )
     # We recreate the entire env object by changing the env_config on the worker,
     # then calling its `make_env()` method.
-    env_runner.config.environment(env_config=env_config)
     env_runner.make_env()
 
 
