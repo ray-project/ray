@@ -271,7 +271,7 @@ cdef class InnerGcsClient:
     # NodeInfo methods
     #############################################################
     def check_alive(
-        self, node_ids: List[bytes], timeout: Optional[int | float] = None
+        self, node_ids: List[NodeID], timeout: Optional[int | float] = None
     ) -> List[bool]:
         cdef:
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
@@ -280,14 +280,14 @@ cdef class InnerGcsClient:
             CRayStatus status
         c_node_ids.reserve(len(node_ids));
         for node_id in node_ids:
-            c_node_ids.push_back(<CNodeID>CUniqueID.FromBinary(node_id))
+            c_node_ids.push_back(node_id.native())
         with nogil:
             status = self.inner.get().Nodes().CheckAlive(
                 c_node_ids, timeout_ms, results)
         return raise_or_return(convert_multi_bool(status, move(results)))
 
     def async_check_alive(
-        self, node_ids: List[bytes], timeout: Optional[int | float] = None
+        self, node_ids: List[NodeID], timeout: Optional[int | float] = None
     ) -> Future[List[bool]]:
         cdef:
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
@@ -295,7 +295,7 @@ cdef class InnerGcsClient:
             fut = incremented_fut()
         c_node_ids.reserve(len(node_ids));
         for node_id in node_ids:
-            c_node_ids.push_back(<CNodeID>CUniqueID.FromBinary(node_id))
+            c_node_ids.push_back(node_id.native())
         with nogil:
             self.inner.get().Nodes().AsyncCheckAlive(
                 c_node_ids, timeout_ms,
@@ -306,7 +306,7 @@ cdef class InnerGcsClient:
         return asyncio.wrap_future(fut)
 
     def drain_nodes(
-        self, node_ids: Sequence[bytes], timeout: Optional[int | float] = None
+        self, node_ids: Sequence[NodeID], timeout: Optional[int | float] = None
     ) -> List[bytes]:
         """returns a list of node_ids that are successfully drained."""
         cdef:
@@ -316,7 +316,7 @@ cdef class InnerGcsClient:
             CRayStatus status
         c_node_ids.reserve(len(node_ids));
         for node_id in node_ids:
-            c_node_ids.push_back(<CNodeID>CUniqueID.FromBinary(node_id))
+            c_node_ids.push_back(node_id.native())
         with nogil:
             status = self.inner.get().Nodes().DrainNodes(
                 c_node_ids, timeout_ms, results)
