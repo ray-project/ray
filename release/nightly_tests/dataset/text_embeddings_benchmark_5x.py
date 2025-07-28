@@ -143,8 +143,9 @@ def process_file(record: dict) -> dict:
                     "page_number": page_number,
                     "doc_id": doc_id,
                 }
-    except Exception:
-        # Silently skip files that cannot be processed
+    except Exception as e:
+        # Log and skip files that cannot be processed
+        print(f"WARNING: Failed to process file {record.get('path', 'N/A')}: {e}")
         return
 
 
