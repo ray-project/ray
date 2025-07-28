@@ -122,7 +122,7 @@ NIXL_VERSION="0.3.1"
 )
 sudo rm -rf "${TEMP_DIR}"
 
-EP_TEMP_DIR="ep_temp_dir"
+EP_TEMP_DIR=$(pwd)/"ep_temp_dir"
 mkdir -p "${EP_TEMP_DIR}"
 
 NVSHMEM_VERSION="3.2.5-1"
@@ -130,17 +130,16 @@ NVSHMEM_VERSION="3.2.5-1"
     echo "Installing NVSHMEM ${NVSHMEM_VERSION}"
 
     # install dependencies if not installed
-    pip3 install cmake torch ninja
+    pip3 install cmake
 
     cd "${EP_TEMP_DIR}"
     mkdir -p nvshmem_src
-    wget https://developer.download.nvidia.com/compute/redist/nvshmem/3.2.5/source/nvshmem_src_3.2.5-1.txz
-    tar -xvf nvshmem_src_3.2.5-1.txz -C nvshmem_src --strip-components=1
+    wget https://developer.download.nvidia.com/compute/redist/nvshmem/3.2.5/source/nvshmem_src_3.2.5-1.txz -O - | tar -xJvf - -C nvshmem_src --strip-components=1
     cd nvshmem_src
     wget https://github.com/deepseek-ai/DeepEP/raw/main/third-party/nvshmem.patch
     git init
     git apply -vvv nvshmem.patch
-    wget https://github.com/vllm-project/vllm/raw/main/tools/ep_kernels/elastic_ep/eep_nvshmem.patch
+    wget https://github.com/vllm-project/vllm/raw/releases/v0.10.0/tools/ep_kernels/elastic_ep/eep_nvshmem.patch
     git apply --reject --whitespace=fix eep_nvshmem.patch
 
     # disable all features except IBGDA
@@ -158,8 +157,8 @@ NVSHMEM_VERSION="3.2.5-1"
     export NVSHMEM_BUILD_HYDRA_LAUNCHER=0
     export NVSHMEM_BUILD_TXZ_PACKAGE=0
 
-    cmake -G Ninja -S . -B nvshmem_build/ -DCMAKE_INSTALL_PREFIX=nvshmem_install
-    cmake --build nvshmem_build/ --target install
+    cmake -G Ninja -S . -B "${EP_TEMP_DIR}/nvshmem_build" -DCMAKE_INSTALL_PREFIX="${EP_TEMP_DIR}/nvshmem_install"
+    cmake --build "${EP_TEMP_DIR}/nvshmem_build" --target install
 )
 
 # Install PPLX Kernels
@@ -168,7 +167,7 @@ NVSHMEM_VERSION="3.2.5-1"
 
     cd "${EP_TEMP_DIR}"
 
-    export CMAKE_PREFIX_PATH=nvshmem_install:$CMAKE_PREFIX_PATH
+    export CMAKE_PREFIX_PATH="${EP_TEMP_DIR}/nvshmem_install"
 
     # build and install pplx, require pytorch installed
     git clone https://github.com/ppl-ai/pplx-kernels
@@ -177,6 +176,8 @@ NVSHMEM_VERSION="3.2.5-1"
     # PIP_NO_BUILD_ISOLATION=0 disables build isolation
     PIP_NO_BUILD_ISOLATION=0 TORCH_CUDA_ARCH_LIST=9.0a+PTX pip install . --no-deps -v
 )
+
+sudo rm -rf "${EP_TEMP_DIR}"
 
 EOF
 
