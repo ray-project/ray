@@ -9,6 +9,7 @@ from ray.train.v2._internal.execution.callback import (
 )
 from ray.train.v2._internal.execution.context import TrainRunContext
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
+from ray.train.v2.api.exceptions import ControllerError
 
 
 def block_import(import_name):
@@ -69,7 +70,7 @@ def test_deserialization_error(ray_start_4_cpus):
         run_config=ray.train.RunConfig(callbacks=[BlockTorchImportCallback()]),
         scaling_config=ray.train.ScalingConfig(num_workers=2),
     )
-    with pytest.raises(ray.exceptions.RayTaskError, match="torch not installed"):
+    with pytest.raises(ControllerError, match="torch not installed on this node"):
         trainer.fit()
 
 
