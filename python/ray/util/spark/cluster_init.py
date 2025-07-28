@@ -1686,6 +1686,8 @@ def _start_ray_worker_nodes(
                     metrics_export_port=worker_node_options["metrics_export_port"],
                 )
                 ray_metrics_monitor.start()
+            else:
+                ray_metrics_monitor = None
 
             # Note:
             # When a pyspark job cancelled, the UDF python worker process are killed by
