@@ -301,7 +301,7 @@ class DataContext:
 
     Args:
         target_max_block_size: The max target block size in bytes for reads and
-            transformations.
+            transformations. If `None`, this means the block size is infinite.
         target_shuffle_max_block_size: The max target block size in bytes for shuffle
             ops like ``random_shuffle``, ``sort``, and ``repartition``.
         target_min_block_size: Ray Data avoids creating blocks smaller than this
@@ -398,7 +398,8 @@ class DataContext:
             map tasks won't record memory stats.
     """
 
-    target_max_block_size: int = DEFAULT_TARGET_MAX_BLOCK_SIZE
+    # `None` means the block size is infinite.
+    target_max_block_size: Optional[int] = DEFAULT_TARGET_MAX_BLOCK_SIZE
     target_shuffle_max_block_size: int = DEFAULT_SHUFFLE_TARGET_MAX_BLOCK_SIZE
     target_min_block_size: int = DEFAULT_TARGET_MIN_BLOCK_SIZE
     streaming_read_buffer_size: int = DEFAULT_STREAMING_READ_BUFFER_SIZE
