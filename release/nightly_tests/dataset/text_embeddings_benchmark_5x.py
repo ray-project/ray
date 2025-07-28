@@ -119,7 +119,7 @@ def process_file(record: dict) -> Iterator[Dict[str, Any]]:
     supported_extensions = {".pdf", ".docx", ".pptx", ".ppt", ".html", ".txt"}
 
     if file_path.suffix.lower() not in supported_extensions:
-        return {"pages": []}
+        return
 
     try:
         with io.BytesIO(record["bytes"]) as stream:
