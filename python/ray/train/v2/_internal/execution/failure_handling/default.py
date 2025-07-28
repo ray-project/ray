@@ -34,9 +34,16 @@ class DefaultFailurePolicy(FailurePolicy):
         error_count: int,
         retry_limit: int,
     ):
+        if isinstance(training_failed_error, ControllerError):
+            error_source = "controller"
+        elif isinstance(training_failed_error, WorkerGroupError):
+            error_source = "worker group"
+        else:
+            raise ValueError(f"Unknown error type: {type(training_failed_error)}")
+
         logger.info(
             f"[FailurePolicy] Decision: {decision}, "
-            f"Error type: {type(training_failed_error)}, "
+            f"Error source: {error_source}, "
             f"Error count / maximum errors allowed: {error_count}/{retry_limit}, "
             f"Error: {training_failed_error}"
         )
