@@ -90,7 +90,7 @@ def collect_ray_metrics(is_head_node, metrics_export_port, node_ip, ray_node_id)
 
     # Each Ray node starts a local Ray metric exporting endpoint
     # on port {_RAY_METRICS_EXPORT_PORT}
-    response = requests.get(f"{node_ip}:{metrics_export_port}")
+    response = requests.get(f"http://{node_ip}:{metrics_export_port}")
     metric_data = response.text
 
     def gen_metric_key(_family, label_data):
