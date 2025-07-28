@@ -26,6 +26,7 @@ from ray.core.generated.events_event_aggregator_service_pb2 import (
     TaskEventsMetadata,
 )
 from ray.core.generated.events_base_event_pb2 import RayEvent
+from ray.core.generated.gcs_pb2 import ProfileEvents, ProfileEventEntry
 from ray.core.generated.common_pb2 import TaskAttempt
 
 
@@ -332,6 +333,81 @@ def test_aggregator_agent_receive_empty_events(ray_start_cluster_head, httpserve
     reply = stub.AddEvents(request)
     assert reply.status.code == 0
     assert reply.status.message == "all events received"
+
+
+def test_aggregator_agent_receive_profile_events(ray_start_cluster_head, httpserver):
+    cluster = ray_start_cluster_head
+    stub = get_event_aggregator_grpc_stub(
+        cluster.webui_url, cluster.gcs_address, cluster.head_node.node_id
+    )
+
+    httpserver.expect_request("/", method="POST").respond_with_data("", status=200)
+
+    test_time = 1751302230130457542
+    seconds, nanos = (test_time // 10**9, test_time % 10**9)
+    timestamp = Timestamp(seconds=seconds, nanos=nanos)
+
+    request = AddEventRequest(
+        events_data=RayEventsData(
+            events=[
+                RayEvent(
+                    event_id=b"1",
+                    source_type=RayEvent.SourceType.CORE_WORKER,
+                    event_type=RayEvent.EventType.TASK_PROFILE_EVENT,
+                    timestamp=timestamp,
+                    severity=RayEvent.Severity.INFO,
+                    message="profile event test",
+                    task_profile_event=ProfileEvents(
+                        component_type="worker",
+                        component_id=b"worker_123",
+                        node_ip_address="127.0.0.1",
+                        events=[
+                            ProfileEventEntry(
+                                start_time=1751302230130000000,
+                                end_time=1751302230131000000,
+                                event_name="task_execution",
+                                extra_data='{"cpu_usage": 0.8}',
+                            )
+                        ],
+                    ),
+                ),
+            ],
+            task_events_metadata=TaskEventsMetadata(
+                dropped_task_attempts=[],
+            ),
+        )
+    )
+
+    reply = stub.AddEvents(request)
+    assert reply.status.code == 0
+    assert reply.status.message == "all events received"
+
+    wait_for_condition(lambda: len(httpserver.log) == 1)
+
+    req, _ = httpserver.log[0]
+    req_json = json.loads(req.data)
+
+    assert len(req_json) == 1
+    assert req_json[0]["eventId"] == base64.b64encode(b"1").decode()
+    assert req_json[0]["sourceType"] == "CORE_WORKER"
+    assert req_json[0]["eventType"] == "TASK_PROFILE_EVENT"
+    assert req_json[0]["severity"] == "INFO"
+    assert req_json[0]["message"] == "profile event test"
+    assert req_json[0]["timestamp"] == "2025-06-30T16:50:30.130457542Z"
+    
+    # Verify profile event specific fields
+    assert "taskProfileEvent" in req_json[0]
+    profile_event = req_json[0]["taskProfileEvent"]
+    assert profile_event["componentType"] == "worker"
+    assert profile_event["componentId"] == base64.b64encode(b"worker_123").decode()
+    assert profile_event["nodeIpAddress"] == "127.0.0.1"
+    assert len(profile_event["events"]) == 1
+    
+    event_entry = profile_event["events"][0]
+    assert event_entry["eventName"] == "task_execution"
+    assert event_entry["startTime"] == "1751302230130000000"
+    assert event_entry["endTime"] == "1751302230131000000"
+    assert event_entry["extraData"] == '{"cpu_usage": 0.8}'
 
 
 if __name__ == "__main__":

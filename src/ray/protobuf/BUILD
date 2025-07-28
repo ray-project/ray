@@ -422,6 +422,7 @@ proto_library(
         ":events_actor_task_execution_event_proto",
         ":events_task_definition_event_proto",
         ":events_task_execution_event_proto",
+        "//src/ray/protobuf:gcs_proto",
         "@com_google_protobuf//:timestamp_proto",
     ],
 )
