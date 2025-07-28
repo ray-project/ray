@@ -14,7 +14,11 @@ https://arxiv.org/pdf/2010.02193.pdf
 # To see all available options:
 # python [this script name].py --help
 
+import gymnasium as gym
+
+from ray import tune
 from ray.rllib.algorithms.dreamerv3.dreamerv3 import DreamerV3Config
+from ray.rllib.env.wrappers.atari_wrappers import wrap_atari_for_new_api_stack
 from ray.rllib.utils.test_utils import add_rllib_example_script_args
 
 parser = add_rllib_example_script_args(
@@ -22,14 +26,30 @@ parser = add_rllib_example_script_args(
     default_reward=20.0,
     default_timesteps=100000,
 )
+parser.set_defaults(env="ale_py:ALE/Pong-v5")
 # Use `parser` to add your own custom command line options to this script
 # and (if needed) use their values to set up `config` below.
 args = parser.parse_args()
 
+
+# Create the DreamerV3-typical Atari setup.
+def _env_creator(cfg):
+    return wrap_atari_for_new_api_stack(
+        gym.make(args.env, **cfg, render_mode="rgb_array"),
+        # No framestacking necessary for Dreamer.
+        framestack=None,
+        # No grayscaling necessary for Dreamer.
+        grayscale=False,
+    )
+
+
+tune.register_env("env", _env_creator)
+
+
 config = (
     DreamerV3Config()
     .environment(
-        env=args.env,
+        env="env",
         # [2]: "We follow the evaluation protocol of Machado et al. (2018) with 200M
         # environment steps, action repeat of 4, a time limit of 108,000 steps per
         # episode that correspond to 30 minutes of game play, no access to life
@@ -51,7 +71,7 @@ config = (
         # If we use >1 GPU and increase the batch size accordingly, we should also
         # increase the number of envs per worker.
         num_envs_per_env_runner=(args.num_learners or 1),
-        remote_worker_envs=(args.num_learners > 1),
+        remote_worker_envs=(args.num_learners and args.num_learners > 1),
     )
     .reporting(
         metrics_num_episodes_for_smoothing=(args.num_learners or 1),
