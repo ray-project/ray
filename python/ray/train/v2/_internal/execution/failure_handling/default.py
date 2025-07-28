@@ -37,7 +37,7 @@ class DefaultFailurePolicy(FailurePolicy):
         logger.info(
             f"[FailurePolicy] Decision: {decision}, "
             f"Error type: {type(training_failed_error)}, "
-            f"Error count / maximum errors allowed: {error_count} / {retry_limit}, "
+            f"Error count / maximum errors allowed: {error_count}/{retry_limit}, "
             f"Error: {training_failed_error}"
         )
 
