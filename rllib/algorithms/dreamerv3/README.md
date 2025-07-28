@@ -87,7 +87,7 @@ def _env_creator(ctx):
     import flappy_bird_gymnasium  # doctest: +SKIP
     import gymnasium as gym
     from supersuit.generic_wrappers import resize_v1
-    from ray.rllib.algorithms.dreamerv3.utils.env_runner import NormalizedImageEnv
+    from ray.rllib.env.wrappers.atari_wrappers import NormalizedImageEnv
 
     return NormalizedImageEnv(
         resize_v1(  # resize to 64x64 and normalize images
@@ -135,12 +135,12 @@ subclass [DreamerV3's catalog class](dreamerv3_catalog.py) and then configure th
 new catalog via your ``DreamerV3Config`` object as follows:
 
 ```python
-from ray.rllib.algorithms.dreamerv3.tf.dreamerv3_tf_rl_module import DreamerV3TfRLModule
+from ray.rllib.algorithms.dreamerv3.torch.dreamerv3_torch_rl_module import DreamerV3TorchRLModule
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 
 config.rl_module(
     rl_module_spec=RLModuleSpec(
-        module_class=DreamerV3TfRLModule,
+        module_class=DreamerV3TorchRLModule,
         catalog_class=[your DreamerV3Catalog subclass],
     )
 )

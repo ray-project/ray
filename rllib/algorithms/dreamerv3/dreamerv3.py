@@ -131,7 +131,6 @@ class DreamerV3Config(AlgorithmConfig):
         self.report_individual_batch_item_stats = False
         self.report_dream_data = False
         self.report_images_and_videos = False
-        self.gc_frequency_train_steps = 100
 
         # Override some of AlgorithmConfig's default values with DreamerV3-specific
         # values.
@@ -181,7 +180,6 @@ class DreamerV3Config(AlgorithmConfig):
         *,
         model_size: Optional[str] = NotProvided,
         training_ratio: Optional[float] = NotProvided,
-        gc_frequency_train_steps: Optional[int] = NotProvided,
         batch_size_B: Optional[int] = NotProvided,
         batch_length_T: Optional[int] = NotProvided,
         horizon_H: Optional[int] = NotProvided,
@@ -221,12 +219,6 @@ class DreamerV3Config(AlgorithmConfig):
                 1 env step for every training update: 1024 / 1. If the training ratio
                 is 512 and the batch size is 1024, we would take 2 env steps and then
                 perform a single training update (on a 1024 batch): 1024 / 2.
-            gc_frequency_train_steps: The frequency (in training iterations) with which
-                we perform a `gc.collect()` calls at the end of a `training_step`
-                iteration. Doing this more often adds a (albeit very small) performance
-                overhead, but prevents memory leaks from becoming harmful.
-                TODO (sven): This might not be necessary anymore, but needs to be
-                 confirmed experimentally.
             batch_size_B: The batch size (B) interpreted as number of rows (each of
                 length `batch_length_T`) to sample from the replay buffer in each
                 iteration.
@@ -293,8 +285,6 @@ class DreamerV3Config(AlgorithmConfig):
             self.model_size = model_size
         if training_ratio is not NotProvided:
             self.training_ratio = training_ratio
-        if gc_frequency_train_steps is not NotProvided:
-            self.gc_frequency_train_steps = gc_frequency_train_steps
         if batch_size_B is not NotProvided:
             self.batch_size_B = batch_size_B
         if batch_length_T is not NotProvided:

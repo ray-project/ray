@@ -23,7 +23,11 @@ from ray.rllib.core.columns import Columns
 from ray.rllib.env import INPUT_ENV_SPACES
 from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
-from ray.rllib.env.wrappers.atari_wrappers import NoopResetEnv, MaxAndSkipEnv
+from ray.rllib.env.wrappers.atari_wrappers import (
+    MaxAndSkipEnv,
+    NoopResetEnv,
+    NormalizedImageEnv,
+)
 from ray.rllib.env.wrappers.dm_control_wrapper import DMCEnv
 from ray.rllib.env.utils import _gym_env_creator
 from ray.rllib.utils.annotations import override
