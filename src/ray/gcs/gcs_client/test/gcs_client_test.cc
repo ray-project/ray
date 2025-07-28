@@ -438,7 +438,6 @@ TEST_P(GcsClientTest, TestCheckAlive) {
                                      grpc::InsecureChannelCredentials());
   auto stub = rpc::NodeInfoGcsService::NewStub(std::move(channel));
   rpc::CheckAliveRequest request;
-  // Add the binary NodeIDs for the check alive RPC.
   request.add_node_id(node_info1->node_id());
   request.add_node_id(node_info2->node_id());
   {
