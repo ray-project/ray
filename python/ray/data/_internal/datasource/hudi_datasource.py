@@ -120,6 +120,8 @@ class HudiDatasource(Datasource):
                     exec_stats=None,
                 )
             elif self._query_type == HudiQueryType.INCREMENTAL:
+                # need the check due to
+                # https://github.com/apache/hudi-rs/issues/401
                 metadata = BlockMetadata(
                     num_rows=None,
                     input_files=input_files,

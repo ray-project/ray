@@ -2672,7 +2672,7 @@ def read_hudi(
         >>> ds = ray.data.read_hudi( # doctest: +SKIP
         ...     table_uri="/hudi/trips",
         ...     query_type="snapshot",
-        ...     filters=[("city", "==", "san_francisco")],
+        ...     filters=[("city", "=", "san_francisco")],
         ... )
 
         >>> ds = ray.data.read_hudi( # doctest: +SKIP
@@ -2690,7 +2690,7 @@ def read_hudi(
         filters: Optional list of filters to apply to the Hudi table when the
             ``query_type`` is ``snapshot``. Each filter is a tuple of the form
             ``(column_name, operator, value)``. The operator can be
-            one of ``"=="``, ``"!="``, ``"<"``, ``"<="``, ``">"``, ``">="``.
+            one of ``"="``, ``"!="``, ``"<"``, ``"<="``, ``">"``, ``">="``.
             Currently, only filters on partition columns will be effective.
         hudi_options: A dictionary of Hudi options to pass to the Hudi reader.
         storage_options: Extra options that make sense for a particular storage
