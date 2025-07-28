@@ -45,7 +45,7 @@ class OpenTelemetryMetricRecorder:
             def callback(options):
                 # Take snapshot of current observations.
                 with self._lock:
-                    observations = self._observations_by_name[name].items()
+                    observations = self._observations_by_name.pop(name).items()
                     return [
                         Observation(val, attributes=dict(tag_set))
                         for tag_set, val in observations
