@@ -471,7 +471,6 @@ TEST_P(GcsClientTest, TestGcsClientCheckAlive) {
   node_info2->set_node_manager_address("172.1.2.4");
   node_info2->set_node_manager_port(31293);
 
-  // Build a vector of NodeIDs for check alive.
   std::vector<NodeID> node_ids = {NodeID::FromBinary(node_info1->node_id()),
                                   NodeID::FromBinary(node_info2->node_id())};
   {
