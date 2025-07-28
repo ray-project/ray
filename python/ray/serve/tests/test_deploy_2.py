@@ -112,6 +112,7 @@ def test_http_proxy_request_cancellation(serve_instance):
             return ret_val
 
     serve.run(A.bind())
+
     url = get_application_url("HTTP")
     with ThreadPoolExecutor() as pool:
         # Send the first request, it should block for the result
