@@ -1719,7 +1719,7 @@ def _start_ray_worker_nodes(
 
             yield err_msg, is_task_reschedule_failure
         finally:
-            if metrics_logging_enabled:
+            if ray_metrics_monitor is not None:
                 ray_metrics_monitor.finish()
                 del os.environ["MLFLOW_SYSTEM_METRICS_NODE_ID"]
 
