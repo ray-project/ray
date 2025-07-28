@@ -717,8 +717,16 @@ def _setup_ray_cluster(
 
     if _ray_system_metrics_logging_enabled():
         from ray.util.spark.ray_metrics_monitor import RayMetricsMonitor
+        import mlflow
+
+        mlflow_run_id = mlflow.start_run().info.run_id
+        os.environ["MLFLOW_RUN_ID"] = mlflow_run_id
         ray_metrics_monitor = RayMetricsMonitor(
-            ray_head_ip, head_node_options["metrics_export_port"]
+            run_id=mlflow_run_id,
+            is_head_node=True,
+            node_ip=ray_head_ip,
+            ray_node_id=0,
+            metrics_export_port=head_node_options["metrics_export_port"],
         )
         ray_metrics_monitor.start()
     ray_cluster_handler = RayClusterOnSpark(
@@ -1542,7 +1550,6 @@ def _start_ray_worker_nodes(
     ray_node_custom_env = spark_job_server.ray_node_custom_env
 
     metrics_logging_enabled = _ray_system_metrics_logging_enabled()
-    mlflow_run_id = os.environ.get("MLFLOW_RUN_ID")
 
     def ray_cluster_job_mapper(_):
         from pyspark.taskcontext import TaskContext
@@ -1561,6 +1568,17 @@ def _start_ray_worker_nodes(
         ray_worker_node_dashboard_agent_port = get_random_unused_port(
             ray_head_ip, min_port=10002, max_port=20000
         )
+
+        if metrics_logging_enabled:
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as tmp_sock:
+                tmp_sock.connect((ray_head_ip, spark_job_server_port))
+                ray_worker_node_ip = tmp_sock.getsockname()[0]
+            worker_node_options["metrics_export_port"] = get_random_unused_port(
+                ray_worker_node_ip,
+                min_port=9000,
+                max_port=10000,
+            )
+
         ray_worker_node_cmd = [
             sys.executable,
             "-m",
@@ -1651,18 +1669,21 @@ def _start_ray_worker_nodes(
                 },
             )
 
-            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as tmp_sock:
-                tmp_sock.connect((ray_head_ip, spark_job_server_port))
-                ray_node_ip = tmp_sock.getsockname()[0]
-
             if metrics_logging_enabled:
-                # Because MLFlow builtin `SystemMetricsMonitor` only monitors
-                # local node, so that in all remote Ray nodes, we need to
-                # launch a new MLflow SystemMetricsMonitor to log remote node's
-                # general system metrics.
-                os.environ["MLFLOW_SYSTEM_METRICS_NODE_ID"] = ray_node_ip
-                mlflow_sys_metrics_monitor = SystemMetricsMonitor(run_id=mlflow_run_id)
-                mlflow_sys_metrics_monitor.start()
+                import mlflow
+                from ray.util.spark.ray_metrics_monitor import RayMetricsMonitor
+                mlflow_run_id = mlflow.active_run().info.run_id
+
+                os.environ["MLFLOW_SYSTEM_METRICS_NODE_ID"] = ray_worker_node_ip
+
+                ray_metrics_monitor = RayMetricsMonitor(
+                    run_id=mlflow_run_id,
+                    is_head_node=False,
+                    node_ip=ray_worker_node_ip,
+                    ray_node_id=node_id,
+                    metrics_export_port=worker_node_options["metrics_export_port"],
+                )
+                ray_metrics_monitor.start()
 
             # Note:
             # When a pyspark job cancelled, the UDF python worker process are killed by
@@ -1696,7 +1717,7 @@ def _start_ray_worker_nodes(
             yield err_msg, is_task_reschedule_failure
         finally:
             if metrics_logging_enabled:
-                mlflow_sys_metrics_monitor.finish()
+                ray_metrics_monitor.finish()
                 del os.environ["MLFLOW_SYSTEM_METRICS_NODE_ID"]
 
     spark.sparkContext.setJobGroup(
@@ -1759,6 +1780,12 @@ def shutdown_ray_cluster() -> None:
             raise RuntimeError("No active ray cluster to shut down.")
 
         _active_ray_cluster.shutdown()
+
+        if _ray_system_metrics_logging_enabled():
+            import mlflow
+            del os.environ["MLFLOW_RUN_ID"]
+            mlflow.end_run()
+
         _active_ray_cluster = None
 
 

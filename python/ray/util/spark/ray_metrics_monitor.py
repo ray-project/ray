@@ -1,12 +1,12 @@
-import logging
 import os
 import threading
 from collections import defaultdict
 from dataclasses import dataclass
-import time
 from requests.exceptions import ConnectionError
+import logging
 
-_logger = logging.getLogger(__name__)
+
+log = logging.getLogger(__name__)
 
 
 class _RayMetricLabel:
@@ -29,11 +29,9 @@ class _RayMetricLabels:
     NAME = _RayMetricLabel("Name")
     STATE = _RayMetricLabel("State")
     IS_RETRY = _RayMetricLabel("IsRetry", to_str=lambda value: "isRetry" if value == "1" else "isNotRetry")
-    NODE_ADDR = _RayMetricLabel("NodeAddress")
     LOCATION = _RayMetricLabel("Location")
     OBJECT_STATE = _RayMetricLabel("ObjectState")
     COMPONENT = _RayMetricLabel("Component")
-    NODE_IP = _RayMetricLabel("ip")
     TYPE = _RayMetricLabel("Type")
 
 
@@ -41,67 +39,84 @@ class _RayMetricLabels:
 class _RayMetricFamily:
     name: str
     labels: list[_RayMetricLabel]
-    nodeLabel: _RayMetricLabel
+
+    # If True, this metric is global (cluster-wide) and the metric value must be scraped from
+    # ray head node metric exporter endpoint. e.g.,
+    # ray_tasks / ray_actors / ray_cluster_active_nodes are global metrics.
+    # otherwise, this metric is node-local, and the metric value must be scraped from
+    # the related Ray node's metric exporter endpoint.
+    is_global_metric: bool
 
 
 _ray_metric_families = {
     family.name: family
     for family in [
-        _RayMetricFamily("ray_tasks", [_RayMetricLabels.NAME, _RayMetricLabels.STATE, _RayMetricLabels.IS_RETRY], None),
-        _RayMetricFamily("ray_actors", [_RayMetricLabels.NAME, _RayMetricLabels.STATE], None),
+        _RayMetricFamily("ray_tasks", [_RayMetricLabels.NAME, _RayMetricLabels.STATE, _RayMetricLabels.IS_RETRY], True),
+        _RayMetricFamily("ray_actors", [_RayMetricLabels.NAME, _RayMetricLabels.STATE], True),
         _RayMetricFamily(
-            "ray_resources", [_RayMetricLabels.NAME, _RayMetricLabels.STATE], _RayMetricLabels.NODE_ADDR
+            "ray_resources", [_RayMetricLabels.NAME, _RayMetricLabels.STATE], False
         ),
         _RayMetricFamily("ray_object_store_memory", [
             _RayMetricLabels.LOCATION, _RayMetricLabels.OBJECT_STATE,
-        ],  _RayMetricLabels.NODE_ADDR),
-        _RayMetricFamily("ray_placement_groups", [_RayMetricLabels.STATE], None),
-        _RayMetricFamily("ray_component_uss_mb", [_RayMetricLabels.COMPONENT], None),
-        _RayMetricFamily("ray_component_cpu_percentage", [
-            _RayMetricLabels.COMPONENT,
-        ], _RayMetricLabels.NODE_IP),
-        _RayMetricFamily("ray_cluster_active_nodes", [], None),
-        _RayMetricFamily("ray_cluster_failed_nodes", [], None),
-        _RayMetricFamily("ray_cluster_pending_nodes", [], None),
-        _RayMetricFamily("ray_node_disk_io_write_speed", [], _RayMetricLabels.NODE_IP),
-        _RayMetricFamily("ray_node_disk_io_read_speed", [], _RayMetricLabels.NODE_IP),
-        _RayMetricFamily("ray_node_network_receive_speed", [], _RayMetricLabels.NODE_IP),
-        _RayMetricFamily("ray_node_network_send_speed", [], _RayMetricLabels.NODE_IP),
+        ],  False),
+        _RayMetricFamily("ray_placement_groups", [_RayMetricLabels.STATE], True),
+        _RayMetricFamily("ray_component_cpu_percentage",  [_RayMetricLabels.COMPONENT], False),
+        _RayMetricFamily("ray_component_uss_mb", [_RayMetricLabels.COMPONENT], False),
+        _RayMetricFamily("ray_cluster_active_nodes", [], True),
+        _RayMetricFamily("ray_cluster_failed_nodes", [], True),
+        _RayMetricFamily("ray_cluster_pending_nodes", [], True),
+        _RayMetricFamily("ray_node_disk_io_write_speed", [], False),
+        _RayMetricFamily("ray_node_disk_io_read_speed", [], False),
+        _RayMetricFamily("ray_node_network_receive_speed", [], False),
+        _RayMetricFamily("ray_node_network_send_speed", [], False),
     ]
 }
 
 
-def collect_ray_metrics(node_ip, metrics_export_port):
+def collect_ray_metrics(is_head_node, metrics_export_port, node_ip, ray_node_id):
     """
     Query ray metrics at current timestamp,
     return a dict of metric_key to metric_value
-    the metric key can be either `system/ray/{metric_name}` or `system/{node_ip}/{metric_name}`
+    For global Ray metrics (e.g. ray_tasks, ray_cluster_active_nodes), the metric key is like:
+     `system/{metric_name}/{metric_label1}/{metric_label2}/...`
+    For Ray metrics for certain Ray node
+      (e.g., ray_component_cpu_percentage, ray_component_uss_mb),
+      the metric key is like:
+     `system/{node_ip}/{ray_node_id}/{metric_name}/{metric_label1}/{metric_label2}/...`
     depending on whether the metric values are grouped by nodes.
     """
     from prometheus_client.parser import text_string_to_metric_families
     import requests
 
-    response = requests.get(f"http://{node_ip}:{metrics_export_port}")
+    # Each Ray node starts a local Ray metric exporting endpoint
+    # on port {_RAY_METRICS_EXPORT_PORT}
+    response = requests.get(f"{node_ip}:{metrics_export_port}")
     metric_data = response.text
 
     def gen_metric_key(_family, label_data):
-        key = "system/"
-        if _family.nodeLabel:
-            key += f"{label_data[_family.nodeLabel.name]}/"
-        key += f"ray/{_family.name}"
-        label_strs = [
-            label.to_str(label_data[label.name])
-            for label in _family.labels
-        ]
-        if label_strs:
-            key += f"_{'_'.join(label_strs)}"
-        return key
+        key_parts = ["system"]
+
+        if not _family.is_global_metric:
+            # Set node rank as the metric key prefix.
+            key_parts.extend([node_ip, f"ray_node_{ray_node_id}"])
+
+        key_parts.append(_family.name)
+
+        for label in _family.labels:
+            label_value = label_data.get(label.name)
+            if label_value:
+                key_parts.append(label.to_str(label_value))
+
+        return "/".join(key_parts)
 
     metric_dict = defaultdict(lambda: 0.0)
     for family_data in text_string_to_metric_families(metric_data):
         family_name = family_data.name
         family = _ray_metric_families.get(family_name)
-        if family:
+        if family and (
+            (is_head_node and family.is_global_metric)  # global metric
+            or not family.is_global_metric  # local-node metric
+        ):
             for sample in family_data.samples:
                 key = gen_metric_key(family, sample.labels)
                 value = sample.value
@@ -116,45 +131,36 @@ class RayMetricsMonitor:
     https://docs.ray.io/en/latest/ray-observability/reference/system-metrics.html .
 
     Args:
+        run_id: string, the MLflow run ID.
+        is_head_node: bool, indicates whether the Ray metrics monitor is running on the head node
+        metrics_export_port: int, the Ray node metrics export port.
         sampling_interval: float, default to 10. The interval (in seconds) at which to pull system
             metrics.
     """
     def __init__(
         self,
+        run_id: str,
+        is_head_node: str,
         node_ip: str,
-        ray_node_id,
+        ray_node_id: int,
         metrics_export_port: int,
-        mlflow_run_id: str,
-        sampling_interval: float = 10
+        sampling_interval: float = 10,
     ):
-        import mlflow
-        from mlflow.tracking.client import MlflowClient
         from mlflow.utils.autologging_utils import BatchMetricsLogger
         from mlflow.system_metrics.system_metrics_monitor import SystemMetricsMonitor
 
+        self._run_id = run_id
+        self._is_head_node = is_head_node
         self._node_ip = node_ip
         self._ray_node_id = ray_node_id
-        self._metrics_export_port = metrics_export_port
-        self._mlflow_experiment_id = mlflow.tracking.fluent._get_experiment_id()
-
-        self._mlflow_run_id = mlflow_run_id
-
         self._sampling_interval = sampling_interval
+        self._metrics_export_port = metrics_export_port
         self._logging_step = 0
-        self.mlflow_logger = BatchMetricsLogger(self._mlflow_run_id)
+        self.mlflow_logger = BatchMetricsLogger(self._run_id)
         self._shutdown_event = threading.Event()
         self._process = None
-
         os.environ["MLFLOW_SYSTEM_METRICS_NODE_ID"] = node_ip
-        self._mlflow_sys_metrics_monitor = SystemMetricsMonitor(run_id=self._mlflow_run_id)
-
-    @property
-    def mlflow_experiment_id(self):
-        return self._mlflow_experiment_id
-
-    @property
-    def mlflow_run_id(self):
-        return self._mlflow_run_id
+        self._mlflow_sys_metrics_monitor = SystemMetricsMonitor(run_id=self._run_id)
 
     def start(self):
         """Start monitoring system metrics."""
@@ -162,43 +168,40 @@ class RayMetricsMonitor:
             self._process = threading.Thread(
                 target=self.monitor,
                 daemon=True,
-                name="SystemMetricsMonitor",
+                name="RayMetricsMonitor",
             )
             self._process.start()
         except Exception as e:
-            _logger.error(f"Failed to start RayMetricsMonitor thread: {e}")
+            log.warning(f"Start Ray monitoring process failed, error: {e}")
             self._process = None
-
-        # Beside `self.monitor` that collects Ray cluster specific metrics,
-        # Using MLFlow builtin `SystemMetricsMonitor` can collect general
-        # system metrics for CPU/GPU/disk/network ect.
-        # Note the MLFlow builtin `SystemMetricsMonitor` only monitors
-        # local node.
-        self._mlflow_sys_metrics_monitor.start()
 
     def collect_metrics(self):
         try:
-            # Each Ray node starts the metric exporter endpoint
-            # locally on the `self._metrics_export_port` port
-            return collect_ray_metrics(self._node_ip, self._metrics_export_port)
-        except ConnectionError:
+            metrics = collect_ray_metrics(
+                self._is_head_node, self._metrics_export_port,
+                self._node_ip, self._ray_node_id,
+            )
+            return metrics
+        except ConnectionError as e:
             # Ray metrics exporter endpoint is not ready yet.
-            pass
+            return {}
         except Exception as e:
-            _logger.warning(f"Failed to collect Ray metrics: {e}")
+            log.info(f"collect Ray metrics failed: {e}")
             return {}
 
     def monitor(self):
         """Main monitoring loop, which consistently collect and log system metrics."""
         from mlflow.tracking.fluent import get_run
 
+        log.info("Started Ray metrics monitor.")
         while not self._shutdown_event.is_set():
             metrics = self.collect_metrics()
+            self._shutdown_event.wait(self._sampling_interval)
             try:
                 # Get the MLflow run to check if the run is not RUNNING.
                 run = get_run(self._run_id)
             except Exception as e:
-                _logger.warning(f"Failed to get mlflow run: {e}.")
+                log.warning(f"Failed to get mlflow run: {e}.")
                 return
             if run.info.status != "RUNNING" or self._shutdown_event.is_set():
                 # If the mlflow run is terminated or receives the shutdown signal, stop
@@ -207,12 +210,11 @@ class RayMetricsMonitor:
             try:
                 self.publish_metrics(metrics)
             except Exception as e:
-                _logger.warning(
+                log.warning(
                     f"Failed to log system metrics: {e}, this is expected if the experiment/run is "
                     "already terminated."
                 )
                 return
-            self._shutdown_event.wait(self._sampling_interval)
 
     def publish_metrics(self, metrics):
         """Log collected metrics to MLflow."""
@@ -221,23 +223,15 @@ class RayMetricsMonitor:
 
     def finish(self):
         """Stop monitoring system metrics."""
-        import mlflow
-
+        del os.environ["MLFLOW_SYSTEM_METRICS_NODE_ID"]
         if self._process is None:
             return
-        _logger.info("Stopping system metrics monitoring...")
+        log.info("Stopping Ray metrics monitoring...")
         self._shutdown_event.set()
-        self._mlflow_sys_metrics_monitor.finish()
-        del os.environ["MLFLOW_RUN_ID"]
-        del os.environ["MLFLOW_SYSTEM_METRICS_NODE_ID"]
         try:
             self._process.join()
             self.mlflow_logger.flush()
-            _logger.info("Successfully terminated system metrics monitoring!")
+            log.info("Successfully terminated Ray metrics monitoring!")
         except Exception as e:
-            _logger.error(f"Error terminating system metrics monitoring process: {e}.")
+            log.warning(f"Error terminating system metrics monitoring process: {e}.")
         self._process = None
-
-        if active_run := mlflow.active_run():
-            if active_run.info.run_id == self._run_id:
-                mlflow.end_run()
