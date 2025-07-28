@@ -15,7 +15,6 @@
 #pragma once
 
 #include <charconv>
-#include <filesystem>
 #include <string>
 #include <vector>
 
@@ -33,24 +32,6 @@ std::string StringToHex(const std::string &str);
 /// \param format The pattern. It must not produce any output. (e.g., use %*d, not %d.)
 /// \return The scanned prefix of the string, if any.
 std::string ScanToken(std::string::const_iterator &c_str, std::string format);
-
-/// \return The result of joining multiple path components.
-template <class... Paths>
-std::string JoinPaths(std::string base, const Paths &...components) {
-  auto join = [](auto &joined_path, const auto &component) {
-    // if the components begin with "/" or "////", just get the path name.
-    if (!component.empty() &&
-        component.front() == std::filesystem::path::preferred_separator) {
-      joined_path = std::filesystem::path(joined_path)
-                        .append(std::filesystem::path(component).filename().string())
-                        .string();
-    } else {
-      joined_path = std::filesystem::path(joined_path).append(component).string();
-    }
-  };
-  (join(base, std::string_view(components)), ...);
-  return base;
-}
 
 template <typename T>
 std::string GetDebugString(const T &element,
@@ -96,14 +77,15 @@ inline std::string VectorToString(const std::vector<T> &vec, const F &debug_stri
   OutOfRange if the integer overflows based on the type.
 */
 template <typename IntType>
-StatusOr<IntType> StringToInt(const std::string &str) noexcept {
+StatusOr<IntType> StringToInt(const std::string &input) noexcept {
   IntType value;
-  auto ret = std::from_chars(str.data(), str.data() + str.size(), value);
-  if (ret.ec == std::errc::invalid_argument) {
+  std::from_chars_result ret =
+      std::from_chars(input.data(), input.data() + input.size(), value);
+  if (ret.ec == std::errc::invalid_argument || ret.ptr != input.data() + input.size()) {
     return Status::InvalidArgument(
         absl::StrFormat("Failed to convert %s to an integer type because the input "
                         "contains invalid characters.",
-                        str));
+                        input));
   }
   if (ret.ec == std::errc::result_out_of_range) {
     // There isn't a straightforward and portable way to print out the unmangled type
@@ -111,7 +93,7 @@ StatusOr<IntType> StringToInt(const std::string &str) noexcept {
     return Status::ResultOutOfRange(
         absl::StrFormat("Failed to convert %s into the integer "
                         "type. The result is too large to fit into the type provided.",
-                        str));
+                        input));
   }
   return StatusOr<IntType>(value);
 }

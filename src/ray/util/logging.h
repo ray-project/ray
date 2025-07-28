@@ -258,14 +258,6 @@ class RayLog {
   /// This function to judge whether current log is fatal or not.
   bool IsFatal() const;
 
-  /// Get filepath to dump log from [log_dir] and [app_name].
-  /// If [log_dir] empty, return empty filepath.
-  static std::string GetLogFilepathFromDirectory(const std::string &log_dir,
-                                                 const std::string &app_name);
-
-  static std::string GetErrLogFilepathFromDirectory(const std::string &log_dir,
-                                                    const std::string &app_name);
-
   /// The init function of ray log for a program which should be called only once.
   ///
   /// \parem appName The app name which starts the log.

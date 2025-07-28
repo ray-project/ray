@@ -21,6 +21,7 @@ ray_cc_library(
         "//src/ray/protobuf:common_cc_proto",
         "//src/ray/util",
         "//src/ray/util:cmd_line_utils",
+        "//src/ray/util:path_utils",
         "@boost//:optional",
         "@com_google_googletest//:gtest",
     ],
@@ -307,10 +308,12 @@ ray_cc_library(
 
 ray_cc_library(
     name = "status_or",
+    srcs = ["status_or.cc"],
     hdrs = ["status_or.h"],
     deps = [
         ":macros",
         ":status",
+        "//src/ray/util:logging",
         "@com_google_absl//absl/base:core_headers",
     ],
 )

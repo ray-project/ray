@@ -48,7 +48,6 @@ ray_cc_library(
     hdrs = ["logging.h"],
     deps = [
         ":macros",
-        ":string_utils",
         ":thread_utils",
         "@com_github_spdlog//:spdlog",
         "@com_google_absl//absl/debugging:failure_signal_handler",
@@ -379,5 +378,14 @@ ray_cc_library(
     deps = [
         ":mutex_protected",
         "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+ray_cc_library(
+    name = "path_utils",
+    srcs = ["path_utils.cc"],
+    hdrs = ["path_utils.h"],
+    deps = [
+        "@com_google_absl//absl/strings:str_format",
     ],
 )

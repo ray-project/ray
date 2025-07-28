@@ -22,10 +22,10 @@
 #include "ray/stats/stats.h"
 #include "ray/util/env.h"
 #include "ray/util/event.h"
+#include "ray/util/path_utils.h"
 #include "ray/util/process.h"
 #include "ray/util/stream_redirection.h"
 #include "ray/util/stream_redirection_options.h"
-#include "ray/util/string_utils.h"
 #include "ray/util/util.h"
 
 namespace ray {
@@ -130,7 +130,7 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
       }
       const std::string app_name = app_name_ss.str();
       const std::string log_filepath =
-          RayLog::GetLogFilepathFromDirectory(options_.log_dir, /*app_name=*/app_name);
+          GetLogFilepathFromDirectory(options_.log_dir, /*app_name=*/app_name);
       RayLog::StartRayLog(app_name,
                           RayLogLevel::INFO,
                           log_filepath,

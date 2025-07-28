@@ -22,6 +22,7 @@
 #include "absl/base/attributes.h"
 #include "ray/common/macros.h"
 #include "ray/common/status.h"
+#include "ray/util/logging.h"
 
 #define __RAY_ASSIGN_OR_RETURN_IMPL(var, expr, statusor_name) \
   auto statusor_name = (expr);                                \
