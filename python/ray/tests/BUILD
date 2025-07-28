@@ -58,6 +58,7 @@ py_test_module_list(
         "test_get_locations.py",
         "test_global_state.py",
         "test_healthcheck.py",
+        "test_metric_cardinality.py",
         "test_metrics_agent.py",
         "test_metrics_head.py",
         "test_multiprocessing.py",
