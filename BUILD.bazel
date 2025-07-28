@@ -1013,31 +1013,15 @@ alias(
 )
 
 filegroup(
-    name = "all_py_proto",
-    srcs = [
-        "//src/ray/protobuf:autoscaler_py_proto",
-        "//src/ray/protobuf:common_py_proto",
-        "//src/ray/protobuf:core_worker_py_proto",
-        "//src/ray/protobuf:event_py_proto",
-        "//src/ray/protobuf:events_event_aggregator_service_py_proto",
-        "//src/ray/protobuf:export_event_py_proto",
-        "//src/ray/protobuf:gcs_py_proto",
-        "//src/ray/protobuf:gcs_service_py_proto",
-        "//src/ray/protobuf:instance_manager_py_proto",
-        "//src/ray/protobuf:node_manager_py_proto",
-        "//src/ray/protobuf:ray_client_py_proto",
-        "//src/ray/protobuf:reporter_py_proto",
-        "//src/ray/protobuf:runtime_env_agent_py_proto",
-        "//src/ray/protobuf:runtime_env_common_py_proto",
-        "//src/ray/protobuf:usage_py_proto",
-    ],
+    name = "core_py_proto",
+    srcs = ["//src/ray/protobuf:core_py_proto"],
+    visibility = ["//visibility:private"],
 )
 
 filegroup(
     name = "serve_py_proto",
-    srcs = [
-        "//src/ray/protobuf:serve_py_proto",
-    ],
+    srcs = ["//src/ray/protobuf:serve_py_proto"],
+    visibility = ["//visibility:private"],
 )
 
 # This is a dummy test dependency that causes the python tests to be
@@ -1058,8 +1042,8 @@ copy_to_workspace(
 )
 
 copy_to_workspace(
-    name = "cp_all_py_proto",
-    srcs = [":all_py_proto"],
+    name = "cp_core_py_proto",
+    srcs = [":core_py_proto"],
     dstdir = "python/ray/core/generated",
 )
 
@@ -1099,7 +1083,7 @@ copy_to_workspace(
 genrule(
     name = "install_py_proto",
     srcs = [
-        ":cp_all_py_proto",
+        ":cp_core_py_proto",
         ":cp_serve_py_proto",
     ],
     outs = ["install_py_proto.out"],
