@@ -142,6 +142,7 @@ def plan_all_to_all_op(
             op._batch_format,
             data_context,
             debug_limit_shuffle_execution_to_num_blocks,
+            limit=getattr(op, "_limit", None),
         )
         target_max_block_size = data_context.target_shuffle_max_block_size
 

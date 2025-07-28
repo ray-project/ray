@@ -23,6 +23,7 @@ def generate_sort_fn(
     batch_format: str,
     data_context: DataContext,
     _debug_limit_shuffle_execution_to_num_blocks: Optional[int] = None,
+    limit: Optional[int] = None,
 ) -> AllToAllTransformFn:
     """Generate function to sort blocks by the specified key column or key function."""
 
@@ -38,9 +39,11 @@ def generate_sort_fn(
             return (blocks, {})
         sort_key.validate_schema(unify_ref_bundles_schema(refs))
 
-        num_mappers = len(blocks)
-        # Use same number of output partitions.
-        num_outputs = num_mappers
+        if limit is not None:
+            boundaries, num_outputs = [], 1  # single reducer path
+        else:
+            num_mappers = len(blocks)
+            num_outputs = num_mappers
 
         # Sample boundaries for sort key.
         if not sort_key.boundaries:
@@ -59,7 +62,10 @@ def generate_sort_fn(
                 boundaries = boundaries[::-1]
             num_outputs = len(boundaries) + 1
         sort_spec = SortTaskSpec(
-            boundaries=boundaries, sort_key=sort_key, batch_format=batch_format
+            boundaries=boundaries,
+            sort_key=sort_key,
+            batch_format=batch_format,
+            limit=limit,
         )
 
         if data_context.shuffle_strategy == ShuffleStrategy.SORT_SHUFFLE_PUSH_BASED:

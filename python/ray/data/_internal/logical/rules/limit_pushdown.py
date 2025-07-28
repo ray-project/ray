@@ -3,6 +3,7 @@ from collections import deque
 from typing import Iterable, List
 
 from ray.data._internal.logical.interfaces import LogicalOperator, LogicalPlan, Rule
+from ray.data._internal.logical.operators.all_to_all_operator import Sort
 from ray.data._internal.logical.operators.n_ary_operator import Union
 from ray.data._internal.logical.operators.one_to_one_operator import (
     AbstractOneToOne,
@@ -45,11 +46,34 @@ class LimitPushdownRule(Rule):
             if isinstance(node, Limit):
                 if isinstance(node.input_dependency, Union):
                     return self._push_limit_into_union(node)
+                if isinstance(node.input_dependency, Sort):
+                    return self._fuse_limit_into_sort(node)
                 return self._push_limit_down(node)
             return node
 
         # ``_apply_transform`` returns the (potentially new) root of the DAG.
         return op._apply_transform(transform)
+
+    def _fuse_limit_into_sort(self, limit_op: Limit):
+        sort_op = limit_op.input_dependency
+
+        # Re-use the existing Sort op but annotate it with the limit.
+        fused_sort = copy.copy(sort_op)
+        fused_sort._limit = limit_op._limit
+
+        # ───── Re-wire DAG:  upstream → fused_sort → downstream ─────
+        upstream = sort_op._input_dependencies[0]
+
+        # reconnect upstream → fused_sort
+        fused_sort._input_dependencies = [upstream]
+        if sort_op in upstream._output_dependencies:
+            upstream._output_dependencies.remove(sort_op)
+        upstream._output_dependencies.append(fused_sort)
+
+        for out in limit_op.output_dependencies:
+            out._input_dependencies = [fused_sort]
+        fused_sort._output_dependencies = limit_op.output_dependencies
+        return fused_sort
 
     def _push_limit_into_union(self, limit_op: Limit) -> Limit:
         """Push `limit_op` INTO every branch of its upstream Union
