@@ -340,7 +340,7 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
                                     std::shared_ptr<GcsLeasedWorker> worker);
 
   /// Get an existing lease client or connect a new one.
-  std::shared_ptr<WorkerLeaseInterface> GetOrConnectLeaseClient(
+  std::shared_ptr<RayletClientInterface> GetOrConnectLeaseClient(
       const rpc::Address &raylet_address);
 
   /// Kill the actor on a node

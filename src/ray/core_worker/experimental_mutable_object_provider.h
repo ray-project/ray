@@ -142,7 +142,7 @@ class MutableObjectProviderInterface {
 class MutableObjectProvider : public MutableObjectProviderInterface {
  public:
   using RayletFactory =
-      std::function<std::shared_ptr<MutableObjectReaderInterface>(const NodeID &)>;
+      std::function<std::shared_ptr<RayletClientInterface>(const NodeID &)>;
 
   MutableObjectProvider(plasma::PlasmaClientInterface &plasma,
                         RayletFactory factory,
@@ -197,7 +197,7 @@ class MutableObjectProvider : public MutableObjectProviderInterface {
   void PollWriterClosure(
       instrumented_io_context &io_context,
       const ObjectID &writer_object_id,
-      const std::shared_ptr<std::vector<std::shared_ptr<MutableObjectReaderInterface>>>
+      const std::shared_ptr<std::vector<std::shared_ptr<RayletClientInterface>>>
           &remote_readers);
 
   // Kicks off `io_context`.

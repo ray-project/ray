@@ -104,6 +104,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//:ray_mock",
+        "//:ray_noops",
         "//:worker_rpc",
         "//src/ray/common:task_common",
         "//src/ray/common:test_util",
@@ -139,6 +140,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//:ray_mock",
+        "//:ray_noops",
         "//src/ray/common:task_common",
         "//src/ray/common:test_util",
         "//src/ray/core_worker:memory_store",
@@ -360,6 +362,7 @@ ray_cc_test(
     }),
     deps = [
         "//:ray_mock",
+        "//:ray_noops",
         "//src/ray/core_worker:experimental_mutable_object_provider",
         "//src/ray/object_manager:object_manager_common",
         "//src/ray/object_manager/plasma:plasma_client",

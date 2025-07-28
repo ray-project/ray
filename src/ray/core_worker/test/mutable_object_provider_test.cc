@@ -24,6 +24,7 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "mock/ray/object_manager/plasma/client.h"
+#include "noops/ray/rpc/raylet/raylet_client.h"
 #include "ray/core_worker/experimental_mutable_object_provider.h"
 #include "ray/object_manager/common.h"
 #include "ray/object_manager/plasma/client.h"
@@ -73,7 +74,7 @@ class TestPlasma : public plasma::MockPlasmaClient {
   std::unordered_set<ObjectID> objects_;
 };
 
-class TestInterface : public MutableObjectReaderInterface {
+class TestInterface : public NoopRayletClient {
  public:
   virtual ~TestInterface() {}
 
@@ -104,7 +105,7 @@ class TestInterface : public MutableObjectReaderInterface {
   std::vector<ObjectID> pushed_objects_;
 };
 
-std::shared_ptr<MutableObjectReaderInterface> GetTestInterface(
+std::shared_ptr<RayletClientInterface> GetTestInterface(
     std::shared_ptr<TestInterface> &interface, const NodeID &node_id) {
   return interface;
 }

@@ -78,7 +78,7 @@ class NormalTaskSubmitter {
  public:
   explicit NormalTaskSubmitter(
       rpc::Address rpc_address,
-      std::shared_ptr<WorkerLeaseInterface> lease_client,
+      std::shared_ptr<RayletClientInterface> lease_client,
       std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool,
       std::shared_ptr<rpc::RayletClientPool> raylet_client_pool,
       std::unique_ptr<LeasePolicyInterface> lease_policy,
@@ -176,7 +176,7 @@ class NormalTaskSubmitter {
   /// Get an existing lease client or connect a new one. If a raylet_address is
   /// provided, this connects to a remote raylet. Else, this connects to the
   /// local raylet.
-  std::shared_ptr<WorkerLeaseInterface> GetOrConnectLeaseClient(
+  std::shared_ptr<RayletClientInterface> GetOrConnectLeaseClient(
       const rpc::Address *raylet_address) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Report worker backlog information to the local raylet
@@ -205,7 +205,7 @@ class NormalTaskSubmitter {
   /// Set up client state for newly granted worker lease.
   void AddWorkerLeaseClient(
       const rpc::Address &addr,
-      std::shared_ptr<WorkerLeaseInterface> lease_client,
+      std::shared_ptr<RayletClientInterface> lease_client,
       const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> &assigned_resources,
       const SchedulingKey &scheduling_key,
       const TaskID &task_id) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
@@ -248,11 +248,11 @@ class NormalTaskSubmitter {
   rpc::Address rpc_address_;
 
   // Client that can be used to lease and return workers from the local raylet.
-  std::shared_ptr<WorkerLeaseInterface> local_lease_client_;
+  std::shared_ptr<RayletClientInterface> local_lease_client_;
 
   /// Cache of gRPC clients to remote raylets.
-  absl::flat_hash_map<NodeID, std::shared_ptr<WorkerLeaseInterface>> remote_lease_clients_
-      ABSL_GUARDED_BY(mu_);
+  absl::flat_hash_map<NodeID, std::shared_ptr<RayletClientInterface>>
+      remote_lease_clients_ ABSL_GUARDED_BY(mu_);
 
   /// Raylet client pool for producing new clients to request leases from remote nodes.
   std::shared_ptr<rpc::RayletClientPool> raylet_client_pool_;
@@ -294,7 +294,7 @@ class NormalTaskSubmitter {
   /// (6) The SchedulingKey assigned to tasks that will be sent to the worker
   /// (7) The task id used to obtain the worker lease.
   struct LeaseEntry {
-    std::shared_ptr<WorkerLeaseInterface> lease_client;
+    std::shared_ptr<RayletClientInterface> lease_client;
     int64_t lease_expiration_time;
     google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> assigned_resources;
     SchedulingKey scheduling_key;

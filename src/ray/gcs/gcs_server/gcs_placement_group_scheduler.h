@@ -40,9 +40,6 @@ namespace gcs {
 
 class GcsPlacementGroup;
 
-using ReserveResourceClientFactoryFn =
-    std::function<std::shared_ptr<ResourceReserveInterface>(const rpc::Address &address)>;
-
 using PGSchedulingFailureCallback =
     std::function<void(std::shared_ptr<GcsPlacementGroup>, bool)>;
 using PGSchedulingSuccessfulCallback =
@@ -409,11 +406,11 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
       int current_retry_cnt);
 
   /// Get an existing lease client or connect a new one or connect a new one.
-  std::shared_ptr<ResourceReserveInterface> GetOrConnectLeaseClient(
+  std::shared_ptr<RayletClientInterface> GetOrConnectLeaseClient(
       const rpc::Address &raylet_address);
 
   /// Get an existing lease client for a given node.
-  std::shared_ptr<ResourceReserveInterface> GetLeaseClientFromNode(
+  std::shared_ptr<RayletClientInterface> GetLeaseClientFromNode(
       const std::shared_ptr<ray::rpc::GcsNodeInfo> &node);
 
   /// Called when all prepare requests are returned from nodes.

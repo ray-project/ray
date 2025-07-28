@@ -25,6 +25,7 @@
 #include "gtest/gtest.h"
 #include "mock/ray/core_worker/memory_store.h"
 #include "mock/ray/core_worker/task_manager_interface.h"
+#include "noops/ray/rpc/raylet/raylet_client.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_util.h"
@@ -213,7 +214,7 @@ class MockTaskManager : public MockTaskManagerInterface {
   int num_generator_failed_and_resubmitted = 0;
 };
 
-class MockRayletClient : public RayletClientInterface {
+class MockRayletClient : public NoopRayletClient {
  public:
   Status ReturnWorker(int worker_port,
                       const WorkerID &worker_id,
@@ -367,85 +368,6 @@ class MockRayletClient : public RayletClientInterface {
   }
 
   ~MockRayletClient() = default;
-
-  /// Get the system config from Raylet.
-  /// \param callback Callback that will be called after raylet replied the system config.
-  void GetSystemConfig(
-      const rpc::ClientCallback<rpc::GetSystemConfigReply> &callback) override {}
-
-  void NotifyGCSRestart(
-      const rpc::ClientCallback<rpc::NotifyGCSRestartReply> &callback) override {}
-
-  void ShutdownRaylet(
-      const NodeID &node_id,
-      bool graceful,
-      const rpc::ClientCallback<rpc::ShutdownRayletReply> &callback) override {}
-
-  void DrainRaylet(const rpc::autoscaler::DrainNodeReason &reason,
-                   const std::string &reason_message,
-                   int64_t deadline_timestamp_ms,
-                   const rpc::ClientCallback<rpc::DrainRayletReply> &callback) override {}
-
-  void CancelTasksWithResourceShapes(
-      const std::vector<google::protobuf::Map<std::string, double>> &resource_shapes,
-      const rpc::ClientCallback<rpc::CancelTasksWithResourceShapesReply> &callback)
-      override {}
-
-  void IsLocalWorkerDead(
-      const WorkerID &worker_id,
-      const rpc::ClientCallback<rpc::IsLocalWorkerDeadReply> &callback) override {}
-
-  std::shared_ptr<grpc::Channel> GetChannel() const override { return nullptr; }
-
-  void GetNodeStats(
-      const rpc::GetNodeStatsRequest &request,
-      const rpc::ClientCallback<rpc::GetNodeStatsReply> &callback) override {}
-
-  void PinObjectIDs(
-      const rpc::Address &caller_address,
-      const std::vector<ObjectID> &object_ids,
-      const ObjectID &generator_id,
-      const ray::rpc::ClientCallback<ray::rpc::PinObjectIDsReply> &callback) override {}
-
-  void PrepareBundleResources(
-      const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs,
-      const ray::rpc::ClientCallback<ray::rpc::PrepareBundleResourcesReply> &callback)
-      override {}
-
-  void CommitBundleResources(
-      const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs,
-      const ray::rpc::ClientCallback<ray::rpc::CommitBundleResourcesReply> &callback)
-      override {}
-
-  void CancelResourceReserve(
-      const BundleSpecification &bundle_spec,
-      const ray::rpc::ClientCallback<ray::rpc::CancelResourceReserveReply> &callback)
-      override {}
-
-  void ReleaseUnusedBundles(
-      const std::vector<rpc::Bundle> &bundles_in_use,
-      const rpc::ClientCallback<rpc::ReleaseUnusedBundlesReply> &callback) override {}
-
-  ray::Status WaitForActorCallArgs(const std::vector<rpc::ObjectReference> &references,
-                                   int64_t tag) override {
-    return ray::Status::OK();
-  }
-
-  void GetResourceLoad(
-      const rpc::ClientCallback<rpc::GetResourceLoadReply> &callback) override {}
-  void RegisterMutableObjectReader(
-      const ObjectID &writer_object_id,
-      int64_t num_readers,
-      const ObjectID &reader_object_id,
-      const rpc::ClientCallback<rpc::RegisterMutableObjectReply> &callback) override {}
-
-  void PushMutableObject(
-      const ObjectID &writer_object_id,
-      uint64_t data_size,
-      uint64_t metadata_size,
-      void *data,
-      void *metadata,
-      const rpc::ClientCallback<rpc::PushMutableObjectReply> &callback) override {}
 
   // Protects all internal fields.
   std::mutex mu_;

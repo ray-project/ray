@@ -31,7 +31,7 @@
 namespace ray {
 namespace core {
 
-using ObjectPinningClientFactoryFn = std::function<std::shared_ptr<PinObjectsInterface>(
+using ObjectPinningClientFactoryFn = std::function<std::shared_ptr<RayletClientInterface>(
     const rpc::Address &raylet_address)>;
 
 using ObjectLookupCallback = std::function<void(
@@ -46,7 +46,7 @@ class ObjectRecoveryManager {
   ObjectRecoveryManager(
       rpc::Address rpc_address,
       std::shared_ptr<rpc::RayletClientPool> raylet_client_pool,
-      std::shared_ptr<PinObjectsInterface> local_object_pinning_client,
+      std::shared_ptr<RayletClientInterface> local_object_pinning_client,
       std::function<Status(const ObjectID &object_id,
                            const ObjectLookupCallback &callback)> object_lookup,
       TaskManagerInterface &task_manager,
@@ -125,7 +125,7 @@ class ObjectRecoveryManager {
   std::shared_ptr<rpc::RayletClientPool> raylet_client_pool_;
 
   // Client that can be used to pin objects from the local raylet.
-  std::shared_ptr<PinObjectsInterface> local_object_pinning_client_;
+  std::shared_ptr<RayletClientInterface> local_object_pinning_client_;
 
   /// Function to lookup an object's locations from the global database.
   std::function<Status(const ObjectID &object_id, const ObjectLookupCallback &callback)>
@@ -141,7 +141,7 @@ class ObjectRecoveryManager {
   mutable absl::Mutex mu_;
 
   /// Cache of gRPC clients to remote raylets for pinning objects.
-  absl::flat_hash_map<NodeID, std::shared_ptr<PinObjectsInterface>>
+  absl::flat_hash_map<NodeID, std::shared_ptr<RayletClientInterface>>
       remote_object_pinning_clients_ ABSL_GUARDED_BY(mu_);
 
   /// Objects that are currently pending recovery. Calls to RecoverObject for

@@ -283,13 +283,12 @@ void GcsPlacementGroupScheduler::CancelResourceReserve(
       });
 }
 
-std::shared_ptr<ResourceReserveInterface>
+std::shared_ptr<RayletClientInterface>
 GcsPlacementGroupScheduler::GetOrConnectLeaseClient(const rpc::Address &raylet_address) {
   return raylet_client_pool_.GetOrConnectByAddress(raylet_address);
 }
 
-std::shared_ptr<ResourceReserveInterface>
-GcsPlacementGroupScheduler::GetLeaseClientFromNode(
+std::shared_ptr<RayletClientInterface> GcsPlacementGroupScheduler::GetLeaseClientFromNode(
     const std::shared_ptr<ray::rpc::GcsNodeInfo> &node) {
   rpc::Address remote_address;
   remote_address.set_raylet_id(node->node_id());
