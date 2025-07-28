@@ -268,7 +268,7 @@ uint8_t *PlasmaClient::Impl::GetStoreFdAndMmap(MEMFD_TYPE store_fd_val,
 // process before.
 uint8_t *PlasmaClient::Impl::LookupMmappedFile(MEMFD_TYPE store_fd_val) const {
   auto entry = mmap_table_.find(store_fd_val);
-  RAY_CHECK(entry != mmap_table_.end());
+  RAY_CHECK_NE(entry, mmap_table_.end());
   return entry->second->pointer();
 }
 
@@ -299,7 +299,7 @@ void PlasmaClient::Impl::IncrementObjectCount(const ObjectID &object_id) {
   // Increment the count of the object to track the fact that it is being used.
   // The corresponding decrement should happen in PlasmaClient::Release.
   auto object_entry = objects_in_use_.find(object_id);
-  RAY_CHECK(object_entry != objects_in_use_.end());
+  RAY_CHECK_NE(object_entry, objects_in_use_.end());
   object_entry->second->count += 1;
   RAY_LOG(DEBUG) << "IncrementObjectCount " << object_id
                  << " count is now: " << object_entry->second->count;
@@ -333,14 +333,14 @@ Status PlasmaClient::Impl::HandleCreateReply(const ObjectID &object_id,
     uint64_t unused = 0;
     RAY_RETURN_NOT_OK(ReadCreateReply(
         buffer.data(), buffer.size(), &id, &unused, object.get(), &store_fd, &mmap_size));
-    RAY_CHECK(unused == 0);
+    RAY_CHECK_EQ(unused, 0);
   }
 
   // If the CreateReply included an error, then the store will not send a file
   // descriptor.
-  RAY_CHECK(object->device_num == 0) << "GPU is not enabled.";
+  RAY_CHECK_EQ(object->device_num, 0) << "GPU is not enabled.";
   // The metadata should come right after the data.
-  RAY_CHECK(object->metadata_offset == object->data_offset + object->data_size);
+  RAY_CHECK_EQ(object->metadata_offset, object->data_offset + object->data_size);
   RAY_LOG(DEBUG) << "GetStoreFdAndMmap " << store_fd.first << ", " << store_fd.second
                  << ", size " << mmap_size << " for object id " << id;
   *data = std::make_shared<PlasmaMutableBuffer>(
@@ -377,7 +377,7 @@ Status PlasmaClient::Impl::HandleCreateReply(const ObjectID &object_id,
 
   // Create IPC was successful.
   auto object_entry = objects_in_use_.find(object_id);
-  RAY_CHECK(object_entry != objects_in_use_.end());
+  RAY_CHECK_NE(object_entry, objects_in_use_.end());
   auto &entry = object_entry->second;
   RAY_CHECK(!entry->is_sealed);
 
@@ -477,7 +477,7 @@ Status PlasmaClient::Impl::GetBuffers(const ObjectID *object_ids,
       // This client created the object but hasn't sealed it. If we call Get
       // with no timeout, we will deadlock, because this client won't be able to
       // call Seal.
-      RAY_CHECK(timeout_ms != -1)
+      RAY_CHECK_NE(timeout_ms, -1)
           << "Plasma client called get on an unsealed object that it created";
       RAY_LOG(WARNING)
           << "Attempting to get an object that this client created but hasn't sealed.";
@@ -488,7 +488,7 @@ Status PlasmaClient::Impl::GetBuffers(const ObjectID *object_ids,
       RAY_LOG(DEBUG) << "Plasma Get " << object_ids[i]
                      << ", data size: " << object->data_size
                      << ", metadata size: " << object->metadata_size;
-      RAY_CHECK(object->device_num == 0) << "GPU library is not enabled.";
+      RAY_CHECK_EQ(object->device_num, 0) << "GPU library is not enabled.";
 
       uint8_t *data = LookupMmappedFile(object->store_fd);
       auto physical_buf = std::make_shared<PlasmaBuffer>(
@@ -570,7 +570,7 @@ Status PlasmaClient::Impl::GetBuffers(const ObjectID *object_ids,
       RAY_LOG(DEBUG) << "Plasma Get " << received_object_ids[i]
                      << ", data size: " << object_entry->object.data_size
                      << ", metadata size: " << object_entry->object.metadata_size;
-      RAY_CHECK(object_entry->object.device_num == 0)
+      RAY_CHECK_EQ(object_entry->object.device_num, 0)
           << "Arrow GPU library is not enabled.";
       uint8_t *data = LookupMmappedFile(object_entry->object.store_fd);
 
@@ -641,8 +641,8 @@ Status PlasmaClient::Impl::Get(const std::vector<ObjectID> &object_ids,
 
 Status PlasmaClient::Impl::MarkObjectUnused(const ObjectID &object_id) {
   auto object_entry = objects_in_use_.find(object_id);
-  RAY_CHECK(object_entry != objects_in_use_.end());
-  RAY_CHECK(object_entry->second->count == 0);
+  RAY_CHECK_NE(object_entry, objects_in_use_.end());
+  RAY_CHECK_EQ(object_entry->second->count, 0);
 
   // Remove the entry from the hash table of objects currently in use.
   objects_in_use_.erase(object_id);
@@ -657,12 +657,12 @@ Status PlasmaClient::Impl::Release(const ObjectID &object_id) {
     return Status::OK();
   }
   const auto object_entry = objects_in_use_.find(object_id);
-  RAY_CHECK(object_entry != objects_in_use_.end());
+  RAY_CHECK_NE(object_entry, objects_in_use_.end());
 
   object_entry->second->count -= 1;
   RAY_LOG(DEBUG) << "Decrement object count " << object_id << " count is now "
                  << object_entry->second->count;
-  RAY_CHECK(object_entry->second->count >= 0);
+  RAY_CHECK_GE(object_entry->second->count, 0);
 
   if (object_entry->second->count == 0) {
     RAY_LOG(DEBUG) << "Releasing object no longer in use " << object_id;
@@ -752,7 +752,7 @@ Status PlasmaClient::Impl::Seal(const ObjectID &object_id) {
   RAY_RETURN_NOT_OK(PlasmaReceive(store_conn_, MessageType::PlasmaSealReply, &buffer));
   ObjectID sealed_id;
   RAY_RETURN_NOT_OK(ReadSealReply(buffer.data(), buffer.size(), &sealed_id));
-  RAY_CHECK(sealed_id == object_id);
+  RAY_CHECK_EQ(sealed_id, object_id);
   // We call PlasmaClient::Release to decrement the number of instances of this
   // object
   // that are currently being used by this client. The corresponding increment
@@ -766,7 +766,7 @@ Status PlasmaClient::Impl::Seal(const ObjectID &object_id) {
 Status PlasmaClient::Impl::Abort(const ObjectID &object_id) {
   std::lock_guard<std::recursive_mutex> guard(client_mutex_);
   auto object_entry = objects_in_use_.find(object_id);
-  RAY_CHECK(object_entry != objects_in_use_.end())
+  RAY_CHECK_NE(object_entry, objects_in_use_.end())
       << "Plasma client called abort on an object without a reference to it";
   RAY_CHECK(!object_entry->second->is_sealed)
       << "Plasma client called abort on a sealed object";
