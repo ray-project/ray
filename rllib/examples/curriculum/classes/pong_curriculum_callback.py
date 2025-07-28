@@ -21,6 +21,15 @@ class PongEnvTaskCallback(RLlibCallback):
         self.demotion_margin = demotion_margin
         self.solved_return = solved_return
 
+    def on_algorithm_init(
+        self,
+        *,
+        algorithm: "Algorithm",
+        **kwargs,
+    ) -> None:
+        # Set the initial task to 1, which corresponds to a frameskip of 1.
+        algorithm._counters["current_env_task"] = 1
+
     def on_train_result(
         self,
         *,
