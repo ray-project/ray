@@ -173,12 +173,6 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
   /// \return The number of pending tasks in the queue.
   size_t NumPendingTasks(const ActorID &actor_id) const;
 
-  /// Get the number of tasks that are being processed by the actor.
-  ///
-  /// \param[in] actor_id Actor id.
-  /// \return The number of tasks being processed by the actor.
-  size_t NumTasksInFlight(const ActorID &actor_id) const;
-
   /// Check whether the actor exists
   ///
   /// \param[in] actor_id Actor id.

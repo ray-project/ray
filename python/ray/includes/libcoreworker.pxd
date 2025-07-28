@@ -218,7 +218,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         void RemoveActorHandleReference(const CActorID &actor_id)
         optional[int] GetLocalActorState(const CActorID &actor_id) const
         int64_t GetNumPendingActorTasks(const CActorID &actor_id) const
-        int64_t GetNumActorTasksInFlight(const CActorID &actor_id) const
         CActorID DeserializeAndRegisterActorHandle(const c_string &bytes, const
                                                    CObjectID &outer_object_id,
                                                    c_bool add_local_ref)
