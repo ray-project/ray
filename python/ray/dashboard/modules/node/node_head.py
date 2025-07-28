@@ -271,9 +271,7 @@ class NodeHead(SubprocessModule):
                 self._stubs.pop(node_id, None)
         DataSource.nodes[node_id] = node
         # TODO(fyrestone): Handle exceptions.
-        address = "{}:{}".format(
-            node["nodeManagerAddress"], int(node["nodeManagerPort"])
-        )
+        address = ray._private.network_utils.build_address(node["nodeManagerAddress"], int(node["nodeManagerPort"]))
         options = ray_constants.GLOBAL_GRPC_OPTIONS
         channel = ray._private.utils.init_grpc_channel(
             address, options, asynchronous=True

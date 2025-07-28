@@ -607,14 +607,6 @@ def resolve_ip_for_localhost(address: str):
     if address_parts[0] == "127.0.0.1" or address_parts[0] == "localhost":
         # Make sure localhost isn't resolved to the loopback ip
         ip_address = get_node_ip_address()
-        my_pod_ip6 = os.environ.get("RAY_POD_IPV6")
-        if my_pod_ip6 is not None and my_pod_ip6 != "":
-            if len(address_parts) > 1:
-                return (
-                    "[" + ip_address + "]:" + os.environ.get("RAY_GCS_SPECIFIC_PORT", "6379")
-                )
-            else:
-                return ip_address
         return ":".join([ip_address] + address_parts[1:])
     else:
         return address

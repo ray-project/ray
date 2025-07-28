@@ -730,10 +730,9 @@ def start(
     include_node_ip_address = False
 
     if node_ip_address is not None and is_ipv6_address(node_ip_address):
+        node_ip_address = node_ip_address.strip("[]")
         os.environ.update({"RAY_POD_IPV6": node_ip_address})
         os.environ.update({"RAY_PREFER_IPV6": "true"})
-        if head and port is not None:
-            os.environ.update({"RAY_GCS_SPECIFIC_PORT": str(port)})
     if node_ip_address is not None:
         include_node_ip_address = True
         node_ip_address = services.resolve_ip_for_localhost(node_ip_address)

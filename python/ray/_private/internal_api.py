@@ -71,7 +71,7 @@ def get_memory_info_reply(state, node_manager_address=None, node_manager_port=No
             raylet["NodeManagerAddress"], raylet["NodeManagerPort"]
         )
     else:
-        raylet_address = "{}:{}".format(node_manager_address, node_manager_port)
+        raylet_address = ray._private.network_utils.build_address(node_manager_address, node_manager_port)
 
     channel = utils.init_grpc_channel(
         raylet_address,
@@ -98,7 +98,7 @@ def node_stats(
 
     # We can ask any Raylet for the global memory info.
     assert node_manager_address is not None and node_manager_port is not None
-    raylet_address = "{}:{}".format(node_manager_address, node_manager_port)
+    raylet_address = ray._private.network_utils.build_address(node_manager_address, node_manager_port)
     channel = utils.init_grpc_channel(
         raylet_address,
         options=[

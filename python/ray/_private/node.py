@@ -199,9 +199,7 @@ class Node:
                 assert not self._default_worker
                 self._webui_url = ray._private.services.get_webui_url_from_internal_kv()
             else:
-                self._webui_url = (
-                    f"{ray_params.dashboard_host}:{ray_params.dashboard_port}"
-                )
+                self._webui_url = ray._private.network_utils.build_address(ray_params.dashboard_host, ray_params.dashboard_port)
 
         # It creates a session_dir.
         self._init_temp()
@@ -700,7 +698,7 @@ class Node:
     @property
     def runtime_env_agent_address(self):
         """Get the address that exposes runtime env agent as http"""
-        return f"http://{self._raylet_ip_address}:{self._runtime_env_agent_port}"
+        return "http://"+ ray._private.network_utils.build_address(self._raylet_ip_address, self._runtime_env_agent_port)
 
     @property
     def dashboard_agent_listen_port(self):
