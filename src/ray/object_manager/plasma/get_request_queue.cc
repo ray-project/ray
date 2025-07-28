@@ -51,7 +51,7 @@ void GetRequest::MarkRemoved() {
   is_removed_ = true;
 }
 
-bool GetRequest::DidNodeDie() const { return is_removed_; }
+bool GetRequest::IsRemoved() const { return is_removed_; }
 
 void GetRequestQueue::AddRequest(const std::shared_ptr<ClientInterface> &client,
                                  const std::vector<ObjectID> &object_ids,
@@ -129,7 +129,7 @@ void GetRequestQueue::RemoveGetRequest(const std::shared_ptr<GetRequest> &get_re
   // If the get request is already removed, do no-op. This can happen because the boost
   // timer is not atomic. See https://github.com/ray-project/ray/pull/15071 and
   // https://github.com/ray-project/ray/issues/18400
-  if (get_request->DidNodeDie()) {
+  if (get_request->IsRemoved()) {
     return;
   }
 

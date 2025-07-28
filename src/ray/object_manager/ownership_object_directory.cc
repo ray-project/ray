@@ -279,7 +279,7 @@ void OwnershipBasedObjectDirectory::ObjectLocationSubscriptionCallback(
   for (auto const &node_id_binary : location_info.node_ids()) {
     const auto node_id = NodeID::FromBinary(node_id_binary);
     RAY_LOG(DEBUG).WithField(object_id).WithField(node_id)
-        << "Object is on node alive? " << !gcs_client_.Nodes().DidNodeDie(node_id);
+        << "Did node with object die? " << gcs_client_.Nodes().DidNodeDie(node_id);
   }
   auto location_updated = UpdateObjectLocations(location_info,
                                                 gcs_client_,
