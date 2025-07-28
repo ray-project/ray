@@ -20,7 +20,6 @@
 #include <memory>
 #include <mutex>
 #include <regex>
-#include <string_view>
 #include <tuple>
 #include <unordered_map>
 #include <utility>
@@ -319,10 +318,10 @@ inline std::vector<opencensus::tags::TagKey> convert_tags(
 }
 
 inline std::unordered_set<std::string> build_tag_key_set(
-    const std::vector<std::string> &names) {
+    const std::vector<std::string> &tag_keys) {
   std::unordered_set<std::string> tag_keys_set;
-  tag_keys_set.reserve(names.size());
-  for (const auto &tag_key : names) {
+  tag_keys_set.reserve(tag_keys.size());
+  for (const auto &tag_key : tag_keys) {
     tag_keys_set.insert(tag_key);
   }
   return tag_keys_set;
