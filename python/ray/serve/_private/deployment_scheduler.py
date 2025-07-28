@@ -715,48 +715,70 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
     def _get_replicas_to_stop(
         self, deployment_id: DeploymentID, max_num_to_stop: int
     ) -> Set[ReplicaID]:
-        """Prioritize replicas on nodes with fewest replicas of all deployments
-        (heuristic from https://github.com/ray-project/ray/issues/20599).
+        """Prioritize replicas running on a node with fewest replicas of
+            all deployments.
 
-        If multiple replicas live on the same node, stop the most recently
-        launched replica first to keep long-running ones warm
-        (see https://github.com/ray-project/ray/pull/52929).
+        This algorithm helps to scale down more intelligently because it can
+        relinquish nodes faster. Note that this algorithm doesn't consider
+        other non-serve actors on the same node. See more at
+        https://github.com/ray-project/ray/issues/20599.
         """
-        replicas_to_stop: list[ReplicaID] = []
+        replicas_to_stop: List[ReplicaID] = []
 
-        waiting = set().union(
+        # Replicas not in running state don't have node id.
+        # We will prioritize those first.
+        pending_launching_recovering_replicas = set().union(
             self._pending_replicas[deployment_id].keys(),
             self._launching_replicas[deployment_id].keys(),
             self._recovering_replicas[deployment_id],
         )
-        for rid in waiting:
-            if len(replicas_to_stop) >= max_num_to_stop:
+        for (
+            pending_launching_recovering_replica
+        ) in pending_launching_recovering_replicas:
+            if len(replicas_to_stop) == max_num_to_stop:
                 return set(replicas_to_stop)
-            replicas_to_stop.append(rid)
+            else:
+                replicas_to_stop.append(pending_launching_recovering_replica)
 
-        node_to_target = self._get_node_to_running_replicas(deployment_id)
-        node_to_all = self._get_node_to_running_replicas()
+        node_to_running_replicas_of_target_deployment = (
+            self._get_node_to_running_replicas(deployment_id)
+        )
+        node_to_running_replicas_of_all_deployments = (
+            self._get_node_to_running_replicas()
+        )
 
-        def key(item):
-            node_id, reps = item
-            return len(reps) if node_id != self._head_node_id else sys.maxsize
+        # Replicas on the head node has the lowest priority for downscaling
+        # since we cannot relinquish the head node.
+        def key(node_and_num_running_replicas_of_all_deployments):
+            return (
+                len(node_and_num_running_replicas_of_all_deployments[1])
+                if node_and_num_running_replicas_of_all_deployments[0]
+                != self._head_node_id
+                else sys.maxsize
+            )
 
-        for node_id, _ in sorted(node_to_all.items(), key=key):
-            if node_id not in node_to_target:
+        for node_id, _ in sorted(
+            node_to_running_replicas_of_all_deployments.items(), key=key
+        ):
+            if node_id not in node_to_running_replicas_of_target_deployment:
                 continue
 
-            newest_first = [
+            # _running_replicas dict preserves insertion order (oldest → newest).
+            # reversed(...) gives newest → oldest so the latest replica is
+            # stopped first when replicas on a node tie.
+            newest_first_replicas = [
                 rid
                 for rid, n_id in reversed(
                     list(self._running_replicas[deployment_id].items())
                 )
                 if n_id == node_id
             ]
-            for rid in newest_first:
-                if len(replicas_to_stop) >= max_num_to_stop:
+
+            for running_replica in newest_first_replicas:
+                if len(replicas_to_stop) == max_num_to_stop:
                     return set(replicas_to_stop)
-                if rid not in replicas_to_stop:
-                    replicas_to_stop.append(rid)
+                if running_replica not in replicas_to_stop:
+                    replicas_to_stop.append(running_replica)
 
         return set(replicas_to_stop)
 
