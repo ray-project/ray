@@ -111,6 +111,7 @@ from ray.util.state.common import (
     WorkerState,
     StateSchema,
     state_column,
+    GetApiOptions,
 )
 from ray.dashboard.utils import ray_address_to_api_server_url
 from ray.util.state.exception import DataSourceUnavailable, RayStateApiException
@@ -3798,6 +3799,41 @@ def test_hang_driver_has_no_is_running_task(monkeypatch, ray_start_cluster):
     all_job_info = client.get_all_job_info()
     assert list(all_job_info.keys()) == [my_job_id]
     assert not all_job_info[my_job_id].HasField("is_running_tasks")
+
+
+def test_get_actor_timeout_multiplier(shutdown_only):
+    """Test that GetApiOptions applies the same timeout multiplier as ListApiOptions.
+
+    This test reproduces the issue where get_actor with timeout=1 fails even though
+    the actual operation takes less than 1 second, because GetApiOptions doesn't
+    apply the 0.8 server timeout multiplier that ListApiOptions uses.
+
+    Related issue: https://github.com/ray-project/ray/issues/54153
+    """
+
+    @ray.remote
+    class TestActor:
+        def ready(self):
+            pass
+
+    actor = TestActor.remote()
+    ray.get(actor.ready.remote())
+
+    # Test that both options classes apply the same timeout multiplier
+    test_timeout = 1
+    get_options = GetApiOptions(timeout=test_timeout)
+    list_options = ListApiOptions(timeout=test_timeout)
+
+    # After __post_init__, both should have the same effective timeout
+    assert get_options.timeout == list_options.timeout
+
+    # Test that get_actor works with a 1-second timeout
+    actors = list_actors()
+    actor_id = actors[0]["actor_id"]
+
+    # This should work without timeout issues
+    result = get_actor(actor_id, timeout=1)
+    assert result["actor_id"] == actor_id
 
 
 if __name__ == "__main__":
