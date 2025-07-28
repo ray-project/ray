@@ -94,10 +94,9 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
         )
 
     def on_cluster_created(self, ray_cluster_handler):
-        import ray.util.spark.cluster_init
         db_api_entry = get_db_entry_point()
 
-        ray_metrics_monitor = ray.util.spark.cluster_init._active_ray_cluster.ray_metrics_monitor
+        ray_metrics_monitor = ray_cluster_handler.ray_metrics_monitor
         if ray_metrics_monitor is not None:
             import mlflow
             mlflow_exp_id = mlflow.tracking.fluent._get_experiment_id()
