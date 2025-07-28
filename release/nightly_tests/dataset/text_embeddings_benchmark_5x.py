@@ -113,9 +113,6 @@ def parse_args():
     return parser.parse_args()
 
 
-def repeat_row(row, times):
-    return [row] * times
-
 
 def process_file(record: dict) -> dict:
     file_path = Path(record["path"])
