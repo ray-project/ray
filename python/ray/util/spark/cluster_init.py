@@ -646,9 +646,18 @@ def _setup_ray_cluster(
     )
 
     ray_node_custom_env = start_hook.custom_environment_variables()
+
+    if _ray_system_metrics_logging_enabled():
+        import mlflow
+
+        mlflow_run_id = mlflow.start_run().info.run_id
+    else:
+        mlflow_run_id = None
     spark_job_server = _start_spark_job_server(
         ray_head_ip, spark_job_server_port, spark, ray_node_custom_env
     )
+    spark_job_server.mlflow_run_id = mlflow_run_id
+
     autoscaling_cluster = AutoscalingCluster(
         head_resources={
             "CPU": num_cpus_head_node,
@@ -717,9 +726,7 @@ def _setup_ray_cluster(
 
     if _ray_system_metrics_logging_enabled():
         from ray.util.spark.ray_metrics_monitor import RayMetricsMonitor
-        import mlflow
 
-        mlflow_run_id = mlflow.start_run().info.run_id
         os.environ["MLFLOW_RUN_ID"] = mlflow_run_id
         ray_metrics_monitor = RayMetricsMonitor(
             run_id=mlflow_run_id,
@@ -1553,7 +1560,7 @@ def _start_ray_worker_nodes(
 
     metrics_logging_enabled = _ray_system_metrics_logging_enabled()
     if metrics_logging_enabled:
-        mlflow_run_id = os.environ["MLFLOW_RUN_ID"]
+        mlflow_run_id = spark_job_server.mlflow_run_id
     else:
         mlflow_run_id = None
 
