@@ -1,12 +1,12 @@
-from typing import Dict
+from typing import Dict, Union
 
 from ray.train.v2._internal.exceptions import RayTrainError
 from ray.util.annotations import PublicAPI
 
 
 @PublicAPI(stability="alpha")
-class TrainingFailedError(RayTrainError):
-    """Exception raised from the training workers.
+class WorkerGroupError(RayTrainError):
+    """Exception raised from the worker group during training.
 
     Args:
         error_message: A human-readable error message describing the training worker failures.
@@ -39,3 +39,6 @@ class ControllerError(RayTrainError):
 
     def __reduce__(self):
         return (self.__class__, (self.controller_failure,))
+
+
+TrainingFailedError = Union[WorkerGroupError, ControllerError]
