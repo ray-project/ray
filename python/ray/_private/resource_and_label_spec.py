@@ -56,7 +56,7 @@ class ResourceAndLabelSpec:
         and default values are filled out."""
         return self._is_resolved
 
-    def all_fields_set(self) -> bool:
+    def _all_fields_set(self) -> bool:
         """Returns whether all fields in this ResourceAndLabelSpec are not None."""
         return all(
             v is not None
