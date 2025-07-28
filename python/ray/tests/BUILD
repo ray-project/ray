@@ -89,6 +89,7 @@ py_test_module_list(
     files = [
         "test_aggregated_prometheus_metrics.py",
         "test_metrics_agent.py",
+        "test_aggregated_prometheus_metrics.py",
     ],
     name_suffix = "_open_telemetry",
     tags = [
