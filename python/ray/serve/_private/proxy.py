@@ -70,6 +70,7 @@ from ray.serve._private.proxy_request_response import (
 )
 from ray.serve._private.proxy_response_generator import ProxyResponseGenerator
 from ray.serve._private.proxy_router import ProxyRouter
+from ray.serve._private.ttft_tracer import log_ttft_event
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     generate_request_id,
@@ -793,6 +794,22 @@ class HTTPProxy(GenericProxy):
             https://asgi.readthedocs.io/en/latest/specs/index.html.
         """
         proxy_request = ASGIProxyRequest(scope=scope, receive=receive, send=send)
+
+        # TTFT Tracing: HTTP proxy received request
+        # Extract request ID from headers if available, otherwise generate one
+        request_id = None
+        for key, value in proxy_request.headers:
+            if key.decode() == SERVE_HTTP_REQUEST_ID_HEADER:
+                request_id = value.decode()
+                break
+
+        if not request_id:
+            from ray.serve._private.utils import generate_request_id
+
+            request_id = generate_request_id()
+
+        log_ttft_event("http_proxy", "rx", request_id, "HTTPProxy.__call__")
+
         async for message in self.proxy_request(proxy_request):
             if not isinstance(message, ResponseStatus):
                 await send(message)
@@ -902,6 +919,11 @@ class HTTPProxy(GenericProxy):
         self.asgi_receive_queues[internal_request_id] = receive_queue
         proxy_asgi_receive_task = get_or_create_event_loop().create_task(
             self.proxy_asgi_receive(proxy_request.receive, receive_queue)
+        )
+
+        # TTFT Tracing: HTTP proxy sending request to router
+        log_ttft_event(
+            "http_proxy", "tx", request_id, "HTTPProxy.send_request_to_replica"
         )
 
         response_generator = ProxyResponseGenerator(

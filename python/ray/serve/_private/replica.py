@@ -83,6 +83,7 @@ from ray.serve._private.logging_utils import (
 )
 from ray.serve._private.metrics_utils import InMemoryMetricsStore, MetricsPusher
 from ray.serve._private.thirdparty.get_asgi_route_name import get_asgi_route_name
+from ray.serve._private.ttft_tracer import log_ttft_event
 from ray.serve._private.utils import (
     Semaphore,
     get_component_file_name,  # noqa: F401
@@ -595,11 +596,27 @@ class ReplicaBase(ABC):
     async def handle_request(
         self, request_metadata: RequestMetadata, *request_args, **request_kwargs
     ) -> Tuple[bytes, Any]:
+        # TTFT Tracing: Replica received request
+        log_ttft_event(
+            self._deployment_id.name,
+            "rx",
+            request_metadata.request_id,
+            "ReplicaBase.handle_request",
+        )
+
         request_args, request_kwargs = self._unpack_proxy_args(
             request_metadata, request_args, request_kwargs
         )
         with self._wrap_request(request_metadata):
             async with self._start_request(request_metadata):
+                # TTFT Tracing: Replica sending request to engine
+                log_ttft_event(
+                    self._deployment_id.name,
+                    "tx",
+                    request_metadata.request_id,
+                    "ReplicaBase.handle_request",
+                )
+
                 return await self._user_callable_wrapper.call_user_method(
                     request_metadata, request_args, request_kwargs
                 )
