@@ -4,7 +4,7 @@
 This guide demonstrates how to use KAI Scheduler for setting up hierarchical queues with quotas, gang scheduling and GPU sharing using RayCluster. KAI Scheduler enables multiple Ray workers to share GPU resources through fractional allocation, maximizing GPU utilization and reducing costs.
 
 
-## KAI Scheduler 
+## KAI Scheduler
 
 [KAI Scheduler](https://github.com/NVIDIA/KAI-Scheduler) is a high-performance, scalable Kubernetes scheduler built for AI/ML workloads. Designed to manage large-scale GPU clusters, including thousands of nodes, and high-throughput of workloads, makes the KAI Scheduler ideal for extensive and demanding environments. It optimizes GPU resource allocation and supports the whole AI lifecycle — from interactive development sessions to large-scale distributed training and inference.
 
