@@ -734,7 +734,7 @@ def get_application_urls(
     Returns:
         The URLs of the application.
     """
-    client = _get_global_client()
+    client = _get_global_client(_health_check_controller=True)
     serve_details = client.get_serve_details()
     if app_name not in serve_details["applications"]:
         return [client.root_url]
