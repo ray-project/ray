@@ -134,7 +134,8 @@ NVSHMEM_VERSION="3.2.5-1"
 
     cd "${EP_TEMP_DIR}"
     mkdir -p nvshmem_src
-    wget https://developer.download.nvidia.com/compute/redist/nvshmem/3.2.5/source/nvshmem_src_3.2.5-1.txz -O - | tar -xJvf - -C nvshmem_src --strip-components=1
+    wget https://developer.download.nvidia.com/compute/redist/nvshmem/3.2.5/source/nvshmem_src_3.2.5-1.txz
+    tar -xvf nvshmem_src_3.2.5-1.txz -C nvshmem_src --strip-components=1
     cd nvshmem_src
     wget https://github.com/deepseek-ai/DeepEP/raw/main/third-party/nvshmem.patch
     git init
