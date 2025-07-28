@@ -729,6 +729,8 @@ def _setup_ray_cluster(
             metrics_export_port=head_node_options["metrics_export_port"],
         )
         ray_metrics_monitor.start()
+    else:
+        ray_metrics_monitor = None
     ray_cluster_handler = RayClusterOnSpark(
         address=cluster_address,
         head_proc=ray_head_proc,
