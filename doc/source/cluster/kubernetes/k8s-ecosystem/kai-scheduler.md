@@ -13,7 +13,7 @@ For more details and key features, please refer to [the documentation](https://g
 
 ### Core Components
 
-1. **PodGroups**: Pogroups are atomic units for scheduling and represent one or more interdependent pods that must be executed as a single unit, also known as gang scheduling. They are vital for distributed workloads. KAI Scheduler includes an **PodGrouper** that handles gang scheduling automatically.
+1. **PodGroups**: PodGroups are atomic units for scheduling and represent one or more interdependent pods that must be executed as a single unit, also known as gang scheduling. They are vital for distributed workloads. KAI Scheduler includes a **PodGrouper** that handles gang scheduling automatically.
 
 **How PodGrouper works:**
 ```
