@@ -705,6 +705,11 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             if op.min_max_resource_requirements()[1].gpu > 0:
                 # If an operator needs GPU, we just allocate all GPUs to it.
                 # TODO(hchen): allocate resources across multiple GPU operators.
+
+                # The op_usage can be more than the global limit in the following cases:
+                # 1. The op is setting a minimum concurrency that is larger than
+                #    available num of GPUs.
+                # 2. The cluster scales down, and the global limit decreases.
                 self._op_budgets[op].gpu = max(
                     self._resource_manager.get_global_limits().gpu
                     - self._resource_manager.get_op_usage(op).gpu,
