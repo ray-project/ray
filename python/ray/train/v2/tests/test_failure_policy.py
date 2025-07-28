@@ -13,7 +13,7 @@ def _controller_error(retryable):
     return ControllerError(
         controller_failure=WorkerGroupStartupTimeoutError(0)
         if retryable
-        else Exception("Non-retryable scheduling error")
+        else Exception("Non-retryable error")
     )
 
 
