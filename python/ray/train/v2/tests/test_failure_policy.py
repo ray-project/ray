@@ -17,17 +17,6 @@ def _controller_error(retryable):
     )
 
 
-def _worker_group_error_from_errors(retryable):
-    return WorkerGroupError(
-        "Worker group resize failed",
-        {
-            0: WorkerGroupStartupTimeoutError(0)
-            if retryable
-            else Exception("Non-retryable scheduling error")
-        },
-    )
-
-
 def _worker_group_error_from_errors(errors):
     return WorkerGroupError(
         "Worker group failed",
