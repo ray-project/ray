@@ -37,9 +37,6 @@ namespace ray {
 namespace core {
 namespace {
 
-using LeaseClientFactoryFn =
-    std::function<std::shared_ptr<RayletClientInterface>(const rpc::Address &)>;
-
 class DynamicRateLimiter : public LeaseRequestRateLimiter {
  public:
   explicit DynamicRateLimiter(size_t limit) : limit(limit) {}
@@ -556,7 +553,7 @@ class NormalTaskSubmitterTest : public testing::Test {
   NormalTaskSubmitter CreateNormalTaskSubmitter(
       std::shared_ptr<LeaseRequestRateLimiter> rate_limiter,
       WorkerType worker_type = WorkerType::WORKER,
-      LeaseClientFactoryFn lease_client_factory = nullptr,
+      std::function<std::shared_ptr<RayletClientInterface>(const rpc::Address &)> lease_client_factory = nullptr,
       std::shared_ptr<CoreWorkerMemoryStore> custom_memory_store = nullptr,
       int64_t lease_timeout_ms = kLongTimeout,
       NodeID local_raylet_id = NodeID::Nil()) {
@@ -1355,7 +1352,7 @@ TEST_F(NormalTaskSubmitterTest, TestWorkerNotReturnedOnExit) {
 
 TEST_F(NormalTaskSubmitterTest, TestSpillback) {
   absl::flat_hash_map<int, std::shared_ptr<MockRayletClient>> remote_lease_clients;
-  LeaseClientFactoryFn lease_client_factory =
+  auto lease_client_factory =
       [&remote_lease_clients](const rpc::Address &addr) {
         RAY_CHECK(remote_lease_clients.count(addr.port()) == 0);
         auto client = std::make_shared<MockRayletClient>();
