@@ -2,13 +2,14 @@ from abc import ABC, abstractmethod
 
 from config import BenchmarkConfig
 from dataloader_factory import BaseDataLoaderFactory
+from constants import DatasetKey
 
 
 class BenchmarkFactory(ABC):
     def __init__(self, benchmark_config: BenchmarkConfig):
         self.benchmark_config = benchmark_config
         self.dataloader_factory = self.get_dataloader_factory()
-        self.dataset_creation_time = 0
+        self.dataset_creation_times = {DatasetKey.TRAIN: 0.0, DatasetKey.VALID: 0.0}
 
     @abstractmethod
     def get_dataloader_factory(self) -> BaseDataLoaderFactory:

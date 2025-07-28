@@ -9,6 +9,7 @@ from ray._private.test_utils import safe_write_to_results_json
 from ray.train.torch import TorchTrainer
 from ray.train.v2._internal.util import date_str
 
+from constants import DatasetKey
 from config import BenchmarkConfig, cli_to_config
 from benchmark_factory import BenchmarkFactory
 from ray_dataloader_factory import RayDataLoaderFactory
@@ -34,7 +35,10 @@ def train_fn_per_worker(config):
 
     runner.run()
 
-    metrics = runner.get_metrics(dataset_creation_time=config["dataset_creation_time"])
+    dataset_creation_times = config.get("dataset_creation_times")
+    metrics = runner.get_metrics(
+        dataset_creation_times=dataset_creation_times,
+    )
     if ray.train.get_context().get_world_rank() == 0:
         with open(METRICS_OUTPUT_PATH, "w") as f:
             json.dump(metrics, f)
@@ -62,19 +66,23 @@ def main():
 
     dataloader_factory = factory.get_dataloader_factory()
     if isinstance(dataloader_factory, RayDataLoaderFactory):
-        datasets = dataloader_factory.get_ray_datasets()
+        datasets_with_times = dataloader_factory.get_ray_datasets()
+        datasets = {key: dataset for key, (dataset, _) in datasets_with_times.items()}
+        dataset_creation_times = {
+            key: creation_time
+            for key, (_, creation_time) in datasets_with_times.items()
+        }
         data_config = dataloader_factory.get_ray_data_config()
     else:
         datasets = {}
+        dataset_creation_times = {DatasetKey.TRAIN: 0.0, DatasetKey.VALID: 0.0}
         data_config = None
-
-    dataset_creation_time = time.perf_counter() - start_time
 
     trainer = TorchTrainer(
         train_loop_per_worker=train_fn_per_worker,
         train_loop_config={
             "factory": factory,
-            "dataset_creation_time": dataset_creation_time,
+            "dataset_creation_times": dataset_creation_times,
         },
         scaling_config=ray.train.ScalingConfig(
             num_workers=benchmark_config.num_workers,

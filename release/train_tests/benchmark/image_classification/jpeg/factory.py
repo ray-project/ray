@@ -1,6 +1,7 @@
 # Standard library imports
 import logging
-from typing import Dict
+import time
+from typing import Dict, Tuple
 
 # Third-party imports
 import torchvision
@@ -70,7 +71,7 @@ class ImageClassificationJpegRayDataLoaderFactory(
         )
         return s3fs
 
-    def get_ray_datasets(self) -> Dict[str, ray.data.Dataset]:
+    def get_ray_datasets(self) -> Dict[str, Tuple[ray.data.Dataset, float]]:
         """Get Ray datasets for training and validation.
 
         Creates training and validation datasets with:
@@ -81,8 +82,8 @@ class ImageClassificationJpegRayDataLoaderFactory(
 
         Returns:
             Dictionary containing:
-                - "train": Training dataset with random transforms
-                - "val": Validation dataset without transforms
+                - "train": Tuple of (training dataset with random transforms, creation time)
+                - "val": Tuple of (validation dataset without transforms, creation time)
         """
         train_dir = self._dataset_dirs[DatasetKey.TRAIN]
         # TODO: The validation dataset directory is not partitioned by class.
@@ -93,6 +94,7 @@ class ImageClassificationJpegRayDataLoaderFactory(
         )
 
         # Create training dataset with class-based partitioning
+        train_start_time = time.time()
         train_partitioning = Partitioning(
             "dir", base_dir=train_dir, field_names=["class"]
         )
@@ -107,8 +109,10 @@ class ImageClassificationJpegRayDataLoaderFactory(
             # Add limit after map to enable operator fusion.
             .limit(self.get_dataloader_config().limit_training_rows)
         )
+        train_creation_time = time.time() - train_start_time
 
         # Create validation dataset with same partitioning
+        val_start_time = time.time()
         val_partitioning = Partitioning("dir", base_dir=val_dir, field_names=["class"])
         val_ds = (
             ray.data.read_images(
@@ -121,10 +125,11 @@ class ImageClassificationJpegRayDataLoaderFactory(
             # Add limit after map to enable operator fusion.
             .limit(self.get_dataloader_config().limit_validation_rows)
         )
+        val_creation_time = time.time() - val_start_time
 
         return {
-            DatasetKey.TRAIN: train_ds,
-            DatasetKey.VALID: val_ds,
+            DatasetKey.TRAIN: (train_ds, train_creation_time),
+            DatasetKey.VALID: (val_ds, val_creation_time),
         }
 
 

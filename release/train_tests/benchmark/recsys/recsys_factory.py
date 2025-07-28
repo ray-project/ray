@@ -1,5 +1,6 @@
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 import logging
+import time
 
 import numpy as np
 from pydantic import BaseModel
@@ -42,12 +43,22 @@ class RecsysMockDataLoaderFactory(BaseDataLoaderFactory):
 
 
 class RecsysRayDataLoaderFactory(RayDataLoaderFactory):
-    def get_ray_datasets(self) -> Dict[str, ray.data.Dataset]:
+    def get_ray_datasets(self) -> Dict[str, Tuple[ray.data.Dataset, float]]:
+        """Get Ray datasets for training and validation.
+
+        Returns:
+            Dictionary containing:
+                - "train": Tuple of (training dataset, creation time)
+                - "val": Tuple of (validation dataset, creation time)
+        """
         # TODO: Use the train dataset for validation as well.
+        start_time = time.time()
         ds = get_ray_dataset(DatasetKey.VALID)
+        creation_time = time.time() - start_time
+
         return {
-            DatasetKey.TRAIN: ds,
-            DatasetKey.VALID: ds,
+            DatasetKey.TRAIN: (ds, creation_time),
+            DatasetKey.VALID: (ds, creation_time),
         }
 
     def _get_collate_fn(self) -> Optional[CollateFn]:

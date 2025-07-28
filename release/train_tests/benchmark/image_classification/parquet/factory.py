@@ -1,6 +1,7 @@
 # Standard library imports
 import logging
-from typing import Dict, Optional
+import time
+from typing import Dict, Optional, Tuple
 
 # Third-party imports
 from torch.utils.data import IterableDataset
@@ -40,15 +41,16 @@ class ImageClassificationParquetRayDataLoaderFactory(
         super().__init__(benchmark_config)
         self._data_dirs = data_dirs
 
-    def get_ray_datasets(self) -> Dict[str, ray.data.Dataset]:
+    def get_ray_datasets(self) -> Dict[str, Tuple[ray.data.Dataset, float]]:
         """Get Ray datasets for training and validation.
 
         Returns:
             Dictionary containing:
-                - "train": Training dataset with random transforms
-                - "val": Validation dataset without transforms
+                - "train": Tuple of (training dataset with random transforms, creation time)
+                - "val": Tuple of (validation dataset without transforms, creation time)
         """
         # Create training dataset with image decoding and transforms
+        train_start_time = time.time()
         train_ds = (
             ray.data.read_parquet(
                 self._data_dirs[DatasetKey.TRAIN],
@@ -57,8 +59,10 @@ class ImageClassificationParquetRayDataLoaderFactory(
             # Add limit after map to enable operator fusion.
             .limit(self.get_dataloader_config().limit_training_rows)
         )
+        train_creation_time = time.time() - train_start_time
 
         # Create validation dataset without random transforms
+        val_start_time = time.time()
         val_ds = (
             ray.data.read_parquet(
                 self._data_dirs[DatasetKey.TRAIN],
@@ -67,10 +71,11 @@ class ImageClassificationParquetRayDataLoaderFactory(
             # Add limit after map to enable operator fusion.
             .limit(self.get_dataloader_config().limit_validation_rows)
         )
+        val_creation_time = time.time() - val_start_time
 
         return {
-            DatasetKey.TRAIN: train_ds,
-            DatasetKey.VALID: val_ds,
+            DatasetKey.TRAIN: (train_ds, train_creation_time),
+            DatasetKey.VALID: (val_ds, val_creation_time),
         }
 
 

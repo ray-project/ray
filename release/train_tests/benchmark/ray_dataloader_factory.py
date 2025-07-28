@@ -1,5 +1,5 @@
 from abc import abstractmethod
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 import ray.train
 from ray.data import Dataset
@@ -34,10 +34,17 @@ class RayDataLoaderFactory(BaseDataLoaderFactory):
             dataloader_config.actor_locality_enabled
         )
         data_context.execution_options.preserve_order = dataloader_config.preserve_order
+        data_context._enable_read_files_fusion_override = True
 
     @abstractmethod
-    def get_ray_datasets(self) -> Dict[str, Dataset]:
-        """Get Ray datasets."""
+    def get_ray_datasets(self) -> Dict[str, Tuple[Dataset, float]]:
+        """Get Ray datasets with creation timestamps.
+
+        Returns:
+            Dictionary containing:
+                - "train": Tuple of (training dataset, creation time)
+                - "val": Tuple of (validation dataset, creation time)
+        """
         raise NotImplementedError
 
     def _get_collate_fn(self) -> Optional[CollateFn]:
