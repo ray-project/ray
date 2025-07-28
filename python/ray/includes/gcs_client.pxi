@@ -278,6 +278,7 @@ cdef class InnerGcsClient:
             c_vector[CNodeID] c_node_ids;
             c_vector[c_bool] results
             CRayStatus status
+        c_node_ids.reserve(len(node_ids));
         for node_id in node_ids:
             c_node_ids.push_back(<CNodeID>CUniqueID.FromBinary(node_id))
         with nogil:
@@ -292,6 +293,7 @@ cdef class InnerGcsClient:
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
             c_vector[CNodeID] c_node_ids;
             fut = incremented_fut()
+        c_node_ids.reserve(len(node_ids));
         for node_id in node_ids:
             c_node_ids.push_back(<CNodeID>CUniqueID.FromBinary(node_id))
         with nogil:
@@ -312,6 +314,7 @@ cdef class InnerGcsClient:
             c_vector[CNodeID] c_node_ids
             c_vector[c_string] results
             CRayStatus status
+        c_node_ids.reserve(len(node_ids));
         for node_id in node_ids:
             c_node_ids.push_back(<CNodeID>CUniqueID.FromBinary(node_id))
         with nogil:

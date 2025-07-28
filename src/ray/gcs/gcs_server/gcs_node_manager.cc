@@ -141,7 +141,7 @@ void GcsNodeManager::HandleCheckAlive(rpc::CheckAliveRequest request,
   reply->set_ray_version(kRayVersion);
   for (const auto &id : request.node_id()) {
     const auto node_id = NodeID::FromBinary(id);
-    bool is_alive = alive_nodes_.count(node_id) != 0;
+    bool is_alive = alive_nodes_.contains(node_id);
     reply->mutable_raylet_alive()->Add(is_alive);
   }
 

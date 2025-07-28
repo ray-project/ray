@@ -7,15 +7,15 @@ from ray._raylet import GcsClient
 class HealthChecker:
     def __init__(self, gcs_client: GcsClient, local_node_id: Optional[str] = None):
         self._gcs_client = gcs_client
-        self._local_node_id = local_node_id
+        self._local_node_id_bytes = (
+            hex_to_binary(local_node_id) if local_node_id is not None else None
+        )
 
     async def check_local_raylet_liveness(self) -> bool:
-        if self._local_node_id is None:
+        if self._local_node_id_bytes is None:
             return False
-
-        # Convert hex string node ID to raw bytes before sending
         liveness = await self._gcs_client.async_check_alive(
-            [hex_to_binary(self._local_node_id)], 0.1
+            [self._local_node_id_bytes], 0.1
         )
         return liveness[0]
 
