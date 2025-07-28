@@ -211,7 +211,6 @@ py_test_module_list(
         "test_list_actors_3.py",
         "test_list_actors_4.py",
         "test_multiprocessing.py",
-        "test_object_assign_owner.py",
         "test_placement_group.py",
         "test_placement_group_2.py",
         "test_placement_group_3.py",

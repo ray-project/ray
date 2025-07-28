@@ -22,9 +22,9 @@ from ray.llm._internal.batch.stages.common import maybe_convert_ndarray_to_list
 from ray.llm._internal.common.utils.cloud_utils import is_remote_path
 from ray.llm._internal.common.utils.download_utils import (
     NodeModelDownloadable,
-    download_lora_adapter,
     download_model_files,
 )
+from ray.llm._internal.common.utils.lora_utils import download_lora_adapter
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 logger = logging.getLogger(__name__)
