@@ -4279,6 +4279,8 @@ cdef class CoreWorker:
                            shared_ptr[CRayObject] *return_ptr):
         """Store a task return value in plasma or as an inlined object."""
         with nogil:
+            # For objects that can't be inlined, return_ptr will only be set if
+            # the object doesn't already exist in plasma.
             check_status(
                 CCoreWorkerProcess.GetCoreWorker().AllocateReturnObject(
                     return_id, data_size, metadata, contained_id, caller_address,
@@ -4303,6 +4305,8 @@ cdef class CoreWorker:
             return True
         else:
             with nogil:
+                # Pins the object, succeeds if the object exists in plasma and is
+                # sealed.
                 success = (
                     CCoreWorkerProcess.GetCoreWorker().PinExistingReturnObject(
                         return_id, return_ptr, generator_id, caller_address))
@@ -4405,6 +4409,12 @@ cdef class CoreWorker:
             contained_id = ObjectRefsToVector(
                 serialized_object.contained_object_refs)
 
+            # It's possible for store_task_output to fail when the object already
+            # exists, but we fail to pin it. We can fail to pin the object if
+            # 1. it exists but isn't sealed yet because it's being written to by
+            #    another worker. We'll keep looping until it's sealed.
+            # 2. it existed during the allocation attempt but was evicted before
+            #    the pin attempt. We'll allocate and write the second time.
             while not self.store_task_output(
                     serialized_object,
                     return_id,
@@ -4416,6 +4426,7 @@ cdef class CoreWorker:
                     &task_output_inlined_bytes,
                     return_ptr):
                 continue
+
             num_outputs_stored += 1
 
         i += 1
