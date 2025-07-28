@@ -1552,10 +1552,14 @@ def _start_ray_worker_nodes(
     ray_node_custom_env = spark_job_server.ray_node_custom_env
 
     metrics_logging_enabled = _ray_system_metrics_logging_enabled()
+    if metrics_logging_enabled:
+        import mlflow
+        mlflow_run_id = mlflow.active_run().info.run_id
+    else:
+        mlflow_run_id = None
 
     def ray_cluster_job_mapper(_):
         from pyspark.taskcontext import TaskContext
-        from mlflow.system_metrics.system_metrics_monitor import SystemMetricsMonitor
 
         _worker_logger = logging.getLogger("ray.util.spark.worker")
 
@@ -1675,7 +1679,6 @@ def _start_ray_worker_nodes(
             if metrics_logging_enabled:
                 import mlflow
                 from ray.util.spark.ray_metrics_monitor import RayMetricsMonitor
-                mlflow_run_id = mlflow.active_run().info.run_id
 
                 os.environ["MLFLOW_SYSTEM_METRICS_NODE_ID"] = ray_worker_node_ip
 
@@ -1715,7 +1718,7 @@ def _start_ray_worker_nodes(
             # to avoid Spark triggers more spark task retries, we swallow
             # exception here to make spark the task exit normally.
             err_msg = f"Ray worker node process exit, reason: {e}."
-            _logger.warning(err_msg)
+            _logger.warning(err_msg, exc_info=True)
 
             yield err_msg, is_task_reschedule_failure
         finally:
