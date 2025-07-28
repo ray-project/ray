@@ -448,10 +448,8 @@ def test_http_access_log_in_proxy_logs_file(serve_instance):
     )
     proxy_log_path = os.path.join(serve_log_dir, proxy_log_file_name)
 
-    url = get_application_url(use_localhost=True)
-
     request_id = str(uuid.uuid4())
-    response = httpx.get(url, headers={"X-Request-ID": request_id})
+    response = httpx.get("http://localhost:8000", headers={"X-Request-ID": request_id})
     assert response.status_code == 200
 
     def verify_request_id_in_logs(proxy_log_path, request_id):
