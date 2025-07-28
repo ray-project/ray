@@ -97,9 +97,9 @@ def parse_args():
         help="SentenceTransformer model name",
     )
     parser.add_argument(
-        "--show-sample",
+        "--smoke-test",
         action="store_true",
-        help="Show sample records instead of writing output",
+        help="Runs a smoke test with a small subset of the data",
     )
     parser.add_argument(
         "--output-path", type=str, default=None, help="Parquet output path"
@@ -201,7 +201,7 @@ def main(args):
     )
     # Record start time after metadata fetching
     start_time_without_metadata_fetching = time.time()
-    if args.show_sample:
+    if args.smoke_test:
         ds = ds.limit(5)
     ds = ds.flat_map(
         process_file, concurrency=args.process_concurrency, num_cpus=args.process_cpus
@@ -225,10 +225,9 @@ def main(args):
     start = time.time()
     if args.output_path:
         ds.write_parquet(args.output_path)
-    elif args.show_sample:
-        ds.show(5)
     else:
         ds.materialize()
+        ds.show(5)
     duration = time.time() - start
     count = ds.count()
     throughput = count / duration if duration > 0 else 0.0
