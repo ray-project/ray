@@ -29,7 +29,6 @@ Run the following command to create an on-demand GPU node pool for Ray GPU worke
 gcloud beta container node-pools create gpu-node-pool \
     --cluster kuberay-gpu-cluster \
     --machine-type a3-high-8g \ 
-    --reservation-affinity=none \ 
     --num-nodes 2 \
     --accelerator "type=nvidia-h100-mega-80gb,count=8" \
     --zone us-east5-a \
@@ -37,7 +36,7 @@ gcloud beta container node-pools create gpu-node-pool \
     --host-maintenance-interval=PERIODIC
 ```
 
-The `--accelerator` flag specifies the type and number of GPUs for each node in the node pool. This example uses the [A3 High](https://cloud.google.com/compute/docs/gpus#a3-high) GPU. The machine type `a3-highgpu-8g` has 8 GPU, 640 GB GPU Memory, 208 vCPUs and 1872 GB RAM.
+The `--accelerator` flag specifies the type and number of GPUs for each node in the node pool. This example uses the [A3 High](https://cloud.google.com/compute/docs/gpus#a3-high) GPU. The machine type `a3-highgpu-8g` has 8 GPU, 640 GB GPU Memory, 208 vCPUs, and 1872 GB RAM.
 
 
 ```{admonition} Note
@@ -61,7 +60,7 @@ Install the most recent stable KubeRay operator from the Helm repository by foll
 
 ## Step 3: Deploy a RayService
 
-Create a RayService custom resource by running the following instruction:
+Create a RayService custom resource by running the following command:
 
 ```sh
 kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-service.deepseek.yaml
@@ -189,11 +188,8 @@ The output should be in the following format:
 
 
 ```sh
-# Export ray cluster head service name
-SERVICE_NAME="$(kubectl get rayservice deepseek-r1 -n default -o jsonpath='{.status.activeServiceStatus.rayClusterName}')-head-svc"
-
 # Forward the service port
-kubectl port-forward svc/${SERVICE_NAME} 8265:8265
+kubectl port-forward svc/deepseek-r1-head-svc 8265:8265
 ```
 
 Once forwarded, navigate to the Serve tab on the dashboard to review application status, deployments, routers, logs, and other relevant features.
