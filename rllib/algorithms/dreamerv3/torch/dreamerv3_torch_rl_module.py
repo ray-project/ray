@@ -7,8 +7,19 @@ https://arxiv.org/pdf/2301.04104v1.pdf
 D. Hafner, T. Lillicrap, M. Norouzi, J. Ba
 https://arxiv.org/pdf/2010.02193.pdf
 """
-from ray.rllib.algorithms.dreamerv3.dreamerv3_rl_module import DreamerV3RLModule
+from typing import Any, Dict
+
+import gymnasium as gym
+import torch
+
+from ray.rllib.algorithms.dreamerv3.dreamerv3_rl_module import (
+    ACTIONS_ONE_HOT,
+    DreamerV3RLModule,
+)
+from ray.rllib.core.columns import Columns
+from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
+from ray.rllib.utils.annotations import override
 
 
 class DreamerV3TorchRLModule(TorchRLModule, DreamerV3RLModule):
@@ -18,3 +29,52 @@ class DreamerV3TorchRLModule(TorchRLModule, DreamerV3RLModule):
     """
 
     framework = "torch"
+
+    @override(TorchRLModule)
+    def _forward_inference(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
+        # Call the Dreamer-Model's forward_inference method and return a dict.
+        actions, next_state = self.dreamer_model.forward_inference(
+            observations=batch[Columns.OBS],
+            previous_states=batch[Columns.STATE_IN],
+            is_first=batch["is_first"],
+        )
+
+        output = {
+            Columns.ACTIONS: actions,
+            ACTIONS_ONE_HOT: actions,
+            Columns.STATE_OUT: next_state,
+        }
+        if isinstance(self.action_space, gym.spaces.Discrete):
+            output[Columns.ACTIONS] = torch.argmax(actions, dim=-1)
+        return output
+
+    @override(TorchRLModule)
+    def _forward_exploration(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
+        # Call the Dreamer-Model's forward_exploration method and return a dict.
+        actions, next_state = self.dreamer_model.forward_exploration(
+            observations=batch[Columns.OBS],
+            previous_states=batch[Columns.STATE_IN],
+            is_first=batch["is_first"],
+        )
+        # Unfold time dimension again.
+        shape = batch[Columns.OBS].shape
+        B, T = shape[0], shape[1]
+        actions = actions.view((B, T) + actions.shape[1:])
+
+        output = {
+            Columns.ACTIONS: actions,
+            ACTIONS_ONE_HOT: actions,
+            Columns.STATE_OUT: next_state,
+        }
+        if isinstance(self.action_space, gym.spaces.Discrete):
+            output[Columns.ACTIONS] = torch.argmax(actions, dim=-1)
+        return output
+
+    @override(RLModule)
+    def _forward_train(self, batch: Dict[str, Any], **kwargs):
+        # Call the Dreamer-Model's forward_train method and return its outputs as-is.
+        return self.dreamer_model.forward_train(
+            observations=batch[Columns.OBS],
+            actions=batch[Columns.ACTIONS],
+            is_first=batch["is_first"],
+        )

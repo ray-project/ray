@@ -189,10 +189,10 @@ class WorldModel(nn.Module):
         step, it is important that we do NOT sample the z^-state (as we would usually
         do during dreaming), but rather take the mode (argmax, then one-hot again).
         """
-        h = torch.tanh(self.initial_h).unsqueeze(0)
+        h = torch.tanh(self.initial_h)
         # Use the mode, NOT a sample for the initial z-state.
-        _, z_probs = self.dynamics_predictor(h, return_z_probs=True)
-        z = z_probs.argmax(dim=-1)
+        _, z_probs = self.dynamics_predictor(h.unsqueeze(0), return_z_probs=True)
+        z = z_probs.squeeze(0).argmax(dim=-1)
         z = F.one_hot(z, num_classes=z_probs.shape[-1])
 
         return {"h": h, "z": z}
@@ -223,7 +223,7 @@ class WorldModel(nn.Module):
         B = observations.shape[0]
         initial_states = tree.map_structure(
             # Repeat only the batch dimension (B times).
-            lambda s: s.tile(B, *([1] * (len(s.shape) - 1))),
+            lambda s: s.unsqueeze(0).repeat(B, *([1] * len(s.shape))),
             self.get_initial_state(),
         )
 
@@ -299,7 +299,8 @@ class WorldModel(nn.Module):
         # encoder_out=[T, B, ...]
 
         initial_states = tree.map_structure(
-            lambda s: s.tile(B, *([1] * (len(s.shape) - 1))),
+            # Repeat only the batch dimension (B times).
+            lambda s: s.unsqueeze(0).repeat(B, *([1] * len(s.shape))),
             self.get_initial_state(),
         )
 
@@ -402,6 +403,10 @@ class WorldModel(nn.Module):
     def compute_posterior_z(
         self, observations: "torch.Tensor", initial_h: "torch.Tensor"
     ) -> "torch.Tensor":
+        # Fold time dimension for possible CNN pass.
+        shape = observations.shape
+        B, T = shape[0], shape[1]
+        observations = observations.view((-1,) + shape[2:])
         # Compute bare encoder outputs (not including z, which is computed in next step
         # with involvement of the previous output (initial_h) of the sequence model).
         # encoder_outs=[B, ...]

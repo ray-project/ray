@@ -150,13 +150,15 @@ class DreamerModel(nn.Module):
         )
 
     def get_initial_state(self):
-        """Returns the (current) initial state of the dreamer model (a, h-, z-states).
+        """Returns the initial state of the dreamer model (a, h-, z-states).
 
         An initial state is generated using the previous action, the tanh of the
         (learned) h-state variable and the dynamics predictor (or "prior net") to
         compute z^0 from h0. In this last step, it is important that we do NOT sample
         the z^-state (as we would usually do during dreaming), but rather take the mode
         (argmax, then one-hot again).
+
+        Note that the initial state is returned without batch dimension.
         """
         states = self.world_model.get_initial_state()
 
@@ -165,13 +167,7 @@ class DreamerModel(nn.Module):
             if isinstance(self.action_space, gym.spaces.Discrete)
             else np.prod(self.action_space.shape)
         )
-        states["a"] = torch.zeros(
-            (
-                1,
-                action_dim,
-            ),
-            dtype=torch.float32,
-        )
+        states["a"] = torch.zeros((action_dim,), dtype=torch.float32)
         return states
 
     def dream_trajectory(self, start_states, start_is_terminated, timesteps_H, gamma):
@@ -380,7 +376,7 @@ class DreamerModel(nn.Module):
         states = start_states
         for i in range(timesteps_burn_in):
             states = self.world_model.forward_inference(
-                observations=observations[:, i],
+                observations=observations[:, i:i+1],
                 previous_states=states,
                 is_first=torch.full((B,), 1.0 if i == 0 else 0.0),
             )

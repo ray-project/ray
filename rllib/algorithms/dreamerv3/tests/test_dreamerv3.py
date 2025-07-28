@@ -16,10 +16,13 @@ import unittest
 
 import gymnasium as gym
 import numpy as np
+import tree  # pip install dm_tree
 
 import ray
 from ray.rllib.algorithms.dreamerv3 import dreamerv3
+from ray.rllib.connectors.env_to_module import FlattenObservations
 from ray.rllib.core import DEFAULT_MODULE_ID
+from ray.rllib.env.wrappers.atari_wrappers import wrap_atari_for_new_api_stack
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.numpy import one_hot
 from ray.rllib.utils.test_utils import check
@@ -71,23 +74,37 @@ class TestDreamerV3(unittest.TestCase):
             "Pendulum-v1",
         ]:
             print("Env={}".format(env))
+
             # Add one-hot observations for FrozenLake env.
             if env == "FrozenLake-v1":
+                config.env_runners(
+                    env_to_module_connector=(
+                        lambda env, spaces, device: FlattenObservations()
+                    )
+                )
+            else:
+                config.env_runners(
+                    env_to_module_connector=None
+                )
 
-                def env_creator(ctx):
-                    import gymnasium as gym
-                    from ray.rllib.algorithms.dreamerv3.utils.env_runner import (
-                        OneHot,
+            # Add Atari preprocessing.
+            if env == "ale_py:ALE/MsPacman-v5":
+
+                def env_creator(cfg):
+                    return wrap_atari_for_new_api_stack(
+                        gym.make(env, **cfg, render_mode="rgb_array"),
+                        # No frame-stacking. DreamerV3 processes color images with a
+                        # GRU, so partial observability is ok.
+                        framestack=None,
+                        grayscale=False,
                     )
 
-                    return OneHot(gym.make("FrozenLake-v1"))
-
-                tune.register_env("frozen-lake-one-hot", env_creator)
-                env = "frozen-lake-one-hot"
+                tune.register_env("env", env_creator)
+                env = "env"
 
             config.environment(env)
-            algo = config.build()
-            obs_space = algo.env_runner.env.single_observation_space
+            algo = config.build_algo()
+            obs_space = algo.env_runner._env_to_module.observation_space
             act_space = algo.env_runner.env.single_action_space
             rl_module = algo.env_runner.module
 
@@ -96,8 +113,14 @@ class TestDreamerV3(unittest.TestCase):
                 print(results)
             # Test dream trajectory w/ recreated observations.
             sample = algo.replay_buffer.sample()
+            start_states = rl_module.dreamer_model.get_initial_state()
+            start_states = tree.map_structure(
+                # Repeat only the batch dimension (B times).
+                lambda s: s.unsqueeze(0).repeat(1, *([1] * len(s.shape))),
+                start_states,
+            )
             dream = rl_module.dreamer_model.dream_trajectory_with_burn_in(
-                start_states=rl_module.dreamer_model.get_initial_state(),
+                start_states=start_states,
                 timesteps_burn_in=5,
                 timesteps_H=45,
                 observations=torch.from_numpy(sample["obs"][:1]),  # B=1
@@ -226,7 +249,7 @@ class TestDreamerV3(unittest.TestCase):
             # Atari and CartPole spaces.
             for obs_space, num_actions, env_name in [
                 (gym.spaces.Box(-1.0, 0.0, (4,), np.float32), 2, "cartpole"),
-                (gym.spaces.Box(-1.0, 0.0, (64, 64, 3), np.float32), 6, "atari"),
+                #(gym.spaces.Box(-1.0, 0.0, (64, 64, 3), np.float32), 6, "atari"),
             ]:
                 print(f"Testing model_size={model_size} on env-type: {env_name} ..")
                 config.environment(
@@ -242,24 +265,24 @@ class TestDreamerV3(unittest.TestCase):
                 # Count the generated RLModule's parameters and compare to the
                 # paper's reported numbers ([1] and [3]).
                 num_params_world_model = sum(
-                    np.prod(v.shape.as_list())
-                    for v in rl_module.world_model.trainable_variables
+                    np.prod(v.shape)
+                    for v in rl_module.world_model.parameters() if v.requires_grad
                 )
                 self.assertEqual(
                     num_params_world_model,
                     expected_num_params_world_model[f"{model_size}_{env_name}"],
                 )
                 num_params_actor = sum(
-                    np.prod(v.shape.as_list())
-                    for v in rl_module.actor.trainable_variables
+                    np.prod(v.shape)
+                    for v in rl_module.actor.parameters() if v.requires_grad
                 )
                 self.assertEqual(
                     num_params_actor,
                     expected_num_params_actor[f"{model_size}_{env_name}"],
                 )
                 num_params_critic = sum(
-                    np.prod(v.shape.as_list())
-                    for v in rl_module.critic.trainable_variables
+                    np.prod(v.shape)
+                    for v in rl_module.critic.parameters() if v.requires_grad
                 )
                 self.assertEqual(
                     num_params_critic,

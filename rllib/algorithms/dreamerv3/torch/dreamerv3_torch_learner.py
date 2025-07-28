@@ -35,6 +35,13 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
     "actor", and "critic". Each of these optimizers might use a different learning rate,
     epsilon parameter, and gradient clipping thresholds and procedures.
     """
+    def build(self) -> None:
+        super().build()
+
+        # Store loss tensors here temporarily inside the loss function for (exact)
+        # consumption later by the compute gradients function.
+        # Keys=(module_id, optimizer_name), values=loss tensors (in-graph).
+        self._temp_losses = {}
 
     @override(TorchLearner)
     def configure_optimizers_for_module(
@@ -157,9 +164,8 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
             optim = self.get_optimizer(DEFAULT_MODULE_ID, component)
             optim.zero_grad(set_to_none=True)
             # Do the backward pass
-            self.metrics.peek(
-                (DEFAULT_MODULE_ID, component.upper() + "_L_total")
-            ).backward(retain_graph=True)
+            loss = self._temp_losses.pop(component.upper())
+            loss.backward(retain_graph=True)
             optim_grads = {
                 pid: p.grad
                 for pid, p in self.filter_param_dict_for_optimizer(
@@ -175,9 +181,8 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
         optim = self.get_optimizer(DEFAULT_MODULE_ID, component)
         optim.zero_grad(set_to_none=True)
         # Do the backward pass
-        self.metrics.peek(
-            (DEFAULT_MODULE_ID, component.upper() + "_L_total")
-        ).backward()
+        loss = self._temp_losses.pop(component.upper())
+        loss.backward()
         wm_grads = {
             pid: p.grad
             for pid, p in self.filter_param_dict_for_optimizer(
@@ -237,7 +242,7 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
             {
                 "WORLD_MODEL_learned_initial_h": self.module[module_id]
                 .unwrapped()
-                .world_model.initial_h,
+                .world_model.initial_h.mean(),
                 # Prediction losses.
                 # Decoder (obs) loss.
                 "WORLD_MODEL_L_decoder": prediction_losses["L_decoder"],
@@ -333,11 +338,11 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
             continues_t0_to_H_BxT=dream_data["continues_dreamed_t0_to_H_BxT"],
             value_predictions_t0_to_H_BxT=dream_data["values_dreamed_t0_to_H_BxT"],
         )
-        self.metrics.log_value(
-            key=(module_id, "VALUE_TARGETS_H_BxT"),
-            value=value_targets_t0_to_Hm1_BxT,
-            window=1,  # <- single items (should not be mean/ema-reduced over time).
-        )
+        #self.metrics.log_value(
+        #    key=(module_id, "VALUE_TARGETS_H_BxT"),
+        #    value=value_targets_t0_to_Hm1_BxT,
+        #    window=1,  # <- single items (should not be mean/ema-reduced over time).
+        #)
 
         CRITIC_L_total = self._compute_critic_loss(
             module_id=module_id,
@@ -354,6 +359,10 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
             )
         else:
             ACTOR_L_total = 0.0
+
+        self._temp_losses["ACTOR"] = ACTOR_L_total
+        self._temp_losses["CRITIC"] = CRITIC_L_total
+        self._temp_losses["WORLD_MODEL"] = L_world_model_total
 
         # Return the total loss as a sum of all individual losses.
         return L_world_model_total + CRITIC_L_total + ACTOR_L_total

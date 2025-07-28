@@ -33,7 +33,6 @@ from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import deep_update
 from ray.rllib.utils.annotations import override, PublicAPI
-from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.numpy import one_hot
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
@@ -53,8 +52,6 @@ from ray.rllib.utils.typing import LearningRateOrSchedule
 
 
 logger = logging.getLogger(__name__)
-
-_, tf, _ = try_import_tf()
 
 
 class DreamerV3Config(AlgorithmConfig):
@@ -139,7 +136,6 @@ class DreamerV3Config(AlgorithmConfig):
         # Override some of AlgorithmConfig's default values with DreamerV3-specific
         # values.
         self.lr = None
-        self.framework_str = "torch"
         self.gamma = 0.997  # [1] eq. 7.
         # Do not use! Set `batch_size_B` and `batch_length_T` instead.
         self.train_batch_size = None
@@ -158,8 +154,8 @@ class DreamerV3Config(AlgorithmConfig):
         # fmt: on
 
     @override(AlgorithmConfig)
-    def build_env_to_module_connector(self, env):
-        connector = super().build_env_to_module_connector(env)
+    def build_env_to_module_connector(self, env, spaces, device):
+        connector = super().build_env_to_module_connector(env, spaces, device)
 
         # Prepend the "is_first" connector such that the RSSM knows, when to insert
         # its (learned) internal state into the batch.
@@ -444,12 +440,6 @@ class DreamerV3Config(AlgorithmConfig):
             )
 
             return DreamerV3TorchLearner
-        elif self.framework_str == "tf2":
-            from ray.rllib.algorithms.dreamerv3.tf.dreamerv3_tf_learner import (
-                DreamerV3TfLearner,
-            )
-
-            return DreamerV3TfLearner
         else:
             raise ValueError(f"The framework {self.framework_str} is not supported.")
 
@@ -458,11 +448,6 @@ class DreamerV3Config(AlgorithmConfig):
         if self.framework_str == "torch":
             from ray.rllib.algorithms.dreamerv3.torch.dreamerv3_torch_rl_module import (
                 DreamerV3TorchRLModule as module,
-            )
-
-        elif self.framework_str == "tf2":
-            from ray.rllib.algorithms.dreamerv3.tf.dreamerv3_tf_rl_module import (
-                DreamerV3TfRLModule as module,
             )
 
         else:
@@ -509,15 +494,11 @@ class DreamerV3(Algorithm):
 
         # Share RLModule between EnvRunner and single (local) Learner instance.
         # To avoid possibly expensive weight synching step.
-        if self.config.share_module_between_env_runner_and_learner:
-            assert self.env_runner.module is None
-            self.env_runner.module = self.learner_group._learner.module[
-                DEFAULT_MODULE_ID
-            ]
-
-        # Summarize (single-agent) RLModule (only once) here.
-        if self.config.framework_str == "tf2":
-            self.env_runner.module.dreamer_model.summary(expand_nested=True)
+        #if self.config.share_module_between_env_runner_and_learner:
+        #    assert self.env_runner.module is None
+        #    self.env_runner.module = self.learner_group._learner.module[
+        #        DEFAULT_MODULE_ID
+        #    ]
 
         # Create a replay buffer for storing actual env samples.
         self.replay_buffer = EpisodeReplayBuffer(
@@ -706,12 +687,12 @@ class DreamerV3(Algorithm):
         with self.metrics.log_time((TIMERS, SYNCH_WORKER_WEIGHTS_TIMER)):
             # Only necessary if RLModule is not shared between (local) EnvRunner and
             # (local) Learner.
-            if not self.config.share_module_between_env_runner_and_learner:
-                self.metrics.log_value(NUM_SYNCH_WORKER_WEIGHTS, 1, reduce="sum")
-                self.env_runner_group.sync_weights(
-                    from_worker_or_learner_group=self.learner_group,
-                    inference_only=True,
-                )
+            #if not self.config.share_module_between_env_runner_and_learner:
+            self.metrics.log_value(NUM_SYNCH_WORKER_WEIGHTS, 1, reduce="sum")
+            self.env_runner_group.sync_weights(
+                from_worker_or_learner_group=self.learner_group,
+                inference_only=True,
+            )
 
         # Add train results and the actual training ratio to stats. The latter should
         # be close to the configured `training_ratio`.

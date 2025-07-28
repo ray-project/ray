@@ -584,8 +584,7 @@ class RLModule(Checkpointable, abc.ABC):
 
         By default, this calls the generic `self._forward()` method.
         """
-        with torch.no_grad():
-            return self._forward(batch, **kwargs)
+        return self._forward(batch, **kwargs)
 
     def forward_exploration(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
         """DO NOT OVERRIDE! Forward-pass during exploration, called from the sampler.
@@ -614,8 +613,7 @@ class RLModule(Checkpointable, abc.ABC):
 
         By default, this calls the generic `self._forward()` method.
         """
-        with torch.no_grad():
-            return self._forward(batch, **kwargs)
+        return self._forward(batch, **kwargs)
 
     def forward_train(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
         """DO NOT OVERRIDE! Forward-pass during training called from the learner.
