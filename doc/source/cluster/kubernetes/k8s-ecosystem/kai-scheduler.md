@@ -47,7 +47,7 @@ Install KAI Scheduler with gpu-sharing enabled:
 
 ```bash
 # Install KAI Scheduler
-helm upgrade -i kai-scheduler oci://ghcr.io/nvidia/kai-scheduler/kai-scheduler -n kai-scheduler --create-namespace --version $VERSION --set "global.gpuSharing=true"
+helm upgrade -i kai-scheduler oci://ghcr.io/nvidia/kai-scheduler/kai-scheduler -n kai-scheduler --create-namespace --version <KAI_SCHEDULER_VERSION> --set "global.gpuSharing=true"
 ```
 
 ## Step 2: Install the KubeRay operator with KAI Scheduler as the batch scheduler
