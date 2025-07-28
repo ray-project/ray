@@ -223,7 +223,7 @@ def main(args):
     if args.output_path:
         ds.write_parquet(args.output_path)
     else:
-        ds.materialize()
+        ds = ds.materialize()
         ds.show(5)
     duration = time.time() - start
     count = ds.count()
