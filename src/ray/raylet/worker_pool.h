@@ -51,24 +51,23 @@ using WorkerCommandMap =
 
 enum PopWorkerStatus {
   // OK.
-  // A registered worker will be returned with callback.
   OK = 0,
   // Job config is not found.
-  // A nullptr worker will be returned with callback.
   JobConfigMissing = 1,
   // Worker process startup rate is limited.
-  // A nullptr worker will be returned with callback.
   TooManyStartingWorkerProcesses = 2,
   // Worker process has been started, but the worker did not register at the raylet within
   // the timeout.
-  // A nullptr worker will be returned with callback.
   WorkerPendingRegistration = 3,
   // Any fails of runtime env creation.
-  // A nullptr worker will be returned with callback.
   RuntimeEnvCreationFailed = 4,
   // The task's job has finished.
-  // A nullptr worker will be returned with callback.
   JobFinished = 5,
+  // The worker process failed to launch because the OS returned an `E2BIG`
+  // (Argument list too long) error. This typically occurs when a `runtime_env`
+  // is so large that its serialized context exceeds the kernel's command-line
+  // argument size limit.
+  ArgumentListTooLong = 6,
 };
 
 /// \param[in] worker The started worker instance. Nullptr if worker is not started.
@@ -229,10 +228,6 @@ class WorkerPoolInterface : public IOWorkerPoolInterface {
                                 StartupToken worker_startup_token,
                                 std::function<void(Status, int)> send_reply_callback) = 0;
 
-  virtual Status RegisterWorker(const std::shared_ptr<WorkerInterface> &worker,
-                                pid_t pid,
-                                StartupToken worker_startup_token) = 0;
-
   virtual boost::optional<const rpc::JobConfig &> GetJobConfig(
       const JobID &job_id) const = 0;
 
@@ -321,7 +316,7 @@ class WorkerPool : public WorkerPoolInterface {
              int min_worker_port,
              int max_worker_port,
              const std::vector<int> &worker_ports,
-             std::shared_ptr<gcs::GcsClient> gcs_client,
+             gcs::GcsClient &gcs_client,
              const WorkerCommandMap &worker_commands,
              std::string native_library_path,
              std::function<void()> starting_worker_timeout_callback,
@@ -380,12 +375,6 @@ class WorkerPool : public WorkerPoolInterface {
                         pid_t pid,
                         StartupToken worker_startup_token,
                         std::function<void(Status, int)> send_reply_callback) override;
-
-  // Similar to the above function overload, but the port has been assigned, but directly
-  // returns registration status without taking a callback.
-  Status RegisterWorker(const std::shared_ptr<WorkerInterface> &worker,
-                        pid_t pid,
-                        StartupToken worker_startup_token) override;
 
   /// To be invoked when a worker is started. This method should be called when the worker
   /// announces its port.
@@ -607,7 +596,8 @@ class WorkerPool : public WorkerPoolInterface {
   /// the environment variables of the parent process.
   /// \return An object representing the started worker process.
   virtual Process StartProcess(const std::vector<std::string> &worker_command_args,
-                               const ProcessEnvironment &env);
+                               const ProcessEnvironment &env,
+                               std::error_code &ec);
 
   /// Push an warning message to user if worker pool is getting to big.
   virtual void WarnAboutSize();
@@ -615,7 +605,8 @@ class WorkerPool : public WorkerPoolInterface {
   /// Make this synchronized function for unit test.
   void PopWorkerCallbackInternal(const PopWorkerCallback &callback,
                                  std::shared_ptr<WorkerInterface> worker,
-                                 PopWorkerStatus status);
+                                 PopWorkerStatus status,
+                                 const std::string &runtime_env_setup_error_message);
 
   /// Look up worker's dynamic options by startup token.
   /// TODO(scv119): replace dynamic options by runtime_env.
@@ -782,9 +773,11 @@ class WorkerPool : public WorkerPoolInterface {
 
   /// Call the `PopWorkerCallback` function asynchronously to make sure executed in
   /// different stack.
-  virtual void PopWorkerCallbackAsync(PopWorkerCallback callback,
-                                      std::shared_ptr<WorkerInterface> worker,
-                                      PopWorkerStatus status);
+  virtual void PopWorkerCallbackAsync(
+      PopWorkerCallback callback,
+      std::shared_ptr<WorkerInterface> worker,
+      PopWorkerStatus status,
+      const std::string &runtime_env_setup_error_message = "");
 
   /// We manage all runtime env resources locally by the two methods:
   /// `GetOrCreateRuntimeEnv` and `DeleteRuntimeEnvIfPossible`.
@@ -878,7 +871,7 @@ class WorkerPool : public WorkerPoolInterface {
   /// The port Raylet uses for listening to incoming connections.
   int node_manager_port_ = 0;
   /// A client connection to the GCS.
-  std::shared_ptr<gcs::GcsClient> gcs_client_;
+  gcs::GcsClient &gcs_client_;
   /// The native library path which includes the core libraries.
   std::string native_library_path_;
   /// The callback that will be triggered once it times out to start a worker.

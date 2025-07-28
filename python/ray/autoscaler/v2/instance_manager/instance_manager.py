@@ -198,6 +198,7 @@ class InstanceManager:
             instance.cloud_instance_id = update.cloud_instance_id
             instance.node_kind = update.node_kind
             instance.instance_type = update.instance_type
+            instance.node_id = update.ray_node_id
         elif update.new_instance_status == Instance.RAY_RUNNING:
             assert update.ray_node_id, "RAY_RUNNING update must have ray_node_id"
             instance.node_id = update.ray_node_id

@@ -7,6 +7,7 @@ doctest(
     files = glob(
         ["**/*.py"],
         exclude = [
+            "collective/**",  # Only works on v2
             "examples/**",
             "tests/**",
             "horovod/**",  # CI do not have horovod installed

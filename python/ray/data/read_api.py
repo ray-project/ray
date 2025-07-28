@@ -37,7 +37,11 @@ from ray.data._internal.datasource.image_datasource import (
     ImageDatasource,
     ImageFileMetadataProvider,
 )
-from ray.data._internal.datasource.json_datasource import JSONDatasource
+from ray.data._internal.datasource.json_datasource import (
+    JSON_FILE_EXTENSIONS,
+    ArrowJSONDatasource,
+    PandasJSONDatasource,
+)
 from ray.data._internal.datasource.lance_datasource import LanceDatasource
 from ray.data._internal.datasource.mongo_datasource import MongoDatasource
 from ray.data._internal.datasource.numpy_datasource import NumpyDatasource
@@ -1277,7 +1281,7 @@ def read_json(
     include_paths: bool = False,
     ignore_missing_paths: bool = False,
     shuffle: Optional[Union[Literal["files"], FileShuffleConfig]] = None,
-    file_extensions: Optional[List[str]] = JSONDatasource._FILE_EXTENSIONS,
+    file_extensions: Optional[List[str]] = JSON_FILE_EXTENSIONS,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
     **arrow_json_args,
@@ -1399,10 +1403,7 @@ def read_json(
     if meta_provider is None:
         meta_provider = DefaultFileMetadataProvider()
 
-    datasource = JSONDatasource(
-        paths,
-        is_jsonl=lines,
-        arrow_json_args=arrow_json_args,
+    file_based_datasource_kwargs = dict(
         filesystem=filesystem,
         open_stream_args=arrow_open_stream_args,
         meta_provider=meta_provider,
@@ -1413,6 +1414,22 @@ def read_json(
         include_paths=include_paths,
         file_extensions=file_extensions,
     )
+    if lines:
+        target_output_size_bytes = (
+            ray.data.context.DataContext.get_current().target_max_block_size
+        )
+        datasource = PandasJSONDatasource(
+            paths,
+            target_output_size_bytes=target_output_size_bytes,
+            **file_based_datasource_kwargs,
+        )
+    else:
+        datasource = ArrowJSONDatasource(
+            paths,
+            arrow_json_args=arrow_json_args,
+            **file_based_datasource_kwargs,
+        )
+
     return read_datasource(
         datasource,
         parallelism=parallelism,
@@ -2421,6 +2438,70 @@ def read_sql(
 
 
 @PublicAPI(stability="alpha")
+def read_snowflake(
+    sql: str,
+    connection_parameters: Dict[str, Any],
+    *,
+    shard_keys: Optional[list[str]] = None,
+    ray_remote_args: Dict[str, Any] = None,
+    concurrency: Optional[int] = None,
+    override_num_blocks: Optional[int] = None,
+) -> Dataset:
+    """Read data from a Snowflake data set.
+
+    Example:
+
+        .. testcode::
+            :skipif: True
+
+            import ray
+
+            connection_parameters = dict(
+                user=...,
+                account="ABCDEFG-ABC12345",
+                password=...,
+                database="SNOWFLAKE_SAMPLE_DATA",
+                schema="TPCDS_SF100TCL"
+            )
+            ds = ray.data.read_snowflake("SELECT * FROM CUSTOMERS", connection_parameters)
+
+    Args:
+        sql: The SQL query to execute.
+        connection_parameters: Keyword arguments to pass to
+            ``snowflake.connector.connect``. To view supported parameters, read
+            https://docs.snowflake.com/developer-guide/python-connector/python-connector-api#functions.
+        shard_keys: The keys to shard the data by.
+        ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
+        concurrency: The maximum number of Ray tasks to run concurrently. Set this
+            to control number of tasks to run concurrently. This doesn't change the
+            total number of tasks run or the total number of output blocks. By default,
+            concurrency is dynamically decided based on the available resources.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            This is used for sharding when shard_keys is provided.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
+
+    Returns:
+        A ``Dataset`` containing the data from the Snowflake data set.
+    """  # noqa: E501
+    import snowflake.connector
+
+    def snowflake_connection_factory():
+        return snowflake.connector.connect(**connection_parameters)
+
+    return ray.data.read_sql(
+        sql,
+        connection_factory=snowflake_connection_factory,
+        shard_keys=shard_keys,
+        shard_hash_fn="hash",
+        ray_remote_args=ray_remote_args,
+        concurrency=concurrency,
+        override_num_blocks=override_num_blocks,
+    )
+
+
+@PublicAPI(stability="alpha")
 def read_databricks_tables(
     *,
     warehouse_id: str,
@@ -2949,6 +3030,8 @@ def from_numpy_refs(
 @PublicAPI
 def from_arrow(
     tables: Union["pyarrow.Table", bytes, List[Union["pyarrow.Table", bytes]]],
+    *,
+    override_num_blocks: Optional[int] = None,
 ) -> MaterializedDataset:
     """Create a :class:`~ray.data.Dataset` from a list of PyArrow tables.
 
@@ -2968,14 +3051,50 @@ def from_arrow(
     Args:
         tables: A PyArrow table, or a list of PyArrow tables,
                 or its streaming format in bytes.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
 
     Returns:
         :class:`~ray.data.Dataset` holding data from the PyArrow tables.
     """
+    import builtins
+
     import pyarrow as pa
 
     if isinstance(tables, (pa.Table, bytes)):
         tables = [tables]
+
+    if override_num_blocks is not None:
+        if override_num_blocks <= 0:
+            raise ValueError("override_num_blocks must be > 0")
+        combined_table = pa.concat_tables(tables) if len(tables) > 1 else tables[0]
+        total_rows = len(combined_table)
+
+        if total_rows == 0:
+            # Handle empty table case
+            tables = [
+                combined_table.slice(0, 0) for _ in builtins.range(override_num_blocks)
+            ]
+        else:
+            batch_size = (total_rows + override_num_blocks - 1) // override_num_blocks
+            slices = []
+
+            for i in builtins.range(override_num_blocks):
+                start = i * batch_size
+                if start >= total_rows:
+                    break
+                length = min(batch_size, total_rows - start)
+                slices.append(combined_table.slice(start, length))
+
+            # Pad with empty slices if needed
+            if len(slices) < override_num_blocks:
+                empty_table = combined_table.slice(0, 0)
+                slices.extend([empty_table] * (override_num_blocks - len(slices)))
+
+            tables = slices
+
     return from_arrow_refs([ray.put(t) for t in tables])
 
 
@@ -3220,7 +3339,32 @@ def from_huggingface(
             # Attempt to read data via Hugging Face Hub parquet files. If the
             # returned list of files is empty, attempt read via other methods.
             file_urls = HuggingFaceDatasource.list_parquet_urls_from_dataset(dataset)
+
             if len(file_urls) > 0:
+                # Resolve HTTP 302 redirects
+                import requests
+
+                resolved_urls = []
+                for url in file_urls:
+                    try:
+                        resp = requests.head(url, allow_redirects=True, timeout=5)
+                        if resp.status_code == 200:
+                            resolved_urls.append(resp.url)
+                        else:
+                            logger.warning(
+                                f"Unexpected status {resp.status_code} resolving {url} from "
+                                f"Hugging Face Hub parquet files"
+                            )
+                    except requests.RequestException as e:
+                        logger.warning(
+                            f"Failed to resolve {url}: {e} from Hugging Face Hub parquet files"
+                        )
+
+                if not resolved_urls:
+                    raise FileNotFoundError(
+                        "No resolvable Parquet URLs found from Hugging Face Hub parquet files"
+                    )
+
                 # If file urls are returned, the parquet files are available via API
                 # TODO: Add support for reading from http filesystem in
                 # FileBasedDatasource. GH Issue:
@@ -3229,7 +3373,7 @@ def from_huggingface(
 
                 http = fsspec.implementations.http.HTTPFileSystem()
                 return read_parquet(
-                    file_urls,
+                    resolved_urls,
                     parallelism=parallelism,
                     filesystem=http,
                     concurrency=concurrency,
@@ -3238,6 +3382,7 @@ def from_huggingface(
                         "retry_exceptions": [FileNotFoundError, ClientResponseError]
                     },
                 )
+
         except (FileNotFoundError, ClientResponseError):
             logger.warning(
                 "Distributed read via Hugging Face Hub parquet files failed, "
@@ -3253,20 +3398,12 @@ def from_huggingface(
             override_num_blocks=override_num_blocks,
         )
     if isinstance(dataset, datasets.Dataset):
-        # For non-streaming Hugging Face Dataset, we don't support override_num_blocks
-        if override_num_blocks is not None:
-            raise ValueError(
-                "`override_num_blocks` parameter is not supported for "
-                "non-streaming Hugging Face Datasets. Please omit the parameter and use `.repartition` instead."
-                "Alternatively, use streaming mode to read the dataset."
-            )
-
         # To get the resulting Arrow table from a Hugging Face Dataset after
         # applying transformations (e.g., train_test_split(), shard(), select()),
         # we create a copy of the Arrow table, which applies the indices
         # mapping from the transformations.
         hf_ds_arrow = dataset.with_format("arrow")
-        ray_ds = from_arrow(hf_ds_arrow[:])
+        ray_ds = from_arrow(hf_ds_arrow[:], override_num_blocks=override_num_blocks)
         return ray_ds
     elif isinstance(dataset, (datasets.DatasetDict, datasets.IterableDatasetDict)):
         available_keys = list(dataset.keys())
@@ -3498,7 +3635,7 @@ def read_lance(
 ) -> Dataset:
     """
     Create a :class:`~ray.data.Dataset` from a
-    `Lance Dataset <https://lancedb.github.io/lance/api/py_modules.html#lance.dataset.LanceDataset>`_.
+    `Lance Dataset <https://lancedb.github.io/lance-python-doc/all-modules.html#lance.LanceDataset>`_.
 
     Examples:
         >>> import ray
@@ -3517,11 +3654,11 @@ def read_lance(
         storage_options: Extra options that make sense for a particular storage
             connection. This is used to store connection parameters like credentials,
             endpoint, etc. For more information, see `Object Store Configuration <https\
-                ://lancedb.github.io/lance/object_store.html#object-store-configuration>`_.
+                ://lancedb.github.io/lance/guide/object_store/>`_.
         scanner_options: Additional options to configure the `LanceDataset.scanner()`
             method, such as `batch_size`. For more information,
-            see `LanceDB API doc <https://lancedb.github.io/\
-                lance/api/py_modules.html#lance.LanceDataset.scanner>`_
+            see `LanceDB API doc <https://lancedb.github.io\
+            /lance-python-doc/all-modules.html#lance.LanceDataset.scanner>`_
         ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the

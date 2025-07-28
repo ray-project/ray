@@ -117,15 +117,21 @@ class SplitRepartitionTaskScheduler(ExchangeTaskScheduler):
             )
 
             num_empty_blocks = output_num_blocks - len(reduce_block_refs)
-            first_block_schema = reduce_metadata_schema[0].schema
-            if first_block_schema is None:
-                raise ValueError(
-                    "Cannot split partition on blocks with unknown block format."
-                )
-            elif isinstance(first_block_schema, pa.Schema):
+            if len(reduce_metadata_schema) > 0:
+                first_block_schema = reduce_metadata_schema[0].schema
+                if isinstance(first_block_schema, pa.Schema):
+                    builder = ArrowBlockBuilder()
+                elif isinstance(first_block_schema, PandasBlockSchema):
+                    builder = PandasBlockBuilder()
+                else:
+                    raise ValueError(
+                        "Cannot split partition on blocks with unknown block schema:"
+                        f" {first_block_schema}."
+                    )
+            else:
+                # If the result is empty, default to Arrow format for the empty blocks.
                 builder = ArrowBlockBuilder()
-            elif isinstance(first_block_schema, PandasBlockSchema):
-                builder = PandasBlockBuilder()
+
             empty_block = builder.build()
             empty_meta_with_schema = BlockMetadataWithSchema.from_block(
                 empty_block

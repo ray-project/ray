@@ -112,6 +112,21 @@ py_test(
 )
 
 py_test(
+    name = "test_snowflake",
+    size = "small",
+    srcs = ["tests/test_snowflake.py"],
+    tags = [
+        "exclusive",
+        "needs_credentials",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_mongo",
     size = "large",
     srcs = ["tests/test_mongo.py"],
@@ -173,6 +188,21 @@ py_test(
     name = "test_arrow_block",
     size = "large",
     srcs = ["tests/test_arrow_block.py"],
+    tags = [
+        "data_non_parallel",
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_arrow_block_scaling",
+    size = "large",
+    srcs = ["tests/test_arrow_block_scaling.py"],
     tags = [
         "data_non_parallel",
         "exclusive",
@@ -283,6 +313,20 @@ py_test(
 )
 
 py_test(
+    name = "test_expressions",
+    size = "small",
+    srcs = ["tests/test_expressions.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_avro",
     size = "small",
     srcs = ["tests/test_avro.py"],
@@ -368,7 +412,7 @@ py_test(
 
 py_test(
     name = "test_join",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_join.py"],
     tags = [
         "data_non_parallel",
@@ -449,10 +493,25 @@ py_test(
 )
 
 py_test(
-    name = "test_ecosystem",
+    name = "test_ecosystem_modin",
     size = "small",
-    srcs = ["tests/test_ecosystem.py"],
+    srcs = ["tests/test_ecosystem_modin.py"],
     tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_ecosystem_dask",
+    size = "small",
+    srcs = ["tests/test_ecosystem_dask.py"],
+    tags = [
+        "dask",
         "exclusive",
         "team:data",
     ],
@@ -860,20 +919,6 @@ py_test(
     name = "test_iceberg",
     size = "medium",
     srcs = ["tests/test_iceberg.py"],
-    tags = [
-        "exclusive",
-        "team:data",
-    ],
-    deps = [
-        ":conftest",
-        "//:ray_lib",
-    ],
-)
-
-py_test(
-    name = "test_mars",
-    size = "medium",
-    srcs = ["tests/test_mars.py"],
     tags = [
         "exclusive",
         "team:data",

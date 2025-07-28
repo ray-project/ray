@@ -20,9 +20,8 @@ import string
 import random
 import time
 
-BUCKET = "anyscale-imagenet"
 WRITE_PATH = f"s3://ray-data-write-benchmark/{uuid.uuid4().hex}"
-BUCKET = "ray-benchmark-data-internal"
+BUCKET = "ray-benchmark-data-internal-us-west-2"
 
 # Assumptions: homogenously shaped images, homogenous images
 # Each iamge is 2048 * 2048 * 3 = 12.58 MB -> 11 images / block. 8 blocks per task, so ~88 images per task.

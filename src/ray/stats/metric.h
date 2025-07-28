@@ -141,6 +141,7 @@ class Metric {
 
  protected:
   virtual void RegisterView() = 0;
+  virtual void RegisterOpenTelemetryMetric() = 0;
 
  protected:
   std::string name_;
@@ -166,6 +167,7 @@ class Gauge : public Metric {
 
  private:
   void RegisterView() override;
+  void RegisterOpenTelemetryMetric() override;
 
 };  // class Gauge
 
@@ -180,6 +182,7 @@ class Histogram : public Metric {
 
  private:
   void RegisterView() override;
+  void RegisterOpenTelemetryMetric() override;
 
  private:
   std::vector<double> boundaries_;
@@ -196,6 +199,7 @@ class Count : public Metric {
 
  private:
   void RegisterView() override;
+  void RegisterOpenTelemetryMetric() override;
 
 };  // class Count
 
@@ -209,6 +213,7 @@ class Sum : public Metric {
 
  private:
   void RegisterView() override;
+  void RegisterOpenTelemetryMetric() override;
 
 };  // class Sum
 
@@ -260,23 +265,28 @@ void RegisterView(const std::string &name,
                   const std::string &description,
                   const std::vector<opencensus::tags::TagKey> &tag_keys,
                   const std::vector<double> &buckets) {
-  using I = StatsTypeMap<T>;
-  auto view_descriptor = opencensus::stats::ViewDescriptor()
-                             .set_name(name + I::val)
-                             .set_description(description)
-                             .set_measure(name)
-                             .set_aggregation(I::Aggregation(buckets));
-
-  if (::RayConfig::instance().experimental_enable_open_telemetry_on_core()) {
-    if (T == GAUGE) {
-      OpenTelemetryMetricRecorder::GetInstance().RegisterGaugeMetric(name, description);
-    } else if (T == COUNT) {
-      OpenTelemetryMetricRecorder::GetInstance().RegisterCounterMetric(name, description);
-    } else {
-      internal::RegisterAsView(view_descriptor, tag_keys);
-    }
-  } else {
+  if (!::RayConfig::instance().experimental_enable_open_telemetry_on_core()) {
+    // OpenTelemetry is not enabled, register the view as an OpenCensus view.
+    using I = StatsTypeMap<T>;
+    auto view_descriptor = opencensus::stats::ViewDescriptor()
+                               .set_name(name + I::val)
+                               .set_description(description)
+                               .set_measure(name)
+                               .set_aggregation(I::Aggregation(buckets));
     internal::RegisterAsView(view_descriptor, tag_keys);
+    return;
+  }
+  if (T == GAUGE) {
+    OpenTelemetryMetricRecorder::GetInstance().RegisterGaugeMetric(name, description);
+  } else if (T == COUNT) {
+    OpenTelemetryMetricRecorder::GetInstance().RegisterCounterMetric(name, description);
+  } else if (T == SUM) {
+    OpenTelemetryMetricRecorder::GetInstance().RegisterSumMetric(name, description);
+  } else if (T == HISTOGRAM) {
+    OpenTelemetryMetricRecorder::GetInstance().RegisterHistogramMetric(
+        name, description, buckets);
+  } else {
+    RAY_CHECK(false) << "Unknown stats type: " << static_cast<int>(T);
   }
 }
 
@@ -343,9 +353,9 @@ class Stats {
   }
 
   /// Helper function to record a value, either through OpenTelemetry or OpenCensus.
-  void record(double val,
-              const std::vector<std::pair<opencensus::tags::TagKey, std::string>>
-                  &open_census_tags) {
+  void RecordValue(double val,
+                   const std::vector<std::pair<opencensus::tags::TagKey, std::string>>
+                       &open_census_tags) {
     if (!OpenTelemetryMetricRecorder::GetInstance().IsMetricRegistered(name_)) {
       // Use OpenCensus to record the metric if OpenTelemetry is not registered.
       opencensus::stats::Record({{*measure_, val}}, std::move(open_census_tags));
@@ -378,7 +388,7 @@ class Stats {
     TagsType combined_tags = StatsConfig::instance().GetGlobalTags();
     CheckPrintableChar(tag_val);
     combined_tags.emplace_back(tag_keys_[0], std::move(tag_val));
-    record(val, combined_tags);
+    RecordValue(val, combined_tags);
   }
 
   /// Record a value
@@ -393,7 +403,7 @@ class Stats {
       CheckPrintableChar(tag_val);
       combined_tags.emplace_back(TagKeyType::Register(tag_key), std::move(tag_val));
     }
-    record(val, combined_tags);
+    RecordValue(val, combined_tags);
   }
 
   /// Record a value
@@ -409,7 +419,7 @@ class Stats {
       CheckPrintableChar(tag_val);
     }
     combined_tags.insert(combined_tags.end(), tags.begin(), tags.end());
-    record(val, combined_tags);
+    RecordValue(val, combined_tags);
   }
 
  private:

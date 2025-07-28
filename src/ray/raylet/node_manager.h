@@ -38,7 +38,7 @@
 #include "ray/pubsub/subscriber.h"
 #include "ray/raylet/agent_manager.h"
 #include "ray/raylet/dependency_manager.h"
-#include "ray/raylet/local_object_manager.h"
+#include "ray/raylet/local_object_manager_interface.h"
 #include "ray/raylet/local_task_manager.h"
 #include "ray/raylet/placement_group_resource_manager.h"
 #include "ray/raylet/runtime_env_agent_client.h"
@@ -135,16 +135,16 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
       const NodeID &self_node_id,
       std::string self_node_name,
       const NodeManagerConfig &config,
-      std::shared_ptr<gcs::GcsClient> gcs_client,
+      gcs::GcsClient &gcs_client,
       rpc::ClientCallManager &client_call_manager,
       rpc::CoreWorkerClientPool &worker_rpc_pool,
-      std::shared_ptr<pubsub::SubscriberInterface> core_worker_subscriber,
-      std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler,
-      std::shared_ptr<ILocalTaskManager> local_task_manager,
-      std::shared_ptr<ClusterTaskManagerInterface> cluster_task_manager,
-      std::shared_ptr<IObjectDirectory> object_directory,
-      std::shared_ptr<ObjectManagerInterface> object_manager,
-      LocalObjectManager &local_object_manager,
+      pubsub::SubscriberInterface &core_worker_subscriber,
+      ClusterResourceScheduler &cluster_resource_scheduler,
+      ILocalTaskManager &local_task_manager,
+      ClusterTaskManagerInterface &cluster_task_manager,
+      IObjectDirectory &object_directory,
+      ObjectManagerInterface &object_manager,
+      LocalObjectManagerInterface &local_object_manager,
       DependencyManager &dependency_manager,
       WorkerPoolInterface &worker_pool,
       absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers,
@@ -174,9 +174,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                             const uint8_t *message_data);
 
   /// Subscribe to the relevant GCS tables and set up handlers.
-  ///
-  /// \return Status indicating whether this was done successfully or not.
-  ray::Status RegisterGcs();
+  void RegisterGcs();
 
   /// Get initial node manager configuration.
   const NodeManagerConfig &GetInitialConfig() const;
@@ -200,9 +198,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   std::optional<syncer::RaySyncMessage> CreateSyncMessage(
       int64_t after_version, syncer::MessageType message_type) const override;
 
-  int GetObjectManagerPort() const { return object_manager_->GetServerPort(); }
+  int GetObjectManagerPort() const { return object_manager_.GetServerPort(); }
 
-  LocalObjectManager &GetLocalObjectManager() { return local_object_manager_; }
+  LocalObjectManagerInterface &GetLocalObjectManager() { return local_object_manager_; }
 
   /// Trigger global GC across the cluster to free up references to actors or
   /// object ids.
@@ -255,6 +253,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \return Void.
   void HandleObjectMissing(const ObjectID &object_id);
 
+  /// Handle a `WorkerLease` request.
+  void HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest request,
+                                rpc::RequestWorkerLeaseReply *reply,
+                                rpc::SendReplyCallback send_reply_callback) override;
+
   /// Get pointers to objects stored in plasma. They will be
   /// released once the returned references go out of scope.
   ///
@@ -267,8 +270,14 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Get the local drain request.
   std::optional<rpc::DrainRayletRequest> GetLocalDrainRequest() const {
-    return cluster_resource_scheduler_->GetLocalResourceManager().GetLocalDrainRequest();
+    return cluster_resource_scheduler_.GetLocalResourceManager().GetLocalDrainRequest();
   }
+
+  /// gRPC Handlers
+  /// Handle a `PinObjectIDs` request.
+  void HandlePinObjectIDs(rpc::PinObjectIDsRequest request,
+                          rpc::PinObjectIDsReply *reply,
+                          rpc::SendReplyCallback send_reply_callback) override;
 
  private:
   FRIEND_TEST(NodeManagerStaticTest, TestHandleReportWorkerBacklog);
@@ -284,7 +293,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   void SetIdleIfLeaseEmpty() {
     if (leased_workers_.empty()) {
-      cluster_resource_scheduler_->GetLocalResourceManager().SetIdleFootprint(
+      cluster_resource_scheduler_.GetLocalResourceManager().SetIdleFootprint(
           WorkFootprint::NODE_WORKERS);
     }
   }
@@ -352,13 +361,14 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \param worker The worker that finished the task.
   /// \return Whether the worker should be returned to the idle pool. This is
   /// only false for actor creation calls, which should never be returned to idle.
-  bool FinishAssignedTask(const std::shared_ptr<WorkerInterface> &worker_ptr);
+  bool FinishAssignedTask(const std::shared_ptr<WorkerInterface> &worker);
 
   /// Handle a worker finishing an assigned actor creation task.
   /// \param worker The worker that finished the task.
   /// \param task The actor task or actor creation task.
   /// \return Void.
-  void FinishAssignedActorCreationTask(WorkerInterface &worker, const RayTask &task);
+  void FinishAssignedActorCreationTask(const std::shared_ptr<WorkerInterface> &worker,
+                                       const RayTask &task);
 
   /// Handle blocking gets of objects. This could be a task assigned to a worker,
   /// an out-of-band task (e.g., a thread created by the application), or a
@@ -399,18 +409,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   ///
   /// \param worker Shared ptr to the worker, or nullptr if lost.
   void HandleDirectCallTaskUnblocked(const std::shared_ptr<WorkerInterface> &worker);
-
-  /// Kill a worker.
-  ///
-  /// This shouldn't be directly used to kill a worker. If you use this API
-  /// the worker's crash cause is not correctly recorded (it will be either SIGTERM
-  /// or an unexpected failure). Use `DestroyWorker` instead.
-  ///
-  /// \param worker The worker to kill.
-  /// \param force true to kill immediately, false to give time for the worker to
-  /// clean up and exit gracefully.
-  /// \return Void.
-  void KillWorker(std::shared_ptr<WorkerInterface> worker, bool force = false);
 
   /// Destroy a worker.
   /// We will disconnect the worker connection first and then kill the worker.
@@ -456,8 +454,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
       const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data);
   Status ProcessRegisterClientRequestMessageImpl(
       const std::shared_ptr<ClientConnection> &client,
-      const ray::protocol::RegisterClientRequest *message,
-      std::optional<int> port);
+      const ray::protocol::RegisterClientRequest *message);
 
   // Register a new worker into worker pool.
   Status RegisterForNewWorker(std::shared_ptr<WorkerInterface> worker,
@@ -482,17 +479,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
       const std::shared_ptr<ClientConnection> &client,
       const ray::protocol::AnnounceWorkerPort *message);
 
-  // Send status of client registration and port announcement to client side.
-  void SendRegisterClientAndAnnouncePortResponse(
-      const std::shared_ptr<ClientConnection> &client, Status status);
-
   // Send status of port announcement to client side.
   void SendPortAnnouncementResponse(const std::shared_ptr<ClientConnection> &client,
                                     Status status);
-
-  /// Process client registration and port announcement.
-  void ProcessRegisterClientAndAnnouncePortMessage(
-      const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data);
 
   /// Handle the case that a worker is available.
   ///
@@ -577,11 +566,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                                    rpc::CancelResourceReserveReply *reply,
                                    rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Handle a `WorkerLease` request.
-  void HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest request,
-                                rpc::RequestWorkerLeaseReply *reply,
-                                rpc::SendReplyCallback send_reply_callback) override;
-
   void HandlePrestartWorkers(rpc::PrestartWorkersRequest request,
                              rpc::PrestartWorkersReply *reply,
                              rpc::SendReplyCallback send_reply_callback) override;
@@ -631,11 +615,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   void HandleCancelWorkerLease(rpc::CancelWorkerLeaseRequest request,
                                rpc::CancelWorkerLeaseReply *reply,
                                rpc::SendReplyCallback send_reply_callback) override;
-
-  /// Handle a `PinObjectIDs` request.
-  void HandlePinObjectIDs(rpc::PinObjectIDsRequest request,
-                          rpc::PinObjectIDsReply *reply,
-                          rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `NodeStats` request.
   void HandleGetNodeStats(rpc::GetNodeStatsRequest request,
@@ -777,7 +756,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   std::string self_node_name_;
   instrumented_io_context &io_service_;
   /// A client connection to the GCS.
-  std::shared_ptr<gcs::GcsClient> gcs_client_;
+  gcs::GcsClient &gcs_client_;
   /// The function to shutdown raylet gracefully.
   std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully_;
   /// A pool of workers.
@@ -789,12 +768,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   rpc::CoreWorkerClientPool &worker_rpc_pool_;
   /// The raylet client to initiate the pubsub to core workers (owners).
   /// It is used to subscribe objects to evict.
-  std::shared_ptr<pubsub::SubscriberInterface> core_worker_subscriber_;
+  pubsub::SubscriberInterface &core_worker_subscriber_;
   /// The object table. This is shared between the object manager and node
   /// manager.
-  std::shared_ptr<IObjectDirectory> object_directory_;
+  IObjectDirectory &object_directory_;
   /// Manages client requests for object transfers and availability.
-  std::shared_ptr<ObjectManagerInterface> object_manager_;
+  ObjectManagerInterface &object_manager_;
   /// A Plasma object store client. This is used for creating new objects in
   /// the object store (e.g., for actor tasks that can't be run because the
   /// actor died) and to pin objects that are in scope in the cluster.
@@ -835,7 +814,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Manages all local objects that are pinned (primary
   /// copies), freed, and/or spilled.
-  LocalObjectManager &local_object_manager_;
+  LocalObjectManagerInterface &local_object_manager_;
 
   /// Map from node ids to addresses of the remote node managers.
   absl::flat_hash_map<NodeID, std::pair<std::string, int32_t>>
@@ -877,9 +856,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// responsible for maintaining a view of the cluster state w.r.t resource
   /// usage. ClusterTaskManager is responsible for queuing, spilling back, and
   /// dispatching tasks.
-  std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
-  std::shared_ptr<ILocalTaskManager> local_task_manager_;
-  std::shared_ptr<ClusterTaskManagerInterface> cluster_task_manager_;
+  ClusterResourceScheduler &cluster_resource_scheduler_;
+  ILocalTaskManager &local_task_manager_;
+  ClusterTaskManagerInterface &cluster_task_manager_;
 
   absl::flat_hash_map<ObjectID, std::unique_ptr<RayObject>> pinned_objects_;
 
@@ -920,7 +899,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   uint64_t metrics_num_task_spilled_back_;
 
   /// Managers all bundle-related operations.
-  std::shared_ptr<PlacementGroupResourceManager> placement_group_resource_manager_;
+  std::unique_ptr<PlacementGroupResourceManager> placement_group_resource_manager_;
 
   /// Next resource broadcast seq no. Non-incrementing sequence numbers
   /// indicate network issues (dropped/duplicated/ooo packets, etc).

@@ -1,9 +1,6 @@
 from enum import Enum
 from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Sequence
 
-# TODO (genesu): remove dependency on botocore
-from botocore.exceptions import ClientError
-
 import ray
 from ray import serve
 from ray._private.usage.usage_lib import (
@@ -12,7 +9,7 @@ from ray._private.usage.usage_lib import (
 )
 from ray.llm._internal.common.base_pydantic import BaseModelExtended
 from ray.llm._internal.common.observability.telemetry_utils import DEFAULT_GPU_TYPE
-from ray.llm._internal.serve.deployments.llm.multiplex.utils import get_lora_model_ids
+from ray.llm._internal.common.utils.lora_utils import get_lora_model_ids
 from ray.llm._internal.serve.observability.logging import get_logger
 
 if TYPE_CHECKING:
@@ -193,7 +190,7 @@ def _get_or_create_telemetry_agent() -> TelemetryAgent:
             LLM_SERVE_TELEMETRY_ACTOR_NAME, namespace=LLM_SERVE_TELEMETRY_NAMESPACE
         )
     except ValueError:
-        from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
+        from ray._common.constants import HEAD_NODE_RESOURCE_NAME
         from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
         telemetry_agent = TelemetryAgent.options(
@@ -254,19 +251,12 @@ def push_telemetry_report_for_all_models(
         )
         initial_num_lora_adapters = 0
         if use_lora:
-            # This try-except block is used to handle the case where the Lora model IDs
-            # cannot be fetched. In such cases, the telemetry report will be pushed with
-            # 0 initial Lora adapters.
-            try:
-                lora_model_ids = get_lora_model_func(
-                    dynamic_lora_loading_path=model.lora_config.dynamic_lora_loading_path,
-                    base_model_id=model.model_id,
-                )
-                initial_num_lora_adapters = len(lora_model_ids)
-            except ClientError as e:
-                logger.error(
-                    f"Failed to get Lora model IDs for model {model.model_id}: {e}"
-                )
+            lora_model_ids = get_lora_model_func(
+                dynamic_lora_loading_path=model.lora_config.dynamic_lora_loading_path,
+                base_model_id=model.model_id,
+            )
+            initial_num_lora_adapters = len(lora_model_ids)
+
         use_autoscaling = model.deployment_config.get("autoscaling_config") is not None
         num_replicas, min_replicas, max_replicas = 1, 1, 1
         if use_autoscaling:
