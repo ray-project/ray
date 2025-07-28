@@ -54,7 +54,7 @@ helm upgrade -i kai-scheduler oci://ghcr.io/nvidia/kai-scheduler/kai-scheduler -
 
 helm repo add kuberay https://ray-project.github.io/kuberay-helm/
 helm repo update
-helm install kuberay-operator kuberay/kuberay-operator --version $VERSION --set batchScheduler.name=kai-scheduler
+helm install kuberay-operator kuberay/kuberay-operator --version <KUBERAY_OPERATOR_VERSION> --set batchScheduler.name=kai-scheduler
 
 See the [official documentation of KubeRay operator](https://docs.ray.io/en/master/cluster/kubernetes/getting-started/kuberay-operator-installation.html#kuberay-operator-installation)for more information.
 
