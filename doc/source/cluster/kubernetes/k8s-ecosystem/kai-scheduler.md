@@ -218,7 +218,7 @@ Please refer to documentation [here](https://github.com/NVIDIA/KAI-Scheduler/tre
 
 This example creates two workers that share a single GPU (0.5 each) within a RayCluster (find the yaml file [here](https://github.com/ray-project/kuberay/tree/master/ray-operator/config/samples/ray-cluster.kai-gpu-sharing.yaml)):
 
-```bash
+```yaml
 apiVersion: ray.io/v1
 kind: RayCluster
 metadata:
