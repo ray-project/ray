@@ -30,6 +30,10 @@ parser.set_defaults(env="ale_py:ALE/Pong-v5")
 # Use `parser` to add your own custom command line options to this script
 # and (if needed) use their values to set up `config` below.
 args = parser.parse_args()
+# If we use >1 GPU and increase the batch size accordingly, we should also
+# increase the number of envs per worker.
+if args.num_envs_per_env_runner is None:
+    args.num_envs_per_env_runner = args.num_learners or 1
 
 
 # Create the DreamerV3-typical Atari setup.
@@ -67,10 +71,6 @@ config = (
         },
     )
     .env_runners(
-        num_env_runners=(args.num_env_runners or 0),
-        # If we use >1 GPU and increase the batch size accordingly, we should also
-        # increase the number of envs per worker.
-        num_envs_per_env_runner=(args.num_learners or 1),
         remote_worker_envs=(args.num_learners and args.num_learners > 1),
     )
     .reporting(
@@ -91,4 +91,4 @@ config = (
 if __name__ == "__main__":
     from ray.rllib.utils.test_utils import run_rllib_example_script_experiment
 
-    run_rllib_example_script_experiment(config, args, keep_config=True)
+    run_rllib_example_script_experiment(config, args)
