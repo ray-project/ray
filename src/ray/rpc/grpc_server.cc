@@ -64,12 +64,10 @@ void GrpcServer::Run() {
   std::string server_address((listen_to_localhost_only_ ? "127.0.0.1:" : "0.0.0.0:") +
                              std::to_string(port_));
   grpc::ServerBuilder builder;
-  // If the GRPC_ARG_ALLOW_REUSEPORT option is enabled
+  // Disable the SO_REUSEPORT option. We don't need it in ray. If the option is enabled
   // (default behavior in grpc), we may see multiple workers listen on the same port and
   // the requests sent to this port may be handled by any of the workers.
-  // However we need it to allow restarting a server quickly after shutting it down
-  // https://github.com/grpc/grpc/issues/39910
-  builder.AddChannelArgument(GRPC_ARG_ALLOW_REUSEPORT, 1);
+  builder.AddChannelArgument(GRPC_ARG_ALLOW_REUSEPORT, 0);
   builder.AddChannelArgument(GRPC_ARG_MAX_SEND_MESSAGE_LENGTH,
                              RayConfig::instance().max_grpc_message_size());
   builder.AddChannelArgument(GRPC_ARG_MAX_RECEIVE_MESSAGE_LENGTH,
