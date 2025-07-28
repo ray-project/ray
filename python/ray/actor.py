@@ -930,7 +930,7 @@ class _ActorClassMethodMetadata(object):
         cls,
         modified_class,
         actor_creation_function_descriptor,
-        enable_tensor_transport: bool,
+        enable_tensor_transport: bool = False,
     ):
         # Try to create an instance from cache.
         cached_meta = cls._cache.get(actor_creation_function_descriptor)

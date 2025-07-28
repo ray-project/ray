@@ -4,6 +4,7 @@ import threading
 import ray
 from ray._private.custom_types import TensorTransportEnum
 from ray._raylet import ObjectRef
+from ray._private import ray_constants
 
 
 if TYPE_CHECKING:
@@ -260,13 +261,13 @@ class GPUObjectManager:
                 communicator.name, dst_actor, arg.hex(), src_rank, tensor_meta
             )
 
-        def get_out_of_band_tensors(self, obj_id: str) -> List["torch.Tensor"]:
+        def get_out_of_band_tensors(self, object_id: str) -> List["torch.Tensor"]:
             """
             Get the out-of-band tensors for a given object ID.
             """
             gpu_object_store = self.gpu_object_store
-            if self.is_managed_object(obj_id):
-                self.fetch_object(obj_id)
+            if self.is_managed_object(object_id):
+                self.fetch_object(object_id)
 
             # If the GPU object is the primary copy, it means the transfer is intra-actor.
             # In this case, we should not remove the GPU object after it is consumed once,
