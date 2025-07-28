@@ -1545,24 +1545,6 @@ class ActorClass(Generic[T]):
 
             usage_lib.record_library_usage("core")
 
-        # Check whether the name is already taken.
-        # TODO(edoakes): this check has a race condition because two drivers
-        # could pass the check and then create the same named actor. We should
-        # instead check this when we create the actor, but that's currently an
-        # async call.
-        if name is not None:
-            try:
-                ray.get_actor(name, namespace=namespace)
-            except ValueError:  # Name is not taken.
-                pass
-            else:
-                raise ValueError(
-                    f"The name {name} (namespace={namespace}) is already "
-                    "taken. Please use "
-                    "a different name or get the existing actor using "
-                    f"ray.get_actor('{name}', namespace='{namespace}')"
-                )
-
         if lifetime is None:
             detached = None
         elif lifetime == "detached":
