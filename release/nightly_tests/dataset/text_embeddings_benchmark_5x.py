@@ -27,6 +27,8 @@ from benchmark import Benchmark, BenchmarkMetric
 
 
 SOURCE_DIRECTORY_S3 = "s3://anyscale-rag-application/5000-docs/"
+# Add a random prefix to avoid conflicts between different runs.
+WRITE_PATH = f"s3://ray-data-write-benchmark/{uuid.uuid4().hex}/"
 
 
 def parse_args():
@@ -100,9 +102,6 @@ def parse_args():
         "--smoke-test",
         action="store_true",
         help="Runs a smoke test with a small subset of the data",
-    )
-    parser.add_argument(
-        "--output-path", type=str, default=None, help="Parquet output path"
     )
     parser.add_argument(
         "--chaos-test",
@@ -220,11 +219,7 @@ def main(args):
         num_gpus=args.num_gpus,
     )
     start = time.time()
-    if args.output_path:
-        ds.write_parquet(args.output_path)
-    else:
-        ds = ds.materialize()
-        ds.show(5)
+    ds.write_parquet(WRITE_PATH)
     duration = time.time() - start
     count = ds.count()
     throughput = count / duration if duration > 0 else 0.0
@@ -259,6 +254,7 @@ def main(args):
 
 if __name__ == "__main__":
     args = parse_args()
+    print(f"Writing to {WRITE_PATH}")
     benchmark = Benchmark()
     benchmark.run_fn("text-embeddings-benchmark", main, args)
     benchmark.write_result()
