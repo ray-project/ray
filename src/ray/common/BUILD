@@ -308,7 +308,6 @@ ray_cc_library(
 
 ray_cc_library(
     name = "status_or",
-    srcs = ["status_or.cc"],
     hdrs = ["status_or.h"],
     deps = [
         ":macros",

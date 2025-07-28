@@ -13,6 +13,7 @@
 // limitations under the License.
 #pragma once
 
+#include <filesystem>
 #include <string>
 
 namespace ray {
