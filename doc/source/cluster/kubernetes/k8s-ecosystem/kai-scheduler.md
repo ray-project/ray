@@ -257,7 +257,7 @@ spec:
 ```
 
 ```bash
-kubectl apply -f ray-cluster.kai-scheduler.yaml
+kubectl apply -f ray-cluster.kai-gpu-sharing.yaml
 
 # Watch the pods get scheduled
 kubectl get pods -w
