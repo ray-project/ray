@@ -52,6 +52,7 @@ ray_cc_test(
         "//:grpc_common_lib",
         "//:ray_mock_syncer",
         "//src/ray/common:ray_syncer",
+        "//src/ray/util:path_utils",
         "@com_google_googletest//:gtest",
     ],
 )
