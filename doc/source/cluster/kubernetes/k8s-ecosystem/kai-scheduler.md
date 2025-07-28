@@ -62,7 +62,7 @@ See the [official documentation of KubeRay operator](https://docs.ray.io/en/mast
 
 Create a basic queue structure for department-1 and its child team-a (for demo reasons, we did not enforce any quota, overQuotaWeight and limit. Users can setup these parameters depending on their needs): 
 
-```bash
+```yaml
 apiVersion: scheduling.run.ai/v2
 kind: Queue
 metadata:
