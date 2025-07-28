@@ -1571,6 +1571,7 @@ def _start_ray_worker_nodes(
             ray_head_ip, min_port=10002, max_port=20000
         )
 
+        ray_metrics_monitor = None
         if metrics_logging_enabled:
             with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as tmp_sock:
                 tmp_sock.connect((ray_head_ip, spark_job_server_port))
@@ -1686,8 +1687,6 @@ def _start_ray_worker_nodes(
                     metrics_export_port=worker_node_options["metrics_export_port"],
                 )
                 ray_metrics_monitor.start()
-            else:
-                ray_metrics_monitor = None
 
             # Note:
             # When a pyspark job cancelled, the UDF python worker process are killed by
