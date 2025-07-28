@@ -438,8 +438,8 @@ TEST_P(GcsClientTest, TestCheckAlive) {
                                      grpc::InsecureChannelCredentials());
   auto stub = rpc::NodeInfoGcsService::NewStub(std::move(channel));
   rpc::CheckAliveRequest request;
-  request.add_node_id(node_info1->node_id());
-  request.add_node_id(node_info2->node_id());
+  request.add_node_ids(node_info1->node_id());
+  request.add_node_ids(node_info2->node_id());
   {
     grpc::ClientContext context;
     context.set_deadline(std::chrono::system_clock::now() + 1s);

@@ -552,7 +552,7 @@ void NodeInfoAccessor::AsyncCheckAlive(const std::vector<NodeID> &node_ids,
                                        const MultiItemCallback<bool> &callback) {
   rpc::CheckAliveRequest request;
   for (const auto &node_id : node_ids) {
-    request.add_node_id(node_id.Binary());
+    request.add_node_ids(node_id.Binary());
   }
   size_t num_raylets = node_ids.size();
   client_impl_->GetGcsRpcClient().CheckAlive(
