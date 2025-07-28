@@ -20,6 +20,7 @@
 #include <memory>
 #include <mutex>
 #include <regex>
+#include <string_view>
 #include <tuple>
 #include <unordered_map>
 #include <utility>
@@ -317,6 +318,16 @@ inline std::vector<opencensus::tags::TagKey> convert_tags(
   return ret;
 }
 
+inline std::unordered_set<std::string> build_tag_key_set(
+    const std::vector<std::string> &names) {
+  std::unordered_set<std::string> tag_keys_set;
+  tag_keys_set.reserve(names.size());
+  for (const auto &tag_key : names) {
+    tag_keys_set.insert(tag_key);
+  }
+  return tag_keys_set;
+}
+
 /*
   This is a helper class to define a metrics. With this class
   we'll be able to define a multi-view-single-measure metric for
@@ -339,7 +350,9 @@ class Stats {
                            const std::string,
                            const std::vector<opencensus::tags::TagKey>,
                            const std::vector<double> &buckets)> register_func)
-      : name_(measure), tag_keys_(convert_tags(tag_keys)) {
+      : name_(measure),
+        tag_keys_(convert_tags(tag_keys)),
+        tag_keys_set_(build_tag_key_set(tag_keys)) {
     auto stats_init = [register_func, measure, description, buckets, this]() {
       measure_ = std::make_unique<Measure>(Measure::Register(measure, description, ""));
       register_func(measure, description, tag_keys_, buckets);
@@ -362,16 +375,11 @@ class Stats {
       return;
     }
 
-    std::unordered_set<std::string> tag_keys_set;
-    for (const auto &tag_key : tag_keys_) {
-      tag_keys_set.insert(tag_key.name());
-    }
-
     absl::flat_hash_map<std::string, std::string> open_telemetry_tags;
     // Insert metric-specific tags that match the expected keys.
     for (const auto &tag : open_census_tags) {
       const std::string &key = tag.first.name();
-      if (tag_keys_set.count(key) != 0) {
+      if (tag_keys_set_.count(key) != 0) {
         open_telemetry_tags[key] = tag.second;
       }
     }
@@ -399,7 +407,7 @@ class Stats {
     if (StatsConfig::instance().IsStatsDisabled() || !measure_) {
       return;
     }
-    TagsType combined_tags = StatsConfig::instance().GetGlobalTags();
+    TagsType combined_tags;
     CheckPrintableChar(tag_val);
     combined_tags.emplace_back(tag_keys_[0], std::move(tag_val));
     RecordValue(val, combined_tags);
@@ -412,7 +420,7 @@ class Stats {
     if (StatsConfig::instance().IsStatsDisabled() || !measure_) {
       return;
     }
-    TagsType combined_tags = StatsConfig::instance().GetGlobalTags();
+    TagsType combined_tags;
     for (auto &[tag_key, tag_val] : tags) {
       CheckPrintableChar(tag_val);
       combined_tags.emplace_back(TagKeyType::Register(tag_key), std::move(tag_val));
@@ -428,7 +436,7 @@ class Stats {
     if (StatsConfig::instance().IsStatsDisabled() || !measure_) {
       return;
     }
-    TagsType combined_tags = StatsConfig::instance().GetGlobalTags();
+    TagsType combined_tags;
     for (auto const &[tag_key, tag_val] : tags) {
       CheckPrintableChar(tag_val);
     }
@@ -449,6 +457,7 @@ class Stats {
 
   const std::string name_;
   const std::vector<opencensus::tags::TagKey> tag_keys_;
+  const std::unordered_set<std::string> tag_keys_set_;
   std::unique_ptr<opencensus::stats::Measure<double>> measure_;
 };
 
