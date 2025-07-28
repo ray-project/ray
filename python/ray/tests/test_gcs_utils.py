@@ -235,7 +235,6 @@ async def test_check_liveness(monkeypatch, ray_start_cluster):
     n1 = cluster.add_node(node_manager_port=find_free_port())
     n2 = cluster.add_node(node_manager_port=find_free_port())
     gcs_client = GcsClient(address=cluster.address)
-    # Use binary NodeID values for async_check_alive
     node_ids = [bytes.fromhex(n.node_id) for n in [h, n1, n2]]
 
     ret = await gcs_client.async_check_alive(node_ids)
