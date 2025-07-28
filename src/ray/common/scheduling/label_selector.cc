@@ -19,7 +19,7 @@
 
 namespace ray {
 
-// Constructor to parse LabelSelector data type from proto.
+// Constructor to parse LabelSelector data type from map proto.
 LabelSelector::LabelSelector(
     const google::protobuf::Map<std::string, std::string> &label_selector) {
   for (const auto &[key, value] : label_selector) {
@@ -29,6 +29,26 @@ LabelSelector::LabelSelector(
     }
 
     AddConstraint(key, value);
+  }
+}
+
+// Constructor to parse LabelSelector data type from unordered map
+LabelSelector::LabelSelector(
+    const std::unordered_map<std::string, std::string> &sel_map) {
+  for (auto &entry : sel_map) {
+    AddConstraint(entry.first, entry.second);
+  }
+}
+
+void LabelSelector::ToProto(rpc::LabelSelector *out) const {
+  for (const auto &constraint : constraints_) {
+    auto *proto_constraint = out->add_label_constraints();
+    proto_constraint->set_label_key(constraint.GetLabelKey());
+    proto_constraint->set_operator_(
+        static_cast<rpc::LabelSelectorOperator>(constraint.GetOperator()));
+    for (const auto &val : constraint.GetLabelValues()) {
+      proto_constraint->add_label_values(val);
+    }
   }
 }
 
