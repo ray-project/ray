@@ -1553,8 +1553,7 @@ def _start_ray_worker_nodes(
 
     metrics_logging_enabled = _ray_system_metrics_logging_enabled()
     if metrics_logging_enabled:
-        import mlflow
-        mlflow_run_id = mlflow.active_run().info.run_id
+        mlflow_run_id = os.environ["MLFLOW_RUN_ID"]
     else:
         mlflow_run_id = None
 
@@ -1702,6 +1701,7 @@ def _start_ray_worker_nodes(
                 extra_env=ray_worker_node_extra_envs,
             )
         except Exception as e:
+            import traceback
             # In the following 2 cases, exception is raised:
             # (1)
             # Starting Ray worker node fails, the `e` will contain detail
@@ -1717,8 +1717,9 @@ def _start_ray_worker_nodes(
             # For either case (1) or case (2),
             # to avoid Spark triggers more spark task retries, we swallow
             # exception here to make spark the task exit normally.
-            err_msg = f"Ray worker node process exit, reason: {e}."
-            _logger.warning(err_msg, exc_info=True)
+            err_stack_str = traceback.format_exc()
+            err_msg = f"Ray worker node process exit, reason: {e}, error stack:\n{err_stack_str}\n"
+            _logger.warning(err_msg)
 
             yield err_msg, is_task_reschedule_failure
         finally:
