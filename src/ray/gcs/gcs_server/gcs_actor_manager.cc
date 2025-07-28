@@ -1143,7 +1143,9 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
     AddDestroyedActorToCache(it->second);
     registered_actors_.erase(it);
     function_manager_.RemoveJobReference(actor_id.JobId());
-    RemoveActorNameFromRegistry(actor);
+    if (actor->GetState() != rpc::ActorTableData::DEAD) {
+      RemoveActorNameFromRegistry(actor);
+    }
     // Clean up the client to the actor's owner, if necessary.
     if (!actor->IsDetached()) {
       RemoveActorFromOwner(actor);
