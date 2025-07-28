@@ -49,6 +49,8 @@ def _env_creator(cfg):
 
 tune.register_env("env", _env_creator)
 
+default_config = DreamerV3Config()
+lr_multiplier = (args.num_learners or 1) ** 0.5
 
 config = (
     DreamerV3Config()
@@ -84,6 +86,9 @@ config = (
         model_size="S",
         training_ratio=1024,
         batch_size_B=16 * (args.num_learners or 1),
+        world_model_lr=default_config.world_model_lr * lr_multiplier,
+        actor_lr=default_config.actor_lr * lr_multiplier,
+        critic_lr=default_config.critic_lr * lr_multiplier,
     )
 )
 
