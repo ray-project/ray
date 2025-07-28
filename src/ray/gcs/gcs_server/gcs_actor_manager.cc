@@ -1079,6 +1079,8 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
     return;
   }
 
+  const bool was_already_dead = (actor->GetState() == rpc::ActorTableData::DEAD);
+
   gcs_actor_scheduler_->OnActorDestruction(it->second);
 
   it->second->GetMutableActorTableData()->set_timestamp(current_sys_time_ms());
@@ -1143,7 +1145,7 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
     AddDestroyedActorToCache(it->second);
     registered_actors_.erase(it);
     function_manager_.RemoveJobReference(actor_id.JobId());
-    if (actor->GetState() != rpc::ActorTableData::DEAD) {
+    if (!was_already_dead) {
       RemoveActorNameFromRegistry(actor);
     }
     // Clean up the client to the actor's owner, if necessary.
