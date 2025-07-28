@@ -41,7 +41,7 @@ bleach==6.1.0
 bokeh==2.4.3
 boltons @ file:///home/conda/feedstock_root/build_artifacts/boltons_1733827268945/work
 boto==2.49.0
-boto3==1.28.0
+boto3==1.38.27
 botocore==1.29.76
 botorch==0.8.5
 Brotli @ file:///home/conda/feedstock_root/build_artifacts/brotli-split_1749229842835/work

@@ -1,0 +1,62 @@
+# For examples with more realistic resource configuration, see
+# ray-cluster.complete.large.yaml and
+# ray-cluster.autoscaler.large.yaml.
+apiVersion: ray.io/v1
+kind: RayCluster
+metadata:
+  name: raycluster-uv
+spec:
+  rayVersion: '2.46.0' # should match the Ray version in the image of the containers
+  # Ray head pod template
+  headGroupSpec:
+    rayStartParams: {}
+    #pod template
+    template:
+      spec:
+        containers:
+        - name: ray-head
+          image: rayproject/ray:2.46.0
+          env:
+          - name: RAY_RUNTIME_ENV_HOOK
+            value: ray._private.runtime_env.uv_runtime_env_hook.hook
+          resources:
+            limits:
+              cpu: 1
+              memory: 2G
+            requests:
+              cpu: 1
+              memory: 2G
+          ports:
+          - containerPort: 6379
+            name: gcs-server
+          - containerPort: 8265 # Ray dashboard
+            name: dashboard
+          - containerPort: 10001
+            name: client
+          volumeMounts:
+          - name: ray-sample-codes
+            mountPath: /home/ray/samples
+        volumes:
+        - name: ray-sample-codes
+          configMap:
+            name: ray-sample-codes
+
+# prepare a config map
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ray-sample-codes
+data:
+  sample_code.py: |
+    import emoji
+    import ray
+    
+    @ray.remote
+    def f():
+      return emoji.emojize('Python is :thumbs_up:')
+    
+    # Execute 10 copies of f across a cluster.
+    print(ray.get([f.remote() for _ in range(10)]))
+
+  
