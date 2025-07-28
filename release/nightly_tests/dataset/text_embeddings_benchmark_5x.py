@@ -113,7 +113,6 @@ def parse_args():
     return parser.parse_args()
 
 
-
 def process_file(record: dict) -> Iterator[Dict[str, Any]]:
     file_path = Path(record["path"])
     supported_extensions = {".pdf", ".docx", ".pptx", ".ppt", ".html", ".txt"}
