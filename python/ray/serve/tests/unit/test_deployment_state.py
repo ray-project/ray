@@ -289,6 +289,12 @@ class MockReplicaActorWrapper:
     def get_routing_stats(self) -> Dict[str, Any]:
         return {}
 
+    def update_rank(self, rank: int):
+        pass
+
+    def check_active_update_rank(self) -> bool:
+        return True
+
 
 def deployment_info(
     version: Optional[str] = None,
