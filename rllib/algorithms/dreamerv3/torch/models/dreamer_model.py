@@ -194,8 +194,8 @@ class DreamerModel(nn.Module):
         a_dreamed_t0_to_H = []
         a_dreamed_dist_params_t0_to_H = []
 
-        h = start_states["h"]
-        z = start_states["z"]
+        h = start_states["h"].detach()
+        z = start_states["z"].detach()
 
         # GRU outputs.
         h_states_t0_to_H = [h]
@@ -219,12 +219,13 @@ class DreamerModel(nn.Module):
 
         for i in range(timesteps_H):
             # Move one step in the dream using the RSSM.
-            h = self.world_model.sequence_model(a=a, h=h, z=z)
-            h_states_t0_to_H.append(h)
+            with torch.no_grad():
+                h = self.world_model.sequence_model(a=a, h=h, z=z)
+                h_states_t0_to_H.append(h)
 
-            # Compute prior z using dynamics model.
-            z = self.world_model.dynamics_predictor(h=h)
-            z_states_prior_t0_to_H.append(z)
+                # Compute prior z using dynamics model.
+                z = self.world_model.dynamics_predictor(h=h)
+                z_states_prior_t0_to_H.append(z)
 
             # Compute `a` using actor network.
             a, a_dist_params = self.actor(
@@ -247,9 +248,10 @@ class DreamerModel(nn.Module):
         a_dreamed_dist_params_H_B = torch.stack(a_dreamed_dist_params_t0_to_H, dim=0)
 
         # Compute r using reward predictor.
-        r_dreamed_H_B = inverse_symlog(
-            self.world_model.reward_predictor(h=h_states_HxB, z=z_states_prior_HxB)
-        )
+        with torch.no_grad():
+            r_dreamed_H_B = inverse_symlog(
+                self.world_model.reward_predictor(h=h_states_HxB, z=z_states_prior_HxB)
+            )
         r_dreamed_H_B = r_dreamed_H_B.reshape([timesteps_H + 1, -1])
 
         # Compute intrinsic rewards.
@@ -265,10 +267,11 @@ class DreamerModel(nn.Module):
             del results_HxB
 
         # Compute continues using continue predictor.
-        c_dreamed_HxB = self.world_model.continue_predictor(
-            h=h_states_HxB,
-            z=z_states_prior_HxB,
-        )
+        with torch.no_grad():
+            c_dreamed_HxB = self.world_model.continue_predictor(
+                h=h_states_HxB,
+                z=z_states_prior_HxB,
+            )
         c_dreamed_H_B = c_dreamed_HxB.reshape([timesteps_H + 1, -1])
         # Force-set first `continue` flags to False iff `start_is_terminated`.
         # Note: This will cause the loss-weights for this row in the batch to be
