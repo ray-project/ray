@@ -1,4 +1,13 @@
+load("@rules_python//python:defs.bzl", "py_library")
 load("//bazel:python.bzl", "py_test_module_list")
+
+py_library(
+    name = "conftest",
+    srcs = glob(["**/conftest.py"]),
+    visibility = [
+        "//python/ray/_common/tests:__subpackages__",
+    ],
+)
 
 # Small tests.
 py_test_module_list(
