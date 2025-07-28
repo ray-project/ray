@@ -26,6 +26,8 @@ _COMPONENT_TAG_KEY = "Component"
 
 @pytest.fixture
 def _setup_cluster_for_test(request, ray_start_cluster):
+    global _CARDINALITY_LEVEL
+    _CARDINALITY_LEVEL = None
     core_metric_cardinality_level = request.param
     os.environ["RAY_metric_cardinality_level"] = core_metric_cardinality_level
     cluster = ray_start_cluster
