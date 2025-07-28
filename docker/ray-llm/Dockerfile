@@ -35,7 +35,8 @@ $HOME/anaconda3/bin/pip freeze > /home/ray/pip-freeze.txt
 
 mkdir -p "${ROOT_DIR}"
 
-CUDA_HOME=`dirname $(dirname $(which nvcc))`
+CUDACXX=$(which nvcc)
+CUDA_HOME=$(dirname $(dirname $CUDACXX))
 
 TEMP_DIR="nixl_installer"
 mkdir -p "${TEMP_DIR}"
@@ -120,6 +121,62 @@ NIXL_VERSION="0.3.1"
     pip install --no-cache-dir "nixl==${NIXL_VERSION}"
 )
 sudo rm -rf "${TEMP_DIR}"
+
+EP_TEMP_DIR="ep_temp_dir"
+mkdir -p "${EP_TEMP_DIR}"
+
+NVSHMEM_VERSION="3.2.5-1"
+(
+    echo "Installing NVSHMEM ${NVSHMEM_VERSION}"
+
+    # install dependencies if not installed
+    pip3 install cmake torch ninja
+
+    cd "${EP_TEMP_DIR}"
+    mkdir -p nvshmem_src
+    wget https://developer.download.nvidia.com/compute/redist/nvshmem/3.2.5/source/nvshmem_src_3.2.5-1.txz
+    tar -xvf nvshmem_src_3.2.5-1.txz -C nvshmem_src --strip-components=1
+    cd nvshmem_src
+    wget https://github.com/deepseek-ai/DeepEP/raw/main/third-party/nvshmem.patch
+    git init
+    git apply -vvv nvshmem.patch
+    wget https://github.com/vllm-project/vllm/raw/main/tools/ep_kernels/elastic_ep/eep_nvshmem.patch
+    git apply --reject --whitespace=fix eep_nvshmem.patch
+
+    # disable all features except IBGDA
+    export NVSHMEM_IBGDA_SUPPORT=1
+    export NVSHMEM_SHMEM_SUPPORT=0
+    export NVSHMEM_UCX_SUPPORT=0
+    export NVSHMEM_USE_NCCL=0
+    export NVSHMEM_PMIX_SUPPORT=0
+    export NVSHMEM_TIMEOUT_DEVICE_POLLING=0
+    export NVSHMEM_USE_GDRCOPY=0
+    export NVSHMEM_IBRC_SUPPORT=0
+    export NVSHMEM_BUILD_TESTS=0
+    export NVSHMEM_BUILD_EXAMPLES=0
+    export NVSHMEM_MPI_SUPPORT=0
+    export NVSHMEM_BUILD_HYDRA_LAUNCHER=0
+    export NVSHMEM_BUILD_TXZ_PACKAGE=0
+
+    cmake -G Ninja -S . -B nvshmem_build/ -DCMAKE_INSTALL_PREFIX=nvshmem_install
+    cmake --build nvshmem_build/ --target install
+)
+
+# Install PPLX Kernels
+(
+    echo "Installing PPLX Kernels"
+
+    cd "${EP_TEMP_DIR}"
+
+    export CMAKE_PREFIX_PATH=nvshmem_install:$CMAKE_PREFIX_PATH
+
+    # build and install pplx, require pytorch installed
+    git clone https://github.com/ppl-ai/pplx-kernels
+    cd pplx-kernels
+    # see https://github.com/pypa/pip/issues/9955#issuecomment-838065925
+    # PIP_NO_BUILD_ISOLATION=0 disables build isolation
+    PIP_NO_BUILD_ISOLATION=0 TORCH_CUDA_ARCH_LIST=9.0a+PTX pip install . --no-deps -v
+)
 
 EOF
 
