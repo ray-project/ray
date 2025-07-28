@@ -222,7 +222,7 @@ if __name__ == "__main__":
         "127.0.0.1" if args.node_ip_address == "127.0.0.1" else "0.0.0.0"
     )
 
-    if os.environ.get("RAY_PREFER_IPV6") is not None:
+    if ray_constants.RAY_PREFER_IPV6:
         runtime_env_agent_ip = "::"
     try:
         web.run_app(

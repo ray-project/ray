@@ -34,6 +34,7 @@ from ray._private.ray_constants import (
     RAY_EXPERIMENTAL_ENABLE_OPEN_TELEMETRY_ON_AGENT,
     RAY_EXPERIMENTAL_ENABLE_OPEN_TELEMETRY_ON_CORE,
     env_integer,
+    RAY_PREFER_IPV6,
 )
 from ray._private.telemetry.open_telemetry_metric_recorder import (
     OpenTelemetryMetricRecorder,
@@ -454,7 +455,7 @@ class ReporterAgent(
         self._session_name = dashboard_agent.session_name
         if not self._metrics_collection_disabled:
             http_address = ("127.0.0.1" if self._ip == "127.0.0.1" else "")
-            if os.environ.get("RAY_PREFER_IPV6") is not None:
+            if RAY_PREFER_IPV6:
                 http_address = "::"
             try:
                 stats_exporter = prometheus_exporter.new_stats_exporter(

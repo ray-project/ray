@@ -27,6 +27,7 @@
 #include "ray/common/ray_config.h"
 #include "ray/rpc/common.h"
 #include "ray/util/thread_utils.h"
+#include "ray/util/util.h"
 
 namespace ray {
 namespace rpc {
@@ -61,8 +62,7 @@ void GrpcServer::Shutdown() {
 
 void GrpcServer::Run() {
   uint32_t specified_port = port_;
-  const char *ray_ip = std::getenv("RAY_PREFER_IPV6");
-  bool use_ipv6 = ray_ip != nullptr;
+  const bool use_ipv6 = IsEnvTrue("RAY_PREFER_IPV6")
   std::string server_address(
       (listen_to_localhost_only_ ? "127.0.0.1:" : (use_ipv6 ? "[::]:" : "0.0.0.0:")) +
       std::to_string(port_));

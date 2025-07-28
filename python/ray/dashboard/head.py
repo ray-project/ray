@@ -313,7 +313,7 @@ class DashboardHead:
                     )
                 )
                 kwargs = {"addr": "127.0.0.1"} if self.ip == "127.0.0.1" else {}
-                if os.environ.get("RAY_PREFER_IPV6") is not None:
+                if ray_constants.RAY_PREFER_IPV6:
                     kwargs = {"addr": "::"}
                 prometheus_client.start_http_server(
                     port=DASHBOARD_METRIC_PORT,

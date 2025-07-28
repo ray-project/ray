@@ -213,6 +213,7 @@ ray_cc_library(
         "//src/ray/common:ray_config",
         "//src/ray/common:status",
         "//src/ray/util:thread_utils",
+        "//src/ray/util:env",
         "@com_github_grpc_grpc//:grpc++",
         "@com_github_grpc_grpc//:grpc++_reflection",
         "@com_github_grpc_grpc//:grpcpp_admin",

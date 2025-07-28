@@ -228,7 +228,7 @@ def _connect_ray_pdb(
     """
     Opens a remote PDB on first available port.
     """
-    if os.environ.get("RAY_PREFER_IPV6") is not None:
+    if ray_constants.RAY_PREFER_IPV6:
         host = "::"
     elif debugger_external:
         assert not host, "Cannot specify both host and debugger_external"

@@ -6,6 +6,7 @@ from typing import List, Optional
 
 from packaging.version import Version
 
+from ray._private import ray_constants
 import ray.dashboard.optional_utils as dashboard_optional_utils
 from ray._common.utils import get_or_create_event_loop
 from ray.dashboard.optional_deps import aiohttp, aiohttp_cors, hdrs
@@ -41,7 +42,7 @@ class HttpServerAgent:
         last_exception: Optional[OSError] = None
 
         http_address = "127.0.0.1" if self.ip == "127.0.0.1" else "0.0.0.0"
-        if os.environ.get("RAY_PREFER_IPV6") is not None:
+        if ray_constants.RAY_PREFER_IPV6:
             http_address = "::"
 
         for attempt in range(max_retries + 1):  # +1 for initial attempt
