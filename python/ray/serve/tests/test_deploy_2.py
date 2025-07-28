@@ -112,8 +112,7 @@ def test_http_proxy_request_cancellation(serve_instance):
             return ret_val
 
     serve.run(A.bind())
-
-    url = get_application_url("HTTP")
+    url = get_application_url("HTTP").replace("localhost", "127.0.0.1")
     print(f"@@@@@@@ url: {url}")
     with ThreadPoolExecutor() as pool:
         # Send the first request, it should block for the result
@@ -125,9 +124,8 @@ def test_http_proxy_request_cancellation(serve_instance):
         # But because first request is hanging and these have low timeout.
         # They should all disconnect from http connection.
         # These requests should never reach the replica.
-        short_to = httpx.Timeout(connect=0.5, read=0.5, write=0.5, pool=0.5)
         rest_blocking_futs = [
-            pool.submit(functools.partial(httpx.get, url, timeout=short_to))
+            pool.submit(functools.partial(httpx.get, url, timeout=0.5))
             for _ in range(3)
         ]
         time.sleep(1)
