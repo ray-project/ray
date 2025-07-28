@@ -998,13 +998,13 @@ def test_do_not_add_nodes_based_on_object_store_memory():
             "object_store_memory": 4933059335.0,
         }
     }
-    # At this point, there is one node of type "ray.worker.4090.standard" in the cluster
+    # At this point, there is one node of type "ray.worker.4090.standard" in the cluster,
     # but all its resources are used.
-    # Now, we try to request a new resource_demand that matches the "ray.worker.4090.standard".
+    # Now, we try to request a new resource_demand that matches "ray.worker.4090.standard".
     # The scheduler should add a new node of type "ray.worker.4090.standard".
-    # This test make sure that the scheduler does not take "object_store_memory"
-    # into account when deciding which node type to add since previously the scheduler will
-    # take the "object_store_memory" from the max_resources_by_ip into account and then
+    # This test ensures that the scheduler does not take "object_store_memory"
+    # into account when deciding which node type to add. Previously, the scheduler
+    # would consider "object_store_memory" from max_resources_by_ip, and as a result,
     # choose "ray.worker.4090.highmem" instead of "ray.worker.4090.standard".
     resource_demands = [{"CPU": 16, "GPU": 1, "memory": 30107260928, "gram": 24}]
     to_launch, _ = scheduler.get_nodes_to_launch(
