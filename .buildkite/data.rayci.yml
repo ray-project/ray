@@ -277,6 +277,7 @@ steps:
     tags:
       - python
       - data
+      - oss
       - skip-on-premerge
     instance_type: medium
     commands:
