@@ -74,7 +74,7 @@ class ResourceAndLabelSpec:
         """Returns a dict suitable to pass to raylet initialization.
 
         This renames num_cpus / num_gpus to "CPU" / "GPU",
-        translates memory from bytes into 100MB memory units, and checks types.
+        and check types and values.
         """
         assert self.resolved()
 
