@@ -1691,7 +1691,7 @@ def test_get_actor_after_same_name_actor_dead(shutdown_only):
         while True:
             try:
                 return ray.get(actor.get_pid.remote())
-            except:
+            except Exception:
                 pass
 
     a = Actor.options(name="test", max_restarts=1).remote()
