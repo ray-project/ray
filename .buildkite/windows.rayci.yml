@@ -71,7 +71,7 @@ steps:
     parallelism: 2
     commands:
       - bash ci/ray_ci/windows/install_tools.sh
-      - RAYCI_DISABLE_TEST_DB=1 bazel run //ci/ray_ci:test_in_docker -- "//python/ray/serve/tests:test_deploy_2" serve
+      - RAYCI_DISABLE_TEST_DB=1 bazel run //ci/ray_ci:test_in_docker -- "//python/ray/serve/tests:test_model_composition" serve
         --build-name windowsbuild
         --operating-system windows
         --except-tags no_windows,use_all_core_windows
