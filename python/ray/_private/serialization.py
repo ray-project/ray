@@ -363,7 +363,9 @@ class SerializationContext:
                     return b""
                 return data.to_pybytes()
             elif metadata_fields[0] == ray_constants.OBJECT_METADATA_TYPE_ACTOR_HANDLE:
-                obj = self._deserialize_msgpack_data(data, metadata_fields)
+                obj = self._deserialize_msgpack_data(
+                    data, metadata_fields, out_of_band_tensors
+                )
                 # The last character is a 1 if weak_ref=True and 0 else.
                 serialized, weak_ref = obj[:-1], obj[-1:] == b"1"
                 return _actor_handle_deserializer(serialized, weak_ref)
@@ -380,7 +382,9 @@ class SerializationContext:
             # TODO (kfstorm): exception serialization should be language
             # independent.
             if error_type == ErrorType.Value("TASK_EXECUTION_EXCEPTION"):
-                obj = self._deserialize_msgpack_data(data, metadata_fields)
+                obj = self._deserialize_msgpack_data(
+                    data, metadata_fields, out_of_band_tensors
+                )
                 return RayError.from_bytes(obj)
             elif error_type == ErrorType.Value("WORKER_DIED"):
                 return WorkerCrashedError()
@@ -403,7 +407,9 @@ class SerializationContext:
                 except google.protobuf.message.DecodeError:
                     # Deserialization from Python. The TaskCancelledError is
                     # serialized and returned directly.
-                    obj = self._deserialize_msgpack_data(data, metadata_fields)
+                    obj = self._deserialize_msgpack_data(
+                        data, metadata_fields, out_of_band_tensors
+                    )
                     return RayError.from_bytes(obj)
             elif error_type == ErrorType.Value("OBJECT_LOST"):
                 return ObjectLostError(
@@ -499,16 +505,21 @@ class SerializationContext:
         if not hasattr(self._thread_local, "object_ref_stack"):
             self._thread_local.object_ref_stack = []
         results = []
-        for object_ref, (data, metadata, _) in zip(object_refs, serialized_ray_objects):
+        for object_ref, (data, metadata, transport) in zip(
+            object_refs, serialized_ray_objects
+        ):
             try:
                 # Push the object ref to the stack, so the object under
                 # the object ref knows where it comes from.
                 self._thread_local.object_ref_stack.append(object_ref)
+                object_tensors = None
+                if object_ref is not None:
+                    object_tensors = out_of_band_tensors.pop(object_ref.hex(), None)
                 obj = self._deserialize_object(
                     data,
                     metadata,
                     object_ref,
-                    out_of_band_tensors.pop(object_ref.hex(), None),
+                    object_tensors,
                 )
             except Exception as e:
                 logger.exception(e)

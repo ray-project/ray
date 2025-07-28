@@ -40,11 +40,11 @@ def __ray_send__(self, communicator_name: str, obj_id: str, dst_rank: int):
     """Helper function that runs on the src actor to send tensors to the dst actor."""
     from ray._private.worker import global_worker
 
-    _gpu_object_store = global_worker.gpu_object_manager._gpu_object_store
-    assert _gpu_object_store.has_object(
+    gpu_object_store = global_worker.gpu_object_manager.gpu_object_store
+    assert gpu_object_store.has_object(
         obj_id
     ), f"obj_id={obj_id} not found in GPU object store"
-    tensors = _gpu_object_store.get_object(obj_id)
+    tensors = gpu_object_store.get_object(obj_id)
 
     backend = collective.get_group_handle(communicator_name).backend()
     device = COLLECTIVE_BACKEND_TO_TORCH_DEVICE[backend]
@@ -72,25 +72,25 @@ def __ray_recv__(
     backend = collective.get_group_handle(communicator_name).backend()
     device = COLLECTIVE_BACKEND_TO_TORCH_DEVICE[backend]
 
-    _gpu_object_store = global_worker.gpu_object_manager._gpu_object_store
+    gpu_object_store = global_worker.gpu_object_manager.gpu_object_store
     tensors = []
     for meta in tensor_meta:
         shape, dtype = meta
         tensor = torch.zeros(shape, dtype=dtype, device=device)
         collective.recv(tensor, src_rank, group_name=communicator_name)
         tensors.append(tensor)
-    _gpu_object_store.add_object(obj_id, tensors)
+    gpu_object_store.add_object(obj_id, tensors)
 
 
 def __ray_get_tensor_meta__(self, obj_id: str):
     """Helper function that runs on the src actor to get the tensor metadata."""
     from ray._private.worker import global_worker
 
-    _gpu_object_store = global_worker.gpu_object_manager._gpu_object_store
+    gpu_object_store = global_worker.gpu_object_manager.gpu_object_store
     # NOTE: We do not specify a timeout here because the user task that returns
     # it could take arbitrarily long and we don't want to trigger a spurious
     # timeout.
-    tensors = _gpu_object_store.wait_and_get_object(obj_id)
+    tensors = gpu_object_store.wait_and_get_object(obj_id)
     return [(t.shape, t.dtype) for t in tensors]
 
 
@@ -98,11 +98,11 @@ def __ray_fetch_gpu_object__(self, obj_id: str):
     """Helper function that runs on the src actor to fetch tensors from the GPU object store via the object store."""
     from ray._private.worker import global_worker
 
-    _gpu_object_store = global_worker.gpu_object_manager._gpu_object_store
-    assert _gpu_object_store.has_object(
+    gpu_object_store = global_worker.gpu_object_manager.gpu_object_store
+    assert gpu_object_store.has_object(
         obj_id
     ), f"obj_id={obj_id} not found in GPU object store"
-    tensors = _gpu_object_store.get_object(obj_id)
+    tensors = gpu_object_store.get_object(obj_id)
     return tensors
 
 

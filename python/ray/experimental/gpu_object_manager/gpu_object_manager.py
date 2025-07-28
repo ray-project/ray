@@ -261,25 +261,25 @@ class GPUObjectManager:
                 communicator.name, dst_actor, arg.hex(), src_rank, tensor_meta
             )
 
-        def get_out_of_band_tensors(self, object_id: str) -> List["torch.Tensor"]:
-            """
-            Get the out-of-band tensors for a given object ID.
-            """
-            gpu_object_store = self.gpu_object_store
-            if self.is_managed_object(object_id):
-                self.fetch_object(object_id)
+    def get_out_of_band_tensors(self, object_id: str) -> List["torch.Tensor"]:
+        """
+        Get the out-of-band tensors for a given object ID.
+        """
+        gpu_object_store = self.gpu_object_store
+        if self.is_managed_object(object_id):
+            self.fetch_object(object_id)
 
-            # If the GPU object is the primary copy, it means the transfer is intra-actor.
-            # In this case, we should not remove the GPU object after it is consumed once,
-            # because the GPU object reference may be used again.
-            # Instead, we should wait for the GC callback to clean it up.
-            pop_object = not gpu_object_store.is_primary_copy(object_id)
-            if pop_object:
-                tensors = gpu_object_manager.gpu_object_store.wait_and_pop_object(
-                    object_id, timeout=ray_constants.FETCH_FAIL_TIMEOUT_SECONDS
-                )
-            else:
-                tensors = gpu_object_manager.gpu_object_store.wait_and_get_object(
-                    object_id, timeout=ray_constants.FETCH_FAIL_TIMEOUT_SECONDS
-                )
-            return tensors
+        # If the GPU object is the primary copy, it means the transfer is intra-actor.
+        # In this case, we should not remove the GPU object after it is consumed once,
+        # because the GPU object reference may be used again.
+        # Instead, we should wait for the GC callback to clean it up.
+        pop_object = not gpu_object_store.is_primary_copy(object_id)
+        if pop_object:
+            tensors = self.gpu_object_store.wait_and_pop_object(
+                object_id, timeout=ray_constants.FETCH_FAIL_TIMEOUT_SECONDS
+            )
+        else:
+            tensors = self.gpu_object_store.wait_and_get_object(
+                object_id, timeout=ray_constants.FETCH_FAIL_TIMEOUT_SECONDS
+            )
+        return tensors
