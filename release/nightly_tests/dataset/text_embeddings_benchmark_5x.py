@@ -12,7 +12,7 @@ import io
 import uuid
 from pathlib import Path
 import time
-from typing import Dict, List
+from typing import Any, Dict, Iterator, List
 
 import ray
 import torch
@@ -114,7 +114,7 @@ def parse_args():
 
 
 
-def process_file(record: dict) -> dict:
+def process_file(record: dict) -> Iterator[Dict[str, Any]]:
     file_path = Path(record["path"])
     supported_extensions = {".pdf", ".docx", ".pptx", ".ppt", ".html", ".txt"}
 
