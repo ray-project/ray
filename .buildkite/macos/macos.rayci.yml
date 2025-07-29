@@ -103,7 +103,15 @@ steps:
     job_env: MACOS
     instance_type: macos-arm64
     commands:
-      - RAY_INSTALL_JAVA=1 ./ci/ray_ci/macos/macos_ci.sh run_ray_cpp_and_java
+      - |
+        if ! /usr/bin/pgrep oahd >/dev/null 2>&1; then
+          echo "Installing Rosetta..."
+          sudo /usr/sbin/softwareupdate --install-rosetta --agree-to-license
+        else
+          echo "Rosetta already installed."
+        fi
+      - arch -x86_64 uname -m  # Debug log: should print i386 or x86_64
+      - RAY_INSTALL_JAVA=1 arch -x86_64 ./ci/ray_ci/macos/macos_ci.sh run_ray_cpp_and_java
 
   - label: ":ray: core: :mac: flaky tests"
     key: macos_flaky_tests
