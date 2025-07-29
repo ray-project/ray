@@ -1571,11 +1571,6 @@ python/ray/llm/_internal/common/utils/download_utils.py
 python/ray/llm/_internal/serve/configs/openai_api_models.py
     DOC201: Function `to_model_metadata` does not have a return section in docstring
 --------------------
-python/ray/llm/_internal/serve/deployments/llm/multiplex/utils.py
-    DOC201: Function `retry_with_exponential_backoff` does not have a return section in docstring
-    DOC101: Function `get_object_from_cloud`: Docstring contains fewer arguments than in function signature.
-    DOC103: Function `get_object_from_cloud`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [object_uri: str].
---------------------
 python/ray/llm/_internal/serve/deployments/routers/router.py
     DOC101: Method `LLMRouter.completions`: Docstring contains fewer arguments than in function signature.
     DOC103: Method `LLMRouter.completions`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [body: CompletionRequest].
@@ -1748,7 +1743,6 @@ python/ray/serve/_private/utils.py
 python/ray/serve/api.py
     DOC101: Function `start`: Docstring contains fewer arguments than in function signature.
     DOC103: Function `start`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [**kwargs: ].
-    DOC201: Function `get_replica_context` does not have a return section in docstring
     DOC201: Function `ingress` does not have a return section in docstring
     DOC101: Function `run_many`: Docstring contains fewer arguments than in function signature.
     DOC103: Function `run_many`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [_local_testing_mode: bool].
