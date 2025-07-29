@@ -174,6 +174,20 @@ Partitioned Writes
 .. testcode::
     import ray
     import pandas as pd
+    from ray.data import DataContext
+    from ray.data.context import ShuffleStrategy
+
+    def print_directory_tree(start_path: str) -> None:
+        """
+        Prints the directory tree structure starting from the given path.
+        """
+        for root, dirs, files in os.walk(start_path):
+            level = root.replace(start_path, '').count(os.sep)
+            indent = ' ' * 4 * (level)
+            print(f'{indent}{os.path.basename(root)}/')
+            subindent = ' ' * 4 * (level + 1)
+            for f in files:
+                print(f'{subindent}{f}')
 
     # Sample dataset that we’ll partition by ``city`` and ``year``.
     df = pd.DataFrame(
@@ -185,6 +199,7 @@ Partitioned Writes
     )
 
     ds = ray.data.from_pandas(df)
+    DataContext.shuffle_strategy=ShuffleStrategy.HASH_SHUFFLE
 
     # ── Partitioned write ──────────────────────────────────────────────────────
     # 1. Repartition so all rows with the same (city, year) land in the same
@@ -200,12 +215,23 @@ Partitioned Writes
         max_rows_per_file=3,     # … but never more than 3.
     )
 
-    # The directory tree now looks like:
-    # /tmp/sales_partitioned/
-    # ├── city=SF/year=2023/part-00000-*.parquet
-    # ├── city=SF/year=2024/part-00000-*.parquet
-    # ├── city=NYC/year=2023/part-00000-*.parquet
-    # └── city=NYC/year=2024/part-00000-*.parquet
+    print_directory_tree("/tmp/sales_partitioned")
+
+.. testoutput::
+    :options: +NORMALIZE_WHITESPACE
+
+    sales_partitioned/
+        city=NYC/
+            year=2024/
+                1_a2b8b82cd2904a368ec39f42ae3cf830_000000_000000-0.parquet
+            year=2023/
+                1_a2b8b82cd2904a368ec39f42ae3cf830_000001_000000-0.parquet
+        city=SF/
+            year=2024/
+                1_a2b8b82cd2904a368ec39f42ae3cf830_000000_000000-0.parquet
+            year=2023/
+                1_a2b8b82cd2904a368ec39f42ae3cf830_000001_000000-0.parquet
+
 
 Converting Datasets to other Python libraries
 =============================================
