@@ -90,13 +90,17 @@ class FailureConfig(FailureConfigV1):
     """Configuration related to failure handling of each training run.
 
     Args:
-        max_failures: Tries to recover a run at least this many times.
+        max_failures: Tries to recover a run from training worker errors at least this many times.
             Will recover from the latest checkpoint if present.
             Setting to -1 will lead to infinite recovery retries.
             Setting to 0 will disable retries. Defaults to 0.
+        controller_failure_limit: [DeveloperAPI] The maximum number of controller failures to tolerate.
+            Setting to -1 will lead to infinite controller retries.
+            Setting to 0 will disable controller retries. Defaults to -1.
     """
 
     fail_fast: Union[bool, str] = _DEPRECATED
+    controller_failure_limit: int = -1
 
     def __post_init__(self):
         # TODO(justinvyu): Add link to migration guide.

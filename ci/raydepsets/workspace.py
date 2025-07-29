@@ -20,6 +20,7 @@ class Depset:
     output: str
     source_depset: Optional[str] = None
     env: Env = None
+    depsets: Optional[List[str]] = None
 
 
 @dataclass
@@ -54,6 +55,7 @@ class Config:
                         operation=values.get("operation", None),
                         output=values.get("output"),
                         source_depset=values.get("source_depset"),
+                        depsets=values.get("depsets", []),
                         env=env,
                     )
                     for values in depsets_yaml

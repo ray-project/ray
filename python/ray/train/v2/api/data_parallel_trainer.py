@@ -5,8 +5,8 @@ import sys
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import ray
+from ray._common.usage import usage_lib
 from ray._private.ray_constants import env_bool
-from ray._private.usage import usage_lib
 from ray.actor import ActorHandle
 from ray.air._internal.usage import tag_train_v2_trainer
 from ray.train import (
@@ -112,9 +112,8 @@ class DataParallelTrainer:
             A Result object containing the training result.
 
         Raises:
-            ray.train.v2.api.exceptions.TrainingFailedError: If any failures occur
-                during training and the number of retries configured in
-                `FailureConfig` is exhausted.
+            ray.train.v2.api.exceptions.ControllerError: If a non-retryable error occurs in the Ray Train controller itself, or if the number of retries configured in `FailureConfig` is exhausted.
+            ray.train.v2.api.exceptions.WorkerGroupError: If one or more workers fail during training and the number of retries configured in `FailureConfig` is exhausted.
         """
         train_fn = construct_train_func(
             self.train_loop_per_worker,
