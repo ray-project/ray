@@ -21,6 +21,7 @@ cc_proto_library(
 proto_library(
     name = "events_profile_events_proto",
     srcs = ["events_profile_events.proto"],
+    visibility = ["//java:__subpackages__"],
     deps = [],
 )
 
