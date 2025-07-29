@@ -40,3 +40,14 @@ message ProfileEvents {
   // Events.
   repeated ProfileEventEntry events = 4;
 }
+
+message TaskProfileEvents {
+  // Metadata shared by all event types.
+  bytes task_id = 1;
+  // The current retry attempt number for the task.
+  int32 attempt_number = 2;
+  // Job id of the task
+  bytes job_id = 3;
+  // Task profiling events.
+  ProfileEvents profile_events = 4;
+}
