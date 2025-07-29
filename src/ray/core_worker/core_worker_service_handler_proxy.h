@@ -28,6 +28,7 @@ namespace core {
   void Handle##METHOD(rpc::METHOD##Request request,                          \
                       rpc::METHOD##Reply *reply,                             \
                       rpc::SendReplyCallback send_reply_callback) override { \
+    absl::MutexLock lock(&core_worker_mutex_);                               \
     core_worker_->Handle##METHOD(request, reply, send_reply_callback);       \
   }
 
@@ -71,22 +72,22 @@ class CoreWorkerServiceHandlerProxy : public rpc::CoreWorkerServiceHandler {
   /// Wait until the worker is initialized.
   void WaitUntilInitialized() override {
     // TODO(joshlee): investigate and remove the 1 second timeout
-    absl::MutexLock lock(&initialize_mutex_);
+    absl::MutexLock lock(&core_worker_mutex_);
     while (core_worker_ == nullptr) {
-      intialize_cv_.WaitWithTimeout(&initialize_mutex_, absl::Seconds(1));
+      core_worker_cv_.WaitWithTimeout(&core_worker_mutex_, absl::Seconds(1));
     }
   }
 
   void SetCoreWorker(CoreWorker *core_worker) {
-    absl::MutexLock lock(&initialize_mutex_);
+    absl::MutexLock lock(&core_worker_mutex_);
     core_worker_ = core_worker;
-    intialize_cv_.SignalAll();
+    core_worker_cv_.SignalAll();
   }
 
  private:
-  absl::Mutex initialize_mutex_;
-  absl::CondVar intialize_cv_;
-  CoreWorker *core_worker_ ABSL_GUARDED_BY(initialize_mutex_) = nullptr;
+  absl::Mutex core_worker_mutex_;
+  absl::CondVar core_worker_cv_;
+  CoreWorker *core_worker_ ABSL_GUARDED_BY(core_worker_mutex_) = nullptr;
 };
 
 }  // namespace core
