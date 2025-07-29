@@ -711,6 +711,37 @@ class TestReservationOpResourceAllocator:
         # o3: 4 total - 0 used = 4 available
         assert allocator._op_budgets[o3].gpu == 4
 
+    def test_gpu_usage_exceeds_global_limits(self, restore_data_context):
+        o1 = InputDataBuffer(DataContext.get_current(), [])
+
+        # One GPU operator
+        o2 = mock_map_op(o1, ray_remote_args={"num_gpus": 1})
+        o2.min_max_resource_requirements = MagicMock(
+            return_value=(ExecutionResources(0, 1, 0), ExecutionResources(0, 2, 0))
+        )
+
+        topo, _ = build_streaming_topology(o2, ExecutionOptions())
+
+        global_limits = ExecutionResources(gpu=1)
+        op_usages = {
+            o1: ExecutionResources.zero(),
+            # o2 uses 2 GPUs but only 1 is available. This can happen if you set
+            # `concurrency` to 2 but there's only 1 GPU in the cluster. In this case,
+            # one actor will be running and the other will be stuck pending.
+            o2: ExecutionResources(gpu=2),
+        }
+
+        resource_manager = ResourceManager(
+            topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
+        )
+        resource_manager.get_op_usage = MagicMock(side_effect=lambda op: op_usages[op])
+        resource_manager.get_global_limits = MagicMock(return_value=global_limits)
+
+        allocator = resource_manager._op_resource_allocator
+        allocator.update_usages()
+
+        assert allocator._op_budgets[o2].gpu == 0
+
 
 if __name__ == "__main__":
     import sys
