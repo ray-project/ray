@@ -5,6 +5,7 @@ import os
 import pprint
 import time
 import tempfile
+import wandb
 from typing import Dict, Optional
 
 import ray.train
@@ -154,7 +155,18 @@ class TrainLoopRunner:
                 self._validate_and_checkpoint()
 
             if self._should_log_metrics():
-                logger.info(pprint.pformat(self.get_metrics(), indent=2))
+                metrics = self.get_metrics()
+                logger.info(pprint.pformat(metrics, indent=2))
+                
+                # Log train throughput metrics to wandb
+                if ray.train.get_context().get_world_rank() == 0:
+                    wandb_metrics = {}
+                    if "train/local_throughput" in metrics:
+                        wandb_metrics["train/local_throughput"] = metrics["train/local_throughput"]
+                    if "train/global_throughput" in metrics:
+                        wandb_metrics["train/global_throughput"] = metrics["train/global_throughput"]
+                    if wandb_metrics:
+                        wandb.log(wandb_metrics, step=self._train_batch_idx)
 
         self._train_epoch_idx += 1
         self._train_batch_idx = 0
@@ -273,6 +285,11 @@ class TrainLoopRunner:
 
     def run(self):
         starting_epoch = self._train_epoch_idx
+        wandb.login(key=os.environ['WANDB_API_KEY'])
+        wandb.init(
+            project='anyscale-llm-forge',
+            entity='recsys',
+        )
 
         for _ in range(starting_epoch, self.benchmark_config.num_epochs):
             with self._metrics["train/epoch"].timer():
@@ -282,7 +299,19 @@ class TrainLoopRunner:
                 self._validate_and_checkpoint()
 
             if ray.train.get_context().get_world_rank() == 0:
-                logger.info(pprint.pformat(self.get_metrics(), indent=2))
+                metrics = self.get_metrics()
+                logger.info(pprint.pformat(metrics, indent=2))
+                
+                # Log train throughput metrics to wandb at end of epoch
+                wandb_metrics = {}
+                if "train/local_throughput" in metrics:
+                    wandb_metrics["train/local_throughput"] = metrics["train/local_throughput"]
+                if "train/global_throughput" in metrics:
+                    wandb_metrics["train/global_throughput"] = metrics["train/global_throughput"]
+                # Also log epoch number
+                wandb_metrics["epoch"] = self._train_epoch_idx - 1  # -1 because we incremented after the epoch
+                if wandb_metrics:
+                    wandb.log(wandb_metrics, step=self._train_epoch_idx - 1)
 
         self._cleanup()
 

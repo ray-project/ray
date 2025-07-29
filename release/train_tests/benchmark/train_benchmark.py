@@ -102,6 +102,7 @@ def main():
             enable_shard_locality=benchmark_config.enable_shard_locality,
         ),
         run_config=ray.train.RunConfig(
+            worker_runtime_env={'env_vars': {'WANDB_API_KEY': os.environ['WANDB_API_KEY']}},
             storage_path=f"{os.environ['ANYSCALE_ARTIFACT_STORAGE']}/train_benchmark/",
             name=f"{benchmark_config.task}-{date_str(include_ms=True)}",
             failure_config=ray.train.FailureConfig(

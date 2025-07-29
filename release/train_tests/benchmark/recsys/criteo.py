@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 S3_BUCKET = "ray-benchmark-data-internal"
 CRITEO_S3_URI = f"s3://{S3_BUCKET}/criteo/tsv.gz"
 CAT_FEATURE_VALUE_COUNT_JSON_PATH_PATTERN = (
-    "criteo/tsv.gz/categorical_feature_value_counts/{}-value_counts.json"
+    "criteo/tsv.gz/full_categorical_feature_value_counts/{}-value_counts.json"
 )
 
 
