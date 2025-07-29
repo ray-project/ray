@@ -1456,14 +1456,6 @@ void GcsActorManager::RestartActor(const ActorID &actor_id,
 
   if (remaining_restarts != 0 ||
       (need_reschedule && max_restarts > 0 && mutable_actor_table_data->preempted())) {
-    if (actor->GetState() == rpc::ActorTableData::RESTARTING) {
-      RAY_LOG(DEBUG).WithField(actor_id.JobId()).WithField(actor_id)
-          << "Actor is already restarting, skipping restart";
-      if (done_callback) {
-        done_callback();
-      }
-      return;
-    }
     // num_restarts must be set before updating GCS, or num_restarts will be inconsistent
     // between memory cache and storage.
     if (mutable_actor_table_data->preempted()) {
