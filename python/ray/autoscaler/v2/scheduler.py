@@ -18,7 +18,7 @@ from ray.autoscaler._private.resource_demand_scheduler import (
 from ray.autoscaler.v2.event_logger import AutoscalerEventLogger
 from ray.autoscaler.v2.instance_manager.common import InstanceUtil
 from ray.autoscaler.v2.instance_manager.config import NodeTypeConfig
-from ray.autoscaler.v2.schema import AutoscalerInstance, NodeType
+from ray.autoscaler.v2.schema import AutoscalerInstance, IPPRStatus, NodeType
 from ray.autoscaler.v2.utils import ProtobufUtil, ResourceRequestUtil
 from ray.core.generated.common_pb2 import LabelSelectorOperator
 from ray.core.generated.autoscaler_pb2 import (
@@ -160,6 +160,10 @@ class SchedulingNode:
     ] = field(default_factory=dict)
     # The node's current resource capacity.
     total_resources: Dict[str, float] = field(default_factory=dict)
+
+    # IPPR status, queried from the cloud provider.
+    ippr_status: Optional[IPPRStatus]
+
     # Node's labels, including static or dynamic labels.
     labels: Dict[str, str] = field(default_factory=dict)
     # Observability descriptive message for why the node was launched in the
@@ -280,6 +284,7 @@ class SchedulingNode:
                     **(instance.ray_node.labels or {}),
                     **(instance.ray_node.dynamic_labels or {}),
                 },
+                ippr_status=instance.ippr_status,
                 status=SchedulingNodeStatus.SCHEDULABLE,
                 im_instance_id=instance.im_instance.instance_id,
                 im_instance_status=instance.im_instance.status,
@@ -309,6 +314,7 @@ class SchedulingNode:
                 node_type=instance.im_instance.instance_type,
                 total_resources={},
                 available_resources={},
+                ippr_status=instance.ippr_status,
                 labels={},
                 status=SchedulingNodeStatus.TO_TERMINATE,
                 im_instance_id=instance.im_instance.instance_id,

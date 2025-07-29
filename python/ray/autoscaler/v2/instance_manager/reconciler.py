@@ -280,6 +280,7 @@ class Reconciler:
             ray_state=ray_cluster_resource_state,
             scheduler=scheduler,
             autoscaling_config=autoscaling_config,
+            non_terminated_cloud_instances=non_terminated_cloud_instances,
         )
 
         Reconciler._handle_instances_launch(
@@ -1065,6 +1066,7 @@ class Reconciler:
         ray_state: ClusterResourceState,
         scheduler: IResourceScheduler,
         autoscaling_config: AutoscalingConfig,
+        non_terminated_cloud_instances: Dict[CloudInstanceId, CloudInstance],
     ) -> None:
         """
         Scale the cluster based on the resource state and the resource scheduler's
@@ -1096,15 +1098,18 @@ class Reconciler:
 
         for im_instance in im_instances:
             ray_node = ray_nodes_by_id.get(im_instance.node_id)
+            ippr_status = None
+            cloud_instance_id = im_instance.cloud_instance_id or None
+            if cloud_instance_id:
+                cloud_instance = non_terminated_cloud_instances.get(cloud_instance_id)
+                if cloud_instance:
+                    ippr_status = cloud_instance.ippr_status
             autoscaler_instances.append(
                 AutoscalerInstance(
                     ray_node=ray_node,
                     im_instance=im_instance,
-                    cloud_instance_id=(
-                        im_instance.cloud_instance_id
-                        if im_instance.cloud_instance_id
-                        else None
-                    ),
+                    cloud_instance_id=cloud_instance_id,
+                    ippr_status=ippr_status,
                 )
             )
 

@@ -222,6 +222,22 @@ class ClusterStatus:
 
 
 @dataclass
+class IPPRStatus:
+    min_cpu: float
+    max_cpu: float
+    min_memory: float
+    max_memory: float
+    current_cpu: float
+    current_memory: float
+    desired_cpu: Optional[float]
+    desired_memory: Optional[float]
+    resized_at: Optional[int]
+    resized_status: Optional[str]
+    resized_message: Optional[str]
+    resize_timeout: int
+
+
+@dataclass
 class AutoscalerInstance:
     """
     AutoscalerInstance represents an instance that's managed by the autoscaler.
@@ -242,6 +258,8 @@ class AutoscalerInstance:
     # or the instance manager hasn't had a cloud instance assigned (e.g. QUEUED,
     # REQUESTED).
     ray_node: Optional[NodeState] = None
+
+    ippr_status: Optional[IPPRStatus] = None
 
     # The instance manager instance state. It would be None when the ray_node is not
     # None.
