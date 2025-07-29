@@ -10,6 +10,10 @@ import ray._private.node
 import ray._private.ray_constants as ray_constants
 import ray._private.utils
 import ray.actor
+from ray._common.ray_constants import (
+    LOGGING_ROTATE_BACKUP_COUNT,
+    LOGGING_ROTATE_BYTES,
+)
 from ray._private.async_compat import try_install_uvloop
 from ray._private.parameter import RayParams
 from ray._private.ray_logging import get_worker_log_file_name
@@ -129,18 +133,18 @@ parser.add_argument(
     "--logging-rotate-bytes",
     required=False,
     type=int,
-    default=ray_constants.LOGGING_ROTATE_BYTES,
+    default=LOGGING_ROTATE_BYTES,
     help="Specify the max bytes for rotating "
     "log file, default is "
-    f"{ray_constants.LOGGING_ROTATE_BYTES} bytes.",
+    f"{LOGGING_ROTATE_BYTES} bytes.",
 )
 parser.add_argument(
     "--logging-rotate-backup-count",
     required=False,
     type=int,
-    default=ray_constants.LOGGING_ROTATE_BACKUP_COUNT,
+    default=LOGGING_ROTATE_BACKUP_COUNT,
     help="Specify the backup count of rotated log file, default is "
-    f"{ray_constants.LOGGING_ROTATE_BACKUP_COUNT}.",
+    f"{LOGGING_ROTATE_BACKUP_COUNT}.",
 )
 parser.add_argument(
     "--runtime-env-hash",

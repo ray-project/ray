@@ -9,6 +9,7 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 from ray._common.test_utils import wait_for_condition
 from ray._raylet import GcsClient
+from ray.tests.conftest import *  # noqa: F403
 
 import requests
 import pytest
@@ -16,14 +17,14 @@ from jsonschema import validate
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import ray
-import ray._private.usage.usage_constants as usage_constants
-import ray._private.usage.usage_lib as ray_usage_lib
+import ray._common.usage.usage_constants as usage_constants
+import ray._common.usage.usage_lib as ray_usage_lib
 from ray._private.test_utils import (
     format_web_url,
     run_string_as_driver,
     wait_until_server_available,
 )
-from ray._private.usage.usage_lib import ClusterConfigToReport, UsageStatsEnabledness
+from ray._common.usage.usage_lib import ClusterConfigToReport, UsageStatsEnabledness
 from ray.autoscaler._private.cli_logger import cli_logger
 from ray.util.placement_group import (
     placement_group,
@@ -202,7 +203,7 @@ def test_get_extra_usage_tags_to_report(
         m.setenv("RAY_USAGE_STATS_EXTRA_TAGS", "key=val")
         driver = """
 import ray
-import ray._private.usage.usage_lib as ray_usage_lib
+import ray._common.usage.usage_lib as ray_usage_lib
 
 ray_usage_lib.record_extra_usage_tag(ray_usage_lib.TagKey._TEST1, "val1")
 ray.init(address="{}")
@@ -782,7 +783,7 @@ def test_library_usages(call_ray_start, reset_usage_stats, ray_client):
 
     driver = """
 import ray
-import ray._private.usage.usage_lib as ray_usage_lib
+import ray._common.usage.usage_lib as ray_usage_lib
 
 ray_usage_lib.record_library_usage("pre_init")
 ray.init(address="{}")

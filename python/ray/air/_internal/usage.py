@@ -4,7 +4,7 @@ import os
 from enum import Enum
 from typing import TYPE_CHECKING, Dict, List, Optional, Set, Union
 
-from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
+from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
 
 if TYPE_CHECKING:
     from ray.train._internal.storage import StorageContext

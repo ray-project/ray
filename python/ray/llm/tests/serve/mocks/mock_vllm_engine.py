@@ -18,9 +18,7 @@ from ray.llm._internal.serve.configs.server_models import (
     LLMConfig,
 )
 from ray.llm._internal.serve.deployments.llm.llm_engine import LLMEngine
-from ray.llm._internal.serve.deployments.llm.multiplex.lora_model_loader import (
-    LoraModelLoader,
-)
+from ray.llm._internal.serve.utils.lora_serve_utils import LoraModelLoader
 
 
 class MockVLLMEngine(LLMEngine):

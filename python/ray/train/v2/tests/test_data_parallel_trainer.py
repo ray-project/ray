@@ -15,7 +15,7 @@ from ray.train.constants import RAY_CHDIR_TO_TRIAL_DIR, _get_ray_train_session_d
 from ray.train.tests.util import create_dict_checkpoint
 from ray.train.v2._internal.constants import is_v2_enabled
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
-from ray.train.v2.api.exceptions import TrainingFailedError
+from ray.train.v2.api.exceptions import WorkerGroupError
 from ray.train.v2.api.result import Result
 
 assert is_v2_enabled()
@@ -152,7 +152,7 @@ def test_error(tmp_path):
         scaling_config=ScalingConfig(num_workers=2),
         run_config=RunConfig(name="test", storage_path=str(tmp_path)),
     )
-    with pytest.raises(TrainingFailedError) as exc_info:
+    with pytest.raises(WorkerGroupError) as exc_info:
         trainer.fit()
         assert isinstance(exc_info.value.worker_failures[0], ValueError)
 
@@ -209,7 +209,7 @@ def test_user_callback(tmp_path):
         ),
     )
     # The error should NOT be an assertion error from the user callback.
-    with pytest.raises(TrainingFailedError):
+    with pytest.raises(WorkerGroupError):
         trainer.fit()
 
 

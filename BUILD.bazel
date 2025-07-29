@@ -13,6 +13,8 @@ load("@com_github_grpc_grpc//bazel:cython_library.bzl", "pyx_library")
 load("@hedron_compile_commands//:refresh_compile_commands.bzl", "refresh_compile_commands")
 load("@python3_9//:defs.bzl", python39 = "interpreter")
 load("@rules_cc//cc:defs.bzl", "cc_proto_library")
+load("@rules_pkg//pkg:mappings.bzl", "pkg_attributes", "pkg_files")
+load("@rules_pkg//pkg:zip.bzl", "pkg_zip")
 load("@rules_proto//proto:defs.bzl", "proto_library")
 load("@rules_python//python:defs.bzl", "py_library", "py_runtime", "py_runtime_pair")
 load("//bazel:ray.bzl", "COPTS", "FLATC_ARGS", "PYX_COPTS", "PYX_SRCS", "copy_to_workspace", "ray_cc_binary", "ray_cc_library", "ray_cc_test")
@@ -1035,10 +1037,90 @@ py_library(
     visibility = ["__subpackages__"],
 )
 
-copy_to_workspace(
-    name = "cp_raylet_so",
+pkg_files(
+    name = "raylet_so_files",
     srcs = ["python/ray/_raylet.so"],
-    dstdir = "python/ray",
+    attributes = pkg_attributes(mode = "755"),
+    strip_prefix = "python",
+    visibility = ["//visibility:private"],
+)
+
+pkg_files(
+    name = "core_py_proto_files",
+    srcs = ["//src/ray/protobuf:core_py_proto"],
+    prefix = "ray/core/generated",
+    visibility = ["//visibility:private"],
+)
+
+pkg_zip(
+    name = "core_py_proto_zip",
+    srcs = [":core_py_proto_files"],
+    out = "core_py_proto.zip",
+    visibility = ["//visibility:private"],
+)
+
+pkg_files(
+    name = "serve_py_proto_files",
+    srcs = [":serve_py_proto"],
+    prefix = "ray/serve/generated",
+    visibility = ["//visibility:private"],
+)
+
+pkg_zip(
+    name = "serve_py_proto_zip",
+    srcs = [":serve_py_proto_files"],
+    out = "serve_py_proto.zip",
+    visibility = ["//visibility:private"],
+)
+
+pkg_files(
+    name = "redis_files",
+    srcs = [
+        ":redis-cli",
+        ":redis-server",
+    ],
+    attributes = pkg_attributes(mode = "755"),
+    prefix = "ray/core/src/ray/thirdparty/redis/src",
+    visibility = ["//visibility:private"],
+)
+
+pkg_files(
+    name = "raylet_files",
+    srcs = [":raylet"],
+    attributes = pkg_attributes(mode = "755"),
+    prefix = "ray/core/src/ray/raylet",
+    visibility = ["//visibility:private"],
+)
+
+pkg_files(
+    name = "gcs_server_files",
+    srcs = ["//src/ray/gcs/gcs_server"],
+    attributes = pkg_attributes(mode = "755"),
+    prefix = "ray/core/src/ray/gcs",
+    visibility = ["//visibility:private"],
+)
+
+pkg_files(
+    name = "jemalloc_files",
+    srcs = ["@jemalloc//:shared"],
+    attributes = pkg_attributes(mode = "755"),
+    prefix = "ray/core/",
+    visibility = ["//visibility:private"],
+)
+
+pkg_zip(
+    name = "ray_pkg_zip",
+    srcs = [
+        ":gcs_server_files",
+        ":raylet_files",
+        ":raylet_so_files",
+        ":redis_files",
+    ] + select({
+        ":jemalloc": [":jemalloc_files"],
+        "//conditions:default": [],
+    }),
+    out = "ray_pkg.zip",
+    visibility = ["//visibility:private"],
 )
 
 copy_to_workspace(
@@ -1053,38 +1135,16 @@ copy_to_workspace(
     dstdir = "python/ray/serve/generated",
 )
 
-copy_to_workspace(
-    name = "cp_redis",
-    srcs = [
-        ":redis-cli",
-        ":redis-server",
-    ],
-    dstdir = "python/ray/core/src/ray/thirdparty/redis/src",
-)
-
-copy_to_workspace(
-    name = "cp_raylet",
-    srcs = [":raylet"],
-    dstdir = "python/ray/core/src/ray/raylet",
-)
-
-copy_to_workspace(
-    name = "cp_gcs_server",
-    srcs = ["//src/ray/gcs/gcs_server"],
-    dstdir = "python/ray/core/src/ray/gcs",
-)
-
-copy_to_workspace(
-    name = "cp_jemalloc",
-    srcs = ["@jemalloc//:shared"],
-    dstdir = "python/ray/core/",
-)
-
 genrule(
     name = "install_py_proto",
     srcs = [
         ":cp_core_py_proto",
         ":cp_serve_py_proto",
+
+        # Adding these pkg files rules make sure that there are no naming
+        # conflicts between the generated files and the pkg files.
+        ":core_py_proto_zip",
+        ":serve_py_proto_zip",
     ],
     outs = ["install_py_proto.out"],
     cmd = """
@@ -1111,21 +1171,15 @@ genrule(
 genrule(
     name = "ray_pkg",
     srcs = [
-        ":cp_raylet_so",
         ":python_sources",
         ":install_py_proto",
-        ":cp_redis",
-        ":cp_raylet",
-        ":cp_gcs_server",
-    ] + select({
-        ":jemalloc": [
-            ":cp_jemalloc",
-        ],
-        "//conditions:default": [],
-    }),
+        ":ray_pkg_zip",
+    ],
     outs = ["ray_pkg.out"],
     cmd = """
-        if [ "$${OSTYPE-}" = "msys" ]; then
+        unzip -o -q $(location :ray_pkg_zip) -d "python"
+
+        if [[ "$${OSTYPE-}" == "msys" ]]; then
             ln -P -f -- python/ray/_raylet.so python/ray/_raylet.pyd
         fi
         echo "$${PWD}" > $@

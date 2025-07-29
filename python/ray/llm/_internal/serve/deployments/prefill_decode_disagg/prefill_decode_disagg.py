@@ -87,7 +87,6 @@ class PDProxyServer(LLMServer):
         prefill_server: DeploymentHandle,
         decode_server: DeploymentHandle,
     ):
-
         # We pass `llm_config` here to let super() extract the model_id, such that /v1/models
         # endpoint can work correctly.
         # TODO(lk-chen): refactor LLMRouter <-> LLMServer such that router query model_id through
