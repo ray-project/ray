@@ -147,9 +147,10 @@ class DependencySetManager:
         self,
         depsets: List[str],
         constraints: List[str],
-        args: List[str],
         name: str,
         output: str = None,
+        append_flags: Optional[List[str]] = None,
+        override_flags: Optional[List[str]] = None,
     ):
         """Expand a dependency set."""
         depset_req_list = []
@@ -159,9 +160,10 @@ class DependencySetManager:
         self.compile(
             constraints=constraints,
             requirements=depset_req_list,
-            args=args,
             name=name,
             output=output,
+            append_flags=append_flags,
+            override_flags=override_flags,
         )
 
     def get_path(self, path: str) -> str:

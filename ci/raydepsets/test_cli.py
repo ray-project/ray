@@ -332,6 +332,7 @@ class TestCli(unittest.TestCase):
             "--extra-index-url",
             "https://download.pytorch.org/whl/cu128",
         ]
+
     def test_expand(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             _copy_data_to_tmpdir(tmpdir)
@@ -354,21 +355,21 @@ class TestCli(unittest.TestCase):
             manager.compile(
                 constraints=["requirement_constraints_test.txt"],
                 requirements=["requirements_test.txt"],
-                args=["--no-annotate", "--no-header"] + DEFAULT_UV_FLAGS.copy(),
+                append_flags=["--no-annotate", "--no-header"],
                 name="general_depset",
                 output="requirements_compiled_general.txt",
             )
             manager.compile(
                 constraints=[],
                 requirements=["requirements_expanded.txt"],
-                args=["--no-annotate", "--no-header"] + DEFAULT_UV_FLAGS.copy(),
+                append_flags=["--no-annotate", "--no-header"],
                 name="expanded_depset",
                 output="requirements_compiled_expanded.txt",
             )
             manager.expand(
                 depsets=["general_depset", "expanded_depset"],
                 constraints=["requirement_constraints_expand.txt"],
-                args=["--no-annotate", "--no-header"] + DEFAULT_UV_FLAGS.copy(),
+                append_flags=["--no-annotate", "--no-header"],
                 name="expand_general_depset",
                 output="requirements_compiled_expand_general.txt",
             )
