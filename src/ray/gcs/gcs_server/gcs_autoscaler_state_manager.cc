@@ -336,8 +336,8 @@ void GcsAutoscalerStateManager::GetPendingResourceRequests(
       req->mutable_resources_bundle()->insert(shape.begin(), shape.end());
 
       // Add label selectors to ResourceRequest
-      for (const auto &selector : label_selectors) {
-        *req->add_label_selectors() = selector;
+      for (auto &selector : key.label_selectors) {
+        *req->add_label_selectors() = std::move(selector);
       }
     }
   }
