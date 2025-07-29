@@ -171,6 +171,7 @@ ci/lint/
 ci/fossa/
 ci/docker/fossa.Dockerfile
 ci/docker/fossa.wanda.yaml
+ci/raydepsets/
 bazel/tests/
 @ tools
 ;
@@ -185,7 +186,6 @@ ci/ray_ci/macos/macos_ci_build.sh
 ci/pipeline/
 ci/build/
 ci/ray_ci/
-ci/raydepsets/
 .buildkite/_forge.rayci.yml
 .buildkite/_forge.aarch64.rayci.yml
 ci/docker/forge.wanda.yaml
