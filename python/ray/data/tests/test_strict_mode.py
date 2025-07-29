@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 
 import ray
+from ray.data.context import DataContext
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
 
@@ -143,15 +144,18 @@ def test_strict_default_batch_format(ray_start_regular_shared):
     assert isinstance(batch["id"], np.ndarray), batch
 
 
-def test_strict_tensor_support(ray_start_regular_shared):
-    ds = ray.data.from_items([np.ones(10), np.ones(10)])
-    assert np.array_equal(ds.take()[0]["item"], np.ones(10))
+@pytest.mark.parametrize("shape", [(10,), (10, 2)])
+def test_strict_tensor_support(ray_start_regular_shared, restore_data_context, shape):
+    DataContext.get_current().enable_fallback_to_arrow_object_ext_type = False
+
+    ds = ray.data.from_items([np.ones(shape), np.ones(shape)])
+    assert np.array_equal(ds.take()[0]["item"], np.ones(shape))
 
     ds = ds.map(lambda x: {"item": x["item"] * 2})
-    assert np.array_equal(ds.take()[0]["item"], 2 * np.ones(10))
+    assert np.array_equal(ds.take()[0]["item"], 2 * np.ones(shape))
 
     ds = ds.map_batches(lambda x: {"item": x["item"] * 2})
-    assert np.array_equal(ds.take()[0]["item"], 4 * np.ones(10))
+    assert np.array_equal(ds.take()[0]["item"], 4 * np.ones(shape))
 
 
 def test_strict_value_repr(ray_start_regular_shared):

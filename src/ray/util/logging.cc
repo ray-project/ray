@@ -31,18 +31,21 @@
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
+#include <limits>
+#include <memory>
 #include <sstream>
+#include <string>
 #include <string_view>
+#include <utility>
+#include <vector>
 
 #include "absl/debugging/failure_signal_handler.h"
 #include "absl/debugging/stacktrace.h"
 #include "absl/debugging/symbolize.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_format.h"
-#include "nlohmann/json.hpp"
-#include "ray/util/event_label.h"
-#include "ray/util/filesystem.h"
-#include "ray/util/util.h"
+#include "ray/util/string_utils.h"
+#include "ray/util/thread_utils.h"
 #include "spdlog/sinks/basic_file_sink.h"
 #include "spdlog/sinks/rotating_file_sink.h"
 #include "spdlog/sinks/stdout_color_sinks.h"
@@ -54,15 +57,15 @@ namespace ray {
 // %L is loglevel, %P is process id, %t for thread id.
 constexpr char kLogFormatTextPattern[] = "[%Y-%m-%d %H:%M:%S,%e %L %P %t] %v";
 constexpr char kLogFormatJsonPattern[] =
-    "{\"asctime\":\"%Y-%m-%d %H:%M:%S,%e\",\"levelname\":\"%L\"%v}";
+    R"({"asctime":"%Y-%m-%d %H:%M:%S,%e","levelname":"%L"%v})";
 
 RayLogLevel RayLog::severity_threshold_ = RayLogLevel::INFO;
-std::string RayLog::app_name_ = "";
-std::string RayLog::component_name_ = "";
+std::string RayLog::app_name_ = "";        // NOLINT
+std::string RayLog::component_name_ = "";  // NOLINT
 bool RayLog::log_format_json_ = false;
-std::string RayLog::log_format_pattern_ = kLogFormatTextPattern;
+std::string RayLog::log_format_pattern_ = kLogFormatTextPattern;  // NOLINT
 
-std::string RayLog::logger_name_ = "ray_log_sink";
+std::string RayLog::logger_name_ = "ray_log_sink";  // NOLINT
 bool RayLog::is_failure_signal_handler_installed_ = false;
 std::atomic<bool> RayLog::initialized_ = false;
 
@@ -72,10 +75,17 @@ std::ostream &operator<<(std::ostream &os, const StackTrace &stack_trace) {
   void *frames[MAX_NUM_FRAMES];
 
 #ifndef _WIN32
+  // A deleter can be used with std::unique_ptr to free memory without passing function
+  // pointer of free
+  struct FreeDeleter {
+    void operator()(void *ptr) const { free(ptr); }
+  };
+
   const int num_frames = backtrace(frames, MAX_NUM_FRAMES);
-  char **frame_symbols = backtrace_symbols(frames, num_frames);
+  std::unique_ptr<char *, FreeDeleter> frame_symbols(
+      backtrace_symbols(frames, num_frames));
   for (int i = 0; i < num_frames; ++i) {
-    os << frame_symbols[i];
+    os << frame_symbols.get()[i];
 
     if (absl::Symbolize(frames[i], buf, sizeof(buf))) {
       os << " " << buf;
@@ -83,7 +93,6 @@ std::ostream &operator<<(std::ostream &os, const StackTrace &stack_trace) {
 
     os << "\n";
   }
-  free(frame_symbols);
 #else
   const int num_frames = absl::GetStackTrace(frames, MAX_NUM_FRAMES, 0);
   for (int i = 0; i < num_frames; ++i) {
@@ -225,7 +234,7 @@ std::string json_escape_string(const std::string &s) noexcept {
 /// A logger that prints logs to stderr.
 /// This is the default logger if logging is not initialized.
 /// NOTE(lingxuan.zlx): Default stderr logger must be singleton and global
-/// variable so core worker process can invoke `RAY_LOG` in its whole lifecyle.
+/// variable so core worker process can invoke `RAY_LOG` in its whole lifecycle.
 class DefaultStdErrLogger final {
  public:
   std::shared_ptr<spdlog::logger> GetDefaultLogger() { return default_stderr_logger_; }
@@ -310,19 +319,20 @@ void RayLog::InitLogFormat() {
 }
 
 /*static*/ size_t RayLog::GetRayLogRotationMaxBytesOrDefault() {
+#if defined(__APPLE__) || defined(__linux__)
   if (const char *ray_rotation_max_bytes = std::getenv("RAY_ROTATION_MAX_BYTES");
       ray_rotation_max_bytes != nullptr) {
     size_t max_size = 0;
-    if (absl::SimpleAtoi(ray_rotation_max_bytes, &max_size) && max_size > 0) {
-      // 0 means no log rotation in python, but not in spdlog. We just use the default
-      // value here.
+    if (absl::SimpleAtoi(ray_rotation_max_bytes, &max_size)) {
       return max_size;
     }
   }
-  return kDefaultLogRotationMaxSize;
+#endif
+  return 0;
 }
 
 /*static*/ size_t RayLog::GetRayLogRotationBackupCountOrDefault() {
+#if defined(__APPLE__) || defined(__linux__)
   if (const char *ray_rotation_backup_count = std::getenv("RAY_ROTATION_BACKUP_COUNT");
       ray_rotation_backup_count != nullptr) {
     size_t file_num = 0;
@@ -330,7 +340,8 @@ void RayLog::InitLogFormat() {
       return file_num;
     }
   }
-  return kDefaultLogRotationFileNum;
+#endif
+  return 1;
 }
 
 /*static*/ std::string RayLog::GetLogFilepathFromDirectory(const std::string &log_dir,
@@ -347,9 +358,24 @@ void RayLog::InitLogFormat() {
   return JoinPaths(log_dir, absl::StrFormat("%s_%d.log", app_name, pid));
 }
 
+/*static*/ std::string RayLog::GetErrLogFilepathFromDirectory(
+    const std::string &log_dir, const std::string &app_name) {
+  if (log_dir.empty()) {
+    return "";
+  }
+
+#ifdef _WIN32
+  int pid = _getpid();
+#else
+  pid_t pid = getpid();
+#endif
+  return JoinPaths(log_dir, absl::StrFormat("%s_%d.err", app_name, pid));
+}
+
 /*static*/ void RayLog::StartRayLog(const std::string &app_name,
                                     RayLogLevel severity_threshold,
                                     const std::string &log_filepath,
+                                    const std::string &err_log_filepath,
                                     size_t log_rotation_max_size,
                                     size_t log_rotation_file_num) {
   InitSeverityThreshold(severity_threshold);
@@ -360,7 +386,6 @@ void RayLog::InitLogFormat() {
   log_rotation_file_num_ = log_rotation_file_num;
 
   // All the logging sinks to add.
-  // One for file/stdout, another for stderr.
   std::array<spdlog::sink_ptr, 2> sinks;  // Intentionally no initialization.
 
   auto level = GetMappedSeverity(severity_threshold_);
@@ -369,16 +394,14 @@ void RayLog::InitLogFormat() {
     app_name_without_path = "DefaultApp";
   } else {
     // Find the app name without the path.
-    std::string app_file_name = ray::GetFileName(app_name);
+    std::string app_file_name = std::filesystem::path(app_name).filename().string();
     if (!app_file_name.empty()) {
       app_name_without_path = app_file_name;
     }
   }
 
-  const auto log_fname = log_filepath;
-
-  // Set sink for stdout.
-  if (!log_fname.empty()) {
+  // Set sink for logs above the user defined level.
+  if (!log_filepath.empty()) {
     // Sink all log stuff to default file logger we defined here. We may need
     // multiple sinks for different files or loglevel.
     auto file_logger = spdlog::get(RayLog::GetLoggerName());
@@ -388,8 +411,13 @@ void RayLog::InitLogFormat() {
       spdlog::drop(RayLog::GetLoggerName());
     }
 
-    auto file_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
-        log_fname, log_rotation_max_size_, log_rotation_file_num_);
+    spdlog::sink_ptr file_sink;
+    if (log_rotation_max_size_ == 0) {
+      file_sink = std::make_shared<spdlog::sinks::basic_file_sink_st>(log_filepath);
+    } else {
+      file_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
+          log_filepath, log_rotation_max_size_, log_rotation_file_num_);
+    }
     file_sink->set_level(level);
     sinks[0] = std::move(file_sink);
   } else {
@@ -399,11 +427,22 @@ void RayLog::InitLogFormat() {
     sinks[0] = std::move(console_sink);
   }
 
-  // In all cases, log errors to the console log so they are in driver logs.
-  // https://github.com/ray-project/ray/issues/12893
-  auto err_sink = std::make_shared<spdlog::sinks::stderr_color_sink_mt>();
-  err_sink->set_level(spdlog::level::err);
-  sinks[1] = std::move(err_sink);
+  // Set sink for error logs.
+  if (!err_log_filepath.empty()) {
+    spdlog::sink_ptr err_sink;
+    if (log_rotation_max_size_ == 0) {
+      err_sink = std::make_shared<spdlog::sinks::basic_file_sink_st>(err_log_filepath);
+    } else {
+      err_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
+          err_log_filepath, log_rotation_max_size_, log_rotation_file_num_);
+    }
+    err_sink->set_level(spdlog::level::err);
+    sinks[1] = std::move(err_sink);
+  } else {
+    auto err_sink = std::make_shared<spdlog::sinks::stderr_color_sink_mt>();
+    err_sink->set_level(spdlog::level::err);
+    sinks[1] = std::move(err_sink);
+  }
 
   // Set the combined logger.
   auto logger = std::make_shared<spdlog::logger>(RayLog::GetLoggerName(),
@@ -558,7 +597,7 @@ RayLog::~RayLog() {
     msg_osstream_ << "\n*** StackTrace Information ***\n" << ray::StackTrace();
     expose_fatal_osstream_ << "\n*** StackTrace Information ***\n" << ray::StackTrace();
     for (const auto &callback : fatal_log_callbacks_) {
-      callback(EL_RAY_FATAL_CHECK_FAILED, expose_fatal_osstream_.str());
+      callback("RAY_FATAL_CHECK_FAILED", expose_fatal_osstream_.str());
     }
   }
 
@@ -569,7 +608,7 @@ RayLog::~RayLog() {
   // NOTE(lingxuan.zlx): See more fmt by visiting https://github.com/fmtlib/fmt.
   if (log_format_json_) {
     logger->log(GetMappedSeverity(severity_),
-                /*fmt*/ ",\"{}\":\"{}\"{}",
+                /*fmt*/ R"(,"{}":"{}"{})",
                 kLogKeyMessage,
                 json_escape_string(msg_osstream_.str()),
                 context_osstream_.str());

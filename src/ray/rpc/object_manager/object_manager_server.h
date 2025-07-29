@@ -14,6 +14,9 @@
 
 #pragma once
 
+#include <memory>
+#include <vector>
+
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/server_call.h"

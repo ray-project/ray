@@ -14,6 +14,11 @@
 
 #pragma once
 
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "ray/gcs/store_client/store_client.h"
 
 namespace ray {
@@ -53,7 +58,7 @@ class ObservableStoreClient : public StoreClient {
                           const std::vector<std::string> &keys,
                           Postable<void(int64_t)> callback) override;
 
-  int GetNextJobID() override;
+  Status AsyncGetNextJobID(Postable<void(int)> callback) override;
 
   Status AsyncGetKeys(const std::string &table_name,
                       const std::string &prefix,

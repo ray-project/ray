@@ -9,7 +9,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 from packaging.version import parse as parse_version
-from pytest_lazyfixture import lazy_fixture
+from pytest_lazy_fixtures import lf as lazy_fixture
 
 import ray
 import ray.cloudpickle as pickle
@@ -23,7 +23,7 @@ from ray._private.arrow_serialization import (
     _copy_normal_buffer_if_needed,
     _copy_offsets_buffer_if_needed,
 )
-from ray._private.utils import _get_pyarrow_version
+from ray._private.arrow_utils import get_pyarrow_version
 from ray.data.extensions.object_extension import (
     ArrowPythonObjectArray,
     _object_extension_type_allowed,
@@ -234,10 +234,7 @@ def fixed_size_list_array():
 @pytest.fixture
 def map_array():
     return pa.array(
-        [
-            [(key, item) for key, item in zip("abcdefghij", range(10))]
-            for _ in range(1000)
-        ],
+        [list(zip("abcdefghij", range(10))) for _ in range(1000)],
         type=pa.map_(pa.string(), pa.int64()),
     )
 
@@ -349,10 +346,7 @@ def complex_nested_array():
                 ]
             ),
             pa.array(
-                [
-                    [(key, item) for key, item in zip("abcdefghij", range(10))]
-                    for _ in range(1000)
-                ],
+                [list(zip("abcdefghij", range(10))) for _ in range(1000)],
                 type=pa.map_(pa.string(), pa.int64()),
             ),
         ],
@@ -448,7 +442,7 @@ def test_custom_arrow_data_serializer(ray_start_regular_shared, data, cap_mult):
         )
     ray._private.worker.global_worker.get_serialization_context()
     data.validate()
-    pyarrow_version = parse_version(_get_pyarrow_version())
+    pyarrow_version = get_pyarrow_version()
     if pyarrow_version >= parse_version("7.0.0"):
         # get_total_buffer_size API was added in Arrow 7.0.0.
         buf_size = data.get_total_buffer_size()
@@ -498,7 +492,7 @@ def test_custom_arrow_data_serializer_fallback(
     cap_mult = 0.1
     ray._private.worker.global_worker.get_serialization_context()
     data.validate()
-    pyarrow_version = parse_version(_get_pyarrow_version())
+    pyarrow_version = get_pyarrow_version()
     if pyarrow_version >= parse_version("7.0.0"):
         # get_total_buffer_size API was added in Arrow 7.0.0.
         buf_size = data.get_total_buffer_size()

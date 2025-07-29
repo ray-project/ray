@@ -1,5 +1,6 @@
 import pickle
 from typing import Callable
+from unittest.mock import Mock
 
 import grpc
 import pytest
@@ -8,11 +9,11 @@ from google.protobuf.any_pb2 import Any as AnyProto
 from ray import cloudpickle
 from ray.serve._private.default_impl import add_grpc_address
 from ray.serve._private.grpc_util import (
-    DummyServicer,
-    create_serve_grpc_server,
-    gRPCServer,
+    get_grpc_response_status,
+    gRPCGenericServer,
 )
 from ray.serve._private.test_utils import FakeGrpcContext
+from ray.serve.exceptions import BackPressureError
 from ray.serve.grpc_util import RayServegRPCContext
 
 
@@ -31,38 +32,10 @@ def fake_service_handler_factory(service_method: str, stream: bool) -> Callable:
     return foo
 
 
-def test_dummy_servicer_can_take_any_methods():
-    """Test an instance of DummyServicer can be called with any method name without
-    error.
-
-    When dummy_servicer is called with any custom defined methods, it won't raise error.
-    """
-    dummy_servicer = DummyServicer()
-    dummy_servicer.foo
-    dummy_servicer.bar
-    dummy_servicer.baz
-    dummy_servicer.my_method
-    dummy_servicer.Predict
-
-
-def test_create_serve_grpc_server():
-    """Test `create_serve_grpc_server()` creates the correct server.
-
-    The server created by `create_serve_grpc_server()` should be an instance of
-    Serve defined `gRPCServer`. Also, the handler factory passed with the function
-    should be used to initialize the `gRPCServer`.
-    """
-    grpc_server = create_serve_grpc_server(
-        service_handler_factory=fake_service_handler_factory
-    )
-    assert isinstance(grpc_server, gRPCServer)
-    assert grpc_server.service_handler_factory == fake_service_handler_factory
-
-
 def test_grpc_server():
-    """Test `gRPCServer` did the correct overrides.
+    """Test `gRPCGenericServer` did the correct overrides.
 
-    When a add_servicer_to_server function is called on an instance of `gRPCServer`,
+    When a add_servicer_to_server function is called on an instance of `gRPCGenericServer`,
     it correctly overrides `response_serializer` to None, and `unary_unary` and
     `unary_stream` to be generated from the factory function.
     """
@@ -82,16 +55,8 @@ def test_grpc_server():
         )
         server.add_generic_rpc_handlers((generic_handler,))
 
-    grpc_server = gRPCServer(
-        thread_pool=None,
-        generic_handlers=(),
-        interceptors=(),
-        options=(),
-        maximum_concurrent_rpcs=None,
-        compression=None,
-        service_handler_factory=fake_service_handler_factory,
-    )
-    dummy_servicer = DummyServicer()
+    grpc_server = gRPCGenericServer(fake_service_handler_factory)
+    dummy_servicer = Mock()
 
     # Ensure `generic_rpc_handlers` is not populated before calling
     # the add_servicer_to_server function.
@@ -136,6 +101,21 @@ def test_add_grpc_address():
     assert fake_grpc_server.address is None
     add_grpc_address(fake_grpc_server, grpc_address)
     assert fake_grpc_server.address == grpc_address
+
+
+def test_get_grpc_response_status_backpressure_error():
+    """Test that BackPressureError returns RESOURCE_EXHAUSTED status."""
+    backpressure_error = BackPressureError(
+        num_queued_requests=10, max_queued_requests=5
+    )
+
+    status = get_grpc_response_status(
+        exc=backpressure_error, request_timeout_s=30.0, request_id="test_request_123"
+    )
+
+    assert status.code == grpc.StatusCode.RESOURCE_EXHAUSTED
+    assert status.is_error is True
+    assert status.message == backpressure_error.message
 
 
 if __name__ == "__main__":

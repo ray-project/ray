@@ -22,6 +22,7 @@ class TestIMPALA(unittest.TestCase):
         config = (
             impala.IMPALAConfig()
             .learners(num_learners=0)
+            .experimental(_validate_config=False)  #
             .training(
                 lr=[
                     [0, 0.05],

@@ -1,6 +1,6 @@
 from typing import Dict
 
-from ray.air.constants import TRAINING_ITERATION
+from ray.tune.result import TRAINING_ITERATION
 from ray.rllib.algorithms.sac.sac_learner import (
     LOGPS_KEY,
     QF_LOSS_KEY,
@@ -213,8 +213,8 @@ class CQLTorchLearner(SACTorchLearner):
                 # TODO (simon): Add these keys to SAC Learner.
                 "cql_loss": cql_loss,
                 "alpha_loss": alpha_loss,
-                "alpha_value": alpha,
-                "log_alpha_value": torch.log(alpha),
+                "alpha_value": alpha[0],
+                "log_alpha_value": torch.log(alpha)[0],
                 "target_entropy": self.target_entropy[module_id],
                 LOGPS_KEY: torch.mean(
                     fwd_out["logp_resampled"]
@@ -227,16 +227,19 @@ class CQLTorchLearner(SACTorchLearner):
             key=module_id,
             window=1,  # <- single items (should not be mean/ema-reduced over time).
         )
+        self._temp_losses[(module_id, POLICY_LOSS_KEY)] = actor_loss
+        self._temp_losses[(module_id, QF_LOSS_KEY)] = critic_loss
+        self._temp_losses[(module_id, "alpha_loss")] = alpha_loss
+
         # TODO (simon): Add loss keys for langrangian, if needed.
         # TODO (simon): Add only here then the Langrange parameter optimization.
         if config.twin_q:
-            self.metrics.log_dict(
-                {
-                    QF_TWIN_LOSS_KEY: critic_twin_loss,
-                },
-                key=module_id,
+            self.metrics.log_value(
+                key=(module_id, QF_TWIN_LOSS_KEY),
+                value=critic_twin_loss,
                 window=1,  # <- single items (should not be mean/ema-reduced over time).
             )
+            self._temp_losses[(module_id, QF_TWIN_LOSS_KEY)] = critic_twin_loss
 
         # Return the total loss.
         return total_loss
@@ -255,7 +258,8 @@ class CQLTorchLearner(SACTorchLearner):
                 optim.zero_grad(set_to_none=True)
 
                 # Compute the gradients for the component and module.
-                self.metrics.peek((module_id, optim_name + "_loss")).backward(
+                loss_tensor = self._temp_losses.pop((module_id, optim_name + "_loss"))
+                loss_tensor.backward(
                     retain_graph=False if optim_name in ["policy", "alpha"] else True
                 )
                 # Store the gradients for the component and module.
@@ -272,4 +276,5 @@ class CQLTorchLearner(SACTorchLearner):
                     }
                 )
 
+        assert not self._temp_losses
         return grads

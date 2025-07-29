@@ -1,3 +1,4 @@
+load("@rules_python//python:defs.bzl", "py_library", "py_test")
 load("//bazel:python.bzl", "py_test_module_list")
 
 py_library(
@@ -13,22 +14,37 @@ py_library(
     ],
 )
 
+# Minimal installation test (should *not* include conftest).
+py_test_module_list(
+    size = "small",
+    files = [
+        "test_minimal_installation.py",
+    ],
+    tags = [
+        "exclusive",
+        "minimal",
+        "team:serve",
+    ],
+    deps = [
+        "//python/ray/serve:serve_lib",
+    ],
+)
+
 # Small tests.
 py_test_module_list(
     size = "small",
     files = [
-        "test_actor_replica_wrapper.py",
         "test_advanced.py",
-        "test_batching.py",
         "test_cluster_node_info_cache.py",
         "test_constructor_failure.py",
         "test_controller.py",
         "test_deployment_version.py",
+        "test_enable_task_events.py",
         "test_expected_versions.py",
         "test_http_cancellation.py",
-        "test_max_queued_requests.py",
+        "test_kv_store.py",
+        "test_long_poll.py",
         "test_persistence.py",
-        "test_proxy.py",
         "test_proxy_actor_wrapper.py",
         "test_replica_request_context.py",
         "test_util.py",
@@ -49,12 +65,15 @@ py_test_module_list(
 py_test_module_list(
     size = "medium",
     files = [
+        "test_actor_replica_wrapper.py",
+        "test_backpressure.py",
+        "test_batching.py",
         "test_callback.py",
         "test_cluster.py",
         "test_controller_recovery.py",
+        "test_deploy_2.py",
         "test_deployment_scheduler.py",
         "test_failure.py",
-        "test_grpc.py",
         "test_handle_1.py",
         "test_handle_2.py",
         "test_handle_cancellation.py",
@@ -62,16 +81,18 @@ py_test_module_list(
         "test_healthcheck.py",
         "test_http_headers.py",
         "test_http_routes.py",
-        "test_logging.py",
         "test_max_replicas_per_node.py",
         "test_multiplex.py",
+        "test_proxy.py",
         "test_proxy_response_generator.py",
-        "test_proxy_state.py",
         "test_ray_client.py",
+        "test_record_routing_stats.py",
+        "test_regression.py",
         "test_replica_placement_group.py",
         "test_request_timeout.py",
         "test_streaming_response.py",
         "test_target_capacity.py",
+        "test_telemetry.py",
     ],
     tags = [
         "exclusive",
@@ -110,10 +131,11 @@ py_test_module_list(
     files = [
         "test_autoscaling_policy.py",
         "test_deploy.py",
-        "test_deploy_2.py",
+        "test_grpc.py",
+        "test_logging.py",
         "test_standalone.py",
         "test_standalone_3.py",
-        "test_telemetry.py",
+        "test_telemetry_1.py",
         "test_telemetry_2.py",
     ],
     tags = [
@@ -134,6 +156,7 @@ py_test_module_list(
     files = [
         "test_cli.py",
         "test_cli_2.py",
+        "test_cli_3.py",
     ],
     tags = [
         "exclusive",
@@ -165,16 +188,15 @@ py_test_module_list(
     ],
 )
 
-# Enormous tests.
+# Run serially on Windows.
 py_test_module_list(
-    size = "enormous",
+    size = "medium",
+    timeout = "long",
     files = [
         "test_deploy_app.py",
+        "test_deploy_app_2.py",
         "test_metrics.py",
-        "test_enable_task_events.py",
-        "test_kv_store.py",
-        "test_long_poll.py",
-        "test_regression.py",
+        "test_metrics_2.py",
     ],
     tags = [
         "exclusive",
@@ -193,6 +215,7 @@ py_test_module_list(
     size = "large",
     files = [
         "test_api.py",
+        "test_api_2.py",
         "test_model_composition.py",
     ],
     tags = [
@@ -232,6 +255,7 @@ py_test(
     size = "large",
     srcs = [
         "test_api.py",
+        "test_api_2.py",
         "test_controller_crashes.py",
         "test_failure.py",
     ],
@@ -270,83 +294,15 @@ py_test(
     name = "test_autoscaling_policy_with_metr_disab",
     size = "large",
     srcs = ["test_autoscaling_policy.py"],
-    env = {"RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE": "0"},
+    env = {
+        "RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE": "0",
+        # Make sure queued metrics are cleared out quickly.
+        "RAY_SERVE_HANDLE_METRIC_PUSH_INTERVAL_S": "0.1",
+    },
     main = "test_autoscaling_policy.py",
     tags = [
         "autoscaling",
         "exclusive",
-        "team:serve",
-    ],
-    deps = [
-        ":common",
-        ":conftest",
-        "//python/ray/serve:serve_lib",
-    ],
-)
-
-# Tests disabling queue len caching feature flag.
-# TODO(edoakes): remove this after the FF is removed.
-py_test_module_list(
-    size = "medium",
-    data = glob(["test_config_files/**/*"]),
-    env = {"RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE": "0"},
-    files = [
-        "test_http_cancellation.py",
-        "test_handle_1.py",
-        "test_handle_2.py",
-        "test_handle_cancellation.py",
-        "test_handle_streaming.py",
-        "test_multiplex.py",
-        "test_request_timeout.py",
-    ],
-    name_suffix = "_with_queue_len_cache_disabled",
-    tags = [
-        "exclusive",
-        "no_windows",
-        "team:serve",
-    ],
-    deps = [
-        ":common",
-        ":conftest",
-        "//python/ray/serve:serve_lib",
-    ],
-)
-
-# Tests autoscaling when queue len caching is disabled.
-py_test_module_list(
-    size = "large",
-    env = {"RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE": "0"},
-    files = [
-        "test_autoscaling_policy.py",
-    ],
-    name_suffix = "_with_queue_len_cache_disabled",
-    tags = [
-        "exclusive",
-        "no_windows",
-        "team:serve",
-    ],
-    deps = [
-        ":common",
-        ":conftest",
-        "//python/ray/serve:serve_lib",
-    ],
-)
-
-# Test old stop-fully-then-start behavior.
-# TODO(zcin): remove this after the old behavior is completely removed
-py_test_module_list(
-    size = "medium",
-    data = glob(["test_config_files/**/*"]),
-    env = {"RAY_SERVE_EAGERLY_START_REPLACEMENT_REPLICAS": "0"},
-    files = [
-        "test_controller_recovery.py",
-        "test_deploy.py",
-        "test_max_replicas_per_node.py",
-    ],
-    name_suffix = "_with_stop_fully_then_start_behavior",
-    tags = [
-        "exclusive",
-        "no_windows",
         "team:serve",
     ],
     deps = [
@@ -444,7 +400,6 @@ py_test_module_list(
     ],
 )
 
-
 # Test handle API with local testing mode.
 py_test_module_list(
     size = "small",
@@ -467,7 +422,6 @@ py_test_module_list(
         "//python/ray/serve:serve_lib",
     ],
 )
-
 
 # Test currently off-by-default behavior to run replica sync methods in a threadpool.
 # TODO(edoakes): remove this once the FF is flipped on by default.

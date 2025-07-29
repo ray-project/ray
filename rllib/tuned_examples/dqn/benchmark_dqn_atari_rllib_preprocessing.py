@@ -8,7 +8,7 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
 )
 from ray.tune import Stopper
-from ray import train, tune
+from ray import tune
 
 # Might need `gymnasium[atari, other]` to be installed.
 
@@ -357,7 +357,7 @@ config = (
 tuner = tune.Tuner(
     "DQN",
     param_space=config,
-    run_config=train.RunConfig(
+    run_config=tune.RunConfig(
         stop=BenchmarkStopper(benchmark_envs=benchmark_envs),
         name="benchmark_dqn_atari_rllib_preprocessing",
     ),

@@ -99,8 +99,7 @@ class APPOLearner(IMPALALearner):
                     config.target_network_update_freq
                     * config.circular_buffer_num_batches
                     * config.circular_buffer_iterations_per_batch
-                    * config.total_train_batch_size
-                    / (config.num_learners or 1)
+                    * config.train_batch_size_per_learner
                 )
             ):
                 for (

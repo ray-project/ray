@@ -32,8 +32,7 @@ try:
     from optuna.distributions import BaseDistribution as OptunaDistribution
     from optuna.samplers import BaseSampler
     from optuna.storages import BaseStorage
-    from optuna.trial import Trial as OptunaTrial
-    from optuna.trial import TrialState as OptunaTrialState
+    from optuna.trial import Trial as OptunaTrial, TrialState as OptunaTrialState
 except ImportError:
     ot = None
     OptunaDistribution = None
@@ -607,9 +606,7 @@ class OptunaSearch(Searcher):
             ot_trial_state = OptunaTrialState.PRUNED
 
         if intermediate_values:
-            intermediate_values_dict = {
-                i: value for i, value in enumerate(intermediate_values)
-            }
+            intermediate_values_dict = dict(enumerate(intermediate_values))
         else:
             intermediate_values_dict = None
 

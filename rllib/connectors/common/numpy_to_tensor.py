@@ -30,6 +30,7 @@ class NumpyToTensor(ConnectorV2):
     [
         [0 or more user defined ConnectorV2 pieces],
         AddObservationsFromEpisodesToBatch,
+        AddTimeDimToBatchAndZeroPad,
         AddStatesFromEpisodesToBatch,
         AgentToModuleMapping,  # only in multi-agent setups!
         BatchIndividualItems,
@@ -40,6 +41,7 @@ class NumpyToTensor(ConnectorV2):
         [0 or more user defined ConnectorV2 pieces],
         AddObservationsFromEpisodesToBatch,
         AddColumnsFromEpisodesToTrainBatch,
+        AddTimeDimToBatchAndZeroPad,
         AddStatesFromEpisodesToBatch,
         AgentToModuleMapping,  # only in multi-agent setups!
         BatchIndividualItems,
@@ -56,17 +58,14 @@ class NumpyToTensor(ConnectorV2):
         input_observation_space: Optional[gym.Space] = None,
         input_action_space: Optional[gym.Space] = None,
         *,
-        as_learner_connector: bool = False,
-        pin_mempory: Optional[bool] = None,
+        pin_memory: bool = False,
         device: Optional[str] = None,
         **kwargs,
     ):
         """Initializes a NumpyToTensor instance.
 
         Args:
-            as_learner_connector: Whether this ConnectorV2 piece is used inside a
-                LearnerConnectorPipeline or not.
-            pin_mempory: Whether to pin memory when creating (torch) tensors.
+            pin_memory: Whether to pin memory when creating (torch) tensors.
                 If None (default), pins memory if `as_learner_connector` is True,
                 otherwise doesn't pin memory.
             device: An optional device to move the resulting tensors to. If not
@@ -78,10 +77,7 @@ class NumpyToTensor(ConnectorV2):
             input_action_space=input_action_space,
             **kwargs,
         )
-        self._as_learner_connector = as_learner_connector
-        self._pin_memory = (
-            pin_mempory if pin_mempory is not None else self._as_learner_connector
-        )
+        self._pin_memory = pin_memory
         self._device = device
 
     @override(ConnectorV2)
@@ -103,17 +99,20 @@ class NumpyToTensor(ConnectorV2):
             batch = {DEFAULT_MODULE_ID: batch}
 
         for module_id, module_data in batch.copy().items():
-            infos = module_data.pop(Columns.INFOS, None)
-            if rl_module.framework == "torch":
-                module_data = convert_to_torch_tensor(
-                    module_data, pin_memory=self._pin_memory, device=self._device
-                )
-            else:
-                raise ValueError(
-                    "`NumpyToTensor`does NOT support frameworks other than torch!"
-                )
-            if infos is not None:
-                module_data[Columns.INFOS] = infos
+            # If `rl_module` is None, leave data in numpy format.
+            if rl_module is not None:
+                infos = module_data.pop(Columns.INFOS, None)
+                if rl_module.framework == "torch":
+                    module_data = convert_to_torch_tensor(
+                        module_data, pin_memory=self._pin_memory, device=self._device
+                    )
+                else:
+                    raise ValueError(
+                        "`NumpyToTensor`does NOT support frameworks other than torch!"
+                    )
+                if infos is not None:
+                    module_data[Columns.INFOS] = infos
+
             # Early out with data under(!) `DEFAULT_MODULE_ID`, b/c we are in plain
             # single-agent mode.
             if is_single_agent:

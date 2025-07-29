@@ -27,8 +27,8 @@ from ray.serve._private.utils import get_random_string
 from ray.serve.exceptions import RayServeException
 from ray.serve.generated.serve_pb2 import (
     ApplicationStatusInfo as ApplicationStatusInfoProto,
+    StatusOverview as StatusOverviewProto,
 )
-from ray.serve.generated.serve_pb2 import StatusOverview as StatusOverviewProto
 from ray.serve.schema import (
     APIType,
     ApplicationStatus,
@@ -167,7 +167,7 @@ def mocked_application_state_manager() -> (
     yield application_state_manager, deployment_state_manager, kv_store
 
 
-def deployment_params(name: str, route_prefix: str = None, docs_path: str = None):
+def deployment_params(name: str, route_prefix: str = None):
     return {
         "deployment_name": name,
         "deployment_config_proto_bytes": DeploymentConfig(
@@ -178,13 +178,12 @@ def deployment_params(name: str, route_prefix: str = None, docs_path: str = None
         ).to_proto_bytes(),
         "deployer_job_id": "random",
         "route_prefix": route_prefix,
-        "docs_path": docs_path,
         "ingress": False,
     }
 
 
-def deployment_info(name: str, route_prefix: str = None, docs_path: str = None):
-    params = deployment_params(name, route_prefix, docs_path)
+def deployment_info(name: str, route_prefix: str = None):
+    params = deployment_params(name, route_prefix)
     return deploy_args_to_deployment_info(**params, app_name="test_app")
 
 
@@ -194,11 +193,10 @@ def mocked_application_state() -> Tuple[ApplicationState, MockDeploymentStateMan
 
     deployment_state_manager = MockDeploymentStateManager(kv_store)
     application_state = ApplicationState(
-        "test_app",
-        deployment_state_manager,
-        MockEndpointState(),
-        lambda *args, **kwargs: None,
-        LoggingConfig(),
+        name="test_app",
+        deployment_state_manager=deployment_state_manager,
+        endpoint_state=MockEndpointState(),
+        logging_config=LoggingConfig(),
     )
     yield application_state, deployment_state_manager
 
@@ -513,12 +511,11 @@ def test_deploy_and_delete_app(mocked_application_state):
     d2_id = DeploymentID(name="d2", app_name="test_app")
     app_state.deploy_app(
         {
-            "d1": deployment_info("d1", "/hi", "/documentation"),
+            "d1": deployment_info("d1", "/hi"),
             "d2": deployment_info("d2"),
         }
     )
     assert app_state.route_prefix == "/hi"
-    assert app_state.docs_path == "/documentation"
 
     app_status = app_state.get_application_status_info()
     assert app_status.status == ApplicationStatus.DEPLOYING
@@ -678,7 +675,7 @@ def test_app_unhealthy(mocked_application_state):
 
 
 @patch("ray.serve._private.application_state.build_serve_application", Mock())
-@patch("ray.get", Mock(return_value=([deployment_params("a", "/old", "/docs")], None)))
+@patch("ray.get", Mock(return_value=([deployment_params("a", "/old")], None)))
 @patch("ray.serve._private.application_state.check_obj_ref_ready_nowait")
 def test_apply_app_configs_succeed(check_obj_ref_ready_nowait):
     """Test deploying through config successfully.
@@ -716,7 +713,6 @@ def test_apply_app_configs_succeed(check_obj_ref_ready_nowait):
     assert app_state.status == ApplicationStatus.DEPLOYING
     assert app_state.target_deployments == ["a"]
     assert app_state.route_prefix == "/new"
-    assert app_state.docs_path == "/docs"
 
     # Set healthy
     deployment_state_manager.set_deployment_healthy(deployment_id)
@@ -769,7 +765,7 @@ def test_apply_app_configs_fail(check_obj_ref_ready_nowait):
     Mock(return_value="123"),
 )
 @patch("ray.serve._private.application_state.build_serve_application", Mock())
-@patch("ray.get", Mock(return_value=([deployment_params("a", "/old", "/docs")], None)))
+@patch("ray.get", Mock(return_value=([deployment_params("a", "/old")], None)))
 @patch("ray.serve._private.application_state.check_obj_ref_ready_nowait")
 def test_apply_app_configs_deletes_existing(check_obj_ref_ready_nowait):
     """Test that apply_app_configs deletes existing apps that aren't in the new list.
@@ -950,6 +946,9 @@ def test_application_state_recovery(mocked_application_state_manager):
     app_state_manager.update()
     assert app_state.status == ApplicationStatus.RUNNING
 
+    # In real code this checkpoint would be done by the caller of the deploys
+    app_state_manager.save_checkpoint()
+
     # Simulate controller crashed!! Create new deployment state manager,
     # which should recover target state for deployment "d1" from kv store
     new_deployment_state_manager = MockDeploymentStateManager(kv_store)
@@ -1003,6 +1002,9 @@ def test_recover_during_update(mocked_application_state_manager):
     params2 = deployment_params("d1")
     app_state_manager.deploy_app(app_name, [params2])
     assert app_state.status == ApplicationStatus.DEPLOYING
+
+    # In real code this checkpoint would be done by the caller of the deploys
+    app_state_manager.save_checkpoint()
 
     # Before application state manager could propagate new version to
     # deployment state manager, controller crashes.

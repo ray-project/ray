@@ -15,6 +15,8 @@
 #include "ray/gcs/redis_async_context.h"
 
 #include <iostream>
+#include <memory>
+#include <string>
 
 #include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
@@ -42,7 +44,7 @@ void DisconnectCallback(const redisAsyncContext *c, int status) {
 void GetCallback(redisAsyncContext *c, void *r, void *privdata) {
   redisReply *reply = reinterpret_cast<redisReply *>(r);
   ASSERT_TRUE(reply != nullptr);
-  ASSERT_TRUE(std::string(reinterpret_cast<char *>(reply->str)) == "test");
+  ASSERT_EQ(std::string(reinterpret_cast<char *>(reply->str)), "test");
   io_service.stop();
 }
 
@@ -55,7 +57,7 @@ class RedisAsyncContextTest : public ::testing::Test {
 
 TEST_F(RedisAsyncContextTest, TestRedisCommands) {
   redisAsyncContext *ac = redisAsyncConnect("127.0.0.1", TEST_REDIS_SERVER_PORTS.front());
-  ASSERT_TRUE(ac->err == 0);
+  ASSERT_EQ(ac->err, 0);
   ray::gcs::RedisAsyncContext redis_async_context(
       io_service,
       std::unique_ptr<redisAsyncContext, RedisContextDeleter>(ac, RedisContextDeleter()));
@@ -87,6 +89,7 @@ int main(int argc, char **argv) {
       argv[0],
       ray::RayLogLevel::INFO,
       ray::RayLog::GetLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
+      ray::RayLog::GetErrLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
       ray::RayLog::GetRayLogRotationMaxBytesOrDefault(),
       ray::RayLog::GetRayLogRotationBackupCountOrDefault());
   ::testing::InitGoogleTest(&argc, argv);

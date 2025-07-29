@@ -15,8 +15,12 @@
 #include "ray/gcs/gcs_client/gcs_client.h"
 
 #include <chrono>
+#include <memory>
+#include <string>
 #include <thread>
+#include <unordered_map>
 #include <utility>
+#include <vector>
 
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/ray_config.h"
@@ -108,8 +112,8 @@ Status GcsClient::Connect(instrumented_io_context &io_service, int64_t timeout_m
     timeout_ms = RayConfig::instance().gcs_rpc_server_connect_timeout_s() * 1000;
   }
   // Connect to gcs service.
-  client_call_manager_ =
-      std::make_unique<rpc::ClientCallManager>(io_service, options_.cluster_id_);
+  client_call_manager_ = std::make_unique<rpc::ClientCallManager>(
+      io_service, /*record_stats=*/false, options_.cluster_id_);
   gcs_rpc_client_ = std::make_shared<rpc::GcsRpcClient>(
       options_.gcs_address_, options_.gcs_port_, *client_call_manager_);
 
@@ -155,6 +159,7 @@ Status GcsClient::Connect(instrumented_io_context &io_service, int64_t timeout_m
   task_accessor_ = std::make_unique<TaskInfoAccessor>(this);
   runtime_env_accessor_ = std::make_unique<RuntimeEnvAccessor>(this);
   autoscaler_state_accessor_ = std::make_unique<AutoscalerStateAccessor>(this);
+  publisher_accessor_ = std::make_unique<PublisherAccessor>(this);
 
   RAY_LOG(DEBUG) << "GcsClient connected " << options_.gcs_address_ << ":"
                  << options_.gcs_port_;

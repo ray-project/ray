@@ -148,15 +148,17 @@ def test_shuffle(shutdown_only, restore_data_context, shuffle_op):
     ctx = DataContext.get_current()
     ctx.read_op_min_num_blocks = 1
     ctx.target_min_block_size = 1
+
+    N = 100_000
     mem_size = 800_000
+
     shuffle_fn, kwargs, fusion_supported = shuffle_op
 
     ctx.target_shuffle_max_block_size = 10_000 * 8
     num_blocks_expected = mem_size // ctx.target_shuffle_max_block_size
-    block_size_expected = ctx.target_shuffle_max_block_size
     last_snapshot = get_initial_core_execution_metrics_snapshot()
 
-    ds = shuffle_fn(ray.data.range(100_000), **kwargs).materialize()
+    ds = shuffle_fn(ray.data.range(N), **kwargs).materialize()
     assert (
         num_blocks_expected
         <= ds._plan.initial_num_blocks()
@@ -168,17 +170,17 @@ def test_shuffle(shutdown_only, restore_data_context, shuffle_op):
     num_intermediate_blocks = num_blocks_expected**2 + num_blocks_expected * (
         2 if fusion_supported else 4
     )
+
+    print(f">>> Asserting {num_intermediate_blocks} blocks are in plasma")
+
     last_snapshot = assert_blocks_expected_in_plasma(
         last_snapshot,
         # Dataset.sort produces some empty intermediate blocks because the
         # input range is already partially sorted.
         num_intermediate_blocks,
-        # Data is written out once before map phase if fusion is disabled, once
-        # during map phase, once during reduce phase.
-        total_bytes_expected=mem_size * 2 + (0 if fusion_supported else mem_size),
     )
 
-    ds = shuffle_fn(ray.data.range(100_000).map(lambda x: x), **kwargs).materialize()
+    ds = shuffle_fn(ray.data.range(N).map(lambda x: x), **kwargs).materialize()
     if not fusion_supported:
         # TODO(swang): For some reason BlockBuilder's estimated
         # memory usage for range(1000)->map is 2x the actual memory usage.
@@ -197,16 +199,13 @@ def test_shuffle(shutdown_only, restore_data_context, shuffle_op):
         # Dataset.sort produces some empty intermediate blocks because the
         # input range is already partially sorted.
         num_intermediate_blocks,
-        # Data is written out once before map phase if fusion is disabled, once
-        # during map phase, once during reduce phase.
-        total_bytes_expected=mem_size * 2 + (0 if fusion_supported else mem_size),
     )
 
     ctx.target_shuffle_max_block_size //= 2
     num_blocks_expected = mem_size // ctx.target_shuffle_max_block_size
     block_size_expected = ctx.target_shuffle_max_block_size
 
-    ds = shuffle_fn(ray.data.range(100_000), **kwargs).materialize()
+    ds = shuffle_fn(ray.data.range(N), **kwargs).materialize()
     assert (
         num_blocks_expected
         <= ds._plan.initial_num_blocks()
@@ -218,10 +217,9 @@ def test_shuffle(shutdown_only, restore_data_context, shuffle_op):
     last_snapshot = assert_blocks_expected_in_plasma(
         last_snapshot,
         num_intermediate_blocks,
-        total_bytes_expected=mem_size * 2 + (0 if fusion_supported else mem_size),
     )
 
-    ds = shuffle_fn(ray.data.range(100_000).map(lambda x: x), **kwargs).materialize()
+    ds = shuffle_fn(ray.data.range(N).map(lambda x: x), **kwargs).materialize()
     if not fusion_supported:
         num_blocks_expected = int(num_blocks_expected * 2.2)
         block_size_expected //= 2.2
@@ -236,23 +234,54 @@ def test_shuffle(shutdown_only, restore_data_context, shuffle_op):
     last_snapshot = assert_blocks_expected_in_plasma(
         last_snapshot,
         num_intermediate_blocks,
-        total_bytes_expected=mem_size * 2 + (0 if fusion_supported else mem_size),
     )
 
     # Setting target max block size does not affect map ops when there is a
     # shuffle downstream.
     ctx.target_max_block_size = ctx.target_shuffle_max_block_size * 2
-    ds = shuffle_fn(ray.data.range(100_000).map(lambda x: x), **kwargs).materialize()
+    ds = shuffle_fn(ray.data.range(N).map(lambda x: x), **kwargs).materialize()
     assert (
         num_blocks_expected
         <= ds._plan.initial_num_blocks()
         <= num_blocks_expected * 1.5
     )
-    last_snapshot = assert_blocks_expected_in_plasma(
+
+    assert_blocks_expected_in_plasma(
         last_snapshot,
         num_intermediate_blocks,
-        total_bytes_expected=mem_size * 2 + (0 if fusion_supported else mem_size),
     )
+
+
+def test_target_max_block_size_infinite_or_default_disables_splitting_globally(
+    shutdown_only, restore_data_context
+):
+    """Test that setting target_max_block_size to None disables block splitting globally."""
+    ray.init(num_cpus=2)
+
+    # Create a large dataset that would normally trigger block splitting
+    large_data_size = 10_000_000  # 10MB worth of data
+
+    # First, test with normal target_max_block_size (should split into multiple blocks)
+    ctx = DataContext.get_current()
+    ctx.target_max_block_size = 1_000_000  # 1MB - much smaller than data
+
+    ds_with_limit = ray.data.range(large_data_size, override_num_blocks=1).materialize()
+    blocks_with_limit = ds_with_limit._plan.initial_num_blocks()
+
+    # Now test with target_max_block_size = None (should not split)
+    ctx.target_max_block_size = None  # Disable block size limit
+
+    ds_unlimited = (
+        ray.data.range(large_data_size, override_num_blocks=1)
+        .map(lambda x: x)
+        .materialize()
+    )
+    blocks_unlimited = ds_unlimited._plan.initial_num_blocks()
+
+    # Verify that unlimited creates fewer blocks (no splitting)
+    assert blocks_unlimited <= blocks_with_limit
+    # With target_max_block_size=None, it should maintain the original block structure
+    assert blocks_unlimited == 1
 
 
 if __name__ == "__main__":

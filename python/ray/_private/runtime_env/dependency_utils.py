@@ -1,10 +1,11 @@
 """Util functions to manage dependency requirements."""
 
-from typing import List, Tuple, Optional
+import logging
 import os
 import tempfile
-import logging
 from contextlib import asynccontextmanager
+from typing import List, Optional, Tuple
+
 from ray._private.runtime_env import virtualenv_utils
 from ray._private.runtime_env.utils import check_output_cmd
 

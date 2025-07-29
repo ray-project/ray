@@ -20,10 +20,15 @@
 #include <boost/bimap/unordered_multiset_of.hpp>
 #include <boost/bimap/unordered_set_of.hpp>
 #include <deque>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/id.h"
+#include "ray/common/ray_syncer/ray_syncer.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
@@ -50,6 +55,7 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   /// \param gcs_table_storage GCS table external storage accessor.
   GcsNodeManager(GcsPublisher *gcs_publisher,
                  gcs::GcsTableStorage *gcs_table_storage,
+                 instrumented_io_context &io_context,
                  rpc::NodeManagerClientPool *raylet_client_pool,
                  const ClusterID &cluster_id);
 
@@ -118,7 +124,7 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   ///
   /// \param node_id The id of the node.
   /// \return the node if it is alive. Optional empty value if it is not alive.
-  absl::optional<std::shared_ptr<rpc::GcsNodeInfo>> GetAliveNode(
+  std::optional<std::shared_ptr<rpc::GcsNodeInfo>> GetAliveNode(
       const NodeID &node_id) const;
 
   /// Get all alive nodes.
@@ -166,6 +172,13 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   /// This is technically not draining a node. It should be just called "kill node".
   virtual void DrainNode(const NodeID &node_id);
 
+  /// Update node state from a resource view sync message if the node is alive.
+  ///
+  /// \param node_id The ID of the node to update.
+  /// \param resource_view_sync_message The sync message containing the new state.
+  void UpdateAliveNode(const NodeID &node_id,
+                       const syncer::ResourceViewSyncMessage &resource_view_sync_message);
+
  private:
   /// Add the dead node to the cache. If the cache is full, the earliest dead node is
   /// evicted.
@@ -181,6 +194,14 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   rpc::NodeDeathInfo InferDeathInfo(const NodeID &node_id);
 
   void WriteNodeExportEvent(rpc::GcsNodeInfo node_info) const;
+
+  // Verify if export events should be written for EXPORT_NODE source types
+  bool IsExportAPIEnabledNode() const {
+    return IsExportAPIEnabledSourceType(
+        "EXPORT_NODE",
+        RayConfig::instance().enable_export_api_write(),
+        RayConfig::instance().enable_export_api_write_config());
+  }
 
   rpc::ExportNodeData::GcsNodeState ConvertGCSNodeStateToExport(
       rpc::GcsNodeInfo::GcsNodeState node_state) const {
@@ -247,6 +268,7 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   GcsPublisher *gcs_publisher_;
   /// Storage for GCS tables.
   gcs::GcsTableStorage *gcs_table_storage_;
+  instrumented_io_context &io_context_;
   /// Raylet client pool.
   rpc::NodeManagerClientPool *raylet_client_pool_ = nullptr;
   /// Cluster ID to be shared with clients when connecting.
@@ -261,11 +283,8 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   };
   uint64_t counts_[CountType::CountType_MAX] = {0};
 
-  /// A map of NodeId <-> ip:port of raylet
-  using NodeIDAddrBiMap =
-      boost::bimap<boost::bimaps::unordered_set_of<NodeID, std::hash<NodeID>>,
-                   boost::bimaps::unordered_multiset_of<std::string>>;
-  NodeIDAddrBiMap node_map_;
+  /// If true, node events are exported for Export API
+  bool export_event_write_enabled_ = false;
 
   friend GcsAutoscalerStateManagerTest;
   friend GcsStateTest;

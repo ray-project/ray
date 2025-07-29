@@ -147,7 +147,7 @@ class MemoryMonitor {
   /// \param proc_dir directory to scan for the process ids
   ///
   /// \return the command line for the executing process,
-  /// or empty string if the processs doesn't exist
+  /// or empty string if the process doesn't exist
   static const std::string GetCommandLineForPid(
       pid_t pid, const std::string proc_dir = kProcDirectory);
 

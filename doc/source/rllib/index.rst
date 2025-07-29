@@ -16,7 +16,7 @@ RLlib: Industry-Grade, Scalable Reinforcement Learning
 
 .. todo (sven): redo toctree:
     suggestion:
-    getting-started (replaces rllib-training)
+    getting-started
     key-concepts
     rllib-env (single-agent)
         ...  <- multi-agent
@@ -33,7 +33,7 @@ RLlib: Industry-Grade, Scalable Reinforcement Learning
         metrics-logger
     rllib-advanced-api
         algorithm (general description of how algos work)
-        rllib-rlmodule
+        rl-modules
         rllib-offline
         single-agent-episode
         multi-agent-episode
@@ -41,21 +41,19 @@ RLlib: Industry-Grade, Scalable Reinforcement Learning
         rllib-learner
         env-runners
     rllib-examples
-    rllib-new-api-stack  <- remove?
     new-api-stack-migration-guide
     package_ref/index
 
 .. toctree::
     :hidden:
 
-    rllib-training
+    getting-started
     key-concepts
     rllib-env
     algorithm-config
     rllib-algorithms
     user-guides
     rllib-examples
-    rllib-new-api-stack
     new-api-stack-migration-guide
     package_ref/index
 
@@ -101,34 +99,71 @@ Install RLlib and `PyTorch <https://pytorch.org>`__, as shown below:
 .. note::
 
     To be able to run the Atari or MuJoCo examples, you also need to do:
-    `pip install "gymnasium[atari,accept-rom-license,mujoco]"`.
 
-This is all. You can now start coding against RLlib. Here is an example for running the PPO Algorithm on the
+    .. code-block:: bash
+
+        pip install "gymnasium[atari,accept-rom-license,mujoco]"
+
+This is all, you can now start coding against RLlib. Here is an example for running the :ref:`PPO Algorithm <ppo>` on the
 `Taxi domain <https://gymnasium.farama.org/environments/toy_text/taxi/>`__.
-You first create a `config` for the algorithm, which defines the RL environment and
-any other needed settings and parameters.
+You first create a `config` for the algorithm, which defines the :ref:`RL environment <rllib-key-concepts-environments>` and any other needed settings and parameters.
 
-Next, `build` the algorithm and `train` it for a total of five iterations.
-One training iteration includes parallel, distributed sample collection by the :py:class:`~ray.rllib.env.env_runner.EnvRunner` actors,
-followed by loss calculation on the collected data, and a model update step.
+.. testcode::
 
-At the end of your script, RLlib evaluates the trained Algorithm:
+    from ray.rllib.algorithms.ppo import PPOConfig
+    from ray.rllib.connectors.env_to_module import FlattenObservations
 
-.. literalinclude:: doc_code/rllib_in_60s.py
-    :language: python
-    :start-after: __rllib-in-60s-begin__
-    :end-before: __rllib-in-60s-end__
+    # Configure the algorithm.
+    config = (
+        PPOConfig()
+        .environment("Taxi-v3")
+        .env_runners(
+            num_env_runners=2,
+            # Observations are discrete (ints) -> We need to flatten (one-hot) them.
+            env_to_module_connector=lambda env: FlattenObservations(),
+        )
+        .evaluation(evaluation_num_env_runners=1)
+    )
+
+
+Next, ``build`` the algorithm and ``train`` it for a total of five iterations.
+One training iteration includes parallel, distributed sample collection by the
+:py:class:`~ray.rllib.env.env_runner.EnvRunner` actors, followed by loss calculation
+on the collected data, and a model update step.
+
+.. testcode::
+
+    from pprint import pprint
+
+    # Build the algorithm.
+    algo = config.build_algo()
+
+    # Train it for 5 iterations ...
+    for _ in range(5):
+        pprint(algo.train())
+
+At the end of your script, you evaluate the trained Algorithm and release all its resources:
+
+.. testcode::
+
+    # ... and evaluate it.
+    pprint(algo.evaluate())
+
+    # Release the algo's resources (remote actors, like EnvRunners and Learners).
+    algo.stop()
+
 
 You can use any `Farama-Foundation Gymnasium <https://github.com/Farama-Foundation/Gymnasium>`__ registered environment
-with the `env` argument.
+with the ``env`` argument.
 
-In `config.env_runners()` you can specify - amongst many other things - the number of parallel
+In ``config.env_runners()`` you can specify - amongst many other things - the number of parallel
 :py:class:`~ray.rllib.env.env_runner.EnvRunner` actors to collect samples from the environment.
 
-You can also tweak the NN architecture used by tweaking RLlib's `DefaultModelConfig`, as well as, set up a separate
-config for the evaluation :py:class:`~ray.rllib.env.env_runner.EnvRunner` actors through the `config.evaluation()` method.
+You can also tweak the NN architecture used by tweaking RLlib's :py:class:`~ray.rllib.core.rl_module.default_model_cnofig.DefaultModelConfig`,
+as well as, set up a separate config for the evaluation
+:py:class:`~ray.rllib.env.env_runner.EnvRunner` actors through the ``config.evaluation()`` method.
 
-`See here <rllib-training.html#using-the-python-api>`_, if you want to learn more about the RLlib training APIs.
+:ref:`See here <rllib-python-api>`, if you want to learn more about the RLlib training APIs.
 Also, `see here <https://github.com/ray-project/ray/blob/master/rllib/examples/inference/policy_inference_after_training.py>`__
 for a simple example on how to write an action inference loop after training.
 
@@ -351,7 +386,7 @@ production training-workflows.
 For example, you may code your own `environments <rllib-env.html#configuring-environments>`__
 in python using the `Farama Foundation's gymnasium <https://farama.org>`__ or DeepMind's OpenSpiel,
 provide custom `PyTorch models <https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/custom_cnn_rl_module.py>`_,
-write your own `optimizer setups and loss definitions <https://github.com/ray-project/ray/blob/master/rllib/examples/learners/custom_loss_fn_simple.py>`__,
+write your own `optimizer setups and loss definitions <https://github.com/ray-project/ray/blob/master/rllib/examples/learners/ppo_with_custom_loss_fn.py>`__,
 or define custom `exploratory behavior <https://github.com/ray-project/ray/blob/master/rllib/examples/curiosity/count_based_curiosity.py>`_.
 
 .. figure:: images/rllib-new-api-stack-simple.svg

@@ -1,6 +1,7 @@
 import logging.config
 import os
 from enum import Enum
+from typing import Optional, Union
 
 import ray
 from ray._private.log import PlainRayHandler
@@ -10,7 +11,7 @@ from ray.train.v2._internal.execution.context import TrainContext, TrainRunConte
 from ray.train.v2._internal.util import get_module_name
 
 
-def _get_base_logger_config_dict(context: TrainRunContext) -> dict:
+def _get_base_logger_config_dict(context: Union[TrainRunContext, TrainContext]) -> dict:
     """Return the base logging configuration dictionary."""
     # Using Ray worker ID as the file identifier where logs are written to.
     file_identifier = ray.get_runtime_context().get_worker_id()
@@ -79,7 +80,7 @@ def get_controller_logger_config_dict(context: TrainRunContext) -> dict:
     return config_dict
 
 
-def get_worker_logger_config_dict(context: TrainRunContext) -> dict:
+def get_worker_logger_config_dict(context: TrainContext) -> dict:
     """Return the worker loggers configuration dictionary.
 
     On the worker process, there are two loggers being configured:
@@ -129,15 +130,16 @@ class TrainContextFilter(logging.Filter):
         CONTROLLER = "controller"
         WORKER = "worker"
 
-    def __init__(self, context: TrainRunContext):
-        self._run_name: str = context.get_run_config().name
+    def __init__(self, context: Union[TrainRunContext, TrainContext]):
         self._is_worker: bool = isinstance(context, TrainContext)
         if self._is_worker:
+            self._run_name: str = context.train_run_context.get_run_config().name
             self._world_rank: int = context.get_world_rank()
             self._local_rank: int = context.get_local_rank()
             self._node_rank: int = context.get_node_rank()
             self._component: str = TrainContextFilter.TrainComponent.WORKER
         else:
+            self._run_name: str = context.get_run_config().name
             self._component: str = TrainContextFilter.TrainComponent.CONTROLLER
 
     def controller_filter(self, record):
@@ -172,7 +174,7 @@ class SessionFileHandler(logging.Handler):
 
     Args:
         filename: The name of the log file. The file is created in the 'logs/train'
-        directory of the Ray session directory.
+            directory of the Ray session directory.
     """
 
     # TODO (hpguo): This handler class is shared by both Ray Train and ray data. We
@@ -196,21 +198,20 @@ class SessionFileHandler(logging.Handler):
             self._handler.setFormatter(fmt)
         self._formatter = fmt
 
-    def _get_log_directory(self, session_dir):
-        """Return the directory where Ray Train writes log files."""
-        return os.path.join(session_dir, "logs", "train")
+    def get_log_file_path(self) -> Optional[str]:
+        if self._handler is None:
+            self._try_create_handler()
+        return self._path
 
     def _try_create_handler(self):
         assert self._handler is None
 
-        # Get the Ray session directory. If not in a Ray session, return.
+        # Get the Ray Train log directory. If not in a Ray session, return.
         # This handler will only be created within a Ray session.
-        global_node = ray._private.worker._global_node
-        if not global_node:
+        log_directory = get_log_directory()
+        if log_directory is None:
             return
 
-        # Create the log directory if it doesn't exist.
-        log_directory = self._get_log_directory(global_node.get_session_dir_path())
         os.makedirs(log_directory, exist_ok=True)
 
         # Create the log file.
@@ -226,12 +227,62 @@ def configure_controller_logger(context: TrainRunContext) -> None:
     """
     config = get_controller_logger_config_dict(context)
     logging.config.dictConfig(config)
+    # TODO: Return the controller log file path.
 
 
-def configure_worker_logger(context: TrainRunContext) -> None:
+def configure_worker_logger(context: TrainContext) -> None:
     """
     Configure the loggers on the worker process, which contains the
     `ray.train` logger and the root logger.
     """
     config = get_worker_logger_config_dict(context)
     logging.config.dictConfig(config)
+    # TODO: Return the worker log file path.
+
+
+def get_log_directory() -> Optional[str]:
+    """Return the directory where Ray Train writes log files.
+
+    If not in a Ray session, return None.
+
+    This path looks like: "/tmp/ray/session_xxx/logs/train/"
+    """
+    global_node = ray._private.worker._global_node
+
+    if global_node is None:
+        return None
+
+    root_dir = global_node.get_session_dir_path()
+    return os.path.join(root_dir, "logs", "train")
+
+
+def get_train_application_controller_log_path() -> Optional[str]:
+    """
+    Return the path to the file train application controller log file.
+    """
+    # TODO: This is a temporary solution. We should return the log file path in
+    # the `configure_controller_logger` function.
+    logger = logging.getLogger("ray.train")
+    for handler in logger.handlers:
+        if (
+            isinstance(handler, SessionFileHandler)
+            and "ray-train-app-controller" in handler._filename
+        ):
+            return handler.get_log_file_path()
+    return None
+
+
+def get_train_application_worker_log_path() -> Optional[str]:
+    """
+    Return the path to the file train application worker log file.
+    """
+    # TODO: This is a temporary solution. We should return the log file path in
+    # the `configure_worker_logger` function.
+    logger = logging.getLogger("ray.train")
+    for handler in logger.handlers:
+        if (
+            isinstance(handler, SessionFileHandler)
+            and "ray-train-app-worker" in handler._filename
+        ):
+            return handler.get_log_file_path()
+    return None

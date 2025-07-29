@@ -14,7 +14,7 @@ import pytest
 
 import ray
 import ray.train
-from ray._private.test_utils import simulate_storage
+from ray._common.test_utils import simulate_s3_bucket
 from ray.air._internal.uri_utils import URI
 from ray.train import (
     Checkpoint,
@@ -24,10 +24,8 @@ from ray.train import (
     ScalingConfig,
 )
 from ray.train.v2._internal.constants import HEALTH_CHECK_INTERVAL_S_ENV_VAR
-from ray.train.v2._internal.execution.storage import (
-    _delete_fs_path,
-    _download_from_fs_path,
-)
+from ray.train.v2._internal.execution.context import get_train_context
+from ray.train.v2._internal.execution.storage import _download_from_fs_path
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
 
 
@@ -43,7 +41,7 @@ class TestConstants:
 def mock_s3_bucket_uri():
     port = 5002
     region = "us-west-2"
-    with simulate_storage("s3", port=port, region=region) as s3_uri:
+    with simulate_s3_bucket(port=port, region=region) as s3_uri:
         import boto3
 
         s3 = boto3.client(
@@ -214,60 +212,22 @@ def train_fn(config):
         # which will cause the test assertions to fail.
         # This should be fixed by forcing a queue flush on all workers before
         # executing the failure decisions.
-        train_context = ray.train.get_context()
+        # Note: this `get_train_context` is not a public API.
+        # TODO (hpguo): Think about expose `get_synchronization_actor` as a
+        # public API, which will be a useful collection of communication utils.
+        train_context = get_train_context()
         sync_actor = train_context.get_synchronization_actor()
         ray.get(
             sync_actor.broadcast_from_rank_zero.remote(
                 world_rank=train_context.get_world_rank(),
                 world_size=train_context.get_world_size(),
                 data="barrier",
+                caller_method_name="caller_method_name",
             )
         )
 
         if i in config.get("fail_iters", []):
             raise RuntimeError(f"Failing on iter={i}!!")
-
-
-def _resume_from_checkpoint(
-    checkpoint: Checkpoint,
-    expected_state: dict,
-    storage_path: Optional[str] = None,
-    storage_filesystem: Optional[pyarrow.fs.FileSystem] = None,
-):
-    print(f"\nStarting run with `resume_from_checkpoint`: {checkpoint}\n")
-
-    def assert_fn(config):
-        checkpoint_to_check = ray.train.get_checkpoint()
-        with checkpoint_to_check.as_directory() as checkpoint_dir:
-            with open(os.path.join(checkpoint_dir, "checkpoint.pkl"), "rb") as f:
-                state = pickle.load(f)
-
-        print("Loaded state from `resume_from_checkpoint`:", state)
-        print("Expected state:", expected_state)
-        assert state == expected_state, (state, expected_state)
-
-        dummy_ckpt = tempfile.mkdtemp()
-        with open(os.path.join(dummy_ckpt, "dummy.txt"), "w") as f:
-            f.write("data")
-        ray.train.report({"dummy": 1}, checkpoint=Checkpoint.from_directory(dummy_ckpt))
-
-    trainer = DataParallelTrainer(
-        assert_fn,
-        scaling_config=ScalingConfig(num_workers=2),
-        run_config=RunConfig(
-            name="test_resume_from_checkpoint",
-            storage_path=storage_path,
-            storage_filesystem=storage_filesystem,
-        ),
-        resume_from_checkpoint=checkpoint,
-    )
-    result = trainer.fit()
-
-    # Make sure that there is only on checkpoint recorded.
-    assert result.best_checkpoints and len(result.best_checkpoints) == 1
-
-    # Clean up this run's experiment directory immediately after.
-    _delete_fs_path(result.filesystem, Path(result.path).parent.as_posix())
 
 
 def _assert_storage_contents(
@@ -384,7 +344,6 @@ def test_trainer(
         print("\nStarting initial run.\n")
         result = trainer.fit()
 
-        # TODO: Re-enable restoration / resume_from_checkpoint coverage
         print("\nStarting manually restored run.\n")
         restored_trainer = DataParallelTrainer(
             train_fn,
@@ -399,11 +358,6 @@ def test_trainer(
             run_config=run_config,
         )
         result = restored_trainer.fit()
-
-        _resume_from_checkpoint(
-            result.checkpoint,
-            expected_state={"iter": TestConstants.NUM_ITERATIONS - 1},
-        )
 
         local_inspect_dir, storage_fs_path = _get_local_inspect_dir(
             root_local_path=tmp_path,

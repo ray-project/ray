@@ -42,7 +42,7 @@ episodes.
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack --wandb-key [your WandB key]
+`python [script file name].py --wandb-key [your WandB key]
 --wandb-project [some project name]`
 
 For debugging, use the following additional command line options
@@ -147,6 +147,10 @@ class MsPacmanHeatmapCallback(RLlibCallback):
         yx_pos = self._get_pacman_yx_pos(env)
         self._episode_start_position[episode.id_] = yx_pos
 
+        # Create two lists holding custom per-timestep data.
+        episode.custom_data["pacman_yx_pos"] = []
+        episode.custom_data["pacman_dist_travelled"] = []
+
     def on_episode_step(
         self,
         *,
@@ -168,7 +172,7 @@ class MsPacmanHeatmapCallback(RLlibCallback):
             return
 
         yx_pos = self._get_pacman_yx_pos(env)
-        episode.add_temporary_timestep_data("pacman_yx_pos", yx_pos)
+        episode.custom_data["pacman_yx_pos"].append(yx_pos)
 
         # Compute distance to start position.
         dist_travelled = np.sqrt(
@@ -179,7 +183,7 @@ class MsPacmanHeatmapCallback(RLlibCallback):
                 )
             )
         )
-        episode.add_temporary_timestep_data("pacman_dist_travelled", dist_travelled)
+        episode.custom_data["pacman_dist_travelled"].append(dist_travelled)
 
     def on_episode_end(
         self,
@@ -203,7 +207,7 @@ class MsPacmanHeatmapCallback(RLlibCallback):
         del self._episode_start_position[episode.id_]
 
         # Get all pacman y/x-positions from the episode.
-        yx_positions = episode.get_temporary_timestep_data("pacman_yx_pos")
+        yx_positions = episode.custom_data["pacman_yx_pos"]
         # h x w
         heatmap = np.zeros((80, 100), dtype=np.int32)
         for yx_pos in yx_positions:
@@ -228,9 +232,7 @@ class MsPacmanHeatmapCallback(RLlibCallback):
         )
 
         # Get the max distance travelled for this episode.
-        dist_travelled = np.max(
-            episode.get_temporary_timestep_data("pacman_dist_travelled")
-        )
+        dist_travelled = np.max(episode.custom_data["pacman_dist_travelled"])
 
         # Log the max. dist travelled in this episode (window=100).
         metrics_logger.log_value(
@@ -238,12 +240,15 @@ class MsPacmanHeatmapCallback(RLlibCallback):
             dist_travelled,
             # For future reductions (e.g. over n different episodes and all the
             # data coming from other env runners), reduce by max.
-            reduce="max",
+            reduce=None,
             # Always keep the last 100 values and max over this window.
             # Note that this means that over time, if the values drop to lower
             # numbers again, the reported `pacman_max_dist_travelled` might also
             # decrease again (meaning `window=100` makes this not a "lifetime max").
             window=100,
+            # Some percentiles to compute
+            percentiles=[75, 95, 99],
+            clear_on_reduce=True,
         )
 
         # Log the average dist travelled per episode (window=200).
@@ -261,6 +266,12 @@ class MsPacmanHeatmapCallback(RLlibCallback):
             episode.get_infos(-1)["lives"],
             reduce="mean",  # <- default (must be "mean" for EMA smothing)
             ema_coeff=0.01,  # <- default EMA coefficient (`window` must be None)
+        )
+
+    def on_train_result(self, *, result: dict, **kwargs) -> None:
+        print(
+            "Max distance travelled per episode (percentiles) for this training iteration: ",
+            result["env_runners"]["pacman_max_dist_travelled"],
         )
 
     def _get_pacman_yx_pos(self, env):
@@ -291,7 +302,6 @@ class MsPacmanHeatmapCallback(RLlibCallback):
 
 
 parser = add_rllib_example_script_args(default_reward=450.0)
-parser.set_defaults(enable_new_api_stack=True)
 
 
 if __name__ == "__main__":

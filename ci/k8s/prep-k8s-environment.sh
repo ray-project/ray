@@ -12,7 +12,6 @@ set -x # Be more verbose now.
 # Delete dangling clusters
 kind delete clusters --all
 
-# Create the cluster
 kind create cluster --wait 120s --config ci/k8s/kind.config.yaml
 
 # Verify the kubectl works

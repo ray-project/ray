@@ -14,6 +14,10 @@
 
 #include "ray/core_worker/lease_policy.h"
 
+#include <utility>
+
+#include "absl/container/flat_hash_map.h"
+
 namespace ray {
 namespace core {
 
@@ -45,13 +49,13 @@ std::pair<rpc::Address, bool> LocalityAwareLeasePolicy::GetBestNodeForTask(
 }
 
 /// Criteria for "best" node: The node with the most object bytes (from object_ids) local.
-absl::optional<NodeID> LocalityAwareLeasePolicy::GetBestNodeIdForTask(
+std::optional<NodeID> LocalityAwareLeasePolicy::GetBestNodeIdForTask(
     const TaskSpecification &spec) {
   const auto object_ids = spec.GetDependencyIds();
   // Number of object bytes (from object_ids) that a given node has local.
   absl::flat_hash_map<NodeID, uint64_t> bytes_local_table;
   uint64_t max_bytes = 0;
-  absl::optional<NodeID> max_bytes_node;
+  std::optional<NodeID> max_bytes_node;
   // Finds the node with the maximum number of object bytes local.
   for (const ObjectID &object_id : object_ids) {
     if (auto locality_data = locality_data_provider_.GetLocalityData(object_id)) {
@@ -65,8 +69,8 @@ absl::optional<NodeID> LocalityAwareLeasePolicy::GetBestNodeIdForTask(
         }
       }
     } else {
-      RAY_LOG(WARNING) << "No locality data available for object " << object_id
-                       << ", won't be included in locality cost";
+      RAY_LOG(WARNING).WithField(object_id) << "No locality data available for object "
+                                            << ", won't be included in locality cost";
     }
   }
   return max_bytes_node;

@@ -114,6 +114,12 @@ class MultiAgentConnect4(MultiAgentEnv):
             self.env = env
         self.env.reset()
 
+        # If these important attributes are not set, try to infer them.
+        if not self.agents:
+            self.agents = list(self._agent_ids)
+        if not self.possible_agents:
+            self.possible_agents = self.agents.copy()
+
         self.config = config
         # Get first observation space, assuming all agents have equal space
         self.observation_space = self.env.observation_space(self.env.agents[0])
@@ -138,6 +144,7 @@ class MultiAgentConnect4(MultiAgentEnv):
             "SuperSuit's pad_action_space wrapper can help (usage: "
             "`supersuit.aec_wrappers.pad_action_space(env)`"
         )
+
         self._agent_ids = set(self.env.agents)
 
     def observe(self):

@@ -14,9 +14,15 @@
 
 #include "ray/core_worker/store_provider/plasma_store_provider.h"
 
+#include <algorithm>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "ray/common/ray_config.h"
-#include "ray/core_worker/context.h"
-#include "ray/core_worker/core_worker.h"
+#include "ray/common/status.h"
+#include "ray/common/status_or.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
@@ -61,7 +67,13 @@ CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
     bool warmup,
     std::function<std::string()> get_current_call_site)
     : raylet_client_(raylet_client),
-      store_client_(std::make_shared<plasma::PlasmaClient>()),
+      // We can turn on exit_on_connection_failure on for the core worker plasma
+      // client to early exit core worker after the raylet's death because on the
+      // raylet side, we never proactively close the plasma store connection even
+      // during shutdown. So any error from the raylet side should be a sign of raylet
+      // death.
+      store_client_(
+          std::make_shared<plasma::PlasmaClient>(/*exit_on_connection_failure*/ true)),
       reference_counter_(reference_counter),
       check_signals_(std::move(check_signals)) {
   if (get_current_call_site != nullptr) {
@@ -116,10 +128,9 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
                                              std::shared_ptr<Buffer> *data,
                                              bool created_by_worker,
                                              bool is_mutable) {
-  auto source = plasma::flatbuf::ObjectSource::CreatedByWorker;
-  if (!created_by_worker) {
-    source = plasma::flatbuf::ObjectSource::RestoredFromStorage;
-  }
+  const auto source = created_by_worker
+                          ? plasma::flatbuf::ObjectSource::CreatedByWorker
+                          : plasma::flatbuf::ObjectSource::RestoredFromStorage;
   Status status =
       store_client_->CreateAndSpillIfNeeded(object_id,
                                             owner_address,
@@ -132,11 +143,13 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
                                             /*device_num=*/0);
 
   if (status.IsObjectStoreFull()) {
+    StatusOr<std::string> memory_usage = GetMemoryUsage();
+    RAY_CHECK_OK(memory_usage.status()) << "Unable to communicate with the Plasma Store.";
     RAY_LOG(ERROR) << "Failed to put object " << object_id
                    << " in object store because it "
                    << "is full. Object size is " << data_size << " bytes.\n"
                    << "Plasma store status:\n"
-                   << MemoryUsageString() << "\n---\n"
+                   << memory_usage.value() << "\n---\n"
                    << "--- Tip: Use the `ray memory` command to list active objects "
                       "in the cluster."
                    << "\n---\n";
@@ -150,8 +163,6 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
     RAY_LOG_EVERY_MS(WARNING, 5000)
         << "Trying to put an object that already existed in plasma: " << object_id << ".";
     status = Status::OK();
-  } else {
-    RAY_RETURN_NOT_OK(status);
   }
   return status;
 }
@@ -189,24 +200,24 @@ Status CoreWorkerPlasmaStoreProvider::FetchAndGetFromPlasmaStore(
       const auto &object_id = batch_ids[i];
       std::shared_ptr<TrackedBuffer> data = nullptr;
       std::shared_ptr<Buffer> metadata = nullptr;
-      if (plasma_results[i].data && plasma_results[i].data->Size()) {
+      if (plasma_results[i].data && plasma_results[i].data->Size() > 0) {
         // We track the set of active data buffers in active_buffers_. On destruction,
         // the buffer entry will be removed from the set via callback.
         data = std::make_shared<TrackedBuffer>(
-            plasma_results[i].data, buffer_tracker_, object_id);
+            std::move(plasma_results[i].data), buffer_tracker_, object_id);
         buffer_tracker_->Record(object_id, data.get(), get_current_call_site_());
       }
-      if (plasma_results[i].metadata && plasma_results[i].metadata->Size()) {
-        metadata = plasma_results[i].metadata;
+      if (plasma_results[i].metadata && plasma_results[i].metadata->Size() > 0) {
+        metadata = std::move(plasma_results[i].metadata);
       }
-      const auto result_object = std::make_shared<RayObject>(
+      auto result_object = std::make_shared<RayObject>(
           data, metadata, std::vector<rpc::ObjectReference>());
-      (*results)[object_id] = result_object;
       remaining.erase(object_id);
       if (result_object->IsException()) {
         RAY_CHECK(!result_object->IsInPlasmaError());
         *got_exception = true;
       }
+      (*results)[object_id] = std::move(result_object);
     }
   }
 
@@ -311,14 +322,15 @@ Status CoreWorkerPlasmaStoreProvider::Get(
   while (!remaining.empty() && !should_break) {
     batch_ids.clear();
     for (const auto &id : remaining) {
-      if (int64_t(batch_ids.size()) == batch_size) {
+      if (static_cast<int64_t>(batch_ids.size()) == batch_size) {
         break;
       }
       batch_ids.push_back(id);
     }
 
-    int64_t batch_timeout = std::max(RayConfig::instance().get_timeout_milliseconds(),
-                                     int64_t(10 * batch_ids.size()));
+    int64_t batch_timeout =
+        std::max(RayConfig::instance().get_check_signal_interval_milliseconds(),
+                 static_cast<int64_t>(10 * batch_ids.size()));
     if (remaining_timeout >= 0) {
       batch_timeout = std::min(remaining_timeout, batch_timeout);
       remaining_timeout -= batch_timeout;
@@ -381,9 +393,9 @@ Status CoreWorkerPlasmaStoreProvider::Wait(
 
   bool should_break = false;
   int64_t remaining_timeout = timeout_ms;
+  absl::flat_hash_set<ObjectID> ready_in_plasma;
   while (!should_break) {
-    WaitResultPair result_pair;
-    int64_t call_timeout = RayConfig::instance().get_timeout_milliseconds();
+    int64_t call_timeout = RayConfig::instance().get_check_signal_interval_milliseconds();
     if (remaining_timeout >= 0) {
       call_timeout = std::min(remaining_timeout, call_timeout);
       remaining_timeout -= call_timeout;
@@ -391,22 +403,22 @@ Status CoreWorkerPlasmaStoreProvider::Wait(
     }
 
     const auto owner_addresses = reference_counter_.GetOwnerAddresses(id_vector);
-    RAY_RETURN_NOT_OK(raylet_client_->Wait(id_vector,
-                                           owner_addresses,
-                                           num_objects,
-                                           call_timeout,
-                                           ctx.GetCurrentTaskID(),
-                                           &result_pair));
+    RAY_ASSIGN_OR_RETURN(ready_in_plasma,
+                         raylet_client_->Wait(id_vector,
+                                              owner_addresses,
+                                              num_objects,
+                                              call_timeout,
+                                              ctx.GetCurrentTaskID()));
 
-    if (result_pair.first.size() >= static_cast<size_t>(num_objects)) {
+    if (ready_in_plasma.size() >= static_cast<size_t>(num_objects)) {
       should_break = true;
-    }
-    for (const auto &entry : result_pair.first) {
-      ready->insert(entry);
     }
     if (check_signals_) {
       RAY_RETURN_NOT_OK(check_signals_());
     }
+  }
+  for (const auto &entry : ready_in_plasma) {
+    ready->insert(entry);
   }
   if (ctx.CurrentTaskIsDirectCall() && ctx.ShouldReleaseResourcesOnBlockingCalls()) {
     RAY_RETURN_NOT_OK(raylet_client_->NotifyDirectCallTaskUnblocked());
@@ -420,8 +432,8 @@ Status CoreWorkerPlasmaStoreProvider::Delete(
   return raylet_client_->FreeObjects(object_id_vector, local_only);
 }
 
-std::string CoreWorkerPlasmaStoreProvider::MemoryUsageString() {
-  return store_client_->DebugString();
+StatusOr<std::string> CoreWorkerPlasmaStoreProvider::GetMemoryUsage() {
+  return store_client_->GetMemoryUsage();
 }
 
 absl::flat_hash_map<ObjectID, std::pair<int64_t, std::string>>

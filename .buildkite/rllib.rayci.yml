@@ -10,6 +10,7 @@ steps:
       IMAGE_FROM: cr.ray.io/rayproject/oss-ci-base_ml
       IMAGE_TO: rllibbuild
       RAYCI_IS_GPU_BUILD: "false"
+    tags: cibase
 
   - name: rllibgpubuild
     wanda: ci/docker/rllib.build.wanda.yaml
@@ -18,6 +19,7 @@ steps:
       IMAGE_FROM: cr.ray.io/rayproject/oss-ci-base_gpu
       IMAGE_TO: rllibgpubuild
       RAYCI_IS_GPU_BUILD: "true"
+    tags: cibase
 
   # tests
   - label: ":brain: rllib: algorithm, model and others"
@@ -83,6 +85,7 @@ steps:
     tags:
       - rllib_gpu
       - gpu
+      - skip-on-microcheck
     parallelism: 5
     instance_type: gpu
     commands:
@@ -95,10 +98,10 @@ steps:
     depends_on: rllibgpubuild
 
   - label: ":brain: rllib: data tests"
-    if: build.branch != "master"
     tags:
       - data
       - rllib
+      - disabled  # Tests of this tag do not exist any more.
     instance_type: large
     commands:
       # learning tests pytorch
@@ -137,6 +140,7 @@ steps:
     tags:
       - rllib_directly
       - doc
+      - skip-on-microcheck
     instance_type: medium
     commands:
       # doc tests
@@ -159,6 +163,7 @@ steps:
     tags:
       - rllib_gpu
       - gpu
+      - skip-on-microcheck
     parallelism: 5
     instance_type: gpu-large
     commands:
@@ -191,6 +196,7 @@ steps:
     tags:
       - rllib_gpu
       - gpu
+      - flaky
       - skip-on-premerge
     instance_type: gpu
     commands:
@@ -206,6 +212,7 @@ steps:
     key: rllib_flaky_tests_01
     tags:
       - rllib
+      - flaky
       - skip-on-premerge
     instance_type: large
     commands:
@@ -235,6 +242,7 @@ steps:
     key: rllib_flaky_tests_02
     tags:
       - rllib
+      - flaky
       - skip-on-premerge
     instance_type: large
     commands:

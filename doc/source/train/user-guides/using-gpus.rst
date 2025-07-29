@@ -134,7 +134,7 @@ assign each worker a NVIDIA A100 GPU.
 PyTorch Distributed supports multiple `backends <https://pytorch.org/docs/stable/distributed.html#backends>`__
 for communicating tensors across workers. By default Ray Train will use NCCL when ``use_gpu=True`` and Gloo otherwise.
 
-If you explictly want to override this setting, you can configure a :class:`~ray.train.torch.TorchConfig`
+If you explicitly want to override this setting, you can configure a :class:`~ray.train.torch.TorchConfig`
 and pass it into the :class:`~ray.train.torch.TorchTrainer`.
 
 .. testcode::
@@ -218,14 +218,16 @@ will be assigned the same CUDA device.
 
 
 
-.. _train_trainer_resources:
+(Deprecated) Trainer resources
+------------------------------
 
-Trainer resources
------------------
+.. important::
+    This API is deprecated. See `this migration guide <https://github.com/ray-project/ray/issues/49454>`_ for more details.
+
+
 So far we've configured resources for each training worker. Technically, each
 training worker is a :ref:`Ray Actor <actor-guide>`. Ray Train also schedules
-an actor for the :class:`Trainer <ray.train.trainer.BaseTrainer>` object when
-you call :meth:`Trainer.fit() <ray.train.trainer.BaseTrainer.fit>`.
+an actor for the trainer object when you call ``trainer.fit()``.
 
 This object often only manages lightweight communication between the training workers.
 Per default, a trainer uses 1 CPU. If you have a cluster with 8 CPUs and want

@@ -110,9 +110,7 @@ class KubeRayProvider(ICloudInstanceProvider):
 
     def get_non_terminated(self) -> Dict[CloudInstanceId, CloudInstance]:
         self._sync_with_api_server()
-        return copy.deepcopy(
-            {id: instance for id, instance in self._cached_instances.items()}
-        )
+        return copy.deepcopy(dict(self._cached_instances))
 
     def terminate(self, ids: List[CloudInstanceId], request_id: str) -> None:
         if request_id in self._requests:
@@ -225,8 +223,12 @@ class KubeRayProvider(ICloudInstanceProvider):
             # Handle the case where users manually increase `minReplicas`
             # to scale up the number of worker Pods. In this scenario,
             # `replicas` will be smaller than `minReplicas`.
-            num_workers_dict[node_type] = max(
-                worker_group["replicas"], worker_group["minReplicas"]
+            # num_workers_dict should account for multi-host replicas when
+            # `numOfHosts`` is set.
+            num_of_hosts = worker_group.get("numOfHosts", 1)
+            num_workers_dict[node_type] = (
+                max(worker_group["replicas"], worker_group["minReplicas"])
+                * num_of_hosts
             )
 
         # Add to launch nodes.
@@ -438,7 +440,6 @@ class KubeRayProvider(ICloudInstanceProvider):
                 worker_to_delete_set.add(worker)
                 if worker in node_set:
                     worker_groups_with_pending_deletes.add(node_type)
-                    break
 
         worker_groups_with_finished_deletes = (
             worker_groups_with_deletes - worker_groups_with_pending_deletes

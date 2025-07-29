@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <memory>
+
 #include "gtest/gtest.h"
 #include "ray/common/test_util.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
@@ -31,8 +33,7 @@ class RedisGcsTableStorageTest : public gcs::GcsTableStorageTestBase {
     redis_client_ = std::make_shared<gcs::RedisClient>(options);
     RAY_CHECK_OK(redis_client_->Connect(*io_service_pool_->Get()));
 
-    gcs_table_storage_ = std::make_shared<gcs::RedisGcsTableStorage>(
-        redis_client_, *io_service_pool_->Get());
+    gcs_table_storage_ = std::make_shared<gcs::RedisGcsTableStorage>(redis_client_);
   }
 
   void TearDown() override { redis_client_->Disconnect(); }

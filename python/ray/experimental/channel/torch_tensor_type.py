@@ -5,6 +5,7 @@ import ray
 from ray.experimental.channel import ChannelContext, ChannelOutputType
 from ray.experimental.channel.communicator import Communicator
 from ray.experimental.channel.shared_memory_channel import SharedMemoryType
+from ray.experimental.util.types import Device
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
@@ -16,12 +17,13 @@ logger = logging.getLogger(__name__)
 @PublicAPI(stability="alpha")
 class TorchTensorType(ChannelOutputType):
     AUTO = "auto"
-    NCCL = "nccl"
     CPU = "cpu"
+    ACCELERATOR = "accelerator"
 
     def __init__(
         self,
         transport: Optional[Union[str, Communicator]] = AUTO,
+        device: Device = Device.DEFAULT,
         _static_shape: bool = False,
         _direct_return: Optional[bool] = False,
     ):
@@ -38,8 +40,13 @@ class TorchTensorType(ChannelOutputType):
         Args:
             transport: "auto" (default) means that tensors will be passed via
                 host memory, using numpy as the serialization format. Pass
-                TorchTensorType.NCCL or "nccl" to use NCCL instead, avoiding
-                the host memory copy.
+                TorchTensorType.ACCELERATOR or "accelerator" to use accelerator
+                instead, avoiding the host memory copy.
+            device: Target device for tensor transport. Options:
+                - "default": Retains the same device type as the sender.
+                - "cpu": Moves tensor to CPU on the receiver. Not compatible
+                  with accelerator transport.
+                - "gpu" or "cuda": Moves tensor to GPU on the receiver.
             _static_shape: A hint indicating whether the shape(s) and dtype(s)
                 of tensor(s) contained in this value always remain the same
                 across different executions of the DAG.
@@ -62,6 +69,7 @@ class TorchTensorType(ChannelOutputType):
         """
         super().__init__()
 
+        self._device = device
         self._static_shape = _static_shape
         self._direct_return = _direct_return
 
@@ -70,10 +78,14 @@ class TorchTensorType(ChannelOutputType):
             self._communicator = transport
             transport = transport.get_transport_name()
 
-        if transport not in [self.AUTO, self.NCCL, self.CPU]:
+        if transport not in [self.AUTO, self.CPU, self.ACCELERATOR]:
             raise ValueError(
-                "`transport` must be TorchTensorType.AUTO, TorchTensorType.NCCL, "
+                "`transport` must be TorchTensorType.AUTO, TorchTensorType.ACCELERATOR "
                 "or TorchTensorType.CPU"
+            )
+        if device == Device.CPU and transport == self.ACCELERATOR:
+            raise ValueError(
+                "accelerator transport is not supported with CPU target device."
             )
         self.transport = transport
 
@@ -89,6 +101,10 @@ class TorchTensorType(ChannelOutputType):
                 "TorchTensorType(_direct_return=True) has no effect when "
                 "`transport` is TorchTensorType.AUTO (default)."
             )
+
+    @property
+    def device(self) -> Device:
+        return self._device
 
     @property
     def static_shape(self):
@@ -109,16 +125,13 @@ class TorchTensorType(ChannelOutputType):
 
         def deserialize(b):
             ctx = ChannelContext.get_current()
-            return ctx.serialization_context.deserialize_tensor(b)
+            return ctx.serialization_context.deserialize_tensor(b, self.device)
 
         ray.util.serialization.register_serializer(
             torch.Tensor,
             serializer=serialize,
             deserializer=deserialize,
         )
-
-    def set_contains_type(self, typ: "ChannelOutputType") -> None:
-        raise ValueError("TorchTensorType cannot contain other types")
 
     def create_channel(
         self,
@@ -128,12 +141,12 @@ class TorchTensorType(ChannelOutputType):
         _cpu_data_channel: Optional["Channel"] = None,
         _tensor_metadata_channel: Optional["Channel"] = None,
     ) -> type:
-        if self.requires_nccl():
-            from ray.experimental.channel.torch_tensor_nccl_channel import (
-                TorchTensorNcclChannel,
+        if self.requires_accelerator():
+            from ray.experimental.channel.torch_tensor_accelerator_channel import (
+                TorchTensorAcceleratorChannel,
             )
 
-            return TorchTensorNcclChannel(
+            return TorchTensorAcceleratorChannel(
                 writer,
                 reader_and_node_list,
                 self,
@@ -142,18 +155,18 @@ class TorchTensorType(ChannelOutputType):
                 _cpu_data_channel,
             )
 
-        # Data does not require NCCL. Transfer via host memory using a
+        # Data does not require accelerator. Transfer via host memory using a
         # shared-memory channel.
         # TODO(swang): Allow the initial max buffer size to be overridden.
         typ = SharedMemoryType()
         return typ.create_channel(writer, reader_and_node_list, driver_actor_id)
 
-    def requires_nccl(self) -> bool:
-        return self.transport == self.NCCL
+    def requires_accelerator(self) -> bool:
+        return self.transport == self.ACCELERATOR
 
     def get_custom_communicator(self) -> Optional[Communicator]:
         """
-        Return the NCCL group if one is specified.
+        Return the communicator group if one is specified.
         """
         return self._communicator
 
@@ -166,9 +179,9 @@ class TorchTensorType(ChannelOutputType):
 
     def __deepcopy__(self, memo):
         """
-        Deep copy all the fields except for the NCCL group. The NCCL group
-        should not be deep copied because it can be shared across
-        `TorchTensorType` instances.
+        Deep copy all the fields except for the communicator group. The communicator
+        group should not be deep copied because it can be shared across `TorchTensorType`
+        instances.
         """
         copy = TorchTensorType(
             transport=self.transport,

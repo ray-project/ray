@@ -16,7 +16,9 @@
 
 #include <jni.h>
 
-#include "jni_utils.h"
+#include <string>
+
+#include "jni_utils.h"  // NOLINT(build/include_subdir)
 #include "ray/common/id.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/core_worker.h"

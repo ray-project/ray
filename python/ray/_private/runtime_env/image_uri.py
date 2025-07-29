@@ -15,6 +15,7 @@ async def _create_impl(image_uri: str, logger: logging.Logger):
     pull_image_cmd = [
         "podman",
         "run",
+        "--quiet",
         "--rm",
         image_uri,
         "python",
@@ -107,6 +108,10 @@ class ImageURIPlugin(RuntimeEnvPlugin):
     """Starts worker in a container of a custom image."""
 
     name = "image_uri"
+
+    @staticmethod
+    def get_compatible_keys():
+        return {"image_uri", "config", "env_vars"}
 
     def __init__(self, ray_tmp_dir: str):
         self._ray_tmp_dir = ray_tmp_dir

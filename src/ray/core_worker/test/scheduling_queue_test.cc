@@ -12,14 +12,22 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "ray/core_worker/transport/scheduling_queue.h"
+
+#include <memory>
+#include <string>
 #include <thread>
+#include <utility>
+#include <vector>
 
 #include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/test_util.h"
+#include "ray/core_worker/transport/actor_scheduling_queue.h"
 #include "ray/core_worker/transport/task_receiver.h"
 
-using namespace std::chrono_literals;
+// using namespace std::chrono_literals;
+using std::chrono_literals::operator""s;
 
 namespace ray {
 namespace core {
@@ -58,19 +66,17 @@ class MockTaskEventBuffer : public worker::TaskEventBuffer {
   std::vector<std::unique_ptr<worker::TaskEvent>> task_events;
 };
 
-TEST(SchedulingQueueTest, TestTaskEvents) {
+TEST(ActorSchedulingQueueTest, TestTaskEvents) {
   // Test task events are recorded.
   instrumented_io_context io_service;
   MockWaiter waiter;
   MockTaskEventBuffer task_event_buffer;
-  ActorSchedulingQueue queue(io_service,
-                             waiter,
-                             task_event_buffer,
-                             std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(),
-                             std::make_shared<ConcurrencyGroupManager<FiberState>>(),
-                             /*is_asyncio=*/false,
-                             /*fiber_max_concurrency=*/1,
-                             /*concurrency_groups=*/{});
+
+  std::vector<ConcurrencyGroup> concurrency_groups{ConcurrencyGroup{"io", 1, {}}};
+  auto pool_manager =
+      std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
+
+  ActorSchedulingQueue queue(io_service, waiter, task_event_buffer, pool_manager, 1);
   int n_ok = 0;
   int n_rej = 0;
   auto fn_ok = [&n_ok](const TaskSpecification &task_spec,
@@ -121,24 +127,27 @@ TEST(SchedulingQueueTest, TestTaskEvents) {
   ASSERT_EQ(rpc_task_events.attempt_number(), 1);
 
   io_service.run();
+
+  // Wait for all tasks to finish.
+  auto default_executor = pool_manager->GetDefaultExecutor();
+  default_executor->Join();
+
   ASSERT_EQ(n_ok, 2);
   ASSERT_EQ(n_rej, 0);
 
   queue.Stop();
 }
 
-TEST(SchedulingQueueTest, TestInOrder) {
+TEST(ActorSchedulingQueueTest, TestInOrder) {
   instrumented_io_context io_service;
   MockWaiter waiter;
   MockTaskEventBuffer task_event_buffer;
-  ActorSchedulingQueue queue(io_service,
-                             waiter,
-                             task_event_buffer,
-                             std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(),
-                             std::make_shared<ConcurrencyGroupManager<FiberState>>(),
-                             /*is_asyncio=*/false,
-                             /*fiber_max_concurrency=*/1,
-                             /*concurrency_groups=*/{});
+
+  std::vector<ConcurrencyGroup> concurrency_groups{ConcurrencyGroup{"io", 1, {}}};
+  auto pool_manager =
+      std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
+
+  ActorSchedulingQueue queue(io_service, waiter, task_event_buffer, pool_manager, 1);
   int n_ok = 0;
   int n_rej = 0;
   auto fn_ok = [&n_ok](const TaskSpecification &task_spec,
@@ -153,27 +162,30 @@ TEST(SchedulingQueueTest, TestInOrder) {
   queue.Add(2, -1, fn_ok, fn_rej, nullptr, task_spec);
   queue.Add(3, -1, fn_ok, fn_rej, nullptr, task_spec);
   io_service.run();
+
+  // Wait for all tasks to finish.
+  auto default_executor = pool_manager->GetDefaultExecutor();
+  default_executor->Join();
+
   ASSERT_EQ(n_ok, 4);
   ASSERT_EQ(n_rej, 0);
 
   queue.Stop();
 }
 
-TEST(SchedulingQueueTest, TestWaitForObjects) {
+TEST(ActorSchedulingQueueTest, TestWaitForObjects) {
   ObjectID obj = ObjectID::FromRandom();
   instrumented_io_context io_service;
   MockWaiter waiter;
   MockTaskEventBuffer task_event_buffer;
-  ActorSchedulingQueue queue(io_service,
-                             waiter,
-                             task_event_buffer,
-                             std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(),
-                             std::make_shared<ConcurrencyGroupManager<FiberState>>(),
-                             /*is_asyncio=*/false,
-                             /*fiber_max_concurrency=*/1,
-                             /*concurrency_groups=*/{});
-  int n_ok = 0;
-  int n_rej = 0;
+
+  std::vector<ConcurrencyGroup> concurrency_groups{ConcurrencyGroup{"io", 1, {}}};
+  auto pool_manager =
+      std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
+
+  ActorSchedulingQueue queue(io_service, waiter, task_event_buffer, pool_manager, 1);
+  std::atomic<int> n_ok(0);
+  std::atomic<int> n_rej(0);
 
   auto fn_ok = [&n_ok](const TaskSpecification &task_spec,
                        rpc::SendReplyCallback callback) { n_ok++; };
@@ -193,35 +205,38 @@ TEST(SchedulingQueueTest, TestWaitForObjects) {
   queue.Add(2, -1, fn_ok, fn_rej, nullptr, task_spec_with_dependency);
   queue.Add(3, -1, fn_ok, fn_rej, nullptr, task_spec_with_dependency);
 
-  ASSERT_EQ(n_ok, 1);
+  ASSERT_TRUE(WaitForCondition([&n_ok]() { return n_ok == 1; }, 1000));
 
   waiter.Complete(0);
-  ASSERT_EQ(n_ok, 2);
+  ASSERT_TRUE(WaitForCondition([&n_ok]() { return n_ok == 2; }, 1000));
 
   waiter.Complete(2);
-  ASSERT_EQ(n_ok, 2);
+  ASSERT_TRUE(WaitForCondition([&n_ok]() { return n_ok == 2; }, 1000));
 
   waiter.Complete(1);
+
+  // Wait for all tasks to finish.
+  auto default_executor = pool_manager->GetDefaultExecutor();
+  default_executor->Join();
+
   ASSERT_EQ(n_ok, 4);
 
   queue.Stop();
 }
 
-TEST(SchedulingQueueTest, TestWaitForObjectsNotSubjectToSeqTimeout) {
+TEST(ActorSchedulingQueueTest, TestWaitForObjectsNotSubjectToSeqTimeout) {
   ObjectID obj = ObjectID::FromRandom();
   instrumented_io_context io_service;
   MockWaiter waiter;
   MockTaskEventBuffer task_event_buffer;
-  ActorSchedulingQueue queue(io_service,
-                             waiter,
-                             task_event_buffer,
-                             std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(),
-                             std::make_shared<ConcurrencyGroupManager<FiberState>>(),
-                             /*is_asyncio=*/false,
-                             /*fiber_max_concurrency=*/1,
-                             /*concurrency_groups=*/{});
-  int n_ok = 0;
-  int n_rej = 0;
+
+  std::vector<ConcurrencyGroup> concurrency_groups{ConcurrencyGroup{"io", 1, {}}};
+  auto pool_manager =
+      std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
+
+  ActorSchedulingQueue queue(io_service, waiter, task_event_buffer, pool_manager, 1);
+  std::atomic<int> n_ok(0);
+  std::atomic<int> n_rej(0);
 
   auto fn_ok = [&n_ok](const TaskSpecification &task_spec,
                        rpc::SendReplyCallback callback) { n_ok++; };
@@ -239,29 +254,33 @@ TEST(SchedulingQueueTest, TestWaitForObjectsNotSubjectToSeqTimeout) {
   queue.Add(0, -1, fn_ok, fn_rej, nullptr, task_spec_without_dependency);
   queue.Add(1, -1, fn_ok, fn_rej, nullptr, task_spec_with_dependency);
 
-  ASSERT_EQ(n_ok, 1);
+  ASSERT_TRUE(WaitForCondition([&n_ok]() { return n_ok == 1; }, 1000));
   io_service.run();
   ASSERT_EQ(n_rej, 0);
   waiter.Complete(0);
+
+  // Wait for all tasks to finish.
+  auto default_executor = pool_manager->GetDefaultExecutor();
+  default_executor->Join();
+
   ASSERT_EQ(n_ok, 2);
 
   queue.Stop();
 }
 
-TEST(SchedulingQueueTest, TestOutOfOrder) {
+TEST(ActorSchedulingQueueTest, TestSeqWaitTimeout) {
   instrumented_io_context io_service;
   MockWaiter waiter;
   MockTaskEventBuffer task_event_buffer;
-  ActorSchedulingQueue queue(io_service,
-                             waiter,
-                             task_event_buffer,
-                             std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(),
-                             std::make_shared<ConcurrencyGroupManager<FiberState>>(),
-                             /*is_asyncio=*/false,
-                             /*fiber_max_concurrency=*/1,
-                             /*concurrency_groups=*/{});
-  int n_ok = 0;
-  int n_rej = 0;
+
+  std::vector<ConcurrencyGroup> concurrency_groups{ConcurrencyGroup{"io", 1, {}}};
+  auto pool_manager =
+      std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
+
+  ActorSchedulingQueue queue(io_service, waiter, task_event_buffer, pool_manager, 1);
+  std::atomic<int> n_ok(0);
+  std::atomic<int> n_rej(0);
+
   auto fn_ok = [&n_ok](const TaskSpecification &task_spec,
                        rpc::SendReplyCallback callback) { n_ok++; };
   auto fn_rej = [&n_rej](const TaskSpecification &task_spec,
@@ -272,65 +291,36 @@ TEST(SchedulingQueueTest, TestOutOfOrder) {
   queue.Add(2, -1, fn_ok, fn_rej, nullptr, task_spec);
   queue.Add(0, -1, fn_ok, fn_rej, nullptr, task_spec);
   queue.Add(3, -1, fn_ok, fn_rej, nullptr, task_spec);
-  queue.Add(1, -1, fn_ok, fn_rej, nullptr, task_spec);
+  ASSERT_TRUE(WaitForCondition([&n_ok]() { return n_ok == 1; }, 1000));
+  ASSERT_EQ(n_rej, 0);
   io_service.run();
-  ASSERT_EQ(n_ok, 4);
-  ASSERT_EQ(n_rej, 0);
-
-  queue.Stop();
-}
-
-TEST(SchedulingQueueTest, TestSeqWaitTimeout) {
-  instrumented_io_context io_service;
-  MockWaiter waiter;
-  MockTaskEventBuffer task_event_buffer;
-  ActorSchedulingQueue queue(io_service,
-                             waiter,
-                             task_event_buffer,
-                             std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(),
-                             std::make_shared<ConcurrencyGroupManager<FiberState>>(),
-                             /*is_asyncio=*/false,
-                             /*fiber_max_concurrency=*/1,
-                             /*concurrency_groups=*/{});
-  int n_ok = 0;
-  int n_rej = 0;
-  auto fn_ok = [&n_ok](const TaskSpecification &task_spec,
-                       rpc::SendReplyCallback callback) { n_ok++; };
-  auto fn_rej = [&n_rej](const TaskSpecification &task_spec,
-                         const Status &status,
-                         rpc::SendReplyCallback callback) { n_rej++; };
-  TaskSpecification task_spec;
-  task_spec.GetMutableMessage().set_type(TaskType::ACTOR_TASK);
-  queue.Add(2, -1, fn_ok, fn_rej, nullptr, task_spec);
-  queue.Add(0, -1, fn_ok, fn_rej, nullptr, task_spec);
-  queue.Add(3, -1, fn_ok, fn_rej, nullptr, task_spec);
-  ASSERT_EQ(n_ok, 1);
-  ASSERT_EQ(n_rej, 0);
-  io_service.run();  // immediately triggers timeout
-  ASSERT_EQ(n_ok, 1);
-  ASSERT_EQ(n_rej, 2);
+  ASSERT_TRUE(WaitForCondition([&n_ok]() { return n_ok == 1; }, 1000));
+  ASSERT_TRUE(WaitForCondition([&n_rej]() { return n_rej == 2; }, 1000));
   queue.Add(4, -1, fn_ok, fn_rej, nullptr, task_spec);
   queue.Add(5, -1, fn_ok, fn_rej, nullptr, task_spec);
+
+  // Wait for all tasks to finish.
+  auto default_executor = pool_manager->GetDefaultExecutor();
+  default_executor->Join();
+
   ASSERT_EQ(n_ok, 3);
   ASSERT_EQ(n_rej, 2);
 
   queue.Stop();
 }
 
-TEST(SchedulingQueueTest, TestSkipAlreadyProcessedByClient) {
+TEST(ActorSchedulingQueueTest, TestSkipAlreadyProcessedByClient) {
   instrumented_io_context io_service;
   MockWaiter waiter;
   MockTaskEventBuffer task_event_buffer;
-  ActorSchedulingQueue queue(io_service,
-                             waiter,
-                             task_event_buffer,
-                             std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(),
-                             std::make_shared<ConcurrencyGroupManager<FiberState>>(),
-                             /*is_asyncio=*/false,
-                             /*fiber_max_concurrency=*/1,
-                             /*concurrency_groups=*/{});
-  int n_ok = 0;
-  int n_rej = 0;
+
+  std::vector<ConcurrencyGroup> concurrency_groups{ConcurrencyGroup{"io", 1, {}}};
+  auto pool_manager =
+      std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
+
+  ActorSchedulingQueue queue(io_service, waiter, task_event_buffer, pool_manager, 1);
+  std::atomic<int> n_ok(0);
+  std::atomic<int> n_rej(0);
   auto fn_ok = [&n_ok](const TaskSpecification &task_spec,
                        rpc::SendReplyCallback callback) { n_ok++; };
   auto fn_rej = [&n_rej](const TaskSpecification &task_spec,
@@ -342,13 +332,92 @@ TEST(SchedulingQueueTest, TestSkipAlreadyProcessedByClient) {
   queue.Add(3, 2, fn_ok, fn_rej, nullptr, task_spec);
   queue.Add(1, 2, fn_ok, fn_rej, nullptr, task_spec);
   io_service.run();
+
+  // Wait for all tasks to finish.
+  auto default_executor = pool_manager->GetDefaultExecutor();
+  default_executor->Join();
+
   ASSERT_EQ(n_ok, 1);
   ASSERT_EQ(n_rej, 2);
 
   queue.Stop();
 }
 
-TEST(SchedulingQueueTest, TestCancelQueuedTask) {
+namespace {
+
+TaskSpecification CreateActorTaskSpec(int64_t seq_no,
+                                      bool is_retry = false,
+                                      bool dependency = false) {
+  TaskSpecification task_spec;
+  task_spec.GetMutableMessage().set_type(TaskType::ACTOR_TASK);
+  task_spec.GetMutableMessage().mutable_actor_task_spec()->set_sequence_number(seq_no);
+  task_spec.GetMutableMessage().set_attempt_number(is_retry ? 1 : 0);
+  if (dependency) {
+    task_spec.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(
+        ObjectID::FromRandom().Binary());
+  }
+  return task_spec;
+}
+
+}  // namespace
+
+TEST(ActorSchedulingQueueTest, TestRetryInOrderSchedulingQueue) {
+  // Setup
+  instrumented_io_context io_service;
+  MockWaiter waiter;
+  MockTaskEventBuffer task_event_buffer;
+  std::vector<ConcurrencyGroup> concurrency_groups{ConcurrencyGroup{"io", 1, {}}};
+  auto pool_manager =
+      std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
+
+  ActorSchedulingQueue queue(io_service, waiter, task_event_buffer, pool_manager, 2);
+  std::vector<int64_t> accept_seq_nos;
+  std::vector<int64_t> reject_seq_nos;
+  std::atomic<int> n_accept = 0;
+  auto fn_ok = [&accept_seq_nos, &n_accept](const TaskSpecification &task_spec,
+                                            rpc::SendReplyCallback callback) {
+    accept_seq_nos.push_back(task_spec.SequenceNumber());
+    n_accept++;
+  };
+  auto fn_rej = [&reject_seq_nos](const TaskSpecification &task_spec,
+                                  const Status &status,
+                                  rpc::SendReplyCallback callback) {
+    reject_seq_nos.push_back(task_spec.SequenceNumber());
+  };
+
+  // Submitting 0 with dep, 1, 3 (retry of 2), and 4 (with client_processed_up_to = 2 bc 2
+  // failed to send), 6 (retry of 5) with dep.
+  // 0 and 1 will be cancelled due to the client_processed_up_to = 2.
+  // 3 (retry of 2) should get executed. Then, 4 should be executed. Then 6 (retry of 5)
+  // once the dependency is fetched.
+  auto task_spec_0 = CreateActorTaskSpec(0, /*is_retry=*/false, /*dependency=*/true);
+  queue.Add(0, -1, fn_ok, fn_rej, nullptr, task_spec_0);
+  auto task_spec_1 = CreateActorTaskSpec(1);
+  queue.Add(1, -1, fn_ok, fn_rej, nullptr, task_spec_1);
+  auto task_spec_2_retry = CreateActorTaskSpec(3, /*is_retry=*/true);
+  queue.Add(3, -1, fn_ok, fn_rej, nullptr, task_spec_2_retry);
+  auto task_spec_4 = CreateActorTaskSpec(4);
+  queue.Add(4, 2, fn_ok, fn_rej, nullptr, task_spec_4);
+  auto task_spec_5_retry = CreateActorTaskSpec(6, /*is_retry=*/true, /*dependency=*/true);
+  queue.Add(6, -1, fn_ok, fn_rej, nullptr, task_spec_5_retry);
+
+  io_service.run();
+
+  ASSERT_TRUE(WaitForCondition([&n_accept]() { return n_accept == 2; }, 1000));
+  // seq_no 6 is index 1 for the mock waiter because only 2 tasks had deps.
+  waiter.Complete(1);
+  ASSERT_TRUE(WaitForCondition([&n_accept]() { return n_accept == 3; }, 1000));
+
+  auto default_executor = pool_manager->GetDefaultExecutor();
+  default_executor->Join();
+
+  ASSERT_EQ(accept_seq_nos, (std::vector<int64_t>{3, 4, 6}));
+  ASSERT_EQ(reject_seq_nos, (std::vector<int64_t>{0, 1}));
+
+  queue.Stop();
+}
+
+TEST(NormalSchedulingQueueTest, TestCancelQueuedTask) {
   std::unique_ptr<SchedulingQueue> queue = std::make_unique<NormalSchedulingQueue>();
   ASSERT_TRUE(queue->TaskQueueEmpty());
   int n_ok = 0;
@@ -379,15 +448,19 @@ TEST(OutOfOrderActorSchedulingQueueTest, TestTaskEvents) {
   instrumented_io_context io_service;
   MockWaiter waiter;
   MockTaskEventBuffer task_event_buffer;
-  OutOfOrderActorSchedulingQueue queue(
-      io_service,
-      waiter,
-      task_event_buffer,
-      std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(),
-      std::make_shared<ConcurrencyGroupManager<FiberState>>(),
-      /*is_asyncio=*/false,
-      /*fiber_max_concurrency=*/1,
-      /*concurrency_groups=*/{});
+
+  std::vector<ConcurrencyGroup> concurrency_groups{ConcurrencyGroup{"io", 1, {}}};
+  auto pool_manager =
+      std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
+
+  OutOfOrderActorSchedulingQueue queue(io_service,
+                                       waiter,
+                                       task_event_buffer,
+                                       pool_manager,
+                                       /*fiber_state_manager=*/nullptr,
+                                       /*is_asyncio=*/false,
+                                       /*fiber_max_concurrency=*/1,
+                                       /*concurrency_groups=*/{});
   int n_ok = 0;
   int n_rej = 0;
   auto fn_ok = [&n_ok](const TaskSpecification &task_spec,
@@ -438,6 +511,11 @@ TEST(OutOfOrderActorSchedulingQueueTest, TestTaskEvents) {
   ASSERT_EQ(rpc_task_events.attempt_number(), 1);
 
   io_service.run();
+
+  // Wait for all tasks to finish.
+  auto default_executor = pool_manager->GetDefaultExecutor();
+  default_executor->Join();
+
   ASSERT_EQ(n_ok, 2);
   ASSERT_EQ(n_rej, 0);
 
@@ -457,7 +535,7 @@ TEST(OutOfOrderActorSchedulingQueueTest, TestSameTaskMultipleAttempts) {
       std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(
           std::vector<ConcurrencyGroup>(),
           /*max_concurrency_for_default_concurrency_group=*/100),
-      std::make_shared<ConcurrencyGroupManager<FiberState>>(),
+      /*fiber_state_manager=*/nullptr,
       /*is_asyncio=*/false,
       /*fiber_max_concurrency=*/1,
       /*concurrency_groups=*/{});
@@ -526,7 +604,7 @@ TEST(OutOfOrderActorSchedulingQueueTest, TestSameTaskMultipleAttemptsCancellatio
       std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(
           std::vector<ConcurrencyGroup>(),
           /*max_concurrency_for_default_concurrency_group=*/100),
-      std::make_shared<ConcurrencyGroupManager<FiberState>>(),
+      /*fiber_state_manager=*/nullptr,
       /*is_asyncio=*/false,
       /*fiber_max_concurrency=*/1,
       /*concurrency_groups=*/{});

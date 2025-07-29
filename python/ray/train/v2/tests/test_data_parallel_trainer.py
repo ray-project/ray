@@ -1,4 +1,6 @@
+import multiprocessing
 import os
+import signal
 import tempfile
 from pathlib import Path
 
@@ -6,13 +8,14 @@ import pyarrow.fs
 import pytest
 
 import ray
-from ray.train import BackendConfig, Checkpoint, RunConfig, ScalingConfig
+from ray.tests.client_test_utils import create_remote_signal_actor
+from ray.train import BackendConfig, Checkpoint, RunConfig, ScalingConfig, UserCallback
 from ray.train.backend import Backend
 from ray.train.constants import RAY_CHDIR_TO_TRIAL_DIR, _get_ray_train_session_dir
 from ray.train.tests.util import create_dict_checkpoint
 from ray.train.v2._internal.constants import is_v2_enabled
-from ray.train.v2._internal.exceptions import TrainingFailedError
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
+from ray.train.v2.api.exceptions import WorkerGroupError
 from ray.train.v2.api.result import Result
 
 assert is_v2_enabled()
@@ -65,10 +68,9 @@ def test_result_output(tmp_path):
     assert isinstance(result.filesystem, pyarrow.fs.FileSystem)
 
 
-def test_no_report():
-    trainer = DataParallelTrainer(
-        lambda: "not used", scaling_config=ScalingConfig(num_workers=2)
-    )
+def test_no_optional_arguments():
+    """Check that the DataParallelTrainer can be instantiated without optional arguments."""
+    trainer = DataParallelTrainer(lambda: "not used")
     trainer.fit()
 
 
@@ -150,9 +152,8 @@ def test_error(tmp_path):
         scaling_config=ScalingConfig(num_workers=2),
         run_config=RunConfig(name="test", storage_path=str(tmp_path)),
     )
-    with pytest.raises(TrainingFailedError) as exc_info:
+    with pytest.raises(WorkerGroupError) as exc_info:
         trainer.fit()
-
         assert isinstance(exc_info.value.worker_failures[0], ValueError)
 
 
@@ -179,6 +180,105 @@ def test_setup_working_directory(tmp_path, monkeypatch, env_disabled):
         run_config=RunConfig(name=experiment_dir_name, storage_path=str(tmp_path)),
     )
     trainer.fit()
+
+
+def test_user_callback(tmp_path):
+    """Test end to end usage of user callbacks."""
+    num_workers = 2
+
+    class MyUserCallback(UserCallback):
+        def after_report(self, run_context, metrics, checkpoint):
+            assert len(metrics) == num_workers
+            assert not checkpoint
+
+        def after_exception(self, run_context, worker_exceptions):
+            assert len(worker_exceptions) == 1
+            assert worker_exceptions.get(0) is not None
+
+    def _train_fn(config):
+        ray.train.report(metrics={"rank": ray.train.get_context().get_world_rank()})
+        if ray.train.get_context().get_world_rank() == 0:
+            raise ValueError("error")
+
+    trainer = DataParallelTrainer(
+        _train_fn,
+        scaling_config=ScalingConfig(num_workers=num_workers),
+        run_config=RunConfig(
+            storage_path=str(tmp_path),
+            callbacks=[MyUserCallback()],
+        ),
+    )
+    # The error should NOT be an assertion error from the user callback.
+    with pytest.raises(WorkerGroupError):
+        trainer.fit()
+
+
+def run_process_for_sigint_abort(abort_terminates):
+    # Lives outside test_sigint_abort because cannot pickle nested functions.
+
+    # Needed to reuse current ray cluster.
+    ray.init(address="auto")
+
+    if not abort_terminates:
+
+        async def fake_abort():
+            while True:
+                pass
+
+        from ray.train.v2._internal.execution.controller import TrainController
+
+        TrainController.abort = fake_abort
+
+    def train_fn():
+        signal_actor = ray.get_actor("signal_actor", namespace="test_sigint_abort")
+        ray.get(signal_actor.send.remote())
+        while True:
+            pass
+
+    trainer = DataParallelTrainer(
+        train_fn,
+        scaling_config=ScalingConfig(num_workers=2),
+    )
+    trainer.fit()
+
+
+@pytest.mark.parametrize(
+    "spam_sigint",
+    [
+        False,
+        # Disabling this test because it's flaky.
+        # True,
+    ],
+)
+def test_sigint_abort(ray_start_4_cpus, spam_sigint):
+    # Use SignalActor to wait for training to start before sending SIGINT.
+    SignalActor = create_remote_signal_actor(ray)
+    signal_actor = SignalActor.options(
+        name="signal_actor", namespace="test_sigint_abort"
+    ).remote()
+
+    # Use spawn because of
+    # https://docs.ray.io/en/latest/ray-core/patterns/fork-new-processes.html
+    multiprocessing.set_start_method("spawn", force=True)
+    process = multiprocessing.Process(
+        target=run_process_for_sigint_abort, args=(not spam_sigint,)
+    )
+    process.start()
+
+    # Wait for training to start.
+    ray.get(signal_actor.wait.remote())
+
+    # Verify that process exits after sufficient number of SIGINTS.
+    os.kill(process.pid, signal.SIGINT)
+    if spam_sigint:
+        import time
+
+        assert process.exitcode is None
+        # This is flaky. Sometimes SIGINTs are ignored and you need to wait.
+        while process.exitcode is None:
+            time.sleep(1)
+            os.kill(process.pid, signal.SIGINT)
+    process.join()
 
 
 if __name__ == "__main__":

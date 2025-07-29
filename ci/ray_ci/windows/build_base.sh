@@ -8,7 +8,7 @@ export TORCHVISION_VERSION=0.15.2
 # Delete the existing bazel and replace it with bazelisk.
 powershell ci/ray_ci/windows/install_bazelisk.ps1
 
-conda init 
+conda init
 # newer requests version is needed for python 3.9+
 conda install -q -y python="${PYTHON}" requests=2.31.0
 
@@ -21,6 +21,6 @@ pip install -U --ignore-installed -c python/requirements_compiled.txt \
   -r python/requirements/ml/dl-cpu-requirements.txt
 
 # Clean up caches to minimize image size. These caches are not needed, and
-# removing them help with the build speed. 
+# removing them help with the build speed.
 pip cache purge
 powershell ci/ray_ci/windows/cleanup.ps1

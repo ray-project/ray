@@ -1,13 +1,13 @@
-# Torch 2.0 Compile benchmarks on RLlib 
+# Torch 2.0 Compile benchmarks on RLlib
 
-Torch 2.0 comes with the new `torch.compile()` [API](https://pytorch.org/docs/stable/generated/torch.compile.html#torch.compile), which leverages [torch dynamo](https://pytorch.org/docs/stable/dynamo/index.html#torchdynamo-overview) under the hood to JIT-compile wrapped code. We integrate `torch.compile()` with RLlib in the context of [RLModules](https://docs.ray.io/en/latest/rllib/rllib-rlmodule.html) and Learners. 
+Torch 2.0 comes with the new `torch.compile()` [API](https://pytorch.org/docs/stable/generated/torch.compile.html#torch.compile), which leverages [torch dynamo](https://pytorch.org/docs/stable/dynamo/index.html#torchdynamo-overview) under the hood to JIT-compile wrapped code. We integrate `torch.compile()` with RLlib in the context of [RLModules](https://docs.ray.io/en/latest/rllib/rllib-rlmodule.html) and Learners.
 
 We have integrated this feature with RLModules. You can set the backend and mode via `framework()` API on an `AlgorithmConfig` object. Alternatively, you can compile the `RLModule` directly during stand-alone usage such as inference.
 
 
 # Benchmarks
 
-We conducted a comperhensive benchmark with this feature. 
+We conducted a comperhensive benchmark with this feature.
 
 ## Inference
 For the benchmarking metric, we compute the inverse of the time it takes to run `forward_exploration()` of the RLModule. We have conducted this benchmark on the default implementation of PPO RLModule under different hardware settings, torch versions, dynamo backends and modes, as well as different batch sizes. Here is a high-level summary of our findings:
@@ -54,7 +54,7 @@ config.framework(
 )
 ```
 
-This benchmark script runs PPO algorithm with the default model architecture for Atari-Breakout game. It runs the training for `n` iterations for both compiled and non-compiled RLModules and reports the speedup. Note that negative speedup values mean a slowdown when you compile the module. 
+This benchmark script runs PPO algorithm with the default model architecture for Atari-Breakout game. It runs the training for `n` iterations for both compiled and non-compiled RLModules and reports the speedup. Note that negative speedup values mean a slowdown when you compile the module.
 
 To run the benchmark script, you need a ray cluster comprised of at least 129 CPUs (2x64 + 1) and 2 GPUs. If this is not accessible to you, you can change the number of sampling workers and batch size to make the requirements smaller.
 
@@ -73,7 +73,7 @@ Here is a summary of results:
 | ipex | max-autotune | 12.88 |
 
 
-As you can see, `onnxrt` does not gain any speedups in the setup we tested (in fact it slows the workload down by 70%) while the `ipex` provides ~10% speedup. If we change the model architecture, these numbers may change. So it is very important to fix the architecture first and then search for the fastest training settings. 
+As you can see, `onnxrt` does not gain any speedups in the setup we tested (in fact it slows the workload down by 70%) while the `ipex` provides ~10% speedup. If we change the model architecture, these numbers may change. So it is very important to fix the architecture first and then search for the fastest training settings.
 
 
 ## Appendix

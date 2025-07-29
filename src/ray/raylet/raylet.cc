@@ -17,10 +17,17 @@
 #include <boost/asio.hpp>
 #include <boost/bind/bind.hpp>
 #include <boost/date_time/posix_time/posix_time.hpp>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "ray/common/client_connection.h"
 #include "ray/common/scheduling/resource_set.h"
 #include "ray/common/status.h"
+#include "ray/core_worker/experimental_mutable_object_provider.h"
+#include "ray/object_manager/object_manager.h"
+#include "ray/object_manager/ownership_object_directory.h"
 #include "ray/util/util.h"
 
 namespace {
@@ -63,19 +70,13 @@ Raylet::Raylet(instrumented_io_context &main_service,
                const std::string &node_name,
                const NodeManagerConfig &node_manager_config,
                const ObjectManagerConfig &object_manager_config,
-               std::shared_ptr<gcs::GcsClient> gcs_client,
+               gcs::GcsClient &gcs_client,
                int metrics_export_port,
                bool is_head_node,
-               std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully)
+               NodeManager &node_manager)
     : self_node_id_(self_node_id),
       gcs_client_(gcs_client),
-      node_manager_(main_service,
-                    self_node_id_,
-                    node_name,
-                    node_manager_config,
-                    object_manager_config,
-                    gcs_client_,
-                    shutdown_raylet_gracefully),
+      node_manager_(node_manager),
       socket_name_(socket_name),
       acceptor_(main_service, ParseUrlEndpoint(socket_name)),
       socket_(main_service) {
@@ -112,7 +113,7 @@ Raylet::Raylet(instrumented_io_context &main_service,
 Raylet::~Raylet() {}
 
 void Raylet::Start() {
-  RAY_CHECK_OK(RegisterGcs());
+  RegisterGcs();
 
   // Start listening for clients.
   DoAccept();
@@ -120,7 +121,7 @@ void Raylet::Start() {
 
 void Raylet::UnregisterSelf(const rpc::NodeDeathInfo &node_death_info,
                             std::function<void()> unregister_done_callback) {
-  gcs_client_->Nodes().UnregisterSelf(node_death_info, unregister_done_callback);
+  gcs_client_.Nodes().UnregisterSelf(node_death_info, unregister_done_callback);
 }
 
 void Raylet::Stop() {
@@ -128,7 +129,7 @@ void Raylet::Stop() {
   acceptor_.close();
 }
 
-ray::Status Raylet::RegisterGcs() {
+void Raylet::RegisterGcs() {
   auto register_callback = [this](const Status &status) {
     RAY_CHECK_OK(status);
     RAY_LOG(INFO) << "Raylet of id, " << self_node_id_
@@ -138,12 +139,10 @@ ray::Status Raylet::RegisterGcs() {
                   << " object_manager address: " << self_node_info_.node_manager_address()
                   << ":" << self_node_info_.object_manager_port()
                   << " hostname: " << self_node_info_.node_manager_hostname();
-    RAY_CHECK_OK(node_manager_.RegisterGcs());
+    node_manager_.RegisterGcs();
   };
 
-  RAY_RETURN_NOT_OK(
-      gcs_client_->Nodes().RegisterSelf(self_node_info_, register_callback));
-  return Status::OK();
+  RAY_CHECK_OK(gcs_client_.Nodes().RegisterSelf(self_node_info_, register_callback));
 }
 
 void Raylet::DoAccept() {
@@ -154,23 +153,28 @@ void Raylet::DoAccept() {
 
 void Raylet::HandleAccept(const boost::system::error_code &error) {
   if (!error) {
-    // TODO: typedef these handlers.
-    ClientHandler client_handler = [this](ClientConnection &client) {
-      node_manager_.ProcessNewClient(client);
+    ConnectionErrorHandler error_handler = [this](
+                                               std::shared_ptr<ClientConnection> client,
+                                               const boost::system::error_code &error) {
+      node_manager_.HandleClientConnectionError(client, error);
     };
+
     MessageHandler message_handler = [this](std::shared_ptr<ClientConnection> client,
                                             int64_t message_type,
                                             const std::vector<uint8_t> &message) {
       node_manager_.ProcessClientMessage(client, message_type, message.data());
     };
+
     // Accept a new local client and dispatch it to the node manager.
-    auto new_connection = ClientConnection::Create(
-        client_handler,
-        message_handler,
-        std::move(socket_),
-        "worker",
-        node_manager_message_enum,
-        static_cast<int64_t>(protocol::MessageType::DisconnectClient));
+    auto conn = ClientConnection::Create(message_handler,
+                                         error_handler,
+                                         std::move(socket_),
+                                         "worker",
+                                         node_manager_message_enum);
+
+    // Begin processing messages. The message handler above is expected to call this to
+    // continue processing messages.
+    conn->ProcessMessages();
   } else {
     RAY_LOG(ERROR) << "Raylet failed to accept new connection: " << error.message();
     if (error == boost::asio::error::operation_aborted) {

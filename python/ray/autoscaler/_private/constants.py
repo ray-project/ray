@@ -81,10 +81,15 @@ AUTOSCALER_REPORT_PER_NODE_STATUS = (
 # The maximum allowed resource demand vector size to guarantee the resource
 # demand scheduler bin packing algorithm takes a reasonable amount of time
 # to run.
-AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE = 1000
+AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE = env_integer(
+    "AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE", 1000
+)
 
 # Port that autoscaler prometheus metrics will be exported to
 AUTOSCALER_METRIC_PORT = env_integer("AUTOSCALER_METRIC_PORT", 44217)
+
+# The minimum number of nodes to launch concurrently.
+AUTOSCALER_UPSCALING_INITIAL_NUM_NODES = 5
 
 # Max number of retries to AWS (default is 5, time increases exponentially)
 BOTO_MAX_RETRIES = env_integer("BOTO_MAX_RETRIES", 12)
@@ -123,7 +128,6 @@ RAY_PROCESSES = [
     ],  # Python worker. TODO(mehrdadn): Fix for Windows
     ["io.ray.runtime.runner.worker.DefaultWorker", False],  # Java worker.
     ["log_monitor.py", False],
-    ["reporter.py", False],
     [os.path.join("dashboard", "agent.py"), False],
     [os.path.join("dashboard", "dashboard.py"), False],
     [os.path.join("runtime_env", "agent", "main.py"), False],
@@ -138,4 +142,3 @@ DISABLE_NODE_UPDATERS_KEY = "disable_node_updaters"
 DISABLE_LAUNCH_CONFIG_CHECK_KEY = "disable_launch_config_check"
 FOREGROUND_NODE_LAUNCH_KEY = "foreground_node_launch"
 WORKER_LIVENESS_CHECK_KEY = "worker_liveness_check"
-WORKER_RPC_DRAIN_KEY = "worker_rpc_drain"

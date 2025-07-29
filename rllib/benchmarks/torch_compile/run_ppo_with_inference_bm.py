@@ -2,11 +2,11 @@ import argparse
 
 import gymnasium as gym
 
-from ray import tune, air
-from ray.air.constants import TRAINING_ITERATION
+from ray import tune
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.env.wrappers.atari_wrappers import wrap_atari_for_new_api_stack
 from ray.tune.registry import register_env
+from ray.tune.result import TRAINING_ITERATION
 
 # Note:
 # To run this benchmark you need to have a ray cluster of at least
@@ -68,7 +68,7 @@ def main(pargs):
             num_envs_per_env_runner=1,
             batch_mode="truncate_episodes",
             rollout_fragment_length="auto",
-            create_env_on_local_worker=True,
+            create_local_env_runner=True,
         )
         .framework(
             "torch",
@@ -84,7 +84,7 @@ def main(pargs):
 
     tuner = tune.Tuner(
         "PPO",
-        run_config=air.RunConfig(
+        run_config=tune.RunConfig(
             stop={TRAINING_ITERATION: 1 if pargs.smoke_test else pargs.num_iters},
         ),
         param_space=config,

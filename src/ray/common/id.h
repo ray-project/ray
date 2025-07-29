@@ -26,6 +26,7 @@
 
 #include "ray/common/constants.h"
 #include "ray/util/logging.h"
+#include "ray/util/random.h"
 #include "ray/util/util.h"
 #include "ray/util/visibility.h"
 

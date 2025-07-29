@@ -4,6 +4,7 @@ from collections import defaultdict
 from typing import List
 
 import ray._private.ray_constants as ray_constants
+from ray._private.accelerators.nvidia_gpu import CUDA_VISIBLE_DEVICES_ENV_VAR
 from ray._private.ray_constants import env_bool
 from ray.train import BackendConfig
 from ray.train.constants import ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV
@@ -63,7 +64,7 @@ def _share_cuda_visible_devices(worker_group: WorkerGroup):
         - Worker2: "0,1"
     """
     _share_accelerator_ids(
-        worker_group, ray_constants.GPU, ray_constants.CUDA_VISIBLE_DEVICES_ENV_VAR
+        worker_group, ray_constants.GPU, CUDA_VISIBLE_DEVICES_ENV_VAR
     )
 
 

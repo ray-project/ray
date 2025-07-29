@@ -6,14 +6,13 @@ boto3
 cmake
 crc32c
 cython
-dask[complete]
 fastapi
 gcsfs==2023.5.0
 gsutil
 gymnasium
 gymnasium[atari]
 importlib-metadata
-jsonschema==4.17.3
+jsonschema
 lightgbm
 locust==2.18.0
 memray
@@ -35,7 +34,8 @@ tensorflow
 trueskill
 tqdm
 typer
-typing-extensions==4.8.0
+typing-extensions
 xarray
 xgboost
 zarr
+pyyaml

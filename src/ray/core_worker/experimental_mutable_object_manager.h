@@ -19,7 +19,6 @@
 #include <mutex>
 #include <string>
 #include <utility>
-#include <vector>
 
 #include "absl/container/node_hash_map.h"
 #include "gtest/gtest_prod.h"
@@ -27,10 +26,6 @@
 #include "ray/common/ray_object.h"
 #include "ray/common/status.h"
 #include "ray/object_manager/plasma/client.h"
-#include "ray/object_manager/plasma/common.h"
-#include "ray/object_manager/plasma/plasma.h"
-#include "ray/util/visibility.h"
-#include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
 namespace experimental {
@@ -231,7 +226,7 @@ class MutableObjectManager : public std::enable_shared_from_this<MutableObjectMa
   PlasmaObjectHeader *GetHeader(const ObjectID &object_id);
 
   // Returns the unique semaphore name for the object. This name is intended to be used
-  // for the object's named sempahores.
+  // for the object's named semaphores.
   std::string GetSemaphoreName(PlasmaObjectHeader *header);
 
   // Opens named semaphores for the object. This method must be called before

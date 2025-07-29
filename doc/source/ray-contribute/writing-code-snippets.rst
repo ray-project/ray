@@ -119,7 +119,7 @@ There's no hard rule about which style you should use. Choose the style that bes
 illustrates your API.
 
 .. tip::
-    If you're not sure which style to use, use *code-block-style*.
+    If you're not sure which style to use, use *code-output-style*.
 
 When to use *doctest-style*
 ===========================
@@ -138,10 +138,10 @@ want to print intermediate objects, use *doctest-style*. ::
         >>> ds.take(5)
         [{'id': 0}, {'id': 1}, {'id': 2}, {'id': 3}, {'id': 4}]
 
-When to use *code-block-style*
-==============================
+When to use *code-output-style*
+======================================
 
-If you're writing a longer example, or if object representations aren't relevant to your example, use *code-block-style*. ::
+If you're writing a longer example, or if object representations aren't relevant to your example, use *code-output-style*. ::
 
     .. testcode::
 
@@ -200,10 +200,10 @@ To skip a *doctest-style* example, append `# doctest: +SKIP` to your Python code
         >>> import ray
         >>> ray.data.read_images("s3://private-bucket")  # doctest: +SKIP
 
-Skipping *code-block-style* examples
-====================================
+Skipping *code-output-style* examples
+==========================================
 
-To skip a *code-block-style* example, add `:skipif: True` to the `testoutput` block. ::
+To skip a *code-output-style* example, add `:skipif: True` to the `testcode` block. ::
 
     .. testcode::
         :skipif: True
@@ -228,15 +228,12 @@ To ignore parts of a *doctest-style* output, replace problematic sections with e
 
     >>> import ray
     >>> ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple")
-    Dataset(
-       num_rows=...,
-       schema={image: numpy.ndarray(shape=(32, 32, 3), dtype=uint8)}
-    )
+    Dataset(num_rows=..., schema=...)
 
-To ignore an output altogether, write a *code-block-style* snippet. Don't use `# doctest: +SKIP`.
+To ignore an output altogether, write a *code-output-style* snippet. Don't use `# doctest: +SKIP`.
 
-Ignoring *code-block-style* outputs
-===================================
+Ignoring *code-output-style* outputs
+========================================
 
 If parts of your output are long or non-deterministic, replace problematic sections
 with ellipses. ::
@@ -249,10 +246,7 @@ with ellipses. ::
 
     .. testoutput::
 
-        Dataset(
-           num_rows=...,
-           schema={image: numpy.ndarray(shape=(32, 32, 3), dtype=uint8)}
-        )
+        Dataset(num_rows=..., schema=...)
 
 If your output is nondeterministic and you want to display a sample output, add
 `:options: +MOCK`. ::

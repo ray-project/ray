@@ -28,15 +28,18 @@ namespace gcs {
 class MockGcsActorManager : public GcsActorManager {
  public:
   MockGcsActorManager(RuntimeEnvManager &runtime_env_manager,
-                      GcsFunctionManager &function_manager)
+                      GCSFunctionManager &function_manager,
+                      rpc::CoreWorkerClientPool &worker_client_pool)
       : GcsActorManager(
-            /*scheduler=*/nullptr,
+            /*scheduler=*/
+            nullptr,
             /*gcs_table_storage=*/nullptr,
+            /*io_context=*/mock_io_context_do_not_use_,
             /*gcs_publisher=*/nullptr,
             runtime_env_manager,
             function_manager,
             [](const ActorID &) {},
-            [](const rpc::Address &) { return nullptr; }) {}
+            worker_client_pool) {}
 
   MOCK_METHOD(void,
               HandleRegisterActor,
@@ -80,6 +83,8 @@ class MockGcsActorManager : public GcsActorManager {
                rpc::KillActorViaGcsReply *reply,
                rpc::SendReplyCallback send_reply_callback),
               (override));
+
+  instrumented_io_context mock_io_context_do_not_use_;
 };
 
 }  // namespace gcs

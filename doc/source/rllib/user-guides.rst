@@ -1,30 +1,29 @@
 .. include:: /_includes/rllib/we_are_hiring.rst
 
-.. include:: /_includes/rllib/new_api_stack.rst
-
 .. _rllib-guides:
 
-===========
 User Guides
 ===========
+
+.. include:: /_includes/rllib/new_api_stack.rst
 
 .. toctree::
     :hidden:
 
     rllib-advanced-api
     rllib-callback
-    rllib-models
-    rllib-saving-and-loading-algos-and-policies
+    checkpoints
+    metrics-logger
     single-agent-episode
+    connector-v2
     rllib-replay-buffers
     rllib-offline
-    rllib-rlmodule
+    rl-modules
     rllib-learner
     rllib-torch2x
     rllib-fault-tolerance
     rllib-dev
     scaling-guide
-
 
 .. _rllib-feature-guide:
 
@@ -55,17 +54,17 @@ RLlib Feature Guides
         :img-top: /rllib/images/rllib-logo.svg
         :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-        .. button-ref:: rllib-models
+        .. button-ref:: metrics-logger
 
-            Working with models, preprocessors and action distributions
+            Logging metrics and statistics from custom code
 
     .. grid-item-card::
         :img-top: /rllib/images/rllib-logo.svg
         :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-        .. button-ref:: rllib-saving-and-loading-algos-and-policies
+        .. button-ref:: checkpoints
 
-            Checkpointing your Algorithms and Policies, and Exporting your Models
+            Checkpointing your experiments and models
 
     .. grid-item-card::
         :img-top: /rllib/images/rllib-logo.svg
@@ -74,6 +73,14 @@ RLlib Feature Guides
         .. button-ref:: single-agent-episode
 
             How to process trajectories through episodes
+
+    .. grid-item-card::
+        :img-top: /rllib/images/rllib-logo.svg
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: connector-v2
+
+            How To Use Connectors and Connector pipelines?
 
     .. grid-item-card::
         :img-top: /rllib/images/rllib-logo.svg
@@ -97,7 +104,7 @@ RLlib Feature Guides
 
         .. button-ref:: rllib-dev
 
-            How to contribute to RLlib?
+            Contribute to RLlib
 
     .. grid-item-card::
         :img-top: /rllib/images/rllib-logo.svg

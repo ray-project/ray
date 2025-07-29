@@ -14,6 +14,8 @@
 
 #pragma once
 
+#include <type_traits>
+
 namespace ray {
 
 template <typename T>
@@ -27,5 +29,13 @@ constexpr bool AlwaysFalseValue = false;
 
 template <int N>
 constexpr bool AlwaysTrueValue = true;
+
+template <typename, typename = void>
+struct has_equal_operator : std::false_type {};
+
+template <typename T>
+struct has_equal_operator<T,
+                          std::void_t<decltype(std::declval<T>() == std::declval<T>())>>
+    : std::true_type {};
 
 }  // namespace ray

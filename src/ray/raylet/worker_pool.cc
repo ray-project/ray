@@ -16,9 +16,15 @@
 
 #include <algorithm>
 #include <boost/date_time/posix_time/posix_time.hpp>
+#include <deque>
 #include <fstream>
+#include <memory>
 #include <optional>
+#include <string>
+#include <tuple>
+#include <unordered_set>
 #include <utility>
+#include <vector>
 
 #include "absl/strings/str_split.h"
 #include "ray/common/constants.h"
@@ -36,12 +42,15 @@
 DEFINE_stats(worker_register_time_ms,
              "end to end latency of register a worker process.",
              (),
-             ({1, 10, 100, 1000, 10000}, ),
+             ({1, 10, 100, 1000, 10000}),
              ray::stats::HISTOGRAM);
+
+namespace ray {
+
+namespace raylet {
 
 namespace {
 
-// A helper function to get a worker from a list.
 std::shared_ptr<ray::raylet::WorkerInterface> GetWorker(
     const std::unordered_set<std::shared_ptr<ray::raylet::WorkerInterface>> &worker_pool,
     const std::shared_ptr<ray::ClientConnection> &connection) {
@@ -53,32 +62,31 @@ std::shared_ptr<ray::raylet::WorkerInterface> GetWorker(
   return nullptr;
 }
 
-// A helper function to remove a worker from a list. Returns true if the worker
-// was found and removed.
+std::shared_ptr<ray::raylet::WorkerInterface> GetWorker(
+    const std::unordered_set<std::shared_ptr<ray::raylet::WorkerInterface>> &worker_pool,
+    const WorkerID &worker_id) {
+  for (auto it = worker_pool.begin(); it != worker_pool.end(); it++) {
+    if ((*it)->WorkerId() == worker_id) {
+      return (*it);
+    }
+  }
+  return nullptr;
+}
+
+// Remove the worker from the set, returning true if it was present.
 bool RemoveWorker(
     std::unordered_set<std::shared_ptr<ray::raylet::WorkerInterface>> &worker_pool,
     const std::shared_ptr<ray::raylet::WorkerInterface> &worker) {
   return worker_pool.erase(worker) > 0;
 }
 
-// If both `ask` and `have` are set, they must match. If either of them is not set, it
-// is considered a match.
-bool OptionalMatches(const std::optional<bool> &ask, const std::optional<bool> &have) {
+// Return true if the optionals' values match or if either of them is empty.
+bool OptionalsMatchOrEitherEmpty(const std::optional<bool> &ask,
+                                 const std::optional<bool> &have) {
   return !ask.has_value() || !have.has_value() || ask.value() == have.value();
 }
 
-// Similar to OptionalMatches, but for JobID or ActorID.
-// TODO(ryw): use std::optional<IDType>.
-template <typename IDType>
-bool IdMatches(const IDType &ask, const IDType &have) {
-  return ask.IsNil() || have.IsNil() || ask == have;
-}
-
 }  // namespace
-
-namespace ray {
-
-namespace raylet {
 
 WorkerPool::WorkerPool(instrumented_io_context &io_service,
                        const NodeID &node_id,
@@ -89,12 +97,13 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
                        int min_worker_port,
                        int max_worker_port,
                        const std::vector<int> &worker_ports,
-                       std::shared_ptr<gcs::GcsClient> gcs_client,
+                       gcs::GcsClient &gcs_client,
                        const WorkerCommandMap &worker_commands,
                        std::string native_library_path,
                        std::function<void()> starting_worker_timeout_callback,
                        int ray_debugger_external,
-                       std::function<absl::Time()> get_time)
+                       std::function<absl::Time()> get_time,
+                       bool enable_resource_isolation)
     : worker_startup_token_counter_(0),
       io_service_(&io_service),
       node_id_(node_id),
@@ -106,7 +115,7 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
               // Overwrite the maximum concurrency.
               RayConfig::instance().worker_maximum_startup_concurrency()
               : maximum_startup_concurrency),
-      gcs_client_(std::move(gcs_client)),
+      gcs_client_(gcs_client),
       native_library_path_(std::move(native_library_path)),
       starting_worker_timeout_callback_(std::move(starting_worker_timeout_callback)),
       ray_debugger_external(ray_debugger_external),
@@ -115,7 +124,8 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
           std::min(num_prestarted_python_workers, maximum_startup_concurrency_)),
       num_prestart_python_workers(num_prestarted_python_workers),
       periodical_runner_(PeriodicalRunner::Create(io_service)),
-      get_time_(std::move(get_time)) {
+      get_time_(std::move(get_time)),
+      enable_resource_isolation_(enable_resource_isolation) {
   RAY_CHECK_GT(maximum_startup_concurrency_, 0);
   // We need to record so that the metric exists. This way, we report that 0
   // processes have started before a task runs on the node (as opposed to the
@@ -177,7 +187,12 @@ void WorkerPool::Start() {
   }
 
   if (RayConfig::instance().enable_worker_prestart()) {
-    PrestartDefaultCpuWorkers(Language::PYTHON, num_prestart_python_workers);
+    rpc::TaskSpec rpc_task_spec;
+    rpc_task_spec.set_language(Language::PYTHON);
+    rpc_task_spec.mutable_runtime_env_info()->set_serialized_runtime_env("{}");
+
+    TaskSpecification task_spec{std::move(rpc_task_spec)};
+    PrestartWorkersInternal(task_spec, num_prestart_python_workers);
   }
 }
 
@@ -195,26 +210,31 @@ void WorkerPool::SetRuntimeEnvAgentClient(
   runtime_env_agent_client_ = std::move(runtime_env_agent_client);
 }
 
-void WorkerPool::PopWorkerCallbackAsync(PopWorkerCallback callback,
-                                        std::shared_ptr<WorkerInterface> worker,
-                                        PopWorkerStatus status) {
-  // This method shouldn't be invoked when runtime env creation has failed because
-  // when runtime env is failed to be created, they are all
-  // invoking the callback immediately.
-  RAY_CHECK(status != PopWorkerStatus::RuntimeEnvCreationFailed);
+void WorkerPool::PopWorkerCallbackAsync(
+    PopWorkerCallback callback,
+    std::shared_ptr<WorkerInterface> worker,
+    PopWorkerStatus status,
+    const std::string &runtime_env_setup_error_message) {
   // Call back this function asynchronously to make sure executed in different stack.
   io_service_->post(
-      [this, callback = std::move(callback), worker = std::move(worker), status]() {
-        PopWorkerCallbackInternal(callback, worker, status);
+      [this,
+       callback = std::move(callback),
+       worker = std::move(worker),
+       status,
+       runtime_env_setup_error_message]() {
+        PopWorkerCallbackInternal(
+            callback, worker, status, runtime_env_setup_error_message);
       },
       "WorkerPool.PopWorkerCallback");
 }
 
-void WorkerPool::PopWorkerCallbackInternal(const PopWorkerCallback &callback,
-                                           std::shared_ptr<WorkerInterface> worker,
-                                           PopWorkerStatus status) {
+void WorkerPool::PopWorkerCallbackInternal(
+    const PopWorkerCallback &callback,
+    std::shared_ptr<WorkerInterface> worker,
+    PopWorkerStatus status,
+    const std::string &runtime_env_setup_error_message) {
   RAY_CHECK(callback);
-  auto used = callback(worker, status, /*runtime_env_setup_error_message=*/"");
+  auto used = callback(worker, status, runtime_env_setup_error_message);
   if (worker && !used) {
     // The invalid worker not used, restore it to worker pool.
     PushWorker(worker);
@@ -422,6 +442,12 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
                                   serialized_preload_python_modules);
   }
 
+  // Pass resource isolation flag to python worker.
+  if (language == Language::PYTHON && worker_type == rpc::WorkerType::WORKER) {
+    worker_command_args.emplace_back(absl::StrFormat(
+        "--enable-resource-isolation=%s", enable_resource_isolation_ ? "true" : "false"));
+  }
+
   // We use setproctitle to change python worker process title,
   // causing the process's /proc/PID/environ being empty.
   // Add `SPT_NOENV` env to prevent setproctitle breaking /proc/PID/environ.
@@ -500,8 +526,16 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
                               state);
 
   auto start = std::chrono::high_resolution_clock::now();
+  std::error_code ec;
   // Start a process and measure the startup time.
-  Process proc = StartProcess(worker_command_args, env);
+  Process proc = StartProcess(worker_command_args, env, ec);
+  if (ec) {
+    RAY_CHECK(ec.value() == E2BIG);
+    RAY_LOG(WARNING) << "E2BIG error occurred when starting worker process. Worker "
+                        "command arguments likely too long.";
+    *status = PopWorkerStatus::ArgumentListTooLong;
+    return {Process(), (StartupToken)-1};
+  }
   stats::NumWorkersStarted.Record(1);
   RAY_LOG(INFO) << "Started worker process with pid " << proc.GetId() << ", the token is "
                 << worker_startup_token_counter_;
@@ -613,7 +647,8 @@ void WorkerPool::MonitorPopWorkerRequestForRegistration(
 }
 
 Process WorkerPool::StartProcess(const std::vector<std::string> &worker_command_args,
-                                 const ProcessEnvironment &env) {
+                                 const ProcessEnvironment &env,
+                                 std::error_code &ec) {
   if (RAY_LOG_ENABLED(DEBUG)) {
     std::string debug_info;
     debug_info.append("Starting worker process with command:");
@@ -637,7 +672,6 @@ Process WorkerPool::StartProcess(const std::vector<std::string> &worker_command_
   }
 
   // Launch the process to create the worker.
-  std::error_code ec;
   std::vector<const char *> argv;
   for (const std::string &arg : worker_command_args) {
     argv.push_back(arg.c_str());
@@ -646,8 +680,10 @@ Process WorkerPool::StartProcess(const std::vector<std::string> &worker_command_
 
   Process child(argv.data(), io_service_, ec, /*decouple=*/false, env);
   if (!child.IsValid() || ec) {
-    // errorcode 24: Too many files. This is caused by ulimit.
-    if (ec.value() == 24) {
+    if (ec.value() == E2BIG) {
+      // Do nothing here; the error code `ec` will be propagated to the caller.
+    } else if (ec.value() == 24) {
+      // errorcode 24: Too many files. This is caused by ulimit.
       RAY_LOG(FATAL) << "Too many workers, failed to create a file. Try setting "
                      << "`ulimit -n <num_files>` then restart Ray.";
     } else {
@@ -796,37 +832,6 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
   return Status::OK();
 }
 
-Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker,
-                                  pid_t pid,
-                                  StartupToken worker_startup_token) {
-  RAY_CHECK(worker);
-  auto &state = GetStateForLanguage(worker->GetLanguage());
-  auto it = state.worker_processes.find(worker_startup_token);
-  if (it == state.worker_processes.end()) {
-    RAY_LOG(WARNING) << "Received a register request from an unknown token: "
-                     << worker_startup_token;
-    return Status::Invalid("Unknown worker");
-  }
-
-  auto process = Process::FromPid(pid);
-  worker->SetProcess(process);
-
-  auto &starting_process_info = it->second;
-  auto end = std::chrono::high_resolution_clock::now();
-  auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
-      end - starting_process_info.start_time);
-
-  // TODO(hjiang): Add tag to indicate whether port has been assigned beforehand.
-  STATS_worker_register_time_ms.Record(duration.count());
-  RAY_LOG(DEBUG) << "Registering worker " << worker->WorkerId() << " with pid " << pid
-                 << ", register cost: " << duration.count()
-                 << ", worker_type: " << rpc::WorkerType_Name(worker->GetWorkerType())
-                 << ", startup token: " << worker_startup_token;
-
-  state.registered_workers.insert(worker);
-  return Status::OK();
-}
-
 void WorkerPool::OnWorkerStarted(const std::shared_ptr<WorkerInterface> &worker) {
   auto &state = GetStateForLanguage(worker->GetLanguage());
   const StartupToken worker_startup_token = worker->GetStartupToken();
@@ -896,7 +901,12 @@ Status WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface> &driver
     if (!first_job_registered_ && RayConfig::instance().prestart_worker_first_driver() &&
         !RayConfig::instance().enable_worker_prestart()) {
       RAY_LOG(DEBUG) << "PrestartDefaultCpuWorkers " << num_prestart_python_workers;
-      PrestartDefaultCpuWorkers(Language::PYTHON, num_prestart_python_workers);
+      rpc::TaskSpec rpc_task_spec;
+      rpc_task_spec.set_language(Language::PYTHON);
+      rpc_task_spec.mutable_runtime_env_info()->set_serialized_runtime_env("{}");
+
+      TaskSpecification task_spec{std::move(rpc_task_spec)};
+      PrestartWorkersInternal(task_spec, num_prestart_python_workers);
     }
 
     // Invoke the `send_reply_callback` later to only finish driver
@@ -910,34 +920,12 @@ Status WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface> &driver
   return Status::OK();
 }
 
-Status WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface> &driver,
-                                  const rpc::JobConfig &job_config) {
-  auto &state = GetStateForLanguage(driver->GetLanguage());
-  state.registered_drivers.insert(std::move(driver));
-  const auto job_id = driver->GetAssignedJobId();
-  HandleJobStarted(job_id, job_config);
-
-  if (driver->GetLanguage() == Language::JAVA) {
-    return Status::OK();
-  }
-
-  if (!first_job_registered_ && RayConfig::instance().prestart_worker_first_driver() &&
-      !RayConfig::instance().enable_worker_prestart()) {
-    RAY_LOG(DEBUG) << "PrestartDefaultCpuWorkers " << num_prestart_python_workers;
-    PrestartDefaultCpuWorkers(Language::PYTHON, num_prestart_python_workers);
-  }
-  first_job_registered_ = true;
-  return Status::OK();
-}
-
 std::shared_ptr<WorkerInterface> WorkerPool::GetRegisteredWorker(
     const WorkerID &worker_id) const {
-  for (const auto &[_, state] : states_by_lang_) {
-    for (auto it = state.registered_workers.begin(); it != state.registered_workers.end();
-         it++) {
-      if ((*it)->WorkerId() == worker_id) {
-        return (*it);
-      }
+  for (const auto &entry : states_by_lang_) {
+    auto worker = GetWorker(entry.second.registered_workers, worker_id);
+    if (worker != nullptr) {
+      return worker;
     }
   }
   return nullptr;
@@ -949,6 +937,17 @@ std::shared_ptr<WorkerInterface> WorkerPool::GetRegisteredWorker(
     auto worker = GetWorker(entry.second.registered_workers, connection);
     if (worker != nullptr) {
       return worker;
+    }
+  }
+  return nullptr;
+}
+
+std::shared_ptr<WorkerInterface> WorkerPool::GetRegisteredDriver(
+    const WorkerID &worker_id) const {
+  for (const auto &entry : states_by_lang_) {
+    auto driver = GetWorker(entry.second.registered_drivers, worker_id);
+    if (driver != nullptr) {
+      return driver;
     }
   }
   return nullptr;
@@ -1223,7 +1222,7 @@ void WorkerPool::KillIdleWorker(const IdleWorkerEntry &entry) {
         }
 
         // In case of failed to send request, we remove it from pool as well
-        // TODO (iycheng): We should handle the grpc failure in better way.
+        // TODO(iycheng): We should handle the grpc failure in better way.
         if (!status.ok() || r.success()) {
           RAY_LOG(DEBUG) << "Removed worker " << idle_worker->WorkerId();
           auto &worker_state = GetStateForLanguage(idle_worker->GetLanguage());
@@ -1263,28 +1262,39 @@ WorkerUnfitForTaskReason WorkerPool::WorkerFitsForTask(
     return WorkerUnfitForTaskReason::OTHERS;
   }
 
-  if (!IdMatches(pop_worker_request.root_detached_actor_id,
-                 worker.GetRootDetachedActorId())) {
+  // For scheduling requests with a root detached actor ID, ensure that either the
+  // worker has _no_ detached actor ID or it matches the request.
+  // NOTE(edoakes): the job ID for a worker with no detached actor ID must still match,
+  // which is checked below. The pop_worker_request for a task rooted in a detached
+  // actor will have the job ID of the job that created the detached actor.
+  if (!pop_worker_request.root_detached_actor_id.IsNil() &&
+      !worker.GetRootDetachedActorId().IsNil() &&
+      pop_worker_request.root_detached_actor_id != worker.GetRootDetachedActorId()) {
     return WorkerUnfitForTaskReason::ROOT_MISMATCH;
   }
-  // Only compare job id for actors not rooted to a detached actor.
-  if (pop_worker_request.root_detached_actor_id.IsNil()) {
-    if (!IdMatches(pop_worker_request.job_id, worker.GetAssignedJobId())) {
-      return WorkerUnfitForTaskReason::ROOT_MISMATCH;
-    }
+
+  // Only consider workers that haven't been assigned to a job yet or have been assigned
+  // to the requested job.
+  const auto worker_job_id = worker.GetAssignedJobId();
+  if (!worker_job_id.IsNil() && pop_worker_request.job_id != worker_job_id) {
+    return WorkerUnfitForTaskReason::ROOT_MISMATCH;
   }
+
   // If the request asks for a is_gpu, and the worker is assigned a different is_gpu,
   // then skip it.
-  if (!OptionalMatches(pop_worker_request.is_gpu, worker.GetIsGpu())) {
+  if (!OptionalsMatchOrEitherEmpty(pop_worker_request.is_gpu, worker.GetIsGpu())) {
     return WorkerUnfitForTaskReason::OTHERS;
   }
   // If the request asks for a is_actor_worker, and the worker is assigned a different
   // is_actor_worker, then skip it.
-  if (!OptionalMatches(pop_worker_request.is_actor_worker, worker.GetIsActorWorker())) {
+  if (!OptionalsMatchOrEitherEmpty(pop_worker_request.is_actor_worker,
+                                   worker.GetIsActorWorker())) {
     return WorkerUnfitForTaskReason::OTHERS;
   }
-  // TODO(clarng): consider re-using worker that has runtime envionrment
-  // if the task doesn't require one.
+  // Skip workers with a mismatched runtime_env.
+  // Even if the task doesn't have a runtime_env specified, we cannot schedule it to a
+  // worker with a runtime_env because the task is expected to run in the base
+  // environment.
   if (worker.GetRuntimeEnvHash() != pop_worker_request.runtime_env_hash) {
     return WorkerUnfitForTaskReason::RUNTIME_ENV_MISMATCH;
   }
@@ -1328,7 +1338,13 @@ void WorkerPool::StartNewWorker(
       state.pending_start_requests.emplace_back(std::move(pop_worker_request));
     } else {
       DeleteRuntimeEnvIfPossible(serialized_runtime_env);
-      PopWorkerCallbackAsync(std::move(pop_worker_request->callback), nullptr, status);
+      // If we failed due to E2BIG, we provide a more specific error message.
+      const std::string error_msg = (status == PopWorkerStatus::ArgumentListTooLong)
+                                        ? "Worker command arguments too long. This can "
+                                          "be caused by a large runtime environment."
+                                        : "";
+      PopWorkerCallbackAsync(
+          std::move(pop_worker_request->callback), nullptr, status, error_msg);
     }
   };
 
@@ -1426,21 +1442,28 @@ std::shared_ptr<WorkerInterface> WorkerPool::FindAndPopIdleWorker(
     return false;
   };
   auto &state = GetStateForLanguage(pop_worker_request.language);
-  auto good_worker_it = std::find_if(idle_of_all_languages_.rbegin(),
-                                     idle_of_all_languages_.rend(),
-                                     worker_fits_for_task_fn);
-  if (good_worker_it != idle_of_all_languages_.rend()) {
-    state.idle.erase(good_worker_it->worker);
-    // We can't erase a reverse_iterator.
-    auto lit = good_worker_it.base();
-    lit--;
-    std::shared_ptr<WorkerInterface> worker = std::move(lit->worker);
-    idle_of_all_languages_.erase(lit);
-    return worker;
+  auto worker_it = std::find_if(idle_of_all_languages_.rbegin(),
+                                idle_of_all_languages_.rend(),
+                                worker_fits_for_task_fn);
+  if (worker_it == idle_of_all_languages_.rend()) {
+    RAY_LOG(DEBUG) << "No cached worker, cached workers skipped due to "
+                   << debug_string(skip_reason_count);
+    return nullptr;
   }
-  RAY_LOG(DEBUG) << "No cached worker, cached workers skipped due to "
-                 << debug_string(skip_reason_count);
-  return nullptr;
+
+  state.idle.erase(worker_it->worker);
+  // We can't erase a reverse_iterator.
+  auto lit = worker_it.base();
+  lit--;
+  std::shared_ptr<WorkerInterface> worker = std::move(lit->worker);
+  idle_of_all_languages_.erase(lit);
+
+  // Assigned workers should always match the request's job_id
+  // *except* if the task originates from a detached actor.
+  RAY_CHECK(worker->GetAssignedJobId().IsNil() ||
+            worker->GetAssignedJobId() == pop_worker_request.job_id ||
+            !pop_worker_request.root_detached_actor_id.IsNil());
+  return worker;
 }
 
 void WorkerPool::PopWorker(std::shared_ptr<PopWorkerRequest> pop_worker_request) {
@@ -1466,10 +1489,8 @@ void WorkerPool::PrestartWorkers(const TaskSpecification &task_spec,
                  << task_spec.DebugString() << " has runtime env "
                  << task_spec.HasRuntimeEnv();
   if ((task_spec.IsActorCreationTask() && !task_spec.DynamicWorkerOptions().empty()) ||
-      task_spec.HasRuntimeEnv() || task_spec.GetLanguage() != ray::Language::PYTHON) {
+      task_spec.GetLanguage() != ray::Language::PYTHON) {
     return;  // Not handled.
-    // TODO(architkulkarni): We'd eventually like to prestart workers with the same
-    // runtime env to improve initial startup performance.
   }
 
   auto &state = GetStateForLanguage(task_spec.GetLanguage());
@@ -1488,21 +1509,45 @@ void WorkerPool::PrestartWorkers(const TaskSpecification &task_spec,
                    << backlog_size << " and available CPUs " << num_available_cpus
                    << " num idle workers " << state.idle.size()
                    << " num registered workers " << state.registered_workers.size();
-    PrestartDefaultCpuWorkers(task_spec.GetLanguage(), num_needed);
+    PrestartWorkersInternal(task_spec, num_needed);
   }
 }
 
-void WorkerPool::PrestartDefaultCpuWorkers(ray::Language language, int64_t num_needed) {
-  // default workers don't use runtime env.
-  RAY_LOG(DEBUG) << "PrestartDefaultCpuWorkers " << num_needed;
-  for (int i = 0; i < num_needed; i++) {
-    PopWorkerStatus status;
-    StartWorkerProcess(language,
-                       rpc::WorkerType::WORKER,
-                       JobID::Nil(),
-                       &status,
-                       /*dynamic_options*/ {},
-                       CalculateRuntimeEnvHash("{}"));
+void WorkerPool::PrestartWorkersInternal(const TaskSpecification &task_spec,
+                                         int64_t num_needed) {
+  RAY_LOG(DEBUG) << "PrestartWorkers " << num_needed;
+  for (int ii = 0; ii < num_needed; ++ii) {
+    // Prestart worker with no runtime env.
+    if (IsRuntimeEnvEmpty(task_spec.SerializedRuntimeEnv())) {
+      PopWorkerStatus status;
+      StartWorkerProcess(
+          task_spec.GetLanguage(), rpc::WorkerType::WORKER, task_spec.JobId(), &status);
+      continue;
+    }
+
+    // Prestart worker with runtime env.
+    GetOrCreateRuntimeEnv(
+        task_spec.SerializedRuntimeEnv(),
+        task_spec.RuntimeEnvConfig(),
+        task_spec.JobId(),
+        [this, task_spec = task_spec](bool successful,
+                                      const std::string &serialized_runtime_env_context,
+                                      const std::string &setup_error_message) {
+          if (!successful) {
+            RAY_LOG(ERROR) << "Fails to create or get runtime env "
+                           << setup_error_message;
+            return;
+          }
+          PopWorkerStatus status;
+          StartWorkerProcess(task_spec.GetLanguage(),
+                             rpc::WorkerType::WORKER,
+                             task_spec.JobId(),
+                             &status,
+                             /*dynamic_options=*/{},
+                             task_spec.GetRuntimeEnvHash(),
+                             serialized_runtime_env_context,
+                             task_spec.RuntimeEnvInfo());
+        });
   }
 }
 
@@ -1543,10 +1588,11 @@ void WorkerPool::DisconnectWorker(const std::shared_ptr<WorkerInterface> &worker
     return;
   }
 
-  for (auto it = idle_of_all_languages_.begin(); it != idle_of_all_languages_.end();
-       it++) {
-    if (it->worker == worker) {
-      idle_of_all_languages_.erase(it);
+  for (auto idle_worker_iter = idle_of_all_languages_.begin();
+       idle_worker_iter != idle_of_all_languages_.end();
+       idle_worker_iter++) {
+    if (idle_worker_iter->worker == worker) {
+      idle_of_all_languages_.erase(idle_worker_iter);
       break;
     }
   }
@@ -1571,7 +1617,7 @@ inline bool WorkerPool::IsIOWorkerType(const rpc::WorkerType &worker_type) const
          worker_type == rpc::WorkerType::RESTORE_WORKER;
 }
 
-const std::vector<std::shared_ptr<WorkerInterface>> WorkerPool::GetAllRegisteredWorkers(
+std::vector<std::shared_ptr<WorkerInterface>> WorkerPool::GetAllRegisteredWorkers(
     bool filter_dead_workers, bool filter_io_workers) const {
   std::vector<std::shared_ptr<WorkerInterface>> workers;
 
@@ -1595,7 +1641,21 @@ const std::vector<std::shared_ptr<WorkerInterface>> WorkerPool::GetAllRegistered
   return workers;
 }
 
-const std::vector<std::shared_ptr<WorkerInterface>> WorkerPool::GetAllRegisteredDrivers(
+bool WorkerPool::IsWorkerAvailableForScheduling() const {
+  for (const auto &entry : states_by_lang_) {
+    for (const auto &worker : entry.second.registered_workers) {
+      if (!worker->IsRegistered()) {
+        continue;
+      }
+      if (worker->IsAvailableForScheduling()) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+std::vector<std::shared_ptr<WorkerInterface>> WorkerPool::GetAllRegisteredDrivers(
     bool filter_dead_drivers) const {
   std::vector<std::shared_ptr<WorkerInterface>> drivers;
 
@@ -1647,7 +1707,7 @@ void WorkerPool::WarnAboutSize() {
 
       auto error_data_ptr = gcs::CreateErrorTableData(
           "worker_pool_large", warning_message_str, get_time_());
-      RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
+      gcs_client_.Errors().AsyncReportJobError(error_data_ptr, nullptr);
     }
   }
 }

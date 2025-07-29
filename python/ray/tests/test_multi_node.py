@@ -6,15 +6,14 @@ import psutil
 import pytest
 
 import ray
+from ray._common.test_utils import wait_for_condition
 from ray._private import ray_constants
 from ray._private.test_utils import (
-    RayTestTimeoutException,
     get_error_message,
     init_error_pubsub,
     object_memory_usage,
     run_string_as_driver,
     run_string_as_driver_nonblocking,
-    wait_for_condition,
 )
 
 
@@ -395,14 +394,14 @@ print("success")
         # Wait until the process prints "success" and then return.
         start_time = time.time()
         while time.time() - start_time < timeout:
-            output_line = ray._private.utils.decode(
+            output_line = ray._common.utils.decode(
                 process_handle.stdout.readline()
             ).strip()
             print(output_line)
             if output_line == "success":
                 return
             time.sleep(1)
-        raise RayTestTimeoutException("Timed out waiting for process to print success.")
+        raise TimeoutError("Timed out waiting for process to print success.")
 
     # Make sure we can run this driver repeatedly, which means that resources
     # are getting released in between.
@@ -418,12 +417,7 @@ print("success")
 
 
 if __name__ == "__main__":
-    import pytest
-
     # Make subprocess happy in bazel.
     os.environ["LC_ALL"] = "en_US.UTF-8"
     os.environ["LANG"] = "en_US.UTF-8"
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

@@ -14,14 +14,18 @@
 
 #include "ray/gcs/gcs_server/gcs_health_check_manager.h"
 
+#include <memory>
+#include <string>
 #include <string_view>
+#include <utility>
+#include <vector>
 
 #include "ray/stats/metric.h"
 
 DEFINE_stats(health_check_rpc_latency_ms,
              "Latency of rpc request for health check.",
              (),
-             ({1, 10, 100, 1000, 10000}, ),
+             ({1, 10, 100, 1000, 10000}),
              ray::stats::HISTOGRAM);
 
 namespace ray::gcs {
@@ -137,7 +141,7 @@ void GcsHealthCheckManager::HealthCheckContext::StartHealthCheck() {
   // Check latest health status, see whether a new rpc message is needed.
   const auto now = absl::Now();
   absl::Time next_check_time =
-      lastest_known_healthy_timestamp_ + absl::Milliseconds(manager->period_ms_);
+      latest_known_healthy_timestamp_ + absl::Milliseconds(manager->period_ms_);
   if (now <= next_check_time) {
     // Update message is fresh enough, skip current check and schedule later.
     int64_t next_schedule_millisec = (next_check_time - now) / absl::Milliseconds(1);
@@ -148,7 +152,7 @@ void GcsHealthCheckManager::HealthCheckContext::StartHealthCheck() {
 
   // grpc context and health check response are dedicated to one single async request.
   auto context = std::make_shared<grpc::ClientContext>();
-  auto response = std::make_shared<::grpc::health::v1::HealthCheckResponse>();
+  auto response = std::make_shared<HealthCheckResponse>();
 
   // Get the context and response pointer before async call, since the order of function
   // arguments resolution is non-deterministic.

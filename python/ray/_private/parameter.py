@@ -3,11 +3,8 @@ import os
 from typing import Dict, List, Optional
 
 import ray._private.ray_constants as ray_constants
-from ray._private.utils import (
-    validate_node_labels,
-    check_ray_client_dependencies_installed,
-)
-
+from ray._private.resource_isolation_config import ResourceIsolationConfig
+from ray._private.utils import check_ray_client_dependencies_installed
 
 logger = logging.getLogger(__name__)
 
@@ -35,10 +32,6 @@ class RayParams:
         memory: Total available memory for workers requesting memory.
         object_store_memory: The amount of memory (in bytes) to start the
             object store with.
-        redis_max_memory: The max amount of memory (in bytes) to allow redis
-            to use, or None for no limit. Once the limit is exceeded, redis
-            will start LRU eviction of entries. This only applies to the
-            sharded redis tables (task and object tables).
         object_manager_port int: The port to use for the object manager.
         node_manager_port: The port to use for the node manager.
         gcs_server_port: The port to use for the GCS server.
@@ -55,10 +48,6 @@ class RayParams:
         ray_client_server_port: The port number the ray client server
             will bind on. If not set, the ray client server will not
             be started.
-        object_ref_seed: Used to seed the deterministic generation of
-            object refs. The same value can be used across multiple runs of the
-            same job in order to generate the object refs in a consistent
-            manner. However, the same ID should not be used for different jobs.
         redirect_output: True if stdout and stderr for non-worker
             processes should be redirected to files and false otherwise.
         external_addresses: The address of external Redis server to
@@ -75,6 +64,8 @@ class RayParams:
             from connecting to Redis if provided.
         plasma_directory: A directory where the Plasma memory mapped files will
             be created.
+        object_spilling_directory: The path to spill objects to. The same path will
+            be used as the object store fallback directory as well.
         worker_path: The path of the source code that will be run by the
             worker.
         setup_worker_path: The path of the Python file that will set up
@@ -94,9 +85,6 @@ class RayParams:
         dashboard_agent_listen_port: The port for dashboard agents to listen on
             for HTTP requests.
             Defaults to 52365.
-        dashboard_grpc_port: The port for the dashboard head process to listen
-            for gRPC on.
-            Defaults to random available port.
         runtime_env_agent_port: The port at which the runtime env agent
             listens to for HTTP.
             Defaults to random available port.
@@ -106,9 +94,6 @@ class RayParams:
             used by the raylet process.
         temp_dir: If provided, it will specify the root temporary
             directory for the Ray process. Must be an absolute path.
-        storage: Specify a URI for persistent cluster-wide storage. This storage path
-            must be accessible by all nodes of the cluster, otherwise an error will be
-            raised.
         runtime_env_dir_name: If provided, specifies the directory that
             will be created in the session dir to hold runtime_env files.
         include_log_monitor: If True, then start a log monitor to
@@ -132,6 +117,8 @@ class RayParams:
         session_name: The name of the session of the ray cluster.
         webui: The url of the UI.
         cluster_id: The cluster ID in hex string.
+        resource_isolation_config: settings for cgroupv2 based isolation of ray
+            system processes (defaults to no isolation if config not provided)
     """
 
     def __init__(
@@ -144,7 +131,6 @@ class RayParams:
         labels: Optional[Dict[str, str]] = None,
         memory: Optional[float] = None,
         object_store_memory: Optional[float] = None,
-        redis_max_memory: Optional[float] = None,
         redis_port: Optional[int] = None,
         redis_shard_ports: Optional[List[int]] = None,
         object_manager_port: Optional[int] = None,
@@ -157,7 +143,6 @@ class RayParams:
         max_worker_port: Optional[int] = None,
         worker_port_list: Optional[List[int]] = None,
         ray_client_server_port: Optional[int] = None,
-        object_ref_seed: Optional[int] = None,
         driver_mode=None,
         redirect_output: Optional[bool] = None,
         external_addresses: Optional[List[str]] = None,
@@ -166,6 +151,7 @@ class RayParams:
         redis_username: Optional[str] = ray_constants.REDIS_DEFAULT_USERNAME,
         redis_password: Optional[str] = ray_constants.REDIS_DEFAULT_PASSWORD,
         plasma_directory: Optional[str] = None,
+        object_spilling_directory: Optional[str] = None,
         worker_path: Optional[str] = None,
         setup_worker_path: Optional[str] = None,
         huge_pages: Optional[bool] = False,
@@ -176,11 +162,9 @@ class RayParams:
             int
         ] = ray_constants.DEFAULT_DASHBOARD_AGENT_LISTEN_PORT,
         runtime_env_agent_port: Optional[int] = None,
-        dashboard_grpc_port: Optional[int] = None,
         plasma_store_socket_name: Optional[str] = None,
         raylet_socket_name: Optional[str] = None,
         temp_dir: Optional[str] = None,
-        storage: Optional[str] = None,
         runtime_env_dir_name: Optional[str] = None,
         include_log_monitor: Optional[str] = None,
         autoscaling_config: Optional[str] = None,
@@ -196,6 +180,7 @@ class RayParams:
         webui: Optional[str] = None,
         cluster_id: Optional[str] = None,
         node_id: Optional[str] = None,
+        resource_isolation_config: Optional[ResourceIsolationConfig] = None,
     ):
         self.redis_address = redis_address
         self.gcs_address = gcs_address
@@ -204,7 +189,6 @@ class RayParams:
         self.memory = memory
         self.object_store_memory = object_store_memory
         self.resources = resources
-        self.redis_max_memory = redis_max_memory
         self.redis_port = redis_port
         self.redis_shard_ports = redis_shard_ports
         self.object_manager_port = object_manager_port
@@ -225,6 +209,7 @@ class RayParams:
         self.redis_username = redis_username
         self.redis_password = redis_password
         self.plasma_directory = plasma_directory
+        self.object_spilling_directory = object_spilling_directory
         self.worker_path = worker_path
         self.setup_worker_path = setup_worker_path
         self.huge_pages = huge_pages
@@ -232,14 +217,10 @@ class RayParams:
         self.dashboard_host = dashboard_host
         self.dashboard_port = dashboard_port
         self.dashboard_agent_listen_port = dashboard_agent_listen_port
-        self.dashboard_grpc_port = dashboard_grpc_port
         self.runtime_env_agent_port = runtime_env_agent_port
         self.plasma_store_socket_name = plasma_store_socket_name
         self.raylet_socket_name = raylet_socket_name
         self.temp_dir = temp_dir
-        self.storage = storage or os.environ.get(
-            ray_constants.RAY_STORAGE_ENVIRONMENT_VARIABLE
-        )
         self.runtime_env_dir_name = (
             runtime_env_dir_name or ray_constants.DEFAULT_RUNTIME_ENV_DIR_NAME
         )
@@ -249,7 +230,6 @@ class RayParams:
         self.metrics_export_port = metrics_export_port
         self.tracing_startup_hook = tracing_startup_hook
         self.no_monitor = no_monitor
-        self.object_ref_seed = object_ref_seed
         self.ray_debugger_external = ray_debugger_external
         self.env_vars = env_vars
         self.session_name = session_name
@@ -260,6 +240,12 @@ class RayParams:
         self._check_usage()
         self.cluster_id = cluster_id
         self.node_id = node_id
+
+        self.resource_isolation_config = resource_isolation_config
+        if not self.resource_isolation_config:
+            self.resource_isolation_config = ResourceIsolationConfig(
+                enable_resource_isolation=False
+            )
 
         # Set the internal config options for object reconstruction.
         if enable_object_reconstruction:
@@ -324,7 +310,6 @@ class RayParams:
             "dashboard": wrap_port(self.dashboard_port),
             "dashboard_agent_grpc": wrap_port(self.metrics_agent_port),
             "dashboard_agent_http": wrap_port(self.dashboard_agent_listen_port),
-            "dashboard_grpc": wrap_port(self.dashboard_grpc_port),
             "runtime_env_agent": wrap_port(self.runtime_env_agent_port),
             "metrics_export": wrap_port(self.metrics_export_port),
         }
@@ -454,8 +439,6 @@ class RayParams:
 
         if self.temp_dir is not None and not os.path.isabs(self.temp_dir):
             raise ValueError("temp_dir must be absolute path or None.")
-
-        validate_node_labels(self.labels)
 
     def _format_ports(self, pre_selected_ports):
         """Format the pre-selected ports information to be more human-readable."""

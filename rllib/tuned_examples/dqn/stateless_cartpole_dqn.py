@@ -9,7 +9,6 @@ parser = add_rllib_example_script_args(
     default_reward=350.0,
 )
 parser.set_defaults(
-    enable_new_api_stack=True,
     num_env_runners=3,
 )
 # Use `parser` to add your own custom command line options to this script
@@ -20,20 +19,21 @@ config = (
     DQNConfig()
     .environment(StatelessCartPole)
     .env_runners(
-        env_to_module_connector=lambda env: MeanStdFilter(),
+        env_to_module_connector=lambda env, spaces, device: MeanStdFilter(),
     )
     .training(
-        lr=0.0003,
+        lr=0.0005,
         train_batch_size_per_learner=32,
         replay_buffer_config={
             "type": "EpisodeReplayBuffer",
-            "capacity": 50000,
+            "capacity": 100000,
         },
         n_step=1,
         double_q=True,
         dueling=True,
         num_atoms=1,
-        epsilon=[(0, 1.0), (10000, 0.02)],
+        epsilon=[(0, 1.0), (20000, 0.02)],
+        burn_in_len=8,
     )
     .rl_module(
         # Settings identical to old stack.

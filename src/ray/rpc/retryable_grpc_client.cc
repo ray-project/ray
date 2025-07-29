@@ -14,6 +14,9 @@
 
 #include "ray/rpc/retryable_grpc_client.h"
 
+#include <memory>
+#include <utility>
+
 namespace ray::rpc {
 RetryableGrpcClient::~RetryableGrpcClient() {
   timer_.cancel();

@@ -1,5 +1,5 @@
-apt-transport-https 
-ca-certificates 
+apt-transport-https
+ca-certificates
 curl
 htop
 gnupg

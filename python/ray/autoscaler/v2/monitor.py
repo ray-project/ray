@@ -13,10 +13,13 @@ from typing import Optional
 
 import ray
 import ray._private.ray_constants as ray_constants
-import ray._private.utils
+from ray._common.ray_constants import (
+    LOGGING_ROTATE_BYTES,
+    LOGGING_ROTATE_BACKUP_COUNT,
+)
 from ray._private.event.event_logger import get_event_logger
 from ray._private.ray_logging import setup_component_logger
-from ray._private.usage.usage_lib import record_extra_usage_tag
+from ray._common.usage.usage_lib import record_extra_usage_tag
 from ray._private.worker import SCRIPT_MODE
 from ray._raylet import GcsClient
 from ray.autoscaler._private.constants import (
@@ -35,6 +38,7 @@ from ray.autoscaler.v2.metrics_reporter import AutoscalerMetricsReporter
 from ray.core.generated.autoscaler_pb2 import AutoscalingState
 from ray.core.generated.event_pb2 import Event as RayEvent
 from ray.core.generated.usage_pb2 import TagKey
+from ray._private import logging_utils
 
 try:
     import prometheus_client
@@ -241,18 +245,18 @@ if __name__ == "__main__":
         "--logging-rotate-bytes",
         required=False,
         type=int,
-        default=ray_constants.LOGGING_ROTATE_BYTES,
+        default=LOGGING_ROTATE_BYTES,
         help="Specify the max bytes for rotating "
         "log file, default is "
-        f"{ray_constants.LOGGING_ROTATE_BYTES} bytes.",
+        f"{LOGGING_ROTATE_BYTES} bytes.",
     )
     parser.add_argument(
         "--logging-rotate-backup-count",
         required=False,
         type=int,
-        default=ray_constants.LOGGING_ROTATE_BACKUP_COUNT,
+        default=LOGGING_ROTATE_BACKUP_COUNT,
         help="Specify the backup count of rotated log file, default is "
-        f"{ray_constants.LOGGING_ROTATE_BACKUP_COUNT}.",
+        f"{LOGGING_ROTATE_BACKUP_COUNT}.",
     )
     parser.add_argument(
         "--monitor-ip",
@@ -261,15 +265,44 @@ if __name__ == "__main__":
         default=None,
         help="The IP address of the machine hosting the monitor process.",
     )
+    parser.add_argument(
+        "--stdout-filepath",
+        required=False,
+        type=str,
+        default="",
+        help="The filepath to dump monitor stdout.",
+    )
+    parser.add_argument(
+        "--stderr-filepath",
+        required=False,
+        type=str,
+        default="",
+        help="The filepath to dump monitor stderr.",
+    )
 
     args = parser.parse_args()
+
+    # Disable log rotation for windows platform.
+    logging_rotation_bytes = args.logging_rotate_bytes if sys.platform != "win32" else 0
+    logging_rotation_backup_count = (
+        args.logging_rotate_backup_count if sys.platform != "win32" else 1
+    )
+
     setup_component_logger(
         logging_level=args.logging_level,
         logging_format=args.logging_format,
         log_dir=args.logs_dir,
         filename=args.logging_filename,
-        max_bytes=args.logging_rotate_bytes,
-        backup_count=args.logging_rotate_backup_count,
+        max_bytes=logging_rotation_bytes,
+        backup_count=logging_rotation_backup_count,
+    )
+
+    # Setup stdout/stderr redirect files if redirection enabled.
+    logging_utils.redirect_stdout_stderr_if_needed(
+        args.stdout_filepath,
+        args.stderr_filepath,
+        logging_rotation_bytes,
+        logging_rotation_backup_count,
     )
 
     logger.info(

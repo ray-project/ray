@@ -86,9 +86,31 @@ message LoggingConfig {
   string log_level = 2;
   string logs_dir = 3;
   bool enable_access_log = 4;
+  repeated string additional_log_standard_attrs = 5;
 }
 
 //[End] Logging Config
+
+//[Begin] ROUTING CONFIG
+message RequestRouterConfig {
+  // Cloudpickled request router definition.
+  bytes _serialized_request_router_cls = 1;
+
+  // The import path of the request router if user passed a string. It's the
+  // concatenation of the request router module and the request router name
+  // if user passed a callable.
+  string request_router_class = 2;
+
+  // Frequency at which the controller records routing stats for a replica.
+  double request_routing_stats_period_s = 3;
+
+  // Timeout after which a replica started a record routing stats without a response.
+  double request_routing_stats_timeout_s = 4;
+
+  // kwargs which Ray Serve passes to the router class' initialize_state method.
+  bytes request_router_kwargs = 5;
+}
+//[End] ROUTING CONFIG
 
 // Configuration options for a deployment, to be set by the user.
 message DeploymentConfig {
@@ -133,6 +155,9 @@ message DeploymentConfig {
   repeated string user_configured_option_names = 13;
 
   LoggingConfig logging_config = 14;
+
+  // The deployment's routing configuration.
+  RequestRouterConfig request_router_config = 19;
 }
 
 // Deployment language.
@@ -182,12 +207,17 @@ message EndpointSet {
   map<string, EndpointInfo> endpoints = 1;
 }
 
-// Now Actor handle can be transfered across language through ray call, but the list of
+// Now Actor handle can be transferred across language through ray call, but the list of
 // Actor handles can't. So we use this message wrapped a Actor name list to pass actor
 // list across language. When Actor handle list supports across language, this message can
 // be replaced.
 message ActorNameList {
   repeated string names = 1;
+}
+
+message DeploymentTargetInfo {
+  repeated string replica_names = 1;
+  bool is_available = 2;
 }
 
 message DeploymentVersion {

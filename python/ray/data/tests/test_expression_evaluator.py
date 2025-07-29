@@ -33,8 +33,13 @@ def sample_data(tmpdir_factory):
         "is_student": [False, True, False, False, True, None],  # Including a None value
     }
 
+    # Define the schema explicitly
+    schema = pa.schema(
+        [("age", pa.float64()), ("city", pa.string()), ("is_student", pa.bool_())]
+    )
+
     # Create a PyArrow table from the sample data
-    table = pa.table(data)
+    table = pa.table(data, schema=schema)
 
     # Use tmpdir_factory to create a temporary directory
     temp_dir = tmpdir_factory.mktemp("data")
@@ -44,7 +49,7 @@ def sample_data(tmpdir_factory):
     pq.write_table(table, str(parquet_file))
 
     # Yield the path to the Parquet file for testing
-    yield str(parquet_file)
+    yield str(parquet_file), schema
 
 
 expressions_and_expected_data = [
@@ -290,13 +295,13 @@ expressions_and_expected_data = [
 @pytest.mark.parametrize("expression, expected_data", expressions_and_expected_data)
 def test_filter(sample_data, expression, expected_data):
     """Test the filter functionality of the ExpressionEvaluator."""
-    # Instantiate the ExpressionEvaluator with valid column names
-    evaluator = ExpressionEvaluator()
 
-    filters = evaluator.get_filters(expression)
+    # Instantiate the ExpressionEvaluator with valid column names
+    sample_data_path, _ = sample_data
+    filters = ExpressionEvaluator.get_filters(expression=expression)
 
     # Read the table from the Parquet file with the applied filters
-    filtered_table = pq.read_table(sample_data, filters=filters)
+    filtered_table = pq.read_table(sample_data_path, filters=filters)
 
     # Convert the filtered table back to a list of dictionaries for comparison
     result = filtered_table.to_pandas().to_dict(orient="records")
@@ -313,12 +318,23 @@ def test_filter(sample_data, expression, expected_data):
     assert result_converted == expected_data
 
 
+def test_filter_equal_negative_number():
+    df = pd.DataFrame.from_dict(
+        {"A": [-1, -1, 1, 2, -1, 3, 4, 5], "B": [-1, -1, 1, 2, -1, 3, 4, 5]}
+    )
+    expression = ExpressionEvaluator.get_filters(expression="A == -1")
+    result = pa.table(df).filter(expression)
+    result_df = result.to_pandas().to_dict(orient="records")
+    expected = df[df["A"] == -1].to_dict(orient="records")
+    assert result_df == expected
+
+
 def test_filter_bad_expression(sample_data):
-    evaluator = ExpressionEvaluator()
     with pytest.raises(ValueError, match="Invalid syntax in the expression"):
-        evaluator.get_filters("bad filter")
+        ExpressionEvaluator.get_filters(expression="bad filter")
 
-    filters = evaluator.get_filters("hi > 3")
+    filters = ExpressionEvaluator.get_filters(expression="hi > 3")
 
+    sample_data_path, _ = sample_data
     with pytest.raises(pa.ArrowInvalid):
-        pq.read_table(sample_data, filters=filters)
+        pq.read_table(sample_data_path, filters=filters)

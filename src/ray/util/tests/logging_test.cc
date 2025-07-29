@@ -18,6 +18,8 @@
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
+#include <string>
+#include <vector>
 
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_split.h"
@@ -25,10 +27,11 @@
 #include "gtest/gtest.h"
 #include "nlohmann/json.hpp"
 #include "ray/common/status.h"
+#include "ray/util/env.h"
 #include "ray/util/filesystem.h"
 #include "ray/util/util.h"
 
-using namespace testing;
+using namespace testing;  // NOLINT
 using json = nlohmann::json;
 
 namespace ray {
@@ -188,7 +191,7 @@ TEST(PrintLogTest, TestRayLogEveryMs) {
 }
 
 TEST(PrintLogTest, TestTextLogging) {
-  setEnv("RAY_BACKEND_LOG_JSON", "0");
+  SetEnv("RAY_BACKEND_LOG_JSON", "0");
   RayLog::StartRayLog("/tmp/gcs", RayLogLevel::INFO, /*log_filepath=*/"");
   CaptureStdout();
   RAY_LOG(INFO).WithField("key1", "value1").WithField("key2", "value2")
@@ -201,11 +204,11 @@ TEST(PrintLogTest, TestTextLogging) {
             std::string::npos);
 
   RayLog::ShutDownRayLog();
-  unsetEnv("RAY_BACKEND_LOG_JSON");
+  UnsetEnv("RAY_BACKEND_LOG_JSON");
 }
 
 TEST(PrintLogTest, TestJSONLogging) {
-  setEnv("RAY_BACKEND_LOG_JSON", "1");
+  SetEnv("RAY_BACKEND_LOG_JSON", "1");
   RayLog::StartRayLog("/tmp/raylet", RayLogLevel::INFO, /*log_filepath=*/"");
   CaptureStdout();
   RAY_LOG(DEBUG) << "this is not logged";
@@ -236,7 +239,7 @@ TEST(PrintLogTest, TestJSONLogging) {
   ASSERT_TRUE(log_lines[3].find("\xC3\x28") != std::string::npos);
 
   RayLog::ShutDownRayLog();
-  unsetEnv("RAY_BACKEND_LOG_JSON");
+  UnsetEnv("RAY_BACKEND_LOG_JSON");
 }
 
 #endif /* GTEST_HAS_STREAM_REDIRECTION */

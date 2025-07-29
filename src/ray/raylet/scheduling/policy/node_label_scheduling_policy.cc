@@ -28,7 +28,7 @@ scheduling::NodeID NodeLabelSchedulingPolicy::Schedule(
   RAY_CHECK(scheduling_strategy.has_node_label_scheduling_strategy());
   const auto &node_label_scheduling_strategy =
       scheduling_strategy.node_label_scheduling_strategy();
-  // 1. Selet feasible nodes
+  // 1. Select feasible nodes
   auto hard_match_nodes = SelectFeasibleNodes(resource_request);
   if (hard_match_nodes.empty()) {
     return scheduling::NodeID::Nil();

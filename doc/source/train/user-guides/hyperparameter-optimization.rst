@@ -3,127 +3,207 @@
 Hyperparameter Tuning with Ray Tune
 ===================================
 
-Hyperparameter tuning with :ref:`Ray Tune <tune-main>` is natively supported with Ray Train.
+.. important::
+    This user guide shows how to integrate Ray Train and Ray Tune to tune over distributed hyperparameter runs
+    for the revamped Ray Train V2 available starting from Ray 2.43 by enabling the environment variable ``RAY_TRAIN_V2_ENABLED=1``.
+    **This user guide assumes that the environment variable has been enabled.**
+
+    Please see :ref:`here <train-tune-deprecation>` for information about the deprecation and migration.
 
 
-.. https://docs.google.com/drawings/d/1yMd12iMkyo6DGrFoET1TIlKfFnXX9dfh2u3GSdTz6W4/edit
+Ray Train can be used together with Ray Tune to do hyperparameter sweeps of distributed training runs.
+This is often useful when you want to do a small sweep over critical hyperparameters,
+before launching a run with the best performing hyperparameters on all available cluster resources for a long duration.
 
-.. figure:: ../images/train-tuner.svg
+Quickstart
+----------
+
+In the example below:
+
+* :class:`~ray.tune.Tuner` launches the tuning job, which runs trials of ``train_driver_fn`` with different hyperparameter configurations.
+* ``train_driver_fn``, which (1) takes in a hyperparameter configuration, (2) instantiates a ``TorchTrainer`` (or some other framework trainer), and (3) launches the distributed training job.
+* :class:`~ray.train.ScalingConfig` defines the number of training workers and resources per worker for a single Ray Train run.
+* ``train_fn_per_worker`` is the Python code that executes on each distributed training worker for a trial.
+
+.. literalinclude:: ../doc_code/train_tune_interop.py
+    :language: python
+    :start-after: __quickstart_start__
+    :end-before: __quickstart_end__
+
+
+What does Ray Tune provide?
+---------------------------
+
+Ray Tune provides utilities for:
+
+* :ref:`Defining hyperparameter search spaces <tune-search-space-tutorial>` and :ref:`launching multiple trials concurrently <tune-parallel-experiments-guide>` on a Ray cluster
+* :ref:`Using search algorithms <tune-search-alg>`
+* :ref:`Early stopping runs based on metrics <tune-stopping-guide>`
+
+This user guide only focuses on the integration layer between Ray Train and Ray Tune. For more details on how to use Ray Tune, refer to the :ref:`Ray Tune documentation <tune-main>`.
+
+
+Configuring resources for multiple trials
+-----------------------------------------
+
+Ray Tune launches multiple trials which :ref:`run a user-defined function in a remote Ray actor <tune-function-api>`, where each trial gets a different sampled hyperparameter configuration.
+
+When using Ray Tune by itself, trials do computation directly inside the Ray actor. For example, each trial could request 1 GPU and do some single-process model
+training within the remote actor itself. When using Ray Train inside Ray Tune functions, the Tune trial is actually not doing extensive computation inside this actor
+-- instead it just acts as a driver process to launch and monitor the Ray Train workers running elsewhere.
+
+Ray Train requests its own resources via the :class:`~ray.train.ScalingConfig`.
+See :ref:`train_scaling_config` for more details.
+
+.. figure:: ../images/hyperparameter_optimization/train_without_tune.png
     :align: center
 
-    The `Tuner` will take in a `Trainer` and execute multiple training runs, each with different hyperparameter configurations.
+    A single Ray Train run to showcase how using Ray Tune in the next figure just adds a layer of hierarchy to this tree of processes.
 
-Key Concepts
-------------
 
-There are a number of key concepts when doing hyperparameter optimization with a :class:`~ray.tune.Tuner`:
+.. figure:: ../images/hyperparameter_optimization/train_tune_interop.png
+    :align: center
 
-* A set of hyperparameters you want to tune in a *search space*.
-* A *search algorithm* to effectively optimize your parameters and optionally use a
-  *scheduler* to stop searches early and speed up your experiments.
-* The *search space*, *search algorithm*, *scheduler*, and *Trainer* are passed to a Tuner,
-  which runs the hyperparameter tuning workload by evaluating multiple hyperparameters in parallel.
-* Each individual hyperparameter evaluation run is called a *trial*.
-* The Tuner returns its results as a :class:`~ray.tune.ResultGrid`.
+    Example of Ray Train runs being launched from within Ray Tune trials.
 
-.. note::
-   Tuners can also be used to launch hyperparameter tuning without using Ray Train. See
-   :ref:`the Ray Tune documentation <tune-main>` for more guides and examples.
 
-Basic usage
------------
+Limit the number of concurrent Ray Train runs
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-You can take an existing :class:`Trainer <ray.train.base_trainer.BaseTrainer>` and simply
-pass it into a :class:`~ray.tune.Tuner`.
+Ray Train runs can only start when resources for all workers can be acquired at once.
+This means that multiple Tune trials spawning Train runs will be competing for the logical resources available in the Ray cluster.
 
-.. literalinclude:: ../doc_code/tuner.py
+If there is a limiting cluster resource such as GPUs, then it won't be possible to run training for all hyperparameter configurations concurrently.
+Since the cluster only has enough resources for a handful of trials to run concurrently,
+set :class:`tune.TuneConfig(max_concurrent_trials) <ray.tune.TuneConfig>` on the Tuner to limit the number of “in-flight” Train runs so that no trial is being starved of resources.
+
+.. literalinclude:: ../doc_code/train_tune_interop.py
     :language: python
-    :start-after: __basic_start__
-    :end-before: __basic_end__
+    :start-after: __max_concurrent_trials_start__
+    :end-before: __max_concurrent_trials_end__
 
 
+As a concrete example, consider a fixed sized cluster with 128 CPUs and 8 GPUs.
 
-How to configure a Tuner?
--------------------------
+* The ``Tuner(param_space)`` sweeps over 4 hyperparameter configurations with a grid search: ``param_space={“train_loop_config”: {“batch_size”: tune.grid_search([8, 16, 32, 64])}}``
+* Each Ray Train run is configured to train with 4 GPU workers: ``ScalingConfig(num_workers=4, use_gpu=True)``. Since there are only 8 GPUs, only 2 Train runs can acquire their full set of resources at a time.
+* However, since there are many CPUs available in the cluster, the 4 total Ray Tune trials (which default to requesting 1 CPU) can be launched immediately.
+  This results in 2 extra Ray Tune trial processes being launched, even though their inner Ray Train run just waits for resources until one of the other trials finishes.
+  This introduces some spammy log messages when Train waits for resources. There may also be an excessive number of Ray Tune trial processes if the total number of hyperparameter configurations is large.
+* To fix this issue, set ``Tuner(tune_config=tune.TuneConfig(max_concurrent_trials=2))``. Now, only two Ray Tune trial processes will be running at a time.
+  This number can be calculated based on the limiting cluster resource and the amount of that resources required by each trial.
 
-There are two main configuration objects that can be passed into a Tuner: the :class:`TuneConfig <ray.tune.tune_config.TuneConfig>` and the :class:`RunConfig <ray.train.RunConfig>`.
 
-The :class:`TuneConfig <ray.tune.TuneConfig>` contains tuning specific settings, including:
+Advanced: Set Train driver resources
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-- the tuning algorithm to use
-- the metric and mode to rank results
-- the amount of parallelism to use
+The default Train driver runs as a Ray Tune function with 1 CPU. Ray Tune will schedule these functions to run anywhere on the cluster that has free logical CPU resources.
 
-Here are some common configurations for `TuneConfig`:
+**Recommendation:** If you are launching longer-running training jobs or using spot instances, these Tune functions which act as the Ray Train driver process should be run on “safe nodes” that are at lower risk of going down. For example, they should not be scheduled to run on preemptible spot instances and should not be colocated with training workers. This could be the head node or a dedicated CPU node in your cluster.
 
-.. literalinclude:: ../doc_code/tuner.py
+This is because the Ray Train driver process is responsible for handling fault tolerance of the worker processes, which are more likely to error. Nodes that are running Train workers can crash due to spot preemption or other errors that come up due to the user-defined model training code.
+
+* If a Train worker node dies, the Ray Train driver process that is still alive on a different node can gracefully handle the error.
+* On the other hand, if the driver process dies, then all Ray Train workers will ungracefully exit and some of the run state may not be committed fully.
+
+One way to achieve this behavior is to set custom resources on certain node types and configure the Tune functions to request those resources.
+
+.. literalinclude:: ../doc_code/train_tune_interop.py
     :language: python
-    :start-after: __tune_config_start__
-    :end-before: __tune_config_end__
+    :start-after: __trainable_resources_start__
+    :end-before: __trainable_resources_end__
 
-See the :class:`TuneConfig API reference <ray.tune.tune_config.TuneConfig>` for more details.
 
-The :class:`RunConfig <ray.train.RunConfig>` contains configurations that are more generic than tuning specific settings.
-This includes:
+Reporting metrics and checkpoints
+---------------------------------
 
-- failure/retry configurations
-- verbosity levels
-- the name of the experiment
-- the logging directory
-- checkpoint configurations
-- custom callbacks
-- integration with cloud storage
+Both Ray Train and Ray Tune provide utilities to help upload and track checkpoints via the :func:`ray.train.report <ray.train.report>` and :func:`ray.tune.report <ray.tune.report>` APIs.
+See the :ref:`train-checkpointing` user guide for more details.
 
-Below we showcase some common configurations of :class:`RunConfig <ray.train.RunConfig>`.
+If the Ray Train workers report checkpoints, saving another Ray Tune checkpoint at the Train driver level is not needed because it does not hold any extra training state. The Ray Train driver process will already periodically snapshot its status to the configured storage_path, which is further described in the next section on fault tolerance.
 
-.. literalinclude:: ../doc_code/tuner.py
+In order to access the checkpoints from the Tuner output, you can append the checkpoint path as a metric. The provided :class:`~ray.tune.integration.ray_train.TuneReportCallback`
+does this by propagating reported Ray Train results over to Ray Tune, where the checkpoint path is attached as a separate metric.
+
+
+Advanced: Fault Tolerance
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+In the event that the Ray Tune trials running the Ray Train driver process crash, you can enable trial fault tolerance on the Ray Tune side via:
+:class:`ray.tune.Tuner(run_config=ray.tune.RunConfig(failure_config)) <ray.tune.FailureConfig>`.
+
+Fault tolerance on the Ray Train side is configured and handled separately. See the :ref:`train-fault-tolerance` user guide for more details.
+
+.. literalinclude:: ../doc_code/train_tune_interop.py
     :language: python
-    :start-after: __run_config_start__
-    :end-before: __run_config_end__
-
-See the :class:`RunConfig API reference <ray.train.RunConfig>` for more details.
+    :start-after: __fault_tolerance_start__
+    :end-before: __fault_tolerance_end__
 
 
-Search Space configuration
---------------------------
+.. _train-with-tune-callbacks:
 
-A `Tuner` takes in a `param_space` argument where you can define the search space
-from which hyperparameter configurations will be sampled.
+Advanced: Using Ray Tune callbacks
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Depending on the model and dataset, you may want to tune:
+Ray Tune callbacks should be passed into the :class:`ray.tune.RunConfig(callbacks) <ray.tune.RunConfig>` at the Tuner level. 
 
-- The training batch size
-- The learning rate for deep learning training (e.g., image classification)
-- The maximum depth for tree-based models (e.g., XGBoost)
+For Ray Train users that depend on behavior of built-in or custom Ray Tune callbacks, it's possible to use them by running Ray Train as a single trial Tune run
+and passing in the callbacks to the Tuner.
 
-You can use a Tuner to tune most arguments and configurations for Ray Train, including but
-not limited to:
-
-- Ray :class:`Datasets <ray.data.Dataset>`
-- :class:`~ray.train.ScalingConfig`
-- and other hyperparameters.
+If any callback functionality depends on reported metrics, make sure to pass the :class:`ray.tune.integration.ray_train.TuneReportCallback` to the trainer callbacks,
+which propagates results to the Tuner. 
 
 
-Read more about :ref:`Tune search spaces here <tune-search-space-tutorial>`.
+.. testcode::
+    :skipif: True
 
-Train - Tune gotchas
---------------------
+    import ray.tune
+    from ray.tune.integration.ray_train import TuneReportCallback
+    from ray.tune.logger import TBXLoggerCallback
 
-There are a couple gotchas about parameter specification when using Tuners with Trainers:
 
-- By default, configuration dictionaries and config objects will be deep-merged.
-- Parameters that are duplicated in the Trainer and Tuner will be overwritten by the Tuner ``param_space``.
-- **Exception:** all arguments of the :class:`RunConfig <ray.train.RunConfig>` and :class:`TuneConfig <ray.tune.tune_config.TuneConfig>` are inherently un-tunable.
+    def train_driver_fn(config: dict):
+        trainer = TorchTrainer(
+            ...,
+            run_config=ray.train.RunConfig(..., callbacks=[TuneReportCallback()])
+        )
+        trainer.fit()
 
-See :doc:`/tune/tutorials/tune_get_data_in_and_out` for an example.
 
-Advanced Tuning
----------------
+    tuner = ray.tune.Tuner(
+        train_driver_fn,
+        run_config=ray.tune.RunConfig(callbacks=[TBXLoggerCallback()])
+    )
 
-Tuners also offer the ability to tune over different data preprocessing steps and
-different training/validation datasets, as shown in the following snippet.
 
-.. literalinclude:: ../doc_code/tuner.py
-    :language: python
-    :start-after: __tune_dataset_start__
-    :end-before: __tune_dataset_end__
+.. _train-tune-deprecation:
+
+``Tuner(trainer)`` API Deprecation 
+----------------------------------
+
+The ``Tuner(trainer)`` API which directly takes in a Ray Train trainer instance is deprecated as of Ray 2.43 and will be removed in a future release. 
+
+Motivation
+~~~~~~~~~~
+
+This API change provides several benefits:
+
+1. **Better separation of concerns**: Decouples Ray Train and Ray Tune responsibilities
+2. **Improved configuration experience**: Makes hyperparameter and run configuration more explicit and flexible
+
+Migration Steps
+~~~~~~~~~~~~~~~
+
+To migrate from the old ``Tuner(trainer)`` API to the new pattern:
+
+1. Enable the environment variable ``RAY_TRAIN_V2_ENABLED=1``.
+2. Replace ``Tuner(trainer)`` with a function-based approach where Ray Train is launched inside a Tune trial.
+3. Move your training logic into a driver function that Tune will call with different hyperparameters.
+
+Additional Resources
+~~~~~~~~~~~~~~~~~~~~
+
+* `Train V2 REP <https://github.com/ray-project/enhancements/blob/main/reps/2024-10-18-train-tune-api-revamp/2024-10-18-train-tune-api-revamp.md>`_: Technical details about the API change
+* `Train V2 Migration Guide <https://github.com/ray-project/ray/issues/49454>`_: Full migration guide for Train V2
+* :ref:`train-tune-deprecated-api`: Documentation for the old API
+

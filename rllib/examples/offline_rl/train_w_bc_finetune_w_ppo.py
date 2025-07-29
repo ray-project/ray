@@ -19,7 +19,7 @@ This example:
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack`
+`python [script file name].py`
 
 For debugging, use the following additional command line options
 `--no-tune --num-env-runners=0`
@@ -97,7 +97,6 @@ from ray.rllib.utils.test_utils import (
 
 parser = add_rllib_example_script_args()
 parser.set_defaults(
-    enable_new_api_stack=True,
     env="CartPole-v1",
     checkpoint_freq=1,
 )
@@ -262,6 +261,7 @@ if __name__ == "__main__":
     base_config = (
         PPOConfig()
         .environment(args.env)
+        .env_runners(create_env_on_local_worker=True)
         .training(
             # Keep lr relatively low at the beginning to avoid catastrophic forgetting.
             lr=0.00002,

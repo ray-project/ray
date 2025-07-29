@@ -57,3 +57,4 @@ uvicorn
 validators
 wandb
 xgboost
+albumentations

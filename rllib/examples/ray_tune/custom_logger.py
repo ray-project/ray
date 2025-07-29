@@ -50,7 +50,7 @@ Closing
 
 """
 
-from ray import air, tune
+from ray import tune
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.utils.metrics import (
@@ -126,7 +126,7 @@ if __name__ == "__main__":
     results = tune.Tuner(
         config.algo_class,
         param_space=config,
-        run_config=air.RunConfig(
+        run_config=tune.RunConfig(
             stop=stop,
             verbose=2,
             # Plugin our own logger.

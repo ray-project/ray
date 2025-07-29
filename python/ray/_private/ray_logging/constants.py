@@ -1,7 +1,8 @@
 from enum import Enum
 
 # A set containing the standard attributes of a LogRecord. This is used to
-# help us determine which attributes constitute Ray or user-provided context.
+# help us determine which attributes constitute Ray or user-provided context. It is
+# also be used to determine whether a attribute is a standard python logging attribute.
 # http://docs.python.org/library/logging.html#logrecord-attributes
 LOGRECORD_STANDARD_ATTRS = {
     "args",

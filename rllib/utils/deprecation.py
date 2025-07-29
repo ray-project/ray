@@ -40,7 +40,7 @@ def deprecation_warning(
     )
 
     if error:
-        if not type(error) is bool and issubclass(error, Exception):
+        if not isinstance(error, bool) and issubclass(error, Exception):
             # error is an Exception
             raise error(msg)
         else:

@@ -121,6 +121,13 @@ class MultiAgentChess(MultiAgentEnv):
             self.config["random_start"] = self.config["random_start"]
         except KeyError:
             self.config["random_start"] = 4
+
+        # If these important attributes are not set, try to infer them.
+        if not self.agents:
+            self.agents = list(self._agent_ids)
+        if not self.possible_agents:
+            self.possible_agents = self.agents.copy()
+
         # Get first observation space, assuming all agents have equal space
         self.observation_space = self.env.observation_space(self.env.agents[0])
 

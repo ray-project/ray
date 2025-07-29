@@ -7,12 +7,13 @@ from typing import Dict
 
 import grpc
 import pytest
+from ray._common.test_utils import wait_for_condition
 import requests
 
 import ray
 import ray._private.ray_constants as ray_constants
 from ray import serve
-from ray._private.test_utils import generate_system_config_map, wait_for_condition
+from ray._private.test_utils import generate_system_config_map
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
 from ray.serve.schema import HTTPOptionsSchema, ServeInstanceDetails
 from ray.serve.tests.conftest import *  # noqa: F401 F403
@@ -22,7 +23,6 @@ from ray.tests.conftest import *  # noqa: F401 F403
 TEST_ON_DARWIN = os.environ.get("TEST_ON_DARWIN", "0") == "1"
 
 
-SERVE_AGENT_URL = "http://localhost:52365/api/serve/applications/"
 SERVE_HEAD_URL = "http://localhost:8265/api/serve/applications/"
 
 
@@ -55,7 +55,6 @@ def test_serve_namespace(ray_start_stop):
     )
     print("Deployments are live and reachable over HTTP.\n")
 
-    ray.init(address="auto", namespace="serve")
     my_app_status = serve.status().applications["my_app"]
     assert (
         len(my_app_status.deployments) == 2
@@ -63,8 +62,6 @@ def test_serve_namespace(ray_start_stop):
     )
     print("Successfully retrieved deployment statuses with Python API.")
     print("Shutting down Python API.")
-    serve.shutdown()
-    ray.shutdown()
 
 
 @pytest.mark.parametrize(
@@ -233,24 +230,23 @@ def short_serve_kv_timeout(monkeypatch):
     ],
     indirect=True,
 )
-@pytest.mark.parametrize("url", [SERVE_AGENT_URL, SERVE_HEAD_URL])
 def test_get_applications_while_gcs_down(
-    short_serve_kv_timeout, ray_start_regular_with_external_redis, url
+    short_serve_kv_timeout, ray_start_regular_with_external_redis
 ):
     # Test serve REST API availability when the GCS is down.
     serve.start(detached=True)
 
-    get_response = requests.get(url, timeout=15)
+    get_response = requests.get(SERVE_HEAD_URL, timeout=15)
     assert get_response.status_code == 200
     ray._private.worker._global_node.kill_gcs_server()
 
     for _ in range(10):
-        assert requests.get(url, timeout=30).status_code == 200
+        assert requests.get(SERVE_HEAD_URL, timeout=30).status_code == 200
 
     ray._private.worker._global_node.start_gcs_server()
 
     for _ in range(10):
-        assert requests.get(url, timeout=30).status_code == 200
+        assert requests.get(SERVE_HEAD_URL, timeout=30).status_code == 200
 
     serve.shutdown()
 
@@ -258,11 +254,10 @@ def test_get_applications_while_gcs_down(
 @pytest.mark.skipif(
     sys.platform == "darwin" and not TEST_ON_DARWIN, reason="Flaky on OSX."
 )
-@pytest.mark.parametrize("url", [SERVE_AGENT_URL, SERVE_HEAD_URL])
-def test_target_capacity_field(ray_start_stop, url: str):
+def test_target_capacity_field(ray_start_stop):
     """Test that the `target_capacity` field is always populated as expected."""
 
-    raw_json = requests.get(url).json()
+    raw_json = requests.get(SERVE_HEAD_URL).json()
 
     # `target_capacity` should be present in the response before deploying anything.
     assert raw_json["target_capacity"] is None
@@ -274,10 +269,10 @@ def test_target_capacity_field(ray_start_stop, url: str):
         },
         "applications": [],
     }
-    deploy_config_multi_app(config, url)
+    deploy_config_multi_app(config, SERVE_HEAD_URL)
 
     # `target_capacity` should be present in the response even if not set.
-    raw_json = requests.get(url).json()
+    raw_json = requests.get(SERVE_HEAD_URL).json()
     assert raw_json["target_capacity"] is None
     details = ServeInstanceDetails(**raw_json)
     assert details.target_capacity is None
@@ -287,8 +282,8 @@ def test_target_capacity_field(ray_start_stop, url: str):
 
     # Set `target_capacity`, ensure it is returned properly.
     config["target_capacity"] = 20
-    deploy_config_multi_app(config, url)
-    raw_json = requests.get(url).json()
+    deploy_config_multi_app(config, SERVE_HEAD_URL)
+    raw_json = requests.get(SERVE_HEAD_URL).json()
     assert raw_json["target_capacity"] == 20
     details = ServeInstanceDetails(**raw_json)
     assert details.target_capacity == 20
@@ -298,8 +293,8 @@ def test_target_capacity_field(ray_start_stop, url: str):
 
     # Update `target_capacity`, ensure it is returned properly.
     config["target_capacity"] = 40
-    deploy_config_multi_app(config, url)
-    raw_json = requests.get(url).json()
+    deploy_config_multi_app(config, SERVE_HEAD_URL)
+    raw_json = requests.get(SERVE_HEAD_URL).json()
     assert raw_json["target_capacity"] == 40
     details = ServeInstanceDetails(**raw_json)
     assert details.target_capacity == 40
@@ -309,8 +304,8 @@ def test_target_capacity_field(ray_start_stop, url: str):
 
     # Reset `target_capacity` by omitting it, ensure it is returned properly.
     del config["target_capacity"]
-    deploy_config_multi_app(config, url)
-    raw_json = requests.get(url).json()
+    deploy_config_multi_app(config, SERVE_HEAD_URL)
+    raw_json = requests.get(SERVE_HEAD_URL).json()
     assert raw_json["target_capacity"] is None
     details = ServeInstanceDetails(**raw_json)
     assert details.target_capacity is None
@@ -320,7 +315,7 @@ def test_target_capacity_field(ray_start_stop, url: str):
 
     # Try to set an invalid `target_capacity`, ensure a `400` status is returned.
     config["target_capacity"] = 101
-    assert requests.put(url, json=config, timeout=30).status_code == 400
+    assert requests.put(SERVE_HEAD_URL, json=config, timeout=30).status_code == 400
 
 
 def check_log_file(log_file: str, expected_regex: list):

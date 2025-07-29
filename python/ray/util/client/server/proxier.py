@@ -18,7 +18,6 @@ import grpc
 import psutil
 
 import ray
-import ray.core.generated.agent_manager_pb2 as agent_manager_pb2
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 import ray.core.generated.runtime_env_agent_pb2 as runtime_env_agent_pb2
@@ -100,14 +99,11 @@ class SpecificServer:
 def _match_running_client_server(command: List[str]) -> bool:
     """
     Detects if the main process in the given command is the RayClient Server.
-    This works by ensuring that the the first three arguments are similar to:
-        <python> -m ray.util.client.server
+    This works by ensuring that the command is of the form:
+        <py_executable> -m ray.util.client.server <args>
     """
     flattened = " ".join(command)
-    rejoined = flattened.split()
-    if len(rejoined) < 3:
-        return False
-    return rejoined[1:3] == ["-m", "ray.util.client.server"]
+    return "-m ray.util.client.server" in flattened
 
 
 class ProxyManager:
@@ -256,10 +252,11 @@ class ProxyManager:
                 r = runtime_env_agent_pb2.GetOrCreateRuntimeEnvReply()
                 r.ParseFromString(response_data)
 
-                if r.status == agent_manager_pb2.AgentRpcStatus.AGENT_RPC_STATUS_OK:
+                if r.status == runtime_env_agent_pb2.AgentRpcStatus.AGENT_RPC_STATUS_OK:
                     return r.serialized_runtime_env_context
                 elif (
-                    r.status == agent_manager_pb2.AgentRpcStatus.AGENT_RPC_STATUS_FAILED
+                    r.status
+                    == runtime_env_agent_pb2.AgentRpcStatus.AGENT_RPC_STATUS_FAILED
                 ):
                     raise RuntimeError(
                         "Failed to create runtime_env for Ray client "

@@ -1,33 +1,29 @@
 import itertools
 import sys
 from typing import List, Optional
+from unittest.mock import MagicMock
 
 import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pytest
+from packaging.version import parse as parse_version
 
 import ray
-from ray.data._internal.aggregate import Count
+from ray._private.arrow_utils import get_pyarrow_version
 from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
-from ray.data._internal.execution.interfaces import ExecutionOptions
+from ray.data._internal.execution.interfaces.op_runtime_metrics import OpRuntimeMetrics
 from ray.data._internal.execution.operators.base_physical_operator import (
     AllToAllOperator,
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.map_operator import MapOperator
-from ray.data._internal.execution.operators.map_transformer import (
-    BatchMapTransformFn,
-    BlockMapTransformFn,
-    BlocksToBatchesMapTransformFn,
-    BuildOutputBlocksMapTransformFn,
-)
 from ray.data._internal.execution.operators.task_pool_map_operator import (
     TaskPoolMapOperator,
 )
-from ray.data._internal.execution.operators.union_operator import UnionOperator
 from ray.data._internal.execution.operators.zip_operator import ZipOperator
 from ray.data._internal.logical.interfaces import LogicalPlan
+from ray.data._internal.logical.interfaces.physical_plan import PhysicalPlan
 from ray.data._internal.logical.operators.all_to_all_operator import (
     Aggregate,
     RandomShuffle,
@@ -47,47 +43,42 @@ from ray.data._internal.logical.operators.map_operator import (
     MapRows,
     Project,
 )
-from ray.data._internal.logical.operators.n_ary_operator import Union, Zip
+from ray.data._internal.logical.operators.n_ary_operator import Zip
 from ray.data._internal.logical.operators.write_operator import Write
-from ray.data._internal.logical.optimizers import (
-    PhysicalOptimizer,
-    get_logical_rules,
-    get_physical_rules,
-    register_logical_rule,
-    register_physical_rule,
+from ray.data._internal.logical.optimizers import PhysicalOptimizer
+from ray.data._internal.logical.rules.configure_map_task_memory import (
+    ConfigureMapTaskMemoryUsingOutputSize,
 )
-from ray.data._internal.logical.util import (
-    _op_name_white_list,
-    _recorded_operators,
-    _recorded_operators_lock,
-)
+from ray.data._internal.planner import create_planner
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
-from ray.data._internal.planner.planner import Planner
 from ray.data._internal.stats import DatasetStats
+from ray.data.aggregate import Count
 from ray.data.block import BlockMetadata
 from ray.data.context import DataContext
 from ray.data.datasource import Datasource
 from ray.data.datasource.datasource import ReadTask
 from ray.data.tests.conftest import *  # noqa
-from ray.data.tests.test_util import get_parquet_read_logical_op
+from ray.data.tests.test_util import _check_usage_record, get_parquet_read_logical_op
 from ray.data.tests.util import column_udf, extract_values, named_values
 from ray.tests.conftest import *  # noqa
 
 
-def _check_usage_record(op_names: List[str], clear_after_check: Optional[bool] = True):
-    """Check if operators with given names in `op_names` have been used.
-    If `clear_after_check` is True, we clear the list of recorded operators
-    (so that subsequent checks do not use existing records of operator usage)."""
-    for op_name in op_names:
-        assert op_name in _op_name_white_list
-        with _recorded_operators_lock:
-            assert _recorded_operators.get(op_name, 0) > 0, (
-                op_name,
-                _recorded_operators,
-            )
-    if clear_after_check:
-        with _recorded_operators_lock:
-            _recorded_operators.clear()
+def _should_skip_huggingface_test():
+    """Check if we should skip the HuggingFace test due to version incompatibility."""
+    pyarrow_version = get_pyarrow_version()
+    if pyarrow_version is None:
+        return False
+
+    try:
+        datasets_version = __import__("datasets").__version__
+        if datasets_version is None:
+            return False
+
+        return pyarrow_version < parse_version("12.0.0") and parse_version(
+            datasets_version
+        ) >= parse_version("3.0.0")
+    except (ImportError, AttributeError):
+        return False
 
 
 def _check_valid_plan_and_result(
@@ -97,16 +88,16 @@ def _check_valid_plan_and_result(
     expected_physical_plan_ops=None,
 ):
     assert ds.take_all() == expected_result
-    assert str(ds._plan._logical_plan.dag) == expected_plan
+    assert ds._plan._logical_plan.dag.dag_str == expected_plan
 
     expected_physical_plan_ops = expected_physical_plan_ops or []
     for op in expected_physical_plan_ops:
         assert op in ds.stats(), f"Operator {op} not found: {ds.stats()}"
 
 
-def test_read_operator(ray_start_regular_shared):
+def test_read_operator(ray_start_regular_shared_2_cpus):
     ctx = DataContext.get_current()
-    planner = Planner()
+    planner = create_planner()
     op = get_parquet_read_logical_op()
     plan = LogicalPlan(op, ctx)
     physical_op = planner.plan(plan).dag
@@ -130,19 +121,19 @@ def test_read_operator_emits_warning_for_large_read_tasks():
             large_object = np.zeros((128, 1024, 1024), dtype=np.uint8)  # 128 MiB
 
             def read_fn():
-                large_object
+                _ = large_object
                 yield pd.DataFrame({"column": [0]})
 
-            return [ReadTask(read_fn, BlockMetadata(1, None, None, None, None))]
+            return [ReadTask(read_fn, BlockMetadata(1, None, None, None))]
 
     with pytest.warns(UserWarning):
         ray.data.read_datasource(StubDatasource()).materialize()
 
 
-def test_split_blocks_operator(ray_start_regular_shared):
+def test_split_blocks_operator(ray_start_regular_shared_2_cpus):
     ctx = DataContext.get_current()
 
-    planner = Planner()
+    planner = create_planner()
     op = get_parquet_read_logical_op(parallelism=10)
     logical_plan = LogicalPlan(op, ctx)
     physical_plan = planner.plan(logical_plan)
@@ -175,7 +166,7 @@ def test_split_blocks_operator(ray_start_regular_shared):
     assert up_physical_op.name == "ReadParquet->SplitBlocks(10)"
 
 
-def test_from_operators(ray_start_regular_shared):
+def test_from_operators(ray_start_regular_shared_2_cpus):
     ctx = DataContext.get_current()
 
     op_classes = [
@@ -185,7 +176,7 @@ def test_from_operators(ray_start_regular_shared):
         FromPandas,
     ]
     for op_cls in op_classes:
-        planner = Planner()
+        planner = create_planner()
         op = op_cls([], [])
         plan = LogicalPlan(op, ctx)
         physical_op = planner.plan(plan).dag
@@ -198,7 +189,7 @@ def test_from_operators(ray_start_regular_shared):
         assert physical_op._logical_operators == [op]
 
 
-def test_from_items_e2e(ray_start_regular_shared):
+def test_from_items_e2e(ray_start_regular_shared_2_cpus):
     data = ["Hello", "World"]
     ds = ray.data.from_items(data)
     assert ds.take_all() == named_values("item", data), ds
@@ -209,7 +200,7 @@ def test_from_items_e2e(ray_start_regular_shared):
     _check_usage_record(["FromItems"])
 
 
-def test_map_operator_udf_name(ray_start_regular_shared):
+def test_map_operator_udf_name(ray_start_regular_shared_2_cpus):
     # Test the name of the Map operator with different types of UDF.
     def normal_function(x):
         return x
@@ -253,10 +244,10 @@ def test_map_operator_udf_name(ray_start_regular_shared):
         assert op.name == f"Map({expected_name})"
 
 
-def test_map_batches_operator(ray_start_regular_shared):
+def test_map_batches_operator(ray_start_regular_shared_2_cpus):
     ctx = DataContext.get_current()
 
-    planner = Planner()
+    planner = create_planner()
     read_op = get_parquet_read_logical_op()
     op = MapBatches(
         read_op,
@@ -274,17 +265,17 @@ def test_map_batches_operator(ray_start_regular_shared):
     assert physical_op._logical_operators == [op]
 
 
-def test_map_batches_e2e(ray_start_regular_shared):
+def test_map_batches_e2e(ray_start_regular_shared_2_cpus):
     ds = ray.data.range(5)
     ds = ds.map_batches(column_udf("id", lambda x: x))
     assert extract_values("id", ds.take_all()) == list(range(5)), ds
     _check_usage_record(["ReadRange", "MapBatches"])
 
 
-def test_map_rows_operator(ray_start_regular_shared):
+def test_map_rows_operator(ray_start_regular_shared_2_cpus):
     ctx = DataContext.get_current()
 
-    planner = Planner()
+    planner = create_planner()
     read_op = get_parquet_read_logical_op()
     op = MapRows(
         read_op,
@@ -299,17 +290,19 @@ def test_map_rows_operator(ray_start_regular_shared):
     assert isinstance(physical_op.input_dependencies[0], MapOperator)
 
 
-def test_map_rows_e2e(ray_start_regular_shared):
+def test_map_rows_e2e(ray_start_regular_shared_2_cpus):
     ds = ray.data.range(5)
     ds = ds.map(column_udf("id", lambda x: x + 1))
-    assert extract_values("id", ds.take_all()) == [1, 2, 3, 4, 5], ds
+    expected = [1, 2, 3, 4, 5]
+    actual = sorted(extract_values("id", ds.take_all()))
+    assert actual == expected, f"Expected {expected}, but got {actual}"
     _check_usage_record(["ReadRange", "Map"])
 
 
-def test_filter_operator(ray_start_regular_shared):
+def test_filter_operator(ray_start_regular_shared_2_cpus):
     ctx = DataContext.get_current()
 
-    planner = Planner()
+    planner = create_planner()
     read_op = get_parquet_read_logical_op()
     op = Filter(
         read_op,
@@ -328,14 +321,14 @@ def test_filter_operator(ray_start_regular_shared):
     )
 
 
-def test_filter_e2e(ray_start_regular_shared):
+def test_filter_e2e(ray_start_regular_shared_2_cpus):
     ds = ray.data.range(5)
     ds = ds.filter(fn=lambda x: x["id"] % 2 == 0)
-    assert extract_values("id", ds.take_all()) == [0, 2, 4], ds
+    assert sorted(extract_values("id", ds.take_all())) == [0, 2, 4], ds
     _check_usage_record(["ReadRange", "Filter"])
 
 
-def test_project_operator_select(ray_start_regular_shared):
+def test_project_operator_select(ray_start_regular_shared_2_cpus):
     """
     Checks that the physical plan is properly generated for the Project operator from
     select columns.
@@ -351,14 +344,14 @@ def test_project_operator_select(ray_start_regular_shared):
     assert isinstance(op, Project), op.name
     assert op.cols == cols
 
-    physical_plan = Planner().plan(logical_plan)
+    physical_plan = create_planner().plan(logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
     physical_op = physical_plan.dag
     assert isinstance(physical_op, TaskPoolMapOperator)
     assert isinstance(physical_op.input_dependency, TaskPoolMapOperator)
 
 
-def test_project_operator_rename(ray_start_regular_shared):
+def test_project_operator_rename(ray_start_regular_shared_2_cpus):
     """
     Checks that the physical plan is properly generated for the Project operator from
     rename columns.
@@ -375,17 +368,17 @@ def test_project_operator_rename(ray_start_regular_shared):
     assert not op.cols
     assert op.cols_rename == cols_rename
 
-    physical_plan = Planner().plan(logical_plan)
+    physical_plan = create_planner().plan(logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
     physical_op = physical_plan.dag
     assert isinstance(physical_op, TaskPoolMapOperator)
     assert isinstance(physical_op.input_dependency, TaskPoolMapOperator)
 
 
-def test_flat_map(ray_start_regular_shared):
+def test_flat_map(ray_start_regular_shared_2_cpus):
     ctx = DataContext.get_current()
 
-    planner = Planner()
+    planner = create_planner()
     read_op = get_parquet_read_logical_op()
     op = FlatMap(
         read_op,
@@ -404,14 +397,14 @@ def test_flat_map(ray_start_regular_shared):
     )
 
 
-def test_flat_map_e2e(ray_start_regular_shared):
+def test_flat_map_e2e(ray_start_regular_shared_2_cpus):
     ds = ray.data.range(2)
     ds = ds.flat_map(fn=lambda x: [{"id": x["id"]}, {"id": x["id"]}])
     assert extract_values("id", ds.take_all()) == [0, 0, 1, 1], ds
     _check_usage_record(["ReadRange", "FlatMap"])
 
 
-def test_column_ops_e2e(ray_start_regular_shared):
+def test_column_ops_e2e(ray_start_regular_shared_2_cpus):
     ds = ray.data.range(2)
     ds = ds.add_column(fn=lambda df: df.iloc[:, 0], col="new_col")
     assert ds.take_all() == [{"id": 0, "new_col": 0}, {"id": 1, "new_col": 1}], ds
@@ -426,7 +419,7 @@ def test_column_ops_e2e(ray_start_regular_shared):
     _check_usage_record(["ReadRange", "MapBatches"])
 
 
-def test_random_sample_e2e(ray_start_regular_shared):
+def test_random_sample_e2e(ray_start_regular_shared_2_cpus):
     import math
 
     def ensure_sample_size_close(dataset, sample_percent=0.5):
@@ -447,10 +440,10 @@ def test_random_sample_e2e(ray_start_regular_shared):
     _check_usage_record(["ReadRange", "MapBatches"])
 
 
-def test_random_shuffle_operator(ray_start_regular_shared):
+def test_random_shuffle_operator(ray_start_regular_shared_2_cpus):
     ctx = DataContext.get_current()
 
-    planner = Planner()
+    planner = create_planner()
     read_op = get_parquet_read_logical_op()
     op = RandomShuffle(
         read_op,
@@ -472,7 +465,7 @@ def test_random_shuffle_operator(ray_start_regular_shared):
     assert physical_op._logical_operators == [op]
 
 
-def test_random_shuffle_e2e(ray_start_regular_shared, use_push_based_shuffle):
+def test_random_shuffle_e2e(ray_start_regular_shared_2_cpus, configure_shuffle_method):
     ds = ray.data.range(12, override_num_blocks=4)
     r1 = extract_values("id", ds.random_shuffle(seed=0).take_all())
     r2 = extract_values("id", ds.random_shuffle(seed=1024).take_all())
@@ -486,10 +479,10 @@ def test_random_shuffle_e2e(ray_start_regular_shared, use_push_based_shuffle):
     "shuffle",
     [True, False],
 )
-def test_repartition_operator(ray_start_regular_shared, shuffle):
+def test_repartition_operator(ray_start_regular_shared_2_cpus, shuffle):
     ctx = DataContext.get_current()
 
-    planner = Planner()
+    planner = create_planner()
     read_op = get_parquet_read_logical_op()
     op = Repartition(read_op, num_outputs=5, shuffle=shuffle)
     plan = LogicalPlan(op, ctx)
@@ -518,7 +511,9 @@ def test_repartition_operator(ray_start_regular_shared, shuffle):
     "shuffle",
     [True, False],
 )
-def test_repartition_e2e(ray_start_regular_shared, use_push_based_shuffle, shuffle):
+def test_repartition_e2e(
+    ray_start_regular_shared_2_cpus, configure_shuffle_method, shuffle
+):
     def _check_repartition_usage_and_stats(ds):
         _check_usage_record(["ReadRange", "Repartition"])
         ds_stats: DatasetStats = ds._plan.stats()
@@ -551,7 +546,7 @@ def test_repartition_e2e(ray_start_regular_shared, use_push_based_shuffle, shuff
     assert ds._plan.initial_num_blocks() == 4, ds._plan.initial_num_blocks()
     assert ds.sum() == sum(range(22))
     if shuffle:
-        assert ds._block_num_rows() == [6, 6, 6, 4], ds._block_num_rows()
+        assert ds._block_num_rows() == [9, 9, 4, 0], ds._block_num_rows()
     else:
         assert ds._block_num_rows() == [5, 6, 5, 6], ds._block_num_rows()
     _check_repartition_usage_and_stats(ds)
@@ -564,544 +559,11 @@ def test_repartition_e2e(ray_start_regular_shared, use_push_based_shuffle, shuff
     _check_repartition_usage_and_stats(ds)
 
 
-@pytest.mark.parametrize("preserve_order", (True, False))
-def test_union_operator(ray_start_regular_shared, preserve_order):
-    ctx = DataContext.get_current()
-
-    planner = Planner()
-    read_parquet_op1 = get_parquet_read_logical_op()
-    read_parquet_op2 = get_parquet_read_logical_op()
-    read_parquet_op3 = get_parquet_read_logical_op()
-    union_op = Union(
-        read_parquet_op1,
-        read_parquet_op2,
-        read_parquet_op3,
-    )
-    plan = LogicalPlan(union_op, ctx)
-    physical_op = planner.plan(plan).dag
-
-    assert union_op.name == "Union"
-    assert isinstance(physical_op, UnionOperator)
-    assert len(physical_op.input_dependencies) == 3
-    for input_op in physical_op.input_dependencies:
-        assert isinstance(input_op, MapOperator)
-
-    assert (
-        physical_op.actual_target_max_block_size
-        == DataContext.get_current().target_max_block_size
-    )
-
-    # Check that the linked logical operator is the same the input op.
-    assert physical_op._logical_operators == [union_op]
-
-
-@pytest.mark.parametrize("preserve_order", (True, False))
-def test_union_e2e(ray_start_regular_shared, preserve_order):
-    execution_options = ExecutionOptions(preserve_order=preserve_order)
-    ctx = ray.data.DataContext.get_current()
-    ctx.execution_options = execution_options
-
-    ds = ray.data.range(20, override_num_blocks=10)
-
-    # Test lazy union.
-    ds = ds.union(ds, ds, ds, ds)
-    assert ds._plan.initial_num_blocks() == 50
-    assert ds.count() == 100
-    assert ds.sum() == 950
-    _check_usage_record(["ReadRange", "Union"])
-    ds_result = [{"id": i} for i in range(20)] * 5
-    if preserve_order:
-        assert ds.take_all() == ds_result
-
-    ds = ds.union(ds)
-    assert ds.count() == 200
-    assert ds.sum() == (950 * 2)
-    _check_usage_record(["ReadRange", "Union"])
-    if preserve_order:
-        assert ds.take_all() == ds_result * 2
-
-    # Test materialized union.
-    ds2 = ray.data.from_items([{"id": i} for i in range(1, 5 + 1)])
-    assert ds2.count() == 5
-    assert ds2.sum() == 15
-    _check_usage_record(["FromItems"])
-
-    ds2 = ds2.union(ds2)
-    assert ds2.count() == 10
-    assert ds2.sum() == 30
-    _check_usage_record(["FromItems", "Union"])
-    ds2_result = ([{"id": i} for i in range(1, 5 + 1)]) * 2
-    if preserve_order:
-        assert ds2.take_all() == ds2_result
-
-    ds2 = ds2.union(ds)
-    assert ds2.count() == 210
-    assert ds2.sum() == (950 * 2 + 30)
-    _check_usage_record(["FromItems", "Union"])
-    if preserve_order:
-        assert ds2.take_all() == (ds2_result + ds_result * 2)
-
-
-def test_read_map_batches_operator_fusion(ray_start_regular_shared):
-    ctx = DataContext.get_current()
-
-    # Test that Read is fused with MapBatches.
-    planner = Planner()
-    read_op = get_parquet_read_logical_op(parallelism=1)
-    op = MapBatches(
-        read_op,
-        lambda x: x,
-    )
-    logical_plan = LogicalPlan(op, ctx)
-    physical_plan = planner.plan(logical_plan)
-    physical_plan = PhysicalOptimizer().optimize(physical_plan)
-    physical_op = physical_plan.dag
-
-    assert op.name == "MapBatches(<lambda>)"
-    assert physical_op.name == "ReadParquet->MapBatches(<lambda>)"
-    assert isinstance(physical_op, MapOperator)
-    assert len(physical_op.input_dependencies) == 1
-    input = physical_op.input_dependencies[0]
-    assert isinstance(input, InputDataBuffer)
-    assert physical_op in input.output_dependencies, input.output_dependencies
-    assert (
-        physical_op.actual_target_max_block_size
-        == DataContext.get_current().target_max_block_size
-    )
-    assert physical_op._logical_operators == [read_op, op]
-
-
-def test_read_map_chain_operator_fusion(ray_start_regular_shared):
-    ctx = DataContext.get_current()
-
-    # Test that a chain of different map operators are fused.
-    planner = Planner()
-    read_op = get_parquet_read_logical_op(parallelism=1)
-    map1 = MapRows(read_op, lambda x: x)
-    map2 = MapBatches(map1, lambda x: x)
-    map3 = FlatMap(map2, lambda x: x)
-    map4 = Filter(map3, lambda x: x)
-    logical_plan = LogicalPlan(map4, ctx)
-    physical_plan = planner.plan(logical_plan)
-    physical_plan = PhysicalOptimizer().optimize(physical_plan)
-    physical_op = physical_plan.dag
-
-    assert map4.name == "Filter(<lambda>)"
-    assert (
-        physical_op.name == "ReadParquet->Map(<lambda>)->MapBatches(<lambda>)"
-        "->FlatMap(<lambda>)->Filter(<lambda>)"
-    )
-    assert isinstance(physical_op, MapOperator)
-    assert len(physical_op.input_dependencies) == 1
-    assert isinstance(physical_op.input_dependencies[0], InputDataBuffer)
-    assert (
-        physical_op.actual_target_max_block_size
-        == DataContext.get_current().target_max_block_size
-    )
-    assert physical_op._logical_operators == [read_op, map1, map2, map3, map4]
-
-
-def test_read_map_batches_operator_fusion_compatible_remote_args(
-    ray_start_regular_shared,
-):
-    ctx = DataContext.get_current()
-
-    # Test that map operators are stilled fused when remote args are compatible.
-    compatiple_remote_args_pairs = [
-        # Empty remote args are compatible.
-        ({}, {}),
-        # Test `num_cpus` and `num_gpus`.
-        ({"num_cpus": 2}, {"num_cpus": 2}),
-        ({"num_gpus": 2}, {"num_gpus": 2}),
-        # `num_cpus` defaults to 1, `num_gpus` defaults to 0.
-        # The following 2 should be compatible.
-        ({"num_cpus": 1}, {}),
-        ({}, {"num_gpus": 0}),
-        # Test specifying custom resources.
-        ({"resources": {"custom": 1}}, {"resources": {"custom": 1}}),
-        ({"resources": {"custom": 0}}, {"resources": {}}),
-        # If the downstream op doesn't have `scheduling_strategy`, it will
-        # inherit from the upstream op.
-        ({"scheduling_strategy": "SPREAD"}, {}),
-    ]
-    for up_remote_args, down_remote_args in compatiple_remote_args_pairs:
-        planner = Planner()
-        read_op = get_parquet_read_logical_op(
-            ray_remote_args={"resources": {"non-existent": 1}},
-            parallelism=1,
-        )
-        op = MapBatches(read_op, lambda x: x, ray_remote_args=up_remote_args)
-        op = MapBatches(op, lambda x: x, ray_remote_args=down_remote_args)
-        logical_plan = LogicalPlan(op, ctx)
-
-        physical_plan = planner.plan(logical_plan)
-        optimized_physical_plan = PhysicalOptimizer().optimize(physical_plan)
-        physical_op = optimized_physical_plan.dag
-
-        assert op.name == "MapBatches(<lambda>)", (up_remote_args, down_remote_args)
-        assert physical_op.name == "MapBatches(<lambda>)->MapBatches(<lambda>)", (
-            up_remote_args,
-            down_remote_args,
-        )
-        assert isinstance(physical_op, MapOperator), (up_remote_args, down_remote_args)
-        assert len(physical_op.input_dependencies) == 1, (
-            up_remote_args,
-            down_remote_args,
-        )
-        assert physical_op.input_dependencies[0].name == "ReadParquet", (
-            up_remote_args,
-            down_remote_args,
-        )
-
-
-def test_read_map_batches_operator_fusion_incompatible_remote_args(
-    ray_start_regular_shared,
-):
-    ctx = DataContext.get_current()
-
-    # Test that map operators won't get fused if the remote args are incompatible.
-    incompatible_remote_args_pairs = [
-        # Use different resources.
-        ({"num_cpus": 2}, {"num_gpus": 2}),
-        # Same resource, but different values.
-        ({"num_cpus": 3}, {"num_cpus": 2}),
-        # Incompatible custom resources.
-        ({"resources": {"custom": 2}}, {"resources": {"custom": 1}}),
-        ({"resources": {"custom1": 1}}, {"resources": {"custom2": 1}}),
-        # Different scheduling strategies.
-        ({"scheduling_strategy": "SPREAD"}, {"scheduling_strategy": "PACK"}),
-    ]
-    for up_remote_args, down_remote_args in incompatible_remote_args_pairs:
-        planner = Planner()
-        read_op = get_parquet_read_logical_op(
-            ray_remote_args={"resources": {"non-existent": 1}}
-        )
-        op = MapBatches(read_op, lambda x: x, ray_remote_args=up_remote_args)
-        op = MapBatches(op, lambda x: x, ray_remote_args=down_remote_args)
-        logical_plan = LogicalPlan(op, ctx)
-        physical_plan = planner.plan(logical_plan)
-        physical_plan = PhysicalOptimizer().optimize(physical_plan)
-        physical_op = physical_plan.dag
-
-        assert op.name == "MapBatches(<lambda>)", (up_remote_args, down_remote_args)
-        assert physical_op.name == "MapBatches(<lambda>)", (
-            up_remote_args,
-            down_remote_args,
-        )
-        assert isinstance(physical_op, MapOperator), (up_remote_args, down_remote_args)
-        assert len(physical_op.input_dependencies) == 1, (
-            up_remote_args,
-            down_remote_args,
-        )
-        assert physical_op.input_dependencies[0].name == "MapBatches(<lambda>)", (
-            up_remote_args,
-            down_remote_args,
-        )
-
-
-def test_read_map_batches_operator_fusion_compute_tasks_to_actors(
-    ray_start_regular_shared,
-):
-    ctx = DataContext.get_current()
-
-    # Test that a task-based map operator is fused into an actor-based map operator when
-    # the former comes before the latter.
-    planner = Planner()
-    read_op = get_parquet_read_logical_op(parallelism=1)
-    op = MapBatches(read_op, lambda x: x)
-    op = MapBatches(op, lambda x: x, compute=ray.data.ActorPoolStrategy())
-    logical_plan = LogicalPlan(op, ctx)
-    physical_plan = planner.plan(logical_plan)
-    physical_plan = PhysicalOptimizer().optimize(physical_plan)
-    physical_op = physical_plan.dag
-
-    assert op.name == "MapBatches(<lambda>)"
-    assert physical_op.name == "ReadParquet->MapBatches(<lambda>)->MapBatches(<lambda>)"
-    assert isinstance(physical_op, MapOperator)
-    assert len(physical_op.input_dependencies) == 1
-    assert isinstance(physical_op.input_dependencies[0], InputDataBuffer)
-
-
-def test_read_map_batches_operator_fusion_compute_read_to_actors(
-    ray_start_regular_shared,
-):
-    ctx = DataContext.get_current()
-
-    # Test that reads fuse into an actor-based map operator.
-    planner = Planner()
-    read_op = get_parquet_read_logical_op(parallelism=1)
-    op = MapBatches(read_op, lambda x: x, compute=ray.data.ActorPoolStrategy())
-    logical_plan = LogicalPlan(op, ctx)
-    physical_plan = planner.plan(logical_plan)
-    physical_plan = PhysicalOptimizer().optimize(physical_plan)
-    physical_op = physical_plan.dag
-
-    assert op.name == "MapBatches(<lambda>)"
-    assert physical_op.name == "ReadParquet->MapBatches(<lambda>)"
-    assert isinstance(physical_op, MapOperator)
-    assert len(physical_op.input_dependencies) == 1
-    assert isinstance(physical_op.input_dependencies[0], InputDataBuffer)
-
-
-def test_read_map_batches_operator_fusion_incompatible_compute(
-    ray_start_regular_shared,
-):
-    ctx = DataContext.get_current()
-
-    # Test that map operators are not fused when compute strategies are incompatible.
-    planner = Planner()
-    read_op = get_parquet_read_logical_op(parallelism=1)
-    op = MapBatches(read_op, lambda x: x, compute=ray.data.ActorPoolStrategy())
-    op = MapBatches(op, lambda x: x)
-    logical_plan = LogicalPlan(op, ctx)
-    physical_plan = planner.plan(logical_plan)
-    physical_plan = PhysicalOptimizer().optimize(physical_plan)
-    physical_op = physical_plan.dag
-
-    assert op.name == "MapBatches(<lambda>)"
-    assert physical_op.name == "MapBatches(<lambda>)"
-    assert isinstance(physical_op, MapOperator)
-    assert len(physical_op.input_dependencies) == 1
-    upstream_physical_op = physical_op.input_dependencies[0]
-    assert isinstance(upstream_physical_op, MapOperator)
-    # Reads should fuse into actor compute.
-    assert upstream_physical_op.name == "ReadParquet->MapBatches(<lambda>)"
-
-
-def test_read_map_batches_operator_fusion_min_rows_per_bundled_input(
-    ray_start_regular_shared,
-):
-    ctx = DataContext.get_current()
-
-    # Test that fusion of map operators merges their block sizes in the expected way
-    # (taking the max).
-    planner = Planner()
-    read_op = get_parquet_read_logical_op(parallelism=1)
-    op = MapBatches(read_op, lambda x: x, min_rows_per_bundled_input=2)
-    op = MapBatches(op, lambda x: x, min_rows_per_bundled_input=5)
-    op = MapBatches(op, lambda x: x, min_rows_per_bundled_input=3)
-    logical_plan = LogicalPlan(op, ctx)
-    physical_plan = planner.plan(logical_plan)
-    physical_plan = PhysicalOptimizer().optimize(physical_plan)
-    physical_op = physical_plan.dag
-
-    assert op.name == "MapBatches(<lambda>)"
-    # Ops are still fused.
-    assert (
-        physical_op.name == "ReadParquet->MapBatches(<lambda>)->"
-        "MapBatches(<lambda>)->MapBatches(<lambda>)"
-    )
-    assert isinstance(physical_op, MapOperator)
-    # Target block size is set to max.
-    assert physical_op._block_ref_bundler._min_rows_per_bundle == 5
-    assert len(physical_op.input_dependencies) == 1
-    assert isinstance(physical_op.input_dependencies[0], InputDataBuffer)
-
-    assert (
-        physical_op.actual_target_max_block_size
-        == DataContext.get_current().target_max_block_size
-    )
-
-
-def test_read_map_batches_operator_fusion_with_randomize_blocks_operator(
-    ray_start_regular_shared,
-):
-    # Note: We currently do not fuse MapBatches->RandomizeBlocks.
-    # This test is to ensure that we don't accidentally fuse them.
-    # There is also an additional optimization rule, under ReorderRandomizeBlocksRule,
-    # which collapses RandomizeBlocks operators, so we should not be fusing them
-    # to begin with.
-    def fn(batch):
-        return {"id": [x + 1 for x in batch["id"]]}
-
-    n = 10
-    ds = ray.data.range(n)
-    ds = ds.randomize_block_order()
-    ds = ds.map_batches(fn, batch_size=None)
-    assert set(extract_values("id", ds.take_all())) == set(range(1, n + 1))
-    assert "ReadRange->MapBatches(fn)->RandomizeBlockOrder" not in ds.stats()
-    assert "ReadRange->MapBatches(fn)" in ds.stats()
-    _check_usage_record(["ReadRange", "MapBatches", "RandomizeBlockOrder"])
-
-
-def test_read_map_batches_operator_fusion_with_random_shuffle_operator(
-    ray_start_regular_shared, use_push_based_shuffle
-):
-    # Note: we currently only support fusing MapOperator->AllToAllOperator.
-    def fn(batch):
-        return {"id": [x + 1 for x in batch["id"]]}
-
-    n = 10
-    ds = ray.data.range(n)
-    ds = ds.map_batches(fn, batch_size=None)
-    ds = ds.random_shuffle()
-    assert set(extract_values("id", ds.take_all())) == set(range(1, n + 1))
-    assert "ReadRange->MapBatches(fn)->RandomShuffle" in ds.stats()
-    _check_usage_record(["ReadRange", "MapBatches", "RandomShuffle"])
-
-    ds = ray.data.range(n)
-    ds = ds.random_shuffle()
-    ds = ds.map_batches(fn, batch_size=None)
-    assert set(extract_values("id", ds.take_all())) == set(range(1, n + 1))
-    # TODO(Scott): Update below assertion after supporting fusion in
-    # the other direction (AllToAllOperator->MapOperator)
-    assert "ReadRange->RandomShuffle->MapBatches(fn)" not in ds.stats()
-    assert all(op in ds.stats() for op in ("ReadRange", "RandomShuffle", "MapBatches"))
-    _check_usage_record(["ReadRange", "RandomShuffle", "MapBatches"])
-
-    # Test fusing multiple `map_batches` with multiple `random_shuffle` operations.
-    ds = ray.data.range(n)
-    for _ in range(5):
-        ds = ds.map_batches(fn, batch_size=None)
-    ds = ds.random_shuffle()
-    assert set(extract_values("id", ds.take_all())) == set(range(5, n + 5))
-    assert f"ReadRange->{'MapBatches(fn)->' * 5}RandomShuffle" in ds.stats()
-
-    # For interweaved map_batches and random_shuffle operations, we expect to fuse the
-    # two pairs of MapBatches->RandomShuffle, but not the resulting
-    # RandomShuffle operators.
-    ds = ray.data.range(n)
-    ds = ds.map_batches(fn, batch_size=None)
-    ds = ds.random_shuffle()
-    ds = ds.map_batches(fn, batch_size=None)
-    ds = ds.random_shuffle()
-    assert set(extract_values("id", ds.take_all())) == set(range(2, n + 2))
-    assert "Operator 1 ReadRange->MapBatches(fn)->RandomShuffle" in ds.stats()
-    assert "Operator 2 MapBatches(fn)->RandomShuffle" in ds.stats()
-    _check_usage_record(["ReadRange", "RandomShuffle", "MapBatches"])
-
-    # Check the case where the upstream map function returns multiple blocks.
-    ctx = ray.data.DataContext.get_current()
-    old_target_max_block_size = ctx.target_max_block_size
-    ctx.target_max_block_size = 100
-
-    def fn(_):
-        return {"data": np.zeros((100, 100))}
-
-    ds = ray.data.range(10)
-    ds = ds.repartition(2).map(fn).random_shuffle().materialize()
-    assert "Operator 1 ReadRange" in ds.stats()
-    assert "Operator 2 Repartition" in ds.stats()
-    assert "Operator 3 Map(fn)->RandomShuffle" in ds.stats()
-    _check_usage_record(["ReadRange", "RandomShuffle", "Map"])
-
-    ctx.target_max_block_size = old_target_max_block_size
-
-
-@pytest.mark.parametrize("shuffle", (True, False))
-def test_read_map_batches_operator_fusion_with_repartition_operator(
-    ray_start_regular_shared, shuffle, use_push_based_shuffle
-):
-    def fn(batch):
-        return {"id": [x + 1 for x in batch["id"]]}
-
-    n = 10
-    ds = ray.data.range(n)
-    ds = ds.map_batches(fn, batch_size=None)
-    ds = ds.repartition(2, shuffle=shuffle)
-    assert set(extract_values("id", ds.take_all())) == set(range(1, n + 1))
-
-    # Operator fusion is only supported for shuffle repartition.
-    if shuffle:
-        assert "ReadRange->MapBatches(fn)->Repartition" in ds.stats()
-    else:
-        assert "ReadRange->MapBatches(fn)->Repartition" not in ds.stats()
-        assert "ReadRange->MapBatches(fn)" in ds.stats()
-        assert "Repartition" in ds.stats()
-    _check_usage_record(["ReadRange", "MapBatches", "Repartition"])
-
-
-def test_read_map_batches_operator_fusion_with_sort_operator(ray_start_regular_shared):
-    # Note: We currently do not fuse MapBatches->Sort.
-    # This test is to ensure that we don't accidentally fuse them, until
-    # we implement it later.
-    def fn(batch):
-        return {"id": [x + 1 for x in batch["id"]]}
-
-    n = 10
-    ds = ray.data.range(n)
-    ds = ds.map_batches(fn, batch_size=None)
-    ds = ds.sort("id")
-    assert extract_values("id", ds.take_all()) == list(range(1, n + 1))
-    # TODO(Scott): update the below assertions after we support fusion.
-    assert "ReadRange->MapBatches->Sort" not in ds.stats()
-    assert "ReadRange->MapBatches" in ds.stats()
-    assert "Sort" in ds.stats()
-    _check_usage_record(["ReadRange", "MapBatches", "Sort"])
-
-
-def test_read_map_batches_operator_fusion_with_aggregate_operator(
-    ray_start_regular_shared,
-):
-    from ray.data.aggregate import AggregateFn
-
-    # Note: We currently do not fuse MapBatches->Aggregate.
-    # This test is to ensure that we don't accidentally fuse them, until
-    # we implement it later.
-    def fn(batch):
-        return {"id": [x % 2 for x in batch["id"]]}
-
-    n = 100
-    grouped_ds = ray.data.range(n).map_batches(fn, batch_size=None).groupby("id")
-    agg_ds = grouped_ds.aggregate(
-        AggregateFn(
-            init=lambda k: [0, 0],
-            accumulate_row=lambda a, r: [a[0] + r["id"], a[1] + 1],
-            merge=lambda a1, a2: [a1[0] + a2[0], a1[1] + a2[1]],
-            finalize=lambda a: a[0] / a[1],
-            name="foo",
-        ),
-    )
-    agg_ds.take_all() == [{"id": 0, "foo": 0.0}, {"id": 1, "foo": 1.0}]
-    # TODO(Scott): update the below assertions after we support fusion.
-    assert "ReadRange->MapBatches->Aggregate" not in agg_ds.stats()
-    assert "ReadRange->MapBatches" in agg_ds.stats()
-    assert "Aggregate" in agg_ds.stats()
-    _check_usage_record(["ReadRange", "MapBatches", "Aggregate"])
-
-
-def test_read_map_chain_operator_fusion_e2e(
-    ray_start_regular_shared,
-):
-    ds = ray.data.range(10, override_num_blocks=2)
-    ds = ds.filter(lambda x: x["id"] % 2 == 0)
-    ds = ds.map(column_udf("id", lambda x: x + 1))
-    ds = ds.map_batches(
-        lambda batch: {"id": [2 * x for x in batch["id"]]}, batch_size=None
-    )
-    ds = ds.flat_map(lambda x: [{"id": -x["id"]}, {"id": x["id"]}])
-    assert extract_values("id", ds.take_all()) == [
-        -2,
-        2,
-        -6,
-        6,
-        -10,
-        10,
-        -14,
-        14,
-        -18,
-        18,
-    ]
-    name = (
-        "ReadRange->Filter(<lambda>)->Map(<lambda>)"
-        "->MapBatches(<lambda>)->FlatMap(<lambda>):"
-    )
-    assert name in ds.stats()
-    _check_usage_record(["ReadRange", "Filter", "Map", "MapBatches", "FlatMap"])
-
-
-def test_write_fusion(ray_start_regular_shared, tmp_path):
-    ds = ray.data.range(10, override_num_blocks=2)
-    ds.write_csv(tmp_path)
-    assert "ReadRange->Write" in ds._write_ds.stats()
-    _check_usage_record(["ReadRange", "WriteCSV"])
-
-
-def test_write_operator(ray_start_regular_shared, tmp_path):
+def test_write_operator(ray_start_regular_shared_2_cpus, tmp_path):
     ctx = DataContext.get_current()
 
     concurrency = 2
-    planner = Planner()
+    planner = create_planner()
     datasink = ParquetDatasink(tmp_path)
     read_op = get_parquet_read_logical_op()
     op = Write(
@@ -1123,11 +585,11 @@ def test_write_operator(ray_start_regular_shared, tmp_path):
 
 
 def test_sort_operator(
-    ray_start_regular_shared,
+    ray_start_regular_shared_2_cpus,
 ):
     ctx = DataContext.get_current()
 
-    planner = Planner()
+    planner = create_planner()
     read_op = get_parquet_read_logical_op()
     op = Sort(
         read_op,
@@ -1146,7 +608,7 @@ def test_sort_operator(
     )
 
 
-def test_sort_e2e(ray_start_regular_shared, use_push_based_shuffle, tmp_path):
+def test_sort_e2e(ray_start_regular_shared_2_cpus, configure_shuffle_method, tmp_path):
     ds = ray.data.range(100, override_num_blocks=4)
     ds = ds.random_shuffle()
     ds = ds.sort("id")
@@ -1167,7 +629,7 @@ def test_sort_e2e(ray_start_regular_shared, use_push_based_shuffle, tmp_path):
     assert [d["one"] for d in r2] == list(reversed(range(100)))
 
 
-def test_sort_validate_keys(ray_start_regular_shared):
+def test_sort_validate_keys(ray_start_regular_shared_2_cpus):
     ds = ray.data.range(10)
     assert extract_values("id", ds.sort("id").take_all()) == list(range(10))
 
@@ -1212,7 +674,7 @@ def test_inherit_batch_format_rule():
     assert optimized_plan.dag._batch_format == "pandas"
 
 
-def test_batch_format_on_sort(ray_start_regular_shared):
+def test_batch_format_on_sort(ray_start_regular_shared_2_cpus):
     """Checks that the Sort op can inherit batch_format from upstream ops correctly."""
     ds = ray.data.from_items(
         [
@@ -1237,7 +699,7 @@ def test_batch_format_on_sort(ray_start_regular_shared):
     pd.testing.assert_frame_equal(df_actual, df_expected)
 
 
-def test_batch_format_on_aggregate(ray_start_regular_shared):
+def test_batch_format_on_aggregate(ray_start_regular_shared_2_cpus):
     """Checks that the Aggregate op can inherit batch_format
     from upstream ops correctly."""
     from ray.data.aggregate import AggregateFn
@@ -1263,10 +725,10 @@ def test_batch_format_on_aggregate(ray_start_regular_shared):
     ) == {"prod": 384}
 
 
-def test_aggregate_operator(ray_start_regular_shared):
+def test_aggregate_operator(ray_start_regular_shared_2_cpus):
     ctx = DataContext.get_current()
 
-    planner = Planner()
+    planner = create_planner()
     read_op = get_parquet_read_logical_op()
     op = Aggregate(
         read_op,
@@ -1289,7 +751,7 @@ def test_aggregate_operator(ray_start_regular_shared):
     assert physical_op._logical_operators == [op]
 
 
-def test_aggregate_e2e(ray_start_regular_shared, use_push_based_shuffle):
+def test_aggregate_e2e(ray_start_regular_shared_2_cpus, configure_shuffle_method):
     ds = ray.data.range(100, override_num_blocks=4)
     ds = ds.groupby("id").count()
     assert ds.count() == 100
@@ -1298,7 +760,7 @@ def test_aggregate_e2e(ray_start_regular_shared, use_push_based_shuffle):
     _check_usage_record(["ReadRange", "Aggregate"])
 
 
-def test_aggregate_validate_keys(ray_start_regular_shared):
+def test_aggregate_validate_keys(ray_start_regular_shared_2_cpus):
     ds = ray.data.range(10)
     invalid_col_name = "invalid_column"
     with pytest.raises(ValueError):
@@ -1333,10 +795,10 @@ def test_aggregate_validate_keys(ray_start_regular_shared):
         ds_named.groupby(invalid_col_name).count()
 
 
-def test_zip_operator(ray_start_regular_shared):
+def test_zip_operator(ray_start_regular_shared_2_cpus):
     ctx = DataContext.get_current()
 
-    planner = Planner()
+    planner = create_planner()
     read_op1 = get_parquet_read_logical_op()
     read_op2 = get_parquet_read_logical_op()
     op = Zip(read_op1, read_op2)
@@ -1362,7 +824,7 @@ def test_zip_operator(ray_start_regular_shared):
     "num_blocks1,num_blocks2",
     list(itertools.combinations_with_replacement(range(1, 12), 2)),
 )
-def test_zip_e2e(ray_start_regular_shared, num_blocks1, num_blocks2):
+def test_zip_e2e(ray_start_regular_shared_2_cpus, num_blocks1, num_blocks2):
     n = 12
     ds1 = ray.data.range(n, override_num_blocks=num_blocks1)
     ds2 = ray.data.range(n, override_num_blocks=num_blocks2).map(
@@ -1373,25 +835,7 @@ def test_zip_e2e(ray_start_regular_shared, num_blocks1, num_blocks2):
     _check_usage_record(["ReadRange", "Zip"])
 
 
-def test_from_dask_e2e(ray_start_regular_shared):
-    import dask.dataframe as dd
-
-    df = pd.DataFrame({"one": list(range(100)), "two": list(range(100))})
-    ddf = dd.from_pandas(df, npartitions=10)
-    ds = ray.data.from_dask(ddf)
-    # `ds.take_all()` triggers execution with new backend, which is
-    # needed for checking operator usage below.
-    assert len(ds.take_all()) == len(df)
-    dfds = ds.to_pandas()
-    assert df.equals(dfds)
-
-    # Underlying implementation uses `FromPandas` operator
-    assert "FromPandas" in ds.stats()
-    assert ds._plan._logical_plan.dag.name == "FromPandas"
-    _check_usage_record(["FromPandas"])
-
-
-def test_from_modin_e2e(ray_start_regular_shared):
+def test_from_modin_e2e(ray_start_regular_shared_2_cpus):
     import modin.pandas as mopd
 
     df = pd.DataFrame(
@@ -1414,7 +858,7 @@ def test_from_modin_e2e(ray_start_regular_shared):
 
 
 @pytest.mark.parametrize("enable_pandas_block", [False, True])
-def test_from_pandas_refs_e2e(ray_start_regular_shared, enable_pandas_block):
+def test_from_pandas_refs_e2e(ray_start_regular_shared_2_cpus, enable_pandas_block):
     ctx = ray.data.context.DataContext.get_current()
     old_enable_pandas_block = ctx.enable_pandas_block
     ctx.enable_pandas_block = enable_pandas_block
@@ -1452,7 +896,7 @@ def test_from_pandas_refs_e2e(ray_start_regular_shared, enable_pandas_block):
         ctx.enable_pandas_block = old_enable_pandas_block
 
 
-def test_from_numpy_refs_e2e(ray_start_regular_shared):
+def test_from_numpy_refs_e2e(ray_start_regular_shared_2_cpus):
     import numpy as np
 
     arr1 = np.expand_dims(np.arange(0, 4), axis=1)
@@ -1485,7 +929,7 @@ def test_from_numpy_refs_e2e(ray_start_regular_shared):
     _check_usage_record(["FromNumpy"])
 
 
-def test_from_arrow_refs_e2e(ray_start_regular_shared):
+def test_from_arrow_refs_e2e(ray_start_regular_shared_2_cpus):
     import pyarrow as pa
 
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
@@ -1513,7 +957,11 @@ def test_from_arrow_refs_e2e(ray_start_regular_shared):
     _check_usage_record(["FromArrow"])
 
 
-def test_from_huggingface_e2e(ray_start_regular_shared):
+@pytest.mark.skipif(
+    _should_skip_huggingface_test,
+    reason="Skip due to HuggingFace datasets >= 3.0.0 requiring pyarrow >= 12.0.0",
+)
+def test_from_huggingface_e2e(ray_start_regular_shared_2_cpus):
     import datasets
 
     from ray.data.tests.test_huggingface import hfds_assert_equals
@@ -1566,7 +1014,7 @@ def test_from_huggingface_e2e(ray_start_regular_shared):
     sys.version_info >= (3, 12),
     reason="Skip due to incompatibility tensorflow with Python 3.12+",
 )
-def test_from_tf_e2e(ray_start_regular_shared):
+def test_from_tf_e2e(ray_start_regular_shared_2_cpus):
     import tensorflow as tf
     import tensorflow_datasets as tfds
 
@@ -1591,10 +1039,10 @@ def test_from_tf_e2e(ray_start_regular_shared):
     _check_usage_record(["FromItems"])
 
 
-def test_from_torch_e2e(ray_start_regular_shared, tmp_path):
+def test_from_torch_e2e(ray_start_regular_shared_2_cpus, tmp_path):
     import torchvision
 
-    torch_dataset = torchvision.datasets.MNIST(tmp_path, download=True)
+    torch_dataset = torchvision.datasets.FashionMNIST(tmp_path, download=True)
 
     ray_dataset = ray.data.from_torch(torch_dataset)
 
@@ -1610,92 +1058,403 @@ def test_from_torch_e2e(ray_start_regular_shared, tmp_path):
     _check_usage_record(["ReadTorch"])
 
 
-@pytest.mark.skip(
-    reason="Limit pushdown currently disabled, see "
-    "https://github.com/ray-project/ray/issues/36295"
-)
-def test_limit_pushdown(ray_start_regular_shared):
+def test_limit_pushdown_conservative(ray_start_regular_shared_2_cpus):
+    """Test limit pushdown behavior - pushes through safe operations."""
+
     def f1(x):
         return x
 
     def f2(x):
         return x
 
-    # Test basic limit pushdown past Map.
+    # Test 1: Basic Limit -> Limit fusion (should still work)
+    ds = ray.data.range(100).limit(5).limit(100)
+    _check_valid_plan_and_result(
+        ds, "Read[ReadRange] -> Limit[limit=5]", [{"id": i} for i in range(5)]
+    )
+
+    ds = ray.data.range(100).limit(100).limit(5)
+    _check_valid_plan_and_result(
+        ds, "Read[ReadRange] -> Limit[limit=5]", [{"id": i} for i in range(5)]
+    )
+
+    ds = ray.data.range(100).limit(50).limit(80).limit(5).limit(20)
+    _check_valid_plan_and_result(
+        ds, "Read[ReadRange] -> Limit[limit=5]", [{"id": i} for i in range(5)]
+    )
+
+    # Test 2: Limit should push through MapRows operations (safe)
     ds = ray.data.range(100, override_num_blocks=100).map(f1).limit(1)
     _check_valid_plan_and_result(
         ds, "Read[ReadRange] -> Limit[limit=1] -> MapRows[Map(f1)]", [{"id": 0}]
     )
 
-    # Test basic Limit -> Limit fusion.
-    ds2 = ray.data.range(100).limit(5).limit(100)
+    # Test 3: Limit should not push through MapBatches operations
+    ds = ray.data.range(100, override_num_blocks=100).map_batches(f2).limit(1)
     _check_valid_plan_and_result(
-        ds2, "Read[ReadRange] -> Limit[limit=5]", [{"id": i} for i in range(5)]
+        ds,
+        "Read[ReadRange] -> MapBatches[MapBatches(f2)] -> Limit[limit=1]",
+        [{"id": 0}],
     )
 
-    ds2 = ray.data.range(100).limit(100).limit(5)
+    # Test 4: Limit should NOT push through Filter operations (conservative)
+    ds = (
+        ray.data.range(100, override_num_blocks=100)
+        .filter(lambda x: x["id"] < 50)
+        .limit(1)
+    )
     _check_valid_plan_and_result(
-        ds2, "Read[ReadRange] -> Limit[limit=5]", [{"id": i} for i in range(5)]
+        ds, "Read[ReadRange] -> Filter[Filter(<lambda>)] -> Limit[limit=1]", [{"id": 0}]
     )
 
-    ds2 = ray.data.range(100).limit(50).limit(80).limit(5).limit(20)
+    # Test 5: Limit should push through Project operations (safe)
+    ds = ray.data.range(100, override_num_blocks=100).select_columns(["id"]).limit(5)
     _check_valid_plan_and_result(
-        ds2, "Read[ReadRange] -> Limit[limit=5]", [{"id": i} for i in range(5)]
-    )
-
-    # Test limit pushdown and Limit -> Limit fusion together.
-    ds3 = ray.data.range(100).limit(5).map(f1).limit(100)
-    _check_valid_plan_and_result(
-        ds3,
-        "Read[ReadRange] -> Limit[limit=5] -> MapRows[Map(f1)]",
+        ds,
+        "Read[ReadRange] -> Limit[limit=5] -> Project[Project]",
         [{"id": i} for i in range(5)],
     )
 
-    ds3 = ray.data.range(100).limit(100).map(f1).limit(5)
+    # Test 6: Limit should stop at Sort operations (AllToAll)
+    ds = ray.data.range(100).sort("id").limit(5)
     _check_valid_plan_and_result(
-        ds3,
-        "Read[ReadRange] -> Limit[limit=5] -> MapRows[Map(f1)]",
-        [{"id": i} for i in range(5)],
-    )
-
-    # Test basic limit pushdown up to Sort.
-    ds4 = ray.data.range(100).sort("id").limit(5)
-    _check_valid_plan_and_result(
-        ds4,
+        ds,
         "Read[ReadRange] -> Sort[Sort] -> Limit[limit=5]",
         [{"id": i} for i in range(5)],
     )
 
-    ds4 = ray.data.range(100).sort("id").map(f1).limit(5)
+    # Test 7: More complex interweaved case.
+    ds = ray.data.range(100).sort("id").map(f1).limit(20).sort("id").map(f2).limit(5)
     _check_valid_plan_and_result(
-        ds4,
-        "Read[ReadRange] -> Sort[Sort] -> Limit[limit=5] -> MapRows[Map(f1)]",
-        [{"id": i} for i in range(5)],
-    )
-    # Test limit pushdown between two Map operators.
-    ds5 = ray.data.range(100, override_num_blocks=100).map(f1).limit(1).map(f2)
-    # Limit operators get pushed down in the logical plan optimization,
-    # then fused together.
-    _check_valid_plan_and_result(
-        ds5,
-        "Read[ReadRange] -> Limit[limit=1] -> MapRows[Map(f1)] -> MapRows[Map(f2)]",
-        [{"id": 0}],
-    )
-    # Map operators only get fused in the optimized physical plan, not the logical plan.
-    assert "Map(f1)->Map(f2)" in ds5.stats()
-
-    # More complex interweaved case.
-    ds6 = ray.data.range(100).sort("id").map(f1).limit(20).sort("id").map(f2).limit(5)
-    _check_valid_plan_and_result(
-        ds6,
+        ds,
         "Read[ReadRange] -> Sort[Sort] -> Limit[limit=20] -> MapRows[Map(f1)] -> "
         "Sort[Sort] -> Limit[limit=5] -> MapRows[Map(f2)]",
         [{"id": i} for i in range(5)],
     )
 
+    # Test 8: Test limit pushdown between two Map operators.
+    ds = ray.data.range(100, override_num_blocks=100).map(f1).limit(1).map(f2)
+    _check_valid_plan_and_result(
+        ds,
+        "Read[ReadRange] -> Limit[limit=1] -> MapRows[Map(f1)] -> MapRows[Map(f2)]",
+        [{"id": 0}],
+    )
+
+
+def test_limit_pushdown_correctness(ray_start_regular_shared_2_cpus):
+    """Test that limit pushdown produces correct results in various scenarios."""
+
+    # Test 1: Simple project + limit
+    ds = ray.data.range(100).select_columns(["id"]).limit(10)
+    result = ds.take_all()
+    expected = [{"id": i} for i in range(10)]
+    assert result == expected
+
+    # Test 2: Multiple operations + limit (with MapRows pushdown)
+    ds = (
+        ray.data.range(100)
+        .map(lambda x: {"id": x["id"], "squared": x["id"] ** 2})
+        .select_columns(["id"])
+        .limit(5)
+    )
+    result = ds.take_all()
+    expected = [{"id": i} for i in range(5)]
+    assert result == expected
+
+    # Test 3: MapRows operations should get limit pushed (safe)
+    ds = ray.data.range(100).map(lambda x: {"id": x["id"] * 2}).limit(5)
+    result = ds.take_all()
+    expected = [{"id": i * 2} for i in range(5)]
+    assert result == expected
+
+    # Test 4: MapBatches operations should not get limit pushed
+    ds = ray.data.range(100).map_batches(lambda batch: {"id": batch["id"] * 2}).limit(5)
+    result = ds.take_all()
+    expected = [{"id": i * 2} for i in range(5)]
+    assert result == expected
+
+    # Test 5: Filter operations should not get limit pushed (conservative)
+    ds = ray.data.range(100).filter(lambda x: x["id"] % 2 == 0).limit(3)
+    result = ds.take_all()
+    expected = [{"id": i} for i in [0, 2, 4]]
+    assert result == expected
+
+    # Test 6: Complex chain with both safe operations (should all get limit pushed)
+    ds = (
+        ray.data.range(100)
+        .select_columns(["id"])  # Project - could be safe if it was the immediate input
+        .map(lambda x: {"id": x["id"] + 1})  # MapRows - NOT safe, stops pushdown
+        .limit(3)
+    )
+    result = ds.take_all()
+    expected = [{"id": i + 1} for i in range(3)]
+    assert result == expected
+
+    # The plan should show all operations after the limit
+    plan_str = ds._plan._logical_plan.dag.dag_str
+    assert (
+        "Read[ReadRange] -> Limit[limit=3] -> Project[Project] -> MapRows[Map(<lambda>)]"
+        == plan_str
+    )
+
+
+def test_limit_pushdown_scan_efficiency(ray_start_regular_shared_2_cpus):
+    """Test that limit pushdown scans fewer rows from the data source."""
+
+    @ray.remote
+    class Counter:
+        def __init__(self):
+            self.value = 0
+
+        def increment(self, amount=1):
+            self.value += amount
+            return self.value
+
+        def get(self):
+            return self.value
+
+        def reset(self):
+            self.value = 0
+
+    # Create a custom datasource that tracks how many rows it produces
+    class CountingDatasource(Datasource):
+        def __init__(self):
+            self.counter = Counter.remote()
+
+        def prepare_read(self, parallelism, n_per_block=10):
+            def read_fn(block_idx):
+                # Each block produces n_per_block rows
+                ray.get(self.counter.increment.remote(n_per_block))
+                return [
+                    pd.DataFrame(
+                        {
+                            "id": range(
+                                block_idx * n_per_block, (block_idx + 1) * n_per_block
+                            )
+                        }
+                    )
+                ]
+
+            return [
+                ReadTask(
+                    lambda i=i: read_fn(i),
+                    BlockMetadata(
+                        num_rows=n_per_block,
+                        size_bytes=n_per_block * 8,  # rough estimate
+                        input_files=None,
+                        exec_stats=None,
+                    ),
+                )
+                for i in range(parallelism)
+            ]
+
+        def get_rows_produced(self):
+            return ray.get(self.counter.get.remote())
+
+    # Test 1: Project + Limit should scan fewer rows due to pushdown
+    source = CountingDatasource()
+    ds = ray.data.read_datasource(source, override_num_blocks=20, n_per_block=10)
+    ds = ds.select_columns(["id"]).limit(5)
+    result = ds.take_all()
+
+    # Should get correct results
+    assert len(result) == 5
+    assert result == [{"id": i} for i in range(5)]
+
+    # Should have scanned significantly fewer than all 200 rows (20 blocks * 10 rows)
+    # Due to pushdown, we should scan much less
+    rows_produced_1 = source.get_rows_produced()
+    assert rows_produced_1 < 200  # Should be much less than total
+
+    # Test 2: MapRows + Limit should also scan fewer rows due to pushdown
+    source2 = CountingDatasource()
+    ds2 = ray.data.read_datasource(source2, override_num_blocks=20, n_per_block=10)
+    ds2 = ds2.map(lambda x: x).limit(5)
+    result2 = ds2.take_all()
+
+    # Should get correct results
+    assert len(result2) == 5
+    assert result2 == [{"id": i} for i in range(5)]
+
+    # Should also scan fewer than total due to pushdown
+    rows_produced_2 = source2.get_rows_produced()
+    assert rows_produced_2 < 200
+
+    # Both should be efficient with pushdown
+    assert rows_produced_1 < 100  # Should be much less than total
+    assert rows_produced_2 < 100  # Should be much less than total
+
+    # Test 3: Filter + Limit should scan fewer due to early termination, but not pushdown
+    source3 = CountingDatasource()
+    ds3 = ray.data.read_datasource(source3, override_num_blocks=20, n_per_block=10)
+    ds3 = ds3.filter(lambda x: x["id"] % 2 == 0).limit(3)
+    result3 = ds3.take_all()
+
+    # Should get correct results
+    assert len(result3) == 3
+    assert result3 == [{"id": i} for i in [0, 2, 4]]
+
+    # Should still scan fewer than total due to early termination
+    rows_produced_3 = source3.get_rows_produced()
+    assert rows_produced_3 < 200
+
+
+def test_limit_pushdown_union(ray_start_regular_shared_2_cpus):
+    """Test limit pushdown behavior with Union operations."""
+
+    # Create two datasets and union with limit
+    ds1 = ray.data.range(100, override_num_blocks=10)
+    ds2 = ray.data.range(200, override_num_blocks=10)
+    ds = ds1.union(ds2).limit(5)
+
+    expected_plan = "Read[ReadRange] -> Limit[limit=5], Read[ReadRange] -> Limit[limit=5] -> Union[Union] -> Limit[limit=5]"
+    _check_valid_plan_and_result(ds, expected_plan, [{"id": i} for i in range(5)])
+
+
+def test_limit_pushdown_union_with_maprows(ray_start_regular_shared_2_cpus):
+    """Limit after Union + MapRows: limit should be pushed before the MapRows
+    and inside each Union branch."""
+    ds1 = ray.data.range(100, override_num_blocks=10)
+    ds2 = ray.data.range(200, override_num_blocks=10)
+    ds = ds1.union(ds2).map(lambda x: x).limit(5)
+
+    expected_plan = (
+        "Read[ReadRange] -> Limit[limit=5], "
+        "Read[ReadRange] -> Limit[limit=5] -> Union[Union] -> "
+        "Limit[limit=5] -> MapRows[Map(<lambda>)]"
+    )
+    _check_valid_plan_and_result(ds, expected_plan, [{"id": i} for i in range(5)])
+
+
+def test_limit_pushdown_union_with_sort(ray_start_regular_shared_2_cpus):
+    """Limit after Union + Sort: limit must NOT push through the Sort."""
+    ds1 = ray.data.range(100, override_num_blocks=4)
+    ds2 = ray.data.range(50, override_num_blocks=4).map(
+        lambda x: {"id": x["id"] + 1000}
+    )
+    ds = ds1.union(ds2).sort("id").limit(5)
+
+    expected_plan = (
+        "Read[ReadRange], "
+        "Read[ReadRange] -> MapRows[Map(<lambda>)] -> "
+        "Union[Union] -> Sort[Sort] -> Limit[limit=5]"
+    )
+    _check_valid_plan_and_result(ds, expected_plan, [{"id": i} for i in range(5)])
+
+
+def test_limit_pushdown_multiple_unions(ray_start_regular_shared_2_cpus):
+    """Outer limit over nested unions should create a branch-local limit
+    for every leaf plus the global one."""
+    ds = (
+        ray.data.range(100)
+        .union(ray.data.range(100, override_num_blocks=5))
+        .union(ray.data.range(50))
+        .limit(5)
+    )
+
+    expected_plan = (
+        "Read[ReadRange] -> Limit[limit=5], "
+        "Read[ReadRange] -> Limit[limit=5] -> Union[Union] -> Limit[limit=5], "
+        "Read[ReadRange] -> Limit[limit=5] -> Union[Union] -> Limit[limit=5]"
+    )
+    _check_valid_plan_and_result(ds, expected_plan, [{"id": i} for i in range(5)])
+
+
+def test_limit_pushdown_union_with_groupby(ray_start_regular_shared_2_cpus):
+    """Limit after Union + Aggregate: limit should stay after Aggregate."""
+    ds1 = ray.data.range(100)
+    ds2 = ray.data.range(100).map(lambda x: {"id": x["id"] + 1000})
+    ds = ds1.union(ds2).groupby("id").count().limit(5)
+    # Result should contain 5 distinct ids with count == 1.
+    res = ds.take_all()
+    # Plan suffix check (no branch limits past Aggregate).
+    assert ds._plan._logical_plan.dag.dag_str.endswith(
+        "Union[Union] -> Aggregate[Aggregate] -> Limit[limit=5]"
+    )
+    assert len(res) == 5 and all(r["count()"] == 1 for r in res)
+
+
+def test_limit_pushdown_complex_chain(ray_start_regular_shared_2_cpus):
+    """
+    Complex end-to-end case:
+      1. Two branches each with a branch-local Limit pushed to Read.
+         • left  : Project
+         • right : MapRows
+      2. Union of the two branches.
+      3. Global Aggregate (groupby/count).
+      4. Sort (descending id) – pushes stop here.
+      5. Final Limit.
+    Verifies both plan rewrite and result correctness.
+    """
+    # ── left branch ────────────────────────────────────────────────
+    left = ray.data.range(50).select_columns(["id"]).limit(10)
+
+    # ── right branch ───────────────────────────────────────────────
+    right = ray.data.range(50).map(lambda x: {"id": x["id"] + 1000}).limit(10)
+
+    # ── union → aggregate → sort → limit ──────────────────────────
+    ds = left.union(right).groupby("id").count().sort("id", descending=True).limit(3)
+
+    # Expected logical-plan string.
+    expected_plan = (
+        "Read[ReadRange] -> Limit[limit=10] -> Project[Project], "
+        "Read[ReadRange] -> Limit[limit=10] -> MapRows[Map(<lambda>)] "
+        "-> Union[Union] -> Aggregate[Aggregate] -> Sort[Sort] -> Limit[limit=3]"
+    )
+
+    # Top-3 ids are the three largest (1009, 1008, 1007) with count()==1.
+    expected_result = [
+        {"id": 1009, "count()": 1},
+        {"id": 1008, "count()": 1},
+        {"id": 1007, "count()": 1},
+    ]
+
+    _check_valid_plan_and_result(ds, expected_plan, expected_result)
+
+
+def test_limit_pushdown_union_maps_projects(ray_start_regular_shared_2_cpus):
+    r"""
+    Read -> MapBatches -> MapRows -> Project
+         \                               /
+          --------   Union   -------------   → Limit
+    The limit should be pushed in front of each branch
+    (past MapRows, Project) while the original
+    global Limit is preserved after the Union.
+    """
+    # Left branch.
+    left = (
+        ray.data.range(30)
+        .map_batches(lambda b: b)
+        .map(lambda r: {"id": r["id"]})
+        .select_columns(["id"])
+    )
+
+    # Right branch with shifted ids.
+    right = (
+        ray.data.range(30)
+        .map_batches(lambda b: b)
+        .map(lambda r: {"id": r["id"] + 100})
+        .select_columns(["id"])
+    )
+
+    ds = left.union(right).limit(3)
+
+    expected_plan = (
+        "Read[ReadRange] -> "
+        "MapBatches[MapBatches(<lambda>)] -> Limit[limit=3] -> MapRows[Map(<lambda>)] -> "
+        "Project[Project], "
+        "Read[ReadRange] -> "
+        "MapBatches[MapBatches(<lambda>)] -> Limit[limit=3] -> MapRows[Map(<lambda>)] -> "
+        "Project[Project] -> Union[Union] -> Limit[limit=3]"
+    )
+
+    expected_result = [{"id": i} for i in range(3)]  # First 3 rows from left branch.
+
+    _check_valid_plan_and_result(ds, expected_plan, expected_result)
+
 
 def test_execute_to_legacy_block_list(
-    ray_start_regular_shared,
+    ray_start_regular_shared_2_cpus,
 ):
     ds = ray.data.range(10)
     # Stats not initialized until `ds.iter_rows()` is called
@@ -1710,7 +1469,7 @@ def test_execute_to_legacy_block_list(
 
 
 def test_streaming_executor(
-    ray_start_regular_shared,
+    ray_start_regular_shared_2_cpus,
 ):
     ds = ray.data.range(100, override_num_blocks=4)
     ds = ds.map_batches(lambda x: x)
@@ -1728,7 +1487,7 @@ def test_streaming_executor(
 
 
 def test_schema_partial_execution(
-    ray_start_regular_shared,
+    ray_start_regular_shared_2_cpus,
 ):
     fields = [
         ("sepal.length", pa.float64()),
@@ -1748,104 +1507,48 @@ def test_schema_partial_execution(
     # Verify that ds.schema() executes only the first block, and not the
     # entire Dataset.
     assert not ds._plan.has_computed_output()
-    assert str(ds._plan._logical_plan.dag) == (
+    assert ds._plan._logical_plan.dag.dag_str == (
         "Read[ReadParquet] -> MapBatches[MapBatches(<lambda>)]"
     )
 
 
-def check_transform_fns(op, expected_types):
-    assert isinstance(op, MapOperator)
-    transform_fns = op.get_map_transformer().get_transform_fns()
-    assert len(transform_fns) == len(expected_types), transform_fns
-    for i, transform_fn in enumerate(transform_fns):
-        assert isinstance(transform_fn, expected_types[i]), transform_fn
-
-
-@pytest.mark.skip("Needs zero-copy optimization for read->map_batches.")
-def test_zero_copy_fusion_eliminate_build_output_blocks(ray_start_regular_shared):
-    ctx = DataContext.get_current()
-
-    # Test the EliminateBuildOutputBlocks optimization rule.
-    planner = Planner()
-    read_op = get_parquet_read_logical_op()
-    op = MapBatches(read_op, lambda x: x)
-    logical_plan = LogicalPlan(op, ctx)
-    physical_plan = planner.plan(logical_plan)
-
-    # Before optimization, there should be a map op and and read op.
-    # And they should have the following transform_fns.
-    map_op = physical_plan.dag
-    check_transform_fns(
-        map_op,
-        [
-            BlocksToBatchesMapTransformFn,
-            BatchMapTransformFn,
-            BuildOutputBlocksMapTransformFn,
-        ],
+@pytest.mark.parametrize(
+    "average_bytes_per_output, ray_remote_args, ray_remote_args_fn, data_context, expected_memory",
+    [
+        # The user hasn't set memory, so the rule should configure it.
+        (1, None, None, DataContext(), 1),
+        # The user has set memory, so the rule shouldn't change it.
+        (1, {"memory": 2}, None, DataContext(), 2),
+        (1, None, lambda: {"memory": 2}, DataContext(), 2),
+        # An estimate isn't available, so the rule shouldn't configure memory.
+        (None, None, None, DataContext(), None),
+    ],
+)
+def test_configure_map_task_memory_rule(
+    average_bytes_per_output,
+    ray_remote_args,
+    ray_remote_args_fn,
+    data_context,
+    expected_memory,
+):
+    input_op = InputDataBuffer(MagicMock(), [])
+    map_op = MapOperator.create(
+        MagicMock(),
+        input_op=input_op,
+        data_context=data_context,
+        ray_remote_args=ray_remote_args,
+        ray_remote_args_fn=ray_remote_args_fn,
     )
-    read_op = map_op.input_dependencies[0]
-    check_transform_fns(
-        read_op,
-        [
-            BlockMapTransformFn,
-            BuildOutputBlocksMapTransformFn,
-        ],
+    map_op._metrics = MagicMock(
+        spec=OpRuntimeMetrics, average_bytes_per_output=average_bytes_per_output
     )
+    plan = PhysicalPlan(map_op, op_map=MagicMock(), context=data_context)
+    rule = ConfigureMapTaskMemoryUsingOutputSize()
 
-    physical_plan = PhysicalOptimizer().optimize(physical_plan)
-    fused_op = physical_plan.dag
+    new_plan = rule.apply(plan)
 
-    # After optimization, read and map ops should be fused as one op.
-    # And the BuidlOutputBlocksMapTransformFn in the middle should be dropped.
-    check_transform_fns(
-        fused_op,
-        [
-            BlockMapTransformFn,
-            BlocksToBatchesMapTransformFn,
-            BatchMapTransformFn,
-            BuildOutputBlocksMapTransformFn,
-        ],
-    )
-
-
-def test_insert_logical_optimization_rules():
-    class FakeRule1:
-        pass
-
-    class FakeRule2:
-        pass
-
-    # By default, add the rule to the end of the list.
-    register_logical_rule(FakeRule1)
-    assert get_logical_rules()[-1] == FakeRule1
-
-    register_logical_rule(FakeRule2, 0)
-    assert get_logical_rules()[0] == FakeRule2
-
-    # 'FakeRule1' is already registered, so it shouldn't be added again.
-    register_logical_rule(FakeRule1, 0)
-    assert get_logical_rules()[-1] == FakeRule1
-    assert get_logical_rules()[0] == FakeRule2
-
-
-def test_insert_physical_optimization_rules():
-    class FakeRule1:
-        pass
-
-    class FakeRule2:
-        pass
-
-    # By default, add the rule to the end of the list.
-    register_physical_rule(FakeRule1)
-    assert get_physical_rules()[-1] == FakeRule1
-
-    register_physical_rule(FakeRule2, 0)
-    assert get_physical_rules()[0] == FakeRule2
-
-    # 'FakeRule1' is already registered, so it shouldn't be added again.
-    register_physical_rule(FakeRule1, 0)
-    assert get_physical_rules()[-1] == FakeRule1
-    assert get_physical_rules()[0] == FakeRule2
+    remote_args = new_plan.dag._get_runtime_ray_remote_args()
+    assert remote_args.get("memory") == expected_memory
 
 
 if __name__ == "__main__":

@@ -4,7 +4,7 @@ import os
 from enum import Enum
 from typing import TYPE_CHECKING, Dict, List, Optional, Set, Union
 
-from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
+from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
 
 if TYPE_CHECKING:
     from ray.train._internal.storage import StorageContext
@@ -16,6 +16,14 @@ if TYPE_CHECKING:
 
 AIR_TRAINERS = {
     "HorovodTrainer",
+    "LightGBMTrainer",
+    "TensorflowTrainer",
+    "TorchTrainer",
+    "XGBoostTrainer",
+}
+
+TRAIN_V2_TRAINERS = {
+    "DataParallelTrainer",
     "LightGBMTrainer",
     "TensorflowTrainer",
     "TorchTrainer",
@@ -90,6 +98,14 @@ def tag_air_trainer(trainer: "BaseTrainer"):
     assert isinstance(trainer, BaseTrainer)
     trainer_name = _find_class_name(trainer, "ray.train", AIR_TRAINERS)
     record_extra_usage_tag(TagKey.AIR_TRAINER, trainer_name)
+
+
+def tag_train_v2_trainer(trainer):
+    from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
+
+    assert isinstance(trainer, DataParallelTrainer)
+    trainer_name = _find_class_name(trainer, "ray.train", TRAIN_V2_TRAINERS)
+    record_extra_usage_tag(TagKey.TRAIN_TRAINER, trainer_name)
 
 
 def tag_searcher(searcher: Union["BasicVariantGenerator", "Searcher"]):

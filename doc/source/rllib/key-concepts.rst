@@ -1,13 +1,11 @@
-
 .. include:: /_includes/rllib/we_are_hiring.rst
-
-.. include:: /_includes/rllib/new_api_stack.rst
-
 
 .. _rllib-key-concepts:
 
 Key concepts
 ============
+
+.. include:: /_includes/rllib/new_api_stack.rst
 
 To help you get a high-level understanding of how the library works, on this page, you learn about the
 key concepts and general architecture of RLlib.
@@ -38,7 +36,7 @@ AlgorithmConfig and Algorithm
 
 .. tip::
     The following is a quick overview of **RLlib AlgorithmConfigs and Algorithms**.
-    See :ref:`here for a detailed description of the Algorithm class <rllib-algorithms-doc>`.
+    See here for a :ref:`detailed description of the Algorithm class <rllib-algorithms-doc>`.
 
 The RLlib :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` class serves as a runtime for your RL experiments,
 bringing together all components required for learning an optimal solution to your :ref:`RL environment <rllib-key-concepts-environments>`.
@@ -102,7 +100,7 @@ The following examples demonstrate this on RLlib's :py:class:`~ray.rllib.algorit
 
         .. testcode::
 
-            from ray import train, tune
+            from ray import tune
             from ray.rllib.algorithms.ppo import PPOConfig
 
             # Configure.
@@ -120,7 +118,7 @@ The following examples demonstrate this on RLlib's :py:class:`~ray.rllib.algorit
                 "PPO",
                 param_space=config,
                 # Train for 4000 timesteps (2 iterations).
-                run_config=train.RunConfig(stop={"num_env_steps_sampled_lifetime": 4000}),
+                run_config=tune.RunConfig(stop={"num_env_steps_sampled_lifetime": 4000}),
             ).fit()
 
 .. _rllib-key-concepts-environments:
@@ -166,7 +164,7 @@ RLModules
     The following is a quick overview of **RLlib RLModules**.
     See :ref:`here for a detailed description of the RLModule class <rlmodule-guide>`.
 
-`RLModules <rllib-rlmodule.html>`__ are deep-learning framework-specific neural network containers.
+`RLModules <rl-modules.html>`__ are deep-learning framework-specific neural network wrappers.
 RLlib's :ref:`EnvRunners <rllib-key-concepts-env-runners>` use them for computing actions when stepping through the
 :ref:`RL environment <rllib-key-concepts-environments>` and RLlib's :ref:`Learners <rllib-key-concepts-learners>` use
 :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` instances for computing losses and gradients before updating them.
@@ -396,7 +394,7 @@ You can also use a :py:class:`~ray.rllib.core.learner.learner.Learner` standalon
 with a list of Episodes.
 
 Here is an example of creating a remote :py:class:`~ray.rllib.core.learner.learner.Learner`
-actor and calling its :py:meth:`~ray.rllib.core.learner.learner.Learner.update_from_episodes` method.
+actor and calling its :py:meth:`~ray.rllib.core.learner.learner.Learner.update` method.
 
 .. testcode::
 
@@ -424,7 +422,7 @@ actor and calling its :py:meth:`~ray.rllib.core.learner.learner.Learner.update_f
     ray.get(learner_actor.build.remote())
 
     # Perform an update from the list of episodes we got from the `EnvRunners` above.
-    learner_results = ray.get(learner_actor.update_from_episodes.remote(
+    learner_results = ray.get(learner_actor.update.remote(
         episodes=tree.flatten(episodes)
     ))
     print(learner_results["default_policy"]["policy_loss"])

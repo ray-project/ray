@@ -15,7 +15,10 @@
 #include "ray/object_manager/plasma/create_request_queue.h"
 
 #include <cstdlib>
+#include <list>
 #include <memory>
+#include <string>
+#include <utility>
 
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/object_manager/plasma/common.h"
@@ -29,8 +32,8 @@ uint64_t CreateRequestQueue::AddRequest(const ObjectID &object_id,
                                         size_t object_size) {
   auto req_id = next_req_id_++;
   fulfilled_requests_[req_id] = nullptr;
-  queue_.emplace_back(
-      new CreateRequest(object_id, req_id, client, create_callback, object_size));
+  queue_.emplace_back(std::make_unique<CreateRequest>(
+      object_id, req_id, client, create_callback, object_size));
   num_bytes_pending_ += object_size;
   return req_id;
 }

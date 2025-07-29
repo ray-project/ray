@@ -10,7 +10,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 from pyarrow.fs import LocalFileSystem
-from pytest_lazyfixture import lazy_fixture
+from pytest_lazy_fixtures import lf as lazy_fixture
 
 from ray.data.datasource import (
     BaseFileMetadataProvider,
@@ -63,10 +63,10 @@ def _get_file_sizes_bytes(paths, fs):
 def test_file_metadata_providers_not_implemented():
     meta_provider = FileMetadataProvider()
     with pytest.raises(NotImplementedError):
-        meta_provider(["/foo/bar.csv"], None)
+        meta_provider(["/foo/bar.csv"])
     meta_provider = BaseFileMetadataProvider()
     with pytest.raises(NotImplementedError):
-        meta_provider(["/foo/bar.csv"], None, rows_per_file=None, file_sizes=[None])
+        meta_provider(["/foo/bar.csv"], rows_per_file=None, file_sizes=[None])
     with pytest.raises(NotImplementedError):
         meta_provider.expand_paths(["/foo/bar.csv"], None)
 
@@ -103,12 +103,11 @@ def test_default_parquet_metadata_provider(fs, data_path):
     pq.write_table(table, paths[1], filesystem=fs)
 
     meta_provider = ParquetMetadataProvider()
-    pq_ds = pq.ParquetDataset(paths, filesystem=fs, use_legacy_dataset=False)
+    pq_ds = pq.ParquetDataset(paths, filesystem=fs)
     fragment_file_metas = meta_provider.prefetch_file_metadata(pq_ds.fragments)
 
     meta = meta_provider(
         [p.path for p in pq_ds.fragments],
-        pq_ds.schema,
         num_fragments=len(pq_ds.fragments),
         prefetched_metadata=fragment_file_metas,
     )
@@ -119,7 +118,6 @@ def test_default_parquet_metadata_provider(fs, data_path):
     assert meta.num_rows == 6
     assert len(paths) == 2
     assert all(path in meta.input_files for path in paths)
-    assert meta.schema.equals(pq_ds.schema)
 
 
 @pytest.mark.parametrize(
@@ -175,7 +173,6 @@ def test_default_file_metadata_provider(
 
     meta = meta_provider(
         paths,
-        None,
         rows_per_file=3,
         file_sizes=file_sizes,
     )
@@ -183,7 +180,6 @@ def test_default_file_metadata_provider(
     assert meta.num_rows == 6
     assert len(paths) == 2
     assert all(path in meta.input_files for path in paths)
-    assert meta.schema is None
 
 
 @pytest.mark.parametrize(
@@ -477,7 +473,6 @@ def test_fast_file_metadata_provider(
 
     meta = meta_provider(
         paths,
-        None,
         rows_per_file=3,
         file_sizes=file_sizes,
     )
@@ -485,7 +480,6 @@ def test_fast_file_metadata_provider(
     assert meta.num_rows == 6
     assert len(paths) == 2
     assert all(path in meta.input_files for path in paths)
-    assert meta.schema is None
 
 
 def test_fast_file_metadata_provider_ignore_missing():

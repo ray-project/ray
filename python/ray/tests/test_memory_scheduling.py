@@ -1,8 +1,11 @@
-import numpy as np
+import sys
 import time
 
+import pytest
+import numpy as np
+
 import ray
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import wait_for_condition
 
 MB = 1024 * 1024
 
@@ -74,11 +77,4 @@ def test_object_store_memory_reporting_task():
 
 
 if __name__ == "__main__":
-    import pytest
-    import os
-    import sys
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

@@ -14,6 +14,10 @@
 
 #include "ray/core_worker/object_recovery_manager.h"
 
+#include <memory>
+#include <utility>
+#include <vector>
+
 #include "ray/util/util.h"
 
 namespace ray {
@@ -63,11 +67,12 @@ bool ObjectRecoveryManager::RecoverObject(const ObjectID &object_id) {
           }
           RAY_LOG(INFO).WithField(object_id) << "Recovery complete for object";
         });
-    // Lookup the object in the GCS to find another copy.
+    // Gets the node ids from reference_counter and then gets addresses from the local
+    // gcs_client.
     RAY_CHECK_OK(object_lookup_(
         object_id,
-        [this](const ObjectID &object_id, const std::vector<rpc::Address> &locations) {
-          PinOrReconstructObject(object_id, locations);
+        [this](const ObjectID &object_id, std::vector<rpc::Address> locations) {
+          PinOrReconstructObject(object_id, std::move(locations));
         }));
   } else if (requires_recovery) {
     RAY_LOG(DEBUG).WithField(object_id) << "Recovery already started for object";
@@ -84,17 +89,16 @@ bool ObjectRecoveryManager::RecoverObject(const ObjectID &object_id) {
   return true;
 }
 
-void ObjectRecoveryManager::PinOrReconstructObject(
-    const ObjectID &object_id, const std::vector<rpc::Address> &locations) {
+void ObjectRecoveryManager::PinOrReconstructObject(const ObjectID &object_id,
+                                                   std::vector<rpc::Address> locations) {
   RAY_LOG(DEBUG).WithField(object_id)
       << "Lost object has " << locations.size() << " locations";
   // The object to recovery has secondary copies, pin one copy to promote it to primary
   // one.
   if (!locations.empty()) {
-    auto locations_copy = locations;
-    const auto location = std::move(locations_copy.back());
-    locations_copy.pop_back();
-    PinExistingObjectCopy(object_id, location, locations_copy);
+    const auto location = std::move(locations.back());
+    locations.pop_back();
+    PinExistingObjectCopy(object_id, location, std::move(locations));
   } else {
     // There are no more copies to pin, try to reconstruct the object.
     ReconstructObject(object_id);
@@ -104,7 +108,7 @@ void ObjectRecoveryManager::PinOrReconstructObject(
 void ObjectRecoveryManager::PinExistingObjectCopy(
     const ObjectID &object_id,
     const rpc::Address &raylet_address,
-    const std::vector<rpc::Address> &other_locations) {
+    std::vector<rpc::Address> other_locations) {
   // If a copy still exists, pin the object by sending a
   // PinObjectIDs RPC.
   const auto node_id = NodeID::FromBinary(raylet_address.raylet_id());
@@ -128,25 +132,25 @@ void ObjectRecoveryManager::PinExistingObjectCopy(
     client = client_it->second;
   }
 
-  client->PinObjectIDs(rpc_address_,
-                       {object_id},
-                       /*generator_id=*/ObjectID::Nil(),
-                       [this, object_id, other_locations, node_id](
-                           const Status &status, const rpc::PinObjectIDsReply &reply) {
-                         if (status.ok() && reply.successes(0)) {
-                           // TODO(swang): Make sure that the node is still alive when
-                           // marking the object as pinned.
-                           RAY_CHECK(in_memory_store_.Put(
-                               RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id));
-                           reference_counter_.UpdateObjectPinnedAtRaylet(object_id,
-                                                                         node_id);
-                         } else {
-                           RAY_LOG(INFO).WithField(object_id)
-                               << "Error pinning secondary copy of lost object due to "
-                               << status << ", trying again with other locations";
-                           PinOrReconstructObject(object_id, other_locations);
-                         }
-                       });
+  client->PinObjectIDs(
+      rpc_address_,
+      {object_id},
+      /*generator_id=*/ObjectID::Nil(),
+      [this, object_id, other_locations = std::move(other_locations), node_id](
+          const Status &status, const rpc::PinObjectIDsReply &reply) mutable {
+        if (status.ok() && reply.successes(0)) {
+          // TODO(swang): Make sure that the node is still alive when
+          // marking the object as pinned.
+          RAY_CHECK(in_memory_store_.Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
+                                         object_id));
+          reference_counter_.UpdateObjectPinnedAtRaylet(object_id, node_id);
+        } else {
+          RAY_LOG(INFO).WithField(object_id)
+              << "Error pinning secondary copy of lost object due to " << status
+              << ", trying again with other locations";
+          PinOrReconstructObject(object_id, std::move(other_locations));
+        }
+      });
 }
 
 void ObjectRecoveryManager::ReconstructObject(const ObjectID &object_id) {
@@ -179,9 +183,9 @@ void ObjectRecoveryManager::ReconstructObject(const ObjectID &object_id) {
   // after ResubmitTask, then it will remain true forever.
   // see https://github.com/ray-project/ray/issues/47606 for more details.
   reference_counter_.UpdateObjectPendingCreation(object_id, true);
-  auto resubmitted = task_resubmitter_.ResubmitTask(task_id, &task_deps);
+  auto error_type_optional = task_manager_.ResubmitTask(task_id, &task_deps);
 
-  if (resubmitted) {
+  if (!error_type_optional.has_value()) {
     // Try to recover the task's dependencies.
     for (const auto &dep : task_deps) {
       auto recovered = RecoverObject(dep);
@@ -200,10 +204,9 @@ void ObjectRecoveryManager::ReconstructObject(const ObjectID &object_id) {
     RAY_LOG(INFO).WithField(object_id)
         << "Failed to reconstruct object because lineage has already been deleted";
     reference_counter_.UpdateObjectPendingCreation(object_id, false);
-    recovery_failure_callback_(
-        object_id,
-        rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_MAX_ATTEMPTS_EXCEEDED,
-        /*pin_object=*/true);
+    recovery_failure_callback_(object_id,
+                               *error_type_optional,
+                               /*pin_object=*/true);
   }
 }
 

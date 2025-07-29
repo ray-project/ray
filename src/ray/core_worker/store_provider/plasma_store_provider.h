@@ -14,11 +14,17 @@
 
 #pragma once
 
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/buffer.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
+#include "ray/common/status_or.h"
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/reference_count.h"
@@ -192,7 +198,7 @@ class CoreWorkerPlasmaStoreProvider {
   /// \return Output mapping of used object ids to (size, callsite).
   absl::flat_hash_map<ObjectID, std::pair<int64_t, std::string>> UsedObjectsList() const;
 
-  std::string MemoryUsageString();
+  StatusOr<std::string> GetMemoryUsage();
 
   std::shared_ptr<plasma::PlasmaClient> &store_client() { return store_client_; }
 

@@ -1,15 +1,17 @@
 import dataclasses
 from dataclasses import asdict, fields
-from typing import Callable, List, Tuple
+from typing import Awaitable, Callable, List, Tuple
 
 import aiohttp.web
 
 from ray.dashboard.optional_utils import rest_response
+from ray.dashboard.utils import HTTPStatusCode
 from ray.util.state.common import (
     DEFAULT_LIMIT,
     DEFAULT_RPC_TIMEOUT,
     RAY_MAX_LIMIT_FROM_API_SERVER,
     ListApiOptions,
+    ListApiResponse,
     PredicateType,
     StateSchema,
     SummaryApiOptions,
@@ -21,9 +23,9 @@ from ray.util.state.exception import DataSourceUnavailable
 from ray.util.state.util import convert_string_to_type
 
 
-def do_reply(success: bool, error_message: str, result: dict, **kwargs):
+def do_reply(success: bool, error_message: str, result: ListApiResponse, **kwargs):
     return rest_response(
-        success=success,
+        status_code=HTTPStatusCode.OK if success else HTTPStatusCode.INTERNAL_ERROR,
         message=error_message,
         result=result,
         convert_google_style=False,
@@ -32,7 +34,8 @@ def do_reply(success: bool, error_message: str, result: dict, **kwargs):
 
 
 async def handle_list_api(
-    list_api_fn: Callable[[ListApiOptions], dict], req: aiohttp.web.Request
+    list_api_fn: Callable[[ListApiOptions], Awaitable[ListApiResponse]],
+    req: aiohttp.web.Request,
 ):
     try:
         result = await list_api_fn(option=options_from_req(req))

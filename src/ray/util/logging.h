@@ -54,6 +54,7 @@
 #include <chrono>
 #include <functional>
 #include <iostream>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <sstream>
@@ -61,6 +62,7 @@
 #include <vector>
 
 #include "ray/util/macros.h"
+#include "ray/util/string_utils.h"
 
 #if defined(_WIN32)
 #ifndef _WINDOWS_
@@ -137,11 +139,11 @@ enum class RayLogLevel {
 
 #define RAY_IGNORE_EXPR(expr) ((void)(expr))
 
-#define RAY_CHECK_WITH_DISPLAY(condition, display)                                \
-  RAY_PREDICT_TRUE((condition))                                                   \
-  ? RAY_IGNORE_EXPR(0)                                                            \
-  : ::ray::Voidify() & ::ray::RayLog(__FILE__, __LINE__, ray::RayLogLevel::FATAL) \
-                           << " Check failed: " display " "
+#define RAY_CHECK_WITH_DISPLAY(condition, display)                                 \
+  RAY_PREDICT_TRUE((condition))                                                    \
+  ? RAY_IGNORE_EXPR(0)                                                             \
+  : ::ray::Voidify() & (::ray::RayLog(__FILE__, __LINE__, ray::RayLogLevel::FATAL) \
+                        << " Check failed: " display " ")
 
 #define RAY_CHECK(condition) RAY_CHECK_WITH_DISPLAY(condition, #condition)
 
@@ -243,10 +245,6 @@ enum class RayLogLevel {
 /// The second argument: log content.
 using FatalLogCallback = std::function<void(const std::string &, const std::string &)>;
 
-// Default configs for ray log.
-inline constexpr size_t kDefaultLogRotationMaxSize = 1ULL << 29;
-inline constexpr size_t kDefaultLogRotationFileNum = 10;
-
 class RayLog {
  public:
   RayLog(const char *file_name, int line_number, RayLogLevel severity);
@@ -266,35 +264,47 @@ class RayLog {
   static std::string GetLogFilepathFromDirectory(const std::string &log_dir,
                                                  const std::string &app_name);
 
+  static std::string GetErrLogFilepathFromDirectory(const std::string &log_dir,
+                                                    const std::string &app_name);
+
   /// The init function of ray log for a program which should be called only once.
   ///
   /// \parem appName The app name which starts the log.
   /// \param severity_threshold Logging threshold for the program.
   /// \param log_filepath Logging output filepath. If empty, the log won't output to file,
   /// but to stdout.
+  /// \param err_log_filepath Logging error filepath. If empty, the log won't output to
+  /// file, but to stderr.
   /// Because of log rotations, the logs be saved to log file names with `.<number>`
   /// suffixes.
   /// Example: if log_filepath is /my/path/raylet.out, the output can be
   /// /my/path/raylet.out, /my/path/raylet.out.1 and /my/path/raylet.out.2
   ///
-  /// \param log_rotation_max_size max bytes for of log rotation.
+  /// \param log_rotation_max_size max bytes for of log rotation. 0 means no rotation.
   /// \param log_rotation_file_num max number of rotating log files.
   static void StartRayLog(const std::string &app_name,
                           RayLogLevel severity_threshold = RayLogLevel::INFO,
                           const std::string &log_filepath = "",
-                          size_t log_rotation_max_size = kDefaultLogRotationMaxSize,
-                          size_t log_rotation_file_num = kDefaultLogRotationFileNum);
+                          const std::string &err_log_filepath = "",
+                          size_t log_rotation_max_size = 0,
+                          size_t log_rotation_file_num = 1);
 
   /// The shutdown function of ray log which should be used with StartRayLog as a pair.
   /// If `StartRayLog` wasn't called before, it will be no-op.
   static void ShutDownRayLog();
 
   /// Get max bytes value from env variable.
-  /// Return default value `kDefaultLogRotationMaxSize` if env not set or parse failure.
+  /// Return default value, which indicates no rotation, if env not set, parse failure or
+  /// return value 0.
+  ///
+  /// Log rotation is disable on windows platform.
   static size_t GetRayLogRotationMaxBytesOrDefault();
 
   /// Get log rotation backup count.
-  /// Return default value `kDefaultLogRotationFileNum` if env not set or parse failure.
+  /// Return default value, which indicates no rotation, if env not set, parse failure or
+  /// return value 1.
+  ///
+  /// Log rotation is disabled on windows platform.
   static size_t GetRayLogRotationBackupCountOrDefault();
 
   /// Uninstall the signal actions installed by InstallFailureSignalHandler.
@@ -414,9 +424,9 @@ class RayLog {
   // Log format pattern.
   static std::string log_format_pattern_;
   // Log rotation file size limitation.
-  inline static size_t log_rotation_max_size_ = kDefaultLogRotationMaxSize;
+  inline static size_t log_rotation_max_size_ = 0;
   // Log rotation file number.
-  inline static size_t log_rotation_file_num_ = kDefaultLogRotationFileNum;
+  inline static size_t log_rotation_file_num_ = 1;
   // Ray default logger name.
   static std::string logger_name_;
 

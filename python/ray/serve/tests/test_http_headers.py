@@ -3,14 +3,16 @@ import uuid
 from typing import Any, Dict, Optional, Tuple
 
 import aiohttp
+import httpx
 import pytest
-import requests
 import starlette
 from aiohttp import ClientSession, TCPConnector
 from fastapi import FastAPI
 
 import ray
 from ray import serve
+from ray.serve._private.constants import SERVE_HTTP_REQUEST_ID_HEADER
+from ray.serve._private.test_utils import get_application_url
 from ray.serve._private.utils import generate_request_id
 
 
@@ -20,13 +22,13 @@ def test_request_id_header_by_default(serve_instance):
     @serve.deployment
     class Model:
         def __call__(self):
-            request_id = ray.serve.context._serve_request_context.get().request_id
+            request_id = ray.serve.context._get_serve_request_context().request_id
             return request_id
 
     serve.run(Model.bind())
-    resp = requests.get("http://localhost:8000")
+    resp = httpx.get(f"{get_application_url()}")
     assert resp.status_code == 200
-    assert resp.text == resp.headers["x-request-id"]
+    assert resp.text == resp.headers[SERVE_HTTP_REQUEST_ID_HEADER]
 
     def is_valid_uuid(num: str):
         try:
@@ -41,8 +43,8 @@ def test_request_id_header_by_default(serve_instance):
 class TestUserProvidedRequestIDHeader:
     def verify_result(self):
         for header_attr in ["X-Request-ID"]:
-            resp = requests.get(
-                "http://localhost:8000", headers={header_attr: "123-234"}
+            resp = httpx.get(
+                f"{get_application_url()}", headers={header_attr: "123-234"}
             )
             assert resp.status_code == 200
             assert resp.json() == 1
@@ -52,7 +54,7 @@ class TestUserProvidedRequestIDHeader:
         @serve.deployment
         class Model:
             def __call__(self) -> int:
-                request_id = ray.serve.context._serve_request_context.get().request_id
+                request_id = ray.serve.context._get_serve_request_context().request_id
                 assert request_id == "123-234"
                 return 1
 
@@ -67,7 +69,7 @@ class TestUserProvidedRequestIDHeader:
         class Model:
             @app.get("/")
             def say_hi(self) -> int:
-                request_id = ray.serve.context._serve_request_context.get().request_id
+                request_id = ray.serve.context._get_serve_request_context().request_id
                 assert request_id == "123-234"
                 return 1
 
@@ -78,7 +80,7 @@ class TestUserProvidedRequestIDHeader:
         @serve.deployment
         class Model:
             def __call__(self) -> int:
-                request_id = ray.serve.context._serve_request_context.get().request_id
+                request_id = ray.serve.context._get_serve_request_context().request_id
                 assert request_id == "123-234"
                 return starlette.responses.Response("1", media_type="application/json")
 
@@ -94,20 +96,20 @@ def test_set_request_id_headers_with_two_attributes(serve_instance):
     @serve.deployment
     class Model:
         def __call__(self):
-            request_id = ray.serve.context._serve_request_context.get().request_id
+            request_id = ray.serve.context._get_serve_request_context().request_id
             return request_id
 
     serve.run(Model.bind())
-    resp = requests.get(
-        "http://localhost:8000",
+    resp = httpx.get(
+        get_application_url(),
         headers={
             "X-Request-ID": "234",
         },
     )
 
     assert resp.status_code == 200
-    assert "x-request-id" in resp.headers
-    assert resp.text == resp.headers["x-request-id"]
+    assert SERVE_HTTP_REQUEST_ID_HEADER in resp.headers
+    assert resp.text == resp.headers[SERVE_HTTP_REQUEST_ID_HEADER]
 
 
 def test_reuse_request_id(serve_instance):
@@ -128,7 +130,7 @@ def test_reuse_request_id(serve_instance):
     class MyFastAPIDeployment:
         @app.post("/hello")
         def root(self, user_input: Dict[str, str]) -> Dict[str, str]:
-            request_id = ray.serve.context._serve_request_context.get().request_id
+            request_id = ray.serve.context._get_serve_request_context().request_id
             return {
                 "app_name": user_input["app_name"],
                 "serve_context_request_id": request_id,
@@ -139,7 +141,7 @@ def test_reuse_request_id(serve_instance):
     async def send_request(
         session: ClientSession, body: Dict[str, Any], request_id: Optional[str]
     ) -> Tuple[str, str]:
-        headers = {"x-request-id": request_id}
+        headers = {SERVE_HTTP_REQUEST_ID_HEADER: request_id}
         url = "http://localhost:8000/hello"
 
         async with session.post(url=url, headers=headers, json=body) as response:
@@ -149,7 +151,7 @@ def test_reuse_request_id(serve_instance):
             # Ensure the request id from the serve context is set correctly.
             assert result["serve_context_request_id"] == request_id
             # Ensure the request id from the response header is returned correctly.
-            assert response.headers["x-request-id"] == request_id
+            assert response.headers[SERVE_HTTP_REQUEST_ID_HEADER] == request_id
 
     async def main():
         """Sending 20 requests in parallel all with the same request id, but with

@@ -733,7 +733,7 @@ class DynamicTFPolicyV2(TFPolicy):
                 {SampleBatch.SEQ_LENS: train_batch[SampleBatch.SEQ_LENS]}
             )
 
-        self._loss_input_dict.update({k: v for k, v in train_batch.items()})
+        self._loss_input_dict.update(dict(train_batch))
 
         if log_once("loss_init"):
             logger.debug(

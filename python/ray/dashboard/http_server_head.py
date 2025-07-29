@@ -4,9 +4,11 @@ import ipaddress
 import logging
 import os
 import pathlib
+import posixpath
 import sys
 import time
 from math import floor
+from typing import List
 
 from packaging.version import Version
 
@@ -14,14 +16,18 @@ import ray
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.timezone_utils as timezone_utils
 import ray.dashboard.utils as dashboard_utils
-from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
-from ray._private.utils import get_or_create_event_loop
+from ray import ray_constants
+from ray._common.utils import get_or_create_event_loop
+from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.dashboard.dashboard_metrics import DashboardPrometheusMetrics
+from ray.dashboard.head import DashboardHeadModule
 
 # All third-party dependencies that are not included in the minimal Ray
 # installation must be included in this file. This allows us to determine if
 # the agent has the necessary dependencies to be started.
 from ray.dashboard.optional_deps import aiohttp, hdrs
+from ray.dashboard.subprocesses.handle import SubprocessModuleHandle
+from ray.dashboard.subprocesses.routes import SubprocessRouteTable
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray provides a default configuration at
@@ -165,9 +171,7 @@ class HttpServerDashboardHead:
 
             # If the destination is not relative to the expected directory,
             # then the user is attempting path traversal, so deny the request.
-            request_path = pathlib.PurePosixPath(
-                pathlib.posixpath.realpath(request.path)
-            )
+            request_path = pathlib.PurePosixPath(posixpath.realpath(request.path))
             if request_path != parent and parent not in request_path.parents:
                 logger.info(
                     f"Rejecting {request_path=} because it is not relative to {parent=}"
@@ -229,15 +233,22 @@ class HttpServerDashboardHead:
             return response
         return await handler(request)
 
-    async def run(self, modules):
+    async def run(
+        self,
+        dashboard_head_modules: List[DashboardHeadModule],
+        subprocess_module_handles: List[SubprocessModuleHandle],
+    ):
         # Bind http routes of each module.
-        for c in modules:
-            dashboard_optional_utils.DashboardHeadRouteTable.bind(c)
+        for m in dashboard_head_modules:
+            dashboard_optional_utils.DashboardHeadRouteTable.bind(m)
+
+        for h in subprocess_module_handles:
+            SubprocessRouteTable.bind(h)
 
         # Http server should be initialized after all modules loaded.
         # working_dir uploads for job submission can be up to 100MiB.
         app = aiohttp.web.Application(
-            client_max_size=100 * 1024**2,
+            client_max_size=ray_constants.DASHBOARD_CLIENT_MAX_SIZE,
             middlewares=[
                 self.metrics_middleware,
                 self.path_clean_middleware,
@@ -246,11 +257,12 @@ class HttpServerDashboardHead:
             ],
         )
         app.add_routes(routes=routes.bound_routes())
+        app.add_routes(routes=SubprocessRouteTable.bound_routes())
 
         self.runner = aiohttp.web.AppRunner(
             app,
             access_log_format=(
-                "%a %t '%r' %s %b bytes %D us " "'%{Referer}i' '%{User-Agent}i'"
+                "%a %t '%r' %s %b bytes %D us '%{Referer}i' '%{User-Agent}i'"
             ),
         )
         await self.runner.setup()

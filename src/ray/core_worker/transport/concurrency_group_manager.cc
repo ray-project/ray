@@ -14,6 +14,12 @@
 
 #include "ray/core_worker/transport/concurrency_group_manager.h"
 
+#include <memory>
+#include <optional>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "ray/core_worker/fiber.h"
 #include "ray/core_worker/transport/thread_pool.h"
 
@@ -23,11 +29,14 @@ namespace core {
 template <typename ExecutorType>
 ConcurrencyGroupManager<ExecutorType>::ConcurrencyGroupManager(
     const std::vector<ConcurrencyGroup> &concurrency_groups,
-    const int32_t max_concurrency_for_default_concurrency_group) {
+    const int32_t max_concurrency_for_default_concurrency_group,
+    std::function<std::function<void()>()> initialize_thread_callback)
+    : initialize_thread_callback_(std::move(initialize_thread_callback)) {
   for (auto &group : concurrency_groups) {
     const auto name = group.name;
     const auto max_concurrency = group.max_concurrency;
-    auto executor = std::make_shared<ExecutorType>(max_concurrency);
+    auto executor =
+        std::make_shared<ExecutorType>(max_concurrency, initialize_thread_callback_);
     auto &fds = group.function_descriptors;
     for (auto fd : fds) {
       functions_to_executor_index_[fd->ToString()] = executor;
@@ -39,10 +48,10 @@ ConcurrencyGroupManager<ExecutorType>::ConcurrencyGroupManager(
   // this actor, the tasks of default group will be performed in main thread instead of
   // any executor pool, otherwise tasks in any concurrency group should be performed in
   // the thread pools instead of main thread.
-  if (ExecutorType::NeedDefaultExecutor(max_concurrency_for_default_concurrency_group) ||
-      !concurrency_groups.empty()) {
-    default_executor_ =
-        std::make_shared<ExecutorType>(max_concurrency_for_default_concurrency_group);
+  if (ExecutorType::NeedDefaultExecutor(max_concurrency_for_default_concurrency_group,
+                                        !concurrency_groups.empty())) {
+    default_executor_ = std::make_shared<ExecutorType>(
+        max_concurrency_for_default_concurrency_group, initialize_thread_callback_);
   }
 }
 
@@ -52,7 +61,7 @@ std::shared_ptr<ExecutorType> ConcurrencyGroupManager<ExecutorType>::GetExecutor
   if (concurrency_group_name == RayConfig::instance().system_concurrency_group_name() &&
       name_to_executor_index_.find(concurrency_group_name) ==
           name_to_executor_index_.end()) {
-    auto executor = std::make_shared<ExecutorType>(1);
+    auto executor = std::make_shared<ExecutorType>(1, initialize_thread_callback_);
     name_to_executor_index_[concurrency_group_name] = executor;
   }
 
@@ -65,7 +74,7 @@ std::shared_ptr<ExecutorType> ConcurrencyGroupManager<ExecutorType>::GetExecutor
         << "the concurrency group " << concurrency_group_name;
     return it->second;
   }
-  /// Code path of that this task wasn't specified in a concurrency group addtionally.
+  /// Code path of that this task wasn't specified in a concurrency group additionally.
   /// Use the predefined concurrency group.
   if (functions_to_executor_index_.find(fd->ToString()) !=
       functions_to_executor_index_.end()) {
