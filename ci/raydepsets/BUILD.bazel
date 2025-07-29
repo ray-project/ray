@@ -28,6 +28,7 @@ py_test(
     data = [
         "test_data/requirement_constraints_test.txt",
         "test_data/requirements_compiled_test.txt",
+        "test_data/requirements_compiled_test_expand.txt",
         "test_data/requirements_compiled_test_update.txt",
         "test_data/requirements_test.txt",
         "test_data/test.config.yaml",
