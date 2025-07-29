@@ -300,7 +300,7 @@ void GcsAutoscalerStateManager::UpdateResourceLoadAndUsage(rpc::ResourcesData da
   iter->second.first = absl::Now();
 }
 
-absl::flat_hash_map<ray::gcs::ResourceDemandKey, rpc::ResourceDemand>
+absl::flat_hash_map<ResourceDemandKey, rpc::ResourceDemand>
 GcsAutoscalerStateManager::GetAggregatedResourceLoad() const {
   RAY_CHECK(thread_checker_.IsOnSameThread());
   absl::flat_hash_map<ray::gcs::ResourceDemandKey, rpc::ResourceDemand> aggregate_load;
