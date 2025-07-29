@@ -335,7 +335,7 @@ class TestCli(unittest.TestCase):
                 == manager.get_depset("env_test_depset", manager.config.envs[0]).output
             )
 
-    def test_env_substitution_without_brackets(self):
+    def test_bad_env_substitution(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             _copy_data_to_tmpdir(tmpdir)
             _replace_in_file(
