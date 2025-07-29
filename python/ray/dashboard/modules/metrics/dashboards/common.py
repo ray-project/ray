@@ -55,7 +55,6 @@ class Target:
 
     legend: str
     hide: bool = False
-    template: Optional[TargetTemplate] = TargetTemplate.GRAPH
 
 
 @dataclass
@@ -68,6 +67,7 @@ class QueryTarget(Target):
     """
 
     expr: str = ""
+    template: Optional[TargetTemplate] = TargetTemplate.GRAPH
 
     def __post_init__(self):
         assert self.expr, "expr must be provided for QueryTarget"
@@ -78,6 +78,8 @@ class ExpressionTarget(Target):
     """Defines a Grafana target (time-series query) within a panel.
 
     Expressions perform calculations on the results of other queries or expressions.
+    For example, given a queries named "A" and "B", the expression "$A + $B" would be
+    rendered with the sum of the results of queries "A" and "B".
 
     Attributes:
         expression: The expression to evaluate.
