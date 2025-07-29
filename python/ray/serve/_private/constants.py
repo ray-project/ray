@@ -293,7 +293,7 @@ RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_INTERVAL_S = float(
 
 # Replica autoscaling metrics push interval.
 RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S = float(
-    os.environ.get("RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S", "10")
+    os.environ.get("RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S", "10")
 )
 
 # How often autoscaling metrics are recorded on Serve handles.
