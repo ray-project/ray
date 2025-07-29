@@ -264,7 +264,9 @@ class ResourceManager:
         exclude = self._options.exclude_resources
         total_resources = self._get_total_resources()
         default_mem_fraction = self._object_store_memory_limit_fraction
-        total_resources.object_store_memory *= default_mem_fraction
+        total_resources = total_resources.copy(
+            object_store_memory=total_resources.object_store_memory * default_mem_fraction
+        )
         self._global_limits = default_limits.min(total_resources).subtract(exclude)
         return self._global_limits
 
