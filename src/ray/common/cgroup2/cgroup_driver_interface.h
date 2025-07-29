@@ -23,14 +23,13 @@
 namespace ray {
 
 /**
-    A utility interface that allows the caller to perform cgroup operations.
-    TODO(irabbani): I need to figure out the following
-        1. What is the appropriate level of documentation here? This header file is what's
-        important by consumers of the API and it needs to provide the correct docstrings
-        and API.
-        2. Revisiting this API to make it sure it integrates with a possible systemd
-        driver implementation (meaning it cannot have any directory based info or any dbus
-        implementation).
+  A utility interface that allows the caller to check if cgroupv2 is mounted correctly
+  and perform cgroup operations on the system. It currently only supports using
+  the memory and cpu controllers. It only supports the memory.min and cpu.weight
+  constraints.
+
+  @see The cgroupv2 documentation for more details:
+  https://docs.kernel.org/admin-guide/cgroup-v2.html
  */
 class CgroupDriverInterface {
  public:
