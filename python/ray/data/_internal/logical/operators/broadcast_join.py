@@ -6,7 +6,6 @@ import ray
 from ray.data._internal.logical.operators.join_operator import JoinType
 from ray.data.block import DataBatch
 
-
 _JOIN_TYPE_TO_ARROW_JOIN_VERB_MAP = {
     JoinType.INNER: "inner",
     JoinType.LEFT_OUTER: "left outer",
