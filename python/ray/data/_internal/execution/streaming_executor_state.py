@@ -483,9 +483,12 @@ def process_completed_tasks(
 
         # If no policy provides a limit, there's no limit
         op.notify_in_task_output_backpressure(max_bytes_to_read == 0)
-        op.metrics.max_bytes_to_read = max_bytes_to_read
         if max_bytes_to_read is not None:
+            op.metrics.max_bytes_to_read = max_bytes_to_read
             max_bytes_to_read_per_op[state] = max_bytes_to_read
+        else:
+            # If no policy provides a limit, there's no limit
+            op.metrics.max_bytes_to_read = -1
 
     # Process completed Ray tasks and notify operators.
     num_errored_blocks = 0
