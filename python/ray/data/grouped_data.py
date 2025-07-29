@@ -240,7 +240,13 @@ class GroupedData:
                 sort=True,
             )
         else:
-            shuffled_ds = self._dataset.sort(self._key)
+            # For sort-based shuffle strategies a global sort alone doesn't
+            # guarantee that all rows for a given group end up in the same
+            # block—`Dataset.sort()` may output multiple sorted blocks, each
+            # covering a different slice of the key-space.  Coalesce the sorted
+            # dataset down to a single block so that every group is fully
+            # contained (and therefore processed exactly once by the UDF).
+            shuffled_ds = self._dataset.sort(self._key).repartition(1)
 
         # The batch is the entire block, because we have batch_size=None for
         # map_batches() below.
