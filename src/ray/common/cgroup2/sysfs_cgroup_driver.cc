@@ -34,6 +34,7 @@
 #include <unordered_set>
 
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "ray/common/status.h"
 #include "ray/common/status_or.h"
 
@@ -67,11 +68,11 @@ Status SysFsCgroupDriver::CheckCgroupv2Enabled() {
                         mount_file_path_));
   }
 
-  // TODO(irabbani): provide instructions for how to mount correctly and link to the
-  // correct docs.
   if (found_cgroupv1 && found_cgroupv2) {
     return Status::Invalid("Cgroupv1 and cgroupv2 are both mounted. Unmount cgroupv1.");
   } else if (found_cgroupv1 && !found_cgroupv2) {
+    // TODO(irabbani): provide a link to the ray documentation once it's been written
+    // for how to troubleshoot these.
     return Status::Invalid(
         "Cgroupv1 is mounted and cgroupv2 is not mounted. "
         "Unmount cgroupv1 and mount cgroupv2.");
@@ -227,13 +228,8 @@ Status SysFsCgroupDriver::EnableController(const std::string &cgroup_path,
   auto available_controllers = available_controllers_s.value();
 
   if (available_controllers.find(controller) == available_controllers.end()) {
-    std::string available_controllers_str("[");
-    std::for_each(available_controllers.begin(),
-                  available_controllers.end(),
-                  [&available_controllers_str](const std::string &ctrl) {
-                    available_controllers_str.append(ctrl);
-                  });
-    available_controllers_str.append("]");
+    std::string enabled_controllers_str =
+        absl::StrCat("[", absl::StrJoin(enabled_controllers, ", "), "]");
     return Status::InvalidArgument(absl::StrFormat(
         "Controller %s is not available for cgroup at path %s.\n"
         "Current available controllers are %s. "
@@ -276,13 +272,8 @@ Status SysFsCgroupDriver::DisableController(const std::string &cgroup_path,
   auto enabled_controllers = enabled_controllers_s.value();
 
   if (enabled_controllers.find(controller) == enabled_controllers.end()) {
-    std::string enabled_controllers_str("[");
-    std::for_each(enabled_controllers.begin(),
-                  enabled_controllers.end(),
-                  [&enabled_controllers_str](const std::string &ctrl) {
-                    enabled_controllers_str.append(ctrl);
-                  });
-    enabled_controllers_str.append("]");
+    std::string available_controllers_str =
+        absl::StrCat("[", absl::StrJoin(available_controllers, ", "), "]");
     return Status::InvalidArgument(
         absl::StrFormat("Controller %s is not enabled for cgroup at path %s.\n"
                         "Current enabled controllers are %s. ",

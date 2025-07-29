@@ -22,7 +22,8 @@ ray_cc_library(
         "//src/ray/common:status",
         "//src/ray/common:status_or",
         "//src/ray/util:logging",
-        "//src/ray/util:process",
+        "@com_google_absl//absl/strings:str_cat",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:str_join",
     ],
 )
