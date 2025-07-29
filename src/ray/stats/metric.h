@@ -370,7 +370,12 @@ class Stats {
                        &open_census_tags) {
     if (!OpenTelemetryMetricRecorder::GetInstance().IsMetricRegistered(name_)) {
       // Use OpenCensus to record the metric if OpenTelemetry is not registered.
-      opencensus::stats::Record({{*measure_, val}}, std::move(open_census_tags));
+      // Insert global tags before recording.
+      auto combined_tags = open_census_tags;
+      for (const auto &tag : StatsConfig::instance().GetGlobalTags()) {
+        combined_tags.emplace_back(TagKeyType::Register(tag.first.name()), tag.second);
+      }
+      opencensus::stats::Record({{*measure_, val}}, std::move(combined_tags));
       return;
     }
 
@@ -455,6 +460,7 @@ class Stats {
   }
 
   const std::string name_;
+  // TODO: Depricate `tag_keys_` once we have fully migrated away from opencensus
   const std::vector<opencensus::tags::TagKey> tag_keys_;
   const std::unordered_set<std::string> tag_keys_set_;
   std::unique_ptr<opencensus::stats::Measure<double>> measure_;
