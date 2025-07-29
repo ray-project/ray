@@ -26,7 +26,10 @@ from ray.core.generated.events_event_aggregator_service_pb2 import (
     TaskEventsMetadata,
 )
 from ray.core.generated.events_base_event_pb2 import RayEvent
-from ray.core.generated.gcs_pb2 import ProfileEvents, ProfileEventEntry
+from ray.core.generated.events_profile_events_pb2 import (
+    ProfileEvents,
+    ProfileEventEntry,
+)
 from ray.core.generated.common_pb2 import TaskAttempt
 
 
@@ -357,7 +360,7 @@ def test_aggregator_agent_receive_profile_events(ray_start_cluster_head, httpser
                     timestamp=timestamp,
                     severity=RayEvent.Severity.INFO,
                     message="profile event test",
-                    task_profile_event=ProfileEvents(
+                    profile_events=ProfileEvents(
                         component_type="worker",
                         component_id=b"worker_123",
                         node_ip_address="127.0.0.1",
@@ -396,8 +399,8 @@ def test_aggregator_agent_receive_profile_events(ray_start_cluster_head, httpser
     assert req_json[0]["timestamp"] == "2025-06-30T16:50:30.130457542Z"
 
     # Verify profile event specific fields
-    assert "taskProfileEvent" in req_json[0]
-    profile_event = req_json[0]["taskProfileEvent"]
+    assert "profileEvents" in req_json[0]
+    profile_event = req_json[0]["profileEvents"]
     assert profile_event["componentType"] == "worker"
     assert profile_event["componentId"] == base64.b64encode(b"worker_123").decode()
     assert profile_event["nodeIpAddress"] == "127.0.0.1"

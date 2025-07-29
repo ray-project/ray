@@ -21,7 +21,7 @@ import "src/ray/protobuf/events_actor_task_definition_event.proto";
 import "src/ray/protobuf/events_actor_task_execution_event.proto";
 import "src/ray/protobuf/events_task_definition_event.proto";
 import "src/ray/protobuf/events_task_execution_event.proto";
-import "src/ray/protobuf/gcs.proto";
+import "src/ray/protobuf/events_profile_events.proto";
 
 // This is the base message for all ray events.
 message RayEvent {
@@ -81,5 +81,5 @@ message RayEvent {
   TaskExecutionEvent task_execution_event = 8;
   ActorTaskDefinitionEvent actor_task_definition_event = 9;
   ActorTaskExecutionEvent actor_task_execution_event = 10;
-  ProfileEvents task_profile_event = 11;
+  ProfileEvents profile_events = 11;
 }
