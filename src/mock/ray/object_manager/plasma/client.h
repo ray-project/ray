@@ -46,11 +46,6 @@ class MockPlasmaClient : public PlasmaClientInterface {
               (override));
 
   MOCK_METHOD(Status,
-              ExperimentalMutableObjectRegisterWriter,
-              (const ObjectID &object_id),
-              (override));
-
-  MOCK_METHOD(Status,
               GetExperimentalMutableObject,
               (const ObjectID &object_id, std::unique_ptr<MutableObject> *mutable_object),
               (override));

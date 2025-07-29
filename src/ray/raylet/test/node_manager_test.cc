@@ -143,10 +143,6 @@ class FakePlasmaClient : public plasma::PlasmaClientInterface {
     return Status::OK();
   }
 
-  Status ExperimentalMutableObjectRegisterWriter(const ObjectID &object_id) override {
-    return Status::OK();
-  }
-
   Status GetExperimentalMutableObject(
       const ObjectID &object_id,
       std::unique_ptr<plasma::MutableObject> *mutable_object) override {

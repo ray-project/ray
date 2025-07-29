@@ -128,10 +128,9 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
                                              std::shared_ptr<Buffer> *data,
                                              bool created_by_worker,
                                              bool is_mutable) {
-  auto source = plasma::flatbuf::ObjectSource::CreatedByWorker;
-  if (!created_by_worker) {
-    source = plasma::flatbuf::ObjectSource::RestoredFromStorage;
-  }
+  const auto source = created_by_worker
+                          ? plasma::flatbuf::ObjectSource::CreatedByWorker
+                          : plasma::flatbuf::ObjectSource::RestoredFromStorage;
   Status status =
       store_client_->CreateAndSpillIfNeeded(object_id,
                                             owner_address,
@@ -164,8 +163,6 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
     RAY_LOG_EVERY_MS(WARNING, 5000)
         << "Trying to put an object that already existed in plasma: " << object_id << ".";
     status = Status::OK();
-  } else {
-    RAY_RETURN_NOT_OK(status);
   }
   return status;
 }
@@ -203,24 +200,24 @@ Status CoreWorkerPlasmaStoreProvider::FetchAndGetFromPlasmaStore(
       const auto &object_id = batch_ids[i];
       std::shared_ptr<TrackedBuffer> data = nullptr;
       std::shared_ptr<Buffer> metadata = nullptr;
-      if (plasma_results[i].data && plasma_results[i].data->Size()) {
+      if (plasma_results[i].data && plasma_results[i].data->Size() > 0) {
         // We track the set of active data buffers in active_buffers_. On destruction,
         // the buffer entry will be removed from the set via callback.
         data = std::make_shared<TrackedBuffer>(
-            plasma_results[i].data, buffer_tracker_, object_id);
+            std::move(plasma_results[i].data), buffer_tracker_, object_id);
         buffer_tracker_->Record(object_id, data.get(), get_current_call_site_());
       }
-      if (plasma_results[i].metadata && plasma_results[i].metadata->Size()) {
-        metadata = plasma_results[i].metadata;
+      if (plasma_results[i].metadata && plasma_results[i].metadata->Size() > 0) {
+        metadata = std::move(plasma_results[i].metadata);
       }
-      const auto result_object = std::make_shared<RayObject>(
+      auto result_object = std::make_shared<RayObject>(
           data, metadata, std::vector<rpc::ObjectReference>());
-      (*results)[object_id] = result_object;
       remaining.erase(object_id);
       if (result_object->IsException()) {
         RAY_CHECK(!result_object->IsInPlasmaError());
         *got_exception = true;
       }
+      (*results)[object_id] = std::move(result_object);
     }
   }
 
