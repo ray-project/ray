@@ -5,6 +5,7 @@ py_library(
     name = "conftest",
     srcs = glob(["**/conftest.py"]),
     visibility = [
+        "//python/ray/_common/tests:__subpackages__",
         "//python/ray/autoscaler/v2:__pkg__",
         "//python/ray/dashboard:__pkg__",
         "//python/ray/data:__pkg__",
