@@ -44,7 +44,7 @@ Start a Ray cluster
 
     Run `ray start --head` to start a local Ray cluster.
 
-  .. tab-item:: KubeRay
+  .. tab-item:: KubeRay (SSH)
 
     Follow the instructions in :doc:`the RayCluster quickstart <../cluster/kubernetes/getting-started/raycluster-quick-start>` to set up a cluster.
     You need to connect VS Code to the cluster. For example, add the following to the `ray-head` container and make sure `sshd` is running in the `ray-head` container.
@@ -76,6 +76,46 @@ Start a Ray cluster
 
     After checking that `ssh -p 2222 ray@localhost` works, set up VS Code as described in the
     `VS Code SSH documentation <https://code.visualstudio.com/docs/remote/ssh>`_.
+
+  .. tab-item:: KubeRay (Code Server)
+
+    Follow the instructions in :doc:`the RayCluster quickstart <../cluster/kubernetes/getting-started/raycluster-quick-start>` to set up a cluster.
+    
+    A simpler approach is to run a browser-based VSCode (Code Server) as a sidecar container in the Ray head pod. This eliminates network connectivity issues by placing VS Code inside the kubernetes cluster.
+
+    Add the following to your Ray head pod configuration:
+
+    .. code-block:: yaml
+
+        containers:
+        - name: ray-head
+          # ... existing ray-head configuration ...
+          volumeMounts:
+            - mountPath: /tmp/ray
+              name: shared-ray-volume
+        - name: vscode-debugger
+          image: docker.io/onesizefitsquorum/code-server-with-ray-distributed-debugger:latest
+          ports:
+            - containerPort: 8443
+          volumeMounts:
+            - mountPath: /tmp/ray
+              name: shared-ray-volume
+          env:
+            - name: DEFAULT_WORKSPACE
+              value: "/tmp/ray/session_latest/runtime_resources"
+        volumes:
+        - name: shared-ray-volume
+          emptyDir: {}
+
+    After the Ray cluster is running, forward the Code Server port:
+
+    .. code-block:: bash
+
+        kubectl port-forward pod/<ray-head-pod-name> 8443:8443
+
+    Access VS Code in your browser at http://127.0.0.1:8443 and use the Ray Distributed Debugger extension to connect to http://127.0.0.1:8265.
+
+    For more details, see the `Code Server with Ray Distributed Debugger <https://github.com/OneSizeFitsQuorum/Code-Server-With-Ray-Distributed-Debugger/blob/main/README.en.md>`_ project.
 
 
 Register the cluster
