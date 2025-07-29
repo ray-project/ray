@@ -14,6 +14,7 @@ from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
 from ray.serve._private.test_utils import (
     check_num_replicas_gte,
     check_num_replicas_lte,
+    check_running,
     get_application_url,
 )
 from ray.serve.schema import (
@@ -27,11 +28,6 @@ from ray.serve.tests.common.remote_uris import (
 )
 from ray.tests.conftest import call_ray_stop_only  # noqa: F401
 from ray.util.state import list_actors
-
-
-def check_running(app_name: str = SERVE_DEFAULT_APP_NAME):
-    assert serve.status().applications[app_name].status == ApplicationStatus.RUNNING
-    return True
 
 
 def check_endpoint(json: Union[List, Dict], expected: str, app_name: str = "default"):

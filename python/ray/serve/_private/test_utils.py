@@ -15,6 +15,7 @@ from starlette.requests import Request
 import ray
 import ray.util.state as state_api
 from ray import serve
+from ray._private.test_utils import wait_for_condition
 from ray.actor import ActorHandle
 from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.common import (
@@ -720,6 +721,8 @@ def get_application_urls(
     use_localhost: bool = True,
     is_websocket: bool = False,
     exclude_route_prefix: bool = False,
+    check_app_is_running: bool = True,
+    timeout: int = 15,
 ) -> List[str]:
     """Get the URL of the application.
 
@@ -734,10 +737,13 @@ def get_application_urls(
     Returns:
         The URLs of the application.
     """
+    if check_app_is_running:
+        wait_for_condition(check_running, app_name=app_name, timeout=timeout)
     client = _get_global_client(_health_check_controller=True)
     serve_details = client.get_serve_details()
-    if app_name not in serve_details["applications"]:
-        return [client.root_url]
+    assert (
+        app_name in serve_details["applications"]
+    ), f"App {app_name} not found in serve details. Use this method only when the app is known to be running."
     route_prefix = serve_details["applications"][app_name]["route_prefix"]
     if exclude_route_prefix:
         route_prefix = ""
@@ -782,6 +788,8 @@ def get_application_url(
     use_localhost: bool = True,
     is_websocket: bool = False,
     exclude_route_prefix: bool = False,
+    check_app_is_running: bool = True,
+    timeout: int = 15,
 ) -> str:
     """Get the URL of the application.
 
@@ -798,6 +806,17 @@ def get_application_url(
     """
     return random.choice(
         get_application_urls(
-            protocol, app_name, use_localhost, is_websocket, exclude_route_prefix
+            protocol,
+            app_name,
+            use_localhost,
+            is_websocket,
+            exclude_route_prefix,
+            check_app_is_running,
+            timeout,
         )
     )
+
+
+def check_running(app_name: str = SERVE_DEFAULT_APP_NAME):
+    assert serve.status().applications[app_name].status == ApplicationStatus.RUNNING
+    return True
