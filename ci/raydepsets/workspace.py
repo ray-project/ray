@@ -12,6 +12,7 @@ class Depset:
     constraints: List[str]
     output: str
     source_depset: Optional[str] = None
+    depsets: Optional[List[str]] = None
 
 
 @dataclass
@@ -29,6 +30,7 @@ class Config:
                 operation=values.get("operation", "compile"),
                 output=values.get("output"),
                 source_depset=values.get("source_depset"),
+                depsets=values.get("depsets", []),
             )
             for values in raw_depsets
         ]
