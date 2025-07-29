@@ -19,7 +19,7 @@ from torch.utils.data import (
     SequentialSampler,
 )
 
-from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
+from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.air._internal.device_manager import (
     get_torch_device_manager_by_context,
     get_torch_device_manager_by_device_type,

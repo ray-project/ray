@@ -11,8 +11,8 @@ import pytest
 import ray
 from ray import serve
 from ray._common.test_utils import SignalActor, wait_for_condition
+from ray._common.usage import usage_lib
 from ray._common.utils import reset_ray_address
-from ray._private.usage import usage_lib
 from ray.cluster_utils import AutoscalingCluster, Cluster
 from ray.serve._private.test_utils import (
     TELEMETRY_ROUTE_PREFIX,

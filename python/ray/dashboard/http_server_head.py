@@ -18,7 +18,7 @@ import ray.dashboard.timezone_utils as timezone_utils
 import ray.dashboard.utils as dashboard_utils
 from ray import ray_constants
 from ray._common.utils import get_or_create_event_loop
-from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
+from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.dashboard.dashboard_metrics import DashboardPrometheusMetrics
 from ray.dashboard.head import DashboardHeadModule
 

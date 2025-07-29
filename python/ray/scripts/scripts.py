@@ -36,8 +36,8 @@ from ray._private.utils import (
     parse_resources_json,
 )
 from ray._private.internal_api import memory_summary
-from ray._private.usage import usage_lib
-import ray._private.usage.usage_constants as usage_constant
+from ray._common.usage import usage_lib
+import ray._common.usage.usage_constants as usage_constant
 from ray.autoscaler._private.cli_logger import add_click_logging_options, cf, cli_logger
 from ray.autoscaler._private.commands import (
     RUN_ENV_TYPES,
@@ -65,7 +65,7 @@ logger = logging.getLogger(__name__)
 
 
 def _check_ray_version(gcs_client):
-    import ray._private.usage.usage_lib as ray_usage_lib
+    import ray._common.usage.usage_lib as ray_usage_lib
 
     cluster_metadata = ray_usage_lib.get_cluster_metadata(gcs_client)
     if cluster_metadata and cluster_metadata["ray_version"] != ray.__version__:

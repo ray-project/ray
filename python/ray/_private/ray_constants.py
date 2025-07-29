@@ -246,9 +246,6 @@ LOGGER_LEVEL_HELP = (
     " 'warning', 'error', 'critical'], default='info'"
 )
 
-LOGGING_ROTATE_BYTES = 512 * 1024 * 1024  # 512MB.
-LOGGING_ROTATE_BACKUP_COUNT = 5  # 5 Backup files at max.
-
 LOGGING_REDIRECT_STDERR_ENVIRONMENT_VARIABLE = "RAY_LOG_TO_STDERR"
 # Logging format when logging stderr. This should be formatted with the
 # component before setting the formatter, e.g. via
@@ -455,9 +452,6 @@ DEFAULT_TASK_MAX_RETRIES = 3
 
 # Default max_concurrency option in @ray.remote for threaded actors.
 DEFAULT_MAX_CONCURRENCY_THREADED = 1
-
-# Default max_concurrency option in @ray.remote for async actors.
-DEFAULT_MAX_CONCURRENCY_ASYNC = 1000
 
 # Prefix for namespaces which are used internally by ray.
 # Jobs within these namespaces should be hidden from users

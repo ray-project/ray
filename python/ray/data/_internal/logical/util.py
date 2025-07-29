@@ -3,7 +3,7 @@ import re
 import threading
 from typing import Dict
 
-from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
+from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.logical.operators.map_operator import AbstractUDFMap
 from ray.data._internal.logical.operators.read_operator import Read
