@@ -1,15 +1,13 @@
-
-import asyncio
 import pytest
 
-from ray.serve.llm import LLMConfig, ModelLoadingConfig
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_engine import VLLMEngine
+from ray.serve.llm import LLMConfig, ModelLoadingConfig
 
 
 @pytest.mark.asyncio
 async def test_vllm_engine_start_with_custom_resource_bundle(
     # defined in conftest.py
-    model_smolvlm_256m
+    model_smolvlm_256m,
 ):
     """vLLM engine starts with custom resource bundle."""
     llm_config = LLMConfig(
