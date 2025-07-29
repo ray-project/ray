@@ -77,6 +77,7 @@ steps:
     job_env: MACOS
     instance_type: macos-arm64
     parallelism: 3
+    priority: 100
     commands:
       - ./ci/ray_ci/macos/macos_ci.sh run_large_test || true
       - sleep 100000000000
