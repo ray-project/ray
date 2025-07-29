@@ -74,6 +74,7 @@ ray_cc_test(
         "//src/ray/protobuf:gcs_cc_proto",
         "//src/ray/util",
         "//src/ray/util:event",
+        "//src/ray/util:path_utils",
         "@boost//:range",
         "@com_google_googletest//:gtest_main",
     ],
@@ -98,6 +99,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/util:filesystem",
+        "//src/ray/util:path_utils",
         "//src/ray/util:string_utils",
         "@com_google_googletest//:gtest_main",
     ],
@@ -120,6 +122,7 @@ ray_cc_test(
         "//src/ray/common:status",
         "//src/ray/util",
         "//src/ray/util:env",
+        "//src/ray/util:path_utils",
         "@boost//:asio",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_googletest//:gtest_main",
