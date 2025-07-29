@@ -35,8 +35,8 @@ proto_library(
     visibility = ["//java:__subpackages__"],
     deps = [
         ":common_proto",
+        ":events_profile_events_proto",
         ":runtime_env_common_proto",
-        ":events_profile_events_proto"
     ],
 )
 
@@ -432,9 +432,9 @@ proto_library(
     deps = [
         ":events_actor_task_definition_event_proto",
         ":events_actor_task_execution_event_proto",
+        ":events_profile_events_proto",
         ":events_task_definition_event_proto",
         ":events_task_execution_event_proto",
-        ":events_profile_events_proto",
         "@com_google_protobuf//:timestamp_proto",
     ],
 )
