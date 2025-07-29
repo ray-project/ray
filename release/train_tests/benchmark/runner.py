@@ -304,8 +304,12 @@ class TrainLoopRunner:
                 }
             )
 
-        metrics["train/dataset_creation_time"] = dataset_creation_times[DatasetKey.TRAIN]
-        metrics["validation/dataset_creation_time"] = dataset_creation_times[DatasetKey.VALID]
+        metrics["train/dataset_creation_time"] = dataset_creation_times[
+            DatasetKey.TRAIN
+        ]
+        metrics["validation/dataset_creation_time"] = dataset_creation_times[
+            DatasetKey.VALID
+        ]
 
         # Throughput
         # TODO: Ray Data can provide these throughput metrics automatically.
