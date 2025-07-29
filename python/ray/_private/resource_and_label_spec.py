@@ -136,47 +136,9 @@ class ResourceAndLabelSpec:
             ResourceAndLabelSpec: This instance with all fields resolved.
         """
 
-        # Load environment override resources and merge with resources passed
-        # in from Ray Params. Separates special case params if found in env.
-        env_resources = ResourceAndLabelSpec._load_env_resources()
-        (
-            num_cpus,
-            num_gpus,
-            memory,
-            object_store_memory,
-            merged_resources,
-        ) = ResourceAndLabelSpec._merge_resources(env_resources, self.resources or {})
-        self.num_cpus = self.num_cpus if num_cpus is None else num_cpus
-        self.num_gpus = self.num_gpus if num_gpus is None else num_gpus
-        self.memory = self.memory if memory is None else memory
-        self.object_store_memory = (
-            self.object_store_memory
-            if object_store_memory is None
-            else object_store_memory
-        )
-        self.resources = merged_resources
+        self._resolve_resources(is_head=is_head, node_ip_address=node_ip_address)
 
-        if node_ip_address is None:
-            node_ip_address = ray.util.get_node_ip_address()
-
-        # Automatically create a node id resource on each node. This is
-        # queryable with ray._private.state.node_ids() and
-        # ray._private.state.current_node_id().
-        self.resources[NODE_ID_PREFIX + node_ip_address] = 1.0
-
-        # Automatically create a head node resource.
-        if HEAD_NODE_RESOURCE_NAME in self.resources:
-            raise ValueError(
-                f"{HEAD_NODE_RESOURCE_NAME}"
-                " is a reserved resource name, use another name instead."
-            )
-        if is_head:
-            self.resources[HEAD_NODE_RESOURCE_NAME] = 1.0
-
-        if self.num_cpus is None:
-            self.num_cpus = ray._private.utils.get_num_cpus()
-
-        # Resolve accelerator resources
+        # Resolve accelerator-specific resources
         (
             accelerator_manager,
             num_accelerators,
@@ -196,7 +158,7 @@ class ResourceAndLabelSpec:
         self._resolve_memory_resources()
 
         self._is_resolved = True
-        assert self.all_fields_set()
+        assert self._all_fields_set()
         return self
 
     @staticmethod
@@ -234,6 +196,54 @@ class ResourceAndLabelSpec:
                 )
 
         return num_cpus, num_gpus, memory, object_store_memory, result
+
+    def _resolve_resources(
+        self, is_head: bool, node_ip_address: Optional[str] = None
+    ) -> None:
+        """Resolve CPU, GPU, and custom resources. Merges resources from environment,
+        Ray params, and defaults in that order of precedence."""
+
+        # Load environment override resources and merge with resources passed
+        # in from Ray Params. Separates special case params if found in env.
+        env_resources = ResourceAndLabelSpec._load_env_resources()
+        (
+            num_cpus,
+            num_gpus,
+            memory,
+            object_store_memory,
+            merged_resources,
+        ) = ResourceAndLabelSpec._merge_resources(env_resources, self.resources or {})
+
+        self.num_cpus = self.num_cpus if num_cpus is None else num_cpus
+        self.num_gpus = self.num_gpus if num_gpus is None else num_gpus
+        self.memory = self.memory if memory is None else memory
+        self.object_store_memory = (
+            self.object_store_memory
+            if object_store_memory is None
+            else object_store_memory
+        )
+        self.resources = merged_resources
+
+        if node_ip_address is None:
+            node_ip_address = ray.util.get_node_ip_address()
+
+        # Automatically create a node id resource on each node. This is
+        # queryable with ray._private.state.node_ids() and
+        # ray._private.state.current_node_id().
+        self.resources[NODE_ID_PREFIX + node_ip_address] = 1.0
+
+        # Automatically create a head node resource.
+        if HEAD_NODE_RESOURCE_NAME in self.resources:
+            raise ValueError(
+                f"{HEAD_NODE_RESOURCE_NAME}"
+                " is a reserved resource name, use another name instead."
+            )
+        if is_head:
+            self.resources[HEAD_NODE_RESOURCE_NAME] = 1.0
+
+        # Auto-detect CPU count if not explicitly set
+        if self.num_cpus is None:
+            self.num_cpus = ray._private.utils.get_num_cpus()
 
     @staticmethod
     def _load_env_labels() -> Dict[str, str]:
@@ -347,10 +357,6 @@ class ResourceAndLabelSpec:
         accelerator_type = accelerator_manager.get_current_node_accelerator_type()
         if accelerator_type:
             self.resources[f"{RESOURCE_CONSTRAINT_PREFIX}{accelerator_type}"] = 1
-
-            from ray._private.usage import usage_lib
-
-            usage_lib.record_hardware_usage(accelerator_type)
         additional_resources = (
             accelerator_manager.get_current_node_additional_resources()
         )

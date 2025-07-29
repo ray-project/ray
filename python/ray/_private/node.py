@@ -1400,6 +1400,16 @@ class Node:
         # Make sure we don't call `determine_plasma_store_config` multiple
         # times to avoid printing multiple warnings.
         resource_and_label_spec = self.get_resource_and_label_spec()
+        if resource_and_label_spec.labels.get(
+            ray._raylet.RAY_NODE_ACCELERATOR_TYPE_KEY
+        ):
+            from ray._private.usage import usage_lib
+
+            usage_lib.record_hardware_usage(
+                resource_and_label_spec.labels.get(
+                    ray._raylet.RAY_NODE_ACCELERATOR_TYPE_KEY
+                )
+            )
 
         (
             plasma_directory,
