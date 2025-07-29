@@ -144,14 +144,13 @@ class DependencySetManager:
         output: str = None,
     ):
         """Expand a dependency set."""
-        #handle both depsets and requirements
+        # handle both depsets and requirements
         depset_req_list = []
         for depset_name in depsets:
             depset = self.get_depset(depset_name)
             depset_req_list.extend(depset.requirements)
-        for req in requirements:
-            if req not in depset_req_list:
-                depset_req_list.append(req)
+        if requirements:
+            depset_req_list.extend(requirements)
         self.compile(
             constraints=constraints,
             requirements=depset_req_list,

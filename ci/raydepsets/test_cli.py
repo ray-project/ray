@@ -311,6 +311,7 @@ class TestCli(unittest.TestCase):
                 depsets=["general_depset", "expanded_depset"],
                 constraints=["requirement_constraints_expand.txt"],
                 args=["--no-annotate", "--no-header"] + DEFAULT_UV_FLAGS.copy(),
+                requirements=[],
                 name="expand_general_depset",
                 output="requirements_compiled_expand_general.txt",
             )
@@ -323,10 +324,6 @@ class TestCli(unittest.TestCase):
     def test_expand_with_requirements(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             _copy_data_to_tmpdir(tmpdir)
-            _save_packages_to_file(
-                Path(tmpdir) / "requirements_test.txt",
-                ["emoji"],
-            )
             _save_packages_to_file(
                 Path(tmpdir) / "requirements_expanded.txt",
                 ["six"],
@@ -363,7 +360,6 @@ class TestCli(unittest.TestCase):
             output_file_valid = Path(tmpdir) / "requirements_compiled_test_expand.txt"
             output_text_valid = output_file_valid.read_text()
             assert output_text == output_text_valid
-
 
 
 def _copy_data_to_tmpdir(tmpdir):
@@ -403,4 +399,4 @@ def _append_to_file(filepath, new):
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-vv", __file__]))
