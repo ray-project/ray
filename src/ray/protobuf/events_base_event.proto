@@ -81,5 +81,5 @@ message RayEvent {
   TaskExecutionEvent task_execution_event = 8;
   ActorTaskDefinitionEvent actor_task_definition_event = 9;
   ActorTaskExecutionEvent actor_task_execution_event = 10;
-  ProfileEvents profile_events = 11;
+  TaskProfileEvents task_profile_events = 11;
 }
