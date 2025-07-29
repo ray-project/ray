@@ -229,7 +229,7 @@ Status SysFsCgroupDriver::EnableController(const std::string &cgroup_path,
 
   if (available_controllers.find(controller) == available_controllers.end()) {
     std::string enabled_controllers_str =
-        absl::StrCat("[", absl::StrJoin(enabled_controllers, ", "), "]");
+        absl::StrCat("[", absl::StrJoin(available_controllers, ", "), "]");
     return Status::InvalidArgument(absl::StrFormat(
         "Controller %s is not available for cgroup at path %s.\n"
         "Current available controllers are %s. "
@@ -237,7 +237,7 @@ Status SysFsCgroupDriver::EnableController(const std::string &cgroup_path,
         "the root cgroup to X must have the controller enabled.",
         controller,
         cgroup_path,
-        available_controllers_str));
+        enabled_controllers_str));
   }
 
   std::filesystem::path enabled_ctrls_file =
@@ -272,8 +272,8 @@ Status SysFsCgroupDriver::DisableController(const std::string &cgroup_path,
   auto enabled_controllers = enabled_controllers_s.value();
 
   if (enabled_controllers.find(controller) == enabled_controllers.end()) {
-    std::string available_controllers_str =
-        absl::StrCat("[", absl::StrJoin(available_controllers, ", "), "]");
+    std::string enabled_controllers_str =
+        absl::StrCat("[", absl::StrJoin(enabled_controllers, ", "), "]");
     return Status::InvalidArgument(
         absl::StrFormat("Controller %s is not enabled for cgroup at path %s.\n"
                         "Current enabled controllers are %s. ",

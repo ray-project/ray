@@ -56,7 +56,7 @@
     echo "+memory" > /sys/fs/cgroup/testing/cgroup.subtree_control
 */
 // Uncomment the following line to run the tests locally.
-//#define RUN_LOCALLY
+#define RUN_LOCALLY
 
 // This the root of the cgroup subtree that has been delegated to the testing user.
 std::unique_ptr<TempCgroupDirectory> testing_cgroup_;
@@ -80,7 +80,7 @@ static inline std::string base_cgroup_path_ = "/sys/fs/cgroup/testing";
 static inline std::string processes_cgroup_path_ = "/sys/fs/cgroup/testing/active";
 #else
 static inline std::string base_cgroup_path_ = "/sys/fs/cgroup";
-static inline std::string processes_cgroup_path_ = "/sys/fs/cgroup";
+static inline std::string processescgroup_path_ = "/sys/fs/cgroup";
 #endif
 
 /**
