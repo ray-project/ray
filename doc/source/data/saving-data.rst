@@ -168,6 +168,47 @@ number of output files, configure ``min_rows_per_file``.
 
     ['0_000001_000000.csv', '0_000000_000000.csv', '0_000002_000000.csv']
 
+
+Partitioned Writes
+~~~~~~~~~~~~~~~~~~~~~
+.. testcode::
+    import ray
+    import pandas as pd
+
+    # Sample dataset that we’ll partition by ``city`` and ``year``.
+    df = pd.DataFrame(
+        {
+            "city": ["SF", "SF", "NYC", "NYC", "SF", "NYC"],
+            "year": [2023, 2024, 2023, 2024, 2023, 2024],
+            "sales": [100, 120, 90, 115, 105, 95],
+        }
+    )
+
+    ds = ray.data.from_pandas(df)
+
+    # ── Partitioned write ──────────────────────────────────────────────────────
+    # 1. Repartition so all rows with the same (city, year) land in the same
+    #    block – this minimises shuffling during the write.
+    # 2. Pass the same columns to ``partition_cols`` so Ray creates a
+    #    Hive-style directory layout:  city=<value>/year=<value>/....
+    # 3. Use ``min_rows_per_file`` / ``max_rows_per_file`` to control how many
+    #    rows Ray puts in each Parquet file.
+    ds.repartition(keys=["city", "year"], num_blocks=3).write_parquet(
+        "/tmp/sales_partitioned",
+        partition_cols=["city", "year"],
+        min_rows_per_file=2,     # At least 2 rows in each file …
+        max_rows_per_file=3,     # … but never more than 3.
+    )
+
+.. testoutput::
+    :options: +MOCK
+    # The directory tree now looks like:
+    # /tmp/sales_partitioned/
+    # ├── city=SF/year=2023/part-00000-*.parquet
+    # ├── city=SF/year=2024/part-00000-*.parquet
+    # ├── city=NYC/year=2023/part-00000-*.parquet
+    # └── city=NYC/year=2024/part-00000-*.parquet
+
 Converting Datasets to other Python libraries
 =============================================
 
