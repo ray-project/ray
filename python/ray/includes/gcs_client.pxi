@@ -280,7 +280,7 @@ cdef class InnerGcsClient:
             CRayStatus status
         c_node_ids.reserve(len(node_ids));
         for node_id in node_ids:
-            c_node_ids.push_back(node_id.native())
+            c_node_ids.push_back((<NodeID>node_id).native())
         with nogil:
             status = self.inner.get().Nodes().CheckAlive(
                 c_node_ids, timeout_ms, results)
@@ -295,7 +295,7 @@ cdef class InnerGcsClient:
             fut = incremented_fut()
         c_node_ids.reserve(len(node_ids));
         for node_id in node_ids:
-            c_node_ids.push_back(node_id.native())
+            c_node_ids.push_back((<NodeID>node_id).native())
         with nogil:
             self.inner.get().Nodes().AsyncCheckAlive(
                 c_node_ids, timeout_ms,
