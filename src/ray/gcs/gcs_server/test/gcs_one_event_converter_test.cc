@@ -319,5 +319,54 @@ TEST_F(GcsOneEventConverterTest, TestConvertActorTaskExecutionEvent) {
   EXPECT_EQ(state_updates.state_ts_ns().at(6), expected_ns2);
 }
 
+TEST_F(GcsOneEventConverterTest, TestConvertTaskProfileEventsToTaskEvent) {
+  GcsOneEventConverter converter;
+  rpc::events::TaskProfileEvents task_profile_events;
+  rpc::TaskEvents task_event;
+
+  // Set basic fields
+  task_profile_events.set_task_id("test_task_id");
+  task_profile_events.set_attempt_number(1);
+  task_profile_events.set_job_id("test_job_id");
+
+  // Add a profile event
+  rpc::events::ProfileEvents profile_events;
+  ;
+  profile_events.set_component_id("test_component_id");
+  profile_events.set_component_type("worker");
+  profile_events.set_node_ip_address("test_address");
+
+  // add a profile event entry
+  auto *ProfileEventEntry = profile_events.add_events();
+  ProfileEventEntry->set_start_time(123456789);
+  ProfileEventEntry->set_end_time(123456799);
+  ProfileEventEntry->set_extra_data("{\"foo\": \"bar\"}");
+  ProfileEventEntry->set_event_name("test_event");
+
+  *task_profile_events.mutable_profile_events() = profile_events;
+
+  // Call the converter
+  converter.ConvertTaskProfileEventsToTaskEvent(task_profile_events, task_event);
+
+  // Check basic fields
+  EXPECT_EQ(task_event.task_id(), "test_task_id");
+  EXPECT_EQ(task_event.attempt_number(), 1);
+  EXPECT_EQ(task_event.job_id(), "test_job_id");
+  EXPECT_EQ(task_event.profile_events().events_size(), 1);
+
+  // Check profile event fields
+  const auto &profile_event = task_event.profile_events();
+  EXPECT_EQ(profile_event.component_id(), "test_component_id");
+  EXPECT_EQ(profile_event.component_type(), "worker");
+  EXPECT_EQ(profile_event.node_ip_address(), "test_address");
+
+  // verify that there is one profile event entry and values match our expectations
+  EXPECT_TRUE(profile_event.events().size() == 1);
+  const auto &entry = profile_event.events(0);
+  EXPECT_EQ(entry.start_time(), 123456789);
+  EXPECT_EQ(entry.end_time(), 123456799);
+  EXPECT_EQ(entry.extra_data(), "{\"foo\": \"bar\"}");
+  EXPECT_EQ(entry.event_name(), "test_event");
+}
 }  // namespace gcs
 }  // namespace ray
