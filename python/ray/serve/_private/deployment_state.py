@@ -1015,16 +1015,20 @@ class ActorReplicaWrapper:
         except ValueError:
             pass
 
-    def update_rank(self, rank: int) -> bool:
+    def update_rank(self, rank: int, world_size: int) -> bool:
         """Update the replica's rank with the provided rank value.
 
         Args:
             rank: The current rank of this replica.
+            world_size: The current number of running replicas in the deployment.
 
         Returns:
             bool: True if rank update was successful, False otherwise.
         """
-        self._update_rank_ref = self._actor_handle.update_replica_rank.remote(rank)
+        self._update_rank_ref = self._actor_handle.update_replica_rank.remote(
+            rank, world_size
+        )
+        return True
 
 
 class DeploymentReplica:
@@ -1239,16 +1243,17 @@ class DeploymentReplica:
         """
         return self._actor.check_health() and self._actor.check_active_update_rank()
 
-    def update_rank(self, rank: int) -> bool:
+    def update_rank(self, rank: int, world_size: int) -> bool:
         """Update the replica's rank with the provided rank value.
 
         Args:
             rank: The current rank of this replica.
+            world_size: The current number of running replicas in the deployment.
 
         Returns:
             bool: True if rank update was successful, False otherwise.
         """
-        return self._actor.update_rank(rank)
+        return self._actor.update_rank(rank, world_size)
 
     def pull_routing_stats(self) -> Optional[Dict[str, Any]]:
         """Get the latest response from the routing stats on the replica.
@@ -2777,17 +2782,21 @@ class DeploymentState:
 
         # Find the corresponding replica objects and update their ranks
         updated_count = 0
+        current_world_size = len(
+            self._replica_ranks
+        )  # Current number of replicas with ranks
+
         for replica in self._replicas.get(
             states=[ReplicaState.RUNNING, ReplicaState.STARTING]
         ):
             replica_id = replica.replica_id.unique_id
             if replica_id in rank_updates:
                 new_rank = rank_updates[replica_id]
-                # Pass the actual rank value to the replica
-                if replica.update_rank(new_rank):
+                # Pass the actual rank value and current world size to the replica
+                if replica.update_rank(new_rank, current_world_size):
                     updated_count += 1
                     logger.debug(
-                        f"Successfully updated rank for replica {replica.replica_id} to {new_rank}"
+                        f"Successfully updated rank for replica {replica.replica_id} to {new_rank} (world_size={current_world_size})"
                     )
                 else:
                     logger.warning(

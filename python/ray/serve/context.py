@@ -42,12 +42,14 @@ class ReplicaContext:
         - replica_tag: unique ID for the replica.
         - servable_object: instance of the user class/function this replica is running.
         - rank: rank of the replica within the deployment (0 to num_replicas-1).
+        - world_size: current number of running replicas in the deployment.
     """
 
     replica_id: ReplicaID
     servable_object: Callable
     _deployment_config: DeploymentConfig
     rank: Optional[int] = None
+    world_size: Optional[int] = None
 
     @property
     def app_name(self) -> str:
@@ -111,6 +113,7 @@ def _set_internal_replica_context(
     servable_object: Callable,
     _deployment_config: DeploymentConfig,
     rank: Optional[int] = None,
+    world_size: Optional[int] = None,
 ):
     global _INTERNAL_REPLICA_CONTEXT
     _INTERNAL_REPLICA_CONTEXT = ReplicaContext(
@@ -118,6 +121,7 @@ def _set_internal_replica_context(
         servable_object=servable_object,
         _deployment_config=_deployment_config,
         rank=rank,
+        world_size=world_size,
     )
 
 

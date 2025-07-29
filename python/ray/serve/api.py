@@ -199,14 +199,19 @@ def get_world_size() -> int:
     number of replicas that participate in collective operations.
 
     Returns:
-        The total number of replicas in the deployment.
+        The current number of running replicas in the deployment.
 
     Raises:
         RayServeException: if not called from within a deployment.
     """
-    # Get the deployment configuration from the replica context
+    # Get the current world size from the replica context
     replica_context = get_replica_context()
-    return replica_context._deployment_config.num_replicas
+
+    # Fallback to deployment config if world_size is not set (e.g., during initialization)
+    if replica_context.world_size is not None:
+        return replica_context.world_size
+    else:
+        return replica_context._deployment_config.num_replicas
 
 
 @PublicAPI(stability="stable")
