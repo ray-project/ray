@@ -204,14 +204,8 @@ def get_world_size() -> int:
     Raises:
         RayServeException: if not called from within a deployment.
     """
-    # Get the current world size from the replica context
     replica_context = get_replica_context()
-
-    # Fallback to deployment config if world_size is not set (e.g., during initialization)
-    if replica_context.world_size is not None:
-        return replica_context.world_size
-    else:
-        return replica_context._deployment_config.num_replicas
+    return replica_context.world_size
 
 
 @PublicAPI(stability="stable")
