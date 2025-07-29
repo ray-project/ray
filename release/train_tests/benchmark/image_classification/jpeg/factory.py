@@ -93,13 +93,10 @@ class ImageClassificationJpegRayDataLoaderFactory(
                 if train_dir.startswith("s3://")
                 else None
             )
+            # Create training dataset with class-based partitioning.
             partitioning = Partitioning(
                 "dir", base_dir=train_dir, field_names=["class"]
             )
-            if filesystem is not None:
-                partitioning = partitioning.with_filesystem(filesystem)
-
-            # Create training dataset with class-based partitioning
             ds = (
                 ray.data.read_images(
                     train_dir,
@@ -119,9 +116,6 @@ class ImageClassificationJpegRayDataLoaderFactory(
                 self.get_s3fs_with_boto_creds() if val_dir.startswith("s3://") else None
             )
             partitioning = Partitioning("dir", base_dir=val_dir, field_names=["class"])
-            if filesystem is not None:
-                partitioning = partitioning.with_filesystem(filesystem)
-
             ds = (
                 ray.data.read_images(
                     val_dir,
