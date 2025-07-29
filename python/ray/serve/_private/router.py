@@ -295,13 +295,14 @@ class RouterMetricsManager:
         )
 
     def metrics_report(self) -> HandleMetricReport:
+        timestamp = time.time()
         return HandleMetricReport(
-            timestamp=time.time(),
+            timestamp=timestamp,
             deployment_id=self._deployment_id,
             handle_id=self._handle_id,
             actor_id=self._self_actor_id,
             handle_source=self._handle_source,
-            **self._get_aggregated_requests(),
+            **self._get_aggregated_requests(timestamp),
         )
 
     def push_autoscaling_metrics_to_controller(self):
@@ -331,11 +332,11 @@ class RouterMetricsManager:
         start_timestamp = timestamp - self.autoscaling_config.look_back_period_s
         self.metrics_store.prune_keys_and_compact_data(start_timestamp)
 
-    def _get_aggregated_requests(self):
+    def _get_aggregated_requests(self, timestamp: float):
         running_requests = {}
         if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE and self.autoscaling_config:
             look_back_period = self.autoscaling_config.look_back_period_s
-            window_start_time = time.time() - look_back_period
+            window_start_time = timestamp - look_back_period
             running_requests = {
                 replica_id: self.metrics_store.window_average(
                     replica_id, window_start_time
@@ -390,11 +391,10 @@ class SharedHandleMetricsPusher:
         )
 
     def push_metrics(self) -> None:
-        # TODO: gathering reports could block the event loop for a long time
-        logger.debug("Pushing handle metrics to controller")
-        self._controller_handler.bulk_record_handle_metrics.remote(
-            [m.metrics_report() for m in self._router_metrics_managers]
-        )
+        logger.debug("Gathering handle metrics reports...")
+        reports = [m.metrics_report() for m in self._router_metrics_managers]
+        logger.debug("Pushing handle metrics to controller...")
+        self._controller_handler.bulk_record_handle_metrics.remote(reports)
 
 
 class Router(ABC):

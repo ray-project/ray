@@ -110,7 +110,7 @@ class MetricsPusher:
         self._async_tasks.clear()
 
 
-@dataclass(order=True)
+@dataclass(order=True, frozen=True, slots=True)
 class TimeStampedValue:
     timestamp: float
     value: float = field(compare=False)
@@ -152,7 +152,7 @@ class InMemoryMetricsStore:
 
     def _get_datapoints(
         self, key: Hashable, window_start_timestamp_s: float
-    ) -> List[float]:
+    ) -> List[TimeStampedValue]:
         """Get all data points given key after window_start_timestamp_s"""
 
         datapoints = self.data[key]
@@ -188,7 +188,7 @@ class InMemoryMetricsStore:
             self.data[key] = points_after_idx
 
         if len(points_after_idx) == 0:
-            return
+            return None
         return sum(point.value for point in points_after_idx) / len(points_after_idx)
 
     def max(
