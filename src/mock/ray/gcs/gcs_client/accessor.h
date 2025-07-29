@@ -132,7 +132,7 @@ class MockNodeInfoAccessor : public NodeInfoAccessor {
               (override));
   MOCK_METHOD(void,
               AsyncCheckAlive,
-              (const std::vector<std::string> &raylet_addresses,
+              (const std::vector<NodeID> &node_ids,
                int64_t timeout_ms,
                const MultiItemCallback<bool> &callback),
               (override));
@@ -157,7 +157,7 @@ class MockNodeInfoAccessor : public NodeInfoAccessor {
               (const, override));
   MOCK_METHOD(Status,
               CheckAlive,
-              (const std::vector<std::string> &raylet_addresses,
+              (const std::vector<NodeID> &node_ids,
                int64_t timeout_ms,
                std::vector<bool> &nodes_alive),
               (override));

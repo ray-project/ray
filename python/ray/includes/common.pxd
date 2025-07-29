@@ -434,12 +434,12 @@ cdef extern from "ray/gcs/gcs_client/accessor.h" nogil:
 
     cdef cppclass CNodeInfoAccessor "ray::gcs::NodeInfoAccessor":
         CRayStatus CheckAlive(
-            const c_vector[c_string] &raylet_addresses,
+            const c_vector[CNodeID] &node_ids,
             int64_t timeout_ms,
             c_vector[c_bool] &result)
 
         void AsyncCheckAlive(
-            const c_vector[c_string] &raylet_addresses,
+            const c_vector[CNodeID] &node_ids,
             int64_t timeout_ms,
             const MultiItemPyCallback[c_bool] &callback)
 

@@ -283,12 +283,6 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   };
   uint64_t counts_[CountType::CountType_MAX] = {0};
 
-  /// A map of NodeId <-> ip:port of raylet
-  using NodeIDAddrBiMap =
-      boost::bimap<boost::bimaps::unordered_set_of<NodeID, std::hash<NodeID>>,
-                   boost::bimaps::unordered_multiset_of<std::string>>;
-  NodeIDAddrBiMap node_map_;
-
   /// If true, node events are exported for Export API
   bool export_event_write_enabled_ = false;
 

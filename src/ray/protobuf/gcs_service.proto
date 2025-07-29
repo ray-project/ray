@@ -253,7 +253,7 @@ message GetAllNodeInfoReply {
 }
 
 message CheckAliveRequest {
-  repeated string raylet_address = 1;
+  repeated bytes node_ids = 1;
 }
 
 message CheckAliveReply {
