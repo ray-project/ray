@@ -4,7 +4,7 @@ from ray.dashboard.modules.metrics.dashboards.common import (
     DashboardConfig,
     GridPos,
     Panel,
-    Target,
+    QueryTarget,
 )
 
 SERVE_GRAFANA_PANELS = [
@@ -15,32 +15,32 @@ SERVE_GRAFANA_PANELS = [
         unit="%",
         targets=[
             # CPU
-            Target(
+            QueryTarget(
                 expr="avg(ray_node_cpu_utilization{{{global_filters}}})",
                 legend="CPU (physical)",
             ),
             # GPU
-            Target(
+            QueryTarget(
                 expr="sum(ray_node_gpus_utilization{{{global_filters}}}) / on() (sum(autoscaler_cluster_resources{{resource='GPU',{global_filters}}}) or vector(0))",
                 legend="GPU (physical)",
             ),
             # Memory
-            Target(
+            QueryTarget(
                 expr="sum(ray_node_mem_used{{{global_filters}}}) / on() (sum(ray_node_mem_total{{{global_filters}}})) * 100",
                 legend="Memory (RAM)",
             ),
             # GRAM
-            Target(
+            QueryTarget(
                 expr="sum(ray_node_gram_used{{{global_filters}}}) / on() (sum(ray_node_gram_available{{{global_filters}}}) + sum(ray_node_gram_used{{{global_filters}}})) * 100",
                 legend="GRAM",
             ),
             # Object Store
-            Target(
+            QueryTarget(
                 expr='sum(ray_object_store_memory{{{global_filters}}}) / on() sum(ray_resources{{Name="object_store_memory",{global_filters}}}) * 100',
                 legend="Object Store Memory",
             ),
             # Disk
-            Target(
+            QueryTarget(
                 expr="sum(ray_node_disk_usage{{{global_filters}}}) / on() (sum(ray_node_disk_free{{{global_filters}}}) + sum(ray_node_disk_usage{{{global_filters}}})) * 100",
                 legend="Disk",
             ),
@@ -55,11 +55,11 @@ SERVE_GRAFANA_PANELS = [
         description="QPS for each selected application.",
         unit="qps",
         targets=[
-            Target(
+            QueryTarget(
                 expr='sum(rate(ray_serve_num_http_requests_total{{application=~"$Application",application!~"",route=~"$HTTP_Route",route!~"/-/.*",{global_filters}}}[5m])) by (application, route)',
                 legend="{{application, route}}",
             ),
-            Target(
+            QueryTarget(
                 expr='sum(rate(ray_serve_num_grpc_requests_total{{application=~"$Application",application!~"",method=~"$gRPC_Method",{global_filters}}}[5m])) by (application, method)',
                 legend="{{application, method}}",
             ),
@@ -72,11 +72,11 @@ SERVE_GRAFANA_PANELS = [
         description="Error QPS for each selected application.",
         unit="qps",
         targets=[
-            Target(
+            QueryTarget(
                 expr='sum(rate(ray_serve_num_http_error_requests_total{{application=~"$Application",application!~"",route=~"$HTTP_Route",route!~"/-/.*",{global_filters}}}[5m])) by (application, route)',
                 legend="{{application, route}}",
             ),
-            Target(
+            QueryTarget(
                 expr='sum(rate(ray_serve_num_grpc_error_requests_total{{application=~"$Application",application!~"",method=~"$gRPC_Method",{global_filters}}}[5m])) by (application, method)',
                 legend="{{application, method}}",
             ),
@@ -89,11 +89,11 @@ SERVE_GRAFANA_PANELS = [
         description="Error QPS for each selected application.",
         unit="qps",
         targets=[
-            Target(
+            QueryTarget(
                 expr='sum(rate(ray_serve_num_http_error_requests_total{{application=~"$Application",application!~"",route=~"$HTTP_Route",route!~"/-/.*",{global_filters}}}[5m])) by (application, route, error_code)',
                 legend="{{application, route, error_code}}",
             ),
-            Target(
+            QueryTarget(
                 expr='sum(rate(ray_serve_num_grpc_error_requests_total{{application=~"$Application",application!~"",method=~"$gRPC_Method",{global_filters}}}[5m])) by (application, method, error_code)',
                 legend="{{application, method, error_code}}",
             ),
@@ -106,15 +106,15 @@ SERVE_GRAFANA_PANELS = [
         description="P50 latency for selected applications.",
         unit="ms",
         targets=[
-            Target(
+            QueryTarget(
                 expr='histogram_quantile(0.5, sum(rate(ray_serve_http_request_latency_ms_bucket{{application=~"$Application",application!~"",route=~"$HTTP_Route",route!~"/-/.*",{global_filters}}}[5m])) by (application, route, le))',
                 legend="{{application, route}}",
             ),
-            Target(
+            QueryTarget(
                 expr='histogram_quantile(0.5, sum(rate(ray_serve_grpc_request_latency_ms_bucket{{application=~"$Application",application!~"",method=~"$gRPC_Method",{global_filters}}}[5m])) by (application, method, le))',
                 legend="{{application, method}}",
             ),
-            Target(
+            QueryTarget(
                 expr='histogram_quantile(0.5, sum(rate({{__name__=~ "ray_serve_(http|grpc)_request_latency_ms_bucket",application=~"$Application",application!~"",{global_filters}}}[5m])) by (le))',
                 legend="Total",
             ),
@@ -129,15 +129,15 @@ SERVE_GRAFANA_PANELS = [
         description="P90 latency for selected applications.",
         unit="ms",
         targets=[
-            Target(
+            QueryTarget(
                 expr='histogram_quantile(0.9, sum(rate(ray_serve_http_request_latency_ms_bucket{{application=~"$Application",application!~"",route=~"$HTTP_Route",route!~"/-/.*",{global_filters}}}[5m])) by (application, route, le))',
                 legend="{{application, route}}",
             ),
-            Target(
+            QueryTarget(
                 expr='histogram_quantile(0.9, sum(rate(ray_serve_grpc_request_latency_ms_bucket{{application=~"$Application",application!~"",method=~"$gRPC_Method",{global_filters}}}[5m])) by (application, method, le))',
                 legend="{{application, method}}",
             ),
-            Target(
+            QueryTarget(
                 expr='histogram_quantile(0.9, sum(rate({{__name__=~ "ray_serve_(http|grpc)_request_latency_ms_bucket|ray_serve_grpc_request_latency_ms_bucket",application=~"$Application",application!~"",{global_filters}}}[5m])) by (le))',
                 legend="Total",
             ),
@@ -152,15 +152,15 @@ SERVE_GRAFANA_PANELS = [
         description="P99 latency for selected applications.",
         unit="ms",
         targets=[
-            Target(
+            QueryTarget(
                 expr='histogram_quantile(0.99, sum(rate(ray_serve_http_request_latency_ms_bucket{{application=~"$Application",application!~"",route=~"$HTTP_Route",route!~"/-/.*",{global_filters}}}[5m])) by (application, route, le))',
                 legend="{{application, route}}",
             ),
-            Target(
+            QueryTarget(
                 expr='histogram_quantile(0.99, sum(rate(ray_serve_grpc_request_latency_ms_bucket{{application=~"$Application",application!~"",method=~"$gRPC_Method",{global_filters}}}[5m])) by (application, method, le))',
                 legend="{{application, method}}",
             ),
-            Target(
+            QueryTarget(
                 expr='histogram_quantile(0.99, sum(rate({{__name__=~ "ray_serve_(http|grpc)_request_latency_ms_bucket|ray_serve_grpc_request_latency_ms_bucket",application=~"$Application",application!~"",{global_filters}}}[5m])) by (le))',
                 legend="Total",
             ),
@@ -175,7 +175,7 @@ SERVE_GRAFANA_PANELS = [
         description='Number of replicas per deployment. Ignores "Application" variable.',
         unit="replicas",
         targets=[
-            Target(
+            QueryTarget(
                 expr="sum(ray_serve_deployment_replica_healthy{{{global_filters}}}) by (application, deployment)",
                 legend="{{application, deployment}}",
             ),
@@ -188,7 +188,7 @@ SERVE_GRAFANA_PANELS = [
         description="QPS for each deployment.",
         unit="qps",
         targets=[
-            Target(
+            QueryTarget(
                 expr='sum(rate(ray_serve_deployment_request_counter_total{{application=~"$Application",application!~"",{global_filters}}}[5m])) by (application, deployment)',
                 legend="{{application, deployment}}",
             ),
@@ -201,7 +201,7 @@ SERVE_GRAFANA_PANELS = [
         description="Error QPS for each deplyoment.",
         unit="qps",
         targets=[
-            Target(
+            QueryTarget(
                 expr='sum(rate(ray_serve_deployment_error_counter_total{{application=~"$Application",application!~"",{global_filters}}}[5m])) by (application, deployment)',
                 legend="{{application, deployment}}",
             ),
@@ -214,11 +214,11 @@ SERVE_GRAFANA_PANELS = [
         description="P50 latency per deployment.",
         unit="ms",
         targets=[
-            Target(
+            QueryTarget(
                 expr='histogram_quantile(0.5, sum(rate(ray_serve_deployment_processing_latency_ms_bucket{{application=~"$Application",application!~"",{global_filters}}}[5m])) by (application, deployment, le))',
                 legend="{{application, deployment}}",
             ),
-            Target(
+            QueryTarget(
                 expr='histogram_quantile(0.5, sum(rate(ray_serve_deployment_processing_latency_ms_bucket{{application=~"$Application",application!~"",{global_filters}}}[5m])) by (le))',
                 legend="Total",
             ),
@@ -233,11 +233,11 @@ SERVE_GRAFANA_PANELS = [
         description="P90 latency per deployment.",
         unit="ms",
         targets=[
-            Target(
+            QueryTarget(
                 expr='histogram_quantile(0.9, sum(rate(ray_serve_deployment_processing_latency_ms_bucket{{application=~"$Application",application!~"",{global_filters}}}[5m])) by (application, deployment, le))',
                 legend="{{application, deployment}}",
             ),
-            Target(
+            QueryTarget(
                 expr='histogram_quantile(0.9, sum(rate(ray_serve_deployment_processing_latency_ms_bucket{{application=~"$Application",application!~"",{global_filters}}}[5m])) by (le))',
                 legend="Total",
             ),
@@ -252,11 +252,11 @@ SERVE_GRAFANA_PANELS = [
         description="P99 latency per deployment.",
         unit="ms",
         targets=[
-            Target(
+            QueryTarget(
                 expr='histogram_quantile(0.99, sum(rate(ray_serve_deployment_processing_latency_ms_bucket{{application=~"$Application",application!~"",{global_filters}}}[5m])) by (application, deployment, le))',
                 legend="{{application, deployment}}",
             ),
-            Target(
+            QueryTarget(
                 expr='histogram_quantile(0.99, sum(rate(ray_serve_deployment_processing_latency_ms_bucket{{application=~"$Application",application!~"",{global_filters}}}[5m])) by (le))',
                 legend="Total",
             ),
@@ -271,7 +271,7 @@ SERVE_GRAFANA_PANELS = [
         description='Number of requests queued per deployment. Ignores "Application" variable.',
         unit="requests",
         targets=[
-            Target(
+            QueryTarget(
                 expr="sum(ray_serve_deployment_queued_queries{{{global_filters}}}) by (application, deployment)",
                 legend="{{application, deployment}}",
             ),
@@ -287,15 +287,15 @@ SERVE_GRAFANA_PANELS = [
         unit="nodes",
         targets=[
             # TODO(aguo): Update this to use autoscaler metrics instead
-            Target(
+            QueryTarget(
                 expr="sum(autoscaler_active_nodes{{{global_filters}}}) by (NodeType)",
                 legend="Active Nodes: {{NodeType}}",
             ),
-            Target(
+            QueryTarget(
                 expr="sum(autoscaler_recently_failed_nodes{{{global_filters}}}) by (NodeType)",
                 legend="Failed Nodes: {{NodeType}}",
             ),
-            Target(
+            QueryTarget(
                 expr="sum(autoscaler_pending_nodes{{{global_filters}}}) by (NodeType)",
                 legend="Pending Nodes: {{NodeType}}",
             ),
@@ -308,11 +308,11 @@ SERVE_GRAFANA_PANELS = [
         description='Network speed per node. Ignores "Application" variable.',
         unit="Bps",
         targets=[
-            Target(
+            QueryTarget(
                 expr="sum(ray_node_network_receive_speed{{{global_filters}}}) by (instance)",
                 legend="Recv: {{instance}}",
             ),
-            Target(
+            QueryTarget(
                 expr="sum(ray_node_network_send_speed{{{global_filters}}}) by (instance)",
                 legend="Send: {{instance}}",
             ),
@@ -328,7 +328,7 @@ SERVE_GRAFANA_PANELS = [
         description="The number of ongoing requests in the HTTP Proxy.",
         unit="requests",
         targets=[
-            Target(
+            QueryTarget(
                 expr="ray_serve_num_ongoing_http_requests{{{global_filters}}}",
                 legend="Ongoing HTTP Requests",
             ),
@@ -341,7 +341,7 @@ SERVE_GRAFANA_PANELS = [
         description="The number of ongoing requests in the gRPC Proxy.",
         unit="requests",
         targets=[
-            Target(
+            QueryTarget(
                 expr="ray_serve_num_ongoing_grpc_requests{{{global_filters}}}",
                 legend="Ongoing gRPC Requests",
             ),
@@ -354,7 +354,7 @@ SERVE_GRAFANA_PANELS = [
         description="The number of request scheduling tasks in the router.",
         unit="tasks",
         targets=[
-            Target(
+            QueryTarget(
                 expr="ray_serve_num_scheduling_tasks{{{global_filters}}}",
                 legend="Scheduling Tasks",
             ),
@@ -367,7 +367,7 @@ SERVE_GRAFANA_PANELS = [
         description="The number of request scheduling tasks in the router that are undergoing backoff.",
         unit="tasks",
         targets=[
-            Target(
+            QueryTarget(
                 expr="ray_serve_num_scheduling_tasks_in_backoff{{{global_filters}}}",
                 legend="Scheduling Tasks in Backoff",
             ),
@@ -380,7 +380,7 @@ SERVE_GRAFANA_PANELS = [
         description="The duration of the last control loop.",
         unit="seconds",
         targets=[
-            Target(
+            QueryTarget(
                 expr="ray_serve_controller_control_loop_duration_s{{{global_filters}}}",
                 legend="Control Loop Duration",
             ),
@@ -393,7 +393,7 @@ SERVE_GRAFANA_PANELS = [
         description="The number of control loops performed by the controller. Increases monotonically over the controller's lifetime.",
         unit="loops",
         targets=[
-            Target(
+            QueryTarget(
                 expr="ray_serve_controller_num_control_loops{{{global_filters}}}",
                 legend="Control Loops",
             ),
