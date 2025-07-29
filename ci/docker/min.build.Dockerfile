@@ -21,9 +21,6 @@ rm -rf python/ray/thirdparty_files
 
 # install test requirements
 python -m pip install -U pytest==7.4.4 pip-tools==7.4.1
-if [[ "${EXTRA_DEPENDENCY}" == "core" ]]; then
-  python -m pip install -U pytest-httpserver==1.1.3
-fi
 
 # install extra dependencies
 if [[ "${EXTRA_DEPENDENCY}" == "core" ]]; then
