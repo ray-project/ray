@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from queue import Queue
 from typing import Any, Dict, List, Optional
 
+from ray.autoscaler.v2.schema import IPPRStatus
 from ray.autoscaler._private.constants import (
     AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
     AUTOSCALER_MAX_LAUNCH_BATCH,
@@ -64,6 +65,8 @@ class CloudInstance:
     # to handle cloud instances w/o request ids.
     # TODO: make this a required field.
     request_id: Optional[str] = None
+
+    ippr_status: Optional[IPPRStatus] = None
 
 
 class CloudInstanceProviderError(Exception):
