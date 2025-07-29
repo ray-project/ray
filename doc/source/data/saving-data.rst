@@ -200,7 +200,6 @@ Partitioned Writes
         max_rows_per_file=3,     # … but never more than 3.
     )
 
-.. testoutput::
     # The directory tree now looks like:
     # /tmp/sales_partitioned/
     # ├── city=SF/year=2023/part-00000-*.parquet
