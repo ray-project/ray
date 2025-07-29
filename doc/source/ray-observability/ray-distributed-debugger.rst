@@ -81,31 +81,35 @@ Start a Ray cluster
 
     Follow the instructions in :doc:`the RayCluster quickstart <../cluster/kubernetes/getting-started/raycluster-quick-start>` to set up a cluster.
     
-    A simpler approach is to run a browser-based VSCode (Code Server) as a sidecar container in the Ray head pod. This eliminates network connectivity issues by placing VS Code inside the kubernetes cluster.
+    A simpler approach is to run a browser-based VS Code (Code Server) as a sidecar container in the Ray head pod. This eliminates network connectivity issues by placing VS Code inside the Kubernetes cluster.
 
-    Add the following to your Ray head pod configuration:
-
+    Add a sidecar container to the Ray head pod and configure a shared volume. Modify your Ray head pod template with the following additions:
+    
     .. code-block:: yaml
 
+        # In your RayCluster YAML, under spec.headGroupSpec.template.spec
         containers:
-        - name: ray-head
-          # ... existing ray-head configuration ...
-          volumeMounts:
-            - mountPath: /tmp/ray
-              name: shared-ray-volume
-        - name: vscode-debugger
-          image: docker.io/onesizefitsquorum/code-server-with-ray-distributed-debugger:latest
-          ports:
-            - containerPort: 8443
-          volumeMounts:
-            - mountPath: /tmp/ray
-              name: shared-ray-volume
-          env:
-            - name: DEFAULT_WORKSPACE
-              value: "/tmp/ray/session_latest/runtime_resources"
+          - name: ray-head
+            # ... your existing ray-head configuration ...
+            # Add this volumeMount:
+            volumeMounts:
+              - mountPath: /tmp/ray
+                name: shared-ray-volume
+          # Add this sidecar container:
+          - name: vscode-debugger
+            image: docker.io/onesizefitsquorum/code-server-with-ray-distributed-debugger:4.101.2
+            ports:
+              - containerPort: 8443
+            volumeMounts:
+              - mountPath: /tmp/ray
+                name: shared-ray-volume
+            env:
+              - name: DEFAULT_WORKSPACE
+                value: "/tmp/ray/session_latest/runtime_resources"
+        # Add this volume at the same level as `containers`:
         volumes:
-        - name: shared-ray-volume
-          emptyDir: {}
+          - name: shared-ray-volume
+            emptyDir: {}
 
     After the Ray cluster is running, forward the Code Server port:
 
