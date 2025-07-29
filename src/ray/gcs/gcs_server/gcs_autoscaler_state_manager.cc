@@ -303,7 +303,7 @@ void GcsAutoscalerStateManager::UpdateResourceLoadAndUsage(rpc::ResourcesData da
 absl::flat_hash_map<ResourceDemandKey, rpc::ResourceDemand>
 GcsAutoscalerStateManager::GetAggregatedResourceLoad() const {
   RAY_CHECK(thread_checker_.IsOnSameThread());
-  absl::flat_hash_map<ray::gcs::ResourceDemandKey, rpc::ResourceDemand> aggregate_load;
+  absl::flat_hash_map<ResourceDemandKey, rpc::ResourceDemand> aggregate_load;
   for (const auto &info : node_resource_info_) {
     gcs::FillAggregateLoad(info.second.second, &aggregate_load);
   }
