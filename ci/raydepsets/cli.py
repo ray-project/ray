@@ -1,6 +1,6 @@
 import click
 from pathlib import Path
-from ci.raydepsets.workspace import Workspace, Depset
+from ci.raydepsets.workspace import Workspace, Depset, Env
 from typing import List
 import subprocess
 import platform
@@ -95,9 +95,9 @@ class DependencySetManager:
             depset = self.build_graph.nodes[node]["depset"]
             self.execute_single(depset)
 
-    def get_depset(self, name: str) -> Depset:
+    def get_depset(self, name: str, env: Env) -> Depset:
         for depset in self.config.depsets:
-            if depset.name == name:
+            if depset.name == name and (env is None or depset.env.name == env.name):
                 return depset
         raise KeyError(f"Dependency set {name} not found")
 
@@ -162,10 +162,11 @@ class DependencySetManager:
         requirements: List[str],
         args: List[str],
         name: str,
+        env: Env,
         output: str = None,
     ):
         """Subset a dependency set."""
-        source_depset = self.get_depset(source_depset)
+        source_depset = self.get_depset(source_depset, env)
         self.check_subset_exists(source_depset, requirements)
         self.compile(
             constraints=[source_depset.output],

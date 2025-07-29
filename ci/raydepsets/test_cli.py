@@ -65,7 +65,7 @@ class TestCli(unittest.TestCase):
                 workspace_dir=tmpdir,
             )
             with self.assertRaises(KeyError):
-                manager.get_depset("fake_depset")
+                manager.get_depset("fake_depset", None)
 
     def test_dependency_set_manager_get_depset(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -197,6 +197,7 @@ class TestCli(unittest.TestCase):
             manager.subset(
                 source_depset="general_depset",
                 requirements=["requirements_test.txt"],
+                env=None,
                 args=["--no-annotate", "--no-header"] + DEFAULT_UV_FLAGS.copy(),
                 name="subset_general_depset",
                 output="requirements_compiled_subset_general.txt",
@@ -232,6 +233,7 @@ class TestCli(unittest.TestCase):
                 manager.subset(
                     source_depset="general_depset",
                     requirements=["requirements_compiled_test.txt"],
+                    env=None,
                     args=["--no-annotate", "--no-header"] + DEFAULT_UV_FLAGS.copy(),
                     name="subset_general_depset",
                     output="requirements_compiled_subset_general.txt",
