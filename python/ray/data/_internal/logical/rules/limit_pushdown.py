@@ -2,12 +2,13 @@ import copy
 from collections import deque
 from typing import Iterable, List
 
+from python.ray.data._internal.logical.operators.map_operator import MapBatches
+
 from ray.data._internal.logical.interfaces import LogicalOperator, LogicalPlan, Rule
 from ray.data._internal.logical.operators.n_ary_operator import Union
 from ray.data._internal.logical.operators.one_to_one_operator import (
     AbstractOneToOne,
     Limit,
-    MapBatches,
 )
 
 
