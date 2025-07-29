@@ -37,6 +37,9 @@ npm install -g @bazel/bazelisk
 mkdir -p "$HOME"/bin
 ln -sf "$(which bazelisk)" "$HOME"/bin/bazel
 
+# Use python3.9 as default python3
+ln -sf /usr/local/bin/python3.9 /usr/local/bin/python3
+
 {
   echo "build --config=ci"
   echo "build --announce_rc"
