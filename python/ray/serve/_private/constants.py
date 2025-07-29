@@ -189,11 +189,6 @@ CLIENT_POLLING_INTERVAL_S: float = 1
 # deployment has been created
 CLIENT_CHECK_CREATION_POLLING_INTERVAL_S: float = 0.1
 
-# Handle metric push interval. (This interval will affect the cold start time period)
-HANDLE_METRIC_PUSH_INTERVAL_S = float(
-    os.environ.get("RAY_SERVE_HANDLE_METRIC_PUSH_INTERVAL_S", "10")
-)
-
 # Timeout for GCS internal KV service
 RAY_SERVE_KV_TIMEOUT_S = float(os.environ.get("RAY_SERVE_KV_TIMEOUT_S", "0")) or None
 
@@ -292,10 +287,24 @@ RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH = os.environ.get(
 )
 
 # How often autoscaling metrics are recorded on Serve replicas.
-RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_PERIOD_S = 0.5
+RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_INTERVAL_S = float(
+    os.environ.get("RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_INTERVAL_S", "0.5")
+)
+
+# Replica autoscaling metrics push interval.
+RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S = float(
+    os.environ.get("RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S", "10")
+)
 
 # How often autoscaling metrics are recorded on Serve handles.
-RAY_SERVE_HANDLE_AUTOSCALING_METRIC_RECORD_PERIOD_S = 0.5
+RAY_SERVE_HANDLE_AUTOSCALING_METRIC_RECORD_INTERVAL_S = float(
+    os.environ.get("RAY_SERVE_HANDLE_AUTOSCALING_METRIC_RECORD_INTERVAL_S", "0.5")
+)
+
+# Handle autoscaling metrics push interval. (This interval will affect the cold start time period)
+RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S = float(
+    os.environ.get("RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S", "10")
+)
 
 # Serve multiplexed matching timeout.
 # This is the timeout for the matching process of multiplexed requests. To avoid
@@ -362,10 +371,6 @@ DEFAULT_AUTOSCALING_POLICY = "ray.serve.autoscaling_policy:default_autoscaling_p
 # metrics at handles instead of replicas. ON by default.
 RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE = (
     os.environ.get("RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE", "1") == "1"
-)
-
-RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S = float(
-    os.environ.get("RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S", 10.0)
 )
 
 # Feature flag to always run a proxy on the head node even if it has no replicas.

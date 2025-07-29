@@ -10,7 +10,7 @@ from ray.serve._private.common import (
     TargetCapacityDirection,
 )
 from ray.serve._private.constants import (
-    RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S,
+    RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S,
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
@@ -19,7 +19,7 @@ from ray.serve._private.utils import get_capacity_adjusted_num_replicas
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
-@dataclass
+@dataclass(frozen=True, slots=True)
 class HandleMetricReport:
     """Report from a deployment handle on queued and ongoing requests.
 
@@ -212,10 +212,7 @@ class AutoscalingState:
         received an update for too long.
         """
 
-        timeout_s = max(
-            2 * self._config.metrics_interval_s,
-            RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S,
-        )
+        timeout_s = 2 * RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S
         for handle_id, handle_metric in list(self._handle_requests.items()):
             # Drop metrics for handles that are on Serve proxy/replica
             # actors that have died
