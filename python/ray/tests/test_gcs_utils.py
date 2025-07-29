@@ -10,7 +10,7 @@ from ray._common.test_utils import async_wait_for_condition
 import redis
 
 import ray
-from ray._raylet import GcsClient
+from ray._raylet import GcsClient, NodeID
 import ray._private.gcs_utils as gcs_utils
 from ray._private.test_utils import (
     external_redis_test_enabled,
@@ -235,7 +235,7 @@ async def test_check_liveness(monkeypatch, ray_start_cluster):
     n1 = cluster.add_node(node_manager_port=find_free_port())
     n2 = cluster.add_node(node_manager_port=find_free_port())
     gcs_client = GcsClient(address=cluster.address)
-    node_ids = [bytes.fromhex(n.node_id) for n in [h, n1, n2]]
+    node_ids = [NodeID.from_hex(n.node_id) for n in [h, n1, n2]]
 
     ret = await gcs_client.async_check_alive(node_ids)
     assert ret == [True, True, True]
