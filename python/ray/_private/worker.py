@@ -2845,6 +2845,12 @@ def get(
             all_compiled_dag_refs = True
             any_compiled_dag_refs = False
             for object_ref in object_refs:
+                if isinstance(
+                    object_ref, ray.ObjectRef
+                ) and worker.gpu_object_manager.is_managed_gpu_object(object_ref.hex()):
+                    raise ValueError(
+                        "GPU ObjectRefs in lists are not supported. Pass GPU ObjectRefs directly to ray.get() instead."
+                    )
                 is_dag_ref = isinstance(object_ref, CompiledDAGRef)
                 all_compiled_dag_refs = all_compiled_dag_refs and is_dag_ref
                 any_compiled_dag_refs = any_compiled_dag_refs or is_dag_ref
