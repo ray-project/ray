@@ -77,10 +77,7 @@ class QueryTarget(Target):
 class ExpressionTarget(Target):
     """Defines a Grafana target (time-series query) within a panel.
 
-    A panel will have one or more targets. By default, all targets are rendered as
-    stacked area charts, with the exception of legend="MAX", which is rendered as
-    a blue dotted line. Any legend="FINISHED|FAILED|DEAD|REMOVED" series will also be
-    rendered hidden by default.
+    Expressions perform calculations on the results of other queries or expressions.
 
     Attributes:
         expression: The expression to evaluate.
