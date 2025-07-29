@@ -10,8 +10,8 @@ Overview
 In most cases, Ray applications can use type hints without any modifications to existing code.
 Ray automatically handles type inference for standard remote functions and basic actor usage patterns.
 
-However, certain advanced patterns require specific approaches to ensure proper type annotation,
-particularly when working with actor references and complex distributed workflows.
+However, certain patterns require specific approaches to ensure proper type annotation,
+particularly when working with actor references.
 
 Remote Functions
 ----------------
@@ -24,31 +24,34 @@ The ``@ray.remote`` decorator preserves the original function signature and type
     import ray
 
     @ray.remote
-    def process_data(data: list[int], multiplier: float) -> list[float]:
-        return [x * multiplier for x in data]
+    def add_numbers(x: int, y: int) -> int:
+        return x + y
 
     # Type hints work seamlessly with remote function calls
-    result_ref = process_data.remote([1, 2, 3], 2.5)
-    result: list[float] = ray.get(result_ref)
+    result_ref = add_numbers.remote(5, 3)
+    result: int = ray.get(result_ref)
 
-For remote class methods, type annotations work naturally within the class definition:
+For remote class methods, type annotations work naturally within the class definition.
+However, to ensure proper type inference, actor methods should use the ``@ray.method`` decorator:
 
 .. code-block:: python
 
     import ray
 
     @ray.remote
-    class DataProcessor:
-        def __init__(self, config: dict):
-            self.config = config
+    class Counter:
+        def __init__(self):
+            self.value = 0
 
-        def process(self, data: list[int]) -> list[int]:
-            return [x * self.config.get("multiplier", 1) for x in data]
+        @ray.method
+        def increment(self, amount: int) -> int:
+            self.value += amount
+            return self.value
 
     # Usage maintains type safety
-    processor = DataProcessor.remote({"multiplier": 2})
-    result_ref = processor.process.remote([1, 2, 3])
-    result: list[int] = ray.get(result_ref)
+    counter = Counter.remote()
+    result_ref = counter.increment.remote(5)
+    result: int = ray.get(result_ref)
 
 Actor Type Annotations
 ----------------------
@@ -66,22 +69,20 @@ The following approach appears intuitive but creates type checking issues:
     import ray
 
     @ray.remote
-    class DataProcessor:
+    class Counter:
         def __init__(self):
-            self.data = []
+            self.value = 0
 
-        def add_data(self, item: int) -> None:
-            self.data.append(item)
-
-        def get_sum(self) -> int:
-            return sum(self.data)
+        @ray.method
+        def increment(self, amount: int) -> int:
+            self.value += amount
+            return self.value
 
     @ray.remote
-    def use_processor(processor: DataProcessor) -> int:  # Type checker will complain
-        processor.add_data.remote(5)
-        return ray.get(processor.get_sum.remote())
+    def use_counter(counter: Counter) -> int:  # Type checker will complain
+        return ray.get(counter.increment.remote(5))
 
-This approach fails because ``DataProcessor`` after decoration refers to an actor class,
+This approach fails because ``Counter`` after decoration refers to an actor class,
 not the original class type, causing IDE and static type checkers to report errors.
 
 Recommended Solution
@@ -95,25 +96,26 @@ and use ``ray.actor.ActorProxy`` for type hints:
     import ray
     from ray.actor import ActorProxy
 
-    class DataProcessor:
+    class Counter:
         def __init__(self):
-            self.data = []
+            self.value = 0
 
-        def add_data(self, item: int) -> None:
-            self.data.append(item)
-
-        def get_sum(self) -> int:
-            return sum(self.data)
+        @ray.method
+        def increment(self, amount: int) -> int:
+            self.value += amount
+            return self.value
 
     # Create the remote actor class separately
-    DataProcessorActor = ray.remote(DataProcessor)
+    CounterActor = ray.remote(Counter)
 
     @ray.remote
-    def use_processor(processor: ActorProxy[DataProcessor]) -> int:
-        processor.add_data.remote(5)
-        return ray.get(processor.get_sum.remote())
+    def use_counter(counter: ActorProxy[Counter]) -> int:
+        return ray.get(counter.increment.remote(5))
 
     # Usage example
-    processor_actor = DataProcessorActor.remote()
-    result_ref = use_processor.remote(processor_actor)
+    counter_actor = CounterActor.remote()
+    result_ref = use_counter.remote(counter_actor)
     result: int = ray.get(result_ref)
+
+The ``@ray.method`` decorator is essential for actor methods as it enables Ray to properly
+infer method types and maintain type safety across remote calls.
