@@ -28,6 +28,7 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/id.h"
+#include "ray/common/ray_syncer/ray_syncer.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
@@ -171,6 +172,13 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   /// This is technically not draining a node. It should be just called "kill node".
   virtual void DrainNode(const NodeID &node_id);
 
+  /// Update node state from a resource view sync message if the node is alive.
+  ///
+  /// \param node_id The ID of the node to update.
+  /// \param resource_view_sync_message The sync message containing the new state.
+  void UpdateAliveNode(const NodeID &node_id,
+                       const syncer::ResourceViewSyncMessage &resource_view_sync_message);
+
  private:
   /// Add the dead node to the cache. If the cache is full, the earliest dead node is
   /// evicted.
@@ -274,12 +282,6 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
     CountType_MAX = 3,
   };
   uint64_t counts_[CountType::CountType_MAX] = {0};
-
-  /// A map of NodeId <-> ip:port of raylet
-  using NodeIDAddrBiMap =
-      boost::bimap<boost::bimaps::unordered_set_of<NodeID, std::hash<NodeID>>,
-                   boost::bimaps::unordered_multiset_of<std::string>>;
-  NodeIDAddrBiMap node_map_;
 
   /// If true, node events are exported for Export API
   bool export_event_write_enabled_ = false;
