@@ -3956,6 +3956,7 @@ py_test(
         "team:rllib",
     ],
 )
+
 py_test(
     name = "examples/curriculum/atari_pong_curriculum_learning",
     size = "large",
@@ -3964,6 +3965,7 @@ py_test(
         "--as-test",
         "--num-env-runners=20",
         "--num-envs-per-env-runner=5",
+        "--stop-iters=20"
     ],
     main = "examples/curriculum/atari_pong_curriculum_learning.py",
     tags = [
