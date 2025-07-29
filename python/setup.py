@@ -299,6 +299,8 @@ if setup_spec.type == SetupType.RAY:
         )
     )
 
+    # This is required for supporting the asynchronous inference, allowing the ray serve applications to
+    # allow asynchronously execute their code, via the use of celery task processor.
     setup_spec.extras["serve-async-inference"] = list(
         set(
             setup_spec.extras["serve"]
