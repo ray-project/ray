@@ -1403,7 +1403,7 @@ class Node:
         if resource_and_label_spec.labels.get(
             ray._raylet.RAY_NODE_ACCELERATOR_TYPE_KEY
         ):
-            from ray._private.usage import usage_lib
+            from ray._common.usage import usage_lib
 
             usage_lib.record_hardware_usage(
                 resource_and_label_spec.labels.get(
