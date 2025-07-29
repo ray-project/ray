@@ -201,9 +201,7 @@ class GPUObjectStore:
             self._wait_object(obj_id, timeout)
             return self.pop_object(obj_id)
 
-    def _wait_object(
-        self, obj_id: str, timeout: Optional[float] = None
-    ) -> None:
+    def _wait_object(self, obj_id: str, timeout: Optional[float] = None) -> None:
         """Helper method to wait for the GPU object to be present in the GPU object store.
         If the object is not present after the optional timeout, raise a
         TimeoutError.
