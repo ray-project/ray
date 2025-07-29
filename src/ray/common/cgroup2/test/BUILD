@@ -15,7 +15,7 @@ ray_cc_test(
     name = "sysfs_cgroup_driver_integration_test",
     srcs = ["sysfs_cgroup_driver_integration_test.cc"],
     tags = [
-        "cgroup",
+        "cgroupv2",
         "exclusive",
         "no_windows",
         "team:core",

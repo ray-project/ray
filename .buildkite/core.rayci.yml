@@ -305,6 +305,16 @@ steps:
       - "3.13"
 
   # cpp tests
+  - label: ":ray: core: cgroupv2 tests"
+    tags: core_cpp
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //:all //src/... core --only-tags=cgroupv2
+          --cache-test-results
+          --build-name oss-ci-base_test
+          --build-type cgroup
+          --privileged
+
   - label: ":ray: core: cgroup tests"
     tags: core_cpp
     instance_type: medium
