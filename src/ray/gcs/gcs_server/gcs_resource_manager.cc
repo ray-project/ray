@@ -222,6 +222,9 @@ void GcsResourceManager::HandleGetAllResourceUsage(
       for (const auto &selector : demand.first.label_selectors) {
         *demand_proto->add_label_selectors() = selector;
       }
+      for (auto &selector : demand.first.label_selectors) {
+        *demand_proto->add_label_selectors() = std::move(selector);
+      }
     }
     // Update placement group load to heartbeat batch.
     // This is updated only one per second.

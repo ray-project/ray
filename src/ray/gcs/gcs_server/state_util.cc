@@ -26,7 +26,8 @@ void FillAggregateLoad(
   for (const auto &demand : load.resource_demands()) {
     ResourceDemandKey key;
     key.shape = demand.shape();
-    key.label_selectors.clear();
+
+    key.label_selectors.reserve(demand.label_selectors().size());
     for (const auto &selector : demand.label_selectors()) {
       key.label_selectors.push_back(selector);
     }
