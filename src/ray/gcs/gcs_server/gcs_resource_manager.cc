@@ -191,7 +191,7 @@ void GcsResourceManager::HandleGetAllResourceUsage(
     rpc::SendReplyCallback send_reply_callback) {
   if (!node_resource_usages_.empty()) {
     rpc::ResourceUsageBatchData batch;
-    absl::flat_hash_map<ray::gcs::ResourceDemandKey, rpc::ResourceDemand> aggregate_load;
+    absl::flat_hash_map<ResourceDemandKey, rpc::ResourceDemand> aggregate_load;
 
     for (const auto &usage : node_resource_usages_) {
       // Aggregate the load reported by each raylet.
