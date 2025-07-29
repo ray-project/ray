@@ -67,14 +67,18 @@ def main():
     dataloader_factory = factory.get_dataloader_factory()
     end_time = time.perf_counter()
     if isinstance(dataloader_factory, RayDataLoaderFactory):
-        datasets_with_times = dataloader_factory.get_ray_datasets()
-        datasets = {key: dataset for key, (dataset, _) in datasets_with_times.items()}
+        train_dataset, train_creation_time = dataloader_factory.get_ray_datasets(
+            DatasetKey.TRAIN
+        )
+        val_dataset, val_creation_time = dataloader_factory.get_ray_datasets(
+            DatasetKey.VALID
+        )
+        datasets = {DatasetKey.TRAIN: train_dataset, DatasetKey.VALID: val_dataset}
         dataset_creation_times = {
-            key: creation_time
-            for key, (_, creation_time) in datasets_with_times.items()
+            DatasetKey.TRAIN: train_creation_time + (end_time - start_time),
+            DatasetKey.VALID: val_creation_time + (end_time - start_time),
         }
-        dataset_creation_times[DatasetKey.TRAIN] += end_time - start_time
-        dataset_creation_times[DatasetKey.VALID] += end_time - start_time
+
         data_config = dataloader_factory.get_ray_data_config()
     else:
         datasets = {}

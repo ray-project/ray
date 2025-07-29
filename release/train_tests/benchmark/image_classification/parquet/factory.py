@@ -41,42 +41,38 @@ class ImageClassificationParquetRayDataLoaderFactory(
         super().__init__(benchmark_config)
         self._data_dirs = data_dirs
 
-    def get_ray_datasets(self) -> Dict[str, Tuple[ray.data.Dataset, float]]:
+    def get_ray_datasets(
+        self, dataset_key: DatasetKey
+    ) -> Tuple[ray.data.Dataset, float]:
         """Get Ray datasets for training and validation.
 
         Returns:
-            Dictionary containing:
-                - "train": Tuple of (training dataset with random transforms, creation time)
-                - "val": Tuple of (validation dataset without transforms, creation time)
+            Tuple of (Ray dataset, creation time)
         """
-        # Create training dataset with image decoding and transforms
-        train_start_time = time.time()
-        train_ds = (
-            ray.data.read_parquet(
-                self._data_dirs[DatasetKey.TRAIN],
-                columns=["image", "label"],
-            ).map(get_preprocess_map_fn(decode_image=True, random_transforms=True))
-            # Add limit after map to enable operator fusion.
-            .limit(self.get_dataloader_config().limit_training_rows)
-        )
-        train_creation_time = time.time() - train_start_time
+        start_time = time.time()
+        if dataset_key == DatasetKey.TRAIN:
+            # Create training dataset with image decoding and transforms
+            ds = (
+                ray.data.read_parquet(
+                    self._data_dirs[DatasetKey.TRAIN],
+                    columns=["image", "label"],
+                ).map(get_preprocess_map_fn(decode_image=True, random_transforms=True))
+                # Add limit after map to enable operator fusion.
+                .limit(self.get_dataloader_config().limit_training_rows)
+            )
+        else:
+            assert dataset_key == DatasetKey.VALID, dataset_key
+            # Create validation dataset without random transforms
+            ds = (
+                ray.data.read_parquet(
+                    self._data_dirs[DatasetKey.TRAIN],
+                    columns=["image", "label"],
+                ).map(get_preprocess_map_fn(decode_image=True, random_transforms=False))
+                # Add limit after map to enable operator fusion.
+                .limit(self.get_dataloader_config().limit_validation_rows)
+            )
 
-        # Create validation dataset without random transforms
-        val_start_time = time.time()
-        val_ds = (
-            ray.data.read_parquet(
-                self._data_dirs[DatasetKey.TRAIN],
-                columns=["image", "label"],
-            ).map(get_preprocess_map_fn(decode_image=True, random_transforms=False))
-            # Add limit after map to enable operator fusion.
-            .limit(self.get_dataloader_config().limit_validation_rows)
-        )
-        val_creation_time = time.time() - val_start_time
-
-        return {
-            DatasetKey.TRAIN: (train_ds, train_creation_time),
-            DatasetKey.VALID: (val_ds, val_creation_time),
-        }
+        return ds, time.time() - start_time
 
 
 class ImageClassificationParquetTorchDataLoaderFactory(

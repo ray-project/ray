@@ -71,7 +71,9 @@ class ImageClassificationJpegRayDataLoaderFactory(
         )
         return s3fs
 
-    def get_ray_datasets(self) -> Dict[str, Tuple[ray.data.Dataset, float]]:
+    def get_ray_datasets(
+        self, dataset_key: DatasetKey
+    ) -> Tuple[ray.data.Dataset, float]:
         """Get Ray datasets for training and validation.
 
         Creates training and validation datasets with:
@@ -81,56 +83,58 @@ class ImageClassificationJpegRayDataLoaderFactory(
         4. Row limits based on benchmark configuration
 
         Returns:
-            Dictionary containing:
-                - "train": Tuple of (training dataset with random transforms, creation time)
-                - "val": Tuple of (validation dataset without transforms, creation time)
+            Tuple of (Ray dataset, creation time)
         """
-        train_dir = self._dataset_dirs[DatasetKey.TRAIN]
-        # TODO: The validation dataset directory is not partitioned by class.
-        val_dir = train_dir
+        start_time = time.time()
+        if dataset_key == DatasetKey.TRAIN:
+            train_dir = self._dataset_dirs[DatasetKey.TRAIN]
+            filesystem = (
+                self.get_s3fs_with_boto_creds()
+                if train_dir.startswith("s3://")
+                else None
+            )
+            partitioning = Partitioning(
+                "dir", base_dir=train_dir, field_names=["class"]
+            )
+            if filesystem is not None:
+                partitioning = partitioning.with_filesystem(filesystem)
 
-        filesystem = (
-            self.get_s3fs_with_boto_creds() if train_dir.startswith("s3://") else None
-        )
+            # Create training dataset with class-based partitioning
+            ds = (
+                ray.data.read_images(
+                    train_dir,
+                    mode="RGB",
+                    include_paths=False,
+                    partitioning=partitioning,
+                    filesystem=filesystem,
+                ).map(get_preprocess_map_fn(random_transforms=True))
+                # Add limit after map to enable operator fusion.
+                .limit(self.get_dataloader_config().limit_training_rows)
+            )
+        else:
+            assert dataset_key == DatasetKey.VALID, dataset_key
+            # TODO: The validation dataset directory is not partitioned by class.
+            val_dir = self._dataset_dirs[DatasetKey.TRAIN]
+            filesystem = (
+                self.get_s3fs_with_boto_creds() if val_dir.startswith("s3://") else None
+            )
+            partitioning = Partitioning("dir", base_dir=val_dir, field_names=["class"])
+            if filesystem is not None:
+                partitioning = partitioning.with_filesystem(filesystem)
 
-        # Create training dataset with class-based partitioning
-        train_start_time = time.time()
-        train_partitioning = Partitioning(
-            "dir", base_dir=train_dir, field_names=["class"]
-        )
-        train_ds = (
-            ray.data.read_images(
-                train_dir,
-                mode="RGB",
-                include_paths=False,
-                partitioning=train_partitioning,
-                filesystem=filesystem,
-            ).map(get_preprocess_map_fn(random_transforms=True))
-            # Add limit after map to enable operator fusion.
-            .limit(self.get_dataloader_config().limit_training_rows)
-        )
-        train_creation_time = time.time() - train_start_time
+            ds = (
+                ray.data.read_images(
+                    val_dir,
+                    mode="RGB",
+                    include_paths=False,
+                    partitioning=partitioning,
+                    filesystem=filesystem,
+                ).map(get_preprocess_map_fn(random_transforms=False))
+                # Add limit after map to enable operator fusion.
+                .limit(self.get_dataloader_config().limit_validation_rows)
+            )
 
-        # Create validation dataset with same partitioning
-        val_start_time = time.time()
-        val_partitioning = Partitioning("dir", base_dir=val_dir, field_names=["class"])
-        val_ds = (
-            ray.data.read_images(
-                val_dir,
-                mode="RGB",
-                include_paths=False,
-                partitioning=val_partitioning,
-                filesystem=filesystem,
-            ).map(get_preprocess_map_fn(random_transforms=False))
-            # Add limit after map to enable operator fusion.
-            .limit(self.get_dataloader_config().limit_validation_rows)
-        )
-        val_creation_time = time.time() - val_start_time
-
-        return {
-            DatasetKey.TRAIN: (train_ds, train_creation_time),
-            DatasetKey.VALID: (val_ds, val_creation_time),
-        }
+        return ds, time.time() - start_time
 
 
 class ImageClassificationJpegTorchDataLoaderFactory(

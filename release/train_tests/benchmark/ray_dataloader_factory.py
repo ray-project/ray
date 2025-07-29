@@ -34,16 +34,13 @@ class RayDataLoaderFactory(BaseDataLoaderFactory):
             dataloader_config.actor_locality_enabled
         )
         data_context.execution_options.preserve_order = dataloader_config.preserve_order
-        data_context._enable_read_files_fusion_override = True
 
     @abstractmethod
-    def get_ray_datasets(self) -> Dict[str, Tuple[Dataset, float]]:
+    def get_ray_datasets(self, dataset_key: DatasetKey) -> Tuple[Dataset, float]:
         """Get Ray datasets with creation timestamps.
 
         Returns:
-            Dictionary containing:
-                - "train": Tuple of (training dataset, creation time)
-                - "val": Tuple of (validation dataset, creation time)
+            Tuple of (Ray dataset, creation time)
         """
         raise NotImplementedError
 
