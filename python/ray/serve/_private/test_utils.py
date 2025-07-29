@@ -734,6 +734,8 @@ def get_application_urls(
             for low latency benchmarking.
         is_websocket: Whether the url should be served as a websocket.
         exclude_route_prefix: The route prefix to exclude from the application.
+        check_app_is_running: Whether to check if the application is running before getting the URL.
+        timeout: The timeout for the check.
     Returns:
         The URLs of the application.
     """
@@ -801,6 +803,8 @@ def get_application_url(
             for low latency benchmarking.
         is_websocket: Whether the url should be served as a websocket.
         exclude_route_prefix: The route prefix to exclude from the application.
+        check_app_is_running: Whether to check if the application is running before getting the URL.
+        timeout: The timeout for the check.
     Returns:
         The URL of the application. If there are multiple URLs, a random one is returned.
     """
