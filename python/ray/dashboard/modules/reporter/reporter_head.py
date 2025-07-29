@@ -22,6 +22,7 @@ from ray._private.ray_constants import (
     KV_NAMESPACE_DASHBOARD,
     env_integer,
 )
+import ray
 from ray._private.usage.usage_constants import CLUSTER_METADATA_KEY
 from ray._private.utils import init_grpc_channel
 from ray.autoscaler._private.commands import debug_status
@@ -253,7 +254,8 @@ class ReportHead(SubprocessModule):
                 text=f"Failed to get agent address for node {node_id_hex}"
             )
         node_id, ip, http_port, grpc_port = addrs
-        reporter_stub = self._make_stub(f"{ip}:{grpc_port}")
+        stub_address = ray._private.network_utils.build_address(ip, grpc_port)
+        reporter_stub = self._make_stub(stub_address)
 
         # Default not using `--native` for profiling
         native = req.query.get("native", False) == "1"
@@ -351,7 +353,8 @@ class ReportHead(SubprocessModule):
                 text=f"Failed to get agent address for node {node_id_hex}"
             )
         node_id, ip, http_port, grpc_port = addrs
-        reporter_stub = self._make_stub(f"{ip}:{grpc_port}")
+        stub_address = ray._private.network_utils.build_address(ip, grpc_port)
+        reporter_stub = self._make_stub(stub_address)
 
         try:
             (pid, _) = await self.get_worker_details_for_running_task(
@@ -428,7 +431,8 @@ class ReportHead(SubprocessModule):
                 text=f"Failed to get agent address for node at IP {ip}"
             )
         node_id, ip, http_port, grpc_port = addrs
-        reporter_stub = self._make_stub(f"{ip}:{grpc_port}")
+        stub_address = ray._private.network_utils.build_address(ip, grpc_port)
+        reporter_stub = self._make_stub(stub_address)
         # Default not using `--native` for profiling
         native = req.query.get("native", False) == "1"
         logger.info(
@@ -474,7 +478,8 @@ class ReportHead(SubprocessModule):
                 text=f"Failed to get agent address for node at IP {ip}"
             )
         node_id, ip, http_port, grpc_port = addrs
-        reporter_stub = self._make_stub(f"{ip}:{grpc_port}")
+        stub_address = ray._private.network_utils.build_address(ip, grpc_port)
+        reporter_stub = self._make_stub(stub_address)
 
         pid = int(pid)
         duration_s = int(req.query.get("duration", 5))
@@ -546,7 +551,8 @@ class ReportHead(SubprocessModule):
                 text=f"Failed to get agent address for node at IP {ip}, pid {pid}"
             )
         node_id, ip, http_port, grpc_port = addrs
-        reporter_stub = self._make_stub(f"{ip}:{grpc_port}")
+        stub_address = ray._private.network_utils.build_address(ip, grpc_port)
+        reporter_stub = self._make_stub(stub_address)
 
         # Profile for num_iterations training steps (calls to optimizer.step())
         num_iterations = int(req.query.get("num_iterations", 4))
@@ -659,8 +665,6 @@ class ReportHead(SubprocessModule):
             _, ip, _, grpc_port = addrs
 
         assert pid is not None
-        ip_port = f"{ip}:{grpc_port}"
-
         duration_s = int(req.query.get("duration", 10))
 
         # Default not using `--native`, `--leaks` and `--format` for profiling
@@ -669,7 +673,8 @@ class ReportHead(SubprocessModule):
         leaks = req.query.get("leaks", False) == "1"
         trace_python_allocators = req.query.get("trace_python_allocators", False) == "1"
 
-        reporter_stub = self._make_stub(ip_port)
+        stub_address = ray._private.network_utils.build_address(ip, grpc_port)
+        reporter_stub = self._make_stub(stub_address)
 
         logger.info(
             f"Retrieving memory profiling request to {ip}:{grpc_port}, pid {pid}, with native={native}"

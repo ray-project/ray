@@ -592,3 +592,7 @@ RAY_EXPERIMENTAL_ENABLE_OPEN_TELEMETRY_ON_AGENT = env_bool(
 RAY_EXPERIMENTAL_ENABLE_OPEN_TELEMETRY_ON_CORE = env_bool(
     "RAY_experimental_enable_open_telemetry_on_core", False
 )
+
+
+# Whether prefer ipv6 in ray runtime
+RAY_PREFER_IPV6 = env_bool("RAY_PREFER_IPV6", False)

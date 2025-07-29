@@ -313,6 +313,8 @@ class DashboardHead:
                     )
                 )
                 kwargs = {"addr": "127.0.0.1"} if self.ip == "127.0.0.1" else {}
+                if ray_constants.RAY_PREFER_IPV6:
+                    kwargs = {"addr": "::"}
                 prometheus_client.start_http_server(
                     port=DASHBOARD_METRIC_PORT,
                     registry=metrics.registry,
@@ -447,6 +449,7 @@ class DashboardHead:
             if self.http_host != ray_constants.DEFAULT_DASHBOARD_IP
             else http_host
         )
+        dashboard_address = ray._private.network_utils.build_address(dashboard_http_host, http_port)
         # This synchronous code inside an async context is not great.
         # It is however acceptable, because this only gets run once
         # during initialization and therefore cannot block the event loop.
@@ -455,7 +458,7 @@ class DashboardHead:
         # server address to Ray via stdin / stdout or a pipe.
         self.gcs_client.internal_kv_put(
             ray_constants.DASHBOARD_ADDRESS.encode(),
-            f"{dashboard_http_host}:{http_port}".encode(),
+            dashboard_address.encode(),
             True,
             namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
         )

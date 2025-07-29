@@ -22,6 +22,7 @@
 #include <utility>
 
 #include "ray/common/grpc_util.h"
+#include "ray/common/network_util.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
 #include "ray/rpc/client_call.h"
@@ -83,9 +84,9 @@ inline std::shared_ptr<grpc::Channel> BuildChannel(
     ssl_opts.pem_cert_chain = server_cert_chain;
     auto ssl_creds = grpc::SslCredentials(ssl_opts);
     channel = grpc::CreateCustomChannel(
-        address + ":" + std::to_string(port), ssl_creds, *arguments);
+        BuildAddress(address, port), ssl_creds, *arguments);
   } else {
-    channel = grpc::CreateCustomChannel(address + ":" + std::to_string(port),
+    channel = grpc::CreateCustomChannel(BuildAddress(address, port),
                                         grpc::InsecureChannelCredentials(),
                                         *arguments);
   }

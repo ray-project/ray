@@ -405,7 +405,7 @@ std::optional<std::pair<std::string, int>> ParseIffMovedError(
     return std::nullopt;
   }
   RAY_CHECK_EQ(parts.size(), 3u);
-  std::vector<std::string> ip_port = absl::StrSplit(parts[2], ":");
+  std::vector<std::string> ip_port = SplitIpPort(parts[2]);
   RAY_CHECK_EQ(ip_port.size(), 2u);
   return std::make_pair(ip_port[0], std::stoi(ip_port[1]));
 }

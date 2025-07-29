@@ -14,6 +14,7 @@
 
 #include "ray/common/network_util.h"
 
+#include "absl/strings/str_format.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/util/logging.h"
 
@@ -27,4 +28,13 @@ bool CheckPortFree(int port) {
   socket.bind(boost::asio::ip::tcp::endpoint(boost::asio::ip::tcp::v4(), port), ec);
   socket.close();
   return !ec.failed();
+}
+
+std::string BuildAddress(const std::string &host, int port) {
+  if (host.find(':') != std::string::npos) {
+      // If the host contains a colon, assume it's an IPv6 address
+      return absl::StrFormat("[%s]:%d", host, port);
+  } else {
+      return absl::StrFormat("%s:%d", host, port);
+  }
 }
