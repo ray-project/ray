@@ -1,18 +1,19 @@
 import abc
 from enum import Enum
 
-from ray.train.v2._internal.execution.worker_group import WorkerGroupPollStatus
 from ray.train.v2.api.config import FailureConfig
+from ray.train.v2.api.exceptions import TrainingFailedError
 
 
 class FailureDecision(Enum):
-    RESTART = "RESTART"
+    RETRY = "RETRY"
     RAISE = "RAISE"
     NOOP = "NOOP"
 
 
 class FailurePolicy(abc.ABC):
     """A policy that determines how to handle user and system failures.
+    FailurePolicy will handle the controller failure and worker errors during training.
 
     This can be used to implement fault tolerance and error recovery.
     """
@@ -22,6 +23,7 @@ class FailurePolicy(abc.ABC):
 
     @abc.abstractmethod
     def make_decision(
-        self, worker_group_status: WorkerGroupPollStatus
+        self,
+        training_failed_error: TrainingFailedError,
     ) -> FailureDecision:
         raise NotImplementedError
