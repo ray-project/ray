@@ -18,7 +18,11 @@ class HealthzAgent(dashboard_utils.DashboardAgentModule):
 
     def __init__(self, dashboard_agent):
         super().__init__(dashboard_agent)
-        node_id = NodeID.from_hex(dashboard_agent.node_id) if dashboard_agent.node_id else None
+        node_id = (
+            NodeID.from_hex(dashboard_agent.node_id)
+            if dashboard_agent.node_id
+            else None
+        )
         self._health_checker = HealthChecker(
             dashboard_agent.gcs_client,
             node_id,
