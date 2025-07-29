@@ -89,8 +89,8 @@ class WorkerGroupStartupFailedError(RayTrainError):
 class InsufficientClusterResourcesError(RayTrainError):
     """Exception raised when the cluster has insufficient resources.
 
-    Example scenario: A worker that requires 1 GPU is scheduled onto a cluster that
-    only has 1 CPU.
+    Example scenario: A worker that requires 1 GPU is scheduled onto a cluster
+    that only has CPU worker node types.
     """
 
 
