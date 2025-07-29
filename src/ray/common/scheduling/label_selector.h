@@ -62,9 +62,6 @@ class LabelSelector {
   explicit LabelSelector(
       const google::protobuf::Map<std::string, std::string> &label_selector);
 
-  static StatusOr<LabelSelector> StrictParse(
-      const google::protobuf::Map<std::string, std::string> &label_selector_dict);
-
   rpc::LabelSelector ToProto() const;
 
   void AddConstraint(const std::string &key, const std::string &value);
@@ -75,7 +72,7 @@ class LabelSelector {
 
   const std::vector<LabelConstraint> &GetConstraints() const { return constraints_; }
 
-  StatusOr<std::pair<LabelSelectorOperator, absl::flat_hash_set<std::string>>>
+  std::pair<LabelSelectorOperator, absl::flat_hash_set<std::string>>
   ParseLabelSelectorValue(const std::string &key, const std::string &value);
 
  private:

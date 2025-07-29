@@ -76,7 +76,7 @@ class BundleSpecification : public MessageWrapper<rpc::Bundle> {
   std::string DebugString() const;
 
  private:
-  Status ComputeResources();
+  void ComputeResources();
   void ComputeBundleResourceLabels();
 
   /// Field storing unit resources. Initialized in constructor.

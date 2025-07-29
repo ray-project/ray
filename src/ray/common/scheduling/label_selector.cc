@@ -19,28 +19,13 @@
 
 namespace ray {
 
-// Legacy constructor to parse LabelSelector data type from proto.
+// Constructor to parse LabelSelector data type from proto.
 LabelSelector::LabelSelector(
     const google::protobuf::Map<std::string, std::string> &label_selector) {
+  // Label selector keys and values are validated before construction in
+  // `prepare_label_selector`.
+  // https://github.com/ray-project/ray/blob/feb1c6180655b69fc64c5e0c25cc56cbe96e0b26/python/ray/_raylet.pyx#L782C1-L784C70
   for (const auto &[key, value] : label_selector) {
-    if (key.empty()) {
-      RAY_LOG(ERROR) << "Empty Label Selector key.";
-    }
-
-    AddConstraint(key, value);
-  }
-}
-
-StatusOr<LabelSelector> LabelSelector::StrictParse(
-    const google::protobuf::Map<std::string, std::string> &label_selector_map) {
-  LabelSelector selector;
-
-  for (const auto &[key, value] : label_selector_map) {
-    if (key.empty()) {
-      // TODO (ryanaoleary@): propagate up an InvalidArgument from here.
-      RAY_LOG(ERROR) << "Empty Label Selector key.";
-    }
-
     AddConstraint(key, value);
   }
 }
@@ -63,10 +48,9 @@ void LabelSelector::AddConstraint(const std::string &key, const std::string &val
   auto [op, values] = ParseLabelSelectorValue(key, value);
   LabelConstraint constraint(key, op, values);
   AddConstraint(std::move(constraint));
-  return Status::OK();
 }
 
-StatusOr<std::pair<LabelSelectorOperator, absl::flat_hash_set<std::string>>>
+std::pair<LabelSelectorOperator, absl::flat_hash_set<std::string>>
 LabelSelector::ParseLabelSelectorValue(const std::string &key, const std::string &value) {
   bool is_negated = false;
   std::string_view val = value;
@@ -91,12 +75,6 @@ LabelSelector::ParseLabelSelectorValue(const std::string &key, const std::string
       if (pos == std::string_view::npos) break;
       val.remove_prefix(pos + 1);
     }
-
-    if (values.empty()) {
-      return Status::InvalidArgument(
-          "No values provided for Label Selector 'in' operator.");
-    }
-
     op = is_negated ? LabelSelectorOperator::LABEL_NOT_IN
                     : LabelSelectorOperator::LABEL_IN;
   } else {
