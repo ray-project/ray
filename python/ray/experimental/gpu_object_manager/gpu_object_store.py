@@ -233,3 +233,10 @@ class GPUObjectStore:
             if obj_id in self._primary_gpu_object_ids:
                 self._primary_gpu_object_ids.remove(obj_id)
             return tensors
+
+    def get_num_objects(self) -> int:
+        """
+        Return the number of objects in the GPU object store.
+        """
+        with self._lock:
+            return len(self._gpu_object_store)
