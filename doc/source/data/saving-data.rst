@@ -201,7 +201,6 @@ Partitioned Writes
     )
 
 .. testoutput::
-    :options: +MOCK
     # The directory tree now looks like:
     # /tmp/sales_partitioned/
     # ├── city=SF/year=2023/part-00000-*.parquet
