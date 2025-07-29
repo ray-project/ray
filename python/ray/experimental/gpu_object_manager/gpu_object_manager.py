@@ -4,7 +4,12 @@ import ray
 from ray._private.custom_types import TensorTransportEnum
 from ray._raylet import ObjectRef
 import ray.util.collective as collective
-from ray.util.collective.types import Backend, TensorTransportMetadata
+from ray.util.collective.types import (
+    Backend,
+    TensorTransportMetadata,
+    NixlTransportMetadata,
+    CollectiveTransportMetadata,
+)
 
 if TYPE_CHECKING:
     from ray.experimental.gpu_object_manager.gpu_object_store import GPUObjectStore
@@ -53,19 +58,19 @@ def __ray_get_tensor_meta__(
     tensors = gpu_object_store.get_gpu_object(obj_id)
     if tensor_transport == TensorTransportEnum.NIXL:
         from ray.util.collective.collective_group.nixl_backend import NixlBackend
+        from ray.util.collective.types import NIXL_GROUP_NAME
 
-        nixl_backend: NixlBackend = collective.get_group_handle("nixl")
+        nixl_backend: NixlBackend = collective.get_group_handle(NIXL_GROUP_NAME)
         serialized_descs, agent_meta = nixl_backend.get_nixl_metadata(tensors)
-        return TensorTransportMetadata(
+        return NixlTransportMetadata(
             tensor_meta=[(t.shape, t.dtype) for t in tensors],
             nixl_serialized_descs=serialized_descs,
             nixl_agent_meta=agent_meta,
         )
     else:
-        return TensorTransportMetadata(
+        return CollectiveTransportMetadata(
             tensor_meta=[(t.shape, t.dtype) for t in tensors],
-            nixl_serialized_descs=None,
-            nixl_agent_meta=None,
+            src_rank=0,
         )
 
 
@@ -256,6 +261,7 @@ class GPUObjectManager:
             # Import get_collective_groups here to avoid dependency on
             # collective libraries for default Ray installation.
             from ray.experimental.collective import get_collective_groups
+            from ray.util.collective.types import NIXL_GROUP_NAME
 
             gpu_object_meta = self._get_gpu_object_metadata(arg)
 
@@ -268,7 +274,7 @@ class GPUObjectManager:
                 continue
             if gpu_object_meta.tensor_transport_backend == Backend.NIXL:
                 self._recv_gpu_object(
-                    "nixl",
+                    NIXL_GROUP_NAME,
                     dst_actor,
                     arg.hex(),
                     # Placeholder for src_rank, NIXL does not actually use it.

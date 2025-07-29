@@ -3,7 +3,9 @@
 from enum import Enum
 from dataclasses import dataclass
 from datetime import timedelta
-from typing import Optional, List, Tuple, TYPE_CHECKING
+from typing import List, Tuple, TYPE_CHECKING
+
+from numpy import int32
 
 _NUMPY_AVAILABLE = True
 _TORCH_AVAILABLE = True
@@ -59,16 +61,33 @@ class TensorTransportMetadata:
 
     Args:
         tensor_meta: A list of tuples, each containing the shape and dtype of a tensor.
-        src_rank: The source rank that the tensor is being transported from. It's
-            used in non-NIXL transport.
+    """
+
+    tensor_meta: List[Tuple["torch.Size", "torch.dtype"]]
+
+
+@dataclass
+class NixlTransportMetadata(TensorTransportMetadata):
+    """Metadata for tensors stored in the GPU object store for NIXL transport.
+
+    Args:
         nixl_serialized_descs: Serialized tensor descriptors for NIXL transport.
         nixl_agent_meta: The additional metadata of the remote NIXL agent.
     """
 
-    tensor_meta: List[Tuple["torch.Size", "torch.dtype"]]
-    src_rank: Optional[int] = None
-    nixl_serialized_descs: Optional[bytes] = None
-    nixl_agent_meta: Optional[bytes] = None
+    nixl_serialized_descs: bytes
+    nixl_agent_meta: bytes
+
+
+@dataclass
+class CollectiveTransportMetadata(TensorTransportMetadata):
+    """Metadata for tensors stored in the GPU object store for collective transport.
+
+    Args:
+        src_rank: The source rank that the tensor is being transported from.
+    """
+
+    src_rank: int32
 
 
 class ReduceOp(Enum):
@@ -79,6 +98,9 @@ class ReduceOp(Enum):
 
 
 unset_timeout_ms = timedelta(milliseconds=-1)
+
+# This is used to identify the collective group for NIXL.
+NIXL_GROUP_NAME = "ray_internal_nixl_group"
 
 
 @dataclass

@@ -670,20 +670,18 @@ def recv_multiple_tensors(
     metadata: types.TensorTransportMetadata,
     group_name: str = "default",
 ):
-    if group_name == "nixl":
-        nixl_backend: NixlBackend = get_group_handle(group_name)
-        assert (
-            metadata.nixl_serialized_descs is not None
-            and metadata.nixl_agent_meta is not None
-        ), "nixl_serialized_descs and nixl_agent_meta are required for NIXL transport"
-        nixl_backend.recv(
-            tensors, metadata.nixl_serialized_descs, metadata.nixl_agent_meta
-        )
+    g = get_group_handle(group_name)
+
+    if g.backend() == types.Backend.NIXL:
+        assert isinstance(
+            metadata, types.NixlTransportMetadata
+        ), "metadata must be a NixlTransportMetadata object for NIXL transport"
+        g.recv(tensors, metadata.nixl_serialized_descs, metadata.nixl_agent_meta)
     else:
+        assert isinstance(
+            metadata, types.CollectiveTransportMetadata
+        ), "metadata must be a CollectiveTransportMetadata object for non-NIXL transport"
         for tensor in tensors:
-            assert (
-                metadata.src_rank is not None
-            ), "src_rank is required for non-NIXL transport"
             recv(tensor, metadata.src_rank, group_name)
 
 
@@ -757,7 +755,7 @@ def get_group_handle(group_name: str = "default"):
     if not is_group_initialized(group_name):
         # try loading from remote info store
         try:
-            if group_name == "nixl":
+            if group_name == types.NIXL_GROUP_NAME:
                 _group_mgr.create_collective_group(
                     types.Backend.NIXL, None, None, group_name, None
                 )
