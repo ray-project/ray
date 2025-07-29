@@ -93,7 +93,7 @@ inline bool operator==(const LabelSelector &lhs, const LabelSelector &rhs) {
 namespace std {
 template <>
 struct hash<ray::LabelSelector> {
-  size_t operator()(ray::LabelSelector const &label_selector) const noexcept {
+  size_t operator()(const ray::LabelSelector &label_selector) const noexcept {
     size_t seed = label_selector.GetConstraints().size();
     // Add constraint key, operator, and values to hash seed
     for (auto const &constraint : label_selector.GetConstraints()) {
