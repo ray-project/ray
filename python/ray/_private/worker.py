@@ -1054,10 +1054,12 @@ class Worker:
             # Give all accelerator ids in local_mode.
             if self.mode == LOCAL_MODE:
                 if resource_name == ray_constants.GPU:
-                    max_accelerators = self.node.get_resource_spec().num_gpus
+                    max_accelerators = self.node.get_resource_and_label_spec().num_gpus
                 else:
-                    max_accelerators = self.node.get_resource_spec().resources.get(
-                        resource_name, None
+                    max_accelerators = (
+                        self.node.get_resource_and_label_spec().resources.get(
+                            resource_name, None
+                        )
                     )
                 if max_accelerators:
                     assigned_ids = original_ids[:max_accelerators]
