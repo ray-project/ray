@@ -111,6 +111,20 @@ DATA_GRAFANA_PANELS = [
         stack=False,
     ),
     Panel(
+        id=53,
+        title="Max Bytes to Read",
+        description="Maximum bytes to read from streaming generator buffer.",
+        unit="bytes",
+        targets=[
+            Target(
+                expr="sum(ray_data_max_bytes_to_read{{{global_filters}}}) by (dataset, operator)",
+                legend="Max Bytes to Read: {{dataset}}, {{operator}}",
+            )
+        ],
+        fill=0,
+        stack=False,
+    ),
+    Panel(
         id=11,
         title="Rows Output / Second",
         description="Total rows output per second by dataset operators.",
