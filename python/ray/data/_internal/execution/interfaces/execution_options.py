@@ -37,10 +37,10 @@ class ExecutionResources:
 
         # NOTE: Ray Core allocates fractional resources in up to 5th decimal
         #       digit, hence we round the values here up to it
-        self._cpu: float = safe_round(cpu, 5) or 0.0
-        self._gpu: float = safe_round(gpu, 5) or 0.0
-        self._object_store_memory: float = safe_round(object_store_memory) or 0.0
-        self._memory: float = safe_round(memory) or 0.0
+        self._cpu: Optional[float] = safe_round(cpu, 5)
+        self._gpu: Optional[float] = safe_round(gpu, 5)
+        self._object_store_memory: Optional[float] = safe_round(object_store_memory)
+        self._memory: Optional[float] = safe_round(memory)
 
     @classmethod
     def from_resource_dict(
@@ -79,39 +79,19 @@ class ExecutionResources:
 
     @property
     def cpu(self) -> float:
-        return self._cpu
-
-    @cpu.setter
-    @deprecated("Use copy() instead")
-    def cpu(self, value: float):
-        self._cpu = value
+        return self._cpu or 0.0
 
     @property
     def gpu(self) -> float:
-        return self._gpu
-
-    @gpu.setter
-    @deprecated("Use copy() instead")
-    def gpu(self, value: float):
-        self._gpu = value
+        return self._gpu or 0.0
 
     @property
     def object_store_memory(self) -> float:
-        return self._object_store_memory
-
-    @object_store_memory.setter
-    @deprecated("Use copy() instead")
-    def object_store_memory(self, value: float):
-        self._object_store_memory = value
+        return self._object_store_memory or 0
 
     @property
     def memory(self) -> float:
-        return self._memory
-
-    @memory.setter
-    @deprecated("Use copy() instead")
-    def memory(self, value: float):
-        self._memory = value
+        return self._memory or 0
 
     def __repr__(self):
         return (
