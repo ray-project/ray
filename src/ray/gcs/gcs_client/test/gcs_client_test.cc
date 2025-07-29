@@ -317,10 +317,10 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
   }
 
   bool SubscribeToNodeChange(
-      const gcs::SubscribeCallback<NodeID, rpc::GcsNodeInfo> &subscribe) {
+      std::function<void(NodeID, const rpc::GcsNodeInfo &)> subscribe) {
     std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Nodes().AsyncSubscribeToNodeChange(
-        subscribe, [&promise](Status status) { promise.set_value(status.ok()); }));
+    gcs_client_->Nodes().AsyncSubscribeToNodeChange(
+        subscribe, [&promise](Status status) { promise.set_value(status.ok()); });
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
@@ -438,8 +438,8 @@ TEST_P(GcsClientTest, TestCheckAlive) {
                                      grpc::InsecureChannelCredentials());
   auto stub = rpc::NodeInfoGcsService::NewStub(std::move(channel));
   rpc::CheckAliveRequest request;
-  *(request.mutable_raylet_address()->Add()) = "172.1.2.3:31292";
-  *(request.mutable_raylet_address()->Add()) = "172.1.2.4:31293";
+  request.add_node_ids(node_info1->node_id());
+  request.add_node_ids(node_info2->node_id());
   {
     grpc::ClientContext context;
     context.set_deadline(std::chrono::system_clock::now() + 1s);
@@ -471,11 +471,12 @@ TEST_P(GcsClientTest, TestGcsClientCheckAlive) {
   node_info2->set_node_manager_address("172.1.2.4");
   node_info2->set_node_manager_port(31293);
 
-  std::vector<std::string> raylet_addresses = {"172.1.2.3:31292", "172.1.2.4:31293"};
+  std::vector<NodeID> node_ids = {NodeID::FromBinary(node_info1->node_id()),
+                                  NodeID::FromBinary(node_info2->node_id())};
   {
     std::vector<bool> nodes_alive;
-    RAY_CHECK_OK(gcs_client_->Nodes().CheckAlive(
-        raylet_addresses, /*timeout_ms=*/1000, nodes_alive));
+    RAY_CHECK_OK(
+        gcs_client_->Nodes().CheckAlive(node_ids, /*timeout_ms=*/1000, nodes_alive));
     ASSERT_EQ(nodes_alive.size(), 2);
     ASSERT_FALSE(nodes_alive[0]);
     ASSERT_FALSE(nodes_alive[1]);
@@ -484,8 +485,8 @@ TEST_P(GcsClientTest, TestGcsClientCheckAlive) {
   ASSERT_TRUE(RegisterNode(*node_info1));
   {
     std::vector<bool> nodes_alive;
-    RAY_CHECK_OK(gcs_client_->Nodes().CheckAlive(
-        raylet_addresses, /*timeout_ms=*/1000, nodes_alive));
+    RAY_CHECK_OK(
+        gcs_client_->Nodes().CheckAlive(node_ids, /*timeout_ms=*/1000, nodes_alive));
     ASSERT_EQ(nodes_alive.size(), 2);
     ASSERT_TRUE(nodes_alive[0]);
     ASSERT_FALSE(nodes_alive[1]);
