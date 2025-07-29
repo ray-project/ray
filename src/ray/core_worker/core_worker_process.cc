@@ -132,9 +132,6 @@ std::shared_ptr<CoreWorker> CoreWorkerProcess::TryGetWorker() {
 
 std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
     CoreWorkerOptions options, const WorkerID &worker_id) {
-  // Notify that core worker is initialized.
-  absl::Cleanup initialzed_scope_guard = [this] { service_handler_->SetInitialized(); };
-
   /// Event loop where the IO events are handled. e.g. async GCS operations.
   auto client_call_manager =
       std::make_unique<rpc::ClientCallManager>(io_service_, /*record_stats=*/false);
@@ -650,8 +647,7 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
                      : WorkerID::FromRandom()),
       io_work_(io_service_.get_executor()),
       task_execution_service_work_(task_execution_service_.get_executor()),
-      service_handler_(std::make_unique<CoreWorkerServiceHandlerProxy>(
-          [this]() -> std::shared_ptr<CoreWorker> { return GetCoreWorker(); })) {
+      service_handler_(std::make_unique<CoreWorkerServiceHandlerProxy>()) {
   if (options_.enable_logging) {
     // Setup logging for worker system logging.
     {
@@ -748,6 +744,10 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
   stats::Init(global_tags, options_.metrics_agent_port, worker_id_);
 
   {
+    // Notify that core worker is initialized.
+    absl::Cleanup initialzed_scope_guard = [this] {
+      service_handler_->SetCoreWorker(this->GetCoreWorker().get());
+    };
     // Initialize global worker instance.
     auto worker = CreateCoreWorker(options_, worker_id_);
     auto write_locked = core_worker_.LockForWrite();

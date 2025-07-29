@@ -28,7 +28,7 @@ namespace core {
   void Handle##METHOD(rpc::METHOD##Request request,                          \
                       rpc::METHOD##Reply *reply,                             \
                       rpc::SendReplyCallback send_reply_callback) override { \
-    get_core_worker_()->Handle##METHOD(request, reply, send_reply_callback); \
+    core_worker_->Handle##METHOD(request, reply, send_reply_callback);       \
   }
 
 // This class was introduced as a result of changes in
@@ -38,13 +38,10 @@ namespace core {
 // within CoreWorkerProcessImpl despite the fact that several CoreWorker subclasses rely
 // on the server's port, which is only known when the server is running. To address this,
 // we created this service handler which can be created before CoreWorker is done
-// initializing.
+// initializing. This pattern is NOT recommended for future use and was only used
+// as other options were significantly more ugly and complex.
 class CoreWorkerServiceHandlerProxy : public rpc::CoreWorkerServiceHandler {
  public:
-  CoreWorkerServiceHandlerProxy(
-      std::function<std::shared_ptr<CoreWorker>()> get_core_worker)
-      : get_core_worker_(get_core_worker) {}
-
   RAY_CORE_WORKER_RPC_PROXY(PushTask)
   RAY_CORE_WORKER_RPC_PROXY(ActorCallArgWaitComplete)
   RAY_CORE_WORKER_RPC_PROXY(RayletNotifyGCSRestart)
@@ -75,24 +72,21 @@ class CoreWorkerServiceHandlerProxy : public rpc::CoreWorkerServiceHandler {
   void WaitUntilInitialized() override {
     // TODO(joshlee): investigate and remove the 1 second timeout
     absl::MutexLock lock(&initialize_mutex_);
-    while (!initialized_) {
+    while (core_worker_ == nullptr) {
       intialize_cv_.WaitWithTimeout(&initialize_mutex_, absl::Seconds(1));
     }
   }
 
-  void SetInitialized() {
+  void SetCoreWorker(CoreWorker *core_worker) {
     absl::MutexLock lock(&initialize_mutex_);
-    initialized_ = true;
+    core_worker_ = core_worker;
     intialize_cv_.SignalAll();
   }
 
  private:
-  std::function<std::shared_ptr<CoreWorker>()> get_core_worker_;
-
-  /// States that used for initialization.
   absl::Mutex initialize_mutex_;
   absl::CondVar intialize_cv_;
-  bool initialized_ ABSL_GUARDED_BY(initialize_mutex_) = false;
+  CoreWorker *core_worker_ ABSL_GUARDED_BY(initialize_mutex_) = nullptr;
 };
 
 }  // namespace core
