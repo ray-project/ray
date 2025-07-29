@@ -661,11 +661,15 @@ SHUFFLE_ALL_TO_ALL_OPS = [
 
 
 @pytest.mark.parametrize(
-    "shuffle_op",
-    SHUFFLE_ALL_TO_ALL_OPS,
+    "idx, shuffle_op",
+    list(enumerate(SHUFFLE_ALL_TO_ALL_OPS)),
 )
 def test_debug_limit_shuffle_execution_to_num_blocks(
-    ray_start_regular, restore_data_context, configure_shuffle_method, shuffle_op
+    ray_start_regular,
+    restore_data_context,
+    configure_shuffle_method,
+    idx,
+    shuffle_op,
 ):
     if configure_shuffle_method == ShuffleStrategy.HASH_SHUFFLE:
         pytest.skip("Not supported by hash-shuffle")
@@ -676,7 +680,14 @@ def test_debug_limit_shuffle_execution_to_num_blocks(
     ds = ray.data.range(1000, override_num_blocks=parallelism)
     shuffled_ds = shuffle_fn(ds).materialize()
     shuffled_ds = shuffled_ds.materialize()
-    assert shuffled_ds._plan.initial_num_blocks() == parallelism
+
+    initial_blocks = shuffled_ds._plan.initial_num_blocks()
+
+    # For groupby, map_groups with a sort shuffle, the implementation sorts and repartitions to 1 block.
+    if idx == 2 and configure_shuffle_method != ShuffleStrategy.HASH_SHUFFLE:
+        assert initial_blocks == 1
+    else:
+        assert initial_blocks == parallelism
 
     ds.context.set_config("debug_limit_shuffle_execution_to_num_blocks", 1)
     shuffled_ds = shuffle_fn(ds).materialize()
