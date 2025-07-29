@@ -17,3 +17,16 @@ depsets:
     requirements:
       - requirement_constraints_subset.txt
     output: requirements_compiled_subset_general.txt
+  - name: expanded_depset
+    operation: compile
+    requirements:
+      - requirements_expanded.txt
+    output: requirements_compiled_expanded.txt
+  - name: expand_general_depset
+    operation: expand
+    depsets:
+      - general_depset
+      - expanded_depset
+    constraints:
+      - requirement_constraints_expand.txt
+    output: requirements_compiled_expand_general.txt
