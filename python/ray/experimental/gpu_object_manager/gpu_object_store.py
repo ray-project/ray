@@ -96,7 +96,7 @@ def __ray_fetch_gpu_object__(self, obj_id: str):
 
 
 @dataclass
-class GPUObjectMetadata:
+class GPUObject:
     # A list of tensors representing the GPU object.
     data: List["torch.Tensor"]
     # Whether the GPU object is the primary copy.
@@ -114,7 +114,7 @@ class GPUObjectStore:
         # A dictionary that maps from an object ID to a list of tensors.
         #
         # Note: Currently, `gpu_object_store` is only supported for Ray Actors.
-        self.gpu_object_store: Dict[str, GPUObjectMetadata] = {}
+        self.gpu_object_store: Dict[str, GPUObject] = {}
 
     def has_gpu_object(self, obj_id: str) -> bool:
         return obj_id in self.gpu_object_store
@@ -148,7 +148,7 @@ class GPUObjectStore:
               `num_readers` calls to `decrement_num_readers()`.
             is_primary: Whether the GPU object is the primary copy.
         """
-        self.gpu_object_store[obj_id] = GPUObjectMetadata(
+        self.gpu_object_store[obj_id] = GPUObject(
             gpu_object,
             is_primary,
             num_readers,
