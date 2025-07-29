@@ -178,6 +178,11 @@ class DependencySetManager:
 
 
 def _flatten_flags(flags: List[str]) -> List[str]:
+    """
+    Flatten a list of flags into a list of strings.
+    For example, ["--find-links https://pypi.org/simple"] will be flattened to
+    ["--find-links", "https://pypi.org/simple"].
+    """
     flattened_flags = []
     for flag in flags:
         flattened_flags.extend(flag.split())
