@@ -23,10 +23,9 @@
 namespace ray {
 
 /**
-  A utility interface that allows the caller to check if cgroupv2 is mounted correctly
-  and perform cgroup operations on the system. It currently only supports using
-  the memory and cpu controllers. It only supports the memory.min and cpu.weight
-  constraints.
+  A utility that allows the caller to check if cgroupv2 is mounted correctly
+  and perform cgroup operations on the system. It supports the memory and cpu controllers
+  with the memory.min and cpu.weight constraints respectively.
 
   @see The cgroupv2 documentation for more details:
   https://docs.kernel.org/admin-guide/cgroup-v2.html
@@ -46,7 +45,8 @@ class CgroupDriverInterface {
     @see K8S documentation on how to enable cgroupv2 and check if it's enabled correctly:
     https://kubernetes.io/docs/concepts/architecture/cgroups/#linux-distribution-cgroup-v2-support
 
-    @return OK if successful, otherwise Invalid.
+    @return Status::OK if successful,
+    @return Status::Invalid if cgroupv2 is not enabled correctly.
     */
   virtual Status CheckCgroupv2Enabled() = 0;
 
@@ -56,10 +56,11 @@ class CgroupDriverInterface {
 
     @param cgroup the absolute path of the cgroup.
 
-    @return OK if no errors are encounted. Otherwise, one of the following errors
-    NotFound if the cgroup does not exist.
-    PermissionDenied if current user doesn't have read, write, and execute permissions.
-    InvalidArgument if the cgroup is not using cgroupv2.
+    @return Status::OK if no errors are encounted. Otherwise, one of the following errors
+    @return Status::NotFound if the cgroup does not exist.
+    @return Status::PermissionDenied if current user doesn't have read, write, and execute
+    permissions.
+    @return Status::InvalidArgument if the cgroup is not using cgroupv2.
    */
   virtual Status CheckCgroup(const std::string &cgroup) = 0;
 
@@ -70,10 +71,11 @@ class CgroupDriverInterface {
 
     @param cgroup is an absolute path to the cgroup
 
-    @return OK if no errors are encounted. Otherwise, one of the following errors
-    NotFound if an ancestor cgroup does not exist.
-    PermissionDenied if current user doesn't have read, write, and execute permissions.
-    AlreadyExists if the cgroup already exists.
+    @return Status::OK if no errors are encounted. Otherwise, one of the following errors
+    @return Status::NotFound if an ancestor cgroup does not exist.
+    @return Status::PermissionDenied if current user doesn't have read, write, and execute
+    permissions.
+    @return Status::AlreadyExists if the cgroup already exists.
    */
   virtual Status CreateCgroup(const std::string &cgroup) = 0;
 
@@ -87,10 +89,12 @@ class CgroupDriverInterface {
     @param from the absolute path of the cgroup to migrate processes out of.
     @param to the absolute path of the cgroup to migrate processes into.
 
-    @return OK if no errors are encounted. Otherwise, one of the following errors
-    NotFound if to or from don't exist.
-    PermissionDenied if current user doesn't have read, write, and execute permissions.
-    Invalid if any errors occur while reading from and writing to cgroups.
+    @return Status::OK if no errors are encounted. Otherwise, one of the following errors
+    @return Status::NotFound if to or from don't exist.
+    @return Status::PermissionDenied if current user doesn't have read, write, and execute
+    permissions.
+    @return Status::Invalid if any errors occur while reading from and writing to
+    cgroups.
    */
   virtual Status MoveAllProcesses(const std::string &from, const std::string &to) = 0;
 
@@ -105,12 +109,13 @@ class CgroupDriverInterface {
     @see No Internal Process Constraint for more details:
     https://docs.kernel.org/admin-guide/cgroup-v2.html#no-internal-process-constraint
 
-    @return OK if successful, otherwise one of the following
-    NotFound if the cgroup does not exist.
-    PermissionDenied if current user doesn't have read, write, and execute permissions for
-    the cgroup.
-    InvalidArgument if the controller is not available or if cgroup is not a cgroupv2.
-    Invalid for all other failures.
+    @return Status::OK if successful, otherwise one of the following
+    @return Status::NotFound if the cgroup does not exist.
+    @return Status::PermissionDenied if current user doesn't have read, write, and execute
+    permissions for the cgroup.
+    @return Status::InvalidArgument if the controller is not available or if cgroup is not
+    a cgroupv2.
+    @return Status::Invalid for all other failures.
    */
   virtual Status EnableController(const std::string &cgroup,
                                   const std::string &controller) = 0;
@@ -122,12 +127,12 @@ class CgroupDriverInterface {
     @param cgroup is an absolute path to the cgroup.
     @param controller is the name of the controller (e.g. "cpu" and not "-cpu")
 
-    @return OK if successful, otherwise one of the following
-    NotFound if the cgroup does not exist.
-    PermissionDenied if current user doesn't have read, write, and execute permissions for
-    the cgroup.
-    InvalidArgument if the controller is not enabled or if cgroup is not a cgroupv2.
-    Invalid for all other failures.
+    @return Status::OK if successful, otherwise one of the following
+    @return Status::NotFound if the cgroup does not exist.
+    @return Status::PermissionDenied if current user doesn't have read, write, and execute
+    permissions for the cgroup.
+    @return Status::InvalidArgument if the controller is not enabled
+    or if cgroup is not a cgroupv2. Status::Invalid for all other failures.
    */
   virtual Status DisableController(const std::string &cgroup,
                                    const std::string &controller) = 0;
@@ -142,12 +147,12 @@ class CgroupDriverInterface {
     @param constraint the name of the constraint.
     @param value the value of the constraint.
 
-    @return OK if successful, otherwise one of the following
-    NotFound if the cgroup does not exist.
-    PermissionDenied if current user doesn't have read, write, and execute permissions for
-    the cgroup.
-    InvalidArgument if the cgroup is not valid or constraint is not supported or the value
-    not correct.
+    @return Status::OK if successful, otherwise one of the following
+    @return Status::NotFound if the cgroup does not exist.
+    @return Status::PermissionDenied if current user doesn't have read, write, and execute
+    permissions for the cgroup.
+    @return Status::InvalidArgument if the cgroup is not valid or constraint is not
+    supported or the value not correct.
    */
   virtual Status AddConstraint(const std::string &cgroup,
                                const std::string &constraint,
@@ -158,11 +163,13 @@ class CgroupDriverInterface {
 
     @param cgroup absolute path of the cgroup.
 
-    @returns OK with a set of controllers if successful, otherwise one of following
-    NotFound if the cgroup does not exist.
-    PermissionDenied if current user doesn't have read, write, and execute
+    @return Status::OK with a set of controllers if successful, otherwise one of
+    following
+    @return Status::NotFound if the cgroup does not exist.
+    @return Status::PermissionDenied if current user doesn't have read, write, and execute
     permissions.
-    InvalidArgument if the cgroup is not using cgroupv2 or malformed controllers file.
+    @return Status::InvalidArgument if the cgroup is not using cgroupv2 or malformed
+    controllers file.
     */
   virtual StatusOr<std::unordered_set<std::string>> GetAvailableControllers(
       const std::string &cgroup) = 0;
@@ -172,11 +179,12 @@ class CgroupDriverInterface {
 
     @param cgroup absolute path of the cgroup.
 
-    @returns OK with a set of controllers if successful, otherwise one of following
-    NotFound if the cgroup does not exist.
-    PermissionDenied if current user doesn't have read, write, and execute
+    @return Status::OK with a set of controllers if successful, otherwise one of following
+    @return Status::NotFound if the cgroup does not exist.
+    @return Status::PermissionDenied if current user doesn't have read, write, and execute
     permissions.
-    InvalidArgument if the cgroup is not using cgroupv2 or malformed controllers file.
+    @return Status::InvalidArgument if the cgroup is not using cgroupv2 or malformed
+    controllers file.
     */
   virtual StatusOr<std::unordered_set<std::string>> GetEnabledControllers(
       const std::string &cgroup) = 0;

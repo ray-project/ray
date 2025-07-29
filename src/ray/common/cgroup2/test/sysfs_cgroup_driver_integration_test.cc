@@ -80,7 +80,7 @@ static inline std::string base_cgroup_path_ = "/sys/fs/cgroup/testing";
 static inline std::string processes_cgroup_path_ = "/sys/fs/cgroup/testing/active";
 #else
 static inline std::string base_cgroup_path_ = "/sys/fs/cgroup";
-static inline std::string processescgroup_path_ = "/sys/fs/cgroup";
+static inline std::string processes_cgroup_path_ = "/sys/fs/cgroup";
 #endif
 
 /**
