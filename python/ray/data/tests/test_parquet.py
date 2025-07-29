@@ -2169,6 +2169,22 @@ def test_write_parquet_large_min_rows_per_file_exceeds_arrow_default(
     assert ds_read.count() == min_rows_per_file
 
 
+def test_read_parquet_with_zero_row_groups(shutdown_only, tmp_path):
+    """Test reading a parquet file with 0 row groups."""
+    # Create an empty parquet file (0 row groups)
+    empty_path = os.path.join(tmp_path, "empty.parquet")
+    schema = pa.schema({"id": pa.int64()})
+    with pq.ParquetWriter(empty_path, schema):
+        pass
+
+    parquet_file = pq.ParquetFile(empty_path)
+    assert parquet_file.num_row_groups == 0
+
+    # Test reading the empty parquet file
+    dataset = ray.data.read_parquet(empty_path)
+    assert dataset.count() == 0
+
+
 if __name__ == "__main__":
     import sys
 
