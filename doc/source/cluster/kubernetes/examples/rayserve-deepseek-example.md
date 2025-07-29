@@ -16,10 +16,10 @@ Run this command and all following commands on your local machine or on the [Goo
 The following command creates a Kubernetes cluster named `kuberay-gpu-cluster` with 1 default CPU node in the `us-east5-a` zone. This example uses the `e2-standard-16` machine type, which has 16 vCPUs and 64 GB memory.
 
 ```sh
-gcloud container clusters create kuberay-gpu-cluster \ 
-    --location=us-east5-a \ 
-    --machine-type=e2-standard-16 \ 
-    --num-nodes=1 \ 
+gcloud container clusters create kuberay-gpu-cluster \
+    --location=us-east5-a \
+    --machine-type=e2-standard-16 \
+    --num-nodes=1 \
     --enable-image-streaming
 ```
 
@@ -28,9 +28,9 @@ Run the following command to create an on-demand GPU node pool for Ray GPU worke
 ```sh
 gcloud beta container node-pools create gpu-node-pool \
     --cluster kuberay-gpu-cluster \
-    --machine-type a3-high-8g \ 
+    --machine-type a3-highgpu-8g \
     --num-nodes 2 \
-    --accelerator "type=nvidia-h100-mega-80gb,count=8" \
+    --accelerator "type=nvidia-h100-80gb,count=8" \
     --zone us-east5-a \
     --node-locations us-east5-a \
     --host-maintenance-interval=PERIODIC
@@ -129,7 +129,22 @@ status:
         status: RUNNING
 ```
 
-## Step 4: Send a request
+```{admonition} Note
+:class: note
+
+The model download and deployment will typically take 20-30 minutes. While this is in progress, use the Ray Dashboard (Step 4) Cluster tab to monitor  the download progress as disk fills up.
+```
+
+## Step 4: View the Ray dashboard
+```sh
+# Forward the service port
+kubectl port-forward svc/deepseek-r1-head-svc 8265:8265
+```
+
+Once forwarded, navigate to the Serve tab on the dashboard to review application status, deployments, routers, logs, and other relevant features.
+![LLM Serve Application](../images/ray_dashboard_deepseek.png)
+
+## Step 5: Send a request
 
 To send requests to the Ray Serve deployment, port-forward port 8000 from the Serve app service:
 ```sh
@@ -184,13 +199,4 @@ The output should be in the following format:
 ```
 
 
-## Step 5: View the Ray dashboard
 
-
-```sh
-# Forward the service port
-kubectl port-forward svc/deepseek-r1-head-svc 8265:8265
-```
-
-Once forwarded, navigate to the Serve tab on the dashboard to review application status, deployments, routers, logs, and other relevant features.
-![LLM Serve Application](../images/ray_dashboard_deepseek.png)
