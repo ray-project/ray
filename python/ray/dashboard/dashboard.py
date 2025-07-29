@@ -9,6 +9,10 @@ from typing import Optional, Set
 
 import ray
 import ray._private.ray_constants as ray_constants
+from ray._common.ray_constants import (
+    LOGGING_ROTATE_BYTES,
+    LOGGING_ROTATE_BACKUP_COUNT,
+)
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.head as dashboard_head
 import ray.dashboard.utils as dashboard_utils
@@ -150,17 +154,17 @@ if __name__ == "__main__":
         "--logging-rotate-bytes",
         required=False,
         type=int,
-        default=ray_constants.LOGGING_ROTATE_BYTES,
+        default=LOGGING_ROTATE_BYTES,
         help="Specify the max bytes for rotating "
-        "log file, default is {} bytes.".format(ray_constants.LOGGING_ROTATE_BYTES),
+        "log file, default is {} bytes.".format(LOGGING_ROTATE_BYTES),
     )
     parser.add_argument(
         "--logging-rotate-backup-count",
         required=False,
         type=int,
-        default=ray_constants.LOGGING_ROTATE_BACKUP_COUNT,
+        default=LOGGING_ROTATE_BACKUP_COUNT,
         help="Specify the backup count of rotated log file, default is {}.".format(
-            ray_constants.LOGGING_ROTATE_BACKUP_COUNT
+            LOGGING_ROTATE_BACKUP_COUNT
         ),
     )
     parser.add_argument(

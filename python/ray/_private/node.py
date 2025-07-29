@@ -22,6 +22,7 @@ from filelock import FileLock
 import ray
 import ray._private.ray_constants as ray_constants
 import ray._private.services
+from ray._common.ray_constants import LOGGING_ROTATE_BACKUP_COUNT, LOGGING_ROTATE_BYTES
 from ray._common.utils import try_to_create_directory
 from ray._private.resource_isolation_config import ResourceIsolationConfig
 from ray._private.resource_spec import ResourceSpec
@@ -144,13 +145,9 @@ class Node:
         self._dashboard_agent_listen_port = ray_params.dashboard_agent_listen_port
 
         # Configure log rotation parameters.
-        self.max_bytes = int(
-            os.getenv("RAY_ROTATION_MAX_BYTES", ray_constants.LOGGING_ROTATE_BYTES)
-        )
+        self.max_bytes = int(os.getenv("RAY_ROTATION_MAX_BYTES", LOGGING_ROTATE_BYTES))
         self.backup_count = int(
-            os.getenv(
-                "RAY_ROTATION_BACKUP_COUNT", ray_constants.LOGGING_ROTATE_BACKUP_COUNT
-            )
+            os.getenv("RAY_ROTATION_BACKUP_COUNT", LOGGING_ROTATE_BACKUP_COUNT)
         )
 
         assert self.max_bytes >= 0
@@ -431,7 +428,7 @@ class Node:
         Raises:
             Exception: An exception is raised if there is a version mismatch.
         """
-        import ray._private.usage.usage_lib as ray_usage_lib
+        import ray._common.usage.usage_lib as ray_usage_lib
 
         cluster_metadata = ray_usage_lib.get_cluster_metadata(self.get_gcs_client())
         if cluster_metadata is None:
@@ -1379,7 +1376,7 @@ class Node:
         Check `usage_stats_head.py` for more details.
         """
         # Make sure the cluster metadata wasn't reported before.
-        import ray._private.usage.usage_lib as ray_usage_lib
+        import ray._common.usage.usage_lib as ray_usage_lib
 
         ray_usage_lib.put_cluster_metadata(
             self.get_gcs_client(), ray_init_cluster=self.ray_init_cluster
@@ -1895,7 +1892,7 @@ class Node:
     def _record_stats(self):
         # This is only called when a new node is started.
         # Initialize the internal kv so that the metrics can be put
-        from ray._private.usage.usage_lib import (
+        from ray._common.usage.usage_lib import (
             TagKey,
             record_extra_usage_tag,
             record_hardware_usage,

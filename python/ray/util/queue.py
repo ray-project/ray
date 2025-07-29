@@ -53,7 +53,7 @@ class Queue:
     """
 
     def __init__(self, maxsize: int = 0, actor_options: Optional[Dict] = None) -> None:
-        from ray._private.usage.usage_lib import record_library_usage
+        from ray._common.usage.usage_lib import record_library_usage
 
         record_library_usage("util.Queue")
 

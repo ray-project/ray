@@ -2,7 +2,7 @@ from enum import Enum
 from typing import Callable, Dict, List, Tuple, Union
 
 import ray
-from ray._private.usage.usage_lib import record_extra_usage_tag
+from ray._common.usage.usage_lib import record_extra_usage_tag
 from ray.llm._internal.batch.observability.logging import get_logger
 from ray.llm._internal.common.base_pydantic import BaseModelExtended
 
@@ -89,7 +89,7 @@ class _TelemetryAgent:
 
     def record(self, telemetry: BatchModelTelemetry) -> None:
         """Append and record telemetries."""
-        from ray._private.usage.usage_lib import TagKey
+        from ray._common.usage.usage_lib import TagKey
 
         self._tracking_telemetries.append(telemetry)
         telemetry_dict = self.generate_report()

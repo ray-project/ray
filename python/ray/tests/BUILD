@@ -5,6 +5,7 @@ py_library(
     name = "conftest",
     srcs = glob(["**/conftest.py"]),
     visibility = [
+        "//python/ray/_common/tests:__subpackages__",
         "//python/ray/autoscaler/v2:__pkg__",
         "//python/ray/dashboard:__pkg__",
         "//python/ray/data:__pkg__",
@@ -476,7 +477,6 @@ py_test_module_list(
     size = "large",
     files = [
         "test_output.py",
-        "test_usage_stats.py",
     ],
     tags = [
         "exclusive",

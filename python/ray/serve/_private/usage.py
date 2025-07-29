@@ -1,7 +1,7 @@
 from enum import Enum
 from typing import Dict, Optional
 
-from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
+from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
 
 
 class ServeUsageTag(Enum):

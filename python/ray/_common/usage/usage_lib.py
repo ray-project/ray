@@ -58,7 +58,7 @@ import yaml
 
 import ray
 import ray._private.ray_constants as ray_constants
-import ray._private.usage.usage_constants as usage_constant
+import ray._common.usage.usage_constants as usage_constant
 from ray._raylet import GcsClient
 from ray.core.generated import gcs_pb2, usage_pb2
 from ray.experimental.internal_kv import (
@@ -233,6 +233,9 @@ def record_extra_usage_tag(
         value: The value of the tag.
         gcs_client: The GCS client to perform KV operation PUT. Defaults to None.
             When None, it will try to get the global client from the internal_kv.
+
+    Returns:
+        None
     """
     key = TagKey.Name(key).lower()
     with _recorded_extra_usage_tags_lock:
@@ -400,6 +403,9 @@ def _generate_cluster_metadata(*, ray_init_cluster: bool):
 
     Params:
         ray_init_cluster: Whether the cluster is started by ray.init()
+
+    Returns:
+        A dictionary of cluster metadata.
     """
     ray_version, python_version = ray._private.utils.compute_version_info()
     # These two metadata is necessary although usage report is not enabled
@@ -512,7 +518,7 @@ def set_usage_stats_enabled_via_env_var(enabled) -> None:
     os.environ[usage_constant.USAGE_STATS_ENABLED_ENV_VAR] = "1" if enabled else "0"
 
 
-def put_cluster_metadata(gcs_client, *, ray_init_cluster) -> None:
+def put_cluster_metadata(gcs_client: GcsClient, *, ray_init_cluster: bool) -> dict:
     """Generate the cluster metadata and store it to GCS.
 
     It is a blocking API.
@@ -523,6 +529,9 @@ def put_cluster_metadata(gcs_client, *, ray_init_cluster) -> None:
 
     Raises:
         gRPC exceptions: If PUT fails.
+
+    Returns:
+        The cluster metadata.
     """
     metadata = _generate_cluster_metadata(ray_init_cluster=ray_init_cluster)
     gcs_client.internal_kv_put(
@@ -574,11 +583,14 @@ def get_hardware_usages_to_report(gcs_client) -> List[str]:
     return list(_get_usage_set(gcs_client, usage_constant.HARDWARE_USAGE_SET_NAME))
 
 
-def get_extra_usage_tags_to_report(gcs_client) -> Dict[str, str]:
+def get_extra_usage_tags_to_report(gcs_client: GcsClient) -> Dict[str, str]:
     """Get the extra usage tags from env var and gcs kv store.
 
     The env var should be given this way; key=value;key=value.
     If parsing is failed, it will return the empty data.
+
+    Params:
+        gcs_client: The GCS client.
 
     Returns:
         Extra usage tags as kv pairs.
@@ -614,7 +626,7 @@ def get_extra_usage_tags_to_report(gcs_client) -> Dict[str, str]:
     return extra_usage_tags
 
 
-def _get_cluster_status_to_report_v2(gcs_client) -> ClusterStatusToReport:
+def _get_cluster_status_to_report_v2(gcs_client: GcsClient) -> ClusterStatusToReport:
     """
     Get the current status of this cluster. A temporary proxy for the
     autoscaler v2 API.
@@ -648,7 +660,7 @@ def _get_cluster_status_to_report_v2(gcs_client) -> ClusterStatusToReport:
         return result
 
 
-def get_cluster_status_to_report(gcs_client) -> ClusterStatusToReport:
+def get_cluster_status_to_report(gcs_client: GcsClient) -> ClusterStatusToReport:
     """Get the current status of this cluster.
 
     It is a blocking API.
@@ -826,7 +838,7 @@ def get_cluster_config_to_report(
         return ClusterConfigToReport()
 
 
-def get_cluster_metadata(gcs_client) -> dict:
+def get_cluster_metadata(gcs_client: GcsClient) -> dict:
     """Get the cluster metadata from GCS.
 
     It is a blocking API.
@@ -837,7 +849,7 @@ def get_cluster_metadata(gcs_client) -> dict:
         gcs_client: The GCS client to perform KV operation GET.
 
     Returns:
-        The cluster metadata in a dictinoary.
+        The cluster metadata in a dictionary.
 
     Raises:
         RuntimeError: If it fails to obtain cluster metadata from GCS.
