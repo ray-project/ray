@@ -274,11 +274,6 @@ class RAY_EXPORT Status {
   bool IsRedisError() const { return code() == StatusCode::RedisError; }
   bool IsTimedOut() const { return code() == StatusCode::TimedOut; }
   bool IsInterrupted() const { return code() == StatusCode::Interrupted; }
-  bool ShouldExitWorker() const {
-    return code() == StatusCode::IntentionalSystemExit ||
-           code() == StatusCode::UnexpectedSystemExit ||
-           code() == StatusCode::CreationTaskError;
-  }
   bool IsIntentionalSystemExit() const {
     return code() == StatusCode::IntentionalSystemExit;
   }
