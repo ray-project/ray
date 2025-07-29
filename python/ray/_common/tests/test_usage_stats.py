@@ -9,6 +9,7 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 from ray._common.test_utils import wait_for_condition
 from ray._raylet import GcsClient
+from ray.tests.conftest import *  # noqa: F403
 
 import requests
 import pytest

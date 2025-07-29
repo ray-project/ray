@@ -7,6 +7,7 @@ py_library(
     visibility = [
         "//python/ray/_common/tests:__subpackages__",
     ],
+    deps = ["//python/ray/tests:conftest"],
 )
 
 # Small tests.
