@@ -72,6 +72,8 @@ if [[ ! -d ".git" ]]; then
 fi
 
 echo "Build java maven deps."
+bazel build //java:copy_pom_files
+bazel build //java:cp_java_generated
 bazel build //java:gen_maven_deps
 
 echo "Build test jar."
@@ -120,12 +122,14 @@ echo "Running connecting existing cluster tests."
 case "${OSTYPE}" in
   linux*) ip="$(hostname -I | awk '{print $1}')";;
   darwin*)
-    ip="$(ipconfig getifaddr en0 || true)"
     # On newer macos ec2 instances, en0 is IPv6 only.
-    # en6 is the private network and has an IPv4 address.
-    if [[ -z "$ip" ]]; then
-      ip="$(ipconfig getifaddr en6 || true)"
-    fi
+    # en6 (or sometimes en7) is the private network and has an IPv4 address.
+    for interface in en0 en6 en7; do
+      ip="$(ipconfig getifaddr "$interface" || true)"
+      if [[ "$ip" != "" ]]; then
+        break
+      fi
+    done
 
     if [[ -z "$ip" ]]; then
       echo "Can't get IP address; ifconfig output:"

@@ -18,9 +18,15 @@ cc_proto_library(
     deps = [":common_proto"],
 )
 
-python_grpc_compile(
-    name = "common_py_proto",
-    deps = [":common_proto"],
+proto_library(
+    name = "events_profile_events_proto",
+    srcs = ["events_profile_events.proto"],
+    deps = [],
+)
+
+cc_proto_library(
+    name = "events_profile_events_cc_proto",
+    deps = [":events_profile_events_proto"],
 )
 
 proto_library(
@@ -29,6 +35,7 @@ proto_library(
     visibility = ["//java:__subpackages__"],
     deps = [
         ":common_proto",
+        ":events_profile_events_proto",
         ":runtime_env_common_proto",
     ],
 )
@@ -36,11 +43,6 @@ proto_library(
 proto_library(
     name = "instance_manager_proto",
     srcs = ["instance_manager.proto"],
-)
-
-python_grpc_compile(
-    name = "instance_manager_py_proto",
-    deps = [":instance_manager_proto"],
 )
 
 cc_proto_library(
@@ -69,18 +71,8 @@ cc_proto_library(
     deps = [":runtime_env_common_proto"],
 )
 
-python_grpc_compile(
-    name = "runtime_env_common_py_proto",
-    deps = [":runtime_env_common_proto"],
-)
-
 cc_proto_library(
     name = "gcs_cc_proto",
-    deps = [":gcs_proto"],
-)
-
-python_grpc_compile(
-    name = "gcs_py_proto",
     deps = [":gcs_proto"],
 )
 
@@ -88,11 +80,6 @@ python_grpc_compile(
 proto_library(
     name = "dependency_proto",
     srcs = ["dependency.proto"],
-)
-
-python_grpc_compile(
-    name = "dependency_py_proto",
-    deps = [":dependency_proto"],
 )
 
 # Text logging.
@@ -103,11 +90,6 @@ proto_library(
 
 cc_proto_library(
     name = "logging_cc_proto",
-    deps = [":logging_proto"],
-)
-
-python_grpc_compile(
-    name = "logging_py_proto",
     deps = [":logging_proto"],
 )
 
@@ -127,11 +109,6 @@ cc_proto_library(
     deps = [":node_manager_proto"],
 )
 
-python_grpc_compile(
-    name = "node_manager_py_proto",
-    deps = [":node_manager_proto"],
-)
-
 proto_library(
     name = "reporter_proto",
     srcs = ["reporter.proto"],
@@ -141,18 +118,8 @@ proto_library(
     ],
 )
 
-python_grpc_compile(
-    name = "metrics_service_py_proto",
-    deps = ["@com_github_opentelemetry_proto//:metrics_service_proto"],
-)
-
 cc_proto_library(
     name = "reporter_cc_proto",
-    deps = [":reporter_proto"],
-)
-
-python_grpc_compile(
-    name = "reporter_py_proto",
     deps = [":reporter_proto"],
 )
 
@@ -172,11 +139,6 @@ cc_proto_library(
     deps = [":gcs_service_proto"],
 )
 
-python_grpc_compile(
-    name = "gcs_service_py_proto",
-    deps = [":gcs_service_proto"],
-)
-
 proto_library(
     name = "test_service_proto",
     srcs = ["test_service.proto"],
@@ -188,11 +150,6 @@ proto_library(
 
 cc_proto_library(
     name = "test_service_cc_proto",
-    deps = [":test_service_proto"],
-)
-
-python_grpc_compile(
-    name = "test_service_py_proto",
     deps = [":test_service_proto"],
 )
 
@@ -215,11 +172,6 @@ proto_library(
         ":gcs_service_proto",
         ":pubsub_proto",
     ],
-)
-
-python_grpc_compile(
-    name = "core_worker_py_proto",
-    deps = [":core_worker_proto"],
 )
 
 cc_proto_library(
@@ -247,11 +199,6 @@ cc_proto_library(
     deps = [":event_proto"],
 )
 
-python_grpc_compile(
-    name = "event_py_proto",
-    deps = [":event_proto"],
-)
-
 proto_library(
     name = "export_event_proto",
     srcs = ["export_event.proto"],
@@ -271,11 +218,6 @@ cc_proto_library(
     deps = [":export_event_proto"],
 )
 
-python_grpc_compile(
-    name = "export_event_py_proto",
-    deps = [":export_event_proto"],
-)
-
 proto_library(
     name = "export_task_event_proto",
     srcs = ["export_task_event.proto"],
@@ -290,11 +232,6 @@ cc_proto_library(
     deps = [":export_task_event_proto"],
 )
 
-python_grpc_compile(
-    name = "export_task_event_py_proto",
-    deps = [":export_task_event_proto"],
-)
-
 proto_library(
     name = "export_runtime_env_proto",
     srcs = ["export_runtime_env.proto"],
@@ -302,11 +239,6 @@ proto_library(
 
 cc_proto_library(
     name = "export_runtime_env_cc_proto",
-    deps = [":export_runtime_env_proto"],
-)
-
-python_grpc_compile(
-    name = "export_runtime_env_py_proto",
     deps = [":export_runtime_env_proto"],
 )
 
@@ -320,11 +252,6 @@ cc_proto_library(
     deps = [":export_node_event_proto"],
 )
 
-python_grpc_compile(
-    name = "export_node_event_py_proto",
-    deps = [":export_node_event_proto"],
-)
-
 proto_library(
     name = "export_actor_event_proto",
     srcs = ["export_actor_data.proto"],
@@ -333,11 +260,6 @@ proto_library(
 
 cc_proto_library(
     name = "export_actor_event_cc_proto",
-    deps = [":export_actor_event_proto"],
-)
-
-python_grpc_compile(
-    name = "export_actor_event_py_proto",
     deps = [":export_actor_event_proto"],
 )
 
@@ -355,11 +277,6 @@ cc_proto_library(
     deps = [":export_driver_job_event_proto"],
 )
 
-python_grpc_compile(
-    name = "export_driver_job_event_py_proto",
-    deps = [":export_driver_job_event_proto"],
-)
-
 proto_library(
     name = "export_submission_job_event_proto",
     srcs = ["export_submission_job_event.proto"],
@@ -370,11 +287,6 @@ cc_proto_library(
     deps = [":export_submission_job_event_proto"],
 )
 
-python_grpc_compile(
-    name = "export_submission_job_event_py_proto",
-    deps = [":export_submission_job_event_proto"],
-)
-
 proto_library(
     name = "export_train_state_proto",
     srcs = ["export_train_state.proto"],
@@ -382,11 +294,6 @@ proto_library(
 
 cc_proto_library(
     name = "export_train_state_cc_proto",
-    deps = [":export_train_state_proto"],
-)
-
-python_grpc_compile(
-    name = "export_train_state_py_proto",
     deps = [":export_train_state_proto"],
 )
 
@@ -403,21 +310,11 @@ cc_proto_library(
     deps = [":export_dataset_metadata_proto"],
 )
 
-python_grpc_compile(
-    name = "export_dataset_metadata_py_proto",
-    deps = [":export_dataset_metadata_proto"],
-)
-
 # Ray Client gRPC lib
 proto_library(
     name = "ray_client_proto",
     srcs = ["ray_client.proto"],
     deps = [":common_proto"],
-)
-
-python_grpc_compile(
-    name = "ray_client_py_proto",
-    deps = [":ray_client_proto"],
 )
 
 # Pubsub
@@ -430,7 +327,6 @@ proto_library(
         ":gcs_proto",
         ":logging_proto",
         ":reporter_proto",
-        "@com_github_opentelemetry_proto//:metrics_service_proto",
     ],
 )
 
@@ -449,35 +345,14 @@ proto_library(
     ],
 )
 
-python_grpc_compile(
-    name = "runtime_env_agent_py_proto",
-    deps = [":runtime_env_agent_proto"],
-)
-
 cc_proto_library(
     name = "runtime_env_agent_cc_proto",
     deps = [":runtime_env_agent_proto"],
 )
 
 proto_library(
-    name = "serve_proto",
-    srcs = ["serve.proto"],
-    visibility = ["//java:__subpackages__"],
-)
-
-python_grpc_compile(
-    name = "serve_py_proto",
-    deps = [":serve_proto"],
-)
-
-proto_library(
     name = "usage_proto",
     srcs = ["usage.proto"],
-)
-
-python_grpc_compile(
-    name = "usage_py_proto",
-    deps = [":usage_proto"],
 )
 
 cc_proto_library(
@@ -488,11 +363,6 @@ cc_proto_library(
 proto_library(
     name = "autoscaler_proto",
     srcs = ["autoscaler.proto"],
-)
-
-python_grpc_compile(
-    name = "autoscaler_py_proto",
-    deps = [":autoscaler_proto"],
 )
 
 cc_proto_library(
@@ -514,11 +384,6 @@ cc_proto_library(
     deps = [":events_actor_task_definition_event_proto"],
 )
 
-python_grpc_compile(
-    name = "events_actor_task_definition_event_py_proto",
-    deps = [":events_actor_task_definition_event_proto"],
-)
-
 proto_library(
     name = "events_actor_task_execution_event_proto",
     srcs = ["events_actor_task_execution_event.proto"],
@@ -530,11 +395,6 @@ proto_library(
 
 cc_proto_library(
     name = "events_actor_task_execution_event_cc_proto",
-    deps = [":events_actor_task_execution_event_proto"],
-)
-
-python_grpc_compile(
-    name = "events_actor_task_execution_event_py_proto",
     deps = [":events_actor_task_execution_event_proto"],
 )
 
@@ -552,11 +412,6 @@ cc_proto_library(
     deps = [":events_task_definition_event_proto"],
 )
 
-python_grpc_compile(
-    name = "events_task_definition_event_py_proto",
-    deps = [":events_task_definition_event_proto"],
-)
-
 proto_library(
     name = "events_task_execution_event_proto",
     srcs = ["events_task_execution_event.proto"],
@@ -571,17 +426,13 @@ cc_proto_library(
     deps = [":events_task_execution_event_proto"],
 )
 
-python_grpc_compile(
-    name = "events_task_execution_event_py_proto",
-    deps = [":events_task_execution_event_proto"],
-)
-
 proto_library(
     name = "events_base_event_proto",
     srcs = ["events_base_event.proto"],
     deps = [
         ":events_actor_task_definition_event_proto",
         ":events_actor_task_execution_event_proto",
+        ":events_profile_events_proto",
         ":events_task_definition_event_proto",
         ":events_task_execution_event_proto",
         "@com_google_protobuf//:timestamp_proto",
@@ -590,11 +441,6 @@ proto_library(
 
 cc_proto_library(
     name = "events_base_event_cc_proto",
-    deps = [":events_base_event_proto"],
-)
-
-python_grpc_compile(
-    name = "events_base_event_py_proto",
     deps = [":events_base_event_proto"],
 )
 
@@ -612,7 +458,41 @@ cc_proto_library(
     deps = [":events_event_aggregator_service_proto"],
 )
 
+# All core python protos are compiled in this single rule.
+# They will be copied into ray/core/generated directory
+# on ray wheel building.
 python_grpc_compile(
-    name = "events_event_aggregator_service_py_proto",
-    deps = [":events_event_aggregator_service_proto"],
+    name = "core_py_proto",
+    deps = [
+        ":autoscaler_proto",
+        ":common_proto",
+        ":core_worker_proto",
+        ":event_proto",
+        ":events_event_aggregator_service_proto",
+        ":export_event_proto",
+        ":gcs_proto",
+        ":gcs_service_proto",
+        ":instance_manager_proto",
+        ":node_manager_proto",
+        ":ray_client_proto",
+        ":reporter_proto",
+        ":runtime_env_agent_proto",
+        ":runtime_env_common_proto",
+        ":usage_proto",
+    ],
+)
+
+# Below is the serve proto
+
+proto_library(
+    name = "serve_proto",
+    srcs = ["serve.proto"],
+    visibility = ["//java:__subpackages__"],
+)
+
+# These files will be copied into ray/serve/generated directory.
+# on ray wheel building.
+python_grpc_compile(
+    name = "serve_py_proto",
+    deps = [":serve_proto"],
 )

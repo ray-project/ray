@@ -717,7 +717,7 @@ def tlog(s: str, level: str = "INFO"):
 def get_application_urls(
     protocol: Union[str, RequestProtocol] = RequestProtocol.HTTP,
     app_name: str = SERVE_DEFAULT_APP_NAME,
-    use_localhost: bool = False,
+    use_localhost: bool = True,
     is_websocket: bool = False,
     exclude_route_prefix: bool = False,
 ) -> List[str]:
@@ -734,7 +734,7 @@ def get_application_urls(
     Returns:
         The URLs of the application.
     """
-    client = _get_global_client()
+    client = _get_global_client(_health_check_controller=True)
     serve_details = client.get_serve_details()
     if app_name not in serve_details["applications"]:
         return [client.root_url]
@@ -779,7 +779,7 @@ def get_application_urls(
 def get_application_url(
     protocol: Union[str, RequestProtocol] = RequestProtocol.HTTP,
     app_name: str = SERVE_DEFAULT_APP_NAME,
-    use_localhost: bool = False,
+    use_localhost: bool = True,
     is_websocket: bool = False,
     exclude_route_prefix: bool = False,
 ) -> str:

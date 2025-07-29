@@ -16,6 +16,7 @@
 
 #include <functional>
 #include <memory>
+#include <string>
 #include <utility>
 
 #include "ray/common/asio/instrumented_io_context.h"

@@ -19,7 +19,6 @@ parser = add_rllib_example_script_args(
     default_timesteps=10000000,
 )
 parser.set_defaults(
-    enable_new_api_stack=True,
     env="ale_py:ALE/Pong-v5",
 )
 parser.add_argument(

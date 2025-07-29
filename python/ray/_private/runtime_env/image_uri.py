@@ -15,6 +15,7 @@ async def _create_impl(image_uri: str, logger: logging.Logger):
     pull_image_cmd = [
         "podman",
         "run",
+        "--quiet",
         "--rm",
         image_uri,
         "python",

@@ -11,7 +11,7 @@ This example shows:
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack --lr-const-factor=0.9
+`python [script file name].py --lr-const-factor=0.9
 --lr-const-iters=10 --lr-exp-decay=0.9`
 
 Use the `--lr-const-factor` to define the facotr by which to multiply the
@@ -126,7 +126,6 @@ class LRChecker(RLlibCallback):
 
 
 parser = add_rllib_example_script_args(default_reward=450.0, default_timesteps=250000)
-parser.set_defaults(enable_new_api_stack=True)
 parser.add_argument(
     "--lr-const-factor",
     type=float,

@@ -19,7 +19,7 @@ from ray.serve._private.constants import (
     SERVE_NAMESPACE,
     SERVE_PROXY_NAME,
 )
-from ray.serve._private.test_utils import check_replica_counts
+from ray.serve._private.test_utils import check_replica_counts, get_application_url
 from ray.serve.schema import LoggingConfig, ServeDeploySchema
 from ray.serve.tests.test_failure import request_with_retries
 from ray.util.state import list_actors
@@ -52,7 +52,7 @@ def test_recover_start_from_replica_actor_names(serve_instance, deployment_optio
     serve.run(TransientConstructorFailureDeployment.bind(), name="app")
     for _ in range(10):
         response = request_with_retries(
-            "/recover_start_from_replica_actor_names/", timeout=30
+            "/recover_start_from_replica_actor_names/", timeout=30, app_name="app"
         )
         assert response.text == "hii"
     # Assert 2 replicas are running in deployment deployment after partially
@@ -92,9 +92,12 @@ def test_recover_start_from_replica_actor_names(serve_instance, deployment_optio
 
     # Kill controller and wait for endpoint to be available again
     ray.kill(serve.context._global_client._controller, no_restart=False)
+    wait_for_condition(
+        lambda: get_application_url("HTTP", "app", use_localhost=True) is not None
+    )
     for _ in range(10):
         response = request_with_retries(
-            "/recover_start_from_replica_actor_names/", timeout=30
+            "/recover_start_from_replica_actor_names/", timeout=30, app_name="app"
         )
         assert response.text == "hii"
 
@@ -471,7 +474,7 @@ def test_controller_crashes_with_logging_config(serve_instance):
     proxy_handle = list(proxy_handles.values())[0]
     file_path = ray.get(proxy_handle._get_logging_config.remote())
     # Send request, we should see json logging and debug log message in proxy log.
-    resp = httpx.get("http://127.0.0.1:8000")
+    resp = httpx.get("http://localhost:8000")
     assert resp.status_code == 200
     wait_for_condition(
         check_log_file, log_file=file_path, expected_regex=['.*"message":.*GET / 200.*']
@@ -503,7 +506,7 @@ def test_controller_recover_and_deploy(serve_instance):
 
     # When controller restarts, it should redeploy config automatically
     wait_for_condition(
-        lambda: httpx.get("http://localhost:8000/").text == "hello world"
+        lambda: httpx.get(f"{get_application_url()}/").text == "hello world"
     )
 
 

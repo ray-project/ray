@@ -52,6 +52,13 @@ void GcsOneEventConverter::ConvertToTaskEventData(
                                                 task_event);
       break;
     }
+    case rpc::events::RayEvent::TASK_PROFILE_EVENT: {
+      // Use const_cast to avoid copying - safe because we're transferring ownership
+      auto &mutable_profile_event =
+          const_cast<rpc::events::TaskProfileEvents &>(event.task_profile_events());
+      ConvertTaskProfileEventsToTaskEvent(mutable_profile_event, task_event);
+      break;
+    }
     default:
       RAY_CHECK(false) << "Unexpected one event type: " << event.event_type();
       break;
@@ -161,6 +168,15 @@ void GcsOneEventConverter::GenerateTaskInfoEntry(
       continue;
     }
   }
+}
+
+void GcsOneEventConverter::ConvertTaskProfileEventsToTaskEvent(
+    const rpc::events::TaskProfileEvents &event, rpc::TaskEvents &task_event) {
+  task_event.set_task_id(event.task_id());
+  task_event.set_attempt_number(event.attempt_number());
+  task_event.set_job_id(event.job_id());
+
+  task_event.mutable_profile_events()->CopyFrom(event.profile_events());
 }
 
 }  // namespace gcs

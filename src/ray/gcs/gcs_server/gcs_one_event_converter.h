@@ -63,6 +63,13 @@ class GcsOneEventConverter {
   void ConvertActorTaskExecutionEventToTaskEvent(
       const rpc::events::ActorTaskExecutionEvent &event, rpc::TaskEvents &task_event);
 
+  /// Convert ProfileEvents to a TaskEvents.
+  ///
+  /// \param event TaskProfileEvents object to convert.
+  /// \param task_event The output TaskEvents to populate.
+  void ConvertTaskProfileEventsToTaskEvent(const rpc::events::TaskProfileEvents &event,
+                                           rpc::TaskEvents &task_event);
+
   /// Generate a TaskInfoEntry from the given runtime env info, function descriptor,
   /// and required resources. This function is commonly used to convert the task
   /// and actor task definition events to TaskEvents.
@@ -82,6 +89,7 @@ class GcsOneEventConverter {
   FRIEND_TEST(GcsOneEventConverterTest,
               TestConvertActorTaskDefinitionEventWithInvalidResources);
   FRIEND_TEST(GcsOneEventConverterTest, TestConvertActorTaskExecutionEvent);
+  FRIEND_TEST(GcsOneEventConverterTest, TestConvertTaskProfileEventsToTaskEvent);
 };
 
 }  // namespace gcs
