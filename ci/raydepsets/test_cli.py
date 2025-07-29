@@ -287,7 +287,6 @@ class TestCli(unittest.TestCase):
 
     def test_build_graph(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            os.environ["PY_VERSION"] = "py311"
             _copy_data_to_tmpdir(tmpdir)
             manager = DependencySetManager(
                 config_path="test.config.yaml",
