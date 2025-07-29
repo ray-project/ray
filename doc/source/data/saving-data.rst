@@ -178,9 +178,9 @@ Partitioned Writes
     # Sample dataset that we’ll partition by ``city`` and ``year``.
     df = pd.DataFrame(
         {
-            "city": ["SF", "SF", "NYC", "NYC", "SF", "NYC"],
-            "year": [2023, 2024, 2023, 2024, 2023, 2024],
-            "sales": [100, 120, 90, 115, 105, 95],
+            "city": ["SF", "SF", "NYC", "NYC", "SF", "NYC", "SF", "NYC"],
+            "year": [2023, 2024, 2023, 2024, 2023, 2023, 2024, 2024],
+            "sales": [100, 120, 90, 115, 105, 95, 130, 110],
         }
     )
 
@@ -193,7 +193,7 @@ Partitioned Writes
     #    Hive-style directory layout:  city=<value>/year=<value>/....
     # 3. Use ``min_rows_per_file`` / ``max_rows_per_file`` to control how many
     #    rows Ray puts in each Parquet file.
-    ds.repartition(keys=["city", "year"], num_blocks=3).write_parquet(
+    ds.repartition(keys=["city", "year"], num_blocks=4).write_parquet(
         "/tmp/sales_partitioned",
         partition_cols=["city", "year"],
         min_rows_per_file=2,     # At least 2 rows in each file …
