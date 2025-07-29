@@ -1,4 +1,5 @@
 import asyncio
+import cProfile
 import gc
 import json
 import logging
@@ -715,6 +716,13 @@ class HTTPProxy(GenericProxy):
         )
         self.self_actor_name = self_actor_name
         self.asgi_receive_queues: Dict[str, MessageQueue] = dict()
+        
+        # Aggregated profiler for all requests
+        self._aggregated_profiler = cProfile.Profile()
+        self._profile_request_count = 0
+        self._profile_session_id = int(time.time())  # Unique session ID
+        self._profile_dir = "/tmp/ray_serve_profiles"
+        os.makedirs(self._profile_dir, exist_ok=True)
 
     @property
     def protocol(self) -> RequestProtocol:
@@ -813,6 +821,23 @@ class HTTPProxy(GenericProxy):
         async for message in self.proxy_request(proxy_request):
             if not isinstance(message, ResponseStatus):
                 await send(message)
+
+    def save_aggregated_profile(self, force=False):
+        """Save the aggregated profile data."""
+        if force or (self._profile_request_count > 0 and self._profile_request_count % 100 == 0):
+            profile_file = f"{self._profile_dir}/proxy_session_{self._profile_session_id}_requests_{self._profile_request_count}.prof"
+            self._aggregated_profiler.dump_stats(profile_file)
+            logger.warning(f"PROXY_PROFILE_SAVED session={self._profile_session_id} requests={self._profile_request_count} file={profile_file}")
+            return profile_file
+        return None
+
+    def reset_aggregated_profile(self):
+        """Reset the aggregated profiler for a new run."""
+        self._aggregated_profiler = cProfile.Profile()
+        self._profile_request_count = 0
+        self._profile_session_id = int(time.time())
+        logger.warning(f"PROXY_PROFILE_RESET new_session={self._profile_session_id}")
+        return self._profile_session_id
 
     async def proxy_asgi_receive(
         self, receive: Receive, queue: MessageQueue
@@ -926,12 +951,24 @@ class HTTPProxy(GenericProxy):
             "http_proxy", "tx", request_id, "HTTPProxy.send_request_to_replica"
         )
 
+        # PROFILING: Aggregated profiling across all requests
+        self._aggregated_profiler.enable()
+            
+        # Profile handle.remote() call specifically
+        handle_remote_result = handle.remote(handle_arg_bytes)
+        
+        # Profile ProxyResponseGenerator construction
         response_generator = ProxyResponseGenerator(
-            handle.remote(handle_arg_bytes),
+            handle_remote_result,
             timeout_s=self.request_timeout_s,
             disconnected_task=proxy_asgi_receive_task,
             result_callback=result_callback,
         )
+        
+        self._aggregated_profiler.disable()
+        self._profile_request_count += 1
+        
+        self.save_aggregated_profile()
 
         status: Optional[ResponseStatus] = None
         response_started = False
