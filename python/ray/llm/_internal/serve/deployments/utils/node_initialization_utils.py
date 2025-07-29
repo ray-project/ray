@@ -89,6 +89,7 @@ async def initialize_node(llm_config: LLMConfig) -> InitializeNodeOutput:
     extra_init_kwargs = {}
 
     engine_config = llm_config.get_engine_config()
+    assert engine_config is not None
     pg = engine_config.get_or_create_pg()
     runtime_env = engine_config.get_runtime_env_with_local_env_vars()
 
