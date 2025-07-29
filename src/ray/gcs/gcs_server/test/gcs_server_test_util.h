@@ -494,7 +494,7 @@ struct GcsServerMocker {
       return node_info_list;
     }
 
-    bool IsRemoved(const NodeID &node_id) const override { return false; }
+    bool DidNodeDie(const NodeID &node_id) const override { return false; }
 
     void AsyncResubscribe() override {}
   };

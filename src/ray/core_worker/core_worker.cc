@@ -524,16 +524,12 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
         return core_worker_client_pool_->GetOrConnect(address);
       },
       /*callback_service*/ &io_service_);
-
-  auto check_node_alive_fn = [this](const NodeID &node_id) {
-    auto node = gcs_client_->Nodes().Get(node_id);
-    return node != nullptr;
-  };
   reference_counter_ = std::make_shared<ReferenceCounter>(
       rpc_address_,
       /*object_info_publisher=*/object_info_publisher_.get(),
       /*object_info_subscriber=*/object_info_subscriber_.get(),
-      check_node_alive_fn,
+      /*did_node_die=*/
+      [this](const NodeID &node_id) { return gcs_client_->Nodes().DidNodeDie(node_id); },
       RayConfig::instance().lineage_pinning_enabled());
 
   if (RayConfig::instance().max_pending_lease_requests_per_scheduling_category() > 0) {
@@ -741,15 +737,15 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
       reference_counter_);
 
   auto node_addr_factory = [this](const NodeID &node_id) {
-    std::optional<rpc::Address> addr;
-    if (auto node_info = gcs_client_->Nodes().Get(node_id)) {
-      rpc::Address address;
+    std::optional<rpc::Address> address_opt;
+    if (auto node_info = gcs_client_->Nodes().Get(node_id);
+        node_info->state() != rpc::GcsNodeInfo::DEAD) {
+      auto &address = address_opt.emplace();
       address.set_raylet_id(node_info->node_id());
       address.set_ip_address(node_info->node_manager_address());
       address.set_port(node_info->node_manager_port());
-      addr = address;
     }
-    return addr;
+    return address_opt;
   };
   auto lease_policy = RayConfig::instance().locality_aware_leasing_enabled()
                           ? std::unique_ptr<LeasePolicyInterface>(
@@ -796,7 +792,7 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
   actor_manager_ = std::make_unique<ActorManager>(
       gcs_client_, *actor_task_submitter_, *reference_counter_);
 
-  std::function<Status(const ObjectID &object_id, const ObjectLookupCallback &callback)>
+  std::function<void(const ObjectID &object_id, const ObjectLookupCallback &callback)>
       object_lookup_fn = [this, node_addr_factory](const ObjectID &object_id,
                                                    const ObjectLookupCallback &callback) {
         std::vector<rpc::Address> locations;
@@ -813,17 +809,17 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
             // We're getting potentially stale locations directly from the reference
             // counter, so the location might be a dead node.
             RAY_LOG(DEBUG).WithField(object_id).WithField(node_id)
-                << "Object location is dead, not using it in the recovery of object";
+                << "Object location is dead or the GCS subscription cache doesn't have "
+                   "it, not using it in the recovery of object";
           }
         }
         callback(object_id, std::move(locations));
-        return Status::OK();
       };
   object_recovery_manager_ = std::make_unique<ObjectRecoveryManager>(
       rpc_address_,
       raylet_client_factory,
       local_raylet_client_,
-      object_lookup_fn,
+      std::move(object_lookup_fn),
       *task_manager_,
       *reference_counter_,
       *memory_store_,
@@ -4193,7 +4189,7 @@ void CoreWorker::AddSpilledObjectLocationOwner(
 
 void CoreWorker::AddObjectLocationOwner(const ObjectID &object_id,
                                         const NodeID &node_id) {
-  if (gcs_client_->Nodes().Get(node_id, /*filter_dead_nodes=*/true) == nullptr) {
+  if (gcs_client_->Nodes().DidNodeDie(node_id)) {
     RAY_LOG(DEBUG).WithField(node_id).WithField(object_id)
         << "Attempting to add object location for a dead node. Ignoring this request.";
     return;

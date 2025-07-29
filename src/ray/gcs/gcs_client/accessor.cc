@@ -656,14 +656,10 @@ void NodeInfoAccessor::AsyncSubscribeToNodeChange(
                    const Status &) { fetch_node_data_operation_(done); });
 }
 
-const rpc::GcsNodeInfo *NodeInfoAccessor::Get(const NodeID &node_id,
-                                              bool filter_dead_nodes) const {
+const rpc::GcsNodeInfo *NodeInfoAccessor::Get(const NodeID &node_id) const {
   RAY_CHECK(!node_id.IsNil());
   auto entry = node_cache_.find(node_id);
   if (entry != node_cache_.end()) {
-    if (filter_dead_nodes && entry->second.state() == rpc::GcsNodeInfo::DEAD) {
-      return nullptr;
-    }
     return &entry->second;
   }
   return nullptr;
@@ -708,8 +704,8 @@ Status NodeInfoAccessor::CheckAlive(const std::vector<std::string> &raylet_addre
   return ret_promise.get_future().get();
 }
 
-bool NodeInfoAccessor::IsRemoved(const NodeID &node_id) const {
-  return removed_nodes_.count(node_id) == 1;
+bool NodeInfoAccessor::DidNodeDie(const NodeID &node_id) const {
+  return dead_nodes_.contains(node_id);
 }
 
 void NodeInfoAccessor::HandleNotification(rpc::GcsNodeInfo &&node_info) {
@@ -759,9 +755,9 @@ void NodeInfoAccessor::HandleNotification(rpc::GcsNodeInfo &&node_info) {
   // If the notification is new, call registered callback.
   if (is_notif_new) {
     if (is_alive) {
-      RAY_CHECK(removed_nodes_.find(node_id) == removed_nodes_.end());
+      RAY_CHECK(!dead_nodes_.contains(node_id));
     } else {
-      removed_nodes_.insert(node_id);
+      dead_nodes_.insert(node_id);
     }
     node_change_callback_(node_id, node_cache_[node_id]);
   }

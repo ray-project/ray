@@ -92,7 +92,7 @@ std::function<void()> CoreWorkerClientPool::GetDefaultUnavailableTimeoutCallback
         };
 
     if (gcs_client->Nodes().IsSubscribedToNodeChange()) {
-      auto *node_info = gcs_client->Nodes().Get(node_id, /*filter_dead_nodes=*/false);
+      auto *node_info = gcs_client->Nodes().Get(node_id);
       if (node_info == nullptr) {
         // Node could be dead or info may have not made it to the subscriber cache yet.
         // Check with the GCS to confirm if the node is dead.

@@ -370,11 +370,10 @@ class NodeInfoAccessor {
   /// is called before.
   ///
   /// \param node_id The ID of node to look up in local cache.
-  /// \param filter_dead_nodes Whether or not if this method will filter dead nodes.
-  /// \return The item returned by GCS. If the item to read doesn't exist or the node is
-  virtual  /// dead, this optional object is empty.
-      const rpc::GcsNodeInfo *
-      Get(const NodeID &node_id, bool filter_dead_nodes = true) const;
+  /// \return The item returned by GCS. If the subscription does not know about the node
+  /// yet, either because it hasn't gotten the GCS publish yet or because the GCS has
+  /// reached its maximum_gcs_dead_node_cached_count, it will return nullptr.
+  virtual const rpc::GcsNodeInfo *Get(const NodeID &node_id) const;
 
   /// Get information of all nodes from local cache.
   /// Non-thread safe.
@@ -425,7 +424,7 @@ class NodeInfoAccessor {
   ///
   /// \param node_id The id of the node to check.
   /// \return Whether the node is removed.
-  virtual bool IsRemoved(const NodeID &node_id) const;
+  virtual bool DidNodeDie(const NodeID &node_id) const;
 
   /// Reestablish subscription.
   /// This should be called when GCS server restarts from a failure.
@@ -457,7 +456,7 @@ class NodeInfoAccessor {
   /// A cache for information about all nodes.
   absl::flat_hash_map<NodeID, rpc::GcsNodeInfo> node_cache_;
   /// The set of removed nodes.
-  std::unordered_set<NodeID> removed_nodes_;
+  absl::flat_hash_set<NodeID> dead_nodes_;
 
   // TODO(dayshah): Need to refactor gcs client / accessor to avoid this.
   // https://github.com/ray-project/ray/issues/54805
