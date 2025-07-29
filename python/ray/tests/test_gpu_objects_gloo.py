@@ -423,5 +423,24 @@ def test_tensor_extracted_from_tensordict_in_gpu_object_store(ray_start_regular)
     assert torch.equal(ret_val_src[1], td["reward"])
 
 
+def test_gpu_object_ref_in_list_not_supported(ray_start_regular):
+    """Test that passing GPU ObjectRefs inside lists to ray.get() raises an error."""
+    actor = GPUTestActor.remote()
+    create_collective_group([actor], backend="torch_gloo")
+
+    tensor = torch.tensor([1, 2, 3])
+
+    ref = actor.echo.remote(tensor)
+    result = ray.get(ref)
+    assert torch.equal(result, tensor)
+
+    with pytest.raises(ValueError, match="GPU ObjectRefs in lists are not supported"):
+        ray.get([ref])
+
+    normal_ref = ray.put("normal_data")
+    with pytest.raises(ValueError, match="GPU ObjectRefs in lists are not supported"):
+        ray.get([ref, normal_ref])
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
