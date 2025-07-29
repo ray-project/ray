@@ -790,7 +790,7 @@ if __name__ == "__main__":
                 "llm/_internal/serve/config_generator/base_configs/templates/*.yaml",
             ],
         },
-        include_package_data=True,
+        include_package_data=True if DUMMY_WHEEL != "1" else False,
         exclude_package_data={
             # Empty string means "any package".
             # Therefore, exclude BUILD from every package:
