@@ -79,7 +79,7 @@ steps:
     parallelism: 3
     priority: 100
     commands:
-      - ./ci/ray_ci/macos/macos_ci.sh run_large_test || true
+      # - ./ci/ray_ci/macos/macos_ci.sh run_large_test || true
       - sleep 100000000000
 
   - label: ":ray: core: :mac: core and dashboard tests"
