@@ -75,7 +75,7 @@ struct GcsServerMocker {
     absl::Mutex mutex_;
   };
 
-  class MockRayletClient : public NoopRayletClient {
+  class MockRayletClient : public FakeRayletClient {
    public:
     ray::Status ReturnWorker(int worker_port,
                              const WorkerID &worker_id,

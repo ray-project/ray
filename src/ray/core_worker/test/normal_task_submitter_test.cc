@@ -214,7 +214,7 @@ class MockTaskManager : public MockTaskManagerInterface {
   int num_generator_failed_and_resubmitted = 0;
 };
 
-class MockRayletClient : public NoopRayletClient {
+class MockRayletClient : public FakeRayletClient {
  public:
   Status ReturnWorker(int worker_port,
                       const WorkerID &worker_id,

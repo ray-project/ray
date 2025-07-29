@@ -18,7 +18,7 @@
 
 namespace ray {
 
-class NoopRayletClient : public RayletClientInterface {
+class FakeRayletClient : public RayletClientInterface {
  public:
   void PinObjectIDs(
       const rpc::Address &caller_address,
