@@ -2,10 +2,13 @@ import yaml
 from dataclasses import dataclass, field
 from typing import List, Optional
 import os
-from dotenv import load_dotenv
-from pathlib import Path
+from string import Template
 
-load_dotenv(dotenv_path=Path(__file__).parent / ".env")
+
+@dataclass
+class Env:
+    name: str
+    build_args: List[str]
 
 
 @dataclass
@@ -16,6 +19,7 @@ class Depset:
     constraints: List[str]
     output: str
     source_depset: Optional[str] = None
+    env: Env = None
 
 
 @dataclass
@@ -24,18 +28,31 @@ class Config:
 
     @staticmethod
     def from_dict(data: dict) -> "Config":
+        depsets = []
         raw_depsets = data.get("depsets", [])
-        depsets = [
-            Depset(
-                name=values.get("name"),
-                requirements=values.get("requirements", []),
-                constraints=values.get("constraints", []),
-                operation=values.get("operation", "compile"),
-                output=values.get("output"),
-                source_depset=values.get("source_depset"),
+        raw_envs = data.get("envs", [])
+        for env in raw_envs:
+            build_args = env.get("build_args", {})
+            substituted_depsets = Template(str(raw_depsets)).substitute(build_args)
+            depsets_yaml = yaml.safe_load(substituted_depsets)
+
+            depsets.extend(
+                [
+                    Depset(
+                        name=values.get("name"),
+                        requirements=values.get("requirements", []),
+                        constraints=values.get("constraints", []),
+                        operation=values.get("operation", "compile"),
+                        output=values.get("output"),
+                        source_depset=values.get("source_depset"),
+                        env=Env(
+                            name=env.get("name"),
+                            build_args=env.get("build_args", []),
+                        ),
+                    )
+                    for values in depsets_yaml
+                ]
             )
-            for values in raw_depsets
-        ]
 
         return Config(depsets=depsets)
 
@@ -50,6 +67,5 @@ class Workspace:
 
     def load_config(self, path: str) -> Config:
         with open(os.path.join(self.dir, path), "r") as f:
-            content = os.path.expandvars(f.read())
-            data = yaml.safe_load(content)
+            data = yaml.safe_load(f.read())
             return Config.from_dict(data)
