@@ -123,9 +123,6 @@ message SchedulingStrategy {
 }
 
 // Address of a worker or node manager.
-// Note: This is used in RayEvent which is a public interface so any modifications must 
-// be backward compatible. This means that you can add new fields but do NOT edit 
-// existing fields.
 message Address {
   bytes node_id = 1;
   string ip_address = 2;
