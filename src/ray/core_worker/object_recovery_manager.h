@@ -31,9 +31,6 @@
 namespace ray {
 namespace core {
 
-using ObjectPinningClientFactoryFn = std::function<std::shared_ptr<RayletClientInterface>(
-    const rpc::Address &raylet_address)>;
-
 using ObjectLookupCallback = std::function<void(
     const ObjectID &object_id, std::vector<rpc::Address> raylet_locations)>;
 

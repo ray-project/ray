@@ -20,12 +20,12 @@
 #include <utility>
 #include <vector>
 
+#include "fakes/ray/rpc/raylet/raylet_client.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "mock/ray/core_worker/task_manager_interface.h"
 #include "mock/ray/pubsub/publisher.h"
 #include "mock/ray/pubsub/subscriber.h"
-#include "noops/ray/rpc/raylet/raylet_client.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_util.h"

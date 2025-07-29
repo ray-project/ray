@@ -21,10 +21,10 @@
 #include "absl/functional/bind_front.h"
 #include "absl/random/random.h"
 #include "absl/strings/str_format.h"
+#include "fakes/ray/rpc/raylet/raylet_client.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "mock/ray/object_manager/plasma/client.h"
-#include "noops/ray/rpc/raylet/raylet_client.h"
 #include "ray/core_worker/experimental_mutable_object_provider.h"
 #include "ray/object_manager/common.h"
 #include "ray/object_manager/plasma/client.h"
@@ -74,15 +74,9 @@ class TestPlasma : public plasma::MockPlasmaClient {
   std::unordered_set<ObjectID> objects_;
 };
 
-class TestInterface : public NoopRayletClient {
+class MockRayletClient : public NoopRayletClient {
  public:
-  virtual ~TestInterface() {}
-
-  void RegisterMutableObjectReader(
-      const ObjectID &object_id,
-      int64_t num_readers,
-      const ObjectID &local_reader_object_id,
-      const rpc::ClientCallback<rpc::RegisterMutableObjectReply> &callback) override {}
+  virtual ~MockRayletClient() {}
 
   void PushMutableObject(
       const ObjectID &object_id,
@@ -105,8 +99,8 @@ class TestInterface : public NoopRayletClient {
   std::vector<ObjectID> pushed_objects_;
 };
 
-std::shared_ptr<RayletClientInterface> GetTestInterface(
-    std::shared_ptr<TestInterface> &interface, const NodeID &node_id) {
+std::shared_ptr<RayletClientInterface> GetMockRayletClient(
+    std::shared_ptr<MockRayletClient> &interface, const NodeID &node_id) {
   return interface;
 }
 
@@ -116,11 +110,11 @@ TEST(MutableObjectProvider, RegisterWriterChannel) {
   ObjectID object_id = ObjectID::FromRandom();
   NodeID node_id = NodeID::FromRandom();
   auto plasma = std::make_unique<TestPlasma>();
-  auto interface = std::make_shared<TestInterface>();
+  auto interface = std::make_shared<MockRayletClient>();
 
   MutableObjectProvider provider(
       *plasma,
-      /*factory=*/absl::bind_front(GetTestInterface, interface),
+      /*factory=*/absl::bind_front(GetMockRayletClient, interface),
       nullptr);
   provider.RegisterWriterChannel(object_id, {node_id});
 
@@ -183,11 +177,11 @@ TEST(MutableObjectProvider, HandlePushMutableObject) {
   ObjectID object_id = ObjectID::FromRandom();
   ObjectID local_object_id = ObjectID::FromRandom();
   auto plasma = std::make_unique<TestPlasma>();
-  auto interface = std::make_shared<TestInterface>();
+  auto interface = std::make_shared<MockRayletClient>();
 
   MutableObjectProvider provider(
       *plasma,
-      /*factory=*/absl::bind_front(GetTestInterface, interface),
+      /*factory=*/absl::bind_front(GetMockRayletClient, interface),
       nullptr);
   provider.HandleRegisterMutableObject(object_id, /*num_readers=*/1, local_object_id);
 
