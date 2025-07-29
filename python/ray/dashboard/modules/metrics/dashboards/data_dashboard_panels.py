@@ -673,6 +673,62 @@ DATA_GRAFANA_PANELS = [
         fill=0,
         stack=False,
     ),
+    Panel(
+        id=49,
+        title="Budget (CPU)",
+        description=("CPU budget for the operator."),
+        unit="cpu",
+        targets=[
+            Target(
+                expr="sum(ray_data_cpu_budget{{{global_filters}}}) by (dataset, operator)",
+                legend="CPU Budget: {{dataset}}, {{operator}}",
+            )
+        ],
+        fill=0,
+        stack=False,
+    ),
+    Panel(
+        id=50,
+        title="Budget (GPU)",
+        description=("GPU budget for the operator."),
+        unit="gpu",
+        targets=[
+            Target(
+                expr="sum(ray_data_gpu_budget{{{global_filters}}}) by (dataset, operator)",
+                legend="GPU Budget: {{dataset}}, {{operator}}",
+            )
+        ],
+        fill=0,
+        stack=False,
+    ),
+    Panel(
+        id=51,
+        title="Budget (Memory)",
+        description=("Memory budget for the operator."),
+        unit="bytes",
+        targets=[
+            Target(
+                expr="sum(ray_data_memory_budget{{{global_filters}}}) by (dataset, operator)",
+                legend="Memory Budget: {{dataset}}, {{operator}}",
+            )
+        ],
+        fill=0,
+        stack=False,
+    ),
+    Panel(
+        id=52,
+        title="Budget (Object Store Memory)",
+        description=("Object store memory budget for the operator."),
+        unit="bytes",
+        targets=[
+            Target(
+                expr="sum(ray_data_object_store_memory_budget{{{global_filters}}}) by (dataset, operator)",
+                legend="Object Store Memory Budget: {{dataset}}, {{operator}}",
+            )
+        ],
+        fill=0,
+        stack=False,
+    ),
 ]
 
 ids = []

@@ -1,4 +1,5 @@
 import logging
+import math
 import threading
 import time
 from typing import Dict, List, Optional, Tuple
@@ -495,9 +496,27 @@ class StreamingExecutor(Executor, threading.Thread):
         }
 
     def _update_stats_metrics(self, state: str, force_update: bool = False):
+        # include budgets
+        metrics = []
+        for op in self._topology:
+            budget = self._resource_manager.get_budget(op)
+            if budget is not None:
+                # Convert inf to -1 to represent unlimited budget in metrics
+                op.metrics.cpu_budget = -1 if math.isinf(budget.cpu) else budget.cpu
+                op.metrics.gpu_budget = -1 if math.isinf(budget.gpu) else budget.gpu
+                op.metrics.memory_budget = (
+                    -1 if math.isinf(budget.memory) else budget.memory
+                )
+                op.metrics.object_store_memory_budget = (
+                    -1
+                    if math.isinf(budget.object_store_memory)
+                    else budget.object_store_memory
+                )
+                metrics.append(op.metrics)
+
         StatsManager.update_execution_metrics(
             self._dataset_id,
-            [op.metrics for op in self._topology],
+            metrics,
             self._get_operator_tags(),
             self._get_state_dict(state=state),
             force_update=force_update,
