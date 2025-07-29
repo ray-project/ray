@@ -61,7 +61,7 @@ class LabelSelector {
   explicit LabelSelector(
       const google::protobuf::Map<std::string, std::string> &label_selector);
 
-  void ToProto(rpc::LabelSelector *out) const;
+  rpc::LabelSelector ToProto() const;
 
   void AddConstraint(const std::string &key, const std::string &value);
 
@@ -88,22 +88,18 @@ inline bool operator==(const LabelSelector &lhs, const LabelSelector &rhs) {
   return lhs.GetConstraints() == rhs.GetConstraints();
 }
 
-}  // namespace ray
-
-namespace std {
-template <>
-struct hash<ray::LabelSelector> {
-  size_t operator()(const ray::LabelSelector &label_selector) const noexcept {
-    size_t seed = label_selector.GetConstraints().size();
-    // Add constraint key, operator, and values to hash seed
-    for (auto const &constraint : label_selector.GetConstraints()) {
-      seed ^= std::hash<std::string>()(constraint.GetLabelKey());
-      seed ^= std::hash<int>()(static_cast<int>(constraint.GetOperator()));
-      for (auto const &value : constraint.GetLabelValues()) {
-        seed ^= std::hash<std::string>()(value);
-      }
+template <typename H>
+H AbslHashValue(H h, const LabelSelector &label_selector) {
+  h = H::combine(std::move(h), label_selector.GetConstraints().size());
+  for (const auto &constraint : label_selector.GetConstraints()) {
+    h = H::combine(std::move(h),
+                   constraint.GetLabelKey(),
+                   static_cast<int>(constraint.GetOperator()));
+    for (const auto &value : constraint.GetLabelValues()) {
+      h = H::combine(std::move(h), value);
     }
-    return seed;
   }
-};
-}  // namespace std
+  return h;
+}
+
+}  // namespace ray

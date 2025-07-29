@@ -60,62 +60,62 @@ TEST(TaskSpecTest, TestSchedulingClassDescriptor) {
   SchedulingClassDescriptor descriptor9(
       resources, LabelSelector(), descriptor, 0, scheduling_strategy);
   ASSERT_TRUE(descriptor1 == descriptor1);
-  ASSERT_TRUE(std::hash<SchedulingClassDescriptor>()(descriptor1) ==
-              std::hash<SchedulingClassDescriptor>()(descriptor1));
+  ASSERT_TRUE(absl::Hash<SchedulingClassDescriptor>()(descriptor1) ==
+              absl::Hash<SchedulingClassDescriptor>()(descriptor1));
   ASSERT_TRUE(TaskSpecification::GetSchedulingClass(descriptor1) ==
               TaskSpecification::GetSchedulingClass(descriptor1));
 
   ASSERT_FALSE(descriptor1 == descriptor2);
-  ASSERT_FALSE(std::hash<SchedulingClassDescriptor>()(descriptor1) ==
-               std::hash<SchedulingClassDescriptor>()(descriptor2));
+  ASSERT_FALSE(absl::Hash<SchedulingClassDescriptor>()(descriptor1) ==
+               absl::Hash<SchedulingClassDescriptor>()(descriptor2));
   ASSERT_FALSE(TaskSpecification::GetSchedulingClass(descriptor1) ==
                TaskSpecification::GetSchedulingClass(descriptor2));
 
   ASSERT_FALSE(descriptor1 == descriptor3);
-  ASSERT_FALSE(std::hash<SchedulingClassDescriptor>()(descriptor1) ==
-               std::hash<SchedulingClassDescriptor>()(descriptor3));
+  ASSERT_FALSE(absl::Hash<SchedulingClassDescriptor>()(descriptor1) ==
+               absl::Hash<SchedulingClassDescriptor>()(descriptor3));
   ASSERT_FALSE(TaskSpecification::GetSchedulingClass(descriptor1) ==
                TaskSpecification::GetSchedulingClass(descriptor3));
 
   ASSERT_FALSE(descriptor1 == descriptor4);
-  ASSERT_FALSE(std::hash<SchedulingClassDescriptor>()(descriptor1) ==
-               std::hash<SchedulingClassDescriptor>()(descriptor4));
+  ASSERT_FALSE(absl::Hash<SchedulingClassDescriptor>()(descriptor1) ==
+               absl::Hash<SchedulingClassDescriptor>()(descriptor4));
   ASSERT_FALSE(TaskSpecification::GetSchedulingClass(descriptor1) ==
                TaskSpecification::GetSchedulingClass(descriptor4));
 
   ASSERT_FALSE(descriptor4 == descriptor5);
-  ASSERT_FALSE(std::hash<SchedulingClassDescriptor>()(descriptor4) ==
-               std::hash<SchedulingClassDescriptor>()(descriptor5));
+  ASSERT_FALSE(absl::Hash<SchedulingClassDescriptor>()(descriptor4) ==
+               absl::Hash<SchedulingClassDescriptor>()(descriptor5));
   ASSERT_FALSE(TaskSpecification::GetSchedulingClass(descriptor4) ==
                TaskSpecification::GetSchedulingClass(descriptor5));
 
   ASSERT_TRUE(descriptor5 == descriptor6);
-  ASSERT_TRUE(std::hash<SchedulingClassDescriptor>()(descriptor5) ==
-              std::hash<SchedulingClassDescriptor>()(descriptor6));
+  ASSERT_TRUE(absl::Hash<SchedulingClassDescriptor>()(descriptor5) ==
+              absl::Hash<SchedulingClassDescriptor>()(descriptor6));
   ASSERT_TRUE(TaskSpecification::GetSchedulingClass(descriptor5) ==
               TaskSpecification::GetSchedulingClass(descriptor6));
 
   ASSERT_FALSE(descriptor6 == descriptor10);
-  ASSERT_FALSE(std::hash<SchedulingClassDescriptor>()(descriptor6) ==
-               std::hash<SchedulingClassDescriptor>()(descriptor10));
+  ASSERT_FALSE(absl::Hash<SchedulingClassDescriptor>()(descriptor6) ==
+               absl::Hash<SchedulingClassDescriptor>()(descriptor10));
   ASSERT_FALSE(TaskSpecification::GetSchedulingClass(descriptor6) ==
                TaskSpecification::GetSchedulingClass(descriptor10));
 
   ASSERT_FALSE(descriptor6 == descriptor7);
-  ASSERT_FALSE(std::hash<SchedulingClassDescriptor>()(descriptor6) ==
-               std::hash<SchedulingClassDescriptor>()(descriptor7));
+  ASSERT_FALSE(absl::Hash<SchedulingClassDescriptor>()(descriptor6) ==
+               absl::Hash<SchedulingClassDescriptor>()(descriptor7));
   ASSERT_FALSE(TaskSpecification::GetSchedulingClass(descriptor6) ==
                TaskSpecification::GetSchedulingClass(descriptor7));
 
   ASSERT_FALSE(descriptor7 == descriptor8);
-  ASSERT_FALSE(std::hash<SchedulingClassDescriptor>()(descriptor7) ==
-               std::hash<SchedulingClassDescriptor>()(descriptor8));
+  ASSERT_FALSE(absl::Hash<SchedulingClassDescriptor>()(descriptor7) ==
+               absl::Hash<SchedulingClassDescriptor>()(descriptor8));
   ASSERT_FALSE(TaskSpecification::GetSchedulingClass(descriptor7) ==
                TaskSpecification::GetSchedulingClass(descriptor8));
 
   ASSERT_TRUE(descriptor7 == descriptor9);
-  ASSERT_TRUE(std::hash<SchedulingClassDescriptor>()(descriptor7) ==
-              std::hash<SchedulingClassDescriptor>()(descriptor9));
+  ASSERT_TRUE(absl::Hash<SchedulingClassDescriptor>()(descriptor7) ==
+              absl::Hash<SchedulingClassDescriptor>()(descriptor9));
   ASSERT_TRUE(TaskSpecification::GetSchedulingClass(descriptor7) ==
               TaskSpecification::GetSchedulingClass(descriptor9));
 }
@@ -280,10 +280,10 @@ TEST(TaskSpecTest, TestNodeLabelSchedulingStrategy) {
   expr_2->set_key("key");
   expr_2->mutable_operator_()->mutable_label_in()->add_values("value1");
 
-  ASSERT_TRUE(std::hash<rpc::SchedulingStrategy>()(scheduling_strategy_1) ==
-              std::hash<rpc::SchedulingStrategy>()(scheduling_strategy_1));
-  ASSERT_TRUE(std::hash<rpc::SchedulingStrategy>()(scheduling_strategy_1) ==
-              std::hash<rpc::SchedulingStrategy>()(scheduling_strategy_2));
+  ASSERT_TRUE(absl::Hash<rpc::SchedulingStrategy>()(scheduling_strategy_1) ==
+              absl::Hash<rpc::SchedulingStrategy>()(scheduling_strategy_1));
+  ASSERT_TRUE(absl::Hash<rpc::SchedulingStrategy>()(scheduling_strategy_1) ==
+              absl::Hash<rpc::SchedulingStrategy>()(scheduling_strategy_2));
 
   rpc::SchedulingStrategy scheduling_strategy_3;
   auto expr_3 = scheduling_strategy_3.mutable_node_label_scheduling_strategy()
@@ -291,8 +291,8 @@ TEST(TaskSpecTest, TestNodeLabelSchedulingStrategy) {
                     ->add_expressions();
   expr_3->set_key("key");
   expr_3->mutable_operator_()->mutable_label_in()->add_values("value1");
-  ASSERT_FALSE(std::hash<rpc::SchedulingStrategy>()(scheduling_strategy_1) ==
-               std::hash<rpc::SchedulingStrategy>()(scheduling_strategy_3));
+  ASSERT_FALSE(absl::Hash<rpc::SchedulingStrategy>()(scheduling_strategy_1) ==
+               absl::Hash<rpc::SchedulingStrategy>()(scheduling_strategy_3));
 
   rpc::SchedulingStrategy scheduling_strategy_4;
   auto expr_4 = scheduling_strategy_4.mutable_node_label_scheduling_strategy()
@@ -302,8 +302,8 @@ TEST(TaskSpecTest, TestNodeLabelSchedulingStrategy) {
   expr_4->mutable_operator_()->mutable_label_in()->add_values("value1");
   expr_4->mutable_operator_()->mutable_label_in()->add_values("value2");
 
-  ASSERT_FALSE(std::hash<rpc::SchedulingStrategy>()(scheduling_strategy_1) ==
-               std::hash<rpc::SchedulingStrategy>()(scheduling_strategy_4));
+  ASSERT_FALSE(absl::Hash<rpc::SchedulingStrategy>()(scheduling_strategy_1) ==
+               absl::Hash<rpc::SchedulingStrategy>()(scheduling_strategy_4));
 
   rpc::SchedulingStrategy scheduling_strategy_5;
   auto expr_5 = scheduling_strategy_5.mutable_node_label_scheduling_strategy()
@@ -312,7 +312,7 @@ TEST(TaskSpecTest, TestNodeLabelSchedulingStrategy) {
   expr_5->set_key("key");
   expr_5->mutable_operator_()->mutable_label_not_in()->add_values("value1");
 
-  ASSERT_FALSE(std::hash<rpc::SchedulingStrategy>()(scheduling_strategy_1) ==
-               std::hash<rpc::SchedulingStrategy>()(scheduling_strategy_5));
+  ASSERT_FALSE(absl::Hash<rpc::SchedulingStrategy>()(scheduling_strategy_1) ==
+               absl::Hash<rpc::SchedulingStrategy>()(scheduling_strategy_5));
 }
 }  // namespace ray

@@ -32,9 +32,10 @@ LabelSelector::LabelSelector(
   }
 }
 
-void LabelSelector::ToProto(rpc::LabelSelector *out) const {
+rpc::LabelSelector LabelSelector::ToProto() const {
+  rpc::LabelSelector result;
   for (const auto &constraint : constraints_) {
-    auto *proto_constraint = out->add_label_constraints();
+    auto *proto_constraint = result.add_label_constraints();
     proto_constraint->set_label_key(constraint.GetLabelKey());
     proto_constraint->set_operator_(
         static_cast<rpc::LabelSelectorOperator>(constraint.GetOperator()));
@@ -42,6 +43,7 @@ void LabelSelector::ToProto(rpc::LabelSelector *out) const {
       proto_constraint->add_label_values(val);
     }
   }
+  return result;
 }
 
 void LabelSelector::AddConstraint(const std::string &key, const std::string &value) {

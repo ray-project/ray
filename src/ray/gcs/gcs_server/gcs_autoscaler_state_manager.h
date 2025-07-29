@@ -93,8 +93,8 @@ class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateHandler
 
  private:
   /// \brief Get the aggregated resource load from all nodes.
-  absl::flat_hash_map<ResourceDemandKey, rpc::ResourceDemand>
-  GetAggregatedResourceLoad() const;
+  absl::flat_hash_map<ResourceDemandKey, rpc::ResourceDemand> GetAggregatedResourceLoad()
+      const;
 
   /// \brief Internal method for populating the rpc::ClusterResourceState
   /// protobuf.
@@ -232,10 +232,6 @@ class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateHandler
               TestGetPerNodeInfeasibleResourceRequests_NoInfeasibleRequests);
   FRIEND_TEST(GcsAutoscalerStateManagerTest,
               TestGetPerNodeInfeasibleResourceRequests_WithInfeasibleRequests);
-  FRIEND_TEST(GcsAutoscalerStateManagerTest,
-              TestGetPendingResourceRequestsWithLabelSelectors);
-  FRIEND_TEST(GcsAutoscalerStateManagerTest,
-              TestGetPendingGangResourceRequestsWithBundleSelectors);
 };
 
 }  // namespace gcs

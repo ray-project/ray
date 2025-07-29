@@ -1098,9 +1098,6 @@ TEST_F(GcsAutoscalerStateManagerTest, TestGetPendingResourceRequestsWithLabelSel
       ASSERT_EQ(constraint.label_values(0), it->second.second);
     }
   }
-
-  // Clean up.
-  RemoveNode(node);
 }
 
 TEST_F(GcsAutoscalerStateManagerTest,
@@ -1125,9 +1122,7 @@ TEST_F(GcsAutoscalerStateManagerTest,
   EXPECT_CALL(*gcs_placement_group_manager_, GetPlacementGroupLoad)
       .WillOnce(Return(std::make_shared<rpc::PlacementGroupLoad>(std::move(load))));
 
-  rpc::autoscaler::ClusterResourceState state;
-  gcs_autoscaler_state_manager_->GetPendingGangResourceRequests(&state);
-
+  const auto &state = GetClusterResourceStateSync();
   const auto &requests = state.pending_gang_resource_requests();
   ASSERT_EQ(requests.size(), 1);
 

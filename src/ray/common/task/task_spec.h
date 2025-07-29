@@ -22,6 +22,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/hash/hash.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/function_descriptor.h"
 #include "ray/common/grpc_util.h"
@@ -137,6 +138,16 @@ struct SchedulingClassDescriptor {
     return buffer.str();
   }
 };
+
+template <typename H>
+H AbslHashValue(H h, const SchedulingClassDescriptor &sched_cls) {
+  return H::combine(std::move(h),
+                    sched_cls.resource_set,
+                    sched_cls.function_descriptor->Hash(),
+                    sched_cls.depth,
+                    sched_cls.scheduling_strategy,
+                    sched_cls.label_selector);
+}
 }  // namespace ray
 
 namespace std {
@@ -216,18 +227,6 @@ struct hash<ray::rpc::SchedulingStrategy> {
             scheduling_strategy.node_label_scheduling_strategy().soft());
       }
     }
-    return hash_val;
-  }
-};
-
-template <>
-struct hash<ray::SchedulingClassDescriptor> {
-  size_t operator()(const ray::SchedulingClassDescriptor &sched_cls) const {
-    size_t hash_val = std::hash<ray::ResourceSet>()(sched_cls.resource_set);
-    hash_val ^= sched_cls.function_descriptor->Hash();
-    hash_val ^= sched_cls.depth;
-    hash_val ^= std::hash<ray::rpc::SchedulingStrategy>()(sched_cls.scheduling_strategy);
-    hash_val ^= std::hash<ray::LabelSelector>()(sched_cls.label_selector);
     return hash_val;
   }
 };

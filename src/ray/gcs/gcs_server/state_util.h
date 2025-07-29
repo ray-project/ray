@@ -20,38 +20,36 @@
 #include "absl/hash/hash.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
-namespace std {}  // namespace std
-
 namespace ray {
 namespace gcs {
 
 struct ResourceDemandKey {
   google::protobuf::Map<std::string, double> shape;
   std::vector<rpc::LabelSelector> label_selectors;
-
-  bool operator==(const ResourceDemandKey &other) const {
-    if (shape.size() != other.shape.size()) {
-      return false;
-    }
-    for (const auto &entry : shape) {
-      auto it = other.shape.find(entry.first);
-      if (it == other.shape.end() || it->second != entry.second) {
-        return false;
-      }
-    }
-
-    if (label_selectors.size() != other.label_selectors.size()) {
-      return false;
-    }
-    for (size_t i = 0; i < label_selectors.size(); ++i) {
-      if (label_selectors[i].SerializeAsString() !=
-          other.label_selectors[i].SerializeAsString()) {
-        return false;
-      }
-    }
-    return true;
-  }
 };
+
+inline bool operator==(const ResourceDemandKey &lhs, const ResourceDemandKey &rhs) {
+  if (lhs.shape.size() != rhs.shape.size()) {
+    return false;
+  }
+  for (const auto &entry : lhs.shape) {
+    auto it = rhs.shape.find(entry.first);
+    if (it == rhs.shape.end() || it->second != entry.second) {
+      return false;
+    }
+  }
+
+  if (lhs.label_selectors.size() != rhs.label_selectors.size()) {
+    return false;
+  }
+  for (size_t i = 0; i < lhs.label_selectors.size(); ++i) {
+    if (lhs.label_selectors[i].SerializeAsString() !=
+        rhs.label_selectors[i].SerializeAsString()) {
+      return false;
+    }
+  }
+  return true;
+}
 
 template <typename H>
 H AbslHashValue(H h, const ResourceDemandKey &key);

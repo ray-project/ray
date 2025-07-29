@@ -198,9 +198,9 @@ class ResourceRequestUtil(ProtobufUtil):
         Make a resource request from the given resources map.
         Args:
             resources_map: Mapping of resource names to quantities.
-            constraints: Optional placement constraints. Each tuple consists of
-                (constraint_type, label_key, label_value), where `constraint_type`
-                is a PlacementConstraintType (AFFINITY or ANTI_AFFINITY).
+            constraints: Placement constraints. Each tuple is (constraint_type,
+                label_key, label_value), where `constraint_type` is a
+                PlacementConstraintType (AFFINITY or ANTI_AFFINITY).
             label_selectors: Optional list of label selectors. Each selector is
                 a list of (label_key, operator_enum, label_values) tuples.
         Returns:
