@@ -199,7 +199,9 @@ class ResourceManager:
             used_object_store = self._estimate_object_store_memory(op, state)
 
             op_usage = op_usage.copy(object_store_memory=used_object_store)
-            op_running_usage = op_running_usage.copy(object_store_memory=used_object_store)
+            op_running_usage = op_running_usage.copy(
+                object_store_memory=used_object_store
+            )
 
             if isinstance(op, ReportsExtraResourceUsage):
                 op_usage.add(op.extra_resource_usage())
@@ -265,7 +267,8 @@ class ResourceManager:
         total_resources = self._get_total_resources()
         default_mem_fraction = self._object_store_memory_limit_fraction
         total_resources = total_resources.copy(
-            object_store_memory=total_resources.object_store_memory * default_mem_fraction
+            object_store_memory=total_resources.object_store_memory
+            * default_mem_fraction
         )
         self._global_limits = default_limits.min(total_resources).subtract(exclude)
         return self._global_limits
@@ -722,8 +725,8 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             else:
                 target_num_gpu = 0
 
-            self._op_budgets[op] = self._op_budgets[op].add(op_shared).copy(
-                gpu=target_num_gpu
+            self._op_budgets[op] = (
+                self._op_budgets[op].add(op_shared).copy(gpu=target_num_gpu)
             )
 
         # A materializing operator like `AllToAllOperator` waits for all its input

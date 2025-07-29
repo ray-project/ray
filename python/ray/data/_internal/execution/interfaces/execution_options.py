@@ -1,8 +1,6 @@
 import math
 import os
-from typing import Dict, List, Optional, Union, Any
-
-from typing_extensions import deprecated
+from typing import Any, Dict, List, Optional, Union
 
 from .common import NodeIdStr
 from ray.data._internal.execution.util import memory_string

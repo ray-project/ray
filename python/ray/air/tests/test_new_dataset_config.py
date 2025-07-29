@@ -364,7 +364,9 @@ def _run_data_config_resource_test(data_config):
 def test_data_config_default_resource_limits(shutdown_only):
     """Test that DataConfig should exclude training resources from Data."""
     execution_options = ExecutionOptions()
-    execution_options.exclude_resources = execution_options.exclude_resources.copy(cpu=2, gpu=1)
+    execution_options.exclude_resources = execution_options.exclude_resources.copy(
+        cpu=2, gpu=1
+    )
     data_config = DataConfig(execution_options=execution_options)
 
     _run_data_config_resource_test(data_config)
@@ -373,7 +375,9 @@ def test_data_config_default_resource_limits(shutdown_only):
 def test_data_config_manual_resource_limits(shutdown_only):
     """Test manually setting resource limits in DataConfig."""
     execution_options = ExecutionOptions()
-    execution_options.resource_limits = execution_options.resource_limits.copy(cpu=10, gpu=5)
+    execution_options.resource_limits = execution_options.resource_limits.copy(
+        cpu=10, gpu=5
+    )
     data_config = DataConfig(execution_options=execution_options)
 
     _run_data_config_resource_test(data_config)
