@@ -325,6 +325,11 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         description="Number of blocks in the output queue",
         metrics_group=MetricsGroup.OUTPUTS,
     )
+    num_output_queue_bytes: int = metric_field(
+        default=0,
+        description="Byte size of blocks in the output queue",
+        metrics_group=MetricsGroup.OUTPUTS,
+    )
 
     # === Tasks-related metrics ===
     num_tasks_submitted: int = metric_field(
