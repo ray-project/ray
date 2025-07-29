@@ -31,8 +31,8 @@ message AutoscalingConfig {
   // to min_replicas.
   uint32 max_replicas = 2;
 
-  // [DEPRECATED] The frequency of how long does each replica sending metrics to autoscaler,
-  // but this is controlled by the environment variables
+  // [DEPRECATED] The frequency of how long does each replica sending metrics to
+  // autoscaler, but this is controlled by the environment variables
   // RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S and
   // RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S now.
   double metrics_interval_s = 3;
