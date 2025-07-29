@@ -572,7 +572,7 @@
 
   cluster:
     byod:
-      post_build_script: byod_text_embeddings_benchmark.sh
+      type: llm-cu128
     cluster_compute: dataset/{{scaling}}_gpu_g6e_2xl_aws.yaml
 
   matrix:
@@ -591,7 +591,7 @@
 
   cluster:
     byod:
-      post_build_script: byod_text_embeddings_benchmark.sh
+      type: llm-cu128
     cluster_compute: dataset/{{scaling}}_gpu_g6e_2xl_aws.yaml
 
   matrix:
