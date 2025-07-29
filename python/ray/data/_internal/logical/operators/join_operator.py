@@ -15,57 +15,6 @@ class JoinType(Enum):
     FULL_OUTER = "full_outer"
 
 
-class BroadcastJoin(LogicalOperator):
-    """Logical operator for broadcast join."""
-
-    def __init__(
-        self,
-        left_input_op: LogicalOperator,
-        right_input_op: LogicalOperator,
-        join_type: str,
-        left_key_columns: Tuple[str],
-        right_key_columns: Tuple[str],
-        *,
-        num_partitions: int,
-        left_columns_suffix: Optional[str] = None,
-        right_columns_suffix: Optional[str] = None,
-    ):
-        """
-        Args:
-            left_input_op: The input operator at left hand side.
-            right_input_op: The input operator at right hand side.
-            join_type: The kind of join that should be performed, one of ("inner",
-               "left_outer", "right_outer", "full_outer").
-            left_key_columns: The columns from the left Dataset that should be used as
-              keys of the join operation.
-            right_key_columns: The columns from the right Dataset that should be used as
-              keys of the join operation.
-            num_partitions: Total number of expected blocks outputted by this
-                operator.
-        """
-
-        try:
-            join_type_enum = JoinType(join_type)
-        except ValueError:
-            raise ValueError(
-                f"Invalid join type: '{join_type}'. "
-                f"Supported join types are: {', '.join(jt.value for jt in JoinType)}."
-            )
-
-        super().__init__(
-            "BroadcastJoin", [left_input_op, right_input_op], num_partitions
-        )
-
-        self._left_key_columns = left_key_columns
-        self._right_key_columns = right_key_columns
-        self._join_type = join_type_enum
-
-        self._left_columns_suffix = left_columns_suffix
-        self._right_columns_suffix = right_columns_suffix
-
-        self._num_partitions = num_partitions
-
-
 class Join(NAry):
     """Logical operator for join."""
 

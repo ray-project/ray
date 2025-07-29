@@ -2474,17 +2474,46 @@ class Dataset:
         plan = self._plan.copy()
 
         if broadcast:
-            from ray.data._internal.logical.operators.join_operator import BroadcastJoin
+            # Use map_batches approach for broadcast join like the reference implementation
+            # First materialize and repartition the right dataset to a single partition
+            right_ds = ds.repartition(1).materialize()
 
-            op = BroadcastJoin(
-                left_input_op=self._logical_plan.dag,
-                right_input_op=ds._logical_plan.dag,
+            # Get PyArrow table reference from the right dataset
+            right_arrow_refs = right_ds.to_arrow_refs()
+            if len(right_arrow_refs) != 1:
+                # Combine multiple references into one
+                import pyarrow as pa
+
+                right_tables = [ray.get(ref) for ref in right_arrow_refs]
+                if right_tables:
+                    combined_table = pa.concat_tables(right_tables)
+                else:
+                    combined_table = pa.table({})
+                broadcast_table_ref = ray.put(combined_table)
+            else:
+                broadcast_table_ref = right_arrow_refs[0]
+
+            # Create the broadcast join callable class
+            from ray.data._internal.logical.operators.broadcast_join import (
+                BroadcastJoinFunction,
+            )
+            from ray.data._internal.logical.operators.join_operator import JoinType
+
+            join_type_enum = JoinType(join_type)
+            join_fn = BroadcastJoinFunction(
+                broadcast_table_ref=broadcast_table_ref,
+                join_type=join_type_enum,
                 left_key_columns=on,
                 right_key_columns=right_on,
-                join_type=join_type,
-                num_partitions=num_partitions,
                 left_columns_suffix=left_suffix,
                 right_columns_suffix=right_suffix,
+            )
+
+            # Use map_batches to apply the broadcast join
+            return self.map_batches(
+                join_fn,
+                batch_format="pyarrow",
+                concurrency=num_partitions,
             )
         else:
             op = Join(

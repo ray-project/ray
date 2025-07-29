@@ -7,7 +7,7 @@ from ray.data._internal.logical.interfaces import (
     LogicalPlan,
     PhysicalPlan,
 )
-from ray.data._internal.logical.operators.join_operator import BroadcastJoin, Join
+from ray.data._internal.logical.operators.join_operator import Join
 from ray.data.context import DataContext
 from ray.util.annotations import DeveloperAPI
 
@@ -155,32 +155,7 @@ def _register_default_plan_logical_op_fns():
             aggregator_ray_remote_args_override=logical_op._aggregator_ray_remote_args,
         )
 
-    def plan_broadcast_join_op(
-        logical_op,
-        physical_children: List[PhysicalOperator],
-        data_context: DataContext,
-    ) -> PhysicalOperator:
-        from ray.data._internal.execution.operators.broadcast_join import (
-            BroadcastJoinOperator,
-        )
-
-        assert len(physical_children) == 2
-        assert logical_op._num_partitions is not None
-
-        return BroadcastJoinOperator(
-            data_context=data_context,
-            left_input_op=physical_children[0],
-            right_input_op=physical_children[1],
-            join_type=logical_op._join_type,
-            left_key_columns=logical_op._left_key_columns,
-            right_key_columns=logical_op._right_key_columns,
-            left_columns_suffix=logical_op._left_columns_suffix,
-            right_columns_suffix=logical_op._right_columns_suffix,
-            num_partitions=logical_op._num_partitions,
-        )
-
     register_plan_logical_op_fn(Join, plan_join_op)
-    register_plan_logical_op_fn(BroadcastJoin, plan_broadcast_join_op)
 
 
 _register_default_plan_logical_op_fns()
