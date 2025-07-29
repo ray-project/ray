@@ -5,6 +5,7 @@ from typing import List
 import subprocess
 import platform
 import runfiles
+from ci.raydepsets.workspace import Env
 
 DEFAULT_UV_FLAGS = [
     "--generate-hashes",
@@ -35,10 +36,11 @@ def cli():
 def load(config_path: str, workspace_dir: str, name: str):
     """Load a dependency sets from a config file."""
     manager = DependencySetManager(config_path=config_path, workspace_dir=workspace_dir)
-    if name:
-        manager.execute_single(manager.get_depset(name))
-    else:
-        manager.execute_all()
+    for env in manager.config.envs:
+        if name:
+            manager.execute_single(manager.get_depset(name, env))
+        else:
+            manager.execute_all()
 
 
 class DependencySetManager:
@@ -50,9 +52,9 @@ class DependencySetManager:
         self.workspace = Workspace(workspace_dir)
         self.config = self.workspace.load_config(config_path)
 
-    def get_depset(self, name: str) -> Depset:
+    def get_depset(self, name: str, env: Env) -> Depset:
         for depset in self.config.depsets:
-            if depset.name == name:
+            if depset.name == name and (env is None or depset.env.name == env.name):
                 return depset
         raise KeyError(f"Dependency set {name} not found")
 
@@ -112,10 +114,11 @@ class DependencySetManager:
         requirements: List[str],
         args: List[str],
         name: str,
+        env: Env,
         output: str = None,
     ):
         """Subset a dependency set."""
-        source_depset = self.get_depset(source_depset)
+        source_depset = self.get_depset(source_depset, env)
         self.check_subset_exists(source_depset, requirements)
         self.compile(
             constraints=[source_depset.output],

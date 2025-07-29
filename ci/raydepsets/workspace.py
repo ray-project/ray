@@ -25,36 +25,42 @@ class Depset:
 @dataclass
 class Config:
     depsets: List[Depset] = field(default_factory=list)
+    envs: List[Env] = field(default_factory=list)
 
     @staticmethod
-    def from_dict(data: dict) -> "Config":
+    def parse_envs(envs: List[dict]) -> List["Env"]:
+        return [
+            Env(
+                name=env.get("name"),
+                build_args=env.get("build_args", []),
+            )
+            for env in envs
+        ]
+
+    @staticmethod
+    def from_dict(data: dict, envs: List["Env"]) -> "Config":
         depsets = []
         raw_depsets = data.get("depsets", [])
-        raw_envs = data.get("envs", [])
-        for env in raw_envs:
-            build_args = env.get("build_args", {})
+        for env in envs:
+            build_args = env.build_args
             substituted_depsets = Template(str(raw_depsets)).substitute(build_args)
             depsets_yaml = yaml.safe_load(substituted_depsets)
-
             depsets.extend(
                 [
                     Depset(
                         name=values.get("name"),
                         requirements=values.get("requirements", []),
                         constraints=values.get("constraints", []),
-                        operation=values.get("operation", "compile"),
+                        operation=values.get("operation", None),
                         output=values.get("output"),
                         source_depset=values.get("source_depset"),
-                        env=Env(
-                            name=env.get("name"),
-                            build_args=env.get("build_args", []),
-                        ),
+                        env=env,
                     )
                     for values in depsets_yaml
                 ]
             )
 
-        return Config(depsets=depsets)
+        return Config(depsets=depsets, envs=envs)
 
 
 class Workspace:
@@ -67,5 +73,7 @@ class Workspace:
 
     def load_config(self, path: str) -> Config:
         with open(os.path.join(self.dir, path), "r") as f:
+            # consider loading the env vars first and then parsing the depsets
             data = yaml.safe_load(f.read())
-            return Config.from_dict(data)
+            envs = Config.parse_envs(data.get("envs", []))
+            return Config.from_dict(data, envs)

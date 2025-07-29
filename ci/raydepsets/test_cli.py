@@ -64,7 +64,7 @@ class TestCli(unittest.TestCase):
                 workspace_dir=tmpdir,
             )
             with self.assertRaises(KeyError):
-                manager.get_depset("fake_depset")
+                manager.get_depset("fake_depset", None)
 
     def test_uv_binary_exists(self):
         assert uv_binary() is not None
@@ -186,6 +186,7 @@ class TestCli(unittest.TestCase):
             manager.subset(
                 source_depset="general_depset",
                 requirements=["requirements_test.txt"],
+                env=None,
                 args=["--no-annotate", "--no-header"] + DEFAULT_UV_FLAGS.copy(),
                 name="subset_general_depset",
                 output="requirements_compiled_subset_general.txt",
@@ -221,6 +222,7 @@ class TestCli(unittest.TestCase):
                 manager.subset(
                     source_depset="general_depset",
                     requirements=["requirements_compiled_test.txt"],
+                    env=None,
                     args=["--no-annotate", "--no-header"] + DEFAULT_UV_FLAGS.copy(),
                     name="subset_general_depset",
                     output="requirements_compiled_subset_general.txt",
@@ -274,45 +276,34 @@ class TestCli(unittest.TestCase):
                 == f"{tmpdir}/requirements_test.txt"
             )
 
-    # def test_env_substitution(self):
-    #     with tempfile.TemporaryDirectory() as tmpdir:
-    #         os.environ["PY_VERSION"] = "py311"
-    #         _copy_data_to_tmpdir(tmpdir)
-    #         output_fp = Path(tmpdir) / "test.config.yaml"
-    #         _replace_in_file(
-    #             output_fp,
-    #             "requirements_compiled_general_py311.txt",
-    #             "requirements_compiled_general_$PY_VERSION.txt",
-    #         )
-    #         manager = DependencySetManager(
-    #             config_path="test.config.yaml",
-    #             workspace_dir=tmpdir,
-    #         )
-    #         assert os.getenv("PY_VERSION") == "py311"
-    #         assert (
-    #             "requirements_compiled_general_py311.txt"
-    #             == manager.get_depset("env_test_depset").output
-    #         )
+    def test_env(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _copy_data_to_tmpdir(tmpdir)
+            manager = DependencySetManager(
+                config_path="test.config.yaml",
+                workspace_dir=tmpdir,
+            )
+            assert (
+                "requirements_compiled_general_py311_cpu.txt"
+                == manager.get_depset("env_test_depset", manager.config.envs[0]).output
+            )
 
-    # def test_env_substitution_with_brackets(self):
-    #     with tempfile.TemporaryDirectory() as tmpdir:
-    #         os.environ["PY_VERSION"] = "py311"
-    #         _copy_data_to_tmpdir(tmpdir)
-    #         output_fp = Path(tmpdir) / "test.config.yaml"
-    #         _replace_in_file(
-    #             output_fp,
-    #             "requirements_compiled_general_py311.txt",
-    #             "requirements_compiled_general_${PY_VERSION}.txt",
-    #         )
-    #         manager = DependencySetManager(
-    #             config_path="test.config.yaml",
-    #             workspace_dir=tmpdir,
-    #         )
-    #         assert os.getenv("PY_VERSION") == "py311"
-    #         assert (
-    #             "requirements_compiled_general_py311.txt"
-    #             == manager.get_depset("env_test_depset").output
-    #         )
+    def test_env_substitution_with_brackets(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _copy_data_to_tmpdir(tmpdir)
+            _replace_in_file(
+                Path(tmpdir) / "test.config.yaml",
+                "requirements_compiled_general_${PYTHON_VERSION}_${CUDA_VERSION}.txt",
+                "requirements_compiled_general_${PYTHON_VERSION}_$CUDA_VERSION.txt",
+            )
+            manager = DependencySetManager(
+                config_path="test.config.yaml",
+                workspace_dir=tmpdir,
+            )
+            assert (
+                "requirements_compiled_general_py311_cpu.txt"
+                == manager.get_depset("env_test_depset", manager.config.envs[0]).output
+            )
 
 
 def _copy_data_to_tmpdir(tmpdir):
