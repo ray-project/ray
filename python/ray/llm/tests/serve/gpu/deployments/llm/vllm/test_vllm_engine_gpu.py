@@ -7,11 +7,11 @@ from ray.llm._internal.serve.deployments.llm.vllm.vllm_engine import VLLMEngine
 
 
 @pytest.mark.asyncio
-def test_vllm_engine_start_with_custom_resource_bundle(
+async def test_vllm_engine_start_with_custom_resource_bundle(
     # defined in conftest.py
     model_smolvlm_256m
 ):
-    """Test vLLM engine start with custom resource bundle."""
+    """vLLM engine starts with custom resource bundle."""
     llm_config = LLMConfig(
         model_loading_config=ModelLoadingConfig(
             model_id="smolvlm-256m",
@@ -32,6 +32,6 @@ def test_vllm_engine_start_with_custom_resource_bundle(
     )
 
     engine = VLLMEngine(llm_config)
-    asyncio.run(engine.start())
-    asyncio.run(engine.check_health())
+    await engine.start()
+    await engine.check_health()
     engine.shutdown()
