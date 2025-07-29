@@ -1538,7 +1538,7 @@ def start_raylet(
     session_dir: str,
     resource_dir: str,
     log_dir: str,
-    resource_spec,
+    resource_and_label_spec,
     plasma_directory: str,
     fallback_directory: str,
     object_store_memory: int,
@@ -1572,7 +1572,6 @@ def start_raylet(
     env_updates: Optional[dict] = None,
     node_name: Optional[str] = None,
     webui: Optional[str] = None,
-    labels: Optional[dict] = None,
 ):
     """Start a raylet, which is a combined local scheduler and object manager.
 
@@ -1594,7 +1593,7 @@ def start_raylet(
         session_dir: The path of this session.
         resource_dir: The path of resource of this session .
         log_dir: The path of the dir where log files are created.
-        resource_spec: Resources for this raylet.
+        resource_and_label_spec: Resources and key-value labels for this raylet.
         plasma_directory: A directory where the Plasma memory mapped files will
             be created.
         fallback_directory: A directory where the Object store fallback files will be created.
@@ -1649,7 +1648,6 @@ def start_raylet(
         env_updates: Environment variable overrides.
         node_name: The name of the node.
         webui: The url of the UI.
-        labels: The key-value labels of the node.
     Returns:
         ProcessInfo for the process that was started.
     """
@@ -1658,8 +1656,9 @@ def start_raylet(
     if use_valgrind and use_profiler:
         raise ValueError("Cannot use valgrind and profiler at the same time.")
 
-    assert resource_spec.resolved()
-    static_resources = resource_spec.to_resource_dict()
+    # Get the static resources and labels from the resolved ResourceAndLabelSpec
+    static_resources = resource_and_label_spec.to_resource_dict()
+    labels = resource_and_label_spec.labels
 
     # Limit the number of workers that can be started in parallel by the
     # raylet. However, make sure it is at least 1.
@@ -1907,7 +1906,7 @@ def start_raylet(
     if worker_port_list is not None:
         command.append(f"--worker_port_list={worker_port_list}")
     command.append(
-        "--num_prestart_python_workers={}".format(int(resource_spec.num_cpus))
+        "--num_prestart_python_workers={}".format(int(resource_and_label_spec.num_cpus))
     )
     command.append(
         "--dashboard_agent_command={}".format(
