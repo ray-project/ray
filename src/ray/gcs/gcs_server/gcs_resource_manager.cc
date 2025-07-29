@@ -219,9 +219,6 @@ void GcsResourceManager::HandleGetAllResourceUsage(
       for (const auto &resource_pair : demand.first.shape) {
         (*demand_proto->mutable_shape())[resource_pair.first] = resource_pair.second;
       }
-      for (const auto &selector : demand.first.label_selectors) {
-        *demand_proto->add_label_selectors() = selector;
-      }
       for (auto &selector : demand.first.label_selectors) {
         *demand_proto->add_label_selectors() = std::move(selector);
       }
