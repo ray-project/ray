@@ -268,7 +268,6 @@ if setup_spec.type == SetupType.RAY:
             "starlette",
             "fastapi",
             "watchfiles",
-            "celery",
         ],
         "tune": [
             "pandas",
@@ -296,6 +295,15 @@ if setup_spec.type == SetupType.RAY:
                 "grpcio >= 1.32.0; python_version < '3.10'",  # noqa:E501
                 "grpcio >= 1.42.0; python_version >= '3.10'",  # noqa:E501
                 "pyOpenSSL",
+            ]
+        )
+    )
+
+    setup_spec.extras["serve-async-inference"] = list(
+        set(
+            setup_spec.extras["serve"]
+            + [
+                "celery",
             ]
         )
     )
