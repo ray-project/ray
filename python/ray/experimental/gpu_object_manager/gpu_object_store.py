@@ -101,7 +101,7 @@ class GPUObjectMetadata:
     data: List["torch.Tensor"]
     # Whether the GPU object is the primary copy.
     is_primary: bool
-    # The number of readers for the GPU object.
+    # The number of reads allowed to the GPU object before it will be GCed from this actor. Only used if is_primary=False.
     # This is used to implement garbage collection for receiver actors,
     # handling cases where the same GPU object reference is passed to the
     # same actor task multiple times. For sender actors, we still rely on
