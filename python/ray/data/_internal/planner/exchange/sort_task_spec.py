@@ -141,8 +141,9 @@ class SortTaskSpec(ExchangeTaskSpec):
         if limit is not None and len(boundaries) == 0:
             # Fast path – local top-k, no partitioning.
             blk = accessor.sort(sort_key)
-            if blk.num_rows > limit:
-                blk = BlockAccessor.for_block(blk).slice(0, limit)
+            blk_accessor = BlockAccessor.for_block(blk)
+            if blk_accessor.num_rows() > limit:
+                blk = blk_accessor.slice(0, limit)
             out = [blk]
         else:
             out = accessor.sort_and_partition(boundaries, sort_key)
@@ -170,8 +171,10 @@ class SortTaskSpec(ExchangeTaskSpec):
         ).merge_sorted_blocks(normalized_blocks, sort_key)
 
         # Final trimming to global top-k.
-        if limit is not None and blocks.num_rows > limit:
-            blocks = BlockAccessor.for_block(blocks).slice(0, limit)
+        if limit is not None:
+            blocks_accessor = BlockAccessor.for_block(blocks)
+            if blocks_accessor.num_rows() > limit:
+                blocks = blocks_accessor.slice(0, limit)
         return blocks, meta_with_schema
 
     @staticmethod
