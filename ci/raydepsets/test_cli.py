@@ -396,9 +396,9 @@ def _save_packages_to_file(filepath, packages):
 
 
 def _save_file_as(input_file, output_file):
-    with open(input_file, "r") as f:
+    with open(input_file, "rb") as f:
         contents = f.read()
-    with open(output_file, "w") as f:
+    with open(output_file, "wb") as f:
         f.write(contents)
 
 
