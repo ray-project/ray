@@ -274,6 +274,52 @@ class TestCli(unittest.TestCase):
                 == f"{tmpdir}/requirements_test.txt"
             )
 
+    def test_expand(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _copy_data_to_tmpdir(tmpdir)
+            _save_packages_to_file(
+                Path(tmpdir) / "requirements_expanded.txt",
+                ["six"],
+            )
+            _save_file_as(
+                Path(tmpdir) / "requirement_constraints_test.txt",
+                Path(tmpdir) / "requirement_constraints_expand.txt",
+            )
+            _append_to_file(
+                Path(tmpdir) / "requirement_constraints_expand.txt",
+                "six==1.17.0",
+            )
+            manager = DependencySetManager(
+                config_path="test.config.yaml",
+                workspace_dir=tmpdir,
+            )
+            manager.compile(
+                constraints=["requirement_constraints_test.txt"],
+                requirements=["requirements_test.txt"],
+                args=["--no-annotate", "--no-header"] + DEFAULT_UV_FLAGS.copy(),
+                name="general_depset",
+                output="requirements_compiled_general.txt",
+            )
+            manager.compile(
+                constraints=[],
+                requirements=["requirements_expanded.txt"],
+                args=["--no-annotate", "--no-header"] + DEFAULT_UV_FLAGS.copy(),
+                name="expanded_depset",
+                output="requirements_compiled_expanded.txt",
+            )
+            manager.expand(
+                depsets=["general_depset", "expanded_depset"],
+                constraints=["requirement_constraints_expand.txt"],
+                args=["--no-annotate", "--no-header"] + DEFAULT_UV_FLAGS.copy(),
+                name="expand_general_depset",
+                output="requirements_compiled_expand_general.txt",
+            )
+            output_file = Path(tmpdir) / "requirements_compiled_expand_general.txt"
+            output_text = output_file.read_text()
+            output_file_valid = Path(tmpdir) / "requirements_compiled_test_expand.txt"
+            output_text_valid = output_file_valid.read_text()
+            assert output_text == output_text_valid
+
 
 def _copy_data_to_tmpdir(tmpdir):
     shutil.copytree(
@@ -297,6 +343,18 @@ def _save_packages_to_file(filepath, packages):
     with open(filepath, "w") as f:
         for package in packages:
             f.write(package + "\n")
+
+
+def _save_file_as(input_file, output_file):
+    with open(input_file, "rb") as f:
+        contents = f.read()
+    with open(output_file, "wb") as f:
+        f.write(contents)
+
+
+def _append_to_file(filepath, new):
+    with open(filepath, "a") as f:
+        f.write(new + "\n")
 
 
 if __name__ == "__main__":
