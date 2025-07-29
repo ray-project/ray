@@ -308,7 +308,7 @@ cdef class InnerGcsClient:
         return asyncio.wrap_future(fut)
 
     def drain_nodes(
-        self, node_ids: Sequence[NodeID], timeout: Optional[int | float] = None
+        self, node_ids: Sequence[bytes], timeout: Optional[int | float] = None
     ) -> List[bytes]:
         """returns a list of node_ids that are successfully drained."""
         cdef:
