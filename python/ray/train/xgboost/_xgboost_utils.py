@@ -102,7 +102,7 @@ class RayReportCallback(TrainingCallback):
 
         This method needs to be implemented by subclasses.
         """
-        pass
+        raise NotImplementedError
 
     @abstractmethod
     def _save_and_report_checkpoint(self, report_dict: Dict, model: Booster):
@@ -110,7 +110,7 @@ class RayReportCallback(TrainingCallback):
 
         This method needs to be implemented by subclasses.
         """
-        pass
+        raise NotImplementedError
 
     @abstractmethod
     def _report_metrics(self, report_dict: Dict):
@@ -118,7 +118,7 @@ class RayReportCallback(TrainingCallback):
 
         This method needs to be implemented by subclasses.
         """
-        pass
+        raise NotImplementedError
 
     def after_iteration(self, model: Booster, epoch: int, evals_log: Dict):
         self._evals_log = evals_log
