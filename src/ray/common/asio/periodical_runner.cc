@@ -28,6 +28,10 @@ PeriodicalRunner::PeriodicalRunner(instrumented_io_context &io_service)
 
 PeriodicalRunner::~PeriodicalRunner() {
   RAY_LOG(DEBUG) << "PeriodicalRunner is destructed";
+  Stop();
+}
+
+void PeriodicalRunner::Stop() {
   absl::MutexLock lock(&mutex_);
   for (const auto &timer : timers_) {
     timer->cancel();
