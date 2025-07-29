@@ -181,10 +181,11 @@ NVSHMEM_VERSION="3.2.5-1"
     export CMAKE_PREFIX_PATH="${EP_TEMP_DIR}/nvshmem_install"
 
     # build and install pplx, require pytorch installed
+    git clone https://github.com/ppl-ai/pplx-kernels
+    cd pplx-kernels
     # using a specific commit to make the build deterministic:
     # https://github.com/ppl-ai/pplx-kernels/commit/1d76f488d794f01dc0e895cd746b235392379757
-    git clone --branch 1d76f488d794f01dc0e895cd746b235392379757 --single-branch https://github.com/ppl-ai/pplx-kernels
-    cd pplx-kernels
+    git checkout 1d76f488d794f01dc0e895cd746b235392379757
     # see https://github.com/pypa/pip/issues/9955#issuecomment-838065925
     # PIP_NO_BUILD_ISOLATION=0 disables build isolation
     PIP_NO_BUILD_ISOLATION=0 TORCH_CUDA_ARCH_LIST=9.0a+PTX pip install . --no-deps -v
