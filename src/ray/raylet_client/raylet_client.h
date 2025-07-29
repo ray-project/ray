@@ -483,6 +483,8 @@ class RayletClient : public RayletClientInterface {
   void GetNodeStats(const rpc::GetNodeStatsRequest &request,
                     const rpc::ClientCallback<rpc::GetNodeStatsReply> &callback) override;
 
+  virtual ~RayletClient() = default;
+
  private:
   /// gRPC client to the NodeManagerService.
   std::shared_ptr<rpc::NodeManagerClient> grpc_client_;
