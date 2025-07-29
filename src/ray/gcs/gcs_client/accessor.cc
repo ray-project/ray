@@ -639,7 +639,7 @@ void NodeInfoAccessor::AsyncSubscribeToNodeChange(
   fetch_node_data_operation_ = [this](const StatusCallback &done_callback) {
     AsyncGetAll(
         [this, done_callback](const Status &status,
-                     std::vector<rpc::GcsNodeInfo> &&node_info_list) {
+                              std::vector<rpc::GcsNodeInfo> &&node_info_list) {
           for (auto &node_info : node_info_list) {
             HandleNotification(std::move(node_info));
           }

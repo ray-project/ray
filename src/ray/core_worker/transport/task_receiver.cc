@@ -166,7 +166,8 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
         }
       }
     }
-    if (status.ShouldExitWorker()) {
+    if (status.IsIntentionalSystemExit() || status.IsUnexpectedSystemExit() ||
+        status.IsCreationTaskError()) {
       // Don't allow the worker to be reused, even though the reply status is OK.
       // The worker will be shutting down shortly.
       reply->set_worker_exiting(true);
@@ -177,8 +178,9 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
         accepted_send_reply_callback(status, nullptr, nullptr);
       }
     } else {
+      RAY_CHECK_OK(status);
       RAY_CHECK(objects_valid);
-      accepted_send_reply_callback(status, nullptr, nullptr);
+      accepted_send_reply_callback(Status::OK(), nullptr, nullptr);
     }
   };
 
