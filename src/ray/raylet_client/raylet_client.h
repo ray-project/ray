@@ -224,6 +224,8 @@ class RayletClientInterface {
   virtual void GetNodeStats(
       const rpc::GetNodeStatsRequest &request,
       const rpc::ClientCallback<rpc::GetNodeStatsReply> &callback) = 0;
+
+  virtual ~RayletClientInterface() = default;
 };
 
 namespace raylet {
@@ -482,8 +484,6 @@ class RayletClient : public RayletClientInterface {
 
   void GetNodeStats(const rpc::GetNodeStatsRequest &request,
                     const rpc::ClientCallback<rpc::GetNodeStatsReply> &callback) override;
-
-  virtual ~RayletClient() = default;
 
  private:
   /// gRPC client to the NodeManagerService.
