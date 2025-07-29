@@ -139,8 +139,9 @@ void GcsNodeManager::HandleCheckAlive(rpc::CheckAliveRequest request,
                                       rpc::CheckAliveReply *reply,
                                       rpc::SendReplyCallback send_reply_callback) {
   reply->set_ray_version(kRayVersion);
-  for (const auto &addr : request.raylet_address()) {
-    bool is_alive = node_map_.right.count(addr) != 0;
+  for (const auto &id : request.node_ids()) {
+    const auto node_id = NodeID::FromBinary(id);
+    const bool is_alive = alive_nodes_.contains(node_id);
     reply->mutable_raylet_alive()->Add(is_alive);
   }
 
@@ -339,7 +340,6 @@ void GcsNodeManager::AddNode(std::shared_ptr<rpc::GcsNodeInfo> node) {
   if (iter == alive_nodes_.end()) {
     auto node_addr =
         node->node_manager_address() + ":" + std::to_string(node->node_manager_port());
-    node_map_.insert(NodeIDAddrBiMap::value_type(node_id, node_addr));
     alive_nodes_.emplace(node_id, node);
     // Notify all listeners.
     for (auto &listener : node_added_listeners_) {
@@ -390,7 +390,6 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
     stats::NodeFailureTotal.Record(1);
     // Remove from alive nodes.
     alive_nodes_.erase(iter);
-    node_map_.left.erase(node_id);
     // Remove from draining nodes if present.
     draining_nodes_.erase(node_id);
     if (death_info->reason() == rpc::NodeDeathInfo::UNEXPECTED_TERMINATION) {
