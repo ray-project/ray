@@ -446,22 +446,22 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
 
     # === Miscellaneous metrics ===
     # Use "metrics_group: "misc" in the metadata for new metrics in this section.
-    cpu_budget: int = metric_field(
+    cpu_budget: float = metric_field(
         default=0,
         description="CPU budget for the operator",
         metrics_group=MetricsGroup.MISC,
     )
-    gpu_budget: int = metric_field(
+    gpu_budget: float = metric_field(
         default=0,
         description="GPU budget for the operator",
         metrics_group=MetricsGroup.MISC,
     )
-    memory_budget: int = metric_field(
+    memory_budget: float = metric_field(
         default=0,
         description="Memory budget for the operator",
         metrics_group=MetricsGroup.MISC,
     )
-    object_store_memory_budget: int = metric_field(
+    object_store_memory_budget: float = metric_field(
         default=0,
         description="Object store memory budget for the operator",
         metrics_group=MetricsGroup.MISC,
