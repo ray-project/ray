@@ -1458,11 +1458,8 @@ void GcsActorManager::RestartActor(const ActorID &actor_id,
       (need_reschedule && max_restarts > 0 && mutable_actor_table_data->preempted())) {
     // num_restarts must be set before updating GCS, or num_restarts will be inconsistent
     // between memory cache and storage.
-    if (mutable_actor_table_data->preempted()) {
-      // Restarting from preemptions only resets the preempted flag but does not
-      // increment num_restarts.
-      mutable_actor_table_data->set_preempted(false);
-    } else {
+    if (!mutable_actor_table_data->preempted()) {
+      // Restarting from preemptions does not increment num_restarts.
       mutable_actor_table_data->set_num_restarts(num_restarts + 1);
     }
     actor->UpdateState(rpc::ActorTableData::RESTARTING);
@@ -1608,6 +1605,7 @@ void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &ac
   auto node_id = actor->GetNodeID();
   mutable_actor_table_data->set_node_id(node_id.Binary());
   mutable_actor_table_data->set_repr_name(reply.actor_repr_name());
+  mutable_actor_table_data->set_preempted(false);
   RAY_CHECK(!worker_id.IsNil());
   RAY_CHECK(!node_id.IsNil());
   RAY_CHECK(created_actors_[node_id].emplace(worker_id, actor_id).second);

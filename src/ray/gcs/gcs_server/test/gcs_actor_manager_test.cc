@@ -1703,7 +1703,6 @@ TEST_F(GcsActorManagerTest, TestRestartPreemptedActor) {
   gcs_actor_manager_->OnWorkerDead(new_node_id, new_worker_id);
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::RESTARTING);
   ASSERT_EQ(actor->GetActorTableData().num_restarts(), 1);  // Should not increment
-  ASSERT_FALSE(actor->GetActorTableData().preempted());     // Turn preempted back
 
   // Make the actor alive on another node again
   auto new_address_2 = RandomAddress();
@@ -1714,6 +1713,7 @@ TEST_F(GcsActorManagerTest, TestRestartPreemptedActor) {
   io_service_.run_one();
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::ALIVE);
   ASSERT_EQ(actor->GetActorTableData().num_restarts(), 1);
+  ASSERT_FALSE(actor->GetActorTableData().preempted());  // Turn preempted back
 
   // Third restart: actor is NOT preempted, so num_restarts should not increment
   gcs_actor_manager_->OnWorkerDead(new_node_id_2, new_worker_id_2);
