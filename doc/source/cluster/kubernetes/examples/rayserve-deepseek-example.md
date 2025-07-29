@@ -9,7 +9,7 @@ A DeepSeek model requires 2 nodes, each equipped with 8 H100 80 GB GPUs.
 It should be deployable on Kubernetes clusters that meet this requirement.
 This guide provides instructions for setting up a GKE cluster using [A3 High](https://cloud.google.com/compute/docs/gpus#a3-high) or [A3 Mega](https://cloud.google.com/compute/docs/gpus#a3-mega) machine types.
 
-Before creating the cluster, ensure that your project has sufficient [quota](https://pantheon.corp.google.com/iam-admin/quotas) for the required accelerators.
+Before creating the cluster, ensure that your project has sufficient [quota](https://console.cloud.google.com/iam-admin/quotas) for the required accelerators.
 
 ## Step 1: Create a Kubernetes cluster on GKE
 Run this command and all following commands on your local machine or on the [Google Cloud Shell](https://cloud.google.com/shell). If running from your local machine, you need to install the [Google Cloud SDK](https://cloud.google.com/sdk/docs/install). 
@@ -60,13 +60,13 @@ Install the most recent stable KubeRay operator from the Helm repository by foll
 
 ## Step 3: Deploy a RayService
 
-Create a RayService custom resource by running the following command:
+Deploy DeepSeek-R1 as a RayService custom resource by running the following command:
 
 ```sh
 kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-service.deepseek.yaml
 ```
 
-This step sets up a custom Ray Serve application to serve the `deepseek-ai/DeepSeek-R1` model on 2 worker nodes. You can inspect and modify the `serveConfigV2` section in the YAML file to learn more about the Serve application:
+This step sets up a custom Ray Serve application to serve the `deepseek-ai/DeepSeek-R1` model on two worker nodes. You can inspect and modify the `serveConfigV2` section in the YAML file to learn more about the Serve application:
 ```yaml
 serveConfigV2: |
   applications:
