@@ -32,6 +32,7 @@ BUILD_JAVA = os.getenv("RAY_INSTALL_JAVA") == "1"
 SKIP_BAZEL_BUILD = os.getenv("SKIP_BAZEL_BUILD") == "1"
 BAZEL_ARGS = os.getenv("BAZEL_ARGS")
 BAZEL_LIMIT_CPUS = os.getenv("BAZEL_LIMIT_CPUS")
+DUMMY_WHEEL = os.getenv("DUMMY_WHEEL") == "1"
 
 THIRDPARTY_SUBDIR = os.path.join("ray", "thirdparty_files")
 RUNTIME_ENV_AGENT_THIRDPARTY_SUBDIR = os.path.join(
@@ -95,7 +96,7 @@ class SetupSpec:
         self.extras: dict = {}
 
     def get_packages(self):
-        if self.type == SetupType.RAY:
+        if self.type == SetupType.RAY and not DUMMY_WHEEL:
             return setuptools.find_packages(exclude=("tests", "*.tests", "*.tests.*"))
         else:
             return []
