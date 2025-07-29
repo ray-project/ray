@@ -125,7 +125,6 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
         c_bool IsTimedOut()
         c_bool IsInvalidArgument()
         c_bool IsInterrupted()
-        c_bool ShouldExitWorker()
         c_bool IsObjectNotFound()
         c_bool IsNotFound()
         c_bool IsObjectUnknownOwner()

@@ -658,13 +658,13 @@ Status SendGetReply(const std::shared_ptr<Client> &client,
   return PlasmaSend(client, MessageType::PlasmaGetReply, &fbb, message);
 }
 
-Status ReadGetReply(uint8_t *data,
-                    size_t size,
-                    ObjectID object_ids[],
-                    PlasmaObject plasma_objects[],
-                    int64_t num_objects,
-                    std::vector<MEMFD_TYPE> &store_fds,
-                    std::vector<int64_t> &mmap_sizes) {
+void ReadGetReply(uint8_t *data,
+                  size_t size,
+                  ObjectID object_ids[],
+                  PlasmaObject plasma_objects[],
+                  int64_t num_objects,
+                  std::vector<MEMFD_TYPE> &store_fds,
+                  std::vector<int64_t> &mmap_sizes) {
   RAY_DCHECK(data);
   auto message = flatbuffers::GetRoot<fb::PlasmaGetReply>(data);
   RAY_DCHECK(VerifyFlatbuffer(message, data, size));
@@ -692,7 +692,6 @@ Status ReadGetReply(uint8_t *data,
         {INT2FD(message->store_fds()->Get(i)), message->unique_fd_ids()->Get(i)});
     mmap_sizes.push_back(message->mmap_sizes()->Get(i));
   }
-  return Status::OK();
 }
 
 }  // namespace plasma

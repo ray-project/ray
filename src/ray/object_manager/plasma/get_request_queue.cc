@@ -62,10 +62,10 @@ void GetRequestQueue::AddRequest(const std::shared_ptr<ClientInterface> &client,
   auto get_request = std::make_shared<GetRequest>(
       io_context_, client, object_ids, is_from_worker, unique_ids.size());
   for (const auto &object_id : unique_ids) {
-    // Check if this object is already present
-    // locally. If so, record that the object is being used and mark it as accounted for.
+    // Check if this object is already present locally. If so, record that the object is
+    // being used and mark it as accounted for.
     auto entry = object_lifecycle_mgr_.GetObject(object_id);
-    if (entry && entry->Sealed()) {
+    if (entry != nullptr && entry->Sealed()) {
       // Update the get request to take into account the present object.
       auto *plasma_object = &get_request->objects[object_id];
       entry->ToPlasmaObject(plasma_object, /* checksealed */ true);

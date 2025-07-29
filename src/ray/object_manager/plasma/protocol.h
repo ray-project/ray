@@ -163,13 +163,13 @@ Status SendGetReply(const std::shared_ptr<Client> &client,
                     const std::vector<MEMFD_TYPE> &store_fds,
                     const std::vector<int64_t> &mmap_sizes);
 
-Status ReadGetReply(uint8_t *data,
-                    size_t size,
-                    ObjectID object_ids[],
-                    PlasmaObject plasma_objects[],
-                    int64_t num_objects,
-                    std::vector<MEMFD_TYPE> &store_fds,
-                    std::vector<int64_t> &mmap_sizes);
+void ReadGetReply(uint8_t *data,
+                  size_t size,
+                  ObjectID object_ids[],
+                  PlasmaObject plasma_objects[],
+                  int64_t num_objects,
+                  std::vector<MEMFD_TYPE> &store_fds,
+                  std::vector<int64_t> &mmap_sizes);
 
 /* Plasma Release message functions. */
 
