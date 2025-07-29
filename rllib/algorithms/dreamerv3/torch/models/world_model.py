@@ -124,6 +124,7 @@ class WorldModel(nn.Module):
 
         # Posterior predictor consisting of an MLP and a RepresentationLayer:
         # [ht, lt] -> zt.
+        # In Danijar's code, this is called: `obs_out`.
         self.posterior_mlp = MLP(
             input_size=(self.num_gru_units + encoder.output_size[0]),
             model_size=self.model_size,
@@ -133,6 +134,7 @@ class WorldModel(nn.Module):
             num_dense_layers=1,
         )
         # The (posterior) z-state generating layer.
+        # In Danijar's code, this is called: `obs_stats`.
         self.posterior_representation_layer = representation_layer.RepresentationLayer(
             input_size=get_dense_hidden_units(self.model_size),
             model_size=self.model_size,
@@ -145,6 +147,8 @@ class WorldModel(nn.Module):
         h_plus_z_flat = self.num_gru_units + z_flat
 
         # Dynamics (prior z-state) predictor: ht -> z^t
+        # In Danijar's code, the layers in this network are called:
+        # `img_out` (1 Linear) and `img_stats` (representation layer).
         self.dynamics_predictor = DynamicsPredictor(
             input_size=self.num_gru_units, model_size=self.model_size
         )
@@ -158,6 +162,8 @@ class WorldModel(nn.Module):
             torch.zeros(self.num_gru_units), requires_grad=True
         )
         # The actual sequence model containing the GRU layer.
+        # In Danijar's code, the layers in this network are called:
+        # `img_in` (1 Linear) and `gru` (custom GRU implementation).
         self.sequence_model = SequenceModel(
             # Only z- and a-state go into pre-layer. The output of that goes then
             # into GRU (together with h-state).
@@ -405,7 +411,6 @@ class WorldModel(nn.Module):
     ) -> "torch.Tensor":
         # Fold time dimension for possible CNN pass.
         shape = observations.shape
-        B, T = shape[0], shape[1]
         observations = observations.view((-1,) + shape[2:])
         # Compute bare encoder outputs (not including z, which is computed in next step
         # with involvement of the previous output (initial_h) of the sequence model).

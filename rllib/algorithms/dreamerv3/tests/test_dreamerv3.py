@@ -170,7 +170,10 @@ class TestDreamerV3(unittest.TestCase):
             # kernel=[1280, 256], (no bias), layernorm=[256],[256]
             # kernel=[256, 1] bias=[1]
             # XS sequence_model
-            # [[1026, 256], [256], [256], [256, 768], [256, 768], [2, 768]]
+            # [
+            # pre-MLP: kernel=[1026, 256], (no bias), layernorm=[256],[256], silu
+            # custom GRU: kernel=[512, 768], (no bias), layernorm=[768],[768]
+            # ]
             # XS decoder
             # kernel=[1280, 256], (no bias), layernorm=[256],[256]
             # kernel=[256, 4] bias=[4]
@@ -249,7 +252,7 @@ class TestDreamerV3(unittest.TestCase):
             # Atari and CartPole spaces.
             for obs_space, num_actions, env_name in [
                 (gym.spaces.Box(-1.0, 0.0, (4,), np.float32), 2, "cartpole"),
-                #(gym.spaces.Box(-1.0, 0.0, (64, 64, 3), np.float32), 6, "atari"),
+                (gym.spaces.Box(-1.0, 0.0, (64, 64, 3), np.float32), 6, "atari"),
             ]:
                 print(f"Testing model_size={model_size} on env-type: {env_name} ..")
                 config.environment(

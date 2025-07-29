@@ -66,6 +66,7 @@ class SequenceModel(nn.Module):
         # In Danijar's code, there is an additional layer (units=[model_size])
         # prior to the GRU (but always only with 1 layer), which is not mentioned in
         # the paper.
+        # In Danijar's code, this layer is called: `img_in`.
         self.pre_gru_layer = MLP(
             input_size=input_size,
             num_dense_layers=1,
@@ -74,14 +75,10 @@ class SequenceModel(nn.Module):
         )
         gru_input_size = get_dense_hidden_units(model_size)
 
-        # TODO: Test using our own GRU unit w/ Normal init (just like Danijar's GRU).
+        # Use a custom GRU implementation w/ Normal init, layernorm, no bias
+        # (just like Danijar's GRU).
+        # In Danijar's code, this layer is called: `gru`.
         self.gru_unit = DreamerV3GRU(input_size=gru_input_size, cell_size=num_gru_units)
-        # self.gru_unit = nn.GRU(
-        #    input_size=gru_input_size,
-        #    hidden_size=num_gru_units,
-        #    batch_first=False,  # time major
-        # )
-        # END: TEST
 
         # Make sure GRU weights are initialized the exact same way as in tf keras.
         # Glorot Uniform initialization for weights
@@ -121,12 +118,21 @@ class DreamerV3GRU(nn.Module):
     def __init__(self, input_size, cell_size):
         super().__init__()
         self.cell_size = cell_size
-        self.linear = nn.Linear(input_size + self.cell_size, 3 * self.cell_size)
+        self.output_size = 3 * self.cell_size
+
+        self.linear = nn.Linear(
+            input_size + self.cell_size,
+            self.output_size,
+            bias=False,
+        )
         dreamerv3_normal_initializer(list(self.linear.parameters()))
+
+        self.layer_norm = nn.LayerNorm(self.output_size, eps=0.001)
 
     def forward(self, x, h):
         x = torch.cat([h, x], dim=-1)
         x = self.linear(x)
+        x = self.layer_norm(x)
         reset, cand, update = torch.split(x, self.cell_size, dim=-1)
         reset = torch.sigmoid(reset)
         cand = torch.tanh(reset * cand)
