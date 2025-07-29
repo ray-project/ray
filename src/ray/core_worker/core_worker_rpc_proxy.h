@@ -24,11 +24,12 @@
 namespace ray {
 namespace core {
 
+// Lock is unnecessary as SetCoreWorker is called only once and RPCs
+// are blocked until it is called.
 #define RAY_CORE_WORKER_RPC_PROXY(METHOD)                                    \
   void Handle##METHOD(rpc::METHOD##Request request,                          \
                       rpc::METHOD##Reply *reply,                             \
                       rpc::SendReplyCallback send_reply_callback) override { \
-    absl::MutexLock lock(&core_worker_mutex_);                               \
     core_worker_->Handle##METHOD(request, reply, send_reply_callback);       \
   }
 
@@ -87,7 +88,7 @@ class CoreWorkerServiceHandlerProxy : public rpc::CoreWorkerServiceHandler {
  private:
   absl::Mutex core_worker_mutex_;
   absl::CondVar core_worker_cv_;
-  CoreWorker *core_worker_ ABSL_GUARDED_BY(core_worker_mutex_) = nullptr;
+  CoreWorker *core_worker_ = nullptr;
 };
 
 }  // namespace core

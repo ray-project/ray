@@ -31,7 +31,7 @@
 #include "ray/common/runtime_env_common.h"
 #include "ray/common/task/task_util.h"
 #include "ray/core_worker/core_worker.h"
-#include "ray/core_worker/core_worker_service_handler_proxy.h"
+#include "ray/core_worker/core_worker_rpc_proxy.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/gcs/pb_util.h"
 #include "ray/stats/stats.h"
