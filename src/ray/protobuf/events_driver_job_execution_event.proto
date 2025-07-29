@@ -21,7 +21,7 @@ import "src/ray/protobuf/common.proto";
 
 package ray.rpc.events;
 
-// Message containing the execution information of a driver job. It can be used to 
+// Message containing the execution information of a driver job. It can be used to
 // capture the full state transition history.
 //
 // For static information associated with this event, see DriverJobDefinitionEvent.

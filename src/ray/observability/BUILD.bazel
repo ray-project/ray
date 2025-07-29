@@ -16,3 +16,84 @@ ray_cc_library(
         "@io_opentelemetry_cpp//sdk/src/metrics",
     ],
 )
+
+ray_cc_library(
+    name = "ray_event_interface",
+    hdrs = [
+        "ray_event_interface.h",
+    ],
+    deps = [
+        "//src/ray/protobuf:events_base_event_cc_proto",
+    ],
+)
+
+ray_cc_library(
+    name = "ray_event",
+    hdrs = [
+        "ray_event.h",
+    ],
+    deps = [
+        ":ray_event_interface",
+        "//src/ray/common:grpc_util",
+        "//src/ray/protobuf:gcs_cc_proto",
+        "@com_google_absl//absl/time",
+    ],
+)
+
+ray_cc_library(
+    name = "ray_driver_job_definition_event",
+    srcs = [
+        "ray_driver_job_definition_event.cc",
+    ],
+    hdrs = [
+        "ray_driver_job_definition_event.h",
+    ],
+    deps = [
+        ":ray_event",
+        "//src/ray/protobuf:events_driver_job_definition_event_cc_proto",
+    ],
+)
+
+ray_cc_library(
+    name = "ray_driver_job_execution_event",
+    srcs = [
+        "ray_driver_job_execution_event.cc",
+    ],
+    hdrs = [
+        "ray_driver_job_execution_event.h",
+    ],
+    deps =  [
+        ":ray_event",
+        "//src/ray/protobuf:events_driver_job_execution_event_cc_proto",
+    ],
+)
+
+ray_cc_library(
+    name = "ray_event_recorder_interface",
+    hdrs = [
+        "ray_event_recorder_interface.h",
+    ],
+    deps = [
+       ":ray_event",
+    ],
+)
+
+ray_cc_library(
+    name = "ray_event_recorder",
+    srcs = [
+        "ray_event_recorder.cc",
+    ],
+    hdrs = [
+        "ray_event_recorder.h",
+    ],
+    deps = [
+        ":ray_event",
+        ":ray_event_recorder_interface",
+        "//src/ray/common:asio",
+        "//src/ray/protobuf:events_event_aggregator_service_cc_proto",
+        "//src/ray/protobuf:gcs_cc_proto",
+        "//src/ray/rpc:event_aggregator_client",
+        "//src/ray/util:logging",
+        "@com_google_absl//absl/time",
+    ],
+)
