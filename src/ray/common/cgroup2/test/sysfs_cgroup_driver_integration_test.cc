@@ -105,7 +105,6 @@ class SysFsCgroupDriverIntegrationTest : public ::testing::Test {
     cleanup will happen inside the TearDownTestSuite method.
     */
   static void SetUpTestSuite() {
-    pause();
     // 1) Create the testing_cgroup_ under base_cgroup. This is the root node of the
     // cgroup subtree used by the tests in this file.
     auto testing_cgroup_or_status =
