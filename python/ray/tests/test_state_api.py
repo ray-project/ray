@@ -2198,7 +2198,7 @@ def test_list_get_nodes(ray_start_cluster):
         nodes = list_nodes(detail=True)
         for node in nodes:
             assert is_hex(node["node_id"])
-            assert node["labels"] == {"ray.io/node_id": node["node_id"]}
+            assert node["labels"] == {"ray.io/node-id": node["node_id"]}
             if node["node_name"] == "head_node":
                 assert node["is_head_node"]
                 assert node["state"] == "ALIVE"
