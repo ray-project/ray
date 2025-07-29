@@ -1079,12 +1079,12 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
     return;
   }
 
-  const bool was_already_dead = (actor->GetState() == rpc::ActorTableData::DEAD);
-
   gcs_actor_scheduler_->OnActorDestruction(it->second);
 
   it->second->GetMutableActorTableData()->set_timestamp(current_sys_time_ms());
   const auto actor = it->second;
+
+  const bool was_already_dead = (actor->GetState() == rpc::ActorTableData::DEAD);
 
   RAY_LOG(DEBUG) << "Try to kill actor " << actor->GetActorID() << ", with status "
                  << rpc::ActorTableData::ActorState_Name(actor->GetState()) << ", name "
