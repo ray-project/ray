@@ -323,9 +323,8 @@ void GcsAutoscalerStateManager::GetPendingResourceRequests(
     rpc::autoscaler::ClusterResourceState *state) {
   RAY_CHECK(thread_checker_.IsOnSameThread());
   auto aggregate_load = GetAggregatedResourceLoad();
-  for (const auto &[key, demand] : aggregate_load) {
+  for (auto &[key, demand] : aggregate_load) {
     const auto &shape = key.shape;
-    const auto &label_selectors = key.label_selectors;
 
     auto num_pending = demand.num_infeasible_requests_queued() + demand.backlog_size() +
                        demand.num_ready_requests_queued();
