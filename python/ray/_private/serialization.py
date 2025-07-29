@@ -265,8 +265,8 @@ class SerializationContext:
         Args:
             data: The data to deserialize.
             out_of_band_tensors: Tensors that were sent out-of-band. If this is
-            not None, then the serialized data will contain placeholders that
-            need to be replaced with these tensors.
+                not None, then the serialized data will contain placeholders
+                that need to be replaced with these tensors.
 
         Returns:
             Any: The deserialized object.

@@ -172,8 +172,7 @@ class GPUObjectStore:
         Args:
             obj_id: The object ID to wait for.
             timeout: The maximum time in seconds to wait for the object to be
-            present in the GPU object store. If not specified, wait
-            indefinitely.
+                present in the GPU object store. If not specified, wait indefinitely.
 
         Returns:
             The tensors in the GPU object.
@@ -192,8 +191,8 @@ class GPUObjectStore:
         Args:
             obj_id: The object ID to wait for.
             timeout: The maximum time in seconds to wait for the object to be
-            present in the GPU object store. If not specified, wait
-            indefinitely.
+                present in the GPU object store. If not specified, wait
+                indefinitely.
 
         Returns:
             The tensors in the GPU object.
@@ -204,7 +203,7 @@ class GPUObjectStore:
 
     def _wait_object(
         self, obj_id: str, timeout: Optional[float] = None
-    ) -> List["torch.Tensor"]:
+    ) -> None:
         """Helper method to wait for the GPU object to be present in the GPU object store.
         If the object is not present after the optional timeout, raise a
         TimeoutError.
@@ -212,8 +211,8 @@ class GPUObjectStore:
         Args:
             obj_id: The object ID to wait for.
             timeout: The maximum time in seconds to wait for the object to be
-            present in the GPU object store. If not specified, wait
-            indefinitely.
+                present in the GPU object store. If not specified, wait
+                indefinitely.
         """
         with self._object_present_cv:
             present = self._object_present_cv.wait_for(
