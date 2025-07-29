@@ -39,6 +39,7 @@ py_test_module_list(
         "team:core",
     ],
     deps = [
+        ":conftest",
         "//:ray_lib",
     ],
 )
