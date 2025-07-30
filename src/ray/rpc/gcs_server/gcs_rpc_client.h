@@ -177,8 +177,9 @@ class GcsRpcClient {
         channel_, client_call_manager);
     task_info_grpc_client_ =
         std::make_shared<GrpcClient<TaskInfoGcsService>>(channel_, client_call_manager);
-    event_export_grpc_client_ = std::make_shared<GrpcClient<EventExportGcsService>>(
-        channel_, client_call_manager);
+    ray_event_export_grpc_client_ =
+        std::make_shared<GrpcClient<RayEventExportGcsService>>(channel_,
+                                                               client_call_manager);
     autoscaler_state_grpc_client_ =
         std::make_shared<GrpcClient<autoscaler::AutoscalerStateService>>(
             channel_, client_call_manager);
@@ -396,9 +397,9 @@ class GcsRpcClient {
   /// Add one event data to GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD_FULL(ray::rpc,
                                   ray::rpc::events,
-                                  EventExportGcsService,
+                                  RayEventExportGcsService,
                                   AddEvent,
-                                  event_export_grpc_client_,
+                                  ray_event_export_grpc_client_,
                                   /*method_timeout_ms*/ -1,
                                   /*handle_payload_status=*/true, )
 
@@ -603,7 +604,7 @@ class GcsRpcClient {
   std::shared_ptr<GrpcClient<InternalKVGcsService>> internal_kv_grpc_client_;
   std::shared_ptr<GrpcClient<InternalPubSubGcsService>> internal_pubsub_grpc_client_;
   std::shared_ptr<GrpcClient<TaskInfoGcsService>> task_info_grpc_client_;
-  std::shared_ptr<GrpcClient<EventExportGcsService>> event_export_grpc_client_;
+  std::shared_ptr<GrpcClient<RayEventExportGcsService>> ray_event_export_grpc_client_;
   std::shared_ptr<GrpcClient<RuntimeEnvGcsService>> runtime_env_grpc_client_;
   std::shared_ptr<GrpcClient<autoscaler::AutoscalerStateService>>
       autoscaler_state_grpc_client_;

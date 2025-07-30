@@ -132,9 +132,9 @@ namespace rpc {
                       HANDLER,                 \
                       RayConfig::instance().gcs_max_active_rpcs_per_handler())
 
-#define EVENT_EXPORT_SERVICE_RPC_HANDLER(HANDLER) \
-  RPC_SERVICE_HANDLER(EventExportGcsService,      \
-                      HANDLER,                    \
+#define RAY_EVENT_EXPORT_SERVICE_RPC_HANDLER(HANDLER) \
+  RPC_SERVICE_HANDLER(RayEventExportGcsService,       \
+                      HANDLER,                        \
                       RayConfig::instance().gcs_max_active_rpcs_per_handler())
 
 #define NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(HANDLER) \
@@ -690,19 +690,19 @@ class TaskInfoGrpcService : public GrpcService {
   TaskInfoGcsServiceHandler &service_handler_;
 };
 
-class EventExportGcsServiceHandler {
+class RayEventExportGcsServiceHandler {
  public:
-  virtual ~EventExportGcsServiceHandler() = default;
+  virtual ~RayEventExportGcsServiceHandler() = default;
   virtual void HandleAddEvent(AddEventRequest request,
                               AddEventReply *reply,
                               SendReplyCallback send_reply_callback) = 0;
 };
 
-/// The `GrpcService` for `EventExportGcsService`.
-class EventExportGrpcService : public GrpcService {
+/// The `GrpcService` for `RayEventExportGcsService`.
+class RayEventExportGrpcService : public GrpcService {
  public:
-  explicit EventExportGrpcService(instrumented_io_context &io_service,
-                                  EventExportGcsServiceHandler &handler)
+  explicit RayEventExportGrpcService(instrumented_io_context &io_service,
+                                     RayEventExportGcsServiceHandler &handler)
       : GrpcService(io_service), service_handler_(handler) {}
 
  protected:
@@ -711,14 +711,14 @@ class EventExportGrpcService : public GrpcService {
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
       const ClusterID &cluster_id) override {
-    EVENT_EXPORT_SERVICE_RPC_HANDLER(AddEvent);
+    RAY_EVENT_EXPORT_SERVICE_RPC_HANDLER(AddEvent);
   }
 
  private:
   /// The grpc async service object.
-  EventExportGcsService::AsyncService service_;
+  RayEventExportGcsService::AsyncService service_;
   /// The service handler that actually handle the requests.
-  EventExportGcsServiceHandler &service_handler_;
+  RayEventExportGcsServiceHandler &service_handler_;
 };
 
 class InternalPubSubGcsServiceHandler {
@@ -775,7 +775,7 @@ using InternalKVHandler = InternalKVGcsServiceHandler;
 using InternalPubSubHandler = InternalPubSubGcsServiceHandler;
 using RuntimeEnvHandler = RuntimeEnvGcsServiceHandler;
 using TaskInfoHandler = TaskInfoGcsServiceHandler;
-using EventExportHandler = EventExportGcsServiceHandler;
+using RayEventExportHandler = RayEventExportGcsServiceHandler;
 
 }  // namespace rpc
 }  // namespace ray
