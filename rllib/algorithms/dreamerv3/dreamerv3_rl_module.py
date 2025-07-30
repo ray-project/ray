@@ -37,10 +37,6 @@ class DreamerV3RLModule(RLModule, abc.ABC):
         )
         model_size = self.model_config["model_size"]
 
-        # if self.model_config["use_float16"]:
-        #    tf.compat.v1.keras.layers.enable_v2_dtype_behavior()
-        #    tf.keras.mixed_precision.set_global_policy("mixed_float16")
-
         # Build encoder and decoder from catalog.
         self.encoder = self.catalog.build_encoder(framework=self.framework)
         self.decoder = self.catalog.build_decoder(framework=self.framework)
@@ -80,40 +76,6 @@ class DreamerV3RLModule(RLModule, abc.ABC):
         self.action_dist_cls = self.catalog.get_action_dist_cls(
             framework=self.framework
         )
-
-        # Perform a test `call()` to force building the dreamer model's variables.
-        # if self.framework == "tf2":
-        #    test_obs = np.tile(
-        #        np.expand_dims(self.observation_space.sample(), (0, 1)),
-        #        reps=(B, T) + (1,) * len(self.observation_space.shape),
-        #    )
-        #    if isinstance(self.action_space, gym.spaces.Discrete):
-        #        test_actions = np.tile(
-        #            np.expand_dims(
-        #                one_hot(
-        #                    self.action_space.sample(),
-        #                    depth=self.action_space.n,
-        #                ),
-        #                (0, 1),
-        #            ),
-        #            reps=(B, T, 1),
-        #        )
-        #    else:
-        #        test_actions = np.tile(
-        #            np.expand_dims(self.action_space.sample(), (0, 1)),
-        #            reps=(B, T, 1),
-        #        )
-        #
-        #    self.dreamer_model(
-        #        inputs=None,
-        #        observations=_convert_to_tf(test_obs, dtype=tf.float32),
-        #        actions=_convert_to_tf(test_actions, dtype=tf.float32),
-        #        is_first=_convert_to_tf(np.ones((B, T)), dtype=tf.bool),
-        #        start_is_terminated_BxT=_convert_to_tf(
-        #            np.zeros((B * T,)), dtype=tf.bool
-        #        ),
-        #        gamma=gamma,
-        #    )
 
         # Initialize the critic EMA net:
         self.critic.init_ema()

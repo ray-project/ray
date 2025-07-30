@@ -23,12 +23,11 @@ from ray.rllib.algorithms.dreamerv3 import dreamerv3
 from ray.rllib.connectors.env_to_module import FlattenObservations
 from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.env.wrappers.atari_wrappers import wrap_atari_for_new_api_stack
-from ray.rllib.utils.framework import try_import_tf, try_import_torch
+from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.numpy import one_hot
 from ray.rllib.utils.test_utils import check
 from ray import tune
 
-_, tf, _ = try_import_tf()
 torch, nn = try_import_torch()
 
 

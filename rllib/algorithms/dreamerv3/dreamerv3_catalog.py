@@ -62,12 +62,6 @@ class DreamerV3Catalog(Catalog):
                     gray_scaled=self.is_gray_scale,
                     model_size=self.model_size,
                 )
-            elif framework == "tf2":
-                from ray.rllib.algorithms.dreamerv3.tf.models.components import (
-                    cnn_atari,
-                )
-
-                return cnn_atari.CNNAtari(model_size=self.model_size)
             else:
                 raise ValueError(f"`framework={framework}` not supported!")
 
@@ -79,12 +73,6 @@ class DreamerV3Catalog(Catalog):
                     input_size=int(np.prod(self.observation_space.shape)),
                     model_size=self.model_size,
                 )
-
-            elif framework == "tf2":
-                from ray.rllib.algorithms.dreamerv3.tf.models.components import mlp
-
-                return mlp.MLP(model_size=self.model_size, name="vector_encoder")
-
             else:
                 raise ValueError(f"`framework={framework}` not supported!")
 
@@ -102,17 +90,6 @@ class DreamerV3Catalog(Catalog):
                     gray_scaled=self.is_gray_scale,
                     model_size=self.model_size,
                 )
-
-            elif framework == "tf2":
-                from ray.rllib.algorithms.dreamerv3.tf.models.components import (
-                    conv_transpose_atari,
-                )
-
-                return conv_transpose_atari.ConvTransposeAtari(
-                    gray_scaled=self.is_gray_scale,
-                    model_size=self.model_size,
-                )
-
             else:
                 raise ValueError(f"`framework={framework}` not supported!")
 
@@ -127,17 +104,6 @@ class DreamerV3Catalog(Catalog):
                     model_size=self.model_size,
                     observation_space=self.observation_space,
                 )
-
-            elif framework == "tf2":
-                from ray.rllib.algorithms.dreamerv3.tf.models.components import (
-                    vector_decoder,
-                )
-
-                return vector_decoder.VectorDecoder(
-                    model_size=self.model_size,
-                    observation_space=self.observation_space,
-                )
-
             else:
                 raise ValueError(f"`framework={framework}` not supported!")
 
@@ -149,10 +115,6 @@ class DreamerV3Catalog(Catalog):
 
         if framework == "torch":
             from ray.rllib.algorithms.dreamerv3.torch.models.world_model import (
-                WorldModel,
-            )
-        elif framework == "tf2":
-            from ray.rllib.algorithms.dreamerv3.tf.models.world_model import (
                 WorldModel,
             )
         else:
@@ -179,17 +141,6 @@ class DreamerV3Catalog(Catalog):
                 action_space=self.action_space,
                 model_size=self.model_size,
             )
-
-        elif framework == "tf2":
-            from ray.rllib.algorithms.dreamerv3.tf.models.actor_network import (
-                ActorNetwork,
-            )
-
-            return ActorNetwork(
-                action_space=self.action_space,
-                model_size=self.model_size,
-            )
-
         else:
             raise ValueError(f"`framework={framework}` not supported!")
 
@@ -203,13 +154,6 @@ class DreamerV3Catalog(Catalog):
                 input_size=self.h_plus_z_flat,
                 model_size=self.model_size,
             )
-
-        elif framework == "tf2":
-            from ray.rllib.algorithms.dreamerv3.tf.models.critic_network import (
-                CriticNetwork,
-            )
-
-            return CriticNetwork(model_size=self.model_size)
         else:
             raise ValueError(f"`framework={framework}` not supported!")
 
@@ -218,10 +162,6 @@ class DreamerV3Catalog(Catalog):
     ) -> Model:
         if framework == "torch":
             from ray.rllib.algorithms.dreamerv3.torch.models.dreamer_model import (
-                DreamerModel,
-            )
-        elif framework == "tf2":
-            from ray.rllib.algorithms.dreamerv3.tf.models.dreamer_model import (
                 DreamerModel,
             )
         else:

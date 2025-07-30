@@ -26,7 +26,7 @@ torch, nn = try_import_torch()
 
 
 class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
-    """Implements DreamerV3 losses and gradient-based update logic in TensorFlow.
+    """Implements DreamerV3 losses and gradient-based update logic in PyTorch.
 
     The critic EMA-copy update step can be found in the `DreamerV3Learner` base class,
     as it is framework independent.
