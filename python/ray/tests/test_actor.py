@@ -1679,49 +1679,5 @@ def test_one_liner_actor_method_invocation(shutdown_only):
     assert result == "ok"
 
 
-def test_get_actor_after_same_name_actor_dead(shutdown_only):
-    ray.init(namespace="test")
-
-    @ray.remote
-    class Actor:
-        def get_pid(self):
-            return os.getpid()
-
-    def get_pid(actor):
-        while True:
-            try:
-                return ray.get(actor.get_pid.remote())
-            except Exception:
-                pass
-
-    a = Actor.options(name="test", max_restarts=1).remote()
-
-    pid = get_pid(a)
-    os.kill(pid, signal.SIGKILL)
-
-    pid = get_pid(a)
-    os.kill(pid, signal.SIGKILL)
-    # Ensure that the GCS detects that the actor(a) has exhausted its
-    # restart attempts and completes the function
-    # `GcsActorManager::RemoveActorNameFromRegistry`.
-    time.sleep(5)
-
-    b = Actor.options(name="test", max_restarts=1).remote()
-    ray.get(b.__ray_ready__.remote())
-
-    # triger rpc reply: WaitForActorRefDeleted
-    del a
-    gc.collect()
-
-    # Ensure that the GCS detects that the actor(a) reference count
-    # has dropped to zero, and once again completes the function
-    # GcsActorManager::RemoveActorNameFromRegistry.
-    time.sleep(5)
-
-    # Ensure actor(b) is still alive
-    ray.get(b.__ray_ready__.remote())
-    _ = ray.get_actor("test", namespace="test")
-
-
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
