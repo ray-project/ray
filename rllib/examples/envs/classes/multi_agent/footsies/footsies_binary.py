@@ -1,12 +1,21 @@
 import stat
 import subprocess
+import time
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+import grpc
 import requests
 from pydantic import BaseModel
+
+from rllib.examples.envs.classes.multi_agent.footsies.game.proto import (
+    footsies_service_pb2 as footsies_pb2,
+)
+from rllib.examples.envs.classes.multi_agent.footsies.game.proto import (
+    footsies_service_pb2_grpc as footsies_pb2_grpc,
+)
 
 
 @dataclass
@@ -35,7 +44,7 @@ class Config(BaseModel):
     ] = "linux_server"
 
 
-class GameBinary:
+class FootsiesBinary:
     def __init__(self, config: Config):
         self._urls = BinaryUrls()
         self.config = config
@@ -60,35 +69,50 @@ class GameBinary:
 
     def _download_game_binary(self):
         chunk_size = 1024 * 1024  # 1MB
-        try:
-            with requests.get(self.url, stream=True) as response:
-                response.raise_for_status()
-                self.full_download_dir.mkdir(parents=True, exist_ok=True)
-                with open(self.full_download_path, "wb") as f:
-                    for chunk in response.iter_content(chunk_size=chunk_size):
-                        if chunk:
-                            f.write(chunk)
+
+        if Path(self.full_download_path).exists():
             print(
-                f"Downloaded game binary to {self.full_download_path}\n"
-                f"Binary size: {self.full_download_path.stat().st_size / 1024 / 1024:.1f} MB\n"
+                f"Game binary already exists at {self.full_download_path}, skipping download."
             )
-        except Exception as e:
-            print(f"Failed to download binary from {self.url}: {e}")
+        else:
+            try:
+                with requests.get(self.url, stream=True) as response:
+                    response.raise_for_status()
+                    self.full_download_dir.mkdir(parents=True, exist_ok=True)
+                    with open(self.full_download_path, "wb") as f:
+                        for chunk in response.iter_content(chunk_size=chunk_size):
+                            if chunk:
+                                f.write(chunk)
+                print(
+                    f"Downloaded game binary to {self.full_download_path}\n"
+                    f"Binary size: {self.full_download_path.stat().st_size / 1024 / 1024:.1f} MB\n"
+                )
+            except Exception as e:
+                print(f"Failed to download binary from {self.url}: {e}")
 
     def _unzip_game_binary(self):
-        self.full_extract_dir.mkdir(parents=True, exist_ok=True)
-        with zipfile.ZipFile(self.full_download_path, mode="r") as zip_ref:
-            zip_ref.extractall(self.full_extract_dir)
-
         self.renamed_path = self.full_extract_dir / "footsies_binaries"
-        if self.target_binary == "mac_windowed":
-            Path(str(self.full_download_path)[:-4] + ".app").rename(self.renamed_path)
+
+        if Path(self.renamed_path).exists():
+            print(
+                f"Game binary already extracted at {self.renamed_path}, skipping extraction."
+            )
         else:
-            Path(str(self.full_download_path)[:-4]).rename(self.renamed_path)
+            self.full_extract_dir.mkdir(parents=True, exist_ok=True)
+            with zipfile.ZipFile(self.full_download_path, mode="r") as zip_ref:
+                zip_ref.extractall(self.full_extract_dir)
+
+            if self.target_binary == "mac_windowed":
+                Path(str(self.full_download_path)[:-4] + ".app").rename(
+                    self.renamed_path
+                )
+            else:
+                Path(str(self.full_download_path)[:-4]).rename(self.renamed_path)
 
     def start_game_server(self, port: int) -> None:
         self._download_game_binary()
         self._unzip_game_binary()
+
         if self.target_binary == "mac_windowed":
             game_binary_path = (
                 Path(self.renamed_path) / "Contents" / "MacOS" / "FOOTSIES"
@@ -97,6 +121,7 @@ class GameBinary:
             game_binary_path = Path(self.renamed_path) / "FOOTSIES"
         else:
             game_binary_path = Path(self.renamed_path) / "footsies.x86_64"
+
         self._add_executable_permission(game_binary_path)
 
         if (
@@ -114,6 +139,22 @@ class GameBinary:
                     str(port),
                 ],
             )
+        time.sleep(1)  # Grace period for the server to start
+
+        # check if the game server is running correctly
+        channel = grpc.insecure_channel(f"localhost:{port}")
+        try:
+            stub = footsies_pb2_grpc.FootsiesGameServiceStub(channel)
+            stub.StartGame(footsies_pb2.Empty())
+
+            ready = stub.IsReady(footsies_pb2.Empty()).value
+            while not ready:
+                print("Game not ready...")
+                ready = stub.IsReady(footsies_pb2.Empty()).value
+                time.sleep(1)
+            print("Game ready!")
+        finally:
+            channel.close()
 
     @staticmethod
     def _add_executable_permission(binary_path: Path) -> None:
