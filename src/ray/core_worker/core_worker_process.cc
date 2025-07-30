@@ -314,17 +314,14 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       },
       /*callback_service*/ &io_service_);
 
-  auto check_node_alive_fn = [this](const NodeID &node_id) {
-    auto core_worker = GetCoreWorker();
-    auto node = core_worker->gcs_client_->Nodes().Get(node_id);
-    return node != nullptr;
-  };
-
   auto reference_counter = std::make_shared<ReferenceCounter>(
       rpc_address,
       /*object_info_publisher=*/object_info_publisher.get(),
       /*object_info_subscriber=*/object_info_subscriber.get(),
-      check_node_alive_fn,
+      /*is_node_dead=*/
+      [this](const NodeID &node_id) {
+        return GetCoreWorker()->gcs_client_->Nodes().IsNodeDead(node_id);
+      },
       RayConfig::instance().lineage_pinning_enabled());
 
   std::shared_ptr<LeaseRequestRateLimiter> lease_request_rate_limiter;
@@ -470,16 +467,15 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       reference_counter);
 
   auto node_addr_factory = [this](const NodeID &node_id) {
-    std::optional<rpc::Address> addr;
     auto core_worker = GetCoreWorker();
+    std::optional<rpc::Address> address_opt;
     if (auto node_info = core_worker->gcs_client_->Nodes().Get(node_id)) {
-      rpc::Address address;
+      auto &address = address_opt.emplace();
       address.set_raylet_id(node_info->node_id());
       address.set_ip_address(node_info->node_manager_address());
       address.set_port(node_info->node_manager_port());
-      addr = address;
     }
-    return addr;
+    return address_opt;
   };
 
   auto lease_policy = RayConfig::instance().locality_aware_leasing_enabled()
@@ -531,7 +527,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
   auto actor_manager = std::make_unique<ActorManager>(
       gcs_client, *actor_task_submitter, *reference_counter);
 
-  std::function<Status(const ObjectID &object_id, const ObjectLookupCallback &callback)>
+  std::function<void(const ObjectID &object_id, const ObjectLookupCallback &callback)>
       object_lookup_fn = [this, node_addr_factory](const ObjectID &object_id,
                                                    const ObjectLookupCallback &callback) {
         auto core_worker = GetCoreWorker();

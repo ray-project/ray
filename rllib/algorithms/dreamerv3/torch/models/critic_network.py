@@ -3,21 +3,17 @@
 D. Hafner, J. Pasukonis, J. Ba, T. Lillicrap
 https://arxiv.org/pdf/2301.04104v1.pdf
 """
-from ray.rllib.algorithms.dreamerv3.tf.models.components.mlp import MLP
-from ray.rllib.algorithms.dreamerv3.tf.models.components.reward_predictor_layer import (
-    RewardPredictorLayer,
+from ray.rllib.algorithms.dreamerv3.utils import get_dense_hidden_units
+from ray.rllib.algorithms.dreamerv3.torch.models.components.mlp import MLP
+from ray.rllib.algorithms.dreamerv3.torch.models.components import (
+    reward_predictor_layer,
 )
-from ray.rllib.algorithms.dreamerv3.utils import (
-    get_gru_units,
-    get_num_z_categoricals,
-    get_num_z_classes,
-)
-from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.framework import try_import_torch
 
-_, tf, _ = try_import_tf()
+torch, nn = try_import_torch()
 
 
-class CriticNetwork(tf.keras.Model):
+class CriticNetwork(nn.Module):
     """The critic network described in [1], predicting values for policy learning.
 
     Contains a copy of itself (EMA net) for weight regularization.
@@ -31,6 +27,7 @@ class CriticNetwork(tf.keras.Model):
     def __init__(
         self,
         *,
+        input_size: int,
         model_size: str = "XS",
         num_buckets: int = 255,
         lower_bound: float = -20.0,
@@ -40,6 +37,7 @@ class CriticNetwork(tf.keras.Model):
         """Initializes a CriticNetwork instance.
 
         Args:
+            input_size: The input size of the critic network.
             model_size: The "Model Size" used according to [1] Appendinx B.
                Use None for manually setting the different network sizes.
             num_buckets: The number of buckets to create. Note that the number of
@@ -65,8 +63,9 @@ class CriticNetwork(tf.keras.Model):
                 to produce a regularizer term against the current critic's weights, NOT
                 to compute any target values.
         """
-        super().__init__(name="critic")
+        super().__init__()
 
+        self.input_size = input_size
         self.model_size = model_size
         self.ema_decay = ema_decay
 
@@ -76,10 +75,13 @@ class CriticNetwork(tf.keras.Model):
         # the critic loss term such that the weights of this fast critic stay close
         # to the EMA weights (see below).
         self.mlp = MLP(
+            input_size=self.input_size,
             model_size=self.model_size,
             output_layer_size=None,
         )
-        self.return_layer = RewardPredictorLayer(
+        reward_predictor_input_size = get_dense_hidden_units(self.model_size)
+        self.return_layer = reward_predictor_layer.RewardPredictorLayer(
+            input_size=reward_predictor_input_size,
             num_buckets=num_buckets,
             lower_bound=lower_bound,
             upper_bound=upper_bound,
@@ -89,89 +91,78 @@ class CriticNetwork(tf.keras.Model):
         # target net, BUT not used to compute anything, just for the
         # weights regularizer term inside the critic loss).
         self.mlp_ema = MLP(
+            input_size=self.input_size,
             model_size=self.model_size,
             output_layer_size=None,
-            trainable=False,
         )
-        self.return_layer_ema = RewardPredictorLayer(
+        self.return_layer_ema = reward_predictor_layer.RewardPredictorLayer(
+            input_size=reward_predictor_input_size,
             num_buckets=num_buckets,
             lower_bound=lower_bound,
             upper_bound=upper_bound,
-            trainable=False,
         )
 
-        # Trace self.call.
-        dl_type = tf.keras.mixed_precision.global_policy().compute_dtype or tf.float32
-        self.call = tf.function(
-            input_signature=[
-                tf.TensorSpec(shape=[None, get_gru_units(model_size)], dtype=dl_type),
-                tf.TensorSpec(
-                    shape=[
-                        None,
-                        get_num_z_categoricals(model_size),
-                        get_num_z_classes(model_size),
-                    ],
-                    dtype=dl_type,
-                ),
-                tf.TensorSpec(shape=[], dtype=tf.bool),
-            ]
-        )(self.call)
-
-    def call(self, h, z, use_ema):
+    def forward(self, h, z, return_logits=False, use_ema=False):
         """Performs a forward pass through the critic network.
 
         Args:
             h: The deterministic hidden state of the sequence model. [B, dim(h)].
             z: The stochastic discrete representations of the original
                 observation input. [B, num_categoricals, num_classes].
+            return_logits: Whether also return (as a second tuple item) the logits
+                computed by the binned return layer (instead of only the value itself).
             use_ema: Whether to use the EMA-copy of the critic instead of the actual
                 critic to perform this computation.
         """
         # Flatten last two dims of z.
         assert len(z.shape) == 3
-        z_shape = tf.shape(z)
-        z = tf.reshape(z, shape=(z_shape[0], -1))
+        z_shape = z.shape
+        z = z.view(z_shape[0], -1)
         assert len(z.shape) == 2
-        out = tf.concat([h, z], axis=-1)
-        out.set_shape(
-            [
-                None,
-                (
-                    get_num_z_categoricals(self.model_size)
-                    * get_num_z_classes(self.model_size)
-                    + get_gru_units(self.model_size)
-                ),
-            ]
-        )
+        out = torch.cat([h, z], dim=-1)
 
         if not use_ema:
             # Send h-cat-z through MLP.
             out = self.mlp(out)
             # Return expected return OR (expected return, probs of bucket values).
-            return self.return_layer(out)
+            return self.return_layer(out, return_logits=return_logits)
         else:
             out = self.mlp_ema(out)
-            return self.return_layer_ema(out)
+            return self.return_layer_ema(out, return_logits=return_logits)
 
     def init_ema(self) -> None:
         """Initializes the EMA-copy of the critic from the critic's weights.
 
-        After calling this method, the two networks have identical weights.
+        After calling this method, the two networks have identical weights and the EMA
+        net will be non-trainable.
         """
-        vars = self.mlp.trainable_variables + self.return_layer.trainable_variables
-        vars_ema = self.mlp_ema.variables + self.return_layer_ema.variables
-        assert len(vars) == len(vars_ema) and len(vars) > 0
-        for var, var_ema in zip(vars, vars_ema):
-            assert var is not var_ema
-            var_ema.assign(var)
+        for param_ema, param in zip(self.mlp_ema.parameters(), self.mlp.parameters()):
+            param_ema.data.copy_(param.data)
+            # Make all EMA parameters non-trainable.
+            param_ema.requires_grad = False
+            assert param_ema.grad is None
+
+        for param_ema, param in zip(
+            self.return_layer_ema.parameters(), self.return_layer.parameters()
+        ):
+            param_ema.data.copy_(param.data)
+            # Make all EMA parameters non-trainable.
+            param_ema.requires_grad = False
+            assert param_ema.grad is None
 
     def update_ema(self) -> None:
         """Updates the EMA-copy of the critic according to the update formula:
 
         ema_net=(`ema_decay`*ema_net) + (1.0-`ema_decay`)*critic_net
         """
-        vars = self.mlp.trainable_variables + self.return_layer.trainable_variables
-        vars_ema = self.mlp_ema.variables + self.return_layer_ema.variables
-        assert len(vars) == len(vars_ema) and len(vars) > 0
-        for var, var_ema in zip(vars, vars_ema):
-            var_ema.assign(self.ema_decay * var_ema + (1.0 - self.ema_decay) * var)
+        for param_ema, param in zip(self.mlp_ema.parameters(), self.mlp.parameters()):
+            param_ema.data.mul_(self.ema_decay).add_(
+                (1.0 - self.ema_decay) * param.data
+            )
+
+        for param_ema, param in zip(
+            self.return_layer_ema.parameters(), self.return_layer.parameters()
+        ):
+            param_ema.data.mul_(self.ema_decay).add_(
+                (1.0 - self.ema_decay) * param.data
+            )

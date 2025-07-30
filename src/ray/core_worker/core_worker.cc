@@ -3772,7 +3772,7 @@ void CoreWorker::AddSpilledObjectLocationOwner(
 
 void CoreWorker::AddObjectLocationOwner(const ObjectID &object_id,
                                         const NodeID &node_id) {
-  if (gcs_client_->Nodes().Get(node_id, /*filter_dead_nodes=*/true) == nullptr) {
+  if (gcs_client_->Nodes().IsNodeDead(node_id)) {
     RAY_LOG(DEBUG).WithField(node_id).WithField(object_id)
         << "Attempting to add object location for a dead node. Ignoring this request.";
     return;
