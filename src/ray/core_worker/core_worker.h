@@ -625,7 +625,7 @@ class CoreWorker {
   ///
   /// \param[in] writer_object_id The ID of the object.
   /// \param[in] remote_reader_node_ids The list of remote reader's node ids.
-  Status ExperimentalRegisterMutableObjectWriter(
+  void ExperimentalRegisterMutableObjectWriter(
       const ObjectID &writer_object_id,
       const std::vector<NodeID> &remote_reader_node_ids);
 
@@ -1926,6 +1926,11 @@ class CoreWorker {
   /// Maps serialized runtime env info to **immutable** deserialized protobuf.
   mutable utils::container::ThreadSafeSharedLruCache<std::string, rpc::RuntimeEnvInfo>
       runtime_env_json_serialization_cache_;
+
+  /// Used to block in certain spots if the GCS node cache is needed.
+  std::mutex gcs_client_node_cache_populated_mutex_;
+  std::condition_variable gcs_client_node_cache_populated_cv_;
+  bool gcs_client_node_cache_populated_ = false;
 };
 
 // Lease request rate-limiter based on cluster node size.
