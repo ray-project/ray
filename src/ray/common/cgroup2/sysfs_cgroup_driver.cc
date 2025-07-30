@@ -96,7 +96,7 @@ Status SysFsCgroupDriver::CheckCgroup(const std::string &cgroup_path) {
                           strerror(errno)));
     }
     return Status::InvalidArgument(
-        absl::StrFormat("Failed to stat cgroup directory at path %s. because of %s",
+        absl::StrFormat("Failed to stat cgroup directory at path %s because of %s",
                         cgroup_path,
                         strerror(errno)));
   }
