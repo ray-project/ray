@@ -422,20 +422,21 @@ def test_tensor_extracted_from_tensordict_in_gpu_object_store(ray_start_regular)
     assert torch.equal(ret_val_src[1], td["reward"])
 
 
-def test_wait_tensor_freed(ray_start_regular):
+def test_write_after_save(ray_start_regular):
     @ray.remote(enable_tensor_transport=True)
     class GPUTestActor:
         @ray.method(tensor_transport="gloo")
         def save(self, data: torch.Tensor):
+            # Save the tensor to the actor's local state.
             self.data = data
             return data
 
-        def increment(self, data: torch.Tensor):
-            data += 1
+        def receive(self, data: torch.Tensor):
             return data
 
         def increment_saved(self):
             ray.experimental.wait_tensor_freed(self.data)
+            # Write to the saved tensor.
             self.data += 1
             return self.data
 
@@ -449,12 +450,12 @@ def test_wait_tensor_freed(ray_start_regular):
     # Sender writes to the GPU object while Ray sends the object to a receiver
     # task in the background.
     tensor1 = sender.increment_saved.remote()
-    tensor2 = receiver.increment.remote(ref)
+    tensor2 = receiver.receive.remote(ref)
     del ref
-    # Check that Ray completes the transfer before the sender writes to the GPU
-    # object.
+    # Check that Ray completed the transfer of the original tensor before the
+    # sender writes to it.
     assert torch.allclose(ray.get(tensor1), medium_tensor + 1)
-    assert torch.allclose(ray.get(tensor2), medium_tensor + 1)
+    assert torch.allclose(ray.get(tensor2), medium_tensor)
 
 
 if __name__ == "__main__":
