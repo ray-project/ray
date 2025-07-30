@@ -9,7 +9,10 @@ https://arxiv.org/pdf/2010.02193.pdf
 """
 
 # Run with:
-# python run_regression_tests.py --dir [this file]
+# python [this script name].py
+
+# To see all available options:
+# python [this script name].py --help
 
 from ray.rllib.algorithms.dreamerv3.dreamerv3 import DreamerV3Config
 from ray import tune
@@ -28,7 +31,7 @@ def _env_creator(ctx):
     import flappy_bird_gymnasium  # noqa doctest: +SKIP
     import gymnasium as gym
     from supersuit.generic_wrappers import resize_v1
-    from ray.rllib.algorithms.dreamerv3.utils.env_runner import NormalizedImageEnv
+    from ray.rllib.env.wrappers.atari_wrappers import NormalizedImageEnv
 
     return NormalizedImageEnv(
         resize_v1(  # resize to 64x64 and normalize images

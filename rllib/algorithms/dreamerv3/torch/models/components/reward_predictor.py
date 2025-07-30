@@ -3,21 +3,18 @@
 D. Hafner, J. Pasukonis, J. Ba, T. Lillicrap
 https://arxiv.org/pdf/2301.04104v1.pdf
 """
-from ray.rllib.algorithms.dreamerv3.tf.models.components.mlp import MLP
-from ray.rllib.algorithms.dreamerv3.tf.models.components.reward_predictor_layer import (
-    RewardPredictorLayer,
+from ray.rllib.algorithms.dreamerv3.torch.models.components.mlp import MLP
+from ray.rllib.algorithms.dreamerv3.torch.models.components import (
+    reward_predictor_layer,
 )
-from ray.rllib.algorithms.dreamerv3.utils import (
-    get_gru_units,
-    get_num_z_categoricals,
-    get_num_z_classes,
-)
-from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.algorithms.dreamerv3.utils import get_dense_hidden_units
 
-_, tf, _ = try_import_tf()
+from ray.rllib.utils.framework import try_import_torch
+
+torch, nn = try_import_torch()
 
 
-class RewardPredictor(tf.keras.Model):
+class RewardPredictor(nn.Module):
     """Wrapper of MLP and RewardPredictorLayer to predict rewards for the world model.
 
     Predicted rewards are used to produce "dream data" to learn the policy in.
@@ -26,6 +23,7 @@ class RewardPredictor(tf.keras.Model):
     def __init__(
         self,
         *,
+        input_size: int,
         model_size: str = "XS",
         num_buckets: int = 255,
         lower_bound: float = -20.0,
@@ -34,6 +32,7 @@ class RewardPredictor(tf.keras.Model):
         """Initializes a RewardPredictor instance.
 
         Args:
+            input_size: The input size of the reward predictor.
             model_size: The "Model Size" used according to [1] Appendinx B.
                 Determines the exact size of the underlying MLP.
             num_buckets: The number of buckets to create. Note that the number of
@@ -52,61 +51,37 @@ class RewardPredictor(tf.keras.Model):
                 rewards to be as high as 400M. Buckets will be created between
                 `lower_bound` and `upper_bound`.
         """
-        super().__init__(name="reward_predictor")
-        self.model_size = model_size
+        super().__init__()
 
         self.mlp = MLP(
+            input_size=input_size,
             model_size=model_size,
             output_layer_size=None,
         )
-        self.reward_layer = RewardPredictorLayer(
+        reward_predictor_input_size = get_dense_hidden_units(model_size)
+        self.reward_layer = reward_predictor_layer.RewardPredictorLayer(
+            input_size=reward_predictor_input_size,
             num_buckets=num_buckets,
             lower_bound=lower_bound,
             upper_bound=upper_bound,
         )
 
-        # Trace self.call.
-        dl_type = tf.keras.mixed_precision.global_policy().compute_dtype or tf.float32
-        self.call = tf.function(
-            input_signature=[
-                tf.TensorSpec(shape=[None, get_gru_units(model_size)], dtype=dl_type),
-                tf.TensorSpec(
-                    shape=[
-                        None,
-                        get_num_z_categoricals(model_size),
-                        get_num_z_classes(model_size),
-                    ],
-                    dtype=dl_type,
-                ),
-            ]
-        )(self.call)
-
-    def call(self, h, z):
+    def forward(self, h, z, return_logits=False):
         """Computes the expected reward using N equal sized buckets of possible values.
 
         Args:
             h: The deterministic hidden state of the sequence model. [B, dim(h)].
             z: The stochastic discrete representations of the original
                 observation input. [B, num_categoricals, num_classes].
+            return_logits: Whether to return the logits over the reward buckets
+                as a second return value (besides the expected reward).
         """
         # Flatten last two dims of z.
-        assert len(z.shape) == 3
-        z_shape = tf.shape(z)
-        z = tf.reshape(z, shape=(z_shape[0], -1))
-        assert len(z.shape) == 2
-        out = tf.concat([h, z], axis=-1)
-        out.set_shape(
-            [
-                None,
-                (
-                    get_num_z_categoricals(self.model_size)
-                    * get_num_z_classes(self.model_size)
-                    + get_gru_units(self.model_size)
-                ),
-            ]
-        )
+        z_shape = z.shape
+        z = z.view(z_shape[0], -1)
+        out = torch.cat([h, z], dim=-1)
         # Send h-cat-z through MLP.
         out = self.mlp(out)
         # Return a) mean reward OR b) a tuple: (mean reward, logits over the reward
         # buckets).
-        return self.reward_layer(out)
+        return self.reward_layer(out, return_logits=return_logits)

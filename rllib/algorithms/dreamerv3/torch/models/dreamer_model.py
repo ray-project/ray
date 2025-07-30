@@ -8,23 +8,17 @@ import re
 import gymnasium as gym
 import numpy as np
 
-from ray.rllib.algorithms.dreamerv3.tf.models.disagree_networks import DisagreeNetworks
-from ray.rllib.algorithms.dreamerv3.tf.models.actor_network import ActorNetwork
-from ray.rllib.algorithms.dreamerv3.tf.models.critic_network import CriticNetwork
-from ray.rllib.algorithms.dreamerv3.tf.models.world_model import WorldModel
-from ray.rllib.algorithms.dreamerv3.utils import (
-    get_gru_units,
-    get_num_z_categoricals,
-    get_num_z_classes,
-)
-from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.tf_utils import inverse_symlog
+from ray.rllib.algorithms.dreamerv3.torch.models.actor_network import ActorNetwork
+from ray.rllib.algorithms.dreamerv3.torch.models.critic_network import CriticNetwork
+from ray.rllib.algorithms.dreamerv3.torch.models.world_model import WorldModel
+from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.torch_utils import inverse_symlog
 
-_, tf, _ = try_import_tf()
+torch, nn = try_import_torch()
 
 
-class DreamerModel(tf.keras.Model):
-    """The main tf-keras model containing all necessary components for DreamerV3.
+class DreamerModel(nn.Module):
+    """The main PyTorch model containing all necessary components for DreamerV3.
 
     Includes:
     - The world model with encoder, decoder, sequence-model (RSSM), dynamics
@@ -43,8 +37,6 @@ class DreamerModel(tf.keras.Model):
         world_model: WorldModel,
         actor: ActorNetwork,
         critic: CriticNetwork,
-        horizon: int,
-        gamma: float,
         use_curiosity: bool = False,
         intrinsic_rewards_scale: float = 0.1,
     ):
@@ -53,13 +45,12 @@ class DreamerModel(tf.keras.Model):
         Args:
              model_size: The "Model Size" used according to [1] Appendinx B.
                 Use None for manually setting the different network sizes.
-             action_space: The action space of the environment used.
+             action_space: The action space the our environment used.
              world_model: The WorldModel component.
              actor: The ActorNetwork component.
              critic: The CriticNetwork component.
-             horizon: The dream horizon to use when creating dreamed trajectories.
         """
-        super().__init__(name="dreamer_model")
+        super().__init__()
 
         self.model_size = model_size
         self.action_space = action_space
@@ -69,97 +60,11 @@ class DreamerModel(tf.keras.Model):
         self.actor = actor
         self.critic = critic
 
-        self.horizon = horizon
-        self.gamma = gamma
-        self._comp_dtype = (
-            tf.keras.mixed_precision.global_policy().compute_dtype or tf.float32
-        )
-
         self.disagree_nets = None
         if self.use_curiosity:
-            self.disagree_nets = DisagreeNetworks(
-                num_networks=8,
-                model_size=self.model_size,
-                intrinsic_rewards_scale=intrinsic_rewards_scale,
-            )
+            raise NotImplementedError
 
-        self.dream_trajectory = tf.function(
-            input_signature=[
-                {
-                    "h": tf.TensorSpec(
-                        shape=[
-                            None,
-                            get_gru_units(self.model_size),
-                        ],
-                        dtype=self._comp_dtype,
-                    ),
-                    "z": tf.TensorSpec(
-                        shape=[
-                            None,
-                            get_num_z_categoricals(self.model_size),
-                            get_num_z_classes(self.model_size),
-                        ],
-                        dtype=self._comp_dtype,
-                    ),
-                },
-                tf.TensorSpec(shape=[None], dtype=tf.bool),
-            ]
-        )(self.dream_trajectory)
-
-    def call(
-        self,
-        inputs,
-        observations,
-        actions,
-        is_first,
-        start_is_terminated_BxT,
-        gamma,
-    ):
-        """Main call method for building this model in order to generate its variables.
-
-        Note: This method should NOT be used by users directly. It's purpose is only to
-        perform all forward passes necessary to define all variables of the DreamerV3.
-        """
-
-        # Forward passes through all models are enough to build all trainable and
-        # non-trainable variables:
-
-        # World model.
-        results = self.world_model.forward_train(
-            observations,
-            actions,
-            is_first,
-        )
-        # Actor.
-        _, distr_params = self.actor(
-            h=results["h_states_BxT"],
-            z=results["z_posterior_states_BxT"],
-        )
-        # Critic.
-        values, _ = self.critic(
-            h=results["h_states_BxT"],
-            z=results["z_posterior_states_BxT"],
-            use_ema=tf.convert_to_tensor(False),
-        )
-
-        # Dream pipeline.
-        dream_data = self.dream_trajectory(
-            start_states={
-                "h": results["h_states_BxT"],
-                "z": results["z_posterior_states_BxT"],
-            },
-            start_is_terminated=start_is_terminated_BxT,
-        )
-
-        return {
-            "world_model_fwd": results,
-            "dream_data": dream_data,
-            "actions": actions,
-            "values": values,
-        }
-
-    @tf.function
-    def forward_inference(self, observations, previous_states, is_first, training=None):
+    def forward_inference(self, observations, previous_states, is_first):
         """Performs a (non-exploring) action computation step given obs and states.
 
         Note that all input data should not have a time rank (only a batch dimension).
@@ -182,16 +87,15 @@ class DreamerModel(tf.keras.Model):
             is_first=is_first,
         )
         # Compute action using our actor network and the current states.
-        _, distr_params = self.actor(h=states["h"], z=states["z"])
+        _, distr_params = self.actor(
+            h=states["h"], z=states["z"], return_distr_params=True
+        )
         # Use the mode of the distribution (Discrete=argmax, Normal=mean).
         distr = self.actor.get_action_dist_object(distr_params)
-        actions = distr.mode()
+        actions = distr.mode
         return actions, {"h": states["h"], "z": states["z"], "a": actions}
 
-    @tf.function
-    def forward_exploration(
-        self, observations, previous_states, is_first, training=None
-    ):
+    def forward_exploration(self, observations, previous_states, is_first):
         """Performs an exploratory action computation step given obs and states.
 
         Note that all input data should not have a time rank (only a batch dimension).
@@ -214,7 +118,7 @@ class DreamerModel(tf.keras.Model):
             is_first=is_first,
         )
         # Compute action using our actor network and the current states.
-        actions, _ = self.actor(h=states["h"], z=states["z"])
+        actions = self.actor(h=states["h"], z=states["z"])
         return actions, {"h": states["h"], "z": states["z"], "a": actions}
 
     def forward_train(self, observations, actions, is_first):
@@ -245,15 +149,16 @@ class DreamerModel(tf.keras.Model):
             is_first=is_first,
         )
 
-    @tf.function
     def get_initial_state(self):
-        """Returns the (current) initial state of the dreamer model (a, h-, z-states).
+        """Returns the initial state of the dreamer model (a, h-, z-states).
 
         An initial state is generated using the previous action, the tanh of the
         (learned) h-state variable and the dynamics predictor (or "prior net") to
         compute z^0 from h0. In this last step, it is important that we do NOT sample
         the z^-state (as we would usually do during dreaming), but rather take the mode
         (argmax, then one-hot again).
+
+        Note that the initial state is returned without batch dimension.
         """
         states = self.world_model.get_initial_state()
 
@@ -262,16 +167,10 @@ class DreamerModel(tf.keras.Model):
             if isinstance(self.action_space, gym.spaces.Discrete)
             else np.prod(self.action_space.shape)
         )
-        states["a"] = tf.zeros(
-            (
-                1,
-                action_dim,
-            ),
-            dtype=tf.keras.mixed_precision.global_policy().compute_dtype or tf.float32,
-        )
+        states["a"] = torch.zeros((action_dim,), dtype=torch.float32)
         return states
 
-    def dream_trajectory(self, start_states, start_is_terminated):
+    def dream_trajectory(self, start_states, start_is_terminated, timesteps_H, gamma):
         """Dreams trajectories of length H from batch of h- and z-states.
 
         Note that incoming data will have the shapes (BxT, ...), where the original
@@ -288,13 +187,15 @@ class DreamerModel(tf.keras.Model):
             start_is_terminated: Float flags of shape (B,) indicating whether the
                 first timesteps of each batch row is already a terminated timestep
                 (given by the actual environment).
+            timesteps_H: The number of timesteps to dream for.
+            gamma: The discount factor gamma.
         """
         # Dreamed actions (one-hot encoded for discrete actions).
         a_dreamed_t0_to_H = []
         a_dreamed_dist_params_t0_to_H = []
 
-        h = start_states["h"]
-        z = start_states["z"]
+        h = start_states["h"].detach()
+        z = start_states["z"].detach()
 
         # GRU outputs.
         h_states_t0_to_H = [h]
@@ -309,112 +210,101 @@ class DreamerModel(tf.keras.Model):
             # with `a = stop_gradient(sample(probs)) + probs - stop_gradient(probs)`,
             # we otherwise would add dependencies of the `-log(pi(a|s))` REINFORCE loss
             # term on actions further back in the trajectory.
-            h=tf.stop_gradient(h),
-            z=tf.stop_gradient(z),
+            h=h.detach(),
+            z=z.detach(),
+            return_distr_params=True,
         )
         a_dreamed_t0_to_H.append(a)
         a_dreamed_dist_params_t0_to_H.append(a_dist_params)
 
-        for i in range(self.horizon):
+        for i in range(timesteps_H):
             # Move one step in the dream using the RSSM.
-            h = self.world_model.sequence_model(a=a, h=h, z=z)
-            h_states_t0_to_H.append(h)
+            with torch.no_grad():
+                h = self.world_model.sequence_model(a=a, h=h, z=z)
+                h_states_t0_to_H.append(h)
 
-            # Compute prior z using dynamics model.
-            z, _ = self.world_model.dynamics_predictor(h=h)
-            z_states_prior_t0_to_H.append(z)
+                # Compute prior z using dynamics model.
+                z = self.world_model.dynamics_predictor(h=h)
+                z_states_prior_t0_to_H.append(z)
 
             # Compute `a` using actor network.
             a, a_dist_params = self.actor(
-                h=tf.stop_gradient(h),
-                z=tf.stop_gradient(z),
+                h=h.detach(),
+                z=z.detach(),
+                return_distr_params=True,
             )
             a_dreamed_t0_to_H.append(a)
             a_dreamed_dist_params_t0_to_H.append(a_dist_params)
 
-        h_states_H_B = tf.stack(h_states_t0_to_H, axis=0)  # (T, B, ...)
-        h_states_HxB = tf.reshape(h_states_H_B, [-1] + h_states_H_B.shape.as_list()[2:])
+        h_states_H_B = torch.stack(h_states_t0_to_H, dim=0)  # (T, B, ...)
+        h_states_HxB = h_states_H_B.reshape([-1] + list(h_states_H_B.shape[2:]))
 
-        z_states_prior_H_B = tf.stack(z_states_prior_t0_to_H, axis=0)  # (T, B, ...)
-        z_states_prior_HxB = tf.reshape(
-            z_states_prior_H_B, [-1] + z_states_prior_H_B.shape.as_list()[2:]
+        z_states_prior_H_B = torch.stack(z_states_prior_t0_to_H, dim=0)  # (T, B, ...)
+        z_states_prior_HxB = z_states_prior_H_B.reshape(
+            [-1] + list(z_states_prior_H_B.shape[2:])
         )
 
-        a_dreamed_H_B = tf.stack(a_dreamed_t0_to_H, axis=0)  # (T, B, ...)
-        a_dreamed_dist_params_H_B = tf.stack(a_dreamed_dist_params_t0_to_H, axis=0)
+        a_dreamed_H_B = torch.stack(a_dreamed_t0_to_H, dim=0)  # (T, B, ...)
+        a_dreamed_dist_params_H_B = torch.stack(a_dreamed_dist_params_t0_to_H, dim=0)
 
         # Compute r using reward predictor.
-        r_dreamed_HxB, _ = self.world_model.reward_predictor(
-            h=h_states_HxB, z=z_states_prior_HxB
-        )
-        r_dreamed_H_B = tf.reshape(
-            inverse_symlog(r_dreamed_HxB), shape=[self.horizon + 1, -1]
-        )
+        with torch.no_grad():
+            r_dreamed_H_B = inverse_symlog(
+                self.world_model.reward_predictor(h=h_states_HxB, z=z_states_prior_HxB)
+            )
+        r_dreamed_H_B = r_dreamed_H_B.reshape([timesteps_H + 1, -1])
 
         # Compute intrinsic rewards.
         if self.use_curiosity:
             results_HxB = self.disagree_nets.compute_intrinsic_rewards(
                 h=h_states_HxB,
                 z=z_states_prior_HxB,
-                a=tf.reshape(a_dreamed_H_B, [-1] + a_dreamed_H_B.shape.as_list()[2:]),
+                a=a_dreamed_H_B.reshape([-1] + a_dreamed_H_B.shape[2:]),
             )
-            # TODO (sven): Wrong? -> Cut out last timestep as we always predict z-states
-            #  for the NEXT timestep and derive ri (for the NEXT timestep) from the
-            #  disagreement between our N disagreee nets.
-            r_intrinsic_H_B = tf.reshape(
-                results_HxB["rewards_intrinsic"], shape=[self.horizon + 1, -1]
-            )[
-                1:
-            ]  # cut out first ts instead
+            r_intrinsic_H_B = results_HxB["rewards_intrinsic"]
+            r_intrinsic_H_B = r_intrinsic_H_B.reshape([timesteps_H + 1, -1])[1:]
             curiosity_forward_train_outs = results_HxB["forward_train_outs"]
             del results_HxB
 
         # Compute continues using continue predictor.
-        c_dreamed_HxB, _ = self.world_model.continue_predictor(
-            h=h_states_HxB,
-            z=z_states_prior_HxB,
-        )
-        c_dreamed_H_B = tf.reshape(c_dreamed_HxB, [self.horizon + 1, -1])
+        with torch.no_grad():
+            c_dreamed_HxB = self.world_model.continue_predictor(
+                h=h_states_HxB,
+                z=z_states_prior_HxB,
+            )
+        c_dreamed_H_B = c_dreamed_HxB.reshape([timesteps_H + 1, -1])
         # Force-set first `continue` flags to False iff `start_is_terminated`.
         # Note: This will cause the loss-weights for this row in the batch to be
         # completely zero'd out. In general, we don't use dreamed data past any
         # predicted (or actual first) continue=False flags.
-        c_dreamed_H_B = tf.concat(
-            [
-                1.0
-                - tf.expand_dims(
-                    tf.cast(start_is_terminated, tf.float32),
-                    0,
-                ),
-                c_dreamed_H_B[1:],
-            ],
-            axis=0,
+        c_dreamed_H_B = torch.cat(
+            [1.0 - start_is_terminated.unsqueeze(0).float(), c_dreamed_H_B[1:]], dim=0
         )
 
         # Loss weights for each individual dreamed timestep. Zero-out all timesteps
         # that lie past continue=False flags. B/c our world model does NOT learn how
         # to skip terminal/reset episode boundaries, dreamed data crossing such a
         # boundary should not be used for critic/actor learning either.
-        dream_loss_weights_H_B = (
-            tf.math.cumprod(self.gamma * c_dreamed_H_B, axis=0) / self.gamma
-        )
+        dream_loss_weights_H_B = torch.cumprod(gamma * c_dreamed_H_B, dim=0) / gamma
 
         # Compute the value estimates.
         v, v_symlog_dreamed_logits_HxB = self.critic(
             h=h_states_HxB,
             z=z_states_prior_HxB,
             use_ema=False,
+            return_logits=True,
         )
         v_dreamed_HxB = inverse_symlog(v)
-        v_dreamed_H_B = tf.reshape(v_dreamed_HxB, shape=[self.horizon + 1, -1])
+        v_dreamed_H_B = v_dreamed_HxB.reshape([timesteps_H + 1, -1])
 
-        v_symlog_dreamed_ema_HxB, _ = self.critic(
+        v_symlog_dreamed_ema_HxB = self.critic(
             h=h_states_HxB,
             z=z_states_prior_HxB,
+            return_logits=False,
             use_ema=True,
         )
-        v_symlog_dreamed_ema_H_B = tf.reshape(
-            v_symlog_dreamed_ema_HxB, shape=[self.horizon + 1, -1]
+        v_symlog_dreamed_ema_H_B = v_symlog_dreamed_ema_HxB.reshape(
+            [timesteps_H + 1, -1]
         )
 
         ret = {
@@ -436,7 +326,7 @@ class DreamerModel(tf.keras.Model):
             ret.update(curiosity_forward_train_outs)
 
         if isinstance(self.action_space, gym.spaces.Discrete):
-            ret["actions_ints_dreamed_t0_to_H_B"] = tf.argmax(a_dreamed_H_B, axis=-1)
+            ret["actions_ints_dreamed_t0_to_H_B"] = torch.argmax(a_dreamed_H_B, dim=-1)
 
         return ret
 
@@ -472,7 +362,6 @@ class DreamerModel(tf.keras.Model):
             actions: The batch (B, T, ...) of actions to use during a) burn-in over the
                 first `timesteps_burn_in` timesteps and - possibly - b) during
                 actual dreaming, iff use_sampled_actions_in_dream=True.
-                If applicable, actions must already be one-hot'd.
             use_sampled_actions_in_dream: If True, instead of using our actor network
                 to compute fresh actions, we will use the one provided via the `actions`
                 argument. Note that in the latter case, the `actions` time dimension
@@ -490,9 +379,9 @@ class DreamerModel(tf.keras.Model):
         states = start_states
         for i in range(timesteps_burn_in):
             states = self.world_model.forward_inference(
-                observations=observations[:, i],
+                observations=observations[:, i : i + 1],
                 previous_states=states,
-                is_first=tf.fill((B,), 1.0 if i == 0 else 0.0),
+                is_first=torch.full((B,), 1.0 if i == 0 else 0.0),
             )
             states["a"] = actions[:, i]
 
@@ -512,7 +401,7 @@ class DreamerModel(tf.keras.Model):
             h_states_t0_to_H.append(h)
             # Compute z from h, using the dynamics model (we don't have an actual
             # observation at this timestep).
-            z, _ = self.world_model.dynamics_predictor(h=h)
+            z = self.world_model.dynamics_predictor(h=h)
             z_states_prior_t0_to_H.append(z)
 
             # Compute next dreamed action or use sampled one or random one.
@@ -520,38 +409,30 @@ class DreamerModel(tf.keras.Model):
                 a = actions[:, timesteps_burn_in + j]
             elif use_random_actions_in_dream:
                 if isinstance(self.action_space, gym.spaces.Discrete):
-                    a = tf.random.randint((B,), 0, self.action_space.n, tf.int64)
-                    a = tf.one_hot(
-                        a,
-                        depth=self.action_space.n,
-                        dtype=tf.keras.mixed_precision.global_policy().compute_dtype
-                        or tf.float32,
-                    )
-                # TODO: Support cont. action spaces with bound other than 0.0 and 1.0.
+                    a = torch.randint(self.action_space.n, (B,), dtype=torch.int64)
+                    a = torch.nn.functional.one_hot(a, num_classes=self.action_space.n)
                 else:
-                    a = tf.random.uniform(
-                        shape=(B,) + self.action_space.shape,
-                        dtype=self.action_space.dtype,
+                    a = torch.rand(
+                        (B,) + self.action_space.shape, dtype=self.action_space.dtype
                     )
             else:
-                a, _ = self.actor(h=h, z=z)
+                a = self.actor(h=h, z=z)
             a_t0_to_H.append(a)
 
             states = {"h": h, "z": z, "a": a}
 
         # Fold time-rank for upcoming batch-predictions (no sequences needed anymore).
-        h_states_t0_to_H_B = tf.stack(h_states_t0_to_H, axis=0)
-        h_states_t0_to_HxB = tf.reshape(
-            h_states_t0_to_H_B, shape=[-1] + h_states_t0_to_H_B.shape.as_list()[2:]
+        h_states_t0_to_H_B = torch.stack(h_states_t0_to_H, dim=0)
+        h_states_t0_to_HxB = h_states_t0_to_H_B.reshape(
+            [-1] + list(h_states_t0_to_H_B.shape[2:])
         )
 
-        z_states_prior_t0_to_H_B = tf.stack(z_states_prior_t0_to_H, axis=0)
-        z_states_prior_t0_to_HxB = tf.reshape(
-            z_states_prior_t0_to_H_B,
-            shape=[-1] + z_states_prior_t0_to_H_B.shape.as_list()[2:],
+        z_states_prior_t0_to_H_B = torch.stack(z_states_prior_t0_to_H, dim=0)
+        z_states_prior_t0_to_HxB = z_states_prior_t0_to_H_B.reshape(
+            [-1] + list(z_states_prior_t0_to_H_B.shape[2:])
         )
 
-        a_t0_to_H_B = tf.stack(a_t0_to_H, axis=0)
+        a_t0_to_H_B = torch.stack(a_t0_to_H, dim=0)
 
         # Compute o using decoder.
         o_dreamed_t0_to_HxB = self.world_model.decoder(
@@ -562,16 +443,18 @@ class DreamerModel(tf.keras.Model):
             o_dreamed_t0_to_HxB = inverse_symlog(o_dreamed_t0_to_HxB)
 
         # Compute r using reward predictor.
-        r_dreamed_t0_to_HxB, _ = self.world_model.reward_predictor(
-            h=h_states_t0_to_HxB,
-            z=z_states_prior_t0_to_HxB,
-        )
-        r_dreamed_t0_to_HxB = inverse_symlog(r_dreamed_t0_to_HxB)
+        r_dreamed_t0_to_H_B = inverse_symlog(
+            self.world_model.reward_predictor(
+                h=h_states_t0_to_HxB,
+                z=z_states_prior_t0_to_HxB,
+            )
+        ).reshape([-1, B])
+
         # Compute continues using continue predictor.
-        c_dreamed_t0_to_HxB, _ = self.world_model.continue_predictor(
+        c_dreamed_t0_to_H_B = self.world_model.continue_predictor(
             h=h_states_t0_to_HxB,
             z=z_states_prior_t0_to_HxB,
-        )
+        ).reshape([-1, B])
 
         # Return everything as time-major (H, B, ...), where H is the timesteps dreamed
         # (NOT burn-in'd) and B is a batch dimension (this might or might not include
@@ -581,11 +464,11 @@ class DreamerModel(tf.keras.Model):
             "h_states_t0_to_H_BxT": h_states_t0_to_H_B,
             "z_states_prior_t0_to_H_BxT": z_states_prior_t0_to_H_B,
             # Unfold time-ranks in predictions.
-            "observations_dreamed_t0_to_H_BxT": tf.reshape(
+            "observations_dreamed_t0_to_H_BxT": torch.reshape(
                 o_dreamed_t0_to_HxB, [-1, B] + list(observations.shape)[2:]
             ),
-            "rewards_dreamed_t0_to_H_BxT": tf.reshape(r_dreamed_t0_to_HxB, (-1, B)),
-            "continues_dreamed_t0_to_H_BxT": tf.reshape(c_dreamed_t0_to_HxB, (-1, B)),
+            "rewards_dreamed_t0_to_H_BxT": r_dreamed_t0_to_H_B,
+            "continues_dreamed_t0_to_H_BxT": c_dreamed_t0_to_H_B,
         }
 
         # Figure out action key (random, sampled from env, dreamed?).
@@ -599,8 +482,8 @@ class DreamerModel(tf.keras.Model):
 
         # Also provide int-actions, if discrete action space.
         if isinstance(self.action_space, gym.spaces.Discrete):
-            ret[re.sub("^actions_", "actions_ints_", key)] = tf.argmax(
-                a_t0_to_H_B, axis=-1
+            ret[re.sub("^actions_", "actions_ints_", key)] = torch.argmax(
+                a_t0_to_H_B, dim=-1
             )
 
         return ret
