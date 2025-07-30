@@ -90,6 +90,7 @@ class DependencySetManager:
         elif depset.operation == "expand":
             self.expand(
                 depsets=depset.depsets,
+                requirements=depset.requirements,
                 constraints=depset.constraints,
                 args=DEFAULT_UV_FLAGS.copy(),
                 name=depset.name,
@@ -139,6 +140,7 @@ class DependencySetManager:
     def expand(
         self,
         depsets: List[str],
+        requirements: List[str],
         constraints: List[str],
         args: List[str],
         name: str,
@@ -146,10 +148,13 @@ class DependencySetManager:
         output: str = None,
     ):
         """Expand a dependency set."""
+        # handle both depsets and requirements
         depset_req_list = []
         for depset_name in depsets:
             depset = self.get_depset(depset_name, env)
             depset_req_list.extend(depset.requirements)
+        if requirements:
+            depset_req_list.extend(requirements)
         self.compile(
             constraints=constraints,
             requirements=depset_req_list,
