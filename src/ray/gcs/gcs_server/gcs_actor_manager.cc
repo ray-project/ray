@@ -980,7 +980,7 @@ void GcsActorManager::RemoveActorNameFromRegistry(
     auto namespace_it = named_actors_.find(actor->GetRayNamespace());
     if (namespace_it != named_actors_.end()) {
       auto it = namespace_it->second.find(actor->GetName());
-      if (it != namespace_it->second.end()) {
+      if (it != namespace_it->second.end() && it->second == actor->GetActorID()) {
         RAY_LOG(INFO) << "Actor name " << actor->GetName() << " is cleaned up.";
         namespace_it->second.erase(it);
       }
@@ -1084,8 +1084,6 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
   it->second->GetMutableActorTableData()->set_timestamp(current_sys_time_ms());
   const auto actor = it->second;
 
-  const bool was_already_dead = (actor->GetState() == rpc::ActorTableData::DEAD);
-
   RAY_LOG(DEBUG) << "Try to kill actor " << actor->GetActorID() << ", with status "
                  << rpc::ActorTableData::ActorState_Name(actor->GetState()) << ", name "
                  << actor->GetName();
@@ -1145,9 +1143,7 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
     AddDestroyedActorToCache(it->second);
     registered_actors_.erase(it);
     function_manager_.RemoveJobReference(actor_id.JobId());
-    if (!was_already_dead) {
-      RemoveActorNameFromRegistry(actor);
-    }
+    RemoveActorNameFromRegistry(actor);
     // Clean up the client to the actor's owner, if necessary.
     if (!actor->IsDetached()) {
       RemoveActorFromOwner(actor);
