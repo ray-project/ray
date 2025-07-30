@@ -57,6 +57,7 @@ py_test(
         "exclusive",
         "team:ml",
         "timeseries_libs",
+        "manual", # TODO(ray-train): fix this doc test.
     ],
 )
 

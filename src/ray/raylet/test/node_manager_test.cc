@@ -380,7 +380,8 @@ class NodeManagerTest : public ::testing::Test {
       : client_call_manager_(io_service_, /*record_stats=*/false),
         worker_rpc_pool_([](const auto &) {
           return std::make_shared<rpc::MockCoreWorkerClientInterface>();
-        }) {
+        }),
+        raylet_client_pool_(client_call_manager_) {
     RayConfig::instance().initialize(R"({
       "raylet_liveness_self_check_interval_ms": 100
     })");
@@ -483,6 +484,7 @@ class NodeManagerTest : public ::testing::Test {
                                                   *mock_gcs_client_,
                                                   client_call_manager_,
                                                   worker_rpc_pool_,
+                                                  raylet_client_pool_,
                                                   *core_worker_subscriber_,
                                                   *cluster_resource_scheduler_,
                                                   *local_task_manager_,
@@ -502,6 +504,7 @@ class NodeManagerTest : public ::testing::Test {
   instrumented_io_context io_service_;
   rpc::ClientCallManager client_call_manager_;
   rpc::CoreWorkerClientPool worker_rpc_pool_;
+  rpc::RayletClientPool raylet_client_pool_;
 
   NodeID raylet_node_id_;
   std::unique_ptr<pubsub::MockSubscriber> core_worker_subscriber_;
