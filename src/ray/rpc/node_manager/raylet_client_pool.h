@@ -15,6 +15,7 @@
 #pragma once
 
 #include <memory>
+#include <string>
 #include <utility>
 
 #include "absl/base/thread_annotations.h"
@@ -50,6 +51,10 @@ class RayletClientPool {
 
   explicit RayletClientPool(RayletClientFactoryFn client_factory)
       : client_factory_(std::move(client_factory)){};
+
+  static rpc::Address GenerateRayletAddress(const NodeID &node_id,
+                                            const std::string &ip_address,
+                                            int port);
 
  private:
   absl::Mutex mu_;
