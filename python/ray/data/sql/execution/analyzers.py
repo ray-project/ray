@@ -7,9 +7,9 @@ converting SQL expressions into Ray Data operations.
 
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-import ray.data
-from ray.data import Dataset
 from sqlglot import exp
+
+from ray.data import Dataset
 from ray.data.sql.compiler import ExpressionCompiler
 from ray.data.sql.config import SQLConfig
 from ray.data.sql.utils import (
@@ -156,7 +156,7 @@ class ProjectionAnalyzer:
 
         def func(row, col=actual_column):
             return safe_get_column(row, col, self.config.case_sensitive)
-        
+
         return [actual_column], [func]
 
 

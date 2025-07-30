@@ -5,11 +5,12 @@ This module provides the QueryExecutor class which coordinates the execution
 of parsed SQL ASTs by applying the appropriate operations to Ray Datasets.
 """
 
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Tuple
+
+from sqlglot import exp
 
 import ray
 from ray.data import Dataset
-from sqlglot import exp
 from ray.data.sql.config import SQLConfig
 from ray.data.sql.execution.analyzers import AggregateAnalyzer, ProjectionAnalyzer
 from ray.data.sql.execution.handlers import (
@@ -204,7 +205,7 @@ class QueryExecutor:
         self._logger.debug(f"Applying projection with column names: {column_names}")
 
         result = dataset.map(project_row)
-        self._logger.debug(f"Projection applied successfully")
+        self._logger.debug("Projection applied successfully")
         return result
 
     def _has_only_literals(self, select_exprs: List[exp.Expression]) -> bool:

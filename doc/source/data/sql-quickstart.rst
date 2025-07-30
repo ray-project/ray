@@ -4,7 +4,7 @@
 SQL Quickstart
 =================
 
-This quickstart guide shows you how to get started with Ray Data SQL. You'll learn how to execute SQL queries on Ray Datasets using familiar SQL syntax.
+This quickstart guide shows you how to get started with Ray Data SQL. You will learn how to execute SQL queries on Ray Datasets using familiar SQL syntax.
 
 Installation
 ============
@@ -234,8 +234,8 @@ Before diving deeper, be aware of these current limitations:
 
 **SQL Feature Limitations**
   - **Window Functions**: Limited support for ROW_NUMBER(), RANK(), etc.
-  - **User-Defined Functions**: Custom SQL functions are not supported
-  - **Recursive CTEs**: Recursive Common Table Expressions are not available
+  - **User-Defined Functions**: Custom SQL functions aren't supported
+  - **Recursive CTEs**: Recursive Common Table Expressions aren't available
   - **Materialized Views**: Only direct table queries, no view support
 
 **Performance Considerations**

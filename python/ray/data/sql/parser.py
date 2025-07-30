@@ -14,9 +14,154 @@ try:
     from sqlglot.optimizer import optimize as sqlglot_optimize
 except ImportError:
     sqlglot_optimize = None
+
 from ray.data.sql.config import LogicalPlan, SQLConfig
 from ray.data.sql.schema import SchemaManager
 from ray.data.sql.utils import SUPPORTED_AGGREGATES, setup_logger
+
+
+# ============================================================================
+# SQL FEATURE WHITELISTS AND BLACKLISTS
+# ============================================================================
+
+# Supported general functions (non-aggregate)
+SUPPORTED_FUNCTIONS = {
+    # String functions
+    "upper", "lower", "length", "substr", "substring", "trim", "ltrim", "rtrim",
+    "concat", "replace", "like",
+    
+    # Mathematical functions
+    "abs", "ceil", "floor", "round", "sqrt", "pow", "power", "exp", "log", "ln",
+    "sin", "cos", "tan", "asin", "acos", "atan",
+    
+    # Date/time functions (basic)
+    "date", "year", "month", "day", "hour", "minute", "second",
+    
+    # Type conversion
+    "cast", "convert",
+    
+    # Conditional functions
+    "coalesce", "nullif", "greatest", "least", "case", "when", "if",
+}
+
+# Suggestions for unsupported aggregate functions
+UNSUPPORTED_AGGREGATE_SUGGESTIONS = {
+    "median": "Use approximation with percentile or sorting operations",
+    "mode": "Use GROUP BY with COUNT to find most frequent values",
+    "variance": "Use STD() for standard deviation instead",
+    "var": "Use STD() for standard deviation instead",
+    "percentile": "Use approximation with sorting operations",
+    "array_agg": "Use Dataset groupby with collect operations",
+    "string_agg": "Use map operations to concatenate strings",
+    "first_value": "Use ROW_NUMBER() with filtering",
+    "last_value": "Use ROW_NUMBER() with filtering",
+    "nth_value": "Use ROW_NUMBER() with filtering",
+}
+
+# Suggestions for unsupported general functions
+UNSUPPORTED_FUNCTION_SUGGESTIONS = {
+    # Window functions
+    "lag": "Use self-joins with ordering operations",
+    "lead": "Use self-joins with ordering operations", 
+    "rank": "Use ROW_NUMBER() with ordering",
+    "dense_rank": "Use ROW_NUMBER() with ordering",
+    "ntile": "Use manual bucketing with modulo operations",
+    "row_number": "Limited support - use simple ordering without OVER clause",
+    
+    # Complex string functions
+    "regexp_extract": "Use simpler string functions like SUBSTR or REPLACE",
+    "regexp_replace": "Use REPLACE for simple substitutions",
+    "split_part": "Use manual string parsing operations",
+    
+    # JSON/XML functions
+    "json_extract": "Parse JSON data before loading into Ray Data",
+    "json_value": "Parse JSON data before loading into Ray Data",
+    "xml_extract": "Parse XML data before loading into Ray Data",
+    
+    # Array/Map functions
+    "array_contains": "Use standard column operations",
+    "array_length": "Use standard column operations",
+    "map_keys": "Use separate columns or manual parsing",
+    "map_values": "Use separate columns or manual parsing",
+    
+    # Advanced date functions
+    "date_trunc": "Use YEAR(), MONTH(), DAY() functions",
+    "extract": "Use YEAR(), MONTH(), DAY(), HOUR(), etc.",
+    "datepart": "Use YEAR(), MONTH(), DAY(), HOUR(), etc.",
+    "interval": "Use date arithmetic with DATE_ADD/DATE_SUB",
+}
+
+# Unsupported SQL constructs with information
+UNSUPPORTED_CONSTRUCTS = {
+    exp.CTE: {
+        "name": "Common Table Expressions (WITH)",
+        "suggestion": "Break into multiple steps using intermediate tables"
+    },
+    exp.Union: {
+        "name": "UNION",
+        "suggestion": "Use Dataset.union() method instead"
+    },
+    exp.Intersect: {
+        "name": "INTERSECT", 
+        "suggestion": "Use JOIN operations to find common records"
+    },
+    exp.Except: {
+        "name": "EXCEPT",
+        "suggestion": "Use LEFT JOIN with WHERE IS NULL to exclude records"
+    },
+    exp.Window: {
+        "name": "Window functions",
+        "suggestion": "Use GROUP BY or manual partitioning operations"
+    },
+    exp.Values: {
+        "name": "VALUES clause",
+        "suggestion": "Create Dataset from Python data structures"
+    },
+    exp.Insert: {
+        "name": "INSERT statements",
+        "suggestion": "Use Dataset write operations"
+    },
+    exp.Update: {
+        "name": "UPDATE statements",
+        "suggestion": "Use Dataset transformation operations"
+    },
+    exp.Delete: {
+        "name": "DELETE statements", 
+        "suggestion": "Use Dataset filter operations"
+    },
+    exp.Create: {
+        "name": "CREATE statements",
+        "suggestion": "Use register_table() to register existing Datasets"
+    },
+    exp.Drop: {
+        "name": "DROP statements",
+        "suggestion": "Use clear_tables() or Python del statements"
+    },
+}
+
+# Unsupported operators with information
+UNSUPPORTED_OPERATORS = {
+    exp.In: {
+        "name": "IN operator",
+        "suggestion": "Use multiple OR conditions or JOIN operations"
+    },
+    exp.Exists: {
+        "name": "EXISTS",
+        "suggestion": "Use JOIN operations instead"
+    },
+    exp.All: {
+        "name": "ALL operator",
+        "suggestion": "Use aggregation with MIN/MAX functions"
+    },
+    exp.Any: {
+        "name": "ANY/SOME operators",
+        "suggestion": "Use aggregation or JOIN operations"
+    },
+    exp.Distinct: {
+        "name": "DISTINCT",
+        "suggestion": "Use GROUP BY or unique() operations on Dataset"
+    },
+}
 
 
 class SQLParser:
@@ -71,28 +216,71 @@ class SQLParser:
         Raises:
             NotImplementedError: If unsupported features are found.
         """
+        violations = []
+        
         for node in ast.walk():
-            if isinstance(node, exp.AggFunc):
-                func_name = node.sql_name().lower()
-                if func_name not in SUPPORTED_AGGREGATES:
-                    raise NotImplementedError(
-                        f"Aggregate function '{func_name.upper()}' not supported"
-                    )
-
-            unsupported_features = [
-                (exp.Distinct, "DISTINCT"),
-                (exp.In, "IN operator"),
-                (exp.Exists, "EXISTS"),
-                (exp.Window, "Window functions"),
-                (exp.CTE, "Common Table Expressions (WITH)"),
-                (exp.Union, "UNION"),
-                (exp.Intersect, "INTERSECT"),
-                (exp.Except, "EXCEPT"),
-            ]
-
-            for feature_type, feature_name in unsupported_features:
-                if isinstance(node, feature_type):
-                    raise NotImplementedError(f"{feature_name} not supported")
+            violation = self._check_node_features(node)
+            if violation:
+                violations.append(violation)
+                
+        if violations:
+            self._raise_comprehensive_error(violations)
+    
+    def _check_node_features(self, node: exp.Expression) -> str:
+        """Check a single AST node for unsupported features.
+        
+        Args:
+            node: SQLGlot expression node to check.
+            
+        Returns:
+            Error message if violation found, empty string otherwise.
+        """
+        # Check aggregate functions with suggestions
+        if isinstance(node, exp.AggFunc):
+            func_name = node.sql_name().lower()
+            if func_name not in SUPPORTED_AGGREGATES:
+                suggestion = UNSUPPORTED_AGGREGATE_SUGGESTIONS.get(func_name, "")
+                msg = f"Aggregate function '{func_name.upper()}' not supported"
+                if suggestion:
+                    msg += f". Try: {suggestion}"
+                return msg
+        
+        # Check general functions
+        if isinstance(node, exp.Func) and not isinstance(node, exp.AggFunc):
+            func_name = node.sql_name().lower()
+            if func_name not in SUPPORTED_FUNCTIONS:
+                suggestion = UNSUPPORTED_FUNCTION_SUGGESTIONS.get(func_name, "")
+                msg = f"Function '{func_name.upper()}' not supported"
+                if suggestion:
+                    msg += f". Try: {suggestion}"
+                return msg
+        
+        # Check unsupported constructs with suggestions
+        node_type = type(node)
+        if node_type in UNSUPPORTED_CONSTRUCTS:
+            info = UNSUPPORTED_CONSTRUCTS[node_type]
+            msg = f"{info['name']} not supported"
+            if info.get('suggestion'):
+                msg += f". Try: {info['suggestion']}"
+            return msg
+            
+        # Check unsupported operators  
+        if node_type in UNSUPPORTED_OPERATORS:
+            info = UNSUPPORTED_OPERATORS[node_type]
+            msg = f"{info['name']} not supported"
+            if info.get('suggestion'):
+                msg += f". Try: {info['suggestion']}"
+            return msg
+            
+        return ""
+    
+    def _raise_comprehensive_error(self, violations: list) -> None:
+        """Raise a comprehensive validation error with all violations."""
+        error_msg = "SQL validation failed with the following issues:\n"
+        for i, violation in enumerate(violations, 1):
+            error_msg += f"  {i}. {violation}\n"
+        error_msg += "\nSee Ray Data SQL documentation for supported features."
+        raise NotImplementedError(error_msg)
 
 
 class ASTOptimizer:

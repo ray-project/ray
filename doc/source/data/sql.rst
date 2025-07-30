@@ -261,13 +261,13 @@ Limitations and Considerations
 ------------------------------
 
 **Current Limitations**
-  - **SQL Dialect**: Currently uses DuckDB SQL dialect via SQLGlot parsing
+  - **SQL Dialect**: Currently uses DuckDB SQL dialect through SQLGlot parsing
   - **Window Functions**: Limited support for advanced window functions
   - **Subqueries**: Complex nested subqueries may have performance implications
-  - **User-Defined Functions**: Custom SQL functions are not yet supported
-  - **Transactions**: No transaction support (operations are not atomic)
+  - **User-Defined Functions**: Custom SQL functions aren't yet supported
+  - **Transactions**: No transaction support (operations aren't atomic)
   - **Indexes**: No index support for query optimization
-  - **Materialized Views**: Views are not supported, only direct table queries
+  - **Materialized Views**: Views aren't supported, only direct table queries
 
 **Performance Considerations**
   - **Memory Usage**: Large JOIN operations may require significant memory

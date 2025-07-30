@@ -33,11 +33,15 @@ class TestRunner:
         test_datasets = self._create_test_datasets()
         for name, dataset in test_datasets.items():
             register_table(name, dataset)
-        self._logger.debug(f"After registration, tables: {get_registry().list_tables()}")
+        self._logger.debug(
+            f"After registration, tables: {get_registry().list_tables()}"
+        )
 
         # Define test cases
         test_cases = self._define_test_cases()
-        self._logger.debug(f"Before running tests, tables: {get_registry().list_tables()}")
+        self._logger.debug(
+            f"Before running tests, tables: {get_registry().list_tables()}"
+        )
 
         # Run tests
         results = self._run_test_cases(test_cases)
@@ -660,7 +664,7 @@ class ExampleRunner:
 
         print("\n4. Available Tables:")
         print("-" * 40)
-        from ray.data.sql.core import list_tables, get_schema
+        from ray.data.sql.core import get_schema, list_tables
 
         tables = list_tables()
         print(f"Registered tables: {tables}")

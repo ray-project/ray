@@ -626,7 +626,7 @@ Dialect Compatibility Matrix
      - ✅ Full
      - ✅ Full
      - ✅ Full
-     - Core functionality
+     - Core features
    * - JOINs
      - ✅ Full
      - ✅ Full

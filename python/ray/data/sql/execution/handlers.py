@@ -5,11 +5,12 @@ This module provides handlers for various SQL operations including JOINs,
 WHERE clauses, ORDER BY, and LIMIT operations.
 """
 
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union
+
+from sqlglot import exp
 
 import ray
 from ray.data import Dataset
-from sqlglot import exp
 from ray.data.sql.compiler import ExpressionCompiler
 from ray.data.sql.config import JoinInfo, SQLConfig
 from ray.data.sql.schema import DatasetRegistry
@@ -103,7 +104,7 @@ class JoinHandler:
                 left_column, right_column = right_column, left_column
             else:
                 raise ValueError(
-                    f"Invalid join condition: columns not found in expected tables"
+                    "Invalid join condition: columns not found in expected tables"
                 )
 
         if not left_column or not right_column:
@@ -368,7 +369,7 @@ class LimitHandler:
         # Use Ray's built-in limit method
         try:
             result = dataset.limit(limit_value)
-            self._logger.debug(f"LIMIT applied successfully")
+            self._logger.debug("LIMIT applied successfully")
             return result
         except Exception as e:
             self._logger.warning(f"Failed to apply LIMIT using limit(): {e}")
@@ -376,7 +377,7 @@ class LimitHandler:
             try:
                 limited_rows = dataset.take(limit_value)
                 result = ray.data.from_items(limited_rows)
-                self._logger.debug(f"LIMIT applied using take()")
+                self._logger.debug("LIMIT applied using take()")
                 return result
             except Exception as e2:
                 self._logger.warning(f"Failed to apply LIMIT using take(): {e2}")

@@ -36,9 +36,9 @@ class RaySQL:
             result = engine.sql("SELECT * FROM my_table")
     """
 
-    def __init__(self, config: Optional[SQLConfig] = None):
+    def __init__(self, config: Optional[SQLConfig] = None, registry: Optional[DatasetRegistry] = None):
         self.config = config or SQLConfig()
-        self.registry = DatasetRegistry()
+        self.registry = registry or DatasetRegistry()
         self.parser = SQLParser(self.config)
         self.optimizer = ASTOptimizer(self.config)
         self.planner = LogicalPlanner(self.config)
@@ -60,7 +60,7 @@ class RaySQL:
 
     def _auto_register_datasets_from_caller(self):
         """Register all Ray Datasets in the caller's local scope as tables using their variable names.
-        
+
         Warning: This feature uses inspect.currentframe() and can be brittle. If called from
         within helper functions or nested scopes, it will register datasets from the helper's
         scope, not the intended user scope. Use explicit register_table() calls for more
@@ -100,7 +100,7 @@ class RaySQL:
             dataset=None,  # Will be set later
             execution_time=0.0,
             row_count=0,
-            query_text=query
+            query_text=query,
         )
 
         try:
@@ -230,9 +230,7 @@ def _get_engine() -> RaySQL:
     global _global_engine
     if _global_engine is None:
         config = get_config_from_context()
-        _global_engine = RaySQL(config)
-    # Always use the global registry
-    _global_engine.registry = _global_registry
+        _global_engine = RaySQL(config, registry=_global_registry)
     return _global_engine
 
 
@@ -329,7 +327,7 @@ def _dataset_name(self, table_name: str) -> Dataset:
     if not table_name or not isinstance(table_name, str):
         raise ValueError("Table name must be a non-empty string")
     _global_registry.register(table_name, self)
-    setattr(self, "_sql_name", table_name)
+    self._sql_name = table_name
     return self
 
 
@@ -391,7 +389,10 @@ def clear_tables() -> None:
 
     This function follows Ray Dataset API patterns for global functions.
     """
+    global _global_engine
     _global_registry.clear()
+    # Reset the global engine to ensure clean state
+    _global_engine = None
 
 
 def get_engine() -> RaySQL:

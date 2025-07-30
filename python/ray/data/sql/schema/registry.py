@@ -48,7 +48,7 @@ class DatasetRegistry:
         validate_table_name(name)
 
         self._tables[name] = dataset
-        setattr(dataset, "_sql_name", name)
+        dataset._sql_name = name
         self.schema_manager.infer_schema_from_dataset(name, dataset)
         self._logger.debug(f"Registered dataset '{name}' with {dataset.count()} rows")
 
@@ -183,7 +183,7 @@ class DatasetRegistry:
         del self._tables[old_name]
 
         self._tables[new_name] = dataset
-        setattr(dataset, "_sql_name", new_name)
+        dataset._sql_name = new_name
 
         # Update schema
         schema = self.schema_manager.get_schema(old_name)

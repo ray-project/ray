@@ -9,30 +9,80 @@ The tests follow Ray Data testing patterns and ensure API compliance.
 import pytest
 
 import ray
-from ray.data import Dataset
-from ray.tests.conftest import *  # noqa
 
 # Import the SQL engine components
 from ray.data.sql import (
-    sql,
-    register_table,
-    list_tables,
-    get_schema,
-    clear_tables,
-    run_comprehensive_tests,
-    example_usage,
-    example_sqlglot_features,
+    LogLevel,
     RaySQL,
     SQLConfig,
-    LogLevel,
-    TestRunner,
-    ExampleRunner,
+    clear_tables,
+    example_sqlglot_features,
+    example_usage,
+    get_schema,
+    list_tables,
+    register_table,
+    run_comprehensive_tests,
+    sql,
 )
+from ray.tests.conftest import *  # noqa
+
+
+def debug_registry_state(test_name=""):
+    """Helper function to debug registry state during tests."""
+    print(f"\n🔍 Registry Debug ({test_name})")
+    print("-" * 50)
+    
+    # Check list_tables()
+    try:
+        available_tables = list_tables()
+        print(f"📋 list_tables(): {available_tables}")
+    except Exception as e:
+        print(f"❌ list_tables() error: {e}")
+    
+    # Check global registry directly
+    try:
+        from ray.data.sql.core import get_registry
+        registry = get_registry()
+        global_tables = list(registry._tables.keys())
+        print(f"🌐 Global registry: {global_tables}")
+    except Exception as e:
+        print(f"❌ Global registry error: {e}")
+    
+    # Check engine and executor registries
+    try:
+        from ray.data.sql.core import get_engine
+        engine = get_engine()
+        engine_tables = list(engine.registry._tables.keys())
+        executor_tables = list(engine.executor.registry._tables.keys())
+        print(f"🔧 Engine registry: {engine_tables}")
+        print(f"⚙️  Executor registry: {executor_tables}")
+        
+        # Check if they're the same objects
+        engine_registry_id = id(engine.registry)
+        executor_registry_id = id(engine.executor.registry)
+        global_registry_id = id(registry)
+        
+        print(f"🆔 Registry object IDs:")
+        print(f"   Global: {global_registry_id}")
+        print(f"   Engine: {engine_registry_id}")
+        print(f"   Executor: {executor_registry_id}")
+        
+        if engine_registry_id == executor_registry_id == global_registry_id:
+            print("✅ All registries are the same object!")
+        else:
+            print("❌ Registry objects are different!")
+            
+    except Exception as e:
+        print(f"❌ Engine/Executor registry error: {e}")
+    
+    print("-" * 50)
 
 
 @pytest.fixture
 def sql_test_data():
     """Fixture providing test datasets for SQL operations."""
+    print("\n🔧 Setting up SQL test data fixture...")
+    
     test_data = {
         "users": ray.data.from_items(
             [
@@ -60,27 +110,68 @@ def sql_test_data():
         ),
     }
 
-    # Register test datasets
+    print(f"📊 Created {len(test_data)} test datasets:")
     for name, dataset in test_data.items():
+        row_count = len(dataset.take_all())
+        print(f"   - {name}: {row_count} rows")
+
+    # Clear any existing tables first
+    print("🧹 Clearing existing tables...")
+    clear_tables()
+    
+    # Check registry state before registration
+    from ray.data.sql.core import get_registry
+    registry = get_registry()
+    print(f"📋 Registry state before registration: {list(registry._tables.keys())}")
+
+    # Register test datasets with explicit logging
+    print("📝 Registering test datasets...")
+    for name, dataset in test_data.items():
+        print(f"   Registering '{name}'...")
         register_table(name, dataset)
+        
+        # Verify registration immediately
+        available_tables = list_tables()
+        if name in available_tables:
+            print(f"   ✅ '{name}' successfully registered")
+        else:
+            print(f"   ❌ '{name}' registration failed - available: {available_tables}")
+
+    # Final registry state
+    final_tables = list_tables()
+    print(f"📋 Final registered tables: {final_tables}")
+    
+    # Debug registry state after setup
+    debug_registry_state("After fixture setup")
 
     yield test_data
 
     # Clean up after test
+    print("🧹 Cleaning up test data...")
     clear_tables()
+    final_cleanup_tables = list_tables()
+    print(f"📋 Tables after cleanup: {final_cleanup_tables}")
 
 
 def test_basic_select_operations(ray_start_regular_shared, sql_test_data):
     """Test basic SELECT operations."""
+    print("\n🧪 Testing basic SELECT operations...")
+    debug_registry_state("test_basic_select_operations start")
+    
     # SELECT * FROM table
+    print("📝 Executing: SELECT * FROM users")
+    debug_registry_state("Before SELECT * query execution")
     result = sql("SELECT * FROM users")
     rows = result.take_all()
+    print(f"✅ Query returned {len(rows)} rows")
     assert len(rows) == 4
     assert all("id" in row and "name" in row for row in rows)
 
     # SELECT specific columns
+    print("📝 Executing: SELECT name, age FROM users")
     result = sql("SELECT name, age FROM users")
     rows = result.take_all()
+    print(f"✅ Query returned {len(rows)} rows")
     assert len(rows) == 4
     assert all(set(row.keys()) == {"name", "age"} for row in rows)
 
@@ -135,7 +226,12 @@ def test_order_by_operations(ray_start_regular_shared, sql_test_data):
 
 def test_limit_operations(ray_start_regular_shared, sql_test_data):
     """Test LIMIT functionality."""
+    print("\n🧪 Testing LIMIT operations...")
+    debug_registry_state("test_limit_operations start")
+    
     # Simple LIMIT
+    print("📝 Executing: SELECT name FROM users LIMIT 2")
+    debug_registry_state("Before LIMIT query execution")
     result = sql("SELECT name FROM users LIMIT 2")
     rows = result.take_all()
     assert len(rows) == 2

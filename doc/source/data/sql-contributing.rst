@@ -1,7 +1,7 @@
 Contributing to Ray Data SQL
 ============================
 
-We welcome contributions to Ray Data SQL! This guide helps you get started with contributing to this specific component of Ray Data.
+Contributions to Ray Data SQL are welcome. This guide helps you get started with contributing to this specific component of Ray Data.
 
 .. contents::
    :depth: 2
@@ -11,7 +11,7 @@ Getting Started
 ===============
 
 Ray Data SQL is an integral part of Ray Data that enables SQL querying capabilities on Ray Datasets. 
-When contributing, you'll work with several key components:
+When contributing, you will work with several key components:
 
 * **Core SQL Engine** (``ray/python/ray/data/sql/core.py``): Main query execution logic
 * **SQL Parsing** (``ray/python/ray/data/sql/parser.py``): Query parsing and optimization using SQLGlot
@@ -370,4 +370,4 @@ Significant contributions to Ray Data SQL are recognized in:
 * Community blog posts and talks
 * Ray contributor acknowledgments
 
-Thank you for contributing to Ray Data SQL! Your contributions help make Ray's distributed data processing capabilities more accessible through familiar SQL interfaces. 
+Thank you for contributing to Ray Data SQL. Your contributions help make Ray's distributed data processing capabilities more accessible through familiar SQL interfaces. 

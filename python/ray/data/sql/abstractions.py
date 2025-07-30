@@ -12,8 +12,9 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Protocol, Union
 
-from ray.data import Dataset
 from sqlglot import exp
+
+from ray.data import Dataset
 from ray.data.sql.config import SQLConfig
 
 
