@@ -458,7 +458,17 @@ class TPUAcceleratorManager(AcceleratorManager):
 
     @staticmethod
     def get_current_node_accelerator_labels() -> Dict[str, str]:
-        """Return default TPU-specific node labels for this host."""
+        """Get default TPU-specific Ray node labels for the current node.
+
+        For TPUs, these labels include:
+        - ray.io/tpu-slice-name: the name of the TPU Pod or slice
+        - ray.io/tpu-worker-id: the integer worker ID within the slice
+        - ray.io/tpu-topology: the TPU topology (e.g. 4x4)
+        - ray.io/tpu-head: set to "TPU-<tpu_pod_type>-head" only on worker 0
+
+        Returns:
+            A dictionary of TPU label keys and resolved values.
+        """
         tpu_labels = {}
 
         tpu_name = TPUAcceleratorManager.get_current_node_tpu_name()

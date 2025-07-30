@@ -135,8 +135,8 @@ constexpr char kLabelKeyTpuSliceName[] = RAY_LABEL_KEY_PREFIX "tpu-slice-name";
 // it's scheduled on. Valid values are 0 to N-1 where N is the number of TPU hosts.
 constexpr char kLabelKeyTpuWorkerId[] = RAY_LABEL_KEY_PREFIX "tpu-worker-id";
 
-// A label applied to the TPU "head" (worker 0) on a multi-host slice. THe value
-// is a string of the form "TPU-{ACCELERATOR_TYPE}-Head".
+// A label applied to the TPU "head" (worker 0) on a multi-host slice. The value
+// is a string of the form "TPU-{ACCELERATOR_TYPE}-head".
 constexpr char kLabelKeyTpuHead[] = RAY_LABEL_KEY_PREFIX "tpu-head";
 
 #undef RAY_LABEL_KEY_PREFIX
