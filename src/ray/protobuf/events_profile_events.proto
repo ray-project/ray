@@ -16,6 +16,8 @@ syntax = "proto3";
 
 package ray.rpc.events;
 
+option java_package = "io.ray.runtime.generated";
+
 message ProfileEventEntry {
   // The start timestamp of the event time.
   int64 start_time = 1;
