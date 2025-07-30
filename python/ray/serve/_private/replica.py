@@ -274,6 +274,7 @@ class ReplicaMetricsManager:
         """Dynamically update autoscaling config."""
 
         self._autoscaling_config = autoscaling_config
+        # self.
 
         if self.should_collect_metrics():
             self._metrics_pusher.start()
@@ -335,7 +336,27 @@ class ReplicaMetricsManager:
             send_timestamp=time.time(),
         )
 
-    def _add_autoscaling_metrics_point(self) -> None:
+    def _add_autoscaling_metrics_point(self, metrics_sources: Dict[str, Union[str, Callable]]) -> None:
+        
+        # Use the metrics threads to fetch the updated metrics
+        from concurrent.futures import ThreadPoolExecutor
+
+        # Execute each callable in metrics_sources in a thread pool
+        with ThreadPoolExecutor() as executor:
+            future_to_key = {executor.submit(func): key for key, func in metrics_sources.items()}
+            results = {}
+            for future in future_to_key:
+                key = future_to_key[future]
+                try:
+                    results[key] = future.result()
+                except Exception as e:
+                    # Optionally log or handle the exception
+                    results[key] = None
+
+        # Add the collected metrics to the metrics store
+        self._metrics_store.add_metrics_point(results, time.time())
+
+
         self._metrics_store.add_metrics_point(
             {self._replica_id: self._num_ongoing_requests},
             time.time(),
