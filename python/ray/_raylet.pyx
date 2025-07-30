@@ -34,6 +34,7 @@ from typing import (
     Tuple,
     Union,
     NamedTuple,
+    TypedDict
 )
 
 import contextvars
@@ -283,6 +284,31 @@ async_task_id = contextvars.ContextVar('async_task_id', default=None)
 async_task_name = contextvars.ContextVar('async_task_name', default=None)
 async_task_function_name = contextvars.ContextVar('async_task_function_name',
                                                   default=None)
+
+class LocationPtrDict(TypedDict):
+    node_ids: list[str]
+    object_size: int
+    did_spill: bool
+
+class RefCountDict(TypedDict):
+    local: int
+    submitted: int
+
+class GcsErrorPollDict(TypedDict):
+    job_id:bytes
+    type:str
+    error_message:str
+    timestamp:float
+
+class GcsLogPollDict(TypedDict):
+    ip:str
+    pid:str
+    job:str
+    is_err:bool
+    lines:list[str]
+    actor_name:str
+    task_name:str
+
 
 @PublicAPI
 class ObjectRefGenerator:
@@ -2940,8 +2966,7 @@ cdef class _TestOnly_GcsActorSubscriber(_GcsSubscriber):
         """Polls for new actor messages.
 
         Returns:
-            A byte string of function key.
-            None if polling times out or subscriber closed.
+            A list of (key_id, ActorTableData) tuples for new actor messages
         """
         cdef:
             CActorTableData actor_data

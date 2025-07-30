@@ -1,8 +1,9 @@
-from typing import Generic, TypeVar
-
-from ray.util.annotations import PublicAPI
-
 from ray import (
     ObjectRef,
     ObjectID,
 )
+
+__all__ = [
+    "ObjectRef",
+    "ObjectID",
+]  # don't break existing from ray.types imports. TODO: add more here? should really all just be import ray.x though

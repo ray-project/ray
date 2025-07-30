@@ -286,7 +286,7 @@ cdef class WorkerID(UniqueID):
     cdef CWorkerID native(self):
         return <CWorkerID>self.data
 
-cdef class ActorID(BaseID):
+cdef class ActorID(BaseID): #TODO: Make generic with __class_getitem__?
 
     def __init__(self, id):
         self._set_id(id)

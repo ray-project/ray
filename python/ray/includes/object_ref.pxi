@@ -34,6 +34,8 @@ def _set_future_helper(
 
 
 cdef class ObjectRef(BaseID):
+    def __class_getitem__(cls,*args,**kwargs): #hacky way to allow generics
+        return cls
 
     def __cinit__(self):
         self.in_core_worker = False
