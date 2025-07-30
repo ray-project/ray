@@ -21,6 +21,7 @@
 
 #include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_kv_manager.h"
+#include "ray/gcs/gcs_server/state_util.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
 #include "ray/rpc/node_manager/raylet_client_pool.h"
@@ -92,8 +93,8 @@ class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateHandler
 
  private:
   /// \brief Get the aggregated resource load from all nodes.
-  absl::flat_hash_map<google::protobuf::Map<std::string, double>, rpc::ResourceDemand>
-  GetAggregatedResourceLoad() const;
+  absl::flat_hash_map<ResourceDemandKey, rpc::ResourceDemand> GetAggregatedResourceLoad()
+      const;
 
   /// \brief Internal method for populating the rpc::ClusterResourceState
   /// protobuf.

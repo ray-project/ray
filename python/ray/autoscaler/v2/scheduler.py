@@ -20,6 +20,7 @@ from ray.autoscaler.v2.instance_manager.common import InstanceUtil
 from ray.autoscaler.v2.instance_manager.config import NodeTypeConfig
 from ray.autoscaler.v2.schema import AutoscalerInstance, NodeType
 from ray.autoscaler.v2.utils import ProtobufUtil, ResourceRequestUtil
+from ray.core.generated.common_pb2 import LabelSelectorOperator
 from ray.core.generated.autoscaler_pb2 import (
     ClusterResourceConstraint,
     GangResourceRequest,
@@ -275,8 +276,10 @@ class SchedulingNode:
                 # Available resources for scheduling requests of different
                 # sources.
                 available_resources=dict(instance.ray_node.available_resources),
-                # Use ray node's dynamic labels.
-                labels=dict(instance.ray_node.dynamic_labels),
+                labels={
+                    **(instance.ray_node.labels or {}),
+                    **(instance.ray_node.dynamic_labels or {}),
+                },
                 status=SchedulingNodeStatus.SCHEDULABLE,
                 im_instance_id=instance.im_instance.instance_id,
                 im_instance_status=instance.im_instance.status,
@@ -437,16 +440,22 @@ class SchedulingNode:
         A "higher" score means that this node is more suitable for scheduling the
         current scheduled resource requests.
 
-        The score is a tuple of 4 values:
-            1. Whether this node is a GPU node and the current resource request has
+        The score is a tuple of 5 values:
+            1. Whether this node has labels matching the current resource request's
+                label_selector requirements:
+                    0: if this node does not satisfy any label selector requirements or
+                       no label selectors are provided.
+                    len(label_selectors)-i: a score based on the priority of the label
+                        selector in the resource request that this node satisfies.
+            2. Whether this node is a GPU node and the current resource request has
                 GPU requirements:
                     0: if this node is a GPU node and the current resource request
                     placed onto the node has no GPU requirements.
                     1: if this node is not a GPU node or the current resource request
                     placed onto the node has GPU requirements.
-            2. The number of resource types being scheduled.
-            3. The minimum utilization rate across all resource types.
-            4. The average utilization rate across all resource types.
+            3. The number of resource types being scheduled.
+            4. The minimum utilization rate across all resource types.
+            5. The average utilization rate across all resource types.
 
         NOTE:
             This function is adapted from  _resource_based_utilization_scorer from
@@ -499,11 +508,15 @@ class SchedulingNode:
             if is_gpu_node and not any_gpu_requests:
                 gpu_ok = False
 
+        # Check if node satisfies label requirements.
+        matches_labels = self._satisfies_label_constraints(sched_requests)
+
         # Prioritize avoiding gpu nodes for non-gpu workloads first,
         # then prioritize matching multiple resource types,
         # then prioritize using all resources,
         # then prioritize overall balance of multiple resources.
         return (
+            matches_labels,
             gpu_ok,
             num_matching_resource_types,
             min(util_by_resources) if util_by_resources else 0,
@@ -511,6 +524,37 @@ class SchedulingNode:
             if util_by_resources
             else 0,
         )
+
+    def _satisfies_label_constraints(
+        self, sched_requests: List[ResourceRequest]
+    ) -> int:
+        """Returns a higher value based on the priority of the label selector this node
+        satisfies (first returns highest score, decreasing sequentially for fallback), 0 otherwise."""
+        for req in sched_requests:
+            num_selectors = len(req.label_selectors)
+            for i, selector in enumerate(req.label_selectors):
+                all_constraints_pass = True
+                for constraint in selector.label_constraints:
+                    key = constraint.label_key
+                    values = set(constraint.label_values)
+                    op = constraint.operator
+                    node_val = self.labels.get(key)
+
+                    if op == LabelSelectorOperator.LABEL_OPERATOR_IN:
+                        if node_val not in values:
+                            all_constraints_pass = False
+                            break
+                    elif op == LabelSelectorOperator.LABEL_OPERATOR_NOT_IN:
+                        if node_val in values:
+                            all_constraints_pass = False
+                            break
+                    else:
+                        all_constraints_pass = False
+                        break
+
+                if all_constraints_pass:
+                    return num_selectors - i
+        return 0
 
     def _try_schedule_one(
         self, request: ResourceRequest, resource_request_source: ResourceRequestSource
@@ -527,6 +571,11 @@ class SchedulingNode:
         Returns:
             True if the resource request is scheduled on this node.
         """
+
+        # Enforce label selector constraints
+        if request.label_selectors:
+            if self._satisfies_label_constraints([request]) == 0:
+                return False  # Node doesn't satisfy any label selector in request.
 
         # Check if there's placement constraints that are not satisfied.
         for constraint in request.placement_constraints:
@@ -1347,17 +1396,24 @@ class ResourceDemandScheduler(IResourceScheduler):
         def _sort_resource_request(req: ResourceRequest) -> Tuple:
             """
             Sort the resource requests by:
-                1. The length of it's placement constraints.
-                2. The number of resources it requests.
-                3. The values of resources it requests.
-                4. lexicographically for each resource (for stable ordering)
+                1. The length of its placement constraints.
+                2. The length of its first label selector constraints (if any).
+                3. The number of resources it requests.
+                4. The values of resources it requests.
+                5. lexicographically for each resource (for stable ordering)
 
             This is a legacy sorting function for the autoscaler's binpacking
             algo - we do this so that we could have a deterministic scheduling
             results with reasonable fragmentation.
             """
+            label_constraint_len = (
+                len(req.label_selectors[0].label_constraints)
+                if req.label_selectors
+                else 0
+            )
             return (
                 len(req.placement_constraints),
+                label_constraint_len,
                 len(req.resources_bundle.values()),
                 sum(req.resources_bundle.values()),
                 sorted(req.resources_bundle.items()),

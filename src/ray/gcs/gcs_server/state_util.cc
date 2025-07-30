@@ -19,12 +19,19 @@
 namespace ray {
 namespace gcs {
 
-void FillAggregateLoad(const rpc::ResourcesData &resources_data,
-                       absl::flat_hash_map<google::protobuf::Map<std::string, double>,
-                                           rpc::ResourceDemand> *aggregate_load) {
+void FillAggregateLoad(
+    const rpc::ResourcesData &resources_data,
+    absl::flat_hash_map<ResourceDemandKey, rpc::ResourceDemand> *aggregate_load) {
   const auto &load = resources_data.resource_load_by_shape();
   for (const auto &demand : load.resource_demands()) {
-    auto &aggregate_demand = (*aggregate_load)[demand.shape()];
+    ResourceDemandKey key;
+    key.shape = demand.shape();
+
+    key.label_selectors.reserve(demand.label_selectors().size());
+    for (const auto &selector : demand.label_selectors()) {
+      key.label_selectors.push_back(selector);
+    }
+    auto &aggregate_demand = (*aggregate_load)[key];
     aggregate_demand.set_num_ready_requests_queued(
         aggregate_demand.num_ready_requests_queued() +
         demand.num_ready_requests_queued());
