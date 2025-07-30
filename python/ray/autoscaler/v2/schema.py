@@ -223,18 +223,19 @@ class ClusterStatus:
 
 @dataclass
 class IPPRStatus:
+    cloud_instance_id: str
     min_cpu: float
     max_cpu: float
     min_memory: float
     max_memory: float
     current_cpu: float
     current_memory: float
-    desired_cpu: Optional[float]
-    desired_memory: Optional[float]
-    resized_at: Optional[int]
-    resized_status: Optional[str]
-    resized_message: Optional[str]
     resize_timeout: int
+    desired_cpu: Optional[float] = None
+    desired_memory: Optional[float] = None
+    resized_at: Optional[int] = None
+    resized_status: Optional[str] = None
+    resized_message: Optional[str] = None
 
 
 @dataclass

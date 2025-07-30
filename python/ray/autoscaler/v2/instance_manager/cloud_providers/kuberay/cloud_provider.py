@@ -77,6 +77,7 @@ class KubeRayProvider(ICloudInstanceProvider):
         # Below are states that are fetched from the Kubernetes API server.
         self._ray_cluster = None
         self._cached_instances: Dict[CloudInstanceId, CloudInstance]
+        self._pod_container_status: Dict[str, Any] = {}
 
     @dataclass
     class ScaleRequest:
@@ -184,6 +185,104 @@ class KubeRayProvider(ICloudInstanceProvider):
         self._launch_errors_queue = []
         self._terminate_errors_queue = []
         return errors
+
+    def ippr_resize(self, resizes: List[IPPRStatus]) -> None:
+        upscales = []
+        for resize in resizes:
+            if (
+                resize.desired_cpu > resize.current_cpu
+                or resize.desired_memory > resize.current_memory
+            ):
+                upscales.append(resize)
+
+        for resize in upscales:
+            container = self._pod_container_status[resize.cloud_instance_id]
+            patch = []
+            if resize.desired_cpu > resize.current_cpu:
+                if container.get("resources", {}).get("limits", {}).get("cpu"):
+                    patch.append(
+                        {
+                            "op": "replace",
+                            "path": "/spec/containers/0/resources/limits/cpu",
+                            "value": resize.desired_cpu,
+                        }
+                    )
+                    patch.append(
+                        {
+                            "op": "replace",
+                            "path": "/spec/containers/0/resources/requests/cpu",
+                            "value": float(
+                                parse_quantity(
+                                    container.get("resources", {})
+                                    .get("requests", {})
+                                    .get("cpu", 0)
+                                )
+                            )
+                            + (resize.desired_cpu - resize.current_cpu),
+                        }
+                    )
+                else:
+                    patch.append(
+                        {
+                            "op": "replace",
+                            "path": "/spec/containers/0/resources/requests/cpu",
+                            "value": resize.desired_cpu,
+                        }
+                    )
+            if resize.desired_memory > resize.current_memory:
+                if container.get("resources", {}).get("limits", {}).get("memory"):
+                    patch.append(
+                        {
+                            "op": "replace",
+                            "path": "/spec/containers/0/resources/limits/memory",
+                            "value": resize.desired_memory,
+                        }
+                    )
+                    patch.append(
+                        {
+                            "op": "replace",
+                            "path": "/spec/containers/0/resources/requests/memory",
+                            "value": float(
+                                parse_quantity(
+                                    container.get("resources", {})
+                                    .get("requests", {})
+                                    .get("memory", 0)
+                                )
+                            )
+                            + (resize.desired_memory - resize.current_memory),
+                        }
+                    )
+                else:
+                    patch.append(
+                        {
+                            "op": "replace",
+                            "path": "/spec/containers/0/resources/requests/memory",
+                            "value": resize.desired_memory,
+                        }
+                    )
+
+            if not patch:
+                continue
+
+            logger.info(f"Resizing pod {resize.cloud_instance_id} to {patch}")
+
+            self._patch("pods/{}/resize".format(resize.cloud_instance_id), patch)
+            self._patch(
+                "pods/{}".format(resize.cloud_instance_id),
+                [
+                    {
+                        "op": "add",
+                        "path": "/metadata/annotations/ray.io~1ippr-status",
+                        "value": json.dumps(
+                            {
+                                "min_cpu": resize.min_cpu,
+                                "min_memory": resize.min_memory,
+                                "resized_at": int(time.time()),
+                            }
+                        ),
+                    }
+                ],
+            )
 
     ############################
     # Private
@@ -546,38 +645,54 @@ class KubeRayProvider(ICloudInstanceProvider):
                 pod_spec_limits = (
                     pod["spec"]["containers"][0].get("resources", {}).get("limits", {})
                 )
-                pod_status_requests = (
-                    pod["status"]["containerStatuses"][0]
-                    .get("resources", {})
-                    .get("requests", {})
-                )
-                pod_status_limits = (
-                    pod["status"]["containerStatuses"][0]
-                    .get("resources", {})
-                    .get("limits", {})
-                )
 
-                spec_cpu = parse_quantity(
-                    pod_spec_limits.get("cpu") or pod_spec_requests.get("cpu", 0)
+                container_name = pod["spec"]["containers"][0]["name"]
+                container_status = None
+                for status in pod["status"]["containerStatuses"]:
+                    if status["name"] == container_name:
+                        container_status = status
+                        break
+                assert container_status is not None
+                self._pod_container_status[pod["metadata"]["name"]] = container_status
+                pod_status_requests = container_status.get("resources", {}).get(
+                    "requests", {}
                 )
-                spec_memory = parse_quantity(
-                    pod_spec_limits.get("memory") or pod_spec_requests.get("memory", 0)
+                pod_status_limits = container_status.get("resources", {}).get(
+                    "limits", {}
+                )
+                spec_cpu = float(
+                    parse_quantity(
+                        pod_spec_limits.get("cpu") or pod_spec_requests.get("cpu", 0)
+                    )
+                )
+                spec_memory = float(
+                    parse_quantity(
+                        pod_spec_limits.get("memory")
+                        or pod_spec_requests.get("memory", 0)
+                    )
                 )
 
                 ippr_status = IPPRStatus(
+                    cloud_instance_id=pod["metadata"]["name"],
                     min_cpu=spec_cpu,
-                    max_cpu=parse_quantity(group_ippr_spec.get("max-cpu", 0)),
+                    max_cpu=float(parse_quantity(group_ippr_spec.get("max-cpu", 0))),
                     min_memory=spec_memory,
-                    max_memory=parse_quantity(group_ippr_spec.get("max-memory", 0)),
+                    max_memory=float(
+                        parse_quantity(group_ippr_spec.get("max-memory", 0))
+                    ),
                     desired_cpu=spec_cpu,
                     desired_memory=spec_memory,
-                    current_cpu=parse_quantity(
-                        pod_status_requests.get("cpu")
-                        or pod_status_limits.get("cpu", 0)
+                    current_cpu=float(
+                        parse_quantity(
+                            pod_status_limits.get("cpu")
+                            or pod_status_requests.get("cpu", 0)
+                        )
                     ),
-                    current_memory=parse_quantity(
-                        pod_status_requests.get("memory")
-                        or pod_status_limits.get("memory", 0)
+                    current_memory=float(
+                        parse_quantity(
+                            pod_status_limits.get("memory")
+                            or pod_status_requests.get("memory", 0)
+                        )
                     ),
                     resize_timeout=group_ippr_spec.get("resize-timeout", 0),
                 )
@@ -587,11 +702,15 @@ class KubeRayProvider(ICloudInstanceProvider):
                 )
                 if pod_ippr_status_json:
                     pod_ippr_status = json.loads(pod_ippr_status_json)
-                    ippr_status.min_cpu = pod_ippr_status.get(
-                        "min-cpu", ippr_status.min_cpu
+                    ippr_status.min_cpu = float(
+                        parse_quantity(
+                            pod_ippr_status.get("min-cpu", ippr_status.min_cpu)
+                        )
                     )
-                    ippr_status.min_memory = pod_ippr_status.get(
-                        "min-memory", ippr_status.min_memory
+                    ippr_status.min_memory = float(
+                        parse_quantity(
+                            pod_ippr_status.get("min-memory", ippr_status.min_memory)
+                        )
                     )
                     ippr_status.resized_at = pod_ippr_status.get("resized-at", None)
 

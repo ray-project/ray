@@ -71,6 +71,7 @@ class SchedulingRequest:
 class SchedulingReply:
     # Instances to launch.
     to_launch: List[LaunchRequest] = field(default_factory=list)
+    to_scale: List[IPPRStatus] = field(default_factory=list)
     # To terminate.
     to_terminate: List[TerminationRequest] = field(default_factory=list)
     # The infeasible resource bundles.
@@ -162,7 +163,7 @@ class SchedulingNode:
     total_resources: Dict[str, float] = field(default_factory=dict)
 
     # IPPR status, queried from the cloud provider.
-    ippr_status: Optional[IPPRStatus]
+    ippr_status: Optional[IPPRStatus] = None
 
     # Node's labels, including static or dynamic labels.
     labels: Dict[str, str] = field(default_factory=dict)
@@ -201,6 +202,7 @@ class SchedulingNode:
         launch_config_hash: str = "",
         node_kind: NodeKind = NodeKind.WORKER,
         termination_request: Optional[TerminationRequest] = None,
+        ippr_status: Optional[IPPRStatus] = None,
     ):
         self.node_type = node_type
         self.total_resources = total_resources
@@ -221,6 +223,7 @@ class SchedulingNode:
         self.launch_config_hash = launch_config_hash
         self.node_kind = node_kind
         self.termination_request = termination_request
+        self.ippr_status = ippr_status
 
     def get_available_resources(self, resource_request_source: ResourceRequestSource):
         """Get the available resources for the given resource request source."""
@@ -229,6 +232,24 @@ class SchedulingNode:
     def get_sched_requests(self, resource_request_source: ResourceRequestSource):
         """Get the resource requests for the given resource request source."""
         return self.sched_requests[resource_request_source]
+
+    def update_total_resources(self, new_total_resources: Dict[str, float]) -> None:
+        """
+        Update the total resources and available resources for scheduling by applying deltas.
+
+        Args:
+            new_total_resources: The new total resource capacities for this node
+        """
+        # Calculate and apply deltas to both total_resources and available_resources_for_sched
+        for resource_name, new_total in new_total_resources.items():
+            delta = new_total - self.total_resources.get(resource_name, 0.0)
+            # Update total_resources, ensuring it doesn't go below 0
+            self.total_resources[resource_name] = max(0.0, new_total)
+            # Update available resources for both request sources, ensuring they don't go below 0
+            for available in self.available_resources_for_sched.values():
+                available[resource_name] = max(
+                    0.0, available.get(resource_name, 0.0) + delta
+                )
 
     def add_sched_request(
         self,
@@ -859,6 +880,16 @@ class ResourceDemandScheduler(IResourceScheduler):
                 len(self._nodes), dict(self._node_type_available)
             )
 
+        def get_scale_requests(self) -> List[IPPRStatus]:
+            requests = []
+            for node in self._nodes:
+                if (
+                    node.ippr_status is not None
+                    and node.ippr_status.resized_status == "new"
+                ):
+                    requests.append(node.ippr_status)
+            return requests
+
         def get_launch_requests(self) -> List[LaunchRequest]:
             """
             Get the launch requests for the nodes that are to be launched.
@@ -944,6 +975,7 @@ class ResourceDemandScheduler(IResourceScheduler):
             infeasible_gang_resource_requests=infeasible_gang_requests,
             infeasible_cluster_resource_constraints=infeasible_constraints,
             to_launch=ctx.get_launch_requests(),
+            to_scale=ctx.get_scale_requests(),
             to_terminate=ctx.get_terminate_requests(),
         )
 
@@ -1437,6 +1469,38 @@ class ResourceDemandScheduler(IResourceScheduler):
         #   2. new nodes that are launched to satisfy the resource requests.
         target_nodes = []
 
+        # Revert failed or stuck IPPR
+        for node in existing_nodes:
+            if node.ippr_status is not None:
+                if (
+                    node.ippr_status.resized_status == "error"
+                    or node.ippr_status.resized_status == "infeasible"
+                    or (
+                        node.ippr_status.resized_status == "inprogress"
+                        and node.ippr_status.resize_timeout
+                        + node.ippr_status.resized_at
+                        >= time.time()
+                    )
+                ):
+                    node.ippr_status.desired_cpu = node.ippr_status.current_cpu
+                    node.ippr_status.desired_memory = node.ippr_status.current_memory
+                    node.ippr_status.resized_at = None
+                    node.ippr_status.resized_status = "new"
+                    node.ippr_status.resized_message = None
+
+        # Make the existing nodes aware of ongoing IPPR status
+        for node in existing_nodes:
+            if node.ippr_status is not None and (
+                node.ippr_status.resized_status is None
+                or node.ippr_status.resized_status == "inprogress"
+            ):
+                node.update_total_resources(
+                    {
+                        "CPU": node.ippr_status.desired_cpu,
+                        "memory": node.ippr_status.desired_memory,
+                    }
+                )
+
         # Try scheduling resource requests with existing nodes first.
         while len(requests_to_sched) > 0 and len(existing_nodes) > 0:
             (
@@ -1449,6 +1513,49 @@ class ResourceDemandScheduler(IResourceScheduler):
             if best_node is None:
                 # No existing nodes can schedule any more requests.
                 break
+
+            target_nodes.append(best_node)
+
+        # If there's any existing nodes left, we will add to the target nodes
+        target_nodes.extend(existing_nodes)
+
+        # Try scheduling resource requests with IPPR
+        existing_nodes = target_nodes
+        target_nodes = []
+
+        for node in existing_nodes:
+            if node.ippr_status is not None and node.ippr_status.resized_status is None:
+                if (
+                    node.ippr_status.current_cpu < node.ippr_status.max_cpu
+                    or node.ippr_status.current_memory < node.ippr_status.max_memory
+                ):
+                    node.update_total_resources(
+                        {
+                            "CPU": node.ippr_status.max_cpu,
+                            "memory": node.ippr_status.max_memory,
+                        }
+                    )
+
+        while len(requests_to_sched) > 0 and len(existing_nodes) > 0:
+            (
+                best_node,
+                requests_to_sched,
+                existing_nodes,
+            ) = ResourceDemandScheduler._sched_best_node(
+                requests_to_sched, existing_nodes, resource_request_source
+            )
+            if best_node is None:
+                # No existing nodes can schedule any more requests.
+                break
+
+            best_node.ippr_status.desired_cpu = best_node.ippr_status.max_cpu
+            best_node.ippr_status.desired_memory = best_node.ippr_status.max_memory
+            best_node.ippr_status.resized_at = None
+            best_node.ippr_status.resized_status = "new"
+            best_node.ippr_status.resized_message = None
+            logger.info(
+                f"Scheduling IPPR up for node {best_node.im_instance_id}: {best_node.ippr_status}"
+            )
 
             target_nodes.append(best_node)
 
