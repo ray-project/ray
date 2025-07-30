@@ -1,19 +1,20 @@
 from typing import Any, Dict, List
 
 import ray
-from ray._raylet import ObjectRef
+
+# from ray._raylet import ObjectRef
 
 
 def get_object_locations(
-    obj_refs: List[ObjectRef], timeout_ms: int = -1
-) -> Dict[ObjectRef, Dict[str, Any]]:
+    obj_refs: List["ray.ObjectRef"], timeout_ms: int = -1
+) -> Dict["ray.ObjectRef", Dict[str, Any]]:
     """Lookup the locations for a list of objects.
 
     It returns a dict maps from an object to its location. The dict excludes
     those objects whose location lookup failed.
 
     Args:
-        object_refs (List[ObjectRef]): List of object refs.
+        obj_refs (List['ray.ObjectRef']): List of object refs.
         timeout_ms: The maximum amount of time in micro seconds to wait
             before returning. Wait infinitely if it's negative.
 
@@ -43,8 +44,8 @@ def get_object_locations(
 
 
 def get_local_object_locations(
-    obj_refs: List[ObjectRef],
-) -> Dict[ObjectRef, Dict[str, Any]]:
+    obj_refs: List["ray.ObjectRef"],
+) -> Dict["ray.ObjectRef", Dict[str, Any]]:
     """Lookup the locations for a list of objects *from the local core worker*. No RPCs
     are made in this method.
 
@@ -52,7 +53,7 @@ def get_local_object_locations(
     those objects whose location lookup failed.
 
     Args:
-        object_refs (List[ObjectRef]): List of object refs.
+        obj_refs (List['ray.ObjectRef']): List of object refs.
 
     Returns:
         A dict maps from an object to its location. The dict excludes those

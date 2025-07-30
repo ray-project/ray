@@ -1,12 +1,12 @@
 import io
 import logging
 import time
-from collections import defaultdict, namedtuple
-from typing import Any, Dict, List, Optional, Set, Tuple, Union
+from collections import defaultdict
+from typing import Any, Dict, List, Optional, Set, Tuple, Union, NamedTuple
 
 import ray
 import ray.exceptions
-from ray._raylet import SerializedObject
+from ray._raylet import SerializedObject, ObjectRef, ActorID
 from ray.experimental.channel import utils
 from ray.experimental.channel.common import ChannelInterface, ChannelOutputType
 from ray.experimental.channel.intra_process_channel import IntraProcessChannel
@@ -64,9 +64,10 @@ def _create_channel_ref(
 # reader_ref: The object reference.
 # ref_owner_actor_id: The actor who created the object reference.
 # num_readers: The number of reader actors who reads this object reference.
-ReaderRefInfo = namedtuple(
-    "ReaderRefInfo", ["reader_ref", "ref_owner_actor_id", "num_reader_actors"]
-)
+class ReaderRefInfo(NamedTuple):
+    reader_ref: ObjectRef[bytes]
+    ref_owner_actor_id: ActorID
+    num_reader_actors: int
 
 
 class _ResizeChannel:

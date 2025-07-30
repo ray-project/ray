@@ -384,7 +384,7 @@ def test_flat_map(
 
     if udf_kind == "gen":
 
-        def _udf(item: dict) -> Iterator[int]:
+        def _udf(item: dict) -> Iterator[dict[str, int]]:
             for _ in range(2):
                 yield {"id": item["id"] + 1}
 

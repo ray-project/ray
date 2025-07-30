@@ -1,7 +1,12 @@
 from __future__ import annotations
 from typing import Tuple, TypeVar
 
+#backwards compatibility. Luckily circular references are fine in type stubs
+from ray._raylet import ObjectRef
+ObjectID = ObjectRef
+
 #implementations are in unique_ids.pxi
+def check_id(b:bytes, size:int=...)->None: ...
 
 _BID = TypeVar("_BID",bound=BaseID)
 class BaseID:
@@ -106,7 +111,7 @@ class ActorID(BaseID):
 
     @classmethod
     def of(cls:type[_AID], job_id:JobID, parent_task_id:TaskID, parent_task_counter:int)->_AID: ...
-    
+
     @classmethod
     def nil(cls:type[_AID])->_AID: ...
 
@@ -114,7 +119,7 @@ class ActorID(BaseID):
     def from_random(cls:type[_AID])->_AID: ...
 
     def _set_id(self, id:bytes)->None: ...
-    
+
     @property
     def job_id(self)->JobID: ...
 
@@ -123,9 +128,6 @@ class FunctionID(UniqueID): ...
 class ActorClassID(UniqueID): ...
 class ClusterID(UniqueID): ...
 
-#backwards compatibility. Luckily circular references are fine in type stubs
-from ray._raylet import ObjectRef
-ObjectID = ObjectRef #????
 
 _PGID = TypeVar("_PGID",bound=PlacementGroupID)
 class PlacementGroupID(BaseID):
