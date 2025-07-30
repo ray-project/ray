@@ -24,7 +24,6 @@
 #include <sys/statfs.h>
 #include <unistd.h>
 
-#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <initializer_list>
