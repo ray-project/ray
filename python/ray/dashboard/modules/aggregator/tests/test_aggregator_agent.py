@@ -626,5 +626,65 @@ def test_aggregator_agent_receive_driver_job_execution_event(
     assert req_json[0]["driverJobExecutionEvent"]["states"][1]["state"] == "FAILURE"
 
 
+def test_aggregator_agent_receive_driver_job_event(ray_start_cluster_head, httpserver):
+    cluster = ray_start_cluster_head
+    stub = get_event_aggregator_grpc_stub(
+        cluster.webui_url, cluster.gcs_address, cluster.head_node.node_id
+    )
+    httpserver.expect_request("/", method="POST").respond_with_data("", status=200)
+    now = time.time_ns()
+    seconds, nanos = divmod(now, 10**9)
+    timestamp = Timestamp(seconds=seconds, nanos=nanos)
+    request = AddEventRequest(
+        events_data=RayEventsData(
+            events=[
+                RayEvent(
+                    event_id=b"1",
+                    source_type=RayEvent.SourceType.CORE_WORKER,
+                    event_type=RayEvent.EventType.DRIVER_JOB_EVENT,
+                    timestamp=timestamp,
+                    severity=RayEvent.Severity.INFO,
+                    message="driver job event",
+                    driver_job_event=DriverJobEvent(
+                        job_id=b"1",
+                        is_dead=False,
+                        driver_pid=1,
+                        config=DriverJobEvent.JobConfig(
+                            runtime_env_info=RuntimeEnvInfo(
+                                serialized_runtime_env="{}",
+                                uris=RuntimeEnvUris(
+                                    working_dir_uri="file:///tmp/ray/runtime_env",
+                                    py_modules_uris=[],
+                                ),
+                                runtime_env_config=RuntimeEnvConfig(
+                                    setup_timeout_seconds=10,
+                                    eager_install=True,
+                                    log_files=[],
+                                ),
+                            ),
+                            metadata={},
+                        ),
+                        start_time=1234567890,
+                        end_time=1234567890,
+                        entrypoint="ray.init()",
+                        driver_ip_address="127.0.0.1",
+                    ),
+                ),
+            ],
+            task_events_metadata=TaskEventsMetadata(
+                dropped_task_attempts=[],
+            ),
+        )
+    )
+    reply = stub.AddEvents(request)
+    assert reply.status.code == 0
+    assert reply.status.message == "all events received"
+    wait_for_condition(lambda: len(httpserver.log) == 1)
+    req, _ = httpserver.log[0]
+    req_json = json.loads(req.data)
+    assert req_json[0]["message"] == "driver job event"
+    assert req_json[0]["driverJobEvent"]["jobId"] == base64.b64encode(b"1").decode()
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
