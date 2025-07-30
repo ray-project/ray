@@ -368,9 +368,9 @@ def test_aggregator_agent_receive_empty_events(
     assert reply.status.code == 0
     assert reply.status.message == "all events received"
 
-
-def test_aggregator_agent_receive_profile_events(ray_start_cluster_head, httpserver):
-    cluster = ray_start_cluster_head
+@_with_aggregator_port
+def test_aggregator_agent_receive_profile_events(ray_start_cluster_head_with_env_vars, httpserver):
+    cluster = ray_start_cluster_head_with_env_vars
     stub = get_event_aggregator_grpc_stub(
         cluster.webui_url, cluster.gcs_address, cluster.head_node.node_id
     )
