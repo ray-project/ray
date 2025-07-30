@@ -184,14 +184,8 @@ class TestTaskConsumerWithRayServe:
         @serve.deployment
         @task_consumer(task_processor_config=processor_config)
         class ServeTaskConsumer:
-            def __init__(self):
-                self.data_received = None
-                self.task_received = False
-
             @task_handler(name="process_request")
             def process_request(self, data):
-                self.task_received = True
-                self.data_received = data
                 raise ValueError("Task failed as expected")
 
         serve.run(ServeTaskConsumer.bind())
