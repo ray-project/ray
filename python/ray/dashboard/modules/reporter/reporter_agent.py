@@ -1307,7 +1307,7 @@ class ReporterAgent(
 
         # Reset GPU metrics for processes that no longer use GPU
         stale_gpu_procs = self._latest_gpu_proc - gpu_proc
-        self._latest_gpu_proc = gpu_proc
+        self._latest_gpu_worker_proc_names = gpu_worker_proc_names
 
         for stale_gpu_proc in stale_gpu_procs:
             records.extend(self._generate_reseted_gpu_stats_record(stale_gpu_proc))
