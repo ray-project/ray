@@ -437,12 +437,16 @@ def test_gpu_object_ref_in_list_throws_exception(ray_start_regular):
     assert ray.get(result) == pytest.approx(tensor * 2)
 
     # Test: GPU ref inside a list should fail during task submission
-    with pytest.raises(ValueError, match="GPU ObjectRefs in lists are not supported"):
+    with pytest.raises(
+        ValueError, match="GPU ObjectRefs in data structures are not supported"
+    ):
         actor.double.remote([gpu_ref])
 
     # Test: Mixed list with GPU ref and normal data should also fail
     normal_ref = ray.put("normal_data")
-    with pytest.raises(ValueError, match="GPU ObjectRefs in lists are not supported"):
+    with pytest.raises(
+        ValueError, match="GPU ObjectRefs in data structures are not supported"
+    ):
         actor.double.remote([gpu_ref, normal_ref])
 
 
