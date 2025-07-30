@@ -341,7 +341,7 @@ class NodeInfoAccessor {
   ///
   /// \param callback The callback function once the request is finished.
   /// \param timeout_ms The timeout for this request.
-  virtual void AsyncCheckAlive(const std::vector<std::string> &raylet_addresses,
+  virtual void AsyncCheckAlive(const std::vector<NodeID> &node_ids,
                                int64_t timeout_ms,
                                const MultiItemCallback<bool> &callback);
 
@@ -401,7 +401,7 @@ class NodeInfoAccessor {
   /// \param timeout_ms The timeout for this request.
   /// \param nodes_alive The liveness of the nodes. Only valid if the status is OK.
   /// \return Status
-  virtual Status CheckAlive(const std::vector<std::string> &raylet_addresses,
+  virtual Status CheckAlive(const std::vector<NodeID> &node_ids,
                             int64_t timeout_ms,
                             std::vector<bool> &nodes_alive);
 

@@ -57,9 +57,8 @@ void MutableObjectProvider::RegisterWriterChannel(
     return;
   }
 
-  std::shared_ptr<std::vector<std::shared_ptr<MutableObjectReaderInterface>>>
-      remote_readers =
-          std::make_shared<std::vector<std::shared_ptr<MutableObjectReaderInterface>>>();
+  std::shared_ptr<std::vector<std::shared_ptr<RayletClientInterface>>> remote_readers =
+      std::make_shared<std::vector<std::shared_ptr<RayletClientInterface>>>();
   // TODO(sang): Currently, these attributes are not cleaned up.
   // Start a thread that repeatedly listens for values on this object and then sends
   // them via RPC to the remote reader.
@@ -74,9 +73,7 @@ void MutableObjectProvider::RegisterWriterChannel(
   for (const auto &node_id : remote_reader_node_ids) {
     client_call_managers_.push_back(
         std::make_unique<rpc::ClientCallManager>(io_context, /*record_stats=*/false));
-    std::shared_ptr<MutableObjectReaderInterface> reader =
-        raylet_client_factory_(node_id, *client_call_managers_.back());
-    RAY_CHECK(reader);
+    std::shared_ptr<RayletClientInterface> reader = raylet_client_factory_(node_id);
     remote_readers->push_back(reader);
   }
 
@@ -218,7 +215,7 @@ Status MutableObjectProvider::GetChannelStatus(const ObjectID &object_id,
 void MutableObjectProvider::PollWriterClosure(
     instrumented_io_context &io_context,
     const ObjectID &writer_object_id,
-    const std::shared_ptr<std::vector<std::shared_ptr<MutableObjectReaderInterface>>>
+    const std::shared_ptr<std::vector<std::shared_ptr<RayletClientInterface>>>
         &remote_readers) {
   // NOTE: There's only 1 PollWriterClosure at any time in a single thread.
   std::shared_ptr<RayObject> object;
