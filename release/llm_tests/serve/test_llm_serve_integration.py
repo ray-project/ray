@@ -3,10 +3,10 @@ import sys
 
 from ray import serve
 from ray.serve.llm import LLMConfig, build_openai_app
-from vllm.engine.metrics import RayPrometheusStatLogger
 from vllm import AsyncEngineArgs
 
 from vllm.v1.engine.async_llm import AsyncLLM
+from vllm.v1.metrics.ray_wrappers import RayPrometheusStatLogger
 from vllm.sampling_params import SamplingParams
 from ray._common.test_utils import wait_for_condition
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
@@ -52,17 +52,14 @@ async def test_engine_metrics_with_lora():
 
     engine_args = AsyncEngineArgs(
         model="Qwen/Qwen2.5-0.5B-Instruct",  # Using smaller model for testing
-        dtype="bfloat16",
         disable_log_stats=False,
         enforce_eager=True,
-        trust_remote_code=True,
         enable_prefix_caching=True,
         max_model_len=512,
         max_lora_rank=64,
         enable_lora=True,
         max_loras=3,
         max_cpu_loras=5,
-        gpu_memory_utilization=0.575,
     )
 
     engine = AsyncLLM.from_engine_args(
@@ -81,7 +78,7 @@ async def test_engine_metrics_with_lora():
 
 
 @pytest.mark.asyncio(scope="function")
-async def test_engine_metrics_with_speculative_decoding():
+async def test_engine_metrics_with_spec_decode():
     """
     Test that the stat logger can be created successfully with speculative decoding configuration.
     This test validates speculative decoding engine initialization and basic functionality.
@@ -95,7 +92,6 @@ async def test_engine_metrics_with_speculative_decoding():
         trust_remote_code=True,
         enable_prefix_caching=True,
         max_model_len=256,
-        gpu_memory_utilization=0.575,
         speculative_config={
             "method": "ngram",
             "num_speculative_tokens": 5,
@@ -141,9 +137,7 @@ def remote_model_app(request):
         ),
         "engine_kwargs": dict(
             tensor_parallel_size=2,
-            # TODO(lk-chen): Enable PP after
-            # https://github.com/vllm-project/vllm/issues/20647 being fixed
-            pipeline_parallel_size=1,
+            pipeline_parallel_size=2,
             gpu_memory_utilization=0.92,
             dtype="auto",
             max_num_seqs=40,
