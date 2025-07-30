@@ -1044,7 +1044,8 @@ void NodeManager::ProcessClientMessage(const std::shared_ptr<ClientConnection> &
     HandleDirectCallTaskUnblocked(registered_worker);
   } break;
   case protocol::MessageType::CancelGetRequest: {
-    auto worker = registered_worker != nullptr ? registered_worker : worker_pool_.GetRegisteredDriver(client);
+    auto worker = registered_worker != nullptr ? registered_worker
+                                               : worker_pool_.GetRegisteredDriver(client);
     RAY_CHECK(worker);
     dependency_manager_.CancelGetRequest(worker->WorkerId());
   } break;
@@ -1493,9 +1494,9 @@ void NodeManager::ProcessFetchOrReconstructMessage(
     // will be stored as the object's value.
     const TaskID task_id = from_flatbuf<TaskID>(*message->task_id());
     AsyncGetOrWait(client,
-                        refs,
-                        task_id,
-                        /*is_get_request=*/true);
+                   refs,
+                   task_id,
+                   /*is_get_request=*/true);
   }
 }
 
@@ -2077,10 +2078,9 @@ void NodeManager::HandleDirectCallTaskUnblocked(
   }
 }
 
-void NodeManager::AsyncGetOrWait(
-    const std::shared_ptr<ClientConnection> &client,
-    const std::vector<rpc::ObjectReference> &object_refs,
-    bool is_get_request) {
+void NodeManager::AsyncGetOrWait(const std::shared_ptr<ClientConnection> &client,
+                                 const std::vector<rpc::ObjectReference> &object_refs,
+                                 bool is_get_request) {
   std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
   if (!worker) {
     worker = worker_pool_.GetRegisteredDriver(client);
@@ -2092,8 +2092,7 @@ void NodeManager::AsyncGetOrWait(
   if (is_get_request) {
     dependency_manager_.StartOrUpdateGetRequest(worker->WorkerId(), object_refs);
   } else {
-    dependency_manager_.StartOrUpdateWaitRequest(worker->WorkerId(),
-                                                 object_refs);
+    dependency_manager_.StartOrUpdateWaitRequest(worker->WorkerId(), object_refs);
   }
 }
 
