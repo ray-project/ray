@@ -500,10 +500,11 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
                 addr));
       });
 
-  raylet_client_pool_ = std::make_shared<rpc::RayletClientPool>([&](const rpc::Address &addr) {
-    return std::make_shared<ray::raylet::RayletClient>(
-        addr.ip_address(), addr.port(), *client_call_manager_);
-  });
+  raylet_client_pool_ =
+      std::make_shared<rpc::RayletClientPool>([&](const rpc::Address &addr) {
+        return std::make_shared<ray::raylet::RayletClient>(
+            addr.ip_address(), addr.port(), *client_call_manager_);
+      });
 
   object_info_publisher_ = std::make_unique<pubsub::Publisher>(
       /*channels=*/
