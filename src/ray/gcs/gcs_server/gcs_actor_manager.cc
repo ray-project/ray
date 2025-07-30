@@ -1455,7 +1455,10 @@ void GcsActorManager::RestartActor(const ActorID &actor_id,
       << "Actor is failed on worker " << worker_id << " at node " << node_id
       << ", need_reschedule = " << need_reschedule
       << ", death context type = " << GetActorDeathCauseString(death_cause)
-      << ", remaining_restarts = " << remaining_restarts;
+      << ", remaining_restarts = " << remaining_restarts
+      << ", num_restarts = " << num_restarts
+      << ", num_restarts_due_to_node_preemption = " << num_restarts_due_to_node_preemption
+      << ", preempted = " << mutable_actor_table_data->preempted();
 
   if (remaining_restarts != 0 ||
       (need_reschedule && max_restarts > 0 && mutable_actor_table_data->preempted())) {

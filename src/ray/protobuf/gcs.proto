@@ -102,7 +102,6 @@ message ActorTableData {
   // Number of restarts that has been tried on this actor.
   // This will be greater by 1 than what's published before in ALIVE.
   // ALIVE:0 RESTARTING:1 ALIVE:1 RESTARTING:2, etc
-  // Note: Restarting from preemptions does not increment num_restarts.
   uint64 num_restarts = 8;
   // The address of the actor.
   Address address = 9;
