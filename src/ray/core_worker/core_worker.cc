@@ -1274,10 +1274,12 @@ Status CoreWorker::SealExisting(const ObjectID &object_id,
 
 void CoreWorker::ExperimentalRegisterMutableObjectWriter(
     const ObjectID &writer_object_id, const std::vector<NodeID> &remote_reader_node_ids) {
-  std::unique_lock<std::mutex> lock(gcs_client_node_cache_populated_mutex_);
-  if (!gcs_client_node_cache_populated_) {
-    gcs_client_node_cache_populated_cv_.wait(
-        lock, [this]() { return gcs_client_node_cache_populated_; });
+  {
+    std::unique_lock<std::mutex> lock(gcs_client_node_cache_populated_mutex_);
+    if (!gcs_client_node_cache_populated_) {
+      gcs_client_node_cache_populated_cv_.wait(
+          lock, [this]() { return gcs_client_node_cache_populated_; });
+    }
   }
   experimental_mutable_object_provider_->RegisterWriterChannel(writer_object_id,
                                                                remote_reader_node_ids);
