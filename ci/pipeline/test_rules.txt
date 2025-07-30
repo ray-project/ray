@@ -171,6 +171,7 @@ ci/lint/
 ci/fossa/
 ci/docker/fossa.Dockerfile
 ci/docker/fossa.wanda.yaml
+ci/raydepsets/
 bazel/tests/
 @ tools
 ;
