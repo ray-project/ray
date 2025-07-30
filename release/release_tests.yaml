@@ -2664,7 +2664,7 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_compute: 4gpu_64cpus.yaml
+    cluster_compute: 4gpus_64cpus.yaml
 
   run:
     timeout: 36000  # 10h
@@ -2678,7 +2678,7 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_compute: 4gpu_64cpus_gce.yaml
+        cluster_compute: 4gpus_64cpus_gce.yaml
 
 # --------------------------
 # IMPALA
