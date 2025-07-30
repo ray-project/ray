@@ -209,9 +209,10 @@ class WorkerGroup:
 
         assert self.has_started(), "Worker group failed to start."
 
+    @staticmethod
     def _check_cluster_resources_and_raise_if_insufficient(
-        self, resources_per_worker: Dict[str, float], num_workers: int
-    ):
+        resources_per_worker: Dict[str, float], num_workers: int
+    ) -> None:
         """Check if the cluster has enough resources before waiting for placement group.
 
         Args:
@@ -219,19 +220,22 @@ class WorkerGroup:
             num_workers: The number of workers.
         """
         max_cluster_resources = ray_state.get_max_resources_from_cluster_config()
-        if max_cluster_resources and isinstance(max_cluster_resources, dict):
-            for (
-                resource_name,
-                required_amount,
-            ) in resources_per_worker.items():
-                total_required_amount = required_amount * num_workers
-                available_amount = max_cluster_resources.get(resource_name, 0)
-                if total_required_amount > available_amount:
-                    error_msg = (
-                        f"Insufficient cluster resources. Worker requires {total_required_amount} "
-                        f"{resource_name}, but cluster only has {available_amount} available."
-                    )
-                    raise InsufficientClusterResourcesError(error_msg)
+        if not max_cluster_resources:
+            return
+
+        for (
+            resource_name,
+            required_amount,
+        ) in resources_per_worker.items():
+            total_required_amount = required_amount * num_workers
+            available_amount = max_cluster_resources.get(resource_name, 0)
+            if total_required_amount > available_amount:
+                error_msg = (
+                    "Insufficient cluster resources to launch training workers.\n"
+                    f'The worker group requires {{"{resource_name}": {total_required_amount}}} but the cluster only has a maximum of {{"{resource_name}": {available_amount}}} resources.\n'
+                    "Please reduce `num_workers`, lower resource requirements, or increase the cluster size."
+                )
+                raise InsufficientClusterResourcesError(error_msg)
 
     def _start_impl(
         self,
@@ -250,7 +254,7 @@ class WorkerGroup:
         self._assert_inactive()
         worker_group_context = self._worker_group_context
 
-        self._check_cluster_resources_and_raise_if_insufficient(
+        WorkerGroup._check_cluster_resources_and_raise_if_insufficient(
             worker_group_context.resources_per_worker,
             worker_group_context.num_workers,
         )
