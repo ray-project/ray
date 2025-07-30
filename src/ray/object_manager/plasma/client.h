@@ -24,6 +24,7 @@
 
 #include "ray/common/buffer.h"
 #include "ray/common/status.h"
+#include "ray/common/status_or.h"
 #include "ray/object_manager/common.h"
 #include "ray/object_manager/plasma/common.h"
 #include "ray/util/visibility.h"
@@ -35,6 +36,7 @@ using ray::Buffer;
 using ray::PlasmaObjectHeader;
 using ray::SharedMemoryBuffer;
 using ray::Status;
+using ray::StatusOr;
 
 struct MutableObject {
   MutableObject(uint8_t *base_ptr, const PlasmaObject &object_info)
@@ -124,13 +126,6 @@ class PlasmaClientInterface {
                      int64_t timeout_ms,
                      std::vector<ObjectBuffer> *object_buffers,
                      bool is_from_worker) = 0;
-
-  /// Register an experimental mutable object writer. The writer is on a different node
-  /// and wants to write to this node.
-  ///
-  /// \param[in] object_id The ID of the object.
-  /// \return The return status.
-  virtual Status ExperimentalMutableObjectRegisterWriter(const ObjectID &object_id) = 0;
 
   /// Get an experimental mutable object.
   ///
@@ -272,8 +267,6 @@ class PlasmaClient : public PlasmaClientInterface {
              std::vector<ObjectBuffer> *object_buffers,
              bool is_from_worker) override;
 
-  Status ExperimentalMutableObjectRegisterWriter(const ObjectID &object_id) override;
-
   Status GetExperimentalMutableObject(
       const ObjectID &object_id, std::unique_ptr<MutableObject> *mutable_object) override;
 
@@ -291,8 +284,8 @@ class PlasmaClient : public PlasmaClientInterface {
 
   /// Get the current debug string from the plasma store server.
   ///
-  /// \return The debug string.
-  std::string DebugString();
+  /// \return the debug string if successful, otherwise return an error status.
+  StatusOr<std::string> GetMemoryUsage();
 
   /// Get the memory capacity of the store.
   ///
@@ -300,21 +293,6 @@ class PlasmaClient : public PlasmaClientInterface {
   int64_t store_capacity();
 
  private:
-  /// Retry a previous create call using the returned request ID.
-  ///
-  /// \param object_id The ID to use for the newly created object.
-  /// \param request_id The request ID returned by the previous Create call.
-  /// \param metadata The object's metadata. If there is no metadata, this
-  /// pointer should be NULL.
-  /// \param retry_with_request_id If the request is not yet fulfilled, this
-  ///        will be set to a unique ID with which the client should retry.
-  /// \param data The address of the newly created object will be written here.
-  Status RetryCreate(const ObjectID &object_id,
-                     uint64_t request_id,
-                     const uint8_t *metadata,
-                     uint64_t *retry_with_request_id,
-                     std::shared_ptr<Buffer> *data);
-
   friend class PlasmaBuffer;
   friend class PlasmaMutableBuffer;
   bool IsInUse(const ObjectID &object_id);

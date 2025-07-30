@@ -65,7 +65,10 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
                            ClusterID::Nil(),
                            RayConfig::instance().gcs_server_rpc_client_thread_num()),
       raylet_client_pool_(
-          std::make_unique<rpc::NodeManagerClientPool>(client_call_manager_)),
+          std::make_unique<rpc::RayletClientPool>([&](const rpc::Address &addr) {
+            return std::make_shared<ray::raylet::RayletClient>(addr,
+                                                               client_call_manager_);
+          })),
       worker_client_pool_([this](const rpc::Address &addr) {
         return std::make_shared<rpc::CoreWorkerClient>(
             addr,
@@ -271,11 +274,14 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // Init usage stats client.
   InitUsageStatsClient();
 
-  RecordMetrics();
-
   // Start RPC server when all tables have finished loading initial
   // data.
   rpc_server_.Run();
+
+  periodical_runner_->RunFnPeriodically(
+      [this] { RecordMetrics(); },
+      /*ms*/ RayConfig::instance().metrics_report_interval_ms() / 2,
+      "GCSServer.deadline_timer.metrics_report");
 
   periodical_runner_->RunFnPeriodically(
       [this] {
@@ -348,11 +354,12 @@ void GcsServer::InitGcsHealthCheckManager(const GcsInitData &gcs_init_data) {
       io_context_provider_.GetDefaultIOContext(), node_death_callback);
   for (const auto &item : gcs_init_data.Nodes()) {
     if (item.second.state() == rpc::GcsNodeInfo::ALIVE) {
-      rpc::Address remote_address;
-      remote_address.set_raylet_id(item.second.node_id());
-      remote_address.set_ip_address(item.second.node_manager_address());
-      remote_address.set_port(item.second.node_manager_port());
-      auto raylet_client = raylet_client_pool_->GetOrConnectByAddress(remote_address);
+      auto remote_address =
+          rpc::RayletClientPool::GenerateRayletAddress(item.first,
+                                                       item.second.node_manager_address(),
+                                                       item.second.node_manager_port());
+      auto raylet_client =
+          raylet_client_pool_->GetOrConnectByAddress(std::move(remote_address));
       gcs_healthcheck_manager_->AddNode(item.first, raylet_client->GetChannel());
     }
   }
@@ -382,11 +389,12 @@ void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
             raylet_client = *conn_opt;
           } else {
             // When not connect, use GetOrConnectByAddress
-            rpc::Address remote_address;
-            remote_address.set_raylet_id(alive_node.second->node_id());
-            remote_address.set_ip_address(alive_node.second->node_manager_address());
-            remote_address.set_port(alive_node.second->node_manager_port());
-            raylet_client = raylet_client_pool_->GetOrConnectByAddress(remote_address);
+            auto remote_address = rpc::RayletClientPool::GenerateRayletAddress(
+                alive_node.first,
+                alive_node.second->node_manager_address(),
+                alive_node.second->node_manager_port());
+            raylet_client =
+                raylet_client_pool_->GetOrConnectByAddress(std::move(remote_address));
           }
           if (raylet_client == nullptr) {
             RAY_LOG(ERROR) << "Failed to connect to node: " << alive_node.first
@@ -732,6 +740,8 @@ void GcsServer::InitGcsTaskManager() {
   // Register service.
   rpc_server_.RegisterService(
       std::make_unique<rpc::TaskInfoGrpcService>(io_context, *gcs_task_manager_));
+  rpc_server_.RegisterService(
+      std::make_unique<rpc::EventExportGrpcService>(io_context, *gcs_task_manager_));
 }
 
 void GcsServer::InstallEventListeners() {
@@ -745,12 +755,11 @@ void GcsServer::InstallEventListeners() {
         gcs_placement_group_manager_->OnNodeAdd(node_id);
         gcs_actor_manager_->SchedulePendingActors();
         gcs_autoscaler_state_manager_->OnNodeAdd(*node);
-        rpc::Address address;
-        address.set_raylet_id(node->node_id());
-        address.set_ip_address(node->node_manager_address());
-        address.set_port(node->node_manager_port());
+        auto remote_address = rpc::RayletClientPool::GenerateRayletAddress(
+            node_id, node->node_manager_address(), node->node_manager_port());
 
-        auto raylet_client = raylet_client_pool_->GetOrConnectByAddress(address);
+        auto raylet_client =
+            raylet_client_pool_->GetOrConnectByAddress(std::move(remote_address));
 
         if (gcs_healthcheck_manager_) {
           RAY_CHECK(raylet_client != nullptr);
@@ -838,11 +847,6 @@ void GcsServer::RecordMetrics() const {
   gcs_placement_group_manager_->RecordMetrics();
   gcs_task_manager_->RecordMetrics();
   gcs_job_manager_->RecordMetrics();
-  execute_after(
-      io_context_provider_.GetDefaultIOContext(),
-      [this] { RecordMetrics(); },
-      std::chrono::milliseconds(RayConfig::instance().metrics_report_interval_ms() /
-                                2) /* milliseconds */);
 }
 
 void GcsServer::DumpDebugStateToFile() const {
