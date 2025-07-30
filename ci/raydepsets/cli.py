@@ -33,14 +33,21 @@ def cli():
 @click.argument("config_path", default="ci/raydepsets/ray.depsets.yaml")
 @click.option("--workspace-dir", default=None)
 @click.option("--name", default=None)
-def load(config_path: str, workspace_dir: str, name: str):
+@click.option("--config-args", default=None)
+def load(config_path: str, workspace_dir: str, name: str, config_args: str):
     """Load a dependency sets from a config file."""
     manager = DependencySetManager(config_path=config_path, workspace_dir=workspace_dir)
-    for config_arg in manager.config.config_args:
-        if name:
-            manager.execute_single(manager.get_depset(name, config_arg))
-        else:
-            manager.execute_all()
+    config = None
+    click.echo(f"# of depsets: {len(manager.config.depsets)}")
+    if name:
+        if config_args:
+            for config_arg in manager.config.config_args:
+                if config_arg.name == config_args:
+                    config = config_arg
+                    break
+        manager.execute_single(manager.get_depset(name, config))
+    else:
+        manager.execute_all()
 
 
 class DependencySetManager:
@@ -80,10 +87,9 @@ class DependencySetManager:
             self.execute_single(depset)
 
     def get_depset(self, name: str, config_args: ConfigArgs) -> Depset:
+        print(f"# of depsets: {len(self.config.depsets)}")
         for depset in self.config.depsets:
-            click.echo(
-                f"Depset: {depset.name} {depset.config_args.name} Config args: {config_args.name}"
-            )
+            print(f"depset name: {depset.name}")
             if depset.name == name and (
                 config_args is None or depset.config_args.name == config_args.name
             ):
@@ -155,7 +161,7 @@ class DependencySetManager:
         requirements: List[str],
         args: List[str],
         name: str,
-        config_args: ConfigArgs,
+        config_args: ConfigArgs = None,
         output: str = None,
     ):
         """Subset a dependency set."""
@@ -167,7 +173,6 @@ class DependencySetManager:
             args=args,
             name=name,
             output=output,
-            config_args=config_args,
         )
 
     def expand(
@@ -177,7 +182,7 @@ class DependencySetManager:
         constraints: List[str],
         args: List[str],
         name: str,
-        config_args: ConfigArgs,
+        config_args: ConfigArgs = None,
         output: str = None,
     ):
         """Expand a dependency set."""
@@ -194,7 +199,6 @@ class DependencySetManager:
             args=args,
             name=name,
             output=output,
-            config_args=config_args,
         )
 
     def get_path(self, path: str) -> str:

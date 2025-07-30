@@ -49,13 +49,12 @@ class TestCli(unittest.TestCase):
             )
             assert manager is not None
             assert manager.workspace.dir == tmpdir
-            assert manager.config.depsets[0].name == "ray_base_test_depset"
-            assert manager.config.depsets[0].operation == "compile"
-            assert manager.config.depsets[0].requirements == ["requirements_test.txt"]
-            assert manager.config.depsets[0].constraints == [
-                "requirement_constraints_test.txt"
-            ]
-            assert manager.config.depsets[0].output == "requirements_compiled.txt"
+            assert manager.config.depsets[1].name == "general_depset"
+            assert manager.config.depsets[1].operation == "compile"
+            assert manager.config.depsets[1].requirements == ["requirements_test.txt"]
+            assert (
+                manager.config.depsets[1].output == "requirements_compiled_general.txt"
+            )
 
     def test_dependency_set_manager_get_depset(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -75,7 +74,7 @@ class TestCli(unittest.TestCase):
                 workspace_dir=tmpdir,
             )
             with self.assertRaises(KeyError):
-                manager.get_depset("fake_depset")
+                manager.get_depset("fake_depset", manager.config.config_args[0])
 
     def test_uv_binary_exists(self):
         assert uv_binary() is not None
@@ -197,7 +196,6 @@ class TestCli(unittest.TestCase):
             manager.subset(
                 source_depset="general_depset",
                 requirements=["requirements_test.txt"],
-                config_args=manager.config.config_args[0],
                 args=["--no-annotate", "--no-header"] + DEFAULT_UV_FLAGS.copy(),
                 name="subset_general_depset",
                 output="requirements_compiled_subset_general.txt",
@@ -233,7 +231,6 @@ class TestCli(unittest.TestCase):
                 manager.subset(
                     source_depset="general_depset",
                     requirements=["requirements_compiled_test.txt"],
-                    config_args=manager.config.config_args[0],
                     args=["--no-annotate", "--no-header"] + DEFAULT_UV_FLAGS.copy(),
                     name="subset_general_depset",
                     output="requirements_compiled_subset_general.txt",
@@ -411,7 +408,6 @@ depsets:
                 constraints=["requirement_constraints_expand.txt"],
                 args=["--no-annotate", "--no-header"] + DEFAULT_UV_FLAGS.copy(),
                 name="expand_general_depset",
-                config_args=manager.config.config_args[0],
                 output="requirements_compiled_expand_general.txt",
             )
             output_file = Path(tmpdir) / "requirements_compiled_expand_general.txt"
