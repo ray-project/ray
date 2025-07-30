@@ -1206,6 +1206,10 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
 
 @PublicAPI(stability="alpha")
 class CeleryTaskProcessorConfig(BaseModel):
+    """
+    Celery task processor config. You can use it to configure the Celery task processor for your Serve application.
+    """
+
     broker_url: str = Field(..., description="The URL of the broker to use for Celery.")
     backend_url: str = Field(
         ..., description="The URL of the backend to use for Celery."
@@ -1221,11 +1225,19 @@ class CeleryTaskProcessorConfig(BaseModel):
 
 @PublicAPI(stability="alpha")
 class MockTaskProcessorConfig(BaseModel):
+    """
+    Mock task processor config. To be used for testing purposes.
+    """
+
     pass
 
 
 @PublicAPI(stability="alpha")
 class TaskProcessorConfig(BaseModel):
+    """
+    Task processor config. You can use it to configure the task processor for your Serve application.
+    """
+
     queue_name: str = Field(
         ..., description="The name of the queue to use for task processing."
     )
@@ -1248,6 +1260,10 @@ class TaskProcessorConfig(BaseModel):
 
 @PublicAPI(stability="alpha")
 class TaskResult(BaseModel):
+    """
+    Task result Model.
+    """
+
     id: str = Field(..., description="The ID of the task.")
     status: str = Field(..., description="The status of the task.")
     created_at: float = Field(..., description="The timestamp of the task creation.")
