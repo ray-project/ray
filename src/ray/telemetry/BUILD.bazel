@@ -16,3 +16,35 @@ ray_cc_library(
         "@io_opentelemetry_cpp//sdk/src/metrics",
     ],
 )
+
+ray_cc_library(
+    name = "ray_event_recorder_base",
+    srcs = [
+        "ray_event_recorder_base.cc",
+    ],
+    hdrs = [
+        "ray_event_recorder_base.h",
+    ],
+    deps = [
+        "//:event_aggregator_client",
+        "//src/ray/protobuf:events_base_event_cc_proto",
+        "//src/ray/protobuf:events_event_aggregator_service_cc_proto",
+        "//src/ray/protobuf:gcs_cc_proto",
+        "//src/ray/util:logging",
+        "@com_google_absl//absl/time",
+    ],
+)
+
+ray_cc_library(
+    name = "ray_job_event_recorder",
+    srcs = [
+        "ray_job_event_recorder.cc",
+    ],
+    hdrs = [
+        "ray_job_event_recorder.h",
+    ],
+    deps = [
+        ":ray_event_recorder_base",
+        "//src/ray/protobuf:events_driver_job_event_cc_proto",
+    ],
+)
