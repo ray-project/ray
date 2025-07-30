@@ -3,6 +3,7 @@ from collections import deque
 from typing import Iterable, List
 
 from ray.data._internal.logical.interfaces import LogicalOperator, LogicalPlan, Rule
+from ray.data._internal.logical.operators.map_operator import MapBatches
 from ray.data._internal.logical.operators.n_ary_operator import Union
 from ray.data._internal.logical.operators.one_to_one_operator import (
     AbstractOneToOne,
@@ -112,6 +113,7 @@ class LimitPushdownRule(Rule):
         while (
             isinstance(new_input_into_limit, AbstractOneToOne)
             and not new_input_into_limit.can_modify_num_rows()
+            and not isinstance(new_input_into_limit, MapBatches)
             # We should push past MapBatches, but MapBatches can modify the row count TODO: add a flag in map_batches that allows the user to opt in ensure row preservation
         ):
             new_input_into_limit_copy = copy.copy(new_input_into_limit)
