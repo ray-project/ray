@@ -557,11 +557,9 @@ void TaskEventBufferImpl::GetTaskProfileEventsToSend(
 }
 
 std::unique_ptr<rpc::TaskEventData> TaskEventBufferImpl::CreateTaskEventDataToSend(
-    absl::flat_hash_map<TaskAttempt, rpc::TaskEvents> &agg_task_events,
+    absl::flat_hash_map<TaskAttempt, rpc::TaskEvents> &&agg_task_events,
     const absl::flat_hash_set<TaskAttempt> &dropped_task_attempts_to_send) {
   auto data = std::make_unique<rpc::TaskEventData>();
-
-  // Move the task events.
   for (auto &[_task_attempt, task_event] : agg_task_events) {
     auto events_by_task = data->add_events_by_task();
     *events_by_task = std::move(task_event);
@@ -625,7 +623,7 @@ TaskEventBuffer::TaskEventDataToSend TaskEventBufferImpl::CreateDataToSend(
         if (dropped_task_attempts_to_send.contains(event->GetTaskAttempt())) {
           // We are marking this as data loss due to some missing task status updates.
           // We will not send this event to GCS.
-          stats_counter_.Increment(
+          this->stats_counter_.Increment(
               TaskEventBufferCounter::kNumTaskStatusEventDroppedSinceLastFlush);
           return;
         }
@@ -648,23 +646,23 @@ TaskEventBuffer::TaskEventDataToSend TaskEventBufferImpl::CreateDataToSend(
       profile_events_to_send.begin(), profile_events_to_send.end(), to_rpc_event_fn);
 
   // Create the data to send.
-  TaskEventDataToSend dataToSend;
+  TaskEventDataToSend data_to_send;
 
   // Convert to rpc::TaskEventsData
   if (send_task_events_to_gcs_enabled_) {
-    auto task_event_data =
-        CreateTaskEventDataToSend(agg_task_events, dropped_task_attempts_to_send);
-    dataToSend.task_event_data = std::move(task_event_data);
+    auto task_event_data = CreateTaskEventDataToSend(std::move(agg_task_events),
+                                                     dropped_task_attempts_to_send);
+    data_to_send.task_event_data = std::move(task_event_data);
   }
 
   // Convert to rpc::events::RayEventsData
   if (send_ray_events_to_aggregator_enabled_) {
-    auto ray_event_data = CreateRayEventsDataToSend(std::move(agg_ray_events),
-                                                    dropped_task_attempts_to_send);
-    dataToSend.ray_event_data = std::move(ray_event_data);
+    auto ray_events_data = CreateRayEventsDataToSend(std::move(agg_ray_events),
+                                                     dropped_task_attempts_to_send);
+    data_to_send.ray_events_data = std::move(ray_events_data);
   }
 
-  return dataToSend;
+  return data_to_send;
 }
 
 void TaskEventBufferImpl::WriteExportData(
@@ -731,12 +729,13 @@ void TaskEventBufferImpl::SendTaskEventsToGCS(std::unique_ptr<rpc::TaskEventData
                        << " task attempts lost on worker to GCS."
                        << "[status=" << status << "]";
 
-      stats_counter_.Increment(TaskEventBufferCounter::kTotalNumFailedToReport);
+      this->stats_counter_.Increment(TaskEventBufferCounter::kTotalNumFailedToReport);
     } else {
-      stats_counter_.Increment(kTotalNumTaskAttemptsReported, num_task_attempts_to_send);
-      stats_counter_.Increment(kTotalNumLostTaskAttemptsReported,
-                               num_dropped_task_attempts_to_send);
-      stats_counter_.Increment(kTotalTaskEventsBytesReported, num_bytes_to_send);
+      this->stats_counter_.Increment(kTotalNumTaskAttemptsReported,
+                                     num_task_attempts_to_send);
+      this->stats_counter_.Increment(kTotalNumLostTaskAttemptsReported,
+                                     num_dropped_task_attempts_to_send);
+      this->stats_counter_.Increment(kTotalTaskEventsBytesReported, num_bytes_to_send);
     }
     gcs_grpc_in_progress_ = false;
   };
@@ -759,6 +758,8 @@ void TaskEventBufferImpl::SendRayEventsToAggregator(
     auto add_events_status_code = add_events_status.code();
     auto add_events_status_message = add_events_status.message();
     if (!status.ok() || add_events_status_code != 0) {
+      // The event aggregator failed to add events due to unknown errors or exiting
+      // events are dropped due to event buffer is full.
       std::stringstream error_info;
       error_info << "[grpc_status=" << status;
       if (add_events_status_code != 0) {
@@ -772,21 +773,19 @@ void TaskEventBufferImpl::SendRayEventsToAggregator(
                        << num_dropped_task_attempts_to_send
                        << " task attempts lost on worker to the event aggregator."
                        << error_info.str();
-      stats_counter_.Increment(
+      this->stats_counter_.Increment(
           TaskEventBufferCounter::kTotalNumFailedToReportToAggregator);
     } else {
-      stats_counter_.Increment(kTotalNumTaskAttemptsReportedToAggregator,
-                               num_task_attempts_to_send);
-      stats_counter_.Increment(kTotalNumLostTaskAttemptsReportedToAggregator,
-                               num_dropped_task_attempts_to_send);
+      this->stats_counter_.Increment(kTotalNumTaskAttemptsReportedToAggregator,
+                                     num_task_attempts_to_send);
+      this->stats_counter_.Increment(kTotalNumLostTaskAttemptsReportedToAggregator,
+                                     num_dropped_task_attempts_to_send);
     }
     event_aggregator_grpc_in_progress_ = false;
   };
 
   rpc::events::AddEventsRequest request;
   *request.mutable_events_data() = std::move(*data);
-  RAY_LOG(INFO) << "[myan] request.events_data().events_size()="
-                << request.events_data().events_size();
   event_aggregator_client_->AddEvents(request, on_complete);
 }
 
@@ -841,7 +840,7 @@ void TaskEventBufferImpl::FlushEvents(bool forced) {
     SendTaskEventsToGCS(std::move(data.task_event_data));
   }
   if (send_ray_events_to_aggregator_enabled_) {
-    SendRayEventsToAggregator(std::move(data.ray_event_data));
+    SendRayEventsToAggregator(std::move(data.ray_events_data));
   }
 }
 

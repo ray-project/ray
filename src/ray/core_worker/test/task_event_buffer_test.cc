@@ -70,8 +70,6 @@ class MockEventAggregatorAddEvents
                                 const rpc::ClientCallback<rpc::events::AddEventsReply> &>
                    &args) override {
     auto &request = std::get<0>(args);
-    RAY_LOG(INFO) << "[myan] request.events_data().events_size()="
-                  << request.events_data().events_size();
     std::get<1>(args)(status_, std::move(reply_));
   }
 
@@ -225,9 +223,7 @@ class TaskEventBufferTest : public ::testing::Test {
 
   static void CompareRayEventsData(const rpc::events::RayEventsData &actual_data,
                                    const rpc::events::RayEventsData &expect_data) {
-    RAY_LOG(INFO) << "[myan] actual_data.events_size()=" << actual_data.events_size();
-
-    // Sore and compare
+    // Sort and compare
     std::vector<std::string> actual_events;
     std::vector<std::string> expect_events;
     for (const auto &e : actual_data.events()) {
@@ -422,7 +418,7 @@ TEST_P(TaskEventBufferTestDifferentDestination, TestFlushEvents) {
 
   // Expect data flushed match. Generate expected data
   rpc::TaskEventData expected_task_event_data;
-  rpc::events::RayEventsData expected_ray_event_data;
+  rpc::events::RayEventsData expected_ray_events_data;
   expected_task_event_data.set_num_profile_events_dropped(0);
   for (const auto &task_event : task_events) {
     auto event = expected_task_event_data.add_events_by_task();
@@ -432,11 +428,11 @@ TEST_P(TaskEventBufferTestDifferentDestination, TestFlushEvents) {
     task_event->ToRpcRayEvents(ray_events_pair);
     auto [task_definition_event, task_execution_event] = ray_events_pair;
     if (task_definition_event) {
-      auto event = expected_ray_event_data.add_events();
+      auto event = expected_ray_events_data.add_events();
       *event = std::move(task_definition_event.value());
     }
     if (task_execution_event) {
-      auto event = expected_ray_event_data.add_events();
+      auto event = expected_ray_events_data.add_events();
       *event = std::move(task_execution_event.value());
     }
   }
@@ -475,7 +471,7 @@ TEST_P(TaskEventBufferTestDifferentDestination, TestFlushEvents) {
         .WillOnce(DoAll(
             Invoke([&](const rpc::events::AddEventsRequest &request,
                        const rpc::ClientCallback<rpc::events::AddEventsReply> &callback) {
-              CompareRayEventsData(request.events_data(), expected_ray_event_data);
+              CompareRayEventsData(request.events_data(), expected_ray_events_data);
             }),
             MakeAction(
                 new MockEventAggregatorAddEvents(std::move(status), std::move(reply)))));
@@ -731,14 +727,14 @@ TEST_P(TaskEventBufferTestLimitBufferDifferentDestination,
   }
 
   rpc::TaskEventData expected_data;
-  rpc::events::RayEventsData expected_ray_event_data;
+  rpc::events::RayEventsData expected_ray_events_data;
   for (const auto &event_ptr : status_events_1) {
     rpc::TaskAttempt rpc_task_attempt;
     auto task_attempt = event_ptr->GetTaskAttempt();
     rpc_task_attempt.set_task_id(task_attempt.first.Binary());
     rpc_task_attempt.set_attempt_number(task_attempt.second);
     *(expected_data.add_dropped_task_attempts()) = rpc_task_attempt;
-    *(expected_ray_event_data.mutable_task_events_metadata()
+    *(expected_ray_events_data.mutable_task_events_metadata()
           ->add_dropped_task_attempts()) = rpc_task_attempt;
   }
 
@@ -753,11 +749,11 @@ TEST_P(TaskEventBufferTestLimitBufferDifferentDestination,
     event->ToRpcRayEvents(ray_events_pair);
     auto [task_definition_event, task_execution_event] = ray_events_pair;
     if (task_definition_event) {
-      auto event = expected_ray_event_data.add_events();
+      auto event = expected_ray_events_data.add_events();
       *event = std::move(task_definition_event.value());
     }
     if (task_execution_event) {
-      auto event = expected_ray_event_data.add_events();
+      auto event = expected_ray_events_data.add_events();
       *event = std::move(task_execution_event.value());
     }
   }
@@ -800,7 +796,7 @@ TEST_P(TaskEventBufferTestLimitBufferDifferentDestination,
         .WillOnce(DoAll(
             Invoke([&](const rpc::events::AddEventsRequest &request,
                        const rpc::ClientCallback<rpc::events::AddEventsReply> &callback) {
-              CompareRayEventsData(request.events_data(), expected_ray_event_data);
+              CompareRayEventsData(request.events_data(), expected_ray_events_data);
             }),
             MakeAction(
                 new MockEventAggregatorAddEvents(std::move(status), std::move(reply)))));

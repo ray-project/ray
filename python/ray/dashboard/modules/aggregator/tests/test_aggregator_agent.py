@@ -179,7 +179,6 @@ def test_aggregator_agent_receive_event_full(
     assert reply.status.message == "event 1 dropped because event buffer full"
 
 
-
 @_with_aggregator_port
 def test_aggregator_agent_receive_dropped_at_core_worker(
     ray_start_cluster_head_with_env_vars, httpserver

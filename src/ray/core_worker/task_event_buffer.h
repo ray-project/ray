@@ -41,7 +41,9 @@ namespace core {
 namespace worker {
 
 using TaskAttempt = std::pair<TaskID, int32_t>;
-/// A pair of task definition event and task execution event.
+/// A pair of rpc::events::RayEvent.
+/// When converting the TaskStatusEvent, the pair will be populated with the
+/// rpc::events::TaskDefinitionEvent and rpc::events::TaskExecutionEvent respectively.
 using RayEventsPair =
     std::pair<std::optional<rpc::events::RayEvent>, std::optional<rpc::events::RayEvent>>;
 
@@ -68,8 +70,6 @@ class TaskEvent {
 
   /// Convert itself a rpc::TaskEvents
   ///
-  /// NOTE: this method will modify internal states by moving fields to the
-  /// rpc::TaskEvents.
   /// \param[out] rpc_task_events The rpc task event to be filled.
   virtual void ToRpcTaskEvents(rpc::TaskEvents *rpc_task_events) = 0;
 
@@ -79,11 +79,9 @@ class TaskEvent {
   virtual void ToRpcTaskExportEvents(
       std::shared_ptr<rpc::ExportTaskEventData> rpc_task_export_event_data) = 0;
 
-  /// Convert itself to a pair of TaskDefinitionEvent and TaskExecutionEvent if
-  /// applicable.
+  /// Convert itself to a pair of RayEvent.
   ///
-  /// \param[out] ray_events The pair of TaskDefinitionEvent and TaskExecutionEvent to be
-  /// filled.
+  /// \param[out] ray_events The pair of rpc::events::RayEvent
   virtual void ToRpcRayEvents(RayEventsPair &ray_events) = 0;
 
   /// If it is a profile event.
@@ -160,6 +158,16 @@ class TaskStatusEvent : public TaskEvent {
   void ToRpcTaskExportEvents(
       std::shared_ptr<rpc::ExportTaskEventData> rpc_task_export_event_data) override;
 
+  /// The function to convert the TaskStatusEvent class to a pair of
+  /// rpc::events::RayEvent with rpc::events::TaskDefinitionEvent and
+  /// rpc::events::TaskExecutionEvent respectively. The TaskExecutionEvent will always
+  /// be populated. The TaskDefinitionEvent will be populated only when the task_spec_
+  /// is not null.
+  /// NOTE: this method will modify internal states by moving fields of task_spec_ to
+  /// the rpc::events::RayEvent.
+  ///
+  /// \param[out] ray_events The pair of rpc::events::RayEvent protobuf messages to be
+  /// filled.
   void ToRpcRayEvents(RayEventsPair &ray_events) override;
 
   bool IsProfileEvent() const override { return false; }
@@ -273,7 +281,7 @@ class TaskEventBuffer {
  public:
   struct TaskEventDataToSend {
     std::unique_ptr<rpc::TaskEventData> task_event_data;
-    std::unique_ptr<rpc::events::RayEventsData> ray_event_data;
+    std::unique_ptr<rpc::events::RayEventsData> ray_events_data;
   };
 
   /// Update task status change for the task attempt in TaskEventBuffer if needed.
@@ -420,7 +428,7 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   ///        status events being dropped.
   /// \return data The task event data to be sent.
   std::unique_ptr<rpc::TaskEventData> CreateTaskEventDataToSend(
-      absl::flat_hash_map<TaskAttempt, rpc::TaskEvents> &agg_task_events,
+      absl::flat_hash_map<TaskAttempt, rpc::TaskEvents> &&agg_task_events,
       const absl::flat_hash_set<TaskAttempt> &dropped_task_attempts_to_send);
 
   /// Create the ray event data to send.

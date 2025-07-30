@@ -196,8 +196,8 @@ ray_cc_library(
     name = "event_aggregator_client",
     hdrs = ["src/ray/rpc/event_aggregator_client.h"],
     deps = [
-        ":grpc_client",
         ":event_aggregator_cc_rpc",
+        ":grpc_client",
         "//src/ray/common:status",
         "//src/ray/protobuf:events_event_aggregator_service_cc_proto",
         "//src/ray/util:logging",
@@ -391,7 +391,6 @@ ray_cc_library(
     ],
 )
 
-# Event Aggregator gRPC lib.
 cc_grpc_library(
     name = "event_aggregator_cc_rpc",
     srcs = ["//src/ray/protobuf:events_event_aggregator_service_proto"],
