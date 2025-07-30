@@ -3,7 +3,7 @@ This file holds framework-agnostic components for DreamerV3's RLModule.
 """
 
 import abc
-from typing import Any, Dict
+from typing import Dict
 
 from ray.rllib.algorithms.dreamerv3.utils import (
     do_symlog_obs,
@@ -15,7 +15,6 @@ from ray.rllib.algorithms.dreamerv3.torch.models.actor_network import ActorNetwo
 from ray.rllib.algorithms.dreamerv3.torch.models.critic_network import CriticNetwork
 from ray.rllib.algorithms.dreamerv3.torch.models.dreamer_model import DreamerModel
 from ray.rllib.algorithms.dreamerv3.torch.models.world_model import WorldModel
-from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.annotations import override
 from ray.util.annotations import DeveloperAPI
@@ -31,10 +30,7 @@ class DreamerV3RLModule(RLModule, abc.ABC):
         super().setup()
 
         # Gather model-relevant settings.
-        B = 1
         T = self.model_config["batch_length_T"]
-        horizon_H = self.model_config["horizon_H"]
-        gamma = self.model_config["gamma"]
         symlog_obs = do_symlog_obs(
             self.observation_space,
             self.model_config.get("symlog_obs", "auto"),

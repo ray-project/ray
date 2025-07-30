@@ -1,8 +1,5 @@
 from typing import Any, List, Optional
 
-import gymnasium as gym
-
-from ray.rllib.core.columns import Columns
 from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.annotations import override

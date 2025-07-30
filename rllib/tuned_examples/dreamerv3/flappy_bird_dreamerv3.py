@@ -9,7 +9,10 @@ https://arxiv.org/pdf/2010.02193.pdf
 """
 
 # Run with:
-# python run_regression_tests.py --dir [this file]
+# python [this script name].py
+
+# To see all available options:
+# python [this script name].py --help
 
 from ray.rllib.algorithms.dreamerv3.dreamerv3 import DreamerV3Config
 from ray import tune

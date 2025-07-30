@@ -249,6 +249,7 @@ DreamerV3
 ---------
 `[paper] <https://arxiv.org/pdf/2301.04104v1.pdf>`__
 `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/dreamerv3/dreamerv3.py>`__
+`[RLlib readme] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/dreamerv3/README.md>`__
 
 
 .. figure:: images/algos/dreamerv3-architecture.svg
@@ -260,9 +261,9 @@ DreamerV3
     is to correctly predict the transition dynamics of the RL environment: next observation, reward,
     and a boolean continuation flag.
     DreamerV3 trains the actor- and critic-networks on synthesized trajectories only,
-    which are "dreamed" by the world model.
-    DreamerV3 scales out on both axes, supporting multiple EnvRunners for sample collection and
-    multiple GPU- or CPU-based Learners for updating the model.
+    which are "dreamed" by the WORLD_MODEL.
+    The algorithm scales out on both axes, supporting multiple :py:class:`~ray.rllib.env.env_runner.EnvRunner` actors for
+    sample collection and multiple GPU- or CPU-based :py:class:`~ray.rllib.core.learner.learner.Learner` actors for updating the model.
     It can also be used in different environment types, including those with image- or vector based
     observations, continuous- or discrete actions, as well as sparse or dense reward functions.
 

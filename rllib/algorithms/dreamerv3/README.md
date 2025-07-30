@@ -5,7 +5,7 @@
 ## Overview
 An RLlib-based implementation of the
 [DreamerV3 model-based reinforcement learning algorithm](https://arxiv.org/pdf/2301.04104v1.pdf)
-by D. Hafner et al. (Google DeepMind) 2023, in TensorFlow/Keras.
+by D. Hafner et al. (Google DeepMind) 2023, in PyTorch.
 
 This implementation allows scaling up training by using multi-GPU machines for
 neural network updates (see below for tips and tricks, example configs, and command lines).
@@ -34,8 +34,7 @@ All you need is a simple "model size" setting (from "XS" to "XL") and a value fo
 specifies how many steps to replay from the buffer for a training update vs how many
 steps to take in the actual environment.
 
-For examples on how to set these config settings within your `DreamerV3Config` objects,
-see below.
+Here are some examples on how to set these config settings within your `DreamerV3Config` objects:
 
 ## Example Configs and Command Lines
 
@@ -46,16 +45,16 @@ Use the config examples and templates in the
 [tuned_examples folder](../../tuned_examples/dreamerv3)
 in combination with the following scripts and command lines in order to run RLlib's DreamerV3 algorithm in your experiments:
 
-### [Atari100k](../../tuned_examples/dreamerv3/atari_100k.py)
+### [Atari100k](../../tuned_examples/dreamerv3/atari_100k_dreamerv3.py)
 ```shell
 $ cd ray/rllib/tuned_examples/dreamerv3/
-$ python atari_100k.py --env ale_py:ALE/Pong-v5
+$ python atari_100k_dreamerv3.py --env ale_py:ALE/Pong-v5
 ```
 
 ### [DeepMind Control Suite (vision)](../../tuned_examples/dreamerv3/dm_control_suite_vision.py)
 ```shell
 $ cd ray/rllib/tuned_examples/dreamerv3/
-$ python dm_control_suite_vision.py --env DMC/cartpole/swingup
+$ python dm_control_suite_vision_dreamerv3.py --env DMC/cartpole/swingup
 ```
 Other `--env` options for the DM Control Suite would be `--env DMC/hopper/hop`, `--env DMC/walker/walk`, etc..
 Note that you can also switch on WandB logging with the above script via the options
@@ -123,7 +122,7 @@ $ python flappy_bird.py
 ```
 
 This should be it. Feel free to try out running this on multiple GPUs using these
-more advanced config examples [here (Atari100k)](../../tuned_examples/dreamerv3/atari_100k.py) and
+more advanced config examples [here (Atari100k)](../../tuned_examples/dreamerv3/atari_100k_dreamerv3.py) and
 [here (DM Control Suite)](../../tuned_examples/dreamerv3/dm_control_suite_vision.py).
 Also see the notes below on good recipes for running on multiple GPUs.
 
