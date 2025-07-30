@@ -25,22 +25,21 @@ namespace rpc {
 std::function<void()> CoreWorkerClientPool::GetDefaultUnavailableTimeoutCallback(
     gcs::GcsClient *gcs_client,
     rpc::CoreWorkerClientPool *worker_client_pool,
-    std::function<std::shared_ptr<RayletClientInterface>(std::string, int32_t)>
-        raylet_client_factory,
+    rpc::RayletClientPool *raylet_client_pool,
     const rpc::Address &addr) {
-  return [addr,
-          gcs_client,
-          worker_client_pool,
-          raylet_client_factory = std::move(raylet_client_factory)]() {
+  return [addr, gcs_client, worker_client_pool, raylet_client_pool]() {
     const NodeID node_id = NodeID::FromBinary(addr.raylet_id());
     const WorkerID worker_id = WorkerID::FromBinary(addr.worker_id());
 
-    auto check_worker_alive = [raylet_client_factory,
+    auto check_worker_alive = [raylet_client_pool,
                                worker_client_pool,
                                worker_id,
                                node_id](const rpc::GcsNodeInfo &node_info) {
-      auto raylet_client = raylet_client_factory(node_info.node_manager_address(),
-                                                 node_info.node_manager_port());
+      rpc::Address raylet_addr;
+      raylet_addr.set_ip_address(node_info.node_manager_address());
+      raylet_addr.set_port(node_info.node_manager_port());
+      raylet_addr.set_raylet_id(node_id.Binary());
+      auto raylet_client = raylet_client_pool->GetOrConnectByAddress(raylet_addr);
       raylet_client->IsLocalWorkerDead(
           worker_id,
           [worker_client_pool, worker_id, node_id](const Status &status,
