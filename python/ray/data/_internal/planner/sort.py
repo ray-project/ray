@@ -40,27 +40,32 @@ def generate_sort_fn(
         sort_key.validate_schema(unify_ref_bundles_schema(refs))
 
         if limit is not None:
-            boundaries, num_outputs = [], 1  # single reducer path
+            # Single reducer is an ok default for small limit values.
+            # For larger limits (e.g. > 10_000) and larger number of blocks, we should switch to a reduction tree approach with N reducers (will need some tuning).
+
+            # Can't use boundary based partitioning here, because we need the global top-k.
+            boundaries, num_outputs = [], 1
         else:
             num_mappers = len(blocks)
             num_outputs = num_mappers
 
-        # Sample boundaries for sort key.
-        if not sort_key.boundaries:
-            sample_bar = ctx.sub_progress_bar_dict[
-                SortTaskSpec.SORT_SAMPLE_SUB_PROGRESS_BAR_NAME
-            ]
-            boundaries = SortTaskSpec.sample_boundaries(
-                blocks, sort_key, num_outputs, sample_bar
-            )
-        else:
-            # For user-specified boundaries (which only partition by the primary
-            # sort key), reverse `boundaries` so that the partitions are produced
-            # in descending order, as desired.
-            boundaries = [(b,) for b in sort_key.boundaries]
-            if sort_key.get_descending()[0]:
-                boundaries = boundaries[::-1]
-            num_outputs = len(boundaries) + 1
+            # Sample boundaries for sort key.
+            if not sort_key.boundaries:
+                sample_bar = ctx.sub_progress_bar_dict[
+                    SortTaskSpec.SORT_SAMPLE_SUB_PROGRESS_BAR_NAME
+                ]
+                boundaries = SortTaskSpec.sample_boundaries(
+                    blocks, sort_key, num_outputs, sample_bar
+                )
+            else:
+                # For user-specified boundaries (which only partition by the primary
+                # sort key), reverse `boundaries` so that the partitions are produced
+                # in descending order, as desired.
+                boundaries = [(b,) for b in sort_key.boundaries]
+                if sort_key.get_descending()[0]:
+                    boundaries = boundaries[::-1]
+                num_outputs = len(boundaries) + 1
+
         sort_spec = SortTaskSpec(
             boundaries=boundaries,
             sort_key=sort_key,
@@ -84,5 +89,4 @@ def generate_sort_fn(
 
     # NOTE: use partial function to pass parameters to avoid error like
     # "UnboundLocalError: local variable ... referenced before assignment",
-    # because `key` and `descending` variables are reassigned in `fn()`.
     return partial(fn, sort_key)
