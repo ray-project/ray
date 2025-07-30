@@ -5,6 +5,7 @@ from typing import List
 import subprocess
 import platform
 import runfiles
+from networkx import DiGraph, topological_sort
 
 DEFAULT_UV_FLAGS = [
     "--generate-hashes",
@@ -38,7 +39,7 @@ def load(config_path: str, workspace_dir: str, name: str):
     if name:
         manager.execute_single(manager.get_depset(name))
     else:
-        manager.execute_all()
+        manager.execute()
 
 
 class DependencySetManager:
@@ -49,6 +50,33 @@ class DependencySetManager:
     ):
         self.workspace = Workspace(workspace_dir)
         self.config = self.workspace.load_config(config_path)
+        self.build_graph = DiGraph()
+        self._build()
+
+    def _build(self):
+        for depset in self.config.depsets:
+            if depset.operation == "compile":
+                self.build_graph.add_node(
+                    depset.name, operation="compile", depset=depset
+                )
+            elif depset.operation == "subset":
+                self.build_graph.add_node(
+                    depset.name, operation="subset", depset=depset
+                )
+                self.build_graph.add_edge(depset.source_depset, depset.name)
+            elif depset.operation == "expand":
+                self.build_graph.add_node(
+                    depset.name, operation="expand", depset=depset
+                )
+                for depset_name in depset.depsets:
+                    self.build_graph.add_edge(depset_name, depset.name)
+            else:
+                raise ValueError(f"Invalid operation: {depset.operation}")
+
+    def execute(self):
+        for node in topological_sort(self.build_graph):
+            depset = self.build_graph.nodes[node]["depset"]
+            self.execute_single(depset)
 
     def get_depset(self, name: str) -> Depset:
         for depset in self.config.depsets:
@@ -63,10 +91,6 @@ class DependencySetManager:
         if status.returncode != 0:
             raise RuntimeError(f"Failed to execute command: {cmd}")
         return status.stdout
-
-    def execute_all(self):
-        for depset in self.config.depsets:
-            self.execute_single(depset)
 
     def execute_single(self, depset: Depset):
         if depset.operation == "compile":
