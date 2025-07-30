@@ -70,7 +70,7 @@ def test_vllm_engine_stage_post_init(gpu_type, model_llama_3_2_216M):
         fn_constructor_kwargs=dict(
             model=model_llama_3_2_216M,
             engine_kwargs=dict(
-                tensor_parallel_size=4,
+                tensor_parallel_size=2,
                 pipeline_parallel_size=2,
                 distributed_executor_backend="ray",
             ),
@@ -90,7 +90,7 @@ def test_vllm_engine_stage_post_init(gpu_type, model_llama_3_2_216M):
         "task_type": vLLMTaskType.GENERATE,
         "max_pending_requests": 10,
         "engine_kwargs": {
-            "tensor_parallel_size": 4,
+            "tensor_parallel_size": 2,
             "pipeline_parallel_size": 2,
             "distributed_executor_backend": "ray",
         },
@@ -107,7 +107,7 @@ def test_vllm_engine_stage_post_init(gpu_type, model_llama_3_2_216M):
     assert isinstance(scheduling_strategy, PlacementGroupSchedulingStrategy)
 
     bundle_specs = scheduling_strategy.placement_group.bundle_specs
-    assert len(bundle_specs) == 8
+    assert len(bundle_specs) == 4
     for bundle_spec in bundle_specs:
         assert bundle_spec[f"accelerator_type:{gpu_type}"] == 0.001
         assert bundle_spec["CPU"] == 1.0
@@ -400,12 +400,13 @@ async def test_vllm_wrapper_json(model_llama_3_2_1B_instruct):
         task=vLLMTaskType.GENERATE,
         max_model_len=2048,
         guided_decoding_backend="xgrammar",
+        seed=42,
     )
 
     batch = [
         {
             "__idx_in_batch": 0,
-            "prompt": "Answer 2 ** 3 + 5 with a detailed explanation in JSON.",
+            "prompt": "Answer 2 ** 3 + 5. Return the answer in JSON. Expected fields: 'answer', 'explain'.",
             "sampling_params": {
                 "max_tokens": 100,
                 "temperature": 0.7,
