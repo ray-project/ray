@@ -10,19 +10,13 @@ https://arxiv.org/pdf/2010.02193.pdf
 from ray.rllib.algorithms.dreamerv3.dreamerv3 import DreamerV3Config
 
 # Run with:
-# python run_regression_tests.py --dir [this file]
+# python [this script name].py
+
+# To see all available options:
+# python [this script name].py --help
 
 config = (
     DreamerV3Config()
-    .environment(
-        "FrozenLake-v1",
-        env_config={
-            "map_name": "4x4",
-            "is_slippery": False,
-        },
-    )
-    .training(
-        model_size="nano",
-        training_ratio=1024,
-    )
+    .environment("Pendulum-v1")
+    .training(model_size="XS", training_ratio=1024)
 )

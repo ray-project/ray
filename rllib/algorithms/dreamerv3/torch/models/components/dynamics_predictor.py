@@ -5,17 +5,17 @@ https://arxiv.org/pdf/2301.04104v1.pdf
 """
 from typing import Optional
 
-from ray.rllib.algorithms.dreamerv3.tf.models.components.mlp import MLP
-from ray.rllib.algorithms.dreamerv3.tf.models.components.representation_layer import (
-    RepresentationLayer,
+from ray.rllib.algorithms.dreamerv3.torch.models.components.mlp import MLP
+from ray.rllib.algorithms.dreamerv3.torch.models.components import (
+    representation_layer,
 )
-from ray.rllib.algorithms.dreamerv3.utils import get_gru_units
-from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.algorithms.dreamerv3.utils import get_dense_hidden_units
+from ray.rllib.utils.framework import try_import_torch
 
-_, tf, _ = try_import_tf()
+torch, nn = try_import_torch()
 
 
-class DynamicsPredictor(tf.keras.Model):
+class DynamicsPredictor(nn.Module):
     """The dynamics (or "prior") network described in [1], producing prior z-states.
 
     The dynamics net is used to:
@@ -28,13 +28,15 @@ class DynamicsPredictor(tf.keras.Model):
     def __init__(
         self,
         *,
-        model_size: Optional[str] = "XS",
+        input_size: int,
+        model_size: str = "XS",
         num_categoricals: Optional[int] = None,
         num_classes_per_categorical: Optional[int] = None,
     ):
         """Initializes a DynamicsPredictor instance.
 
         Args:
+            input_size: The input size of the dynamics predictor.
             model_size: The "Model Size" used according to [1] Appendinx B.
                 Use None for manually setting the different parameters.
             num_categoricals: Overrides the number of categoricals used in the z-states.
@@ -43,42 +45,30 @@ class DynamicsPredictor(tf.keras.Model):
                 categorical used for the z-states. In [1], 32 is used for any model
                 dimension.
         """
-        super().__init__(name="dynamics_predictor")
+        super().__init__()
 
         self.mlp = MLP(
-            # In author's original code, the Dynamics Net only has a single layer, no
-            # matter the model size.
+            input_size=input_size,
             num_dense_layers=1,
             model_size=model_size,
             output_layer_size=None,
         )
-        # The (prior) z-state generating layer.
-        self.representation_layer = RepresentationLayer(
+        representation_layer_input_size = get_dense_hidden_units(model_size)
+        self.representation_layer = representation_layer.RepresentationLayer(
+            input_size=representation_layer_input_size,
             model_size=model_size,
             num_categoricals=num_categoricals,
             num_classes_per_categorical=num_classes_per_categorical,
         )
 
-        # Trace self.call.
-        dl_type = tf.keras.mixed_precision.global_policy().compute_dtype or tf.float32
-        self.call = tf.function(
-            input_signature=[
-                tf.TensorSpec(shape=[None, get_gru_units(model_size)], dtype=dl_type),
-            ]
-        )(self.call)
-
-    def call(self, h):
+    def forward(self, h, return_z_probs=False):
         """Performs a forward pass through the dynamics (or "prior") network.
 
         Args:
             h: The deterministic hidden state of the sequence model.
-
-        Returns:
-            Tuple consisting of a differentiable z-sample and the probabilities for the
-            categorical distribution (in the shape of [B, num_categoricals,
-            num_classes]) that created this sample.
+            return_z_probs: Whether to return the probabilities for the categorical
+                distribution (in the shape of [B, num_categoricals, num_classes])
+                as a second return value.
         """
-        # Send internal state through MLP.
         out = self.mlp(h)
-        # Generate a z vector (stochastic, discrete sample).
-        return self.representation_layer(out)
+        return self.representation_layer(out, return_z_probs=return_z_probs)
