@@ -1693,16 +1693,19 @@ TEST_F(GcsActorManagerTest, TestRestartPreemptedActor) {
   io_service_.run_one();
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::ALIVE);
   ASSERT_EQ(actor->GetActorTableData().num_restarts(), 1);
+  ASSERT_EQ(actor->GetActorTableData().num_restarts_due_to_node_preemption(), 0);
 
   // Now set the actor as preempted using SetPreemptedAndPublish
   gcs_actor_manager_->SetPreemptedAndPublish(new_node_id);
   io_service_.run_one();
   ASSERT_TRUE(actor->GetActorTableData().preempted());
 
-  // Second restart: actor is preempted, so num_restarts should not increment
+  // Second restart: actor is preempted, so num_restarts and
+  // num_restarts_due_to_node_preemption should increment
   gcs_actor_manager_->OnWorkerDead(new_node_id, new_worker_id);
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::RESTARTING);
-  ASSERT_EQ(actor->GetActorTableData().num_restarts(), 1);  // Should not increment
+  ASSERT_EQ(actor->GetActorTableData().num_restarts(), 2);  // Should increment
+  ASSERT_EQ(actor->GetActorTableData().num_restarts_due_to_node_preemption(), 1);
 
   // Make the actor alive on another node again
   auto new_address_2 = RandomAddress();
@@ -1712,13 +1715,16 @@ TEST_F(GcsActorManagerTest, TestRestartPreemptedActor) {
   gcs_actor_manager_->OnActorCreationSuccess(actor, rpc::PushTaskReply());
   io_service_.run_one();
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::ALIVE);
-  ASSERT_EQ(actor->GetActorTableData().num_restarts(), 1);
+  ASSERT_EQ(actor->GetActorTableData().num_restarts(), 2);
+  ASSERT_EQ(actor->GetActorTableData().num_restarts_due_to_node_preemption(), 1);
   ASSERT_FALSE(actor->GetActorTableData().preempted());  // Turn preempted back
 
-  // Third restart: actor is NOT preempted, so num_restarts should not increment
+  // Third restart: actor reaches max_restarts, so num_restarts and
+  // num_restarts_due_to_node_preemption should not increment
   gcs_actor_manager_->OnWorkerDead(new_node_id_2, new_worker_id_2);
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::DEAD);
-  ASSERT_EQ(actor->GetActorTableData().num_restarts(), 1);  // Should not increment
+  ASSERT_EQ(actor->GetActorTableData().num_restarts(), 2);
+  ASSERT_EQ(actor->GetActorTableData().num_restarts_due_to_node_preemption(), 1);
   ASSERT_FALSE(actor->GetActorTableData().preempted());
 }
 

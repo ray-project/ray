@@ -182,6 +182,7 @@ inline bool IsActorRestartable(const rpc::ActorTableData &actor) {
          actor.death_cause().actor_died_error_context().reason() ==
              rpc::ActorDiedErrorContext::OUT_OF_SCOPE &&
          ((actor.max_restarts() == -1) ||
+          (actor.max_restarts() > 0 && actor.preempted()) ||
           // Restarts due to node preemption do not count towards max_restarts.
           (static_cast<int64_t>(actor.num_restarts() -
                                 actor.num_restarts_due_to_node_preemption()) <
