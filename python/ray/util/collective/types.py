@@ -3,7 +3,7 @@
 from enum import Enum
 from dataclasses import dataclass
 from datetime import timedelta
-from typing import List, Tuple, TYPE_CHECKING
+from typing import List, Tuple, TYPE_CHECKING, Optional
 
 from numpy import int32
 
@@ -61,9 +61,11 @@ class TensorTransportMetadata:
 
     Args:
         tensor_meta: A list of tuples, each containing the shape and dtype of a tensor.
+        communicator_name: The name of the communicator.
     """
 
     tensor_meta: List[Tuple["torch.Size", "torch.dtype"]]
+    communicator_name: str = ""
 
 
 @dataclass
@@ -75,8 +77,8 @@ class NixlTransportMetadata(TensorTransportMetadata):
         nixl_agent_meta: The additional metadata of the remote NIXL agent.
     """
 
-    nixl_serialized_descs: bytes
-    nixl_agent_meta: bytes
+    nixl_serialized_descs: Optional[bytes] = None
+    nixl_agent_meta: Optional[bytes] = None
 
 
 @dataclass
@@ -84,10 +86,12 @@ class CollectiveTransportMetadata(TensorTransportMetadata):
     """Metadata for tensors stored in the GPU object store for collective transport.
 
     Args:
-        src_rank: The source rank that the tensor is being transported from.
+        src_rank: The rank of the source actor.
+        dst_rank: The rank of the destination actor.
     """
 
-    src_rank: int32
+    src_rank: Optional[int32] = None
+    dst_rank: Optional[int32] = None
 
 
 class ReduceOp(Enum):
