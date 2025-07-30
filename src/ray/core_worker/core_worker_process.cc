@@ -375,7 +375,8 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
             "CoreWorker.HandleException");
       });
 
-  std::shared_ptr<experimental::MutableObjectProvider> experimental_mutable_object_provider;
+  std::shared_ptr<experimental::MutableObjectProvider>
+      experimental_mutable_object_provider;
 
 #if defined(__APPLE__) || defined(__linux__)
   auto raylet_channel_client_factory = [this](const NodeID &node_id) {
@@ -389,7 +390,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
     return core_worker->raylet_client_pool_->GetOrConnectByAddress(addr);
   };
 
-  auto experimental_mutable_object_provider =
+  experimental_mutable_object_provider =
       std::make_shared<experimental::MutableObjectProvider>(
           *plasma_store_provider->store_client(),
           raylet_channel_client_factory,
