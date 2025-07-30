@@ -20,53 +20,44 @@ def config():
 class TestTaskHandlerDecorator:
     """Test the task_handler decorator."""
 
-    def test_task_handler_decorator_with_name(self):
+    def _create_and_test_handler(self, decorator_args=None, expected_name=None):
+        """Helper to create and test a task handler."""
         mock = MagicMock()
 
-        @task_handler(name="my_task")
-        def my_task_handler():
-            mock()
+        if decorator_args is None:
 
-        my_task_handler()
+            @task_handler
+            def test_handler():
+                mock()
+
+        else:
+
+            @task_handler(**decorator_args)
+            def test_handler():
+                mock()
+
+        test_handler()
 
         assert mock.call_count == 1
-        assert my_task_handler._task_name == "my_task"
+        assert test_handler._task_name == expected_name
+
+    def test_task_handler_decorator_with_name(self):
+        self._create_and_test_handler(
+            decorator_args={"name": "my_task"}, expected_name="my_task"
+        )
 
     def test_task_handler_decorator_without_name(self):
-        mock = MagicMock()
+        self._create_and_test_handler(expected_name="test_handler")
 
-        @task_handler
-        def my_task_handler():
-            mock()
-
-        my_task_handler()
-
-        assert mock.call_count == 1
-        assert my_task_handler._task_name == "my_task_handler"
-
-    def test_task_handler_decorator_invalid_name(self):
+    @pytest.mark.parametrize("invalid_name", ["", "   ", 123])
+    def test_task_handler_decorator_invalid_name(self, invalid_name):
+        """Test various invalid task names."""
         with pytest.raises(
             ValueError, match="Task name must be a non-empty string when provided"
         ):
 
-            @task_handler(name="")
+            @task_handler(name=invalid_name)
             def my_task_handler():
-                pass
-
-        with pytest.raises(
-            ValueError, match="Task name must be a non-empty string when provided"
-        ):
-
-            @task_handler(name="   ")
-            def my_task_handler_with_spaces():
-                pass
-
-        with pytest.raises(
-            ValueError, match="Task name must be a non-empty string when provided"
-        ):
-
-            @task_handler(name=123)
-            def my_task_handler_with_invalid_type():
                 pass
 
     def test_task_handler_on_callable_object_without_name_attr(self):
@@ -79,88 +70,103 @@ class TestTaskHandlerDecorator:
                 pass
 
         with pytest.raises(AttributeError):
-            # When task_handler is used without a name on a callable object
-            # that doesn't have a __name__, it should raise an AttributeError.
             task_handler(MyCallable())
 
 
 class TestTaskConsumerDecorator:
     """Test the task_consumer decorator."""
 
+    def _verify_and_cleanup(self, instance, expected_calls=None):
+        """Verify consumer and cleanup instance."""
+        adapter = instance._adapter
+        assert adapter._start_consumer_received
+
+        if expected_calls is not None:
+            if expected_calls:
+                calls = [call(method, name=name) for method, name in expected_calls]
+                adapter.register_task_handle_mock.assert_has_calls(
+                    calls, any_order=False
+                )
+                assert adapter.register_task_handle_mock.call_count == len(
+                    expected_calls
+                )
+            else:
+                adapter.register_task_handle_mock.assert_not_called()
+
+        del instance
+
+    def _run_consumer_test(
+        self, config, consumer_class_factory, expected_calls_factory=None
+    ):
+        """Run a consumer test with factory functions."""
+        consumer_class = consumer_class_factory(config)
+        instance = consumer_class()
+
+        expected_calls = (
+            expected_calls_factory(instance) if expected_calls_factory else None
+        )
+
+        self._verify_and_cleanup(instance, expected_calls)
+
     def test_task_consumer_basic(self, config):
         """Test basic functionality of the task_consumer decorator."""
 
-        @task_consumer(task_processor_config=config)
-        class MyConsumer:
-            @task_handler
-            def my_task(self):
-                pass
+        def make_consumer(cfg):
+            @task_consumer(task_processor_config=cfg)
+            class MyConsumer:
+                @task_handler
+                def my_task(self):
+                    pass
 
-        consumer_instance = MyConsumer()
-        adapter = consumer_instance._adapter
+            return MyConsumer
 
-        assert adapter._start_consumer_received
-        adapter.register_task_handle_mock.assert_called_once_with(
-            consumer_instance.my_task, name="my_task"
+        self._run_consumer_test(
+            config, make_consumer, lambda inst: [(inst.my_task, "my_task")]
         )
-
-        del consumer_instance
 
     def test_task_consumer_multiple_handlers(self, config):
         """Test with multiple task handlers."""
 
-        @task_consumer(task_processor_config=config)
-        class MyConsumer:
-            @task_handler
-            def task1(self):
-                pass
+        def make_consumer(cfg):
+            @task_consumer(task_processor_config=cfg)
+            class MyConsumer:
+                @task_handler
+                def task1(self):
+                    pass
 
-            @task_handler
-            def task2(self):
-                pass
+                @task_handler
+                def task2(self):
+                    pass
 
-        consumer_instance = MyConsumer()
-        adapter = consumer_instance._adapter
+            return MyConsumer
 
-        assert adapter._start_consumer_received
-        adapter.register_task_handle_mock.assert_has_calls(
-            [
-                call(consumer_instance.task1, name="task1"),
-                call(consumer_instance.task2, name="task2"),
-            ],
-            any_order=True,
+        self._run_consumer_test(
+            config,
+            make_consumer,
+            lambda inst: [(inst.task1, "task1"), (inst.task2, "task2")],
         )
-        assert adapter.register_task_handle_mock.call_count == 2
-
-        del consumer_instance
 
     def test_task_consumer_custom_names(self, config):
         """Test task handlers with and without custom names."""
 
-        @task_consumer(task_processor_config=config)
-        class MyConsumer:
-            @task_handler(name="custom_task")
-            def task1(self):
-                pass
+        def make_consumer(cfg):
+            @task_consumer(task_processor_config=cfg)
+            class MyConsumer:
+                @task_handler(name="custom_task")
+                def task1(self):
+                    pass
 
-            @task_handler
-            def task2(self):
-                pass
+                @task_handler
+                def task2(self):
+                    pass
 
-        consumer_instance = MyConsumer()
-        adapter = consumer_instance._adapter
+            return MyConsumer
 
-        assert adapter._start_consumer_received
-        adapter.register_task_handle_mock.assert_has_calls(
-            [
-                call(consumer_instance.task1, name="custom_task"),
-                call(consumer_instance.task2, name="task2"),
-            ],
-            any_order=True,
+        self._run_consumer_test(
+            config,
+            make_consumer,
+            lambda inst: [(inst.task1, "custom_task"), (inst.task2, "task2")],
         )
-        assert adapter.register_task_handle_mock.call_count == 2
-
-        del consumer_instance
 
     def test_task_consumer_init_args(self, config):
         """Test that __init__ arguments are passed correctly."""
@@ -170,56 +176,48 @@ class TestTaskConsumerDecorator:
             def __init__(self, value):
                 self.value = value
 
-        consumer_instance = MyConsumer(value=42)
-        assert consumer_instance.value == 42
-        assert consumer_instance._adapter is not None
-
-        del consumer_instance
+        instance = MyConsumer(value=42)
+        assert instance.value == 42
+        self._verify_and_cleanup(instance)
 
     def test_task_consumer_no_handlers(self, config):
         """Test with a class that has no task handlers."""
 
-        @task_consumer(task_processor_config=config)
-        class MyConsumer:
-            def some_method(self):
-                pass
+        def make_consumer(cfg):
+            @task_consumer(task_processor_config=cfg)
+            class MyConsumer:
+                def some_method(self):
+                    pass
 
-        consumer_instance = MyConsumer()
-        adapter = consumer_instance._adapter
+            return MyConsumer
 
-        assert adapter._start_consumer_received
-        adapter.register_task_handle_mock.assert_not_called()
-
-        del consumer_instance
+        self._run_consumer_test(config, make_consumer, lambda inst: [])
 
     def test_task_consumer_inheritance(self, config):
         """Test that inherited task handlers are registered."""
 
-        class BaseConsumer:
-            @task_handler
-            def base_task(self):
-                pass
+        def make_consumer(cfg):
+            class BaseConsumer:
+                @task_handler
+                def base_task(self):
+                    pass
 
-        @task_consumer(task_processor_config=config)
-        class DerivedConsumer(BaseConsumer):
-            @task_handler
-            def derived_task(self):
-                pass
+            @task_consumer(task_processor_config=cfg)
+            class DerivedConsumer(BaseConsumer):
+                @task_handler
+                def derived_task(self):
+                    pass
 
-        consumer_instance = DerivedConsumer()
-        adapter = consumer_instance._adapter
+            return DerivedConsumer
 
-        assert adapter._start_consumer_received
-        adapter.register_task_handle_mock.assert_has_calls(
-            [
-                call(consumer_instance.base_task, name="base_task"),
-                call(consumer_instance.derived_task, name="derived_task"),
+        self._run_consumer_test(
+            config,
+            make_consumer,
+            lambda inst: [
+                (inst.base_task, "base_task"),
+                (inst.derived_task, "derived_task"),
             ],
-            any_order=True,
         )
-        assert adapter.register_task_handle_mock.call_count == 2
-
-        del consumer_instance
 
     def test_task_consumer_no_args_decorator(self, config):
         """Test using @task_consumer without arguments raises TypeError."""
