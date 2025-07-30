@@ -376,7 +376,6 @@ CoreWorker::CoreWorker(
       cluster_size_based_rate_limiter->OnNodeChanges(data);
     }
   };
-  gcs_client->Nodes().AsyncSubscribeToNodeChange(std::move(on_node_change), nullptr);
 
   gcs_client_->Nodes().AsyncSubscribeToNodeChange(
       std::move(on_node_change), [this](const Status &) {
