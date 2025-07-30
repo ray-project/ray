@@ -211,9 +211,9 @@ class NvidiaGpuProvider(GpuProvider):
                 if gpu_id in processes_info:
                     gpu["processes_pids"] = processes_info[gpu_id]
             return gpus
-        except subprocess.CalledProcessError as e:
+        except (subprocess.CalledProcessError, ValueError) as e:
             logger.warning(
-                f"nvidia-smi failed to call: {e}. Is nvidia-smi installed? Falling back to pynvml."
+                f"nvidia-smi failed to call: {e}. Falling back to pynvml."
             )
             self._using_nvidia_smi = False
             return self._get_pynvml_gpu_usage()
@@ -243,18 +243,16 @@ class NvidiaGpuProvider(GpuProvider):
                 table_header = line
                 break
         if not table_header:
-            logger.debug("nvidia-smi pmon -c 1 output is empty.")
-            return process_utilizations
+            raise ValueError(
+                "nvidia-smi pmon output is not supported. Please upgrade to a newer version of nvidia-smi."
+            )
         table_header = table_header.lower().split()[1:]
         # Base on different versions, the header may be different.
-        try:
-            gpu_id_index = table_header.index("gpu")
-            pid_index = table_header.index("pid")
-            sm_index = table_header.index("sm")
-            mem_index = table_header.index("mem")
-        except ValueError as e:
-            logger.warning(f"Required column not found in nvidia-smi pmon output: {e}")
-            return process_utilizations
+        # ValueError will be raised if the header is not found by the index function.
+        gpu_id_index = table_header.index("gpu")
+        pid_index = table_header.index("pid")
+        sm_index = table_header.index("sm")
+        mem_index = table_header.index("mem")
 
         for line in lines:
             if line.startswith("#") or not line.strip():
