@@ -24,6 +24,7 @@
 #include <unordered_set>
 #include <utility>
 
+#include "absl/strings/str_format.h"
 #include "ray/common/cgroup2/sysfs_cgroup_driver.h"
 #include "ray/common/cgroup2/test/cgroup_test_utils.h"
 #include "ray/common/status.h"
@@ -57,7 +58,8 @@
     echo "+cpu" > /sys/fs/cgroup/testing/cgroup.subtree_control
     echo "+memory" > /sys/fs/cgroup/testing/cgroup.subtree_control
 */
-// Uncomment the following line to run the tests locally.
+
+// NOTE: Uncomment the following line to run the tests locally.
 #define RUN_LOCALLY
 
 // This the root of the cgroup subtree that has been delegated to the testing user.
@@ -158,23 +160,53 @@ class SysFsCgroupDriverIntegrationTest : public ::testing::Test {
     fclose(processes_cgroup_procs);
     close(leaf_cgroup_procs_fd);
 
-    // 4) Enable cpu and memory controllers for the testing_cgroup to allow tests to
-    // use those controllers as necessary.
+    // 4) Enable cpu and memory controllers for the base_cgroup.
+    std::string subtree_control_op = "+cpu +memory";
+
+    std::string base_cgroup_subtree_control_path =
+        base_cgroup_path_ + "/cgroup.subtree_control";
+
+    int base_cgroup_subtree_control_fd =
+        open(base_cgroup_subtree_control_path.c_str(), O_RDWR);
+
+    ASSERT_NE(base_cgroup_subtree_control_fd, -1) << absl::StrFormat(
+        "Failed to open base cgroup's subtree_control file at path %s with error %s.",
+        base_cgroup_subtree_control_path,
+        strerror(errno));
+
+    ssize_t num_written = write(base_cgroup_subtree_control_fd,
+                                subtree_control_op.c_str(),
+                                subtree_control_op.size());
+
+    ASSERT_EQ(num_written, subtree_control_op.size()) << absl::StrFormat(
+        "Failed to write to base cgroup's subtree_control file at path %s with error %s.",
+        base_cgroup_subtree_control_path,
+        strerror(errno));
+
+    close(base_cgroup_subtree_control_fd);
+
+    // 5) Enable cpu and memory controllers for testing_cgroup.
     std::string test_cgroup_subtree_control_path =
         testing_cgroup_->GetPath() + "/cgroup.subtree_control";
-    std::unordered_set<std::string> subtree_control_ops = {"+cpu", "+memory"};
-    for (const auto &op : subtree_control_ops) {
-      int test_cgroup_subtree_control_fd =
-          open(test_cgroup_subtree_control_path.c_str(), O_RDWR);
-      ASSERT_NE(test_cgroup_subtree_control_fd, -1)
-          << "Failed to open test cgroup's subtree_control file at path "
-          << test_cgroup_subtree_control_path << " with error " << strerror(errno);
-      ssize_t num_written = write(test_cgroup_subtree_control_fd, op.c_str(), op.size());
-      ASSERT_EQ(num_written, op.size())
-          << "Failed to write to test cgroup's subtree_control file at path "
-          << test_cgroup_subtree_control_path << " with error " << strerror(errno);
-      close(test_cgroup_subtree_control_fd);
-    }
+
+    int test_cgroup_subtree_control_fd =
+        open(test_cgroup_subtree_control_path.c_str(), O_RDWR);
+
+    ASSERT_NE(test_cgroup_subtree_control_fd, -1) << absl::StrFormat(
+        "Failed to open test cgroup's subtree_control file at path %s with error %s.",
+        test_cgroup_subtree_control_path,
+        strerror(errno));
+
+    num_written = write(test_cgroup_subtree_control_fd,
+                        subtree_control_op.c_str(),
+                        subtree_control_op.size());
+
+    ASSERT_EQ(num_written, subtree_control_op.size()) << absl::StrFormat(
+        "Failed to write to test cgroup's subtree_control file at path %s with error %s.",
+        test_cgroup_subtree_control_path,
+        strerror(errno));
+
+    close(test_cgroup_subtree_control_fd);
   }
 
   /**

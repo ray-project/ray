@@ -35,6 +35,7 @@
 #include <random>
 #include <stdexcept>
 #include <string>
+#include <system_error>
 #include <utility>
 
 #include "absl/strings/str_format.h"
@@ -75,27 +76,24 @@ ray::StatusOr<std::unique_ptr<TempCgroupDirectory>> TempCgroupDirectory::Create(
                         strerror(errno)));
   }
   auto output = std::make_unique<TempCgroupDirectory>(std::move(name), std::move(path));
-  return ray::StatusOr<std::unique_ptr<TempCgroupDirectory>>(std::move(output));
+  return output;
 }
 
 TempCgroupDirectory::~TempCgroupDirectory() noexcept(false) {
-  if (rmdir(path_.c_str()) != 0) {
-    throw std::runtime_error(
-        absl::StrFormat("Failed to delete a cgroup directory at %s. Please manually "
-                        "delete it with rmdir. \n%s",
-                        path_,
-                        strerror(errno)));
-  }
+  RAY_CHECK(rmdir(path_.c_str()) != -1) << absl::StrFormat(
+      "Failed to delete a cgroup directory at %s with error %s. Please manually "
+      "delete it with rmdir.",
+      path_,
+      strerror(errno));
 }
 
 ray::StatusOr<std::unique_ptr<TempDirectory>> TempDirectory::Create() {
   std::string path = "/tmp/XXXXXX";
   char *ret = mkdtemp(path.data());
   if (ret == nullptr) {
-    return ray::Status::UnknownError(
-        absl::StrFormat("Failed to create a temp directory. "
-                        "Cgroup tests expect tmpfs to be mounted and only run on Linux.\n"
-                        "Error: %s",
+    return ray::Status::Invalid(
+        absl::StrFormat("Failed to create a temp directory on tmpfs with error %s."
+                        "Cgroup tests expect tmpfs to be mounted and only run on Linux.",
                         strerror(errno)));
   }
   std::unique_ptr<TempDirectory> temp_dir =
@@ -103,15 +101,19 @@ ray::StatusOr<std::unique_ptr<TempDirectory>> TempDirectory::Create() {
   return ray::StatusOr<std::unique_ptr<TempDirectory>>(std::move(temp_dir));
 }
 
-TempDirectory::~TempDirectory() { std::filesystem::remove_all(path_); }
+TempDirectory::~TempDirectory() {
+  std::error_code error_code;
+  RAY_CHECK(std::filesystem::remove_all(path_, error_code)) << absl::StrFormat(
+      "Failed to delete temp directory at %s with error %s. Please manually "
+      "delete it with rmdir.",
+      path_,
+      error_code.message());
+}
 
 ray::Status TerminateChildProcessAndWaitForTimeout(pid_t pid, int fd, int timeout_ms) {
   if (kill(pid, SIGTERM) == -1) {
-    return ray::Status::Invalid(
-        absl::StrFormat("Failed to send SIGTERM to pid: %i.\n"
-                        "Error: %s",
-                        pid,
-                        strerror(errno)));
+    return ray::Status::Invalid(absl::StrFormat(
+        "Failed to send SIGTERM to pid: %i with error %s.", pid, strerror(errno)));
   }
   struct pollfd poll_fd = {
       .fd = fd,
@@ -120,45 +122,43 @@ ray::Status TerminateChildProcessAndWaitForTimeout(pid_t pid, int fd, int timeou
 
   int poll_status = poll(&poll_fd, 1, timeout_ms);
   if (poll_status == -1) {
-    return ray::Status::Invalid(absl::StrFormat(
-        "Failed to poll process pid: %i, fd: %i. Process was not killed. Please "
-        "kill it manually to prevent a leak.\n"
-        "Error: %s",
-        pid,
-        fd,
-        strerror(errno)));
+    return ray::Status::Invalid(
+        absl::StrFormat("Failed to poll process pid: %i, fd: %i with error %s. Process "
+                        "was not killed. Kill it manually to prevent a leak.",
+                        pid,
+                        fd,
+                        strerror(errno)));
   }
   if (poll_status == 0) {
-    return ray::Status::Invalid(absl::StrFormat(
-        "Process pid: %i, fd:%i was not killed within the timeout of %ims.",
-        pid,
-        fd,
-        timeout_ms));
+    return ray::Status::Invalid(
+        absl::StrFormat("Process pid: %i, fd: %i was not killed within the timeout of "
+                        "%ims. Kill it manually to prevent a leak.",
+                        pid,
+                        fd,
+                        timeout_ms));
   }
   siginfo_t dummy = {0};
   int wait_id_status = waitid(P_PID, static_cast<id_t>(fd), &dummy, WEXITED);
   if (wait_id_status == -1) {
     if (errno != ECHILD)
-      return ray::Status::Invalid(absl::StrFormat(
-          "Failed to wait for process pid: %i, fd: %i. Process was not reaped, but "
-          "it will be reaped by init after program exits.\n"
-          "Error: %s",
-          pid,
-          fd,
-          strerror(errno)));
+      return ray::Status::Invalid(
+          absl::StrFormat("Failed to wait for process pid: %i, fd: %i with error %s. "
+                          "Process was not reaped, but "
+                          "it will be reaped by init after program exits.",
+                          pid,
+                          fd,
+                          strerror(errno)));
   };
   return ray::Status::OK();
 }
 
-#ifdef FALSE
-
+#ifdef CLONE_INTO_CGROUP
 ray::StatusOr<std::pair<pid_t, int>> StartChildProcessInCgroup(
     const std::string &cgroup_path) {
   int cgroup_fd = open(cgroup_path.c_str(), O_RDONLY);
   if (cgroup_fd == -1) {
     return ray::Status::Invalid(
-        absl::StrFormat("Unable to open fd for cgroup at %s.\n"
-                        "Error: %s",
+        absl::StrFormat("Unable to open fd for cgroup at %s with error %s.",
                         cgroup_path,
                         strerror(errno)));
   }
@@ -176,32 +176,24 @@ ray::StatusOr<std::pair<pid_t, int>> StartChildProcessInCgroup(
   int child_pid = -1;
 
   if ((child_pid = syscall(__NR_clone3, &cl_args, sizeof(struct clone_args))) == -1) {
-    RAY_LOG(ERROR) << "clone3 failed with error with error: " << strerror(errno);
     close(cgroup_fd);
     return ray::Status::Invalid(
-        absl::StrFormat("Unable to clone process.\n"
-                        "Error: %s",
-                        strerror(errno)));
+        absl::StrFormat("Failed to clone process with error %s.", strerror(errno)));
   }
 
-  // Child process will execute this.
   if (child_pid == 0) {
-    RAY_LOG(ERROR) << "Spawned child in cgroup " << cgroup_path << " with PID "
-                   << getpid();
+    // Child process will wait for parent to unblock it.
     pause();
-    RAY_LOG(ERROR) << "Unpaused child in cgroup " << cgroup_path << " with PID "
-                   << getpid();
     _exit(0);
   }
 
   // Parent process will continue here.
   close(cgroup_fd);
-  RAY_LOG(ERROR) << "Successfully cloned with parent_pid=" << getpid()
-                 << ", child_pid=" << child_pid << ", child_pidfd=" << child_pidfd << ".";
   return ray::StatusOr<std::pair<pid_t, int>>({child_pid, static_cast<int>(child_pidfd)});
 }
 
 #else
+
 // Fallback for older kernels. Uses fork/exec instead.
 ray::StatusOr<std::pair<pid_t, int>> StartChildProcessInCgroup(
     const std::string &cgroup_path) {
@@ -209,16 +201,12 @@ ray::StatusOr<std::pair<pid_t, int>> StartChildProcessInCgroup(
 
   if (new_pid == -1) {
     return ray::Status::Invalid(
-        absl::StrFormat("Failed to fork process with error %s", strerror(errno)));
+        absl::StrFormat("Failed to fork process with error %s.", strerror(errno)));
   }
 
   if (new_pid == 0) {
     // Child process will pause and wait for parent to terminate and reap it.
-    RAY_LOG(ERROR) << "Spawned child in cgroup " << cgroup_path << " with PID "
-                   << getpid();
     pause();
-    RAY_LOG(ERROR) << "Unpaused child in cgroup " << cgroup_path << " with PID "
-                   << getpid();
     _exit(0);
   }
 
@@ -229,7 +217,7 @@ ray::StatusOr<std::pair<pid_t, int>> StartChildProcessInCgroup(
 
   if (cgroup_fd == -1) {
     return ray::Status::Invalid(
-        absl::StrFormat("Failed to open cgroup procs file %s with error %s",
+        absl::StrFormat("Failed to open cgroup procs file at path %s with error %s.",
                         cgroup_proc_file_path,
                         strerror(errno)));
   }
@@ -237,11 +225,12 @@ ray::StatusOr<std::pair<pid_t, int>> StartChildProcessInCgroup(
   std::string pid_to_write = std::to_string(new_pid);
 
   if (write(cgroup_fd, pid_to_write.c_str(), pid_to_write.size()) == -1) {
-    // Best effort killing of the child process.
+    // Best effort killing of the child process because we couldn't move it
+    // into the cgroup.
     kill(SIGKILL, new_pid);
     close(cgroup_fd);
     return ray::Status::Invalid(
-        absl::StrFormat("Failed to write pid %i to cgroup procs file %s with error %s",
+        absl::StrFormat("Failed to write pid %i to cgroup procs file %s with error %s.",
                         new_pid,
                         cgroup_proc_file_path,
                         strerror(errno)));
@@ -251,34 +240,30 @@ ray::StatusOr<std::pair<pid_t, int>> StartChildProcessInCgroup(
 
   int child_pidfd = static_cast<int>(syscall(SYS_pidfd_open, new_pid, 0));
   if (child_pidfd == -1) {
-    // Best effort killing of the child process.
+    // Best effort killing of the child process because we couldn't create
+    // a pidfd from the process.
     kill(SIGKILL, new_pid);
     close(cgroup_fd);
     return ray::Status::Invalid(
-        absl::StrFormat("Failed to create process fd for pid %i with error %s",
+        absl::StrFormat("Failed to create process fd for pid %i with error %s.",
                         new_pid,
                         strerror(errno)));
   }
-
-  return ray::StatusOr<std::pair<pid_t, int>>({new_pid, child_pidfd});
+  return {new_pid, child_pidfd};
 }
-
 #endif
 
 TempFile::TempFile(std::string path) {
   path_ = path;
   fd_ = open(path_.c_str(), O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);  // NOLINT
-  if (fd_ == -1) {
-    throw std::runtime_error(
-        absl::StrFormat("Failed to create a temp file. Cgroup tests expect "
-                        "tmpfs to be mounted "
-                        "and only run on Linux. Error: %s",
-                        strerror(errno)));
-  }
+  RAY_CHECK(fd_ != -1) << absl::StrFormat(
+      "Failed to create a temp file at path %s with error %s. Cgroup tests expect "
+      "tmpfs to be mounted and only run on Linux.",
+      path_,
+      strerror(errno));
   file_output_stream_ = std::ofstream(path_, std::ios::trunc);
-  if (!file_output_stream_.is_open()) {
-    throw std::runtime_error("Could not open file on tmpfs.");
-  }
+  RAY_CHECK(file_output_stream_.is_open()) << absl::StrFormat(
+      "Failed to open file %s on tmpfs with error %s", path_, strerror(errno));
 }
 
 TempFile::TempFile() {
@@ -289,25 +274,26 @@ TempFile::TempFile() {
         "mounted "
         "and only run on Linux");
   }
-  if (unlink(path_.c_str()) == -1) {
-    close(fd_);
-    throw std::runtime_error("Failed to unlink temporary file.");
-  }
   file_output_stream_ = std::ofstream(path_, std::ios::trunc);
-  if (!file_output_stream_.is_open()) {
-    throw std::runtime_error("Could not open mount file on tmpfs.");
-  }
+  RAY_CHECK(file_output_stream_.is_open())
+      << absl::StrFormat("Could not open temporary file at path %s.", path_);
 }
 
 TempFile::~TempFile() {
-  close(fd_);
+  RAY_CHECK(close(fd_) != -1) << absl::StrFormat(
+      "Failed to close file descriptor with error %s.", strerror(errno));
   file_output_stream_.close();
+  RAY_CHECK(unlink(path_.c_str()) != -1)
+      << absl::StrFormat("Failed to unlink temporary file at path %s with error %s.",
+                         path_,
+                         strerror(errno));
 }
 
 void TempFile::AppendLine(const std::string &line) {
   file_output_stream_ << line;
   file_output_stream_.flush();
-  if (file_output_stream_.fail()) {
-    throw std::runtime_error("Could not write to mount file on tmpfs");
-  }
+  // All current callers treat this is as a fatal error so this is a RAY_CHECK
+  // instead of returning a Status.
+  RAY_CHECK(file_output_stream_.good())
+      << absl::StrFormat("Failed to write to temporary file at path %s.", path_);
 }
