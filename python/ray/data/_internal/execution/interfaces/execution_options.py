@@ -1,5 +1,6 @@
 import os
 from typing import Dict, List, Optional, Union
+from dataclasses import dataclass
 
 from .common import NodeIdStr
 from ray.data._internal.execution.util import memory_string
@@ -360,3 +361,11 @@ class ExecutionOptions:
                     "resource_limits and exclude_resources cannot "
                     f" both be set for {attr} resource."
                 )
+
+
+@dataclass
+class OperatorOptions:
+    """Options for configuring individual operators."""
+
+    # Whether to disable fusion for this operator. By default, fusion is enabled.
+    disable_fusion: bool = False
