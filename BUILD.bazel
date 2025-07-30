@@ -1049,6 +1049,12 @@ pkg_files(
     name = "raylet_so_files",
     srcs = ["python/ray/_raylet.so"],
     attributes = pkg_attributes(mode = "755"),
+    renames = select({
+        "@platforms//os:windows": {
+            "python/ray/_raylet.so": "python/ray/_raylet.pyd",
+        },
+        "//conditions:default": {},
+    }),
     strip_prefix = "python",
     visibility = ["//visibility:private"],
 )
@@ -1132,37 +1138,61 @@ pkg_zip(
 )
 
 genrule(
-    name = "install_py_proto",
+    name = "ray_py_proto_zip",
     srcs = [
         ":core_py_proto_zip",
         ":serve_py_proto_zip",
     ],
-    outs = ["install_py_proto.out"],
+    outs = ["ray_py_proto.zip"],
     cmd = """
         set -euo pipefail
 
-        rm -rf python/ray/core/generated/*
-        rm -rf python/ray/serve/generated/*
+        tmpdir=$$(mktemp -d)
 
-        unzip -o -q $(location :core_py_proto_zip) -d python
-        unzip -o -q $(location :serve_py_proto_zip) -d python
+        unzip -o -q $(location :core_py_proto_zip) -d "$$tmpdir"
+        unzip -o -q $(location :serve_py_proto_zip) -d "$$tmpdir"
 
         files=(
-            $$(ls python/ray/core/generated/*_pb2*.py)
-            $$(ls python/ray/serve/generated/*_pb2*.py)
+            $$(ls "$$tmpdir"/ray/core/generated/*_pb2*.py)
+            $$(ls "$$tmpdir"/ray/serve/generated/*_pb2*.py)
         )
 
         # NOTE(hchen): Protobuf doesn't allow specifying Python package name. So we use this `sed`
         # command to change the import path in the generated file.
         sed -i -E 's/from src.ray.protobuf/from ./' "$${files[@]}"
         # Help the generated serve files to have the correct module
-        serve_files=($$(ls python/ray/serve/generated/*_pb2*.py))
+        serve_files=($$(ls "$$tmpdir"/ray/serve/generated/*_pb2*.py))
         sed -i -E 's/'"'"'src.ray.protobuf./'"'"'ray.serve.generated./' "$${serve_files[@]}"
 
         # TODO(sang): Build our own proto instead of creating a new proto for opencensus separately.
         # https://github.com/ray-project/ray/issues/31358
         sed -i -E 's/from opencensus.proto.metrics.v1 import/from . import/' "$${files[@]}"
         sed -i -E 's/from opencensus.proto.resource.v1 import/from . import/' "$${files[@]}"
+
+        # Set the modification time to 2025-01-01 00:00:00
+        # This makes the zip file building deterministic and reproducible.
+        touch -t 202501010000 "$${files[@]}"
+        touch -t 202501010000 "$$tmpdir"/ray/ \
+            "$$tmpdir"/ray/core "$$tmpdir"/ray/core/generated \
+            "$$tmpdir"/ray/serve "$$tmpdir"/ray/serve/generated
+
+        (cd "$$tmpdir"; zip -0 -X -r output.zip ray)
+        mv "$$tmpdir/output.zip" $@
+    """,
+    visibility = ["//visibility:private"],
+)
+
+genrule(
+    name = "install_py_proto",
+    srcs = [
+        ":ray_py_proto_zip",
+    ],
+    outs = ["install_py_proto.out"],
+    cmd = """
+        set -euo pipefail
+
+        rm -rf python/ray/core/generated python/ray/serve/generated
+        unzip -o -q $(location :ray_py_proto_zip) -d python
 
         echo "$${PWD}" > $@
     """,
@@ -1173,16 +1203,17 @@ genrule(
     name = "ray_pkg",
     srcs = [
         ":python_sources",
-        ":install_py_proto",
+        ":ray_py_proto_zip",
         ":ray_pkg_zip",
     ],
     outs = ["ray_pkg.out"],
     cmd = """
+        set -euo pipefail
+
+        rm -rf python/ray/core/generated python/ray/serve/generated
+        unzip -o -q $(location :ray_py_proto_zip) -d "python"
         unzip -o -q $(location :ray_pkg_zip) -d "python"
 
-        if [[ "$${OSTYPE-}" == "msys" ]]; then
-            ln -P -f -- python/ray/_raylet.so python/ray/_raylet.pyd
-        fi
         echo "$${PWD}" > $@
     """,
     local = 1,
