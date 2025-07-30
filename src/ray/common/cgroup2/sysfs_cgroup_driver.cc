@@ -368,6 +368,7 @@ Status SysFsCgroupDriver::AddConstraint(const std::string &cgroup,
   ssize_t bytes_written = write(fd, constraint_value.c_str(), constraint_value.size());
 
   if (bytes_written != static_cast<ssize_t>(constraint_value.size())) {
+    close(fd);
     return Status::InvalidArgument(
         absl::StrFormat("Failed to apply %s=%s to cgroup %s.\n"
                         "Error: %s",
