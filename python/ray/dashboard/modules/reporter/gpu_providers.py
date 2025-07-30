@@ -247,10 +247,15 @@ class NvidiaGpuProvider(GpuProvider):
             return process_utilizations
         table_header = table_header.lower().split()[1:]
         # Base on different versions, the header may be different.
-        gpu_id_index = table_header.index("gpu")
-        pid_index = table_header.index("pid")
-        sm_index = table_header.index("sm")
-        mem_index = table_header.index("mem")
+        try:
+            gpu_id_index = table_header.index("gpu")
+            pid_index = table_header.index("pid")
+            sm_index = table_header.index("sm")
+            mem_index = table_header.index("mem")
+        except ValueError as e:
+            logger.warning(f"Required column not found in nvidia-smi pmon output: {e}")
+            return process_utilizations
+
         for line in lines:
             if line.startswith("#") or not line.strip():
                 continue
