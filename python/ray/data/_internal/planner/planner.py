@@ -51,6 +51,8 @@ def _register_default_plan_logical_op_fns():
     from ray.data._internal.logical.operators.input_data_operator import InputData
     from ray.data._internal.logical.operators.map_operator import (
         AbstractUDFMap,
+        DropNa,
+        FillNa,
         Filter,
         Project,
         StreamingRepartition,
@@ -62,6 +64,8 @@ def _register_default_plan_logical_op_fns():
     from ray.data._internal.planner.plan_all_to_all_op import plan_all_to_all_op
     from ray.data._internal.planner.plan_read_op import plan_read_op
     from ray.data._internal.planner.plan_udf_map_op import (
+        plan_dropna_op,
+        plan_fillna_op,
         plan_filter_op,
         plan_project_op,
         plan_streaming_repartition_op,
@@ -130,6 +134,8 @@ def _register_default_plan_logical_op_fns():
     register_plan_logical_op_fn(Count, plan_count_op)
 
     register_plan_logical_op_fn(Project, plan_project_op)
+    register_plan_logical_op_fn(FillNa, plan_fillna_op)
+    register_plan_logical_op_fn(DropNa, plan_dropna_op)
 
     register_plan_logical_op_fn(StreamingRepartition, plan_streaming_repartition_op)
 
