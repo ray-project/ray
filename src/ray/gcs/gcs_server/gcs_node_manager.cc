@@ -205,12 +205,10 @@ void GcsNodeManager::DrainNode(const NodeID &node_id) {
   auto node = maybe_node.value();
 
   // Set the address.
-  rpc::Address remote_address;
-  remote_address.set_raylet_id(node->node_id());
-  remote_address.set_ip_address(node->node_manager_address());
-  remote_address.set_port(node->node_manager_port());
-
-  auto raylet_client = raylet_client_pool_->GetOrConnectByAddress(remote_address);
+  auto remote_address = rpc::RayletClientPool::GenerateRayletAddress(
+      node_id, node->node_manager_address(), node->node_manager_port());
+  auto raylet_client =
+      raylet_client_pool_->GetOrConnectByAddress(std::move(remote_address));
   RAY_CHECK(raylet_client);
   // NOTE(sang): Drain API is not supposed to kill the raylet, but we are doing
   // this until the proper "drain" behavior is implemented.
@@ -467,11 +465,10 @@ void GcsNodeManager::Initialize(const GcsInitData &gcs_init_data) {
       // With this, it means we only need to ask the node registered to do resubscription.
       // And for the node failed to register, they will crash on the client side due to
       // registeration failure.
-      rpc::Address remote_address;
-      remote_address.set_raylet_id(node_info.node_id());
-      remote_address.set_ip_address(node_info.node_manager_address());
-      remote_address.set_port(node_info.node_manager_port());
-      auto raylet_client = raylet_client_pool_->GetOrConnectByAddress(remote_address);
+      auto remote_address = rpc::RayletClientPool::GenerateRayletAddress(
+          node_id, node_info.node_manager_address(), node_info.node_manager_port());
+      auto raylet_client =
+          raylet_client_pool_->GetOrConnectByAddress(std::move(remote_address));
       raylet_client->NotifyGCSRestart(nullptr);
     } else if (node_info.state() == rpc::GcsNodeInfo::DEAD) {
       dead_nodes_.emplace(node_id, std::make_shared<rpc::GcsNodeInfo>(node_info));

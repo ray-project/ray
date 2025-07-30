@@ -243,8 +243,7 @@ class RayletClient : public RayletClientInterface {
   /// \param client_call_manager The client call manager to use for the grpc connection.
   /// \param worker_id The worker id of the worker.
   RayletClient(std::unique_ptr<RayletConnection> raylet_conn,
-               const std::string &address,
-               const int port,
+               const rpc::Address &address,
                rpc::ClientCallManager &client_call_manager,
                const WorkerID &worker_id);
 
@@ -254,8 +253,7 @@ class RayletClient : public RayletClientInterface {
   /// \param port The port that the worker should listen on for gRPC requests. If
   /// 0, the worker should choose a random port.
   /// \param client_call_manager The client call manager to use for the grpc connection.
-  explicit RayletClient(const std::string &address,
-                        const int port,
+  explicit RayletClient(const rpc::Address &address,
                         rpc::ClientCallManager &client_call_manager);
 
   /// Notify the raylet that this client is disconnecting gracefully. This
