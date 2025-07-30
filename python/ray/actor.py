@@ -23,6 +23,7 @@ except ImportError:
     from typing_extensions import Concatenate
 
 import ray._private.ray_constants as ray_constants
+from ray._common.ray_constants import DEFAULT_MAX_CONCURRENCY_ASYNC
 import ray._common.signature as signature
 import ray._raylet
 from ray import ActorClassID, Language, cross_language, ObjectRef
@@ -1500,7 +1501,7 @@ class ActorClass(Generic[T]):
 
         if actor_options.get("max_concurrency") is None:
             actor_options["max_concurrency"] = (
-                ray_constants.DEFAULT_MAX_CONCURRENCY_ASYNC
+                DEFAULT_MAX_CONCURRENCY_ASYNC
                 if is_asyncio
                 else ray_constants.DEFAULT_MAX_CONCURRENCY_THREADED
             )
@@ -1541,7 +1542,7 @@ class ActorClass(Generic[T]):
         worker.check_connected()
 
         if worker.mode != ray._private.worker.WORKER_MODE:
-            from ray._private.usage import usage_lib
+            from ray._common.usage import usage_lib
 
             usage_lib.record_library_usage("core")
 
