@@ -9,6 +9,7 @@ ray_cc_library(
     hdrs = [
         "core_worker.h",
         "core_worker_process.h",
+        "core_worker_rpc_proxy.h",
     ],
     deps = [
         ":actor_handle",
