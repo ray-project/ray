@@ -71,7 +71,7 @@ class DependencyWaiter {
 
 class DependencyWaiterImpl : public DependencyWaiter {
  public:
-  explicit DependencyWaiterImpl(DependencyWaiterInterface &dependency_client);
+  explicit DependencyWaiterImpl(RayletClientInterface &dependency_client);
 
   void Wait(const std::vector<rpc::ObjectReference> &dependencies,
             std::function<void()> on_dependencies_available) override;
@@ -82,7 +82,7 @@ class DependencyWaiterImpl : public DependencyWaiter {
  private:
   int64_t next_request_id_ = 0;
   absl::flat_hash_map<int64_t, std::function<void()>> requests_;
-  DependencyWaiterInterface &dependency_client_;
+  RayletClientInterface &dependency_client_;
 };
 
 }  // namespace core
