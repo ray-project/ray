@@ -95,7 +95,6 @@ PIP_PKGS=(
 )
 if [[ "$AUTOSCALER" == "autoscaler" ]]; then
     PIP_PKGS+=(
-        redis
         six
         boto3
         pyopenssl

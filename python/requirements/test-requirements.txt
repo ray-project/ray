@@ -58,7 +58,7 @@ pytest-timeout==2.1.0
 pytest-virtualenv==1.8.1; python_version < "3.12"
 pytest-sphinx @ git+https://github.com/ray-project/pytest-sphinx
 pytest-mock==3.14.0
-redis==4.4.2
+redis
 scikit-learn==1.3.2
 smart_open[s3]==6.2.0
 tqdm==4.67.1
