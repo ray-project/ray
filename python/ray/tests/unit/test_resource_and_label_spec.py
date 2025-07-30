@@ -117,6 +117,35 @@ def test_resource_and_label_spec_resolves_auto_detect(monkeypatch):
     assert spec.memory == expected_memory
 
 
+def test_resolve_tpu_labels(monkeypatch):
+    from ray._private.accelerators.tpu import TPUAcceleratorManager
+
+    # Simulate a v4-16 2-host TPU pod with defaults
+    monkeypatch.setenv("TPU_NAME", "tpu-worker-group-1")
+    monkeypatch.setenv("TPU_WORKER_ID", "0")
+    monkeypatch.setenv("TPU_ACCELERATOR_TYPE", "v4-16")
+
+    with patch(
+        "ray._private.accelerators.get_accelerator_manager_for_resource",
+        return_value=TPUAcceleratorManager(),
+    ), patch(
+        "ray._private.accelerators.get_all_accelerator_resource_names",
+        return_value=["TPU"],
+    ), patch.object(
+        TPUAcceleratorManager,
+        "get_current_node_num_accelerators",
+        return_value=4,  # Simulate 4 chips per host
+    ):
+        spec = ResourceAndLabelSpec()
+        spec.resolve(is_head=False)
+
+    assert spec.labels["ray.io/accelerator-type"] == "TPU-V4"
+    assert spec.labels["ray.io/tpu-slice-name"] == "tpu-worker-group-1"
+    assert spec.labels["ray.io/tpu-worker-id"] == "0"
+    assert spec.labels["ray.io/tpu-topology"] == "2x2x2"
+    assert spec.labels["ray.io/tpu-head"] == "TPU-v4-16-Head"
+
+
 def test_env_resource_overrides_with_conflict(monkeypatch):
     """Validate that RESOURCES_ENVIRONMENT_VARIABLE overrides Ray Param resources."""
     # Prepare environment overrides

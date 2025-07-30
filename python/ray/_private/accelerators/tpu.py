@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 
 TPU_VALID_CHIP_OPTIONS = (1, 2, 4, 8)
 GKE_TPU_ACCELERATOR_TYPE_ENV_VAR = "TPU_ACCELERATOR_TYPE"
+GKE_TPU_TOPOLOGY_ENV_VAR = "TPU_TOPOLOGY"
 GKE_TPU_WORKER_ID_ENV_VAR = "TPU_WORKER_ID"
 GKE_TPU_NAME_ENV_VAR = "TPU_NAME"
 
@@ -26,6 +27,7 @@ GCE_TPU_ACCELERATOR_ENDPOINT = (
 )
 GCE_TPU_HEADERS = {"Metadata-Flavor": "Google"}
 GCE_TPU_ACCELERATOR_KEY = "accelerator-type"
+GCE_TPU_TOPOLOGY_KEY = "topology"
 GCE_TPU_INSTANCE_ID_KEY = "instance-id"
 GCE_TPU_WORKER_ID_KEY = "agent-worker-number"
 
@@ -328,6 +330,20 @@ class TPUAcceleratorManager(AcceleratorManager):
             return None
 
     @staticmethod
+    def get_current_node_tpu_topology() -> Optional[str]:
+        try:
+            # Attempt GKE based lookup first
+            if topology := os.environ.get(GKE_TPU_TOPOLOGY_ENV_VAR):
+                return topology
+            # GCE-based VM check
+            topology = _get_tpu_metadata(key=GCE_TPU_TOPOLOGY_KEY)
+            if topology:
+                return topology
+        except ValueError as e:
+            logging.debug("Could not get TPU topology: %s", e)
+            return None
+
+    @staticmethod
     def get_current_node_accelerator_type() -> Optional[str]:
         """Attempt to detect the TPU accelerator type.
 
@@ -373,6 +389,7 @@ class TPUAcceleratorManager(AcceleratorManager):
 
         return ray_accelerator_type
 
+    @staticmethod
     def get_current_node_additional_resources() -> Optional[Dict[str, float]]:
         """Get additional resources required for TPU nodes.
 
