@@ -2639,11 +2639,9 @@ void NodeManager::HandleFormatGlobalMemoryInfo(
 
   // Fetch from remote nodes.
   for (const auto &[node_id, address] : remote_node_manager_addresses_) {
-    rpc::Address addr;
-    addr.set_ip_address(address.first);
-    addr.set_port(address.second);
-    addr.set_raylet_id(node_id.Binary());
-    auto client = raylet_client_pool_.GetOrConnectByAddress(addr);
+    auto addr = rpc::RayletClientPool::GenerateRayletAddress(
+        node_id, address.first, address.second);
+    auto client = raylet_client_pool_.GetOrConnectByAddress(std::move(addr));
     client->GetNodeStats(
         stats_req,
         [replies, store_reply](const ray::Status &status, rpc::GetNodeStatsReply &&r) {
