@@ -142,7 +142,6 @@ RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_DEFAULT = 10 * 60
 # If set to 1, then `.gitignore` files will not be parsed and loaded into "excludes"
 # when using a local working_dir or py_modules.
 RAY_RUNTIME_ENV_IGNORE_GITIGNORE = "RAY_RUNTIME_ENV_IGNORE_GITIGNORE"
-RAY_STORAGE_ENVIRONMENT_VARIABLE = "RAY_STORAGE"
 # Hook for running a user-specified runtime-env hook. This hook will be called
 # unconditionally given the runtime_env dict passed for ray.init. It must return
 # a rewritten runtime_env dict. Example: "your.module.runtime_env_hook".
@@ -246,9 +245,6 @@ LOGGER_LEVEL_HELP = (
     "The logging level threshold, choices=['debug', 'info',"
     " 'warning', 'error', 'critical'], default='info'"
 )
-
-LOGGING_ROTATE_BYTES = 512 * 1024 * 1024  # 512MB.
-LOGGING_ROTATE_BACKUP_COUNT = 5  # 5 Backup files at max.
 
 LOGGING_REDIRECT_STDERR_ENVIRONMENT_VARIABLE = "RAY_LOG_TO_STDERR"
 # Logging format when logging stderr. This should be formatted with the
@@ -437,7 +433,6 @@ KV_HEAD_NODE_ID_KEY = b"head_node_id"
 # We need to update ray client for this since runtime env use ray client
 # This might introduce some compatibility issues so leave it here for now.
 KV_NAMESPACE_PACKAGE = None
-KV_NAMESPACE_SERVE = b"serve"
 KV_NAMESPACE_FUNCTION_TABLE = b"fun"
 
 LANGUAGE_WORKER_TYPES = ["python", "java", "cpp"]
@@ -457,9 +452,6 @@ DEFAULT_TASK_MAX_RETRIES = 3
 
 # Default max_concurrency option in @ray.remote for threaded actors.
 DEFAULT_MAX_CONCURRENCY_THREADED = 1
-
-# Default max_concurrency option in @ray.remote for async actors.
-DEFAULT_MAX_CONCURRENCY_ASYNC = 1000
 
 # Prefix for namespaces which are used internally by ray.
 # Jobs within these namespaces should be hidden from users
@@ -593,4 +585,12 @@ RAY_EXPERIMENTAL_ENABLE_OPEN_TELEMETRY_ON_AGENT = env_bool(
 # It will be removed in the future.
 RAY_EXPERIMENTAL_ENABLE_OPEN_TELEMETRY_ON_CORE = env_bool(
     "RAY_experimental_enable_open_telemetry_on_core", False
+)
+
+# How long to wait for a fetch to complete during ray.get before timing out and raising an exception to the user.
+#
+# NOTE: This must be kept in sync with the C++ definition of
+# `RayConfig::fetch_fail_timeout_milliseconds`.
+FETCH_FAIL_TIMEOUT_SECONDS = (
+    env_integer("RAY_fetch_fail_timeout_milliseconds", 60000) / 1000
 )

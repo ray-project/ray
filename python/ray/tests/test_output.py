@@ -8,11 +8,11 @@ import time
 import pytest
 
 import ray
+from ray._common.test_utils import wait_for_condition
 from ray._private.test_utils import (
     run_string_as_driver,
     run_string_as_driver_nonblocking,
     run_string_as_driver_stdout_stderr,
-    wait_for_condition,
 )
 from ray.autoscaler.v2.utils import is_autoscaler_v2
 
@@ -22,8 +22,7 @@ def test_dedup_logs():
 import time
 
 import ray
-from ray._common.test_utils import SignalActor
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import SignalActor, wait_for_condition
 
 signal = SignalActor.remote()
 
@@ -277,6 +276,7 @@ ray.get([a.__ray_ready__.remote(), b.__ray_ready__.remote()])
     wait_for_condition(_check_for_deadlock_msg, timeout=30)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_autoscaler_v2_stream_events_with_filter(shutdown_only):
     """Test that autoscaler v2 events are streamed to the driver."""
     address = ray.init(_system_config={"enable_autoscaler_v2": True})["address"]

@@ -1,12 +1,33 @@
 import inspect
 import logging
-from typing import Any, Dict, List, Literal, Optional, Tuple, Union, TYPE_CHECKING
+from typing import (
+    Any,
+    Dict,
+    List,
+    Literal,
+    Optional,
+    Tuple,
+    Union,
+    TYPE_CHECKING,
+    TypeVar,
+    Generic,
+    Callable,
+    overload,
+)
+
+try:
+    from typing import ParamSpec
+    from typing import Concatenate
+except ImportError:
+    from typing_extensions import ParamSpec
+    from typing_extensions import Concatenate
 
 import ray._private.ray_constants as ray_constants
-import ray._private.signature as signature
+from ray._common.ray_constants import DEFAULT_MAX_CONCURRENCY_ASYNC
+import ray._common.signature as signature
 import ray._raylet
-from ray import ActorClassID, Language, cross_language
-from ray._private import ray_option_utils
+from ray import ActorClassID, Language, cross_language, ObjectRef
+from ray._common import ray_option_utils
 from ray._private.async_compat import has_async_methods
 from ray._private.auto_init_hook import wrap_auto_init
 from ray._private.client_mode_hook import (
@@ -19,7 +40,7 @@ from ray._private.inspect_util import (
     is_function_or_method,
     is_static_method,
 )
-from ray._private.ray_option_utils import _warn_if_using_deprecated_placement_group
+from ray._common.ray_option_utils import _warn_if_using_deprecated_placement_group
 from ray._private.utils import get_runtime_env_info, parse_runtime_env_for_task_or_actor
 from ray._raylet import (
     STREAMING_GENERATOR_RETURN,
@@ -40,11 +61,8 @@ from ray.util.tracing.tracing_helper import (
     _tracing_actor_method_invocation,
 )
 from ray._private.custom_types import (
-    TENSOR_TRANSPORT,
-    TypeTensorTransport,
-    TypeTensorTransportEnum,
+    TensorTransportEnum,
 )
-from ray.core.generated.common_pb2 import TensorTransport, OBJECT_STORE
 
 if TYPE_CHECKING:
     pass
@@ -53,6 +71,326 @@ logger = logging.getLogger(__name__)
 
 # Hook to call with (actor, resources, strategy) on each local actor creation.
 _actor_launch_hook = None
+
+# TypeVar for generic ActorHandle
+T = TypeVar("T")
+
+# return type of ActorClass[T].remote()
+ActorProxy = Union["ActorHandle[T]", type[T]]
+
+_Ret = TypeVar("_Ret")
+_P = ParamSpec("_P")
+_T0 = TypeVar("_T0")
+_T1 = TypeVar("_T1")
+_T2 = TypeVar("_T2")
+_T3 = TypeVar("_T3")
+_T4 = TypeVar("_T4")
+_T5 = TypeVar("_T5")
+_T6 = TypeVar("_T6")
+_T7 = TypeVar("_T7")
+_T8 = TypeVar("_T8")
+_T9 = TypeVar("_T9")
+
+
+class _RemoteMethodNoArgs(Generic[_Ret]):
+    def remote(self) -> "ObjectRef[_Ret]":
+        ...
+
+    def bind(self) -> Any:
+        ...
+
+
+class _RemoteMethod0(Generic[_Ret, _T0]):
+    def remote(self, __arg0: "Union[_T0, ObjectRef[_T0]]") -> "ObjectRef[_Ret]":
+        ...
+
+    def bind(self, __arg0: _T0) -> Any:
+        ...
+
+
+class _RemoteMethod1(Generic[_Ret, _T0, _T1]):
+    def remote(
+        self, __arg0: "Union[_T0, ObjectRef[_T0]]", __arg1: "Union[_T1, ObjectRef[_T1]]"
+    ) -> "ObjectRef[_Ret]":
+        ...
+
+    def bind(self, __arg0: _T0, __arg1: _T1) -> Any:
+        ...
+
+
+class _RemoteMethod2(Generic[_Ret, _T0, _T1, _T2]):
+    def remote(
+        self,
+        __arg0: "Union[_T0, ObjectRef[_T0]]",
+        __arg1: "Union[_T1, ObjectRef[_T1]]",
+        __arg2: "Union[_T2, ObjectRef[_T2]]",
+    ) -> "ObjectRef[_Ret]":
+        ...
+
+    def bind(self, __arg0: _T0, __arg1: _T1, __arg2: _T2) -> Any:
+        ...
+
+
+class _RemoteMethod3(Generic[_Ret, _T0, _T1, _T2, _T3]):
+    def remote(
+        self,
+        __arg0: "Union[_T0, ObjectRef[_T0]]",
+        __arg1: "Union[_T1, ObjectRef[_T1]]",
+        __arg2: "Union[_T2, ObjectRef[_T2]]",
+        __arg3: "Union[_T3, ObjectRef[_T3]]",
+    ) -> "ObjectRef[_Ret]":
+        ...
+
+    def bind(self, __arg0: _T0, __arg1: _T1, __arg2: _T2, __arg3: _T3) -> Any:
+        ...
+
+
+class _RemoteMethod4(Generic[_Ret, _T0, _T1, _T2, _T3, _T4]):
+    def remote(
+        self,
+        __arg0: "Union[_T0, ObjectRef[_T0]]",
+        __arg1: "Union[_T1, ObjectRef[_T1]]",
+        __arg2: "Union[_T2, ObjectRef[_T2]]",
+        __arg3: "Union[_T3, ObjectRef[_T3]]",
+        __arg4: "Union[_T4, ObjectRef[_T4]]",
+    ) -> "ObjectRef[_Ret]":
+        ...
+
+    def bind(
+        self, __arg0: _T0, __arg1: _T1, __arg2: _T2, __arg3: _T3, __arg4: _T4
+    ) -> Any:
+        ...
+
+
+class _RemoteMethod5(Generic[_Ret, _T0, _T1, _T2, _T3, _T4, _T5]):
+    def remote(
+        self,
+        __arg0: "Union[_T0, ObjectRef[_T0]]",
+        __arg1: "Union[_T1, ObjectRef[_T1]]",
+        __arg2: "Union[_T2, ObjectRef[_T2]]",
+        __arg3: "Union[_T3, ObjectRef[_T3]]",
+        __arg4: "Union[_T4, ObjectRef[_T4]]",
+        __arg5: "Union[_T5, ObjectRef[_T5]]",
+    ) -> "ObjectRef[_Ret]":
+        ...
+
+    def bind(
+        self,
+        __arg0: _T0,
+        __arg1: _T1,
+        __arg2: _T2,
+        __arg3: _T3,
+        __arg4: _T4,
+        __arg5: _T5,
+    ) -> Any:
+        ...
+
+
+class _RemoteMethod6(Generic[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6]):
+    def remote(
+        self,
+        __arg0: "Union[_T0, ObjectRef[_T0]]",
+        __arg1: "Union[_T1, ObjectRef[_T1]]",
+        __arg2: "Union[_T2, ObjectRef[_T2]]",
+        __arg3: "Union[_T3, ObjectRef[_T3]]",
+        __arg4: "Union[_T4, ObjectRef[_T4]]",
+        __arg5: "Union[_T5, ObjectRef[_T5]]",
+        __arg6: "Union[_T6, ObjectRef[_T6]]",
+    ) -> "ObjectRef[_Ret]":
+        ...
+
+    def bind(
+        self,
+        __arg0: _T0,
+        __arg1: _T1,
+        __arg2: _T2,
+        __arg3: _T3,
+        __arg4: _T4,
+        __arg5: _T5,
+        __arg6: _T6,
+    ) -> Any:
+        ...
+
+
+class _RemoteMethod7(Generic[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7]):
+    def remote(
+        self,
+        __arg0: "Union[_T0, ObjectRef[_T0]]",
+        __arg1: "Union[_T1, ObjectRef[_T1]]",
+        __arg2: "Union[_T2, ObjectRef[_T2]]",
+        __arg3: "Union[_T3, ObjectRef[_T3]]",
+        __arg4: "Union[_T4, ObjectRef[_T4]]",
+        __arg5: "Union[_T5, ObjectRef[_T5]]",
+        __arg6: "Union[_T6, ObjectRef[_T6]]",
+        __arg7: "Union[_T7, ObjectRef[_T7]]",
+    ) -> "ObjectRef[_Ret]":
+        ...
+
+    def bind(
+        self,
+        __arg0: _T0,
+        __arg1: _T1,
+        __arg2: _T2,
+        __arg3: _T3,
+        __arg4: _T4,
+        __arg5: _T5,
+        __arg6: _T6,
+        __arg7: _T7,
+    ) -> Any:
+        ...
+
+
+class _RemoteMethod8(Generic[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8]):
+    def remote(
+        self,
+        __arg0: "Union[_T0, ObjectRef[_T0]]",
+        __arg1: "Union[_T1, ObjectRef[_T1]]",
+        __arg2: "Union[_T2, ObjectRef[_T2]]",
+        __arg3: "Union[_T3, ObjectRef[_T3]]",
+        __arg4: "Union[_T4, ObjectRef[_T4]]",
+        __arg5: "Union[_T5, ObjectRef[_T5]]",
+        __arg6: "Union[_T6, ObjectRef[_T6]]",
+        __arg7: "Union[_T7, ObjectRef[_T7]]",
+        __arg8: "Union[_T8, ObjectRef[_T8]]",
+    ) -> "ObjectRef[_Ret]":
+        ...
+
+    def bind(
+        self,
+        __arg0: _T0,
+        __arg1: _T1,
+        __arg2: _T2,
+        __arg3: _T3,
+        __arg4: _T4,
+        __arg5: _T5,
+        __arg6: _T6,
+        __arg7: _T7,
+        __arg8: _T8,
+    ) -> Any:
+        ...
+
+
+class _RemoteMethod9(Generic[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, _T9]):
+    def remote(
+        self,
+        __arg0: "Union[_T0, ObjectRef[_T0]]",
+        __arg1: "Union[_T1, ObjectRef[_T1]]",
+        __arg2: "Union[_T2, ObjectRef[_T2]]",
+        __arg3: "Union[_T3, ObjectRef[_T3]]",
+        __arg4: "Union[_T4, ObjectRef[_T4]]",
+        __arg5: "Union[_T5, ObjectRef[_T5]]",
+        __arg6: "Union[_T6, ObjectRef[_T6]]",
+        __arg7: "Union[_T7, ObjectRef[_T7]]",
+        __arg8: "Union[_T8, ObjectRef[_T8]]",
+        __arg9: "Union[_T9, ObjectRef[_T9]]",
+    ) -> "ObjectRef[_Ret]":
+        ...
+
+    def bind(
+        self,
+        __arg0: _T0,
+        __arg1: _T1,
+        __arg2: _T2,
+        __arg3: _T3,
+        __arg4: _T4,
+        __arg5: _T5,
+        __arg6: _T6,
+        __arg7: _T7,
+        __arg8: _T8,
+        __arg9: _T9,
+    ) -> Any:
+        ...
+
+
+@overload
+def method(
+    __method: Callable[[Any], _Ret],
+) -> _RemoteMethodNoArgs[_Ret]:
+    ...
+
+
+@overload
+def method(
+    __method: Callable[[Any, _T0], _Ret],
+) -> _RemoteMethod0[_Ret, _T0]:
+    ...
+
+
+@overload
+def method(
+    __method: Callable[[Any, _T0, _T1], _Ret],
+) -> _RemoteMethod1[_Ret, _T0, _T1]:
+    ...
+
+
+@overload
+def method(
+    __method: Callable[[Any, _T0, _T1, _T2], _Ret],
+) -> _RemoteMethod2[_Ret, _T0, _T1, _T2]:
+    ...
+
+
+@overload
+def method(
+    __method: Callable[[Any, _T0, _T1, _T2, _T3], _Ret],
+) -> _RemoteMethod3[_Ret, _T0, _T1, _T2, _T3]:
+    ...
+
+
+@overload
+def method(
+    __method: Callable[[Any, _T0, _T1, _T2, _T3, _T4], _Ret],
+) -> _RemoteMethod4[_Ret, _T0, _T1, _T2, _T3, _T4]:
+    ...
+
+
+@overload
+def method(
+    __method: Callable[[Any, _T0, _T1, _T2, _T3, _T4, _T5], _Ret],
+) -> _RemoteMethod5[_Ret, _T0, _T1, _T2, _T3, _T4, _T5]:
+    ...
+
+
+@overload
+def method(
+    __method: Callable[[Any, _T0, _T1, _T2, _T3, _T4, _T5, _T6], _Ret],
+) -> _RemoteMethod6[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6]:
+    ...
+
+
+@overload
+def method(
+    __method: Callable[[Any, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7], _Ret],
+) -> _RemoteMethod7[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7]:
+    ...
+
+
+@overload
+def method(
+    __method: Callable[[Any, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8], _Ret],
+) -> _RemoteMethod8[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8]:
+    ...
+
+
+@overload
+def method(
+    __method: Callable[[Any, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, _T9], _Ret],
+) -> _RemoteMethod9[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, _T9]:
+    ...
+
+
+@overload
+def method(
+    *,
+    num_returns: Optional[Union[int, Literal["streaming"]]] = None,
+    concurrency_group: Optional[str] = None,
+    max_task_retries: Optional[int] = None,
+    retry_exceptions: Optional[Union[bool, list, tuple]] = None,
+    _generator_backpressure_num_objects: Optional[int] = None,
+    enable_task_events: Optional[bool] = None,
+    tensor_transport: Optional[TensorTransportEnum] = None,
+) -> Callable[[Callable[Concatenate[Any, _P], _Ret]], Any]:
+    ...
 
 
 @PublicAPI
@@ -74,7 +412,37 @@ def method(*args, **kwargs):
 
     Args:
         num_returns: The number of object refs that should be returned by
-            invocations of this actor method.
+            invocations of this actor method. The default value is 1 for a
+            normal actor task and "streaming" for an actor generator task (a
+            function that yields objects instead of returning them).
+        max_task_retries: How many times to retry an actor task if the task
+            fails due to a runtime error, e.g., the actor has died. The
+            default value is 0. If set to -1, the system will retry the
+            failed task until the task succeeds, or the actor has reached
+            its max_restarts limit. If set to `n > 0`, the system will retry
+            the failed task up to n times, after which the task will throw a
+            `RayActorError` exception upon :obj:`ray.get`.  Note that Python
+            exceptions may trigger retries
+            *only if* `retry_exceptions` is set for the method, in that case
+            when `max_task_retries` runs out the task will rethrow the
+            exception from the task. You can override this number with the
+            method's `max_task_retries` option in `@ray.method` decorator or
+            in `.option()`.
+        retry_exceptions: Boolean of whether to retry all Python
+            exceptions, or a list of allowlist exceptions to retry. The default
+            value is False (only retry tasks upon system failures and if
+            max_task_retries is set)
+        concurrency_group: The name of the concurrency group
+            to use for the actor method. By default, the actor is
+            single-threaded and runs all actor tasks on the same thread.
+            See :ref:`Defining Concurrency Groups <defining-concurrency-groups>`.
+        tensor_transport: [Experimental] The tensor transport protocol to
+            use for the actor method. The valid values are "OBJECT_STORE"
+            (default), "NCCL", or "GLOO" (case-insensitive). torch.Tensors
+            returned by this task will be sent to other tasks using the
+            specified transport. NCCL and GLOO transports require first creating
+            a collective with the involved actors using
+            `ray.experimental.collective.create_collective_group`.
     """
     valid_kwargs = [
         "num_returns",
@@ -85,20 +453,8 @@ def method(*args, **kwargs):
         "enable_task_events",
         "tensor_transport",
     ]
-    error_string = (
-        "The @ray.method decorator must be applied using at least one of "
-        f"the arguments in the list {valid_kwargs}, for example "
-        "'@ray.method(num_returns=2)'."
-    )
-    assert len(args) == 0 and len(kwargs) > 0, error_string
-    for key in kwargs:
-        key_error_string = (
-            f"Unexpected keyword argument to @ray.method: '{key}'. The "
-            f"supported keyword arguments are {valid_kwargs}"
-        )
-        assert key in valid_kwargs, key_error_string
 
-    def annotate_method(method):
+    def annotate_method(method: Callable[_P, _Ret]):
         if "num_returns" in kwargs:
             method.__ray_num_returns__ = kwargs["num_returns"]
         if "max_task_retries" in kwargs:
@@ -114,15 +470,29 @@ def method(*args, **kwargs):
         if "enable_task_events" in kwargs and kwargs["enable_task_events"] is not None:
             method.__ray_enable_task_events__ = kwargs["enable_task_events"]
         if "tensor_transport" in kwargs:
-            tensor_transport_str = kwargs["tensor_transport"].upper()
-            if tensor_transport_str not in TENSOR_TRANSPORT:
-                raise ValueError(
-                    f"Invalid tensor transport {tensor_transport_str}, must be one of {TENSOR_TRANSPORT}."
-                )
-            method.__ray_tensor_transport__ = TensorTransport.Value(
-                tensor_transport_str
+            method.__ray_tensor_transport__ = TensorTransportEnum.from_str(
+                kwargs["tensor_transport"]
             )
         return method
+
+    # Check if decorator is called without parentheses (args[0] would be the function)
+    if len(args) == 1 and callable(args[0]) and len(kwargs) == 0:
+        # Called as @ray.method (without parentheses)
+        return annotate_method(args[0])
+
+    # Called as @ray.method() or @ray.method(options...)
+    error_string = (
+        "The @ray.method decorator must be applied using no arguments or at "
+        f"least one of the arguments in the list {valid_kwargs}, for example "
+        "'@ray.method(num_returns=2)'."
+    )
+    assert len(args) == 0, error_string
+    for key in kwargs:
+        key_error_string = (
+            f"Unexpected keyword argument to @ray.method: '{key}'. The "
+            f"supported keyword arguments are {valid_kwargs}"
+        )
+        assert key in valid_kwargs, key_error_string
 
     return annotate_method
 
@@ -148,7 +518,7 @@ class _ActorMethodMetadata:
         enable_task_events: bool,
         decorator: Optional[Any] = None,
         signature: Optional[List[inspect.Parameter]] = None,
-        tensor_transport: Optional[TypeTensorTransportEnum] = None,
+        tensor_transport: Optional[TensorTransportEnum] = None,
     ):
         """Initialize an _ActorMethodMetadata.
 
@@ -226,7 +596,7 @@ class ActorMethod:
         enable_task_events: bool,
         decorator=None,
         signature: Optional[List[inspect.Parameter]] = None,
-        tensor_transport: Optional[TypeTensorTransportEnum] = None,
+        tensor_transport: Optional[TensorTransportEnum] = None,
     ):
         """Initialize an ActorMethod.
 
@@ -251,7 +621,6 @@ class ActorMethod:
             signature: The signature of the actor method. It is None only when cross
                 language feature is used.
             tensor_transport: The tensor transport protocol to use for the actor method.
-                The valid values are OBJECT_STORE (default), NCCL, or GLOO, and they are case-insensitive.
         """
         self._actor = actor
         self._method_name = method_name
@@ -279,9 +648,9 @@ class ActorMethod:
 
         # If the task call doesn't specify a tensor transport option, use `_tensor_transport`
         # as the default transport for this actor method.
-        self._tensor_transport: TypeTensorTransportEnum = (
-            tensor_transport or OBJECT_STORE
-        )
+        if tensor_transport is None:
+            tensor_transport = TensorTransportEnum.OBJECT_STORE
+        self._tensor_transport = tensor_transport
 
     def __call__(self, *args, **kwargs):
         raise TypeError(
@@ -320,6 +689,10 @@ class ActorMethod:
         """
 
         func_cls = self
+
+        tensor_transport = options.get("tensor_transport", None)
+        if tensor_transport is not None:
+            options["tensor_transport"] = TensorTransportEnum.from_str(tensor_transport)
 
         class FuncWrapper:
             def remote(self, *args, **kwargs):
@@ -424,7 +797,7 @@ class ActorMethod:
         concurrency_group=None,
         _generator_backpressure_num_objects=None,
         enable_task_events=None,
-        tensor_transport: Optional[TypeTensorTransport] = None,
+        tensor_transport: Optional[TensorTransportEnum] = None,
     ):
         if num_returns is None:
             num_returns = self._num_returns
@@ -440,15 +813,16 @@ class ActorMethod:
             _generator_backpressure_num_objects = (
                 self._generator_backpressure_num_objects
             )
+
         if tensor_transport is None:
             tensor_transport = self._tensor_transport
-        else:
-            if tensor_transport not in TENSOR_TRANSPORT:
-                raise ValueError(
-                    f"Invalid tensor transport {tensor_transport}, must be one of {TENSOR_TRANSPORT}"
-                )
-            # Convert `tensor_transport` from string to enum.
-            tensor_transport = TensorTransport.Value(tensor_transport)
+
+        if tensor_transport != TensorTransportEnum.OBJECT_STORE and num_returns != 1:
+            raise ValueError(
+                f"Currently, methods with tensor_transport={tensor_transport.name} only support 1 return value. "
+                "Please make sure the actor method is decorated with `@ray.method(num_returns=1)` (the default)."
+            )
+
         args = args or []
         kwargs = kwargs or {}
 
@@ -484,15 +858,11 @@ class ActorMethod:
             invocation = self._decorator(invocation)
 
         obj_ref = invocation(args, kwargs)
-        if tensor_transport != OBJECT_STORE:
-            if num_returns != 1:
-                raise ValueError(
-                    f"Currently, methods with tensor_transport={TensorTransport.Name(tensor_transport)} only support 1 return value. "
-                    "Please make sure the actor method returns a single object."
-                )
-
+        if tensor_transport != TensorTransportEnum.OBJECT_STORE:
             gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
-            gpu_object_manager.add_gpu_object_ref(obj_ref, self._actor)
+            gpu_object_manager.add_gpu_object_ref(
+                obj_ref, self._actor, tensor_transport
+            )
 
         return obj_ref
 
@@ -557,7 +927,12 @@ class _ActorClassMethodMetadata(object):
         cls._cache.clear()
 
     @classmethod
-    def create(cls, modified_class, actor_creation_function_descriptor):
+    def create(
+        cls,
+        modified_class,
+        actor_creation_function_descriptor,
+        enable_tensor_transport: bool = False,
+    ):
         # Try to create an instance from cache.
         cached_meta = cls._cache.get(actor_creation_function_descriptor)
         if cached_meta is not None:
@@ -581,7 +956,7 @@ class _ActorClassMethodMetadata(object):
         self.enable_task_events = {}
         self.generator_backpressure_num_objects = {}
         self.concurrency_group_for_methods = {}
-        self.method_name_to_tensor_transport: Dict[str, TypeTensorTransportEnum] = {}
+        self.method_name_to_tensor_transport: Dict[str, TensorTransportEnum] = {}
 
         for method_name, method in actor_methods:
             # Whether or not this method requires binding of its first
@@ -642,6 +1017,15 @@ class _ActorClassMethodMetadata(object):
                     method_name
                 ] = method.__ray_tensor_transport__
 
+            method_tensor_transport = self.method_name_to_tensor_transport.get(
+                method_name, None
+            )
+            if not enable_tensor_transport and method_tensor_transport is not None:
+                if method_tensor_transport != TensorTransportEnum.OBJECT_STORE:
+                    raise ValueError(
+                        f"Method {method_name} has tensor_transport={method_tensor_transport.name} but enable_tensor_transport is False"
+                    )
+
         # Update cache.
         cls._cache[actor_creation_function_descriptor] = self
         return self
@@ -672,6 +1056,7 @@ class _ActorClassMetadata:
             See :ref:`accelerator types <accelerator_types>`.
         runtime_env: The runtime environment for this actor.
         scheduling_strategy: Strategy about how to schedule this actor.
+        enable_tensor_transport: Whether to enable out-of-band tensor transport for this actor.
         last_export_cluster_and_job: A pair of the last exported cluster
             and job to help us to know whether this function was exported.
             This is an imperfect mechanism used to determine if we need to
@@ -699,6 +1084,7 @@ class _ActorClassMetadata:
         runtime_env,
         concurrency_groups,
         scheduling_strategy: SchedulingStrategyT,
+        enable_tensor_transport: bool = False,
     ):
         self.language = language
         self.modified_class = modified_class
@@ -718,9 +1104,12 @@ class _ActorClassMetadata:
         self.runtime_env = runtime_env
         self.concurrency_groups = concurrency_groups
         self.scheduling_strategy = scheduling_strategy
+        self.enable_tensor_transport = enable_tensor_transport
         self.last_export_cluster_and_job = None
         self.method_meta = _ActorClassMethodMetadata.create(
-            modified_class, actor_creation_function_descriptor
+            modified_class,
+            actor_creation_function_descriptor,
+            self.enable_tensor_transport,
         )
 
 
@@ -738,11 +1127,24 @@ def _process_option_dict(actor_options):
     _filled_options["runtime_env"] = parse_runtime_env_for_task_or_actor(
         _filled_options["runtime_env"]
     )
+
+    # Ray GPU objects requires a background thread for data transfer. However,
+    # currently by default the background thread will be blocked if the main
+    # thread does not yield. For now, we explicitly create the background
+    # thread, which forces Ray to execute all tasks on background threads
+    # instead of the main thread.
+    # TODO(swang): Remove this code once
+    # https://github.com/ray-project/ray/issues/54639 is fixed.
+    if _filled_options.get("enable_tensor_transport", False):
+        if _filled_options.get("concurrency_groups", None) is None:
+            _filled_options["concurrency_groups"] = {}
+        _filled_options["concurrency_groups"]["_ray_system"] = 1
+
     return _filled_options
 
 
 @PublicAPI
-class ActorClass:
+class ActorClass(Generic[T]):
     """An actor class.
 
     This is a decorated class. It can be used to create actors.
@@ -882,7 +1284,7 @@ class ActorClass:
             self._default_options["runtime_env"] = self.__ray_metadata__.runtime_env
         return self
 
-    def remote(self, *args, **kwargs):
+    def remote(self, *args, **kwargs) -> ActorProxy[T]:
         """Create an actor.
 
         Args:
@@ -924,18 +1326,19 @@ class ActorClass:
                 which indicates that the actor doesn't need to be restarted.
                 A value of -1 indicates that an actor should be restarted
                 indefinitely.
-            max_task_retries: How many times to
-                retry an actor task if the task fails due to a runtime error,
-                e.g., the actor has died. If set to -1, the system will
-                retry the failed task until the task succeeds, or the actor
-                has reached its max_restarts limit. If set to `n > 0`, the
-                system will retry the failed task up to n times, after which the
-                task will throw a `RayActorError` exception upon :obj:`ray.get`.
-                Note that Python exceptions may trigger retries *only if*
-                `retry_exceptions` is set for the method, in that case when
-                `max_task_retries` runs out the task will rethrow the exception from
-                the task. You can override this number with the method's
-                `max_task_retries` option in `@ray.method` decorator or in `.option()`.
+            max_task_retries: How many times to retry an actor task if the task
+                fails due to a runtime error, e.g., the actor has died. The
+                default value is 0. If set to -1, the system will retry the
+                failed task until the task succeeds, or the actor has reached
+                its max_restarts limit. If set to `n > 0`, the system will retry
+                the failed task up to n times, after which the task will throw a
+                `RayActorError` exception upon :obj:`ray.get`.  Note that Python
+                exceptions may trigger retries
+                *only if* `retry_exceptions` is set for the method, in that case
+                when `max_task_retries` runs out the task will rethrow the
+                exception from the task. You can override this number with the
+                method's `max_task_retries` option in `@ray.method` decorator or
+                in `.option()`.
             max_pending_calls: Set the max number of pending calls
                 allowed on the actor handle. When this value is exceeded,
                 PendingCallsLimitExceeded will be raised for further tasks.
@@ -1032,7 +1435,7 @@ class ActorClass:
 
     @wrap_auto_init
     @_tracing_actor_creation
-    def _remote(self, args=None, kwargs=None, **actor_options):
+    def _remote(self, args=None, kwargs=None, **actor_options) -> ActorProxy[T]:
         """Create an actor.
 
         This method allows more flexibility than the remote method because
@@ -1133,7 +1536,7 @@ class ActorClass:
 
         if actor_options.get("max_concurrency") is None:
             actor_options["max_concurrency"] = (
-                ray_constants.DEFAULT_MAX_CONCURRENCY_ASYNC
+                DEFAULT_MAX_CONCURRENCY_ASYNC
                 if is_asyncio
                 else ray_constants.DEFAULT_MAX_CONCURRENCY_THREADED
             )
@@ -1174,7 +1577,7 @@ class ActorClass:
         worker.check_connected()
 
         if worker.mode != ray._private.worker.WORKER_MODE:
-            from ray._private.usage import usage_lib
+            from ray._common.usage import usage_lib
 
             usage_lib.record_library_usage("core")
 
@@ -1414,7 +1817,7 @@ class ActorClass:
 
 
 @PublicAPI
-class ActorHandle:
+class ActorHandle(Generic[T]):
     """A handle to an actor.
 
     The fields in this class are prefixed with _ray_ to hide them from the user
@@ -1481,7 +1884,7 @@ class ActorHandle:
         method_retry_exceptions: Dict[str, Union[bool, list, tuple]],
         method_generator_backpressure_num_objects: Dict[str, int],
         method_enable_task_events: Dict[str, bool],
-        method_name_to_tensor_transport: Dict[str, TypeTensorTransportEnum],
+        method_name_to_tensor_transport: Dict[str, TensorTransportEnum],
         actor_method_cpus: int,
         actor_creation_function_descriptor,
         cluster_and_job,
@@ -1611,7 +2014,7 @@ class ActorHandle:
         concurrency_group_name: Optional[str] = None,
         generator_backpressure_num_objects: Optional[int] = None,
         enable_task_events: Optional[bool] = None,
-        tensor_transport: TypeTensorTransportEnum = OBJECT_STORE,
+        tensor_transport: Optional[TensorTransportEnum] = None,
     ):
         """Method execution stub for an actor handle.
 
@@ -1635,7 +2038,6 @@ class ActorHandle:
             enable_task_events: True if tracing is enabled, i.e., task events from
                 the actor should be reported.
             tensor_transport: The tensor transport protocol to use for the actor method.
-                The valid values are OBJECT_STORE (default), NCCL, or GLOO, and they are case-insensitive.
 
         Returns:
             object_refs: A list of object refs returned by the remote actor
@@ -1704,7 +2106,7 @@ class ActorHandle:
             concurrency_group_name if concurrency_group_name is not None else b"",
             generator_backpressure_num_objects,
             enable_task_events,
-            tensor_transport,
+            tensor_transport.value,
         )
 
         if num_returns == STREAMING_GENERATOR_RETURN:

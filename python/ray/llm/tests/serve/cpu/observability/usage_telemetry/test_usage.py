@@ -3,7 +3,7 @@ import sys
 import pytest
 
 import ray
-from ray._private.usage.usage_lib import TagKey
+from ray._common.usage.usage_lib import TagKey
 from ray.llm._internal.serve.configs.server_models import (
     LLMConfig,
     LLMEngine,
@@ -29,7 +29,7 @@ class TelemetryRecorder:
         return self._telemetry
 
 
-def test_push_telemetry_report_for_all_models():
+def test_push_telemetry_report_for_all_models(disable_placement_bundles):
     recorder = TelemetryRecorder.remote()
 
     def record_tag_func(key, value):

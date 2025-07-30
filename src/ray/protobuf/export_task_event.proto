@@ -88,6 +88,8 @@ message ExportTaskEventData {
     optional bytes placement_group_id = 9;
     // The key-value labels for task and actor.
     map<string, string> labels = 10;
+    // The key-value label constraints of the node to schedule this task or actor on.
+    map<string, string> label_selector = 11;
   }
 
   message ProfileEventEntry {

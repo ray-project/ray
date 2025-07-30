@@ -12,12 +12,11 @@ import ray
 import ray._private.gcs_utils as gcs_utils
 import ray._private.ray_constants as ray_constants
 import ray._private.utils
-from ray._common.test_utils import SignalActor
+from ray._common.test_utils import SignalActor, wait_for_condition
 from ray._private.test_utils import (
     convert_actor_state,
     get_error_message,
     init_error_pubsub,
-    wait_for_condition,
 )
 from ray.exceptions import GetTimeoutError, RayActorError, RayTaskError, ActorDiedError
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
@@ -773,7 +772,36 @@ def test_update_object_location_batch_failure(
                 node_id=head_node_id, soft=False
             )
         ).remote(obj_ref)
-        assert ray.get(consume_ref) > 0
+        assert ray.get(consume_ref, timeout=10) > 0
+
+
+def test_raytaskerror_serialization(ray_start_regular):
+    """Test that RayTaskError with dual exception instances can be properly serialized."""
+    import ray.cloudpickle as pickle
+
+    class MyException(Exception):
+        def __init__(self, one, two):
+            self.one = one
+            self.two = two
+
+        def __reduce__(self):
+            return self.__class__, (self.one, self.two)
+
+    original_exception = MyException("test 1", "test 2")
+    ray_task_error = ray.exceptions.RayTaskError(
+        function_name="test_function",
+        traceback_str="test traceback",
+        cause=original_exception,
+    )
+
+    dual_exception = ray_task_error.make_dual_exception_instance()
+    pickled = pickle.dumps(dual_exception)
+    unpickled = pickle.loads(pickled)
+
+    assert isinstance(unpickled, ray.exceptions.RayTaskError)
+    assert isinstance(unpickled, MyException)
+    assert unpickled.one == "test 1"
+    assert unpickled.two == "test 2"
 
 
 if __name__ == "__main__":

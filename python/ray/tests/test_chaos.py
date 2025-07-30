@@ -5,6 +5,7 @@ import random
 import pytest
 
 import ray
+from ray._common.test_utils import wait_for_condition
 from ray.experimental import shuffle
 from ray.tests.conftest import _ray_start_chaos_cluster
 from ray.util.placement_group import placement_group
@@ -13,7 +14,6 @@ from ray._private.test_utils import (
     get_log_message,
     get_and_run_resource_killer,
     WorkerKillerActor,
-    wait_for_condition,
 )
 from ray.exceptions import RayTaskError, ObjectLostError
 from ray.util.state.common import ListApiOptions, StateResource

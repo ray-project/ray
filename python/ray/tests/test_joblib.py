@@ -24,7 +24,7 @@ from sklearn.model_selection import cross_val_score
 import ray
 from ray.util.joblib import register_ray
 from ray.util.joblib.ray_backend import RayBackend
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import wait_for_condition
 
 
 def test_register_ray():

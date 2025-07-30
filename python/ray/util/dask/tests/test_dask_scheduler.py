@@ -13,10 +13,6 @@ from ray.util.client.common import ClientObjectRef
 from ray.util.dask import disable_dask_on_ray, enable_dask_on_ray, ray_dask_get
 from ray.util.dask.callbacks import ProgressBarCallback
 
-pytestmark = pytest.mark.skipif(
-    sys.version_info >= (3, 12), reason="Skip dask tests for Python version 3.12+"
-)
-
 
 @pytest.fixture
 def ray_enable_dask_on_ray():
@@ -90,10 +86,10 @@ def test_sort_with_progress_bar(ray_start_regular_shared):
     sorted_without_pb = None
     with ProgressBarCallback():
         sorted_with_pb = df.set_index(
-            ["age"], shuffle="tasks", max_branch=npartitions
+            ["age"], shuffle_method="tasks", max_branch=npartitions
         ).compute(scheduler=ray_dask_get, _ray_enable_progress_bar=True)
     sorted_without_pb = df.set_index(
-        ["age"], shuffle="tasks", max_branch=npartitions
+        ["age"], shuffle_method="tasks", max_branch=npartitions
     ).compute(scheduler=ray_dask_get)
     assert sorted_with_pb.equals(sorted_without_pb)
 

@@ -5,7 +5,8 @@ from dataclasses import asdict
 import pytest
 
 import ray
-from ray.data._internal.metadata_exporter import Operator, Topology
+from ray.data import DataContext
+from ray.data._internal.metadata_exporter import Operator, Topology, sanitize_for_struct
 from ray.data._internal.stats import _get_or_create_stats_actor
 from ray.tests.conftest import _ray_start
 
@@ -91,6 +92,7 @@ def test_export_disabled(ray_start_regular, dummy_dataset_topology):
             operator_tags=["ReadRange->Map(<lambda>)->Filter(<lambda>)"],
             topology=dummy_dataset_topology,
             job_id=STUB_JOB_ID,
+            data_context=DataContext.get_current(),
         )
     )
 
@@ -109,6 +111,7 @@ def _test_dataset_metadata_export(topology):
             operator_tags=["ReadRange->Map(<lambda>)->Filter(<lambda>)"],
             topology=topology,
             job_id=STUB_JOB_ID,
+            data_context=DataContext.get_current(),
         )
     )
 
@@ -116,7 +119,7 @@ def _test_dataset_metadata_export(topology):
     data = _get_exported_data()
     assert len(data) == 1
     assert data[0]["source_type"] == "EXPORT_DATASET_METADATA"
-    assert data[0]["event_data"]["topology"] == asdict(topology)
+    assert data[0]["event_data"]["topology"] == sanitize_for_struct(asdict(topology))
     assert data[0]["event_data"]["dataset_id"] == STUB_DATASET_ID
     assert data[0]["event_data"]["job_id"] == STUB_JOB_ID
     assert data[0]["event_data"]["start_time"] is not None
@@ -132,6 +135,44 @@ def test_export_dataset_metadata(
     ray_start_cluster_with_export_api_write, dummy_dataset_topology
 ):
     _test_dataset_metadata_export(dummy_dataset_topology)
+
+
+@pytest.mark.parametrize(
+    "expected_logical_op_args",
+    [
+        {
+            "fn_args": [1],
+            "fn_constructor_kwargs": [2],
+            "fn_kwargs": {"a": 3},
+            "fn_constructor_args": {"b": 4},
+            "compute": ray.data.ActorPoolStrategy(max_tasks_in_flight_per_actor=2),
+        },
+    ],
+)
+def test_logical_op_args(
+    ray_start_cluster_with_export_api_write, expected_logical_op_args
+):
+    class Udf:
+        def __init__(self, a, b):
+            self.a = a
+            self.b = b
+
+        def __call__(self, x):
+            return x
+
+    ds = ray.data.range(1).map_batches(
+        Udf,
+        **expected_logical_op_args,
+    )
+    dag = ds._plan._logical_plan.dag
+    args = dag._get_args()
+    assert len(args) > 0, "Export args should not be empty"
+    for k, v in expected_logical_op_args.items():
+        k = f"_{k}"
+        assert k in args, f"Export args should contain key '{k}'"
+        assert (
+            args[k] == v
+        ), f"Export args for key '{k}' should match expected value {v}, found {args[k]}"
 
 
 def test_export_multiple_datasets(
@@ -171,6 +212,7 @@ def test_export_multiple_datasets(
             operator_tags=["ReadRange->Map(<lambda>)->Filter(<lambda>)"],
             topology=dummy_dataset_topology,
             job_id=STUB_JOB_ID,
+            data_context=DataContext.get_current(),
         )
     )
 
@@ -181,6 +223,7 @@ def test_export_multiple_datasets(
             operator_tags=["ReadRange->Map(<lambda>)"],
             topology=second_topology,
             job_id=STUB_JOB_ID,
+            data_context=DataContext.get_current(),
         )
     )
 
@@ -197,7 +240,9 @@ def test_export_multiple_datasets(
     ), f"First dataset {first_dataset_id} not found in exported data"
     first_entry = datasets_by_id[first_dataset_id]
     assert first_entry["source_type"] == "EXPORT_DATASET_METADATA"
-    assert first_entry["event_data"]["topology"] == asdict(dummy_dataset_topology)
+    assert first_entry["event_data"]["topology"] == sanitize_for_struct(
+        asdict(dummy_dataset_topology)
+    )
     assert first_entry["event_data"]["job_id"] == STUB_JOB_ID
     assert first_entry["event_data"]["start_time"] is not None
 
@@ -207,7 +252,9 @@ def test_export_multiple_datasets(
     ), f"Second dataset {second_dataset_id} not found in exported data"
     second_entry = datasets_by_id[second_dataset_id]
     assert second_entry["source_type"] == "EXPORT_DATASET_METADATA"
-    assert second_entry["event_data"]["topology"] == asdict(second_topology)
+    assert second_entry["event_data"]["topology"] == sanitize_for_struct(
+        asdict(second_topology)
+    )
     assert second_entry["event_data"]["job_id"] == STUB_JOB_ID
     assert second_entry["event_data"]["start_time"] is not None
 

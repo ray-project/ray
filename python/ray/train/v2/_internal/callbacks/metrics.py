@@ -22,14 +22,11 @@ from ray.train.v2._internal.util import time_monotonic
 class ControllerMetricsCallback(ControllerCallback, WorkerGroupCallback):
     """Callback that records controller-specific metrics."""
 
-    def __init__(self, train_run_context: TrainRunContext):
+    def after_controller_start(self, train_run_context: TrainRunContext):
+        """Initialize metrics after controller starts."""
         self._run_name = train_run_context.get_run_config().name
         self._run_id = train_run_context.run_id
-        self._metrics: Optional[Dict[str, Metric]] = None
-
-    def after_controller_start(self):
-        """Initialize metrics after controller starts."""
-        self._metrics = ControllerMetrics.get_controller_metrics(
+        self._metrics: Dict[str, Metric] = ControllerMetrics.get_controller_metrics(
             self._run_name, self._run_id
         )
         # Record initial state

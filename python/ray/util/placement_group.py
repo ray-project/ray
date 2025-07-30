@@ -186,7 +186,6 @@ def placement_group(
     Return:
         PlacementGroup: Placement group object.
     """
-
     worker = ray._private.worker.global_worker
     worker.check_connected()
 

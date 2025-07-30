@@ -4,11 +4,11 @@ import sys
 
 import psutil
 import pytest
+from ray._common.test_utils import wait_for_condition
 import requests
 
 import ray
 from ray._private.test_utils import (
-    wait_for_condition,
     wait_until_succeeded_without_exception,
     get_node_stats,
 )
@@ -346,11 +346,20 @@ def test_multi_node_metrics_export_port_discovery(ray_start_cluster):
 
 def test_opentelemetry_conflict(shutdown_only):
     ray.init()
-    # If opencensus protobuf doesn't conflict, this shouldn't raise an exception.
-    # Otherwise, it raises an error saying
-    # opencensus/proto/resource/v1/resource.proto:
-    # A file with this name is already in the pool.
-    from opencensus.proto.trace.v1 import trace_pb2  # noqa
+
+    # After ray.init(), opencensus protobuf should not be registered.
+    # Otherwise, it might conflict with other versions generated opencensus protobuf.
+
+    from google.protobuf.descriptor_pool import Default as DefaultPool
+
+    pool = DefaultPool()
+
+    try:
+        found_file = pool.FindFileByName("opencensus/proto/resource/v1/resource.proto")
+    except KeyError:
+        found_file = None
+
+    assert found_file is None, "opencensus protobuf registered after ray.init()"
 
     # Make sure the similar resource protobuf also doesn't raise an exception.
     from opentelemetry.proto.resource.v1 import resource_pb2  # noqa

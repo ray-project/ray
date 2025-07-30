@@ -1,7 +1,7 @@
 import logging.config
 import os
 from enum import Enum
-from typing import Optional
+from typing import Optional, Union
 
 import ray
 from ray._private.log import PlainRayHandler
@@ -11,7 +11,7 @@ from ray.train.v2._internal.execution.context import TrainContext, TrainRunConte
 from ray.train.v2._internal.util import get_module_name
 
 
-def _get_base_logger_config_dict(context: TrainRunContext) -> dict:
+def _get_base_logger_config_dict(context: Union[TrainRunContext, TrainContext]) -> dict:
     """Return the base logging configuration dictionary."""
     # Using Ray worker ID as the file identifier where logs are written to.
     file_identifier = ray.get_runtime_context().get_worker_id()
@@ -80,7 +80,7 @@ def get_controller_logger_config_dict(context: TrainRunContext) -> dict:
     return config_dict
 
 
-def get_worker_logger_config_dict(context: TrainRunContext) -> dict:
+def get_worker_logger_config_dict(context: TrainContext) -> dict:
     """Return the worker loggers configuration dictionary.
 
     On the worker process, there are two loggers being configured:
@@ -130,15 +130,16 @@ class TrainContextFilter(logging.Filter):
         CONTROLLER = "controller"
         WORKER = "worker"
 
-    def __init__(self, context: TrainRunContext):
-        self._run_name: str = context.get_run_config().name
+    def __init__(self, context: Union[TrainRunContext, TrainContext]):
         self._is_worker: bool = isinstance(context, TrainContext)
         if self._is_worker:
+            self._run_name: str = context.train_run_context.get_run_config().name
             self._world_rank: int = context.get_world_rank()
             self._local_rank: int = context.get_local_rank()
             self._node_rank: int = context.get_node_rank()
             self._component: str = TrainContextFilter.TrainComponent.WORKER
         else:
+            self._run_name: str = context.get_run_config().name
             self._component: str = TrainContextFilter.TrainComponent.CONTROLLER
 
     def controller_filter(self, record):
@@ -229,7 +230,7 @@ def configure_controller_logger(context: TrainRunContext) -> None:
     # TODO: Return the controller log file path.
 
 
-def configure_worker_logger(context: TrainRunContext) -> None:
+def configure_worker_logger(context: TrainContext) -> None:
     """
     Configure the loggers on the worker process, which contains the
     `ray.train` logger and the root logger.

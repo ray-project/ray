@@ -7,10 +7,9 @@ import httpx
 import pytest
 
 import ray
-import ray._private.state
 import ray.actor
 from ray import serve
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import wait_for_condition
 from ray.exceptions import RayActorError
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
 from ray.serve.context import _get_global_client
@@ -207,7 +206,7 @@ def test_controller_deserialization_deployment_def(
         from ray._common.utils import import_attr
 
         # Import and build the graph
-        graph = import_attr("test_config_files.pizza.serve_dag")
+        graph = import_attr("ray.serve.tests.test_config_files.pizza.serve_dag")
 
         # Run the graph locally on the cluster
         serve.run(graph)

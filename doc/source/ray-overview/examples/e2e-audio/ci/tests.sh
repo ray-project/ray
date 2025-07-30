@@ -1,4 +1,4 @@
 #!/bin/bash
-jupyter nbconvert --to script e2e_audio/curation.ipynb  # Jupyter will convert bash code if they start with !
-ipython e2e_audio/curation.py  # Use ipython to ensure non-python cells are executed properly
-rm e2e_audio/curation.py  # Clean up
+jupyter nbconvert --to script README.ipynb  # Jupyter will convert even non-python code logic
+ipython README.py  # Use ipython to ensure even non-python cells are executed properly
+rm README.py  # Remove the generated script

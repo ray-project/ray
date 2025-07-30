@@ -129,6 +129,7 @@ nb_output_folder = "_build/jupyter_execute"
 # for additional context.
 nitpicky = True
 nitpick_ignore_regex = [
+    ("py:obj", "ray.actor.T"),
     ("py:class", ".*"),
     # Workaround for https://github.com/sphinx-doc/sphinx/issues/10974
     ("py:obj", "ray\\.data\\.datasource\\.datasink\\.WriteReturnType"),
@@ -226,6 +227,7 @@ exclude_patterns = [
     "cluster/running-applications/doc/ray.*",
     "data/api/ray.data.*.rst",
     "ray-overview/examples/**/README.md",  # Exclude .md files in examples subfolders
+    "train/examples/**/README.md",
 ] + autogen_files
 
 # If "DOC_LIB" is found, only build that top-level navigation item.
@@ -558,7 +560,7 @@ def setup(app):
     app.add_js_file("js/custom.js", defer="defer")
     app.add_css_file("css/custom.css", priority=800)
 
-    app.add_js_file("js/csat.js")
+    app.add_js_file("js/csat.js", defer="defer")
     app.add_css_file("css/csat.css")
 
     app.add_js_file("js/assistant.js", defer="defer")
