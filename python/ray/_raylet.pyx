@@ -3353,11 +3353,10 @@ cdef class CoreWorker:
             c_remote_reader_nodes.push_back(CNodeID.FromHex(node_id))
 
         with nogil:
-            CCoreWorkerProcess.GetCoreWorker()
-                .ExperimentalRegisterMutableObjectWriter(
+            CCoreWorkerProcess.GetCoreWorker().ExperimentalRegisterMutableObjectWriter(
                     c_writer_ref,
                     c_remote_reader_nodes,
-                )
+            )
             check_status(
                     CCoreWorkerProcess.GetCoreWorker()
                     .ExperimentalRegisterMutableObjectReaderRemote(
