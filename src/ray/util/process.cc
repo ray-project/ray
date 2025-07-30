@@ -265,11 +265,21 @@ class ProcessFD {
         close(parent_lifetime_pipe[0]);
       }
 
+#if defined(__APPLE__)
+      // On macOS, the FD_CLOEXEC mechanism can be unreliable with the execvpe shim.
+      // To avoid hangs, we always send the PID back to the parent before exec-ing,
+      // similar to the decoupled case.
+      pid_t my_pid = getpid();
+      if (write(status_pipe[1], &my_pid, sizeof(my_pid)) != sizeof(my_pid)) {
+        _exit(errno);
+      }
+#else
       // If execve succeeds, this FD will be closed automatically.
       if (!decouple) {
         // Only set FD_CLOEXEC in the non-decouple case
         SetFdCloseOnExec(status_pipe[1]);
       }
+#endif
 
       if (decouple) {
         pid_t my_pid = getpid();
@@ -292,6 +302,50 @@ class ProcessFD {
         close(parent_lifetime_pipe[0]);  // Parent only writes to the lifetime pipe.
       }
 
+#if defined(__APPLE__)
+      // On macOS, we mirror the decouple logic for all cases to avoid hangs.
+      // First, wait for the intermediate process to exit.
+      if (decouple) {
+        while (waitpid(pid, NULL, 0) == -1 && errno == EINTR) {
+          continue;
+        }
+      }
+
+      // Read the actual child/grandchild's PID from the pipe.
+      pid_t child_pid;
+      ssize_t bytes_read_pid =
+          ReadBytesFromFd(status_pipe[0], &child_pid, sizeof(child_pid));
+      if (bytes_read_pid != sizeof(child_pid)) {
+        // If we can't get the PID, it's a startup failure.
+        ec = std::error_code(ECHILD, std::system_category());
+        pid = -1;
+      } else {
+        pid = child_pid;
+        // We got the PID. Now, do a NON-BLOCKING read to check for an exec error.
+        int flags = fcntl(status_pipe[0], F_GETFL, 0);
+        fcntl(status_pipe[0], F_SETFL, flags | O_NONBLOCK);
+        int exec_errno = 0;
+        ssize_t bytes_read_errno =
+            read(status_pipe[0], &exec_errno, sizeof(exec_errno));
+        fcntl(status_pipe[0], F_SETFL, flags);  // Restore original flags.
+
+        if (bytes_read_errno == sizeof(exec_errno)) {
+          // We got an error code back. Launch failed.
+          ec = std::error_code(exec_errno, std::system_category());
+          pid = -1;
+        } else {
+          // No error code was present. Launch was successful.
+          ec = std::error_code();
+        }
+      }
+      // The status pipe is no longer needed for non-decoupled processes after this point.
+      // For decoupled, it's used for lifetime tracking.
+      if (decouple) {
+        fd = status_pipe[0];
+      } else {
+        close(status_pipe[0]);
+      }
+#else
       if (!decouple) {
         // Simple case for non-decoupled process
         int err_from_child;
@@ -359,6 +413,7 @@ class ProcessFD {
           }
         }
       }
+#endif
     } else {
       // --- Fork Failed ---
       ec = std::error_code(errno, std::system_category());
