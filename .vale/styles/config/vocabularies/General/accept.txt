@@ -94,6 +94,8 @@ SageMaker
 serverless
 SFT
 ShareGPT
+SLA
+SLAs
 streamable
 Softmax
 streamable
