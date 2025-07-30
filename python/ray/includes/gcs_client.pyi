@@ -81,11 +81,11 @@ class InnerGcsClient:
     # NodeInfo methods
     #############################################################
     def check_alive(
-        self, node_ips: List[bytes], timeout: Optional[int | float] = None
+        self, node_ids: List[NodeID], timeout: Optional[int | float] = None
     ) -> List[bool]: ...
 
     def async_check_alive(
-        self, node_ips: List[bytes], timeout: Optional[int | float] = None
+        self, node_ids: List[NodeID], timeout: Optional[int | float] = None
     ) -> Future[List[bool]]: ...
 
     def drain_nodes(

@@ -2,7 +2,24 @@ import asyncio
 import contextvars
 import sys
 import threading
-from typing import Any, AsyncGenerator, Awaitable, Callable, Dict, Generator, Generic, Iterable, NoReturn, Optional, Protocol, Tuple, TypeVar, TypedDict, Union
+from typing import (
+    Any,
+    AsyncGenerator,
+    Awaitable,
+    Callable,
+    Dict,
+    Generator,
+    Generic,
+    Iterable,
+    NamedTuple,
+    NoReturn,
+    Optional,
+    Protocol,
+    Tuple,
+    TypeVar,
+    TypedDict,
+    Union
+)
 import concurrent.futures
 
 from ray._private.worker import Worker
@@ -107,6 +124,7 @@ import ray._private.profiling as profiling
 from ray._common.utils import decode
 from ray._private.utils import DeferSigint
 from ray._private.object_ref_generator import DynamicObjectRefGenerator
+from ray._private.custom_types import TensorTransportEnum
 
 from ray.includes.buffer import Buffer
 
@@ -240,6 +258,7 @@ __all__ = [
     #other ray imports
     "DeferSigint",
     "DynamicObjectRefGenerator",
+    "TensorTransportEnum",
     "decode",
     "disable_client_hook",
     "external_storage",
@@ -440,7 +459,19 @@ class ObjectRefGenerator(Generic[_R],Generator[ObjectRef[_R],None,None],AsyncGen
         #     "You cannot return or pass a generator to other task. "
         #     "Serializing a ObjectRefGenerator is not allowed.")
 
+#update module. _raylet.pyx also updates the type name of ObjectRef using cython, but can't do that here
+ObjectRefGenerator.__module__ = "ray"
+
+# For backward compatibility
 StreamingObjectRefGenerator = ObjectRefGenerator
+
+class SerializedRayObject(NamedTuple):
+    data: Optional[Buffer]
+    metadata: Optional[Buffer]
+    # If set to None, use the default object store transport. Data will be
+    # either inlined in `data` or found in the plasma object store.
+    tensor_transport: Optional[TensorTransportEnum]
+
 
 class LocationPtrDict(TypedDict):
     node_ids: list[str]
@@ -575,11 +606,9 @@ class CoreWorker:
 
     def set_actor_repr_name(self, repr_name:Union[str,bytes])->None: ...
 
-    def get_plasma_event_handler(self)->object: ... #TODO: Remove when https://github.com/ray-project/ray/pull/54085 merged
+    def get_objects(self, object_refs:Iterable[ObjectRef], timeout_ms:int=-1)->list[SerializedRayObject]: ...
 
-    def get_objects(self, object_refs:Iterable[ObjectRef], timeout_ms:int=-1)->list[tuple[None,None]|tuple[Buffer,bytes]]: ...
-
-    def get_if_local(self, object_refs:Iterable[ObjectRef], timeout_ms:int=-1)->list[tuple[None,None]|tuple[Buffer,bytes]]:
+    def get_if_local(self, object_refs:Iterable[ObjectRef], timeout_ms:int=-1)->list[SerializedRayObject]:
         """Get objects from local plasma store directly
         without a fetch request to raylet."""
         ...
@@ -618,8 +647,8 @@ class CoreWorker:
     def experimental_channel_register_reader(self, object_ref:ObjectRef): ...
 
     def put_serialized_object_and_increment_local_ref(
-            self, serialized_object:SerializedObject,
-            object_ref:Optional[ObjectRef]=None,
+            self,
+            serialized_object:SerializedObject,
             pin_object:bool=True,
             owner_address:Optional[str]=None,
             inline_small_object:bool=True,
@@ -645,7 +674,7 @@ class CoreWorker:
 
     def global_gc(self)->None: ...
 
-    def dump_object_store_memory_usage(self)->None: ...
+    def log_plasma_usage(self)->None: ...
 
     def get_memory_store_size(self)->int: ...
 
@@ -1050,8 +1079,7 @@ class _TestOnly_GcsActorSubscriber(_GcsSubscriber):
         """Polls for new actor messages.
 
         Returns:
-            A byte string of function key.
-            None if polling times out or subscriber closed.
+            A list of (key_id, ActorTableData) tuples for new actor messages
         """
         ...
 
