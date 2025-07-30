@@ -3,6 +3,7 @@ from dataclasses import dataclass, fields
 
 import ray
 from ray.serve._private.common import DeploymentHandleSource
+from ray.serve._private.constants import RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP
 from ray.serve._private.utils import DEFAULT
 
 
@@ -25,6 +26,8 @@ class InitHandleOptionsBase(ABC):
 
 @dataclass(frozen=True)
 class InitHandleOptions(InitHandleOptionsBase):
+    _run_router_in_separate_loop: bool = RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP
+
     @classmethod
     def create(cls, **kwargs) -> "InitHandleOptions":
         for k in list(kwargs.keys()):

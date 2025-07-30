@@ -150,6 +150,10 @@ def create_router(
     handle_options: InitHandleOptions,
     request_router_class: Optional[Callable] = None,
 ) -> Router:
+    import asyncio
+
+    from ray.serve._private.router import CurrentLoopRouter
+
     # NOTE(edoakes): this is lazy due to a nasty circular import that should be fixed.
     from ray.serve.context import _get_global_client
 
@@ -158,7 +162,21 @@ def create_router(
     controller_handle = _get_global_client()._controller
     is_inside_ray_client_context = inside_ray_client_context()
 
-    return SingletonThreadRouter(
+    if handle_options._run_router_in_separate_loop:
+        router_wrapper_cls = SingletonThreadRouter
+    else:
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            raise RuntimeError(
+                "No event loop running. You cannot use a handle initialized with "
+                "`_run_router_in_separate_loop=True` when not inside an asyncio event "
+                "loop."
+            )
+
+        router_wrapper_cls = CurrentLoopRouter
+
+    return router_wrapper_cls(
         controller_handle=controller_handle,
         deployment_id=deployment_id,
         handle_id=handle_id,
@@ -182,6 +200,7 @@ def add_grpc_address(grpc_server: gRPCGenericServer, server_address: str):
 def get_proxy_handle(endpoint: DeploymentID, info: EndpointInfo):
     # NOTE(zcin): needs to be lazy import due to a circular dependency.
     # We should not be importing from application_state in context.
+    from ray.serve._private.constants import RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP
     from ray.serve.context import _get_global_client
 
     client = _get_global_client()
@@ -197,6 +216,7 @@ def get_proxy_handle(endpoint: DeploymentID, info: EndpointInfo):
         handle._init(
             _prefer_local_routing=RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING,
             _source=DeploymentHandleSource.PROXY,
+            _run_router_in_separate_loop=RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP,
         )
 
     return handle.options(stream=not info.app_is_cross_language)
