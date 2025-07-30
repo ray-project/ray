@@ -35,18 +35,6 @@ class DiscreteBCTorchModule(TorchRLModule):
         return TorchCategorical
 
     @override(RLModule)
-    def output_specs_exploration(self):
-        return [Columns.ACTION_DIST_INPUTS]
-
-    @override(RLModule)
-    def output_specs_inference(self):
-        return [Columns.ACTION_DIST_INPUTS]
-
-    @override(RLModule)
-    def output_specs_train(self):
-        return [Columns.ACTION_DIST_INPUTS]
-
-    @override(RLModule)
     def _forward_inference(self, batch: Dict[str, Any]) -> Dict[str, Any]:
         with torch.no_grad():
             return self._forward_train(batch)

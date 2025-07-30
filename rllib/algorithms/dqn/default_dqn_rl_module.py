@@ -138,43 +138,6 @@ class DefaultDQNRLModule(RLModule, InferenceOnlyAPI, TargetNetworkAPI, QNetAPI):
         else:
             return {}
 
-    @override(RLModule)
-    def input_specs_train(self):
-        return [
-            Columns.OBS,
-            Columns.ACTIONS,
-            Columns.NEXT_OBS,
-        ]
-
-    @override(RLModule)
-    def output_specs_exploration(self):
-        return [Columns.ACTIONS]
-
-    @override(RLModule)
-    def output_specs_inference(self):
-        return [Columns.ACTIONS]
-
-    @override(RLModule)
-    def output_specs_train(self):
-        return [
-            QF_PREDS,
-            QF_TARGET_NEXT_PREDS,
-            # Add keys for double-Q setup.
-            *([QF_NEXT_PREDS] if self.uses_double_q else []),
-            # Add keys for distributional Q-learning.
-            *(
-                [
-                    ATOMS,
-                    QF_LOGITS,
-                    QF_PROBS,
-                    QF_TARGET_NEXT_PROBS,
-                ]
-                # We add these keys only when learning a distribution.
-                if self.num_atoms > 1
-                else []
-            ),
-        ]
-
     @abc.abstractmethod
     @OverrideToImplementCustomLogic
     def _qf_forward_helper(

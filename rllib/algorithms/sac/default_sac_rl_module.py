@@ -129,27 +129,6 @@ class DefaultSACRLModule(RLModule, InferenceOnlyAPI, TargetNetworkAPI, QNetAPI):
         #     return {}
         return {}
 
-    @override(RLModule)
-    def input_specs_train(self):
-        return [
-            SampleBatch.OBS,
-            SampleBatch.ACTIONS,
-            SampleBatch.NEXT_OBS,
-        ]
-
-    @override(RLModule)
-    def output_specs_train(self):
-        return (
-            [
-                QF_PREDS,
-                SampleBatch.ACTION_DIST_INPUTS,
-                ACTION_DIST_INPUTS_NEXT,
-            ]
-            + [QF_TWIN_PREDS]
-            if self.twin_q
-            else []
-        )
-
     @abstractmethod
     @OverrideToImplementCustomLogic
     def _qf_forward_train_helper(

@@ -560,8 +560,7 @@ class RLModule(Checkpointable, abc.ABC):
         method instead.
 
         Args:
-            batch: The input batch. This input batch should comply with
-                input_specs_inference().
+            batch: The input batch.
             **kwargs: Additional keyword arguments.
 
         Returns:
@@ -590,13 +589,11 @@ class RLModule(Checkpointable, abc.ABC):
         method instead.
 
         Args:
-            batch: The input batch. This input batch should comply with
-                input_specs_exploration().
+            batch: The input batch.
             **kwargs: Additional keyword arguments.
 
         Returns:
-            The output of the forward pass. This output should comply with the
-            output_specs_exploration().
+            The output of the forward pass.
         """
         return self._forward_exploration(batch, **kwargs)
 
@@ -620,13 +617,11 @@ class RLModule(Checkpointable, abc.ABC):
         method instead.
 
         Args:
-            batch: The input batch. This input batch should comply with
-                input_specs_train().
+            batch: The input batch.
             **kwargs: Additional keyword arguments.
 
         Returns:
-            The output of the forward pass. This output should comply with the
-            output_specs_train().
+            The output of the forward pass.
         """
         if self.inference_only:
             raise RuntimeError(
@@ -737,32 +732,6 @@ class RLModule(Checkpointable, abc.ABC):
             The underlying module.
         """
         return self
-
-    def output_specs_inference(self):
-        return [Columns.ACTION_DIST_INPUTS]
-
-    def output_specs_exploration(self):
-        return [Columns.ACTION_DIST_INPUTS]
-
-    def output_specs_train(self):
-        """Returns the output specs of the forward_train method."""
-        return {}
-
-    def input_specs_inference(self):
-        """Returns the input specs of the forward_inference method."""
-        return self._default_input_specs()
-
-    def input_specs_exploration(self):
-        """Returns the input specs of the forward_exploration method."""
-        return self._default_input_specs()
-
-    def input_specs_train(self):
-        """Returns the input specs of the forward_train method."""
-        return self._default_input_specs()
-
-    def _default_input_specs(self):
-        """Returns the default input specs."""
-        return [Columns.OBS]
 
 
 @Deprecated(
