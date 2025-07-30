@@ -12,7 +12,7 @@ import ray.experimental.internal_kv as internal_kv
 from ray._private import ray_constants
 from ray._private.async_utils import enable_monitor_loop_lag
 from ray._private.ray_constants import env_integer
-from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
+from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray._raylet import GcsClient
 from ray.dashboard.consts import (
     AVAILABLE_COMPONENT_NAMES_FOR_METRICS,
@@ -165,7 +165,7 @@ class DashboardHead:
         try:
             # If gcs is permanently dead, gcs client will exit the process
             # (see gcs_rpc_client.h)
-            await self.gcs_client.async_check_alive(node_ips=[], timeout=None)
+            await self.gcs_client.async_check_alive(node_ids=[], timeout=None)
         except Exception:
             logger.warning("Failed to check gcs aliveness, will retry", exc_info=True)
 

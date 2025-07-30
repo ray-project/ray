@@ -21,6 +21,7 @@ from ray.data._internal.execution.operators.base_physical_operator import (
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.zip_operator import ZipOperator
 from ray.data._internal.execution.util import memory_string
+from ray.data._internal.util import GiB
 from ray.data.context import DataContext
 from ray.util.debug import log_once
 
@@ -132,8 +133,8 @@ class ResourceManager:
             ):
                 logger.warning(
                     f"{WARN_PREFIX} Ray's object store is configured to use only "
-                    f"{object_store_fraction:.1%} of available memory ({object_store_memory/1e9:.1f}GB "
-                    f"out of {total_memory/1e9:.1f}GB total). For optimal Ray Data performance, "
+                    f"{object_store_fraction:.1%} of available memory ({object_store_memory/GiB:.1f}GiB "
+                    f"out of {total_memory/GiB:.1f}GiB total). For optimal Ray Data performance, "
                     f"we recommend setting the object store to at least 50% of available memory. "
                     f"You can do this by setting the 'object_store_memory' parameter when calling "
                     f"ray.init() or by setting the RAY_DEFAULT_OBJECT_STORE_MEMORY_PROPORTION environment variable."
@@ -704,9 +705,15 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             if op.min_max_resource_requirements()[1].gpu > 0:
                 # If an operator needs GPU, we just allocate all GPUs to it.
                 # TODO(hchen): allocate resources across multiple GPU operators.
-                self._op_budgets[op].gpu = (
+
+                # The op_usage can be more than the global limit in the following cases:
+                # 1. The op is setting a minimum concurrency that is larger than
+                #    available num of GPUs.
+                # 2. The cluster scales down, and the global limit decreases.
+                self._op_budgets[op].gpu = max(
                     self._resource_manager.get_global_limits().gpu
-                    - self._resource_manager.get_op_usage(op).gpu
+                    - self._resource_manager.get_op_usage(op).gpu,
+                    0,
                 )
             else:
                 self._op_budgets[op].gpu = 0
