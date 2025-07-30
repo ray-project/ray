@@ -25,6 +25,7 @@
 #include "ray/common/id.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/raylet_client/raylet_client.h"
+#include "ray/rpc/node_manager/raylet_client_pool.h"
 #include "ray/rpc/worker/core_worker_client.h"
 
 namespace ray {
@@ -43,8 +44,7 @@ class CoreWorkerClientPool {
   static std::function<void()> GetDefaultUnavailableTimeoutCallback(
       gcs::GcsClient *gcs_client,
       rpc::CoreWorkerClientPool *worker_client_pool,
-      std::function<std::shared_ptr<RayletClientInterface>(std::string, int32_t)>
-          raylet_client_factory,
+      rpc::RayletClientPool *raylet_client_pool,
       const rpc::Address &addr);
 
   /// Returns an open CoreWorkerClientInterface if one exists, and connect to one

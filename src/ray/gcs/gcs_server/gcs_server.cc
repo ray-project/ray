@@ -64,8 +64,7 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
                            /*record_stats=*/true,
                            ClusterID::Nil(),
                            RayConfig::instance().gcs_server_rpc_client_thread_num()),
-      raylet_client_pool_(
-          std::make_unique<rpc::NodeManagerClientPool>(client_call_manager_)),
+      raylet_client_pool_(std::make_unique<rpc::RayletClientPool>(client_call_manager_)),
       worker_client_pool_([this](const rpc::Address &addr) {
         return std::make_shared<rpc::CoreWorkerClient>(
             addr,

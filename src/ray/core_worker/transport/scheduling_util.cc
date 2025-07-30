@@ -68,7 +68,7 @@ void InboundRequest::MarkDependenciesResolved() { pending_dependencies_.clear();
 
 const TaskSpecification &InboundRequest::TaskSpec() const { return task_spec_; }
 
-DependencyWaiterImpl::DependencyWaiterImpl(DependencyWaiterInterface &dependency_client)
+DependencyWaiterImpl::DependencyWaiterImpl(RayletClientInterface &dependency_client)
     : dependency_client_(dependency_client) {}
 
 void DependencyWaiterImpl::Wait(const std::vector<rpc::ObjectReference> &dependencies,
