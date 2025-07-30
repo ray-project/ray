@@ -166,8 +166,8 @@ def test_multi_instantiation_class_nested_deployment_arg_dag(serve_instance):
 
 def test_class_factory(serve_instance):
     serve_dag = serve.deployment(class_factory()).bind(3)
-    url = get_application_url()
     handle = serve.run(serve_dag)
+    url = get_application_url()
     assert handle.get.remote().result() == 3
     assert httpx.get(url).text == "3"
 
