@@ -11,6 +11,7 @@ from ray.rllib.utils.typing import EpisodeType
 
 class AddIsFirstsToBatch(ConnectorV2):
     """Adds the "is_first" column to the batch."""
+
     @override(ConnectorV2)
     def __call__(
         self,
@@ -31,8 +32,7 @@ class AddIsFirstsToBatch(ConnectorV2):
                 batch,
                 "is_first",
                 item_to_add=(
-                    1.0 if sa_episode.t_started == 0 and len(sa_episode) == 0
-                    else 0.0
+                    1.0 if sa_episode.t_started == 0 and len(sa_episode) == 0 else 0.0
                 ),
                 single_agent_episode=sa_episode,
             )

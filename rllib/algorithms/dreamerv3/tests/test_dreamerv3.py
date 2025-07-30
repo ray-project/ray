@@ -59,7 +59,7 @@ class TestDreamerV3(unittest.TestCase):
                 use_float16=False,
             )
             .learners(
-                num_learners=0,#TODO  # Try with 2 Learners.
+                num_learners=2,
                 num_cpus_per_learner=1,
                 num_gpus_per_learner=0,
             )
@@ -83,9 +83,7 @@ class TestDreamerV3(unittest.TestCase):
                     )
                 )
             else:
-                config.env_runners(
-                    env_to_module_connector=None
-                )
+                config.env_runners(env_to_module_connector=None)
 
             # Add Atari preprocessing.
             if env == "ale_py:ALE/MsPacman-v5":
@@ -269,7 +267,8 @@ class TestDreamerV3(unittest.TestCase):
                 # paper's reported numbers ([1] and [3]).
                 num_params_world_model = sum(
                     np.prod(v.shape)
-                    for v in rl_module.world_model.parameters() if v.requires_grad
+                    for v in rl_module.world_model.parameters()
+                    if v.requires_grad
                 )
                 self.assertEqual(
                     num_params_world_model,
@@ -277,7 +276,8 @@ class TestDreamerV3(unittest.TestCase):
                 )
                 num_params_actor = sum(
                     np.prod(v.shape)
-                    for v in rl_module.actor.parameters() if v.requires_grad
+                    for v in rl_module.actor.parameters()
+                    if v.requires_grad
                 )
                 self.assertEqual(
                     num_params_actor,
@@ -285,7 +285,8 @@ class TestDreamerV3(unittest.TestCase):
                 )
                 num_params_critic = sum(
                     np.prod(v.shape)
-                    for v in rl_module.critic.parameters() if v.requires_grad
+                    for v in rl_module.critic.parameters()
+                    if v.requires_grad
                 )
                 self.assertEqual(
                     num_params_critic,

@@ -35,6 +35,7 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
     "actor", and "critic". Each of these optimizers might use a different learning rate,
     epsilon parameter, and gradient clipping thresholds and procedures.
     """
+
     def build(self) -> None:
         super().build()
 
@@ -338,11 +339,11 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
             continues_t0_to_H_BxT=dream_data["continues_dreamed_t0_to_H_BxT"],
             value_predictions_t0_to_H_BxT=dream_data["values_dreamed_t0_to_H_BxT"],
         )
-        #self.metrics.log_value(
+        # self.metrics.log_value(
         #    key=(module_id, "VALUE_TARGETS_H_BxT"),
         #    value=value_targets_t0_to_Hm1_BxT,
         #    window=1,  # <- single items (should not be mean/ema-reduced over time).
-        #)
+        # )
 
         CRITIC_L_total = self._compute_critic_loss(
             module_id=module_id,

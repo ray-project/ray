@@ -18,7 +18,7 @@ from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.dreamerv3.dreamerv3_catalog import DreamerV3Catalog
 from ray.rllib.algorithms.dreamerv3.utils import do_symlog_obs
 from ray.rllib.algorithms.dreamerv3.utils.add_is_firsts_to_batch import (
-    AddIsFirstsToBatch
+    AddIsFirstsToBatch,
 )
 from ray.rllib.algorithms.dreamerv3.utils.summaries import (
     report_dreamed_eval_trajectory_vs_samples,
@@ -443,9 +443,7 @@ class DreamerV3Config(AlgorithmConfig):
         else:
             raise ValueError(f"The framework {self.framework_str} is not supported.")
 
-        return RLModuleSpec(
-            module_class=module, catalog_class=DreamerV3Catalog
-        )
+        return RLModuleSpec(module_class=module, catalog_class=DreamerV3Catalog)
 
     @property
     @override(AlgorithmConfig)
@@ -484,7 +482,7 @@ class DreamerV3(Algorithm):
 
         # Share RLModule between EnvRunner and single (local) Learner instance.
         # To avoid possibly expensive weight synching step.
-        #if self.config.share_module_between_env_runner_and_learner:
+        # if self.config.share_module_between_env_runner_and_learner:
         #    assert self.env_runner.module is None
         #    self.env_runner.module = self.learner_group._learner.module[
         #        DEFAULT_MODULE_ID
@@ -677,7 +675,7 @@ class DreamerV3(Algorithm):
         with self.metrics.log_time((TIMERS, SYNCH_WORKER_WEIGHTS_TIMER)):
             # Only necessary if RLModule is not shared between (local) EnvRunner and
             # (local) Learner.
-            #if not self.config.share_module_between_env_runner_and_learner:
+            # if not self.config.share_module_between_env_runner_and_learner:
             self.metrics.log_value(NUM_SYNCH_WORKER_WEIGHTS, 1, reduce="sum")
             self.env_runner_group.sync_weights(
                 from_worker_or_learner_group=self.learner_group,

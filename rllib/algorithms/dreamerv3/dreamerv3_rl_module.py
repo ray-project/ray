@@ -41,7 +41,7 @@ class DreamerV3RLModule(RLModule, abc.ABC):
         )
         model_size = self.model_config["model_size"]
 
-        #if self.model_config["use_float16"]:
+        # if self.model_config["use_float16"]:
         #    tf.compat.v1.keras.layers.enable_v2_dtype_behavior()
         #    tf.keras.mixed_precision.set_global_policy("mixed_float16")
 
@@ -59,10 +59,9 @@ class DreamerV3RLModule(RLModule, abc.ABC):
             decoder=self.decoder,
             symlog_obs=symlog_obs,
         )
-        input_size = (
-            get_gru_units(model_size)
-            + get_num_z_classes(model_size) * get_num_z_categoricals(model_size)
-        )
+        input_size = get_gru_units(model_size) + get_num_z_classes(
+            model_size
+        ) * get_num_z_categoricals(model_size)
         self.actor = ActorNetwork(
             input_size=input_size,
             action_space=self.action_space,
@@ -79,15 +78,15 @@ class DreamerV3RLModule(RLModule, abc.ABC):
             world_model=self.world_model,
             actor=self.actor,
             critic=self.critic,
-            #horizon=horizon_H,
-            #gamma=gamma,
+            # horizon=horizon_H,
+            # gamma=gamma,
         )
         self.action_dist_cls = self.catalog.get_action_dist_cls(
             framework=self.framework
         )
 
         # Perform a test `call()` to force building the dreamer model's variables.
-        #if self.framework == "tf2":
+        # if self.framework == "tf2":
         #    test_obs = np.tile(
         #        np.expand_dims(self.observation_space.sample(), (0, 1)),
         #        reps=(B, T) + (1,) * len(self.observation_space.shape),

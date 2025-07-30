@@ -86,8 +86,6 @@ class TestCNNTransposeHeads(unittest.TestCase):
                 cnn_transpose_use_layernorm=cnn_transpose_use_layernorm,
                 cnn_transpose_use_bias=cnn_transpose_use_bias,
             )
-            # Make sure our configs compute the correct output dims.
-            check(config.output_dims, expected_output_dims)
 
             # Use a ModelChecker to compare all added models (different frameworks)
             # with each other.

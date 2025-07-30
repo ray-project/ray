@@ -379,7 +379,7 @@ class DreamerModel(nn.Module):
         states = start_states
         for i in range(timesteps_burn_in):
             states = self.world_model.forward_inference(
-                observations=observations[:, i:i+1],
+                observations=observations[:, i : i + 1],
                 previous_states=states,
                 is_first=torch.full((B,), 1.0 if i == 0 else 0.0),
             )
