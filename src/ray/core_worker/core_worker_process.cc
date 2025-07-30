@@ -274,6 +274,9 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       RAY_CHECK(!task_event_buffer->Enabled()) << "TaskEventBuffer should be disabled.";
     }
   }
+
+  auto raylet_client_pool = std::make_shared<rpc::RayletClientPool>(*client_call_manager);
+
   std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool =
       std::make_shared<rpc::CoreWorkerClientPool>([this](const rpc::Address &addr) {
         auto core_worker = GetCoreWorker();
@@ -283,11 +286,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
             rpc::CoreWorkerClientPool::GetDefaultUnavailableTimeoutCallback(
                 core_worker->gcs_client_.get(),
                 core_worker->core_worker_client_pool_.get(),
-                [this](const std::string &node_manager_address, int32_t port) {
-                  auto core_worker = GetCoreWorker();
-                  return std::make_shared<raylet::RayletClient>(
-                      node_manager_address, port, *core_worker->client_call_manager_);
-                },
+                core_worker->raylet_client_pool_.get(),
                 addr));
       });
 
@@ -400,18 +399,17 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       });
 
 #if defined(__APPLE__) || defined(__linux__)
-  // TODO(jhumphri): Combine with implementation in NodeManager.
-  // TODO(jhumphri): Pool these connections with the other clients in CoreWorker connected
-  // to the raylet.
-  auto raylet_channel_client_factory =
-      [this](const NodeID &node_id, rpc::ClientCallManager &client_call_manager) {
-        auto core_worker = GetCoreWorker();
-        auto node_info = core_worker->gcs_client_->Nodes().Get(node_id);
-        RAY_CHECK(node_info) << "No GCS info for node " << node_id;
-        return std::make_shared<raylet::RayletClient>(node_info->node_manager_address(),
-                                                      node_info->node_manager_port(),
-                                                      client_call_manager);
-      };
+  auto raylet_channel_client_factory = [this](const NodeID &node_id) {
+    auto core_worker = GetCoreWorker();
+    auto node_info = core_worker->gcs_client_->Nodes().Get(node_id);
+    RAY_CHECK(node_info) << "No GCS info for node " << node_id;
+    ray::rpc::Address addr;
+    addr.set_ip_address(node_info->node_manager_address());
+    addr.set_port(node_info->node_manager_port());
+    addr.set_raylet_id(node_id.Binary());
+    return core_worker->raylet_client_pool_->GetOrConnectByAddress(addr);
+  };
+
   auto experimental_mutable_object_provider =
       std::make_shared<experimental::MutableObjectProvider>(
           *plasma_store_provider->store_client(),
@@ -458,12 +456,6 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
         RAY_CHECK(addr.has_value()) << "Actor address not found for actor " << actor_id;
         return core_worker->core_worker_client_pool_->GetOrConnect(addr.value());
       });
-
-  auto raylet_client_factory = [this](const std::string &ip_address, int port) {
-    auto core_worker = GetCoreWorker();
-    return std::make_shared<raylet::RayletClient>(
-        ip_address, port, *core_worker->client_call_manager_);
-  };
 
   auto on_excess_queueing = [this](const ActorID &actor_id, uint64_t num_queued) {
     auto timestamp = std::chrono::duration_cast<std::chrono::seconds>(
@@ -521,7 +513,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       rpc_address,
       local_raylet_client,
       core_worker_client_pool,
-      raylet_client_factory,
+      raylet_client_pool,
       std::move(lease_policy),
       memory_store,
       *task_manager,
@@ -586,7 +578,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
 
   auto object_recovery_manager = std::make_unique<ObjectRecoveryManager>(
       rpc_address,
-      raylet_client_factory,
+      raylet_client_pool,
       local_raylet_client,
       object_lookup_fn,
       *task_manager,
@@ -614,6 +606,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
                                    io_service_,
                                    std::move(client_call_manager),
                                    std::move(core_worker_client_pool),
+                                   std::move(raylet_client_pool),
                                    std::move(periodical_runner),
                                    std::move(core_worker_server),
                                    std::move(rpc_address),

@@ -268,6 +268,7 @@ CoreWorker::CoreWorker(
     instrumented_io_context &io_service,
     std::unique_ptr<rpc::ClientCallManager> client_call_manager,
     std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool,
+    std::shared_ptr<rpc::RayletClientPool> raylet_client_pool,
     std::shared_ptr<PeriodicalRunner> periodical_runner,
     std::unique_ptr<rpc::GrpcServer> core_worker_server,
     rpc::Address rpc_address,
@@ -300,6 +301,7 @@ CoreWorker::CoreWorker(
       io_service_(io_service),
       client_call_manager_(std::move(client_call_manager)),
       core_worker_client_pool_(std::move(core_worker_client_pool)),
+      raylet_client_pool_(std::move(raylet_client_pool)),
       periodical_runner_(std::move(periodical_runner)),
       core_worker_server_(std::move(core_worker_server)),
       rpc_address_(std::move(rpc_address)),
@@ -1741,7 +1743,7 @@ void CoreWorker::TriggerGlobalGC() {
 Status CoreWorker::GetPlasmaUsage(std::string &output) {
   StatusOr<std::string> response = plasma_store_provider_->GetMemoryUsage();
   if (response.ok()) {
-    output = response.value();
+    output = std::move(response.value());
   }
   return response.status();
 }
@@ -2734,7 +2736,7 @@ Status CoreWorker::AllocateReturnObject(const ObjectID &object_id,
                                        owner_address,
                                        &data_buffer,
                                        /*created_by_worker=*/true));
-      object_already_exists = !data_buffer;
+      object_already_exists = data_buffer == nullptr;
     }
   }
   // Leave the return object as a nullptr if the object already exists.
@@ -2758,8 +2760,7 @@ Status CoreWorker::ExecuteTask(
     std::string *application_error) {
   RAY_LOG(DEBUG) << "Executing task, task info = " << task_spec.DebugString();
 
-  // If the worker is exited via Exit API, we shouldn't execute
-  // tasks anymore.
+  // If the worker is exited via Exit API, we shouldn't execute tasks anymore.
   if (IsExiting()) {
     absl::MutexLock lock(&mutex_);
     return Status::IntentionalSystemExit(
@@ -2837,7 +2838,6 @@ Status CoreWorker::ExecuteTask(
     }
   }
 
-  Status status;
   TaskType task_type = TaskType::NORMAL_TASK;
   if (task_spec.IsActorCreationTask()) {
     task_type = TaskType::ACTOR_CREATION_TASK;
@@ -2869,7 +2869,7 @@ Status CoreWorker::ExecuteTask(
     name_of_concurrency_group_to_execute = task_spec.ConcurrencyGroupName();
   }
 
-  status = options_.task_execution_callback(
+  Status status = options_.task_execution_callback(
       task_spec.CallerAddress(),
       task_type,
       task_spec.GetName(),
@@ -2958,8 +2958,8 @@ Status CoreWorker::ExecuteTask(
     Exit(rpc::WorkerExitType::SYSTEM_ERROR,
          absl::StrCat("Worker exits unexpectedly. ", status.message()),
          creation_task_exception_pb_bytes);
-  } else if (!status.ok()) {
-    RAY_LOG(FATAL) << "Unexpected task status type : " << status;
+  } else {
+    RAY_CHECK_OK(status) << "Unexpected task status type : " << status;
   }
   return status;
 }
