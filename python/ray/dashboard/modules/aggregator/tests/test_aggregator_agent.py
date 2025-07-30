@@ -33,9 +33,24 @@ from ray.core.generated.common_pb2 import TaskAttempt
 _EVENT_AGGREGATOR_AGENT_TARGET_PORT = find_free_port()
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="module")
 def httpserver_listen_address():
     return ("127.0.0.1", _EVENT_AGGREGATOR_AGENT_TARGET_PORT)
+
+
+_with_aggregator_port = pytest.mark.parametrize(
+    "ray_start_cluster_head_with_env_vars",
+    [
+        {
+            "env_vars": {
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_SEND_PORT": str(
+                    _EVENT_AGGREGATOR_AGENT_TARGET_PORT
+                ),
+            },
+        },
+    ],
+    indirect=True,
+)
 
 
 def get_event_aggregator_grpc_stub(webui_url, gcs_address, head_node_id):
@@ -60,19 +75,9 @@ def get_event_aggregator_grpc_stub(webui_url, gcs_address, head_node_id):
     return EventAggregatorServiceStub(channel)
 
 
-@pytest.mark.parametrize(
-    "ray_start_cluster_head_with_env_vars",
-    [
-        {
-            "env_vars": {
-                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_SEND_PORT": _EVENT_AGGREGATOR_AGENT_TARGET_PORT,
-            },
-        },
-    ],
-    indirect=True,
-)
+@_with_aggregator_port
 def test_aggregator_agent_receive_publish_events_normally(
-    ray_start_cluster_head_with_env_vars, httpserver, reset_httpserver_before_test
+    ray_start_cluster_head_with_env_vars, httpserver
 ):
     cluster = ray_start_cluster_head_with_env_vars
     stub = get_event_aggregator_grpc_stub(
@@ -174,19 +179,10 @@ def test_aggregator_agent_receive_event_full(
     assert reply.status.message == "event 1 dropped because event buffer full"
 
 
-@pytest.mark.parametrize(
-    "ray_start_cluster_head_with_env_vars",
-    [
-        {
-            "env_vars": {
-                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_SEND_PORT": _EVENT_AGGREGATOR_AGENT_TARGET_PORT,
-            },
-        },
-    ],
-    indirect=True,
-)
+
+@_with_aggregator_port
 def test_aggregator_agent_receive_dropped_at_core_worker(
-    ray_start_cluster_head_with_env_vars, httpserver, reset_httpserver_before_test
+    ray_start_cluster_head_with_env_vars, httpserver
 ):
     cluster = ray_start_cluster_head_with_env_vars
     stub = get_event_aggregator_grpc_stub(
@@ -237,19 +233,9 @@ def test_aggregator_agent_receive_dropped_at_core_worker(
     assert req_json[0]["message"] == "core worker event"
 
 
-@pytest.mark.parametrize(
-    "ray_start_cluster_head_with_env_vars",
-    [
-        {
-            "env_vars": {
-                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_SEND_PORT": _EVENT_AGGREGATOR_AGENT_TARGET_PORT,
-            },
-        },
-    ],
-    indirect=True,
-)
+@_with_aggregator_port
 def test_aggregator_agent_receive_multiple_events(
-    ray_start_cluster_head_with_env_vars, httpserver, reset_httpserver_before_test
+    ray_start_cluster_head_with_env_vars, httpserver
 ):
     cluster = ray_start_cluster_head_with_env_vars
     stub = get_event_aggregator_grpc_stub(
@@ -357,19 +343,9 @@ def test_aggregator_agent_receive_multiple_events_failures(
     )
 
 
-@pytest.mark.parametrize(
-    "ray_start_cluster_head_with_env_vars",
-    [
-        {
-            "env_vars": {
-                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_SEND_PORT": _EVENT_AGGREGATOR_AGENT_TARGET_PORT,
-            },
-        },
-    ],
-    indirect=True,
-)
+@_with_aggregator_port
 def test_aggregator_agent_receive_empty_events(
-    ray_start_cluster_head_with_env_vars, httpserver, reset_httpserver_before_test
+    ray_start_cluster_head_with_env_vars, httpserver
 ):
     cluster = ray_start_cluster_head_with_env_vars
     stub = get_event_aggregator_grpc_stub(
