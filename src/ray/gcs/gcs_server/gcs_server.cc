@@ -741,7 +741,7 @@ void GcsServer::InitGcsTaskManager() {
   rpc_server_.RegisterService(
       std::make_unique<rpc::TaskInfoGrpcService>(io_context, *gcs_task_manager_));
   rpc_server_.RegisterService(
-      std::make_unique<rpc::EventExportGrpcService>(io_context, *gcs_task_manager_));
+      std::make_unique<rpc::RayEventExportGrpcService>(io_context, *gcs_task_manager_));
 }
 
 void GcsServer::InstallEventListeners() {

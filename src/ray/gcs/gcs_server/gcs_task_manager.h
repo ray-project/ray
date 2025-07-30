@@ -91,7 +91,7 @@ class FinishedTaskActorTaskGcPolicy : public TaskEventsGcPolicyInterface {
 ///
 /// This class has its own io_context and io_thread, that's separate from other GCS
 /// services. All handling of all rpc should be posted to the single thread it owns.
-class GcsTaskManager : public rpc::TaskInfoHandler, public rpc::EventExportHandler {
+class GcsTaskManager : public rpc::TaskInfoHandler, public rpc::RayEventExportHandler {
  public:
   /// Create a GcsTaskManager.
   explicit GcsTaskManager(instrumented_io_context &io_service);
