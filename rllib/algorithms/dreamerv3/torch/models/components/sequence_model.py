@@ -6,20 +6,18 @@ https://arxiv.org/pdf/2301.04104v1.pdf
 from typing import Optional
 
 import gymnasium as gym
-import numpy as np
 
-from ray.rllib.algorithms.dreamerv3.tf.models.components.mlp import MLP
-from ray.rllib.algorithms.dreamerv3.utils import (
-    get_gru_units,
-    get_num_z_classes,
-    get_num_z_categoricals,
+from ray.rllib.algorithms.dreamerv3.torch.models.components import (
+    dreamerv3_normal_initializer,
 )
-from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.algorithms.dreamerv3.torch.models.components.mlp import MLP
+from ray.rllib.algorithms.dreamerv3.utils import get_gru_units, get_dense_hidden_units
+from ray.rllib.utils.framework import try_import_torch
 
-_, tf, _ = try_import_tf()
+torch, nn = try_import_torch()
 
 
-class SequenceModel(tf.keras.Model):
+class SequenceModel(nn.Module):
     """The "sequence model" of the RSSM, computing ht+1 given (ht, zt, at).
 
     Note: The "internal state" always consists of:
@@ -44,71 +42,45 @@ class SequenceModel(tf.keras.Model):
     def __init__(
         self,
         *,
-        model_size: Optional[str] = "XS",
+        input_size: int,
+        model_size: str = "XS",
         action_space: gym.Space,
         num_gru_units: Optional[int] = None,
     ):
         """Initializes a SequenceModel instance.
 
         Args:
+            input_size: The input size of the pre-layer (Dense) of the sequence model.
             model_size: The "Model Size" used according to [1] Appendinx B.
                 Use None for manually setting the number of GRU units used.
-            action_space: The action space of the environment used.
+            action_space: The action space the our environment used.
             num_gru_units: Overrides the number of GRU units (dimension of the h-state).
                 If None, use the value given through `model_size`
                 (see [1] Appendix B).
         """
-        super().__init__(name="sequence_model")
+        super().__init__()
 
-        self.model_size = model_size
+        num_gru_units = get_gru_units(model_size, override=num_gru_units)
         self.action_space = action_space
-        num_gru_units = get_gru_units(self.model_size, override=num_gru_units)
 
         # In Danijar's code, there is an additional layer (units=[model_size])
         # prior to the GRU (but always only with 1 layer), which is not mentioned in
         # the paper.
+        # In Danijar's code, this layer is called: `img_in`.
         self.pre_gru_layer = MLP(
+            input_size=input_size,
             num_dense_layers=1,
-            model_size=self.model_size,
+            model_size=model_size,
             output_layer_size=None,
         )
-        self.gru_unit = tf.keras.layers.GRU(
-            num_gru_units,
-            return_sequences=False,
-            return_state=False,
-            # Note: Changing these activations is most likely a bad idea!
-            # In experiments, setting one of both of them to silu deteriorated
-            # performance significantly.
-            # activation=tf.nn.silu,
-            # recurrent_activation=tf.nn.silu,
-        )
+        gru_input_size = get_dense_hidden_units(model_size)
 
-        # Trace self.call.
-        dl_type = tf.keras.mixed_precision.global_policy().compute_dtype or tf.float32
-        self.call = tf.function(
-            input_signature=[
-                tf.TensorSpec(
-                    shape=[None]
-                    + (
-                        [action_space.n]
-                        if isinstance(action_space, gym.spaces.Discrete)
-                        else list(action_space.shape)
-                    ),
-                    dtype=dl_type,
-                ),
-                tf.TensorSpec(shape=[None, num_gru_units], dtype=dl_type),
-                tf.TensorSpec(
-                    shape=[
-                        None,
-                        get_num_z_categoricals(self.model_size),
-                        get_num_z_classes(self.model_size),
-                    ],
-                    dtype=dl_type,
-                ),
-            ]
-        )(self.call)
+        # Use a custom GRU implementation w/ Normal init, layernorm, no bias
+        # (just like Danijar's GRU).
+        # In Danijar's code, this layer is called: `gru`.
+        self.gru_unit = DreamerV3GRU(input_size=gru_input_size, cell_size=num_gru_units)
 
-    def call(self, a, h, z):
+    def forward(self, a, h, z):
         """
 
         Args:
@@ -119,26 +91,42 @@ class SequenceModel(tf.keras.Model):
                 observation input. (B, num_categoricals, num_classes_per_categorical).
         """
         # Flatten last two dims of z.
-        z_shape = tf.shape(z)
-        z = tf.reshape(z, shape=(z_shape[0], -1))
-        out = tf.concat([z, a], axis=-1)
-        out.set_shape(
-            [
-                None,
-                (
-                    get_num_z_categoricals(self.model_size)
-                    * get_num_z_classes(self.model_size)
-                    + (
-                        self.action_space.n
-                        if isinstance(self.action_space, gym.spaces.Discrete)
-                        else int(np.prod(self.action_space.shape))
-                    )
-                ),
-            ]
-        )
+        z_shape = z.shape
+        z = z.view(z_shape[0], -1)
+        out = torch.cat([z, a], dim=-1)
         # Pass through pre-GRU layer.
         out = self.pre_gru_layer(out)
-        # Pass through (batch-major) GRU (expand axis=1 as the time axis).
-        h_next = self.gru_unit(tf.expand_dims(out, axis=1), initial_state=h)
+        # Pass through GRU (add extra time axis at 0 to make time-major).
+        h_next, _ = self.gru_unit(out.unsqueeze(0), h.unsqueeze(0))
+        h_next = h_next.squeeze(0)  # Remove extra time dimension again.
         # Return the GRU's output (the next h-state).
         return h_next
+
+
+class DreamerV3GRU(nn.Module):
+    """Analogous to Danijar's JAX GRU unit code."""
+
+    def __init__(self, input_size, cell_size):
+        super().__init__()
+        self.cell_size = cell_size
+        self.output_size = 3 * self.cell_size
+
+        self.linear = nn.Linear(
+            input_size + self.cell_size,
+            self.output_size,
+            bias=False,
+        )
+        dreamerv3_normal_initializer(list(self.linear.parameters()))
+
+        self.layer_norm = nn.LayerNorm(self.output_size, eps=0.001)
+
+    def forward(self, x, h):
+        x = torch.cat([h, x], dim=-1)
+        x = self.linear(x)
+        x = self.layer_norm(x)
+        reset, cand, update = torch.split(x, self.cell_size, dim=-1)
+        reset = torch.sigmoid(reset)
+        cand = torch.tanh(reset * cand)
+        update = torch.sigmoid(update - 1)
+        h = update * cand + (1 - update) * h
+        return h, h
