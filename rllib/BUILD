@@ -3997,22 +3997,6 @@ py_test(
 # subdirectory: envs/
 # ....................................
 py_test(
-    name = "examples/envs/agents_act_simultaneously",
-    size = "medium",
-    srcs = ["examples/envs/agents_act_simultaneously.py"],
-    args = [
-        "--num-agents=2",
-        "--stop-iters=3",
-    ],
-    main = "examples/envs/agents_act_simultaneously.py",
-    tags = [
-        "examples",
-        "exclusive",
-        "team:rllib",
-    ],
-)
-
-py_test(
     name = "examples/envs/agents_act_in_sequence",
     size = "medium",
     srcs = ["examples/envs/agents_act_in_sequence.py"],
@@ -4021,6 +4005,22 @@ py_test(
         "--stop-iters=3",
     ],
     main = "examples/envs/agents_act_in_sequence.py",
+    tags = [
+        "examples",
+        "exclusive",
+        "team:rllib",
+    ],
+)
+
+py_test(
+    name = "examples/envs/agents_act_simultaneously",
+    size = "medium",
+    srcs = ["examples/envs/agents_act_simultaneously.py"],
+    args = [
+        "--num-agents=2",
+        "--stop-iters=3",
+    ],
+    main = "examples/envs/agents_act_simultaneously.py",
     tags = [
         "examples",
         "exclusive",
