@@ -118,9 +118,46 @@ def _configure_resource_group(config):
         get_by_id = get_azure_sdk_function(
             client=resource_client.resources, function_name="get_by_id"
         )
-        subnet = get_by_id(vnid, resource_client.DEFAULT_API_VERSION).properties[
-            "subnets"
-        ][0]
+
+        # Query for supported API versions for Microsoft.Network/virtualNetworks
+        # because resource_client.DEFAULT_API_VERSION is not always supported.
+        # (Example: "2024-11-01" is the default at the time of this writing)
+        # Use "2024-10-01" as a fallback if we can't determine the latest stable version.
+        vnet_api_version = "2024-10-01"
+        try:
+            # Get supported API versions for Microsoft.Network provider
+            providers = resource_client.providers.get("Microsoft.Network")
+            vnet_resource_type = next(
+                (
+                    rt
+                    for rt in providers.resource_types
+                    if rt.resource_type == "virtualNetworks"
+                ),
+                None,
+            )
+            if vnet_resource_type and vnet_resource_type.api_versions:
+                stable_versions = [
+                    v for v in vnet_resource_type.api_versions if "preview" not in v
+                ]
+                versions_to_consider = (
+                    stable_versions or vnet_resource_type.api_versions
+                )
+                vnet_api_version = sorted(versions_to_consider)[-1]
+                logger.info(
+                    "Using API version: %s for virtualNetworks", vnet_api_version
+                )
+            else:
+                logger.warning(
+                    "Could not determine supported API versions for virtualNetworks, using fallback version %s",
+                    vnet_api_version,
+                )
+        except Exception as e:
+            logger.warning(
+                "Failed to query Microsoft.Network provider: %s. Using fallback API version 2024-10-01",
+                str(e),
+            )
+
+        subnet = get_by_id(vnid, vnet_api_version).properties["subnets"][0]
         template_vnet = next(
             (
                 rs

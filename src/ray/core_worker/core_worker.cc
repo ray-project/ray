@@ -487,6 +487,7 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
       RAY_CHECK(!task_event_buffer_->Enabled()) << "TaskEventBuffer should be disabled.";
     }
   }
+
   core_worker_client_pool_ =
       std::make_shared<rpc::CoreWorkerClientPool>([&](const rpc::Address &addr) {
         return std::make_shared<rpc::CoreWorkerClient>(
@@ -495,12 +496,11 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
             rpc::CoreWorkerClientPool::GetDefaultUnavailableTimeoutCallback(
                 gcs_client_.get(),
                 core_worker_client_pool_.get(),
-                [this](const std::string &node_manager_address, int32_t port) {
-                  return std::make_shared<raylet::RayletClient>(
-                      node_manager_address, port, *client_call_manager_);
-                },
+                raylet_client_pool_.get(),
                 addr));
       });
+
+  raylet_client_pool_ = std::make_shared<rpc::RayletClientPool>(*client_call_manager_);
 
   object_info_publisher_ = std::make_unique<pubsub::Publisher>(
       /*channels=*/
@@ -566,7 +566,7 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
       cluster_size_based_rate_limiter->OnNodeChanges(data);
     }
   };
-  RAY_CHECK_OK(gcs_client_->Nodes().AsyncSubscribeToNodeChange(on_node_change, nullptr));
+  gcs_client_->Nodes().AsyncSubscribeToNodeChange(std::move(on_node_change), nullptr);
 
   plasma_store_provider_ = std::make_shared<CoreWorkerPlasmaStoreProvider>(
       options_.store_socket,
@@ -602,17 +602,15 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
       });
 
 #if defined(__APPLE__) || defined(__linux__)
-  // TODO(jhumphri): Combine with implementation in NodeManager.
-  // TODO(jhumphri): Pool these connections with the other clients in CoreWorker connected
-  // to the raylet.
-  auto raylet_channel_client_factory =
-      [this](const NodeID &node_id, rpc::ClientCallManager &client_call_manager) {
-        auto node_info = gcs_client_->Nodes().Get(node_id);
-        RAY_CHECK(node_info) << "No GCS info for node " << node_id;
-        return std::make_shared<raylet::RayletClient>(node_info->node_manager_address(),
-                                                      node_info->node_manager_port(),
-                                                      client_call_manager);
-      };
+  auto raylet_channel_client_factory = [this](const NodeID &node_id) {
+    auto node_info = gcs_client_->Nodes().Get(node_id);
+    RAY_CHECK(node_info) << "No GCS info for node " << node_id;
+    ray::rpc::Address addr;
+    addr.set_ip_address(node_info->node_manager_address());
+    addr.set_port(node_info->node_manager_port());
+    addr.set_raylet_id(node_id.Binary());
+    return raylet_client_pool_->GetOrConnectByAddress(addr);
+  };
   experimental_mutable_object_provider_ =
       std::make_shared<experimental::MutableObjectProvider>(
           *plasma_store_provider_->store_client(),
@@ -707,11 +705,6 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
     }
   }
 
-  auto raylet_client_factory = [this](const std::string &ip_address, int port) {
-    return std::make_shared<raylet::RayletClient>(
-        ip_address, port, *client_call_manager_);
-  };
-
   auto on_excess_queueing = [this](const ActorID &actor_id, uint64_t num_queued) {
     auto timestamp = std::chrono::duration_cast<std::chrono::seconds>(
                          std::chrono::system_clock::now().time_since_epoch())
@@ -762,7 +755,7 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
       rpc_address_,
       local_raylet_client_,
       core_worker_client_pool_,
-      raylet_client_factory,
+      raylet_client_pool_,
       std::move(lease_policy),
       memory_store_,
       *task_manager_,
@@ -821,7 +814,7 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
       };
   object_recovery_manager_ = std::make_unique<ObjectRecoveryManager>(
       rpc_address_,
-      raylet_client_factory,
+      raylet_client_pool_,
       local_raylet_client_,
       object_lookup_fn,
       *task_manager_,
@@ -2200,7 +2193,7 @@ void CoreWorker::TriggerGlobalGC() {
 Status CoreWorker::GetPlasmaUsage(std::string &output) {
   StatusOr<std::string> response = plasma_store_provider_->GetMemoryUsage();
   if (response.ok()) {
-    output = response.value();
+    output = std::move(response.value());
   }
   return response.status();
 }
@@ -3192,7 +3185,7 @@ Status CoreWorker::AllocateReturnObject(const ObjectID &object_id,
                                        owner_address,
                                        &data_buffer,
                                        /*created_by_worker=*/true));
-      object_already_exists = !data_buffer;
+      object_already_exists = data_buffer == nullptr;
     }
   }
   // Leave the return object as a nullptr if the object already exists.
@@ -3216,8 +3209,7 @@ Status CoreWorker::ExecuteTask(
     std::string *application_error) {
   RAY_LOG(DEBUG) << "Executing task, task info = " << task_spec.DebugString();
 
-  // If the worker is exited via Exit API, we shouldn't execute
-  // tasks anymore.
+  // If the worker is exited via Exit API, we shouldn't execute tasks anymore.
   if (IsExiting()) {
     absl::MutexLock lock(&mutex_);
     return Status::IntentionalSystemExit(
@@ -3295,7 +3287,6 @@ Status CoreWorker::ExecuteTask(
     }
   }
 
-  Status status;
   TaskType task_type = TaskType::NORMAL_TASK;
   if (task_spec.IsActorCreationTask()) {
     task_type = TaskType::ACTOR_CREATION_TASK;
@@ -3327,7 +3318,7 @@ Status CoreWorker::ExecuteTask(
     name_of_concurrency_group_to_execute = task_spec.ConcurrencyGroupName();
   }
 
-  status = options_.task_execution_callback(
+  Status status = options_.task_execution_callback(
       task_spec.CallerAddress(),
       task_type,
       task_spec.GetName(),
@@ -3416,8 +3407,8 @@ Status CoreWorker::ExecuteTask(
     Exit(rpc::WorkerExitType::SYSTEM_ERROR,
          absl::StrCat("Worker exits unexpectedly. ", status.message()),
          creation_task_exception_pb_bytes);
-  } else if (!status.ok()) {
-    RAY_LOG(FATAL) << "Unexpected task status type : " << status;
+  } else {
+    RAY_CHECK_OK(status) << "Unexpected task status type : " << status;
   }
   return status;
 }
