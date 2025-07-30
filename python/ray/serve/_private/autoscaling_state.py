@@ -19,7 +19,7 @@ from ray.serve._private.utils import get_capacity_adjusted_num_replicas
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass
 class HandleMetricReport:
     """Report from a deployment handle on queued and ongoing requests.
 

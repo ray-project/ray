@@ -333,7 +333,6 @@ class RouterMetricsManager:
         self.metrics_store.prune_keys_and_compact_data(start_timestamp)
 
     def _get_aggregated_requests(self, timestamp: float):
-        running_requests = {}
         if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE and self.autoscaling_config:
             look_back_period = self.autoscaling_config.look_back_period_s
             window_start_time = timestamp - look_back_period
@@ -346,6 +345,8 @@ class RouterMetricsManager:
                 or num_requests
                 for replica_id, num_requests in self.num_requests_sent_to_replicas.items()  # noqa: E501
             }
+        else:
+            running_requests = {}
 
         return {
             "queued_requests": self.num_queued_requests,

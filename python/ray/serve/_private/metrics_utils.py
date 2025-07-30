@@ -110,7 +110,7 @@ class MetricsPusher:
         self._async_tasks.clear()
 
 
-@dataclass(order=True, frozen=True, slots=True)
+@dataclass(order=True)
 class TimeStampedValue:
     timestamp: float
     value: float = field(compare=False)
@@ -187,9 +187,10 @@ class InMemoryMetricsStore:
         if do_compact:
             self.data[key] = points_after_idx
 
-        if len(points_after_idx) == 0:
+        num_points_after_idx = len(points_after_idx)
+        if num_points_after_idx == 0:
             return None
-        return sum(point.value for point in points_after_idx) / len(points_after_idx)
+        return sum(point.value for point in points_after_idx) / num_points_after_idx
 
     def max(
         self, key: Hashable, window_start_timestamp_s: float, do_compact: bool = True
