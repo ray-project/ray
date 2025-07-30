@@ -721,7 +721,6 @@ def get_application_urls(
     use_localhost: bool = True,
     is_websocket: bool = False,
     exclude_route_prefix: bool = False,
-    check_app_is_running: bool = True,
     timeout: int = 15,
 ) -> List[str]:
     """Get the URL of the application.
@@ -734,13 +733,10 @@ def get_application_urls(
             for low latency benchmarking.
         is_websocket: Whether the url should be served as a websocket.
         exclude_route_prefix: The route prefix to exclude from the application.
-        check_app_is_running: Whether to check if the application is running before getting the URL.
         timeout: The timeout for the check.
     Returns:
         The URLs of the application.
     """
-    if check_app_is_running:
-        wait_for_condition(check_running, app_name=app_name, timeout=timeout)
     client = _get_global_client(_health_check_controller=True)
     serve_details = client.get_serve_details()
     assert (
@@ -790,7 +786,6 @@ def get_application_url(
     use_localhost: bool = True,
     is_websocket: bool = False,
     exclude_route_prefix: bool = False,
-    check_app_is_running: bool = True,
     timeout: int = 15,
 ) -> str:
     """Get the URL of the application.
@@ -803,7 +798,6 @@ def get_application_url(
             for low latency benchmarking.
         is_websocket: Whether the url should be served as a websocket.
         exclude_route_prefix: The route prefix to exclude from the application.
-        check_app_is_running: Whether to check if the application is running before getting the URL.
         timeout: The timeout for the check.
     Returns:
         The URL of the application. If there are multiple URLs, a random one is returned.
@@ -815,7 +809,6 @@ def get_application_url(
             use_localhost,
             is_websocket,
             exclude_route_prefix,
-            check_app_is_running,
             timeout,
         )
     )

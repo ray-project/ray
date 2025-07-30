@@ -159,9 +159,9 @@ def test_redeploy_single_replica(serve_instance, use_handle):
             handle = serve.get_deployment_handle(name, "app")
             return handle.handler.remote().result()
         else:
-            url = get_application_url(
-                "HTTP", app_name="app", check_app_is_running=check_app_is_running
-            )
+            if check_app_is_running:
+                wait_for_condition(check_running, app_name="app", timeout=15)
+            url = get_application_url("HTTP", app_name="app")
             return httpx.get(f"{url}/", timeout=None).json()
 
     signal_name = f"signal-{get_random_string()}"
@@ -299,11 +299,9 @@ def test_reconfigure_multiple_replicas(serve_instance, use_handle):
             handle = serve.get_deployment_handle(name, "app")
             ret = handle.handler.remote().result()
         else:
-            url = get_application_url(
-                "HTTP",
-                app_name="app",
-                check_app_is_running=check_app_is_running,
-            )
+            if check_app_is_running:
+                wait_for_condition(check_running, app_name="app", timeout=15)
+            url = get_application_url("HTTP", app_name="app")
             ret = httpx.get(f"{url}").text
         return ret.split("|")[0], ret.split("|")[1]
 
