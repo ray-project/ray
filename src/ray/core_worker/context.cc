@@ -294,7 +294,7 @@ void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
   }
   RAY_CHECK(current_job_id_ == task_spec.JobId());
   if (task_spec.IsNormalTask()) {
-    current_task_is_direct_call_ = true;
+    is_normal_task_worker_ = true;
     root_detached_actor_id_ = task_spec.RootDetachedActorId();
   } else if (task_spec.IsActorCreationTask()) {
     if (!current_actor_id_.IsNil()) {
@@ -302,7 +302,6 @@ void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
     }
     current_actor_id_ = task_spec.ActorCreationId();
     current_actor_should_exit_ = false;
-    current_actor_is_direct_call_ = true;
     current_actor_max_concurrency_ = task_spec.MaxActorConcurrency();
     current_actor_is_asyncio_ = task_spec.IsAsyncioActor();
     is_detached_actor_ = task_spec.IsDetachedActor();
@@ -383,24 +382,17 @@ TaskID WorkerContext::GetMainThreadOrActorCreationTaskID() const {
 }
 
 bool WorkerContext::ShouldReleaseResourcesOnBlockingCalls() const {
-  // Check if we need to release resources when we block:
-  //  - Driver doesn't acquire resources and thus doesn't need to release.
-  //  - We only support lifetime resources for actors, which can be
-  //    acquired when the actor is created, per call resources are not supported,
-  //    thus we don't need to release resources for actor calls.
-  return worker_type_ != WorkerType::DRIVER && !CurrentActorIsDirectCall() &&
-         CurrentThreadIsMain();
+  return IsNormalTaskWorker() && CurrentThreadIsMain();
 }
 
-// TODO(edoakes): simplify these checks now that we only support direct call mode.
-bool WorkerContext::CurrentActorIsDirectCall() const {
+bool WorkerContext::IsNormalTaskWorker() const {
   absl::ReaderMutexLock lock(&mutex_);
-  return current_actor_is_direct_call_;
+  return is_normal_task_worker_;
 }
 
-bool WorkerContext::CurrentTaskIsDirectCall() const {
+bool WorkerContext::IsActorWorker() const {
   absl::ReaderMutexLock lock(&mutex_);
-  return current_task_is_direct_call_ || current_actor_is_direct_call_;
+  return !current_actor_id_.IsNil();
 }
 
 int WorkerContext::CurrentActorMaxConcurrency() const {
