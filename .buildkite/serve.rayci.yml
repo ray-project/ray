@@ -75,7 +75,6 @@ steps:
         --except-tags post_wheel_build,gpu,ha_integration,serve_tracing
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --build-name servebuild --test-env=EXPECTED_PYTHON_VERSION=3.9 --test-env=RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD=0
-        --test-env=RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP=0
     depends_on: "servebuild"
 
   - label: ":ray-serve: serve: python {{matrix.python}} tests ({{matrix.worker_id}})"
