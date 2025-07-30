@@ -1,6 +1,7 @@
 import argparse
 import uuid
 from io import BytesIO
+from typing import Dict, List, Any
 
 import numpy as np
 import ray
@@ -17,20 +18,17 @@ OUTPUT_PREFIX = f"s3://ray-data-write-benchmark/{uuid.uuid4().hex}"
 
 BATCH_SIZE = 1024
 
-# Hardcode the image processor config to avoid re-reading the config file before
-# processing each image.
-IMAGE_PROCESSOR_CONFIG = {
-    "do_convert_rgb": None,
-    "do_normalize": True,
-    "do_rescale": True,
-    "do_resize": True,
-    "image_mean": [0.5, 0.5, 0.5],
-    "image_processor_type": "ViTImageProcessor",
-    "image_std": [0.5, 0.5, 0.5],
-    "resample": 2,
-    "rescale_factor": 0.00392156862745098,
-    "size": {"height": 224, "width": 224},
-}
+PROCESSOR = ViTImageProcessor(
+    do_convert_rgb=None,
+    do_normalize=True,
+    do_rescale=True,
+    do_resize=True,
+    image_mean=[0.5, 0.5, 0.5],
+    image_std=[0.5, 0.5, 0.5],
+    resample=2,
+    rescale_factor=0.00392156862745098,
+    size={"height": 224, "width": 224},
+)
 
 
 def parse_args():
@@ -57,7 +55,7 @@ def main():
                 Infer,
                 batch_size=BATCH_SIZE,
                 num_gpus=1,
-                concurrency=args.concurrency,
+                concurrency=args.inference_concurrency,
             )
             .write_parquet(OUTPUT_PREFIX)
         )
@@ -66,7 +64,7 @@ def main():
     benchmark.write_result()
 
 
-def decode(row):
+def decode(row: Dict[str, Any]) -> List[Dict[str, Any]]:
     image_data = b64decode(row["image"], None, True)
     image = Image.open(BytesIO(image_data))
     width, height = image.size
@@ -80,9 +78,8 @@ def decode(row):
     ]
 
 
-def preprocess(row):
-    processor = ViTImageProcessor.from_dict(IMAGE_PROCESSOR_CONFIG)
-    outputs = processor(images=row["image"])["pixel_values"]
+def preprocess(row: Dict[str, Any]) -> Dict[str, Any]:
+    outputs = PROCESSOR(images=row["image"])["pixel_values"]
     assert len(outputs) == 1, len(outputs)
     row["image"] = outputs[0]
     return row
@@ -95,7 +92,7 @@ class Infer:
             "google/vit-base-patch16-224"
         ).to(self._device)
 
-    def __call__(self, batch):
+    def __call__(self, batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
         with torch.inference_mode():
             next_tensor = torch.from_numpy(batch["image"]).to(
                 dtype=torch.float32, device=self._device, non_blocking=True
