@@ -340,26 +340,6 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
             /*min_concurrent_lease_cap_*/ 10);
   }
 
-  // Register a callback to monitor add/removed nodes.
-  // Note we capture a shared ownership of reference_counter_ and rate_limiter
-  // here to avoid destruction order fiasco between gcs_client and reference_counter_.
-  auto on_node_change = [temp_reference_counter = reference_counter,
-                         temp_rate_limiter = lease_request_rate_limiter](
-                            const NodeID &node_id, const rpc::GcsNodeInfo &data) {
-    if (data.state() == rpc::GcsNodeInfo::DEAD) {
-      RAY_LOG(INFO).WithField(node_id)
-          << "Node failure. All objects pinned on that node will be lost if object "
-             "reconstruction is not enabled.";
-      temp_reference_counter->ResetObjectsOnRemovedNode(node_id);
-    }
-    auto cluster_size_based_rate_limiter =
-        dynamic_cast<ClusterSizeBasedLeaseRequestRateLimiter *>(temp_rate_limiter.get());
-    if (cluster_size_based_rate_limiter != nullptr) {
-      cluster_size_based_rate_limiter->OnNodeChanges(data);
-    }
-  };
-  gcs_client->Nodes().AsyncSubscribeToNodeChange(std::move(on_node_change), nullptr);
-
   auto plasma_store_provider = std::make_shared<CoreWorkerPlasmaStoreProvider>(
       options.store_socket,
       local_raylet_client,
