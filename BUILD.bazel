@@ -1133,10 +1133,39 @@ copy_to_workspace(
     dstdir = "python/ray/serve/generated",
 )
 
-copy_to_workspace(
-    name = "cp_jemalloc",
+pkg_files(
+    name = "jemalloc_files",
     srcs = ["@jemalloc//:shared"],
-    dstdir = "python/ray/core/",
+    attributes = pkg_attributes(mode = "755"),
+    prefix = "ray/core/",
+    visibility = ["//visibility:private"],
+)
+
+pkg_zip(
+    name = "ray_pkg_zip",
+    srcs = [
+        ":gcs_server_files",
+        ":raylet_files",
+        ":raylet_so_files",
+        ":redis_files",
+    ] + select({
+        ":jemalloc": [":jemalloc_files"],
+        "//conditions:default": [],
+    }),
+    out = "ray_pkg.zip",
+    visibility = ["//visibility:private"],
+)
+
+copy_to_workspace(
+    name = "cp_core_py_proto",
+    srcs = [":core_py_proto"],
+    dstdir = "python/ray/core/generated",
+)
+
+copy_to_workspace(
+    name = "cp_serve_py_proto",
+    srcs = [":serve_py_proto"],
+    dstdir = "python/ray/serve/generated",
 )
 
 genrule(
@@ -1178,12 +1207,7 @@ genrule(
         ":python_sources",
         ":install_py_proto",
         ":ray_pkg_zip",
-    ] + select({
-        ":jemalloc": [
-            ":cp_jemalloc",
-        ],
-        "//conditions:default": [],
-    }),
+    ],
     outs = ["ray_pkg.out"],
     cmd = """
         unzip -o -q $(location :ray_pkg_zip) -d "python"

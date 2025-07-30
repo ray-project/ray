@@ -14,27 +14,51 @@
 
 #include "ray/gcs/gcs_client/accessor.h"
 
-#include <utility>
-
 #include "gtest/gtest.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
-using namespace ray::gcs;  // NOLINT
-using namespace ray::rpc;  // NOLINT
+namespace gcs {
 
 TEST(NodeInfoAccessorTest, TestHandleNotification) {
+  // First handle notification that node is alive.
+  // Then handle notification that node is dead.
+  // Then handle notification that node is alive, should be ignored though because node
+  // can only go from alive to dead, never back to alive again.
+
   NodeInfoAccessor accessor;
-  GcsNodeInfo node_info;
-  node_info.set_state(rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_DEAD);
+  int num_notifications = 0;
+  accessor.node_change_callback_ = [&](NodeID, const rpc::GcsNodeInfo &) {
+    num_notifications++;
+  };
   NodeID node_id = NodeID::FromRandom();
+
+  rpc::GcsNodeInfo node_info;
   node_info.set_node_id(node_id.Binary());
-  accessor.HandleNotification(std::move(node_info));
-  ASSERT_EQ(accessor.Get(node_id, false)->node_id(), node_id.Binary());
+  node_info.set_state(rpc::GcsNodeInfo::ALIVE);
+  accessor.HandleNotification(rpc::GcsNodeInfo(node_info));
+  const auto *gotten_node_info = accessor.Get(node_id, /*filter_dead_nodes=*/false);
+  ASSERT_EQ(gotten_node_info->node_id(), node_id.Binary());
+  ASSERT_EQ(gotten_node_info->state(), rpc::GcsNodeInfo::ALIVE);
+
+  node_info.set_state(rpc::GcsNodeInfo::DEAD);
+  accessor.HandleNotification(rpc::GcsNodeInfo(node_info));
+  gotten_node_info = accessor.Get(node_id, /*filter_dead_nodes=*/false);
+  ASSERT_EQ(gotten_node_info->state(), rpc::GcsNodeInfo::DEAD);
+  ASSERT_EQ(accessor.Get(node_id, /*filter_dead_nodes=*/true), nullptr);
+
+  node_info.set_state(rpc::GcsNodeInfo::ALIVE);
+  accessor.HandleNotification(rpc::GcsNodeInfo(node_info));
+  gotten_node_info = accessor.Get(node_id, /*filter_dead_nodes=*/false);
+  ASSERT_EQ(gotten_node_info->state(), rpc::GcsNodeInfo::DEAD);
+
+  ASSERT_EQ(num_notifications, 2);
 }
 
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }
+
+}  // namespace gcs
 }  // namespace ray
