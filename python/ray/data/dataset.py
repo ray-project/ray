@@ -2311,59 +2311,92 @@ class Dataset:
 
         # Handle stratified splitting
         if stratify is not None:
-            # Normalize test_size to float (only materialize if needed)
-            if isinstance(test_size, int):
-                ds_length = ds.count()
-                if test_size <= 0 or test_size >= ds_length:
-                    raise ValueError(
-                        "If `test_size` is an int, it must be bigger than 0 and smaller "
-                        f"than the size of the dataset ({ds_length}). "
-                        f"Got {test_size}."
-                    )
-                test_size = test_size / ds_length
-
-            if test_size <= 0 or test_size >= 1:
-                raise ValueError(
-                    "For stratified splitting, test_size must be between 0 and 1 "
-                    f"(or equivalent int). Got {test_size}."
-                )
-
-            def add_train_flag(group_batch):
-                n = len(group_batch)
-                test_count = int(n * test_size)
-                group_batch[_TRAIN_TEST_SPLIT_COLUMN] = np.array(
-                    [True] * (n - test_count) + [False] * test_count
-                )
-                return group_batch
-
-            split_ds = ds.groupby(stratify).map_groups(add_train_flag).materialize()
-
-            train_ds = split_ds.filter(
-                lambda row: row[_TRAIN_TEST_SPLIT_COLUMN]
-            ).drop_columns([_TRAIN_TEST_SPLIT_COLUMN])
-            test_ds = split_ds.filter(
-                lambda row: not row[_TRAIN_TEST_SPLIT_COLUMN]
-            ).drop_columns([_TRAIN_TEST_SPLIT_COLUMN])
-
-            return train_ds, test_ds
+            return self._stratified_train_test_split(ds, test_size, stratify)
 
         # Handle non-stratified splitting (existing logic)
         if isinstance(test_size, float):
-            if test_size <= 0 or test_size >= 1:
-                raise ValueError(
-                    "If `test_size` is a float, it must be bigger than 0 and smaller "
-                    f"than 1. Got {test_size}."
-                )
+            self._validate_test_size_float(test_size)
             return ds.split_proportionately([1 - test_size])
         else:
+            self._validate_test_size_int(test_size, ds)
             ds_length = ds.count()
-            if test_size <= 0 or test_size >= ds_length:
-                raise ValueError(
-                    "If `test_size` is an int, it must be bigger than 0 and smaller "
-                    f"than the size of the dataset ({ds_length}). "
-                    f"Got {test_size}."
-                )
             return ds.split_at_indices([ds_length - test_size])
+
+    def _stratified_train_test_split(
+        self, ds: "Dataset", test_size: Union[int, float], stratify: str
+    ) -> Tuple["MaterializedDataset", "MaterializedDataset"]:
+        """Perform stratified train-test split on the dataset.
+
+        Args:
+            ds: The dataset to split.
+            test_size: Test size as int or float.
+            stratify: Column name to use for stratified sampling.
+
+        Returns:
+            Train and test subsets as two MaterializedDatasets.
+        """
+        # Normalize test_size to float (only materialize if needed)
+        if isinstance(test_size, int):
+            ds_length = self._validate_test_size_int(test_size, ds)
+            test_size = test_size / ds_length
+        else:
+            self._validate_test_size_float(test_size)
+
+        def add_train_flag(group_batch):
+            n = len(group_batch)
+            test_count = int(n * test_size)
+            group_batch[_TRAIN_TEST_SPLIT_COLUMN] = np.array(
+                [True] * (n - test_count) + [False] * test_count
+            )
+            return group_batch
+
+        split_ds = ds.groupby(stratify).map_groups(add_train_flag).materialize()
+
+        train_ds = split_ds.filter(
+            lambda row: row[_TRAIN_TEST_SPLIT_COLUMN]
+        ).drop_columns([_TRAIN_TEST_SPLIT_COLUMN])
+        test_ds = split_ds.filter(
+            lambda row: not row[_TRAIN_TEST_SPLIT_COLUMN]
+        ).drop_columns([_TRAIN_TEST_SPLIT_COLUMN])
+
+        return train_ds, test_ds
+
+    def _validate_test_size_float(self, test_size: float) -> None:
+        """Validate test_size when it's a float.
+
+        Args:
+            test_size: Test size as float between 0 and 1.
+
+        Raises:
+            ValueError: If test_size is not in valid range.
+        """
+        if test_size <= 0 or test_size >= 1:
+            raise ValueError(
+                "If `test_size` is a float, it must be bigger than 0 and smaller "
+                f"than 1. Got {test_size}."
+            )
+
+    def _validate_test_size_int(self, test_size: int, ds: "Dataset") -> int:
+        """Validate test_size when it's an int and return dataset length.
+
+        Args:
+            test_size: Test size as int.
+            ds: Dataset to validate against.
+
+        Returns:
+            Dataset length for reuse.
+
+        Raises:
+            ValueError: If test_size is not in valid range.
+        """
+        ds_length = ds.count()
+        if test_size <= 0 or test_size >= ds_length:
+            raise ValueError(
+                "If `test_size` is an int, it must be bigger than 0 and smaller "
+                f"than the size of the dataset ({ds_length}). "
+                f"Got {test_size}."
+            )
+        return ds_length
 
     @PublicAPI(api_group=SMJ_API_GROUP)
     def union(self, *other: List["Dataset"]) -> "Dataset":
