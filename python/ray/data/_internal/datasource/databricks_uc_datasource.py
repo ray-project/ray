@@ -108,90 +108,97 @@ class DatabricksUCDatasource(Datasource):
             )
 
         chunks = manifest.get("chunks", [])
-        if not chunks:
-            logger.warning(f"No chunks found in manifest for query '{self.query!r}'. Returning empty datasource.")
-            self.num_chunks = 0
-            self._estimate_inmemory_data_size = 0
 
-            def empty_read_task(task_index, parallelism):
-                def empty_read_fn():
-                    yield pyarrow.table({})   # Yield empty PyArrow table for empty dataset
-                metadata = BlockMetadata(num_rows=0, size_bytes=0, input_files=None, exec_stats=None)
-                return ReadTask(read_fn=empty_read_fn, metadata=metadata)
+        # Make chunks metadata are ordered by index.
+        chunks = sorted(chunks, key=lambda x: x["chunk_index"])
+        num_chunks = len(chunks)
+        self.num_chunks = num_chunks
+        self._estimate_inmemory_data_size = sum(chunk["byte_count"] for chunk in chunks)
 
-            self._get_read_task = empty_read_task
-            
-        else:
-            # Make sure chunks metadata is ordered by index.
-            chunks = sorted(chunks, key=lambda x: x["chunk_index"])
-            num_chunks = len(chunks)
-            self.num_chunks = num_chunks
-            self._estimate_inmemory_data_size = sum(chunk["byte_count"] for chunk in chunks)
-
-            def get_read_task(task_index, parallelism):
-                # get chunk list to be read in this task and preserve original chunk order
-                chunk_index_list = list(
-                    np.array_split(range(num_chunks), parallelism)[task_index]
-                )
-    
-                num_rows = sum(
-                    chunks[chunk_index]["row_count"] for chunk_index in chunk_index_list
-                )
-                size_bytes = sum(
-                    chunks[chunk_index]["byte_count"] for chunk_index in chunk_index_list
-                )
+        def get_read_task(task_index, parallelism):
+            # Handle empty chunk list by yielding an empty PyArrow table
+            if num_chunks == 0:
+                import pyarrow as pa
 
                 metadata = BlockMetadata(
-                    num_rows=num_rows,
-                    size_bytes=size_bytes,
+                    num_rows=0,
+                    size_bytes=0,
                     input_files=None,
                     exec_stats=None,
                 )
 
-                def _read_fn():
-                    for chunk_index in chunk_index_list:
-                        resolve_external_link_url = urljoin(
-                            url_base, f"{statement_id}/result/chunks/{chunk_index}"
-                        )
-    
-                        resolve_response = requests.get(
-                            resolve_external_link_url, headers=req_headers
-                        )
-                        resolve_response.raise_for_status()
-                        external_url = resolve_response.json()["external_links"][0][
-                            "external_link"
-                        ]
-                        # NOTE: do _NOT_ send the authorization header to external urls
-                        raw_response = requests.get(external_url, auth = None , headers = None)
-                        raw_response.raise_for_status()
+                def empty_read_fn():
+                    yield pa.Table.from_pydict({})
 
-                        with pyarrow.ipc.open_stream(raw_response.content) as reader:
-                            arrow_table = reader.read_all()
+                return ReadTask(read_fn=empty_read_fn, metadata=metadata)
 
-                            yield arrow_table
+            # get chunk list to be read in this task and preserve original chunk order
+            chunk_index_list = list(
+                np.array_split(range(num_chunks), parallelism)[task_index]
+            )
 
-                def read_fn():
-                    if mock_setup_fn_path := os.environ.get(
-                        "RAY_DATABRICKS_UC_DATASOURCE_READ_FN_MOCK_TEST_SETUP_FN_PATH"
-                    ):
-                        import ray.cloudpickle as pickle
-    
-                        # This is for testing.
-                        with open(mock_setup_fn_path, "rb") as f:
-                            mock_setup = pickle.load(f)
-                        with mock_setup():
-                            yield from _read_fn()
-                    else:
+            num_rows = sum(
+                chunks[chunk_index]["row_count"] for chunk_index in chunk_index_list
+            )
+            size_bytes = sum(
+                chunks[chunk_index]["byte_count"] for chunk_index in chunk_index_list
+            )
+
+            metadata = BlockMetadata(
+                num_rows=num_rows,
+                size_bytes=size_bytes,
+                input_files=None,
+                exec_stats=None,
+            )
+
+            def _read_fn():
+                for chunk_index in chunk_index_list:
+                    resolve_external_link_url = urljoin(
+                        url_base, f"{statement_id}/result/chunks/{chunk_index}"
+                    )
+
+                    resolve_response = requests.get(
+                        resolve_external_link_url, headers=req_headers
+                    )
+                    resolve_response.raise_for_status()
+                    external_url = resolve_response.json()["external_links"][0][
+                        "external_link"
+                    ]
+                    # NOTE: do _NOT_ send the authorization header to external urls
+                    raw_response = requests.get(external_url, auth=None, headers=None)
+                    raw_response.raise_for_status()
+
+                    with pyarrow.ipc.open_stream(raw_response.content) as reader:
+                        arrow_table = reader.read_all()
+
+                    yield arrow_table
+
+            def read_fn():
+                if mock_setup_fn_path := os.environ.get(
+                    "RAY_DATABRICKS_UC_DATASOURCE_READ_FN_MOCK_TEST_SETUP_FN_PATH"
+                ):
+                    import ray.cloudpickle as pickle
+
+                    # This is for testing.
+                    with open(mock_setup_fn_path, "rb") as f:
+                        mock_setup = pickle.load(f)
+                    with mock_setup():
                         yield from _read_fn()
+                else:
+                    yield from _read_fn()
 
-                return ReadTask(read_fn=read_fn, metadata=metadata)
+            return ReadTask(read_fn=read_fn, metadata=metadata)
 
-            self._get_read_task = get_read_task
+        self._get_read_task = get_read_task
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
         return self._estimate_inmemory_data_size
 
     def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
+        # Handle empty dataset case
+        if self.num_chunks == 0:
+            return [self._get_read_task(0, 1)]
+
         assert parallelism > 0, f"Invalid parallelism {parallelism}"
 
         if parallelism > self.num_chunks:

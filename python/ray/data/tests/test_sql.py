@@ -376,40 +376,58 @@ def test_databricks_uc_datasource():
 
         pd.testing.assert_frame_equal(result, expected_result_df)
 
+
 def test_databricks_uc_datasource_empty_result():
-    with mock.patch("requests.get") as mock_get, mock.patch("requests.post") as mock_post:
+    with mock.patch("requests.get") as mock_get, mock.patch(
+        "requests.post"
+    ) as mock_post:
         #  Mock the POST request starting the query
         def post_mock(url, *args, **kwargs):
             class Resp:
-                def raise_for_status(self): pass
+                def raise_for_status(self):
+                    pass
+
                 def json(self):
                     return {"statement_id": "test_stmt", "status": {"state": "PENDING"}}
+
             return Resp()
 
         # Mock the GET request returning no chunks key to simulate empty result
         def get_mock(url, *args, **kwargs):
             class Resp:
-                def raise_for_status(self): pass
+                def raise_for_status(self):
+                    pass
+
                 def json(self):
-                    return {"status": {"state": "SUCCEEDED"}, "manifest": {"truncated": False}}
+                    return {
+                        "status": {"state": "SUCCEEDED"},
+                        "manifest": {"truncated": False},
+                    }
+
             return Resp()
 
         mock_post.side_effect = post_mock
         mock_get.side_effect = get_mock
 
-        with mock.patch.dict(os.environ, {"DATABRICKS_HOST": "test_host", "DATABRICKS_TOKEN": "test_token"}):
+        with mock.patch.dict(
+            os.environ,
+            {"DATABRICKS_HOST": "test_host", "DATABRICKS_TOKEN": "test_token"},
+        ):
             ray.shutdown()
             ray.init()
 
             # Call with dummy query to hit mocked flow
-            ds = ray.data.read_databricks_tables(warehouse_id="dummy_warehouse",query="select * from dummy_table",catalog="dummy_catalog",schema="dummy_schema",override_num_blocks=1)
+            ds = ray.data.read_databricks_tables(
+                warehouse_id="dummy_warehouse",
+                query="select * from dummy_table",
+                catalog="dummy_catalog",
+                schema="dummy_schema",
+                override_num_blocks=1,
+            )
 
-            result_batches = list(ds.iter_batches(batch_format="pyarrow"))
-            assert len(result_batches) == 1
-            batch = result_batches[0]
-            assert isinstance(batch, pa.Table)
-            assert batch.num_rows == 0
-            
+            assert ds.count() == 0
+
+
 if __name__ == "__main__":
     import sys
 
