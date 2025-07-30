@@ -11,7 +11,11 @@ from ray.experimental.channel.common import (  # noqa: F401
     SynchronousWriter,
     WriterInterface,
 )
-from ray.experimental.channel.communicator import Communicator
+from ray.experimental.channel.accelerator_context import AcceleratorContext
+from ray.experimental.channel.communicator import (
+    Communicator,
+    TorchTensorAllocator,
+)
 from ray.experimental.channel.cpu_communicator import CPUCommunicator
 from ray.experimental.channel.intra_process_channel import IntraProcessChannel
 from ray.experimental.channel.shared_memory_channel import (
@@ -28,6 +32,8 @@ __all__ = [
     "AwaitableBackgroundWriter",
     "CachedChannel",
     "Channel",
+    "AcceleratorContext",
+    "TorchTensorAllocator",
     "Communicator",
     "CPUCommunicator",
     "ReaderInterface",
