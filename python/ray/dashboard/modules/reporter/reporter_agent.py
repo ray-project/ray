@@ -1272,7 +1272,7 @@ class ReporterAgent(
         """
         # worker cmd name (ray::*) -> stats dict.
         proc_name_to_stats = defaultdict(list)
-        gpu_proc = set()  # Track processes with GPU usage
+        gpu_worker_proc_names = set()  # Track processes with GPU usage
 
         for stat in worker_stats:
             cmdline = stat.get("cmdline")
