@@ -171,6 +171,13 @@ number of output files, configure ``min_rows_per_file``.
 
 Partitioned Writes
 ~~~~~~~~~~~~~~~~~~~~~
+
+Partitioned writes help create well-organized, contiguous files by grouping related data together. This approach offers several key benefits:
+
+* **Efficient data pruning**: When filtering data by partition columns, only relevant partitions need to be read, significantly reducing I/O.
+* **Avoid small files problem**: Instead of scattering related records across many small files, partitioning groups similar data into fewer, larger files
+* **Improved data locality**: Related records are stored contiguously, making file access patterns more predictable
+
 .. testcode::
     import ray
     import pandas as pd
