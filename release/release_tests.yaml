@@ -4537,6 +4537,7 @@
 - name: text_embeddings_benchmark_5x_{{scaling}}
   python: "3.11"  # necessary for the llm-cu128 image
   working_dir: nightly_tests
+  team: data
 
   cluster:
     byod:
@@ -4557,6 +4558,7 @@
 - name: text_embeddings_benchmark_5x_{{scaling}}_preemptible
   python: "3.11"
   working_dir: nightly_tests
+  team: data
 
   cluster:
     byod:
