@@ -1495,7 +1495,6 @@ void NodeManager::ProcessFetchOrReconstructMessage(
     const TaskID task_id = from_flatbuf<TaskID>(*message->task_id());
     AsyncGetOrWait(client,
                    refs,
-                   task_id,
                    /*is_get_request=*/true);
   }
 }

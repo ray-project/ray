@@ -380,7 +380,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \return Void.
   void AsyncGetOrWait(const std::shared_ptr<ClientConnection> &client,
                       const std::vector<rpc::ObjectReference> &object_refs,
-                      const TaskID &current_task_id,
                       bool is_get_request);
 
   /// Handle a task that is blocked. Note that this callback may
