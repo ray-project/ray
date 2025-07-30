@@ -115,7 +115,7 @@ void ObjectRecoveryManager::PinExistingObjectCopy(
   RAY_LOG(DEBUG).WithField(object_id).WithField(node_id)
       << "Trying to pin copy of lost object at node";
 
-  std::shared_ptr<PinObjectsInterface> client;
+  std::shared_ptr<RayletClientInterface> client;
   if (node_id == NodeID::FromBinary(rpc_address_.raylet_id())) {
     client = local_object_pinning_client_;
   } else {
@@ -125,8 +125,7 @@ void ObjectRecoveryManager::PinExistingObjectCopy(
       RAY_LOG(DEBUG).WithField(node_id) << "Connecting to raylet";
       client_it = remote_object_pinning_clients_
                       .emplace(node_id,
-                               client_factory_(raylet_address.ip_address(),
-                                               raylet_address.port()))
+                               raylet_client_pool_->GetOrConnectByAddress(raylet_address))
                       .first;
     }
     client = client_it->second;
