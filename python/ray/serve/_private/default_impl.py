@@ -170,7 +170,7 @@ def create_router(
         except RuntimeError:
             raise RuntimeError(
                 "No event loop running. You cannot use a handle initialized with "
-                "`_run_router_in_separate_loop=True` when not inside an asyncio event "
+                "`_run_router_in_separate_loop=False` when not inside an asyncio event "
                 "loop."
             )
 
