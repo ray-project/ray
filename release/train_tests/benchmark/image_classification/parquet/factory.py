@@ -1,7 +1,6 @@
 # Standard library imports
 import logging
-import time
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional
 
 # Third-party imports
 from torch.utils.data import IterableDataset

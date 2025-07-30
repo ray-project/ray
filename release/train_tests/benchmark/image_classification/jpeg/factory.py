@@ -1,7 +1,6 @@
 # Standard library imports
 import logging
-import time
-from typing import Dict, Tuple
+from typing import Dict
 
 # Third-party imports
 import torchvision
