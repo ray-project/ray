@@ -51,7 +51,7 @@ $ cd ray/rllib/tuned_examples/dreamerv3/
 $ python atari_100k_dreamerv3.py --env ale_py:ALE/Pong-v5
 ```
 
-### [DeepMind Control Suite (vision)](../../tuned_examples/dreamerv3/dm_control_suite_vision.py)
+### [DeepMind Control Suite (vision)](../../tuned_examples/dreamerv3/dm_control_suite_vision_dreamerv3.py)
 ```shell
 $ cd ray/rllib/tuned_examples/dreamerv3/
 $ python dm_control_suite_vision_dreamerv3.py --env DMC/cartpole/swingup
@@ -123,7 +123,7 @@ $ python flappy_bird.py
 
 This should be it. Feel free to try out running this on multiple GPUs using these
 more advanced config examples [here (Atari100k)](../../tuned_examples/dreamerv3/atari_100k_dreamerv3.py) and
-[here (DM Control Suite)](../../tuned_examples/dreamerv3/dm_control_suite_vision.py).
+[here (DM Control Suite)](../../tuned_examples/dreamerv3/dm_control_suite_vision_dreamerv3.py).
 Also see the notes below on good recipes for running on multiple GPUs.
 
 <b>IMPORTANT:</b> DreamerV3 out-of-the-box only supports image observation spaces of
