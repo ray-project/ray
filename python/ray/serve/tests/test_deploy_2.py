@@ -112,8 +112,14 @@ def test_http_proxy_request_cancellation(serve_instance):
             return ret_val
 
     serve.run(A.bind())
-
     url = get_application_url("HTTP")
+    # Windows usually resolves "localhost" to the IPv6 loopback ::1 first, but the
+    # Serve proxy is listening only on IPv4.  The initial TCP connect then hangs,
+    # breaking the short‑timeout logic in this test.  Using the literal IPv4 address
+    # 127.0.0.1 skips the IPv6 attempt and makes the test deterministic on Windows.
+    if sys.platform == "win32":
+        url = url.replace("localhost", "127.0.0.1")
+
     with ThreadPoolExecutor() as pool:
         # Send the first request, it should block for the result
         first_blocking_fut = pool.submit(functools.partial(httpx.get, url, timeout=100))
