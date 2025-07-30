@@ -93,7 +93,7 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
 
 class MockGcsClientNodeAccessor : public gcs::NodeInfoAccessor {
  public:
-  bool IsRemoved(const NodeID &node_id) const override { return false; }
+  bool IsNodeDead(const NodeID &node_id) const override { return false; }
 };
 
 class MockGcsClient : public gcs::GcsClient {

@@ -145,7 +145,7 @@ class MutableObjectProvider : public MutableObjectProviderInterface {
       std::function<std::shared_ptr<RayletClientInterface>(const NodeID &)>;
 
   MutableObjectProvider(plasma::PlasmaClientInterface &plasma,
-                        RayletFactory factory,
+                        RayletFactory raylet_client_factory,
                         std::function<Status(void)> check_signals);
 
   ~MutableObjectProvider() override;

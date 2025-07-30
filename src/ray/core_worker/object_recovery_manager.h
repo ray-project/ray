@@ -44,8 +44,8 @@ class ObjectRecoveryManager {
       rpc::Address rpc_address,
       std::shared_ptr<rpc::RayletClientPool> raylet_client_pool,
       std::shared_ptr<RayletClientInterface> local_object_pinning_client,
-      std::function<Status(const ObjectID &object_id,
-                           const ObjectLookupCallback &callback)> object_lookup,
+      std::function<void(const ObjectID &object_id, const ObjectLookupCallback &callback)>
+          object_lookup,
       TaskManagerInterface &task_manager,
       ReferenceCounter &reference_counter,
       CoreWorkerMemoryStore &in_memory_store,
@@ -125,7 +125,7 @@ class ObjectRecoveryManager {
   std::shared_ptr<RayletClientInterface> local_object_pinning_client_;
 
   /// Function to lookup an object's locations from the global database.
-  std::function<Status(const ObjectID &object_id, const ObjectLookupCallback &callback)>
+  std::function<void(const ObjectID &object_id, const ObjectLookupCallback &callback)>
       object_lookup_;
 
   /// Used to store object values (InPlasmaError) if recovery succeeds.
