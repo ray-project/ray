@@ -427,7 +427,7 @@ class ReporterAgent(
         self._agent_proc = None
         # The last reported worker proc names (e.g., ray::*).
         self._latest_worker_proc_names = set()
-        self._latest_gpu_proc = set()
+        self._latest_gpu_worker_proc_names = set()
         self._network_stats_hist = [(0, (0.0, 0.0))]  # time, (sent, recv)
         self._disk_io_stats_hist = [
             (0, (0.0, 0.0, 0, 0))
@@ -1286,7 +1286,7 @@ class ReporterAgent(
                     stat.get("gpu_memory_usage", 0) > 0
                     or stat.get("gpu_utilization", 0) > 0
                 ):
-                    gpu_proc.add(proc_name)
+                    gpu_worker_proc_names.add(proc_name)
             # We will lose worker stats that don't follow the ray worker proc
             # naming convention. Theoretically, there should be no data loss here
             # because all worker processes are renamed to ray::.
@@ -1306,10 +1306,10 @@ class ReporterAgent(
             records.extend(self._generate_reseted_stats_record(stale_proc_name))
 
         # Reset GPU metrics for processes that no longer use GPU
-        stale_gpu_procs = self._latest_gpu_proc - gpu_proc
+        stale_gpu_worker_proc_names = self._latest_gpu_worker_proc_names - gpu_worker_proc_names
         self._latest_gpu_worker_proc_names = gpu_worker_proc_names
 
-        for stale_gpu_proc in stale_gpu_procs:
+        for stale_gpu_proc in stale_gpu_worker_proc_names:
             records.extend(self._generate_reseted_gpu_stats_record(stale_gpu_proc))
 
         return records
