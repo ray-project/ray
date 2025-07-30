@@ -5,7 +5,7 @@ import ray
 from ray.experimental.collective import create_collective_group
 
 
-@ray.remote(num_gpus=1, num_cpus=0)
+@ray.remote(num_gpus=1, num_cpus=0, enable_tensor_transport=True)
 class GPUTestActor:
     @ray.method(tensor_transport="nccl")
     def echo(self, data):
