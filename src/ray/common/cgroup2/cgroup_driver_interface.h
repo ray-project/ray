@@ -138,10 +138,12 @@ class CgroupDriverInterface {
                                    const std::string &controller) = 0;
   /**
     Adds a resource constraint to the cgroup. To add a constraint
-    1) the cgroup must have the relevant controller enabled e.g. memory.min cannot be
+    1. the cgroup must have the relevant controller enabled e.g. memory.min cannot be
     enabled if the memory controller is not enabled.
-    2) the constraint must be supported in Ray (@see supported_constraints_).
-    3) the constraint value must be in the correct range (@see supported_constraints_).
+    2. the constraint must be supported by ray
+    @ref CgroupDriverInterface::supported_constraints_ "supported_constraints".
+    3. the constraint value must be in the correct range
+    @ref CgroupDriverInterface::supported_constraints_ "supported_constraints".
 
     @param cgroup is an absolute path to the cgroup.
     @param constraint the name of the constraint.
