@@ -123,16 +123,23 @@ class GPUObjectStore:
         #
         # Note: Currently, `_gpu_object_store` is only supported for Ray Actors.
         self._gpu_object_store: Dict[str, List["torch.Tensor"]] = {}
+        self._tensor_to_object_id: Dict["torch.Tensor", str] = {}
         # Synchronization for GPU object store.
         self._lock = threading.RLock()
         # Signal when an object becomes present in the object store.
         self._object_present_cv = threading.Condition(self._lock)
+        # Signal when an object is freed from the object store.
+        self._object_freed_cv = threading.Condition(self._lock)
         # A set of object IDs that are the primary copy.
         self._primary_gpu_object_ids: Set[str] = set()
 
     def has_object(self, obj_id: str) -> bool:
         with self._lock:
             return obj_id in self._gpu_object_store
+
+    def has_tensor(self, tensor: "torch.Tensor") -> bool:
+        with self._lock:
+            return tensor in self._tensor_to_object_id
 
     def get_object(self, obj_id: str) -> Optional[List["torch.Tensor"]]:
         with self._lock:
@@ -156,6 +163,8 @@ class GPUObjectStore:
             if is_primary:
                 self._primary_gpu_object_ids.add(obj_id)
             self._gpu_object_store[obj_id] = gpu_object
+            for tensor in gpu_object:
+                self._tensor_to_object_id[tensor] = obj_id
             self._object_present_cv.notify_all()
 
     def is_primary_copy(self, obj_id: str) -> bool:
@@ -227,9 +236,23 @@ class GPUObjectStore:
                 obj_id in self._gpu_object_store
             ), f"obj_id={obj_id} not found in GPU object store"
             tensors = self._gpu_object_store.pop(obj_id)
+            for tensor in tensors:
+                self._tensor_to_object_id.pop(tensor)
+            self._object_freed_cv.notify_all()
             if obj_id in self._primary_gpu_object_ids:
                 self._primary_gpu_object_ids.remove(obj_id)
             return tensors
+
+    def wait_tensor_freed(
+        self, tensor: "torch.Tensor", timeout: Optional[float] = None
+    ) -> None:
+        """
+        Wait for the object to be freed from the GPU object store.
+        """
+        with self._object_freed_cv:
+            self._object_freed_cv.wait_for(
+                lambda: tensor not in self._tensor_to_object_id, timeout=timeout
+            )
 
     def get_num_objects(self) -> int:
         """

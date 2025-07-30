@@ -422,5 +422,40 @@ def test_tensor_extracted_from_tensordict_in_gpu_object_store(ray_start_regular)
     assert torch.equal(ret_val_src[1], td["reward"])
 
 
+def test_wait_tensor_freed(ray_start_regular):
+    @ray.remote(enable_tensor_transport=True)
+    class GPUTestActor:
+        @ray.method(tensor_transport="gloo")
+        def save(self, data: torch.Tensor):
+            self.data = data
+            return data
+
+        def increment(self, data: torch.Tensor):
+            data += 1
+            return data
+
+        def increment_saved(self):
+            ray.experimental.wait_tensor_freed(self.data)
+            self.data += 1
+            return self.data
+
+    world_size = 2
+    actors = [GPUTestActor.remote() for _ in range(world_size)]
+    create_collective_group(actors, backend="torch_gloo")
+
+    medium_tensor = torch.randn((500, 500))
+    sender, receiver = actors
+    ref = sender.save.remote(medium_tensor)
+    # Sender writes to the GPU object while Ray sends the object to a receiver
+    # task in the background.
+    tensor1 = sender.increment_saved.remote()
+    tensor2 = receiver.increment.remote(ref)
+    del ref
+    # Check that Ray completes the transfer before the sender writes to the GPU
+    # object.
+    assert torch.allclose(ray.get(tensor1), medium_tensor + 1)
+    assert torch.allclose(ray.get(tensor2), medium_tensor + 1)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))

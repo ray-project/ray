@@ -25,6 +25,55 @@ class GPUObjectMeta(NamedTuple):
     tensor_meta: List[Tuple["torch.Size", "torch.dtype"]]
 
 
+def wait_tensor_freed(tensor: "torch.Tensor", timeout: Optional[float] = None):
+    """
+    Wait for the tensor to be freed from this actor's GPU object store.
+
+    This function is useful for cases where an actor keeps a reference to a
+    tensor after returning the tensor from a task annotated with
+    `@ray.method(tensor_transport=...)`. Tensors that are returned by these
+    tasks may be sent to other actors while the corresponding `ray.ObjectRef` is
+    still in scope. If the actor modifies the tensor while it is still in the
+    actor's GPU object store, then Ray may end up sending invalid data to other
+    tasks. Call this function to ensure that the `ray.ObjectRef` has gone out of
+    scope and therefore the tensor is safe to write to again.
+
+    Examples:
+        >>> import ray
+        >>> @ray.remote(enable_tensor_transport=True)
+        ... class MyActor:
+        ...     @ray.method(tensor_transport="gloo")
+        ...     def zeros(self):
+        ...         # The actor keeps a reference to the tensor.
+        ...         self.tensor = torch.zeros(10, 10)
+        ...         return self.tensor
+        ...     def increment_saved(self):
+        ...         ray.experimental.wait_tensor_freed(self.tensor)
+        ...         # Ray no longer stores the tensor, so it is
+        ...         # safe to modify the tensor now.
+        ...         self.tensor += 1
+        ...     def read(self, tensor: torch.Tensor):
+        ...         return tensor
+        >>> actors = [MyActor.remote(), MyActor.remote()]
+        >>> ray.experimental.collective.create_collective_group(
+        ...     actors,
+        ...     backend="gloo")
+        >>> ref = actors[0].zeros.remote()
+        >>> tensor0 = actors[0].increment_saved.remote()
+        >>> tensor1 = actors[1].read.remote(ref)
+        >>> assert torch.allclose(tensor0, tensor1 + 1)
+
+
+    Args:
+        tensor: The tensor to wait to be freed.
+        timeout: The timeout in seconds. Set to None to wait indefinitely. Note
+            that this function could then hang if the `ray.ObjectRef` that
+            refers to this tensor never goes out of scope.
+    """
+    gpu_object_manager = ray.worker.global_worker.gpu_object_manager
+    gpu_object_manager.gpu_object_store.wait_tensor_freed(tensor, timeout)
+
+
 class GPUObjectManager:
     def __init__(self):
         # A dictionary that maps from owned object's ID to GPUObjectMeta.
