@@ -12,26 +12,6 @@ ray_cc_library(
 )
 
 ray_cc_test(
-    name = "sysfs_cgroup_driver_integration_test",
-    srcs = ["sysfs_cgroup_driver_integration_test.cc"],
-    tags = [
-        "cgroupv2",
-        "exclusive",
-        "no_windows",
-        "team:core",
-    ],
-    deps = [
-        ":cgroup_test_utils",
-        "//src/ray/common:status",
-        "//src/ray/common:status_or",
-        "//src/ray/common/cgroup2:sysfs_cgroup_driver",
-        "//src/ray/common/test:testing",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-ray_cc_test(
     name = "sysfs_cgroup_driver_test",
     srcs = ["sysfs_cgroup_driver_test.cc"],
     tags = [
