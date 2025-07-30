@@ -554,7 +554,7 @@
       cluster:
         cluster_compute: fixed_size_cluster_compute.yaml
         byod:
-          post_build_script: post_build_script.sh
+          post_build_script: byod_install_pybase64.sh
       run:
         script: python main.py --inference-concurrency 40 40
 
@@ -562,7 +562,7 @@
       cluster:
         cluster_compute: autoscaling_cluster_compute.yaml
         byod:
-          post_build_script: post_build_script.sh
+          post_build_script: byod_install_pybase64.sh
       run:
         script: python main.py --inference-concurrency 1 40
 
