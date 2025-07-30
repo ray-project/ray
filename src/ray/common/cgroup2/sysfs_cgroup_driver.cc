@@ -98,7 +98,7 @@ Status SysFsCgroupDriver::CheckCgroup(const std::string &cgroup_path) {
                           strerror(errno)));
     }
     return Status::InvalidArgument(
-        absl::StrFormat("Failed to stat cgroup directory at path %s. because of %s",
+        absl::StrFormat("Failed to stat cgroup directory at path %s because of %s",
                         cgroup_path,
                         strerror(errno)));
   }
@@ -111,7 +111,7 @@ Status SysFsCgroupDriver::CheckCgroup(const std::string &cgroup_path) {
                         cgroup_path));
   }
 
-  // Note: the process needs execute permissions for the cgroup directory
+  // NOTE: the process needs execute permissions for the cgroup directory
   // to traverse the filesystem.
   if (access(cgroup_path.c_str(), R_OK | W_OK | X_OK) == -1) {
     return Status::PermissionDenied(
@@ -206,7 +206,7 @@ Status SysFsCgroupDriver::MoveAllProcesses(const std::string &from,
   while (in_file >> pid) {
     if (in_file.fail()) {
       return Status::Invalid(absl::StrFormat(
-          "Could not read pid from cgroup procs file %s", from_procs_file_path));
+          "Could not read PID from cgroup procs file %s", from_procs_file_path));
     }
     out_file << pid;
     out_file.flush();
