@@ -2,7 +2,6 @@ from abc import ABC, abstractmethod
 
 from config import BenchmarkConfig
 from dataloader_factory import BaseDataLoaderFactory
-from constants import DatasetKey
 
 
 class BenchmarkFactory(ABC):
