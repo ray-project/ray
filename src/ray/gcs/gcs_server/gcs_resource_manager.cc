@@ -191,8 +191,7 @@ void GcsResourceManager::HandleGetAllResourceUsage(
     rpc::SendReplyCallback send_reply_callback) {
   if (!node_resource_usages_.empty()) {
     rpc::ResourceUsageBatchData batch;
-    absl::flat_hash_map<google::protobuf::Map<std::string, double>, rpc::ResourceDemand>
-        aggregate_load;
+    absl::flat_hash_map<ResourceDemandKey, rpc::ResourceDemand> aggregate_load;
 
     for (const auto &usage : node_resource_usages_) {
       // Aggregate the load reported by each raylet.
@@ -217,8 +216,11 @@ void GcsResourceManager::HandleGetAllResourceUsage(
     for (const auto &demand : aggregate_load) {
       auto demand_proto = batch.mutable_resource_load_by_shape()->add_resource_demands();
       demand_proto->CopyFrom(demand.second);
-      for (const auto &resource_pair : demand.first) {
+      for (const auto &resource_pair : demand.first.shape) {
         (*demand_proto->mutable_shape())[resource_pair.first] = resource_pair.second;
+      }
+      for (auto &selector : demand.first.label_selectors) {
+        *demand_proto->add_label_selectors() = std::move(selector);
       }
     }
     // Update placement group load to heartbeat batch.
