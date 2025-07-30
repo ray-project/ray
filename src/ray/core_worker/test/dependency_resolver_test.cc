@@ -112,6 +112,8 @@ class MockTaskManager : public MockTaskManagerInterface {
 
   void MarkTaskCanceled(const TaskID &task_id) override {}
 
+  void MarkTaskNoRetry(const TaskID &task_id) override {}
+
   std::optional<TaskSpecification> GetTaskSpec(const TaskID &task_id) const override {
     TaskSpecification task = BuildEmptyTaskSpec();
     return task;

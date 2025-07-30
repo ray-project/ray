@@ -233,7 +233,7 @@ ray.shutdown()
         assert type == "INTENDED_USER_EXIT" and "ray.cancel" in detail
         return verify_failed_task(
             name="cancel-f",
-            error_type="WORKER_DIED",  # Since it's a force cancel through kill signal.
+            error_type="TASK_CANCELLED",
         )
 
     wait_for_condition(verify_exit_by_ray_cancel)

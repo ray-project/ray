@@ -146,10 +146,13 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
 };
 
 class MockTaskManager : public MockTaskManagerInterface {
+  // TODO(ray-core): Consider adding an integration test between TaskManager and
+  // NormalTaskSubmitter, due to the complexity of the interaction between the two.
+  // https://github.com/ray-project/ray/issues/54922
  public:
   MockTaskManager() {}
 
-  void CompletePendingTask(const TaskID &,
+  void CompletePendingTask(const TaskID &task_id,
                            const rpc::PushTaskReply &,
                            const rpc::Address &actor_addr,
                            bool is_application_error) override {
@@ -177,6 +180,10 @@ class MockTaskManager : public MockTaskManagerInterface {
                               bool mark_task_object_failed = true,
                               bool fail_immediately = false) override {
     num_tasks_failed++;
+    if (!fail_immediately) {
+      RetryTaskIfPossible(task_id,
+                          ray_error_info ? *ray_error_info : rpc::RayErrorInfo());
+    }
     return true;
   }
 
@@ -187,6 +194,8 @@ class MockTaskManager : public MockTaskManagerInterface {
   }
 
   void MarkTaskCanceled(const TaskID &task_id) override {}
+
+  void MarkTaskNoRetry(const TaskID &task_id) override {}
 
   std::optional<TaskSpecification> GetTaskSpec(const TaskID &task_id) const override {
     TaskSpecification task = BuildEmptyTaskSpec();
@@ -238,9 +247,19 @@ class MockRayletClient : public FakeRayletClient {
       const ray::rpc::ClientCallback<ray::rpc::GetTaskFailureCauseReply> &callback)
       override {
     std::lock_guard<std::mutex> lock(mu_);
-    ray::rpc::GetTaskFailureCauseReply reply;
-    callback(Status::OK(), std::move(reply));
+    get_task_failure_cause_callbacks.push_back(callback);
     num_get_task_failure_causes += 1;
+  }
+
+  bool ReplyGetTaskFailureCause() {
+    if (get_task_failure_cause_callbacks.size() == 0) {
+      return false;
+    }
+    auto callback = std::move(get_task_failure_cause_callbacks.front());
+    get_task_failure_cause_callbacks.pop_front();
+    rpc::GetTaskFailureCauseReply reply;
+    callback(Status::OK(), std::move(reply));
+    return true;
   }
 
   void ReportWorkerBacklog(
@@ -632,6 +651,7 @@ TEST_F(NormalTaskSubmitterTest, TestHandleTaskFailure) {
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, NodeID::Nil()));
   // Simulate a system failure, i.e., worker died unexpectedly.
   ASSERT_TRUE(worker_client->ReplyPushTask(Status::IOError("oops")));
+  ASSERT_TRUE(raylet_client->ReplyGetTaskFailureCause());
   ASSERT_EQ(worker_client->callbacks.size(), 0);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
   ASSERT_EQ(raylet_client->num_workers_disconnected, 1);
@@ -644,6 +664,28 @@ TEST_F(NormalTaskSubmitterTest, TestHandleTaskFailure) {
   // Check that there are no entries left in the scheduling_key_entries_ hashmap. These
   // would otherwise cause a memory leak.
   ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntriesPublic());
+}
+
+TEST_F(NormalTaskSubmitterTest, TestCancellationWhileHandlingTaskFailure) {
+  // This test is a regression test for a bug where a crash happens when
+  // the task cancellation races between ReplyPushTask and ReplyGetTaskFailureCause.
+  // For an example of a python integration test, see
+  // https://github.com/ray-project/ray/blob/2b6807f4d9c4572e6309f57bc404aa641bc4b185/python/ray/tests/test_cancel.py#L35
+  auto submitter =
+      CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(1));
+
+  TaskSpecification task = BuildEmptyTaskSpec();
+  ASSERT_TRUE(submitter.SubmitTask(task).ok());
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, NodeID::Nil()));
+  // Simulate a system failure, i.e., worker died unexpectedly so that
+  // GetTaskFailureCause is called.
+  ASSERT_TRUE(worker_client->ReplyPushTask(Status::IOError("oops")));
+  // Cancel the task while GetTaskFailureCause has not been completed.
+  ASSERT_TRUE(submitter.CancelTask(task, true, false).ok());
+  // Completing the GetTaskFailureCause call. Check that the reply runs without error
+  // and FailPendingTask is not called.
+  ASSERT_TRUE(raylet_client->ReplyGetTaskFailureCause());
+  ASSERT_EQ(task_manager->num_fail_pending_task_calls, 0);
 }
 
 TEST_F(NormalTaskSubmitterTest, TestHandleUnschedulableTask) {
@@ -1227,6 +1269,7 @@ TEST_F(NormalTaskSubmitterTest, TestWorkerNotReusedOnError) {
 
   // Task 1 finishes with failure; the worker is returned.
   ASSERT_TRUE(worker_client->ReplyPushTask(Status::IOError("worker dead")));
+  ASSERT_TRUE(raylet_client->ReplyGetTaskFailureCause());
   ASSERT_EQ(worker_client->callbacks.size(), 0);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
   ASSERT_EQ(raylet_client->num_workers_disconnected, 1);
@@ -1647,6 +1690,7 @@ TEST_F(NormalTaskSubmitterTest, TestWorkerLeaseTimeout) {
   // Task 1 finishes with failure; the worker is returned due to the error even though
   // it hasn't timed out.
   ASSERT_TRUE(worker_client->ReplyPushTask(Status::IOError("worker dead")));
+  ASSERT_TRUE(raylet_client->ReplyGetTaskFailureCause());
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
   ASSERT_EQ(raylet_client->num_workers_disconnected, 1);
 
@@ -1686,6 +1730,7 @@ TEST_F(NormalTaskSubmitterTest, TestKillExecutingTask) {
   ASSERT_TRUE(submitter.CancelTask(task, true, false).ok());
   ASSERT_EQ(worker_client->kill_requests.front().intended_task_id(), task.TaskIdBinary());
   ASSERT_TRUE(worker_client->ReplyPushTask(Status::IOError("workerdying"), true));
+  ASSERT_TRUE(raylet_client->ReplyGetTaskFailureCause());
   ASSERT_EQ(worker_client->callbacks.size(), 0);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
   ASSERT_EQ(raylet_client->num_workers_returned_exiting, 0);

@@ -367,6 +367,25 @@ TEST_F(TaskManagerTest, TestFailPendingTask) {
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 0);
 }
 
+TEST_F(TaskManagerTest, TestFailPendingTaskAfterCancellation) {
+  rpc::Address caller_address;
+  auto spec = CreateTaskHelper(1, {});
+  manager_.AddPendingTask(caller_address, spec, "");
+  ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
+  manager_.MarkTaskCanceled(spec.TaskId());
+  manager_.FailPendingTask(spec.TaskId(), rpc::ErrorType::LOCAL_RAYLET_DIED);
+  ASSERT_FALSE(manager_.IsTaskPending(spec.TaskId()));
+
+  // Check that the error type is set to TASK_CANCELLED
+  std::vector<std::shared_ptr<RayObject>> results;
+  WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
+  RAY_CHECK_OK(store_->Get({spec.ReturnId(0)}, 1, 0, ctx, false, &results));
+  ASSERT_EQ(results.size(), 1);
+  rpc::ErrorType stored_error;
+  ASSERT_TRUE(results[0]->IsException(&stored_error));
+  ASSERT_EQ(stored_error, rpc::ErrorType::TASK_CANCELLED);
+}
+
 TEST_F(TaskManagerTest, TestTaskReconstruction) {
   rpc::Address caller_address;
   ObjectID dep1 = ObjectID::FromRandom();
