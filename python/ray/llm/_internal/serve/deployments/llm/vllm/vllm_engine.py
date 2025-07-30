@@ -339,12 +339,11 @@ class VLLMEngine(LLMEngine):
 
         custom_stat_loggers = None
         if self.llm_config.log_engine_metrics:
-            from ray.llm._internal.serve.deployments.llm.vllm.vllm_loggers import (
-                RayPrometheusStatLogger,
-            )
+            from vllm.engine.metrics import RayPrometheusStatLogger
 
-            # V1 AsyncLLM does not yet support add_logger
-            # For now, assume folks enabling log_engine_metrics do not require LoggingStatLogger, PrometheusStatLogger
+            # V1 AsyncLLM does not yet support add_logger: https://github.com/vllm-project/vllm/issues/17702
+            # Use `disable_log_stats: False` and `log_engine_metrics: False` as
+            # a workaround to enable PrometheusStatLogger instead.
             custom_stat_loggers = [RayPrometheusStatLogger]
 
         executor_class = Executor.get_class(vllm_engine_config)

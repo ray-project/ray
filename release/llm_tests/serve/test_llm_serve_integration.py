@@ -3,9 +3,7 @@ import sys
 
 from ray import serve
 from ray.serve.llm import LLMConfig, build_openai_app
-from ray.llm._internal.serve.deployments.llm.vllm.vllm_loggers import (
-    RayPrometheusStatLogger,
-)
+from vllm.engine.metrics import RayPrometheusStatLogger
 from vllm import AsyncEngineArgs
 
 from vllm.v1.engine.async_llm import AsyncLLM
@@ -37,6 +35,81 @@ async def test_engine_metrics():
     for i, prompt in enumerate(["What is the capital of France?", "What is 2+2?"]):
         results = engine.generate(
             request_id=f"request-id-{i}",
+            prompt=prompt,
+            sampling_params=SamplingParams(max_tokens=10),
+        )
+
+        async for _ in results:
+            pass
+
+
+@pytest.mark.asyncio(scope="function")
+async def test_engine_metrics_with_lora():
+    """
+    Test that the stat logger can be created successfully with LoRA configuration.
+    This test validates LoRA-enabled engine initialization and basic functionality.
+    """
+
+    engine_args = AsyncEngineArgs(
+        model="Qwen/Qwen2.5-0.5B-Instruct",  # Using smaller model for testing
+        dtype="bfloat16",
+        disable_log_stats=False,
+        enforce_eager=True,
+        trust_remote_code=True,
+        enable_prefix_caching=True,
+        max_model_len=512,
+        max_lora_rank=64,
+        enable_lora=True,
+        max_loras=3,
+        max_cpu_loras=5,
+        gpu_memory_utilization=0.575,
+    )
+
+    engine = AsyncLLM.from_engine_args(
+        engine_args, stat_loggers=[RayPrometheusStatLogger]
+    )
+
+    for i, prompt in enumerate(["What is the capital of France?", "What is 2+2?"]):
+        results = engine.generate(
+            request_id=f"lora-request-id-{i}",
+            prompt=prompt,
+            sampling_params=SamplingParams(max_tokens=10),
+        )
+
+        async for _ in results:
+            pass
+
+
+@pytest.mark.asyncio(scope="function")
+async def test_engine_metrics_with_speculative_decoding():
+    """
+    Test that the stat logger can be created successfully with speculative decoding configuration.
+    This test validates speculative decoding engine initialization and basic functionality.
+    """
+
+    engine_args = AsyncEngineArgs(
+        model="Qwen/Qwen2.5-0.5B-Instruct",
+        dtype="auto",
+        disable_log_stats=False,
+        enforce_eager=True,
+        trust_remote_code=True,
+        enable_prefix_caching=True,
+        max_model_len=256,
+        gpu_memory_utilization=0.575,
+        speculative_config={
+            "method": "ngram",
+            "num_speculative_tokens": 5,
+            "prompt_lookup_max": 4,
+        },
+    )
+
+    engine = AsyncLLM.from_engine_args(
+        engine_args, stat_loggers=[RayPrometheusStatLogger]
+    )
+
+    for i, prompt in enumerate(["What is the capital of France?", "What is 2+2?"]):
+        results = engine.generate(
+            request_id=f"spec-request-id-{i}",
             prompt=prompt,
             sampling_params=SamplingParams(max_tokens=10),
         )
