@@ -27,7 +27,7 @@
 
 // clang-format off
 #include "ray/rpc/node_manager/node_manager_client.h"
-#include "ray/rpc/node_manager/node_manager_client_pool.h"
+#include "ray/rpc/node_manager/raylet_client_pool.h"
 #include "mock/ray/pubsub/publisher.h"
 // clang-format on
 
@@ -46,7 +46,7 @@ class GcsNodeManagerExportAPITest : public ::testing::Test {
  public:
   GcsNodeManagerExportAPITest() {
     raylet_client_ = std::make_shared<GcsServerMocker::MockRayletClient>();
-    client_pool_ = std::make_unique<rpc::NodeManagerClientPool>(
+    client_pool_ = std::make_unique<rpc::RayletClientPool>(
         [this](const rpc::Address &) { return raylet_client_; });
     gcs_publisher_ = std::make_unique<gcs::GcsPublisher>(
         std::make_unique<ray::pubsub::MockPublisher>());
@@ -77,7 +77,7 @@ class GcsNodeManagerExportAPITest : public ::testing::Test {
  protected:
   std::unique_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::shared_ptr<GcsServerMocker::MockRayletClient> raylet_client_;
-  std::unique_ptr<rpc::NodeManagerClientPool> client_pool_;
+  std::unique_ptr<rpc::RayletClientPool> client_pool_;
   std::shared_ptr<gcs::GcsPublisher> gcs_publisher_;
   instrumented_io_context io_service_;
   std::string log_dir_;
