@@ -1159,11 +1159,27 @@ void TaskManager::FailPendingTask(const TaskID &task_id,
   {
     absl::MutexLock lock(&mu_);
     auto it = submissible_tasks_.find(task_id);
-    RAY_CHECK(it != submissible_tasks_.end())
-        << "Tried to fail task that was not pending " << task_id;
+    if (it == submissible_tasks_.end()) {
+      // Failing a pending task can happen through the normal task lifecycle or task
+      // cancellation. Since task cancellation runs concurrently with the normal task
+      // lifecycle, we do expect this state. It is safe to assume the task
+      // has been failed correctly by either the normal task lifecycle or task
+      // cancellation, and we can skip failing it again.
+      RAY_LOG(INFO).WithField("task_id", task_id)
+          << "Task is no longer in the submissible tasks map. It has either completed or "
+             "been cancelled. Skip failing";
+      return;
+    }
     RAY_CHECK(it->second.IsPending())
         << "Tried to fail task that was not pending " << task_id;
     spec = it->second.spec;
+    if (it->second.is_canceled && error_type != rpc::ErrorType::TASK_CANCELLED) {
+      // If the task is marked as cancelled before reaching FailPendingTask (which is
+      // essentially the final state of the task lifecycle), that failure reason takes
+      // precedence.
+      error_type = rpc::ErrorType::TASK_CANCELLED;
+      ray_error_info = nullptr;
+    }
 
     if ((status != nullptr) && status->IsIntentionalSystemExit()) {
       // We don't mark intentional system exit as failures, such as tasks that
@@ -1361,8 +1377,7 @@ int64_t TaskManager::RemoveLineageReference(const ObjectID &object_id,
   return total_lineage_footprint_bytes_ - total_lineage_footprint_bytes_prev;
 }
 
-void TaskManager::MarkTaskCanceled(const TaskID &task_id) {
-  // Mark the task for cancelation. This will prevent the task from being retried.
+void TaskManager::MarkTaskNoRetryInternal(const TaskID &task_id, bool canceled) {
   ObjectID generator_id = TaskGeneratorId(task_id);
   if (!generator_id.IsNil()) {
     // Pass -1 because the task has been canceled, so we should just end the
@@ -1378,8 +1393,18 @@ void TaskManager::MarkTaskCanceled(const TaskID &task_id) {
   if (it != submissible_tasks_.end()) {
     it->second.num_retries_left = 0;
     it->second.num_oom_retries_left = 0;
-    it->second.is_canceled = true;
+    if (canceled) {
+      it->second.is_canceled = true;
+    }
   }
+}
+
+void TaskManager::MarkTaskCanceled(const TaskID &task_id) {
+  MarkTaskNoRetryInternal(task_id, /*canceled=*/true);
+}
+
+void TaskManager::MarkTaskNoRetry(const TaskID &task_id) {
+  MarkTaskNoRetryInternal(task_id, /*canceled=*/false);
 }
 
 absl::flat_hash_set<ObjectID> TaskManager::GetTaskReturnObjectsToStoreInPlasma(
