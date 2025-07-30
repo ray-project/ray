@@ -278,20 +278,20 @@ class _DeploymentResponseBase:
         """
 
         if self._replica_result is None:
-            if self._is_router_running_in_separate_loop:
-                try:
-                    self._replica_result = self._replica_result_future.result(
-                        timeout=_timeout_s
-                    )
-                except concurrent.futures.TimeoutError:
-                    raise TimeoutError("Timed out resolving to ObjectRef.") from None
-                except concurrent.futures.CancelledError:
-                    raise RequestCancelledError(self.request_id) from None
-            else:
+            if not self._is_router_running_in_separate_loop:
                 raise RuntimeError(
                     "Sync methods should not be called from within an `asyncio` event "
                     "loop. Use `await response` instead."
                 )
+            try:
+                self._replica_result = self._replica_result_future.result(
+                    timeout=_timeout_s
+                )
+
+            except concurrent.futures.TimeoutError:
+                raise TimeoutError("Timed out resolving to ObjectRef.") from None
+            except concurrent.futures.CancelledError:
+                raise RequestCancelledError(self.request_id) from None
 
         return self._replica_result
 

@@ -1,3 +1,4 @@
+import asyncio
 from typing import Callable, Optional, Tuple
 
 import ray
@@ -19,6 +20,7 @@ from ray.serve._private.constants import (
     CONTROLLER_MAX_CONCURRENCY,
     RAY_SERVE_ENABLE_TASK_EVENTS,
     RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING,
+    RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP,
     SERVE_CONTROLLER_NAME,
     SERVE_NAMESPACE,
 )
@@ -28,7 +30,7 @@ from ray.serve._private.deployment_scheduler import (
 )
 from ray.serve._private.grpc_util import gRPCGenericServer
 from ray.serve._private.handle_options import DynamicHandleOptions, InitHandleOptions
-from ray.serve._private.router import Router, SingletonThreadRouter
+from ray.serve._private.router import CurrentLoopRouter, Router, SingletonThreadRouter
 from ray.serve._private.utils import (
     generate_request_id,
     get_current_actor_id,
@@ -150,10 +152,6 @@ def create_router(
     handle_options: InitHandleOptions,
     request_router_class: Optional[Callable] = None,
 ) -> Router:
-    import asyncio
-
-    from ray.serve._private.router import CurrentLoopRouter
-
     # NOTE(edoakes): this is lazy due to a nasty circular import that should be fixed.
     from ray.serve.context import _get_global_client
 
@@ -200,7 +198,6 @@ def add_grpc_address(grpc_server: gRPCGenericServer, server_address: str):
 def get_proxy_handle(endpoint: DeploymentID, info: EndpointInfo):
     # NOTE(zcin): needs to be lazy import due to a circular dependency.
     # We should not be importing from application_state in context.
-    from ray.serve._private.constants import RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP
     from ray.serve.context import _get_global_client
 
     client = _get_global_client()
