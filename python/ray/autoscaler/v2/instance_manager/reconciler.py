@@ -6,6 +6,9 @@ from collections import defaultdict
 from typing import Dict, List, Optional, Set, Tuple
 
 from ray._common.utils import binary_to_hex
+from ray.autoscaler.v2.instance_manager.cloud_providers.kuberay.cloud_provider import (
+    KubeRayProvider,
+)
 from ray.autoscaler.v2.instance_manager.common import InstanceUtil
 from ray.autoscaler.v2.instance_manager.config import (
     AutoscalingConfig,
@@ -281,6 +284,7 @@ class Reconciler:
             scheduler=scheduler,
             autoscaling_config=autoscaling_config,
             non_terminated_cloud_instances=non_terminated_cloud_instances,
+            cloud_provider=cloud_provider,
         )
 
         Reconciler._handle_instances_launch(
@@ -1067,6 +1071,7 @@ class Reconciler:
         scheduler: IResourceScheduler,
         autoscaling_config: AutoscalingConfig,
         non_terminated_cloud_instances: Dict[CloudInstanceId, CloudInstance],
+        cloud_provider: ICloudInstanceProvider,
     ) -> None:
         """
         Scale the cluster based on the resource state and the resource scheduler's
@@ -1157,6 +1162,7 @@ class Reconciler:
         # Scale the clusters if needed.
         to_launch = reply.to_launch
         to_terminate = reply.to_terminate
+        to_scale = reply.to_scale
         updates = {}
         # Add terminating instances.
         for terminate_request in to_terminate:
@@ -1194,6 +1200,9 @@ class Reconciler:
                         "from scheduler"
                     ),
                 )
+
+        if isinstance(cloud_provider, KubeRayProvider):
+            cloud_provider.ippr_resize(to_scale)
 
         Reconciler._update_instance_manager(instance_manager, version, updates)
 
