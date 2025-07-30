@@ -479,25 +479,24 @@ def test_tensor_extracted_from_tensordict_in_gpu_object_store(ray_start_regular)
 def test_gpu_object_ref_in_list_throws_exception(ray_start_regular):
     """Test that passing GPU ObjectRefs inside lists as task arguments raises an error."""
 
-    @ray.remote
-    def simple_task(data):
-        """A simple task that returns its input data."""
-        return data
-
     actor = GPUTestActor.remote()
     create_collective_group([actor], backend="torch_gloo")
 
-    tensor = torch.tensor([1, 2, 3])
+    tensor = torch.randn((1,))
+
+    # Test: GPU ref passed directly to task should work
     gpu_ref = actor.echo.remote(tensor)
+    result = actor.double.remote(gpu_ref)
+    assert ray.get(result) == pytest.approx(tensor * 2)
 
     # Test: GPU ref inside a list should fail during task submission
     with pytest.raises(ValueError, match="GPU ObjectRefs in lists are not supported"):
-        simple_task.remote([gpu_ref])
+        actor.double.remote([gpu_ref])
 
     # Test: Mixed list with GPU ref and normal data should also fail
     normal_ref = ray.put("normal_data")
     with pytest.raises(ValueError, match="GPU ObjectRefs in lists are not supported"):
-        simple_task.remote([gpu_ref, normal_ref])
+        actor.double.remote([gpu_ref, normal_ref])
 
 
 if __name__ == "__main__":
