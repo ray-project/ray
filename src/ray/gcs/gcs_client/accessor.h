@@ -418,14 +418,16 @@ class NodeInfoAccessor {
                             int64_t timeout_ms,
                             std::vector<std::string> &drained_node_ids);
 
-  /// Search the local cache to find out if the given node is removed.
+  /// Search the local cache to find out if the given node is dead.
+  /// If the node is not confirmed to be dead (this returns false), it could be that:
+  /// 1. We haven't even received a node alive publish for it yet.
+  /// 2. The node is alive and we have that information in the cache.
+  /// 3. The GCS has evicted the node from its dead node cache based on
+  ///    maximum_gcs_dead_node_cached_count
   /// Non-thread safe.
-  /// Note, the local cache is only available if `AsyncSubscribeToNodeChange`
-  /// is called before.
-  ///
-  /// \param node_id The id of the node to check.
-  /// \return Whether the node is removed.
-  virtual bool IsRemoved(const NodeID &node_id) const;
+  /// Note, the local cache is only available if `AsyncSubscribeToNodeChange` is called
+  /// before.
+  virtual bool IsNodeDead(const NodeID &node_id) const;
 
   /// Reestablish subscription.
   /// This should be called when GCS server restarts from a failure.
@@ -456,8 +458,6 @@ class NodeInfoAccessor {
 
   /// A cache for information about all nodes.
   absl::flat_hash_map<NodeID, rpc::GcsNodeInfo> node_cache_;
-  /// The set of removed nodes.
-  std::unordered_set<NodeID> removed_nodes_;
 
   // TODO(dayshah): Need to refactor gcs client / accessor to avoid this.
   // https://github.com/ray-project/ray/issues/54805

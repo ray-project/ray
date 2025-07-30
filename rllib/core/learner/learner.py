@@ -513,9 +513,12 @@ class Learner(Checkpointable):
             # `self.postprocess_gradients_for_module()` method.
             module_grads_dict = {}
             for optimizer_name, optimizer in self.get_optimizers_for_module(module_id):
-                module_grads_dict.update(
-                    self.filter_param_dict_for_optimizer(gradients_dict, optimizer)
+                optim_grads = self.filter_param_dict_for_optimizer(
+                    gradients_dict, optimizer
                 )
+                for ref, grad in optim_grads.items():
+                    assert ref not in module_grads_dict
+                    module_grads_dict[ref] = grad
 
             module_grads_dict = self.postprocess_gradients_for_module(
                 module_id=module_id,
