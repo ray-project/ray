@@ -528,8 +528,8 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
       rpc_address_,
       /*object_info_publisher=*/object_info_publisher_.get(),
       /*object_info_subscriber=*/object_info_subscriber_.get(),
-      /*did_node_die=*/
-      [this](const NodeID &node_id) { return gcs_client_->Nodes().DidNodeDie(node_id); },
+      /*is_node_dead=*/
+      [this](const NodeID &node_id) { return gcs_client_->Nodes().IsNodeDead(node_id); },
       RayConfig::instance().lineage_pinning_enabled());
 
   if (RayConfig::instance().max_pending_lease_requests_per_scheduling_category() > 0) {
@@ -4189,7 +4189,7 @@ void CoreWorker::AddSpilledObjectLocationOwner(
 
 void CoreWorker::AddObjectLocationOwner(const ObjectID &object_id,
                                         const NodeID &node_id) {
-  if (gcs_client_->Nodes().DidNodeDie(node_id)) {
+  if (gcs_client_->Nodes().IsNodeDead(node_id)) {
     RAY_LOG(DEBUG).WithField(node_id).WithField(object_id)
         << "Attempting to add object location for a dead node. Ignoring this request.";
     return;

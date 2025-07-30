@@ -83,13 +83,13 @@ class ReferenceCounter : public ReferenceCounterInterface,
   ReferenceCounter(rpc::Address rpc_address,
                    pubsub::PublisherInterface *object_info_publisher,
                    pubsub::SubscriberInterface *object_info_subscriber,
-                   std::function<bool(const NodeID &node_id)> did_node_die,
+                   std::function<bool(const NodeID &node_id)> is_node_dead,
                    bool lineage_pinning_enabled = false)
       : rpc_address_(std::move(rpc_address)),
         lineage_pinning_enabled_(lineage_pinning_enabled),
         object_info_publisher_(object_info_publisher),
         object_info_subscriber_(object_info_subscriber),
-        did_node_die_(std::move(did_node_die)) {}
+        is_node_dead_(std::move(is_node_dead)) {}
 
   ~ReferenceCounter() override = default;
 
@@ -1100,7 +1100,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// Called to check whether a raylet died. This is used when adding
   /// the primary or spilled location of an object. If the node died, then
   /// the object will be added to the buffer objects to recover.
-  const std::function<bool(const NodeID &node_id)> did_node_die_;
+  const std::function<bool(const NodeID &node_id)> is_node_dead_;
 
   /// A buffer of the objects whose primary or spilled locations have been lost
   /// due to node failure. These objects are still in scope and need to be

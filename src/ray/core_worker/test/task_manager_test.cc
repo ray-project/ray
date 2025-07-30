@@ -135,7 +135,7 @@ class TaskManagerTest : public ::testing::Test {
             addr_,
             publisher_.get(),
             subscriber_.get(),
-            /*did_node_die=*/[this](const NodeID &) { return node_died_; },
+            /*is_node_dead=*/[this](const NodeID &) { return node_died_; },
             lineage_pinning_enabled)),
         io_context_("TaskManagerTest"),
         store_(std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService(),

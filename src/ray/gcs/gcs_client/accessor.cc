@@ -708,7 +708,7 @@ Status NodeInfoAccessor::CheckAlive(const std::vector<std::string> &raylet_addre
   return ret_promise.get_future().get();
 }
 
-bool NodeInfoAccessor::DidNodeDie(const NodeID &node_id) const {
+bool NodeInfoAccessor::IsNodeDead(const NodeID &node_id) const {
   return dead_nodes_.contains(node_id);
 }
 

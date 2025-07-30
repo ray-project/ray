@@ -829,7 +829,7 @@ TEST(MemoryStoreIntegrationTest, TestSimple) {
       rpc::Address(),
       publisher.get(),
       subscriber.get(),
-      /*did_node_die=*/[](const NodeID &) { return false; });
+      /*is_node_dead=*/[](const NodeID &) { return false; });
   InstrumentedIOContextWithThread io_context("TestSimple");
   CoreWorkerMemoryStore store(io_context.GetIoService(), rc.get());
 
