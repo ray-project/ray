@@ -1,10 +1,7 @@
 import os
 import random
-import gc
 import sys
-import signal
 import tempfile
-import time
 
 import numpy as np
 import pytest
