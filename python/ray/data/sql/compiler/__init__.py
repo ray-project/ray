@@ -9,4 +9,4 @@ from ray.data.sql.compiler.expressions import ExpressionCompiler
 
 __all__ = [
     "ExpressionCompiler",
-] 
+]

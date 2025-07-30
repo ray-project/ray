@@ -17,6 +17,7 @@ from ray.data import Dataset
 
 class LogLevel(Enum):
     """Enum for log levels used throughout the SQL engine."""
+
     ERROR = 0
     INFO = 1
     DEBUG = 2
@@ -150,7 +151,9 @@ class TableSchema:
             type: SQL data type.
             nullable: Whether the column can contain NULL values.
         """
-        self.columns[name] = ColumnInfo(name=name, type=type, nullable=nullable, table=self.name)
+        self.columns[name] = ColumnInfo(
+            name=name, type=type, nullable=nullable, table=self.name
+        )
 
     def get_column(self, name: str) -> Optional[ColumnInfo]:
         """Get column information by name.
@@ -228,9 +231,9 @@ class LogicalPlan:
     def __init__(self, operation: Operation, **kwargs):
         self.operation = operation
         self.kwargs = kwargs
-        self.children: List['LogicalPlan'] = []
+        self.children: List["LogicalPlan"] = []
 
-    def add_child(self, child: 'LogicalPlan') -> None:
+    def add_child(self, child: "LogicalPlan") -> None:
         """Add a child operation to this plan.
 
         Args:
@@ -245,8 +248,10 @@ class LogicalPlan:
 # Enhanced error handling for SQLGlot
 class SQLGlotError(Exception):
     """Enhanced SQLGlot error with line/column information."""
-    
-    def __init__(self, message: str, line_no: Optional[int] = None, col_no: Optional[int] = None):
+
+    def __init__(
+        self, message: str, line_no: Optional[int] = None, col_no: Optional[int] = None
+    ):
         super().__init__(message)
         self.line_no = line_no
-        self.col_no = col_no 
+        self.col_no = col_no

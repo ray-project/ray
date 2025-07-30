@@ -57,7 +57,9 @@ class SQLParser:
             if getattr(self.config, "enable_sqlglot_optimizer", False):
                 before = ast
                 ast = optimize(ast)
-                self._logger.debug(f"SQLGlot optimized AST:\nBefore: {before}\nAfter: {ast}")
+                self._logger.debug(
+                    f"SQLGlot optimized AST:\nBefore: {before}\nAfter: {ast}"
+                )
             self._validate_ast(ast)
             return ast
         except Exception as e:
@@ -77,8 +79,10 @@ class SQLParser:
             if isinstance(node, exp.AggFunc):
                 func_name = node.sql_name().lower()
                 if func_name not in SUPPORTED_AGGREGATES:
-                    raise NotImplementedError(f"Aggregate function '{func_name.upper()}' not supported")
-            
+                    raise NotImplementedError(
+                        f"Aggregate function '{func_name.upper()}' not supported"
+                    )
+
             unsupported_features = [
                 (exp.Distinct, "DISTINCT"),
                 (exp.In, "IN operator"),
@@ -89,7 +93,7 @@ class SQLParser:
                 (exp.Intersect, "INTERSECT"),
                 (exp.Except, "EXCEPT"),
             ]
-            
+
             for feature_type, feature_name in unsupported_features:
                 if isinstance(node, feature_type):
                     raise NotImplementedError(f"{feature_name} not supported")
@@ -113,7 +117,9 @@ class ASTOptimizer:
         self.config = config
         self._logger = setup_logger("ASTOptimizer")
 
-    def optimize(self, ast: exp.Expression, schema_manager: SchemaManager) -> exp.Expression:
+    def optimize(
+        self, ast: exp.Expression, schema_manager: SchemaManager
+    ) -> exp.Expression:
         """Apply optimization rules to the AST.
 
         Args:
@@ -137,7 +143,9 @@ class ASTOptimizer:
         self._logger.debug("AST optimization completed")
         return ast
 
-    def _qualify_columns(self, ast: exp.Expression, schema_manager: SchemaManager) -> exp.Expression:
+    def _qualify_columns(
+        self, ast: exp.Expression, schema_manager: SchemaManager
+    ) -> exp.Expression:
         """Add table qualifiers to ambiguous columns.
 
         Args:
@@ -230,7 +238,9 @@ class LogicalPlanner:
             self._logger.debug("CREATE statement detected - skipping logical planning")
             return None
         else:
-            raise NotImplementedError(f"Planning not implemented for {type(ast).__name__}")
+            raise NotImplementedError(
+                f"Planning not implemented for {type(ast).__name__}"
+            )
 
     def _plan_select(self, ast: exp.Select) -> LogicalPlan:
         """Plan a SELECT statement.
@@ -244,4 +254,4 @@ class LogicalPlanner:
         # This is a simplified version - in practice, you'd need more complex logic
         plan = LogicalPlan(LogicalPlan.Operation.SELECT, ast=ast)
         self._logger.debug(f"Created logical plan: {plan}")
-        return plan 
+        return plan

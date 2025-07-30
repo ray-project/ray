@@ -53,11 +53,36 @@ import ray.data
 from ray.data import Dataset
 
 # Import core classes and functions
-from ray.data.sql.config import SQLConfig, LogLevel, QueryResult, JoinInfo, ColumnInfo, TableSchema, ExecutionStats
-from ray.data.sql.core import RaySQL, sql, register_table, list_tables, get_schema, clear_tables, get_engine, get_registry
+from ray.data.sql.config import (
+    SQLConfig,
+    LogLevel,
+    QueryResult,
+    JoinInfo,
+    ColumnInfo,
+    TableSchema,
+    ExecutionStats,
+)
+from ray.data.sql.core import (
+    RaySQL,
+    sql,
+    register_table,
+    list_tables,
+    get_schema,
+    clear_tables,
+    get_engine,
+    get_registry,
+)
 from ray.data.sql.schema import DatasetRegistry, SchemaManager
 from ray.data.sql.parser import SQLParser, ASTOptimizer, LogicalPlanner
-from ray.data.sql.execution import QueryExecutor, ProjectionAnalyzer, AggregateAnalyzer, JoinHandler, FilterHandler, OrderHandler, LimitHandler
+from ray.data.sql.execution import (
+    QueryExecutor,
+    ProjectionAnalyzer,
+    AggregateAnalyzer,
+    JoinHandler,
+    FilterHandler,
+    OrderHandler,
+    LimitHandler,
+)
 from ray.data.sql.compiler import ExpressionCompiler
 from ray.data.sql.utils import setup_logger
 
@@ -69,8 +94,8 @@ from ray.data.sql.core import _ray_data_sql, _ray_data_register_table, _dataset_
 
 # Apply monkey patches to integrate with Ray Data API
 # Store original functions for potential restoration
-_original_ray_data_sql = getattr(ray.data, 'sql', None)
-_original_register_table = getattr(ray.data, 'register_table', None)
+_original_ray_data_sql = getattr(ray.data, "sql", None)
+_original_register_table = getattr(ray.data, "register_table", None)
 
 # Apply patches
 ray.data.sql = _ray_data_sql
@@ -84,51 +109,44 @@ if not hasattr(ray.data.Dataset, "name"):
 __all__ = [
     # Core classes
     "RaySQL",
-    "SQLConfig", 
+    "SQLConfig",
     "LogLevel",
     "QueryResult",
     "JoinInfo",
-    "ColumnInfo", 
+    "ColumnInfo",
     "TableSchema",
     "ExecutionStats",
-    
     # Schema management
     "DatasetRegistry",
     "SchemaManager",
-    
     # Parsing and optimization
     "SQLParser",
-    "ASTOptimizer", 
+    "ASTOptimizer",
     "LogicalPlanner",
-    
     # Execution components
     "QueryExecutor",
     "ProjectionAnalyzer",
-    "AggregateAnalyzer", 
+    "AggregateAnalyzer",
     "JoinHandler",
     "FilterHandler",
     "OrderHandler",
     "LimitHandler",
-    
     # Expression compilation
     "ExpressionCompiler",
-    
     # Global API functions
     "sql",
     "register_table",
     "list_tables",
-    "get_schema", 
+    "get_schema",
     "clear_tables",
     "get_engine",
     "get_registry",
-    
     # Testing and examples
     "TestRunner",
     "ExampleRunner",
     "run_comprehensive_tests",
     "example_usage",
     "example_sqlglot_features",
-    
     # Utilities
     "setup_logger",
 ]
@@ -137,27 +155,31 @@ __all__ = [
 # Convenience functions for testing and examples
 def run_comprehensive_tests():
     """Run a comprehensive test suite to validate the SQL engine.
-    
+
     Returns:
         bool: True if all tests pass, False otherwise.
     """
     test_runner = TestRunner()
-    
+
     # Run the main comprehensive tests
     main_success = test_runner.run_comprehensive_tests()
-    
+
     # Run Ray Data Join API compliance tests
     try:
         join_api_success = test_runner.test_ray_data_join_api_compliance()
-        print(f"\nRay Data Join API compliance: {'✅ PASSED' if join_api_success else '❌ FAILED'}")
+        print(
+            f"\nRay Data Join API compliance: {'✅ PASSED' if join_api_success else '❌ FAILED'}"
+        )
     except Exception as e:
         print(f"\nRay Data Join API compliance: ❌ FAILED - {e}")
         join_api_success = False
-    
+
     # Overall success
     overall_success = main_success and join_api_success
-    print(f"\nOverall test results: {'✅ ALL TESTS PASSED' if overall_success else '❌ SOME TESTS FAILED'}")
-    
+    print(
+        f"\nOverall test results: {'✅ ALL TESTS PASSED' if overall_success else '❌ SOME TESTS FAILED'}"
+    )
+
     return overall_success
 
 
@@ -176,4 +198,6 @@ def example_sqlglot_features():
 # Module-level documentation
 __version__ = "1.0.0"
 __author__ = "Ray Data Team"
-__doc__ = __doc__ or "Ray Data SQL API - Production-ready SQL interface for Ray Datasets" 
+__doc__ = (
+    __doc__ or "Ray Data SQL API - Production-ready SQL interface for Ray Datasets"
+)

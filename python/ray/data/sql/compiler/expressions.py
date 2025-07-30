@@ -11,7 +11,12 @@ import sqlglot
 from sqlglot import exp
 
 from ray.data.sql.config import SQLConfig
-from ray.data.sql.utils import setup_logger, safe_get_column, safe_divide, parse_literal_value
+from ray.data.sql.utils import (
+    setup_logger,
+    safe_get_column,
+    safe_divide,
+    parse_literal_value,
+)
 
 
 class ExpressionCompiler:
@@ -29,49 +34,51 @@ class ExpressionCompiler:
         """Compile a SQLGlot expression into a Python lambda."""
         return self._compile_expression(expr)
 
-    def _compile_expression(self, expr: exp.Expression) -> Callable[[Dict[str, Any]], Any]:
+    def _compile_expression(
+        self, expr: exp.Expression
+    ) -> Callable[[Dict[str, Any]], Any]:
         """Main expression compilation method with comprehensive coverage."""
         # Column reference
         if isinstance(expr, exp.Column):
             return self._compile_column(expr)
-        
+
         # Literal values
         if self._is_literal(expr):
             return self._compile_literal(expr)
-        
+
         # Arithmetic operations
         if self._is_arithmetic_operation(expr):
             return self._compile_arithmetic(expr)
-        
+
         # Comparison operations
         if self._is_comparison_operation(expr):
             return self._compile_comparison(expr)
-        
+
         # Logical operations
         if self._is_logical_operation(expr):
             return self._compile_logical(expr)
-        
+
         # String functions
         if self._is_string_function(expr):
             return self._compile_string_function(expr)
-        
+
         # CASE expressions
         if isinstance(expr, exp.Case):
             return self._compile_case(expr)
-        
+
         # IS NULL / IS NOT NULL
         if isinstance(expr, exp.Is):
             return self._compile_is_null(expr)
-        
+
         # NOT expressions
         if isinstance(expr, exp.Not):
             inner = self._compile_expression(expr.this)
             return lambda row: not inner(row)
-        
+
         # Parenthesized expressions
         if isinstance(expr, exp.Paren):
             return self._compile_expression(expr.this)
-        
+
         # Fallback for unsupported expressions
         self._logger.warning(f"Unsupported expression type: {type(expr).__name__}")
         return lambda row: None
@@ -80,8 +87,8 @@ class ExpressionCompiler:
         """Compile column reference expressions."""
         col_name = str(expr.name)
         # Handle qualified column names (table.column) by extracting just the column part
-        if '.' in col_name:
-            col_name = col_name.split('.')[-1]
+        if "." in col_name:
+            col_name = col_name.split(".")[-1]
         return lambda row: safe_get_column(row, col_name, self.config.case_sensitive)
 
     def _is_literal(self, expr: exp.Expression) -> bool:
@@ -101,17 +108,21 @@ class ExpressionCompiler:
         elif hasattr(exp, "Null") and isinstance(expr, exp.Null):
             return lambda row: None
         else:
-            raise NotImplementedError(f"Unsupported literal type: {type(expr).__name__}")
+            raise NotImplementedError(
+                f"Unsupported literal type: {type(expr).__name__}"
+            )
 
     def _is_arithmetic_operation(self, expr: exp.Expression) -> bool:
         """Check if expression is an arithmetic operation."""
         return isinstance(expr, (exp.Add, exp.Sub, exp.Mul, exp.Div, exp.Mod))
 
-    def _compile_arithmetic(self, expr: exp.Expression) -> Callable[[Dict[str, Any]], Any]:
+    def _compile_arithmetic(
+        self, expr: exp.Expression
+    ) -> Callable[[Dict[str, Any]], Any]:
         """Compile arithmetic operations."""
         left_func = self._compile_expression(expr.left)
         right_func = self._compile_expression(expr.right)
-        
+
         if isinstance(expr, exp.Add):
             return lambda row: left_func(row) + right_func(row)
         elif isinstance(expr, exp.Sub):
@@ -121,19 +132,27 @@ class ExpressionCompiler:
         elif isinstance(expr, exp.Div):
             return lambda row: safe_divide(left_func(row), right_func(row))
         elif isinstance(expr, exp.Mod):
-            return lambda row: left_func(row) % right_func(row) if right_func(row) != 0 else None
+            return (
+                lambda row: left_func(row) % right_func(row)
+                if right_func(row) != 0
+                else None
+            )
         else:
-            raise NotImplementedError(f"Unsupported arithmetic operation: {type(expr).__name__}")
+            raise NotImplementedError(
+                f"Unsupported arithmetic operation: {type(expr).__name__}"
+            )
 
     def _is_comparison_operation(self, expr: exp.Expression) -> bool:
         """Check if expression is a comparison operation."""
         return isinstance(expr, (exp.EQ, exp.NEQ, exp.GT, exp.GTE, exp.LT, exp.LTE))
 
-    def _compile_comparison(self, expr: exp.Expression) -> Callable[[Dict[str, Any]], Any]:
+    def _compile_comparison(
+        self, expr: exp.Expression
+    ) -> Callable[[Dict[str, Any]], Any]:
         """Compile comparison operations."""
         left_func = self._compile_expression(expr.left)
         right_func = self._compile_expression(expr.right)
-        
+
         if isinstance(expr, exp.EQ):
             return lambda row: left_func(row) == right_func(row)
         elif isinstance(expr, exp.NEQ):
@@ -147,7 +166,9 @@ class ExpressionCompiler:
         elif isinstance(expr, exp.LTE):
             return lambda row: left_func(row) <= right_func(row)
         else:
-            raise NotImplementedError(f"Unsupported comparison operation: {type(expr).__name__}")
+            raise NotImplementedError(
+                f"Unsupported comparison operation: {type(expr).__name__}"
+            )
 
     def _is_logical_operation(self, expr: exp.Expression) -> bool:
         """Check if expression is a logical operation."""
@@ -164,22 +185,36 @@ class ExpressionCompiler:
             right_func = self._compile_expression(expr.right)
             return lambda row: left_func(row) or right_func(row)
         else:
-            raise NotImplementedError(f"Unsupported logical operation: {type(expr).__name__}")
+            raise NotImplementedError(
+                f"Unsupported logical operation: {type(expr).__name__}"
+            )
 
     def _is_string_function(self, expr: exp.Expression) -> bool:
         """Check if expression is a string function."""
         return isinstance(expr, (exp.Upper, exp.Lower))
 
-    def _compile_string_function(self, expr: exp.Expression) -> Callable[[Dict[str, Any]], Any]:
+    def _compile_string_function(
+        self, expr: exp.Expression
+    ) -> Callable[[Dict[str, Any]], Any]:
         """Compile string functions."""
         if isinstance(expr, exp.Upper):
             operand_func = self._compile_expression(expr.this)
-            return lambda row: str(operand_func(row)).upper() if operand_func(row) is not None else None
+            return (
+                lambda row: str(operand_func(row)).upper()
+                if operand_func(row) is not None
+                else None
+            )
         elif isinstance(expr, exp.Lower):
             operand_func = self._compile_expression(expr.this)
-            return lambda row: str(operand_func(row)).lower() if operand_func(row) is not None else None
+            return (
+                lambda row: str(operand_func(row)).lower()
+                if operand_func(row) is not None
+                else None
+            )
         else:
-            raise NotImplementedError(f"Unsupported string function: {type(expr).__name__}")
+            raise NotImplementedError(
+                f"Unsupported string function: {type(expr).__name__}"
+            )
 
     def _compile_case(self, case_expr: exp.Case) -> Callable[[Dict[str, Any]], Any]:
         """Compile a CASE expression into a Python function."""
@@ -224,4 +259,4 @@ class ExpressionCompiler:
 
     def _safe_divide(self, a: Any, b: Any) -> float:
         """Legacy method for backward compatibility."""
-        return safe_divide(a, b) 
+        return safe_divide(a, b)

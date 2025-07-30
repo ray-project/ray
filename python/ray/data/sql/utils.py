@@ -51,7 +51,9 @@ def normalize_identifier(name: str, case_sensitive: bool = False) -> str:
     return name if case_sensitive else name.lower()
 
 
-def safe_get_column(row: Dict[str, Any], column_name: str, case_sensitive: bool = False) -> Any:
+def safe_get_column(
+    row: Dict[str, Any], column_name: str, case_sensitive: bool = False
+) -> Any:
     """Safely retrieve a column value from a row dictionary.
 
     Args:
@@ -72,10 +74,14 @@ def safe_get_column(row: Dict[str, Any], column_name: str, case_sensitive: bool 
         for key, value in row.items():
             if normalize_identifier(key, case_sensitive=False) == normalized_name:
                 return value
-    raise KeyError(f"Column '{column_name}' not found in row. Available columns: {list(row.keys())}")
+    raise KeyError(
+        f"Column '{column_name}' not found in row. Available columns: {list(row.keys())}"
+    )
 
 
-def create_column_mapping(columns: List[str], case_sensitive: bool = False) -> Dict[str, str]:
+def create_column_mapping(
+    columns: List[str], case_sensitive: bool = False
+) -> Dict[str, str]:
     """Create a mapping from normalized column names to their actual names.
 
     Args:
@@ -113,40 +119,42 @@ def _is_create_table_as(ast) -> bool:
 
 def extract_table_names_from_query(query: str) -> set:
     """Extract table names from a SQL query using regex.
-    
+
     Args:
         query: SQL query string.
-        
+
     Returns:
         Set of table names found in the query.
     """
     table_names = set()
-    
+
     # Find tables in FROM clauses
-    from_matches = re.findall(r'from\s+([a-zA-Z_][a-zA-Z0-9_]*)', query, re.IGNORECASE)
+    from_matches = re.findall(r"from\s+([a-zA-Z_][a-zA-Z0-9_]*)", query, re.IGNORECASE)
     table_names.update(from_matches)
-    
-    # Find tables in JOIN clauses  
-    join_matches = re.findall(r'join\s+([a-zA-Z_][a-zA-Z0-9_]*)', query, re.IGNORECASE)
+
+    # Find tables in JOIN clauses
+    join_matches = re.findall(r"join\s+([a-zA-Z_][a-zA-Z0-9_]*)", query, re.IGNORECASE)
     table_names.update(join_matches)
-    
+
     return table_names
 
 
 def validate_table_name(name: str) -> None:
     """Validate a table name according to SQL standards.
-    
+
     Args:
         name: Table name to validate.
-        
+
     Raises:
         ValueError: If table name is invalid.
     """
     if not name or not isinstance(name, str):
         raise ValueError("Table name must be a non-empty string")
-    
-    if not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', name):
-        raise ValueError(f"Invalid table name '{name}'. Must start with letter or underscore and contain only alphanumeric characters and underscores")
+
+    if not re.match(r"^[a-zA-Z_][a-zA-Z0-9_]*$", name):
+        raise ValueError(
+            f"Invalid table name '{name}'. Must start with letter or underscore and contain only alphanumeric characters and underscores"
+        )
 
 
 def safe_divide(a: Any, b: Any) -> float:
@@ -161,7 +169,7 @@ def safe_divide(a: Any, b: Any) -> float:
     """
     try:
         if b == 0:
-            return float('inf') if a > 0 else float('-inf') if a < 0 else float('nan')
+            return float("inf") if a > 0 else float("-inf") if a < 0 else float("nan")
         return float(a) / float(b)
     except (TypeError, ValueError):
         return None
@@ -192,10 +200,10 @@ def parse_literal_value(literal: exp.Literal) -> Any:
 
 def get_function_name_from_expression(expr: exp.Expression) -> str:
     """Extract function name from various SQLGlot expression types.
-    
+
     Args:
         expr: SQLGlot expression.
-        
+
     Returns:
         Function name as string.
     """
@@ -209,19 +217,19 @@ def get_function_name_from_expression(expr: exp.Expression) -> str:
 
 def normalize_join_type(join_kind: str) -> str:
     """Normalize SQL join type to Ray Data join type.
-    
+
     Args:
         join_kind: SQL join type string.
-        
+
     Returns:
         Ray Data join type string.
     """
     join_type_mapping = {
         "inner": "inner",
-        "left": "left_outer", 
+        "left": "left_outer",
         "right": "right_outer",
         "full": "full_outer",
-        "outer": "full_outer"
+        "outer": "full_outer",
     }
     return join_type_mapping.get(join_kind.lower(), "inner")
 
@@ -238,10 +246,10 @@ def extract_column_from_expression(expr: exp.Expression) -> Optional[str]:
     if isinstance(expr, exp.Column):
         col_name = str(expr.name)
         # Handle qualified column names (table.column) by extracting just the column part
-        if '.' in col_name:
-            col_name = col_name.split('.')[-1]
+        if "." in col_name:
+            col_name = col_name.split(".")[-1]
         return col_name
-    elif hasattr(expr, 'name'):
+    elif hasattr(expr, "name"):
         return str(expr.name)
     else:
         return str(expr)
@@ -249,10 +257,10 @@ def extract_column_from_expression(expr: exp.Expression) -> Optional[str]:
 
 def is_aggregate_function(expr: exp.Expression) -> bool:
     """Check if an expression is an aggregate function.
-    
+
     Args:
         expr: Expression to check.
-        
+
     Returns:
         True if it's an aggregate function.
     """
@@ -261,53 +269,54 @@ def is_aggregate_function(expr: exp.Expression) -> bool:
 
 def get_config_from_context():
     """Get SQL configuration from Ray DataContext.
-    
+
     Returns:
         SQLConfig object with settings from DataContext or defaults.
     """
     from ray.data.sql.config import SQLConfig, LogLevel
-    
+
     try:
         from ray.data import DataContext
+
         ctx = DataContext.get_current()
-        if hasattr(ctx, 'sql_config') and ctx.sql_config:
+        if hasattr(ctx, "sql_config") and ctx.sql_config:
             config_dict = ctx.sql_config
             return SQLConfig(
                 log_level=LogLevel[config_dict.get("log_level", "ERROR").upper()],
                 case_sensitive=config_dict.get("case_sensitive", False),
                 strict_mode=config_dict.get("strict_mode", True),
                 max_join_partitions=config_dict.get("max_join_partitions", 10),
-                enable_pushdown_optimization=config_dict.get("enable_optimization", True),
+                enable_pushdown_optimization=config_dict.get(
+                    "enable_optimization", True
+                ),
                 enable_sqlglot_optimizer=config_dict.get("enable_optimization", True),
                 enable_custom_optimizer=config_dict.get("enable_optimization", True),
-                enable_logical_planning=config_dict.get("enable_optimization", True)
+                enable_logical_planning=config_dict.get("enable_optimization", True),
             )
     except Exception:
         pass
-    
+
     return SQLConfig()
 
 
 # Constants for aggregate function mapping
-SUPPORTED_AGGREGATES = {
-    "sum", "min", "max", "count", "avg", "mean", "std", "stddev"
-}
+SUPPORTED_AGGREGATES = {"sum", "min", "max", "count", "avg", "mean", "std", "stddev"}
 
 AGGREGATE_MAPPING = {
     "sum": "Sum",
-    "min": "Min", 
+    "min": "Min",
     "max": "Max",
     "count": "Count",
     "avg": "Mean",
     "mean": "Mean",
     "std": "Std",
-    "stddev": "Std"
+    "stddev": "Std",
 }
 
 # JOIN type mapping from SQL to Arrow
 JOIN_TYPE_TO_ARROW_JOIN_VERB_MAP = {
     "inner": "inner",
-    "left_outer": "left outer", 
+    "left_outer": "left outer",
     "right_outer": "right outer",
     "full_outer": "full outer",
-} 
+}

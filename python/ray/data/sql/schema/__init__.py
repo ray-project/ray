@@ -11,4 +11,4 @@ from ray.data.sql.schema.registry import DatasetRegistry
 __all__ = [
     "SchemaManager",
     "DatasetRegistry",
-] 
+]

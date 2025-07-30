@@ -45,9 +45,9 @@ class DatasetRegistry:
         """
         if not isinstance(dataset, Dataset):
             raise TypeError(f"Expected Dataset, got {type(dataset)}")
-        
+
         validate_table_name(name)
-        
+
         self._tables[name] = dataset
         setattr(dataset, "_sql_name", name)
         self.schema_manager.infer_schema_from_dataset(name, dataset)
@@ -111,7 +111,9 @@ class DatasetRegistry:
                     count += 1
                 except ValueError:
                     # Skip invalid table names
-                    self._logger.debug(f"Skipped registering '{name}' due to invalid table name")
+                    self._logger.debug(
+                        f"Skipped registering '{name}' due to invalid table name"
+                    )
         return count
 
     def get_default_table(self) -> Optional[Dataset]:
@@ -149,15 +151,15 @@ class DatasetRegistry:
         """
         if name not in self._tables:
             raise ValueError(f"Table '{name}' not found")
-        
+
         dataset = self._tables[name]
         schema = self.schema_manager.get_schema(name)
-        
+
         return {
             "name": name,
             "row_count": dataset.count(),
-            "columns": list(dataset.columns()) if hasattr(dataset, 'columns') else [],
-            "schema": schema
+            "columns": list(dataset.columns()) if hasattr(dataset, "columns") else [],
+            "schema": schema,
         }
 
     def rename_table(self, old_name: str, new_name: str) -> None:
@@ -172,22 +174,22 @@ class DatasetRegistry:
         """
         if old_name not in self._tables:
             raise ValueError(f"Table '{old_name}' not found")
-        
+
         validate_table_name(new_name)
-        
+
         if new_name in self._tables:
             raise ValueError(f"Table '{new_name}' already exists")
-        
+
         dataset = self._tables[old_name]
         del self._tables[old_name]
-        
+
         self._tables[new_name] = dataset
         setattr(dataset, "_sql_name", new_name)
-        
+
         # Update schema
         schema = self.schema_manager.get_schema(old_name)
         if schema:
             schema.name = new_name
             self.schema_manager.register_schema(new_name, schema)
-        
-        self._logger.debug(f"Renamed table '{old_name}' to '{new_name}'") 
+
+        self._logger.debug(f"Renamed table '{old_name}' to '{new_name}'")

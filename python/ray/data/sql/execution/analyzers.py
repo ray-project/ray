@@ -14,14 +14,14 @@ from sqlglot import exp
 from ray.data.sql.config import SQLConfig
 from ray.data.sql.compiler import ExpressionCompiler
 from ray.data.sql.utils import (
-    setup_logger, 
-    create_column_mapping, 
-    normalize_identifier, 
+    setup_logger,
+    create_column_mapping,
+    normalize_identifier,
     safe_get_column,
     SUPPORTED_AGGREGATES,
     AGGREGATE_MAPPING,
     get_function_name_from_expression,
-    is_aggregate_function
+    is_aggregate_function,
 )
 
 
@@ -44,7 +44,12 @@ class ProjectionAnalyzer:
         self.compiler = ExpressionCompiler(config)
         self._logger = setup_logger("ProjectionAnalyzer")
 
-    def analyze_projections(self, select_exprs: List[exp.Expression], dataset: Dataset, table_name: Optional[str] = None) -> Tuple[List[str], List[Callable]]:
+    def analyze_projections(
+        self,
+        select_exprs: List[exp.Expression],
+        dataset: Dataset,
+        table_name: Optional[str] = None,
+    ) -> Tuple[List[str], List[Callable]]:
         """Analyze the SELECT clause expressions and return column names and Ray Data Expressions."""
         column_names = []
         exprs = []
@@ -53,7 +58,9 @@ class ProjectionAnalyzer:
 
         for idx, expr in enumerate(select_exprs):
             try:
-                names, eval_exprs = self._analyze_single_expression(expr, idx, cols, column_mapping, table_name)
+                names, eval_exprs = self._analyze_single_expression(
+                    expr, idx, cols, column_mapping, table_name
+                )
                 column_names.extend(names)
                 exprs.extend(eval_exprs)
             except Exception as e:
@@ -62,7 +69,14 @@ class ProjectionAnalyzer:
 
         return column_names, exprs
 
-    def _analyze_single_expression(self, expr: exp.Expression, index: int, cols: List[str], column_mapping: Dict[str, str], table_name: Optional[str]) -> Tuple[List[str], List[Callable]]:
+    def _analyze_single_expression(
+        self,
+        expr: exp.Expression,
+        index: int,
+        cols: List[str],
+        column_mapping: Dict[str, str],
+        table_name: Optional[str],
+    ) -> Tuple[List[str], List[Callable]]:
         """Analyze a single SELECT expression."""
         # Handle SELECT *
         if isinstance(expr, exp.Star):
@@ -95,7 +109,9 @@ class ProjectionAnalyzer:
             func = self.compiler._compile_expression(expr)
             return [f"col_{index}"], [func]
 
-    def _handle_star_expression(self, cols: List[str]) -> Tuple[List[str], List[Callable]]:
+    def _handle_star_expression(
+        self, cols: List[str]
+    ) -> Tuple[List[str], List[Callable]]:
         """Handle SELECT * expressions."""
         if not cols:
             return [], []
@@ -107,7 +123,9 @@ class ProjectionAnalyzer:
         ]
         return names, funcs
 
-    def _handle_table_star_expression(self, cols: List[str], table_name: Optional[str]) -> Tuple[List[str], List[Callable]]:
+    def _handle_table_star_expression(
+        self, cols: List[str], table_name: Optional[str]
+    ) -> Tuple[List[str], List[Callable]]:
         """Handle SELECT table.* expressions."""
         if not cols:
             raise ValueError(f"Cannot expand {table_name}.* - no columns available")
@@ -119,21 +137,27 @@ class ProjectionAnalyzer:
         ]
         return names, funcs
 
-    def _handle_column_expression(self, expr: exp.Column, column_mapping: Dict[str, str], cols: List[str]) -> Tuple[List[str], List[Callable]]:
+    def _handle_column_expression(
+        self, expr: exp.Column, column_mapping: Dict[str, str], cols: List[str]
+    ) -> Tuple[List[str], List[Callable]]:
         """Handle SELECT column expressions."""
         col_name = str(expr.name)
-        
+
         # Handle qualified column names (table.column) by extracting just the column part
-        if '.' in col_name:
-            col_name = col_name.split('.')[-1]
-        
+        if "." in col_name:
+            col_name = col_name.split(".")[-1]
+
         normalized_name = normalize_identifier(col_name, self.config.case_sensitive)
         actual_column = column_mapping.get(normalized_name)
 
         if not actual_column:
-            raise ValueError(f"Column '{col_name}' not found. Available columns: {cols}")
+            raise ValueError(
+                f"Column '{col_name}' not found. Available columns: {cols}"
+            )
 
-        func = lambda row, col=actual_column: safe_get_column(row, col, self.config.case_sensitive)
+        func = lambda row, col=actual_column: safe_get_column(
+            row, col, self.config.case_sensitive
+        )
         return [actual_column], [func]
 
 
@@ -163,7 +187,9 @@ class AggregateAnalyzer:
             return None
         return [str(expr.name) for expr in group_by.expressions]
 
-    def extract_aggregates(self, select_ast: exp.Select) -> List[Tuple[str, exp.Expression]]:
+    def extract_aggregates(
+        self, select_ast: exp.Select
+    ) -> List[Tuple[str, exp.Expression]]:
         """Extract aggregate expressions and their output names from the SELECT AST."""
         aggregates = []
         for expr in select_ast.args["expressions"]:
@@ -174,27 +200,36 @@ class AggregateAnalyzer:
                 aggregates.append((output_name, expr))
         return aggregates
 
-    def build_aggregates(self, aggs: List[Tuple[str, exp.Expression]], dataset: Dataset) -> Tuple[List[Any], Dict[str, str]]:
+    def build_aggregates(
+        self, aggs: List[Tuple[str, exp.Expression]], dataset: Dataset
+    ) -> Tuple[List[Any], Dict[str, str]]:
         """Build aggregate objects and a column rename mapping."""
         import ray.data.aggregate as agg_module
+
         aggregates = []
         renames = {}
         cols = list(dataset.columns()) if dataset else []
         column_mapping = create_column_mapping(cols, self.config.case_sensitive)
 
         for output_name, agg_expr in aggs:
-            agg, col_name = self._build_single_aggregate(agg_expr, column_mapping, agg_module)
+            agg, col_name = self._build_single_aggregate(
+                agg_expr, column_mapping, agg_module
+            )
             aggregates.append(agg)
             if output_name != col_name:
                 renames[col_name] = output_name
 
         return aggregates, renames
 
-    def _build_single_aggregate(self, agg_expr: exp.Expression, column_mapping: Dict[str, str], agg_module) -> Tuple[Any, str]:
+    def _build_single_aggregate(
+        self, agg_expr: exp.Expression, column_mapping: Dict[str, str], agg_module
+    ) -> Tuple[Any, str]:
         """Build a single aggregate object."""
         func_name = get_function_name_from_expression(agg_expr).lower()
         if func_name not in SUPPORTED_AGGREGATES:
-            raise NotImplementedError(f"Aggregate function '{func_name.upper()}' not supported")
+            raise NotImplementedError(
+                f"Aggregate function '{func_name.upper()}' not supported"
+            )
 
         target_column = self._extract_target_column(agg_expr, column_mapping)
 
@@ -226,20 +261,24 @@ class AggregateAnalyzer:
         """Return True if the expression is an aggregate function."""
         return is_aggregate_function(expr)
 
-    def _extract_target_column(self, agg_expr: exp.Expression, column_mapping: Dict[str, str]) -> Optional[str]:
+    def _extract_target_column(
+        self, agg_expr: exp.Expression, column_mapping: Dict[str, str]
+    ) -> Optional[str]:
         """Extract the target column name for an aggregate function, or None for COUNT(*)."""
         # Handle specific aggregate function classes (Sum, Count, etc.)
-        if hasattr(agg_expr, 'this') and agg_expr.this:
+        if hasattr(agg_expr, "this") and agg_expr.this:
             if isinstance(agg_expr.this, exp.Column):
                 col_name = str(agg_expr.this.name)
                 # Handle qualified column names (table.column) by extracting just the column part
-                if '.' in col_name:
-                    col_name = col_name.split('.')[-1]
+                if "." in col_name:
+                    col_name = col_name.split(".")[-1]
                 normalized = normalize_identifier(col_name, self.config.case_sensitive)
                 resolved_col = column_mapping.get(normalized)
                 if not resolved_col:
                     available_cols = list(column_mapping.values())
-                    raise ValueError(f"Column '{col_name}' not found. Available columns: {available_cols}")
+                    raise ValueError(
+                        f"Column '{col_name}' not found. Available columns: {available_cols}"
+                    )
                 return resolved_col
             elif isinstance(agg_expr.this, exp.Star):
                 # COUNT(*) - no column specified
@@ -255,18 +294,26 @@ class AggregateAnalyzer:
                 if isinstance(arg, exp.Column):
                     col_name = str(arg.name)
                     # Handle qualified column names (table.column) by extracting just the column part
-                    if '.' in col_name:
-                        col_name = col_name.split('.')[-1]
-                    normalized = normalize_identifier(col_name, self.config.case_sensitive)
+                    if "." in col_name:
+                        col_name = col_name.split(".")[-1]
+                    normalized = normalize_identifier(
+                        col_name, self.config.case_sensitive
+                    )
                     resolved_col = column_mapping.get(normalized)
                     if not resolved_col:
                         available_cols = list(column_mapping.values())
-                        raise ValueError(f"Column '{col_name}' not found. Available columns: {available_cols}")
+                        raise ValueError(
+                            f"Column '{col_name}' not found. Available columns: {available_cols}"
+                        )
                     return resolved_col
                 else:
-                    raise NotImplementedError(f"Complex aggregate arguments not supported: {arg}")
+                    raise NotImplementedError(
+                        f"Complex aggregate arguments not supported: {arg}"
+                    )
             else:
-                raise NotImplementedError(f"Multi-argument aggregates not supported: {agg_expr}")
+                raise NotImplementedError(
+                    f"Multi-argument aggregates not supported: {agg_expr}"
+                )
         elif isinstance(agg_expr, exp.AggFunc):
             # Handle function-style aggregates like COUNT(column)
             expressions = agg_expr.args.get("expressions", [])
@@ -279,18 +326,26 @@ class AggregateAnalyzer:
                 if isinstance(arg, exp.Column):
                     col_name = str(arg.name)
                     # Handle qualified column names (table.column) by extracting just the column part
-                    if '.' in col_name:
-                        col_name = col_name.split('.')[-1]
-                    normalized = normalize_identifier(col_name, self.config.case_sensitive)
+                    if "." in col_name:
+                        col_name = col_name.split(".")[-1]
+                    normalized = normalize_identifier(
+                        col_name, self.config.case_sensitive
+                    )
                     resolved_col = column_mapping.get(normalized)
                     if not resolved_col:
                         available_cols = list(column_mapping.values())
-                        raise ValueError(f"Column '{col_name}' not found. Available columns: {available_cols}")
+                        raise ValueError(
+                            f"Column '{col_name}' not found. Available columns: {available_cols}"
+                        )
                     return resolved_col
                 else:
-                    raise NotImplementedError(f"Complex aggregate arguments not supported: {arg}")
+                    raise NotImplementedError(
+                        f"Complex aggregate arguments not supported: {arg}"
+                    )
             else:
-                raise NotImplementedError(f"Multi-argument aggregates not supported: {agg_expr}")
+                raise NotImplementedError(
+                    f"Multi-argument aggregates not supported: {agg_expr}"
+                )
         else:
             raise ValueError(f"Unexpected aggregate expression type: {type(agg_expr)}")
 
@@ -311,8 +366,10 @@ class AggregateAnalyzer:
         """Validate that the aggregate function can be applied to the column."""
         # This is a simplified validation - in practice, you'd check the actual data
         if func_name not in ("count",):
-            self._logger.debug(f"Validating column '{column}' for aggregate '{func_name.upper()}'")
+            self._logger.debug(
+                f"Validating column '{column}' for aggregate '{func_name.upper()}'"
+            )
 
     def _get_function_name(self, agg_expr: exp.Expression) -> str:
         """Get the function name from an aggregate expression."""
-        return get_function_name_from_expression(agg_expr) 
+        return get_function_name_from_expression(agg_expr)

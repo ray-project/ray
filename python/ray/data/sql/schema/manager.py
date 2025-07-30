@@ -72,7 +72,9 @@ class SchemaManager:
 
             self.register_schema(table_name, schema)
         except Exception as e:
-            self._logger.warning(f"Could not infer schema for table '{table_name}': {e}")
+            self._logger.warning(
+                f"Could not infer schema for table '{table_name}': {e}"
+            )
 
     def _infer_type(self, value: Any) -> str:
         """Infer SQL type from Python value.
@@ -118,4 +120,4 @@ class SchemaManager:
         Returns:
             True if schema exists, False otherwise.
         """
-        return table_name in self._schemas 
+        return table_name in self._schemas
