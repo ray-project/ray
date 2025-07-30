@@ -706,8 +706,10 @@ Status NodeInfoAccessor::CheckAlive(const std::vector<NodeID> &node_ids,
   return ret_promise.get_future().get();
 }
 
-bool NodeInfoAccessor::IsRemoved(const NodeID &node_id) const {
-  return removed_nodes_.count(node_id) == 1;
+bool NodeInfoAccessor::IsNodeDead(const NodeID &node_id) const {
+  auto node_iter = node_cache_.find(node_id);
+  return node_iter != node_cache_.end() &&
+         node_iter->second.state() == rpc::GcsNodeInfo::DEAD;
 }
 
 void NodeInfoAccessor::HandleNotification(rpc::GcsNodeInfo &&node_info) {
@@ -756,11 +758,6 @@ void NodeInfoAccessor::HandleNotification(rpc::GcsNodeInfo &&node_info) {
 
   // If the notification is new, call registered callback.
   if (is_notif_new) {
-    if (is_alive) {
-      RAY_CHECK(removed_nodes_.find(node_id) == removed_nodes_.end());
-    } else {
-      removed_nodes_.insert(node_id);
-    }
     node_change_callback_(node_id, node_cache_[node_id]);
   }
 }

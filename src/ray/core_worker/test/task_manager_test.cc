@@ -135,7 +135,7 @@ class TaskManagerTest : public ::testing::Test {
             addr_,
             publisher_.get(),
             subscriber_.get(),
-            [this](const NodeID &node_id) { return all_nodes_alive_; },
+            /*is_node_dead=*/[this](const NodeID &) { return node_died_; },
             lineage_pinning_enabled)),
         io_context_("TaskManagerTest"),
         store_(std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService(),
@@ -204,7 +204,7 @@ class TaskManagerTest : public ::testing::Test {
   std::shared_ptr<ReferenceCounter> reference_counter_;
   InstrumentedIOContextWithThread io_context_;
   std::shared_ptr<CoreWorkerMemoryStore> store_;
-  bool all_nodes_alive_ = true;
+  bool node_died_ = false;
   TaskManager manager_;
   int num_retries_ = 0;
   uint32_t last_delay_ms_ = 0;
@@ -308,7 +308,7 @@ TEST_F(TaskManagerTest, TestPlasmaConcurrentFailure) {
   WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
 
   ASSERT_TRUE(reference_counter_->FlushObjectsToRecover().empty());
-  all_nodes_alive_ = false;
+  node_died_ = true;
 
   manager_.MarkDependenciesResolved(spec.TaskId());
   ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
