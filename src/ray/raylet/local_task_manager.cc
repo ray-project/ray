@@ -793,23 +793,18 @@ bool LocalTaskManager::PinTaskArgsIfMemoryAvailable(const TaskSpecification &spe
 void LocalTaskManager::PinTaskArgs(const TaskSpecification &spec,
                                    std::vector<std::unique_ptr<RayObject>> args) {
   const auto &deps = spec.GetDependencyIds();
-  // TODO(swang): This should really be an assertion, but we can sometimes
-  // receive a duplicate task request if there is a failure and the original
-  // version of the task has not yet been canceled.
   auto executed_task_inserted = executing_task_args_.emplace(spec.TaskId(), deps).second;
-  if (executed_task_inserted) {
-    for (size_t i = 0; i < deps.size(); i++) {
-      auto [it, pinned_task_inserted] =
-          pinned_task_arguments_.emplace(deps[i], std::make_pair(std::move(args[i]), 0));
-      if (pinned_task_inserted) {
-        // This is the first task that needed this argument.
-        pinned_task_arguments_bytes_ += it->second.first->GetSize();
-      }
-      it->second.second++;
+  RAY_CHECK(executed_task_inserted)
+      << "Scheduler received duplicate task " << spec.TaskId()
+      << ", most likely because the first execution failed";
+  for (size_t i = 0; i < deps.size(); i++) {
+    auto [it, pinned_task_inserted] =
+        pinned_task_arguments_.emplace(deps[i], std::make_pair(std::move(args[i]), 0));
+    if (pinned_task_inserted) {
+      // This is the first task that needed this argument.
+      pinned_task_arguments_bytes_ += it->second.first->GetSize();
     }
-  } else {
-    RAY_LOG(DEBUG) << "Scheduler received duplicate task " << spec.TaskId()
-                   << ", most likely because the first execution failed";
+    it->second.second++;
   }
 }
 
@@ -818,20 +813,19 @@ void LocalTaskManager::ReleaseTaskArgs(const TaskID &task_id) {
   // TODO(swang): This should really be an assertion, but we can sometimes
   // receive a duplicate task request if there is a failure and the original
   // version of the task has not yet been canceled.
-  if (it != executing_task_args_.end()) {
-    for (auto &arg : it->second) {
-      auto arg_it = pinned_task_arguments_.find(arg);
-      RAY_CHECK(arg_it != pinned_task_arguments_.end());
-      RAY_CHECK(arg_it->second.second > 0);
-      arg_it->second.second--;
-      if (arg_it->second.second == 0) {
-        // This is the last task that needed this argument.
-        pinned_task_arguments_bytes_ -= arg_it->second.first->GetSize();
-        pinned_task_arguments_.erase(arg_it);
-      }
+  RAY_CHECK(it != executing_task_args_.end());
+  for (auto &arg : it->second) {
+    auto arg_it = pinned_task_arguments_.find(arg);
+    RAY_CHECK(arg_it != pinned_task_arguments_.end());
+    RAY_CHECK(arg_it->second.second > 0);
+    arg_it->second.second--;
+    if (arg_it->second.second == 0) {
+      // This is the last task that needed this argument.
+      pinned_task_arguments_bytes_ -= arg_it->second.first->GetSize();
+      pinned_task_arguments_.erase(arg_it);
     }
-    executing_task_args_.erase(it);
   }
+  executing_task_args_.erase(it);
 }
 
 namespace {
