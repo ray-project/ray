@@ -37,7 +37,6 @@ def load(config_path: str, workspace_dir: str, name: str, config_args: str):
     """Load a dependency sets from a config file."""
     manager = DependencySetManager(config_path=config_path, workspace_dir=workspace_dir)
     config = None
-    click.echo(f"# of depsets: {len(manager.config.depsets)}")
     if name:
         if config_args:
             for config_arg in manager.config.config_args:
