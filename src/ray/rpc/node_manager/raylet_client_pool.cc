@@ -58,13 +58,13 @@ void RayletClientPool::Disconnect(ray::NodeID id) {
   client_map_.erase(it);
 }
 
-rpc::Address RayletClientPool::GenerateRayletAddress(const NodeID &node_id,
+rpc::Address RayletClientPool::GenerateRayletAddress(const NodeID &raylet_id,
                                                      const std::string &ip_address,
                                                      int port) {
   rpc::Address address;
   address.set_ip_address(ip_address);
   address.set_port(port);
-  address.set_raylet_id(node_id.Binary());
+  address.set_raylet_id(raylet_id.Binary());
   return address;
 }
 
