@@ -30,7 +30,7 @@ namespace rpc {
 
 using RayletClientFactoryFn =
     std::function<std::shared_ptr<ray::RayletClientInterface>(const rpc::Address &)>;
-class NodeManagerClientPool {
+class RayletClientPool {
  public:
   /// Return an existing RayletClient if exists or connect to one if it does
   /// not. The returned pointer is borrowed, and expected to be used briefly.
@@ -48,11 +48,11 @@ class NodeManagerClientPool {
   /// be open until it's no longer used, at which time it will disconnect.
   void Disconnect(ray::NodeID id);
 
-  explicit NodeManagerClientPool(rpc::ClientCallManager &client_call_manager)
+  explicit RayletClientPool(rpc::ClientCallManager &client_call_manager)
       : client_factory_(DefaultClientFactory(client_call_manager)){};
 
   // For testing.
-  explicit NodeManagerClientPool(RayletClientFactoryFn client_factory)
+  explicit RayletClientPool(RayletClientFactoryFn client_factory)
       : client_factory_(std::move(client_factory)){};
 
  private:
