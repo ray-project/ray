@@ -2,11 +2,10 @@ import yaml
 from dataclasses import dataclass, field
 from typing import List, Optional
 import os
-from string import Template
 
 
 @dataclass
-class Env:
+class ConfigArgs:
     name: str
     build_args: List[str]
 
@@ -19,48 +18,58 @@ class Depset:
     constraints: List[str]
     output: str
     source_depset: Optional[str] = None
+    config_args: ConfigArgs = None
     depsets: Optional[List[str]] = None
 
 
 @dataclass
 class Config:
     depsets: List[Depset] = field(default_factory=list)
-    envs: List[Env] = field(default_factory=list)
+    config_args: List[ConfigArgs] = field(default_factory=list)
 
     @staticmethod
-    def parse_envs(envs: List[dict]) -> List["Env"]:
+    def parse_configs(configs: List[dict]) -> List["ConfigArgs"]:
         return [
-            Env(
-                name=env.get("name"),
-                build_args=env.get("build_args", []),
+            ConfigArgs(
+                name=config.get("name", None),
+                build_args=config.get("build_args", []),
             )
-            for env in envs
+            for config in configs
         ]
 
     @staticmethod
-    def from_dict(data: dict, envs: List["Env"]) -> "Config":
+    def from_dict(data: dict) -> "Config":
+        config_args = Config.parse_configs(data.get("configs", []))
         depsets = []
         raw_depsets = data.get("depsets", [])
-        for env in envs:
-            build_args = env.build_args
-            substituted_depsets = Template(str(raw_depsets)).substitute(build_args)
-            depsets_yaml = yaml.safe_load(substituted_depsets)
-            depsets.extend(
-                [
-                    Depset(
-                        name=values.get("name"),
-                        requirements=values.get("requirements", []),
-                        constraints=values.get("constraints", []),
-                        operation=values.get("operation", None),
-                        output=values.get("output"),
-                        source_depset=values.get("source_depset"),
-                        env=env,
-                    )
-                    for values in depsets_yaml
-                ]
-            )
+        for depset in raw_depsets:
+            config_matrix = depset.get("configs", [])
+            for config_name in config_matrix:
+                config_arg = next(
+                    (
+                        config_arg
+                        for config_arg in config_args
+                        if config_arg.name == config_name
+                    ),
+                    None,
+                )
+                if config_arg is None:
+                    raise RuntimeError(f"Config {config_name} not found")
 
-        return Config(depsets=depsets, envs=envs)
+                depsets.append(
+                    Depset(
+                        name=depset.get("name"),
+                        requirements=depset.get("requirements", []),
+                        constraints=depset.get("constraints", []),
+                        operation=depset.get("operation", None),
+                        output=depset.get("output"),
+                        source_depset=depset.get("source_depset"),
+                        depsets=depset.get("depsets", []),
+                        config_args=config_arg,
+                    )
+                )
+
+        return Config(depsets=depsets, config_args=config_args)
 
 
 class Workspace:
@@ -73,7 +82,5 @@ class Workspace:
 
     def load_config(self, path: str) -> Config:
         with open(os.path.join(self.dir, path), "r") as f:
-            # consider loading the env vars first and then parsing the depsets
             data = yaml.safe_load(f.read())
-            envs = Config.parse_envs(data.get("envs", []))
-            return Config.from_dict(data, envs)
+            return Config.from_dict(data)

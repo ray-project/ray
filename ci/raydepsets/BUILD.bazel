@@ -8,7 +8,6 @@ py_library(
         "workspace.py",
     ],
     data = [
-        ".env",
         "@uv_x86_64//:file",
     ],
     deps = [
@@ -35,11 +34,7 @@ py_test(
         "test_data/requirements_compiled_test_expand.txt",
         "test_data/requirements_compiled_test_update.txt",
         "test_data/requirements_test.txt",
-        "test_data/test.config.yaml",
-        "test_data/requirements_compiled_test.txt",
-        "test_data/requirements_compiled_test_update.txt",
-        "test_data/requirements_test.txt",
-        "test_data/test.config.yaml",
+        "test_data/test.depsets.yaml",
     ],
     exec_compatible_with = ["//:hermetic_python"],
     tags = [
