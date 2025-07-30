@@ -73,8 +73,8 @@ inline std::string VectorToString(const std::vector<T> &vec, const F &debug_stri
   @param str the string to convert to an integer type.
 
   @return OK if the conversion was successful,
-  InvalidArgument if the string contains non-integer characters.
-  OutOfRange if the integer overflows based on the type.
+  @return InvalidArgument if the string contains non-integer characters or if the
+  integer overflows based on the type.
 */
 template <typename IntType>
 StatusOr<IntType> StringToInt(const std::string &input) noexcept {
@@ -90,7 +90,7 @@ StatusOr<IntType> StringToInt(const std::string &input) noexcept {
   if (ret.ec == std::errc::result_out_of_range) {
     // There isn't a straightforward and portable way to print out the unmangled type
     // information.
-    return Status::ResultOutOfRange(
+    return Status::InvalidArgument(
         absl::StrFormat("Failed to convert %s into the integer "
                         "type. The result is too large to fit into the type provided.",
                         input));

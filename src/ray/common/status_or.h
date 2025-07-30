@@ -248,7 +248,6 @@ class StatusOr {
   std::string ToString() const { return status_.ToString(); }
 
   bool IsInvalidArgument() const { return code() == StatusCode::InvalidArgument; }
-  bool IsResultOutOfRange() const { return code() == StatusCode::ResultOutOfRange; }
 
  private:
   T &get() { return data_; }

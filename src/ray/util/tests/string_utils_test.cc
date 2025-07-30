@@ -22,19 +22,19 @@
 
 namespace ray {
 
-TEST(StringUtilsTest, StringToIntFailsWithNonNumberInput) {
+TEST(StringUtilsTest, StringToIntFailsWhenNonNumberInputWithInvalidArgument) {
   std::string input = "imanumber";
   StatusOr<int> parsed = StringToInt<int>(input);
   ASSERT_TRUE(parsed.IsInvalidArgument()) << parsed.ToString();
 }
 
-TEST(StringUtilsTest, StringToIntFailsWithEmptyString) {
+TEST(StringUtilsTest, StringToIntFailsWhenEmptyStringWithInvalidArgument) {
   std::string input = "";
   StatusOr<int> parsed = StringToInt<int>(input);
   ASSERT_TRUE(parsed.IsInvalidArgument()) << parsed.ToString();
 }
 
-TEST(StringUtilsTest, StringToIntFailsWithSpaces) {
+TEST(StringUtilsTest, StringToIntFailsWhenNumberWithSpacesWithInvalidArgument) {
   std::string leading_space = " 1";
   StatusOr<int> parsed = StringToInt<int>(leading_space);
   ASSERT_TRUE(parsed.IsInvalidArgument()) << parsed.ToString();
@@ -48,16 +48,16 @@ TEST(StringUtilsTest, StringToIntFailsWithSpaces) {
   ASSERT_TRUE(parsed.IsInvalidArgument()) << parsed.ToString();
 }
 
-TEST(StringUtilsTest, StringToIntFailsWithNonIntegerAndIntegerChars) {
+TEST(StringUtilsTest, StringToIntFailsWhenNonIntegerAndIntegerCharsWithInvalidArgumen) {
   std::string input = "123hellodarknessmyoldfriend";
   StatusOr<int> parsed = StringToInt<int>(input);
   ASSERT_TRUE(parsed.IsInvalidArgument()) << parsed.ToString();
 }
 
-TEST(StringUtilsTest, StringToIntFailsWithResultOutOfRange) {
+TEST(StringUtilsTest, StringToIntFailWhenIntegerTooOverflowsTypeWithInvalidArgument) {
   std::string input = "4294967296";
   StatusOr<int8_t> parsed = StringToInt<int8_t>(input);
-  ASSERT_TRUE(parsed.IsResultOutOfRange()) << parsed.ToString();
+  ASSERT_TRUE(parsed.IsInvalidArgument()) << parsed.ToString();
 }
 
 TEST(StringUtilsTest, StringToIntSucceedsWithNegativeIntegers) {
