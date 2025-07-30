@@ -35,7 +35,7 @@ namespace gcs {
 GcsNodeManager::GcsNodeManager(GcsPublisher *gcs_publisher,
                                gcs::GcsTableStorage *gcs_table_storage,
                                instrumented_io_context &io_context,
-                               rpc::NodeManagerClientPool *raylet_client_pool,
+                               rpc::RayletClientPool *raylet_client_pool,
                                const ClusterID &cluster_id)
     : gcs_publisher_(gcs_publisher),
       gcs_table_storage_(gcs_table_storage),
