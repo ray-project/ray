@@ -69,7 +69,6 @@ class MockEventAggregatorAddEvents
   void Perform(const std::tuple<const rpc::events::AddEventsRequest &,
                                 const rpc::ClientCallback<rpc::events::AddEventsReply> &>
                    &args) override {
-    auto &request = std::get<0>(args);
     std::get<1>(args)(status_, std::move(reply_));
   }
 
