@@ -14,6 +14,7 @@ async def _create_impl(image_uri: str, logger: logging.Logger):
     # Pull image if it doesn't exist
     # Also get path to `default_worker.py` inside the image.
     with tempfile.TemporaryDirectory() as tmpdir:
+        os.chmod(tmpdir, 0o777)
         result_file = os.path.join(tmpdir, "worker_path.txt")
         get_worker_path_script = """
 import ray._private.workers.default_worker as dw
@@ -41,11 +42,8 @@ with open('/shared/worker_path.txt', 'w') as f:
         stdout, stderr = await process.communicate()
 
         if process.returncode != 0:
-            logger.error(
-                f"Podman command failed: cmd={cmd}, stdout={stdout.decode()}, stderr={stderr.decode()}"
-            )
             raise RuntimeError(
-                f"Podman command failed: cmd={cmd}, returncode={process.returncode}"
+                f"Podman command failed: cmd={cmd}, returncode={process.returncode}, stdout={stdout.decode()}, stderr={stderr.decode()}"
             )
 
         if not os.path.exists(result_file):
