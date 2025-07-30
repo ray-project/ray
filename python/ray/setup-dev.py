@@ -15,6 +15,7 @@ if this_dir in sys.path:
     sys.path.remove(this_dir)
     sys.path.append(this_dir)
 
+import tempfile
 import argparse
 import click
 import shutil
@@ -73,36 +74,35 @@ def do_link(package, force=False, skip_list=None, allow_list=None, local_path=No
     else:
         sudo = []
         if not os.access(os.path.dirname(package_home), os.W_OK):
-            print("You don't have write permission " f"to {package_home}, using sudo:")
+            print("You don't have write permission to {package_home}, using sudo:")
             sudo = ["sudo"]
         print(f"Creating symbolic link from \n {local_home} to \n {package_home}")
 
         # Preserve ray/serve/generated
-        serve_temp_dir = "/tmp/ray/_serve/"
-        if package == "serve":
-            # Copy generated folder to a temp dir
-            generated_folder = os.path.join(package_home, "generated")
-            if not os.path.exists(serve_temp_dir):
-                os.makedirs(serve_temp_dir)
-            subprocess.check_call(["mv", generated_folder, serve_temp_dir])
+        with tempfile.TemporaryDirectory() as serve_temp_dir:
+            if package == "serve":
+                # Copy generated folder to a temp dir
+                generated_folder = os.path.join(package_home, "generated")
+                os.makedirs(serve_temp_dir, exist_ok=True)
+                subprocess.check_call(["mv", generated_folder, serve_temp_dir])
 
-        # Create backup of the old directory if it exists
-        if os.path.exists(package_home):
-            backup_dir = f"{package_home}.bak"
-            print(f"Creating backup of {package_home} to {backup_dir}")
-            subprocess.check_call(sudo + ["cp", "-r", package_home, backup_dir])
+            # Create backup of the old directory if it exists
+            if os.path.exists(package_home):
+                backup_dir = f"{package_home}.bak"
+                print(f"Creating backup of {package_home} to {backup_dir}")
+                subprocess.check_call(sudo + ["cp", "-r", package_home, backup_dir])
 
-        subprocess.check_call(sudo + ["rm", "-rf", package_home])
-        subprocess.check_call(sudo + ["ln", "-s", local_home, package_home])
+            subprocess.check_call(sudo + ["rm", "-rf", package_home])
+            subprocess.check_call(sudo + ["ln", "-s", local_home, package_home])
 
-        # Move generated folder to local_home
-        if package == "serve":
-            tmp_generated_folder = os.path.join(serve_temp_dir, "generated")
-            package_generated_folder = os.path.join(package_home, "generated")
-            if not os.path.exists(package_generated_folder):
-                subprocess.check_call(
-                    ["mv", tmp_generated_folder, package_generated_folder]
-                )
+            # Move generated folder to local_home
+            if package == "serve":
+                tmp_generated_folder = os.path.join(serve_temp_dir, "generated")
+                package_generated_folder = os.path.join(package_home, "generated")
+                if not os.path.exists(package_generated_folder):
+                    subprocess.check_call(
+                        ["mv", tmp_generated_folder, package_generated_folder]
+                    )
 
 
 if __name__ == "__main__":
