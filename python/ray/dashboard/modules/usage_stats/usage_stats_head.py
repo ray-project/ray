@@ -35,7 +35,7 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
         self._grafana_ran_before = False
         self._prometheus_ran_before = False
 
-    if ray._private.utils.check_dashboard_dependencies_installed():
+    if ray._private.utils.get_dashboard_dependency_error() is None:
         import aiohttp
 
         import ray.dashboard.optional_utils
