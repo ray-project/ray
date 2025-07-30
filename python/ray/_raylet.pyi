@@ -278,7 +278,7 @@ OPTIMIZED: int
 GRPC_STATUS_CODE_UNAVAILABLE: int
 GRPC_STATUS_CODE_UNKNOWN: int
 GRPC_STATUS_CODE_DEADLINE_EXCEEDED: int
-GRCP_STATUS_CODE_DEADLINE_EXCEEDED: int
+GRPC_STATUS_CODE_DEADLINE_EXCEEDED: int
 GRPC_STATUS_CODE_RESOURCE_EXHAUSTED: int
 GRPC_STATUS_CODE_UNIMPLEMENTED: int
 
@@ -294,7 +294,7 @@ async_task_function_name:contextvars.ContextVar[str|None]
 
 
 class HasReadInto(Protocol):
-    def readinto(self,b:bytes,/)->None: ...
+    def readinto(self,b:bytearray|memoryview,/)->None: ...
 
 _R = TypeVar("_R") #for ObjectRefs
 _R2 = TypeVar("_R2")
