@@ -867,7 +867,7 @@ service TaskInfoGcsService {
 }
 
 // Service for recording the unified ray events.
-service EventExportGcsService {
+service RayEventExportGcsService {
   // Add OneEvent task data to GCS.
   rpc AddEvent(events.AddEventRequest) returns (events.AddEventReply);
 }
