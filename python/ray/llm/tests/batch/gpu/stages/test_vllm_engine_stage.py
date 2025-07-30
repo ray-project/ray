@@ -250,6 +250,9 @@ async def test_vllm_wrapper_semaphore(model_llama_3_2_216M):
             or mock_generate_async_v1.call_count == 10
         )
 
+        # Clean up GPU memory
+        wrapper.shutdown()
+
 
 @pytest.mark.asyncio
 async def test_vllm_wrapper_generate(model_llama_3_2_216M):
@@ -300,6 +303,9 @@ async def test_vllm_wrapper_generate(model_llama_3_2_216M):
         max_tokens = params.max_tokens
         assert max_tokens == output["num_generated_tokens"]
 
+    # Clean up GPU memory
+    wrapper.shutdown()
+
 
 @pytest.mark.asyncio
 async def test_vllm_wrapper_embed(model_opt_125m):
@@ -328,6 +334,9 @@ async def test_vllm_wrapper_embed(model_opt_125m):
     for resp in asyncio.as_completed(tasks):
         _, output = await resp
         assert output["embeddings"].shape == (768,)
+
+    # Clean up GPU memory
+    wrapper.shutdown()
 
 
 @pytest.mark.asyncio
@@ -375,6 +384,9 @@ async def test_vllm_wrapper_lora(model_llama_3_2_216M, model_llama_3_2_216M_lora
         params = request.params
         max_tokens = params.max_tokens
         assert max_tokens == output["num_generated_tokens"]
+
+    # Clean up GPU memory
+    wrapper.shutdown()
 
 
 @pytest.mark.asyncio
@@ -424,6 +436,9 @@ async def test_vllm_wrapper_json(model_llama_3_2_1B_instruct):
         assert isinstance(json_obj["answer"], int)
         assert "explain" in json_obj
         assert isinstance(json_obj["explain"], str)
+
+    # Clean up GPU memory
+    wrapper.shutdown()
 
 
 if __name__ == "__main__":
