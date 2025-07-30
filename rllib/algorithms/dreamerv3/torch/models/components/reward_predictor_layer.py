@@ -7,12 +7,15 @@ https://arxiv.org/pdf/2301.04104v1.pdf
 D. Hafner, T. Lillicrap, M. Norouzi, J. Ba
 https://arxiv.org/pdf/2010.02193.pdf
 """
-from ray.rllib.utils.framework import try_import_tf
 
-_, tf, _ = try_import_tf()
+from ray.rllib.utils.framework import try_import_torch
+
+torch, nn = try_import_torch()
+if torch:
+    F = nn.functional
 
 
-class RewardPredictorLayer(tf.keras.layers.Layer):
+class RewardPredictorLayer(nn.Module):
     """A layer outputting reward predictions using K bins and two-hot encoding.
 
     This layer is used in two models in DreamerV3: The reward predictor of the world
@@ -28,14 +31,15 @@ class RewardPredictorLayer(tf.keras.layers.Layer):
     def __init__(
         self,
         *,
+        input_size: int,
         num_buckets: int = 255,
         lower_bound: float = -20.0,
         upper_bound: float = 20.0,
-        trainable: bool = True,
     ):
         """Initializes a RewardPredictorLayer instance.
 
         Args:
+            input_size: The input size of the reward predictor layer.
             num_buckets: The number of buckets to create. Note that the number of
                 possible symlog'd outcomes from the used distribution is
                 `num_buckets` + 1:
@@ -53,58 +57,50 @@ class RewardPredictorLayer(tf.keras.layers.Layer):
                 `lower_bound` and `upper_bound`.
         """
         self.num_buckets = num_buckets
-        super().__init__(name=f"reward_layer_{self.num_buckets}buckets")
+        super().__init__()
 
         self.lower_bound = lower_bound
         self.upper_bound = upper_bound
-        self.reward_buckets_layer = tf.keras.layers.Dense(
-            units=self.num_buckets,
-            activation=None,
-            # From [1]:
-            # "We further noticed that the randomly initialized reward predictor and
-            # critic networks at the start of training can result in large predicted
-            # rewards that can delay the onset of learning. We initialize the output
-            # weights of the reward predictor and critic to zeros, which effectively
-            # alleviates the problem and accelerates early learning."
-            kernel_initializer="zeros",
-            bias_initializer="zeros",  # zero-bias is default anyways
-            trainable=trainable,
+        self.reward_buckets_layer = nn.Linear(
+            in_features=input_size, out_features=self.num_buckets, bias=True
         )
+        nn.init.zeros_(self.reward_buckets_layer.weight)
+        nn.init.zeros_(self.reward_buckets_layer.bias)
+        # self.reward_buckets_layer.weight.data.fill_(0.0)
+        # self.reward_buckets_layer.bias.data.fill_(0.0)
 
-    def call(self, inputs):
+    def forward(self, inputs, return_logits=False):
         """Computes the expected reward using N equal sized buckets of possible values.
 
         Args:
             inputs: The input tensor for the layer, which computes the reward bucket
                 weights (logits). [B, dim].
+            return_logits: Whether to return the logits over the reward buckets
+                as a second return value (besides the expected reward).
 
         Returns:
-            A tuple consisting of the expected rewards and the logits that parameterize
-            the tfp `FiniteDiscrete` distribution object. To get the individual bucket
+            The expected reward OR a tuple consisting of the expected reward and the
+            torch `FiniteDiscrete` distribution object. To get the individual bucket
             probs, do `[FiniteDiscrete object].probs`.
         """
         # Compute the `num_buckets` weights.
-        assert len(inputs.shape) == 2
-        logits = tf.cast(self.reward_buckets_layer(inputs), tf.float32)
-        # out=[B, `num_buckets`]
+        logits = self.reward_buckets_layer(inputs)
 
         # Compute the expected(!) reward using the formula:
         # `softmax(Linear(x))` [vectordot] `possible_outcomes`, where
         # `possible_outcomes` is the even-spaced (binned) encoding of all possible
         # symexp'd reward/values.
-        # [2]: "The mean of the reward predictor pφ(ˆrt | zˆt) is used as reward
-        # sequence rˆ1:H."
-        probs = tf.nn.softmax(logits)
-        possible_outcomes = tf.linspace(
-            self.lower_bound,
-            self.upper_bound,
-            self.num_buckets,
+        probs = F.softmax(logits, dim=-1)
+        possible_outcomes = torch.linspace(
+            self.lower_bound, self.upper_bound, self.num_buckets, device=logits.device
         )
         # probs=possible_outcomes=[B, `num_buckets`]
 
         # Simple vector dot product (over last dim) to get the mean reward
         # weighted sum, where all weights sum to 1.0.
-        expected_rewards = tf.reduce_sum(probs * possible_outcomes, axis=-1)
+        expected_rewards = torch.sum(probs * possible_outcomes, dim=-1)
         # expected_rewards=[B]
 
-        return expected_rewards, logits
+        if return_logits:
+            return expected_rewards, logits
+        return expected_rewards
