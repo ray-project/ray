@@ -458,8 +458,6 @@ class NodeInfoAccessor {
 
   /// A cache for information about all nodes.
   absl::flat_hash_map<NodeID, rpc::GcsNodeInfo> node_cache_;
-  /// The set of dead nodes.
-  absl::flat_hash_set<NodeID> dead_nodes_;
 
   // TODO(dayshah): Need to refactor gcs client / accessor to avoid this.
   // https://github.com/ray-project/ray/issues/54805

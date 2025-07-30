@@ -709,7 +709,9 @@ Status NodeInfoAccessor::CheckAlive(const std::vector<std::string> &raylet_addre
 }
 
 bool NodeInfoAccessor::IsNodeDead(const NodeID &node_id) const {
-  return dead_nodes_.contains(node_id);
+  auto node_iter = node_cache_.find(node_id);
+  return node_iter != node_cache_.end() &&
+         node_iter->second.state() == rpc::GcsNodeInfo::DEAD;
 }
 
 void NodeInfoAccessor::HandleNotification(rpc::GcsNodeInfo &&node_info) {
@@ -758,11 +760,6 @@ void NodeInfoAccessor::HandleNotification(rpc::GcsNodeInfo &&node_info) {
 
   // If the notification is new, call registered callback.
   if (is_notif_new) {
-    if (is_alive) {
-      RAY_CHECK(!dead_nodes_.contains(node_id));
-    } else {
-      dead_nodes_.insert(node_id);
-    }
     node_change_callback_(node_id, node_cache_[node_id]);
   }
 }
