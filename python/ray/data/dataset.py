@@ -138,6 +138,9 @@ from ray.data.expressions import Expr
 
 logger = logging.getLogger(__name__)
 
+# Special column name for train/test split to avoid collision with user columns
+_TRAIN_TEST_SPLIT_COLUMN = "__ray_train_test_split_is_train__"
+
 TensorflowFeatureTypeSpec = Union[
     "tf.TypeSpec", List["tf.TypeSpec"], Dict[str, "tf.TypeSpec"]
 ]
@@ -2256,6 +2259,7 @@ class Dataset:
         *,
         shuffle: bool = False,
         seed: Optional[int] = None,
+        stratify: Optional[str] = None,
     ) -> Tuple["MaterializedDataset", "MaterializedDataset"]:
         """Materialize and split the dataset into train and test subsets.
 
@@ -2279,6 +2283,9 @@ class Dataset:
                 large dataset.
             seed: Fix the random seed to use for shuffle, otherwise one is chosen
                 based on system randomness. Ignored if ``shuffle=False``.
+            stratify: Optional column name to use for stratified sampling. If provided,
+                the splits will maintain the same proportions of each class in the
+                stratify column across both train and test sets.
 
         Returns:
             Train and test subsets as two ``MaterializedDatasets``.
@@ -2294,6 +2301,53 @@ class Dataset:
 
         if not isinstance(test_size, (int, float)):
             raise TypeError(f"`test_size` must be int or float got {type(test_size)}.")
+
+        # Validate that shuffle=True and stratify are not both specified
+        if shuffle and stratify is not None:
+            raise ValueError(
+                "Cannot specify both 'shuffle=True' and 'stratify' parameters. "
+                "Stratified splitting maintains class proportions and is incompatible with shuffling."
+            )
+
+        # Handle stratified splitting
+        if stratify is not None:
+            # Normalize test_size to float (only materialize if needed)
+            if isinstance(test_size, int):
+                ds_length = ds.count()
+                if test_size <= 0 or test_size >= ds_length:
+                    raise ValueError(
+                        "If `test_size` is an int, it must be bigger than 0 and smaller "
+                        f"than the size of the dataset ({ds_length}). "
+                        f"Got {test_size}."
+                    )
+                test_size = test_size / ds_length
+
+            if test_size <= 0 or test_size >= 1:
+                raise ValueError(
+                    "For stratified splitting, test_size must be between 0 and 1 "
+                    f"(or equivalent int). Got {test_size}."
+                )
+
+            def add_train_flag(group_batch):
+                n = len(group_batch)
+                test_count = int(n * test_size)
+                group_batch[_TRAIN_TEST_SPLIT_COLUMN] = np.array(
+                    [True] * (n - test_count) + [False] * test_count
+                )
+                return group_batch
+
+            split_ds = ds.groupby(stratify).map_groups(add_train_flag).materialize()
+
+            train_ds = split_ds.filter(
+                lambda row: row[_TRAIN_TEST_SPLIT_COLUMN]
+            ).drop_columns([_TRAIN_TEST_SPLIT_COLUMN])
+            test_ds = split_ds.filter(
+                lambda row: not row[_TRAIN_TEST_SPLIT_COLUMN]
+            ).drop_columns([_TRAIN_TEST_SPLIT_COLUMN])
+
+            return train_ds, test_ds
+
+        # Handle non-stratified splitting (existing logic)
         if isinstance(test_size, float):
             if test_size <= 0 or test_size >= 1:
                 raise ValueError(
