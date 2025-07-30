@@ -15,7 +15,11 @@ async def _create_impl(image_uri: str, logger: logging.Logger):
     # Also get path to `default_worker.py` inside the image.
     with tempfile.TemporaryDirectory() as tmpdir:
         result_file = os.path.join(tmpdir, "worker_path.txt")
-
+        get_worker_path_script = """
+import ray._private.workers.default_worker as dw
+with open('/shared/worker_path.txt', 'w') as f:
+    f.write(dw.__file__)
+"""
         cmd = [
             "podman",
             "run",
@@ -23,9 +27,9 @@ async def _create_impl(image_uri: str, logger: logging.Logger):
             "-v",
             f"{tmpdir}:/shared:Z",
             image_uri,
-            "sh",
+            "python",
             "-c",
-            'python -c "import ray._private.workers.default_worker as dw; print(dw.__file__)" > /shared/worker_path.txt',
+            get_worker_path_script,
         ]
 
         logger.info("Pulling image %s", image_uri)
