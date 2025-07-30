@@ -7,6 +7,7 @@ from typing import Dict, List, Optional, Tuple
 
 import requests
 
+import ray
 from ray._private.accelerators.accelerator import AcceleratorManager
 
 logger = logging.getLogger(__name__)
@@ -454,3 +455,26 @@ class TPUAcceleratorManager(AcceleratorManager):
         if resources:
             return resources
         return None
+
+    @staticmethod
+    def get_current_node_accelerator_labels() -> Dict[str, str]:
+        """Return default TPU-specific node labels for this host."""
+        tpu_labels = {}
+
+        tpu_name = TPUAcceleratorManager.get_current_node_tpu_name()
+        if tpu_name:
+            tpu_labels[ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY] = tpu_name
+
+        worker_id = TPUAcceleratorManager._get_current_node_tpu_worker_id()
+        if worker_id is not None:
+            tpu_labels[ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY] = str(worker_id)
+
+        tpu_topology = TPUAcceleratorManager.get_current_node_tpu_topology()
+        if tpu_topology:
+            tpu_labels[ray._raylet.RAY_NODE_TPU_TOPOLOGY_KEY] = tpu_topology
+
+        pod_type = TPUAcceleratorManager._get_current_node_tpu_pod_type()
+        if worker_id == 0 and pod_type:
+            tpu_labels[ray._raylet.RAY_NODE_TPU_HEAD_KEY] = f"TPU-{pod_type}-head"
+
+        return tpu_labels

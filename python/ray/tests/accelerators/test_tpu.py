@@ -328,5 +328,20 @@ def test_num_tpu_chips(mock_glob):
     assert num_tpu_chips == 4
 
 
+def test_get_current_node_labels_env_only(monkeypatch):
+    # Simulate GKE TPU environment variables
+    monkeypatch.setenv("TPU_NAME", "tpu-worker-group-2")
+    monkeypatch.setenv("TPU_WORKER_ID", "0")
+    monkeypatch.setenv("TPU_ACCELERATOR_TYPE", "v6e-16")
+    monkeypatch.setenv("TPU_TOPOLOGY", "4x4")
+
+    tpu_labels = TPUAcceleratorManager.get_current_node_accelerator_labels()
+
+    assert tpu_labels["ray.io/tpu-slice-name"] == "tpu-worker-group-2"
+    assert tpu_labels["ray.io/tpu-worker-id"] == "0"
+    assert tpu_labels["ray.io/tpu-topology"] == "4x4"
+    assert tpu_labels["ray.io/tpu-head"] == "TPU-v6e-16-head"
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))

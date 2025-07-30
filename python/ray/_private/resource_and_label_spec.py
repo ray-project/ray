@@ -294,40 +294,10 @@ class ResourceAndLabelSpec:
 
             # Set TPU specific default labels to enable SPMD scheduling.
             if isinstance(accelerator_manager, TPUAcceleratorManager):
-                ResourceAndLabelSpec._add_tpu_default_labels(
-                    default_labels, accelerator_manager, accelerator_type
-                )
+                tpu_labels = accelerator_manager.get_current_node_accelerator_labels()
+                default_labels.update(tpu_labels)
 
         return default_labels
-
-    @staticmethod
-    def _add_tpu_default_labels(
-        default_labels: Dict[str, str],
-        accelerator_manager: TPUAcceleratorManager,
-        accelerator_type: Optional[str],
-    ) -> None:
-        """Add TPU-specific default labels.
-
-        Args:
-            default_labels: Dict to append labels to.
-            accelerator_manager: Active TPUAcceleratorManager.
-            accelerator_type: The detected TPU accelerator type (e.g. "TPU-V6E").
-        """
-        tpu_name = TPUAcceleratorManager.get_current_node_tpu_name()
-        if tpu_name:
-            default_labels[ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY] = tpu_name
-
-        worker_id = TPUAcceleratorManager._get_current_node_tpu_worker_id()
-        if worker_id is not None:
-            default_labels[ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY] = str(worker_id)
-
-        tpu_topology = TPUAcceleratorManager.get_current_node_tpu_topology()
-        if tpu_topology:
-            default_labels[ray._raylet.RAY_NODE_TPU_TOPOLOGY_KEY] = tpu_topology
-
-        pod_type = TPUAcceleratorManager._get_current_node_tpu_pod_type()
-        if worker_id == 0 and pod_type:
-            default_labels[ray._raylet.RAY_NODE_TPU_HEAD_KEY] = f"TPU-{pod_type}-Head"
 
     def _resolve_labels(
         self, accelerator_manager: Optional[AcceleratorManager]
