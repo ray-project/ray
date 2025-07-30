@@ -11,12 +11,14 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+#pragma once
 
 #include <linux/magic.h>
 #include <mntent.h>
 
 #include <string>
 #include <unordered_set>
+#include <utility>
 
 #include "ray/common/cgroup2/cgroup_driver_interface.h"
 #include "ray/common/status.h"

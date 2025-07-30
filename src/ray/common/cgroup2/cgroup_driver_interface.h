@@ -13,9 +13,11 @@
 // limitations under the License.
 #pragma once
 
+#include <limits>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 
 #include "ray/common/status.h"
 #include "ray/common/status_or.h"

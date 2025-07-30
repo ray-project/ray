@@ -11,6 +11,7 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+#pragma once
 
 #include <sys/types.h>
 
@@ -29,7 +30,7 @@
 class TempDirectory {
  public:
   static ray::StatusOr<std::unique_ptr<TempDirectory>> Create();
-  TempDirectory(std::string &&path) : path_(path) {}
+  explicit TempDirectory(std::string &&path) : path_(path) {}
 
   TempDirectory(const TempDirectory &) = delete;
   TempDirectory(TempDirectory &&) = delete;
