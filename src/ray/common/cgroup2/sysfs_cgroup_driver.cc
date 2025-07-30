@@ -71,7 +71,7 @@ Status SysFsCgroupDriver::CheckCgroupv2Enabled() {
   if (found_cgroupv1 && found_cgroupv2) {
     return Status::Invalid("Cgroupv1 and cgroupv2 are both mounted. Unmount cgroupv1.");
   } else if (found_cgroupv1 && !found_cgroupv2) {
-    // TODO(irabbani): provide a link to the ray documentation once it's been written
+    // TODO(#54703): provide a link to the ray documentation once it's been written
     // for how to troubleshoot these.
     return Status::Invalid(
         "Cgroupv1 is mounted and cgroupv2 is not mounted. "
@@ -301,7 +301,6 @@ Status SysFsCgroupDriver::AddConstraint(const std::string &cgroup,
                                         const std::string &constraint_value) {
   RAY_RETURN_NOT_OK(CheckCgroup(cgroup));
   auto constraint_it = supported_constraints_.find(constraint);
-  // Return InvalidArgument if constraint is not enabled.
   if (constraint_it == supported_constraints_.end()) {
     std::string supported_constraint_names("[");
     for (auto it = supported_constraints_.begin(); it != supported_constraints_.end();
@@ -355,8 +354,6 @@ Status SysFsCgroupDriver::AddConstraint(const std::string &cgroup,
 
   int fd = open(file_path.c_str(), O_RDWR);
 
-  // TODO(irabbani): If meaningful, the errno can be used to disambiguate different
-  // errors if they're appropriate.
   if (fd == -1) {
     return Status::InvalidArgument(
         absl::StrFormat("Failed to apply %s=%s to cgroup %s.\n"

@@ -23,7 +23,7 @@
 namespace ray {
 
 /**
-  A utility that allows the caller to check if cgroupv2 is mounted correctly
+  A utility that can be used to check if cgroupv2 is mounted correctly
   and perform cgroup operations on the system. It supports the memory and cpu controllers
   with the memory.min and cpu.weight constraints respectively.
 
