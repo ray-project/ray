@@ -146,12 +146,9 @@ ci/docker/doctest.build.wanda.yaml
 
 release/ray_release/
 release/requirements_buildkite.*
-@ tools
-;
-
 release/*.md
 release/*.yaml
-# Do not run on config changes
+@ tools
 ;
 
 release/
