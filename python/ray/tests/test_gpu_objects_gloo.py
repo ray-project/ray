@@ -2,7 +2,9 @@ import sys
 import random
 import torch
 import pytest
+import threading
 import ray
+import time
 from ray.experimental.collective import create_collective_group
 from ray._private.custom_types import TensorTransportEnum
 from ray._common.test_utils import wait_for_condition
@@ -423,6 +425,9 @@ def test_tensor_extracted_from_tensordict_in_gpu_object_store(ray_start_regular)
 
 
 def test_write_after_save(ray_start_regular):
+    """Check that an actor can safely write to a tensor after saving it to its
+    local state by calling `ray.experimental.wait_tensor_freed`."""
+
     @ray.remote(enable_tensor_transport=True)
     class GPUTestActor:
         @ray.method(tensor_transport="gloo")
@@ -451,11 +456,43 @@ def test_write_after_save(ray_start_regular):
     # task in the background.
     tensor1 = sender.increment_saved.remote()
     tensor2 = receiver.receive.remote(ref)
+
+    # The sender task should not have returned yet because the ObjectRef is
+    # still in scope.i
+    with pytest.raises(ray.exceptions.GetTimeoutError):
+        ray.get(tensor1, timeout=1)
+
     del ref
     # Check that Ray completed the transfer of the original tensor before the
     # sender writes to it.
     assert torch.allclose(ray.get(tensor1), medium_tensor + 1)
     assert torch.allclose(ray.get(tensor2), medium_tensor)
+
+
+def test_wait_tensor_freed(ray_start_regular):
+    """Unit test for ray.experimental.wait_tensor_freed. Check that the call
+    returns when the tensor has been freed from the GPU object store."""
+    gpu_object_store = ray.worker.global_worker.gpu_object_manager.gpu_object_store
+    obj_id = "random_id"
+    tensor = torch.randn((1,))
+    gpu_object_store.add_object(obj_id, [tensor], is_primary=True)
+
+    assert gpu_object_store.has_object(obj_id)
+    with pytest.raises(TimeoutError):
+        ray.experimental.wait_tensor_freed(tensor, timeout=1)
+    assert gpu_object_store.has_object(obj_id)
+
+    # Simulate garbage collection in a background thread.
+    def gc():
+        time.sleep(0.1)
+        gpu_object_store.pop_object(obj_id)
+
+    gc_thread = threading.Thread(target=gc)
+    gc_thread.start()
+    # Now the wait_tensor_freed call should be able to return.
+    ray.experimental.wait_tensor_freed(tensor)
+    assert not gpu_object_store.has_object(obj_id)
+    gc_thread.join()
 
 
 if __name__ == "__main__":

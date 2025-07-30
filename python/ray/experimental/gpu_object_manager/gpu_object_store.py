@@ -253,6 +253,10 @@ class GPUObjectStore:
             self._object_freed_cv.wait_for(
                 lambda: tensor not in self._tensor_to_object_id, timeout=timeout
             )
+            if tensor in self._tensor_to_object_id:
+                raise TimeoutError(
+                    f"Tensor {tensor} not freed from GPU object store after {timeout}s."
+                )
 
     def get_num_objects(self) -> int:
         """
