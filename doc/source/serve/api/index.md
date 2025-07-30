@@ -383,6 +383,9 @@ Content-Type: application/json
    schema.ServeApplicationSchema
    schema.DeploymentSchema
    schema.RayActorOptionsSchema
+   schema.CeleryTaskProcessorConfig
+   schema.TaskProcessorConfig
+   schema.TaskResult
 ```
 
 (serve-rest-api-response-schema)=
