@@ -88,7 +88,7 @@ Status NormalTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
 
 void NormalTaskSubmitter::AddWorkerLeaseClient(
     const rpc::Address &addr,
-    std::shared_ptr<WorkerLeaseInterface> lease_client,
+    std::shared_ptr<RayletClientInterface> lease_client,
     const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> &assigned_resources,
     const SchedulingKey &scheduling_key,
     const TaskID &task_id) {
@@ -225,9 +225,9 @@ void NormalTaskSubmitter::CancelWorkerLeaseIfNeeded(const SchedulingKey &schedul
   }
 }
 
-std::shared_ptr<WorkerLeaseInterface> NormalTaskSubmitter::GetOrConnectLeaseClient(
+std::shared_ptr<RayletClientInterface> NormalTaskSubmitter::GetOrConnectLeaseClient(
     const rpc::Address *raylet_address) {
-  std::shared_ptr<WorkerLeaseInterface> lease_client;
+  std::shared_ptr<RayletClientInterface> lease_client;
   RAY_CHECK(raylet_address != nullptr);
   if (NodeID::FromBinary(raylet_address->raylet_id()) != local_raylet_id_) {
     // A remote raylet was specified. Connect to the raylet if needed.
@@ -237,8 +237,7 @@ std::shared_ptr<WorkerLeaseInterface> NormalTaskSubmitter::GetOrConnectLeaseClie
       RAY_LOG(INFO) << "Connecting to raylet " << raylet_id;
       it = remote_lease_clients_
                .emplace(raylet_id,
-                        lease_client_factory_(raylet_address->ip_address(),
-                                              raylet_address->port()))
+                        raylet_client_pool_->GetOrConnectByAddress(*raylet_address))
                .first;
     }
     lease_client = it->second;

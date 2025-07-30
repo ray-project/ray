@@ -21,7 +21,7 @@
 #include "ray/gcs/gcs_server/test/gcs_server_test_util.h"
 #include "ray/gcs/test/gcs_test_util.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
-#include "ray/rpc/node_manager/node_manager_client_pool.h"
+#include "ray/rpc/node_manager/raylet_client_pool.h"
 #include "mock/ray/pubsub/publisher.h"
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/ray_syncer/ray_syncer.h"
@@ -32,7 +32,7 @@ class GcsNodeManagerTest : public ::testing::Test {
  public:
   GcsNodeManagerTest() {
     raylet_client_ = std::make_shared<GcsServerMocker::MockRayletClient>();
-    client_pool_ = std::make_unique<rpc::NodeManagerClientPool>(
+    client_pool_ = std::make_unique<rpc::RayletClientPool>(
         [this](const rpc::Address &) { return raylet_client_; });
     gcs_publisher_ = std::make_unique<gcs::GcsPublisher>(
         std::make_unique<ray::pubsub::MockPublisher>());
@@ -42,7 +42,7 @@ class GcsNodeManagerTest : public ::testing::Test {
  protected:
   std::unique_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::shared_ptr<GcsServerMocker::MockRayletClient> raylet_client_;
-  std::unique_ptr<rpc::NodeManagerClientPool> client_pool_;
+  std::unique_ptr<rpc::RayletClientPool> client_pool_;
   std::unique_ptr<gcs::GcsPublisher> gcs_publisher_;
   std::unique_ptr<InstrumentedIOContextWithThread> io_context_;
 };

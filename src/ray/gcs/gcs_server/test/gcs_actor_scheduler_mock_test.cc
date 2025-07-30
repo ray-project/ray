@@ -47,7 +47,7 @@ class GcsActorSchedulerMockTest : public Test {
         nullptr, nullptr, io_context, nullptr, ClusterID::Nil());
     raylet_client = std::make_shared<MockRayletClientInterface>();
     core_worker_client = std::make_shared<rpc::MockCoreWorkerClientInterface>();
-    client_pool = std::make_unique<rpc::NodeManagerClientPool>(
+    client_pool = std::make_unique<rpc::RayletClientPool>(
         [this](const rpc::Address &) { return raylet_client; });
     local_node_id = NodeID::FromRandom();
     auto cluster_resource_scheduler = std::make_shared<ClusterResourceScheduler>(
@@ -99,7 +99,7 @@ class GcsActorSchedulerMockTest : public Test {
   std::unique_ptr<GcsActorScheduler> actor_scheduler;
   std::shared_ptr<rpc::MockCoreWorkerClientInterface> core_worker_client;
   std::unique_ptr<rpc::CoreWorkerClientPool> worker_client_pool_;
-  std::unique_ptr<rpc::NodeManagerClientPool> client_pool;
+  std::unique_ptr<rpc::RayletClientPool> client_pool;
   std::shared_ptr<CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>>
       counter;
   MockCallback schedule_failure_handler;

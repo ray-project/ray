@@ -35,7 +35,7 @@ GcsActorScheduler::GcsActorScheduler(
     ClusterTaskManager &cluster_task_manager,
     GcsActorSchedulerFailureCallback schedule_failure_handler,
     GcsActorSchedulerSuccessCallback schedule_success_handler,
-    rpc::NodeManagerClientPool &raylet_client_pool,
+    rpc::RayletClientPool &raylet_client_pool,
     rpc::CoreWorkerClientPool &worker_client_pool,
     std::function<void(const NodeID &, const rpc::ResourcesData &)>
         normal_task_resources_changed_callback)
@@ -530,7 +530,7 @@ void GcsActorScheduler::DoRetryCreatingActorOnWorker(
   }
 }
 
-std::shared_ptr<WorkerLeaseInterface> GcsActorScheduler::GetOrConnectLeaseClient(
+std::shared_ptr<RayletClientInterface> GcsActorScheduler::GetOrConnectLeaseClient(
     const rpc::Address &raylet_address) {
   return raylet_client_pool_.GetOrConnectByAddress(raylet_address);
 }

@@ -12,14 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/rpc/node_manager/node_manager_client_pool.h"
+#include "ray/rpc/node_manager/raylet_client_pool.h"
 
 #include <memory>
 
 namespace ray {
 namespace rpc {
 
-std::shared_ptr<ray::RayletClientInterface> NodeManagerClientPool::GetOrConnectByAddress(
+std::shared_ptr<ray::RayletClientInterface> RayletClientPool::GetOrConnectByAddress(
     const rpc::Address &address) {
   RAY_CHECK(address.raylet_id() != "");
   absl::MutexLock lock(&mu_);
@@ -39,7 +39,7 @@ std::shared_ptr<ray::RayletClientInterface> NodeManagerClientPool::GetOrConnectB
 }
 
 std::optional<std::shared_ptr<ray::RayletClientInterface>>
-NodeManagerClientPool::GetOrConnectByID(ray::NodeID id) {
+RayletClientPool::GetOrConnectByID(ray::NodeID id) {
   absl::MutexLock lock(&mu_);
   auto it = client_map_.find(id);
   if (it == client_map_.end()) {
@@ -48,7 +48,7 @@ NodeManagerClientPool::GetOrConnectByID(ray::NodeID id) {
   return it->second;
 }
 
-void NodeManagerClientPool::Disconnect(ray::NodeID id) {
+void RayletClientPool::Disconnect(ray::NodeID id) {
   absl::MutexLock lock(&mu_);
   auto it = client_map_.find(id);
   if (it == client_map_.end()) {

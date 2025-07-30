@@ -1730,6 +1730,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Shared core worker client pool.
   std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool_;
 
+  // Shared raylet client pool.
+  std::shared_ptr<rpc::RayletClientPool> raylet_client_pool_;
+
   /// The runner to run function periodically.
   std::shared_ptr<PeriodicalRunner> periodical_runner_;
 
