@@ -419,11 +419,26 @@ cc_proto_library(
 )
 
 proto_library(
+    name = "events_driver_job_event_proto",
+    srcs = ["events_driver_job_event.proto"],
+    deps = [
+        ":common_proto",
+        ":runtime_env_common_proto",
+    ],
+)
+
+cc_proto_library(
+    name = "events_driver_job_event_cc_proto",
+    deps = [":events_driver_job_event_proto"],
+)
+
+proto_library(
     name = "events_base_event_proto",
     srcs = ["events_base_event.proto"],
     deps = [
         ":events_actor_task_definition_event_proto",
         ":events_actor_task_execution_event_proto",
+        ":events_driver_job_event_proto",
         ":events_task_definition_event_proto",
         ":events_task_execution_event_proto",
         "@com_google_protobuf//:timestamp_proto",
