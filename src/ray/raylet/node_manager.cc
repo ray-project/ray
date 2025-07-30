@@ -115,6 +115,7 @@ NodeManager::NodeManager(
     gcs::GcsClient &gcs_client,
     rpc::ClientCallManager &client_call_manager,
     rpc::CoreWorkerClientPool &worker_rpc_pool,
+    rpc::RayletClientPool &raylet_client_pool,
     pubsub::SubscriberInterface &core_worker_subscriber,
     ClusterResourceScheduler &cluster_resource_scheduler,
     ILocalTaskManager &local_task_manager,
@@ -137,6 +138,7 @@ NodeManager::NodeManager(
       worker_pool_(worker_pool),
       client_call_manager_(client_call_manager),
       worker_rpc_pool_(worker_rpc_pool),
+      raylet_client_pool_(raylet_client_pool),
       core_worker_subscriber_(core_worker_subscriber),
       object_directory_(object_directory),
       object_manager_(object_manager),
@@ -227,7 +229,7 @@ NodeManager::NodeManager(
                                         "NodeManager.GCTaskFailureReason");
 }
 
-ray::Status NodeManager::RegisterGcs() {
+void NodeManager::RegisterGcs() {
   auto on_node_change = [this](const NodeID &node_id, const GcsNodeInfo &data) {
     if (data.state() == GcsNodeInfo::ALIVE) {
       NodeAdded(data);
@@ -273,8 +275,8 @@ ray::Status NodeManager::RegisterGcs() {
         "NodeManager.CheckGC");
   };
   // Register a callback to monitor new nodes and a callback to monitor removed nodes.
-  RAY_RETURN_NOT_OK(gcs_client_.Nodes().AsyncSubscribeToNodeChange(
-      on_node_change, on_node_change_subscribe_done));
+  gcs_client_.Nodes().AsyncSubscribeToNodeChange(
+      std::move(on_node_change), std::move(on_node_change_subscribe_done));
 
   // Subscribe to all unexpected failure notifications from the local and
   // remote raylets. Note that this does not include workers that failed due to
@@ -303,7 +305,7 @@ ray::Status NodeManager::RegisterGcs() {
       HandleJobFinished(job_id, job_data);
     }
   };
-  RAY_RETURN_NOT_OK(gcs_client_.Jobs().AsyncSubscribeAll(job_subscribe_handler, nullptr));
+  RAY_CHECK_OK(gcs_client_.Jobs().AsyncSubscribeAll(job_subscribe_handler, nullptr));
 
   periodical_runner_->RunFnPeriodically(
       [this] {
@@ -379,7 +381,6 @@ ray::Status NodeManager::RegisterGcs() {
       },
       RayConfig::instance().raylet_liveness_self_check_interval_ms(),
       "NodeManager.GcsCheckAlive");
-  return ray::Status::OK();
 }
 
 void NodeManager::DestroyWorker(std::shared_ptr<WorkerInterface> worker,
@@ -2136,15 +2137,12 @@ void NodeManager::AsyncResolveObjectsFinish(
   dependency_manager_.CancelGetRequest(worker->WorkerId());
 }
 
-bool NodeManager::FinishAssignedTask(const std::shared_ptr<WorkerInterface> &worker_ptr) {
-  // TODO(Alex): We should standardize to pass
-  // std::shared_ptr<WorkerInterface> instead of refs.
-  auto &worker = *worker_ptr;
-  TaskID task_id = worker.GetAssignedTaskId();
+bool NodeManager::FinishAssignedTask(const std::shared_ptr<WorkerInterface> &worker) {
+  TaskID task_id = worker->GetAssignedTaskId();
   RAY_LOG(DEBUG).WithField(task_id) << "Finished task ";
 
   RayTask task;
-  local_task_manager_.TaskFinished(worker_ptr, &task);
+  local_task_manager_.TaskFinished(worker, &task);
 
   const auto &spec = task.GetTaskSpecification();  //
   if ((spec.IsActorCreationTask())) {
@@ -2154,31 +2152,31 @@ bool NodeManager::FinishAssignedTask(const std::shared_ptr<WorkerInterface> &wor
   } else {
     // If this was a non-actor task, then cancel any ray.wait calls that were
     // made during the task execution.
-    dependency_manager_.CancelWaitRequest(worker.WorkerId());
+    dependency_manager_.CancelWaitRequest(worker->WorkerId());
   }
 
   // Notify the task dependency manager that this task has finished execution.
-  dependency_manager_.CancelGetRequest(worker.WorkerId());
+  dependency_manager_.CancelGetRequest(worker->WorkerId());
 
   if (!spec.IsActorCreationTask()) {
     // Unset the worker's assigned task. We keep the assigned task ID for
     // actor creation calls because this ID is used later if the actor
     // requires objects from plasma.
-    worker.AssignTaskId(TaskID::Nil());
-    worker.SetOwnerAddress(rpc::Address());
+    worker->AssignTaskId(TaskID::Nil());
+    worker->SetOwnerAddress(rpc::Address());
   }
   // Actors will be assigned tasks via the core worker and therefore are not idle.
   return !spec.IsActorCreationTask();
 }
 
-void NodeManager::FinishAssignedActorCreationTask(WorkerInterface &worker,
-                                                  const RayTask &task) {
+void NodeManager::FinishAssignedActorCreationTask(
+    const std::shared_ptr<WorkerInterface> &worker, const RayTask &task) {
   RAY_LOG(DEBUG) << "Finishing assigned actor creation task";
   const TaskSpecification task_spec = task.GetTaskSpecification();
   ActorID actor_id = task_spec.ActorCreationId();
 
   // This was an actor creation task. Convert the worker to an actor.
-  worker.AssignActorId(actor_id);
+  worker->AssignActorId(actor_id);
 
   if (task_spec.IsDetachedActor()) {
     auto job_id = task.GetTaskSpecification().JobId();
@@ -2641,8 +2639,11 @@ void NodeManager::HandleFormatGlobalMemoryInfo(
 
   // Fetch from remote nodes.
   for (const auto &[node_id, address] : remote_node_manager_addresses_) {
-    auto client = std::make_shared<RayletClient>(
-        /*address=*/address.first, /*port=*/address.second, client_call_manager_);
+    rpc::Address addr;
+    addr.set_ip_address(address.first);
+    addr.set_port(address.second);
+    addr.set_raylet_id(node_id.Binary());
+    auto client = raylet_client_pool_.GetOrConnectByAddress(addr);
     client->GetNodeStats(
         stats_req,
         [replies, store_reply](const ray::Status &status, rpc::GetNodeStatsReply &&r) {
