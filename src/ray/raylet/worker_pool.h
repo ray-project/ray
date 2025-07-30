@@ -84,42 +84,41 @@ using PopWorkerCallback =
                        const std::string &runtime_env_setup_error_message)>;
 
 struct PopWorkerRequest {
-  const rpc::Language language;
-  const rpc::WorkerType worker_type;
-  const JobID job_id;                    // can be Nil
-  const ActorID root_detached_actor_id;  // can be Nil
-  const std::optional<bool> is_gpu;
-  const std::optional<bool> is_actor_worker;
-  const rpc::RuntimeEnvInfo runtime_env_info;
-  const int runtime_env_hash;
-  const std::vector<std::string> dynamic_options;
-  std::optional<absl::Duration> worker_startup_keep_alive_duration;
+  const rpc::Language language_;
+  const rpc::WorkerType worker_type_;
+  const JobID job_id_;                    // can be Nil
+  const ActorID root_detached_actor_id_;  // can be Nil
+  const std::optional<bool> is_gpu_;
+  const std::optional<bool> is_actor_worker_;
+  const rpc::RuntimeEnvInfo runtime_env_info_;
+  const int runtime_env_hash_;
+  const std::vector<std::string> dynamic_options_;
+  std::optional<absl::Duration> worker_startup_keep_alive_duration_;
 
-  PopWorkerCallback callback;
+  PopWorkerCallback callback_;
 
   PopWorkerRequest(rpc::Language lang,
-                   rpc::WorkerType _worker_type,
+                   rpc::WorkerType worker_type,
                    JobID job,
                    ActorID root_actor_id,
                    std::optional<bool> gpu,
                    std::optional<bool> actor_worker,
-                   rpc::RuntimeEnvInfo _runtime_env_info,
-                   int _runtime_env_hash,
+                   rpc::RuntimeEnvInfo runtime_env_info,
+                   int runtime_env_hash,
                    std::vector<std::string> options,
-                   std::optional<absl::Duration> _worker_startup_keep_alive_duration,
-                   PopWorkerCallback _callback)
-      : language(lang),
-        worker_type(_worker_type),
-        job_id(job),
-        root_detached_actor_id(root_actor_id),
-        is_gpu(gpu),
-        is_actor_worker(actor_worker),
-        runtime_env_info(std::move(_runtime_env_info)),
-        // this-> is needed to disambiguate the member variable from the ctor arg.
-        runtime_env_hash(_runtime_env_hash),
-        dynamic_options(std::move(options)),
-        worker_startup_keep_alive_duration(_worker_startup_keep_alive_duration),
-        callback(std::move(_callback)) {}
+                   std::optional<absl::Duration> worker_startup_keep_alive_duration,
+                   PopWorkerCallback callback)
+      : language_(lang),
+        worker_type_(worker_type),
+        job_id_(job),
+        root_detached_actor_id_(root_actor_id),
+        is_gpu_(gpu),
+        is_actor_worker_(actor_worker),
+        runtime_env_info_(std::move(runtime_env_info)),
+        runtime_env_hash_(runtime_env_hash),
+        dynamic_options_(std::move(options)),
+        worker_startup_keep_alive_duration_(worker_startup_keep_alive_duration),
+        callback_(std::move(callback)) {}
 };
 
 /// \class IOWorkerPoolInterface

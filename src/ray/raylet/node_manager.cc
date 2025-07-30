@@ -602,10 +602,10 @@ void NodeManager::HandleGetTaskFailureCause(rpc::GetTaskFailureCauseRequest requ
   auto it = task_failure_reasons_.find(task_id);
   if (it != task_failure_reasons_.end()) {
     RAY_LOG(DEBUG) << "task " << task_id << " has failure reason "
-                   << ray::gcs::RayErrorInfoToString(it->second.ray_error_info)
-                   << ", fail immediately: " << !it->second.should_retry;
-    reply->mutable_failure_cause()->CopyFrom(it->second.ray_error_info);
-    reply->set_fail_task_immediately(!it->second.should_retry);
+                   << ray::gcs::RayErrorInfoToString(it->second.ray_error_info_)
+                   << ", fail immediately: " << !it->second.should_retry_;
+    reply->mutable_failure_cause()->CopyFrom(it->second.ray_error_info_);
+    reply->set_fail_task_immediately(!it->second.should_retry_);
   } else {
     RAY_LOG(INFO) << "didn't find failure cause for task " << task_id;
   }
@@ -2353,7 +2353,7 @@ std::string NodeManager::DebugString() const {
   // Event stats.
   result << "\nEvent stats:" << io_service_.stats().StatsString();
 
-  result << "\nDebugString() time ms: " << (current_time_ms() - now_ms);
+  result_ << "\nDebugString() time ms: " << (current_time_ms() - now_ms);
   return result.str();
 }
 
@@ -2971,7 +2971,7 @@ void NodeManager::GCTaskFailureReason() {
   for (const auto &entry : task_failure_reasons_) {
     auto duration = static_cast<uint64_t>(
         std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::steady_clock::now() - entry.second.creation_time)
+            std::chrono::steady_clock::now() - entry.second.creation_time_)
             .count());
     if (duration > RayConfig::instance().task_failure_entry_ttl_ms()) {
       RAY_LOG(INFO).WithField(entry.first)

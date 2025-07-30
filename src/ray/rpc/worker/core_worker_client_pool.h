@@ -90,16 +90,16 @@ class CoreWorkerClientPool {
   struct CoreWorkerClientEntry {
    public:
     CoreWorkerClientEntry() = default;
-    CoreWorkerClientEntry(WorkerID _worker_id,
-                          NodeID _node_id,
-                          std::shared_ptr<CoreWorkerClientInterface> _core_worker_client)
-        : worker_id(std::move(_worker_id)),
-          node_id(std::move(_node_id)),
-          core_worker_client(std::move(_core_worker_client)) {}
+    CoreWorkerClientEntry(WorkerID worker_id,
+                          NodeID node_id,
+                          std::shared_ptr<CoreWorkerClientInterface> core_worker_client)
+        : worker_id_(std::move(worker_id)),
+          node_id_(std::move(node_id)),
+          core_worker_client_(std::move(core_worker_client)) {}
 
-    WorkerID worker_id;
-    NodeID node_id;
-    std::shared_ptr<CoreWorkerClientInterface> core_worker_client;
+    WorkerID worker_id_;
+    NodeID node_id_;
+    std::shared_ptr<CoreWorkerClientInterface> core_worker_client_;
   };
 
   /// A list of open connections from the most recent accessed to the least recent

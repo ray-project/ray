@@ -78,8 +78,8 @@ struct GetRequestQueueTest : public Test {
   void MarkObjectFallbackAllocated(LocalObject &object,
                                    bool fallback_allocated,
                                    MEMFD_TYPE fd) {
-    object.allocation.fallback_allocated = fallback_allocated;
-    object.allocation.fd = fd;
+    object.allocation.fallback_allocated_ = fallback_allocated;
+    object.allocation.fd_ = fd;
   }
 
   bool IsGetRequestExist(GetRequestQueue &queue, const ObjectID &object_id) {

@@ -257,20 +257,20 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
 
  private:
   struct PendingTaskWaitingForDeathInfo {
-    int64_t deadline_ms;
-    TaskSpecification task_spec;
-    ray::Status status;
-    rpc::RayErrorInfo timeout_error_info;
-    bool actor_preempted = false;
+    int64_t deadline_ms_;
+    TaskSpecification task_spec_;
+    ray::Status status_;
+    rpc::RayErrorInfo timeout_error_info_;
+    bool actor_preempted_ = false;
 
-    PendingTaskWaitingForDeathInfo(int64_t _deadline_ms,
-                                   TaskSpecification _task_spec,
-                                   ray::Status _status,
-                                   rpc::RayErrorInfo _timeout_error_info)
-        : deadline_ms(_deadline_ms),
-          task_spec(std::move(_task_spec)),
-          status(std::move(_status)),
-          timeout_error_info(std::move(_timeout_error_info)) {}
+    PendingTaskWaitingForDeathInfo(int64_t deadline_ms,
+                                   TaskSpecification task_spec,
+                                   ray::Status status,
+                                   rpc::RayErrorInfo timeout_error_info)
+        : deadline_ms_(deadline_ms),
+          task_spec_(std::move(task_spec)),
+          status_(std::move(status)),
+          timeout_error_info_(std::move(timeout_error_info)) {}
   };
   /// A helper function to get task manager without holding mu_
   /// We should use this function when access
@@ -283,12 +283,12 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
 
   struct ClientQueue {
     ClientQueue(bool execute_out_of_order,
-                int32_t _max_pending_calls,
-                bool _fail_if_actor_unreachable,
-                bool _owned)
-        : max_pending_calls(_max_pending_calls),
-          fail_if_actor_unreachable(_fail_if_actor_unreachable),
-          owned(_owned) {
+                int32_t max_pending_calls,
+                bool fail_if_actor_unreachable,
+                bool owned)
+        : max_pending_calls_(max_pending_calls),
+          fail_if_actor_unreachable_(fail_if_actor_unreachable),
+          owned_(owned) {
       if (execute_out_of_order) {
         actor_submit_queue = std::make_unique<OutofOrderActorSubmitQueue>();
       } else {
@@ -350,23 +350,23 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
     /// The max number limit of task capacity used for back pressure.
     /// If the number of tasks in requests >= max_pending_calls, it can't continue to
     /// push task to ClientQueue.
-    const int32_t max_pending_calls;
+    const int32_t max_pending_calls_;
 
     /// The current task number in this client queue.
     int32_t cur_pending_calls = 0;
 
     /// Whether to fail newly submitted tasks immediately when the actor is unreachable.
-    bool fail_if_actor_unreachable = true;
+    bool fail_if_actor_unreachable_ = true;
 
     /// Whether the current process is owner of the actor.
-    bool owned;
+    bool owned_;
 
     /// Returns debug string for class.
     ///
     /// \return string.
     std::string DebugString() const {
       std::ostringstream stream;
-      stream << "max_pending_calls=" << max_pending_calls
+      stream << "max_pending_calls=" << max_pending_calls_
              << " cur_pending_calls=" << cur_pending_calls;
       return stream.str();
     }

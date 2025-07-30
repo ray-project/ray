@@ -79,8 +79,8 @@ class PushManager {
 
   /// Tracks the state of an active object push to another node.
   struct PushState {
-    NodeID node_id;
-    ObjectID object_id;
+    NodeID node_id_;
+    ObjectID object_id_;
 
     /// total number of chunks of this object.
     int64_t num_chunks;
@@ -91,14 +91,14 @@ class PushManager {
     /// The number of chunks remaining to send.
     int64_t num_chunks_to_send;
 
-    PushState(NodeID _node_id,
-              ObjectID _object_id,
-              int64_t _num_chunks,
-              std::function<void(int64_t)> _chunk_send_fn)
-        : node_id(_node_id),
-          object_id(_object_id),
-          num_chunks(_num_chunks),
-          chunk_send_fn(std::move(_chunk_send_fn)),
+    PushState(NodeID node_id,
+              ObjectID object_id,
+              int64_t num_chunks,
+              std::function<void(int64_t)> chunk_send_fn)
+        : node_id_(node_id),
+          object_id_(object_id),
+          num_chunks(num_chunks),
+          chunk_send_fn(std::move(chunk_send_fn)),
           num_chunks_to_send(num_chunks) {}
 
     /// Resend all chunks and returns how many more chunks will be sent.

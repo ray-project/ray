@@ -220,25 +220,25 @@ namespace ray {
 /// a executing thread pool.
 struct ConcurrencyGroup {
   // Name of this group.
-  std::string name;
+  std::string name_;
   // Max concurrency of this group.
-  uint32_t max_concurrency;
+  uint32_t max_concurrency_;
   // Function descriptors of the actor methods in this group.
-  std::vector<ray::FunctionDescriptor> function_descriptors;
+  std::vector<ray::FunctionDescriptor> function_descriptors_;
 
   ConcurrencyGroup() = default;
 
-  ConcurrencyGroup(const std::string &_name,
-                   uint32_t _max_concurrency,
+  ConcurrencyGroup(const std::string &name,
+                   uint32_t max_concurrency,
                    const std::vector<ray::FunctionDescriptor> &fds)
-      : name(_name), max_concurrency(_max_concurrency), function_descriptors(fds) {}
+      : name_(name), max_concurrency_(max_concurrency), function_descriptors_(fds) {}
 
-  std::string GetName() const { return name; }
+  std::string GetName() const { return name_; }
 
-  uint32_t GetMaxConcurrency() const { return max_concurrency; }
+  uint32_t GetMaxConcurrency() const { return max_concurrency_; }
 
   std::vector<ray::FunctionDescriptor> GetFunctionDescriptors() const {
-    return function_descriptors;
+    return function_descriptors_;
   }
 };
 

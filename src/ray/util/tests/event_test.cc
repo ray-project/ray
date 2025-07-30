@@ -654,7 +654,7 @@ TEST_F(EventTest, TestLogLevel) {
       result[0], "", "", "", "CORE_WORKER", "WARNING", "label", "test warning");
   CheckEventDetail(result[1], "", "", "", "CORE_WORKER", "ERROR", "label", "test error");
   CheckEventDetail(result[2], "", "", "", "CORE_WORKER", "FATAL", "label", "test fatal");
-  result.clear();
+  result_.clear();
 
   // Test error level
   ray::RayEvent::SetLevel("error");
@@ -666,7 +666,7 @@ TEST_F(EventTest, TestLogLevel) {
   EXPECT_EQ(result.size(), 2);
   CheckEventDetail(result[0], "", "", "", "CORE_WORKER", "ERROR", "label", "test error");
   CheckEventDetail(result[1], "", "", "", "CORE_WORKER", "FATAL", "label", "test fatal");
-  result.clear();
+  result_.clear();
 
   // Test fatal level
   ray::RayEvent::SetLevel("FATAL");
@@ -677,7 +677,7 @@ TEST_F(EventTest, TestLogLevel) {
 
   EXPECT_EQ(result.size(), 1);
   CheckEventDetail(result[0], "", "", "", "CORE_WORKER", "FATAL", "label", "test fatal");
-  result.clear();
+  result_.clear();
 }
 
 TEST_F(EventTest, TestLogEvent) {

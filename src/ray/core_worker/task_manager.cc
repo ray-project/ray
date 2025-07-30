@@ -411,8 +411,8 @@ void TaskManager::SetupTaskEntryForResubmit(TaskEntry &task_entry) {
   // The task is pending again, so it's no longer counted as lineage. If
   // the task finishes and we still need the spec, we'll add the task back
   // to the footprint sum.
-  total_lineage_footprint_bytes_ -= task_entry.lineage_footprint_bytes;
-  task_entry.lineage_footprint_bytes = 0;
+  total_lineage_footprint_bytes_ -= task_entry.lineage_footprint_bytes_;
+  task_entry.lineage_footprint_bytes_ = 0;
 
   if (task_entry.num_retries_left > 0) {
     task_entry.num_retries_left--;
@@ -942,7 +942,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
         spec.AddDynamicReturnId(dynamic_return_id);
       }
       for (const auto &dynamic_return_id : dynamic_returns_in_plasma) {
-        it->second.reconstructable_return_ids.insert(dynamic_return_id);
+        it->second.reconstructable_return_ids_.insert(dynamic_return_id);
       }
 
       if (spec.IsStreamingGenerator()) {
@@ -962,7 +962,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
               // cause a memory leak of the task metadata, because we will
               // never receive a callback from the ReferenceCounter to erase
               // the task.
-              it->second.reconstructable_return_ids.insert(
+              it->second.reconstructable_return_ids_.insert(
                   ObjectID::FromBinary(return_id_info.object_id()));
             }
           }
@@ -975,14 +975,14 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     for (const auto &direct_return_id : direct_return_ids) {
       RAY_LOG(DEBUG) << "Task " << it->first << " returned direct object "
                      << direct_return_id << ", now has "
-                     << it->second.reconstructable_return_ids.size()
+                     << it->second.reconstructable_return_ids_.size()
                      << " plasma returns in scope";
-      it->second.reconstructable_return_ids.erase(direct_return_id);
+      it->second.reconstructable_return_ids_.erase(direct_return_id);
     }
     RAY_LOG(DEBUG) << "Task " << it->first << " now has "
-                   << it->second.reconstructable_return_ids.size()
+                   << it->second.reconstructable_return_ids_.size()
                    << " plasma returns in scope";
-    it->second.num_successful_executions++;
+    it->second.num_successful_executions_++;
 
     if (is_application_error) {
       SetTaskStatus(
@@ -999,12 +999,12 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     // retries left and returned at least one object that is still in use and
     // stored in plasma.
     bool task_retryable = it->second.num_retries_left != 0 &&
-                          !it->second.reconstructable_return_ids.empty();
+                          !it->second.reconstructable_return_ids_.empty();
     if (task_retryable) {
       // Pin the task spec if it may be retried again.
       release_lineage = false;
-      it->second.lineage_footprint_bytes = it->second.spec.GetMessage().ByteSizeLong();
-      total_lineage_footprint_bytes_ += it->second.lineage_footprint_bytes;
+      it->second.lineage_footprint_bytes_ = it->second.spec.GetMessage().ByteSizeLong();
+      total_lineage_footprint_bytes_ += it->second.lineage_footprint_bytes_;
       if (total_lineage_footprint_bytes_ > max_lineage_bytes_) {
         RAY_LOG(INFO) << "Total lineage size is " << total_lineage_footprint_bytes_ / 1e6
                       << "MB, which exceeds the limit of " << max_lineage_bytes_ / 1e6
@@ -1323,15 +1323,15 @@ int64_t TaskManager::RemoveLineageReference(const ObjectID &object_id,
   }
 
   RAY_LOG(DEBUG) << "Plasma object " << object_id << " out of scope";
-  for (const auto &plasma_id : it->second.reconstructable_return_ids) {
+  for (const auto &plasma_id : it->second.reconstructable_return_ids_) {
     RAY_LOG(DEBUG) << "Task " << task_id << " has " << plasma_id << " in scope";
   }
-  it->second.reconstructable_return_ids.erase(object_id);
+  it->second.reconstructable_return_ids_.erase(object_id);
   RAY_LOG(DEBUG) << "Task " << task_id << " now has "
-                 << it->second.reconstructable_return_ids.size()
+                 << it->second.reconstructable_return_ids_.size()
                  << " plasma returns in scope";
 
-  if (it->second.reconstructable_return_ids.empty() && !it->second.IsPending()) {
+  if (it->second.reconstructable_return_ids_.empty() && !it->second.IsPending()) {
     // If the task can no longer be retried, decrement the lineage ref count
     // for each of the task's args.
     for (size_t i = 0; i < it->second.spec.NumArgs(); i++) {
@@ -1352,7 +1352,7 @@ int64_t TaskManager::RemoveLineageReference(const ObjectID &object_id,
       released_objects->push_back(actor_creation_return_id);
     }
 
-    total_lineage_footprint_bytes_ -= it->second.lineage_footprint_bytes;
+    total_lineage_footprint_bytes_ -= it->second.lineage_footprint_bytes_;
     // The task has finished and none of the return IDs are in scope anymore,
     // so it is safe to remove the task spec.
     submissible_tasks_.erase(it);
@@ -1394,9 +1394,9 @@ absl::flat_hash_set<ObjectID> TaskManager::GetTaskReturnObjectsToStoreInPlasma(
     // from submissible_tasks_. Do nothing in this case.
     return {};
   }
-  first_execution = it->second.num_successful_executions == 0;
+  first_execution = it->second.num_successful_executions_ == 0;
   if (!first_execution) {
-    store_in_plasma_ids = it->second.reconstructable_return_ids;
+    store_in_plasma_ids = it->second.reconstructable_return_ids_;
   }
   if (first_execution_out != nullptr) {
     *first_execution_out = first_execution;
@@ -1559,7 +1559,7 @@ TaskManager::GetOngoingLineageReconstructionTasks(
       continue;
     }
 
-    if (task_entry.num_successful_executions == 0) {
+    if (task_entry.num_successful_executions_ == 0) {
       // Not lineage reconstruction task
       continue;
     }

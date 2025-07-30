@@ -23,6 +23,6 @@
 
 namespace plasma {
 
-LocalObject::LocalObject(Allocation _allocation)
-    : allocation(std::move(_allocation)), ref_count(0) {}
+LocalObject::LocalObject(Allocation allocation)
+    : allocation_(std::move(allocation)), ref_count_(0) {}
 }  // namespace plasma

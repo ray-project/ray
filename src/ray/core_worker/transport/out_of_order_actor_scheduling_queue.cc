@@ -43,7 +43,8 @@ OutOfOrderActorSchedulingQueue::OutOfOrderActorSchedulingQueue(
     ss << "Setting actor as asyncio with max_concurrency=" << fiber_max_concurrency
        << ", and defined concurrency groups are:" << std::endl;
     for (const auto &concurrency_group : concurrency_groups) {
-      ss << "\t" << concurrency_group.name << " : " << concurrency_group.max_concurrency;
+      ss << "\t" << concurrency_group.name_ << " : "
+         << concurrency_group.max_concurrency_;
     }
     RAY_LOG(INFO) << ss.str();
   }
@@ -186,12 +187,12 @@ void OutOfOrderActorSchedulingQueue::RunRequest(InboundRequest request) {
     waiter_.Wait(dependencies, [this, request = std::move(request)]() mutable {
       RAY_CHECK_EQ(std::this_thread::get_id(), main_thread_id_);
 
-      const TaskSpecification &_task_spec = request.TaskSpec();
+      const TaskSpecification &task = request.TaskSpec();
       RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
-          _task_spec.TaskId(),
-          _task_spec.JobId(),
-          _task_spec.AttemptNumber(),
-          _task_spec,
+          task.TaskId(),
+          task.JobId(),
+          task.AttemptNumber(),
+          task,
           rpc::TaskStatus::PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY,
           /* include_task_info */ false));
 

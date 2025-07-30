@@ -396,9 +396,9 @@ void RedisStoreClient::RedisScanner::Scan() {
 
   // Scan by prefix from Redis.
   RedisCommand command = {"HSCAN", redis_key_, {std::to_string(cursor_.value())}};
-  if (match_pattern_.escaped != "*") {
+  if (match_pattern_.escaped_ != "*") {
     command.args.push_back("MATCH");
-    command.args.push_back(match_pattern_.escaped);
+    command.args.push_back(match_pattern_.escaped_);
   }
   command.args.push_back("COUNT");
   command.args.push_back(std::to_string(batch_count));
@@ -528,7 +528,7 @@ bool RedisDelKeyPrefixSync(const std::string &host,
   // Delete all such keys by using empty table name.
   RedisKey redis_key{external_storage_namespace, /*table_name=*/""};
   std::vector<std::string> cmd{"KEYS",
-                               RedisMatchPattern::Prefix(redis_key.ToString()).escaped};
+                               RedisMatchPattern::Prefix(redis_key.ToString()).escaped_};
   std::promise<std::shared_ptr<CallbackReply>> promise;
   context->RunArgvAsync(cmd, [&promise](const std::shared_ptr<CallbackReply> &reply) {
     promise.set_value(reply);
@@ -543,9 +543,10 @@ bool RedisDelKeyPrefixSync(const std::string &host,
   auto delete_one_sync = [context](const std::string &key) {
     auto del_cmd = std::vector<std::string>{"DEL", key};
     std::promise<std::shared_ptr<CallbackReply>> prom;
-    context->RunArgvAsync(del_cmd, [&prom](const std::shared_ptr<CallbackReply> &_reply) {
-      prom.set_value(_reply);
-    });
+    context->RunArgvAsync(del_cmd,
+                          [&prom](const std::shared_ptr<CallbackReply> &callback_reply) {
+                            prom.set_value(callback_reply);
+                          });
     auto del_reply = prom.get_future().get();
     return del_reply->ReadAsInteger() > 0;
   };

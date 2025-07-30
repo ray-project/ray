@@ -76,12 +76,12 @@ flatbuf::PlasmaError ObjectLifecycleManager::AbortObject(const ObjectID &object_
     RAY_LOG(ERROR) << "To abort an object it must be in the object table.";
     return PlasmaError::ObjectNonexistent;
   }
-  if (entry->state == ObjectState::PLASMA_SEALED) {
+  if (entry->state_ == ObjectState::PLASMA_SEALED) {
     RAY_LOG(ERROR) << "To abort an object it must not have been sealed.";
     return PlasmaError::ObjectSealed;
   }
 
-  bool abort_while_using = entry->ref_count > 0;
+  bool abort_while_using = entry->ref_count_ > 0;
   DeleteObjectInternal(object_id);
 
   if (abort_while_using) {
@@ -98,7 +98,7 @@ PlasmaError ObjectLifecycleManager::DeleteObject(const ObjectID &object_id) {
   }
 
   // TODO(scv119): should we delete unsealed with ref_count 0?
-  if (entry->state != ObjectState::PLASMA_SEALED) {
+  if (entry->state_ != ObjectState::PLASMA_SEALED) {
     // To delete an object it must have been sealed,
     // otherwise there might be memeory corruption.
     // Put it into deletion cache, it will be deleted later.
@@ -106,7 +106,7 @@ PlasmaError ObjectLifecycleManager::DeleteObject(const ObjectID &object_id) {
     return PlasmaError::ObjectNotSealed;
   }
 
-  if (entry->ref_count != 0) {
+  if (entry->ref_count_ != 0) {
     // To delete an object, there must be no clients currently using it.
     // Put it into deletion cache, it will be deleted later.
     earger_deletion_objects_.emplace(object_id);
@@ -133,12 +133,12 @@ bool ObjectLifecycleManager::AddReference(const ObjectID &object_id) {
   }
   // If there are no other clients using this object, notify the eviction policy
   // that the object is being used.
-  if (entry->ref_count == 0) {
+  if (entry->ref_count_ == 0) {
     // Tell the eviction policy that this object is being used.
     eviction_policy_->BeginObjectAccess(object_id);
   }
   // Increase reference count.
-  entry->ref_count++;
+  entry->ref_count_++;
   stats_collector_->OnObjectRefIncreased(*entry);
   RAY_LOG(DEBUG) << "Object " << object_id << " reference has incremented"
                  << ", num bytes in use is now " << GetNumBytesInUse();
@@ -147,17 +147,17 @@ bool ObjectLifecycleManager::AddReference(const ObjectID &object_id) {
 
 bool ObjectLifecycleManager::RemoveReference(const ObjectID &object_id) {
   auto entry = object_store_->GetObject(object_id);
-  if (!entry || entry->ref_count == 0) {
+  if (!entry || entry->ref_count_ == 0) {
     RAY_LOG(ERROR)
         << object_id
         << " doesn't exist, or its ref count is already 0, remove reference failed.";
     return false;
   }
 
-  entry->ref_count--;
+  entry->ref_count_--;
   stats_collector_->OnObjectRefDecreased(*entry);
 
-  if (entry->ref_count > 0) {
+  if (entry->ref_count_ > 0) {
     return true;
   }
 
@@ -231,9 +231,9 @@ void ObjectLifecycleManager::EvictObjects(const std::vector<ObjectID> &object_id
     // error. Maybe we should also support deleting objects that have been
     // created but not sealed.
     RAY_CHECK(entry != nullptr) << "To evict an object it must be in the object table.";
-    RAY_CHECK(entry->state == ObjectState::PLASMA_SEALED)
+    RAY_CHECK(entry->state_ == ObjectState::PLASMA_SEALED)
         << "To evict an object it must have been sealed.";
-    RAY_CHECK(entry->ref_count == 0)
+    RAY_CHECK(entry->ref_count_ == 0)
         << "To evict an object, there must be no clients currently using it.";
 
     DeleteObjectInternal(object_id);
@@ -244,7 +244,7 @@ void ObjectLifecycleManager::DeleteObjectInternal(const ObjectID &object_id) {
   auto entry = object_store_->GetObject(object_id);
   RAY_CHECK(entry != nullptr);
 
-  bool aborted = entry->state == ObjectState::PLASMA_CREATED;
+  bool aborted = entry->state_ == ObjectState::PLASMA_CREATED;
 
   stats_collector_->OnObjectDeleting(*entry);
   earger_deletion_objects_.erase(object_id);
@@ -263,7 +263,7 @@ int64_t ObjectLifecycleManager::GetNumBytesInUse() const {
 
 bool ObjectLifecycleManager::IsObjectSealed(const ObjectID &object_id) const {
   auto entry = GetObject(object_id);
-  return entry && entry->state == ObjectState::PLASMA_SEALED;
+  return entry && entry->state_ == ObjectState::PLASMA_SEALED;
 }
 
 int64_t ObjectLifecycleManager::GetNumObjectsCreatedTotal() const {

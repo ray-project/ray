@@ -238,7 +238,7 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
                 result_ptr));
 
             // A nullptr is returned if the object already exists.
-            auto result = *result_ptr;
+            auto result_ = *result_ptr;
             if (result != nullptr) {
               if (result->HasData()) {
                 memcpy(result->GetData()->Data(),
@@ -248,7 +248,7 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
             }
 
             RAY_CHECK_OK(CoreWorkerProcess::GetCoreWorker().SealReturnObject(
-                result_id, result, ObjectID::Nil(), caller_address));
+                result_id, result_, ObjectID::Nil(), caller_address));
           }
         }
 

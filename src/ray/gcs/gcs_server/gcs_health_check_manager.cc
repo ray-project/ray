@@ -173,8 +173,8 @@ void GcsHealthCheckManager::HealthCheckContext::StartHealthCheck() {
       response_ptr,
       [this, start = now, context = std::move(context), response = std::move(response)](
           ::grpc::Status status) {
-        auto _manager = manager_.lock();
-        if (_manager == nullptr) {
+        auto gcs_health_check_manager = manager_.lock();
+        if (gcs_health_check_manager == nullptr) {
           delete this;
           return;
         }
@@ -183,7 +183,7 @@ void GcsHealthCheckManager::HealthCheckContext::StartHealthCheck() {
         STATS_health_check_rpc_latency_ms.Record(
             absl::ToInt64Milliseconds(absl::Now() - start));
 
-        _manager->io_service_.post(
+        gcs_health_check_manager->io_service_.post(
             [this, status, response = std::move(response)]() {
               if (stopped_) {
                 delete this;

@@ -2694,7 +2694,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
 Status CoreWorker::CreatePlacementGroup(
     const PlacementGroupCreationOptions &placement_group_creation_options,
     PlacementGroupID *return_placement_group_id) {
-  const auto &bundles = placement_group_creation_options.bundles;
+  const auto &bundles = placement_group_creation_options.bundles_;
   for (const auto &bundle : bundles) {
     for (const auto &resource : bundle) {
       if (resource.first == kBundle_ResourceLabel) {
@@ -2709,16 +2709,16 @@ Status CoreWorker::CreatePlacementGroup(
   PlacementGroupSpecBuilder builder;
   builder.SetPlacementGroupSpec(
       placement_group_id,
-      placement_group_creation_options.name,
-      placement_group_creation_options.bundles,
-      placement_group_creation_options.strategy,
-      placement_group_creation_options.is_detached,
-      placement_group_creation_options.max_cpu_fraction_per_node,
-      placement_group_creation_options.soft_target_node_id,
+      placement_group_creation_options.name_,
+      placement_group_creation_options.bundles_,
+      placement_group_creation_options.strategy_,
+      placement_group_creation_options.is_detached_,
+      placement_group_creation_options.max_cpu_fraction_per_node_,
+      placement_group_creation_options.soft_target_node_id_,
       worker_context_.GetCurrentJobID(),
       worker_context_.GetCurrentActorID(),
       worker_context_.CurrentActorDetached(),
-      placement_group_creation_options.bundle_label_selector);
+      placement_group_creation_options.bundle_label_selector_);
   PlacementGroupSpecification placement_group_spec = builder.Build();
   *return_placement_group_id = placement_group_id;
   RAY_LOG(INFO).WithField(placement_group_id)

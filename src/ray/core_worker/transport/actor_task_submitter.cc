@@ -598,22 +598,22 @@ void ActorTaskSubmitter::PushActorTask(ClientQueue &queue,
   queue.inflight_task_callbacks.emplace(task_attempt, std::move(reply_callback));
   rpc::ClientCallback<rpc::PushTaskReply> wrapped_callback =
       [this, task_attempt, actor_id](const Status &status, rpc::PushTaskReply &&reply) {
-        rpc::ClientCallback<rpc::PushTaskReply> _reply_callback;
+        rpc::ClientCallback<rpc::PushTaskReply> push_task_reply_callback;
         {
           absl::MutexLock lock(&mu_);
           auto it = client_queues_.find(actor_id);
           RAY_CHECK(it != client_queues_.end());
-          auto &_queue = it->second;
-          auto callback_it = _queue.inflight_task_callbacks.find(task_attempt);
-          if (callback_it == _queue.inflight_task_callbacks.end()) {
+          auto &client_queue = it->second;
+          auto callback_it = client_queue.inflight_task_callbacks.find(task_attempt);
+          if (callback_it == client_queue.inflight_task_callbacks.end()) {
             RAY_LOG(DEBUG).WithField(task_attempt.first)
                 << "The task has already been marked as failed. Ignore the reply.";
             return;
           }
-          _reply_callback = std::move(callback_it->second);
-          _queue.inflight_task_callbacks.erase(callback_it);
+          push_task_reply_callback = std::move(callback_it->second);
+          client_queue.inflight_task_callbacks.erase(callback_it);
         }
-        _reply_callback(status, std::move(reply));
+        push_task_reply_callback(status, std::move(reply));
       };
 
   task_manager_.MarkTaskWaitingForExecution(task_id,

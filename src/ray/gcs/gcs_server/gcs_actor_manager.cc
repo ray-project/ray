@@ -1037,7 +1037,7 @@ void GcsActorManager::PollOwnerForActorRefDeleted(
     auto client = worker_client_pool_.GetOrConnect(actor->GetOwnerAddress());
     it = workers.emplace(owner_id, Owner(std::move(client))).first;
   }
-  it->second.children_actor_ids.insert(actor_id);
+  it->second.children_actor_ids_.insert(actor_id);
 
   rpc::WaitForActorRefDeletedRequest wait_request;
   wait_request.set_intended_worker_id(owner_id.Binary());
@@ -1257,7 +1257,7 @@ void GcsActorManager::OnWorkerDead(const ray::NodeID &node_id,
     auto owner = it->second.find(worker_id);
     // Make a copy of the children actor IDs since we will delete from the
     // list.
-    const auto children_ids = owner->second.children_actor_ids;
+    const auto children_ids = owner->second.children_actor_ids_;
     for (const auto &child_id : children_ids) {
       DestroyActor(child_id,
                    GenOwnerDiedCause(GetActor(child_id),
@@ -1331,7 +1331,7 @@ void GcsActorManager::OnNodeDead(std::shared_ptr<rpc::GcsNodeInfo> node,
     absl::flat_hash_map<WorkerID, ActorID> children_ids;
     // Make a copy of all the actor IDs owned by workers on the dead node.
     for (const auto &owner : it->second) {
-      for (const auto &child_id : owner.second.children_actor_ids) {
+      for (const auto &child_id : owner.second.children_actor_ids_) {
         children_ids.emplace(owner.first, child_id);
       }
     }
@@ -1754,8 +1754,8 @@ void GcsActorManager::RemoveActorFromOwner(const std::shared_ptr<GcsActor> &acto
   auto worker_it = node.find(owner_id);
   RAY_CHECK(worker_it != node.end());
   auto &owner = worker_it->second;
-  RAY_CHECK(owner.children_actor_ids.erase(actor_id));
-  if (owner.children_actor_ids.empty()) {
+  RAY_CHECK(owner.children_actor_ids_.erase(actor_id));
+  if (owner.children_actor_ids_.empty()) {
     node.erase(worker_it);
     if (node.empty()) {
       owners_.erase(owner_node_id);

@@ -634,14 +634,14 @@ void WorkerPool::MonitorPopWorkerRequestForRegistration(
   // Capture timer in lambda to copy it once, so that it can avoid destructing timer.
   timer->async_wait([timer, pop_worker_request = std::move(pop_worker_request), this](
                         const boost::system::error_code e) mutable {
-    auto &state = GetStateForLanguage(pop_worker_request->language);
+    auto &state = GetStateForLanguage(pop_worker_request->language_);
     auto &requests = state.pending_registration_requests;
     auto it = std::find(requests.begin(), requests.end(), pop_worker_request);
     if (it != requests.end()) {
       // Pop and fail the task...
       requests.erase(it);
       PopWorkerStatus status = PopWorkerStatus::WorkerPendingRegistration;
-      PopWorkerCallbackAsync(pop_worker_request->callback, nullptr, status);
+      PopWorkerCallbackAsync(pop_worker_request->callback_, nullptr, status);
     }
   });
 }
@@ -1068,9 +1068,8 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
     auto it = std::find_if(
         state.pending_registration_requests.begin(),
         state.pending_registration_requests.end(),
-        [this, &worker](const std::shared_ptr<PopWorkerRequest> &_pop_worker_request) {
-          return WorkerFitsForTask(*worker, *_pop_worker_request) ==
-                 WorkerUnfitForTaskReason::NONE;
+        [this, &worker](const std::shared_ptr<PopWorkerRequest> &request) {
+          return WorkerFitsForTask(*worker, *request) == WorkerUnfitForTaskReason::NONE;
         });
     if (it != state.pending_registration_requests.end()) {
       pop_worker_request = *it;
@@ -1081,9 +1080,8 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
     auto it = std::find_if(
         state.pending_start_requests.begin(),
         state.pending_start_requests.end(),
-        [this, &worker](const std::shared_ptr<PopWorkerRequest> &_pop_worker_request) {
-          return WorkerFitsForTask(*worker, *_pop_worker_request) ==
-                 WorkerUnfitForTaskReason::NONE;
+        [this, &worker](const std::shared_ptr<PopWorkerRequest> &request) {
+          return WorkerFitsForTask(*worker, *request) == WorkerUnfitForTaskReason::NONE;
         });
     if (it != state.pending_start_requests.end()) {
       pop_worker_request = *it;
@@ -1092,7 +1090,7 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
   }
 
   if (pop_worker_request) {
-    bool used = pop_worker_request->callback(worker, PopWorkerStatus::OK, "");
+    bool used = pop_worker_request->callback_(worker, PopWorkerStatus::OK, "");
     if (!used) {
       // Retry PushWorker. Maybe it can be used by other tasks.
       // Can we have tail call optimization for this? :)
@@ -1110,7 +1108,7 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
       // Newly registered worker. Respect worker_startup_keep_alive_duration if any.
       auto it = state.worker_processes.find(worker->GetStartupToken());
       if (it != state.worker_processes.end()) {
-        const auto &keep_alive_duration = it->second.worker_startup_keep_alive_duration;
+        const auto &keep_alive_duration = it->second.worker_startup_keep_alive_duration_;
         if (keep_alive_duration.has_value()) {
           keep_alive_until = std::max(keep_alive_until, now + *keep_alive_duration);
         }
@@ -1214,9 +1212,9 @@ void WorkerPool::KillIdleWorker(const IdleWorkerEntry &entry) {
   }
   rpc_client->Exit(
       request, [this, entry](const ray::Status &status, const rpc::ExitReply &r) {
-        const auto &_idle_worker = entry.worker;
+        const auto &worker = entry.worker;
 
-        RAY_CHECK(pending_exit_idle_workers_.erase(_idle_worker->WorkerId()));
+        RAY_CHECK(pending_exit_idle_workers_.erase(worker->WorkerId()));
         if (!status.ok()) {
           RAY_LOG(ERROR) << "Failed to send exit request: " << status.ToString();
         }
@@ -1224,19 +1222,19 @@ void WorkerPool::KillIdleWorker(const IdleWorkerEntry &entry) {
         // In case of failed to send request, we remove it from pool as well
         // TODO(iycheng): We should handle the grpc failure in better way.
         if (!status.ok() || r.success()) {
-          RAY_LOG(DEBUG) << "Removed worker " << _idle_worker->WorkerId();
-          auto &worker_state = GetStateForLanguage(_idle_worker->GetLanguage());
+          RAY_LOG(DEBUG) << "Removed worker " << worker->WorkerId();
+          auto &worker_state = GetStateForLanguage(worker->GetLanguage());
           // If we could kill the worker properly, we remove them from the idle
           // pool.
-          RemoveWorker(worker_state.idle, _idle_worker);
+          RemoveWorker(worker_state.idle, worker);
           // We always mark the worker as dead.
           // If the worker is not idle at this moment, we'd want to mark it as dead
           // so it won't be reused later.
-          if (!_idle_worker->IsDead()) {
-            _idle_worker->MarkDead();
+          if (!worker->IsDead()) {
+            worker->MarkDead();
           }
         } else {
-          RAY_LOG(DEBUG) << "Failed to remove worker " << _idle_worker->WorkerId();
+          RAY_LOG(DEBUG) << "Failed to remove worker " << worker->WorkerId();
           // We re-insert the idle worker to the back of the queue if it fails to
           // kill the worker (e.g., when the worker owns the object). Without this,
           // if the first N workers own objects, it can't kill idle workers that are
@@ -1282,12 +1280,12 @@ WorkerUnfitForTaskReason WorkerPool::WorkerFitsForTask(
 
   // If the request asks for a is_gpu, and the worker is assigned a different is_gpu,
   // then skip it.
-  if (!OptionalsMatchOrEitherEmpty(pop_worker_request.is_gpu, worker.GetIsGpu())) {
+  if (!OptionalsMatchOrEitherEmpty(pop_worker_request.is_gpu_, worker.GetIsGpu())) {
     return WorkerUnfitForTaskReason::OTHERS;
   }
   // If the request asks for a is_actor_worker, and the worker is assigned a different
   // is_actor_worker, then skip it.
-  if (!OptionalsMatchOrEitherEmpty(pop_worker_request.is_actor_worker,
+  if (!OptionalsMatchOrEitherEmpty(pop_worker_request.is_actor_worker_,
                                    worker.GetIsActorWorker())) {
     return WorkerUnfitForTaskReason::OTHERS;
   }
@@ -1300,7 +1298,7 @@ WorkerUnfitForTaskReason WorkerPool::WorkerFitsForTask(
   }
   // Skip if the dynamic_options doesn't match.
   if (LookupWorkerDynamicOptions(worker.GetStartupToken()) !=
-      pop_worker_request.dynamic_options) {
+      pop_worker_request.dynamic_options_) {
     return WorkerUnfitForTaskReason::DYNAMIC_OPTIONS_MISMATCH;
   }
   return WorkerUnfitForTaskReason::NONE;
@@ -1348,14 +1346,14 @@ void WorkerPool::StartNewWorker(
   };
 
   const std::string &serialized_runtime_env =
-      pop_worker_request->runtime_env_info.serialized_runtime_env();
+      pop_worker_request->runtime_env_info_.serialized_runtime_env();
 
   if (!IsRuntimeEnvEmpty(serialized_runtime_env)) {
     // create runtime env.
     GetOrCreateRuntimeEnv(
         serialized_runtime_env,
-        pop_worker_request->runtime_env_info.runtime_env_config(),
-        pop_worker_request->job_id,
+        pop_worker_request->runtime_env_info_.runtime_env_config(),
+        pop_worker_request->job_id_,
         [this, start_worker_process_fn, pop_worker_request](
             bool successful,
             const std::string &serialized_runtime_env_context,
@@ -1364,7 +1362,7 @@ void WorkerPool::StartNewWorker(
             start_worker_process_fn(pop_worker_request, serialized_runtime_env_context);
           } else {
             process_failed_runtime_env_setup_failed_++;
-            pop_worker_request->callback(
+            pop_worker_request->callback_(
                 nullptr,
                 PopWorkerStatus::RuntimeEnvCreationFailed,
                 /*runtime_env_setup_error_message*/ setup_error_message);
@@ -1474,9 +1472,9 @@ void WorkerPool::PopWorker(std::shared_ptr<PopWorkerRequest> pop_worker_request)
     return;
   }
   RAY_CHECK(worker->GetAssignedJobId().IsNil() ||
-            worker->GetAssignedJobId() == pop_worker_request->job_id);
+            worker->GetAssignedJobId() == pop_worker_request->job_id_);
   stats::NumWorkersStartedFromCache.Record(1);
-  PopWorkerCallbackAsync(pop_worker_request->callback, worker, PopWorkerStatus::OK);
+  PopWorkerCallbackAsync(pop_worker_request->callback_, worker, PopWorkerStatus::OK);
 }
 
 void WorkerPool::PrestartWorkers(const TaskSpecification &task_spec,
@@ -1853,7 +1851,7 @@ const std::vector<std::string> &WorkerPool::LookupWorkerDynamicOptions(
   for (const auto &[lang, state] : states_by_lang_) {
     auto it = state.worker_processes.find(token);
     if (it != state.worker_processes.end()) {
-      return it->second.dynamic_options;
+      return it->second.dynamic_options_;
     }
   }
   static std::vector<std::string> kNoDynamicOptions;
