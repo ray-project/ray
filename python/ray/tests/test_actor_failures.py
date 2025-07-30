@@ -1393,7 +1393,6 @@ def test_actor_ray_shutdown_dont_interfere_with_kill(
     actor = KillableActor.remote()
     ray.get(actor.get_ready.remote())
     _ = actor.sleep_forever.remote()
-    time.sleep(0.1)
     ray.kill(actor)
 
     wait_for_condition(lambda: not check_file_exists_and_not_empty(shutdown_file))

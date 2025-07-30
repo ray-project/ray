@@ -334,6 +334,7 @@ CoreWorker::CoreWorker(
       max_direct_call_object_size_(RayConfig::instance().max_direct_call_object_size()),
       task_event_buffer_(std::move(task_event_buffer)),
       pid_(pid),
+      actor_shutdown_callback_(std::move(options_.actor_shutdown_callback)),
       runtime_env_json_serialization_cache_(kDefaultSerializationCacheCap) {
   // Initialize task receivers.
   if (options_.worker_type == WorkerType::WORKER || options_.is_local_mode) {
@@ -497,12 +498,12 @@ void CoreWorker::Shutdown() {
   {
     absl::MutexLock lock(&mutex_);
     if (options_.worker_type == WorkerType::WORKER && !actor_id_.IsNil() &&
-        actor_cleanup_callback_) {
+        actor_shutdown_callback_) {
       try {
         RAY_LOG(INFO) << "Calling actor cleanup callback before shutdown";
-        actor_cleanup_callback_();
+        actor_shutdown_callback_();
         // Clear callback to prevent multiple calls
-        actor_cleanup_callback_ = nullptr;
+        actor_shutdown_callback_ = nullptr;
       } catch (const std::exception &e) {
         RAY_LOG(ERROR) << "Actor cleanup callback failed: " << e.what();
       }
@@ -4694,10 +4695,6 @@ void ClusterSizeBasedLeaseRequestRateLimiter::OnNodeChanges(
     num_alive_nodes_++;
   }
   RAY_LOG_EVERY_MS(INFO, 60000) << "Number of alive nodes:" << num_alive_nodes_.load();
-}
-
-void CoreWorker::SetActorShutdownCallback(std::function<void()> callback) {
-  actor_cleanup_callback_ = std::move(callback);
 }
 
 }  // namespace ray::core
