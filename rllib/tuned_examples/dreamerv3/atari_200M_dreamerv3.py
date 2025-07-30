@@ -20,14 +20,28 @@ from ray.rllib.utils.test_utils import add_rllib_example_script_args
 parser = add_rllib_example_script_args(
     default_iters=1000000,
     default_reward=20.0,
-    default_timesteps=100000,
+    default_timesteps=1000000,
 )
 # Use `parser` to add your own custom command line options to this script
 # and (if needed) use their values to set up `config` below.
 args = parser.parse_args()
 
+# If we use >1 GPU and increase the batch size accordingly, we should also
+# increase the number of envs per worker.
+if args.num_envs_per_env_runner is None:
+    args.num_envs_per_env_runner = 8 * (args.num_learners or 1)
+
+default_config = DreamerV3Config()
+lr_multiplier = (args.num_learners or 1) ** 0.5
+
 config = (
     DreamerV3Config()
+    .resources(
+        # For each (parallelized) env, we should provide a CPU. Lower this number
+        # if you don't have enough CPUs.
+        num_cpus_for_main_process=8
+        * (args.num_learners or 1),
+    )
     .environment(
         env=args.env,
         # [2]: "We follow the evaluation protocol of Machado et al. (2018) with 200M
@@ -47,11 +61,7 @@ config = (
         },
     )
     .env_runners(
-        num_env_runners=(args.num_env_runners or 0),
-        # If we use >1 GPU and increase the batch size accordingly, we should also
-        # increase the number of envs per worker.
-        num_envs_per_env_runner=(args.num_learners or 1),
-        remote_worker_envs=(args.num_learners > 1),
+        remote_worker_envs=True,
     )
     .reporting(
         metrics_num_episodes_for_smoothing=(args.num_learners or 1),
@@ -61,9 +71,12 @@ config = (
     )
     # See Appendix A.
     .training(
-        model_size="S",
-        training_ratio=1024,
+        model_size="XL",
+        training_ratio=64,
         batch_size_B=16 * (args.num_learners or 1),
+        world_model_lr=default_config.world_model_lr * lr_multiplier,
+        actor_lr=default_config.actor_lr * lr_multiplier,
+        critic_lr=default_config.critic_lr * lr_multiplier,
     )
 )
 
@@ -71,4 +84,4 @@ config = (
 if __name__ == "__main__":
     from ray.rllib.utils.test_utils import run_rllib_example_script_experiment
 
-    run_rllib_example_script_experiment(config, args, keep_config=True)
+    run_rllib_example_script_experiment(config, args)

@@ -6,33 +6,35 @@ https://arxiv.org/pdf/2301.04104v1.pdf
 from typing import Optional
 
 import gymnasium as gym
+import numpy as np
 import tree  # pip install dm_tree
 
-from ray.rllib.algorithms.dreamerv3.tf.models.components.continue_predictor import (
+from ray.rllib.algorithms.dreamerv3.torch.models.components.continue_predictor import (
     ContinuePredictor,
 )
-from ray.rllib.algorithms.dreamerv3.tf.models.components.dynamics_predictor import (
+from ray.rllib.algorithms.dreamerv3.torch.models.components.dynamics_predictor import (
     DynamicsPredictor,
 )
-from ray.rllib.algorithms.dreamerv3.tf.models.components.mlp import MLP
-from ray.rllib.algorithms.dreamerv3.tf.models.components.representation_layer import (
-    RepresentationLayer,
+from ray.rllib.algorithms.dreamerv3.torch.models.components.mlp import MLP
+from ray.rllib.algorithms.dreamerv3.torch.models.components import (
+    representation_layer,
 )
-from ray.rllib.algorithms.dreamerv3.tf.models.components.reward_predictor import (
+from ray.rllib.algorithms.dreamerv3.torch.models.components.reward_predictor import (
     RewardPredictor,
 )
-from ray.rllib.algorithms.dreamerv3.tf.models.components.sequence_model import (
+from ray.rllib.algorithms.dreamerv3.torch.models.components.sequence_model import (
     SequenceModel,
 )
-from ray.rllib.algorithms.dreamerv3.utils import get_gru_units
-from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.tf_utils import symlog
+from ray.rllib.algorithms.dreamerv3.utils import get_dense_hidden_units, get_gru_units
+from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.torch_utils import symlog
+
+torch, nn = try_import_torch()
+if torch:
+    F = nn.functional
 
 
-_, tf, _ = try_import_tf()
-
-
-class WorldModel(tf.keras.Model):
+class WorldModel(nn.Module):
     """WorldModel component of [1] w/ encoder, decoder, RSSM, reward/cont. predictors.
 
     See eq. 3 of [1] for all components and their respective in- and outputs.
@@ -63,8 +65,8 @@ class WorldModel(tf.keras.Model):
         observation_space: gym.Space,
         action_space: gym.Space,
         batch_length_T: int = 64,
-        encoder: tf.keras.Model,
-        decoder: tf.keras.Model,
+        encoder: nn.Module,
+        decoder: nn.Module,
         num_gru_units: Optional[int] = None,
         symlog_obs: bool = True,
     ):
@@ -73,8 +75,7 @@ class WorldModel(tf.keras.Model):
         Args:
              model_size: The "Model Size" used according to [1] Appendinx B.
                 Use None for manually setting the different network sizes.
-             observation_space: The observation space of the environment used.
-             action_space: The action space of the environment used.
+             action_space: The action space the our environment used.
              batch_length_T: The length (T) of the sequences used for training. The
                 actual shape of the input data (e.g. rewards) is then: [B, T, ...],
                 where B is the "batch size", T is the "batch length" (this arg) and
@@ -101,85 +102,92 @@ class WorldModel(tf.keras.Model):
                 *Because symlog encoding is only used for vector observations*, this
                 ablation is equivalent to DreamerV3 on purely image-based environments".
         """
-        super().__init__(name="world_model")
+        super().__init__()
 
         self.model_size = model_size
         self.batch_length_T = batch_length_T
         self.symlog_obs = symlog_obs
-        self.observation_space = observation_space
         self.action_space = action_space
-        self._comp_dtype = (
-            tf.keras.mixed_precision.global_policy().compute_dtype or tf.float32
+        a_flat = (
+            action_space.n
+            if isinstance(action_space, gym.spaces.Discrete)
+            else (np.prod(action_space.shape))
         )
 
         # Encoder (latent 1D vector generator) (xt -> lt).
         self.encoder = encoder
 
+        self.num_gru_units = get_gru_units(
+            model_size=self.model_size,
+            override=num_gru_units,
+        )
+
         # Posterior predictor consisting of an MLP and a RepresentationLayer:
         # [ht, lt] -> zt.
+        # In Danijar's code, this is called: `obs_out`.
         self.posterior_mlp = MLP(
+            input_size=(self.num_gru_units + encoder.output_size[0]),
             model_size=self.model_size,
             output_layer_size=None,
             # In Danijar's code, the posterior predictor only has a single layer,
             # no matter the model size:
             num_dense_layers=1,
-            name="posterior_mlp",
         )
         # The (posterior) z-state generating layer.
-        self.posterior_representation_layer = RepresentationLayer(
+        # In Danijar's code, this is called: `obs_stats`.
+        self.posterior_representation_layer = representation_layer.RepresentationLayer(
+            input_size=get_dense_hidden_units(self.model_size),
             model_size=self.model_size,
         )
+
+        z_flat = (
+            self.posterior_representation_layer.num_categoricals
+            * self.posterior_representation_layer.num_classes_per_categorical
+        )
+        h_plus_z_flat = self.num_gru_units + z_flat
 
         # Dynamics (prior z-state) predictor: ht -> z^t
-        self.dynamics_predictor = DynamicsPredictor(model_size=self.model_size)
+        # In Danijar's code, the layers in this network are called:
+        # `img_out` (1 Linear) and `img_stats` (representation layer).
+        self.dynamics_predictor = DynamicsPredictor(
+            input_size=self.num_gru_units, model_size=self.model_size
+        )
 
         # GRU for the RSSM: [at, ht, zt] -> ht+1
-        self.num_gru_units = get_gru_units(
-            model_size=self.model_size,
-            override=num_gru_units,
-        )
         # Initial h-state variable (learnt).
         # -> tanh(self.initial_h) -> deterministic state
         # Use our Dynamics predictor for initial stochastic state, BUT with greedy
         # (mode) instead of sampling.
-        self.initial_h = tf.Variable(
-            tf.zeros(shape=(self.num_gru_units,)),
-            trainable=True,
-            name="initial_h",
+        self.initial_h = nn.Parameter(
+            torch.zeros(self.num_gru_units), requires_grad=True
         )
         # The actual sequence model containing the GRU layer.
+        # In Danijar's code, the layers in this network are called:
+        # `img_in` (1 Linear) and `gru` (custom GRU implementation).
         self.sequence_model = SequenceModel(
+            # Only z- and a-state go into pre-layer. The output of that goes then
+            # into GRU (together with h-state).
+            input_size=int(z_flat + a_flat),
             model_size=self.model_size,
             action_space=self.action_space,
             num_gru_units=self.num_gru_units,
         )
 
         # Reward Predictor: [ht, zt] -> rt.
-        self.reward_predictor = RewardPredictor(model_size=self.model_size)
+        self.reward_predictor = RewardPredictor(
+            input_size=h_plus_z_flat,
+            model_size=self.model_size,
+        )
         # Continue Predictor: [ht, zt] -> ct.
-        self.continue_predictor = ContinuePredictor(model_size=self.model_size)
+        self.continue_predictor = ContinuePredictor(
+            input_size=h_plus_z_flat,
+            model_size=self.model_size,
+        )
 
         # Decoder: [ht, zt] -> x^t.
         self.decoder = decoder
 
-        # Trace self.call.
-        self.forward_train = tf.function(
-            input_signature=[
-                tf.TensorSpec(shape=[None, None] + list(self.observation_space.shape)),
-                tf.TensorSpec(
-                    shape=[None, None]
-                    + (
-                        [self.action_space.n]
-                        if isinstance(action_space, gym.spaces.Discrete)
-                        else list(self.action_space.shape)
-                    )
-                ),
-                tf.TensorSpec(shape=[None, None], dtype=tf.bool),
-            ]
-        )(self.forward_train)
-
-    @tf.function
-    def get_initial_state(self):
+    def get_initial_state(self) -> dict:
         """Returns the (current) initial state of the world model (h- and z-states).
 
         An initial state is generated using the tanh of the (learned) h-state variable
@@ -187,15 +195,20 @@ class WorldModel(tf.keras.Model):
         step, it is important that we do NOT sample the z^-state (as we would usually
         do during dreaming), but rather take the mode (argmax, then one-hot again).
         """
-        h = tf.expand_dims(tf.math.tanh(tf.cast(self.initial_h, self._comp_dtype)), 0)
+        h = torch.tanh(self.initial_h)
         # Use the mode, NOT a sample for the initial z-state.
-        _, z_probs = self.dynamics_predictor(h)
-        z = tf.argmax(z_probs, axis=-1)
-        z = tf.one_hot(z, depth=z_probs.shape[-1], dtype=self._comp_dtype)
+        _, z_probs = self.dynamics_predictor(h.unsqueeze(0), return_z_probs=True)
+        z = z_probs.squeeze(0).argmax(dim=-1)
+        z = F.one_hot(z, num_classes=z_probs.shape[-1])
 
         return {"h": h, "z": z}
 
-    def forward_inference(self, observations, previous_states, is_first, training=None):
+    def forward_inference(
+        self,
+        observations: "torch.Tensor",
+        previous_states: dict,
+        is_first: "torch.Tensor",
+    ) -> dict:
         """Performs a forward step for inference (e.g. environment stepping).
 
         Works analogous to `forward_train`, except that all inputs are provided
@@ -213,10 +226,10 @@ class WorldModel(tf.keras.Model):
         Returns:
             The next deterministic h-state (h(t+1)) as predicted by the sequence model.
         """
-        observations = tf.cast(observations, self._comp_dtype)
-
+        B = observations.shape[0]
         initial_states = tree.map_structure(
-            lambda s: tf.repeat(s, tf.shape(observations)[0], axis=0),
+            # Repeat only the batch dimension (B times).
+            lambda s: s.unsqueeze(0).repeat(B, *([1] * len(s.shape))),
             self.get_initial_state(),
         )
 
@@ -236,7 +249,12 @@ class WorldModel(tf.keras.Model):
 
         return {"h": h, "z": z}
 
-    def forward_train(self, observations, actions, is_first):
+    def forward_train(
+        self,
+        observations: "torch.Tensor",
+        actions: "torch.Tensor",
+        is_first: "torch.Tensor",
+    ) -> dict:
         """Performs a forward step for training.
 
         1) Forwards all observations [B, T, ...] through the encoder network to yield
@@ -270,33 +288,31 @@ class WorldModel(tf.keras.Model):
         # Compute bare encoder outs (not z; this is done later with involvement of the
         # sequence model and the h-states).
         # Fold time dimension for CNN pass.
-        shape = tf.shape(observations)
+        shape = observations.shape
         B, T = shape[0], shape[1]
-        observations = tf.reshape(
-            observations, shape=tf.concat([[-1], shape[2:]], axis=0)
-        )
-
-        encoder_out = self.encoder(tf.cast(observations, self._comp_dtype))
+        observations = observations.view((-1,) + shape[2:])
+        encoder_out = self.encoder(observations)
         # Unfold time dimension.
-        encoder_out = tf.reshape(
-            encoder_out, shape=tf.concat([[B, T], tf.shape(encoder_out)[1:]], axis=0)
+        encoder_out = encoder_out.view(
+            (
+                B,
+                T,
+            )
+            + encoder_out.shape[1:]
         )
         # Make time major for faster upcoming loop.
-        encoder_out = tf.transpose(
-            encoder_out, perm=[1, 0] + list(range(2, len(encoder_out.shape.as_list())))
-        )
+        encoder_out = encoder_out.transpose(0, 1)
         # encoder_out=[T, B, ...]
 
         initial_states = tree.map_structure(
-            lambda s: tf.repeat(s, B, axis=0), self.get_initial_state()
+            # Repeat only the batch dimension (B times).
+            lambda s: s.unsqueeze(0).repeat(B, *([1] * len(s.shape))),
+            self.get_initial_state(),
         )
 
         # Make actions and `is_first` time-major.
-        actions = tf.transpose(
-            tf.cast(actions, self._comp_dtype),
-            perm=[1, 0] + list(range(2, tf.shape(actions).shape.as_list()[0])),
-        )
-        is_first = tf.transpose(tf.cast(is_first, self._comp_dtype), perm=[1, 0])
+        actions = actions.transpose(0, 1)
+        is_first = is_first.transpose(0, 1).float()
 
         # Loop through the T-axis of our samples and perform one computation step at
         # a time. This is necessary because the sequence model's output (h(t+1)) depends
@@ -321,50 +337,53 @@ class WorldModel(tf.keras.Model):
             h_t = self.sequence_model(a=a_tm1, h=h_tm1, z=z_tm1)
             h_t0_to_T.append(h_t)
 
-            posterior_mlp_input = tf.concat([encoder_out[t], h_t], axis=-1)
+            posterior_mlp_input = torch.cat([encoder_out[t], h_t], dim=-1)
             repr_input = self.posterior_mlp(posterior_mlp_input)
             # Draw one z-sample (z(t)) and also get the z-distribution for dynamics and
             # representation loss computations.
-            z_t, z_probs = self.posterior_representation_layer(repr_input)
+            z_t, z_probs = self.posterior_representation_layer(
+                repr_input,
+                return_z_probs=True,
+            )
             # z_t=[B, num_categoricals, num_classes]
             z_posterior_probs.append(z_probs)
             z_t0_to_T.append(z_t)
 
             # Compute the predicted z_t (z^) using the dynamics model.
-            _, z_probs = self.dynamics_predictor(h_t)
+            _, z_probs = self.dynamics_predictor(h_t, return_z_probs=True)
             z_prior_probs.append(z_probs)
 
         # Stack at time dimension to yield: [B, T, ...].
-        h_t1_to_T = tf.stack(h_t0_to_T[1:], axis=1)
-        z_t1_to_T = tf.stack(z_t0_to_T[1:], axis=1)
+        h_t1_to_T = torch.stack(h_t0_to_T[1:], dim=1)
+        z_t1_to_T = torch.stack(z_t0_to_T[1:], dim=1)
 
         # Fold time axis to retrieve the final (loss ready) Independent distribution
         # (over `num_categoricals` Categoricals).
-        z_posterior_probs = tf.stack(z_posterior_probs, axis=1)
-        z_posterior_probs = tf.reshape(
-            z_posterior_probs,
-            shape=[-1] + z_posterior_probs.shape.as_list()[2:],
+        z_posterior_probs = torch.stack(z_posterior_probs, dim=1)
+        z_posterior_probs = z_posterior_probs.view(
+            (-1,) + z_posterior_probs.shape[2:],
         )
         # Fold time axis to retrieve the final (loss ready) Independent distribution
         # (over `num_categoricals` Categoricals).
-        z_prior_probs = tf.stack(z_prior_probs, axis=1)
-        z_prior_probs = tf.reshape(
-            z_prior_probs,
-            shape=[-1] + z_prior_probs.shape.as_list()[2:],
-        )
+        z_prior_probs = torch.stack(z_prior_probs, dim=1)
+        z_prior_probs = z_prior_probs.view((-1,) + z_prior_probs.shape[2:])
 
         # Fold time dimension for parallelization of all dependent predictions:
         # observations (reproduction via decoder), rewards, continues.
-        h_BxT = tf.reshape(h_t1_to_T, shape=[-1] + h_t1_to_T.shape.as_list()[2:])
-        z_BxT = tf.reshape(z_t1_to_T, shape=[-1] + z_t1_to_T.shape.as_list()[2:])
+        h_BxT = h_t1_to_T.view((-1,) + h_t1_to_T.shape[2:])
+        z_BxT = z_t1_to_T.view((-1,) + z_t1_to_T.shape[2:])
 
-        obs_distribution_means = tf.cast(self.decoder(h=h_BxT, z=z_BxT), tf.float32)
+        obs_distribution_means = self.decoder(h=h_BxT, z=z_BxT)
 
         # Compute (predicted) reward distributions.
-        rewards, reward_logits = self.reward_predictor(h=h_BxT, z=z_BxT)
+        rewards, reward_logits = self.reward_predictor(
+            h=h_BxT, z=z_BxT, return_logits=True
+        )
 
         # Compute (predicted) continue distributions.
-        continues, continue_distribution = self.continue_predictor(h=h_BxT, z=z_BxT)
+        continues, continue_distribution = self.continue_predictor(
+            h=h_BxT, z=z_BxT, return_distribution=True
+        )
 
         # Return outputs for loss computation.
         # Note that all shapes are [BxT, ...] (time axis already folded).
@@ -387,7 +406,12 @@ class WorldModel(tf.keras.Model):
             "z_prior_probs_BxT": z_prior_probs,
         }
 
-    def compute_posterior_z(self, observations, initial_h):
+    def compute_posterior_z(
+        self, observations: "torch.Tensor", initial_h: "torch.Tensor"
+    ) -> "torch.Tensor":
+        # Fold time dimension for possible CNN pass.
+        shape = observations.shape
+        observations = observations.view((-1,) + shape[2:])
         # Compute bare encoder outputs (not including z, which is computed in next step
         # with involvement of the previous output (initial_h) of the sequence model).
         # encoder_outs=[B, ...]
@@ -395,13 +419,13 @@ class WorldModel(tf.keras.Model):
             observations = symlog(observations)
         encoder_out = self.encoder(observations)
         # Concat encoder outs with the h-states.
-        posterior_mlp_input = tf.concat([encoder_out, initial_h], axis=-1)
+        posterior_mlp_input = torch.cat([encoder_out, initial_h], dim=-1)
         # Compute z.
         repr_input = self.posterior_mlp(posterior_mlp_input)
-        # Draw a z-sample.
-        z_t, _ = self.posterior_representation_layer(repr_input)
+        # Draw one z-sample (no need to return the distribution here).
+        z_t = self.posterior_representation_layer(repr_input, return_z_probs=False)
         return z_t
 
     @staticmethod
-    def _mask(value, mask):
-        return tf.einsum("b...,b->b...", value, tf.cast(mask, value.dtype))
+    def _mask(value: "torch.Tensor", mask: "torch.Tensor") -> "torch.Tensor":
+        return torch.einsum("b...,b->b...", value, mask)
