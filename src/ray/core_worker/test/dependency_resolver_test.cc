@@ -143,29 +143,21 @@ class MockActorCreator : public ActorCreatorInterface {
     return Status::OK();
   };
 
-  Status AsyncRegisterActor(const TaskSpecification &task_spec,
-                            gcs::StatusCallback callback) override {
-    return Status::OK();
-  }
+  void AsyncRegisterActor(const TaskSpecification &task_spec,
+                          gcs::StatusCallback callback) override {}
 
-  Status AsyncCreateActor(
+  void AsyncCreateActor(
       const TaskSpecification &task_spec,
-      const rpc::ClientCallback<rpc::CreateActorReply> &callback) override {
-    return Status::OK();
-  }
+      const rpc::ClientCallback<rpc::CreateActorReply> &callback) override {}
 
-  Status AsyncRestartActorForLineageReconstruction(
+  void AsyncRestartActorForLineageReconstruction(
       const ActorID &actor_id,
       uint64_t num_restarts_due_to_lineage_reconstructions,
-      gcs::StatusCallback callback) override {
-    return Status::OK();
-  }
+      gcs::StatusCallback callback) override {}
 
-  Status AsyncReportActorOutOfScope(const ActorID &actor_id,
-                                    uint64_t num_restarts_due_to_lineage_reconstruction,
-                                    gcs::StatusCallback callback) override {
-    return Status::OK();
-  }
+  void AsyncReportActorOutOfScope(const ActorID &actor_id,
+                                  uint64_t num_restarts_due_to_lineage_reconstruction,
+                                  gcs::StatusCallback callback) override {}
 
   void AsyncWaitForActorRegisterFinish(const ActorID &,
                                        gcs::StatusCallback callback) override {
@@ -537,7 +529,10 @@ TEST(LocalDependencyResolverTest, TestMixedTensorTransport) {
   ASSERT_TRUE(task.GetMutableMessage().args(1).is_inlined());
   ASSERT_FALSE(task.GetMutableMessage().args(1).has_object_ref());
 
-  ASSERT_EQ(task_manager->num_inlined_dependencies, 2);
+  // The first argument is inlined but will not be passed into
+  // `OnTaskDependenciesInlined` because it is a GPU object reference.
+  // Please see https://github.com/ray-project/ray/pull/53911 for more details.
+  ASSERT_EQ(task_manager->num_inlined_dependencies, 1);
   ASSERT_EQ(resolver.NumPendingTasks(), 0);
 }
 

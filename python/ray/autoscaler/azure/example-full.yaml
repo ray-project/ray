@@ -1,4 +1,4 @@
-# An unique identifier for the head node and workers of this cluster.
+# A unique identifier for the head node and workers of this cluster.
 cluster_name: default
 
 # The maximum number of workers nodes to launch in addition to the head
@@ -40,33 +40,33 @@ provider:
     # https://azure.microsoft.com/en-us/global-infrastructure/locations
     location: westus2
     resource_group: ray-cluster
-    # set subscription id otherwise the default from az cli will be used
+    # Set subscription id otherwise the default from az cli will be used.
     # subscription_id: 00000000-0000-0000-0000-000000000000
-    # set unique subnet mask or a random mask will be used
+    # Set unique subnet mask or a random mask will be used.
     # subnet_mask: 10.0.0.0/16
-    # set unique id for resources in this cluster
-    # if not set a default id will be generated based on the resource group and cluster name
+    # Set unique id for resources in this cluster.
+    # If not set a default id will be generated based on the resource group and cluster name.
     # unique_id: RAY1
-    # set managed identity name and resource group
-    # if not set, a default user-assigned identity will be generated in the resource group specified above
+    # Set managed identity name and resource group;
+    # If not set, a default user-assigned identity will be generated in the resource group specified above.
     # msi_name: ray-cluster-msi
     # msi_resource_group: other-rg
-    # Set provisioning and use of public/private IPs for head and worker nodes. If both options below are true,
-    # only the head node will have a public IP address provisioned.
+    # Set provisioning and use of public/private IPs for head and worker nodes;
+    # If both options below are true, only the head node will have a public IP address provisioned.
     # use_internal_ips: True
     # use_external_head_ip: True
 
 # How Ray will authenticate with newly launched nodes.
 auth:
     ssh_user: ubuntu
-    # you must specify paths to matching private and public key pair files
-    # use `ssh-keygen -t rsa -b 4096` to generate a new ssh key pair
+    # You must specify paths to matching private and public key pair files.
+    # Use `ssh-keygen -t rsa -b 4096` to generate a new ssh key pair.
     ssh_private_key: ~/.ssh/id_rsa
-    # changes to this should match what is specified in file_mounts
+    # Changes to this should match what is specified in file_mounts.
     ssh_public_key: ~/.ssh/id_rsa.pub
 
-# More specific customization to node configurations can be made using the ARM template azure-vm-template.json file
-# See documentation here: https://docs.microsoft.com/en-us/azure/templates/microsoft.compute/2019-03-01/virtualmachines
+# You can make more specific customization to node configurations can be made using the ARM template azure-vm-template.json file.
+# See this documentation here: https://docs.microsoft.com/en-us/azure/templates/microsoft.compute/2019-03-01/virtualmachines
 # Changes to the local file will be used during deployment of the head node, however worker nodes deployment occurs
 # on the head node, so changes to the template must be included in the wheel file used in setup_commands section below
 
@@ -87,13 +87,12 @@ available_node_types:
                 imageSku: 1804-gen2
                 imageVersion: latest
 
-                # OR use a custom image from Azure Compute Gallery
-                # note if you use a custom image, imagePublisher,
-                # imageOffer, imageSku, and imageVersion are ignored
+                # Or, use a custom image from Azure Compute Gallery.
+                # Note: if you use a custom image, then imagePublisher,
+                # imageOffer, imageSku, and imageVersion are ignored.
                 # imageId: /subscriptions/[subscription-id]/resourceGroups/[resource-group-id]/providers/Microsoft.Compute/galleries/[azure-compute-gallery-id]/images/[image-id]/versions/[image-version]
 
-                # optionally set osDiskSize if you want to use a
-                # custom disk size
+                # Optionally set osDiskSize if you want to use a custom disk size.
                 # osDiskSize: 128
 
     ray.worker.default:
@@ -131,16 +130,16 @@ file_mounts: {
     "~/.ssh/id_rsa.pub": "~/.ssh/id_rsa.pub"}
 
 # Files or directories to copy from the head node to the worker nodes. The format is a
-# list of paths. The same path on the head node will be copied to the worker node.
+# list of paths. Ray copies the same path on the head node to the worker node.
 # This behavior is a subset of the file_mounts behavior. In the vast majority of cases
 # you should just use file_mounts. Only use this if you know what you're doing!
 cluster_synced_files: []
 
 # Whether changes to directories in file_mounts or cluster_synced_files in the head node
-# should sync to the worker node continuously
+# should sync to the worker node continuously.
 file_mounts_sync_continuously: False
 
-# Patterns for files to exclude when running rsync up or rsync down
+# Patterns for files to exclude when running rsync up or rsync down.
 rsync_exclude:
     - "**/.git"
     - "**/.git/**"

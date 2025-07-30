@@ -22,6 +22,7 @@ from ray.autoscaler.v2.scheduler import (
 from ray.autoscaler.v2.schema import AutoscalerInstance, NodeType
 from ray.autoscaler.v2.tests.util import MockEventLogger, make_autoscaler_instance
 from ray.autoscaler.v2.utils import ResourceRequestUtil
+from ray.core.generated.common_pb2 import LabelSelectorOperator
 from ray.core.generated.autoscaler_pb2 import (
     ClusterResourceConstraint,
     GangResourceRequest,
@@ -1930,64 +1931,138 @@ def test_node_schedule_score(source):
         infeasible, score = node.try_schedule(requests, source)
         return ResourceRequestUtil.to_resource_maps(infeasible), score
 
-    assert try_schedule({"CPU": 1}, [{"CPU": 1}]) == ([], (True, 1, 1.0, 1.0))
+    assert try_schedule({"CPU": 1}, [{"CPU": 1}]) == ([], (0, True, 1, 1.0, 1.0))
 
-    assert try_schedule({"GPU": 4}, [{"GPU": 2}]) == ([], (True, 1, 0.5, 0.5))
+    assert try_schedule({"GPU": 4}, [{"GPU": 2}]) == ([], (0, True, 1, 0.5, 0.5))
     assert try_schedule({"GPU": 4}, [{"GPU": 1}, {"GPU": 1}]) == (
         [],
-        (True, 1, 0.5, 0.5),
+        (0, True, 1, 0.5, 0.5),
     )
-    assert try_schedule({"GPU": 2}, [{"GPU": 2}]) == ([], (True, 1, 2, 2))
-    assert try_schedule({"GPU": 2}, [{"GPU": 1}, {"GPU": 1}]) == ([], (True, 1, 2, 2))
+    assert try_schedule({"GPU": 2}, [{"GPU": 2}]) == ([], (0, True, 1, 2, 2))
+    assert try_schedule({"GPU": 2}, [{"GPU": 1}, {"GPU": 1}]) == (
+        [],
+        (0, True, 1, 2, 2),
+    )
     assert try_schedule({"GPU": 1}, [{"GPU": 1, "CPU": 1}, {"GPU": 1}]) == (
         [{"GPU": 1, "CPU": 1}],
-        (True, 1, 1, 1),
+        (0, True, 1, 1, 1),
     )
     assert try_schedule({"GPU": 1, "CPU": 1}, [{"GPU": 1, "CPU": 1}, {"GPU": 1}]) == (
         [{"GPU": 1}],
-        (True, 2, 1, 1),
+        (0, True, 2, 1, 1),
     )
-    assert try_schedule({"GPU": 2, "TPU": 1}, [{"GPU": 2}]) == ([], (True, 1, 0, 1))
-    assert try_schedule({"CPU": 64}, [{"CPU": 64}]) == ([], (True, 1, 64, 64))
-    assert try_schedule({"CPU": 64}, [{"CPU": 32}]) == ([], (True, 1, 8, 8))
+    assert try_schedule({"GPU": 2, "TPU": 1}, [{"GPU": 2}]) == ([], (0, True, 1, 0, 1))
+    assert try_schedule({"CPU": 64}, [{"CPU": 64}]) == ([], (0, True, 1, 64, 64))
+    assert try_schedule({"CPU": 64}, [{"CPU": 32}]) == ([], (0, True, 1, 8, 8))
     assert try_schedule({"CPU": 64}, [{"CPU": 16}, {"CPU": 16}]) == (
         [],
-        (True, 1, 8, 8),
+        (0, True, 1, 8, 8),
     )
 
     # GPU Scores
     assert try_schedule({"GPU": 1, "CPU": 1}, [{"CPU": 1}]) == (
         [],
-        (False, 1, 0.0, 0.5),
+        (0, False, 1, 0.0, 0.5),
     )
     assert try_schedule({"GPU": 1, "CPU": 1}, [{"CPU": 1, "GPU": 1}]) == (
         [],
-        (True, 2, 1.0, 1.0),
+        (0, True, 2, 1.0, 1.0),
     )
     assert try_schedule({"GPU": 1, "CPU": 1}, [{"GPU": 1}]) == (
         [],
-        (True, 1, 0.0, 0.5),
+        (0, True, 1, 0.0, 0.5),
     )
 
     # Zero resources
     assert try_schedule({"CPU": 0, "custom": 1}, [{"custom": 1}]) == (
         [],
-        (True, 1, 1, 1),
+        (0, True, 1, 1, 1),
     )
     assert try_schedule({"CPU": 0, "custom": 1}, [{"CPU": 1}]) == (
         [{"CPU": 1}],
-        (True, 0, 0.0, 0.0),
+        (0, True, 0, 0.0, 0.0),
     )
 
     # Implicit resources
     implicit_resource = ray._raylet.IMPLICIT_RESOURCE_PREFIX + "a"
     assert try_schedule({"CPU": 1}, [{implicit_resource: 1}]) == (
         [],
-        (True, 0, 0.0, 0.0),
+        (0, True, 0, 0.0, 0.0),
     )
     assert try_schedule({"CPU": 1}, [{implicit_resource: 1}] * 2) == (
         [{implicit_resource: 1}],
-        (True, 0, 0.0, 0.0),
+        (0, True, 0, 0.0, 0.0),
+    )
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        ResourceRequestSource.PENDING_DEMAND,
+        ResourceRequestSource.CLUSTER_RESOURCE_CONSTRAINT,
+    ],
+    ids=["demand", "cluster_resource_constraint"],
+)
+def test_node_schedule_label_selector_score(source):
+    def try_schedule_ls(
+        node_resources: Dict,
+        node_labels: Dict[str, str],
+        selectors,
+    ) -> Tuple:
+        cfg = NodeTypeConfig(
+            name="type_1",
+            resources=node_resources,
+            min_worker_nodes=0,
+            max_worker_nodes=1,
+            labels=node_labels,
+        )
+        node = SchedulingNode.from_node_config(
+            node_config=cfg,
+            status=SchedulingNodeStatus.SCHEDULABLE,
+            node_kind=NodeKind.WORKER,
+        )
+        req = ResourceRequestUtil.make({"CPU": 1}, label_selectors=selectors)
+        infeasible, score = node.try_schedule([req], source)
+        return ResourceRequestUtil.to_resource_maps(infeasible), score
+
+    labels = {"ray.io/accelerator-type": "A100"}
+
+    # 1) A matching label selector should be schedulable on node type_1
+    label_selector_1 = [
+        [
+            (
+                "ray.io/accelerator-type",
+                LabelSelectorOperator.LABEL_OPERATOR_IN,
+                ["TPU-v6e"],
+            )
+        ],
+        [
+            (
+                "ray.io/accelerator-type",
+                LabelSelectorOperator.LABEL_OPERATOR_IN,
+                ["B200"],
+            )
+        ],
+        [
+            (
+                "ray.io/accelerator-type",
+                LabelSelectorOperator.LABEL_OPERATOR_IN,
+                ["A100"],
+            )
+        ],
+    ]
+    assert try_schedule_ls({"CPU": 1}, labels, label_selector_1) == (
+        [],
+        (1, True, 1, 1.0, 1.0),
+    )
+
+    # 2) A non‑matching label selector should be infeasible
+    label_selector_2 = [
+        [("ray.io/accelerator-type", LabelSelectorOperator.LABEL_OPERATOR_IN, ["B200"])]
+    ]
+    assert try_schedule_ls({"CPU": 1}, labels, label_selector_2) == (
+        [{"CPU": 1.0}],
+        (0, True, 0, 0.0, 0.0),
     )
 
 
@@ -2339,6 +2414,228 @@ def test_gang_scheduling_complex():
             ([{"GPU": 4}, {"GPU": 4}], AFFINITY),
         ]
     ) == ({"p2.8xlarge": 1}, [])
+
+
+def test_schedule_node_with_matching_labels():
+    """
+    Test that a node with matching labels is considered schedulable and used to satisfy a request
+    with a label_selector.
+    """
+    scheduler = ResourceDemandScheduler(event_logger)
+    node_type_configs = {
+        "labelled_node": NodeTypeConfig(
+            name="labelled_node",
+            resources={"CPU": 1},
+            min_worker_nodes=0,
+            max_worker_nodes=10,
+            labels={"accelerator": "A100"},
+        ),
+    }
+
+    # The existing instance has matching dynamic label.
+    instance = make_autoscaler_instance(
+        im_instance=Instance(
+            instance_type="labelled_node",
+            status=Instance.RAY_RUNNING,
+            instance_id="1",
+            node_id=b"r-1",
+        ),
+        ray_node=NodeState(
+            node_id=b"r-1",
+            ray_node_type_name="labelled_node",
+            available_resources={"CPU": 1},
+            total_resources={"CPU": 1},
+            labels={"accelerator": "A100"},
+            status=NodeStatus.RUNNING,
+        ),
+        cloud_instance_id="c-1",
+    )
+
+    # No new nodes should be launched if the existing node satisfies the request.
+    resource_request = ResourceRequestUtil.make(
+        {"CPU": 1},
+        label_selectors=[
+            [("accelerator", LabelSelectorOperator.LABEL_OPERATOR_IN, ["A100"])]
+        ],
+    )
+
+    request = sched_request(
+        node_type_configs=node_type_configs,
+        resource_requests=[resource_request],
+        instances=[instance],
+    )
+    reply = scheduler.schedule(request)
+    to_launch, _ = _launch_and_terminate(reply)
+    assert to_launch == {}
+
+
+def test_scale_up_node_to_satisfy_labels():
+    """
+    Test that a resource request with a label selector scales up a new node with
+    labels to satisfy the constraint.
+    """
+    scheduler = ResourceDemandScheduler(event_logger)
+
+    node_type_configs = {
+        "tpu_node": NodeTypeConfig(
+            name="tpu_node",
+            resources={"CPU": 1},
+            labels={"accelerator": "TPU"},
+            min_worker_nodes=0,
+            max_worker_nodes=10,
+        ),
+        "gpu_node": NodeTypeConfig(
+            name="gpu_node",
+            resources={"CPU": 1},
+            labels={"accelerator": "A100"},
+            min_worker_nodes=0,
+            max_worker_nodes=10,
+        ),
+    }
+
+    # Request: want a node with label "accelerator: A100"
+    resource_request = ResourceRequestUtil.make(
+        {"CPU": 1},
+        label_selectors=[
+            [("accelerator", LabelSelectorOperator.LABEL_OPERATOR_IN, ["A100"])]
+        ],
+    )
+
+    request = sched_request(
+        node_type_configs=node_type_configs,
+        resource_requests=[resource_request],
+    )
+
+    reply = scheduler.schedule(request)
+    to_launch, _ = _launch_and_terminate(reply)
+
+    assert to_launch == {"gpu_node": 1}
+
+
+def test_label_selector_fallback_priority():
+    """
+    Test that a resource request with multiple label selectors scales up
+    the expected node given its fallback priority (i.e. earlier selectors are
+    satisfied first).
+    """
+    scheduler = ResourceDemandScheduler(event_logger)
+
+    node_type_configs = {
+        "tpu_node": NodeTypeConfig(
+            name="tpu_node",
+            resources={"CPU": 1},
+            labels={"accelerator-type": "TPU"},
+            min_worker_nodes=0,
+            max_worker_nodes=10,
+        ),
+        "gpu_node": NodeTypeConfig(
+            name="gpu_node",
+            resources={"CPU": 1},
+            labels={"accelerator-type": "A100"},
+            min_worker_nodes=0,
+            max_worker_nodes=10,
+        ),
+    }
+
+    # 1). TPU node is scaled up to satisfy first label selector.
+    req1 = ResourceRequestUtil.make(
+        {"CPU": 1},
+        label_selectors=[
+            [("accelerator-type", LabelSelectorOperator.LABEL_OPERATOR_IN, ["TPU"])],
+            [("accelerator-type", LabelSelectorOperator.LABEL_OPERATOR_IN, ["A100"])],
+        ],
+    )
+    reply1 = scheduler.schedule(
+        sched_request(node_type_configs=node_type_configs, resource_requests=[req1])
+    )
+    to_launch1, _ = _launch_and_terminate(reply1)
+    assert to_launch1 == {"tpu_node": 1}
+
+    # 1). Label selector falls back to second priority and scales up A100 node.
+    req2 = ResourceRequestUtil.make(
+        {"CPU": 1},
+        label_selectors=[
+            # infeasible
+            [("accelerator-type", LabelSelectorOperator.LABEL_OPERATOR_IN, ["B200"])],
+            [("accelerator-type", LabelSelectorOperator.LABEL_OPERATOR_IN, ["A100"])],
+        ],
+    )
+    reply2 = scheduler.schedule(
+        sched_request(node_type_configs=node_type_configs, resource_requests=[req2])
+    )
+    to_launch2, _ = _launch_and_terminate(reply2)
+    assert to_launch2 == {"gpu_node": 1}
+
+
+def test_pg_with_bundle_infeasible_label_selectors():
+    """
+    Test that placement group scheduling honors bundle_label_selectors.
+    """
+    scheduler = ResourceDemandScheduler(event_logger)
+    AFFINITY = ResourceRequestUtil.PlacementConstraintType.AFFINITY
+
+    node_type_configs = {
+        "gpu_node": NodeTypeConfig(
+            name="gpu_node",
+            resources={"CPU": 4, "GPU": 1},
+            min_worker_nodes=0,
+            max_worker_nodes=5,
+            labels={"accelerator": "A100"},
+        ),
+        "tpu_node": NodeTypeConfig(
+            name="tpu_node",
+            resources={"CPU": 4},
+            min_worker_nodes=0,
+            max_worker_nodes=5,
+            labels={"accelerator": "TPU"},
+        ),
+    }
+
+    # Create ResourceRequests for a placement group where each bundle has different label selectors
+    gpu_request = ResourceRequestUtil.make(
+        {"CPU": 2, "GPU": 1},
+        constraints=[(AFFINITY, "pg-1", "")],
+        label_selectors=[
+            [("accelerator", LabelSelectorOperator.LABEL_OPERATOR_IN, ["A100"])]
+        ],
+    )
+    tpu_request = ResourceRequestUtil.make(
+        {"CPU": 2},
+        constraints=[(AFFINITY, "pg-1", "")],
+        label_selectors=[
+            [("accelerator", LabelSelectorOperator.LABEL_OPERATOR_IN, ["TPU"])]
+        ],
+    )
+
+    request = sched_request(
+        node_type_configs=node_type_configs,
+        gang_resource_requests=[[gpu_request, tpu_request]],
+    )
+
+    reply = scheduler.schedule(request)
+    to_launch, _ = _launch_and_terminate(reply)
+
+    assert sorted(to_launch) == sorted({"gpu_node": 1, "tpu_node": 1})
+
+    # Both bundles require A100, but no node has enough resources -> infeasible
+    infeasbile_gpu_request = ResourceRequestUtil.make(
+        {"CPU": 3, "GPU": 1},
+        constraints=[(AFFINITY, "pg-2", "")],
+        label_selectors=[
+            [("accelerator", LabelSelectorOperator.LABEL_OPERATOR_IN, ["A100"])]
+        ],
+    )
+
+    request = sched_request(
+        node_type_configs=node_type_configs,
+        gang_resource_requests=[[infeasbile_gpu_request, infeasbile_gpu_request]],
+    )
+
+    reply = scheduler.schedule(request)
+    to_launch, _ = _launch_and_terminate(reply)
+
+    assert to_launch == {}
+    assert len(reply.infeasible_gang_resource_requests) == 1
 
 
 if __name__ == "__main__":

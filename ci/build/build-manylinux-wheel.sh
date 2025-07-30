@@ -20,6 +20,12 @@ fi
 # When building the wheel, we always set RAY_INSTALL_JAVA=0 because we
 # have already built the Java code above.
 
+export BAZEL_PATH="$HOME"/bin/bazel
+
+# Pointing a default python3 symlink to the desired python version.
+# This is required for building with bazel.
+sudo ln -sf "/opt/python/${PYTHON}/bin/python3" /usr/local/bin/python3
+
 # build ray wheel
 PATH="/opt/python/${PYTHON}/bin:$PATH" RAY_INSTALL_JAVA=0 \
 "/opt/python/${PYTHON}/bin/python" -m pip wheel -q -w dist . --no-deps

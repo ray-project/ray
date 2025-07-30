@@ -19,6 +19,7 @@ package ray.rpc;
 import "src/ray/protobuf/common.proto";
 import "src/ray/protobuf/gcs.proto";
 import "src/ray/protobuf/pubsub.proto";
+import "src/ray/protobuf/events_event_aggregator_service.proto";
 
 message AddJobRequest {
   JobTableData data = 1;
@@ -252,7 +253,7 @@ message GetAllNodeInfoReply {
 }
 
 message CheckAliveRequest {
-  repeated string raylet_address = 1;
+  repeated bytes node_ids = 1;
 }
 
 message CheckAliveReply {
@@ -863,6 +864,12 @@ service TaskInfoGcsService {
 
   // Get task events.
   rpc GetTaskEvents(GetTaskEventsRequest) returns (GetTaskEventsReply);
+}
+
+// Service for recording the unified ray events.
+service EventExportGcsService {
+  // Add OneEvent task data to GCS.
+  rpc AddEvent(events.AddEventRequest) returns (events.AddEventReply);
 }
 
 ///////////////////////////////////////////////////////////////////////////////

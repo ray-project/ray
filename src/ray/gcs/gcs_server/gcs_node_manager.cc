@@ -35,7 +35,7 @@ namespace gcs {
 GcsNodeManager::GcsNodeManager(GcsPublisher *gcs_publisher,
                                gcs::GcsTableStorage *gcs_table_storage,
                                instrumented_io_context &io_context,
-                               rpc::NodeManagerClientPool *raylet_client_pool,
+                               rpc::RayletClientPool *raylet_client_pool,
                                const ClusterID &cluster_id)
     : gcs_publisher_(gcs_publisher),
       gcs_table_storage_(gcs_table_storage),
@@ -116,7 +116,7 @@ void GcsNodeManager::HandleRegisterNode(rpc::RegisterNodeRequest request,
       }
     }
 
-    assert(head_nodes.size() <= 1);
+    RAY_CHECK_LE(head_nodes.size(), 1UL);
     if (head_nodes.size() == 1) {
       OnNodeFailure(head_nodes[0],
                     [this, request, on_done, node_id](const Status &status) {
@@ -139,8 +139,9 @@ void GcsNodeManager::HandleCheckAlive(rpc::CheckAliveRequest request,
                                       rpc::CheckAliveReply *reply,
                                       rpc::SendReplyCallback send_reply_callback) {
   reply->set_ray_version(kRayVersion);
-  for (const auto &addr : request.raylet_address()) {
-    bool is_alive = node_map_.right.count(addr) != 0;
+  for (const auto &id : request.node_ids()) {
+    const auto node_id = NodeID::FromBinary(id);
+    const bool is_alive = alive_nodes_.contains(node_id);
     reply->mutable_raylet_alive()->Add(is_alive);
   }
 
@@ -339,7 +340,6 @@ void GcsNodeManager::AddNode(std::shared_ptr<rpc::GcsNodeInfo> node) {
   if (iter == alive_nodes_.end()) {
     auto node_addr =
         node->node_manager_address() + ":" + std::to_string(node->node_manager_port());
-    node_map_.insert(NodeIDAddrBiMap::value_type(node_id, node_addr));
     alive_nodes_.emplace(node_id, node);
     // Notify all listeners.
     for (auto &listener : node_added_listeners_) {
@@ -390,7 +390,6 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
     stats::NodeFailureTotal.Record(1);
     // Remove from alive nodes.
     alive_nodes_.erase(iter);
-    node_map_.left.erase(node_id);
     // Remove from draining nodes if present.
     draining_nodes_.erase(node_id);
     if (death_info->reason() == rpc::NodeDeathInfo::UNEXPECTED_TERMINATION) {
@@ -507,6 +506,29 @@ std::string GcsNodeManager::DebugString() const {
          << "\n- GetAllNodeInfo request count: "
          << counts_[CountType::GET_ALL_NODE_INFO_REQUEST];
   return stream.str();
+}
+
+void GcsNodeManager::UpdateAliveNode(
+    const NodeID &node_id,
+    const syncer::ResourceViewSyncMessage &resource_view_sync_message) {
+  auto maybe_node_info = GetAliveNode(node_id);
+  if (maybe_node_info == absl::nullopt) {
+    return;
+  }
+
+  auto snapshot = maybe_node_info.value()->mutable_state_snapshot();
+
+  if (resource_view_sync_message.idle_duration_ms() > 0) {
+    snapshot->set_state(rpc::NodeSnapshot::IDLE);
+    snapshot->set_idle_duration_ms(resource_view_sync_message.idle_duration_ms());
+  } else {
+    snapshot->set_state(rpc::NodeSnapshot::ACTIVE);
+    snapshot->mutable_node_activity()->CopyFrom(
+        resource_view_sync_message.node_activity());
+  }
+  if (resource_view_sync_message.is_draining()) {
+    snapshot->set_state(rpc::NodeSnapshot::DRAINING);
+  }
 }
 
 }  // namespace gcs

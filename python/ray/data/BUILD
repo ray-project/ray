@@ -112,6 +112,21 @@ py_test(
 )
 
 py_test(
+    name = "test_snowflake",
+    size = "small",
+    srcs = ["tests/test_snowflake.py"],
+    tags = [
+        "exclusive",
+        "needs_credentials",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_mongo",
     size = "large",
     srcs = ["tests/test_mongo.py"],
@@ -298,6 +313,20 @@ py_test(
 )
 
 py_test(
+    name = "test_expressions",
+    size = "small",
+    srcs = ["tests/test_expressions.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_avro",
     size = "small",
     srcs = ["tests/test_avro.py"],
@@ -383,7 +412,7 @@ py_test(
 
 py_test(
     name = "test_join",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_join.py"],
     tags = [
         "data_non_parallel",

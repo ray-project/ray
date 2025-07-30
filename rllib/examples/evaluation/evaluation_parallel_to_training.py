@@ -17,7 +17,7 @@ https://github.com/ray-project/ray/blob/master/rllib/examples/evaluation/custom_
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack`
+`python [script file name].py`
 
 Use the `--evaluation-num-workers` option to scale up the evaluation workers. Note
 that the requested evaluation duration (`--evaluation-duration` measured in
@@ -40,7 +40,7 @@ Results to expect
 -----------------
 You should see the following output (at the end of the experiment) in your console when
 running with a fixed number of 100k training timesteps
-(`--enable-new-api-stack --evaluation-duration=auto --stop-timesteps=100000
+(`--evaluation-duration=auto --stop-timesteps=100000
 --stop-reward=100000`):
 +-----------------------------+------------+-----------------+--------+
 | Trial name                  | status     | loc             |   iter |
