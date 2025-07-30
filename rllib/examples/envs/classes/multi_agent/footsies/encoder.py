@@ -115,7 +115,7 @@ class FootsiesEncoder:
 
         return {"p1": p1_centric_observation, "p2": p2_centric_observation}
 
-    def get_last_encoding(self) -> dict[str, np.ndarray]:
+    def get_last_encoding(self) -> dict[str, np.ndarray] | None:
         if self._last_common_state is None:
             return None
 
