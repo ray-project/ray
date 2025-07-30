@@ -250,8 +250,6 @@ def test_deploy_multi_app_update_timestamp(serve_instance):
 
     config = get_test_deploy_config()
     client.deploy_apps(ServeDeploySchema.parse_obj(config))
-    wait_for_condition(check_running, app_name="app1", timeout=15)
-    wait_for_condition(check_running, app_name="app2", timeout=15)
 
     first_deploy_time_app1 = serve.status().applications["app1"].last_deployed_time_s
     url = get_application_url("HTTP", app_name="app1")
@@ -274,8 +272,6 @@ def test_deploy_multi_app_update_timestamp(serve_instance):
         },
     ]
     client.deploy_apps(ServeDeploySchema.parse_obj(config))
-    wait_for_condition(check_running, app_name="app1", timeout=15)
-    wait_for_condition(check_running, app_name="app2", timeout=15)
     assert (
         serve.status().applications["app1"].last_deployed_time_s
         > first_deploy_time_app1
@@ -319,8 +315,6 @@ def test_deploy_multi_app_overwrite_apps(serve_instance):
         }
     )
     client.deploy_apps(test_config)
-    wait_for_condition(check_running, app_name="app1", timeout=15)
-    wait_for_condition(check_running, app_name="app2", timeout=15)
     url = get_application_url("HTTP", app_name="app1")
     wait_for_condition(lambda: httpx.get(f"{url}").text == "wonderful world")
     url = get_application_url("HTTP", app_name="app2")
@@ -332,8 +326,6 @@ def test_deploy_multi_app_overwrite_apps(serve_instance):
     test_config.applications[0].import_path = pizza_import_path
     test_config.applications[1].import_path = world_import_path
     client.deploy_apps(test_config)
-    wait_for_condition(check_running, app_name="app1", timeout=15)
-    wait_for_condition(check_running, app_name="app2", timeout=15)
 
     url = get_application_url("HTTP", app_name="app1")
     wait_for_condition(
@@ -367,8 +359,6 @@ def test_deploy_multi_app_overwrite_apps2(serve_instance):
     )
     # Deploy app1 and app2
     client.deploy_apps(test_config)
-    wait_for_condition(check_running, app_name="app1", timeout=15)
-    wait_for_condition(check_running, app_name="app2", timeout=15)
     url1 = get_application_url("HTTP", app_name="app1")
     wait_for_condition(lambda: httpx.get(f"{url1}").text == "wonderful world")
     url2 = get_application_url("HTTP", app_name="app2")
@@ -397,7 +387,6 @@ def test_deploy_multi_app_overwrite_apps2(serve_instance):
         }
     )
     client.deploy_apps(new_config)
-    wait_for_condition(check_running, app_name="app3", timeout=15)
 
     def check_dead():
         actors = list_actors(
@@ -451,7 +440,6 @@ def test_deploy_multi_app_deployments_removed(serve_instance):
     )
     # Deploy with pizza graph first
     client.deploy_apps(test_config)
-    wait_for_condition(check_running, app_name="app1", timeout=15)
     url = get_application_url("HTTP", app_name="app1")
 
     def check_app(deployments):
@@ -480,7 +468,6 @@ def test_deploy_multi_app_deployments_removed(serve_instance):
     # Redeploy with world graph
     test_config.applications[0].import_path = world_import_path
     client.deploy_apps(test_config)
-    wait_for_condition(check_running, app_name="app1", timeout=15)
     url = get_application_url("HTTP", app_name="app1")
 
     wait_for_condition(check_app, deployments=world_deployments)
@@ -512,7 +499,6 @@ def test_deploy_config_update_heavyweight(serve_instance, field_to_update: str):
     }
 
     client.deploy_apps(ServeDeploySchema.parse_obj(config_template))
-    wait_for_condition(check_running, timeout=15)
     url = get_application_url("HTTP", app_name=SERVE_DEFAULT_APP_NAME)
     pid1, _ = httpx.get(f"{url}").json()
 
@@ -530,7 +516,6 @@ def test_deploy_config_update_heavyweight(serve_instance, field_to_update: str):
         }
 
     client.deploy_apps(ServeDeploySchema.parse_obj(config_template))
-    wait_for_condition(check_running, timeout=15)
     url = get_application_url("HTTP", app_name=SERVE_DEFAULT_APP_NAME)
 
     pids = []
@@ -550,10 +535,9 @@ def test_update_config_user_config(serve_instance):
 
     # Deploy first time
     client.deploy_apps(ServeDeploySchema.parse_obj({"applications": [config_template]}))
-    wait_for_condition(check_running, timeout=15)
     # Query
     url = get_application_url("HTTP")
-    pid1, res = httpx.get(f"{url}/f").json()
+    pid1, res = httpx.get(f"{url}").json()
     assert res == "alice"
 
     # Redeploy with updated option
@@ -784,8 +768,6 @@ def test_deploy_separate_runtime_envs(serve_instance):
     }
 
     client.deploy_apps(ServeDeploySchema(**config_template))
-    wait_for_condition(check_running, app_name="app1", timeout=15)
-    wait_for_condition(check_running, app_name="app2", timeout=15)
     wait_for_condition(
         check_endpoint,
         json=["ADD", 2],

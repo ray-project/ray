@@ -179,14 +179,13 @@ def test_serve_metrics_for_successful_connection(metrics_start_shutdown):
     app_name = "app1"
     handle = serve.run(target=f.bind(), name=app_name)
 
-    http_url = f'{get_application_url("HTTP", app_name)}/metrics'
-
+    http_url = "http://localhost:8000/metrics"
     # send 10 concurrent requests
     ray.get([block_until_http_ready.remote(http_url) for _ in range(10)])
     [handle.remote(http_url) for _ in range(10)]
 
     # Ping gPRC proxy
-    grpc_url = get_application_url("gRPC", app_name=app_name)
+    grpc_url = "localhost:9000"
     channel = grpc.insecure_channel(grpc_url)
     wait_for_condition(
         ping_grpc_list_applications, channel=channel, app_names=[app_name]
@@ -402,11 +401,10 @@ def test_proxy_metrics_internal_error(metrics_start_shutdown):
 
     app_name = "app"
     serve.run(A.bind(), name=app_name)
-    url = get_application_url("HTTP", app_name=app_name)
-    httpx.get(f"{url}", timeout=None)
-    httpx.get(f"{url}", timeout=None)
-    grpc_url = get_application_url("gRPC", app_name=app_name)
-    channel = grpc.insecure_channel(grpc_url)
+
+    httpx.get("http://localhost:8000", timeout=None)
+    httpx.get("http://localhost:8000", timeout=None)
+    channel = grpc.insecure_channel("localhost:9000")
     with pytest.raises(grpc.RpcError):
         ping_grpc_call_method(channel=channel, app_name=app_name)
 

@@ -154,12 +154,14 @@ def test_redeploy_single_replica(serve_instance, use_handle):
     name = "test"
 
     @ray.remote
-    def call():
+    def call(check_app_is_running=True):
         if use_handle:
             handle = serve.get_deployment_handle(name, "app")
             return handle.handler.remote().result()
         else:
-            url = get_application_url("HTTP", app_name="app")
+            url = get_application_url(
+                "HTTP", app_name="app", check_app_is_running=check_app_is_running
+            )
             return httpx.get(f"{url}/", timeout=None).json()
 
     signal_name = f"signal-{get_random_string()}"
@@ -201,7 +203,9 @@ def test_redeploy_single_replica(serve_instance, use_handle):
 
     start = time.time()
     while time.time() - start < 30:
-        ready, _ = ray.wait([call.remote()], timeout=2)
+        # The app is not supposed to be in RUNNING state here as V1 replica stopping
+        # V2 replica running makes the app to be in DEPLOYING state.
+        ready, _ = ray.wait([call.remote(check_app_is_running=False)], timeout=2)
         # If the request doesn't block, it must be V2 which doesn't wait
         # for signal. Otherwise, it must have been sent to V1 which
         # waits on signal The request might have been sent to V1 if the
@@ -359,6 +363,8 @@ def test_reconfigure_multiple_replicas(serve_instance, use_handle):
     serve._run(
         V1.options(user_config={"test": "2"}).bind(), name="app", _blocking=False
     )
+    # The app is not supposed to be in RUNNING state here as one of the replicas among the two
+    # is updating with user_config. This makes the app to be in DEPLOYING state.
     responses2, blocking2 = make_nonblocking_calls(
         {"1": 1}, expect_blocking=True, check_app_is_running=False
     )
