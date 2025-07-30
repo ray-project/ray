@@ -36,7 +36,7 @@ IMAGE_PROCESSOR_CONFIG = {
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--concurrency",
+        "--inference-concurrency",
         nargs=2,
         type=int,
         required=True,
