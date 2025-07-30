@@ -25,7 +25,7 @@ class WorkerGroupState:
     """
 
     start_time: float
-    placement_group: PlacementGroup
+    placement_groups: List[PlacementGroup]
     workers: List[Worker]
     sync_actor: ActorHandle
 
@@ -35,7 +35,8 @@ class WorkerGroupState:
 
     def shutdown(self):
         _shutdown_workers(self.workers)
-        _shutdown_placement_group(self.placement_group)
+        for pg in self.placement_groups:
+            _shutdown_placement_group(pg)
         _shutdown_sync_actor(self.sync_actor)
 
 
@@ -45,7 +46,7 @@ class WorkerGroupStateBuilder:
     Example usage:
         ```python
         builder = WorkerGroupStateBuilder()
-        builder.with_placement_group(placement_group)
+        builder.with_placement_groups([placement_group])
         builder.with_workers(workers)
         builder.with_sync_actor(sync_actor)
         state = builder.build()
@@ -55,14 +56,14 @@ class WorkerGroupStateBuilder:
     """
 
     def __init__(self):
-        self.placement_group = None
+        self.placement_groups = []
         self.workers = None
         self.sync_actor = None
 
-    def with_placement_group(
-        self, placement_group: PlacementGroup
+    def with_placement_groups(
+        self, pgs: List[PlacementGroup]
     ) -> "WorkerGroupStateBuilder":
-        self.placement_group = placement_group
+        self.placement_groups = pgs
         return self
 
     def with_workers(self, workers: List[Worker]) -> "WorkerGroupStateBuilder":
@@ -77,7 +78,7 @@ class WorkerGroupStateBuilder:
 
     def build(self) -> WorkerGroupState:
         required_attrs = {
-            "placement_group": self.placement_group,
+            "placement_groups": self.placement_groups,
             "workers": self.workers,
             "sync_actor": self.sync_actor,
         }
@@ -88,7 +89,7 @@ class WorkerGroupStateBuilder:
             )
         return WorkerGroupState(
             start_time=time_monotonic(),
-            placement_group=self.placement_group,
+            placement_groups=self.placement_groups,
             workers=self.workers,
             sync_actor=self.sync_actor,
         )
@@ -97,9 +98,9 @@ class WorkerGroupStateBuilder:
         if self.workers:
             _shutdown_workers(self.workers)
             self.workers = None
-        if self.placement_group:
-            _shutdown_placement_group(self.placement_group)
-            self.placement_group = None
+        for pg in self.placement_groups:
+            _shutdown_placement_group(pg)
+        self.placement_groups = []
         if self.sync_actor:
             _shutdown_sync_actor(self.sync_actor)
             self.sync_actor = None

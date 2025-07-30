@@ -9,6 +9,7 @@ import requests
 
 import ray
 from ray._private.accelerators.accelerator import AcceleratorManager
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -108,6 +109,39 @@ def get_tpu_cores_per_chip(accelerator_type: str) -> int:
         return 1
 
     return DEFAULT_TPU_NUM_CORES_PER_CHIP
+
+
+def infer_tpu_pod_type_from_topology(
+    topology: str, accelerator_type: str
+) -> Optional[str]:
+    """Infer the TPU pod type (e.g. v4-32) from topology and accelerator type."""
+    try:
+        num_chips = 1
+        for value in topology.strip().lower().split("x"):
+            num_chips *= int(value)
+        generation = accelerator_type.lower().replace("tpu-", "")
+        return f"{generation}-{num_chips}"
+    except Exception as e:
+        logger.warning(
+            f"Failed to infer pod type from topology {topology} and type {accelerator_type}: {e}"
+        )
+        return None
+
+
+def fetch_tpu_slice_name_from_pg(pg):
+    @ray.remote
+    def _get_tpu_slice_name():
+        import ray
+
+        return (
+            ray._private.accelerators.TPUAcceleratorManager.get_current_node_tpu_name()
+        )
+
+    tpu_name_ref = _get_tpu_slice_name.options(
+        scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg)
+    ).remote()
+
+    return ray.get(tpu_name_ref)
 
 
 class TPUAcceleratorManager(AcceleratorManager):
