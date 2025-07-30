@@ -36,11 +36,11 @@ class RayDataLoaderFactory(BaseDataLoaderFactory):
         data_context.execution_options.preserve_order = dataloader_config.preserve_order
 
     @abstractmethod
-    def get_ray_datasets(self, dataset_key: DatasetKey) -> Tuple[Dataset, float]:
-        """Get Ray datasets with creation timestamps.
+    def get_ray_datasets(self, dataset_key: DatasetKey) -> Dataset:
+        """Get Ray datasets.
 
         Returns:
-            Tuple of (Ray dataset, creation time)
+            Ray dataset
         """
         raise NotImplementedError
 

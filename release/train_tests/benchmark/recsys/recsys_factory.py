@@ -45,21 +45,20 @@ class RecsysMockDataLoaderFactory(BaseDataLoaderFactory):
 class RecsysRayDataLoaderFactory(RayDataLoaderFactory):
     def get_ray_datasets(
         self, dataset_key: DatasetKey
-    ) -> Tuple[ray.data.Dataset, float]:
+    ) -> ray.data.Dataset:
         """Get Ray datasets for training and validation.
 
         Returns:
-            Tuple of (Ray dataset, creation time)
+            Ray dataset
         """
         # TODO: Use the train dataset for validation as well.
-        start_time = time.time()
         if dataset_key == DatasetKey.TRAIN:
             ds = get_ray_dataset(DatasetKey.TRAIN)
         else:
             assert dataset_key == DatasetKey.VALID, dataset_key
             ds = get_ray_dataset(DatasetKey.VALID)
 
-        return ds, time.time() - start_time
+        return ds
 
     def _get_collate_fn(self) -> Optional[CollateFn]:
         from torchrec.datasets.utils import Batch

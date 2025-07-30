@@ -65,26 +65,29 @@ def main():
         raise ValueError(f"Unknown task: {benchmark_config.task}")
 
     dataloader_factory = factory.get_dataloader_factory()
-    end_time = time.perf_counter()
+    factory_setup_time = time.perf_counter()
+
     if isinstance(dataloader_factory, RayDataLoaderFactory):
-        train_dataset, train_creation_time = dataloader_factory.get_ray_datasets(
-            DatasetKey.TRAIN
-        )
-        val_dataset, val_creation_time = dataloader_factory.get_ray_datasets(
-            DatasetKey.VALID
-        )
+        train_creation_start_time = time.perf_counter()
+        train_dataset = dataloader_factory.get_ray_datasets(DatasetKey.TRAIN)
+        train_creation_time = time.perf_counter() - train_creation_start_time
+
+        val_creation_start_time = time.perf_counter()
+        val_dataset = dataloader_factory.get_ray_datasets(DatasetKey.VALID)
+        val_creation_time = time.perf_counter() - val_creation_start_time
+
         datasets = {DatasetKey.TRAIN: train_dataset, DatasetKey.VALID: val_dataset}
         dataset_creation_times = {
-            DatasetKey.TRAIN: train_creation_time + (end_time - start_time),
-            DatasetKey.VALID: val_creation_time + (end_time - start_time),
+            DatasetKey.TRAIN: train_creation_time + (factory_setup_time - start_time),
+            DatasetKey.VALID: val_creation_time + (factory_setup_time - start_time),
         }
 
         data_config = dataloader_factory.get_ray_data_config()
     else:
         datasets = {}
         dataset_creation_times = {
-            DatasetKey.TRAIN: end_time - start_time,
-            DatasetKey.VALID: end_time - start_time,
+            DatasetKey.TRAIN: factory_setup_time - start_time,
+            DatasetKey.VALID: factory_setup_time - start_time,
         }
         data_config = None
 

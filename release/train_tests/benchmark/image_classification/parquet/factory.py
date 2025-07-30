@@ -43,13 +43,12 @@ class ImageClassificationParquetRayDataLoaderFactory(
 
     def get_ray_datasets(
         self, dataset_key: DatasetKey
-    ) -> Tuple[ray.data.Dataset, float]:
+    ) -> ray.data.Dataset:
         """Get Ray datasets for training and validation.
 
         Returns:
-            Tuple of (Ray dataset, creation time)
+            Ray dataset
         """
-        start_time = time.time()
         if dataset_key == DatasetKey.TRAIN:
             # Create training dataset with image decoding and transforms
             ds = (
@@ -72,7 +71,7 @@ class ImageClassificationParquetRayDataLoaderFactory(
                 .limit(self.get_dataloader_config().limit_validation_rows)
             )
 
-        return ds, time.time() - start_time
+        return ds
 
 
 class ImageClassificationParquetTorchDataLoaderFactory(

@@ -73,7 +73,7 @@ class ImageClassificationJpegRayDataLoaderFactory(
 
     def get_ray_datasets(
         self, dataset_key: DatasetKey
-    ) -> Tuple[ray.data.Dataset, float]:
+    ) -> ray.data.Dataset:
         """Get Ray datasets for training and validation.
 
         Creates training and validation datasets with:
@@ -83,9 +83,8 @@ class ImageClassificationJpegRayDataLoaderFactory(
         4. Row limits based on benchmark configuration
 
         Returns:
-            Tuple of (Ray dataset, creation time)
+            Ray dataset
         """
-        start_time = time.time()
         if dataset_key == DatasetKey.TRAIN:
             train_dir = self._dataset_dirs[DatasetKey.TRAIN]
             filesystem = (
@@ -128,7 +127,7 @@ class ImageClassificationJpegRayDataLoaderFactory(
                 .limit(self.get_dataloader_config().limit_validation_rows)
             )
 
-        return ds, time.time() - start_time
+        return ds
 
 
 class ImageClassificationJpegTorchDataLoaderFactory(
