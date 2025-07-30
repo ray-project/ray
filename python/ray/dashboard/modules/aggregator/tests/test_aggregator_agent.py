@@ -141,7 +141,7 @@ def test_aggregator_agent_receive_publish_events_normally(
     indirect=True,
 )
 def test_aggregator_agent_receive_event_full(
-    ray_start_cluster_head_with_env_vars, httpserver, reset_httpserver_before_test
+    ray_start_cluster_head_with_env_vars, httpserver
 ):
     cluster = ray_start_cluster_head_with_env_vars
     stub = get_event_aggregator_grpc_stub(
@@ -256,7 +256,7 @@ def test_aggregator_agent_receive_multiple_events(
     indirect=True,
 )
 def test_aggregator_agent_receive_multiple_events_failures(
-    ray_start_cluster_head_with_env_vars, httpserver, reset_httpserver_before_test
+    ray_start_cluster_head_with_env_vars, httpserver
 ):
     cluster = ray_start_cluster_head_with_env_vars
     stub = get_event_aggregator_grpc_stub(
