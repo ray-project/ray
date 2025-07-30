@@ -1266,5 +1266,7 @@ class TaskResult(BaseModel):
 
     id: str = Field(..., description="The ID of the task.")
     status: str = Field(..., description="The status of the task.")
-    created_at: float = Field(..., description="The timestamp of the task creation.")
+    created_at: Optional[float] = Field(
+        default=None, description="The timestamp of the task creation."
+    )
     result: Any = Field(..., description="The result of the task.")

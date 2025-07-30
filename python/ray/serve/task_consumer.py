@@ -128,6 +128,11 @@ def task_handler(
             wrapper._task_name = name or f.__name__  # type: ignore
             return wrapper
 
+        else:
+            raise NotImplementedError(
+                "Async task handlers are not supported yet in celery `threads` worker pool"
+            )
+
     if _func is not None:
         # Used without arguments: @task_handler
         return decorator(_func)

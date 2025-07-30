@@ -34,7 +34,7 @@ class TaskProcessorAdapter(ABC):
         pass
 
     @abstractmethod
-    async def get_task_status(self, task_id) -> Dict[str, Any]:
+    async def get_task_status(self, task_id) -> TaskResult:
         pass
 
     @abstractmethod
@@ -88,8 +88,11 @@ class CeleryTaskProcessorAdapter(TaskProcessorAdapter):
             worker_concurrency=config.adapter_config.worker_concurrency,
             task_max_retries=config.max_retry,
             task_default_queue=config.queue_name,
+            # Store task results so they can be retrieved after completion
             task_ignore_result=False,
+            # Acknowledge tasks only after completion (not when received) for better reliability
             task_acks_late=True,
+            # Reject and requeue tasks when worker is lost to prevent data loss
             reject_on_worker_lost=True,
         )
 
@@ -124,18 +127,22 @@ class CeleryTaskProcessorAdapter(TaskProcessorAdapter):
             result=task_response.result,
         )
 
-    async def get_task_status(self, task_id) -> Dict[str, Any]:
+    async def get_task_status(self, task_id) -> TaskResult:
         task_details = self._app.AsyncResult(task_id)
-        return {
-            "id": task_details.id,
-            "result": task_details.result,
-            "status": task_details.status,
-        }
+        return TaskResult(
+            id=task_details.id,
+            result=task_details.result,
+            status=task_details.status,
+        )
 
     async def cancel_task(self, task_id) -> bool:
         return self._app.AsyncResult(task_id).cancel()
 
     async def get_metrics(self) -> Dict[str, Any]:
+        """
+        Returns the metrics of the Celery worker.
+        More details can be found here: https://docs.celeryq.dev/en/stable/reference/celery.app.control.html#celery.app.control.Inspect.stats
+        """
         return self._app.control.inspect().stats()
 
     def start_consumer(self, **kwargs):
@@ -200,7 +207,7 @@ class MockTaskProcessorAdapter(TaskProcessorAdapter):
     ) -> TaskResult:
         pass
 
-    async def get_task_status(self, task_id) -> Dict[str, Any]:
+    async def get_task_status(self, task_id) -> TaskResult:
         pass
 
     async def cancel_task(self, task_id) -> bool:

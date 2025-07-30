@@ -1,7 +1,6 @@
 import asyncio
 import sys
 import tempfile
-import time
 from pathlib import Path
 
 import httpx
@@ -64,9 +63,13 @@ class TestTaskConsumerWithRayServe:
         control_path = temp_queue_directory["control_path"]
 
         transport_options = {
+            # Incoming message queue - where new task messages are written when sent to broker
             "data_folder_in": data_folder_queue,
+            # Outgoing message storage - where task results and responses are written after completion
             "data_folder_out": data_folder_queue,
+            # Processed message archive - where messages are moved after successful processing
             "data_folder_processed": data_folder_queue,
+            # Control message storage - where Celery management and control commands are stored
             "control_folder": control_path,
         }
 
@@ -79,7 +82,7 @@ class TestTaskConsumerWithRayServe:
             ),
         )
 
-        @ray.remote(num_cpus=2)
+        @ray.remote
         def send_request_to_queue(data):
             celery_adapter = get_task_adapter(config=processor_config)
             result = asyncio.run(
@@ -107,20 +110,17 @@ class TestTaskConsumerWithRayServe:
                 assert self.data_received == "test_data_1"
 
             async def __call__(self, request: Request):
-                if request.url.path == "/assert-result":
-                    try:
-                        self.assert_task_received()
-                        return JSONResponse({"status": "success"}, status_code=200)
-                    except Exception as e:
-                        return JSONResponse(
-                            {"status": "error", "detail": str(e)}, status_code=500
-                        )
+                try:
+                    self.assert_task_received()
+                    return JSONResponse({"status": "success"}, status_code=200)
+                except Exception as e:
+                    return JSONResponse(
+                        {"status": "error", "detail": str(e)}, status_code=500
+                    )
 
         # Deploy the consumer as a Serve deployment
         serve.run(ServeTaskConsumer.bind())
         send_request_to_queue.remote("test_data_1")
-
-        time.sleep(5)  # wait for the task to be processed
 
         def assert_result():
             response = httpx.get("http://localhost:8000/assert-result")
@@ -145,9 +145,13 @@ class TestTaskConsumerWithRayServe:
         backend_url = f"file://{results_path}"
 
         transport_options = {
+            # Incoming message queue - where new task messages are written when sent to broker
             "data_folder_in": data_folder_queue,
+            # Outgoing message storage - where task results and responses are written after completion
             "data_folder_out": data_folder_queue,
+            # Processed message archive - where messages are moved after successful processing
             "data_folder_processed": data_folder_queue,
+            # Control message storage - where Celery management and control commands are stored
             "control_folder": control_path,
         }
 
@@ -162,7 +166,7 @@ class TestTaskConsumerWithRayServe:
             failed_task_queue_name="my_failed_task_queue",
         )
 
-        @ray.remote(num_cpus=2)
+        @ray.remote
         def send_request_to_queue(data):
             celery_adapter = get_task_adapter(config=processor_config)
             result = asyncio.run(
@@ -196,13 +200,13 @@ class TestTaskConsumerWithRayServe:
 
         def assert_result():
             status_ref = get_task_status.remote(task_id)
-            status = ray.get(status_ref)
+            result = ray.get(status_ref)
 
             if (
-                status["status"] == "FAILURE"
-                and status["result"] is not None
-                and isinstance(status["result"], ValueError)
-                and str(status["result"]) == "Task failed as expected"
+                result.status == "FAILURE"
+                and result.result is not None
+                and isinstance(result.result, ValueError)
+                and str(result.result) == "Task failed as expected"
             ):
                 return True
             else:
@@ -213,7 +217,7 @@ class TestTaskConsumerWithRayServe:
     def test_task_consumer_as_serve_deployment_with_async_task_handler(
         self, temp_queue_directory, serve_instance
     ):
-        """Test that task consumers can be used as Ray Serve deployments with async task handlers."""
+        """Test that task consumers properly raise NotImplementedError for async task handlers."""
 
         backend_url = "rpc://"
         broker_url = "filesystem://"
@@ -222,9 +226,13 @@ class TestTaskConsumerWithRayServe:
         control_path = temp_queue_directory["control_path"]
 
         transport_options = {
+            # Incoming message queue - where new task messages are written when sent to broker
             "data_folder_in": data_folder_queue,
+            # Outgoing message storage - where task results and responses are written after completion
             "data_folder_out": data_folder_queue,
+            # Processed message archive - where messages are moved after successful processing
             "data_folder_processed": data_folder_queue,
+            # Control message storage - where Celery management and control commands are stored
             "control_folder": control_path,
         }
 
@@ -237,57 +245,24 @@ class TestTaskConsumerWithRayServe:
             ),
         )
 
-        @ray.remote(num_cpus=2)
-        def send_request_to_queue(data):
-            celery_adapter = get_task_adapter(config=processor_config)
-            result = asyncio.run(
-                celery_adapter.enqueue_task("process_request", args=[data])
-            )
+        # Test that async task handlers raise NotImplementedError during decoration
+        with pytest.raises(
+            NotImplementedError,
+            match="Async task handlers are not supported yet in celery `threads` worker pool",
+        ):
 
-            assert result.id is not None
-            assert result.status in ("PENDING", "FAILED", "SUCCESS")
+            @serve.deployment
+            @task_consumer(task_processor_config=processor_config)
+            class ServeTaskConsumer:
+                def __init__(self):
+                    self.data_received = None
+                    self.task_received = False
 
-        @serve.deployment
-        @task_consumer(task_processor_config=processor_config)
-        class ServeTaskConsumer:
-            def __init__(self):
-                self.data_received = None
-                self.task_received = False
-
-            # async task handler is not supported yet, so we should not receive the task
-            @task_handler(name="process_request")
-            async def process_request(self, data):
-                self.task_received = True
-                self.data_received = data
-
-            def assert_task_not_received(self):
-                assert self.task_received is False
-                assert self.data_received is None
-
-            async def __call__(self, request: Request):
-                if request.url.path == "/assert-result":
-                    try:
-                        self.assert_task_not_received()
-                        return JSONResponse({"status": "success"}, status_code=200)
-                    except Exception as e:
-                        return JSONResponse(
-                            {"status": "error", "detail": str(e)}, status_code=500
-                        )
-
-        # Deploy the consumer as a Serve deployment
-        serve.run(ServeTaskConsumer.bind())
-        send_request_to_queue.remote("test_data_1")
-
-        time.sleep(5)  # wait for the task to be processed
-
-        def assert_result():
-            response = httpx.get("http://localhost:8000/assert-result")
-            if response.status_code == 200:
-                return True
-            else:
-                return False
-
-        wait_for_condition(assert_result)
+                # This async task handler should raise NotImplementedError during decoration
+                @task_handler(name="process_request")
+                async def process_request(self, data):
+                    self.task_received = True
+                    self.data_received = data
 
 
 if __name__ == "__main__":
