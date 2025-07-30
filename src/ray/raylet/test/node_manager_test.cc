@@ -21,6 +21,7 @@
 #include <utility>
 #include <vector>
 
+#include "fakes/ray/rpc/raylet/raylet_client.h"
 #include "gmock/gmock.h"
 #include "mock/ray/core_worker/experimental_mutable_object_provider.h"
 #include "mock/ray/gcs/gcs_client/gcs_client.h"
@@ -381,7 +382,8 @@ class NodeManagerTest : public ::testing::Test {
         worker_rpc_pool_([](const auto &) {
           return std::make_shared<rpc::MockCoreWorkerClientInterface>();
         }),
-        raylet_client_pool_(client_call_manager_) {
+        raylet_client_pool_(
+            [](const auto &) { return std::make_shared<FakeRayletClient>(); }) {
     RayConfig::instance().initialize(R"({
       "raylet_liveness_self_check_interval_ms": 100
     })");

@@ -555,7 +555,9 @@ int main(int argc, char *argv[]) {
         });
 
     raylet_client_pool =
-        std::make_unique<ray::rpc::RayletClientPool>(*client_call_manager);
+        std::make_unique<ray::rpc::RayletClientPool>([&](const ray::rpc::Address &addr) {
+          return std::make_shared<ray::raylet::RayletClient>(addr, *client_call_manager);
+        });
 
     core_worker_subscriber = std::make_unique<ray::pubsub::Subscriber>(
         raylet_node_id,
@@ -771,11 +773,9 @@ int main(int argc, char *argv[]) {
     auto raylet_client_factory = [&](const NodeID &node_id) {
       const ray::rpc::GcsNodeInfo *node_info = gcs_client->Nodes().Get(node_id);
       RAY_CHECK(node_info) << "No GCS info for node " << node_id;
-      ray::rpc::Address addr;
-      addr.set_ip_address(node_info->node_manager_address());
-      addr.set_port(node_info->node_manager_port());
-      addr.set_raylet_id(node_id.Binary());
-      return raylet_client_pool->GetOrConnectByAddress(addr);
+      auto addr = ray::rpc::RayletClientPool::GenerateRayletAddress(
+          node_id, node_info->node_manager_address(), node_info->node_manager_port());
+      return raylet_client_pool->GetOrConnectByAddress(std::move(addr));
     };
 
     plasma_client = std::make_unique<plasma::PlasmaClient>();
