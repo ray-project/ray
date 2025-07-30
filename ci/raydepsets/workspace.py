@@ -2,6 +2,7 @@ import yaml
 from dataclasses import dataclass, field
 from typing import List, Optional
 import os
+from string import Template
 
 
 @dataclass
@@ -44,18 +45,33 @@ class Config:
         raw_depsets = data.get("depsets", [])
         for depset in raw_depsets:
             config_matrix = depset.get("configs", [])
-            for config_name in config_matrix:
-                config_arg = next(
-                    (
-                        config_arg
-                        for config_arg in config_args
-                        if config_arg.name == config_name
-                    ),
-                    None,
-                )
-                if config_arg is None:
-                    raise RuntimeError(f"Config {config_name} not found")
-
+            if config_matrix:
+                for config_name in config_matrix:
+                    config_arg = next(
+                        (
+                            config_arg
+                            for config_arg in config_args
+                            if config_arg.name == config_name
+                        ),
+                        None,
+                    )
+                    substituted_depset = Template(str(depset)).substitute(
+                        config_arg.build_args
+                    )
+                    depset_yaml = yaml.safe_load(substituted_depset)
+                    depsets.append(
+                        Depset(
+                            name=depset_yaml.get("name"),
+                            requirements=depset_yaml.get("requirements", []),
+                            constraints=depset_yaml.get("constraints", []),
+                            operation=depset_yaml.get("operation", None),
+                            output=depset_yaml.get("output"),
+                            source_depset=depset_yaml.get("source_depset"),
+                            depsets=depset_yaml.get("depsets", []),
+                            config_args=config_arg,
+                        )
+                    )
+            else:
                 depsets.append(
                     Depset(
                         name=depset.get("name"),
@@ -65,7 +81,7 @@ class Config:
                         output=depset.get("output"),
                         source_depset=depset.get("source_depset"),
                         depsets=depset.get("depsets", []),
-                        config_args=config_arg,
+                        config_args=None,
                     )
                 )
 
