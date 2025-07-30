@@ -553,12 +553,16 @@
     - __suffix__: fixed_size
       cluster:
         cluster_compute: fixed_size_cluster_compute.yaml
+        byod:
+          post_build_script: post_build_script.sh
       run:
         script: python main.py --inference-concurrency 40 40
 
     - __suffix__: autoscaling
       cluster:
         cluster_compute: autoscaling_cluster_compute.yaml
+        byod:
+          post_build_script: post_build_script.sh
       run:
         script: python main.py --inference-concurrency 1 40
 
