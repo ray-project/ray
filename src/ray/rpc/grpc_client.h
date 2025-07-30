@@ -160,14 +160,12 @@ class GrpcClient {
           std::move(call_name),
           method_timeout_ms);
     } else {
-      auto call = client_call_manager_.CreateCall<GrpcService, Request, Reply>(
-          *stub_,
-          prepare_async_function,
-          request,
-          callback,
-          std::move(call_name),
-          method_timeout_ms);
-      RAY_CHECK(call != nullptr);
+      client_call_manager_.CreateCall<GrpcService, Request, Reply>(*stub_,
+                                                                   prepare_async_function,
+                                                                   request,
+                                                                   callback,
+                                                                   std::move(call_name),
+                                                                   method_timeout_ms);
     }
 
     call_method_invoked_.store(true);
