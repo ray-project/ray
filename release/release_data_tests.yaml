@@ -568,6 +568,7 @@
           --batch-size-to-kill 10 --max-to-kill 100 --kill-delay 120
 
 - name: text_embeddings_benchmark_5x_{{scaling}}
+  python: "3.11"  # necessary for the llm-cu128 image
   working_dir: nightly_tests
 
   cluster:
@@ -587,6 +588,7 @@
 # Note: release tests do not support specifying both 'matrix' and 'variations'
 # in a test definition, so split off preemptible tests here.
 - name: text_embeddings_benchmark_5x_{{scaling}}_preemptible
+  python: "3.11"
   working_dir: nightly_tests
 
   cluster:
