@@ -23,7 +23,7 @@ from ray.rllib.utils.framework import try_import_torch
 torch, nn = try_import_torch()
 
 
-class TorchActorCriticEncoder(TorchModel, ActorCriticEncoder):
+class TorchActorCriticEncoder(ActorCriticEncoder):
     """An actor-critic encoder for torch."""
 
     framework = "torch"
@@ -33,7 +33,7 @@ class TorchActorCriticEncoder(TorchModel, ActorCriticEncoder):
         ActorCriticEncoder.__init__(self, config)
 
 
-class TorchStatefulActorCriticEncoder(TorchModel, StatefulActorCriticEncoder):
+class TorchStatefulActorCriticEncoder(StatefulActorCriticEncoder):
     """A stateful actor-critic encoder for torch."""
 
     framework = "torch"
@@ -43,7 +43,7 @@ class TorchStatefulActorCriticEncoder(TorchModel, StatefulActorCriticEncoder):
         StatefulActorCriticEncoder.__init__(self, config)
 
 
-class TorchMLPEncoder(TorchModel, Encoder):
+class TorchMLPEncoder(Encoder):
     def __init__(self, config: MLPEncoderConfig) -> None:
         TorchModel.__init__(self, config)
         Encoder.__init__(self, config)
@@ -79,7 +79,7 @@ class TorchMLPEncoder(TorchModel, Encoder):
         return {ENCODER_OUT: self.net(inputs[Columns.OBS])}
 
 
-class TorchCNNEncoder(TorchModel, Encoder):
+class TorchCNNEncoder(Encoder):
     def __init__(self, config: CNNEncoderConfig) -> None:
         TorchModel.__init__(self, config)
         Encoder.__init__(self, config)
@@ -111,7 +111,7 @@ class TorchCNNEncoder(TorchModel, Encoder):
         return {ENCODER_OUT: self.net(inputs[Columns.OBS])}
 
 
-class TorchGRUEncoder(TorchModel, Encoder):
+class TorchGRUEncoder(Encoder):
     """A recurrent GRU encoder.
 
     This encoder has...
@@ -194,7 +194,7 @@ class TorchGRUEncoder(TorchModel, Encoder):
         return outputs
 
 
-class TorchLSTMEncoder(TorchModel, Encoder):
+class TorchLSTMEncoder(Encoder):
     """A recurrent LSTM encoder.
 
     This encoder has...
