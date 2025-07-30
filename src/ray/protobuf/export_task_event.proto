@@ -18,6 +18,7 @@ package ray.rpc;
 
 import "src/ray/protobuf/common.proto";
 import "src/ray/protobuf/export_runtime_env.proto";
+import "src/ray/protobuf/events_profile_events.proto";
 
 // ExportTaskEventData defines the event_data stored by the export API
 // for EXPORT_TASK type events. This schema is public and any changes must
@@ -92,31 +93,6 @@ message ExportTaskEventData {
     map<string, string> label_selector = 11;
   }
 
-  message ProfileEventEntry {
-    // The start timestamp of the event time.
-    int64 start_time = 1;
-    // The end timestamp of the event. Empty if it's a point event, e.g. TaskStatus
-    // change.
-    int64 end_time = 2;
-    // Additional data associated with the event. This data must be serialized
-    // using JSON.
-    optional string extra_data = 3;
-    // Customized event name if not a TaskStatus change point event.
-    string event_name = 4;
-  }
-
-  message ProfileEvents {
-    // The type of the component that generated the event, e.g., worker or
-    // object_manager, or node_manager.
-    string component_type = 1;
-    // An identifier for the component that generated the event.
-    bytes component_id = 2;
-    // Node IP address.
-    string node_ip_address = 3;
-    // Events.
-    repeated ProfileEventEntry events = 4;
-  }
-
   // Metadata shared by all event types.
   bytes task_id = 1;
   // The current retry attempt number for the task.
@@ -126,7 +102,7 @@ message ExportTaskEventData {
   // Task state updates.
   optional TaskStateUpdate state_updates = 4;
   // Task profiling events.
-  optional ProfileEvents profile_events = 5;
+  optional ray.rpc.events.ProfileEvents profile_events = 5;
   // Job id of the task
   bytes job_id = 6;
 }

@@ -22,7 +22,6 @@ proto_library(
     name = "events_profile_events_proto",
     srcs = ["events_profile_events.proto"],
     visibility = ["//java:__subpackages__"],
-    deps = [],
 )
 
 cc_proto_library(
@@ -224,6 +223,7 @@ proto_library(
     srcs = ["export_task_event.proto"],
     deps = [
         ":common_proto",
+        ":events_profile_events_proto",
         ":export_runtime_env_proto",
     ],
 )
