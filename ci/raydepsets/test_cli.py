@@ -15,6 +15,7 @@ from ci.raydepsets.cli import (
 from ci.raydepsets.workspace import Workspace
 from click.testing import CliRunner
 from pathlib import Path
+from networkx import topological_sort
 
 _REPO_NAME = "com_github_ray_project_ray"
 _runfiles = runfiles.Create()
@@ -273,6 +274,55 @@ class TestCli(unittest.TestCase):
                 manager.get_path("requirements_test.txt")
                 == f"{tmpdir}/requirements_test.txt"
             )
+
+    def test_build_graph(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _copy_data_to_tmpdir(tmpdir)
+            manager = DependencySetManager(
+                config_path="test.config.yaml",
+                workspace_dir=tmpdir,
+            )
+            assert manager.build_graph is not None
+            assert len(manager.build_graph.nodes()) == 5
+            assert len(manager.build_graph.edges()) == 3
+            assert manager.build_graph.nodes["general_depset"]["operation"] == "compile"
+            assert (
+                manager.build_graph.nodes["subset_general_depset"]["operation"]
+                == "subset"
+            )
+            assert (
+                manager.build_graph.nodes["expand_general_depset"]["operation"]
+                == "expand"
+            )
+
+            sorted_nodes = list(topological_sort(manager.build_graph))
+            assert sorted_nodes[0] == "ray_base_test_depset"
+            assert sorted_nodes[1] == "general_depset"
+            assert sorted_nodes[2] == "expanded_depset"
+
+    def test_build_graph_bad_operation(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _copy_data_to_tmpdir(tmpdir)
+            with open(Path(tmpdir) / "test.config.yaml", "w") as f:
+                f.write(
+                    """
+depsets:
+    - name: invalid_op_depset
+      operation: invalid_op
+      requirements:
+          - requirements_test.txt
+      output: requirements_compiled_invalid_op.txt
+                """
+                )
+            with self.assertRaises(ValueError):
+                DependencySetManager(
+                    config_path="test.config.yaml",
+                    workspace_dir=tmpdir,
+                )
+
+    def test_execute(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _copy_data_to_tmpdir(tmpdir)
 
     def test_expand(self):
         with tempfile.TemporaryDirectory() as tmpdir:
