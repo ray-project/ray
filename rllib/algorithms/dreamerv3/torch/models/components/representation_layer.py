@@ -9,17 +9,21 @@ https://arxiv.org/pdf/2010.02193.pdf
 """
 from typing import Optional
 
+from ray.rllib.algorithms.dreamerv3.torch.models.components import (
+    dreamerv3_normal_initializer,
+)
 from ray.rllib.algorithms.dreamerv3.utils import (
     get_num_z_categoricals,
     get_num_z_classes,
 )
-from ray.rllib.utils.framework import try_import_tf, try_import_tfp
+from ray.rllib.utils.framework import try_import_torch
 
-_, tf, _ = try_import_tf()
-tfp = try_import_tfp()
+torch, nn = try_import_torch()
+if torch:
+    F = nn.functional
 
 
-class RepresentationLayer(tf.keras.layers.Layer):
+class RepresentationLayer(nn.Module):
     """A representation (z-state) generating layer.
 
     The value for z is the result of sampling from a categorical distribution with
@@ -30,13 +34,15 @@ class RepresentationLayer(tf.keras.layers.Layer):
     def __init__(
         self,
         *,
-        model_size: Optional[str] = "XS",
+        input_size: int,
+        model_size: str = "XS",
         num_categoricals: Optional[int] = None,
         num_classes_per_categorical: Optional[int] = None,
     ):
         """Initializes a RepresentationLayer instance.
 
         Args:
+            input_size: The input size of the representation layer.
             model_size: The "Model Size" used according to [1] Appendinx B.
                 Use None for manually setting the different parameters.
             num_categoricals: Overrides the number of categoricals used in the z-states.
@@ -52,16 +58,17 @@ class RepresentationLayer(tf.keras.layers.Layer):
             model_size, override=num_classes_per_categorical
         )
 
-        super().__init__(
-            name=f"z{self.num_categoricals}x{self.num_classes_per_categorical}"
-        )
+        super().__init__()
 
-        self.z_generating_layer = tf.keras.layers.Dense(
+        self.z_generating_layer = nn.Linear(
+            input_size,
             self.num_categoricals * self.num_classes_per_categorical,
-            activation=None,
+            bias=True,
         )
+        # Use same initializers as the Author in their JAX repo.
+        dreamerv3_normal_initializer(self.z_generating_layer.weight)
 
-    def call(self, inputs):
+    def forward(self, inputs, return_z_probs=False):
         """Produces a discrete, differentiable z-sample from some 1D input tensor.
 
         Pushes the input_ tensor through our dense layer, which outputs
@@ -80,22 +87,19 @@ class RepresentationLayer(tf.keras.layers.Layer):
                 (concatenated) outputs of the (image?) encoder + the last hidden
                 deterministic state, or b) the output of the dynamics predictor MLP
                 network.
-
-        Returns:
-            Tuple consisting of a differentiable z-sample and the probabilities for the
-            categorical distribution (in the shape of [B, num_categoricals,
-            num_classes]) that created this sample.
+            return_z_probs: Whether to return the probabilities for the categorical
+                distribution (in the shape of [B, num_categoricals, num_classes])
+                as a second return value.
         """
         # Compute the logits (no activation) for our `num_categoricals` Categorical
         # distributions (with `num_classes_per_categorical` classes each).
         logits = self.z_generating_layer(inputs)
         # Reshape the logits to [B, num_categoricals, num_classes]
-        logits = tf.reshape(
-            logits,
-            shape=(-1, self.num_categoricals, self.num_classes_per_categorical),
+        logits = logits.reshape(
+            -1, self.num_categoricals, self.num_classes_per_categorical
         )
         # Compute the probs (based on logits) via softmax.
-        probs = tf.nn.softmax(tf.cast(logits, tf.float32))
+        probs = F.softmax(logits, dim=-1)
         # Add the unimix weighting (1% uniform) to the probs.
         # See [1]: "Unimix categoricals: We parameterize the categorical distributions
         # for the world model representations and dynamics, as well as for the actor
@@ -104,18 +108,18 @@ class RepresentationLayer(tf.keras.layers.Layer):
         # probabilities and KL divergences well behaved."
         probs = 0.99 * probs + 0.01 * (1.0 / self.num_classes_per_categorical)
 
-        # Danijar's code does: distr = [Distr class](logits=tf.log(probs)).
+        # Danijar's code does: distr = [Distr class](logits=torch.log(probs)).
         # Not sure why we don't directly use the already available probs instead.
-        logits = tf.math.log(probs)
+        logits = torch.log(probs)
 
         # Create the distribution object using the unimix'd logits.
-        distribution = tfp.distributions.Independent(
-            tfp.distributions.OneHotCategorical(logits=logits),
+        distribution = torch.distributions.Independent(
+            torch.distributions.OneHotCategorical(logits=logits),
             reinterpreted_batch_ndims=1,
         )
 
         # Draw a one-hot sample (B, num_categoricals, num_classes).
-        sample = tf.cast(distribution.sample(), tf.float32)
+        sample = distribution.sample()
         # Make sure we can take gradients "straight-through" the sampling step
         # by adding the probs and subtracting the sg(probs). Note that `sample`
         # does not have any gradients as it's the result of a Categorical sample step,
@@ -123,8 +127,7 @@ class RepresentationLayer(tf.keras.layers.Layer):
         # [1] "The representations are sampled from a vector of softmax distributions
         # and we take straight-through gradients through the sampling step."
         # [2] Algorithm 1.
-        differentiable_sample = tf.cast(
-            (tf.stop_gradient(sample) + probs - tf.stop_gradient(probs)),
-            tf.keras.mixed_precision.global_policy().compute_dtype or tf.float32,
-        )
-        return differentiable_sample, probs
+        differentiable_sample = sample.detach() + probs - probs.detach()
+        if return_z_probs:
+            return differentiable_sample, probs
+        return differentiable_sample

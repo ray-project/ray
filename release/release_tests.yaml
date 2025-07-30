@@ -2649,14 +2649,12 @@
 # --------------------------
 # DreamerV3
 # --------------------------
-# TODO (sven): Move algo and this test to pytorch
-- name: rllib_learning_tests_pong_dreamerv3_tf2
+- name: rllib_learning_tests_pong_dreamerv3_torch
   group: RLlib tests
   working_dir: rllib_tests
 
-  stable: false
+  stable: true
 
-  # https://github.com/ray-project/ray/issues/46612
   frequency: weekly
   team: rllib
   cluster:
@@ -2666,11 +2664,11 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_compute: 1gpu_4cpus.yaml
+    cluster_compute: 4gpu_64cpus.yaml
 
   run:
-    timeout: 43200  # 12h
-    script: python learning_tests/tuned_examples/dreamerv3/atari_100k.py --framework=tf2 --env=ale_py:ALE/Pong-v5 --num-learners=1 --stop-reward=15.0 --as-release-test
+    timeout: 36000  # 10h
+    script: python learning_tests/tuned_examples/dreamerv3/atari_100k_dreamerv3.py --framework=torch --env=ale_py:ALE/Pong-v5 --num-learners=4 --stop-reward=18.0 --as-release-test
 
   alert: default
 
@@ -2680,7 +2678,7 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_compute: 1gpu_4cpus_gce.yaml
+        cluster_compute: 4gpu_64cpus_gce.yaml
 
 # --------------------------
 # IMPALA
