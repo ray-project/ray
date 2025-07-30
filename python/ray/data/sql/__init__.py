@@ -17,15 +17,15 @@ Examples:
     Basic Usage:
         >>> import ray.data
         >>> from ray.data.sql import register_table, sql
-        >>> 
+        >>>
         >>> # Create datasets
         >>> users = ray.data.from_items([{"id": 1, "name": "Alice"}, {"id": 2, "name": "Bob"}])
         >>> orders = ray.data.from_items([{"user_id": 1, "amount": 100}, {"user_id": 2, "amount": 200}])
-        >>> 
+        >>>
         >>> # Register datasets as tables
         >>> register_table("users", users)
         >>> register_table("orders", orders)
-        >>> 
+        >>>
         >>> # Execute SQL queries
         >>> result = sql("SELECT u.name, SUM(o.amount) as total FROM users u JOIN orders o ON u.id = o.user_id GROUP BY u.name")
         >>> print(result.take_all())
@@ -50,47 +50,21 @@ Examples:
 """
 
 import ray.data
-from ray.data import Dataset
-
-# Import core classes and functions
-from ray.data.sql.config import (
-    SQLConfig,
-    LogLevel,
-    QueryResult,
-    JoinInfo,
-    ColumnInfo,
-    TableSchema,
-    ExecutionStats,
-)
+from ray.data.sql.config import LogLevel, SQLConfig
 from ray.data.sql.core import (
     RaySQL,
-    sql,
-    register_table,
-    list_tables,
-    get_schema,
+    _dataset_name,
+    _ray_data_register_table,
+    _ray_data_sql,
     clear_tables,
     get_engine,
     get_registry,
+    get_schema,
+    list_tables,
+    register_table,
+    sql,
 )
-from ray.data.sql.schema import DatasetRegistry, SchemaManager
-from ray.data.sql.parser import SQLParser, ASTOptimizer, LogicalPlanner
-from ray.data.sql.execution import (
-    QueryExecutor,
-    ProjectionAnalyzer,
-    AggregateAnalyzer,
-    JoinHandler,
-    FilterHandler,
-    OrderHandler,
-    LimitHandler,
-)
-from ray.data.sql.compiler import ExpressionCompiler
-from ray.data.sql.utils import setup_logger
-
-# Import testing and examples
-from ray.data.sql.testing import TestRunner, ExampleRunner
-
-# Import API integration functions
-from ray.data.sql.core import _ray_data_sql, _ray_data_register_table, _dataset_name
+from ray.data.sql.testing import ExampleRunner, TestRunner
 
 # Apply monkey patches to integrate with Ray Data API
 # Store original functions for potential restoration
@@ -107,33 +81,7 @@ if not hasattr(ray.data.Dataset, "name"):
 
 # Public API exports
 __all__ = [
-    # Core classes
-    "RaySQL",
-    "SQLConfig",
-    "LogLevel",
-    "QueryResult",
-    "JoinInfo",
-    "ColumnInfo",
-    "TableSchema",
-    "ExecutionStats",
-    # Schema management
-    "DatasetRegistry",
-    "SchemaManager",
-    # Parsing and optimization
-    "SQLParser",
-    "ASTOptimizer",
-    "LogicalPlanner",
-    # Execution components
-    "QueryExecutor",
-    "ProjectionAnalyzer",
-    "AggregateAnalyzer",
-    "JoinHandler",
-    "FilterHandler",
-    "OrderHandler",
-    "LimitHandler",
-    # Expression compilation
-    "ExpressionCompiler",
-    # Global API functions
+    # Core public API
     "sql",
     "register_table",
     "list_tables",
@@ -141,14 +89,16 @@ __all__ = [
     "clear_tables",
     "get_engine",
     "get_registry",
-    # Testing and examples
-    "TestRunner",
-    "ExampleRunner",
+
+    # Core classes for type hinting and advanced usage
+    "RaySQL",
+    "SQLConfig",
+    "LogLevel",
+
+    # Convenience functions for testing and examples
     "run_comprehensive_tests",
     "example_usage",
     "example_sqlglot_features",
-    # Utilities
-    "setup_logger",
 ]
 
 

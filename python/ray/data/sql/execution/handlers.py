@@ -5,21 +5,20 @@ This module provides handlers for various SQL operations including JOINs,
 WHERE clauses, ORDER BY, and LIMIT operations.
 """
 
-import ray
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+import ray
 from ray.data import Dataset
 from sqlglot import exp
-
-from ray.data.sql.config import SQLConfig, JoinInfo
 from ray.data.sql.compiler import ExpressionCompiler
+from ray.data.sql.config import JoinInfo, SQLConfig
 from ray.data.sql.schema import DatasetRegistry
 from ray.data.sql.utils import (
-    setup_logger,
     create_column_mapping,
+    extract_column_from_expression,
     normalize_identifier,
     normalize_join_type,
-    extract_column_from_expression,
+    setup_logger,
 )
 
 
@@ -356,7 +355,7 @@ class LimitHandler:
         if not limit_clause:
             return dataset
 
-        limit_expr = getattr(limit_clause, "expression", None)
+        limit_expr = getattr(limit_clause, "this", None)
         if limit_expr is None:
             return dataset
 

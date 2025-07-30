@@ -7,19 +7,17 @@ and structured query plan representations.
 """
 
 import abc
+import time
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Optional, Protocol, Union, Callable
-import time
+from typing import Any, Callable, Dict, List, Optional, Protocol, Union
 
 from ray.data import Dataset
-from ray.data.sql.config import SQLConfig
 from sqlglot import exp
+from ray.data.sql.config import SQLConfig
 
 
-# =============================================================================
 # Core SQL Operation Data Classes
-# =============================================================================
 
 
 class SQLOperationType(Enum):
@@ -48,8 +46,9 @@ class SQLExpression:
 
     def __post_init__(self):
         """Validate expression after initialization."""
-        if self.is_aggregate and not self.dependencies:
-            raise ValueError("Aggregate expressions must have at least one dependency")
+        # The validation `if self.is_aggregate and not self.dependencies` is removed
+        # as it incorrectly flags valid aggregates like COUNT(*).
+        pass
 
 
 @dataclass
@@ -231,9 +230,7 @@ class LimitOperation:
             raise ValueError("Limit offset cannot be negative")
 
 
-# =============================================================================
 # Query Plan Abstractions
-# =============================================================================
 
 
 @dataclass
@@ -265,34 +262,10 @@ class QueryPlan:
         return any(isinstance(op, AggregateOperation) for op in self.operations)
 
 
-@dataclass
-class ExecutionResult:
-    """Wrapper for SQL query execution results with metadata."""
-
-    dataset: Dataset
-    execution_time: float
-    rows_processed: int
-    operations_applied: List[str] = field(default_factory=list)
-    warnings: List[str] = field(default_factory=list)
-    metadata: Dict[str, Any] = field(default_factory=dict)
-
-    @property
-    def row_count(self) -> int:
-        """Get the number of rows in the result dataset."""
-        return self.dataset.count()
-
-    def add_warning(self, message: str) -> None:
-        """Add a warning to the result."""
-        self.warnings.append(message)
-
-    def add_metadata(self, key: str, value: Any) -> None:
-        """Add metadata to the result."""
-        self.metadata[key] = value
+# ExecutionResult has been consolidated into QueryResult in config.py for better API clarity
 
 
-# =============================================================================
 # Abstract Base Classes for Handlers
-# =============================================================================
 
 
 class SQLOperationHandler(abc.ABC):
@@ -334,9 +307,7 @@ class SQLAnalyzer(abc.ABC):
         pass
 
 
-# =============================================================================
 # Protocol Definitions
-# =============================================================================
 
 
 class SQLConfigurable(Protocol):
@@ -367,9 +338,7 @@ class Cacheable(Protocol):
         ...
 
 
-# =============================================================================
 # Factory Classes
-# =============================================================================
 
 
 class SQLOperationFactory:
@@ -422,9 +391,7 @@ class SQLOperationFactory:
         return LimitOperation(count=count, **kwargs)
 
 
-# =============================================================================
 # Enhanced Error Classes
-# =============================================================================
 
 
 class SQLOperationError(Exception):
@@ -459,9 +426,7 @@ class SQLOptimizationError(SQLOperationError):
     pass
 
 
-# =============================================================================
 # Metrics and Monitoring
-# =============================================================================
 
 
 @dataclass
@@ -488,34 +453,4 @@ class OperationMetrics:
         self.rows_output = rows_output
 
 
-@dataclass
-class QueryMetrics:
-    """Comprehensive metrics for entire query execution."""
-
-    query_text: str
-    total_time: float = 0.0
-    parse_time: float = 0.0
-    plan_time: float = 0.0
-    execute_time: float = 0.0
-    operation_metrics: List[OperationMetrics] = field(default_factory=list)
-
-    def add_operation_metrics(self, metrics: OperationMetrics) -> None:
-        """Add metrics for an individual operation."""
-        self.operation_metrics.append(metrics)
-
-    @property
-    def total_rows_processed(self) -> int:
-        """Get total number of rows processed across all operations."""
-        return sum(m.rows_input for m in self.operation_metrics)
-
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert metrics to dictionary for serialization."""
-        return {
-            "query_text": self.query_text,
-            "total_time": self.total_time,
-            "parse_time": self.parse_time,
-            "plan_time": self.plan_time,
-            "execute_time": self.execute_time,
-            "total_rows_processed": self.total_rows_processed,
-            "operation_count": len(self.operation_metrics),
-        }
+# QueryMetrics has been consolidated into QueryResult in config.py for better API clarity

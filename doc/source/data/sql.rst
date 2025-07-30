@@ -1,0 +1,298 @@
+.. _data_sql:
+
+============================
+Ray Data SQL: SQL for Data
+============================
+
+.. toctree::
+    :hidden:
+
+    sql-quickstart
+    sql-user-guide
+    api/sql
+
+Ray Data SQL provides a comprehensive SQL interface for Ray Datasets, enabling familiar SQL operations on distributed data. Execute complex queries, joins, aggregations, and transformations using standard SQL syntax while leveraging Ray's scalable processing capabilities.
+
+Why Ray Data SQL?
+------------------
+
+**Familiar SQL Interface**: Use standard SQL syntax you already know to process distributed datasets.
+
+**Seamless Integration**: SQL queries return Ray Datasets, allowing you to seamlessly mix SQL operations with Ray Data's rich API.
+
+**Distributed Processing**: Automatically scales across your Ray cluster, handling large datasets efficiently.
+
+**Rich Data Type Support**: Works with Arrow data types, supporting complex nested structures, timestamps, and more.
+
+**Performance Optimized**: Built-in query optimization and pushdown operations for efficient execution.
+
+Install Ray Data SQL
+---------------------
+
+Ray Data SQL is included with Ray Data. To install:
+
+.. code-block:: console
+
+    $ pip install -U 'ray[data]'
+
+Quick Start
+-----------
+
+Here's a simple example of using SQL with Ray Data:
+
+.. code-block:: python
+
+    import ray.data
+    from ray.data.sql import register_table, sql
+
+    # Create datasets
+    users = ray.data.from_items([
+        {"id": 1, "name": "Alice", "age": 30},
+        {"id": 2, "name": "Bob", "age": 25},
+        {"id": 3, "name": "Charlie", "age": 35}
+    ])
+    
+    orders = ray.data.from_items([
+        {"user_id": 1, "amount": 100, "product": "laptop"},
+        {"user_id": 2, "amount": 50, "product": "book"},
+        {"user_id": 1, "amount": 75, "product": "mouse"}
+    ])
+
+    # Register datasets as SQL tables
+    register_table("users", users)
+    register_table("orders", orders)
+
+    # Execute SQL queries
+    result = sql("""
+        SELECT u.name, SUM(o.amount) as total_spent
+        FROM users u
+        JOIN orders o ON u.id = o.user_id
+        WHERE u.age > 25
+        GROUP BY u.name
+        ORDER BY total_spent DESC
+    """)
+
+    print(result.take_all())
+    # Output: [{'name': 'Alice', 'total_spent': 175}, {'name': 'Charlie', 'total_spent': 0}]
+
+Supported SQL Features
+----------------------
+
+Ray Data SQL supports a wide range of SQL operations:
+
+**Basic Queries**
+  - SELECT with column projections and aliases
+  - WHERE clauses with complex conditions
+  - ORDER BY with multiple columns
+  - LIMIT and OFFSET for pagination
+
+**Aggregations**
+  - GROUP BY with multiple columns  
+  - Aggregate functions: COUNT, SUM, AVG, MIN, MAX
+  - HAVING clauses for post-aggregation filtering
+
+**Joins**
+  - INNER JOIN for combining datasets
+  - LEFT JOIN for preserving left dataset records
+  - Multiple table joins with complex conditions
+
+**Advanced Features**
+  - Subqueries and common table expressions (CTEs)
+  - UNION operations for combining datasets
+  - Window functions (coming soon)
+  - User-defined functions (coming soon)
+
+Learn More
+----------
+
+.. grid:: 1 2 2 2
+    :gutter: 1
+    :class-container: container pb-5
+
+    .. grid-item-card::
+
+        **SQL Quickstart**
+        ^^^
+
+        Get started with Ray Data SQL with step-by-step examples.
+
+        +++
+        .. button-ref:: data_sql_quickstart
+            :color: primary
+            :outline:
+            :expand:
+
+            SQL Quickstart
+
+    .. grid-item-card::
+
+        **SQL User Guide**
+        ^^^
+
+        Learn advanced SQL operations and best practices.
+
+        +++
+        .. button-ref:: data_sql_user_guide
+            :color: primary
+            :outline:
+            :expand:
+
+            SQL User Guide
+
+    .. grid-item-card::
+
+        **SQL API Reference**
+        ^^^
+
+        Complete API reference for SQL functions and classes.
+
+        +++
+        .. button-ref:: data_sql_api
+            :color: primary
+            :outline:
+            :expand:
+
+            SQL API Reference
+
+    .. grid-item-card::
+
+        **Ray Data Examples**
+        ^^^
+
+        Find more SQL examples in the Ray Data examples collection.
+
+        +++
+        .. button-ref:: examples
+            :color: primary
+            :outline:
+            :expand:
+
+            More Examples
+
+Configuration and Advanced Usage
+--------------------------------
+
+Ray Data SQL provides extensive configuration options for different use cases:
+
+.. code-block:: python
+
+    from ray.data.sql import SQLConfig, LogLevel
+
+    # Basic configuration
+    config = SQLConfig(
+        log_level=LogLevel.DEBUG,          # Control logging verbosity
+        case_sensitive=False,              # Case-insensitive column names
+        enable_optimization=True,          # Enable built-in optimizations
+        strict_mode=True,                  # Strict SQL compliance
+        enable_sqlglot_optimizer=True,     # Use SQLGlot's query optimizer
+        max_join_partitions=100,           # Limit join complexity
+        enable_predicate_pushdown=True     # Push filters to data sources
+    )
+
+    # Use with context manager for session-specific settings
+    with ray.data.DataContext() as ctx:
+        ctx.sql_config = config
+        result = ray.data.sql("SELECT * FROM users WHERE age > 30")
+
+**Advanced Configuration Options**
+
+.. code-block:: python
+
+    # Production configuration example
+    production_config = SQLConfig(
+        # Performance settings
+        enable_optimization=True,
+        enable_sqlglot_optimizer=True,
+        max_join_partitions=200,
+        enable_predicate_pushdown=True,
+        
+        # Behavior settings
+        case_sensitive=False,
+        strict_mode=False,              # Allow flexible type handling
+        enable_auto_registration=False, # Disable for security
+        
+        # Logging and debugging
+        log_level=LogLevel.WARNING,     # Reduce noise in production
+        enable_query_timing=True,       # Track performance metrics
+        
+        # Memory management
+        enable_streaming_execution=True, # For large datasets
+        max_memory_usage_gb=16          # Memory limit for operations
+    )
+
+**SQL Dialect Configuration**
+
+.. code-block:: python
+
+    # Configure SQL dialect handling
+    dialect_config = SQLConfig(
+        # SQLGlot dialect settings
+        sqlglot_read_dialect="duckdb",    # Input SQL dialect
+        sqlglot_write_dialect="duckdb",   # Output dialect for optimization
+        enable_dialect_conversion=True,   # Auto-convert between dialects
+        
+        # Compatibility settings
+        enable_mysql_compatibility=False, # MySQL-specific features
+        enable_postgres_compatibility=False, # PostgreSQL-specific features
+        strict_ansi_compliance=True       # Strict ANSI SQL compliance
+    )
+
+Integration with Ray Data
+-------------------------
+
+SQL queries seamlessly integrate with Ray Data operations:
+
+.. code-block:: python
+
+    # Start with SQL
+    filtered_data = sql("SELECT * FROM users WHERE age > 25")
+    
+    # Continue with Ray Data operations  
+    transformed = filtered_data.map(lambda row: {
+        "name": row["name"].upper(),
+        "age_group": "senior" if row["age"] > 60 else "adult"
+    })
+    
+    # Back to SQL
+    register_table("transformed_users", transformed)
+    final_result = sql("SELECT age_group, COUNT(*) FROM transformed_users GROUP BY age_group")
+
+Limitations and Considerations
+------------------------------
+
+**Current Limitations**
+  - **SQL Dialect**: Currently uses DuckDB SQL dialect via SQLGlot parsing
+  - **Window Functions**: Limited support for advanced window functions
+  - **Subqueries**: Complex nested subqueries may have performance implications
+  - **User-Defined Functions**: Custom SQL functions are not yet supported
+  - **Transactions**: No transaction support (operations are not atomic)
+  - **Indexes**: No index support for query optimization
+  - **Materialized Views**: Views are not supported, only direct table queries
+
+**Performance Considerations**
+  - **Memory Usage**: Large JOIN operations may require significant memory
+  - **Data Shuffling**: Cross-partition operations can be expensive
+  - **Optimization**: Limited query optimization compared to dedicated SQL engines
+
+**Data Type Mapping**
+  - **Arrow Integration**: Best performance with Arrow-native types
+  - **Type Coercion**: Automatic type conversion may impact performance
+  - **Nested Data**: Complex nested structures have limited SQL support
+
+Performance Tips
+----------------
+
+- **Use explicit table registration** for better performance than auto-registration
+- **Apply filters early** in your SQL queries to reduce data processing
+- **Use appropriate data types** for better Arrow integration performance  
+- **Leverage column pruning** by selecting only needed columns
+- **Consider partitioning** for very large datasets
+- **Avoid complex nested queries** that may trigger expensive data movements
+
+What's Next?
+------------
+
+- **Learn SQL basics**: Check out the :ref:`SQL Quickstart <data_sql_quickstart>`
+- **Explore advanced features**: Read the :ref:`SQL User Guide <data_sql_user_guide>`
+- **Browse the API**: See the complete :ref:`SQL API Reference <data_sql_api>`
+- **Try examples**: Find SQL examples in :ref:`Ray Data Examples <examples>` 

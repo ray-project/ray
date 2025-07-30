@@ -1489,3 +1489,17 @@ py_test(
         "//:ray_lib",
     ],
 )
+
+py_test(
+    name = "test_sql_api",
+    size = "small",
+    srcs = ["tests/test_sql_api.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)

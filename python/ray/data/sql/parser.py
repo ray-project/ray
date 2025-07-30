@@ -4,9 +4,6 @@ SQL parsing and optimization for Ray Data SQL API.
 This module provides SQL parsing, AST optimization, and logical planning
 functionality using SQLGlot for the Ray Data SQL engine.
 """
-
-import logging
-import time
 from typing import Optional
 
 import sqlglot
@@ -17,10 +14,9 @@ try:
     from sqlglot.optimizer import optimize as sqlglot_optimize
 except ImportError:
     sqlglot_optimize = None
-
-from ray.data.sql.config import SQLConfig, LogicalPlan
+from ray.data.sql.config import LogicalPlan, SQLConfig
 from ray.data.sql.schema import SchemaManager
-from ray.data.sql.utils import setup_logger, SUPPORTED_AGGREGATES
+from ray.data.sql.utils import SUPPORTED_AGGREGATES, setup_logger
 
 
 class SQLParser:
@@ -56,7 +52,7 @@ class SQLParser:
             ast = sqlglot.parse_one(sql, read="duckdb")
             if getattr(self.config, "enable_sqlglot_optimizer", False):
                 before = ast
-                ast = optimize(ast)
+                ast = sqlglot_optimize(ast) if sqlglot_optimize else ast
                 self._logger.debug(
                     f"SQLGlot optimized AST:\nBefore: {before}\nAfter: {ast}"
                 )

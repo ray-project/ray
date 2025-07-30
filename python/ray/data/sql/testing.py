@@ -10,8 +10,7 @@ from typing import Any, Dict, List, Tuple
 import ray
 import ray.data
 from ray.data import Dataset
-
-from ray.data.sql.core import get_registry, register_table, clear_tables, sql
+from ray.data.sql.core import clear_tables, get_registry, register_table, sql
 from ray.data.sql.utils import setup_logger
 
 
@@ -34,11 +33,11 @@ class TestRunner:
         test_datasets = self._create_test_datasets()
         for name, dataset in test_datasets.items():
             register_table(name, dataset)
-        print(f"DEBUG: After registration, tables: {get_registry().list_tables()}")
+        self._logger.debug(f"After registration, tables: {get_registry().list_tables()}")
 
         # Define test cases
         test_cases = self._define_test_cases()
-        print(f"DEBUG: Before running tests, tables: {get_registry().list_tables()}")
+        self._logger.debug(f"Before running tests, tables: {get_registry().list_tables()}")
 
         # Run tests
         results = self._run_test_cases(test_cases)
@@ -320,7 +319,7 @@ class TestRunner:
                     "count_all",
                     "null_count",
                 ]:
-                    print(f"\nDEBUG: Running {test_name}: {sql_query}")
+                    self._logger.debug(f"Running {test_name}: {sql_query}")
 
                 res_ds = sql(sql_query)
                 actual_rows = res_ds.take_all()
@@ -334,8 +333,8 @@ class TestRunner:
                     "count_all",
                     "null_count",
                 ]:
-                    print(
-                        f"DEBUG: {test_name} returned {len(actual_rows)} rows: {actual_rows}"
+                    self._logger.debug(
+                        f"{test_name} returned {len(actual_rows)} rows: {actual_rows}"
                     )
 
                 if should_fail:
@@ -375,7 +374,7 @@ class TestRunner:
                     "count_all",
                     "null_count",
                 ]:
-                    print(f"DEBUG: {test_name} failed with error: {str(e)}")
+                    self._logger.debug(f"{test_name} failed with error: {str(e)}")
 
                 if should_fail:
                     results.append(
@@ -632,7 +631,7 @@ class ExampleRunner:
         print("\n2. Complex Query with Optimization:")
         print("-" * 40)
         complex_query = """
-        SELECT 
+        SELECT
             e.dept,
             COUNT(*) as emp_count,
             AVG(e.salary) as avg_salary,

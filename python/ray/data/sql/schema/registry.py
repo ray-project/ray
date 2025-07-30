@@ -8,7 +8,6 @@ as SQL tables with automatic schema inference.
 from typing import Any, Dict, List, Optional
 
 from ray.data import Dataset
-
 from ray.data.sql.schema.manager import SchemaManager
 from ray.data.sql.utils import setup_logger, validate_table_name
 

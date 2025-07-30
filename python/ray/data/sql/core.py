@@ -10,16 +10,15 @@ import time
 from typing import List, Optional
 
 from ray.data import Dataset
-
-from ray.data.sql.config import SQLConfig, ExecutionStats
-from ray.data.sql.schema import DatasetRegistry
-from ray.data.sql.parser import SQLParser, ASTOptimizer, LogicalPlanner
+from ray.data.sql.config import QueryResult, SQLConfig
 from ray.data.sql.execution import QueryExecutor
+from ray.data.sql.parser import ASTOptimizer, LogicalPlanner, SQLParser
+from ray.data.sql.schema import DatasetRegistry
 from ray.data.sql.utils import (
-    setup_logger,
-    get_config_from_context,
-    extract_table_names_from_query,
     _is_create_table_as,
+    extract_table_names_from_query,
+    get_config_from_context,
+    setup_logger,
 )
 
 
@@ -60,7 +59,13 @@ class RaySQL:
         self._logger.setLevel(log_level_mapping[level_name])
 
     def _auto_register_datasets_from_caller(self):
-        """Register all Ray Datasets in the caller's local scope as tables using their variable names."""
+        """Register all Ray Datasets in the caller's local scope as tables using their variable names.
+        
+        Warning: This feature uses inspect.currentframe() and can be brittle. If called from
+        within helper functions or nested scopes, it will register datasets from the helper's
+        scope, not the intended user scope. Use explicit register_table() calls for more
+        predictable behavior in complex scenarios.
+        """
         frame = (
             inspect.currentframe().f_back.f_back
         )  # Go two frames up: sql() -> RaySQL.sql() -> user
@@ -91,7 +96,12 @@ class RaySQL:
             Exception: If query execution fails.
         """
         start_time = time.time()
-        stats = ExecutionStats()
+        stats = QueryResult(
+            dataset=None,  # Will be set later
+            execution_time=0.0,
+            row_count=0,
+            query_text=query
+        )
 
         try:
             # Step 1: Auto-register datasets from caller scope
@@ -120,17 +130,19 @@ class RaySQL:
 
                 sqlglot_opt_start = time.time()
                 ast = optimize(ast)
-                stats.sqlglot_optimize_time = time.time() - sqlglot_opt_start
+                sqlglot_opt_time = time.time() - sqlglot_opt_start
+                stats.optimize_time += sqlglot_opt_time
                 self._logger.debug(
-                    f"SQLGlot optimization completed in {stats.sqlglot_optimize_time:.3f}s"
+                    f"SQLGlot optimization completed in {sqlglot_opt_time:.3f}s"
                 )
 
             # Step 4: Apply custom AST optimizations
             custom_opt_start = time.time()
             ast = self.optimizer.optimize(ast, self.registry.schema_manager)
-            stats.custom_optimize_time = time.time() - custom_opt_start
+            custom_opt_time = time.time() - custom_opt_start
+            stats.optimize_time += custom_opt_time
             self._logger.debug(
-                f"Custom optimization completed in {stats.custom_optimize_time:.3f}s"
+                f"Custom optimization completed in {custom_opt_time:.3f}s"
             )
 
             # Step 5: Generate logical plan
@@ -148,7 +160,8 @@ class RaySQL:
             stats.execute_time = time.time() - exec_start
 
             # Calculate final statistics
-            stats.total_time = time.time() - start_time
+            stats.execution_time = time.time() - start_time
+            stats.dataset = result
             stats.row_count = result.count()
 
             # Log execution statistics
@@ -157,9 +170,9 @@ class RaySQL:
             return result
 
         except Exception as e:
-            stats.total_time = time.time() - start_time
+            stats.execution_time = time.time() - start_time
             self._logger.error(
-                f"Query execution failed after {stats.total_time:.3f}s: {e}"
+                f"Query execution failed after {stats.execution_time:.3f}s: {e}"
             )
             self._log_enhanced_error(e)
             raise

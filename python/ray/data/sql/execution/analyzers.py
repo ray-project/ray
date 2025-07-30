@@ -10,18 +10,17 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 import ray.data
 from ray.data import Dataset
 from sqlglot import exp
-
-from ray.data.sql.config import SQLConfig
 from ray.data.sql.compiler import ExpressionCompiler
+from ray.data.sql.config import SQLConfig
 from ray.data.sql.utils import (
-    setup_logger,
-    create_column_mapping,
-    normalize_identifier,
-    safe_get_column,
-    SUPPORTED_AGGREGATES,
     AGGREGATE_MAPPING,
+    SUPPORTED_AGGREGATES,
+    create_column_mapping,
     get_function_name_from_expression,
     is_aggregate_function,
+    normalize_identifier,
+    safe_get_column,
+    setup_logger,
 )
 
 
@@ -155,9 +154,9 @@ class ProjectionAnalyzer:
                 f"Column '{col_name}' not found. Available columns: {cols}"
             )
 
-        func = lambda row, col=actual_column: safe_get_column(
-            row, col, self.config.case_sensitive
-        )
+        def func(row, col=actual_column):
+            return safe_get_column(row, col, self.config.case_sensitive)
+        
         return [actual_column], [func]
 
 

@@ -8,7 +8,6 @@ and inferring schema information from Ray Datasets.
 from typing import Any, Dict, Optional
 
 from ray.data import Dataset
-
 from ray.data.sql.config import TableSchema
 from ray.data.sql.utils import setup_logger
 

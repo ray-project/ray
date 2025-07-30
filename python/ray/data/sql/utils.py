@@ -118,7 +118,10 @@ def _is_create_table_as(ast) -> bool:
 
 
 def extract_table_names_from_query(query: str) -> set:
-    """Extract table names from a SQL query using regex.
+    """Extract table names from a SQL query using sqlglot parsing.
+
+    Uses sqlglot's AST parsing to robustly extract table names, handling
+    complex queries with subqueries, CTEs, and comments better than regex.
 
     Args:
         query: SQL query string.
@@ -126,17 +129,23 @@ def extract_table_names_from_query(query: str) -> set:
     Returns:
         Set of table names found in the query.
     """
-    table_names = set()
-
-    # Find tables in FROM clauses
-    from_matches = re.findall(r"from\s+([a-zA-Z_][a-zA-Z0-9_]*)", query, re.IGNORECASE)
-    table_names.update(from_matches)
-
-    # Find tables in JOIN clauses
-    join_matches = re.findall(r"join\s+([a-zA-Z_][a-zA-Z0-9_]*)", query, re.IGNORECASE)
-    table_names.update(join_matches)
-
-    return table_names
+    try:
+        import sqlglot
+        parsed = sqlglot.parse_one(query, read="duckdb")
+        return {table.name for table in parsed.find_all(sqlglot.exp.Table)}
+    except Exception:
+        # Fallback to regex-based extraction for invalid queries
+        table_names = set()
+        
+        # Find tables in FROM clauses
+        from_matches = re.findall(r"from\s+([a-zA-Z_][a-zA-Z0-9_]*)", query, re.IGNORECASE)
+        table_names.update(from_matches)
+        
+        # Find tables in JOIN clauses
+        join_matches = re.findall(r"join\s+([a-zA-Z_][a-zA-Z0-9_]*)", query, re.IGNORECASE)
+        table_names.update(join_matches)
+        
+        return table_names
 
 
 def validate_table_name(name: str) -> None:

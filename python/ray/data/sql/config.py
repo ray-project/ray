@@ -50,7 +50,10 @@ class SQLConfig:
 
 @dataclass
 class QueryResult:
-    """Result of a SQL query execution.
+    """Unified result of a SQL query execution with comprehensive metrics.
+
+    This class consolidates QueryResult, ExecutionResult, ExecutionStats, and QueryMetrics
+    into a single, cohesive interface for query results and performance metrics.
 
     Args:
         dataset: The resulting Ray Dataset.
@@ -60,6 +63,10 @@ class QueryResult:
         optimize_time: Time spent optimizing the query.
         plan_time: Time spent planning the query.
         execute_time: Time spent executing the query.
+        query_text: Original SQL query text.
+        operations_applied: List of operations applied during execution.
+        warnings: List of warnings generated during execution.
+        metadata: Additional metadata about the execution.
     """
 
     dataset: Dataset
@@ -69,6 +76,46 @@ class QueryResult:
     optimize_time: float = 0.0
     plan_time: float = 0.0
     execute_time: float = 0.0
+    query_text: str = ""
+    operations_applied: List[str] = field(default_factory=list)
+    warnings: List[str] = field(default_factory=list)
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+    def add_warning(self, message: str) -> None:
+        """Add a warning to the result."""
+        self.warnings.append(message)
+
+    def add_metadata(self, key: str, value: Any) -> None:
+        """Add metadata to the result."""
+        self.metadata[key] = value
+
+    def log_stats(self, logger) -> None:
+        """Log execution statistics."""
+        logger.info(f"Query executed successfully in {self.execution_time:.3f}s")
+        logger.info(f"  - Parse: {self.parse_time:.3f}s")
+        if self.optimize_time > 0:
+            logger.info(f"  - Optimize: {self.optimize_time:.3f}s")
+        if self.plan_time > 0:
+            logger.info(f"  - Plan: {self.plan_time:.3f}s")
+        logger.info(f"  - Execute: {self.execute_time:.3f}s")
+        logger.info(f"  - Rows returned: {self.row_count}")
+        if self.warnings:
+            logger.warning(f"  - Warnings: {len(self.warnings)}")
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert result to dictionary for serialization."""
+        return {
+            "query_text": self.query_text,
+            "execution_time": self.execution_time,
+            "parse_time": self.parse_time,
+            "optimize_time": self.optimize_time,
+            "plan_time": self.plan_time,
+            "execute_time": self.execute_time,
+            "row_count": self.row_count,
+            "operations_applied": self.operations_applied,
+            "warnings": self.warnings,
+            "metadata": self.metadata,
+        }
 
 
 @dataclass
@@ -167,44 +214,7 @@ class TableSchema:
         return self.columns.get(name)
 
 
-@dataclass
-class ExecutionStats:
-    """Statistics about query execution.
-
-    Args:
-        total_time: Total execution time in seconds.
-        parse_time: Time spent parsing the query.
-        sqlglot_optimize_time: Time spent in SQLGlot optimization.
-        custom_optimize_time: Time spent in custom optimization.
-        plan_time: Time spent in logical planning.
-        execute_time: Time spent executing the query.
-        row_count: Number of rows returned.
-    """
-
-    total_time: float = 0.0
-    parse_time: float = 0.0
-    sqlglot_optimize_time: float = 0.0
-    custom_optimize_time: float = 0.0
-    plan_time: float = 0.0
-    execute_time: float = 0.0
-    row_count: int = 0
-
-    def log_stats(self, logger: logging.Logger) -> None:
-        """Log execution statistics.
-
-        Args:
-            logger: Logger instance to use for output.
-        """
-        logger.info(f"Query executed successfully in {self.total_time:.3f}s")
-        logger.info(f"  - Parse: {self.parse_time:.3f}s")
-        if self.sqlglot_optimize_time > 0:
-            logger.info(f"  - SQLGlot Optimize: {self.sqlglot_optimize_time:.3f}s")
-        if self.custom_optimize_time > 0:
-            logger.info(f"  - Custom Optimize: {self.custom_optimize_time:.3f}s")
-        if self.plan_time > 0:
-            logger.info(f"  - Plan: {self.plan_time:.3f}s")
-        logger.info(f"  - Execute: {self.execute_time:.3f}s")
-        logger.info(f"  - Rows returned: {self.row_count}")
+# ExecutionStats has been consolidated into QueryResult for better API clarity
 
 
 class LogicalPlan:

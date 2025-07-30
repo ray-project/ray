@@ -5,25 +5,25 @@ This module provides the QueryExecutor class which coordinates the execution
 of parsed SQL ASTs by applying the appropriate operations to Ray Datasets.
 """
 
-import ray
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
+import ray
 from ray.data import Dataset
 from sqlglot import exp
-
 from ray.data.sql.config import SQLConfig
+from ray.data.sql.execution.analyzers import AggregateAnalyzer, ProjectionAnalyzer
+from ray.data.sql.execution.handlers import (
+    FilterHandler,
+    JoinHandler,
+    LimitHandler,
+    OrderHandler,
+)
 from ray.data.sql.schema import DatasetRegistry
 from ray.data.sql.utils import (
-    setup_logger,
     create_column_mapping,
     is_aggregate_function,
-)
-from ray.data.sql.execution.analyzers import ProjectionAnalyzer, AggregateAnalyzer
-from ray.data.sql.execution.handlers import (
-    JoinHandler,
-    FilterHandler,
-    OrderHandler,
-    LimitHandler,
+    normalize_identifier,
+    setup_logger,
 )
 
 
@@ -297,8 +297,6 @@ class QueryExecutor:
         cols = list(dataset.columns())
         column_mapping = create_column_mapping(cols, self.config.case_sensitive)
         keys = []
-
-        from ray.data.sql.utils import normalize_identifier
 
         for key in group_keys:
             normalized = normalize_identifier(key, self.config.case_sensitive)
