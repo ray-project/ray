@@ -15,6 +15,8 @@ export FOSSA_API_KEY
 
 "$FOSSA_BIN" analyze
 
+bazelisk build //:ray_pkg
+
 git clone https://"$GITHUB_TOKEN"@github.com/ray-project/ray-cpp-wheel-analyzer.git "$HOME"/ray-cpp-wheel-analyzer
 
 python "$HOME"/ray-cpp-wheel-analyzer/run_fossa_analysis_with_bazel.py \
