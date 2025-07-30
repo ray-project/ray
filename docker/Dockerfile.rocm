@@ -1,0 +1,22 @@
+ARG BASE_IMAGE=rocm/pytorch:rocm6.4.1_ubuntu24.04_py3.12_pytorch_release_2.6.0
+FROM ${BASE_IMAGE}
+
+ARG RAY_WHEEL_PATH=
+
+ARG CONDA_ENV=py_3.12
+
+# Switch to bash shell for all RUN commands
+SHELL ["/bin/bash", "-c"]
+
+# System dependencies
+RUN apt update && apt install -y build-essential python3-dev clang-format-15 amd-smi-lib
+
+# Initialize and activate Conda in bash shell
+RUN conda init && \
+    eval "$(conda shell.bash hook)" && \
+    conda activate ${CONDA_ENV} && \
+    pip install -U "${RAY_WHEEL_PATH}"
+
+# Set up environment
+RUN echo "conda activate ${ARG_CONDA_ENV}" >> ~/.bashrc
+
