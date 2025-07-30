@@ -46,7 +46,7 @@ async def _create_impl(image_uri: str, logger: logging.Logger):
 
         if not os.path.exists(result_file):
             raise FileNotFoundError(
-                "Worker path file not created when getting worker path for image {image_uri}"
+                f"Worker path file not created when getting worker path for image {image_uri}"
             )
 
         with open(result_file, "r") as f:
@@ -54,7 +54,7 @@ async def _create_impl(image_uri: str, logger: logging.Logger):
 
         if not worker_path.endswith(".py"):
             raise ValueError(
-                "Invalid worker path inferred in image {image_uri}: {worker_path}"
+                f"Invalid worker path inferred in image {image_uri}: {worker_path}"
             )
 
         logger.info(f"Inferred worker path in image {image_uri}: {worker_path}")
