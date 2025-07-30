@@ -152,11 +152,11 @@ Status RayletClient::FetchOrReconstruct(const std::vector<ObjectID> &object_ids,
   return conn_->WriteMessage(MessageType::FetchOrReconstruct, &fbb);
 }
 
-Status RayletClient::NotifyUnblocked(const TaskID &current_task_id) {
+Status RayletClient::CancelGetRequest() {
   flatbuffers::FlatBufferBuilder fbb;
-  auto message = protocol::CreateNotifyUnblocked(fbb, to_flatbuf(fbb, current_task_id));
+  auto message = protocol::CreateCancelGetRequest(fbb);
   fbb.Finish(message);
-  return conn_->WriteMessage(MessageType::NotifyUnblocked, &fbb);
+  return conn_->WriteMessage(MessageType::CancelGetRequest, &fbb);
 }
 
 Status RayletClient::NotifyDirectCallTaskBlocked() {

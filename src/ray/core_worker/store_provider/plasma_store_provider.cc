@@ -273,7 +273,7 @@ Status UnblockIfNeeded(const std::shared_ptr<raylet::RayletClient> &client,
       return Status::OK();  // We don't need to release resources.
     }
   } else {
-    return client->NotifyUnblocked(ctx.GetCurrentTaskID());
+    return client->CancelGetRequest();
   }
 }
 
