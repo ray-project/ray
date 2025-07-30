@@ -2,7 +2,8 @@ import json
 import logging
 import warnings
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Union
+from dataclasses import dataclass
+from typing import Any, Callable, Dict, List, Optional, Union, Tuple
 
 from ray import cloudpickle
 from ray._common.pydantic_compat import (
@@ -158,6 +159,11 @@ class RequestRouterConfig(BaseModel):
         """Deserialize the request router from cloudpickled bytes."""
         return cloudpickle.loads(self._serialized_request_router_cls)
 
+@dataclass
+class AutoscalingPolicyConfig:
+    name: Union[str, Callable]
+    timeout_s: float = 5.0
+    dry_run: bool = False
 
 DEFAULT_METRICS_INTERVAL_S = 10.0
 
@@ -228,15 +234,10 @@ class AutoscalingConfig(BaseModel):
         default=30.0, description="How long to wait before scaling up replicas."
     )
 
-    # Default None means unlimited, setting this smaller increases frequency scale up actions
-    target_latency: Optional[PositiveFloat] = None
-
-    # 0.9 = P90, 0.95 = P95 etc. setting this closer to 1.0 increases scaling frequency
-    target_p: Optional[PositiveFloat] = 0.9
-
-    mode: AutoscalingMode = Field(
-        default=AutoscalingMode.DEPLOYMENT, description="The granularity of Autoscaling (DEPLOYMENT or APPLICATION)."
-    )
+    # New fields for custom autoscaling
+    agg_function: str = "mean" # "mean", "min", "max", "sum" how to aggregate metrics within look_back_period_s
+    policy: Optional[AutoscalingPolicyConfig] = None # this policy is deployment scoped 
+    prometheus_custom_metrics: Optional[List[Tuple[str, str]]] = None
 
     # Cloudpickled policy definition.
     _serialized_policy_def: bytes = PrivateAttr(default=b"")
@@ -338,6 +339,8 @@ class AutoscalingConfig(BaseModel):
 
     def get_target_ongoing_requests(self) -> PositiveFloat:
         return self.target_ongoing_requests
+
+
 
 
 # Keep in sync with ServeDeploymentMode in dashboard/client/src/type/serve.ts
