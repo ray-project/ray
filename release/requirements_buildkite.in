@@ -22,7 +22,6 @@ aws_requests_auth
 tzdata
 requests >= 2.31.0
 tqdm
-python-dotenv
 -r requirements-doc.txt
 
 # Upgrades

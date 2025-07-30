@@ -1,13 +1,9 @@
 envs:
   - name: py311_cpu
-    platform: linux
-    arch: x86_64
     build_args:
       CUDA_VERSION: cpu
       PYTHON_VERSION: py311
   - name: py311_gpu
-    platform: linux
-    arch: x86_64
     build_args:
       CUDA_VERSION: cu128
       PYTHON_VERSION: py311
