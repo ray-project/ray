@@ -169,14 +169,18 @@ number of output files, configure ``min_rows_per_file``.
     ['0_000001_000000.csv', '0_000000_000000.csv', '0_000002_000000.csv']
 
 
-Partitioned Writes
+Writing into Partitioned Dataset
 ~~~~~~~~~~~~~~~~~~~~~
 
-Partitioned writes help create well-organized, contiguous files by grouping related data together. This approach offers several key benefits:
-
-* **Efficient data pruning**: When filtering data by partition columns, only relevant partitions need to be read, significantly reducing I/O.
-* **Avoid small files problem**: Instead of scattering related records across many small files, partitioning groups similar data into fewer, larger files
-* **Improved data locality**: Related records are stored contiguously, making file access patterns more predictable
+When writing partitioned dataset (using Hive-style, folder-based partitioning) it's recommended to repartition dataset by the partition columns prior to writing into it. 
+This allows you to *have the control over the file-sizes and their number*.
+When dataset is repartitioned by the partition columns every block will contain all of the rows corresponding to particular partition, 
+meaning that the number of files created will be controlled based on the configuration provided to, 
+for example, `write_parquet` method (such as `min_rows_per_file`, `max_rows_per_file`). 
+Since every block is written out independently, when writing dataset w/o prior 
+repartitioning you could potentially get an N number of files per partition 
+(where N is the number of blocks in your dataset) with very limited ability to control the 
+number of files & their sizes (since every block could potentially carry the rows corresponding to any partition).
 
 .. testcode::
     import ray
