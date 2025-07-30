@@ -555,7 +555,10 @@ int main(int argc, char *argv[]) {
         });
 
     raylet_client_pool =
-        std::make_unique<ray::rpc::RayletClientPool>(*client_call_manager);
+        std::make_unique<ray::rpc::RayletClientPool>([&](const ray::rpc::Address &addr) {
+          return std::make_shared<ray::raylet::RayletClient>(
+              addr.ip_address(), addr.port(), *client_call_manager);
+        });
 
     core_worker_subscriber = std::make_unique<ray::pubsub::Subscriber>(
         raylet_node_id,
