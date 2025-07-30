@@ -183,7 +183,7 @@ class MapBatches(AbstractUDFMap):
         self._zero_copy_batch = zero_copy_batch
 
     def can_modify_num_rows(self) -> bool:
-        return True
+        return False
 
 
 class MapRows(AbstractUDFMap):
