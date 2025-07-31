@@ -289,7 +289,9 @@ def test_aggregator_agent_receive_multiple_events(
         {
             "env_vars": {
                 "RAY_DASHBOARD_AGGREGATOR_AGENT_MAX_EVENT_BUFFER_SIZE": 1,
-                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_SEND_PORT": _EVENT_AGGREGATOR_AGENT_TARGET_PORT,
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_SEND_PORT": str(
+                    _EVENT_AGGREGATOR_AGENT_TARGET_PORT
+                ),
             },
         },
     ],
@@ -367,6 +369,46 @@ def test_aggregator_agent_receive_empty_events(
 
 
 @_with_aggregator_port
+def test_aggregator_agent_profile_events_not_exposed(
+    ray_start_cluster_head_with_env_vars, httpserver
+):
+    """Test that profile events are not sent when not in exposable event types."""
+    cluster = ray_start_cluster_head_with_env_vars
+    stub = get_event_aggregator_grpc_stub(
+        cluster.webui_url, cluster.gcs_address, cluster.head_node.node_id
+    )
+
+    httpserver.expect_request("/", method="POST").respond_with_data("", status=200)
+
+    request = _create_profile_event_request()
+
+    reply = stub.AddEvents(request)
+    assert reply.status.code == 0
+    assert reply.status.message == "all events received"
+
+    # Wait a bit to ensure no HTTP requests are made
+    time.sleep(0.5)
+
+    # Verify that no events were sent to the HTTP server since profile events are not exposable
+    req, _ = httpserver.log[0]
+    req_json = json.loads(req.data)
+    assert len(req_json) == 0
+
+
+@pytest.mark.parametrize(
+    "ray_start_cluster_head_with_env_vars",
+    [
+        {
+            "env_vars": {
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_SEND_PORT": str(
+                    _EVENT_AGGREGATOR_AGENT_TARGET_PORT
+                ),
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_EXPOSABLE_EVENT_TYPES": "TASK_DEFINITION_EVENT,TASK_EXECUTION_EVENT,ACTOR_TASK_DEFINITION_EVENT,ACTOR_TASK_EXECUTION_EVENT,TASK_PROFILE_EVENT",
+            },
+        },
+    ],
+    indirect=True,
+)
 def test_aggregator_agent_receive_profile_events(
     ray_start_cluster_head_with_env_vars, httpserver
 ):
@@ -377,11 +419,27 @@ def test_aggregator_agent_receive_profile_events(
 
     httpserver.expect_request("/", method="POST").respond_with_data("", status=200)
 
+    request = _create_profile_event_request()
+
+    reply = stub.AddEvents(request)
+    assert reply.status.code == 0
+    assert reply.status.message == "all events received"
+
+    wait_for_condition(lambda: len(httpserver.log) == 1)
+
+    req, _ = httpserver.log[0]
+    req_json = json.loads(req.data)
+
+    _verify_profile_event_json(req_json)
+
+
+def _create_profile_event_request():
+    """Helper function to create a profile event request."""
     test_time = 1751302230130457542
     seconds, nanos = (test_time // 10**9, test_time % 10**9)
     timestamp = Timestamp(seconds=seconds, nanos=nanos)
 
-    request = AddEventRequest(
+    return AddEventRequest(
         events_data=RayEventsData(
             events=[
                 RayEvent(
@@ -417,15 +475,9 @@ def test_aggregator_agent_receive_profile_events(
         )
     )
 
-    reply = stub.AddEvents(request)
-    assert reply.status.code == 0
-    assert reply.status.message == "all events received"
 
-    wait_for_condition(lambda: len(httpserver.log) == 1)
-
-    req, _ = httpserver.log[0]
-    req_json = json.loads(req.data)
-
+def _verify_profile_event_json(req_json):
+    """Helper function to verify profile event JSON structure."""
     assert len(req_json) == 1
     assert req_json[0]["eventId"] == base64.b64encode(b"1").decode()
     assert req_json[0]["sourceType"] == "CORE_WORKER"

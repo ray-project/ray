@@ -37,6 +37,8 @@ message RayEvent {
   }
 
   // The potential types of events that can be generated.
+  // NOTE: When adding a new event type, make sure to add it to DEFAULT_EXPOSABLE_EVENT_TYPES list in @{python/ray/dashboard/modules/aggregator/aggregator_agent.py}
+  // if the event is expected to be exposed to external services.
   enum EventType {
     EVENT_TYPE_UNSPECIFIED = 0;
     TASK_DEFINITION_EVENT = 1;
