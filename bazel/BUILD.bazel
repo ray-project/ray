@@ -1,0 +1,12 @@
+load("@rules_python//python:defs.bzl", "py_binary")
+
+exports_files([
+    "pytest_wrapper.py",
+    "default_doctest_pytest_plugin.py",
+])
+
+py_binary(
+    name = "pyzip",
+    srcs = ["pyzip.py"],
+    visibility = ["//visibility:public"],
+)
