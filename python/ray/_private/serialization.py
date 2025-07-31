@@ -131,6 +131,12 @@ class SerializationContext:
     def __init__(self, worker):
         self.worker = worker
         self._thread_local = threading.local()
+        # This flag is to mark whether the custom serializer for torch.Tensor has
+        # been registered. If the method is decorated with
+        # `@ray.method(tensor_transport="xxx")`, it will use external transport
+        # (e.g. gloo, nccl, etc.) for tensor communication between actors,
+        # instead of the normal serialize -> object store -> deserialize codepath.
+        self._torch_custom_serializer_registered = False
 
         def actor_handle_reducer(obj):
             ray._private.worker.global_worker.check_connected()
@@ -622,6 +628,17 @@ class SerializationContext:
         assert (
             obj_id is not None
         ), "`obj_id` is required, and it is the key to retrieve corresponding tensors from the GPU object store."
+        if not self._torch_custom_serializer_registered:
+            # Register a custom serializer for torch.Tensor. If the method is
+            # decorated with `@ray.method(tensor_transport="xxx")`, it will
+            # use external transport (e.g. gloo, nccl, etc.) for tensor
+            # communication between actors, instead of the normal serialize ->
+            # object store -> deserialize codepath.
+            from ray.experimental.channel.torch_tensor_type import TorchTensorType
+
+            TorchTensorType().register_custom_serializer()
+            self._torch_custom_serializer_registered = True
+
         serialized_val, tensors = self._serialize_and_retrieve_tensors(value)
         if tensors:
             obj_id = obj_id.decode("ascii")
