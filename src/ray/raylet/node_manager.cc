@@ -1034,8 +1034,8 @@ void NodeManager::ProcessClientMessage(const std::shared_ptr<ClientConnection> &
     // because it's already disconnected.
     return;
   } break;
-  case protocol::MessageType::FetchOrReconstruct: {
-    ProcessFetchOrReconstructMessage(client, message_data);
+  case protocol::MessageType::AsyncGetRequest: {
+    ProcessAsyncGetRequest(client, message_data);
   } break;
   case protocol::MessageType::NotifyDirectCallTaskBlocked: {
     HandleDirectCallTaskBlocked(registered_worker);
@@ -1468,9 +1468,9 @@ void NodeManager::ProcessDisconnectClientMessage(
                    creation_task_exception.get());
 }
 
-void NodeManager::ProcessFetchOrReconstructMessage(
-    const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data) {
-  auto message = flatbuffers::GetRoot<protocol::FetchOrReconstruct>(message_data);
+void NodeManager::ProcessAsyncGetRequest(const std::shared_ptr<ClientConnection> &client,
+                                         const uint8_t *message_data) {
+  auto message = flatbuffers::GetRoot<protocol::AsyncGetRequest>(message_data);
   const auto refs =
       FlatbufferToObjectReference(*message->object_ids(), *message->owner_addresses());
   AsyncGetOrWait(client,
@@ -1494,10 +1494,7 @@ void NodeManager::ProcessWaitRequestMessage(
   }
 
   if (!all_objects_local) {
-    // Resolve any missing objects. This is a no-op for any objects that are
-    // already local. Missing objects will be pulled from remote node managers.
-    // If an object's owner dies, an error will be stored as the object's
-    // value.
+    // Fetch any objects that aren't already local.
     AsyncGetOrWait(client, refs, /*is_get_request=*/false);
   }
 

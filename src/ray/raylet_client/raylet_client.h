@@ -288,14 +288,13 @@ class RayletClient : public RayletClientInterface {
   /// \return ray::Status.
   ray::Status ActorCreationTaskDone();
 
-  /// Tell the raylet to reconstruct or fetch objects.
+  /// Tell the Raylet to pull the objects to the local node.
   ///
   /// \param object_ids The IDs of the objects to fetch.
   /// \param owner_addresses The addresses of the workers that own the objects.
-  /// \param current_task_id The task that needs the objects.
   /// \return int 0 means correct, other numbers mean error.
-  ray::Status FetchOrReconstruct(const std::vector<ObjectID> &object_ids,
-                                 const std::vector<rpc::Address> &owner_addresses);
+  ray::Status AsyncGetRequest(const std::vector<ObjectID> &object_ids,
+                              const std::vector<rpc::Address> &owner_addresses);
 
   /// Tell the Raylet to cancel the get request from this worker.
   ///
