@@ -4,9 +4,9 @@ import time
 import grpc
 import numpy as np
 
-import rllib.examples.envs.classes.multi_agent.footsies.game.proto.footsies_service_pb2 as footsies_pb2
-import rllib.examples.envs.classes.multi_agent.footsies.game.proto.footsies_service_pb2_grpc as footsies_pb2_grpc
-from rllib.examples.envs.classes.multi_agent.footsies.game import constants
+import ray.rllib.examples.envs.classes.multi_agent.footsies.game.proto.footsies_service_pb2 as footsies_pb2
+import ray.rllib.examples.envs.classes.multi_agent.footsies.game.proto.footsies_service_pb2_grpc as footsies_pb2_grpc
+from ray.rllib.examples.envs.classes.multi_agent.footsies.game import constants
 
 log = logging.getLogger(__name__)
 
@@ -27,7 +27,7 @@ class FootsiesGame:
         try:
             channel = grpc.insecure_channel(f"{self.host}:{self.port}")
             return footsies_pb2_grpc.FootsiesGameServiceStub(channel)
-        except Exception as e:
+        except grpc.RpcError as e:
             log.error(f"Error connecting to gRPC stub with exception: {e}")
             raise e
 

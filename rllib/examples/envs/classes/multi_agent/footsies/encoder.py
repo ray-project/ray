@@ -4,8 +4,8 @@ from typing import Any
 
 import numpy as np
 
-from rllib.examples.envs.classes.multi_agent.footsies.game import constants
-from rllib.examples.envs.classes.multi_agent.footsies.game.proto import (
+from ray.rllib.examples.envs.classes.multi_agent.footsies.game import constants
+from ray.rllib.examples.envs.classes.multi_agent.footsies.game.proto import (
     footsies_service_pb2 as footsies_pb2,
 )
 
@@ -32,6 +32,7 @@ class FootsiesEncoder:
         }
         self.observation_delay = observation_delay
         self._last_common_state: np.ndarray | None = None
+        self._action_id_values = list(constants.FOOTSIES_ACTION_IDS.values())
 
     def reset(self):
         self._encoding_history = {
@@ -61,10 +62,10 @@ class FootsiesEncoder:
         """
         common_state = self.encode_common_state(game_state)
         p1_encoding = self.encode_player_state(
-            game_state.player1, game_state.frame_count, **kwargs.get("p1", {})
+            game_state.player1, **kwargs.get("p1", {})
         )
         p2_encoding = self.encode_player_state(
-            game_state.player2, game_state.frame_count, **kwargs.get("p2", {})
+            game_state.player2, **kwargs.get("p2", {})
         )
 
         observation_delay = min(
@@ -146,9 +147,8 @@ class FootsiesEncoder:
     def encode_player_state(
         self,
         player_state: footsies_pb2.PlayerState,
-        frame_count: int,
         **kwargs,
-    ) -> dict[str, int | float | list]:
+    ) -> dict[str, int | float | list | np.ndarray]:
         """Encodes the player state into observations.
         :param player_state: The player state to encode
         :type player_state: footsies_pb2.PlayerState
@@ -156,30 +156,37 @@ class FootsiesEncoder:
         :rtype: dict[str, Any]
         """
         feature_dict = {
-            "player_position_x": player_state.player_position_x / 4.0,
-            "velocity_x": player_state.velocity_x / 5.0,
+            "player_position_x": player_state.player_position_x
+                                 / constants.FeatureDictNormalizers.PLAYER_POSITION_X,
+            "velocity_x": player_state.velocity_x
+                          / constants.FeatureDictNormalizers.VELOCITY_X,
             "is_dead": int(player_state.is_dead),
             "vital_health": player_state.vital_health,
             "guard_health": EncoderMethods.one_hot(
                 player_state.guard_health, [0, 1, 2, 3]
             ),
             "current_action_id": self._encode_action_id(player_state.current_action_id),
-            "current_action_frame": player_state.current_action_frame / 25,
-            "current_action_frame_count": player_state.current_action_frame_count / 25,
+            "current_action_frame": player_state.current_action_frame
+                                    / constants.FeatureDictNormalizers.CURRENT_ACTION_FRAME,
+            "current_action_frame_count": player_state.current_action_frame_count
+                                          / constants.FeatureDictNormalizers.CURRENT_ACTION_FRAME_COUNT,
             "current_action_remaining_frames": (
                 player_state.current_action_frame_count
                 - player_state.current_action_frame
             )
-            / 25,
+                                               / constants.FeatureDictNormalizers.CURRENT_ACTION_REMAINING_FRAMES,
             "is_action_end": int(player_state.is_action_end),
             "is_always_cancelable": int(player_state.is_always_cancelable),
             "current_action_hit_count": player_state.current_action_hit_count,
-            "current_hit_stun_frame": player_state.current_hit_stun_frame / 10,
+            "current_hit_stun_frame": player_state.current_hit_stun_frame
+                                      / constants.FeatureDictNormalizers.CURRENT_HIT_STUN_FRAME,
             "is_in_hit_stun": int(player_state.is_in_hit_stun),
             "sprite_shake_position": player_state.sprite_shake_position,
-            "max_sprite_shake_frame": player_state.max_sprite_shake_frame / 10,
+            "max_sprite_shake_frame": player_state.max_sprite_shake_frame
+                                      / constants.FeatureDictNormalizers.MAX_SPRITE_SHAKE_FRAME,
             "is_face_right": int(player_state.is_face_right),
-            "current_frame_advantage": player_state.current_frame_advantage / 10,
+            "current_frame_advantage": player_state.current_frame_advantage
+                                       / constants.FeatureDictNormalizers.CURRENT_FRAME_ADVANTAGE,
             # The below features leak some information about the opponent!
             "would_next_forward_input_dash": int(
                 player_state.would_next_forward_input_dash
@@ -204,11 +211,10 @@ class FootsiesEncoder:
         :rtype: np.ndarray
         """
 
-        action_id_values = list(constants.FOOTSIES_ACTION_IDS.values())
-        action_vector = np.zeros(len(action_id_values), dtype=np.float32)
+        action_vector = np.zeros(len(self._action_id_values), dtype=np.float32)
 
         # Get the index of the action id in constants.ActionID
-        action_index = action_id_values.index(action_id)
+        action_index = self._action_id_values.index(action_id)
         action_vector[action_index] = 1
 
         assert action_vector.max() == 1 and action_vector.min() == 0

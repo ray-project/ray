@@ -4,10 +4,10 @@ import numpy as np
 from gymnasium import spaces
 
 from ray.rllib import env
-from rllib.examples.envs.classes.multi_agent.footsies import rl_typing
-from rllib.examples.envs.classes.multi_agent.footsies.encoder import FootsiesEncoder
-from rllib.examples.envs.classes.multi_agent.footsies.game import constants
-from rllib.examples.envs.classes.multi_agent.footsies.game.footsies_game import (
+from ray.rllib.examples.envs.classes.multi_agent.footsies import rl_typing
+from ray.rllib.examples.envs.classes.multi_agent.footsies.encoder import FootsiesEncoder
+from ray.rllib.examples.envs.classes.multi_agent.footsies.game import constants
+from ray.rllib.examples.envs.classes.multi_agent.footsies.game.footsies_game import (
     FootsiesGame,
 )
 
@@ -51,7 +51,7 @@ class FootsiesEnv(env.MultiAgentEnv):
     )
 
     def __init__(self, config: dict[Any, Any] = None):
-        super(FootsiesEnv, self).__init__()
+        super().__init__()
 
         if config is None:
             config = {}
@@ -125,7 +125,9 @@ class FootsiesEnv(env.MultiAgentEnv):
 
         return observations, {agent: {} for agent in self.agents}
 
-    def step(self, actions: dict[rl_typing.AgentID, rl_typing.ActionType]) -> tuple[
+    def step(
+            self, actions: dict[rl_typing.AgentID, rl_typing.ActionType]
+    ) -> tuple[
         dict[rl_typing.AgentID, rl_typing.ObsType],
         dict[rl_typing.AgentID, float],
         dict[rl_typing.AgentID, bool],
@@ -149,9 +151,9 @@ class FootsiesEnv(env.MultiAgentEnv):
 
             # Refill the charge queue only if we're not already in a special charge.
             if action_is_special_charge and empty_queue:
-                self.special_charge_queue[agent_id] = (
-                    self._build_charged_special_queue()
-                )
+                self.special_charge_queue[
+                    agent_id
+                ] = self._build_charged_special_queue()
 
             if self.special_charge_queue[agent_id] >= 0:
                 self.special_charge_queue[agent_id] -= 1
@@ -219,15 +221,3 @@ class FootsiesEnv(env.MultiAgentEnv):
             return constants.EnvActions.FORWARD_ATTACK
         else:
             return constants.EnvActions.ATTACK
-
-    def _build_charged_queue_features(self):
-        return {
-            "p1": {
-                "special_charge_queue": self.special_charge_queue["p1"]
-                / self.SPECIAL_CHARGE_FRAMES
-            },
-            "p2": {
-                "special_charge_queue": self.special_charge_queue["p2"]
-                / self.SPECIAL_CHARGE_FRAMES
-            },
-        }

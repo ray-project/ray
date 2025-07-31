@@ -32,16 +32,6 @@ class ActionBits:
     RIGHT_ATTACK: int = RIGHT | ATTACK
 
 
-ACTION_TO_BITS = {
-    GameActions.NONE: ActionBits.NONE,
-    GameActions.LEFT: ActionBits.LEFT,
-    GameActions.RIGHT: ActionBits.RIGHT,
-    GameActions.ATTACK: ActionBits.ATTACK,
-    GameActions.LEFT_ATTACK: ActionBits.LEFT_ATTACK,
-    GameActions.RIGHT_ATTACK: ActionBits.RIGHT_ATTACK,
-}
-
-
 @dataclass
 class ActionID:
     STAND = 0
@@ -62,6 +52,27 @@ class ActionID:
     DEAD = 500
     WIN = 510
 
+
+@dataclass
+class FeatureDictNormalizers:
+    PLAYER_POSITION_X = 4.0
+    VELOCITY_X = 5.0
+    CURRENT_ACTION_FRAME = 25
+    CURRENT_ACTION_FRAME_COUNT = 25
+    CURRENT_ACTION_REMAINING_FRAMES = 25
+    CURRENT_HIT_STUN_FRAME = 10
+    MAX_SPRITE_SHAKE_FRAME = 10
+    CURRENT_FRAME_ADVANTAGE = 10
+
+
+ACTION_TO_BITS = {
+    GameActions.NONE: ActionBits.NONE,
+    GameActions.LEFT: ActionBits.LEFT,
+    GameActions.RIGHT: ActionBits.RIGHT,
+    GameActions.ATTACK: ActionBits.ATTACK,
+    GameActions.LEFT_ATTACK: ActionBits.LEFT_ATTACK,
+    GameActions.RIGHT_ATTACK: ActionBits.RIGHT_ATTACK,
+}
 
 FOOTSIES_ACTION_IDS = {
     "STAND": ActionID.STAND,

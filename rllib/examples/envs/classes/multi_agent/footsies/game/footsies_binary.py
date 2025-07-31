@@ -1,3 +1,4 @@
+import os
 import stat
 import subprocess
 import time
@@ -10,10 +11,10 @@ import grpc
 import requests
 from pydantic import BaseModel
 
-from rllib.examples.envs.classes.multi_agent.footsies.game.proto import (
+from ray.rllib.examples.envs.classes.multi_agent.footsies.game.proto import (
     footsies_service_pb2 as footsies_pb2,
 )
-from rllib.examples.envs.classes.multi_agent.footsies.game.proto import (
+from ray.rllib.examples.envs.classes.multi_agent.footsies.game.proto import (
     footsies_service_pb2_grpc as footsies_pb2_grpc,
 )
 
@@ -40,7 +41,7 @@ class Config(BaseModel):
     download_dir: Path = Path("tmp")
     extract_dir: Path = Path("tmp")
     target_binary: Literal[
-        "linux_server", "linux_windowed", "mac_server", "mac_windowed"
+        "linux_server", "linux_windowed", "mac_headless", "mac_windowed"
     ] = "linux_server"
 
 
@@ -53,7 +54,7 @@ class FootsiesBinary:
             self.url = self._urls.URL_LINUX_SERVER_BINARIES
         elif self.target_binary == "linux_windowed":
             self.url = self._urls.URL_LINUX_WINDOWED_BINARIES
-        elif self.target_binary == "mac_server":
+        elif self.target_binary == "mac_headless":
             self.url = self._urls.URL_MAC_HEADLESS_BINARIES
         elif self.target_binary == "mac_windowed":
             self.url = self._urls.URL_MAC_WINDOWED_BINARIES
@@ -87,7 +88,7 @@ class FootsiesBinary:
                     f"Downloaded game binary to {self.full_download_path}\n"
                     f"Binary size: {self.full_download_path.stat().st_size / 1024 / 1024:.1f} MB\n"
                 )
-            except Exception as e:
+            except requests.exceptions.RequestException as e:
                 print(f"Failed to download binary from {self.url}: {e}")
 
     def _unzip_game_binary(self):
@@ -103,11 +104,9 @@ class FootsiesBinary:
                 zip_ref.extractall(self.full_extract_dir)
 
             if self.target_binary == "mac_windowed":
-                Path(str(self.full_download_path)[:-4] + ".app").rename(
-                    self.renamed_path
-                )
+                self.full_download_path.with_suffix(".app").rename(self.renamed_path)
             else:
-                Path(str(self.full_download_path)[:-4]).rename(self.renamed_path)
+                self.full_download_path.with_suffix("").rename(self.renamed_path)
 
     def start_game_server(self, port: int) -> None:
         self._download_game_binary()
@@ -117,12 +116,15 @@ class FootsiesBinary:
             game_binary_path = (
                 Path(self.renamed_path) / "Contents" / "MacOS" / "FOOTSIES"
             )
-        elif self.target_binary == "mac_server":
+        elif self.target_binary == "mac_headless":
             game_binary_path = Path(self.renamed_path) / "FOOTSIES"
         else:
             game_binary_path = Path(self.renamed_path) / "footsies.x86_64"
 
-        self._add_executable_permission(game_binary_path)
+        if os.access(game_binary_path, os.X_OK):
+            print(f"Game binary has an executable permission: {game_binary_path}")
+        else:
+            self._add_executable_permission(game_binary_path)
 
         if (
             self.target_binary == "linux_server"
@@ -142,16 +144,22 @@ class FootsiesBinary:
         time.sleep(1)  # Grace period for the server to start
 
         # check if the game server is running correctly
+        _t0 = time.time()
+        _timeout_duration = 10  # seconds
+
         channel = grpc.insecure_channel(f"localhost:{port}")
         try:
             stub = footsies_pb2_grpc.FootsiesGameServiceStub(channel)
             stub.StartGame(footsies_pb2.Empty())
-
             ready = stub.IsReady(footsies_pb2.Empty()).value
-            while not ready:
-                print("Game not ready...")
-                ready = stub.IsReady(footsies_pb2.Empty()).value
+            while not ready and time.time() - _t0 < _timeout_duration:
                 time.sleep(1)
+                ready = stub.IsReady(footsies_pb2.Empty()).value
+                if time.time() - _t0 > _timeout_duration:
+                    raise TimeoutError(
+                        f"Game server did not become ready within {_timeout_duration} seconds."
+                    )
+                print("Game not ready...")
             print("Game ready!")
         finally:
             channel.close()
