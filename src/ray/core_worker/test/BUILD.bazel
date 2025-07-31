@@ -103,6 +103,7 @@ ray_cc_test(
     srcs = ["normal_task_submitter_test.cc"],
     tags = ["team:core"],
     deps = [
+        "//:ray_fakes",
         "//:ray_mock",
         "//:worker_rpc",
         "//src/ray/common:task_common",
@@ -138,6 +139,7 @@ ray_cc_test(
     srcs = ["object_recovery_manager_test.cc"],
     tags = ["team:core"],
     deps = [
+        "//:ray_fakes",
         "//:ray_mock",
         "//src/ray/common:task_common",
         "//src/ray/common:test_util",
@@ -359,6 +361,7 @@ ray_cc_test(
         "//conditions:default": ["@platforms//:incompatible"],
     }),
     deps = [
+        "//:ray_fakes",
         "//:ray_mock",
         "//src/ray/core_worker:experimental_mutable_object_provider",
         "//src/ray/object_manager:object_manager_common",
