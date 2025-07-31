@@ -36,7 +36,6 @@
 #include <stdexcept>
 #include <string>
 #include <system_error>
-
 #include <utility>
 
 #include "absl/strings/str_format.h"
@@ -87,7 +86,6 @@ TempCgroupDirectory::~TempCgroupDirectory() noexcept(false) {
       path_,
       strerror(errno));
 }
-
 
 ray::StatusOr<std::unique_ptr<TempDirectory>> TempDirectory::Create() {
   std::string path = "/tmp/XXXXXX";
