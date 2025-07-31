@@ -11,6 +11,7 @@ Usage:
         <cluster_configuration_file_path>
 """
 import argparse
+import base64
 import os
 import re
 import subprocess
@@ -27,6 +28,13 @@ from google.cloud import storage
 
 import ray
 from ray.autoscaler._private.aws.config import RAY
+
+# Fix import path issue with local azure folder - must be done before azure imports
+current_dir = os.getcwd()
+if current_dir in sys.path:
+    sys.path.remove(current_dir)
+from azure.keyvault.secrets import SecretClient  # noqa: E402
+from azure.identity import DefaultAzureCredential  # noqa: E402
 
 
 def check_arguments():
@@ -162,6 +170,45 @@ def download_ssh_key_aws():
 
     # Set permissions on the key file
     os.chmod(local_key_path, 0o400)
+
+
+def download_ssh_keys_azure():
+    """Download the ssh keys from Azure Key Vault."""
+    print("======================================")
+    print("Downloading ssh keys from Azure Key Vault...")
+
+    credential = DefaultAzureCredential()
+    key_vault_client = SecretClient(
+        vault_url="https://ray-dev-kv.vault.azure.net/", credential=credential
+    )
+
+    # Azure requires both a prublic and private key for ssh auth
+    secret = key_vault_client.get_secret("ray-autoscaler-tests-ssh-key")
+    key_content = base64.b64decode(secret.value.encode("utf-8"))
+    local_key_path = os.path.expanduser(f"~/.ssh/{secret.name}")
+    if not os.path.exists(os.path.dirname(local_key_path)):
+        os.makedirs(os.path.dirname(local_key_path))
+
+    print(f"Writing private key to {local_key_path}")
+    with open(local_key_path, "wb") as key_file:
+        key_file.write(key_content)
+
+    # Set permissions on the private key file
+    os.chmod(local_key_path, 0o600)
+
+    # Download public key
+    pub_secret = key_vault_client.get_secret("ray-autoscaler-tests-ssh-key-pub")
+    pub_key_content = base64.b64decode(pub_secret.value.encode("utf-8"))
+    local_pub_key_path = os.path.expanduser(
+        f"~/.ssh/{pub_secret.name.replace('-pub', '.pub')}"
+    )
+
+    print(f"Writing public key to {local_pub_key_path}")
+    with open(local_pub_key_path, "wb") as pub_key_file:
+        pub_key_file.write(pub_key_content)
+
+    # Set permissions on the public key file
+    os.chmod(local_pub_key_path, 0o644)
 
 
 def download_ssh_key_gcp():
@@ -394,6 +441,8 @@ if __name__ == "__main__":
     config_yaml["provider"]["cache_stopped_nodes"] = False
     if provider_type == "aws":
         download_ssh_key_aws()
+    elif provider_type == "azure":
+        download_ssh_keys_azure()
     elif provider_type == "gcp":
         download_ssh_key_gcp()
         # Get the active account email
