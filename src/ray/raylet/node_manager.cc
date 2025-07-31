@@ -1558,7 +1558,11 @@ void NodeManager::ProcessWaitRequestMessage(
             client->WriteMessage(static_cast<int64_t>(protocol::MessageType::WaitReply),
                                  fbb.GetSize(),
                                  fbb.GetBufferPointer());
-        if (!status.ok()) {
+        if (status.ok()) {
+          if (!all_objects_local) {
+            CancelGetRequest(client);
+          }
+        } else {
           // We failed to write to the client, so disconnect the client.
           std::ostringstream stream;
           stream << "Failed to write WaitReply to the client. Status " << status;
