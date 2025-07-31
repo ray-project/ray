@@ -11,16 +11,15 @@ from networkx import DiGraph, topological_sort
 DEFAULT_UV_FLAGS = """
     --generate-hashes
     --strip-extras
-    --no-strip-markers
-    --emit-index-url
-    --emit-find-links
     --unsafe-package ray
     --unsafe-package grpcio-tools
     --unsafe-package setuptools
     --index-url https://pypi.org/simple
     --extra-index-url https://download.pytorch.org/whl/cpu
     --index-strategy unsafe-best-match
-    --quiet
+    --no-strip-markers
+    --emit-index-url
+    --emit-find-links
 """.split()
 
 
@@ -110,10 +109,10 @@ class DependencySetManager:
             self.compile(
                 constraints=depset.constraints,
                 requirements=depset.requirements,
-                name=depset.name,
-                output=depset.output,
                 append_flags=depset.append_flags,
                 override_flags=depset.override_flags,
+                name=depset.name,
+                output=depset.output,
             )
         elif depset.operation == "subset":
             self.subset(
@@ -130,7 +129,8 @@ class DependencySetManager:
                 depsets=depset.depsets,
                 requirements=depset.requirements,
                 constraints=depset.constraints,
-                args=DEFAULT_UV_FLAGS.copy(),
+                append_flags=depset.append_flags,
+                override_flags=depset.override_flags,
                 name=depset.name,
                 output=depset.output,
                 config_args=depset.config_args,
