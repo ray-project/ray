@@ -48,7 +48,7 @@ from ray.rllib.utils.annotations import (
 from ray.rllib.utils.checkpoints import Checkpointable
 from ray.rllib.utils.debug import update_global_seed_if_necessary
 from ray.rllib.utils.deprecation import Deprecated
-from ray.rllib.utils.framework import try_import_tf, try_import_torch
+from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics import (
     ALL_MODULES,
     DATASET_NUM_ITERS_TRAINED,
@@ -88,7 +88,6 @@ if TYPE_CHECKING:
 
 
 torch, _ = try_import_torch()
-tf1, tf, tfv = try_import_tf()
 
 logger = logging.getLogger(__name__)
 
@@ -112,11 +111,11 @@ class Learner(Checkpointable):
     way to add/remove modules to/from RLModules in a multi-agent scenario, in the
     middle of training (This is useful for league based training).
 
-    TF and Torch specific implementation of this class fills in the framework-specific
-    implementation details for distributed training, and for computing and applying
-    gradients. User should not need to sub-class this class, but instead inherit from
-    the TF or Torch specific sub-classes to implement their algorithm-specific update
-    logic.
+    Deep learning framework-specific implementations of this class fill in the
+    details for distributed training, and for computing and applying
+    gradients. User should not need to subclass this class, but instead inherit from
+    the deep learning framework (for example torch) specific subclasses to implement
+    their algorithm-specific update logic.
 
     Args:
         config: The AlgorithmConfig object from which to derive most of the settings
