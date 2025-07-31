@@ -2291,7 +2291,7 @@ cdef void free_actor_object_callback(const CObjectID &c_object_id) nogil:
     with gil:
         object_id = c_object_id.Hex().decode()
         gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
-        gpu_object_manager.gpu_object_store.remove_gpu_object(object_id)
+        gpu_object_manager.gpu_object_store.pop_object(object_id)
 
 cdef shared_ptr[LocalMemoryBuffer] ray_error_to_memory_buf(ray_error):
     cdef bytes py_bytes = ray_error.to_bytes()
@@ -3353,11 +3353,10 @@ cdef class CoreWorker:
             c_remote_reader_nodes.push_back(CNodeID.FromHex(node_id))
 
         with nogil:
-            check_status(CCoreWorkerProcess.GetCoreWorker()
-                         .ExperimentalRegisterMutableObjectWriter(
-                            c_writer_ref,
-                            c_remote_reader_nodes,
-                        ))
+            CCoreWorkerProcess.GetCoreWorker().ExperimentalRegisterMutableObjectWriter(
+                    c_writer_ref,
+                    c_remote_reader_nodes,
+            )
             check_status(
                     CCoreWorkerProcess.GetCoreWorker()
                     .ExperimentalRegisterMutableObjectReaderRemote(

@@ -32,7 +32,7 @@ from ray._private.label_utils import (
     parse_node_labels_string,
 )
 from ray._private.utils import (
-    check_ray_client_dependencies_installed,
+    get_ray_client_dependency_error,
     parse_resources_json,
 )
 from ray._private.internal_api import memory_summary
@@ -788,7 +788,7 @@ def start(
     # no  port, has client -> default to 10001
     # has port, no  client -> value error
     # has port, has client -> ok, check port validity
-    has_ray_client = check_ray_client_dependencies_installed()
+    has_ray_client = get_ray_client_dependency_error() is None
     if has_ray_client and ray_client_server_port is None:
         ray_client_server_port = 10001
 
