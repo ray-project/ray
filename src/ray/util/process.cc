@@ -325,8 +325,7 @@ class ProcessFD {
         int flags = fcntl(status_pipe[0], F_GETFL, 0);
         fcntl(status_pipe[0], F_SETFL, flags | O_NONBLOCK);
         int exec_errno = 0;
-        ssize_t bytes_read_errno =
-            read(status_pipe[0], &exec_errno, sizeof(exec_errno));
+        ssize_t bytes_read_errno = read(status_pipe[0], &exec_errno, sizeof(exec_errno));
         fcntl(status_pipe[0], F_SETFL, flags);  // Restore original flags.
 
         if (bytes_read_errno == sizeof(exec_errno)) {
