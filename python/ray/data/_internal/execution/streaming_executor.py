@@ -204,7 +204,7 @@ class StreamingExecutor(Executor, threading.Thread):
             self._shutdown = True
             # Give the scheduling loop some time to finish processing.
             self.join(timeout=2.0)
-            self._resource_manager.update_budget_metrics()
+            self._resource_manager.update_metrics(self._dataset_id)
             self._update_stats_metrics(
                 state=DatasetState.FINISHED.name
                 if exception is None
@@ -395,7 +395,7 @@ class StreamingExecutor(Executor, threading.Thread):
         update_operator_states(topology)
         self._refresh_progress_bars(topology)
 
-        self._resource_manager.update_budget_metrics()
+        self._resource_manager.update_metrics(self._dataset_id)
         self._update_stats_metrics(state=DatasetState.RUNNING.name)
         if time.time() - self._last_debug_log_time >= DEBUG_LOG_INTERVAL_SECONDS:
             _log_op_metrics(topology)

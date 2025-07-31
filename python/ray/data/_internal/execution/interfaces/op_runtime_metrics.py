@@ -320,11 +320,6 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         metrics_group=MetricsGroup.OUTPUTS,
         map_only=True,
     )
-    max_bytes_to_read: int = metric_field(
-        default=0,
-        description="Maximum bytes to read from streaming generator buffer.",
-        metrics_group=MetricsGroup.OUTPUTS,
-    )
 
     # === Tasks-related metrics ===
     num_tasks_submitted: int = metric_field(

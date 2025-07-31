@@ -445,6 +445,21 @@ def build_streaming_topology(
     return (topology, i)
 
 
+def get_max_bytes_to_read(
+    op: PhysicalOperator, backpressure_policies: List[BackpressurePolicy]
+) -> Optional[int]:
+    max_bytes_to_read = None
+    for policy in backpressure_policies:
+        policy_limit = policy.max_task_output_bytes_to_read(op)
+        if policy_limit is not None:
+            if max_bytes_to_read is None:
+                max_bytes_to_read = policy_limit
+            else:
+                max_bytes_to_read = min(max_bytes_to_read, policy_limit)
+
+    return max_bytes_to_read
+
+
 def process_completed_tasks(
     topology: Topology,
     backpressure_policies: List[BackpressurePolicy],
@@ -472,23 +487,11 @@ def process_completed_tasks(
     for op, state in topology.items():
         # Check all backpressure policies for max_task_output_bytes_to_read
         # Use the minimum limit from all policies (most restrictive)
-        max_bytes_to_read = None
-        for policy in backpressure_policies:
-            policy_limit = policy.max_task_output_bytes_to_read(op)
-            if policy_limit is not None:
-                if max_bytes_to_read is None:
-                    max_bytes_to_read = policy_limit
-                else:
-                    max_bytes_to_read = min(max_bytes_to_read, policy_limit)
-
+        max_bytes_to_read = get_max_bytes_to_read(op, backpressure_policies)
         # If no policy provides a limit, there's no limit
         op.notify_in_task_output_backpressure(max_bytes_to_read == 0)
         if max_bytes_to_read is not None:
-            op.metrics.max_bytes_to_read = max_bytes_to_read
             max_bytes_to_read_per_op[state] = max_bytes_to_read
-        else:
-            # If no policy provides a limit, there's no limit
-            op.metrics.max_bytes_to_read = -1
 
     # Process completed Ray tasks and notify operators.
     num_errored_blocks = 0
