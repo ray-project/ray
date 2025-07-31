@@ -4,11 +4,15 @@ import numpy as np
 from gymnasium import spaces
 
 from ray.rllib import env
-from ray.rllib.examples.envs.classes.multi_agent.footsies import rl_typing
 from ray.rllib.examples.envs.classes.multi_agent.footsies.encoder import FootsiesEncoder
 from ray.rllib.examples.envs.classes.multi_agent.footsies.game import constants
 from ray.rllib.examples.envs.classes.multi_agent.footsies.game.footsies_game import (
     FootsiesGame,
+)
+from ray.rllib.examples.envs.classes.multi_agent.footsies.utils import (
+    AgentID,
+    ActionType,
+    ObsType,
 )
 
 
@@ -51,15 +55,15 @@ class FootsiesEnv(env.MultiAgentEnv):
     )
 
     def __init__(self, config: dict[Any, Any] = None):
-        super().__init__()
+        super(FootsiesEnv, self).__init__()
 
         if config is None:
             config = {}
         self.config = config
         self.use_build_encoding = config.get("use_build_encoding", False)
-        self.agents: list[rl_typing.AgentID] = ["p1", "p2"]
-        self.possible_agents: list[rl_typing.AgentID] = self.agents.copy()
-        self._agent_ids: set[rl_typing.AgentID] = set(self.agents)
+        self.agents: list[AgentID] = ["p1", "p2"]
+        self.possible_agents: list[AgentID] = self.agents.copy()
+        self._agent_ids: set[AgentID] = set(self.agents)
 
         self.evaluation = config.get("evaluation", False)
 
@@ -103,14 +107,12 @@ class FootsiesEnv(env.MultiAgentEnv):
         *,
         seed: int | None = None,
         options: dict | None = None,
-    ) -> tuple[
-        dict[rl_typing.AgentID, rl_typing.ObsType], dict[rl_typing.AgentID, Any]
-    ]:
+    ) -> tuple[dict[AgentID, ObsType], dict[AgentID, Any]]:
         """Resets the environment to the starting state
         and returns the initial observations for all agents.
 
         :return: Tuple of observations and infos for each agent.
-        :rtype: tuple[dict[rl_typing.AgentID, rl_typing.ObsType], dict[rl_typing.AgentID, Any]]
+        :rtype: tuple[dict[AgentID, ObsType], dict[AgentID, Any]]
         """
         self.t = 0
         self.game.reset_game()
@@ -126,20 +128,20 @@ class FootsiesEnv(env.MultiAgentEnv):
         return observations, {agent: {} for agent in self.agents}
 
     def step(
-            self, actions: dict[rl_typing.AgentID, rl_typing.ActionType]
+            self, actions: dict[AgentID, ActionType]
     ) -> tuple[
-        dict[rl_typing.AgentID, rl_typing.ObsType],
-        dict[rl_typing.AgentID, float],
-        dict[rl_typing.AgentID, bool],
-        dict[rl_typing.AgentID, bool],
-        dict[rl_typing.AgentID, dict[str, Any]],
+        dict[AgentID, ObsType],
+        dict[AgentID, float],
+        dict[AgentID, bool],
+        dict[AgentID, bool],
+        dict[AgentID, dict[str, Any]],
     ]:
         """Step the environment with the provided actions for all agents.
 
         :param actions: Dictionary mapping agent ids to their actions for this step.
-        :type actions: dict[rl_typing.AgentID, rl_typing.ActionType]
+        :type actions: dict[AgentID, ActionType]
         :return: Tuple of observations, rewards, terminates, truncateds and infos for all agents.
-        :rtype: tuple[ dict[rl_typing.AgentID, rl_typing.ObsType], dict[rl_typing.AgentID, float], dict[rl_typing.AgentID, bool], dict[rl_typing.AgentID, bool], dict[rl_typing.AgentID, dict[str, Any]], ]
+        :rtype: tuple[ dict[AgentID, ObsType], dict[AgentID, float], dict[AgentID, bool], dict[AgentID, bool], dict[AgentID, dict[str, Any]], ]
         """
         self.t += 1
 
