@@ -627,6 +627,8 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      block_outputs_taken: N,\n"
         "      num_outputs_taken: N,\n"
         "      bytes_outputs_taken: N,\n"
+        "      num_output_queue_blocks: N,\n"
+        "      num_output_queue_bytes: N,\n"
         "      num_outputs_of_finished_tasks: N,\n"
         "      bytes_outputs_of_finished_tasks: N,\n"
         "      num_tasks_submitted: N,\n"
