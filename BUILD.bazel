@@ -1050,13 +1050,13 @@ pkg_files(
     name = "raylet_so_files",
     srcs = ["python/ray/_raylet.so"],
     attributes = pkg_attributes(mode = "755"),
+    prefix = "ray/",
     renames = select({
         "@platforms//os:windows": {
-            "python/ray/_raylet.so": "python/ray/_raylet.pyd",
+            "python/ray/_raylet.so": "_raylet.pyd",
         },
         "//conditions:default": {},
     }),
-    strip_prefix = "python",
     visibility = ["//visibility:private"],
 )
 
@@ -1170,16 +1170,11 @@ genrule(
         sed -i -E 's/from opencensus.proto.metrics.v1 import/from . import/' "$${files[@]}"
         sed -i -E 's/from opencensus.proto.resource.v1 import/from . import/' "$${files[@]}"
 
-        # Set the modification time to 2025-01-01 00:00:00
-        # This makes the zip file building deterministic and reproducible.
-        touch -t 202501010000 "$${files[@]}"
-        touch -t 202501010000 "$$tmpdir"/ray/ \
-            "$$tmpdir"/ray/core "$$tmpdir"/ray/core/generated \
-            "$$tmpdir"/ray/serve "$$tmpdir"/ray/serve/generated
-
-        (cd "$$tmpdir"; zip -0 -X -r output.zip ray)
-        mv "$$tmpdir/output.zip" $@
+        $(location //bazel:pyzip) "$$tmpdir" $@
     """,
+    tools = [
+        "//bazel:pyzip",
+    ],
     visibility = ["//visibility:private"],
 )
 
