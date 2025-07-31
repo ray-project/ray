@@ -1,0 +1,196 @@
+"""Symmetric Run for Ray.
+
+This script is used to run a command on all nodes in a Ray cluster.
+
+It is designed to be run symmetrically on all nodes in the cluster.
+
+
+Example:
+
+    python -m ray.scripts.symmetric_run --address 127.0.0.1:6379 -- python my_script.py
+
+    xpanes -c 4 "python -m ray.scripts.symmetric_run --address 127.0.0.1:6379 --nnodes 4 -- python my_script.py"
+
+
+"""
+
+from typing import List
+
+import click
+import ray
+import socket
+import os
+import subprocess
+import sys
+import time
+from urllib.parse import urlparse
+
+import psutil
+
+CLUSTER_WAIT_TIMEOUT = os.environ.get("RAY_SYMMETRIC_RUN_CLUSTER_WAIT_TIMEOUT", 30)
+
+
+def check_cluster_ready(nnodes, timeout=CLUSTER_WAIT_TIMEOUT):
+    """Wait for all nodes to start.
+
+    Raises an exception if the nodes don't start in time.
+    """
+    start_time = time.time()
+    current_nodes = 1
+    ray.init(ignore_reinit_error=True)
+
+    while time.time() - start_time < timeout:
+        time.sleep(5)
+        current_nodes = len(ray.nodes())
+        if current_nodes == nnodes:
+            return True
+        else:
+            click.echo(
+                f"Waiting for nodes to start... {current_nodes}/{nnodes} nodes started"
+            )
+    return False
+
+
+def is_port_open(host: str, port: int, timeout: int = 5) -> bool:
+    """Check if a port is open on a given host."""
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(timeout)
+            result = s.connect_ex((host, port))
+            return result == 0
+    except Exception:
+        return False
+
+
+def check_head_node_ready(head_ip, head_port, timeout=CLUSTER_WAIT_TIMEOUT):
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        if is_port_open(head_ip, head_port):
+            print("Ray cluster is ready!")
+            return True
+        time.sleep(5)
+
+    print(f"Timeout: Ray cluster at {head_ip}:{head_port} not ready after {timeout}s")
+    return False
+
+
+@click.command()
+@click.option(
+    "--address", required=True, type=str, help="The address of the Ray cluster."
+)
+@click.option(
+    "--nnodes", required=True, type=int, help="The number of nodes in the cluster."
+)
+@click.argument("execute-on-head", nargs=-1, type=str)
+def symmetric_run(address: str, nnodes: int, execute_on_head: List[str]):
+    """Start a Ray cluster and run a script only on the head node.
+
+    This command should be executed symmetrically on all nodes in the cluster.
+
+    Arguments:
+        address: The address of the Ray cluster.
+        nnodes: The number of nodes in the cluster.
+        execute_on_head: The command to run on the head node.
+    """
+
+    # 1. Parse address and check if we are on the head node.
+    try:
+        parsed_address = urlparse(f"//{address}")
+        head_ip = parsed_address.hostname
+        head_port = parsed_address.port
+    except Exception:
+        raise click.ClickException(f"Invalid address format: {address}")
+
+    if not head_ip or not head_port:
+        raise click.ClickException(
+            f"Invalid address: {address}. Must be in format <host>:<port>"
+        )
+
+    try:
+        # AF_UNSPEC allows resolving both IPv4 and IPv6
+        addrinfo = socket.getaddrinfo(
+            head_ip, head_port, socket.AF_UNSPEC, socket.SOCK_STREAM
+        )
+        resolved_head_ip = addrinfo[0][4][0]
+    except socket.gaierror:
+        raise click.ClickException(f"Could not resolve hostname: {head_ip}")
+
+    my_ips = []
+    for iface, addrs in psutil.net_if_addrs().items():
+        for addr in addrs:
+            # Look for AF_INET (IPv4) or AF_INET6 (IPv6)
+            if addr.family in [
+                socket.AddressFamily.AF_INET,
+                socket.AddressFamily.AF_INET6,
+            ]:
+                my_ips.append(addr.address)
+
+    # Add localhost ips if we are running on a single node.
+    if nnodes == 1:
+        my_ips.extend(["127.0.0.1", "::1"])
+
+    is_head = resolved_head_ip in my_ips
+
+    # 2. Start Ray and run commands.
+    try:
+        if is_head:
+            # On the head node, start Ray, run the command, then stop Ray.
+            click.echo("On head node. Starting Ray cluster head...")
+            # Start Ray head. This runs in the background and hides output.
+            subprocess.run(
+                [
+                    "ray",
+                    "start",
+                    "--head",
+                    f"--node-ip-address={resolved_head_ip}",
+                    f"--port={head_port}",
+                ],
+                check=True,
+                capture_output=True,
+            )
+            click.echo("Head node started.")
+            click.echo("=======================")
+            if nnodes > 1 and not check_cluster_ready(nnodes):
+                raise click.ClickException(
+                    "Timed out waiting for other nodes to start."
+                )
+
+            # Run the user command if provided.
+            if execute_on_head:
+                click.echo(f"Running command on head node: {' '.join(execute_on_head)}")
+                click.echo("=======================")
+                result = subprocess.run(execute_on_head)
+                click.echo("=======================")
+                if result.returncode != 0:
+                    raise click.ClickException(
+                        f"Command failed with return code {result.returncode}"
+                    )
+        else:
+            # On a worker node, start Ray and connect to the head.
+            click.echo(f"On worker node. Connecting to Ray cluster at {address}...")
+
+            if not check_head_node_ready(head_ip, head_port):
+                raise click.ClickException("Timed out waiting for head node to start.")
+
+            # This command will block until the Ray cluster is stopped.
+            subprocess.run(
+                ["ray", "start", "--address", address, "--block"], check=True
+            )
+
+    except subprocess.CalledProcessError as e:
+        click.echo(f"Failed to start Ray: {e}", err=True)
+    except KeyboardInterrupt:
+        # This can be triggered by ctrl-c on the user's side.
+        click.echo("Interrupted by user.")
+    finally:
+        # Stop Ray cluster.
+        subprocess.run(["ray", "stop"], check=True)
+
+        # Propagate the exit code of the user script.
+        if "result" in locals() and result.returncode != 0:
+            click.echo(f"Command failed with return code {result.returncode}")
+            sys.exit(result.returncode)
+
+
+if __name__ == "__main__":
+    symmetric_run()
