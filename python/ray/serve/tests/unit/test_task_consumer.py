@@ -1,11 +1,66 @@
 import sys
 import uuid
-from unittest.mock import MagicMock, call
+from typing import Any, Dict
+from unittest.mock import MagicMock, call, patch
 
 import pytest
+from pydantic import BaseModel
 
-from ray.serve.schema import MockTaskProcessorConfig, TaskProcessorConfig
+from ray.serve.schema import TaskProcessorConfig, TaskResult
 from ray.serve.task_consumer import task_consumer, task_handler
+from ray.serve.task_processor import TaskProcessorAdapter
+
+
+class MockTaskProcessorConfig(BaseModel):
+    """
+    Mock task processor config. To be used for testing purposes.
+    """
+
+    pass
+
+
+class MockTaskProcessorAdapter(TaskProcessorAdapter):
+    """Mock adapter for testing task processor functionality."""
+
+    _start_consumer_received: bool = False
+    _stop_consumer_received: bool = False
+    _shutdown_received: bool = False
+
+    def __init__(self, config: TaskProcessorConfig):
+        self._config = config
+        self.register_task_handle_mock = MagicMock()
+
+    def initialize(self, config: TaskProcessorConfig):
+        pass
+
+    def register_task_handle(self, func, name=None):
+        self.register_task_handle_mock(func, name=name)
+
+    async def enqueue_task(
+        self, task_name, args=None, kwargs=None, **options
+    ) -> TaskResult:
+        pass
+
+    async def get_task_status(self, task_id) -> TaskResult:
+        pass
+
+    async def cancel_task(self, task_id) -> bool:
+        pass
+
+    async def get_metrics(self) -> Dict[str, Any]:
+        pass
+
+    def start_consumer(self, **kwargs):
+        self._start_consumer_received = True
+
+    def stop_consumer(self, timeout: float = 10.0):
+        self._stop_consumer_received = True
+
+    def shutdown(self):
+        self._shutdown_received = True
+
+    async def health_check(self):
+        pass
 
 
 @pytest.fixture
@@ -15,6 +70,19 @@ def config():
     return TaskProcessorConfig(
         queue_name=queue_name, adapter_config=MockTaskProcessorConfig()
     )
+
+
+@pytest.fixture
+def mock_adapter_factory():
+    """Mock the get_task_adapter factory to return MockTaskProcessorAdapter."""
+
+    def _mock_factory(config):
+        adapter = MockTaskProcessorAdapter(config)
+        adapter.initialize(config)
+        return adapter
+
+    with patch("ray.serve.task_consumer.get_task_adapter", side_effect=_mock_factory):
+        yield _mock_factory
 
 
 class TestTaskHandlerDecorator:
@@ -108,7 +176,7 @@ class TestTaskConsumerDecorator:
 
         self._verify_and_cleanup(instance, expected_calls)
 
-    def test_task_consumer_basic(self, config):
+    def test_task_consumer_basic(self, config, mock_adapter_factory):
         """Test basic functionality of the task_consumer decorator."""
 
         def make_consumer(cfg):
@@ -124,7 +192,7 @@ class TestTaskConsumerDecorator:
             config, make_consumer, lambda inst: [(inst.my_task, "my_task")]
         )
 
-    def test_task_consumer_multiple_handlers(self, config):
+    def test_task_consumer_multiple_handlers(self, config, mock_adapter_factory):
         """Test with multiple task handlers."""
 
         def make_consumer(cfg):
@@ -146,7 +214,7 @@ class TestTaskConsumerDecorator:
             lambda inst: [(inst.task1, "task1"), (inst.task2, "task2")],
         )
 
-    def test_task_consumer_custom_names(self, config):
+    def test_task_consumer_custom_names(self, config, mock_adapter_factory):
         """Test task handlers with and without custom names."""
 
         def make_consumer(cfg):
@@ -168,7 +236,7 @@ class TestTaskConsumerDecorator:
             lambda inst: [(inst.task1, "custom_task"), (inst.task2, "task2")],
         )
 
-    def test_task_consumer_init_args(self, config):
+    def test_task_consumer_init_args(self, config, mock_adapter_factory):
         """Test that __init__ arguments are passed correctly."""
 
         @task_consumer(task_processor_config=config)
@@ -180,7 +248,7 @@ class TestTaskConsumerDecorator:
         assert instance.value == 42
         self._verify_and_cleanup(instance)
 
-    def test_task_consumer_no_handlers(self, config):
+    def test_task_consumer_no_handlers(self, config, mock_adapter_factory):
         """Test with a class that has no task handlers."""
 
         def make_consumer(cfg):
@@ -193,7 +261,7 @@ class TestTaskConsumerDecorator:
 
         self._run_consumer_test(config, make_consumer, lambda inst: [])
 
-    def test_task_consumer_inheritance(self, config):
+    def test_task_consumer_inheritance(self, config, mock_adapter_factory):
         """Test that inherited task handlers are registered."""
 
         def make_consumer(cfg):

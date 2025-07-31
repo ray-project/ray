@@ -51,36 +51,47 @@ def temp_queue_directory():
 class TestTaskConsumerWithRayServe:
     """Test task consumer integration with Ray Serve."""
 
-    def test_task_consumer_as_serve_deployment(
-        self, temp_queue_directory, serve_instance
-    ):
-        """Test that task consumers can be used as Ray Serve deployments."""
+    DEFAULT_QUEUE_NAME = "my_default_app_queue"
+    DEFAULT_BROKER_URL = "filesystem://"
 
-        backend_url = "rpc://"
-        broker_url = "filesystem://"
-        queue_name = "my_default_app_queue"
-        data_folder_queue = temp_queue_directory["queue_path"]
-        control_path = temp_queue_directory["control_path"]
-
-        transport_options = {
+    @classmethod
+    def _create_transport_options(cls, queue_path, control_path):
+        """Create standard transport options for filesystem broker."""
+        return {
             # Incoming message queue - where new task messages are written when sent to broker
-            "data_folder_in": data_folder_queue,
+            "data_folder_in": queue_path,
             # Outgoing message storage - where task results and responses are written after completion
-            "data_folder_out": data_folder_queue,
+            "data_folder_out": queue_path,
             # Processed message archive - where messages are moved after successful processing
-            "data_folder_processed": data_folder_queue,
+            "data_folder_processed": queue_path,
             # Control message storage - where Celery management and control commands are stored
             "control_folder": control_path,
         }
 
-        processor_config = TaskProcessorConfig(
-            queue_name=queue_name,
-            adapter_config=CeleryTaskProcessorConfig(
-                broker_url=broker_url,
-                backend_url=backend_url,
+    @classmethod
+    def _create_processor_config(cls, temp_queue_directory, **kwargs):
+        """Create a TaskProcessorConfig with common defaults."""
+        queue_path = temp_queue_directory["queue_path"]
+        control_path = temp_queue_directory["control_path"]
+        results_path = temp_queue_directory["results_path"]
+
+        transport_options = cls._create_transport_options(queue_path, control_path)
+
+        config_params = {
+            "queue_name": cls.DEFAULT_QUEUE_NAME,
+            "adapter_config": CeleryTaskProcessorConfig(
+                broker_url=cls.DEFAULT_BROKER_URL,
+                backend_url=f"file://{results_path}",
                 broker_transport_options=transport_options,
             ),
-        )
+        }
+        config_params.update(kwargs)
+
+        return TaskProcessorConfig(**config_params)
+
+    @staticmethod
+    def _create_send_request_to_queue_remote(processor_config):
+        """Create a Ray remote function for sending requests to the queue."""
 
         @ray.remote
         def send_request_to_queue(data):
@@ -88,9 +99,19 @@ class TestTaskConsumerWithRayServe:
             result = asyncio.run(
                 celery_adapter.enqueue_task("process_request", args=[data])
             )
-
             assert result.id is not None
-            assert result.status in ("PENDING", "FAILED", "SUCCESS")
+            return result.id
+
+        return send_request_to_queue
+
+    def test_task_consumer_as_serve_deployment(
+        self, temp_queue_directory, serve_instance
+    ):
+        """Test that task consumers can be used as Ray Serve deployments."""
+        processor_config = self._create_processor_config(temp_queue_directory)
+        send_request_to_queue = self._create_send_request_to_queue_remote(
+            processor_config
+        )
 
         @serve.deployment
         @task_consumer(task_processor_config=processor_config)
@@ -135,46 +156,13 @@ class TestTaskConsumerWithRayServe:
         self, temp_queue_directory, serve_instance
     ):
         """Test that task consumers can be used as Ray Serve deployments."""
-
-        broker_url = "filesystem://"
-        queue_name = "my_default_app_queue"
-        data_folder_queue = temp_queue_directory["queue_path"]
-        control_path = temp_queue_directory["control_path"]
-
-        results_path = temp_queue_directory["results_path"]
-        backend_url = f"file://{results_path}"
-
-        transport_options = {
-            # Incoming message queue - where new task messages are written when sent to broker
-            "data_folder_in": data_folder_queue,
-            # Outgoing message storage - where task results and responses are written after completion
-            "data_folder_out": data_folder_queue,
-            # Processed message archive - where messages are moved after successful processing
-            "data_folder_processed": data_folder_queue,
-            # Control message storage - where Celery management and control commands are stored
-            "control_folder": control_path,
-        }
-
-        processor_config = TaskProcessorConfig(
-            queue_name=queue_name,
-            adapter_config=CeleryTaskProcessorConfig(
-                broker_url=broker_url,
-                backend_url=backend_url,
-                broker_transport_options=transport_options,
-            ),
-            max_retry=3,
-            failed_task_queue_name="my_failed_task_queue",
+        processor_config = self._create_processor_config(
+            temp_queue_directory, failed_task_queue_name="my_failed_task_queue"
         )
 
-        @ray.remote
-        def send_request_to_queue(data):
-            celery_adapter = get_task_adapter(config=processor_config)
-            result = asyncio.run(
-                celery_adapter.enqueue_task("process_request", args=[data])
-            )
-
-            assert result.id is not None
-            return result.id
+        send_request_to_queue = self._create_send_request_to_queue_remote(
+            processor_config
+        )
 
         @ray.remote
         def get_task_status(task_id):
@@ -212,32 +200,7 @@ class TestTaskConsumerWithRayServe:
         self, temp_queue_directory, serve_instance
     ):
         """Test that task consumers properly raise NotImplementedError for async task handlers."""
-
-        backend_url = "rpc://"
-        broker_url = "filesystem://"
-        queue_name = "my_default_app_queue"
-        data_folder_queue = temp_queue_directory["queue_path"]
-        control_path = temp_queue_directory["control_path"]
-
-        transport_options = {
-            # Incoming message queue - where new task messages are written when sent to broker
-            "data_folder_in": data_folder_queue,
-            # Outgoing message storage - where task results and responses are written after completion
-            "data_folder_out": data_folder_queue,
-            # Processed message archive - where messages are moved after successful processing
-            "data_folder_processed": data_folder_queue,
-            # Control message storage - where Celery management and control commands are stored
-            "control_folder": control_path,
-        }
-
-        processor_config = TaskProcessorConfig(
-            queue_name=queue_name,
-            adapter_config=CeleryTaskProcessorConfig(
-                broker_url=broker_url,
-                backend_url=backend_url,
-                broker_transport_options=transport_options,
-            ),
-        )
+        processor_config = self._create_processor_config(temp_queue_directory)
 
         # Test that async task handlers raise NotImplementedError during decoration
         with pytest.raises(

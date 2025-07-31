@@ -1224,15 +1224,6 @@ class CeleryTaskProcessorConfig(BaseModel):
 
 
 @PublicAPI(stability="alpha")
-class MockTaskProcessorConfig(BaseModel):
-    """
-    Mock task processor config. To be used for testing purposes.
-    """
-
-    pass
-
-
-@PublicAPI(stability="alpha")
 class TaskProcessorConfig(BaseModel):
     """
     Task processor config. You can use it to configure the task processor for your Serve application.
@@ -1241,7 +1232,7 @@ class TaskProcessorConfig(BaseModel):
     queue_name: str = Field(
         ..., description="The name of the queue to use for task processing."
     )
-    adapter_config: Union[CeleryTaskProcessorConfig, MockTaskProcessorConfig] = Field(
+    adapter_config: Union[CeleryTaskProcessorConfig] = Field(
         ..., description="The adapter config. Currently only Celery is supported."
     )
     max_retry: Optional[int] = Field(
