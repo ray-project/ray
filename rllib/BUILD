@@ -2472,16 +2472,6 @@ py_test(
 # )
 
 py_test(
-    name = "test_tf_rl_module",
-    size = "medium",
-    srcs = ["core/rl_module/tf/tests/test_tf_rl_module.py"],
-    tags = [
-        "core",
-        "team:rllib",
-    ],
-)
-
-py_test(
     name = "test_multi_rl_module",
     size = "medium",
     srcs = ["core/rl_module/tests/test_multi_rl_module.py"],
