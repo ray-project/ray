@@ -20,6 +20,7 @@
 #include <utility>
 #include <vector>
 
+#include "fakes/ray/rpc/raylet/raylet_client.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "mock/ray/core_worker/task_manager_interface.h"
@@ -65,7 +66,7 @@ class MockTaskManager : public MockTaskManagerInterface {
   int num_tasks_resubmitted = 0;
 };
 
-class MockRayletClient : public PinObjectsInterface {
+class MockRayletClient : public FakeRayletClient {
  public:
   void PinObjectIDs(
       const rpc::Address &caller_address,
@@ -128,21 +129,22 @@ class ObjectRecoveryManagerTestBase : public ::testing::Test {
         object_directory_(std::make_shared<MockObjectDirectory>()),
         memory_store_(
             std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService())),
+        raylet_client_pool_(std::make_shared<rpc::RayletClientPool>(
+            [&](const rpc::Address &) { return raylet_client_; })),
         raylet_client_(std::make_shared<MockRayletClient>()),
         task_manager_(std::make_shared<MockTaskManager>()),
         ref_counter_(std::make_shared<ReferenceCounter>(
             rpc::Address(),
             publisher_.get(),
             subscriber_.get(),
-            [](const NodeID &node_id) { return true; },
+            /*is_node_dead=*/[](const NodeID &) { return false; },
             /*lineage_pinning_enabled=*/lineage_enabled)),
         manager_(
             rpc::Address(),
-            [&](const std::string &ip, int port) { return raylet_client_; },
+            raylet_client_pool_,
             raylet_client_,
             [&](const ObjectID &object_id, const ObjectLookupCallback &callback) {
               object_directory_->AsyncGetLocations(object_id, callback);
-              return Status::OK();
             },
             *task_manager_,
             *ref_counter_,
@@ -180,6 +182,7 @@ class ObjectRecoveryManagerTestBase : public ::testing::Test {
   std::shared_ptr<pubsub::MockSubscriber> subscriber_;
   std::shared_ptr<MockObjectDirectory> object_directory_;
   std::shared_ptr<CoreWorkerMemoryStore> memory_store_;
+  std::shared_ptr<rpc::RayletClientPool> raylet_client_pool_;
   std::shared_ptr<MockRayletClient> raylet_client_;
   std::shared_ptr<MockTaskManager> task_manager_;
   std::shared_ptr<ReferenceCounter> ref_counter_;

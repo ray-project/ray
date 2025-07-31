@@ -20,7 +20,7 @@ This examples:
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack --temperature=0.8`
+`python [script file name].py --temperature=0.8`
 
 Use the `--temperature` setting to change the temperature. Higher values (>>1.0) lead
 to almost random behavior, lower values (<<1.0) lead to always-greedy behavior. Note
@@ -83,7 +83,6 @@ parser.add_argument(
     "Set this to <<1.0 to approximate greedy behavior and to >>1.0 to approximate "
     "random behavior.",
 )
-parser.set_defaults(enable_new_api_stack=True)
 
 
 if __name__ == "__main__":
