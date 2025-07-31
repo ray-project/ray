@@ -1242,18 +1242,14 @@ def start_api_server(
                 else:
                     raise e
         # Make sure the process can start.
-        dashboard_dependency_error = ray._private.utils.get_dashboard_dependency_error()
+        minimal: bool = not ray._private.utils.check_dashboard_dependencies_installed()
 
         # Explicitly check here that when the user explicitly specifies
         # dashboard inclusion, the install is not minimal.
-        if include_dashboard and dashboard_dependency_error:
+        if include_dashboard and minimal:
             logger.error(
-                f"Ray dashboard dependencies failed to install properly: {dashboard_dependency_error}.\n"
-                "Potential causes include:\n"
-                "1. --include-dashboard is not supported when minimal ray is used. "
-                "Download ray[default] to use the dashboard.\n"
-                "2. Dashboard dependencies are conflicting with your python environment. "
-                "Investigate your python environment and try reinstalling ray[default].\n"
+                "--include-dashboard is not supported when minimal ray is used. "
+                "Download ray[default] to use the dashboard."
             )
             raise Exception("Cannot include dashboard with missing packages.")
 
@@ -1297,7 +1293,7 @@ def start_api_server(
                 component=ray_constants.PROCESS_TYPE_DASHBOARD
             )
             command.append(f"--logging-format={logging_format}")
-        if dashboard_dependency_error is not None:
+        if minimal:
             command.append("--minimal")
 
         if not include_dash:
@@ -1411,7 +1407,7 @@ def start_api_server(
                 # Is it reachable?
                 raise Exception("Failed to start a dashboard.")
 
-        if dashboard_dependency_error is not None or not include_dash:
+        if minimal or not include_dash:
             # If it is the minimal installation, the web url (dashboard url)
             # shouldn't be configured because it doesn't start a server.
             dashboard_url = ""
@@ -1824,7 +1820,7 @@ def start_raylet(
         )
         dashboard_agent_command.append(f"--logging-format={logging_format}")
 
-    if ray._private.utils.get_dashboard_dependency_error() is not None:
+    if not ray._private.utils.check_dashboard_dependencies_installed():
         # If dependencies are not installed, it is the minimally packaged
         # ray. We should restrict the features within dashboard agent
         # that requires additional dependencies to be downloaded.
