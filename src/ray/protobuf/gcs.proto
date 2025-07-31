@@ -372,6 +372,9 @@ message GcsNodeInfo {
 
   // The death info of this node.
   NodeDeathInfo death_info = 29;
+
+  // The available resources of this node.
+  map<string, double> resources_available = 30;
 }
 
 // Please keep this in sync with the definition of JobInfo in

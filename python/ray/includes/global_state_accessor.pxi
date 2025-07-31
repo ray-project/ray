@@ -2,6 +2,7 @@ from ray.includes.common cimport (
     CGcsClientOptions,
     CGcsNodeState,
     PythonGetResourcesTotal,
+    PythonGetResourcesAvailable,
     PythonGetNodeLabels
 )
 
@@ -98,6 +99,12 @@ cdef class GlobalStateAccessor:
             c_resources = PythonGetResourcesTotal(c_node_info)
             node_info["Resources"] = (
                 {key.decode(): value for key, value in c_resources}
+                if node_info["Alive"]
+                else {}
+            )
+            c_available_resources = PythonGetResourcesAvailable(c_node_info)
+            node_info["AvailableResources"] = (
+                {key.decode(): value for key, value in c_available_resources}
                 if node_info["Alive"]
                 else {}
             )

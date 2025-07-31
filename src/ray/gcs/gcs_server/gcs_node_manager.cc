@@ -513,6 +513,9 @@ void GcsNodeManager::UpdateAliveNode(
     return;
   }
 
+  *maybe_node_info.value()->mutable_resources_available() =
+      resource_view_sync_message.resources_available();
+
   auto snapshot = maybe_node_info.value()->mutable_state_snapshot();
 
   if (resource_view_sync_message.idle_duration_ms() > 0) {
