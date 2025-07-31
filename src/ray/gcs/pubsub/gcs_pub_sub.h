@@ -40,6 +40,14 @@ namespace gcs {
 /// Supports publishing per-entity data and errors from GCS. Thread safe.
 class GcsPublisher {
  public:
+  /// Initializes GcsPublisher with GCS based publishers.
+  /// Publish*() member functions below would be incrementally converted to use the GCS
+  /// based publisher, if available.
+  explicit GcsPublisher(std::unique_ptr<pubsub::Publisher> publisher)
+      : publisher_(std::move(publisher)) {
+    RAY_CHECK(publisher_);
+  }
+
   explicit GcsPublisher(std::shared_ptr<PeriodicalRunner> periodical_runner);
 
   virtual ~GcsPublisher() = default;

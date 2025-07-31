@@ -304,11 +304,6 @@ class Publisher : public PublisherInterface {
   /// \param channels Channels where publishing and subscribing are accepted.
   /// \param periodical_runner Periodic runner. Used to periodically run
   /// CheckDeadSubscribers.
-  /// \param get_time_ms A callback to get the current time in
-  /// milliseconds.
-  /// \param subscriber_timeout_ms The subscriber timeout in milliseconds.
-  /// Check out CheckDeadSubscribers for more details.
-  /// \param publish_batch_size The batch size of published messages.
   Publisher(const std::vector<rpc::ChannelType> &channels,
             PeriodicalRunner &periodical_runner,
             PublisherID publisher_id = NodeID::FromRandom())
@@ -422,9 +417,6 @@ class Publisher : public PublisherInterface {
   FRIEND_TEST(PublisherTest, TestUnregisterSubscriber);
   FRIEND_TEST(PublisherTest, TestRegistrationIdempotency);
   friend class MockPublisher;
-
-  /// Testing only.
-  Publisher() : publish_batch_size_(-1) {}
 
   /// Testing only. Return true if there's no metadata remained in the private attribute.
   bool CheckNoLeaks() const;

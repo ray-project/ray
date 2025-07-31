@@ -162,16 +162,22 @@ class IntegrationTest : public ::testing::Test {
     if (server_ != nullptr) {
       server_->Shutdown();
     }
-
+    RayConfig::instance().initialize(
+        R"(
+{
+  "publish_batch_size": 100,
+  "subscriber_timeout_ms": 30000
+}
+  )");
     auto publisher = std::make_unique<Publisher>(
         /*channels=*/
         std::vector<rpc::ChannelType>{
             rpc::ChannelType::GCS_ACTOR_CHANNEL,
         },
         /*periodical_runner=*/*periodical_runner_,
-        /*get_time_ms=*/[]() -> double { return absl::ToUnixMicros(absl::Now()); },
-        /*subscriber_timeout_ms=*/absl::ToInt64Microseconds(absl::Seconds(30)),
-        /*batch_size=*/100);
+        NodeID::FromRandom());
+    publisher->SetTimeFunction(
+        []() -> double { return absl::ToUnixMicros(absl::Now()); });
     subscriber_service_ = std::make_unique<SubscriberServiceImpl>(std::move(publisher));
 
     grpc::EnableDefaultHealthCheckService(true);

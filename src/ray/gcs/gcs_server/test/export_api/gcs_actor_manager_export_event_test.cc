@@ -128,7 +128,9 @@ class GcsActorManagerTest : public ::testing::Test {
         R"(
 {
   "maximum_gcs_destroyed_actor_cached_count": 10,
-  "enable_export_api_write": true
+  "enable_export_api_write": true,
+  "publish_batch_size": 100,
+  "subscriber_timeout_ms": 30000
 }
   )");
     std::promise<bool> promise;
@@ -148,10 +150,9 @@ class GcsActorManagerTest : public ::testing::Test {
             rpc::ChannelType::GCS_ACTOR_CHANNEL,
         },
         /*periodical_runner=*/*periodical_runner_,
-        /*get_time_ms=*/[]() -> double { return absl::ToUnixMicros(absl::Now()); },
-        /*subscriber_timeout_ms=*/absl::ToInt64Microseconds(absl::Seconds(30)),
-        /*batch_size=*/100);
-
+        NodeID::FromRandom());
+    publisher->SetTimeFunction(
+        []() -> double { return absl::ToUnixMicros(absl::Now()); });
     gcs_publisher_ = std::make_unique<gcs::GcsPublisher>(std::move(publisher));
     gcs_table_storage_ = std::make_unique<gcs::InMemoryGcsTableStorage>();
     kv_ = std::make_unique<gcs::MockInternalKVInterface>();
