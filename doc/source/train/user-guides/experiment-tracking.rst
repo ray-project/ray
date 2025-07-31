@@ -304,14 +304,14 @@ PyTorch
 .. dropdown:: Log to W&B
 
     .. literalinclude:: ../../../../python/ray/train/examples/experiment_tracking//torch_exp_tracking_wandb.py
-            :emphasize-lines: 15, 16, 17, 21, 22, 51, 52, 54, 55
+            :emphasize-lines: 16, 19-21, 59-60, 62-63
             :language: python
             :start-after: __start__
 
 .. dropdown:: Log to file-based MLflow
 
     .. literalinclude:: ../../../../python/ray/train/examples/experiment_tracking/torch_exp_tracking_mlflow.py
-        :emphasize-lines: 22, 23, 24, 25, 54, 55, 57, 58, 64
+        :emphasize-lines: 22-25, 58-59, 61-62, 68
         :language: python
         :start-after: __start__
         :end-before: __end__
