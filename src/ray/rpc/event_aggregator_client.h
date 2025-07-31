@@ -18,59 +18,50 @@
 
 #include <memory>
 #include <string>
+#include <utility>
 
+#include "ray/common/status.h"
 #include "ray/rpc/grpc_client.h"
 #include "ray/util/logging.h"
-#include "src/ray/protobuf/event_aggregator_service.grpc.pb.h"
-#include "src/ray/protobuf/event_aggregator_service.pb.h"
+#include "src/ray/protobuf/events_event_aggregator_service.grpc.pb.h"
+#include "src/ray/protobuf/events_event_aggregator_service.pb.h"
 
 namespace ray {
 namespace rpc {
+using ray::rpc::events::AddEventsReply;
+using ray::rpc::events::AddEventsRequest;
 
-/// Client used for communicating with an event aggregator server in the dashboard
+/// Client used for sending ray events to the event aggregator server in the dashboard
 /// agent.
 class EventAggregatorClient {
  public:
   virtual ~EventAggregatorClient() = default;
 
-  /// Report event to event aggregator.
-  ///
-  /// \param[in] request The request message.
-  /// \param[in] callback The callback function that handles reply.
-  virtual void AddEvents(const rpc::AddEventRequest &request,
-                         const ClientCallback<rpc::AddEventReply> &callback) = 0;
+  virtual void AddEvents(const rpc::events::AddEventsRequest &request,
+                         const ClientCallback<rpc::events::AddEventsReply> &callback) = 0;
 };
 
 class EventAggregatorClientImpl : public EventAggregatorClient {
  public:
   /// Constructor.
   ///
-  /// \param[in] address Address of the event aggregator server.
   /// \param[in] port Port of the event aggregator server.
   /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
-  EventAggregatorClientImpl(const std::string &address,
-                            const int port,
-                            ClientCallManager &client_call_manager) {
-    RAY_LOG(INFO) << "Initiating the event aggregator client with address: " << address
-                  << " port: " << port;
-    grpc_client_ = std::make_unique<GrpcClient<EventAggregatorService>>(
-        address, port, client_call_manager);
+  EventAggregatorClientImpl(const int port, ClientCallManager &client_call_manager) {
+    RAY_LOG(INFO) << "Initiating the local event aggregator client with port: " << port;
+    grpc_client_ = std::make_unique<GrpcClient<rpc::events::EventAggregatorService>>(
+        "127.0.0.1", port, client_call_manager);
   };
 
-  void AddEvents(const rpc::AddEventRequest &request,
-                 const ClientCallback<rpc::AddEventReply> &callback) override {
-    grpc_client_->CallMethod<rpc::AddEventRequest, rpc::AddEventReply>(
-        &EventAggregatorService::Stub::PrepareAsyncReceiveEvents,
-        request,
-        callback,
-        "EventAggregatorService.grpc_client.AddEvents",
-        // TODO(myan): Add timeout and retry logic.
-        /*timeout_ms*/ -1);
-  }
+  VOID_RPC_CLIENT_METHOD(rpc::events::EventAggregatorService,
+                         AddEvents,
+                         grpc_client_,
+                         /*method_timeout_ms*/ -1,
+                         override)
 
  private:
   // The RPC client.
-  std::unique_ptr<GrpcClient<EventAggregatorService>> grpc_client_;
+  std::unique_ptr<GrpcClient<rpc::events::EventAggregatorService>> grpc_client_;
 };
 
 }  // namespace rpc

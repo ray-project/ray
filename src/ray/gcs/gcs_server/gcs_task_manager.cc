@@ -653,9 +653,9 @@ void GcsTaskManager::HandleAddTaskEventData(rpc::AddTaskEventDataRequest request
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
 }
 
-void GcsTaskManager::HandleAddEvent(rpc::events::AddEventRequest request,
-                                    rpc::events::AddEventReply *reply,
-                                    rpc::SendReplyCallback send_reply_callback) {
+void GcsTaskManager::HandleAddEvents(rpc::events::AddEventsRequest request,
+                                     rpc::events::AddEventsReply *reply,
+                                     rpc::SendReplyCallback send_reply_callback) {
   // TODO(can-anyscale): Implement this.
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
 }

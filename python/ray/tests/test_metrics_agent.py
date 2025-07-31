@@ -22,7 +22,7 @@ from ray.dashboard.modules.aggregator.tests.test_aggregator_agent import (
 from ray.core.generated.common_pb2 import TaskAttempt
 from ray.core.generated.events_base_event_pb2 import RayEvent
 from ray.core.generated.events_event_aggregator_service_pb2 import (
-    AddEventRequest,
+    AddEventsRequest,
     RayEventsData,
     TaskEventsMetadata,
 )
@@ -528,7 +528,7 @@ def test_metrics_export_event_aggregator_agent(
     now = time.time_ns()
     seconds, nanos = divmod(now, 10**9)
     timestamp = Timestamp(seconds=seconds, nanos=nanos)
-    request = AddEventRequest(
+    request = AddEventsRequest(
         events_data=RayEventsData(
             events=[
                 RayEvent(
