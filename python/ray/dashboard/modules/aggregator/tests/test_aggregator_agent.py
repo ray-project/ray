@@ -22,7 +22,7 @@ from ray.core.generated.events_event_aggregator_service_pb2_grpc import (
     EventAggregatorServiceStub,
 )
 from ray.core.generated.events_event_aggregator_service_pb2 import (
-    AddEventRequest,
+    AddEventsRequest,
     RayEventsData,
     TaskEventsMetadata,
 )
@@ -92,7 +92,7 @@ def test_aggregator_agent_receive_publish_events_normally(
     seconds, nanos = divmod(test_time, 10**9)
     timestamp = Timestamp(seconds=seconds, nanos=nanos)
 
-    request = AddEventRequest(
+    request = AddEventsRequest(
         events_data=RayEventsData(
             events=[
                 RayEvent(
@@ -154,7 +154,7 @@ def test_aggregator_agent_receive_event_full(
     seconds, nanos = divmod(now, 10**9)
     timestamp = Timestamp(seconds=seconds, nanos=nanos)
 
-    request = AddEventRequest(
+    request = AddEventsRequest(
         events_data=RayEventsData(
             events=[
                 RayEvent(
@@ -196,7 +196,7 @@ def test_aggregator_agent_receive_dropped_at_core_worker(
     seconds, nanos = divmod(now, 10**9)
     timestamp = Timestamp(seconds=seconds, nanos=nanos)
 
-    request = AddEventRequest(
+    request = AddEventsRequest(
         events_data=RayEventsData(
             events=[
                 RayEvent(
@@ -247,7 +247,7 @@ def test_aggregator_agent_receive_multiple_events(
     now = time.time_ns()
     seconds, nanos = divmod(now, 10**9)
     timestamp = Timestamp(seconds=seconds, nanos=nanos)
-    request = AddEventRequest(
+    request = AddEventsRequest(
         events_data=RayEventsData(
             events=[
                 RayEvent(
@@ -306,7 +306,7 @@ def test_aggregator_agent_receive_multiple_events_failures(
     now = time.time_ns()
     seconds, nanos = divmod(now, 10**9)
     timestamp = Timestamp(seconds=seconds, nanos=nanos)
-    request = AddEventRequest(
+    request = AddEventsRequest(
         events_data=RayEventsData(
             events=[
                 RayEvent(
@@ -353,7 +353,7 @@ def test_aggregator_agent_receive_empty_events(
         cluster.webui_url, cluster.gcs_address, cluster.head_node.node_id
     )
     httpserver.expect_request("/", method="POST").respond_with_data("", status=200)
-    request = AddEventRequest(
+    request = AddEventsRequest(
         events_data=RayEventsData(
             events=[],
             task_events_metadata=TaskEventsMetadata(

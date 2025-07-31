@@ -213,10 +213,10 @@ class AggregatorAgent(
                 status_message += (
                     f", and {len(error_messages) - truncate_num} more events dropped"
                 )
-        status = events_event_aggregator_service_pb2.AddEventStatus(
+        status = events_event_aggregator_service_pb2.AddEventsStatus(
             code=status_code, message=status_message
         )
-        return events_event_aggregator_service_pb2.AddEventReply(status=status)
+        return events_event_aggregator_service_pb2.AddEventsReply(status=status)
 
     def _send_events_to_external_service(self, event_batch):
         """
