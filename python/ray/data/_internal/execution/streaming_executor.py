@@ -1,8 +1,7 @@
 import logging
-import math
 import threading
 import time
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Iterable, List, Optional, Tuple
 
 from ray.data._internal.execution.autoscaler import create_autoscaler
 from ray.data._internal.execution.backpressure_policy import (
@@ -16,6 +15,9 @@ from ray.data._internal.execution.interfaces import (
     OutputIterator,
     PhysicalOperator,
     RefBundle,
+)
+from ray.data._internal.execution.interfaces.op_runtime_metrics import (
+    OpRuntimeMetrics,
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.resource_manager import ResourceManager
@@ -397,7 +399,8 @@ class StreamingExecutor(Executor, threading.Thread):
         update_operator_states(topology)
         self._refresh_progress_bars(topology)
 
-        self._update_stats_metrics(state=DatasetState.RUNNING.name)
+        metrics_iter = self._resource_manager.update_budget_metrics(topology.keys())
+        self._update_stats_metrics(metrics_iter, state=DatasetState.RUNNING.name)
         if time.time() - self._last_debug_log_time >= DEBUG_LOG_INTERVAL_SECONDS:
             _log_op_metrics(topology)
             _debug_dump_topology(topology, self._resource_manager)
@@ -495,28 +498,15 @@ class StreamingExecutor(Executor, threading.Thread):
             },
         }
 
-    def _update_stats_metrics(self, state: str, force_update: bool = False):
-        # include budgets
-        metrics = []
-        for op in self._topology:
-            budget = self._resource_manager.get_budget(op)
-            if budget is not None:
-                # Convert inf to -1 to represent unlimited budget in metrics
-                op.metrics.cpu_budget = -1 if math.isinf(budget.cpu) else budget.cpu
-                op.metrics.gpu_budget = -1 if math.isinf(budget.gpu) else budget.gpu
-                op.metrics.memory_budget = (
-                    -1 if math.isinf(budget.memory) else budget.memory
-                )
-                op.metrics.object_store_memory_budget = (
-                    -1
-                    if math.isinf(budget.object_store_memory)
-                    else budget.object_store_memory
-                )
-                metrics.append(op.metrics)
-
+    def _update_stats_metrics(
+        self,
+        metrics: Iterable["OpRuntimeMetrics"],
+        state: str,
+        force_update: bool = False,
+    ):
         StatsManager.update_execution_metrics(
             self._dataset_id,
-            metrics,
+            list(metrics),
             self._get_operator_tags(),
             self._get_state_dict(state=state),
             force_update=force_update,

@@ -676,12 +676,12 @@ DATA_GRAFANA_PANELS = [
     Panel(
         id=49,
         title="Budget (CPU)",
-        description=("CPU budget for the operator."),
+        description=("Budget (CPU) for the operator."),
         unit="cpu",
         targets=[
             Target(
                 expr="sum(ray_data_cpu_budget{{{global_filters}}}) by (dataset, operator)",
-                legend="CPU Budget: {{dataset}}, {{operator}}",
+                legend="Budget (CPU): {{dataset}}, {{operator}}",
             )
         ],
         fill=0,
@@ -690,12 +690,12 @@ DATA_GRAFANA_PANELS = [
     Panel(
         id=50,
         title="Budget (GPU)",
-        description=("GPU budget for the operator."),
+        description=("Budget (GPU) for the operator."),
         unit="gpu",
         targets=[
             Target(
                 expr="sum(ray_data_gpu_budget{{{global_filters}}}) by (dataset, operator)",
-                legend="GPU Budget: {{dataset}}, {{operator}}",
+                legend="Budget (GPU): {{dataset}}, {{operator}}",
             )
         ],
         fill=0,
@@ -704,12 +704,12 @@ DATA_GRAFANA_PANELS = [
     Panel(
         id=51,
         title="Budget (Memory)",
-        description=("Memory budget for the operator."),
+        description=("Budget (Memory) for the operator."),
         unit="bytes",
         targets=[
             Target(
                 expr="sum(ray_data_memory_budget{{{global_filters}}}) by (dataset, operator)",
-                legend="Memory Budget: {{dataset}}, {{operator}}",
+                legend="Budget (Memory): {{dataset}}, {{operator}}",
             )
         ],
         fill=0,
@@ -718,12 +718,12 @@ DATA_GRAFANA_PANELS = [
     Panel(
         id=52,
         title="Budget (Object Store Memory)",
-        description=("Object store memory budget for the operator."),
+        description=("Budget (Object Store Memory) for the operator."),
         unit="bytes",
         targets=[
             Target(
                 expr="sum(ray_data_object_store_memory_budget{{{global_filters}}}) by (dataset, operator)",
-                legend="Object Store Memory Budget: {{dataset}}, {{operator}}",
+                legend="Budget (Object Store Memory): {{dataset}}, {{operator}}",
             )
         ],
         fill=0,

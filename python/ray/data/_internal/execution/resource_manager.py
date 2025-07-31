@@ -11,6 +11,9 @@ from ray.data._internal.execution.interfaces.execution_options import (
     ExecutionOptions,
     ExecutionResources,
 )
+from ray.data._internal.execution.interfaces.op_runtime_metrics import (
+    OpRuntimeMetrics,
+)
 from ray.data._internal.execution.interfaces.physical_operator import (
     PhysicalOperator,
     ReportsExtraResourceUsage,
@@ -323,6 +326,25 @@ class ResourceManager:
         if self._op_resource_allocator is None:
             return None
         return self._op_resource_allocator.get_budget(op)
+
+    def update_budget_metrics(
+        self, ops: Iterable[PhysicalOperator]
+    ) -> Iterable[OpRuntimeMetrics]:
+        for op in ops:
+            budget = self.get_budget(op)
+            if budget is not None:
+                # Convert inf to -1 to represent unlimited budget in metrics
+                op.metrics.cpu_budget = -1 if math.isinf(budget.cpu) else budget.cpu
+                op.metrics.gpu_budget = -1 if math.isinf(budget.gpu) else budget.gpu
+                op.metrics.memory_budget = (
+                    -1 if math.isinf(budget.memory) else budget.memory
+                )
+                op.metrics.object_store_memory_budget = (
+                    -1
+                    if math.isinf(budget.object_store_memory)
+                    else budget.object_store_memory
+                )
+                yield op.metrics
 
 
 class OpResourceAllocator(ABC):
