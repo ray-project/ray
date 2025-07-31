@@ -366,6 +366,7 @@ class LLMConfig(BaseModelExtended):
             )
 
             self._engine_config = VLLMEngineConfig.from_llm_config(self)
+
         elif self.llm_engine == LLMEngine.SGLang:
             from ray.llm._internal.serve.deployments.llm.sglang.sglang_models import (
                 SGLangEngineConfig,
