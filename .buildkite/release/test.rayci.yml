@@ -6,4 +6,10 @@ steps:
     depends_on: anyscalebuild
     commands:
       - echo "Tune scalability test"
+  
+  - label: "tapioca: Tune scalability test 2"
+    key: tune-scalability-test-2
+    instance_type: release
+    depends_on: anyscalebuild
+    commands:
       - echo "Tune scalability test x2"
