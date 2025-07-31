@@ -1,6 +1,6 @@
 import logging
 
-# from ray._common.usage import usage_lib
+from ray._common.usage import usage_lib
 
 # Note: do not introduce unnecessary library dependencies here, e.g. gym.
 # This file is imported from the tune module in order to register RLlib agents.
@@ -40,7 +40,7 @@ def _register_all():
 
 _setup_logger()
 
-# usage_lib.record_library_usage("rllib")
+usage_lib.record_library_usage("rllib")
 
 __all__ = [
     "Policy",
