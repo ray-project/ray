@@ -1,18 +1,13 @@
-import sys
 from typing import Any, Callable, Generic, Protocol, TypeVar
 from uuid import UUID
 from ray.includes.unique_ids import FunctionID
 
+from typing_extensions import ParamSpec
 
-if sys.version_info >= (3,10):
-    from typing import ParamSpec
-    _FDArgs = ParamSpec("_FDArgs")
-    class _Initializable(Protocol,Generic[_FDArgs]):
-        def __init__(self,*args:_FDArgs.args,**kwargs:_FDArgs.kwargs): ...
+_FDArgs = ParamSpec("_FDArgs")
+class _Initializable(Protocol,Generic[_FDArgs]):
+    def __init__(self,*args:_FDArgs.args,**kwargs:_FDArgs.kwargs): ...
 
-else:
-    _FDArgs = TypeVar("_FDArgs",covariant=True)
-    class _Initializable(Protocol,Generic[_FDArgs]): ...
 _FDReturn = TypeVar("_FDReturn")
 class FunctionDescriptor(Generic[_FDArgs,_FDReturn]): #TODO: FUNCTION DESCRIPTOR FOR GENERATOR/STREAMING TYPES?
     def __cinit__(self, *args, **kwargs)->None: ...

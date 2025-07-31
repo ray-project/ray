@@ -1,6 +1,5 @@
 import asyncio
 import contextvars
-import sys
 import threading
 from typing import (
     Any,
@@ -129,6 +128,11 @@ from ray._private.custom_types import TensorTransportEnum
 from ray.includes.buffer import Buffer
 
 from ray.experimental.channel.shared_memory_channel import ReaderRefInfo #circular reference - .pyi only
+
+#for FunctionDescriptor matching
+from typing_extensions import ParamSpec
+_FDArgs = ParamSpec("_FDArgs")
+_FDReturn = TypeVar("_FDReturn")
 
 __all__ = [
     #ray.includes.libcoreworker
@@ -497,13 +501,7 @@ class GcsLogPollDict(TypedDict):
     task_name:str
 
 
-#for FunctionDescriptor matching
-if sys.version_info >= (3,10):
-    from typing import ParamSpec
-    _FDArgs = ParamSpec("_FDArgs")
-else:
-    _FDArgs = TypeVar("_FDArgs")
-_FDReturn = TypeVar("_FDReturn")
+
 
 # An empty profile event context to be used when the timeline is disabled.
 class EmptyProfileEvent:
