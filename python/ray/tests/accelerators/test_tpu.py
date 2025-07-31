@@ -99,7 +99,7 @@ def test_get_current_node_tpu_worker_id(mock_os, mock_request, test_case):
         mock_os.return_value = None
     else:
         mock_os.return_value = worker_id
-    assert TPUAcceleratorManager._get_current_node_tpu_worker_id() == expected_value
+    assert TPUAcceleratorManager.get_current_node_tpu_worker_id() == expected_value
 
 
 @pytest.mark.parametrize(
@@ -246,12 +246,12 @@ def test_tpu_pod_detect_and_configure_worker(test_config):
     ):
         with patch(
             "ray._private.accelerators.tpu.TPUAcceleratorManager."
-            "_get_current_node_tpu_pod_type",
+            "get_current_node_tpu_pod_type",
             return_value="v4-16",
         ):
             with patch(
                 "ray._private.accelerators.tpu.TPUAcceleratorManager"
-                "._get_current_node_tpu_worker_id",
+                ".get_current_node_tpu_worker_id",
                 return_value=worker_id,
             ):
                 final_resources = (
@@ -307,7 +307,7 @@ def test_worker_count(mock_glob, test_case):
 
     with patch(
         "ray._private.accelerators.tpu.TPUAcceleratorManager."
-        "_get_current_node_tpu_pod_type",
+        "get_current_node_tpu_pod_type",
         return_value=accelerator_type,
     ):
         worker_count = ray.util.accelerators.tpu.get_current_pod_worker_count()
