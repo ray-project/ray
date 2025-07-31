@@ -153,6 +153,12 @@ class StatusOr {
 
   std::string StatusString() const { return status_.StatusString(); }
 
+  std::string ToString() const { return status_.ToString(); }
+
+  bool IsNotFound() const { return code() == StatusCode::NotFound; }
+  bool IsInvalidArgument() const { return code() == StatusCode::InvalidArgument; }
+  bool IsPermissionDenied() const { return code() == StatusCode::PermissionDenied; }
+
   // Returns a reference to the current `ray::Status` contained within the
   // `ray::StatusOr<T>`. If `ray::StatusOr<T>` contains a `T`, then this
   // function returns `ray::Ok()`.
