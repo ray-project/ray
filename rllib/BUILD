@@ -3965,7 +3965,7 @@ py_test(
         "--as-test",
         "--num-env-runners=20",
         "--num-envs-per-env-runner=5",
-        "--stop-iters=20"
+        "--stop-iters=20",
     ],
     main = "examples/curriculum/atari_pong_curriculum_learning.py",
     tags = [
