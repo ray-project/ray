@@ -161,9 +161,7 @@ class StreamingExecutor(Executor, threading.Thread):
 
         self._output_node = dag, self._topology[dag]
 
-        op_to_id = {
-            op: self._get_operator_id(op, i) for i, op in enumerate(self._topology)
-        }
+        op_to_id = {op: _get_operator_id(op, i) for i, op in enumerate(self._topology)}
         StatsManager.register_dataset_to_stats_actor(
             self._dataset_id,
             self._get_operator_tags(),
@@ -206,6 +204,7 @@ class StreamingExecutor(Executor, threading.Thread):
             self._shutdown = True
             # Give the scheduling loop some time to finish processing.
             self.join(timeout=2.0)
+            self._resource_manager.update_budget_metrics()
             self._update_stats_metrics(
                 state=DatasetState.FINISHED.name
                 if exception is None
@@ -396,6 +395,7 @@ class StreamingExecutor(Executor, threading.Thread):
         update_operator_states(topology)
         self._refresh_progress_bars(topology)
 
+        self._resource_manager.update_budget_metrics()
         self._update_stats_metrics(state=DatasetState.RUNNING.name)
         if time.time() - self._last_debug_log_time >= DEBUG_LOG_INTERVAL_SECONDS:
             _log_op_metrics(topology)
@@ -462,14 +462,9 @@ class StreamingExecutor(Executor, threading.Thread):
         if self._global_info:
             self._global_info.set_description(resources_status)
 
-    def _get_operator_id(self, op: PhysicalOperator, topology_index: int) -> str:
-        return f"{op.name}_{topology_index}"
-
     def _get_operator_tags(self):
         """Returns a list of operator tags."""
-        return [
-            f"{self._get_operator_id(op, i)}" for i, op in enumerate(self._topology)
-        ]
+        return [f"{_get_operator_id(op, i)}" for i, op in enumerate(self._topology)]
 
     def _get_state_dict(self, state):
         last_op, last_state = list(self._topology.items())[-1]
@@ -480,7 +475,7 @@ class StreamingExecutor(Executor, threading.Thread):
             "total_rows": last_op.num_output_rows_total(),
             "end_time": time.time() if state != DatasetState.RUNNING.name else None,
             "operators": {
-                f"{self._get_operator_id(op, i)}": {
+                f"{_get_operator_id(op, i)}": {
                     "name": op.name,
                     "progress": op_state.num_completed_tasks,
                     "total": op.num_outputs_total(),
@@ -622,3 +617,7 @@ class _ClosingIterator(OutputIterator):
         #       to be terminated asynchronously (ie avoid unnecessary
         #       synchronization on their completion)
         self._executor.shutdown(force=False)
+
+
+def _get_operator_id(self, op: PhysicalOperator, topology_index: int) -> str:
+    return f"{op.name}_{topology_index}"

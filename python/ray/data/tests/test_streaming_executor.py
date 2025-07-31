@@ -36,6 +36,7 @@ from ray.data._internal.execution.resource_manager import ResourceManager
 from ray.data._internal.execution.streaming_executor import (
     StreamingExecutor,
     _debug_dump_topology,
+    _get_operator_id,
     _validate_dag,
 )
 from ray.data._internal.execution.streaming_executor_state import (
@@ -835,8 +836,7 @@ def test_create_topology_metadata():
 
     # Call the _dump_dag_structure method
     op_to_id = {
-        op: executor._get_operator_id(op, i)
-        for i, op in enumerate(executor._topology.keys())
+        op: _get_operator_id(op, i) for i, op in enumerate(executor._topology.keys())
     }
     topology_metadata = TopologyMetadata.create_topology_metadata(o3, op_to_id)
 
@@ -898,8 +898,7 @@ def test_create_topology_metadata_with_sub_stages():
 
     # Get the DAG structure
     op_to_id = {
-        op: executor._get_operator_id(op, i)
-        for i, op in enumerate(executor._topology.keys())
+        op: _get_operator_id(op, i) for i, op in enumerate(executor._topology.keys())
     }
     topology_metadata = TopologyMetadata.create_topology_metadata(o2, op_to_id)
 
