@@ -358,33 +358,7 @@ CoreWorker::CoreWorker(
 
   RegisterToGcs(options_.worker_launch_time_ms, options_.worker_launched_time_ms);
 
-  // Register a callback to monitor add/removed nodes.
-  // Note we capture a shared ownership of reference_counter_ and rate_limiter
-  // here to avoid destruction order fiasco between gcs_client and reference_counter_.
-  auto on_node_change = [temp_reference_counter = reference_counter_,
-                         temp_rate_limiter = lease_request_rate_limiter_](
-                            const NodeID &node_id, const rpc::GcsNodeInfo &data) {
-    if (data.state() == rpc::GcsNodeInfo::DEAD) {
-      RAY_LOG(INFO).WithField(node_id)
-          << "Node failure. All objects pinned on that node will be lost if object "
-             "reconstruction is not enabled.";
-      temp_reference_counter->ResetObjectsOnRemovedNode(node_id);
-    }
-    auto cluster_size_based_rate_limiter =
-        dynamic_cast<ClusterSizeBasedLeaseRequestRateLimiter *>(temp_rate_limiter.get());
-    if (cluster_size_based_rate_limiter != nullptr) {
-      cluster_size_based_rate_limiter->OnNodeChanges(data);
-    }
-  };
-
-  gcs_client_->Nodes().AsyncSubscribeToNodeChange(
-      std::move(on_node_change), [this](const Status &) {
-        {
-          std::scoped_lock<std::mutex> lock(gcs_client_node_cache_populated_mutex_);
-          gcs_client_node_cache_populated_ = true;
-        }
-        gcs_client_node_cache_populated_cv_.notify_all();
-      });
+  SubscribeToNodeChanges();
 
   // Create an entry for the driver task in the task table. This task is
   // added immediately with status RUNNING. This allows us to push errors
@@ -830,10 +804,10 @@ void CoreWorker::RegisterToGcs(int64_t worker_launch_time_ms,
 void CoreWorker::SubscribeToNodeChanges() {
   std::call_once(subscribe_to_node_changes_flag_, [this]() {
     // Register a callback to monitor add/removed nodes.
-    // Note we capture a shared ownership of reference_counter_ and rate_limiter
+    // Note we capture a shared ownership of reference_counter and rate_limiter
     // here to avoid destruction order fiasco between gcs_client and reference_counter_.
-    auto on_node_change = [reference_counter = this->reference_counter_,
-                           rate_limiter = this->lease_request_rate_limiter_](
+    auto on_node_change = [reference_counter = reference_counter_,
+                           rate_limiter = lease_request_rate_limiter_](
                               const NodeID &node_id, const rpc::GcsNodeInfo &data) {
       if (data.state() == rpc::GcsNodeInfo::DEAD) {
         RAY_LOG(INFO).WithField(node_id)
@@ -847,7 +821,15 @@ void CoreWorker::SubscribeToNodeChanges() {
         cluster_size_based_rate_limiter->OnNodeChanges(data);
       }
     };
-    this->gcs_client_->Nodes().AsyncSubscribeToNodeChange(on_node_change, nullptr);
+
+    gcs_client_->Nodes().AsyncSubscribeToNodeChange(
+        std::move(on_node_change), [this](const Status &) {
+          {
+            std::scoped_lock<std::mutex> lock(gcs_client_node_cache_populated_mutex_);
+            gcs_client_node_cache_populated_ = true;
+          }
+          gcs_client_node_cache_populated_cv_.notify_all();
+        });
   });
 }
 
@@ -1299,6 +1281,7 @@ Status CoreWorker::SealExisting(const ObjectID &object_id,
 
 void CoreWorker::ExperimentalRegisterMutableObjectWriter(
     const ObjectID &writer_object_id, const std::vector<NodeID> &remote_reader_node_ids) {
+  SubscribeToNodeChanges();
   {
     std::unique_lock<std::mutex> lock(gcs_client_node_cache_populated_mutex_);
     if (!gcs_client_node_cache_populated_) {
