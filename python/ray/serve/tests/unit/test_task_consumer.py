@@ -4,19 +4,10 @@ from typing import Any, Dict
 from unittest.mock import MagicMock, call, patch
 
 import pytest
-from pydantic import BaseModel
 
-from ray.serve.schema import TaskProcessorConfig, TaskResult
+from ray.serve.schema import CeleryTaskProcessorConfig, TaskProcessorConfig, TaskResult
 from ray.serve.task_consumer import task_consumer, task_handler
 from ray.serve.task_processor import TaskProcessorAdapter
-
-
-class MockTaskProcessorConfig(BaseModel):
-    """
-    Mock task processor config. To be used for testing purposes.
-    """
-
-    pass
 
 
 class MockTaskProcessorAdapter(TaskProcessorAdapter):
@@ -68,7 +59,11 @@ def config():
     """Provides a mock TaskProcessorConfig."""
     queue_name = f"test_queue_{uuid.uuid4().hex}"
     return TaskProcessorConfig(
-        queue_name=queue_name, adapter_config=MockTaskProcessorConfig()
+        queue_name=queue_name,
+        adapter_config=CeleryTaskProcessorConfig(
+            broker_url="fake://",
+            backend_url="fake://",
+        ),
     )
 
 
