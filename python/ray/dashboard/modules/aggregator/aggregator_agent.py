@@ -163,6 +163,7 @@ class AggregatorAgent(
         self._events_received_since_last_metrics_update = 0
         self._events_failed_to_add_to_aggregator_since_last_metrics_update = 0
         self._events_dropped_at_event_aggregator_since_last_metrics_update = 0
+        self.events_failed_to_add_to_aggregator_since_last_metrics_update = 0
         self._events_published_since_last_metrics_update = 0
         self._events_filtered_out_since_last_metrics_update = 0
         self._events_export_addr = (
@@ -333,12 +334,16 @@ class AggregatorAgent(
             _events_dropped_at_event_aggregator = (
                 self._events_dropped_at_event_aggregator_since_last_metrics_update
             )
+            _events_failed_to_add_to_aggregator = (
+                self._events_failed_to_add_to_aggregator_since_last_metrics_update
+            )
             _events_published = self._events_published_since_last_metrics_update
             _events_filtered_out = self._events_filtered_out_since_last_metrics_update
 
             self._events_received_since_last_metrics_update = 0
             self._events_failed_to_add_to_aggregator_since_last_metrics_update = 0
             self._events_dropped_at_event_aggregator_since_last_metrics_update = 0
+            self._events_failed_to_add_to_aggregator_since_last_metrics_update = 0
             self._events_published_since_last_metrics_update = 0
             self._events_filtered_out_since_last_metrics_update = 0
 
@@ -355,6 +360,9 @@ class AggregatorAgent(
         )
         events_dropped_at_event_aggregator.labels(**labels).inc(
             _events_dropped_at_event_aggregator
+        )
+        events_failed_to_add_to_aggregator.labels(**labels).inc(
+            _events_failed_to_add_to_aggregator
         )
         events_published.labels(**labels).inc(_events_published)
         events_filtered_out.labels(**labels).inc(_events_filtered_out)
