@@ -11,9 +11,6 @@ from ray.data._internal.execution.interfaces.execution_options import (
     ExecutionOptions,
     ExecutionResources,
 )
-from ray.data._internal.execution.interfaces.op_runtime_metrics import (
-    OpRuntimeMetrics,
-)
 from ray.data._internal.execution.interfaces.physical_operator import (
     PhysicalOperator,
     ReportsExtraResourceUsage,
@@ -23,10 +20,12 @@ from ray.data._internal.execution.operators.base_physical_operator import (
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.zip_operator import ZipOperator
+from ray.data._internal.execution.streaming_executor import _get_operator_id
 from ray.data._internal.execution.util import memory_string
 from ray.data._internal.util import GiB
 from ray.data.context import DataContext
 from ray.util.debug import log_once
+from ray.util.metrics import Gauge
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.streaming_executor_state import OpState, Topology
@@ -90,6 +89,20 @@ class ResourceManager:
         self._downstream_object_store_memory: Dict[PhysicalOperator, float] = {}
 
         self._op_resource_allocator: Optional["OpResourceAllocator"] = None
+
+        self._cpu_budget_gauge: Gauge = Gauge(
+            "data_cpu_budget", "Budget (CPU) per operator"
+        )
+        self._gpu_budget_gauge: Gauge = Gauge(
+            "data_gpu_budget", "Budget (GPU) per operator"
+        )
+        self._memory_budget_gauge: Gauge = Gauge(
+            "data_memory_budget)", "Budget (Memory) per operator"
+        )
+        self._osm_budget_gauge: Gauge = Gauge(
+            "data_object_store_memory_budget",
+            "Budget (Object Store Memory) per operator",
+        )
 
         if data_context.op_resource_reservation_enabled:
             # We'll enable memory reservation if all operators have
@@ -327,24 +340,24 @@ class ResourceManager:
             return None
         return self._op_resource_allocator.get_budget(op)
 
-    def update_budget_metrics(
-        self, ops: Iterable[PhysicalOperator]
-    ) -> Iterable[OpRuntimeMetrics]:
-        for op in ops:
+    def update_budget_metrics(self, dataset_id: str):
+        for i, op in enumerate(self._topology):
             budget = self.get_budget(op)
             if budget is not None:
                 # Convert inf to -1 to represent unlimited budget in metrics
-                op.metrics.cpu_budget = -1 if math.isinf(budget.cpu) else budget.cpu
-                op.metrics.gpu_budget = -1 if math.isinf(budget.gpu) else budget.gpu
-                op.metrics.memory_budget = (
-                    -1 if math.isinf(budget.memory) else budget.memory
-                )
-                op.metrics.object_store_memory_budget = (
+                cpu_budget = -1 if math.isinf(budget.cpu) else budget.cpu
+                gpu_budget = -1 if math.isinf(budget.gpu) else budget.gpu
+                memory_budget = -1 if math.isinf(budget.memory) else budget.memory
+                object_store_memory_budget = (
                     -1
                     if math.isinf(budget.object_store_memory)
                     else budget.object_store_memory
                 )
-                yield op.metrics
+                tags = {"dataset": dataset_id, "operator": _get_operator_id(op, i)}
+                self._cpu_budget_gauge.set(cpu_budget, tags=tags)
+                self._gpu_budget_gauge.set(gpu_budget, tags=tags)
+                self._memory_budget_gauge.set(memory_budget, tags=tags)
+                self._osm_budget_gauge.set(object_store_memory_budget, tags=tags)
 
 
 class OpResourceAllocator(ABC):
