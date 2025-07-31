@@ -1,5 +1,3 @@
-import os
-import tempfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Dict
 
@@ -178,114 +176,73 @@ class TestGlobalLocalTrainerRayDataset:
 
     def test_multi_process_simulation(self):
         """Test with actual multiple processes using Ray's testing utilities."""
-        # Create a temporary file to store the actor name for sharing between processes
-        with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".txt") as f:
-            actor_name_file = f.name
 
-        try:
-            # Driver script that creates the actor and registers datasets
-            setup_script = f"""
-import ray
-import tempfile
-from ray.train.v2._internal.execution.local_running_utils import GlobalLocalTrainerRayDataset
-
-ray.init(address="auto")
-
-# Create the actor with a known name
-world_size = 3
-actor = GlobalLocalTrainerRayDataset.options(name="test_data_actor").remote(world_size)
-
-# Create and register test datasets
-datasets = {{
-    "train": ray.data.range(30),
-    "val": ray.data.range(15)
-}}
-
-ray.get(actor.register_dataset.remote(datasets))
-
-# Write completion signal
-with open("{actor_name_file}", "w") as f:
-    f.write("ready")
-
-print("SETUP_COMPLETE")
-ray.shutdown()
-"""
-
-            # Worker script that connects to actor and gets its shard
-            worker_script_template = f"""
+        # Worker script template - each worker creates/gets actor and tries to register
+        worker_script = """
 import ray
 import time
 from ray.train.v2._internal.execution.local_running_utils import GlobalLocalTrainerRayDataset
 
 ray.init(address="auto")
 
-# Wait for setup to complete
-while True:
-    try:
-        with open("{actor_name_file}", "r") as f:
-            if f.read().strip() == "ready":
-                break
-    except FileNotFoundError:
-        pass
-    time.sleep(0.1)
+# Create or get the shared actor (first process creates it, others get it)
+world_size = 3
+actor_name = "test_data_actor"
 
-# Get the actor by name
-actor = ray.get_actor("test_data_actor")
+try:
+    # Try to get existing actor first
+    actor = ray.get_actor(actor_name)
+    print(f"WORKER_{rank}: Found existing actor")
+except ValueError:
+    # Actor doesn't exist, create it
+    actor = GlobalLocalTrainerRayDataset.options(name=actor_name).remote(world_size)
+    print(f"WORKER_{rank}: Created new actor")
 
-# Get shard for this worker
-local_rank = {{local_rank}}
+# All workers try to register datasets (only first one succeeds)
+datasets = {{
+    "train": ray.data.range(30),
+    "val": ray.data.range(15)
+}}
+ray.get(actor.register_dataset.remote(datasets))
+print(f"WORKER_{rank}: Attempted dataset registration")
+
+# Get data shard
+local_rank = {rank}
 shard = ray.get(actor.get_dataset_shard.remote(local_rank))
 
-# Verify and print results
+# Count data
 train_count = len(list(shard["train"].iter_rows()))
 val_count = len(list(shard["val"].iter_rows()))
 
-print(f"WORKER_{{local_rank}}_RESULT:{{train_count}},{{val_count}}")
+print(f"WORKER_{rank}_RESULT:{{train_count}},{{val_count}}")
 ray.shutdown()
 """
 
-            # Run setup process
-            setup_proc = run_string_as_driver_nonblocking(setup_script)
-            setup_out = setup_proc.stdout.read().decode("ascii")
-            setup_proc.wait()
-            assert "SETUP_COMPLETE" in setup_out
-            assert setup_proc.returncode == 0
+        # Launch all worker processes simultaneously
+        worker_processes = []
+        for rank in range(3):
+            script = worker_script.format(rank=rank)
+            proc = run_string_as_driver_nonblocking(script)
+            worker_processes.append((rank, proc))
 
-            # Run worker processes
-            worker_processes = []
-            for rank in range(3):
-                worker_script = worker_script_template.format(local_rank=rank)
-                proc = run_string_as_driver_nonblocking(worker_script)
-                worker_processes.append((rank, proc))
+        # Collect results
+        results = {}
+        for rank, proc in worker_processes:
+            out = proc.stdout.read().decode("ascii")
+            proc.wait()
+            assert proc.returncode == 0
 
-            # Collect results
-            results = {}
-            for rank, proc in worker_processes:
-                out = proc.stdout.read().decode("ascii")
-                proc.wait()
-                assert proc.returncode == 0
+            # Parse results
+            for line in out.split("\n"):
+                if line.startswith(f"WORKER_{rank}_RESULT:"):
+                    train_count, val_count = map(int, line.split(":")[1].split(","))
+                    results[rank] = {"train_count": train_count, "val_count": val_count}
 
-                # Parse results
-                for line in out.split("\n"):
-                    if line.startswith(f"WORKER_{rank}_RESULT:"):
-                        train_count, val_count = map(int, line.split(":")[1].split(","))
-                        results[rank] = {
-                            "train_count": train_count,
-                            "val_count": val_count,
-                        }
-
-            # Verify each worker got correct shard sizes
-            assert len(results) == 3
-            for rank in range(3):
-                assert results[rank]["train_count"] == 10  # 30 / 3
-                assert results[rank]["val_count"] == 5  # 15 / 3
-
-        finally:
-            # Cleanup
-            try:
-                os.unlink(actor_name_file)
-            except FileNotFoundError:
-                pass
+        # Verify each worker got correct shard sizes
+        assert len(results) == 3
+        for rank in range(3):
+            assert results[rank]["train_count"] == 10  # 30 / 3
+            assert results[rank]["val_count"] == 5  # 15 / 3
 
     def test_data_consistency_across_workers(self):
         """Test that data is consistently distributed across workers."""

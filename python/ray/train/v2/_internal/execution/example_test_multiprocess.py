@@ -6,8 +6,6 @@ This script demonstrates several approaches to test the GlobalLocalTrainerRayDat
 actor with multiple processes, simulating real-world usage scenarios like torchrun.
 """
 
-import os
-import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -125,57 +123,37 @@ def example_3_multiprocess_with_ray_drivers():
     """Example 3: Use actual multiple processes with Ray drivers."""
     print("=== Example 3: Multi-Process with Ray Drivers ===")
 
-    # Create temporary file for coordination
-    with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".txt") as f:
-        coord_file = f.name
-
-    try:
-        # Setup script - creates actor and registers data
-        setup_script = f"""
-import ray
-from ray.train.v2._internal.execution.local_running_utils import GlobalLocalTrainerRayDataset
-
-ray.init(address="auto")
-
-# Create named actor for shared access
-world_size = 3
-actor = GlobalLocalTrainerRayDataset.options(name="shared_data_actor").remote(world_size)
-
-# Register datasets
-datasets = {{
-    "train": ray.data.range(30),
-    "val": ray.data.range(15)
-}}
-ray.get(actor.register_dataset.remote(datasets))
-
-# Signal completion
-with open("{coord_file}", "w") as f:
-    f.write("setup_complete")
-
-print("SETUP_DONE")
-ray.shutdown()
-"""
-
-        # Worker script template
-        worker_script = """
+    # Worker script template - each worker creates/gets actor and tries to register
+    worker_script = """
 import ray
 import time
 from ray.train.v2._internal.execution.local_running_utils import GlobalLocalTrainerRayDataset
 
 ray.init(address="auto")
 
-# Wait for setup
-while True:
-    try:
-        with open("{coord_file}", "r") as f:
-            if f.read().strip() == "setup_complete":
-                break
-    except FileNotFoundError:
-        pass
-    time.sleep(0.1)
+# Create or get the shared actor (first process creates it, others get it)
+world_size = 3
+actor_name = "shared_data_actor"
 
-# Get shared actor
-actor = ray.get_actor("shared_data_actor")
+try:
+    # Try to get existing actor first
+    actor = ray.get_actor(actor_name)
+    print(f"WORKER_{rank}: Found existing actor")
+except ValueError:
+    # Actor doesn't exist, create it
+    actor = GlobalLocalTrainerRayDataset.options(name=actor_name).remote(world_size)
+    print(f"WORKER_{rank}: Created new actor")
+
+# All workers try to register datasets (only first one succeeds)
+datasets = {{
+    "train": ray.data.range(30),
+    "val": ray.data.range(15)
+}}
+ray.get(actor.register_dataset.remote(datasets))
+print(f"WORKER_{rank}: Attempted dataset registration")
+
+# Small delay to ensure all workers have tried to register
+time.sleep(0.5)
 
 # Get data shard
 local_rank = {rank}
@@ -189,47 +167,40 @@ print(f"WORKER_{rank}_RESULT:{train_count},{val_count}")
 ray.shutdown()
 """
 
-        print("Running setup process...")
-        setup_proc = run_string_as_driver_nonblocking(setup_script)
-        setup_output = setup_proc.stdout.read().decode()
-        setup_proc.wait()
+    print("Running worker processes concurrently...")
+    worker_processes = []
 
-        if "SETUP_DONE" not in setup_output:
-            print(f"Setup failed: {setup_output}")
-            return
+    # Launch all worker processes simultaneously
+    for rank in range(3):
+        script = worker_script.format(rank=rank)
+        proc = run_string_as_driver_nonblocking(script)
+        worker_processes.append((rank, proc))
 
-        print("Running worker processes...")
-        worker_processes = []
+    # Collect results
+    results = {}
+    for rank, proc in worker_processes:
+        output = proc.stdout.read().decode()
+        proc.wait()
 
-        # Launch worker processes
-        for rank in range(3):
-            script = worker_script.format(coord_file=coord_file, rank=rank)
-            proc = run_string_as_driver_nonblocking(script)
-            worker_processes.append((rank, proc))
+        print(f"Worker {rank} output:")
+        print(output)
 
-        # Collect results
-        results = {}
-        for rank, proc in worker_processes:
-            output = proc.stdout.read().decode()
-            proc.wait()
+        # Parse output
+        for line in output.split("\n"):
+            if line.startswith(f"WORKER_{rank}_RESULT:"):
+                train_count, val_count = map(int, line.split(":")[1].split(","))
+                results[rank] = {"train": train_count, "val": val_count}
+                print(f"Worker {rank}: train={train_count}, val={val_count}")
 
-            # Parse output
-            for line in output.split("\n"):
-                if line.startswith(f"WORKER_{rank}_RESULT:"):
-                    train_count, val_count = map(int, line.split(":")[1].split(","))
-                    results[rank] = {"train": train_count, "val": val_count}
-                    print(f"Worker {rank}: train={train_count}, val={val_count}")
+    # Verify all workers completed
+    assert len(results) == 3, f"Expected 3 workers, got {len(results)}"
 
-        # Verify all workers completed
-        assert len(results) == 3, f"Expected 3 workers, got {len(results)}"
-        print("✓ Multi-process test passed\n")
+    # Verify each worker got the correct shard size
+    for rank in range(3):
+        assert results[rank]["train"] == 10  # 30 / 3
+        assert results[rank]["val"] == 5  # 15 / 3
 
-    finally:
-        # Cleanup
-        try:
-            os.unlink(coord_file)
-        except FileNotFoundError:
-            pass
+    print("✓ Multi-process concurrent registration test passed\n")
 
 
 def example_4_torchrun_style_simulation():
