@@ -10,7 +10,7 @@ from transformers import ViTImageProcessor, ViTForImageClassification
 from PIL import Image
 from pybase64 import b64decode
 
-from ..benchmark import Benchmark
+from benchmark import Benchmark
 
 
 INPUT_PREFIX = "s3://ray-benchmark-data-internal/10TiB-jsonl-images"
