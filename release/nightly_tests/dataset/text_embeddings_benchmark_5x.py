@@ -117,11 +117,12 @@ def process_file(record: dict) -> Iterator[Dict[str, Any]]:
     supported_extensions = {".pdf", ".docx", ".pptx", ".ppt", ".html", ".txt"}
 
     if file_path.suffix.lower() not in supported_extensions:
+        print(f"Skipping file {file_path} with unsupported extension {file_path.suffix}")
         return
 
     try:
         with io.BytesIO(record["bytes"]) as stream:
-            elements = partition(file=stream)
+            elements = partition(file=stream, strategy="fast", skip_ocr=True)
             doc_id = str(uuid.uuid4())
 
             # Group text by page
