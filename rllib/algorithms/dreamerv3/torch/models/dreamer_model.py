@@ -217,6 +217,11 @@ class DreamerModel(nn.Module):
         a_dreamed_t0_to_H.append(a)
         a_dreamed_dist_params_t0_to_H.append(a_dist_params)
 
+        # Disable all gradients from the world model so they don't get backprop'd
+        # through twice when computing the actor loss (for cont. actions).
+        for p in self.world_model.parameters():
+            p.requires_grad_(False)
+
         for i in range(timesteps_H):
             # Move one step in the dream using the RSSM.
             h = self.world_model.sequence_model(a=a, h=h, z=z)
@@ -284,26 +289,37 @@ class DreamerModel(nn.Module):
         # boundary should not be used for critic/actor learning either.
         dream_loss_weights_H_B = torch.cumprod(gamma * c_dreamed_H_B, dim=0) / gamma
 
+        # Reactivate world model gradients.
+        for p in self.world_model.parameters():
+            p.requires_grad_(True)
+
+        # Compute the symlog'd value logits (w/o world model gradients; used for the
+        # critic loss).
+        _, v_symlog_dreamed_logits_HxB_wm_detached = self.critic(
+            h=h_states_HxB.detach(),
+            z=z_states_prior_HxB.detach(),
+            use_ema=False,
+            return_logits=True,
+        )
+
         # Compute the value estimates (including world model gradients -> 1 sequence
         # model step after the action has been computed; used for the scaled value
         # target used in the actor loss for cont. actions).
+        # Disable all gradients from the critic so they don't get backprop'd
+        # through twice when computing the actor loss (for cont. actions).
+        for p in self.critic.parameters():
+            p.requires_grad_(False)
         v, _ = self.critic(
             h=h_states_HxB,
             z=z_states_prior_HxB,
             use_ema=False,
             return_logits=True,
         )
+        # Reactivate critic gradients.
+        for p in self.critic.parameters():
+            p.requires_grad_(True)
         v_dreamed_HxB = inverse_symlog(v)
         v_dreamed_H_B = v_dreamed_HxB.reshape([timesteps_H + 1, -1])
-
-        # Compute the symlog'd value logits (w/o world model gradients; used for the
-        # critic loss).
-        _, v_symlog_dreamed_logits_HxB_wo_wm_grads = self.critic(
-            h=h_states_HxB.detach(),
-            z=z_states_prior_HxB.detach(),
-            use_ema=False,
-            return_logits=True,
-        )
 
         # Compute the EMA net outputs w/o any gradients.
         with torch.no_grad():
@@ -326,8 +342,8 @@ class DreamerModel(nn.Module):
             "actions_dreamed_dist_params_t0_to_H_BxT": a_dreamed_dist_params_H_B,
             # Critic (w/ world-model grads for actor loss).
             "values_dreamed_t0_to_H_BxT": v_dreamed_H_B,
-            # Critic (no world-model grads for critic loss).
-            "values_symlog_dreamed_logits_t0_to_HxBxT_wo_wm_grads": v_symlog_dreamed_logits_HxB_wo_wm_grads,
+            # Critic (world-model detached, for critic loss).
+            "values_symlog_dreamed_logits_t0_to_HxBxT_wm_detached": v_symlog_dreamed_logits_HxB_wm_detached,
             # Critic EMA.
             "v_symlog_dreamed_ema_t0_to_H_BxT": v_symlog_dreamed_ema_H_B,
             # Loss weights for critic- and actor losses.

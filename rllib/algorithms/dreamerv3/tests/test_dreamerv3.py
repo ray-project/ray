@@ -68,11 +68,11 @@ class TestDreamerV3(unittest.TestCase):
         num_iterations = 3
 
         for env in [
-            #"DMC/cartpole/swingup",
+            "DMC/cartpole/swingup",
             "FrozenLake-v1",
             "CartPole-v1",
             "ale_py:ALE/MsPacman-v5",
-            #"Pendulum-v1",
+            "Pendulum-v1",
         ]:
             print("Env={}".format(env))
 
