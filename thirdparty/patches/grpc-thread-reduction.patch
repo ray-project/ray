@@ -6,7 +6,7 @@ index 670ca6551c..639a09e930 100644
  #include "src/core/lib/gprpp/strerror.h"
  
  static int ncpus = 0;
-+static const char* grpc_pooling_env_var_name = "RAY_num_grpc_threads";
++static const char* grpc_pooling_env_var_name = "RAY_num_grpc_internal_threads";
  
  static void init_num_cpus() {
  #ifndef GPR_MUSL_LIBC_COMPAT
@@ -18,7 +18,7 @@ index 670ca6551c..639a09e930 100644
 +  const char* env_var_value = std::getenv(grpc_pooling_env_var_name);
 +  if (env_var_value != nullptr) {
 +    ncpus = std::atoi(env_var_value);
-+    if(ncpus < 0) {
++    if(ncpus <= 0) {
 +      ncpus = static_cast<int>(sysconf(_SC_NPROCESSORS_CONF));
 +    }
 +  } else {

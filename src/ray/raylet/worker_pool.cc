@@ -406,6 +406,13 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
     env.emplace(kEnvVarKeyJobId, job_id.Hex());
     RAY_LOG(DEBUG) << "Launch worker with " << kEnvVarKeyJobId << " " << job_id.Hex();
   }
+
+  // optionally configure the worker's internal grpc thread count
+  int64_t worker_grpc_threads = RayConfig::instance().worker_num_grpc_internal_threads();
+  if (worker_grpc_threads > 0) {
+    env.emplace(kEnvVarKeyGrpcThreadCount, std::to_string(worker_grpc_threads));
+  }
+
   env.emplace(kEnvVarKeyRayletPid, std::to_string(GetPID()));
 
   // TODO(SongGuyang): Maybe Python and Java also need native library path in future.
@@ -649,10 +656,17 @@ void WorkerPool::MonitorPopWorkerRequestForRegistration(
 Process WorkerPool::StartProcess(const std::vector<std::string> &worker_command_args,
                                  const ProcessEnvironment &env,
                                  std::error_code &ec) {
+  // Launch the process to create the worker.
+  std::vector<const char *> argv;
+  for (const std::string &arg : worker_command_args) {
+    argv.push_back(arg.c_str());
+  }
+  argv.push_back(NULL);
+
   if (RAY_LOG_ENABLED(DEBUG)) {
     std::string debug_info;
     debug_info.append("Starting worker process with command:");
-    for (const auto &arg : worker_command_args) {
+    for (const auto &arg : argv) {
       debug_info.append(" ").append(arg);
     }
     debug_info.append(", and the envs:");
@@ -670,13 +684,6 @@ Process WorkerPool::StartProcess(const std::vector<std::string> &worker_command_
     debug_info.append(".");
     RAY_LOG(DEBUG) << debug_info;
   }
-
-  // Launch the process to create the worker.
-  std::vector<const char *> argv;
-  for (const std::string &arg : worker_command_args) {
-    argv.push_back(arg.c_str());
-  }
-  argv.push_back(NULL);
 
   Process child(argv.data(), io_service_, ec, /*decouple=*/false, env);
   if (!child.IsValid() || ec) {
