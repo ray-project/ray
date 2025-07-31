@@ -212,9 +212,7 @@ class NvidiaGpuProvider(GpuProvider):
                     gpu["processes_pids"] = processes_info[gpu_id]
             return gpus
         except (subprocess.CalledProcessError, ValueError) as e:
-            logger.warning(
-                f"nvidia-smi failed to call: {e}. Falling back to pynvml."
-            )
+            logger.warning(f"nvidia-smi failed to call: {e}. Falling back to pynvml.")
             self._using_nvidia_smi = False
             return self._get_pynvml_gpu_usage()
 
