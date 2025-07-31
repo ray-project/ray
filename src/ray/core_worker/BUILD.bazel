@@ -44,6 +44,7 @@ ray_cc_library(
         "//src/ray/util:env",
         "//src/ray/util:event",
         "//src/ray/util:mutex_protected",
+        "//src/ray/util:path_utils",
         "//src/ray/util:process",
         "//src/ray/util:shared_lru",
         "//src/ray/util:stream_redirection",
