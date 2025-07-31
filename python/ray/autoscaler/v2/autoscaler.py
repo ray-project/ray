@@ -101,6 +101,7 @@ class Autoscaler:
             self._cloud_instance_provider = KubeRayProvider(
                 config.get_config("cluster_name"),
                 provider_config,
+                gcs_client=self._gcs_client,
             )
         elif config.provider == Provider.READ_ONLY:
             provider_config["gcs_address"] = self._gcs_client.address
