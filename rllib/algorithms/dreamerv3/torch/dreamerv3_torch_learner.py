@@ -161,7 +161,7 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
         # Do actor and critic's grad computations first, such that after those two,
         # we can zero out the gradients of the world model again (they will have values
         # in them from the actor/critic backwards).
-        for component in ["actor", "critic", "world_model"]:
+        for component in ["actor", "critic", "world_model"]: 
             optim = self.get_optimizer(DEFAULT_MODULE_ID, component)
             optim.zero_grad(set_to_none=True)
             # Do the backward pass
