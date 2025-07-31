@@ -179,11 +179,10 @@ Status CoreWorkerPlasmaStoreProvider::FetchAndGetFromPlasmaStore(
     absl::flat_hash_set<ObjectID> &remaining,
     const std::vector<ObjectID> &batch_ids,
     int64_t timeout_ms,
-    const TaskID &task_id,
     absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
     bool *got_exception) {
   const auto owner_addresses = reference_counter_.GetOwnerAddresses(batch_ids);
-  RAY_RETURN_NOT_OK(raylet_client_->FetchOrReconstruct(batch_ids, owner_addresses));
+  RAY_RETURN_NOT_OK(raylet_client_->AsyncGet(batch_ids, owner_addresses));
 
   std::vector<plasma::ObjectBuffer> plasma_results;
   RAY_RETURN_NOT_OK(store_client_->Get(batch_ids,
@@ -296,7 +295,6 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     RAY_RETURN_NOT_OK(FetchAndGetFromPlasmaStore(remaining,
                                                  batch_ids,
                                                  /*timeout_ms=*/0,
-                                                 ctx.GetCurrentTaskID(),
                                                  results,
                                                  got_exception));
   }
@@ -307,7 +305,7 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     return UnblockIfNeeded(raylet_client_, ctx);
   }
 
-  // If not all objects were successfully fetched, repeatedly call FetchOrReconstruct
+  // If not all objects were successfully fetched, repeatedly call AsyncGet
   // and Get from the local object store in batches. This loop will run indefinitely
   // until the objects are all fetched if timeout is -1.
   bool should_break = false;
@@ -336,7 +334,6 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     RAY_RETURN_NOT_OK(FetchAndGetFromPlasmaStore(remaining,
                                                  batch_ids,
                                                  batch_timeout,
-                                                 ctx.GetCurrentTaskID(),
                                                  results,
                                                  got_exception));
     should_break = timed_out || *got_exception;

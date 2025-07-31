@@ -210,7 +210,6 @@ class CoreWorkerPlasmaStoreProvider {
   /// \param[in/out] remaining IDs of the remaining objects to get.
   /// \param[in] batch_ids IDs of the objects to get.
   /// \param[in] timeout_ms Timeout in milliseconds.
-  /// \param[in] task_id The current TaskID.
   /// \param[out] results Map of objects to write results into. This method will only
   /// add to this map, not clear or remove from it, so the caller can pass in a non-empty
   /// map.
