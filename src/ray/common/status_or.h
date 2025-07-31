@@ -153,8 +153,6 @@ class StatusOr {
 
   std::string StatusString() const { return status_.StatusString(); }
 
-  std::string ToString() const { return status_.ToString(); }
-
   bool IsNotFound() const { return code() == StatusCode::NotFound; }
   bool IsInvalidArgument() const { return code() == StatusCode::InvalidArgument; }
   bool IsPermissionDenied() const { return code() == StatusCode::PermissionDenied; }
@@ -252,8 +250,6 @@ class StatusOr {
   // Return a string representation of this status suitable for printing.
   // Returns the string "OK" for success.
   std::string ToString() const { return status_.ToString(); }
-
-  bool IsInvalidArgument() const { return code() == StatusCode::InvalidArgument; }
 
  private:
   T &get() { return data_; }
