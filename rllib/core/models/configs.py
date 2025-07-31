@@ -298,10 +298,6 @@ class MLPHeadConfig(_MLPConfig):
             from ray.rllib.core.models.torch.heads import TorchMLPHead
 
             return TorchMLPHead(self)
-        else:
-            from ray.rllib.core.models.tf.heads import TfMLPHead
-
-            return TfMLPHead(self)
 
 
 @ExperimentalAPI
@@ -386,10 +382,6 @@ class FreeLogStdMLPHeadConfig(_MLPConfig):
             from ray.rllib.core.models.torch.heads import TorchFreeLogStdMLPHead
 
             return TorchFreeLogStdMLPHead(self)
-        else:
-            from ray.rllib.core.models.tf.heads import TfFreeLogStdMLPHead
-
-            return TfFreeLogStdMLPHead(self)
 
 
 @ExperimentalAPI
@@ -642,11 +634,6 @@ class CNNTransposeHeadConfig(ModelConfig):
 
             return TorchCNNTransposeHead(self)
 
-        elif framework == "tf2":
-            from ray.rllib.core.models.tf.heads import TfCNNTransposeHead
-
-            return TfCNNTransposeHead(self)
-
 
 @ExperimentalAPI
 @dataclass
@@ -823,11 +810,6 @@ class CNNEncoderConfig(ModelConfig):
 
             return TorchCNNEncoder(self)
 
-        elif framework == "tf2":
-            from ray.rllib.core.models.tf.encoder import TfCNNEncoder
-
-            return TfCNNEncoder(self)
-
 
 @ExperimentalAPI
 @dataclass
@@ -888,10 +870,6 @@ class MLPEncoderConfig(_MLPConfig):
             from ray.rllib.core.models.torch.encoder import TorchMLPEncoder
 
             return TorchMLPEncoder(self)
-        else:
-            from ray.rllib.core.models.tf.encoder import TfMLPEncoder
-
-            return TfMLPEncoder(self)
 
 
 @ExperimentalAPI
@@ -1037,11 +1015,6 @@ class RecurrentEncoderConfig(ModelConfig):
                 TorchGRUEncoder as GRU,
                 TorchLSTMEncoder as LSTM,
             )
-        else:
-            from ray.rllib.core.models.tf.encoder import (
-                TfGRUEncoder as GRU,
-                TfLSTMEncoder as LSTM,
-            )
 
         if self.recurrent_layer_type == "lstm":
             return LSTM(self)
@@ -1083,13 +1056,3 @@ class ActorCriticEncoderConfig(ModelConfig):
                 return TorchStatefulActorCriticEncoder(self)
             else:
                 return TorchActorCriticEncoder(self)
-        else:
-            from ray.rllib.core.models.tf.encoder import (
-                TfActorCriticEncoder,
-                TfStatefulActorCriticEncoder,
-            )
-
-            if isinstance(self.base_encoder_config, RecurrentEncoderConfig):
-                return TfStatefulActorCriticEncoder(self)
-            else:
-                return TfActorCriticEncoder(self)
