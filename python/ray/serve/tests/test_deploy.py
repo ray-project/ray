@@ -302,7 +302,7 @@ def test_reconfigure_multiple_replicas(serve_instance, use_handle):
             if check_app_is_running:
                 wait_for_condition(check_running, app_name="app", timeout=15)
             url = get_application_url("HTTP", app_name="app")
-            ret = httpx.get(f"{url}").text
+            ret = httpx.get(url).text
         return ret.split("|")[0], ret.split("|")[1]
 
     signal_name = f"signal-{get_random_string()}"

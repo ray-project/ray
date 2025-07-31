@@ -15,7 +15,6 @@ from starlette.requests import Request
 import ray
 import ray.util.state as state_api
 from ray import serve
-from ray._private.test_utils import wait_for_condition
 from ray.actor import ActorHandle
 from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.common import (

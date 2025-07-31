@@ -286,33 +286,25 @@ def test_deploy_multi_app_builder_with_args(serve_instance):
     subprocess.check_output(["serve", "deploy", apps_with_args])
 
     wait_for_condition(
-        lambda: httpx.post(
-            f"{get_application_url(app_name='untyped_default')}/untyped_default"
-        ).text
+        lambda: httpx.post(f"{get_application_url(app_name='untyped_default')}").text
         == "DEFAULT",
         timeout=10,
     )
 
     wait_for_condition(
-        lambda: httpx.post(
-            f"{get_application_url(app_name='untyped_hello')}/untyped_hello"
-        ).text
+        lambda: httpx.post(f"{get_application_url(app_name='untyped_hello')}").text
         == "hello",
         timeout=10,
     )
 
     wait_for_condition(
-        lambda: httpx.post(
-            f"{get_application_url(app_name='typed_default')}/typed_default"
-        ).text
+        lambda: httpx.post(f"{get_application_url(app_name='typed_default')}").text
         == "DEFAULT",
         timeout=10,
     )
 
     wait_for_condition(
-        lambda: httpx.post(
-            f"{get_application_url(app_name='typed_hello')}/typed_hello"
-        ).text
+        lambda: httpx.post(f"{get_application_url(app_name='typed_hello')}").text
         == "hello",
         timeout=10,
     )

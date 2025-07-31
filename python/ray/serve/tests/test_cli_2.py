@@ -233,7 +233,7 @@ def test_build_multi_app(ray_start_stop):
         def check_no_apps():
             for url in app_urls:
                 with pytest.raises(httpx.HTTPError):
-                    _ = httpx.get(f"{url}").text
+                    _ = httpx.get(url).text
             return True
 
         wait_for_condition(check_no_apps, timeout=15)
