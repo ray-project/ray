@@ -2198,7 +2198,7 @@ def test_list_get_nodes(ray_start_cluster):
         nodes = list_nodes(detail=True)
         for node in nodes:
             assert is_hex(node["node_id"])
-            assert node["labels"] == {"ray.io/node_id": node["node_id"]}
+            assert node["labels"] == {"ray.io/node-id": node["node_id"]}
             if node["node_name"] == "head_node":
                 assert node["is_head_node"]
                 assert node["state"] == "ALIVE"
@@ -3713,7 +3713,7 @@ def test_get_id_not_found(shutdown_only):
 
 
 def test_core_state_api_usage_tags(shutdown_only):
-    from ray._private.usage.usage_lib import TagKey, get_extra_usage_tags_to_report
+    from ray._common.usage.usage_lib import TagKey, get_extra_usage_tags_to_report
 
     ctx = ray.init()
     gcs_client = GcsClient(address=ctx.address_info["gcs_address"])
