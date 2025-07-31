@@ -175,8 +175,6 @@ table FetchOrReconstruct {
   owner_addresses: [Address];
   // Do we only want to fetch the objects or also reconstruct them?
   fetch_only: bool;
-  // The current task ID.
-  task_id: string;
 }
 
 table CancelGetRequest {
@@ -198,8 +196,6 @@ table WaitRequest {
   num_required_objects: int;
   // timeout
   timeout: long;
-  // The current task ID.
-  task_id: string;
 }
 
 table WaitReply {
