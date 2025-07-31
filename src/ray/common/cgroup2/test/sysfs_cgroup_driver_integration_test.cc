@@ -60,7 +60,7 @@
 */
 
 // NOTE: Uncomment the following line to run the tests locally.
-#define RUN_LOCALLY
+// #define RUN_LOCALLY
 
 // This the root of the cgroup subtree that has been delegated to the testing user.
 std::unique_ptr<TempCgroupDirectory> testing_cgroup_;
