@@ -41,6 +41,7 @@
 #include "ray/common/task/task_util.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/gcs/pb_util.h"
+#include "ray/rpc/event_aggregator_client.h"
 #include "ray/util/container_util.h"
 #include "ray/util/event.h"
 #include "ray/util/subreaper.h"
@@ -399,7 +400,7 @@ CoreWorker::CoreWorker(
                               options_.language,
                               worker_context_->GetCurrentJobID(),
                               // Driver has no parent task
-                              /* parent_task_id */ TaskID::Nil(),
+                              /*parent_task_id=*/TaskID::Nil(),
                               GetCallerId(),
                               rpc_address_,
                               TaskID::Nil());
@@ -417,6 +418,7 @@ CoreWorker::CoreWorker(
           /*attempt_number=*/0,
           rpc::TaskStatus::RUNNING,
           /*timestamp=*/absl::GetCurrentTimeNanos(),
+          /*is_actor_task=*/false,
           std::make_shared<const TaskSpecification>(std::move(spec)));
       task_event_buffer_->AddTaskEvent(std::move(task_event));
     }
@@ -588,7 +590,8 @@ void CoreWorker::Disconnect(
         worker_context_->GetCurrentJobID(),
         /* attempt_number */ 0,
         rpc::TaskStatus::FINISHED,
-        /* timestamp */ absl::GetCurrentTimeNanos());
+        /*timestamp=*/absl::GetCurrentTimeNanos(),
+        /*is_actor_task_event=*/worker_context_->GetCurrentActorID().IsNil());
     task_event_buffer_->AddTaskEvent(std::move(task_event));
   }
 
@@ -1041,7 +1044,7 @@ Status CoreWorker::PutInLocalPlasmaStore(const RayObject &object,
                                          bool pin_object) {
   bool object_exists = false;
   RAY_RETURN_NOT_OK(plasma_store_provider_->Put(
-      object, object_id, /* owner_address = */ rpc_address_, &object_exists));
+      object, object_id, /*owner_address=*/rpc_address_, &object_exists));
   if (!object_exists) {
     if (pin_object) {
       // Tell the raylet to pin the object **after** it is created.
@@ -1158,7 +1161,7 @@ Status CoreWorker::CreateOwnedAndIncrementLocalRef(
       status = plasma_store_provider_->Create(metadata,
                                               data_size,
                                               *object_id,
-                                              /* owner_address = */ real_owner_address,
+                                              /*owner_address=*/real_owner_address,
                                               data,
                                               /*created_by_worker=*/true,
                                               is_experimental_mutable_object);
@@ -1200,7 +1203,7 @@ Status CoreWorker::ExperimentalChannelWriteAcquire(
     int64_t timeout_ms,
     std::shared_ptr<Buffer> *data) {
   Status status = experimental_mutable_object_provider_->GetChannelStatus(
-      object_id, /*is_reader*/ false);
+      object_id, /*is_reader=*/false);
   if (!status.ok()) {
     return status;
   }
@@ -1350,7 +1353,7 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids,
   bool is_experimental_channel = false;
   for (const ObjectID &id : ids) {
     Status status =
-        experimental_mutable_object_provider_->GetChannelStatus(id, /*is_reader*/ true);
+        experimental_mutable_object_provider_->GetChannelStatus(id, /*is_reader=*/true);
     if (status.ok()) {
       is_experimental_channel = true;
       // We continue rather than break because we want to check that *all* of the
@@ -2052,7 +2055,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
                       /*include_job_config*/ true,
                       /*generator_backpressure_num_objects*/
                       task_options.generator_backpressure_num_objects,
-                      /*enable_task_event*/ task_options.enable_task_events,
+                      /*enable_task_event=*/task_options.enable_task_events,
                       task_options.labels,
                       task_options.label_selector);
   ActorID root_detached_actor_id;
@@ -2136,10 +2139,10 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                       rpc_address_,
                       function,
                       args,
-                      /*num_returns*/ 0,
+                      /*num_returns=*/0,
                       new_resource,
                       new_placement_resources,
-                      "" /* debugger_breakpoint */,
+                      /*debugger_breakpoint=*/"",
                       depth,
                       actor_creation_options.serialized_runtime_env_info,
                       call_site,
@@ -2242,7 +2245,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       task_spec,
       CurrentCallSite(),
       // Actor creation task retry happens on GCS not on core worker.
-      /*max_retries*/ 0);
+      /*max_retries=*/0);
 
   if (actor_name.empty()) {
     io_service_.post(
@@ -2416,19 +2419,19 @@ Status CoreWorker::SubmitActorTask(
                       task_options.num_returns,
                       task_options.resources,
                       required_resources,
-                      "",    /* debugger_breakpoint */
-                      depth, /*depth*/
-                      "{}",  /* serialized_runtime_env_info */
+                      /*debugger_breakpoint=*/"",
+                      depth,
+                      /*serialized_runtime_env_info=*/"{}",
                       call_site,
                       worker_context_->GetMainThreadOrActorCreationTaskID(),
                       task_options.concurrency_group_name,
-                      /*include_job_config*/ false,
-                      /*generator_backpressure_num_objects*/
+                      /*include_job_config=*/false,
+                      /*generator_backpressure_num_objects=*/
                       task_options.generator_backpressure_num_objects,
-                      /*enable_task_events*/ task_options.enable_task_events,
-                      /*labels*/ {},
-                      /*label_selector*/ {},
-                      /*tensor_transport*/ task_options.tensor_transport);
+                      /*enable_task_events=*/task_options.enable_task_events,
+                      /*labels=*/{},
+                      /*label_selector=*/{},
+                      /*tensor_transport=*/task_options.tensor_transport);
   // NOTE: placement_group_capture_child_tasks and runtime_env will
   // be ignored in the actor because we should always follow the actor's option.
 
@@ -2824,7 +2827,7 @@ Status CoreWorker::ExecuteTask(
                                                           task_spec.AttemptNumber(),
                                                           task_spec,
                                                           rpc::TaskStatus::RUNNING,
-                                                          /* include_task_info */ false,
+                                                          /*include_task_info=*/false,
                                                           update));
 
     worker_context_->SetCurrentTask(task_spec);
@@ -3212,7 +3215,7 @@ void CoreWorker::HandleReportGeneratorItemReturns(
   auto worker_id = WorkerID::FromBinary(request.worker_addr().worker_id());
   task_manager_->HandleReportGeneratorItemReturns(
       request,
-      /*execution_signal_callback*/
+      /*execution_signal_callback=*/
       [reply,
        worker_id = std::move(worker_id),
        generator_id = std::move(generator_id),
@@ -3736,8 +3739,8 @@ void CoreWorker::HandleUpdateObjectLocationBatch(
   }
 
   send_reply_callback(Status::OK(),
-                      /*success_callback_on_reply*/ nullptr,
-                      /*failure_callback_on_reply*/ nullptr);
+                      /*success_callback_on_reply=*/nullptr,
+                      /*failure_callback_on_reply=*/nullptr);
 }
 
 void CoreWorker::AddSpilledObjectLocationOwner(
@@ -3975,7 +3978,7 @@ void CoreWorker::CancelTaskOnExecutor(TaskID task_id,
     }
   }
 
-  on_canceled(/*success*/ success, /*requested_task_running*/ requested_task_running);
+  on_canceled(/*success=*/success, /*requested_task_running=*/requested_task_running);
 }
 
 void CoreWorker::CancelActorTaskOnExecutor(WorkerID caller_worker_id,
@@ -4567,7 +4570,7 @@ void CoreWorker::RecordTaskLogStart(const TaskID &task_id,
       attempt_number,
       *current_task,
       rpc::TaskStatus::NIL,
-      /* include_task_info */ false,
+      /*include_task_info=*/false,
       worker::TaskStatusEvent::TaskStateUpdate(task_log_info)));
 }
 
@@ -4591,7 +4594,7 @@ void CoreWorker::RecordTaskLogEnd(const TaskID &task_id,
       attempt_number,
       *current_task,
       rpc::TaskStatus::NIL,
-      /* include_task_info */ false,
+      /*include_task_info=*/false,
       worker::TaskStatusEvent::TaskStateUpdate(task_log_info)));
 }
 
@@ -4609,7 +4612,7 @@ void CoreWorker::UpdateTaskIsDebuggerPaused(const TaskID &task_id,
       running_task_it->second.AttemptNumber(),
       running_task_it->second,
       rpc::TaskStatus::NIL,
-      /* include_task_info */ false,
+      /*include_task_info=*/false,
       worker::TaskStatusEvent::TaskStateUpdate(is_debugger_paused)));
 }
 

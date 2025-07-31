@@ -40,7 +40,4 @@ message ActorTaskExecutionEvent {
   bytes node_id = 6;
   bytes worker_id = 7;
   int32 worker_pid = 8;
-  bytes parent_task_id = 9;
-  bytes actor_id = 10;
-  bytes placement_group_id = 11;
 }

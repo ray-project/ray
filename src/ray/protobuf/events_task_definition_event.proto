@@ -29,11 +29,13 @@ message TaskDefinitionEvent {
   // The task definition information.
   FunctionDescriptor task_func = 3;
   string task_name = 4;
-  map<string, string> required_resources = 5;
+  map<string, double> required_resources = 5;
   RuntimeEnvInfo runtime_env_info = 6;
 
   // The correlation ids of the task that can be used to correlate the task with
   // other events.
   bytes job_id = 7;
-  map<string, bytes> ref_ids = 8;
+  bytes parent_task_id = 8;
+  bytes placement_group_id = 9;
+  map<string, bytes> ref_ids = 10;
 }
