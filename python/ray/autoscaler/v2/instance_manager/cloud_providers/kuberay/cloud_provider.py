@@ -37,7 +37,7 @@ from ray.autoscaler.v2.instance_manager.node_provider import (
 )
 from ray.autoscaler.v2.schema import NodeType
 
-from ray.autoscaler._private.kuberay.node_provider import replace_patch, add_patch
+from ray.autoscaler._private.kuberay.node_provider import replace_patch
 from ray._raylet import GcsClient, NodeID
 from ray.core.generated import node_manager_pb2, node_manager_pb2_grpc
 import ray._private.utils
@@ -88,6 +88,7 @@ class KubeRayProvider(ICloudInstanceProvider):
         self._container_resources: Dict[str, Any] = {}
         self._raylet_addrs: Dict[str, str] = {}
         self._gcs_client = gcs_client
+        self._ippr_spec = {}
 
     @dataclass
     class ScaleRequest:
@@ -254,24 +255,35 @@ class KubeRayProvider(ICloudInstanceProvider):
     def _save_ippr_status(self, resize: IPPRStatus, resized_at: Optional[int]) -> None:
         self._patch(
             "pods/{}".format(resize.cloud_instance_id),
-            [
-                add_patch(
-                    "/metadata/annotations/ray.io~1ippr-status",
-                    json.dumps(
-                        {
-                            "raylet-id": resize.raylet_id,
-                            "min-cpu": resize.min_cpu,
-                            "min-memory": resize.min_memory,
-                            "resized-at": resized_at,
-                        }
-                    ),
-                )
-            ],
+            {
+                "metadata": {
+                    "annotations": {
+                        "ray.io/ippr-status": json.dumps(
+                            {
+                                "raylet-id": resize.raylet_id,
+                                "min-cpu": resize.min_cpu,
+                                "min-memory": resize.min_memory,
+                                "resized-at": resized_at,
+                            }
+                        )
+                    }
+                }
+            },
+            content_type="application/strategic-merge-patch+json",
         )
 
     def _send_ippr_patch(self, resize: IPPRStatus, patch: List[Dict[str, Any]]) -> None:
         self._patch("pods/{}/resize".format(resize.cloud_instance_id), patch)
         self._save_ippr_status(resize, int(time.time()))
+
+    def get_ippr_capacities(self) -> Dict[str, Dict[str, float]]:
+        return {
+            group_name: {
+                "CPU": float(parse_quantity(group_spec.get("max-cpu", 0))),
+                "memory": float(parse_quantity(group_spec.get("max-memory", 0))),
+            }
+            for group_name, group_spec in self._ippr_spec.get("groups", {}).items()
+        }
 
     def ippr_resize(self, resizes: List[IPPRStatus]) -> None:
         for resize in resizes:
@@ -510,10 +522,11 @@ class KubeRayProvider(ICloudInstanceProvider):
             )
 
     def _parse_ippr_spec(self) -> Dict[str, Any]:
-        spec = self._ray_cluster["metadata"]["annotations"].get("ray.io/ippr")
-        if not spec:
-            return None
-        return json.loads(spec)
+        return json.loads(
+            self._ray_cluster["metadata"]
+            .get("annotations", {})
+            .get("ray.io/ippr", "{}")
+        )
 
     def _sync_with_api_server(self) -> None:
         """Fetches the RayCluster resource from the Kubernetes API server."""
@@ -527,14 +540,16 @@ class KubeRayProvider(ICloudInstanceProvider):
             ippr_status = instance.ippr_status
             if (
                 ippr_status is not None
-                and ippr_status.resized_status is None
                 and ippr_status.resized_at is not None
+                and ippr_status.resized_status is None
+                and ippr_status.desired_cpu == ippr_status.current_cpu
+                and ippr_status.desired_memory == ippr_status.desired_memory
             ):
                 raylet_addr = self._get_raylet_address(ippr_status.raylet_id)
                 if not raylet_addr:
                     continue
                 try:
-                    reply = self._resize_raylet_resources(
+                    self._resize_raylet_resources(
                         raylet_addr,
                         ippr_status.current_cpu,
                         ippr_status.current_memory,
@@ -706,116 +721,107 @@ class KubeRayProvider(ICloudInstanceProvider):
             return None
 
         ippr_status = None
-        if self._ippr_spec:
-            group_ippr_spec = self._ippr_spec.get("groups", {}).get(
-                labels[KUBERAY_LABEL_KEY_TYPE]
+        ippr_group_spec = self._ippr_spec.get("groups", {}).get(
+            labels[KUBERAY_LABEL_KEY_TYPE]
+        )
+        if ippr_group_spec:
+            # get pod's resource requests and limits
+            container_status = None
+            for status in pod["status"]["containerStatuses"]:
+                if status["name"] == pod["spec"]["containers"][0]["name"]:
+                    container_status = status
+                    break
+            assert container_status is not None
+
+            pod_spec_requests = (
+                pod["spec"]["containers"][0].get("resources", {}).get("requests", {})
             )
-            if group_ippr_spec:
-                # get pod's resource requests and limits
-                pod_spec_requests = (
-                    pod["spec"]["containers"][0]
-                    .get("resources", {})
-                    .get("requests", {})
-                )
-                pod_spec_limits = (
-                    pod["spec"]["containers"][0].get("resources", {}).get("limits", {})
-                )
+            pod_spec_limits = (
+                pod["spec"]["containers"][0].get("resources", {}).get("limits", {})
+            )
+            pod_status_requests = container_status.get("resources", {}).get(
+                "requests", {}
+            )
+            pod_status_limits = container_status.get("resources", {}).get("limits", {})
 
-                container_name = pod["spec"]["containers"][0]["name"]
-                container_status = None
-                for status in pod["status"]["containerStatuses"]:
-                    if status["name"] == container_name:
-                        container_status = status
-                        break
-                assert container_status is not None
-                pod_status_requests = container_status.get("resources", {}).get(
-                    "requests", {}
+            self._container_resources[pod["metadata"]["name"]] = {
+                "spec": {
+                    "requests": pod_spec_requests,
+                    "limits": pod_spec_limits,
+                },
+                "status": {
+                    "requests": pod_status_requests,
+                    "limits": pod_status_limits,
+                },
+            }
+
+            spec_cpu = float(
+                parse_quantity(
+                    pod_spec_limits.get("cpu") or pod_spec_requests.get("cpu", 0)
                 )
-                pod_status_limits = container_status.get("resources", {}).get(
-                    "limits", {}
+            )
+            spec_memory = float(
+                parse_quantity(
+                    pod_spec_limits.get("memory") or pod_spec_requests.get("memory", 0)
                 )
-                self._container_resources[pod["metadata"]["name"]] = {
-                    "spec": {
-                        "requests": pod_spec_requests,
-                        "limits": pod_spec_limits,
-                    },
-                    "status": {
-                        "requests": pod_status_requests,
-                        "limits": pod_status_limits,
-                    },
-                }
-                spec_cpu = float(
+            )
+
+            ippr_status = IPPRStatus(
+                cloud_instance_id=pod["metadata"]["name"],
+                min_cpu=spec_cpu,
+                max_cpu=float(parse_quantity(ippr_group_spec.get("max-cpu", 0))),
+                min_memory=spec_memory,
+                max_memory=float(parse_quantity(ippr_group_spec.get("max-memory", 0))),
+                desired_cpu=spec_cpu,
+                desired_memory=spec_memory,
+                current_cpu=float(
                     parse_quantity(
-                        pod_spec_limits.get("cpu") or pod_spec_requests.get("cpu", 0)
+                        pod_status_limits.get("cpu")
+                        or pod_status_requests.get("cpu", 0)
                     )
-                )
-                spec_memory = float(
+                ),
+                current_memory=float(
                     parse_quantity(
-                        pod_spec_limits.get("memory")
-                        or pod_spec_requests.get("memory", 0)
+                        pod_status_limits.get("memory")
+                        or pod_status_requests.get("memory", 0)
+                    )
+                ),
+                resize_timeout=ippr_group_spec.get("resize-timeout", 0),
+            )
+
+            pod_ippr_status_json = (
+                pod["metadata"].get("annotations", {}).get("ray.io/ippr-status")
+            )
+            if pod_ippr_status_json:
+                pod_ippr_status = json.loads(pod_ippr_status_json)
+                ippr_status.raylet_id = pod_ippr_status.get("raylet-id", None)
+                ippr_status.min_cpu = float(
+                    parse_quantity(pod_ippr_status.get("min-cpu", ippr_status.min_cpu))
+                )
+                ippr_status.min_memory = float(
+                    parse_quantity(
+                        pod_ippr_status.get("min-memory", ippr_status.min_memory)
                     )
                 )
+                ippr_status.resized_at = pod_ippr_status.get("resized-at", None)
 
-                ippr_status = IPPRStatus(
-                    cloud_instance_id=pod["metadata"]["name"],
-                    min_cpu=spec_cpu,
-                    max_cpu=float(parse_quantity(group_ippr_spec.get("max-cpu", 0))),
-                    min_memory=spec_memory,
-                    max_memory=float(
-                        parse_quantity(group_ippr_spec.get("max-memory", 0))
-                    ),
-                    desired_cpu=spec_cpu,
-                    desired_memory=spec_memory,
-                    current_cpu=float(
-                        parse_quantity(
-                            pod_status_limits.get("cpu")
-                            or pod_status_requests.get("cpu", 0)
-                        )
-                    ),
-                    current_memory=float(
-                        parse_quantity(
-                            pod_status_limits.get("memory")
-                            or pod_status_requests.get("memory", 0)
-                        )
-                    ),
-                    resize_timeout=group_ippr_spec.get("resize-timeout", 0),
-                )
-
-                pod_ippr_status_json = pod["metadata"]["annotations"].get(
-                    "ray.io/ippr-status"
-                )
-                if pod_ippr_status_json:
-                    pod_ippr_status = json.loads(pod_ippr_status_json)
-                    ippr_status.raylet_id = pod_ippr_status.get("raylet-id", None)
-                    ippr_status.min_cpu = float(
-                        parse_quantity(
-                            pod_ippr_status.get("min-cpu", ippr_status.min_cpu)
-                        )
-                    )
-                    ippr_status.min_memory = float(
-                        parse_quantity(
-                            pod_ippr_status.get("min-memory", ippr_status.min_memory)
-                        )
-                    )
-                    ippr_status.resized_at = pod_ippr_status.get("resized-at", None)
-
-                for condition in pod["status"]["conditions"]:
-                    if (
-                        condition["type"] == "PodResizePending"
-                        and condition["status"] == "True"
-                    ):
-                        ippr_status.resized_message = condition["message"]
-                        ippr_status.resized_status = condition["reason"].lower()
-                        break
-                    elif (
-                        condition["type"] == "PodResizeInProgress"
-                        and condition["status"] == "True"
-                    ):
-                        ippr_status.resized_message = condition["message"]
-                        ippr_status.resized_status = "inprogress"
-                        if condition["reason"] == "Error":
-                            ippr_status.resized_status = "error"
-                        break
+            for condition in pod["status"]["conditions"]:
+                if (
+                    condition["type"] == "PodResizePending"
+                    and condition["status"] == "True"
+                ):
+                    ippr_status.resized_message = condition.get("message", None)
+                    ippr_status.resized_status = condition.get("reason", "").lower()
+                    break
+                elif (
+                    condition["type"] == "PodResizeInProgress"
+                    and condition["status"] == "True"
+                ):
+                    ippr_status.resized_message = condition.get("message", None)
+                    ippr_status.resized_status = "inprogress"
+                    if condition.get("reason") == "Error":
+                        ippr_status.resized_status = "error"
+                    break
 
         # TODO: we should prob get from the pod's env var (RAY_CLOUD_INSTANCE_ID)
         # directly.
@@ -853,9 +859,14 @@ class KubeRayProvider(ICloudInstanceProvider):
         """Get a resource from the Kubernetes API server."""
         return self._k8s_api_client.get(remote_path)
 
-    def _patch(self, remote_path: str, payload: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def _patch(
+        self,
+        remote_path: str,
+        payload: List[Dict[str, Any]],
+        content_type: str = "application/json-patch+json",
+    ) -> Dict[str, Any]:
         """Patch a resource on the Kubernetes API server."""
-        return self._k8s_api_client.patch(remote_path, payload)
+        return self._k8s_api_client.patch(remote_path, payload, content_type)
 
     def _get_head_pod_resource_version(self) -> str:
         """

@@ -1133,6 +1133,9 @@ class Reconciler:
             ),
         )
 
+        if isinstance(cloud_provider, KubeRayProvider):
+            sched_request.ippr_capacities = cloud_provider.get_ippr_capacities()
+
         # Ask scheduler for updates to the cluster shape.
         reply = scheduler.schedule(sched_request)
 
@@ -1162,7 +1165,6 @@ class Reconciler:
         # Scale the clusters if needed.
         to_launch = reply.to_launch
         to_terminate = reply.to_terminate
-        to_scale = reply.to_scale
         updates = {}
         # Add terminating instances.
         for terminate_request in to_terminate:
@@ -1202,7 +1204,7 @@ class Reconciler:
                 )
 
         if isinstance(cloud_provider, KubeRayProvider):
-            cloud_provider.ippr_resize(to_scale)
+            cloud_provider.ippr_resize(reply.to_scale)
 
         Reconciler._update_instance_manager(instance_manager, version, updates)
 
