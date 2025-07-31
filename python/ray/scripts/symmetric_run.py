@@ -1,9 +1,6 @@
 """Symmetric Run for Ray.
 
-This script is used to run a command on all nodes in a Ray cluster.
-
-It is designed to be run symmetrically on all nodes in the cluster.
-
+This script is used to run a command on all nodes in a Ray cluster. Most useful for HPC settings.
 
 Example:
 
@@ -131,6 +128,7 @@ def symmetric_run(address: str, nnodes: int, execute_on_head: List[str]):
 
     is_head = resolved_head_ip in my_ips
 
+    result = None
     # 2. Start Ray and run commands.
     try:
         if is_head:
@@ -187,7 +185,7 @@ def symmetric_run(address: str, nnodes: int, execute_on_head: List[str]):
         subprocess.run(["ray", "stop"], check=True)
 
         # Propagate the exit code of the user script.
-        if "result" in locals() and result.returncode != 0:
+        if result is not None and result.returncode != 0:
             click.echo(f"Command failed with return code {result.returncode}")
             sys.exit(result.returncode)
 
