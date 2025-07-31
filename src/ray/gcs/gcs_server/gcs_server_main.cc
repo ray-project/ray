@@ -19,6 +19,7 @@
 #include <vector>
 
 #include "gflags/gflags.h"
+#include "ray/common/network_util.h"
 #include "ray/common/ray_config.h"
 #include "ray/gcs/gcs_server/gcs_server.h"
 #include "ray/gcs/store_client/redis_store_client.h"
@@ -120,13 +121,6 @@ int main(int argc, char *argv[]) {
 
   ray::stats::enable_grpc_metrics_collection_if_needed("gcs");
 
-  const ray::stats::TagsType global_tags = {{ray::stats::ComponentKey, "gcs_server"},
-                                            {ray::stats::WorkerIdKey, ""},
-                                            {ray::stats::VersionKey, kRayVersion},
-                                            {ray::stats::NodeAddressKey, node_ip_address},
-                                            {ray::stats::SessionNameKey, session_name}};
-  ray::stats::Init(global_tags, metrics_agent_port, WorkerID::Nil());
-
   // Initialize event framework.
   if (RayConfig::instance().event_log_reporter_enabled() && !log_dir.empty()) {
     // This GCS server process emits GCS standard events, and
@@ -157,6 +151,7 @@ int main(int argc, char *argv[]) {
   gcs_server_config.redis_username = redis_username;
   gcs_server_config.retry_redis = retry_redis;
   gcs_server_config.node_ip_address = node_ip_address;
+  gcs_server_config.metrics_agent_port = metrics_agent_port;
   gcs_server_config.log_dir = log_dir;
   gcs_server_config.raylet_config_list = config_list;
   gcs_server_config.session_name = session_name;

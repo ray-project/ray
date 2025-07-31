@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <boost/asio/steady_timer.hpp>
 #include <memory>
 #include <string>
 
@@ -54,6 +55,7 @@ struct GcsServerConfig {
   std::string grpc_server_name = "GcsServer";
   uint16_t grpc_server_port = 0;
   uint16_t grpc_server_thread_num = 1;
+  uint16_t metrics_agent_port = 0;
   std::string redis_username;
   std::string redis_password;
   std::string redis_address;
@@ -120,6 +122,10 @@ class GcsServer {
 
   static constexpr char kInMemoryStorage[] = "memory";
   static constexpr char kRedisStorage[] = "redis";
+
+  // Constants for async stats initialization
+  static constexpr int kMaxStatsInitRetries = 10;
+  static constexpr int kStatsInitRetryDelayMs = 2000;
 
   void UpdateGcsResourceManagerInTest(
       const NodeID &node_id,
@@ -191,6 +197,19 @@ class GcsServer {
   /// Install event listeners.
   void InstallEventListeners();
 
+  /// Initializes the Ray metrics infrastructure for the GCS server. This infrastructure
+  /// enables collection of runtime metrics such as the number of tasks and actors in the
+  /// cluster.
+  ///
+  /// This function assumes that the metrics agent server (a separated process) is already
+  /// running. It checks whether the agent's port is occupied as an indication of its
+  /// availability. If the port is free (i.e., the agent is not yet running), it will
+  /// retry initialization after a delay.
+  ///
+  /// Note: Metrics are buffered in memory regardless of whether the infrastructure has
+  /// been initialized, so no metrics are lost during this process.
+  void InitStats();
+
  private:
   /// Gets the type of KV storage to use from config.
   StorageType GetStorageType() const;
@@ -200,6 +219,12 @@ class GcsServer {
 
   /// Dump the debug info to debug_state_gcs.txt.
   void DumpDebugStateToFile() const;
+
+  /// Initializes Ray metrics infrastructure for GCS server asynchronously. This is
+  /// a helper function for InitStats.
+  void InitStatsAsync(instrumented_io_context &main_service,
+                      const ray::stats::TagsType &global_tags,
+                      int retry_count = 0);
 
   /// Collect stats from each module.
   void RecordMetrics() const;
@@ -298,6 +323,8 @@ class GcsServer {
   int task_pending_schedule_detected_ = 0;
   /// Throttler for global gc
   std::unique_ptr<Throttler> global_gc_throttler_;
+  /// Timer for async stats initialization retries
+  std::unique_ptr<boost::asio::steady_timer> stats_init_timer_;
 };
 
 }  // namespace gcs

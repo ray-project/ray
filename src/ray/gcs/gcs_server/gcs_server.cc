@@ -22,6 +22,7 @@
 
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/network_util.h"
 #include "ray/common/ray_config.h"
 #include "ray/gcs/gcs_server/gcs_actor_manager.h"
 #include "ray/gcs/gcs_server/gcs_autoscaler_state_manager.h"
@@ -31,6 +32,7 @@
 #include "ray/gcs/gcs_server/gcs_worker_manager.h"
 #include "ray/gcs/gcs_server/store_client_kv.h"
 #include "ray/pubsub/publisher.h"
+#include "ray/stats/stats.h"
 #include "ray/util/util.h"
 
 namespace ray {
@@ -153,6 +155,8 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
       /*publisher_id=*/NodeID::FromRandom());
 
   gcs_publisher_ = std::make_unique<GcsPublisher>(std::move(inner_publisher));
+  stats_init_timer_ = std::make_unique<boost::asio::steady_timer>(
+      io_context_provider_.GetDefaultIOContext());
 }
 
 GcsServer::~GcsServer() { Stop(); }
@@ -274,6 +278,9 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // Init usage stats client.
   InitUsageStatsClient();
 
+  // Init stats
+  InitStats();
+
   // Start RPC server when all tables have finished loading initial
   // data.
   rpc_server_.Run();
@@ -308,6 +315,10 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
 void GcsServer::Stop() {
   if (!is_stopped_) {
     RAY_LOG(INFO) << "Stopping GCS server.";
+
+    // Cancel any pending stats initialization timer
+    stats_init_timer_->cancel();
+    stats_init_timer_.reset();
 
     io_context_provider_.StopAllDedicatedIOContexts();
 
@@ -585,6 +596,50 @@ void GcsServer::InitUsageStatsClient() {
   gcs_actor_manager_->SetUsageStatsClient(usage_stats_client_.get());
   gcs_placement_group_manager_->SetUsageStatsClient(usage_stats_client_.get());
   gcs_task_manager_->SetUsageStatsClient(usage_stats_client_.get());
+}
+
+void GcsServer::InitStats() {
+  const ray::stats::TagsType global_tags = {
+      {ray::stats::ComponentKey, "gcs_server"},
+      {ray::stats::WorkerIdKey, ""},
+      {ray::stats::VersionKey, kRayVersion},
+      {ray::stats::NodeAddressKey, config_.node_ip_address},
+      {ray::stats::SessionNameKey, config_.session_name}};
+  InitStatsAsync(io_context_provider_.GetDefaultIOContext(), global_tags);
+}
+
+void GcsServer::InitStatsAsync(instrumented_io_context &main_service,
+                               const ray::stats::TagsType &global_tags,
+                               int retry_count) {
+  RAY_LOG(INFO) << "Initializing stats for GCS server...";
+  if (!CheckPortFree(config_.metrics_agent_port)) {
+    // Init stats if the metric agent server is already running
+    // (based on the fact that the port is not free)
+    stats::Init(global_tags, config_.metrics_agent_port, WorkerID::Nil());
+    RAY_LOG(INFO) << "Stats initialized successfully.";
+    return;
+  }
+
+  if (retry_count >= kMaxStatsInitRetries) {
+    RAY_LOG(ERROR) << "Failed to initialize stats for GCS server after "
+                   << kMaxStatsInitRetries << " retries.";
+    return;
+  }
+
+  retry_count++;
+  RAY_LOG(INFO) << "Metric agent server is not running yet, retrying in "
+                << kStatsInitRetryDelayMs << "ms  "
+                << "(attempt " << retry_count << "/" << kMaxStatsInitRetries << ")";
+
+  stats_init_timer_->expires_after(std::chrono::milliseconds(kStatsInitRetryDelayMs));
+  stats_init_timer_->async_wait([this, &main_service, global_tags, retry_count](
+                                    const boost::system::error_code &ec) {
+    if (!ec) {
+      InitStatsAsync(main_service, global_tags, retry_count);
+    } else {
+      RAY_LOG(ERROR) << "Failed to initialize stats for GCS server: " << ec.message();
+    }
+  });
 }
 
 void GcsServer::InitKVManager() {
