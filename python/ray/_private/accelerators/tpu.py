@@ -466,7 +466,7 @@ class TPUAcceleratorManager(AcceleratorManager):
         - ray.io/tpu-slice-name: the name of the TPU Pod or slice
         - ray.io/tpu-worker-id: the integer worker ID within the slice
         - ray.io/tpu-topology: the TPU topology (e.g. 4x4)
-        - ray.io/tpu-head: set to "TPU-<tpu_pod_type>-head" only on worker 0
+        - ray.io/tpu-pod-type: the TPU pod type (e.g. v4-8)
 
         Returns:
             A dictionary of TPU label keys and resolved values.
@@ -486,7 +486,7 @@ class TPUAcceleratorManager(AcceleratorManager):
             tpu_labels[ray._raylet.RAY_NODE_TPU_TOPOLOGY_KEY] = tpu_topology
 
         pod_type = TPUAcceleratorManager.get_current_node_tpu_pod_type()
-        if worker_id == 0 and pod_type:
-            tpu_labels[ray._raylet.RAY_NODE_TPU_HEAD_KEY] = f"TPU-{pod_type}-head"
+        if pod_type:
+            tpu_labels[ray._raylet.RAY_NODE_TPU_POD_TYPE_KEY] = pod_type
 
         return tpu_labels

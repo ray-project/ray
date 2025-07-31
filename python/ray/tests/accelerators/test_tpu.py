@@ -340,7 +340,7 @@ def test_get_current_node_labels_env_only(monkeypatch):
     assert tpu_labels["ray.io/tpu-slice-name"] == "tpu-worker-group-2"
     assert tpu_labels["ray.io/tpu-worker-id"] == "0"
     assert tpu_labels["ray.io/tpu-topology"] == "4x4"
-    assert tpu_labels["ray.io/tpu-head"] == "TPU-v6e-16-head"
+    assert tpu_labels["ray.io/tpu-pod-type"] == "v6e-16"
 
 
 if __name__ == "__main__":

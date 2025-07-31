@@ -26,7 +26,7 @@ from ray.includes.common cimport (
     kLabelKeyTpuTopology,
     kLabelKeyTpuSliceName,
     kLabelKeyTpuWorkerId,
-    kLabelKeyTpuHead,
+    kLabelKeyTpuPodType,
 )
 
 from ray.exceptions import (
@@ -158,4 +158,4 @@ RAY_NODE_GROUP_KEY = kLabelKeyNodeGroup.decode()
 RAY_NODE_TPU_TOPOLOGY_KEY = kLabelKeyTpuTopology.decode()
 RAY_NODE_TPU_SLICE_NAME_KEY = kLabelKeyTpuSliceName.decode()
 RAY_NODE_TPU_WORKER_ID_KEY = kLabelKeyTpuWorkerId.decode()
-RAY_NODE_TPU_HEAD_KEY = kLabelKeyTpuHead.decode()
+RAY_NODE_TPU_POD_TYPE_KEY = kLabelKeyTpuPodType.decode()

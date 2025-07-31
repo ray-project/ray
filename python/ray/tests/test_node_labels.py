@@ -207,7 +207,7 @@ def test_get_default_tpu_labels(shutdown_only, monkeypatch):
     assert labels.get("ray.io/tpu-slice-name") == "slice-0"
     assert labels.get("ray.io/tpu-worker-id") == "0"
     assert labels.get("ray.io/tpu-topology") == "4x8"
-    assert labels.get("ray.io/tpu-head") == "TPU-v6e-32-head"
+    assert labels.get("ray.io/tpu-pod-type") == "v6e-32"
 
 
 if __name__ == "__main__":
