@@ -614,7 +614,7 @@ void NormalTaskSubmitter::PushNormalTask(
                                                 addr,
                                                 get_task_failure_cause_reply_status,
                                                 get_task_failure_cause_reply);
-                  absl::MutexLock lock(&mu_);
+                  absl::MutexLock task_submission_state_lock(&mu_);
                   if (!will_retry) {
                     // Task submission and task cancellation are the only two other code
                     // paths that clean up the cancelled_tasks_ map. If the task is not

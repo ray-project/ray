@@ -3560,8 +3560,9 @@ void CoreWorker::HandleWaitForActorRefDeleted(
 
   // Send a response to trigger cleaning up the actor state once the handle is
   // no longer in scope.
-  auto respond = [send_reply_callback](const ActorID &actor_id) {
-    RAY_LOG(DEBUG).WithField(actor_id) << "Replying to HandleWaitForActorRefDeleted";
+  auto respond = [send_reply_callback](const ActorID &respond_actor_id) {
+    RAY_LOG(DEBUG).WithField(respond_actor_id)
+        << "Replying to HandleWaitForActorRefDeleted";
     send_reply_callback(Status::OK(), nullptr, nullptr);
   };
 

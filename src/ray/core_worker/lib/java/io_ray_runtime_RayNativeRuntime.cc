@@ -29,7 +29,7 @@
 #include "ray/core_worker/actor_handle.h"
 #include "ray/core_worker/core_worker.h"
 
-thread_local JNIEnv *inner_env = nullptr;
+thread_local JNIEnv *local_env = nullptr;
 jobject java_task_executor = nullptr;
 
 /// Store Java instances of function descriptor in the cache to avoid unnessesary JNI
@@ -88,13 +88,13 @@ jobject ToJavaArgs(JNIEnv *env,
 }
 
 JNIEnv *GetJNIEnv() {
-  JNIEnv *env = inner_env;
+  JNIEnv *env = local_env;
   if (!env) {
     // Attach the native thread to JVM.
     auto status =
         jvm->AttachCurrentThreadAsDaemon(reinterpret_cast<void **>(&env), nullptr);
     RAY_CHECK(status == JNI_OK) << "Failed to get JNIEnv. Return code: " << status;
-    inner_env = env;
+    local_env = env;
   }
   RAY_CHECK(env);
   return env;
@@ -240,7 +240,7 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
                 result_ptr));
 
             // A nullptr is returned if the object already exists.
-            auto result_ = *result_ptr;
+            auto result = *result_ptr;
             if (result != nullptr) {
               if (result->HasData()) {
                 memcpy(result->GetData()->Data(),
@@ -250,7 +250,7 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
             }
 
             RAY_CHECK_OK(CoreWorkerProcess::GetCoreWorker().SealReturnObject(
-                result_id, result_, ObjectID::Nil(), caller_address));
+                result_id, result, ObjectID::Nil(), caller_address));
           }
         }
 
