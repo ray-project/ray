@@ -179,7 +179,7 @@ def test_serve_metrics_for_successful_connection(metrics_start_shutdown):
     app_name = "app1"
     handle = serve.run(target=f.bind(), name=app_name)
 
-    http_url = "http://localhost:8000/metrics"
+    http_url = get_application_url(app_name=app_name)
     # send 10 concurrent requests
     ray.get([block_until_http_ready.remote(http_url) for _ in range(10)])
     [handle.remote(http_url) for _ in range(10)]
