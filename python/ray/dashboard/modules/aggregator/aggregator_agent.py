@@ -91,16 +91,8 @@ if prometheus_client:
     metrics_prefix = "event_aggregator_agent"
     events_received = Counter(
         f"{metrics_prefix}_events_received",
-        "Total number of events received from the upstream components from the "
-        "AddEvents gRPC call.",
-        tuple(dashboard_consts.COMPONENT_METRICS_TAG_KEYS),
-        namespace="ray",
-    )
-    events_failed_to_add_to_aggregator = Counter(
-        f"{metrics_prefix}_events_failed_to_add_to_aggregator",
-        "Total number of events failed to add to the event aggregator. The metric "
-        "counts the events received by the aggregator agent from the AddEvents gRPC "
-        "call but failed to add to the buffer due to unexpected errors.",
+        "Total number of events received. This metric only counts the number of events "
+        "being successfully added to the aggregator agent's buffer.",
         tuple(dashboard_consts.COMPONENT_METRICS_TAG_KEYS),
         namespace="ray",
     )
@@ -162,6 +154,7 @@ class AggregatorAgent(
         self._events_received_since_last_metrics_update = 0
         self._events_failed_to_add_to_aggregator_since_last_metrics_update = 0
         self._events_dropped_at_event_aggregator_since_last_metrics_update = 0
+        self.events_failed_to_add_to_aggregator_since_last_metrics_update = 0
         self._events_published_since_last_metrics_update = 0
         self._events_filtered_out_since_last_metrics_update = 0
 
@@ -309,12 +302,16 @@ class AggregatorAgent(
             _events_dropped_at_event_aggregator = (
                 self._events_dropped_at_event_aggregator_since_last_metrics_update
             )
+            _events_failed_to_add_to_aggregator = (
+                self._events_failed_to_add_to_aggregator_since_last_metrics_update
+            )
             _events_published = self._events_published_since_last_metrics_update
             _events_filtered_out = self._events_filtered_out_since_last_metrics_update
 
             self._events_received_since_last_metrics_update = 0
             self._events_failed_to_add_to_aggregator_since_last_metrics_update = 0
             self._events_dropped_at_event_aggregator_since_last_metrics_update = 0
+            self._events_failed_to_add_to_aggregator_since_last_metrics_update = 0
             self._events_published_since_last_metrics_update = 0
             self._events_filtered_out_since_last_metrics_update = 0
 
@@ -331,6 +328,9 @@ class AggregatorAgent(
         )
         events_dropped_at_event_aggregator.labels(**labels).inc(
             _events_dropped_at_event_aggregator
+        )
+        events_failed_to_add_to_aggregator.labels(**labels).inc(
+            _events_failed_to_add_to_aggregator
         )
         events_published.labels(**labels).inc(_events_published)
         events_filtered_out.labels(**labels).inc(_events_filtered_out)
