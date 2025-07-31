@@ -55,7 +55,7 @@ def main(args: argparse.Namespace):
                 Infer,
                 batch_size=BATCH_SIZE,
                 num_gpus=1,
-                concurrency=args.inference_concurrency,
+                concurrency=tuple(args.inference_concurrency),
             )
             .write_parquet(OUTPUT_PREFIX)
         )
