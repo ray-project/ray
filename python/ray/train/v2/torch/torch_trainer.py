@@ -1,7 +1,12 @@
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Union
 
-from ray.train import Checkpoint, DataConfig
+import torch
+
+from ray.train import Checkpoint, DataConfig, Result
 from ray.train.trainer import GenDataset
+from ray.train.v2._internal.execution.local_running_utils import (
+    launched_by_torchrun,
+)
 from ray.train.v2.api.config import RunConfig, ScalingConfig
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
 from ray.util import PublicAPI
@@ -194,6 +199,7 @@ class TorchTrainer(DataParallelTrainer):
         # TODO: [Deprecated]
         metadata: Optional[Dict[str, Any]] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
+        local_running_mode: bool = False,
     ):
         from ray.train.torch.config import TorchConfig
 
@@ -213,3 +219,31 @@ class TorchTrainer(DataParallelTrainer):
             resume_from_checkpoint=resume_from_checkpoint,
             metadata=metadata,
         )
+        self.local_running_mode = local_running_mode
+
+    def fit(self) -> Result:
+        if not self.local_running_mode:
+            return super(TorchTrainer, self).fit()
+        else:
+            return self._local_fit()
+
+    def _local_fit(self) -> Result:
+        self._set_local_running_train_context()
+        train_fn = self._get_train_func()
+        train_fn()
+        return Result(metrics={}, checkpoint=None, error=None)
+
+    def _set_local_running_train_context(self) -> None:
+        import torch.distributed as torch_dist
+
+        if launched_by_torchrun():
+            torch_dist.init_process_group(
+                backend="nccl" if torch.cuda.is_available() else "gloo"
+            )
+            world_size = torch_dist.get_world_size()
+            world_rank = torch_dist.get_rank()
+
+        torch_dist.barrier()
+
+        self.train_run_context.set_local_rank(torch_dist.get_rank())
+        self.train_run_context.set_world_size(torch_dist.get_world_size())
