@@ -8,8 +8,8 @@ from ray.util.collective.types import TensorTransportMetadata
 from ray.experimental.gpu_object_manager.gpu_object_communicator import (
     get_tensor_transport_metadata,
     get_collective_metadata,
-    send_gpu_object,
-    recv_gpu_object,
+    send_object,
+    recv_object,
 )
 from ray._private import ray_constants
 
@@ -38,10 +38,10 @@ def __ray_fetch_gpu_object__(self, obj_id: str):
     from ray._private.worker import global_worker
 
     gpu_object_store = global_worker.gpu_object_manager.gpu_object_store
-    assert gpu_object_store.has_gpu_object(
+    assert gpu_object_store.has_object(
         obj_id
     ), f"obj_id={obj_id} not found in GPU object store"
-    tensors = gpu_object_store.get_gpu_object(obj_id)
+    tensors = gpu_object_store.get_object(obj_id)
     return tensors
 
 
@@ -194,13 +194,13 @@ class GPUObjectManager:
                 tensor_meta,
                 gpu_object_meta.tensor_transport_backend,
             )
-            send_gpu_object(
+            send_object(
                 src_actor,
                 arg.hex(),
                 tensor_transport_metadata,
                 gpu_object_meta.tensor_transport_backend,
             )
-            recv_gpu_object(
+            recv_object(
                 dst_actor,
                 arg.hex(),
                 tensor_transport_metadata,

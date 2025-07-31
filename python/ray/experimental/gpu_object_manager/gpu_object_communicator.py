@@ -37,10 +37,10 @@ def __ray_get_tensor_transport_metadata__(
     from ray._private.worker import global_worker
 
     gpu_object_store = global_worker.gpu_object_manager.gpu_object_store
-    assert gpu_object_store.has_gpu_object(
-        obj_id
-    ), f"obj_id={obj_id} not found in GPU object store"
-    tensors = gpu_object_store.get_gpu_object(obj_id)
+    # NOTE: We do not specify a timeout here because the user task that returns
+    # it could take arbitrarily long and we don't want to trigger a spurious
+    # timeout.
+    tensors = gpu_object_store.wait_and_get_object(obj_id)
     if tensor_transport == TensorTransportEnum.NIXL:
         from ray.util.collective.collective_group.nixl_backend import NixlBackend
         from ray.util.collective.types import NIXL_GROUP_NAME
@@ -160,7 +160,7 @@ def _is_one_sided(backend: Optional[str] = None) -> bool:
     return backend == Backend.NIXL
 
 
-def send_gpu_object(
+def send_object(
     src_actor: "ray.actor.ActorHandle",
     obj_id: str,
     tensor_transport_metadata: TensorTransportMetadata,
@@ -182,7 +182,7 @@ def send_gpu_object(
         )
 
 
-def recv_gpu_object(
+def recv_object(
     dst_actor: "ray.actor.ActorHandle",
     obj_id: str,
     tensor_transport_metadata: TensorTransportMetadata,
@@ -197,6 +197,6 @@ def recv_gpu_object(
     # this is only needed for the sender task, but we put the receiver task
     # on the same background thread to ensure that all communication
     # operations are executed in a global order.
-    dst_actor.__ray_call__.remote.options(concurrency_group="_ray_system").remote(
+    dst_actor.__ray_call__.options(concurrency_group="_ray_system").remote(
         __ray_recv__, obj_id, tensor_transport_metadata
     )
