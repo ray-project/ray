@@ -19,11 +19,23 @@ cc_proto_library(
 )
 
 proto_library(
+    name = "profile_events_proto",
+    srcs = ["profile_events.proto"],
+    visibility = ["//java:__subpackages__"],
+)
+
+cc_proto_library(
+    name = "profile_events_cc_proto",
+    deps = [":profile_events_proto"],
+)
+
+proto_library(
     name = "gcs_proto",
     srcs = ["gcs.proto"],
     visibility = ["//java:__subpackages__"],
     deps = [
         ":common_proto",
+        ":profile_events_proto",
         ":runtime_env_common_proto",
     ],
 )
@@ -212,6 +224,7 @@ proto_library(
     deps = [
         ":common_proto",
         ":export_runtime_env_proto",
+        ":profile_events_proto",
     ],
 )
 
@@ -419,6 +432,19 @@ cc_proto_library(
 )
 
 proto_library(
+    name = "events_task_profile_events_proto",
+    srcs = ["events_task_profile_events.proto"],
+    deps = [
+        ":profile_events_proto",
+    ],
+)
+
+cc_proto_library(
+    name = "events_task_profile_events_cc_proto",
+    deps = [":events_task_profile_events_proto"],
+)
+
+proto_library(
     name = "events_base_event_proto",
     srcs = ["events_base_event.proto"],
     deps = [
@@ -426,6 +452,7 @@ proto_library(
         ":events_actor_task_execution_event_proto",
         ":events_task_definition_event_proto",
         ":events_task_execution_event_proto",
+        ":events_task_profile_events_proto",
         "@com_google_protobuf//:timestamp_proto",
     ],
 )
