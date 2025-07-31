@@ -301,16 +301,12 @@ RAY_SERVE_HANDLE_AUTOSCALING_METRIC_RECORD_INTERVAL_S = float(
     os.environ.get("RAY_SERVE_HANDLE_AUTOSCALING_METRIC_RECORD_INTERVAL_S", "0.5")
 )
 
-# Legacy name for RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S
-HANDLE_METRIC_PUSH_INTERVAL_S = float(
-    os.environ.get("RAY_SERVE_HANDLE_METRIC_PUSH_INTERVAL_S", "10")
-)
-
 # Handle autoscaling metrics push interval. (This interval will affect the cold start time period)
 RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S = float(
     os.environ.get(
         "RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S",
-        HANDLE_METRIC_PUSH_INTERVAL_S,
+        # Legacy env var for RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S
+        os.environ.get("RAY_SERVE_HANDLE_METRIC_PUSH_INTERVAL_S", "10"),
     )
 )
 
