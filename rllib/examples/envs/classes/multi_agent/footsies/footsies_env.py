@@ -128,7 +128,7 @@ class FootsiesEnv(env.MultiAgentEnv):
         return observations, {agent: {} for agent in self.agents}
 
     def step(
-            self, actions: dict[AgentID, ActionType]
+        self, actions: dict[AgentID, ActionType]
     ) -> tuple[
         dict[AgentID, ObsType],
         dict[AgentID, float],
