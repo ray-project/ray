@@ -99,3 +99,16 @@ def local_running_get_devices() -> List[torch.device]:
         return [torch.device(f"cuda:{i}") for i in range(torch.cuda.device_count())]
     else:
         return [torch.device("cpu")]
+
+LOCAL_RUNNING_DATA_PROVIDER_ACTOR_NAME = "local_running_data_provider"
+
+
+def start_local_running_data_provider_and_register_datasets(datasets: Dict[str, Dataset]) -> None:
+    data_provider = GlobalLocalTrainerRayDataset.options(
+        name=LOCAL_RUNNING_DATA_PROVIDER_ACTOR_NAME
+    ).remote(world_size=torch.distributed.get_world_size())
+
+    data_provider.register_dataset.remote(datasets)
+
+
+def get_local_running_data_provider() -> GlobalLocalTrainerRayDataset:
