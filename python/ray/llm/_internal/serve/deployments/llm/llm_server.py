@@ -41,7 +41,6 @@ from ray.llm._internal.serve.observability.usage_telemetry.usage import (
 )
 from ray.llm._internal.serve.utils.lora_serve_utils import (
     LoraModelLoader,
-    get_lora_mirror_config,
 )
 
 if TYPE_CHECKING:
@@ -221,12 +220,9 @@ class LLMServer(_LLMServerBase):
             )
 
             async def _load_model(lora_model_id: str) -> DiskMultiplexConfig:
-                lora_mirror_config = await get_lora_mirror_config(
-                    lora_model_id, self._llm_config
-                )
-                return await model_downloader.load_model(
+                return await model_downloader.load_model_from_config(
                     lora_model_id=lora_model_id,
-                    lora_mirror_config=lora_mirror_config,
+                    llm_config=self._llm_config,
                 )
 
             self._load_model = serve.multiplexed(
