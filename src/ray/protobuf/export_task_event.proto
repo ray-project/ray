@@ -18,7 +18,7 @@ package ray.rpc;
 
 import "src/ray/protobuf/common.proto";
 import "src/ray/protobuf/export_runtime_env.proto";
-import "src/ray/protobuf/events_profile_events.proto";
+import "src/ray/protobuf/profile_events.proto";
 
 // ExportTaskEventData defines the event_data stored by the export API
 // for EXPORT_TASK type events. This schema is public and any changes must
@@ -102,7 +102,7 @@ message ExportTaskEventData {
   // Task state updates.
   optional TaskStateUpdate state_updates = 4;
   // Task profiling events.
-  optional ray.rpc.events.ProfileEvents profile_events = 5;
+  optional ProfileEvents profile_events = 5;
   // Job id of the task
   bytes job_id = 6;
 }

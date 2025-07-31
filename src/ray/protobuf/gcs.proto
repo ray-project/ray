@@ -17,7 +17,7 @@ syntax = "proto3";
 package ray.rpc;
 
 import "src/ray/protobuf/common.proto";
-import "src/ray/protobuf/events_profile_events.proto";
+import "src/ray/protobuf/profile_events.proto";
 
 option java_package = "io.ray.runtime.generated";
 
@@ -223,7 +223,7 @@ message TaskEvents {
   // Task state updates.
   optional TaskStateUpdate state_updates = 4;
   // Task profiling events.
-  optional ray.rpc.events.ProfileEvents profile_events = 5;
+  optional ProfileEvents profile_events = 5;
   // Job id of the task
   bytes job_id = 6;
 }
