@@ -6,7 +6,7 @@ import traceback
 from typing import Any, Optional
 
 import ray
-from ray._private.ray_constants import LOGGING_ROTATE_BACKUP_COUNT, LOGGING_ROTATE_BYTES
+from ray._common.ray_constants import LOGGING_ROTATE_BACKUP_COUNT, LOGGING_ROTATE_BYTES
 from ray._private.ray_logging.filters import CoreContextFilter
 from ray._private.ray_logging.formatters import JSONFormatter, TextFormatter
 from ray.serve._private.common import ServeComponentType
@@ -370,6 +370,8 @@ def configure_component_logger(
 
     if logging_config.enable_access_log is False:
         file_handler.addFilter(log_access_log_filter)
+    else:
+        file_handler.addFilter(ServeContextFilter())
 
     # Remove unwanted attributes from the log record.
     file_handler.addFilter(ServeLogAttributeRemovalFilter())
