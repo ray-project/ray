@@ -955,7 +955,6 @@ python/ray/dashboard/modules/reporter/profile_manager.py
     DOC111: Method `MemoryProfilingManager.detach_profiler`: The option `--arg-type-hints-in-docstring` is `False` but there are type hints in the docstring arg list
 --------------------
 python/ray/dashboard/modules/reporter/reporter_agent.py
-    DOC103: Method `ReporterAgent.generate_worker_stats_record`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [worker_stats: List[dict]]. Arguments in the docstring but not in the function signature: [stats: ].
     DOC201: Method `ReporterAgent.generate_worker_stats_record` does not have a return section in docstring
 --------------------
 python/ray/dashboard/modules/reporter/reporter_head.py
