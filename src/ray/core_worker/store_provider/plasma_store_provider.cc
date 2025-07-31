@@ -179,13 +179,11 @@ Status CoreWorkerPlasmaStoreProvider::FetchAndGetFromPlasmaStore(
     absl::flat_hash_set<ObjectID> &remaining,
     const std::vector<ObjectID> &batch_ids,
     int64_t timeout_ms,
-    bool fetch_only,
     const TaskID &task_id,
     absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
     bool *got_exception) {
   const auto owner_addresses = reference_counter_.GetOwnerAddresses(batch_ids);
-  RAY_RETURN_NOT_OK(
-      raylet_client_->FetchOrReconstruct(batch_ids, owner_addresses, fetch_only));
+  RAY_RETURN_NOT_OK(raylet_client_->FetchOrReconstruct(batch_ids, owner_addresses));
 
   std::vector<plasma::ObjectBuffer> plasma_results;
   RAY_RETURN_NOT_OK(store_client_->Get(batch_ids,
@@ -295,15 +293,12 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     for (int64_t i = start; i < batch_size && i < total_size; i++) {
       batch_ids.push_back(id_vector[start + i]);
     }
-    RAY_RETURN_NOT_OK(
-        FetchAndGetFromPlasmaStore(remaining,
-                                   batch_ids,
-                                   /*timeout_ms=*/0,
-                                   // Mutable objects must be local before ray.get.
-                                   /*fetch_only=*/true,
-                                   ctx.GetCurrentTaskID(),
-                                   results,
-                                   got_exception));
+    RAY_RETURN_NOT_OK(FetchAndGetFromPlasmaStore(remaining,
+                                                 batch_ids,
+                                                 /*timeout_ms=*/0,
+                                                 ctx.GetCurrentTaskID(),
+                                                 results,
+                                                 got_exception));
   }
 
   // If all objects were fetched already, return. Note that we always need to
@@ -341,7 +336,6 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     RAY_RETURN_NOT_OK(FetchAndGetFromPlasmaStore(remaining,
                                                  batch_ids,
                                                  batch_timeout,
-                                                 /*fetch_only=*/false,
                                                  ctx.GetCurrentTaskID(),
                                                  results,
                                                  got_exception));
@@ -373,8 +367,6 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     return Status::TimedOut("Get timed out: some object(s) not ready.");
   }
 
-  // Notify unblocked because we blocked when calling FetchOrReconstruct with
-  // fetch_only=false.
   return UnblockIfNeeded(raylet_client_, ctx);
 }
 

@@ -173,8 +173,6 @@ table FetchOrReconstruct {
   object_ids: [string];
   // The RPC addresses of the workers that own the objects in object_ids.
   owner_addresses: [Address];
-  // Do we only want to fetch the objects or also reconstruct them?
-  fetch_only: bool;
 }
 
 table CancelGetRequest {
