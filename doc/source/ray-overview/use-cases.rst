@@ -171,7 +171,7 @@ The following highlights examples utilizing Ray AI libraries to implement end-to
 
 - :doc:`[Example] Text classification with Ray </train/examples/transformers/huggingface_text_classification>`
 - :doc:`[Example] Object detection with Ray </train/examples/pytorch/torch_detection>`
-- :doc:`[Example] Machine learning on tabular data </train/examples/xgboost/distributed-xgboost-lightgbm>
+- :doc:`[Example] Machine learning on tabular data </train/examples/xgboost/distributed-xgboost-lightgbm>`
 
 Large Scale Workload Orchestration
 ----------------------------------
