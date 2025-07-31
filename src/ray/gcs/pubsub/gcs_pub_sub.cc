@@ -36,9 +36,6 @@ GcsPublisher::GcsPublisher(std::shared_ptr<PeriodicalRunner> periodical_runner)
               rpc::ChannelType::RAY_NODE_RESOURCE_USAGE_CHANNEL,
           },
           *periodical_runner,
-          []() { return absl::GetCurrentTimeNanos() / 1e6; },
-          RayConfig::instance().subscriber_timeout_ms(),
-          RayConfig::instance().publish_batch_size(),
           NodeID::FromRandom())) {}
 
 Status GcsPublisher::PublishActor(const ActorID &id,

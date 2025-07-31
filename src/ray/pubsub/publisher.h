@@ -311,22 +311,15 @@ class Publisher : public PublisherInterface {
   /// \param publish_batch_size The batch size of published messages.
   Publisher(const std::vector<rpc::ChannelType> &channels,
             PeriodicalRunner &periodical_runner,
-            std::function<double()> get_time_ms,
-            const uint64_t subscriber_timeout_ms,
-            int64_t publish_batch_size,
             PublisherID publisher_id = NodeID::FromRandom())
-      : periodical_runner_(&periodical_runner),
-        get_time_ms_(std::move(get_time_ms)),
-        subscriber_timeout_ms_(subscriber_timeout_ms),
-        publish_batch_size_(publish_batch_size),
-        publisher_id_(publisher_id) {
+      : periodical_runner_(&periodical_runner), publisher_id_(publisher_id) {
     // Insert index map for each channel.
     for (auto type : channels) {
       subscription_index_map_.emplace(type, pub_internal::SubscriptionIndex(type));
     }
 
     periodical_runner_->RunFnPeriodically([this] { CheckDeadSubscribers(); },
-                                          subscriber_timeout_ms,
+                                          subscriber_timeout_ms_,
                                           "Publisher.CheckDeadSubscribers");
   }
 
@@ -407,6 +400,21 @@ class Publisher : public PublisherInterface {
 
   std::string DebugString() const;
 
+  /// Testing only. Override the time function for testing.
+  void SetTimeFunction(std::function<double()> get_time_ms) {
+    get_time_ms_ = std::move(get_time_ms);
+  }
+
+  /// Testing only. Override the subscriber timeout for testing.
+  void SetSubscriberTimeout(uint64_t subscriber_timeout_ms) {
+    subscriber_timeout_ms_ = subscriber_timeout_ms;
+  }
+
+  /// Testing only. Override the publish batch size for testing.
+  void SetPublishBatchSize(int64_t publish_batch_size) {
+    publish_batch_size_ = publish_batch_size;
+  }
+
  private:
   ///
   /// Testing fields
@@ -444,10 +452,12 @@ class Publisher : public PublisherInterface {
   PeriodicalRunner *periodical_runner_;
 
   /// Callback to get the current time.
-  std::function<double()> get_time_ms_;
+  std::function<double()> get_time_ms_ = []() {
+    return absl::GetCurrentTimeNanos() / 1e6;
+  };
 
   /// The timeout where subscriber is considered as dead.
-  uint64_t subscriber_timeout_ms_;
+  uint64_t subscriber_timeout_ms_ = RayConfig::instance().subscriber_timeout_ms();
 
   /// Protects below fields. Since the coordinator runs in a core worker, it should be
   /// thread safe.
@@ -462,7 +472,7 @@ class Publisher : public PublisherInterface {
       subscription_index_map_ ABSL_GUARDED_BY(mutex_);
 
   /// The maximum number of objects to publish for each publish calls.
-  const int64_t publish_batch_size_;
+  int64_t publish_batch_size_ = RayConfig::instance().publish_batch_size();
 
   absl::flat_hash_map<rpc::ChannelType, uint64_t> cum_pub_message_cnt_
       ABSL_GUARDED_BY(mutex_);

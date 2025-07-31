@@ -301,9 +301,6 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
                                     rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
                                     rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL},
       /*periodical_runner=*/*periodical_runner,
-      /*get_time_ms=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; },
-      /*subscriber_timeout_ms=*/RayConfig::instance().subscriber_timeout_ms(),
-      /*publish_batch_size_=*/RayConfig::instance().publish_batch_size(),
       worker_context->GetWorkerID());
   auto object_info_subscriber = std::make_unique<pubsub::Subscriber>(
       /*subscriber_id=*/worker_context->GetWorkerID(),
