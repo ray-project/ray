@@ -38,8 +38,8 @@ class BinaryUrls:
 
 
 class Config(BaseModel):
-    download_dir: Path = Path("tmp")
-    extract_dir: Path = Path("tmp")
+    download_dir: Path = Path("/tmp/ray/binaries/footsies")
+    extract_dir: Path = Path("/tmp/ray/binaries/footsies")
     target_binary: Literal[
         "linux_server", "linux_windowed", "mac_headless", "mac_windowed"
     ] = "linux_server"
@@ -107,6 +107,7 @@ class FootsiesBinary:
                 self.full_download_path.with_suffix(".app").rename(self.renamed_path)
             else:
                 self.full_download_path.with_suffix("").rename(self.renamed_path)
+            print(f"Extracted game binary to {self.renamed_path}")
 
     def start_game_server(self, port: int) -> None:
         self._download_game_binary()
@@ -125,6 +126,7 @@ class FootsiesBinary:
             print(f"Game binary has an executable permission: {game_binary_path}")
         else:
             self._add_executable_permission(game_binary_path)
+        print(f"Game binary path: {game_binary_path}")
 
         if (
             self.target_binary == "linux_server"
@@ -141,7 +143,8 @@ class FootsiesBinary:
                     str(port),
                 ],
             )
-        time.sleep(1)  # Grace period for the server to start
+        #ToDo(kamil): figure out better way to handle game start grace period
+        time.sleep(10)  # Grace period for the server to start
 
         # check if the game server is running correctly
         _t0 = time.time()

@@ -10,6 +10,10 @@ from ray.rllib.env import multi_agent_env_runner
 from ray.rllib.examples.envs.classes.multi_agent.footsies.footsies_env import (
     FootsiesEnv,
 )
+from ray.rllib.examples.envs.classes.multi_agent.footsies.game.footsies_binary import (
+    Config,
+    FootsiesBinary,
+)
 from ray.rllib.examples.envs.classes.multi_agent.footsies.utils import (
     Matchup,
     Matchmaker,
@@ -36,6 +40,12 @@ parser = add_rllib_example_script_args(
 if __name__ == "__main__":
     args = parser.parse_args()
 
+    port = 50051
+
+    c = Config(target_binary="mac_headless")
+    fb = FootsiesBinary(config=c)
+    fb.start_game_server(port=port)
+
     # Register the environment
     register_env("FootsiesEnv", FootsiesEnv)
 
@@ -47,7 +57,7 @@ if __name__ == "__main__":
                 "max_t": 4000,
                 "frame_skip": 4,
                 "observation_delay": 0,
-                "port": 50051,
+                "port": port,
                 "host": "localhost",
             },
         )
@@ -100,7 +110,6 @@ if __name__ == "__main__":
             evaluation_num_env_runners=1,
             evaluation_interval=1,
             evaluation_duration="auto",
-            evaluation_duration_unit="episodes",
             evaluation_parallel_to_training=True,
             evaluation_config={
                 "env_config": {"evaluation": True},
