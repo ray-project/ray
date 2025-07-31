@@ -158,7 +158,7 @@ class AggregatorAgent(
         self._events_dropped_at_core_worker_since_last_metrics_update = 0
         self._events_dropped_at_event_aggregator_since_last_metrics_update = 0
         self._events_published_since_last_metrics_update = 0
-        self._events_filtered_out_since_last_metric_update = 0
+        self._events_filtered_out_since_last_metrics_update = 0
 
         self._orig_sigterm_handler = signal.signal(
             signal.SIGTERM, self._sigterm_handler
@@ -259,7 +259,7 @@ class AggregatorAgent(
         if not filtered_event_batch:
             # All events were filtered out, update metrics and return to avoid an empty POST.
             with self._lock:
-                self._events_filtered_out_since_last_metric_update += len(event_batch)
+                self._events_filtered_out_since_last_metrics_update += len(event_batch)
             event_batch.clear()
             return
 
@@ -272,7 +272,7 @@ class AggregatorAgent(
                 self._events_published_since_last_metrics_update += len(
                     filtered_event_batch
                 )
-                self._events_filtered_out_since_last_metric_update += len(
+                self._events_filtered_out_since_last_metrics_update += len(
                     event_batch
                 ) - len(filtered_event_batch)
             event_batch.clear()
@@ -321,13 +321,13 @@ class AggregatorAgent(
                 self._events_dropped_at_event_aggregator_since_last_metrics_update
             )
             _events_published = self._events_published_since_last_metrics_update
-            _events_filtered_out = self._events_filtered_out_since_last_metric_update
+            _events_filtered_out = self._events_filtered_out_since_last_metrics_update
 
             self._events_received_since_last_metrics_update = 0
             self._events_dropped_at_core_worker_since_last_metrics_update = 0
             self._events_dropped_at_event_aggregator_since_last_metrics_update = 0
             self._events_published_since_last_metrics_update = 0
-            self._events_filtered_out_since_last_metric_update = 0
+            self._events_filtered_out_since_last_metrics_update = 0
 
         labels = {
             "ip": self._ip,
