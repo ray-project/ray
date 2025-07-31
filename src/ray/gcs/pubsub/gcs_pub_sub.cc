@@ -166,8 +166,8 @@ bool GcsSubscriber::IsActorUnsubscribed(const ActorID &id) {
       rpc::ChannelType::GCS_ACTOR_CHANNEL, gcs_address_, id.Binary());
 }
 
-Status GcsSubscriber::SubscribeAllNodeInfo(
-    const ItemCallback<rpc::GcsNodeInfo> &subscribe, const StatusCallback &done) {
+void GcsSubscriber::SubscribeAllNodeInfo(const ItemCallback<rpc::GcsNodeInfo> &subscribe,
+                                         const StatusCallback &done) {
   // GCS subscriber.
   auto subscribe_item_callback = [subscribe](rpc::PubMessage &&msg) {
     RAY_CHECK(msg.channel_type() == rpc::ChannelType::GCS_NODE_INFO_CHANNEL);
@@ -188,7 +188,6 @@ Status GcsSubscriber::SubscribeAllNodeInfo(
       },
       std::move(subscribe_item_callback),
       std::move(subscription_failure_callback)));
-  return Status::OK();
 }
 
 Status GcsSubscriber::SubscribeAllWorkerFailures(
