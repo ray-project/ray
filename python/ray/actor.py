@@ -1,33 +1,32 @@
 import inspect
 import logging
 from typing import (
+    TYPE_CHECKING,
     Any,
+    Callable,
     Dict,
+    Generic,
     List,
     Literal,
     Optional,
     Tuple,
-    Union,
-    TYPE_CHECKING,
     TypeVar,
-    Generic,
-    Callable,
+    Union,
     overload,
 )
 
 try:
-    from typing import ParamSpec
-    from typing import Concatenate
+    from typing import Concatenate, ParamSpec
 except ImportError:
-    from typing_extensions import ParamSpec
-    from typing_extensions import Concatenate
+    from typing_extensions import Concatenate, ParamSpec
 
-import ray._private.ray_constants as ray_constants
-from ray._common.ray_constants import DEFAULT_MAX_CONCURRENCY_ASYNC
 import ray._common.signature as signature
+import ray._private.ray_constants as ray_constants
 import ray._raylet
-from ray import ActorClassID, Language, cross_language, ObjectRef
+from ray import ActorClassID, Language, ObjectRef, cross_language
 from ray._common import ray_option_utils
+from ray._common.ray_constants import DEFAULT_MAX_CONCURRENCY_ASYNC
+from ray._common.ray_option_utils import _warn_if_using_deprecated_placement_group
 from ray._private.async_compat import has_async_methods
 from ray._private.auto_init_hook import wrap_auto_init
 from ray._private.client_mode_hook import (
@@ -35,12 +34,14 @@ from ray._private.client_mode_hook import (
     client_mode_hook,
     client_mode_should_convert,
 )
+from ray._private.custom_types import (
+    TensorTransportEnum,
+)
 from ray._private.inspect_util import (
     is_class_method,
     is_function_or_method,
     is_static_method,
 )
-from ray._common.ray_option_utils import _warn_if_using_deprecated_placement_group
 from ray._private.utils import get_runtime_env_info, parse_runtime_env_for_task_or_actor
 from ray._raylet import (
     STREAMING_GENERATOR_RETURN,
@@ -59,9 +60,6 @@ from ray.util.tracing.tracing_helper import (
     _inject_tracing_into_class,
     _tracing_actor_creation,
     _tracing_actor_method_invocation,
-)
-from ray._private.custom_types import (
-    TensorTransportEnum,
 )
 
 if TYPE_CHECKING:
@@ -1314,6 +1312,10 @@ class ActorClass(Generic[T]):
                 concurrency defaults to 1 for threaded execution, and 1000 for
                 asyncio execution. Note that the execution order is not
                 guaranteed when max_concurrency > 1.
+            execute_out_of_order: Only for *actors*. Whether Ray executes actor tasks
+                out of order. If you're using multi-threaded (``max_concurrency > 1``)
+                or async actors, you can't set this to False. Defaults to True if you're
+                using multi-threaded or async actors, and False otherwise.
             name: The globally unique name for the actor, which can be used
                 to retrieve the actor via ray.get_actor(name) as long as the
                 actor is still alive.
@@ -1716,21 +1718,26 @@ class ActorClass(Generic[T]):
                     str(len(args) + len(kwargs)),
                 )
             )
+
         execute_out_of_order = actor_options.get("execute_out_of_order")
-        if execute_out_of_order is None:
-            execute_out_of_order = is_asyncio or max_concurrency > 1
-        elif not execute_out_of_order and (is_asyncio or max_concurrency > 1):
-            reasons = []
-            if is_asyncio:
-                reasons.append("actor uses asyncio methods")
-            if max_concurrency > 1:
-                reasons.append(f"max_concurrency is set to {max_concurrency}")
-            reason_text = " and ".join(reasons)
+
+        # If the actor is async or multi-threaded, default to out-of-order execution.
+        if (is_asyncio or max_concurrency > 1) and execute_out_of_order is None:
+            execute_out_of_order = True
+        else:
+            execute_out_of_order = False
+
+        if is_asyncio and not execute_out_of_order:
             raise ValueError(
-                f"Cannot set execute_out_of_order to False because {reason_text}. "
-                f"Actors with {reason_text} require out-of-order execution to function properly. "
-                f"Either set execute_out_of_order=True or remove the execute_out_of_order parameter "
-                f"to use the default behavior."
+                "If you're using async actors, Ray can't execute actor tasks in order. "
+                "Set `execute_out_of_order=True` to allow out-of-order execution."
+            )
+
+        if max_concurrency > 1 and not execute_out_of_order:
+            raise ValueError(
+                "If you're using multi-threaded actors, Ray can't execute actor tasks "
+                "in order. Set `execute_out_of_order=True` to allow out-of-order "
+                "execution."
             )
 
         actor_id = worker.core_worker.create_actor(
