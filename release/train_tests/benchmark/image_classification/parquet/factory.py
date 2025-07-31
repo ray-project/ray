@@ -40,9 +40,7 @@ class ImageClassificationParquetRayDataLoaderFactory(
         super().__init__(benchmark_config)
         self._data_dirs = data_dirs
 
-    def get_ray_datasets(
-        self, dataset_key: DatasetKey
-    ) -> ray.data.Dataset:
+    def get_ray_datasets(self, dataset_key: DatasetKey) -> ray.data.Dataset:
         """Get Ray datasets for training and validation.
 
         Returns:
