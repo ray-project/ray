@@ -42,7 +42,7 @@ void CoreWorkerShutdownExecutor::ExecuteGracefulShutdown(
     // running in a different thread. This can cause segfault because coroutines try to
     // access CoreWorker methods that are already garbage collected. We should complete
     // all coroutines before shutting down in order to prevent this.
-    if (core_worker_->worker_context_.CurrentActorIsAsync()) {
+    if (core_worker_->worker_context_->CurrentActorIsAsync()) {
       core_worker_->options_.terminate_asyncio_thread();
     }
     core_worker_->task_execution_service_.stop();
@@ -250,8 +250,8 @@ void CoreWorkerShutdownExecutor::DisconnectServices(std::string_view exit_type,
       core_worker_->task_event_buffer_->Enabled() &&
       !RayConfig::instance().task_events_skip_driver_for_test()) {
     auto task_event = std::make_unique<worker::TaskStatusEvent>(
-        core_worker_->worker_context_.GetCurrentTaskID(),
-        core_worker_->worker_context_.GetCurrentJobID(),
+        core_worker_->worker_context_->GetCurrentTaskID(),
+        core_worker_->worker_context_->GetCurrentJobID(),
         /* attempt_number */ 0,
         rpc::TaskStatus::FINISHED,
         /* timestamp */ absl::GetCurrentTimeNanos());
