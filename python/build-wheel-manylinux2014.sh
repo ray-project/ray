@@ -24,6 +24,10 @@ if [ "$EUID" -eq 0 ]; then
 
 fi
 
+# Extract prebuilt dashboard into expected location
+echo "Extracting dashboard_build.tar.gz..."
+tar -xzf /ray/dashboard_build.tar.gz -C /ray/python/ray/dashboard/client/build
+
 export RAY_INSTALL_JAVA="${RAY_INSTALL_JAVA:-0}"
 
 # Python version key, interpreter version code
