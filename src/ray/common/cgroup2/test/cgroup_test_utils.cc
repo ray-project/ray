@@ -189,7 +189,7 @@ ray::StatusOr<std::pair<pid_t, int>> StartChildProcessInCgroup(
 
   // Parent process will continue here.
   close(cgroup_fd);
-  return ray::StatusOr<std::pair<pid_t, int>>({child_pid, static_cast<int>(child_pidfd)});
+  return std::make_pair(child_pid, static_cast<int>(child_pidfd));
 }
 
 #else
@@ -249,7 +249,7 @@ ray::StatusOr<std::pair<pid_t, int>> StartChildProcessInCgroup(
                         new_pid,
                         strerror(errno)));
   }
-  return {new_pid, child_pidfd};
+  return std::make_pair(new_pid, child_pidfd);
 }
 #endif
 
