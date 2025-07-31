@@ -194,6 +194,32 @@ attrs==25.1.0 \
     #   aiohttp
     #   jsonschema
     #   referencing
+azure-common==1.1.28 \
+    --hash=sha256:4ac0cd3214e36b6a1b6a442686722a5d8cc449603aa833f3f0f40bda836704a3 \
+    --hash=sha256:5c12d3dcf4ec20599ca6b0d3e09e86e146353d443e7fcc050c9a19c1f9df20ad
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled.txt
+    #   smart-open
+azure-core==1.29.5 \
+    --hash=sha256:0fa04b7b1f7d44a4fb8468c4093deb2ea01fdf4faddbf802ed9205615f99d68c \
+    --hash=sha256:52983c89d394c6f881a121e5101c5fa67278ca3b1f339c8fb2ef39230c70e9ac
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled.txt
+    #   azure-identity
+    #   azure-storage-blob
+    #   smart-open
+azure-identity==1.17.1 \
+    --hash=sha256:32ecc67cc73f4bd0595e4f64b1ca65cd05186f4fe6f98ed2ae9f1aa32646efea \
+    --hash=sha256:db8d59c183b680e763722bfe8ebc45930e6c57df510620985939f7f3191e0382
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled.txt
+    #   -r python/requirements/cloud-requirements.txt
+azure-storage-blob==12.22.0 \
+    --hash=sha256:b3804bb4fe8ab1c32771fa464053da772a682c2737b19da438a3f4e5e3b3736e \
+    --hash=sha256:bb7d2d824ce3f11f14a27ee7d9281289f7e072ac8311c52e3652672455b7d5e8
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled.txt
+    #   smart-open
 babel==2.13.1 \
     --hash=sha256:33e0952d7dd6374af8dbf6768cc4ddf3ccfefc244f9986d4074704f2fbd18900 \
     --hash=sha256:7077a4984b02b6727ac10f1f7294484f737443d7e2e66c5e4380e41a3ae0b4ed
@@ -224,6 +250,7 @@ boto3==1.26.76 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/cloud-requirements.txt
+    #   smart-open
 botocore==1.29.76 \
     --hash=sha256:70735b00cd529f152992231ca6757e458e5ec25db43767b3526e9a35b2f143b7 \
     --hash=sha256:c2f67b6b3f8acf2968eafca06526f07b9fb0d27bac4c68a635d51abb675134a7
@@ -471,6 +498,10 @@ cryptography==44.0.3 \
     --hash=sha256:fe19d8bc5536a91a24a8133328880a41831b6c5df54599a8417b62fe015d3053
     # via
     #   -c /tmp/ray-deps/requirements_compiled.txt
+    #   azure-identity
+    #   azure-storage-blob
+    #   msal
+    #   pyjwt
     #   pyopenssl
 cupy-cuda12x==13.1.0 ; sys_platform != 'darwin' \
     --hash=sha256:230f8a8e99c81a653baa0ed00819990c0ed1f0cf0298214786b5e323461dc61a \
@@ -830,6 +861,7 @@ google-cloud-storage==2.14.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/cloud-requirements.txt
+    #   smart-open
 google-crc32c==1.5.0 \
     --hash=sha256:024894d9d3cfbc5943f8f230e23950cd4906b2fe004c72e29b209420a1e6b05a \
     --hash=sha256:02c65b9817512edc6a4ae7c7e987fea799d2e0ee40c53ec573a692bee24de876 \
@@ -1061,6 +1093,12 @@ ipywidgets==8.1.3 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/cloud-requirements.txt
+isodate==0.6.1 \
+    --hash=sha256:0751eece944162659049d35f4f549ed815792b38793f07cf73381c1c87cbed96 \
+    --hash=sha256:48c5881de7e8b0a0d648cb024c8062dc84e7b840ed81e864c7614fd3c127bde9
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled.txt
+    #   azure-storage-blob
 isoduration==20.11.0 \
     --hash=sha256:ac2f9015137935279eac671f94f89eb00584f940f5dc49462a0c4ee692ba1bd9 \
     --hash=sha256:b2904c2a4228c3d44f409c8ae8e2370eb21a26f7ac2ec5446df141dde3452042
@@ -1452,6 +1490,19 @@ mistune==0.8.4 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   nbconvert
+msal==1.28.1 \
+    --hash=sha256:563c2d70de77a2ca9786aab84cb4e133a38a6897e6676774edc23d610bfc9e7b \
+    --hash=sha256:d72bbfe2d5c2f2555f4bc6205be4450ddfd12976610dd9a16a9ab0f05c68b64d
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled.txt
+    #   azure-identity
+    #   msal-extensions
+msal-extensions==1.2.0b1 \
+    --hash=sha256:217f391bb549de11b19abe8029a8375fe3ca0556aa8cce004b2083f00a569b71 \
+    --hash=sha256:3658b3814cd6a7759e83cb0ec145f30330ee249a92444adaf9aa4eb4f5bbcbbc
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled.txt
+    #   azure-identity
 msgpack==1.0.7 \
     --hash=sha256:04ad6069c86e531682f9e1e71b71c1c3937d6014a7c3e9edd2aa81ad58842862 \
     --hash=sha256:0bfdd914e55e0d2c9e1526de210f6fe8ffe9705f2b1dfcc4aecc92a4cb4b533d \
@@ -1929,6 +1980,12 @@ pluggy==1.3.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   pytest
+portalocker==2.8.2 \
+    --hash=sha256:2b035aa7828e46c58e9b31390ee1f169b98e1066ab10b9a6a861fe7e25ee4f33 \
+    --hash=sha256:cfb86acc09b9aa7c3b43594e19be1345b9d16af3feb08bf92f23d4dce513a28e
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled.txt
+    #   msal-extensions
 prometheus-client==0.19.0 \
     --hash=sha256:4585b0d1223148c27a225b10dbec5ae9bc4c81a99a3fa80774fa6209935324e1 \
     --hash=sha256:c88b1e6ecf6b41cd8fb5731c7ae919bf66df6ec6fafa555cd6c0e16ca169ae92
@@ -2346,6 +2403,12 @@ pygments==2.18.0 \
     #   ipython
     #   nbconvert
     #   rich
+pyjwt==2.8.0 \
+    --hash=sha256:57e28d156e3d5c10088e0c68abb90bfac3df82b40a71bd0daa20c65ccd5c23de \
+    --hash=sha256:59127c392cc44c2da5bb3192169a91f429924e17aff6534d70fdc02ab3e04320
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled.txt
+    #   msal
 pyopenssl==25.0.0 \
     --hash=sha256:424c247065e46e76a37411b9ab1782541c23bb658bf003772c3405fbaa128e90 \
     --hash=sha256:cd2cef799efa3936bb08e8ccb9433a575722b9dd986023f1cabc4ae64e9dac16
@@ -2569,9 +2632,12 @@ requests==2.32.3 \
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements.txt
+    #   azure-core
     #   google-api-core
     #   google-cloud-storage
     #   jupyterlab-server
+    #   msal
+    #   smart-open
 rfc3339-validator==0.1.4 \
     --hash=sha256:138a2abdf93304ad60530167e51d2dfb9549521a836871b88d7f4695d0022f6b \
     --hash=sha256:24f6ec1eda14ef823da9e36ec7113124b39c04d50a4d3d3a3c2859577e7791fa
@@ -2792,8 +2858,10 @@ six==1.16.0 \
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/cloud-requirements.txt
     #   asttokens
+    #   azure-core
     #   bleach
     #   halo
+    #   isodate
     #   oauth2client
     #   opencensus
     #   python-dateutil
@@ -2972,6 +3040,9 @@ typing-extensions==4.12.2 \
     --hash=sha256:04e5ca0351e0f3f85c6853954072df659d0d13fac324d0072316b67d7794700d
     # via
     #   -c /tmp/ray-deps/requirements_compiled.txt
+    #   azure-core
+    #   azure-identity
+    #   azure-storage-blob
     #   fastapi
     #   gymnasium
     #   opentelemetry-api
