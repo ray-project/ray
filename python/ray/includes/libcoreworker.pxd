@@ -278,7 +278,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                                   const CObjectID &object_id)
         CRayStatus ExperimentalChannelSetError(
                                   const CObjectID &object_id)
-        CRayStatus ExperimentalRegisterMutableObjectWriter(
+        void ExperimentalRegisterMutableObjectWriter(
                 const CObjectID &writer_object_id,
                 const c_vector[CNodeID] &remote_reader_node_ids)
         CRayStatus ExperimentalRegisterMutableObjectReader(const CObjectID &object_id)
