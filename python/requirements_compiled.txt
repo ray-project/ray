@@ -1807,7 +1807,7 @@ qpd==0.4.4
     # via fugue
 raydp==1.7.0b20250423.dev0
     # via -r python/requirements/ml/data-test-requirements.txt
-redis==4.4.2
+redis==4.5.4
     # via -r python/requirements/test-requirements.txt
 referencing==0.36.2
     # via

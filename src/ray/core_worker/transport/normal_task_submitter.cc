@@ -36,17 +36,25 @@ Status NormalTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
     // outside of this closure).
     task_manager_.MarkDependenciesResolved(task_spec.TaskId());
     if (!status.ok()) {
+      // TODO(https://github.com/ray-project/ray/issues/54871): There is a potential
+      // logical race conditions here where the task is cancelled right before the
+      // task is retried. Task cancellation might remove the task from the submissible
+      // task queue, while the task retry here expects that the task must be in the
+      // submissible task queue.
       RAY_LOG(WARNING) << "Resolving task dependencies failed " << status.ToString();
-      RAY_UNUSED(task_manager_.FailOrRetryPendingTask(
-          task_spec.TaskId(), rpc::ErrorType::DEPENDENCY_RESOLUTION_FAILED, &status));
+      bool will_retry = task_manager_.FailOrRetryPendingTask(
+          task_spec.TaskId(), rpc::ErrorType::DEPENDENCY_RESOLUTION_FAILED, &status);
+      if (!will_retry) {
+        absl::MutexLock lock(&mu_);
+        cancelled_tasks_.erase(task_spec.TaskId());
+      }
       return;
     }
     RAY_LOG(DEBUG) << "Task dependencies resolved " << task_spec.TaskId();
 
     absl::MutexLock lock(&mu_);
-    auto task_iter = cancelled_tasks_.find(task_spec.TaskId());
-    if (task_iter != cancelled_tasks_.end()) {
-      cancelled_tasks_.erase(task_iter);
+    if (cancelled_tasks_.erase(task_spec.TaskId()) > 0) {
+      task_manager_.FailPendingTask(task_spec.TaskId(), rpc::ErrorType::TASK_CANCELLED);
       return;
     }
 
@@ -594,16 +602,27 @@ void NormalTaskSubmitter::PushNormalTask(
           scheduling_key_entry.num_busy_workers--;
 
           if (!status.ok()) {
+            failed_tasks_pending_failure_cause_.insert(task_id);
             RAY_LOG(DEBUG) << "Getting error from raylet for task " << task_id;
             const ray::rpc::ClientCallback<ray::rpc::GetTaskFailureCauseReply> callback =
                 [this, status, task_id, addr](
                     const Status &get_task_failure_cause_reply_status,
                     const rpc::GetTaskFailureCauseReply &get_task_failure_cause_reply) {
-                  HandleGetTaskFailureCause(status,
-                                            task_id,
-                                            addr,
-                                            get_task_failure_cause_reply_status,
-                                            get_task_failure_cause_reply);
+                  bool will_retry =
+                      HandleGetTaskFailureCause(status,
+                                                task_id,
+                                                addr,
+                                                get_task_failure_cause_reply_status,
+                                                get_task_failure_cause_reply);
+                  absl::MutexLock lock(&mu_);
+                  if (!will_retry) {
+                    // Task submission and task cancellation are the only two other code
+                    // paths that clean up the cancelled_tasks_ map. If the task is not
+                    // retried (aka. it will not go through the task submission path),
+                    // we need to remove it from the map here.
+                    cancelled_tasks_.erase(task_id);
+                  }
+                  failed_tasks_pending_failure_cause_.erase(task_id);
                 };
             auto &cur_lease_entry = worker_to_lease_entry_[addr];
             RAY_CHECK(cur_lease_entry.lease_client);
@@ -645,7 +664,7 @@ void NormalTaskSubmitter::PushNormalTask(
       });
 }
 
-void NormalTaskSubmitter::HandleGetTaskFailureCause(
+bool NormalTaskSubmitter::HandleGetTaskFailureCause(
     const Status &task_execution_status,
     const TaskID &task_id,
     const rpc::Address &addr,
@@ -688,12 +707,12 @@ void NormalTaskSubmitter::HandleGetTaskFailureCause(
     error_info->set_error_message(buffer.str());
     error_info->set_error_type(rpc::ErrorType::NODE_DIED);
   }
-  RAY_UNUSED(task_manager_.FailOrRetryPendingTask(task_id,
-                                                  task_error_type,
-                                                  &task_execution_status,
-                                                  error_info.get(),
-                                                  /*mark_task_object_failed*/ true,
-                                                  fail_immediately));
+  return task_manager_.FailOrRetryPendingTask(task_id,
+                                              task_error_type,
+                                              &task_execution_status,
+                                              error_info.get(),
+                                              /*mark_task_object_failed*/ true,
+                                              fail_immediately);
 }
 
 Status NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
@@ -746,9 +765,14 @@ Status NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
 
     if (rpc_client == executing_tasks_.end()) {
       // This case is reached for tasks that have unresolved dependencies.
-      resolver_.CancelDependencyResolution(task_spec.TaskId());
-      RAY_UNUSED(task_manager_.FailPendingTask(task_spec.TaskId(),
-                                               rpc::ErrorType::TASK_CANCELLED));
+      if (failed_tasks_pending_failure_cause_.contains(task_spec.TaskId())) {
+        // We are waiting for the task failure cause. Do not fail it here; instead,
+        // wait for the cause to come in and then handle it appropriately.
+      } else {
+        resolver_.CancelDependencyResolution(task_spec.TaskId());
+        RAY_UNUSED(task_manager_.FailPendingTask(task_spec.TaskId(),
+                                                 rpc::ErrorType::TASK_CANCELLED));
+      }
       if (scheduling_key_entry.CanDelete()) {
         // We can safely remove the entry keyed by scheduling_key from the
         // scheduling_key_entries_ hashmap.
