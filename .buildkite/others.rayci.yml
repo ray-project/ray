@@ -95,7 +95,7 @@ steps:
       - skip-on-premerge
       - fossa
       - oss
-    instance_type: small
+    instance_type: large
     commands:
       - |
         export GITHUB_TOKEN="${GITHUB_TOKEN}"
