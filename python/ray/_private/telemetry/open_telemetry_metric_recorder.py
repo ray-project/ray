@@ -47,31 +47,25 @@ class OpenTelemetryMetricRecorder:
                 # Take snapshot of current observations.
                 with self._lock:
                     observations = self._observations_by_name[name]
-                    if (
-                        MetricCardinality.get_cardinality_level()
-                        == MetricCardinality.RECOMMENDED
-                    ):
-                        # Drop high cardinality from tag_set and sum up the value for
-                        # same tag set after dropping
-                        aggregated_observations = defaultdict(float)
-                        high_cardinality_labels = (
-                            MetricCardinality.get_high_cardinality_labels_to_drop()
-                        )
-                        for tag_set, val in observations.items():
-                            # Convert frozenset back to dict
-                            tags_dict = dict(tag_set)
-                            # Filter out high cardinality labels
-                            filtered_tags = {
-                                k: v
-                                for k, v in tags_dict.items()
-                                if k not in high_cardinality_labels
-                            }
-                            # Create a key for aggregation
-                            filtered_key = frozenset(filtered_tags.items())
-                            # Sum up values for the same filtered tag set
-                            aggregated_observations[filtered_key] += val
-                    else:
-                        aggregated_observations = observations
+                    # Drop high cardinality from tag_set and sum up the value for
+                    # same tag set after dropping
+                    aggregated_observations = defaultdict(float)
+                    high_cardinality_labels = (
+                        MetricCardinality.get_high_cardinality_labels_to_drop(name)
+                    )
+                    for tag_set, val in observations.items():
+                        # Convert frozenset back to dict
+                        tags_dict = dict(tag_set)
+                        # Filter out high cardinality labels
+                        filtered_tags = {
+                            k: v
+                            for k, v in tags_dict.items()
+                            if k not in high_cardinality_labels
+                        }
+                        # Create a key for aggregation
+                        filtered_key = frozenset(filtered_tags.items())
+                        # Sum up values for the same filtered tag set
+                        aggregated_observations[filtered_key] += val
 
                     return [
                         Observation(val, attributes=dict(tag_set))
@@ -188,17 +182,12 @@ class OpenTelemetryMetricRecorder:
                 self._observations_by_name[name][frozenset(tags.items())] = value
             else:
                 instrument = self._registered_instruments.get(name)
-                if (
-                    MetricCardinality.get_cardinality_level()
-                    == MetricCardinality.RECOMMENDED
-                ):
-                    # Drop high cardinality labels if using recommended cardinality level.
-                    tags = {
-                        k: v
-                        for k, v in tags.items()
-                        if k
-                        not in MetricCardinality.get_high_cardinality_labels_to_drop()
-                    }
+                tags = {
+                    k: v
+                    for k, v in tags.items()
+                    if k
+                    not in MetricCardinality.get_high_cardinality_labels_to_drop(name)
+                }
                 if isinstance(instrument, metrics.Counter):
                     instrument.add(value, attributes=tags)
                 elif isinstance(instrument, metrics.UpDownCounter):
