@@ -445,7 +445,7 @@ py_test_module_list(
 )
 
 py_test_module_list(
-    size = "small",
+    size = "medium",
     env = {"RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP": "0"},
     files = [
         "test_handle_same_loop.py",
