@@ -23,7 +23,7 @@ except ImportError:
     except ImportError:
         import abc
         #same fake Buffer class as in typing_extensions
-        class _Buffer(abc.ABC):  # noqa: B024
+        class _Buffer(abc.ABC):  #type: ignore[no-redef] # noqa: B024
             """Base class for classes that implement the buffer protocol.
 
             The buffer protocol allows Python objects to expose a low-level
