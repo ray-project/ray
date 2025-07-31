@@ -84,7 +84,10 @@ def get_tensor_transport_metadata(
     # The metadata is a list of tuples, where each tuple contains the shape and dtype
     # of a tensor in the GPU object store. This function returns an ObjectRef that
     # points to the tensor metadata.
-    return src_actor.__ray_call__.remote(
+    # NOTE(swang): We put this task on the background thread to avoid tasks
+    # executing on the main thread blocking this task.
+
+    return src_actor.__ray_call__.options(concurrency_group="_ray_system").remote(
         __ray_get_tensor_transport_metadata__, obj_id, tensor_transport
     )
 
@@ -170,7 +173,9 @@ def send_gpu_object(
 
         # Send tensors stored in the `src_actor`'s GPU object store to the
         # destination rank `dst_rank`.
-        src_actor.__ray_call__.remote(
+        # NOTE(swang): We put this task on the background thread to avoid tasks
+        # executing on the main thread blocking the data transfer.
+        src_actor.__ray_call__.options(concurrency_group="_ray_system").remote(
             __ray_send__,
             obj_id,
             tensor_transport_metadata,
@@ -187,4 +192,11 @@ def recv_gpu_object(
 
     # Receive tensors from the source rank and store them in the
     # `dst_actor`'s GPU object store.
-    dst_actor.__ray_call__.remote(__ray_recv__, obj_id, tensor_transport_metadata)
+    # NOTE(swang): We put this task on the background thread to avoid tasks
+    # executing on the main thread blocking the data transfer. Technically,
+    # this is only needed for the sender task, but we put the receiver task
+    # on the same background thread to ensure that all communication
+    # operations are executed in a global order.
+    dst_actor.__ray_call__.remote.options(concurrency_group="_ray_system").remote(
+        __ray_recv__, obj_id, tensor_transport_metadata
+    )

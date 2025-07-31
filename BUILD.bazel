@@ -13,9 +13,11 @@ load("@com_github_grpc_grpc//bazel:cython_library.bzl", "pyx_library")
 load("@hedron_compile_commands//:refresh_compile_commands.bzl", "refresh_compile_commands")
 load("@python3_9//:defs.bzl", python39 = "interpreter")
 load("@rules_cc//cc:defs.bzl", "cc_proto_library")
+load("@rules_pkg//pkg:mappings.bzl", "pkg_attributes", "pkg_files")
+load("@rules_pkg//pkg:zip.bzl", "pkg_zip")
 load("@rules_proto//proto:defs.bzl", "proto_library")
 load("@rules_python//python:defs.bzl", "py_library", "py_runtime", "py_runtime_pair")
-load("//bazel:ray.bzl", "COPTS", "FLATC_ARGS", "PYX_COPTS", "PYX_SRCS", "copy_to_workspace", "ray_cc_binary", "ray_cc_library", "ray_cc_test")
+load("//bazel:ray.bzl", "COPTS", "FLATC_ARGS", "PYX_COPTS", "PYX_SRCS", "ray_cc_binary", "ray_cc_library", "ray_cc_test")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -253,11 +255,11 @@ cc_grpc_library(
 # Node manager server and client.
 ray_cc_library(
     name = "node_manager_rpc",
-    srcs = ["src/ray/rpc/node_manager/node_manager_client_pool.cc"],
+    srcs = ["src/ray/rpc/node_manager/raylet_client_pool.cc"],
     hdrs = [
         "src/ray/rpc/node_manager/node_manager_client.h",
-        "src/ray/rpc/node_manager/node_manager_client_pool.h",
         "src/ray/rpc/node_manager/node_manager_server.h",
+        "src/ray/rpc/node_manager/raylet_client_pool.h",
     ],
     deps = [
         ":grpc_common_lib",
@@ -423,6 +425,14 @@ ray_cc_library(
         ["src/mock/**/*.h"],
         exclude = ["src/mock/ray/common/ray_syncer/ray_syncer.h"],
     ),
+)
+
+ray_cc_library(
+    name = "ray_fakes",
+    hdrs = glob(["src/fakes/**/*.h"]),
+    deps = [
+        "//src/ray/raylet_client:raylet_client_lib",
+    ],
 )
 
 ray_cc_library(
@@ -777,6 +787,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         ":local_object_manager_interface",
+        ":ray_fakes",
         ":ray_mock",
         ":raylet_lib",
         "//src/ray/util:macros",
@@ -1035,74 +1046,155 @@ py_library(
     visibility = ["__subpackages__"],
 )
 
-copy_to_workspace(
-    name = "cp_raylet_so",
+pkg_files(
+    name = "raylet_so_files",
     srcs = ["python/ray/_raylet.so"],
-    dstdir = "python/ray",
+    attributes = pkg_attributes(mode = "755"),
+    renames = select({
+        "@platforms//os:windows": {
+            "python/ray/_raylet.so": "python/ray/_raylet.pyd",
+        },
+        "//conditions:default": {},
+    }),
+    strip_prefix = "python",
+    visibility = ["//visibility:private"],
 )
 
-copy_to_workspace(
-    name = "cp_core_py_proto",
-    srcs = [":core_py_proto"],
-    dstdir = "python/ray/core/generated",
+pkg_files(
+    name = "core_py_proto_files",
+    srcs = ["//src/ray/protobuf:core_py_proto"],
+    prefix = "ray/core/generated",
+    visibility = ["//visibility:private"],
 )
 
-copy_to_workspace(
-    name = "cp_serve_py_proto",
+pkg_zip(
+    name = "core_py_proto_zip",
+    srcs = [":core_py_proto_files"],
+    out = "core_py_proto.zip",
+    visibility = ["//visibility:private"],
+)
+
+pkg_files(
+    name = "serve_py_proto_files",
     srcs = [":serve_py_proto"],
-    dstdir = "python/ray/serve/generated",
+    prefix = "ray/serve/generated",
+    visibility = ["//visibility:private"],
 )
 
-copy_to_workspace(
-    name = "cp_redis",
+pkg_zip(
+    name = "serve_py_proto_zip",
+    srcs = [":serve_py_proto_files"],
+    out = "serve_py_proto.zip",
+    visibility = ["//visibility:private"],
+)
+
+pkg_files(
+    name = "redis_files",
     srcs = [
         ":redis-cli",
         ":redis-server",
     ],
-    dstdir = "python/ray/core/src/ray/thirdparty/redis/src",
+    attributes = pkg_attributes(mode = "755"),
+    prefix = "ray/core/src/ray/thirdparty/redis/src",
+    visibility = ["//visibility:private"],
 )
 
-copy_to_workspace(
-    name = "cp_raylet",
+pkg_files(
+    name = "raylet_files",
     srcs = [":raylet"],
-    dstdir = "python/ray/core/src/ray/raylet",
+    attributes = pkg_attributes(mode = "755"),
+    prefix = "ray/core/src/ray/raylet",
+    visibility = ["//visibility:private"],
 )
 
-copy_to_workspace(
-    name = "cp_gcs_server",
+pkg_files(
+    name = "gcs_server_files",
     srcs = ["//src/ray/gcs/gcs_server"],
-    dstdir = "python/ray/core/src/ray/gcs",
+    attributes = pkg_attributes(mode = "755"),
+    prefix = "ray/core/src/ray/gcs",
+    visibility = ["//visibility:private"],
 )
 
-copy_to_workspace(
-    name = "cp_jemalloc",
+pkg_files(
+    name = "jemalloc_files",
     srcs = ["@jemalloc//:shared"],
-    dstdir = "python/ray/core/",
+    attributes = pkg_attributes(mode = "755"),
+    prefix = "ray/core/",
+    visibility = ["//visibility:private"],
+)
+
+pkg_zip(
+    name = "ray_pkg_zip",
+    srcs = [
+        ":gcs_server_files",
+        ":raylet_files",
+        ":raylet_so_files",
+        ":redis_files",
+    ] + select({
+        ":jemalloc": [":jemalloc_files"],
+        "//conditions:default": [],
+    }),
+    out = "ray_pkg.zip",
+    visibility = ["//visibility:private"],
+)
+
+genrule(
+    name = "ray_py_proto_zip",
+    srcs = [
+        ":core_py_proto_zip",
+        ":serve_py_proto_zip",
+    ],
+    outs = ["ray_py_proto.zip"],
+    cmd = """
+        set -euo pipefail
+
+        tmpdir=$$(mktemp -d)
+
+        unzip -o -q $(location :core_py_proto_zip) -d "$$tmpdir"
+        unzip -o -q $(location :serve_py_proto_zip) -d "$$tmpdir"
+
+        files=(
+            $$(ls "$$tmpdir"/ray/core/generated/*_pb2*.py)
+            $$(ls "$$tmpdir"/ray/serve/generated/*_pb2*.py)
+        )
+
+        # NOTE(hchen): Protobuf doesn't allow specifying Python package name. So we use this `sed`
+        # command to change the import path in the generated file.
+        sed -i -E 's/from src.ray.protobuf/from ./' "$${files[@]}"
+        # Help the generated serve files to have the correct module
+        serve_files=($$(ls "$$tmpdir"/ray/serve/generated/*_pb2*.py))
+        sed -i -E 's/'"'"'src.ray.protobuf./'"'"'ray.serve.generated./' "$${serve_files[@]}"
+
+        # TODO(sang): Build our own proto instead of creating a new proto for opencensus separately.
+        # https://github.com/ray-project/ray/issues/31358
+        sed -i -E 's/from opencensus.proto.metrics.v1 import/from . import/' "$${files[@]}"
+        sed -i -E 's/from opencensus.proto.resource.v1 import/from . import/' "$${files[@]}"
+
+        # Set the modification time to 2025-01-01 00:00:00
+        # This makes the zip file building deterministic and reproducible.
+        touch -t 202501010000 "$${files[@]}"
+        touch -t 202501010000 "$$tmpdir"/ray/ \
+            "$$tmpdir"/ray/core "$$tmpdir"/ray/core/generated \
+            "$$tmpdir"/ray/serve "$$tmpdir"/ray/serve/generated
+
+        (cd "$$tmpdir"; zip -0 -X -r output.zip ray)
+        mv "$$tmpdir/output.zip" $@
+    """,
+    visibility = ["//visibility:private"],
 )
 
 genrule(
     name = "install_py_proto",
     srcs = [
-        ":cp_core_py_proto",
-        ":cp_serve_py_proto",
+        ":ray_py_proto_zip",
     ],
     outs = ["install_py_proto.out"],
     cmd = """
-        # NOTE(hchen): Protobuf doesn't allow specifying Python package name. So we use this `sed`
-        # command to change the import path in the generated file.
-        # shellcheck disable=SC2006
-        files=(
-            `ls python/ray/core/generated/*_pb2*.py` \
-            `ls python/ray/serve/generated/*_pb2*.py` \
-            )
-        sed -i -E 's/from src.ray.protobuf/from ./' "$${files[@]}"
-        # Help the generated serve files to have the correct module
-        serve_files=(`ls python/ray/serve/generated/*_pb2*.py`)
-        sed -i -E 's/'"'"'src.ray.protobuf./'"'"'ray.serve.generated./' "$${serve_files[@]}"
-        # TODO(sang): Build our own proto instead of creating a new proto for opencensus separately.
-        # https://github.com/ray-project/ray/issues/31358
-        sed -i -E 's/from opencensus.proto.metrics.v1 import/from . import/' "$${files[@]}"
-        sed -i -E 's/from opencensus.proto.resource.v1 import/from . import/' "$${files[@]}"
+        set -euo pipefail
+
+        rm -rf python/ray/core/generated python/ray/serve/generated
+        unzip -o -q $(location :ray_py_proto_zip) -d python
+
         echo "$${PWD}" > $@
     """,
     local = 1,
@@ -1111,23 +1203,18 @@ genrule(
 genrule(
     name = "ray_pkg",
     srcs = [
-        ":cp_raylet_so",
         ":python_sources",
-        ":install_py_proto",
-        ":cp_redis",
-        ":cp_raylet",
-        ":cp_gcs_server",
-    ] + select({
-        ":jemalloc": [
-            ":cp_jemalloc",
-        ],
-        "//conditions:default": [],
-    }),
+        ":ray_py_proto_zip",
+        ":ray_pkg_zip",
+    ],
     outs = ["ray_pkg.out"],
     cmd = """
-        if [ "$${OSTYPE-}" = "msys" ]; then
-            ln -P -f -- python/ray/_raylet.so python/ray/_raylet.pyd
-        fi
+        set -euo pipefail
+
+        rm -rf python/ray/core/generated python/ray/serve/generated
+        unzip -o -q $(location :ray_py_proto_zip) -d "python"
+        unzip -o -q $(location :ray_pkg_zip) -d "python"
+
         echo "$${PWD}" > $@
     """,
     local = 1,
