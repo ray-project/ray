@@ -722,6 +722,7 @@ ray_cc_test(
     deps = [
         ":ray_mock",
         ":worker_pool",
+        "//src/ray/util:path_utils",
         "@com_google_googletest//:gtest_main",
     ],
 )
