@@ -160,6 +160,8 @@ message ActorTableData {
   optional string call_site = 34;
   // The label selector of the actor.
   map<string, string> label_selector = 35;
+  // Number of times this actor is restarted due to node preemption.
+  uint64 num_restarts_due_to_node_preemption = 36;
 }
 
 message ErrorTableData {
