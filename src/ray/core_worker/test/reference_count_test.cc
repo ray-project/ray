@@ -46,7 +46,7 @@ class ReferenceCountTest : public ::testing::Test {
     subscriber_ = std::make_shared<pubsub::MockSubscriber>();
     rc = std::make_unique<ReferenceCounter>(
         addr, publisher_.get(), subscriber_.get(), [](const NodeID &node_id) {
-          return true;
+          return false;
         });
   }
 
@@ -74,7 +74,7 @@ class ReferenceCountLineageEnabledTest : public ::testing::Test {
         addr,
         publisher_.get(),
         subscriber_.get(),
-        [](const NodeID &node_id) { return true; },
+        [](const NodeID &node_id) { return false; },
         /*lineage_pinning_enabled=*/true);
   }
 
@@ -826,9 +826,10 @@ TEST(MemoryStoreIntegrationTest, TestSimple) {
   auto publisher = std::make_shared<pubsub::MockPublisher>();
   auto subscriber = std::make_shared<pubsub::MockSubscriber>();
   auto rc = std::make_shared<ReferenceCounter>(
-      rpc::Address(), publisher.get(), subscriber.get(), [](const NodeID &node_id) {
-        return true;
-      });
+      rpc::Address(),
+      publisher.get(),
+      subscriber.get(),
+      /*is_node_dead=*/[](const NodeID &) { return false; });
   InstrumentedIOContextWithThread io_context("TestSimple");
   CoreWorkerMemoryStore store(io_context.GetIoService(), rc.get());
 
