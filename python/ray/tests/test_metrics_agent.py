@@ -140,8 +140,9 @@ _DASHBOARD_METRICS = [
 
 _EVENT_AGGREGATOR_METRICS = [
     "ray_event_aggregator_agent_events_received_total",
-    "ray_event_aggregator_agent_events_dropped_at_core_worker_total",
+    "ray_event_aggregator_agent_events_dropped_at_upstream_components_total",
     "ray_event_aggregator_agent_events_dropped_at_event_aggregator_total",
+    "ray_event_aggregator_agent_events_failed_to_add_to_aggregator_total",
     "ray_event_aggregator_agent_events_published_total",
 ]
 
@@ -501,8 +502,8 @@ def test_metrics_export_event_aggregator_agent(
         metrics_names = metric_descriptors.keys()
         event_aggregator_metrics = [
             "ray_event_aggregator_agent_events_received_total",
-            "ray_event_aggregator_agent_events_dropped_at_core_worker_total",
             "ray_event_aggregator_agent_events_dropped_at_event_aggregator_total",
+            "ray_event_aggregator_agent_events_failed_to_add_to_aggregator_total",
             "ray_event_aggregator_agent_events_published_total",
         ]
         return all(metric in metrics_names for metric in event_aggregator_metrics)
@@ -511,8 +512,8 @@ def test_metrics_export_event_aggregator_agent(
         _, _, metric_samples = fetch_prometheus(prom_addresses)
         expected_metrics_values = {
             "ray_event_aggregator_agent_events_received_total": 2.0,
-            "ray_event_aggregator_agent_events_dropped_at_core_worker_total": 1.0,
             "ray_event_aggregator_agent_events_dropped_at_event_aggregator_total": 1.0,
+            "ray_event_aggregator_agent_events_failed_to_add_to_aggregator_total": 0.0,
             "ray_event_aggregator_agent_events_published_total": 1.0,
         }
         for descriptor, expected_value in expected_metrics_values.items():
