@@ -449,6 +449,7 @@ py_test_module_list(
     env = {"RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP": "0"},
     files = [
         "test_handle_same_loop.py",
+        "test_proxy.py",
     ],
     name_suffix = "_with_router_in_same_loop",
     tags = [
