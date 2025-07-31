@@ -389,10 +389,8 @@ def test_aggregator_agent_profile_events_not_exposed(
     # Wait a bit to ensure no HTTP requests are made
     time.sleep(0.5)
 
-    # Verify that no events were sent to the HTTP server since profile events are not exposable
-    req, _ = httpserver.log[0]
-    req_json = json.loads(req.data)
-    assert len(req_json) == 0
+    # Verify that no events were sent to the HTTP server since profile events are not exposableta)
+    assert len(httpserver.log) == 0
 
 
 @pytest.mark.parametrize(

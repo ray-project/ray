@@ -252,9 +252,17 @@ class AggregatorAgent(
         """
         if not event_batch:
             return
+
         filtered_event_batch = [
             event for event in event_batch if self._can_expose_event(event)
         ]
+        if not filtered_event_batch:
+            # All events were filtered out, update metrics and return to avoid an empty POST.
+            with self._lock:
+                self._events_filtered_out_since_last_metric_update += len(event_batch)
+            event_batch.clear()
+            return
+
         try:
             response = self._http_session.post(
                 f"{EVENT_SEND_ADDR}:{EVENT_SEND_PORT}", json=filtered_event_batch
