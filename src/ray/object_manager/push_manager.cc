@@ -41,7 +41,7 @@ void PushManager::StartPush(const NodeID &dest_id,
   } else {
     RAY_LOG(DEBUG) << "Duplicate push request " << push_id.first << ", " << push_id.second
                    << ", resending all the chunks.";
-    RAY_CHECK_NE(it->second->num_chunks_to_send, 0);
+    RAY_CHECK_NE(it->second->num_chunks_to_send_, 0);
     chunks_remaining_ += it->second->ResendAllChunks(std::move(send_chunk_fn));
   }
   ScheduleRemainingPushes();
@@ -73,7 +73,7 @@ void PushManager::ScheduleRemainingPushes() {
       auto &push_state = *iter;
       push_state.SendOneChunk();
       chunks_in_flight_ += 1;
-      if (push_state.num_chunks_to_send == 0) {
+      if (push_state.num_chunks_to_send_ == 0) {
         auto push_state_map_iter = push_state_map_.find(push_state.node_id_);
         RAY_CHECK(push_state_map_iter != push_state_map_.end());
 

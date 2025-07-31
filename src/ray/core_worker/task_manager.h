@@ -513,7 +513,7 @@ class TaskManager : public TaskManagerInterface {
       }
       status_ =
           std::make_tuple(spec.GetName(), rpc::TaskStatus::PENDING_ARGS_AVAIL, false);
-      counter_->Increment(status_);
+      counter.Increment(status_);
     }
 
     void SetStatus(rpc::TaskStatus new_status) {
