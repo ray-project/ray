@@ -36,6 +36,7 @@
 #include <stdexcept>
 #include <string>
 #include <system_error>
+
 #include <utility>
 
 #include "absl/strings/str_format.h"
@@ -86,6 +87,7 @@ TempCgroupDirectory::~TempCgroupDirectory() noexcept(false) {
       path_,
       strerror(errno));
 }
+
 
 ray::StatusOr<std::unique_ptr<TempDirectory>> TempDirectory::Create() {
   std::string path = "/tmp/XXXXXX";
@@ -251,7 +253,7 @@ ray::StatusOr<std::pair<pid_t, int>> StartChildProcessInCgroup(
   }
   return std::make_pair(new_pid, child_pidfd);
 }
-#endif
+
 
 TempFile::TempFile(std::string path) {
   path_ = path;
