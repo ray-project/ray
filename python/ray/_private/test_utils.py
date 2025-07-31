@@ -1980,7 +1980,9 @@ def _terminate_ec2_instance(ip):
     # After that it terminates itself using aws cli.
     multi_line_command = (
         'TOKEN=$(curl -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600");'  # noqa: E501
-        "ray stop --force"  # noqa: E501
+        'instanceId=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/instance-id/);'  # noqa: E501
+        'region=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/placement/region);'  # noqa: E501
+        "aws ec2 terminate-instances --region $region --instance-ids $instanceId"  # noqa: E501
     )
     # This is a feature on Anyscale platform that enables
     # easy ssh access to worker nodes.
