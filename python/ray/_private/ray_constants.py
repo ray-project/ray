@@ -572,6 +572,11 @@ RAY_ENABLE_UV_RUN_RUNTIME_ENV = env_bool("RAY_ENABLE_UV_RUN_RUNTIME_ENV", True)
 #   WorkerId will be removed from all metrics.
 RAY_METRIC_CARDINALITY_LEVEL = os.environ.get("RAY_metric_cardinality_level", "legacy")
 
+# Whether GPU metrics collection via `nvidia-smi` is enabled.
+# Controlled by the environment variable `RAY_metric_enable_gpu_nvsmi`.
+# Defaults to False to use pynvml to collect usage.
+RAY_METRIC_ENABLE_GPU_NVSMI = env_bool("RAY_metric_enable_gpu_nvsmi", False)
+
 # Whether enable OpenTelemetry as the metrics collection backend on the driver
 # component. This flag is only used during the migration of the  metric collection
 # backend from OpenCensus to OpenTelemetry. It will be removed in the future.
