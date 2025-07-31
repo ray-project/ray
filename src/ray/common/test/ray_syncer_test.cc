@@ -32,6 +32,7 @@
 #include "ray/common/ray_syncer/ray_syncer_client.h"
 #include "ray/common/ray_syncer/ray_syncer_server.h"
 #include "ray/rpc/grpc_server.h"
+#include "ray/util/path_utils.h"
 
 using namespace std::chrono;
 using namespace ray::syncer;
@@ -979,8 +980,8 @@ int main(int argc, char **argv) {
       ray::RayLog::ShutDownRayLog,
       argv[0],
       ray::RayLogLevel::INFO,
-      ray::RayLog::GetLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
-      ray::RayLog::GetErrLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
+      ray::GetLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
+      ray::GetErrLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
       ray::RayLog::GetRayLogRotationMaxBytesOrDefault(),
       ray::RayLog::GetRayLogRotationBackupCountOrDefault());
   ray::RayLog::InstallFailureSignalHandler(argv[0]);
