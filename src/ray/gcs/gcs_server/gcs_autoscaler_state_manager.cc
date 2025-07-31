@@ -24,6 +24,7 @@
 #include "ray/gcs/gcs_server/gcs_placement_group_mgr.h"
 #include "ray/gcs/gcs_server/state_util.h"
 #include "ray/gcs/pb_util.h"
+#include "ray/util/string_utils.h"
 
 namespace ray {
 namespace gcs {
@@ -478,12 +479,10 @@ void GcsAutoscalerStateManager::HandleDrainNode(
   gcs_actor_manager_.SetPreemptedAndPublish(node_id);
 
   auto node = std::move(maybe_node.value());
-  rpc::Address raylet_address;
-  raylet_address.set_raylet_id(node->node_id());
-  raylet_address.set_ip_address(node->node_manager_address());
-  raylet_address.set_port(node->node_manager_port());
-
-  const auto raylet_client = raylet_client_pool_.GetOrConnectByAddress(raylet_address);
+  auto raylet_address = rpc::RayletClientPool::GenerateRayletAddress(
+      node_id, node->node_manager_address(), node->node_manager_port());
+  const auto raylet_client =
+      raylet_client_pool_.GetOrConnectByAddress(std::move(raylet_address));
   raylet_client->DrainRaylet(
       request.reason(),
       request.reason_message(),
