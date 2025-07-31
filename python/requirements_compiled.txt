@@ -155,13 +155,18 @@ azure-common==1.1.28
     #   azure-mgmt-compute
     #   azure-mgmt-network
     #   azure-mgmt-resource
+    #   smart-open
 azure-core==1.29.5
     # via
     #   azure-identity
     #   azure-mgmt-core
+    #   azure-storage-blob
     #   msrest
+    #   smart-open
 azure-identity==1.17.1
-    # via -r python/requirements/test-requirements.txt
+    # via
+    #   -r python/requirements/cloud-requirements.txt
+    #   -r python/requirements/test-requirements.txt
 azure-mgmt-compute==31.0.0
     # via -r python/requirements/test-requirements.txt
 azure-mgmt-core==1.4.0
@@ -174,6 +179,8 @@ azure-mgmt-network==25.4.0
     # via -r python/requirements/test-requirements.txt
 azure-mgmt-resource==23.1.1
     # via -r python/requirements/test-requirements.txt
+azure-storage-blob==12.22.0
+    # via smart-open
 babel==2.13.1
     # via
     #   jupyterlab-server
@@ -355,6 +362,7 @@ cryptography==44.0.3 ; sys_platform != "darwin"
     #   aim
     #   azure-cli-core
     #   azure-identity
+    #   azure-storage-blob
     #   moto
     #   msal
     #   paramiko
@@ -627,6 +635,7 @@ google-cloud-storage==2.14.0
     # via
     #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements/test-requirements.txt
+    #   smart-open
 google-crc32c==1.5.0
     # via
     #   google-cloud-storage
@@ -815,6 +824,7 @@ isodate==0.6.1
     #   azure-mgmt-compute
     #   azure-mgmt-network
     #   azure-mgmt-resource
+    #   azure-storage-blob
     #   msrest
 isoduration==20.11.0
     # via jsonschema
@@ -1856,6 +1866,7 @@ requests==2.32.3
     #   responses
     #   segment-analytics-python
     #   semgrep
+    #   smart-open
     #   snowflake-connector-python
     #   sphinx
     #   tensorboard
@@ -2339,6 +2350,7 @@ typing-extensions==4.12.2
     #   aws-sam-translator
     #   azure-core
     #   azure-identity
+    #   azure-storage-blob
     #   bokeh
     #   configspace
     #   etils
