@@ -16,10 +16,10 @@ from ray._raylet import ObjectRef
 from ray.includes.buffer import Buffer
 
 try:
-    from collections.abc import Buffer as _Buffer
+    from collections.abc import Buffer as _Buffer #type: ignore[attr-defined]
 except ImportError:
     try:
-        from typing_extensions import Buffer as _Buffer
+        from typing_extensions import Buffer as _Buffer #type: ignore[no-redef]
     except ImportError:
         import abc
         #same fake Buffer class as in typing_extensions

@@ -3,7 +3,7 @@ from typing import Any, Awaitable, Callable, Generator, TypeVar, Union
 import asyncio
 import concurrent.futures
 
-from python.ray.includes.unique_ids import BaseID, JobID, TaskID
+from ray.includes.unique_ids import BaseID, JobID, TaskID
 
 _T = TypeVar("_T")
 def _set_future_helper(
