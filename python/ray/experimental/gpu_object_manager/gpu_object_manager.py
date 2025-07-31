@@ -4,9 +4,9 @@ import ray
 from ray._private.custom_types import TensorTransportEnum
 from ray._raylet import ObjectRef
 from ray.util.collective.types import TensorTransportMetadata
-from ray.experimental.gpu_object_manager.communicator import (
-    get_initial_tensor_transport_metadata,
-    update_transport_metadata_before_send,
+from ray.experimental.gpu_object_manager.gpu_object_communicator import (
+    get_tensor_transport_metadata,
+    get_collective_metadata,
     send_gpu_object,
     recv_gpu_object,
 )
@@ -27,29 +27,6 @@ class GPUObjectMeta(NamedTuple):
     # `ray.util.collective.types.Backend`.
     tensor_transport_backend: str
     tensor_transport_meta: TensorTransportMetadata
-
-
-def __ray_get_tensor_meta__(
-    self: "ray.actor.ActorHandle", obj_id: str, tensor_transport: TensorTransportEnum
-) -> TensorTransportMetadata:
-    """Helper function that runs on the source actor to get tensor metadata.
-
-    This function retrieves metadata about tensors stored in the GPU object store,
-    including their shapes and dtypes. When NIXL transport is enabled, it also gets
-    NIXL-specific metadata needed for tensor transport.
-
-    Args:
-        self: The actor that runs this function.
-        obj_id: The ID of the GPU object to get metadata for
-        tensor_transport: The tensor transport protocol to use for the GPU object.
-
-    Returns:
-        TensorMetadata: A named tuple containing the tensor metadata.
-
-    Raises:
-        AssertionError: If the object ID is not found in the GPU object store
-    """
-    return get_initial_tensor_transport_metadata(obj_id, tensor_transport)
 
 
 def __ray_fetch_gpu_object__(self, obj_id: str):
@@ -85,20 +62,6 @@ class GPUObjectManager:
 
             self._gpu_object_store = GPUObjectStore()
         return self._gpu_object_store
-
-    def _get_tensor_meta(
-        self,
-        src_actor: "ray.actor.ActorHandle",
-        obj_id: str,
-        tensor_transport: TensorTransportEnum,
-    ) -> ObjectRef:
-        # Submit a Ray actor task to the source actor to get the tensor metadata.
-        # The metadata is a list of tuples, where each tuple contains the shape and dtype
-        # of a tensor in the GPU object store. This function returns an ObjectRef that
-        # points to the tensor metadata.
-        return src_actor.__ray_call__.remote(
-            __ray_get_tensor_meta__, obj_id, tensor_transport
-        )
 
     def is_managed_gpu_object(self, obj_id: str) -> bool:
         """
@@ -136,7 +99,7 @@ class GPUObjectManager:
             tensor_transport
         )
         obj_id = obj_ref.hex()
-        tensor_meta = self._get_tensor_meta(src_actor, obj_id, tensor_transport)
+        tensor_meta = get_tensor_transport_metadata(src_actor, obj_id, tensor_transport)
         self.managed_gpu_object_metadata[obj_id] = GPUObjectMeta(
             src_actor=src_actor,
             tensor_transport_backend=tensor_transport_backend,
@@ -146,39 +109,6 @@ class GPUObjectManager:
     def _get_gpu_object_metadata(self, obj_ref: ObjectRef) -> GPUObjectMeta:
         obj_id = obj_ref.hex()
         return self.managed_gpu_object_metadata[obj_id]
-
-    def _send_gpu_object(
-        self,
-        communicator_name: str,
-        src_actor: "ray.actor.ActorHandle",
-        obj_id: str,
-        dst_rank: int,
-    ):
-        from ray.experimental.gpu_object_manager.gpu_object_store import __ray_send__
-
-        # Send tensors stored in the `src_actor`'s GPU object store to the
-        # destination rank `dst_rank`.
-        src_actor.__ray_call__.remote(__ray_send__, communicator_name, obj_id, dst_rank)
-
-    def _recv_gpu_object(
-        self,
-        communicator_name: str,
-        dst_actor: "ray.actor.ActorHandle",
-        obj_id: str,
-        src_rank: int,
-        tensor_meta: TensorTransportMetadata,
-    ):
-        from ray.experimental.gpu_object_manager.gpu_object_store import __ray_recv__
-
-        # Receive tensors from the source rank and store them in the
-        # `dst_actor`'s GPU object store.
-        dst_actor.__ray_call__.remote(
-            __ray_recv__,
-            communicator_name,
-            obj_id,
-            src_rank,
-            tensor_meta,
-        )
 
     def fetch_gpu_object(self, obj_id: str):
         """
@@ -245,7 +175,7 @@ class GPUObjectManager:
                 # be transferred intra-process, so we skip the out-of-band tensor
                 # transfer.
                 continue
-            tensor_transport_metadata = update_transport_metadata_before_send(
+            tensor_transport_metadata = get_collective_metadata(
                 src_actor,
                 dst_actor,
                 tensor_meta,
