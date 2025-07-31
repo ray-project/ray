@@ -174,7 +174,11 @@ class AutoscalingConfig(BaseModel):
     target_ongoing_requests: PositiveFloat = DEFAULT_TARGET_ONGOING_REQUESTS
 
     metrics_interval_s: PositiveFloat = Field(
-        default=10.0, description="How often to scrape for metrics."
+        default=10.0,
+        description="[DEPRECATED] How often to scrape for metrics. "
+        "Will be replaced by the environment variables "
+        "`RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S` and "
+        "`RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S` in a future release.",
     )
     look_back_period_s: PositiveFloat = Field(
         default=30.0, description="Time window to average over for metrics."
