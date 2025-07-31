@@ -43,7 +43,7 @@ def parse_args():
     return parser.parse_args()
 
 
-def main():
+def main(args: argparse.Namespace):
     benchmark = Benchmark()
 
     def benchmark_fn():
