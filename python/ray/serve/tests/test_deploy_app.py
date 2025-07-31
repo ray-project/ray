@@ -553,7 +553,7 @@ def test_update_config_user_config(serve_instance):
     wait_for_condition(check_running, timeout=15)
     # Query
     url = get_application_url("HTTP")
-    pid1, res = httpx.get(url).json()
+    pid1, res = httpx.get(f"{url}/f").json()
     assert res == "alice"
 
     # Redeploy with updated option
