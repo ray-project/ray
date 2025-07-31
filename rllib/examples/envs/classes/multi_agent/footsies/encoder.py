@@ -157,9 +157,9 @@ class FootsiesEncoder:
         """
         feature_dict = {
             "player_position_x": player_state.player_position_x
-                                 / constants.FeatureDictNormalizers.PLAYER_POSITION_X,
+            / constants.FeatureDictNormalizers.PLAYER_POSITION_X,
             "velocity_x": player_state.velocity_x
-                          / constants.FeatureDictNormalizers.VELOCITY_X,
+            / constants.FeatureDictNormalizers.VELOCITY_X,
             "is_dead": int(player_state.is_dead),
             "vital_health": player_state.vital_health,
             "guard_health": EncoderMethods.one_hot(
@@ -167,26 +167,26 @@ class FootsiesEncoder:
             ),
             "current_action_id": self._encode_action_id(player_state.current_action_id),
             "current_action_frame": player_state.current_action_frame
-                                    / constants.FeatureDictNormalizers.CURRENT_ACTION_FRAME,
+            / constants.FeatureDictNormalizers.CURRENT_ACTION_FRAME,
             "current_action_frame_count": player_state.current_action_frame_count
-                                          / constants.FeatureDictNormalizers.CURRENT_ACTION_FRAME_COUNT,
+            / constants.FeatureDictNormalizers.CURRENT_ACTION_FRAME_COUNT,
             "current_action_remaining_frames": (
                 player_state.current_action_frame_count
                 - player_state.current_action_frame
             )
-                                               / constants.FeatureDictNormalizers.CURRENT_ACTION_REMAINING_FRAMES,
+            / constants.FeatureDictNormalizers.CURRENT_ACTION_REMAINING_FRAMES,
             "is_action_end": int(player_state.is_action_end),
             "is_always_cancelable": int(player_state.is_always_cancelable),
             "current_action_hit_count": player_state.current_action_hit_count,
             "current_hit_stun_frame": player_state.current_hit_stun_frame
-                                      / constants.FeatureDictNormalizers.CURRENT_HIT_STUN_FRAME,
+            / constants.FeatureDictNormalizers.CURRENT_HIT_STUN_FRAME,
             "is_in_hit_stun": int(player_state.is_in_hit_stun),
             "sprite_shake_position": player_state.sprite_shake_position,
             "max_sprite_shake_frame": player_state.max_sprite_shake_frame
-                                      / constants.FeatureDictNormalizers.MAX_SPRITE_SHAKE_FRAME,
+            / constants.FeatureDictNormalizers.MAX_SPRITE_SHAKE_FRAME,
             "is_face_right": int(player_state.is_face_right),
             "current_frame_advantage": player_state.current_frame_advantage
-                                       / constants.FeatureDictNormalizers.CURRENT_FRAME_ADVANTAGE,
+            / constants.FeatureDictNormalizers.CURRENT_FRAME_ADVANTAGE,
             # The below features leak some information about the opponent!
             "would_next_forward_input_dash": int(
                 player_state.would_next_forward_input_dash
