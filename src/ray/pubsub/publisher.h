@@ -457,7 +457,7 @@ class Publisher : public PublisherInterface {
   };
 
   /// The timeout where subscriber is considered as dead.
-  uint64_t subscriber_timeout_ms_ = RayConfig::instance().subscriber_timeout_ms();
+  uint64_t subscriber_timeout_ms_ = ::RayConfig::instance().subscriber_timeout_ms();
 
   /// Protects below fields. Since the coordinator runs in a core worker, it should be
   /// thread safe.
@@ -472,7 +472,7 @@ class Publisher : public PublisherInterface {
       subscription_index_map_ ABSL_GUARDED_BY(mutex_);
 
   /// The maximum number of objects to publish for each publish calls.
-  int64_t publish_batch_size_ = RayConfig::instance().publish_batch_size();
+  int64_t publish_batch_size_ = ::RayConfig::instance().publish_batch_size();
 
   absl::flat_hash_map<rpc::ChannelType, uint64_t> cum_pub_message_cnt_
       ABSL_GUARDED_BY(mutex_);
