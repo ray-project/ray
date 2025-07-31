@@ -20,7 +20,6 @@ from typing import (
 
 import gymnasium as gym
 
-from ray.rllib.core.models.specs.typing import SpecType
 from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleSpec
 from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import (
@@ -466,19 +465,19 @@ class MultiRLModule(RLModule):
         return list(self._rl_modules.items())
 
     @override(RLModule)
-    def output_specs_train(self) -> SpecType:
+    def output_specs_train(self):
         return []
 
     @override(RLModule)
-    def output_specs_inference(self) -> SpecType:
+    def output_specs_inference(self):
         return []
 
     @override(RLModule)
-    def output_specs_exploration(self) -> SpecType:
+    def output_specs_exploration(self):
         return []
 
     @override(RLModule)
-    def _default_input_specs(self) -> SpecType:
+    def _default_input_specs(self):
         """MultiRLModule should not check the input specs.
 
         The underlying single-agent RLModules will check the input specs.
