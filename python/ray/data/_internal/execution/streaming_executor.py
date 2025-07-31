@@ -209,7 +209,9 @@ class StreamingExecutor(Executor, threading.Thread):
             self._shutdown = True
             # Give the scheduling loop some time to finish processing.
             self.join(timeout=2.0)
+            metrics_iter = self._resource_manager.update_budget_metrics(topology.keys())
             self._update_stats_metrics(
+                metrics_iter,
                 state=DatasetState.FINISHED.name
                 if exception is None
                 else DatasetState.FAILED.name,
