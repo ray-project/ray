@@ -1324,6 +1324,20 @@ py_test(
 )
 
 py_test(
+    name = "test_downstream_capacity_backpressure_policy",
+    size = "medium",
+    srcs = ["tests/test_downstream_capacity_backpressure_policy.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_backpressure_e2e",
     size = "large",
     srcs = ["tests/test_backpressure_e2e.py"],
