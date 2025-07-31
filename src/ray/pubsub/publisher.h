@@ -405,16 +405,6 @@ class Publisher : public PublisherInterface {
     get_time_ms_ = std::move(get_time_ms);
   }
 
-  /// Testing only. Override the subscriber timeout for testing.
-  void SetSubscriberTimeout(uint64_t subscriber_timeout_ms) {
-    subscriber_timeout_ms_ = subscriber_timeout_ms;
-  }
-
-  /// Testing only. Override the publish batch size for testing.
-  void SetPublishBatchSize(int64_t publish_batch_size) {
-    publish_batch_size_ = publish_batch_size;
-  }
-
  private:
   ///
   /// Testing fields

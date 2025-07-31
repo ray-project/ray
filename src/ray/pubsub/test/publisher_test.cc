@@ -54,9 +54,16 @@ class PublisherTest : public ::testing::Test {
         kDefaultPublisherId);
 
     // Set the mock time function for testing
+    RayConfig::instance().initialize(absl::Substitute(
+        R"(
+    {
+      "publish_batch_size": 100,
+      "subscriber_timeout_ms": $0
+    }
+    )",
+        subscriber_timeout_ms_));
+
     publisher_->SetTimeFunction([this]() { return current_time_; });
-    publisher_->SetSubscriberTimeout(subscriber_timeout_ms_);
-    publisher_->SetPublishBatchSize(100);
 
     current_time_ = 0;
     request_.set_subscriber_id(subscriber_id_.Binary());
