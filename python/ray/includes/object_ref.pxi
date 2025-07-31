@@ -99,7 +99,8 @@ cdef class ObjectRef(BaseID):
     def call_site(self):
         return decode(self.call_site_data)
 
-    def size(self):
+    @classmethod
+    def size(cls):
         return CObjectID.Size()
 
     def _set_id(self, id):
