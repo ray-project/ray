@@ -35,7 +35,8 @@ import tree  # pip install dm_tree
 
 import ray
 from ray.tune.result import TRAINING_ITERATION
-from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
+
+# from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.actor import ActorHandle
 from ray.tune import Checkpoint
 import ray.cloudpickle as pickle
@@ -3753,13 +3754,13 @@ class Algorithm(Checkpointable, Trainable):
         Args:
             config: Algorithm config dict.
         """
-        record_extra_usage_tag(TagKey.RLLIB_FRAMEWORK, config["framework"])
-        record_extra_usage_tag(TagKey.RLLIB_NUM_WORKERS, str(config["num_env_runners"]))
+        # record_extra_usage_tag(TagKey.RLLIB_FRAMEWORK, config["framework"])
+        # record_extra_usage_tag(TagKey.RLLIB_NUM_WORKERS, str(config["num_env_runners"]))
         alg = self.__class__.__name__
         # We do not want to collect user defined algorithm names.
         if alg not in ALL_ALGORITHMS:
             alg = "USER_DEFINED"
-        record_extra_usage_tag(TagKey.RLLIB_ALGORITHM, alg)
+        # record_extra_usage_tag(TagKey.RLLIB_ALGORITHM, alg)
 
     @OldAPIStack
     def _export_model(

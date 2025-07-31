@@ -92,7 +92,7 @@ class DreamerModel(nn.Module):
         )
         # Use the mode of the distribution (Discrete=argmax, Normal=mean).
         distr = self.actor.get_action_dist_object(distr_params)
-        actions = distr.mode()
+        actions = distr.mode
         return actions, {"h": states["h"], "z": states["z"], "a": actions}
 
     def forward_exploration(self, observations, previous_states, is_first):

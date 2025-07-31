@@ -251,6 +251,7 @@ DreamerV3
 `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/dreamerv3/dreamerv3.py>`__
 `[RLlib readme] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/dreamerv3/README.md>`__
 
+Also see `this README here for more details on how to run experiments <https://github.com/ray-project/ray/blob/master/rllib/algorithms/dreamerv3/README.md>`__ with DreamerV3.
 
 .. figure:: images/algos/dreamerv3-architecture.svg
     :width: 850
