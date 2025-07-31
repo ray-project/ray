@@ -167,11 +167,11 @@ class AggregatorAgent(
         self._is_cleanup = False
         self._cleanup_finished_event = threading.Event()
 
-        self._exposable_event_types = set(
+        self._exposable_event_types = {
             event_type.strip()
             for event_type in EXPOSABLE_EVENT_TYPES.split(",")
             if event_type.strip()
-        )
+        }
 
     async def AddEvents(self, request, context):
         """
