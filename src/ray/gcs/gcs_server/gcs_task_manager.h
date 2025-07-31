@@ -105,14 +105,14 @@ class GcsTaskManager : public rpc::TaskInfoHandler, public rpc::RayEventExportHa
                               rpc::AddTaskEventDataReply *reply,
                               rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Handles a AddEvent request.
+  /// Handles a AddEvents request.
   ///
   /// \param request gRPC Request.
   /// \param reply gRPC Reply.
   /// \param send_reply_callback Callback to invoke when sending reply.
-  void HandleAddEvent(rpc::events::AddEventRequest request,
-                      rpc::events::AddEventReply *reply,
-                      rpc::SendReplyCallback send_reply_callback) override;
+  void HandleAddEvents(rpc::events::AddEventsRequest request,
+                       rpc::events::AddEventsReply *reply,
+                       rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle GetTaskEvent request.
   ///
