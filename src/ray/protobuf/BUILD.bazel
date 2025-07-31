@@ -223,8 +223,8 @@ proto_library(
     srcs = ["export_task_event.proto"],
     deps = [
         ":common_proto",
-        ":profile_events_proto",
         ":export_runtime_env_proto",
+        ":profile_events_proto",
     ],
 )
 
