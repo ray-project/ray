@@ -278,11 +278,11 @@ class TestCli(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             _copy_data_to_tmpdir(tmpdir)
             manager = DependencySetManager(
-                config_path="test.config.yaml",
+                config_path="test.depsets.yaml",
                 workspace_dir=tmpdir,
             )
             assert manager.build_graph is not None
-            assert len(manager.build_graph.nodes()) == 5
+            assert len(manager.build_graph.nodes()) == 6
             assert len(manager.build_graph.edges()) == 3
             assert manager.build_graph.nodes["general_depset"]["operation"] == "compile"
             assert (
@@ -295,14 +295,15 @@ class TestCli(unittest.TestCase):
             )
 
             sorted_nodes = list(topological_sort(manager.build_graph))
-            assert sorted_nodes[0] == "ray_base_test_depset"
-            assert sorted_nodes[1] == "general_depset"
-            assert sorted_nodes[2] == "expanded_depset"
+            # assert that the compile depsets are first
+            assert "ray_base_test_depset" in sorted_nodes[:3]
+            assert "general_depset" in sorted_nodes[:3]
+            assert "config_args_test_depset" in sorted_nodes[:3]
 
     def test_build_graph_bad_operation(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             _copy_data_to_tmpdir(tmpdir)
-            with open(Path(tmpdir) / "test.config.yaml", "w") as f:
+            with open(Path(tmpdir) / "test.depsets.yaml", "w") as f:
                 f.write(
                     """
 depsets:
@@ -315,7 +316,7 @@ depsets:
                 )
             with self.assertRaises(ValueError):
                 DependencySetManager(
-                    config_path="test.config.yaml",
+                    config_path="test.depsets.yaml",
                     workspace_dir=tmpdir,
                 )
 
