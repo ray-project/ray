@@ -131,6 +131,11 @@ class SerializationContext:
     def __init__(self, worker):
         self.worker = worker
         self._thread_local = threading.local()
+        # This flag is to mark whether the custom serializer for torch.Tensor has
+        # been registered. If the method is decorated with
+        # `@ray.method(tensor_transport="xxx")`, it will use external transport
+        # (e.g. gloo, nccl, etc.) for tensor communication between actors,
+        # instead of the normal serialize -> object store -> deserialize codepath.
         self._torch_custom_serializer_registered = False
 
         def actor_handle_reducer(obj):
