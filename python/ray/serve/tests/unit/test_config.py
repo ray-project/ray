@@ -1,4 +1,5 @@
 import sys
+import warnings
 
 import pytest
 
@@ -81,6 +82,18 @@ def test_autoscaling_config_validation():
 
     # Default values should not raise an error
     AutoscalingConfig()
+
+
+def test_autoscaling_config_metrics_interval_s_deprecation_warning() -> None:
+    """Test that the metrics_interval_s deprecation warning is raised."""
+    # Warning is raised if we set metrics_interval_s to a non-default value
+    with pytest.warns(DeprecationWarning):
+        AutoscalingConfig(metrics_interval_s=5)
+
+    # Default settings should not raise a warning
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        AutoscalingConfig()
 
 
 class TestDeploymentConfig:
