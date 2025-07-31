@@ -143,7 +143,6 @@ class FootsiesBinary:
                     str(port),
                 ],
             )
-        #ToDo(kamil): figure out better way to handle game start grace period
         time.sleep(10)  # Grace period for the server to start
 
         # check if the game server is running correctly
