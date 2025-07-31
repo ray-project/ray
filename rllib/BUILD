@@ -4778,6 +4778,25 @@ py_test(
 )
 
 py_test(
+    name = "examples/multi_agent/multi_agent_footsies",
+    size = "large",
+    srcs = ["examples/multi_agent/multi_agent_footsies.py"],
+    args = [
+        "--num-agents=2",
+        "--as-test",
+        "--framework=torch",
+        "--num-cpus=4",
+    ],
+    main = "examples/multi_agent/multi_agent_footsies.py",
+    tags = [
+        "examples",
+        "examples_use_all_core",
+        "exclusive",
+        "team:rllib",
+    ],
+)
+
+py_test(
     name = "examples/multi_agent/multi_agent_pendulum_multi_gpu",
     size = "large",
     srcs = ["examples/multi_agent/multi_agent_pendulum.py"],
