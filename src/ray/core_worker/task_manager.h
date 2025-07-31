@@ -190,7 +190,7 @@ class TaskManager : public TaskManagerInterface {
         max_lineage_bytes_(max_lineage_bytes),
         task_event_buffer_(task_event_buffer),
         get_actor_rpc_client_callback_(std::move(client_factory)),
-        gcs_client_(gcs_client) {
+        gcs_client_(std::move(gcs_client)) {
     task_counter_.SetOnChangeCallback(
         [this](const std::tuple<std::string, rpc::TaskStatus, bool> &key)
             ABSL_EXCLUSIVE_LOCKS_REQUIRED(&mu_) {
@@ -434,6 +434,8 @@ class TaskManager : public TaskManagerInterface {
   void OnTaskDependenciesInlined(const std::vector<ObjectID> &inlined_dependency_ids,
                                  const std::vector<ObjectID> &contained_ids) override;
 
+  void MarkTaskNoRetry(const TaskID &task_id) override;
+
   void MarkTaskCanceled(const TaskID &task_id) override;
 
   std::optional<TaskSpecification> GetTaskSpec(const TaskID &task_id) const override;
@@ -599,6 +601,11 @@ class TaskManager : public TaskManagerInterface {
     // Whether this is a task retry due to task failure.
     bool is_retry_ = false;
   };
+
+  /// Set the task retry number to 0. If canceled is true, mark the task as
+  // canceled.
+  void MarkTaskNoRetryInternal(const TaskID &task_id, bool canceled)
+      ABSL_LOCKS_EXCLUDED(mu_);
 
   /// Update nested ref count info and store the in-memory value for a task's
   /// return object. Returns true if the task's return object was returned
