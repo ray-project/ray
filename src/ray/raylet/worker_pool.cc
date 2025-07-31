@@ -1108,7 +1108,7 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
       // Newly registered worker. Respect worker_startup_keep_alive_duration if any.
       auto it = state.worker_processes.find(worker->GetStartupToken());
       if (it != state.worker_processes.end()) {
-        const auto &keep_alive_duration = it->second.worker_startup_keep_alive_duration_;
+        const auto &keep_alive_duration = it->second.worker_startup_keep_alive_duration;
         if (keep_alive_duration.has_value()) {
           keep_alive_until = std::max(keep_alive_until, now + *keep_alive_duration);
         }
@@ -1253,10 +1253,10 @@ WorkerUnfitForTaskReason WorkerPool::WorkerFitsForTask(
   if (pending_exit_idle_workers_.contains(worker.WorkerId())) {
     return WorkerUnfitForTaskReason::OTHERS;
   }
-  if (worker.GetLanguage() != pop_worker_request.language) {
+  if (worker.GetLanguage() != pop_worker_request.language_) {
     return WorkerUnfitForTaskReason::OTHERS;
   }
-  if (worker.GetWorkerType() != pop_worker_request.worker_type) {
+  if (worker.GetWorkerType() != pop_worker_request.worker_type_) {
     return WorkerUnfitForTaskReason::OTHERS;
   }
 
@@ -1265,16 +1265,16 @@ WorkerUnfitForTaskReason WorkerPool::WorkerFitsForTask(
   // NOTE(edoakes): the job ID for a worker with no detached actor ID must still match,
   // which is checked below. The pop_worker_request for a task rooted in a detached
   // actor will have the job ID of the job that created the detached actor.
-  if (!pop_worker_request.root_detached_actor_id.IsNil() &&
+  if (!pop_worker_request.root_detached_actor_id_.IsNil() &&
       !worker.GetRootDetachedActorId().IsNil() &&
-      pop_worker_request.root_detached_actor_id != worker.GetRootDetachedActorId()) {
+      pop_worker_request.root_detached_actor_id_ != worker.GetRootDetachedActorId()) {
     return WorkerUnfitForTaskReason::ROOT_MISMATCH;
   }
 
   // Only consider workers that haven't been assigned to a job yet or have been assigned
   // to the requested job.
   const auto worker_job_id = worker.GetAssignedJobId();
-  if (!worker_job_id.IsNil() && pop_worker_request.job_id != worker_job_id) {
+  if (!worker_job_id.IsNil() && pop_worker_request.job_id_ != worker_job_id) {
     return WorkerUnfitForTaskReason::ROOT_MISMATCH;
   }
 
@@ -1293,7 +1293,7 @@ WorkerUnfitForTaskReason WorkerPool::WorkerFitsForTask(
   // Even if the task doesn't have a runtime_env specified, we cannot schedule it to a
   // worker with a runtime_env because the task is expected to run in the base
   // environment.
-  if (worker.GetRuntimeEnvHash() != pop_worker_request.runtime_env_hash) {
+  if (worker.GetRuntimeEnvHash() != pop_worker_request.runtime_env_hash_) {
     return WorkerUnfitForTaskReason::RUNTIME_ENV_MISMATCH;
   }
   // Skip if the dynamic_options doesn't match.
@@ -1309,21 +1309,21 @@ void WorkerPool::StartNewWorker(
   auto start_worker_process_fn = [this](
                                      std::shared_ptr<PopWorkerRequest> request,
                                      const std::string &serialized_runtime_env_context) {
-    auto &state = GetStateForLanguage(request->language);
+    auto &state = GetStateForLanguage(request->language_);
     const std::string &serialized_runtime_env =
-        request->runtime_env_info.serialized_runtime_env();
+        request->runtime_env_info_.serialized_runtime_env();
 
     PopWorkerStatus status = PopWorkerStatus::OK;
     auto [proc, startup_token] =
-        StartWorkerProcess(request->language,
-                           request->worker_type,
-                           request->job_id,
+        StartWorkerProcess(request->language_,
+                           request->worker_type_,
+                           request->job_id_,
                            &status,
-                           request->dynamic_options,
-                           request->runtime_env_hash,
+                           request->dynamic_options_,
+                           request->runtime_env_hash_,
                            serialized_runtime_env_context,
-                           request->runtime_env_info,
-                           request->worker_startup_keep_alive_duration);
+                           request->runtime_env_info_,
+                           request->worker_startup_keep_alive_duration_);
     if (status == PopWorkerStatus::OK) {
       RAY_CHECK(proc.IsValid());
       WarnAboutSize();
@@ -1341,7 +1341,7 @@ void WorkerPool::StartNewWorker(
                                         ? "Worker command arguments too long. This can "
                                           "be caused by a large runtime environment."
                                         : "";
-      PopWorkerCallbackAsync(std::move(request->callback), nullptr, status, error_msg);
+      PopWorkerCallbackAsync(std::move(request->callback_), nullptr, status, error_msg);
     }
   };
 
@@ -1438,7 +1438,7 @@ std::shared_ptr<WorkerInterface> WorkerPool::FindAndPopIdleWorker(
     }
     return false;
   };
-  auto &state = GetStateForLanguage(pop_worker_request.language);
+  auto &state = GetStateForLanguage(pop_worker_request.language_);
   auto worker_it = std::find_if(idle_of_all_languages_.rbegin(),
                                 idle_of_all_languages_.rend(),
                                 worker_fits_for_task_fn);
@@ -1458,8 +1458,8 @@ std::shared_ptr<WorkerInterface> WorkerPool::FindAndPopIdleWorker(
   // Assigned workers should always match the request's job_id
   // *except* if the task originates from a detached actor.
   RAY_CHECK(worker->GetAssignedJobId().IsNil() ||
-            worker->GetAssignedJobId() == pop_worker_request.job_id ||
-            !pop_worker_request.root_detached_actor_id.IsNil());
+            worker->GetAssignedJobId() == pop_worker_request.job_id_ ||
+            !pop_worker_request.root_detached_actor_id_.IsNil());
   return worker;
 }
 
@@ -1851,7 +1851,7 @@ const std::vector<std::string> &WorkerPool::LookupWorkerDynamicOptions(
   for (const auto &[lang, state] : states_by_lang_) {
     auto it = state.worker_processes.find(token);
     if (it != state.worker_processes.end()) {
-      return it->second.dynamic_options_;
+      return it->second.dynamic_options;
     }
   }
   static std::vector<std::string> kNoDynamicOptions;

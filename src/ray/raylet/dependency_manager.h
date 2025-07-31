@@ -237,7 +237,7 @@ class DependencyManager : public TaskDependencyManagerInterface {
         : dependencies_(std::move(deps)),
           num_missing_dependencies_(dependencies_.size()),
           waiting_task_counter_map_(counter_map),
-          task_key_(task_key_) {
+          task_key_(task_key) {
       if (num_missing_dependencies_ > 0) {
         waiting_task_counter_map_.Increment(task_key_);
       }

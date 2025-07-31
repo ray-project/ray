@@ -351,13 +351,13 @@ std::optional<rpc::ErrorType> TaskManager::ResubmitTask(
       return rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_MAX_ATTEMPTS_EXCEEDED;
     }
     auto &task_entry = it->second;
-    if (task_entry.is_canceled) {
+    if (task_entry.is_canceled_) {
       return rpc::ErrorType::TASK_CANCELLED;
     }
 
-    if (task_entry.spec.IsStreamingGenerator() &&
+    if (task_entry.spec_.IsStreamingGenerator() &&
         task_entry.GetStatus() == rpc::TaskStatus::SUBMITTED_TO_WORKER) {
-      if (task_entry.num_retries_left == 0) {
+      if (task_entry.num_retries_left_ == 0) {
         // If the last attempt is in progress.
         return rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_MAX_ATTEMPTS_EXCEEDED;
       }
@@ -374,7 +374,7 @@ std::optional<rpc::ErrorType> TaskManager::ResubmitTask(
       SetupTaskEntryForResubmit(task_entry);
     }
 
-    spec = task_entry.spec;
+    spec = task_entry.spec_;
   }
 
   if (should_queue_generator_resubmit) {
@@ -405,7 +405,7 @@ void TaskManager::SetupTaskEntryForResubmit(TaskEntry &task_entry) {
                 rpc::TaskStatus::PENDING_ARGS_AVAIL,
                 /* state_update */ std::nullopt,
                 /* include_task_info */ true,
-                task_entry.spec.AttemptNumber() + 1);
+                task_entry.spec_.AttemptNumber() + 1);
   num_pending_tasks_++;
 
   // The task is pending again, so it's no longer counted as lineage. If
@@ -414,10 +414,10 @@ void TaskManager::SetupTaskEntryForResubmit(TaskEntry &task_entry) {
   total_lineage_footprint_bytes_ -= task_entry.lineage_footprint_bytes_;
   task_entry.lineage_footprint_bytes_ = 0;
 
-  if (task_entry.num_retries_left > 0) {
-    task_entry.num_retries_left--;
+  if (task_entry.num_retries_left_ > 0) {
+    task_entry.num_retries_left_--;
   } else {
-    RAY_CHECK(task_entry.num_retries_left == -1);
+    RAY_CHECK(task_entry.num_retries_left_ == -1);
   }
 }
 
@@ -472,7 +472,7 @@ void TaskManager::MarkGeneratorFailedAndResubmit(const TaskID &task_id) {
                   worker::TaskStatusEvent::TaskStateUpdate(error_info));
 
     SetupTaskEntryForResubmit(task_entry);
-    spec = task_entry.spec;
+    spec = task_entry.spec_;
   }
 
   // Note: Don't need to call UpdateReferencesForResubmit because CompletePendingTask or
@@ -619,7 +619,7 @@ Status TaskManager::TryReadObjectRefStream(const ObjectID &generator_id,
     absl::MutexLock lock(&mu_);
     auto it = submissible_tasks_.find(generator_id.TaskId());
     if (it != submissible_tasks_.end()) {
-      backpressure_threshold = it->second.spec.GeneratorBackpressureNumObjects();
+      backpressure_threshold = it->second.spec_.GeneratorBackpressureNumObjects();
     }
   }
 
@@ -770,8 +770,8 @@ bool TaskManager::HandleReportGeneratorItemReturns(
     absl::MutexLock lock(&mu_);
     auto it = submissible_tasks_.find(task_id);
     if (it != submissible_tasks_.end()) {
-      backpressure_threshold = it->second.spec.GeneratorBackpressureNumObjects();
-      if (it->second.spec.AttemptNumber() > attempt_number) {
+      backpressure_threshold = it->second.spec_.GeneratorBackpressureNumObjects();
+      if (it->second.spec_.AttemptNumber() > attempt_number) {
         // Generator task reports can arrive at any time. If the first attempt
         // fails, we may receive a report from the first executor after the
         // second attempt has started. In this case, we should ignore the first
@@ -929,7 +929,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     auto it = submissible_tasks_.find(task_id);
     RAY_CHECK(it != submissible_tasks_.end())
         << "Tried to complete task that was not pending " << task_id;
-    spec = it->second.spec;
+    spec = it->second.spec_;
 
     // Record any dynamically returned objects. We need to store these with the
     // task spec so that the worker will recreate them if the task gets
@@ -998,12 +998,12 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     // A finished task can only be re-executed if it has some number of
     // retries left and returned at least one object that is still in use and
     // stored in plasma.
-    bool task_retryable = it->second.num_retries_left != 0 &&
+    bool task_retryable = it->second.num_retries_left_ != 0 &&
                           !it->second.reconstructable_return_ids_.empty();
     if (task_retryable) {
       // Pin the task spec if it may be retried again.
       release_lineage = false;
-      it->second.lineage_footprint_bytes_ = it->second.spec.GetMessage().ByteSizeLong();
+      it->second.lineage_footprint_bytes_ = it->second.spec_.GetMessage().ByteSizeLong();
       total_lineage_footprint_bytes_ += it->second.lineage_footprint_bytes_;
       if (total_lineage_footprint_bytes_ > max_lineage_bytes_) {
         RAY_LOG(INFO) << "Total lineage size is " << total_lineage_footprint_bytes_ / 1e6
@@ -1074,13 +1074,13 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
     auto &task_entry = it->second;
     RAY_CHECK(task_entry.IsPending())
         << "Tried to retry task that was not pending " << task_id;
-    spec = task_entry.spec;
-    num_retries_left = task_entry.num_retries_left;
-    num_oom_retries_left = task_entry.num_oom_retries_left;
+    spec = task_entry.spec_;
+    num_retries_left = task_entry.num_retries_left_;
+    num_oom_retries_left = task_entry.num_oom_retries_left_;
     if (task_failed_due_to_oom) {
       if (num_oom_retries_left > 0) {
         will_retry = true;
-        task_entry.num_oom_retries_left--;
+        task_entry.num_oom_retries_left_--;
       } else if (num_oom_retries_left == -1) {
         will_retry = true;
       } else {
@@ -1089,7 +1089,7 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
     } else {
       if (num_retries_left > 0) {
         will_retry = true;
-        task_entry.num_retries_left--;
+        task_entry.num_retries_left_--;
       } else if (num_retries_left == -1) {
         will_retry = true;
       } else {
@@ -1097,8 +1097,8 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
       }
     }
     // Keep `num_retries_left` and `num_oom_retries_left` up to date
-    num_retries_left = task_entry.num_retries_left;
-    num_oom_retries_left = task_entry.num_oom_retries_left;
+    num_retries_left = task_entry.num_retries_left_;
+    num_oom_retries_left = task_entry.num_oom_retries_left_;
 
     if (will_retry) {
       // Record the old attempt status as FAILED.
@@ -1112,7 +1112,7 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
                     rpc::TaskStatus::PENDING_ARGS_AVAIL,
                     /* state_update */ std::nullopt,
                     /* include_task_info */ true,
-                    task_entry.spec.AttemptNumber() + 1);
+                    task_entry.spec_.AttemptNumber() + 1);
     }
   }
 
@@ -1163,7 +1163,7 @@ void TaskManager::FailPendingTask(const TaskID &task_id,
         << "Tried to fail task that was not pending " << task_id;
     RAY_CHECK(it->second.IsPending())
         << "Tried to fail task that was not pending " << task_id;
-    spec = it->second.spec;
+    spec = it->second.spec_;
 
     if ((status != nullptr) && status->IsIntentionalSystemExit()) {
       // We don't mark intentional system exit as failures, such as tasks that
@@ -1334,21 +1334,21 @@ int64_t TaskManager::RemoveLineageReference(const ObjectID &object_id,
   if (it->second.reconstructable_return_ids_.empty() && !it->second.IsPending()) {
     // If the task can no longer be retried, decrement the lineage ref count
     // for each of the task's args.
-    for (size_t i = 0; i < it->second.spec.NumArgs(); i++) {
-      if (it->second.spec.ArgByRef(i)) {
-        released_objects->push_back(it->second.spec.ArgObjectId(i));
+    for (size_t i = 0; i < it->second.spec_.NumArgs(); i++) {
+      if (it->second.spec_.ArgByRef(i)) {
+        released_objects->push_back(it->second.spec_.ArgObjectId(i));
       } else {
-        const auto &inlined_refs = it->second.spec.ArgInlinedRefs(i);
+        const auto &inlined_refs = it->second.spec_.ArgInlinedRefs(i);
         for (const auto &inlined_ref : inlined_refs) {
           released_objects->push_back(ObjectID::FromBinary(inlined_ref.object_id()));
         }
       }
     }
 
-    if (it->second.spec.IsActorTask()) {
+    if (it->second.spec_.IsActorTask()) {
       // We need to decrement the actor lineage ref count here
       // since it's incremented during TaskManager::AddPendingTask.
-      const auto actor_creation_return_id = it->second.spec.ActorCreationDummyObjectId();
+      const auto actor_creation_return_id = it->second.spec_.ActorCreationDummyObjectId();
       released_objects->push_back(actor_creation_return_id);
     }
 
@@ -1376,9 +1376,9 @@ void TaskManager::MarkTaskCanceled(const TaskID &task_id) {
   absl::MutexLock lock(&mu_);
   auto it = submissible_tasks_.find(task_id);
   if (it != submissible_tasks_.end()) {
-    it->second.num_retries_left = 0;
-    it->second.num_oom_retries_left = 0;
-    it->second.is_canceled = true;
+    it->second.num_retries_left_ = 0;
+    it->second.num_oom_retries_left_ = 0;
+    it->second.is_canceled_ = true;
   }
 }
 
@@ -1464,7 +1464,7 @@ std::optional<TaskSpecification> TaskManager::GetTaskSpec(const TaskID &task_id)
   if (it == submissible_tasks_.end()) {
     return std::optional<TaskSpecification>();
   }
-  return it->second.spec;
+  return it->second.spec_;
 }
 
 std::vector<TaskID> TaskManager::GetPendingChildrenTasks(
@@ -1472,7 +1472,7 @@ std::vector<TaskID> TaskManager::GetPendingChildrenTasks(
   std::vector<TaskID> ret_vec;
   absl::MutexLock lock(&mu_);
   for (const auto &it : submissible_tasks_) {
-    if (it.second.IsPending() && (it.second.spec.ParentTaskId() == parent_task_id)) {
+    if (it.second.IsPending() && (it.second.spec_.ParentTaskId() == parent_task_id)) {
       ret_vec.push_back(it.first);
     }
   }
@@ -1490,7 +1490,7 @@ void TaskManager::AddTaskStatusInfo(rpc::CoreWorkerStats *stats) const {
       continue;
     }
     ref->set_task_status(it->second.GetStatus());
-    ref->set_attempt_number(it->second.spec.AttemptNumber());
+    ref->set_attempt_number(it->second.spec_.AttemptNumber());
   }
 }
 
@@ -1530,19 +1530,19 @@ void TaskManager::SetTaskStatus(
     std::optional<worker::TaskStatusEvent::TaskStateUpdate> state_update,
     bool include_task_info,
     std::optional<int32_t> attempt_number) {
-  RAY_LOG(DEBUG).WithField(task_entry.spec.TaskId())
+  RAY_LOG(DEBUG).WithField(task_entry.spec_.TaskId())
       << "Setting task status from " << rpc::TaskStatus_Name(task_entry.GetStatus())
       << " to " << rpc::TaskStatus_Name(status);
   task_entry.SetStatus(status);
 
   const int32_t attempt_number_to_record =
-      attempt_number.value_or(task_entry.spec.AttemptNumber());
+      attempt_number.value_or(task_entry.spec_.AttemptNumber());
   const auto state_update_to_record =
       state_update.value_or(worker::TaskStatusEvent::TaskStateUpdate());
-  RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(task_entry.spec.TaskId(),
-                                                              task_entry.spec.JobId(),
+  RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(task_entry.spec_.TaskId(),
+                                                              task_entry.spec_.JobId(),
                                                               attempt_number_to_record,
-                                                              task_entry.spec,
+                                                              task_entry.spec_,
                                                               status,
                                                               include_task_info,
                                                               state_update_to_record));
@@ -1565,13 +1565,13 @@ TaskManager::GetOngoingLineageReconstructionTasks(
     }
 
     rpc::LineageReconstructionTask task;
-    task.set_name(task_entry.spec.GetName());
+    task.set_name(task_entry.spec_.GetName());
     task.set_status(task_entry.GetStatus());
-    if (task_entry.spec.IsNormalTask()) {
-      task.mutable_labels()->insert(task_entry.spec.GetMessage().labels().begin(),
-                                    task_entry.spec.GetMessage().labels().end());
-    } else if (task_entry.spec.IsActorTask()) {
-      auto actor_handle = actor_manager.GetActorHandle(task_entry.spec.ActorId());
+    if (task_entry.spec_.IsNormalTask()) {
+      task.mutable_labels()->insert(task_entry.spec_.GetMessage().labels().begin(),
+                                    task_entry.spec_.GetMessage().labels().end());
+    } else if (task_entry.spec_.IsActorTask()) {
+      auto actor_handle = actor_manager.GetActorHandle(task_entry.spec_.ActorId());
       RAY_CHECK(actor_handle) << "Actor task must be submitted via actor handle";
       const auto &labels = actor_handle->GetLabels();
       task.mutable_labels()->insert(labels.begin(), labels.end());
@@ -1600,7 +1600,7 @@ void TaskManager::FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply,
 
     const auto &task_entry = task_it.second;
     auto entry = reply->add_owned_task_info_entries();
-    const auto &task_spec = task_entry.spec;
+    const auto &task_spec = task_entry.spec_;
     const auto &task_state = task_entry.GetStatus();
     const auto &node_id = task_entry.GetNodeId();
     rpc::TaskType type;
@@ -1645,10 +1645,10 @@ ObjectID TaskManager::TaskGeneratorId(const TaskID &task_id) const {
   if (it == submissible_tasks_.end()) {
     return ObjectID::Nil();
   }
-  if (!it->second.spec.ReturnsDynamic()) {
+  if (!it->second.spec_.ReturnsDynamic()) {
     return ObjectID::Nil();
   }
-  return it->second.spec.ReturnId(0);
+  return it->second.spec_.ReturnId(0);
 }
 
 std::vector<ObjectID> ExtractPlasmaDependencies(const TaskSpecification &spec) {
