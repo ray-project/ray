@@ -26,6 +26,7 @@
 #include "ray/util/cmd_line_utils.h"
 #include "ray/util/filesystem.h"
 #include "ray/util/logging.h"
+#include "ray/util/path_utils.h"
 #include "ray/util/process.h"
 #include "ray/util/util.h"
 

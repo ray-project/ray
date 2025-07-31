@@ -24,6 +24,7 @@
 #include "ray/gcs/gcs_server/gcs_placement_group_mgr.h"
 #include "ray/gcs/gcs_server/state_util.h"
 #include "ray/gcs/pb_util.h"
+#include "ray/util/string_utils.h"
 
 namespace ray {
 namespace gcs {

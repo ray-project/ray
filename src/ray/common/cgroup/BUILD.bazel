@@ -16,6 +16,7 @@ ray_cc_library(
         "//src/ray/common:macros",
         "//src/ray/util",
         "//src/ray/util:invoke_once_token",
+        "//src/ray/util:path_utils",
         "@com_google_absl//absl/strings:str_format",
     ],
 )
@@ -75,6 +76,8 @@ ray_cc_library(
     deps = [
         ":constants",
         "//src/ray/common:status",
+        "//src/ray/util:logging",
+        "//src/ray/util:path_utils",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_googletest//:gtest_prod",
     ],
