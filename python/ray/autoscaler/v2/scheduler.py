@@ -1482,8 +1482,12 @@ class ResourceDemandScheduler(IResourceScheduler):
                         >= time.time()
                     )
                 ):
+                    logger.info(
+                        f"Revert failed or stuck IPPR for node {node.im_instance_id} with status {node.ippr_status}"
+                    )
                     node.ippr_status.desired_cpu = node.ippr_status.current_cpu
                     node.ippr_status.desired_memory = node.ippr_status.current_memory
+                    node.ippr_status.raylet_id = node.ray_node_id
                     node.ippr_status.resized_at = None
                     node.ippr_status.resized_status = "new"
                     node.ippr_status.resized_message = None
@@ -1550,12 +1554,10 @@ class ResourceDemandScheduler(IResourceScheduler):
 
             best_node.ippr_status.desired_cpu = best_node.ippr_status.max_cpu
             best_node.ippr_status.desired_memory = best_node.ippr_status.max_memory
+            best_node.ippr_status.raylet_id = best_node.ray_node_id
             best_node.ippr_status.resized_at = None
             best_node.ippr_status.resized_status = "new"
             best_node.ippr_status.resized_message = None
-            logger.info(
-                f"Scheduling IPPR up for node {best_node.im_instance_id}: {best_node.ippr_status}"
-            )
 
             target_nodes.append(best_node)
 

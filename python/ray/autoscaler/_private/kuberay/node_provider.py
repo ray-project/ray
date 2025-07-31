@@ -165,6 +165,10 @@ def replace_patch(path: str, value: Any) -> Dict[str, Any]:
     return {"op": "replace", "path": path, "value": value}
 
 
+def add_patch(path: str, value: Any) -> Dict[str, Any]:
+    return {"op": "add", "path": path, "value": value}
+
+
 def load_k8s_secrets() -> Tuple[Dict[str, str], str]:
     """
     Loads secrets needed to access K8s resources.
