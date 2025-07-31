@@ -360,7 +360,7 @@ class ObjectRefGenerator:
     def send(self, value):
         raise NotImplementedError("`gen.send` is not supported.")
 
-    def throw(self, value):
+    def throw(self, value, val=None, tb=None):
         raise NotImplementedError("`gen.throw` is not supported.")
 
     def close(self):
@@ -375,7 +375,7 @@ class ObjectRefGenerator:
     async def asend(self, value):
         raise NotImplementedError("`gen.asend` is not supported.")
 
-    async def athrow(self, value):
+    async def athrow(self, value, val=None, tb=None):
         raise NotImplementedError("`gen.athrow` is not supported.")
 
     async def aclose(self):

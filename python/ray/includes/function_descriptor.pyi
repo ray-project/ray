@@ -6,7 +6,7 @@ from ray.includes.unique_ids import FunctionID
 
 if sys.version_info >= (3,10):
     from typing import ParamSpec
-    _FDArgs = ParamSpec("_FDArgs",covariant=True)
+    _FDArgs = ParamSpec("_FDArgs")
     class _Initializable(Protocol,Generic[_FDArgs]):
         def __init__(self,*args:_FDArgs.args,**kwargs:_FDArgs.kwargs): ...
 
