@@ -236,7 +236,7 @@ class AutoscalingConfig(BaseModel):
 
     # New fields for custom autoscaling
     agg_function: str = "mean" # "mean", "min", "max", "sum" how to aggregate metrics within look_back_period_s
-    policy: Optional[AutoscalingPolicyConfig] = None # this policy is deployment scoped 
+    custom_policy: Optional[AutoscalingPolicyConfig] = None # this policy is deployment scoped 
     prometheus_custom_metrics: Optional[List[Tuple[str, str]]] = None
 
     # Cloudpickled policy definition.

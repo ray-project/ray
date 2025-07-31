@@ -82,6 +82,37 @@ message AutoscalingConfig {
 
   // The multiplicative "gain" factor to limit downscale.
   optional double downscaling_factor = 15;
+
+  // Aggregation function for metrics within look_back_period_s.
+  // Options: "mean", "min", "max", "sum"
+  string agg_function = 16;
+
+  // Custom autoscaling policy configuration.
+  optional AutoscalingPolicyConfig custom_policy = 17;
+
+  // Custom Prometheus metrics for autoscaling.
+  repeated PrometheusMetric prometheus_custom_metrics = 18;
+}
+
+// Configuration for custom autoscaling policies.
+message AutoscalingPolicyConfig {
+  // Name or import path of the policy function.
+  string name = 1;
+  
+  // Timeout for policy execution in seconds.
+  double timeout_s = 2;
+  
+  // Whether to run in dry-run mode.
+  bool dry_run = 3;
+}
+
+// Custom Prometheus metric configuration for autoscaling.
+message PrometheusMetric {
+  // Metric name.
+  string metric_name = 1;
+  
+  // Metric query/promql expression.
+  string query = 2;
 }
 
 //[Begin] LOGGING CONFIG
