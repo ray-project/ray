@@ -38,22 +38,29 @@ bool ShutdownCoordinator::RequestShutdown(bool force_shutdown,
                                           std::string_view detail,
                                           std::chrono::milliseconds timeout_ms,
                                           bool force_on_timeout) {
-  RAY_LOG(WARNING) << "RequestShutdown called: force_shutdown=" << force_shutdown
-                   << ", reason=" << static_cast<int>(reason) << ", detail=" << detail;
+  uint16_t expected = state_and_reason_.load(std::memory_order_acquire);
 
-  // For graceful shutdown, only proceed if currently running
-  uint16_t expected = PackStateReason(ShutdownState::kRunning, ShutdownReason::kNone);
-  uint16_t desired = PackStateReason(ShutdownState::kShuttingDown, reason);
+  while (true) {
+    ShutdownState current_state = UnpackState(expected);
 
-  bool initiated = state_and_reason_.compare_exchange_strong(
-      expected, desired, std::memory_order_acq_rel, std::memory_order_acquire);
+    if (current_state == ShutdownState::kShutdown) {
+      return false;
+    }
 
-  if (initiated) {
-    shutdown_detail_ = detail;
-    ExecuteShutdownSequence(force_shutdown, detail, timeout_ms, force_on_timeout);
+    if (!force_shutdown && current_state != ShutdownState::kRunning) {
+      // Graceful shutdown is only allowed from the `Running` state.
+      return false;
+    }
+
+    uint16_t desired = PackStateReason(ShutdownState::kShuttingDown, reason);
+
+    if (state_and_reason_.compare_exchange_strong(
+            expected, desired, std::memory_order_acq_rel, std::memory_order_acquire)) {
+      shutdown_detail_ = detail;
+      ExecuteShutdownSequence(force_shutdown, detail, timeout_ms, force_on_timeout);
+      return true;
+    }
   }
-
-  return initiated;
 }
 
 bool ShutdownCoordinator::TryInitiateShutdown(ShutdownReason reason) {
@@ -212,12 +219,10 @@ void ShutdownCoordinator::ExecuteWorkerShutdown(bool force_shutdown,
       reason == ShutdownReason::kActorKilled) {
     TryTransitionToDisconnecting();
     executor_->ExecuteWorkerExit(GetExitTypeString(), detail, timeout_ms);
-    TryTransitionToShutdown();
   } else if (reason == ShutdownReason::kIdleTimeout ||
              reason == ShutdownReason::kJobFinished) {
     TryTransitionToDisconnecting();
     executor_->ExecuteHandleExit(GetExitTypeString(), detail, timeout_ms);
-    TryTransitionToShutdown();
   } else {
     ExecuteGracefulShutdown(detail, timeout_ms);
   }

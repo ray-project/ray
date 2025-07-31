@@ -113,27 +113,32 @@ TEST_F(ShutdownCoordinatorTest, InitialStateIsRunning) {
 TEST_F(ShutdownCoordinatorTest, IdempotentShutdownRequests) {
   auto coordinator = CreateCoordinator();
 
-  // First request should succeed
-  EXPECT_TRUE(coordinator->RequestShutdown(false,  // graceful
-                                           ShutdownReason::kGracefulExit,
-                                           "test"));
-  EXPECT_EQ(coordinator->GetState(), ShutdownState::kShutdown);
+  // First graceful request should succeed
+  EXPECT_TRUE(coordinator->RequestShutdown(
+      false, ShutdownReason::kGracefulExit, "test_graceful"));
+  EXPECT_EQ(coordinator->GetState(), ShutdownState::kDisconnecting);
   EXPECT_EQ(coordinator->GetReason(), ShutdownReason::kGracefulExit);
 
-  // Subsequent requests should fail (idempotent)
-  EXPECT_FALSE(coordinator->RequestShutdown(true,  // force
-                                            ShutdownReason::kForcedExit,
-                                            "test2"));
-  // State should remain unchanged
+  // A second graceful request should be ignored
+  EXPECT_FALSE(
+      coordinator->RequestShutdown(false, ShutdownReason::kUserError, "test_graceful2"));
+  EXPECT_EQ(coordinator->GetReason(),
+            ShutdownReason::kGracefulExit);  // Reason is unchanged
+
+  // A force-kill request should succeed and override the graceful one
+  EXPECT_TRUE(
+      coordinator->RequestShutdown(true, ShutdownReason::kForcedExit, "test_force"));
   EXPECT_EQ(coordinator->GetState(), ShutdownState::kShutdown);
-  EXPECT_EQ(coordinator->GetReason(), ShutdownReason::kGracefulExit);
+  EXPECT_EQ(coordinator->GetReason(), ShutdownReason::kForcedExit);  // Reason is updated
 }
 
 TEST_F(ShutdownCoordinatorTest, LegacyTryInitiateShutdown) {
   auto coordinator = CreateCoordinator();
 
   EXPECT_TRUE(coordinator->TryInitiateShutdown(ShutdownReason::kUserError));
-  EXPECT_EQ(coordinator->GetState(), ShutdownState::kShutdown);
+  EXPECT_THAT(
+      coordinator->GetState(),
+      ::testing::AnyOf(ShutdownState::kShuttingDown, ShutdownState::kDisconnecting));
   EXPECT_EQ(coordinator->GetReason(), ShutdownReason::kUserError);
 
   // Second call should fail
@@ -145,18 +150,19 @@ TEST_F(ShutdownCoordinatorTest, LegacyTryInitiateShutdown) {
 TEST_F(ShutdownCoordinatorTest, ValidStateTransitions) {
   auto coordinator = CreateCoordinator();
 
-  // Running -> Shutdown (completes immediately with mocked dependencies)
+  // Running -> ShuttingDown -> Disconnecting
   EXPECT_TRUE(coordinator->RequestShutdown(false,  // graceful
                                            ShutdownReason::kGracefulExit));
+  EXPECT_EQ(coordinator->GetState(), ShutdownState::kDisconnecting);
+
+  // Disconnecting -> Shutdown
+  EXPECT_TRUE(coordinator->TryTransitionToShutdown());
   EXPECT_EQ(coordinator->GetState(), ShutdownState::kShutdown);
 
   // Manual transitions should fail since already in shutdown state
   EXPECT_FALSE(coordinator->TryTransitionToDisconnecting());
   EXPECT_EQ(coordinator->GetState(), ShutdownState::kShutdown);
 
-  // Already in shutdown state
-  EXPECT_FALSE(coordinator->TryTransitionToShutdown());
-  EXPECT_EQ(coordinator->GetState(), ShutdownState::kShutdown);
   EXPECT_TRUE(coordinator->IsShutdown());
 }
 
@@ -210,7 +216,9 @@ TEST_F(ShutdownCoordinatorTest, ConcurrentShutdownRequests) {
 
   // Only one thread should have succeeded
   EXPECT_EQ(success_count.load(), 1);
-  EXPECT_EQ(coordinator->GetState(), ShutdownState::kShutdown);
+  EXPECT_THAT(
+      coordinator->GetState(),
+      ::testing::AnyOf(ShutdownState::kShuttingDown, ShutdownState::kDisconnecting));
   EXPECT_EQ(coordinator->GetReason(), ShutdownReason::kGracefulExit);
 }
 
@@ -292,8 +300,11 @@ TEST_F(ShutdownCoordinatorTest, StringRepresentations) {
 
   coordinator->RequestShutdown(false, ShutdownReason::kGracefulExit);  // graceful
 
-  EXPECT_EQ(coordinator->GetStateString(), "Shutdown");
+  EXPECT_EQ(coordinator->GetStateString(), "Disconnecting");
   EXPECT_EQ(coordinator->GetReasonString(), "GracefulExit");
+
+  coordinator->TryTransitionToShutdown();
+  EXPECT_EQ(coordinator->GetStateString(), "Shutdown");
 }
 
 // Test 7: Exit Type String Tests
