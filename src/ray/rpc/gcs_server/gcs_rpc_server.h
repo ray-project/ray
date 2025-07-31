@@ -693,9 +693,9 @@ class TaskInfoGrpcService : public GrpcService {
 class RayEventExportGcsServiceHandler {
  public:
   virtual ~RayEventExportGcsServiceHandler() = default;
-  virtual void HandleAddEvent(AddEventRequest request,
-                              AddEventReply *reply,
-                              SendReplyCallback send_reply_callback) = 0;
+  virtual void HandleAddEvents(AddEventsRequest request,
+                               AddEventsReply *reply,
+                               SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `RayEventExportGcsService`.
@@ -711,7 +711,7 @@ class RayEventExportGrpcService : public GrpcService {
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
       const ClusterID &cluster_id) override {
-    RAY_EVENT_EXPORT_SERVICE_RPC_HANDLER(AddEvent);
+    RAY_EVENT_EXPORT_SERVICE_RPC_HANDLER(AddEvents);
   }
 
  private:
