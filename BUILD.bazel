@@ -267,6 +267,7 @@ ray_cc_library(
         "//src/ray/common:asio",
         "//src/ray/common:id",
         "//src/ray/common:status",
+        "//src/ray/gcs/gcs_client:gcs_client_lib",
         "@com_github_grpc_grpc//:grpc++",
     ],
 )

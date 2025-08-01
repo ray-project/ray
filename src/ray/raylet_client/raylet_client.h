@@ -18,7 +18,6 @@
 #include <mutex>
 #include <string>
 #include <unordered_map>
-#include <utility>
 #include <vector>
 
 #include "ray/common/asio/instrumented_io_context.h"
@@ -254,7 +253,8 @@ class RayletClient : public RayletClientInterface {
   /// 0, the worker should choose a random port.
   /// \param client_call_manager The client call manager to use for the grpc connection.
   explicit RayletClient(const rpc::Address &address,
-                        rpc::ClientCallManager &client_call_manager);
+                        rpc::ClientCallManager &client_call_manager,
+                        std::function<void()> raylet_unavailable_timeout_callback);
 
   /// Notify the raylet that this client is disconnecting gracefully. This
   /// is used by actors to exit gracefully so that the raylet doesn't
