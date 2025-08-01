@@ -27,19 +27,11 @@ TEST(TaskSpecTest, TestSchedulingClassDescriptor) {
       resources, LabelSelector(), descriptor, 0, scheduling_strategy);
   SchedulingClassDescriptor descriptor2(
       resources, LabelSelector(), descriptor, 1, scheduling_strategy);
-  SchedulingClassDescriptor descriptor1(
-      resources, LabelSelector(), descriptor, 0, scheduling_strategy);
-  SchedulingClassDescriptor descriptor2(
-      resources, LabelSelector(), descriptor, 1, scheduling_strategy);
   scheduling_strategy.mutable_default_scheduling_strategy();
-  SchedulingClassDescriptor descriptor3(
-      resources, LabelSelector(), descriptor, 0, scheduling_strategy);
   SchedulingClassDescriptor descriptor3(
       resources, LabelSelector(), descriptor, 0, scheduling_strategy);
   scheduling_strategy.mutable_node_affinity_scheduling_strategy()->set_node_id("x");
   scheduling_strategy.mutable_node_affinity_scheduling_strategy()->set_soft(true);
-  SchedulingClassDescriptor descriptor4(
-      resources, LabelSelector(), descriptor, 0, scheduling_strategy);
   SchedulingClassDescriptor descriptor4(
       resources, LabelSelector(), descriptor, 0, scheduling_strategy);
   scheduling_strategy.mutable_node_affinity_scheduling_strategy()->set_node_id("y");
@@ -47,14 +39,8 @@ TEST(TaskSpecTest, TestSchedulingClassDescriptor) {
       resources, LabelSelector(), descriptor, 0, scheduling_strategy);
   SchedulingClassDescriptor descriptor6(
       resources, LabelSelector(), descriptor, 0, scheduling_strategy);
-  SchedulingClassDescriptor descriptor5(
-      resources, LabelSelector(), descriptor, 0, scheduling_strategy);
-  SchedulingClassDescriptor descriptor6(
-      resources, LabelSelector(), descriptor, 0, scheduling_strategy);
   scheduling_strategy.mutable_node_affinity_scheduling_strategy()
       ->set_spill_on_unavailable(true);
-  SchedulingClassDescriptor descriptor10(
-      resources, LabelSelector(), descriptor, 0, scheduling_strategy);
   SchedulingClassDescriptor descriptor10(
       resources, LabelSelector(), descriptor, 0, scheduling_strategy);
   scheduling_strategy.mutable_placement_group_scheduling_strategy()
@@ -65,23 +51,15 @@ TEST(TaskSpecTest, TestSchedulingClassDescriptor) {
       ->set_placement_group_capture_child_tasks(true);
   SchedulingClassDescriptor descriptor7(
       resources, LabelSelector(), descriptor, 0, scheduling_strategy);
-  SchedulingClassDescriptor descriptor7(
-      resources, LabelSelector(), descriptor, 0, scheduling_strategy);
   scheduling_strategy.mutable_placement_group_scheduling_strategy()
       ->set_placement_group_bundle_index(1);
-  SchedulingClassDescriptor descriptor8(
-      resources, LabelSelector(), descriptor, 0, scheduling_strategy);
   SchedulingClassDescriptor descriptor8(
       resources, LabelSelector(), descriptor, 0, scheduling_strategy);
   scheduling_strategy.mutable_placement_group_scheduling_strategy()
       ->set_placement_group_bundle_index(0);
   SchedulingClassDescriptor descriptor9(
       resources, LabelSelector(), descriptor, 0, scheduling_strategy);
-  SchedulingClassDescriptor descriptor9(
-      resources, LabelSelector(), descriptor, 0, scheduling_strategy);
   ASSERT_TRUE(descriptor1 == descriptor1);
-  ASSERT_TRUE(absl::Hash<SchedulingClassDescriptor>()(descriptor1) ==
-              absl::Hash<SchedulingClassDescriptor>()(descriptor1));
   ASSERT_TRUE(absl::Hash<SchedulingClassDescriptor>()(descriptor1) ==
               absl::Hash<SchedulingClassDescriptor>()(descriptor1));
   ASSERT_TRUE(TaskSpecification::GetSchedulingClass(descriptor1) ==
@@ -90,14 +68,10 @@ TEST(TaskSpecTest, TestSchedulingClassDescriptor) {
   ASSERT_FALSE(descriptor1 == descriptor2);
   ASSERT_FALSE(absl::Hash<SchedulingClassDescriptor>()(descriptor1) ==
                absl::Hash<SchedulingClassDescriptor>()(descriptor2));
-  ASSERT_FALSE(absl::Hash<SchedulingClassDescriptor>()(descriptor1) ==
-               absl::Hash<SchedulingClassDescriptor>()(descriptor2));
   ASSERT_FALSE(TaskSpecification::GetSchedulingClass(descriptor1) ==
                TaskSpecification::GetSchedulingClass(descriptor2));
 
   ASSERT_FALSE(descriptor1 == descriptor3);
-  ASSERT_FALSE(absl::Hash<SchedulingClassDescriptor>()(descriptor1) ==
-               absl::Hash<SchedulingClassDescriptor>()(descriptor3));
   ASSERT_FALSE(absl::Hash<SchedulingClassDescriptor>()(descriptor1) ==
                absl::Hash<SchedulingClassDescriptor>()(descriptor3));
   ASSERT_FALSE(TaskSpecification::GetSchedulingClass(descriptor1) ==
@@ -106,14 +80,10 @@ TEST(TaskSpecTest, TestSchedulingClassDescriptor) {
   ASSERT_FALSE(descriptor1 == descriptor4);
   ASSERT_FALSE(absl::Hash<SchedulingClassDescriptor>()(descriptor1) ==
                absl::Hash<SchedulingClassDescriptor>()(descriptor4));
-  ASSERT_FALSE(absl::Hash<SchedulingClassDescriptor>()(descriptor1) ==
-               absl::Hash<SchedulingClassDescriptor>()(descriptor4));
   ASSERT_FALSE(TaskSpecification::GetSchedulingClass(descriptor1) ==
                TaskSpecification::GetSchedulingClass(descriptor4));
 
   ASSERT_FALSE(descriptor4 == descriptor5);
-  ASSERT_FALSE(absl::Hash<SchedulingClassDescriptor>()(descriptor4) ==
-               absl::Hash<SchedulingClassDescriptor>()(descriptor5));
   ASSERT_FALSE(absl::Hash<SchedulingClassDescriptor>()(descriptor4) ==
                absl::Hash<SchedulingClassDescriptor>()(descriptor5));
   ASSERT_FALSE(TaskSpecification::GetSchedulingClass(descriptor4) ==
@@ -122,14 +92,10 @@ TEST(TaskSpecTest, TestSchedulingClassDescriptor) {
   ASSERT_TRUE(descriptor5 == descriptor6);
   ASSERT_TRUE(absl::Hash<SchedulingClassDescriptor>()(descriptor5) ==
               absl::Hash<SchedulingClassDescriptor>()(descriptor6));
-  ASSERT_TRUE(absl::Hash<SchedulingClassDescriptor>()(descriptor5) ==
-              absl::Hash<SchedulingClassDescriptor>()(descriptor6));
   ASSERT_TRUE(TaskSpecification::GetSchedulingClass(descriptor5) ==
               TaskSpecification::GetSchedulingClass(descriptor6));
 
   ASSERT_FALSE(descriptor6 == descriptor10);
-  ASSERT_FALSE(absl::Hash<SchedulingClassDescriptor>()(descriptor6) ==
-               absl::Hash<SchedulingClassDescriptor>()(descriptor10));
   ASSERT_FALSE(absl::Hash<SchedulingClassDescriptor>()(descriptor6) ==
                absl::Hash<SchedulingClassDescriptor>()(descriptor10));
   ASSERT_FALSE(TaskSpecification::GetSchedulingClass(descriptor6) ==
@@ -138,22 +104,16 @@ TEST(TaskSpecTest, TestSchedulingClassDescriptor) {
   ASSERT_FALSE(descriptor6 == descriptor7);
   ASSERT_FALSE(absl::Hash<SchedulingClassDescriptor>()(descriptor6) ==
                absl::Hash<SchedulingClassDescriptor>()(descriptor7));
-  ASSERT_FALSE(absl::Hash<SchedulingClassDescriptor>()(descriptor6) ==
-               absl::Hash<SchedulingClassDescriptor>()(descriptor7));
   ASSERT_FALSE(TaskSpecification::GetSchedulingClass(descriptor6) ==
                TaskSpecification::GetSchedulingClass(descriptor7));
 
   ASSERT_FALSE(descriptor7 == descriptor8);
   ASSERT_FALSE(absl::Hash<SchedulingClassDescriptor>()(descriptor7) ==
                absl::Hash<SchedulingClassDescriptor>()(descriptor8));
-  ASSERT_FALSE(absl::Hash<SchedulingClassDescriptor>()(descriptor7) ==
-               absl::Hash<SchedulingClassDescriptor>()(descriptor8));
   ASSERT_FALSE(TaskSpecification::GetSchedulingClass(descriptor7) ==
                TaskSpecification::GetSchedulingClass(descriptor8));
 
   ASSERT_TRUE(descriptor7 == descriptor9);
-  ASSERT_TRUE(absl::Hash<SchedulingClassDescriptor>()(descriptor7) ==
-              absl::Hash<SchedulingClassDescriptor>()(descriptor9));
   ASSERT_TRUE(absl::Hash<SchedulingClassDescriptor>()(descriptor7) ==
               absl::Hash<SchedulingClassDescriptor>()(descriptor9));
   ASSERT_TRUE(TaskSpecification::GetSchedulingClass(descriptor7) ==
@@ -324,10 +284,6 @@ TEST(TaskSpecTest, TestNodeLabelSchedulingStrategy) {
               absl::Hash<rpc::SchedulingStrategy>()(scheduling_strategy_1));
   ASSERT_TRUE(absl::Hash<rpc::SchedulingStrategy>()(scheduling_strategy_1) ==
               absl::Hash<rpc::SchedulingStrategy>()(scheduling_strategy_2));
-  ASSERT_TRUE(absl::Hash<rpc::SchedulingStrategy>()(scheduling_strategy_1) ==
-              absl::Hash<rpc::SchedulingStrategy>()(scheduling_strategy_1));
-  ASSERT_TRUE(absl::Hash<rpc::SchedulingStrategy>()(scheduling_strategy_1) ==
-              absl::Hash<rpc::SchedulingStrategy>()(scheduling_strategy_2));
 
   rpc::SchedulingStrategy scheduling_strategy_3;
   auto expr_3 = scheduling_strategy_3.mutable_node_label_scheduling_strategy()
@@ -335,8 +291,6 @@ TEST(TaskSpecTest, TestNodeLabelSchedulingStrategy) {
                     ->add_expressions();
   expr_3->set_key("key");
   expr_3->mutable_operator_()->mutable_label_in()->add_values("value1");
-  ASSERT_FALSE(absl::Hash<rpc::SchedulingStrategy>()(scheduling_strategy_1) ==
-               absl::Hash<rpc::SchedulingStrategy>()(scheduling_strategy_3));
   ASSERT_FALSE(absl::Hash<rpc::SchedulingStrategy>()(scheduling_strategy_1) ==
                absl::Hash<rpc::SchedulingStrategy>()(scheduling_strategy_3));
 
@@ -348,8 +302,6 @@ TEST(TaskSpecTest, TestNodeLabelSchedulingStrategy) {
   expr_4->mutable_operator_()->mutable_label_in()->add_values("value1");
   expr_4->mutable_operator_()->mutable_label_in()->add_values("value2");
 
-  ASSERT_FALSE(absl::Hash<rpc::SchedulingStrategy>()(scheduling_strategy_1) ==
-               absl::Hash<rpc::SchedulingStrategy>()(scheduling_strategy_4));
   ASSERT_FALSE(absl::Hash<rpc::SchedulingStrategy>()(scheduling_strategy_1) ==
                absl::Hash<rpc::SchedulingStrategy>()(scheduling_strategy_4));
 
