@@ -364,10 +364,11 @@ void TaskProfileEvent::ToRpcRayEvents(RayEventsPair &ray_events_pair) {
   google::protobuf::Timestamp timestamp = AbslTimeNanosToProtoTimestamp(start_time_);
 
   // Populate Ray event base fields
-  PopulateRpcRayEventBaseFields(first_event.emplace(), timestamp);
+  auto &ray_event = first_event.emplace();
+  PopulateRpcRayEventBaseFields(ray_event, timestamp);
 
   // Populate the task profile event
-  auto task_profile_events = first_event.value().mutable_task_profile_events();
+  auto *task_profile_events = ray_event.mutable_task_profile_events();
   task_profile_events->set_task_id(task_id_.Binary());
   task_profile_events->set_job_id(job_id_.Binary());
   task_profile_events->set_attempt_number(attempt_number_);
