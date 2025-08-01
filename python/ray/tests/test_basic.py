@@ -2,6 +2,7 @@
 import logging
 import os
 import pickle
+import psutil
 import random
 import re
 import sys
@@ -231,6 +232,28 @@ def test_default_worker_import_dependency(shutdown_only):
 
     ray.get(f.remote())
 
+# This test will fail if the number of threads spawned by a worker process
+# increases. If you find that a patch is now causing this test to fail,
+# consider if this thread count change is expected and adjust the test
+# (or your patch) accordingly!
+def test_worker_thread_count(monkeypatch, shutdown_only):
+    @ray.remote
+    class Actor:
+        def get_thread_count(self):
+            try:
+                process = psutil.Process(os.getpid())
+                return process.num_threads()
+            except ImportError:
+                return None
+
+    with monkeypatch.context() as m:
+        # Set the environemnt variable used by the raylet
+        m.setenv("RAY_worker_num_grpc_internal_threads", "1")
+        ray.init()
+        # We're using == instead of <= on the notion that the thread count
+        # for a worker should be static. Lowering this number should be
+        # celebrated, increasing this number should be scrutinized
+        assert ray.get(Actor.remote().get_thread_count.remote()) == 27
 
 # https://github.com/ray-project/ray/issues/7287
 def test_omp_threads_set(ray_start_cluster, monkeypatch):
