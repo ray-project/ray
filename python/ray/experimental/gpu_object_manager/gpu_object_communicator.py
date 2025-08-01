@@ -2,6 +2,7 @@
 This module contains the utility functions to get the tensor transport metadata,
 and send/receive GPU objects.
 """
+
 from ray.util.collective.types import (
     TensorTransportMetadata,
     NixlTransportMetadata,
@@ -99,7 +100,8 @@ def get_collective_metadata(
     backend: Optional[str] = None,
 ) -> TensorTransportMetadata:
     """
-    Update the collective metadata before sending the GPU object.
+    Update the collective metadata (e.g. communicator name, src/dst rank)
+    before sending the GPU object.
     """
 
     from ray.experimental.collective import get_collective_groups
@@ -186,7 +188,6 @@ def recv_object(
     dst_actor: "ray.actor.ActorHandle",
     obj_id: str,
     tensor_transport_metadata: TensorTransportMetadata,
-    backend: Optional[str] = None,
 ):
     from ray.experimental.gpu_object_manager.gpu_object_store import __ray_recv__
 

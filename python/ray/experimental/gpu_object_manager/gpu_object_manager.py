@@ -204,7 +204,6 @@ class GPUObjectManager:
                 dst_actor,
                 arg.hex(),
                 tensor_transport_metadata,
-                gpu_object_meta.tensor_transport_backend,
             )
 
     def get_out_of_band_tensors(self, object_id: str) -> List["torch.Tensor"]:
