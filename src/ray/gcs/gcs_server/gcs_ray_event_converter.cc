@@ -81,7 +81,7 @@ void GcsRayEventConverter::ConvertToTaskEvents(rpc::events::TaskExecutionEvent &
   task_event.set_task_id(event.task_id());
   task_event.set_attempt_number(event.task_attempt());
   task_event.set_job_id(event.job_id());
-                                              
+
   rpc::TaskStateUpdate *task_state_update = task_event.mutable_state_updates();
   task_state_update->set_node_id(event.node_id());
   task_state_update->set_worker_id(event.worker_id());
