@@ -94,6 +94,7 @@ Status PlasmaObjectHeader::TryToAcquireSemaphore(
     const auto check_signal_interval = std::chrono::milliseconds(
         RayConfig::instance().get_check_signal_interval_milliseconds());
     auto last_signal_check_time = std::chrono::steady_clock::now();
+    int attempt_count = 0;
     // try to acquire the semaphore at least once even if the timeout_point is passed
     do {
       // macOS does not support sem_timedwait, so we implement a unified,
@@ -103,6 +104,17 @@ Status PlasmaObjectHeader::TryToAcquireSemaphore(
         got_sem = true;
         break;
       }
+
+      // Add adaptive sleep to avoid busy spinning
+      if (attempt_count < 5) {
+        // First few attempts: yield for minimal latency
+        sched_yield();
+      } else {
+        // After several attempts: sleep to reduce CPU usage
+        std::this_thread::sleep_for(std::chrono::microseconds(50));
+      }
+      attempt_count++;
+
       if (check_signals && std::chrono::steady_clock::now() - last_signal_check_time >
                                check_signal_interval) {
         RAY_RETURN_NOT_OK(check_signals());
