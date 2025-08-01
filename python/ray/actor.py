@@ -1722,10 +1722,8 @@ class ActorClass(Generic[T]):
         execute_out_of_order = actor_options.get("execute_out_of_order")
 
         # If the actor is async or multi-threaded, default to out-of-order execution.
-        if (is_asyncio or max_concurrency > 1) and execute_out_of_order is None:
-            execute_out_of_order = True
-        else:
-            execute_out_of_order = False
+        if execute_out_of_order is None:
+            execute_out_of_order = is_asyncio or max_concurrency > 1
 
         if is_asyncio and not execute_out_of_order:
             raise ValueError(
@@ -1733,7 +1731,7 @@ class ActorClass(Generic[T]):
                 "Set `execute_out_of_order=True` to allow out-of-order execution."
             )
 
-        if max_concurrency > 1 and not execute_out_of_order:
+        elif max_concurrency > 1 and not execute_out_of_order:
             raise ValueError(
                 "If you're using multi-threaded actors, Ray can't execute actor tasks "
                 "in order. Set `execute_out_of_order=True` to allow out-of-order "
@@ -1881,7 +1879,7 @@ class ActorHandle(Generic[T]):
         cluster_and_job,
         original_handle=False,
         weak_ref: bool = False,
-        execute_out_of_order: bool = False,
+        execute_out_of_order: Optional[bool] = None,
     ):
         """Initialize an ActorHandle.
 
