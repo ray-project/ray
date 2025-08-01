@@ -1030,6 +1030,10 @@ class CoreWorker {
     return normal_task_submitter_->GetNumLeasesRequested();
   }
 
+  int64_t GetNumPendingActorTasks(const ActorID &actor_id) const {
+    return actor_task_submitter_->NumPendingTasks(actor_id);
+  }
+
  public:
   friend class CoreWorkerProcessImpl;
 
