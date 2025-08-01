@@ -13,8 +13,8 @@ import pyarrow.fs
 
 import ray
 import ray.cloudpickle as pickle
+from ray._common.usage import usage_lib
 from ray._private.dict import deep_update
-from ray._private.usage import usage_lib
 from ray.air._internal import usage as air_usage
 from ray.air._internal.config import ensure_only_allowed_dataclass_keys_updated
 from ray.air._internal.usage import AirEntrypoint
