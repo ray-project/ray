@@ -1,4 +1,5 @@
 import logging
+import math
 import threading
 import time
 from typing import Dict, List, Optional, Tuple
@@ -22,6 +23,7 @@ from ray.data._internal.execution.streaming_executor_state import (
     OpState,
     Topology,
     build_streaming_topology,
+    get_max_bytes_to_read,
     process_completed_tasks,
     select_operator_to_run,
     update_operator_states,
@@ -100,6 +102,32 @@ class StreamingExecutor(Executor, threading.Thread):
             tag_keys=("dataset",),
         )
 
+        self._cpu_budget_gauge: Gauge = Gauge(
+            "data_cpu_budget",
+            "Budget (CPU) per operator",
+            tag_keys=("dataset", "operator"),
+        )
+        self._gpu_budget_gauge: Gauge = Gauge(
+            "data_gpu_budget",
+            "Budget (GPU) per operator",
+            tag_keys=("dataset", "operator"),
+        )
+        self._memory_budget_gauge: Gauge = Gauge(
+            "data_memory_budget",
+            "Budget (Memory) per operator",
+            tag_keys=("dataset", "operator"),
+        )
+        self._osm_budget_gauge: Gauge = Gauge(
+            "data_object_store_memory_budget",
+            "Budget (Object Store Memory) per operator",
+            tag_keys=("dataset", "operator"),
+        )
+        self._max_bytes_to_read_gauge: Gauge = Gauge(
+            "data_max_bytes_to_read",
+            description="Maximum bytes to read from streaming generator buffer.",
+            tag_keys=("dataset", "operator"),
+        )
+
         Executor.__init__(self, self._data_context.execution_options)
         thread_name = f"StreamingExecutor-{self._dataset_id}"
         threading.Thread.__init__(self, daemon=True, name=thread_name)
@@ -161,7 +189,9 @@ class StreamingExecutor(Executor, threading.Thread):
 
         self._output_node = dag, self._topology[dag]
 
-        op_to_id = {op: _get_operator_id(op, i) for i, op in enumerate(self._topology)}
+        op_to_id = {
+            op: self._get_operator_id(op, i) for i, op in enumerate(self._topology)
+        }
         StatsManager.register_dataset_to_stats_actor(
             self._dataset_id,
             self._get_operator_tags(),
@@ -204,7 +234,6 @@ class StreamingExecutor(Executor, threading.Thread):
             self._shutdown = True
             # Give the scheduling loop some time to finish processing.
             self.join(timeout=2.0)
-            self._resource_manager.update_metrics(self._dataset_id)
             self._update_stats_metrics(
                 state=DatasetState.FINISHED.name
                 if exception is None
@@ -293,13 +322,7 @@ class StreamingExecutor(Executor, threading.Thread):
 
                 sched_loop_duration = time.perf_counter() - t_start
 
-                self._sched_loop_duration_s.set(
-                    sched_loop_duration, tags={"dataset": self._dataset_id}
-                )
-                if self._initial_stats:
-                    self._initial_stats.streaming_exec_schedule_s.add(
-                        sched_loop_duration
-                    )
+                self.update_metrics(sched_loop_duration)
 
                 for callback in get_execution_callbacks(self._data_context):
                     callback.on_execution_step(self)
@@ -312,6 +335,46 @@ class StreamingExecutor(Executor, threading.Thread):
             # Mark state of outputting operator as finished
             _, state = self._output_node
             state.mark_finished(exc)
+
+    def update_metrics(self, sched_loop_duration: int):
+        self._sched_loop_duration_s.set(
+            sched_loop_duration, tags={"dataset": self._dataset_id}
+        )
+        if self._initial_stats:
+            self._initial_stats.streaming_exec_schedule_s.add(sched_loop_duration)
+        for i, op in enumerate(self._topology):
+            tags = {
+                "dataset": self._dataset_id,
+                "operator": self._get_operator_id(op, i),
+            }
+            self._update_budget_metrics(op, tags)
+            self._update_max_bytes_to_read_metric(op, tags)
+
+    def _update_budget_metrics(self, op: PhysicalOperator, tags: Dict[str, str]):
+        budget = self._resource_manager.get_budget(op)
+        if budget is not None:
+            # Convert inf to -1 to represent unlimited budget in metrics
+            cpu_budget = -1 if math.isinf(budget.cpu) else budget.cpu
+            gpu_budget = -1 if math.isinf(budget.gpu) else budget.gpu
+            memory_budget = -1 if math.isinf(budget.memory) else budget.memory
+            object_store_memory_budget = (
+                -1
+                if math.isinf(budget.object_store_memory)
+                else budget.object_store_memory
+            )
+            self._cpu_budget_gauge.set(cpu_budget, tags=tags)
+            self._gpu_budget_gauge.set(gpu_budget, tags=tags)
+            self._memory_budget_gauge.set(memory_budget, tags=tags)
+            self._osm_budget_gauge.set(object_store_memory_budget, tags=tags)
+
+    def _update_max_bytes_to_read_metric(
+        self, op: PhysicalOperator, tags: Dict[str, str]
+    ):
+        max_bytes_to_read = get_max_bytes_to_read(
+            op, backpressure_policies=self._backpressure_policies
+        )
+        max_bytes_to_read = -1 if max_bytes_to_read is None else max_bytes_to_read
+        self._max_bytes_to_read_gauge.set(max_bytes_to_read, tags)
 
     def get_stats(self):
         """Return the stats object for the streaming execution.
@@ -395,7 +458,6 @@ class StreamingExecutor(Executor, threading.Thread):
         update_operator_states(topology)
         self._refresh_progress_bars(topology)
 
-        self._resource_manager.update_metrics(self._dataset_id)
         self._update_stats_metrics(state=DatasetState.RUNNING.name)
         if time.time() - self._last_debug_log_time >= DEBUG_LOG_INTERVAL_SECONDS:
             _log_op_metrics(topology)
@@ -462,9 +524,14 @@ class StreamingExecutor(Executor, threading.Thread):
         if self._global_info:
             self._global_info.set_description(resources_status)
 
+    def _get_operator_id(self, op: PhysicalOperator, topology_index: int) -> str:
+        return f"{op.name}_{topology_index}"
+
     def _get_operator_tags(self):
         """Returns a list of operator tags."""
-        return [f"{_get_operator_id(op, i)}" for i, op in enumerate(self._topology)]
+        return [
+            f"{self._get_operator_id(op, i)}" for i, op in enumerate(self._topology)
+        ]
 
     def _get_state_dict(self, state):
         last_op, last_state = list(self._topology.items())[-1]
@@ -475,7 +542,7 @@ class StreamingExecutor(Executor, threading.Thread):
             "total_rows": last_op.num_output_rows_total(),
             "end_time": time.time() if state != DatasetState.RUNNING.name else None,
             "operators": {
-                f"{_get_operator_id(op, i)}": {
+                f"{self._get_operator_id(op, i)}": {
                     "name": op.name,
                     "progress": op_state.num_completed_tasks,
                     "total": op.num_outputs_total(),
@@ -617,7 +684,3 @@ class _ClosingIterator(OutputIterator):
         #       to be terminated asynchronously (ie avoid unnecessary
         #       synchronization on their completion)
         self._executor.shutdown(force=False)
-
-
-def _get_operator_id(self, op: PhysicalOperator, topology_index: int) -> str:
-    return f"{op.name}_{topology_index}"

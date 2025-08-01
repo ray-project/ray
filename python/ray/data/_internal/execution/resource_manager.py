@@ -20,13 +20,10 @@ from ray.data._internal.execution.operators.base_physical_operator import (
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.zip_operator import ZipOperator
-from ray.data._internal.execution.streaming_executor import _get_operator_id
-from ray.data._internal.execution.streaming_executor_state import get_max_bytes_to_read
 from ray.data._internal.execution.util import memory_string
 from ray.data._internal.util import GiB
 from ray.data.context import DataContext
 from ray.util.debug import log_once
-from ray.util.metrics import Gauge
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.streaming_executor_state import OpState, Topology
@@ -90,24 +87,6 @@ class ResourceManager:
         self._downstream_object_store_memory: Dict[PhysicalOperator, float] = {}
 
         self._op_resource_allocator: Optional["OpResourceAllocator"] = None
-
-        self._cpu_budget_gauge: Gauge = Gauge(
-            "data_cpu_budget", "Budget (CPU) per operator"
-        )
-        self._gpu_budget_gauge: Gauge = Gauge(
-            "data_gpu_budget", "Budget (GPU) per operator"
-        )
-        self._memory_budget_gauge: Gauge = Gauge(
-            "data_memory_budget)", "Budget (Memory) per operator"
-        )
-        self._osm_budget_gauge: Gauge = Gauge(
-            "data_object_store_memory_budget",
-            "Budget (Object Store Memory) per operator",
-        )
-        self._max_bytes_to_read_gauge: Gauge = Gauge(
-            "data_max_bytes_to_read",
-            "Maximum bytes to read from streaming generator buffer.",
-        )
 
         if data_context.op_resource_reservation_enabled:
             # We'll enable memory reservation if all operators have
@@ -344,36 +323,6 @@ class ResourceManager:
         if self._op_resource_allocator is None:
             return None
         return self._op_resource_allocator.get_budget(op)
-
-    def update_metrics(self, dataset_id: str):
-        for i, op in enumerate(self._topology):
-            tags = {"dataset": dataset_id, "operator": _get_operator_id(op, i)}
-            self._update_budget_metrics(op, tags)
-            self._update_max_bytes_to_read_metric(op, tags)
-
-    def _update_budget_metrics(self, op: PhysicalOperator, tags: Dict[str, str]):
-        budget = self.get_budget(op)
-        if budget is not None:
-            # Convert inf to -1 to represent unlimited budget in metrics
-            cpu_budget = -1 if math.isinf(budget.cpu) else budget.cpu
-            gpu_budget = -1 if math.isinf(budget.gpu) else budget.gpu
-            memory_budget = -1 if math.isinf(budget.memory) else budget.memory
-            object_store_memory_budget = (
-                -1
-                if math.isinf(budget.object_store_memory)
-                else budget.object_store_memory
-            )
-            self._cpu_budget_gauge.set(cpu_budget, tags=tags)
-            self._gpu_budget_gauge.set(gpu_budget, tags=tags)
-            self._memory_budget_gauge.set(memory_budget, tags=tags)
-            self._osm_budget_gauge.set(object_store_memory_budget, tags=tags)
-
-    def _update_max_bytes_to_read_metric(
-        self, op: PhysicalOperator, tags: Dict[str, str]
-    ):
-        max_bytes_to_read = get_max_bytes_to_read()
-        max_bytes_to_read = -1 if max_bytes_to_read is None else max_bytes_to_read
-        self._max_bytes_to_read_gauge.set(max_bytes_to_read, tags)
 
 
 class OpResourceAllocator(ABC):
