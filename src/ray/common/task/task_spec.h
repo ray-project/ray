@@ -276,7 +276,7 @@ using TaskAttempt = std::pair<TaskID, int32_t>;
 class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
  public:
   /// Construct an empty task specification. This should not be used directly.
-  TaskSpecification() {}
+   TaskSpecification() { ComputeResources(); }
 
   /// Construct from a protobuf message object.
   /// The input message will be copied/moved into this object.

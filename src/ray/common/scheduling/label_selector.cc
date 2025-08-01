@@ -83,7 +83,7 @@ LabelSelector::ParseLabelSelectorValue(const std::string &key, const std::string
                     : LabelSelectorOperator::LABEL_IN;
   }
 
-  return std::make_pair(op, values);
+  return {op, values};
 }
 
 }  // namespace ray
