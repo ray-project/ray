@@ -3953,9 +3953,10 @@ py_test(
     srcs = ["examples/curriculum/atari_pong_curriculum_learning.py"],
     args = [
         "--as-test",
-        "--num-env-runners=20",
+        "--num-env-runners=10",
+        "--num-cpus=11",
         "--num-envs-per-env-runner=5",
-        "--stop-iters=10",
+        "--stop-iters=20",
     ],
     main = "examples/curriculum/atari_pong_curriculum_learning.py",
     tags = [
