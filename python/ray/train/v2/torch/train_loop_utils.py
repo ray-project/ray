@@ -16,7 +16,7 @@ from torch.utils.data import (
 )
 
 import ray.train.torch
-from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
+from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.train.torch.train_loop_utils import _WrappedDataLoader
 from ray.util.annotations import Deprecated, PublicAPI
 

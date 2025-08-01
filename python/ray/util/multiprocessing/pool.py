@@ -12,7 +12,7 @@ from multiprocessing import TimeoutError
 from typing import Any, Callable, Dict, Hashable, Iterable, List, Optional, Tuple
 
 import ray
-from ray._private.usage import usage_lib
+from ray._common.usage import usage_lib
 from ray.util import log_once
 
 try:

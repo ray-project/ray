@@ -273,7 +273,7 @@ class VLLMEngine(LLMEngine):
             ref = (
                 ray.remote(
                     num_cpus=0,
-                    num_gpus=1,
+                    num_gpus=0.001,
                     accelerator_type=self.llm_config.accelerator_type,
                 )(_get_vllm_engine_config)
                 .options(

@@ -19,7 +19,7 @@ from enum import Enum
 
 import ray
 import ray._private.utils
-import ray._private.usage.usage_lib as ray_usage_lib
+import ray._common.usage.usage_lib as ray_usage_lib
 
 
 @ray.remote(num_cpus=0)

@@ -1458,3 +1458,32 @@ def random_ascii_file(request):
         fp.flush()
 
         yield fp
+
+
+"""
+pytest httpserver related test fixtures
+"""
+
+
+@pytest.fixture(scope="module")
+def make_httpserver(httpserver_listen_address, httpserver_ssl_context):
+    """
+    Module-scoped override of pytest-httpserver's make_httpserver fixture.
+    Copies the implementation the make_httpserver fixture.
+    """
+    # Lazy import pytest_httpserver to avoid import errors in library tests that doesn't
+    # have pytest_httpserver installed.
+    from pytest_httpserver.httpserver import HTTPServer
+
+    host, port = httpserver_listen_address
+    if not host:
+        host = HTTPServer.DEFAULT_LISTEN_HOST
+    if not port:
+        port = HTTPServer.DEFAULT_LISTEN_PORT
+
+    server = HTTPServer(host=host, port=port, ssl_context=httpserver_ssl_context)
+    server.start()
+    yield server
+    server.clear()
+    if server.is_running():
+        server.stop()

@@ -34,7 +34,6 @@
 
 #include "absl/strings/str_cat.h"
 #include "ray/common/source_location.h"
-#include "ray/util/logging.h"
 #include "ray/util/macros.h"
 #include "ray/util/visibility.h"
 
@@ -76,6 +75,8 @@ enum class StatusCode : char {
   IntentionalSystemExit = 14,
   UnexpectedSystemExit = 15,
   CreationTaskError = 16,
+  // Indicates that the caller request a resource that could not be found. A common
+  // example is that a request file does not exist.
   NotFound = 17,
   Disconnected = 18,
   SchedulingCancelled = 19,
@@ -101,6 +102,9 @@ enum class StatusCode : char {
   ChannelError = 35,
   // Indicates that a read or write on a channel (a mutable plasma object) timed out.
   ChannelTimeoutError = 36,
+  // Indicates that the executing user does not have permissions to perform the
+  // requested operation. A common example is filesystem permissions.
+  PermissionDenied = 37,
   // If you add to this list, please also update kCodeToStr in status.cc.
 };
 
@@ -254,6 +258,10 @@ class RAY_EXPORT Status {
     return Status(StatusCode::ChannelTimeoutError, msg);
   }
 
+  static Status PermissionDenied(const std::string &msg) {
+    return Status(StatusCode::PermissionDenied, msg);
+  }
+
   static StatusCode StringToCode(const std::string &str);
 
   // Returns true iff the status indicates success.
@@ -274,11 +282,6 @@ class RAY_EXPORT Status {
   bool IsRedisError() const { return code() == StatusCode::RedisError; }
   bool IsTimedOut() const { return code() == StatusCode::TimedOut; }
   bool IsInterrupted() const { return code() == StatusCode::Interrupted; }
-  bool ShouldExitWorker() const {
-    return code() == StatusCode::IntentionalSystemExit ||
-           code() == StatusCode::UnexpectedSystemExit ||
-           code() == StatusCode::CreationTaskError;
-  }
   bool IsIntentionalSystemExit() const {
     return code() == StatusCode::IntentionalSystemExit;
   }
@@ -308,6 +311,7 @@ class RAY_EXPORT Status {
   bool IsChannelError() const { return code() == StatusCode::ChannelError; }
 
   bool IsChannelTimeoutError() const { return code() == StatusCode::ChannelTimeoutError; }
+  bool IsPermissionDenied() const { return code() == StatusCode::PermissionDenied; }
 
   // Return a string representation of this status suitable for printing.
   // Returns the string "OK" for success.

@@ -69,11 +69,11 @@ bool ObjectRecoveryManager::RecoverObject(const ObjectID &object_id) {
         });
     // Gets the node ids from reference_counter and then gets addresses from the local
     // gcs_client.
-    RAY_CHECK_OK(object_lookup_(
+    object_lookup_(
         object_id,
         [this](const ObjectID &object_id, std::vector<rpc::Address> locations) {
           PinOrReconstructObject(object_id, std::move(locations));
-        }));
+        });
   } else if (requires_recovery) {
     RAY_LOG(DEBUG).WithField(object_id) << "Recovery already started for object";
   } else {
@@ -115,7 +115,7 @@ void ObjectRecoveryManager::PinExistingObjectCopy(
   RAY_LOG(DEBUG).WithField(object_id).WithField(node_id)
       << "Trying to pin copy of lost object at node";
 
-  std::shared_ptr<PinObjectsInterface> client;
+  std::shared_ptr<RayletClientInterface> client;
   if (node_id == NodeID::FromBinary(rpc_address_.raylet_id())) {
     client = local_object_pinning_client_;
   } else {
@@ -125,8 +125,7 @@ void ObjectRecoveryManager::PinExistingObjectCopy(
       RAY_LOG(DEBUG).WithField(node_id) << "Connecting to raylet";
       client_it = remote_object_pinning_clients_
                       .emplace(node_id,
-                               client_factory_(raylet_address.ip_address(),
-                                               raylet_address.port()))
+                               raylet_client_pool_->GetOrConnectByAddress(raylet_address))
                       .first;
     }
     client = client_it->second;

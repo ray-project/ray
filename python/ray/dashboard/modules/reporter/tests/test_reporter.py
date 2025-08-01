@@ -14,7 +14,7 @@ import requests
 from google.protobuf import text_format
 
 import ray
-import ray._private.usage.usage_lib as ray_usage_lib
+import ray._common.usage.usage_lib as ray_usage_lib
 from ray._private import ray_constants
 from ray._private.metrics_agent import fix_grpc_metric
 from ray._private.test_utils import (
@@ -23,6 +23,7 @@ from ray._private.test_utils import (
     wait_until_server_available,
 )
 from ray.core.generated.metrics_pb2 import Metric
+from ray.dashboard.modules.reporter.gpu_providers import NvidiaGpuProvider, MB
 from ray.dashboard.modules.reporter.reporter_agent import (
     ReporterAgent,
     TpuUtilizationInfo,
@@ -122,6 +123,7 @@ STATS_TEMPLATE = {
         ),
     },
     "gpus": [],
+    "gpu_processes": {},
     "tpus": [],
     "network": (13621160960, 11914936320),
     "network_speed": (8.435062128545095, 7.378462703142336),
@@ -479,6 +481,142 @@ def test_report_stats_gpu():
     assert gpu_metrics_aggregatd["node_gpus_utilization"] == 6
     assert gpu_metrics_aggregatd["node_gram_used"] == 6
     assert gpu_metrics_aggregatd["node_gram_available"] == GPU_MEMORY * 4 - 6
+
+
+def test_report_per_component_stats_gpu():
+    dashboard_agent = MagicMock()
+    agent = ReporterAgent(dashboard_agent)
+    # Assume it is a head node.
+    agent._is_head_node = True
+    # GPUstats query output example.
+    """
+    {'index': 0,
+    'uuid': 'GPU-36e1567d-37ed-051e-f8ff-df807517b396',
+    'name': 'NVIDIA A10G',
+    'utilization_gpu': 1,
+    'memory_used': 0,
+    'memory_total': 22731,
+    'processes': []}
+    """
+    GPU_MEMORY = 22731
+
+    STATS_TEMPLATE["gpus"] = [
+        {
+            "index": 0,
+            "uuid": "GPU-36e1567d-37ed-051e-f8ff-df807517b396",
+            "name": "NVIDIA A10G",
+            "utilization_gpu": 0,  # NOTE: this is a dummy value
+            "memory_used": 0,
+            "memory_total": GPU_MEMORY,
+            "processes_pids": {
+                2297322: {
+                    "pid": 2297322,
+                    "gpu_memory_usage": 26,
+                    "gpu_utilization": None,
+                }
+            },
+        },
+        {
+            "index": 1,
+            "uuid": "GPU-36e1567d-37ed-051e-f8ff-df807517b397",
+            "name": "NVIDIA A10G",
+            "utilization_gpu": 1,
+            "memory_used": 1,
+            "memory_total": GPU_MEMORY,
+            "processes_pids": {
+                2297332: {
+                    "pid": 2297332,
+                    "gpu_memory_usage": 26,
+                    "gpu_utilization": None,
+                }
+            },
+        },
+    ]
+    gpu_worker = STATS_TEMPLATE["workers"][0].copy()
+    gpu_worker.update(
+        {"pid": 7175, "cmdline": ["ray::TorchGPUWorker.dummy_method", ""]}
+    )
+    gpu_metrics_aggregatd = {
+        "component_gpu_utilization": 0,
+        "component_gpu_memory_usage": 0,
+    }
+    STATS_TEMPLATE["workers"].append(gpu_worker)
+
+    NVSMI_OUTPUT_TWO_TASK_ON_TWO_GPUS = (
+        "# gpu         pid   type     sm    mem    enc    dec    jpg    ofa    command \n"
+        "# Idx           #    C/G      %      %      %      %      %      %    name \n"
+        "    0       7175     C     84     26      -      -      -      -    ray::TorchGPUWo\n"
+        "    1       7175     C     86     26      -      -      -      -    ray::TorchGPUWo\n"
+    )
+    STATS_TEMPLATE["gpu_processes"] = NvidiaGpuProvider._parse_nvsmi_pmon_output(
+        NVSMI_OUTPUT_TWO_TASK_ON_TWO_GPUS, STATS_TEMPLATE["gpus"]
+    )
+    records = agent._to_records(STATS_TEMPLATE, {})
+
+    gpu_component_records = defaultdict(list)
+
+    for record in records:
+        if record.gauge.name in gpu_metrics_aggregatd:
+            gpu_component_records[record.gauge.name].append(record)
+    for name, records in gpu_component_records.items():
+        assert len(records) == 2  # Each matric should have 2 records
+
+    for record in gpu_component_records["component_gpu_memory_usage"]:
+        assert record.value == int(0.26 * GPU_MEMORY * MB)
+        assert record.tags["Component"] == "ray::TorchGPUWorker.dummy_method"
+    for record in gpu_component_records["component_gpu_utilization"]:
+        if record.tags["GpuIndex"] == "0":
+            assert record.value == 84
+        else:
+            assert record.value == 86
+
+    # Test stats with two tasks on one GPU.
+    NVSMI_OUTPUT_TWO_TASK_ON_ONE_GPUS = (
+        "# gpu         pid   type     sm    mem    enc    dec    jpg    ofa    command \n"
+        "# Idx           #    C/G      %      %      %      %      %      %    name \n"
+        "    0       7175     C     22      6      -      -      -      -    ray::TorchGPUWo\n"
+        "    0       7176     C     77     22      -      -      -      -    ray::TorchGPUWo\n"
+        "    1          -     -      -      -      -      -      -      -    -      \n"
+    )
+    STATS_TEMPLATE["gpu_processes"] = NvidiaGpuProvider._parse_nvsmi_pmon_output(
+        NVSMI_OUTPUT_TWO_TASK_ON_ONE_GPUS, STATS_TEMPLATE["gpus"]
+    )
+    # Move process from GPU 1 to GPU 0
+    gpu1_process = STATS_TEMPLATE["gpus"][1]["processes_pids"][2297332]
+    STATS_TEMPLATE["gpus"][0]["processes_pids"][2297332] = gpu1_process
+    STATS_TEMPLATE["gpus"][1]["processes_pids"] = {}
+
+    gpu_worker = gpu_worker.copy()
+    gpu_worker.update(
+        {"pid": 7176, "cmdline": ["ray::TorchGPUWorker.dummy_method_2", ""]}
+    )
+    STATS_TEMPLATE["workers"].append(gpu_worker)
+
+    records = agent._to_records(STATS_TEMPLATE, {})
+
+    gpu_component_records = defaultdict(list)
+    for record in records:
+        if record.gauge.name in gpu_metrics_aggregatd:
+            gpu_component_records[record.gauge.name].append(record)
+    for name, records in gpu_component_records.items():
+        assert len(records) == 2
+
+    for record in gpu_component_records["component_gpu_memory_usage"]:
+        assert record.tags["GpuIndex"] == "0"
+        if record.tags["Component"] == "ray::TorchGPUWorker.dummy_method":
+            assert record.value == int(0.06 * GPU_MEMORY * MB)
+            assert record.tags["pid"] == "7175"
+        else:
+            assert record.value == int(0.22 * GPU_MEMORY * MB)
+            assert record.tags["pid"] == "7176"
+    for record in gpu_component_records["component_gpu_utilization"]:
+        assert record.tags["GpuIndex"] == "0"
+        if record.tags["Component"] == "ray::TorchGPUWorker.dummy_method":
+            assert record.value == 22
+            assert record.tags["pid"] == "7175"
+        else:
+            assert record.value == 77
+            assert record.tags["pid"] == "7176"
 
 
 def test_get_tpu_usage():

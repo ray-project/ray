@@ -181,10 +181,16 @@ def run_in_container(cmds: List[List[str]], container_id: str):
     for cmd in cmds:
         docker_cmd = ["docker", "exec", container_id] + cmd
         print(f"Executing command: {docker_cmd}", time.time())
-        resp = subprocess.check_output(docker_cmd, stderr=subprocess.STDOUT)
-        output = resp.decode("utf-8").strip()
-        print(f"Output: {output}")
-        outputs.append(output)
+        try:
+            resp = subprocess.check_output(docker_cmd, stderr=subprocess.STDOUT)
+            output = resp.decode("utf-8").strip()
+            print(f"Output: {output}")
+            outputs.append(output)
+        except subprocess.CalledProcessError as e:
+            error_output = e.output.decode("utf-8") if e.output else "No output"
+            print(f"Command failed with return code {e.returncode}")
+            print(f"Full error output:\n{error_output}")
+            raise
 
     return outputs
 

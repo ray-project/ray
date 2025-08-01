@@ -7,6 +7,7 @@ from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
 
 import ray
 from ray._private.ray_constants import env_float
+from ray._private.state import state as ray_state
 from ray.actor import ActorHandle
 from ray.exceptions import GetTimeoutError, RayActorError
 from ray.runtime_env import RuntimeEnv
@@ -22,6 +23,7 @@ from ray.train.v2._internal.constants import (
     get_env_vars_to_propagate,
 )
 from ray.train.v2._internal.exceptions import (
+    InsufficientClusterResourcesError,
     WorkerGroupStartupFailedError,
     WorkerGroupStartupTimeoutError,
     WorkerHealthCheckFailedError,
@@ -207,6 +209,34 @@ class WorkerGroup:
 
         assert self.has_started(), "Worker group failed to start."
 
+    @staticmethod
+    def _check_cluster_resources_and_raise_if_insufficient(
+        resources_per_worker: Dict[str, float], num_workers: int
+    ) -> None:
+        """Check if the cluster has enough resources before waiting for placement group.
+
+        Args:
+            resources_per_worker: The resources per worker.
+            num_workers: The number of workers.
+        """
+        max_cluster_resources = ray_state.get_max_resources_from_cluster_config()
+        if not max_cluster_resources:
+            return
+
+        for (
+            resource_name,
+            required_amount,
+        ) in resources_per_worker.items():
+            total_required_amount = required_amount * num_workers
+            available_amount = max_cluster_resources.get(resource_name, 0)
+            if total_required_amount > available_amount:
+                error_msg = (
+                    "Insufficient cluster resources to launch training workers.\n"
+                    f'The worker group requires {{"{resource_name}": {total_required_amount}}} but the cluster only has a maximum of {{"{resource_name}": {available_amount}}} resources.\n'
+                    "Please reduce `num_workers`, lower resource requirements, or increase the cluster size."
+                )
+                raise InsufficientClusterResourcesError(error_msg)
+
     def _start_impl(
         self,
         worker_group_state_builder: WorkerGroupStateBuilder,
@@ -223,6 +253,11 @@ class WorkerGroup:
         """
         self._assert_inactive()
         worker_group_context = self._worker_group_context
+
+        WorkerGroup._check_cluster_resources_and_raise_if_insufficient(
+            worker_group_context.resources_per_worker,
+            worker_group_context.num_workers,
+        )
 
         # TODO: Review the order of `on_xyz_start` and `after_xyz_start` callbacks.
         # The current execution order is as follows:`on_worker_group_start` callbacks

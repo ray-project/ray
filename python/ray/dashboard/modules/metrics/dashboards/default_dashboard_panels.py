@@ -508,6 +508,34 @@ DEFAULT_GRAFANA_PANELS = [
         fill=0,
         stack=False,
     ),
+    Panel(
+        id=45,
+        title="Node GPU by Component",
+        description="The physical (hardware) GPU usage across the cluster, broken down by component. This reports the summed GPU usage per Ray component.",
+        unit="GPUs",
+        targets=[
+            Target(
+                expr="sum(ray_component_gpu_percentage{{{global_filters}}} / 100) by (Component)",
+                legend="{{Component}}",
+            ),
+        ],
+    ),
+    Panel(
+        id=46,
+        title="Node GPU Memory by Component",
+        description="The physical (hardware) GPU memory usage across the cluster, broken down by component. This reports the summed GPU memory usage per Ray component.",
+        unit="bytes",
+        targets=[
+            Target(
+                expr="sum(ray_component_gpu_memory_mb{{{global_filters}}}) by (Component)",
+                legend="{{Component}}",
+            ),
+            Target(
+                expr='(sum(ray_node_gram_available{{instance=~"$Instance",{global_filters}}}) + sum(ray_node_gram_used{{instance=~"$Instance",{global_filters}}}))*1024*1024',
+                legend="MAX",
+            ),
+        ],
+    ),
 ]
 
 

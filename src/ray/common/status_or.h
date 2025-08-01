@@ -22,6 +22,7 @@
 #include "absl/base/attributes.h"
 #include "ray/common/macros.h"
 #include "ray/common/status.h"
+#include "ray/util/logging.h"
 
 #define __RAY_ASSIGN_OR_RETURN_IMPL(var, expr, statusor_name) \
   auto statusor_name = (expr);                                \
@@ -148,10 +149,13 @@ class StatusOr {
   }
 
   ABSL_MUST_USE_RESULT StatusCode code() const { return status_.code(); }
-
   ABSL_MUST_USE_RESULT std::string message() const { return status_.message(); }
 
   std::string StatusString() const { return status_.StatusString(); }
+
+  bool IsNotFound() const { return code() == StatusCode::NotFound; }
+  bool IsInvalidArgument() const { return code() == StatusCode::InvalidArgument; }
+  bool IsPermissionDenied() const { return code() == StatusCode::PermissionDenied; }
 
   // Returns a reference to the current `ray::Status` contained within the
   // `ray::StatusOr<T>`. If `ray::StatusOr<T>` contains a `T`, then this
@@ -242,6 +246,10 @@ class StatusOr {
 
   static_assert(std::is_default_constructible_v<T>,
                 "StatusOr<T>::value_or_default: T must by default constructable");
+
+  // Return a string representation of this status suitable for printing.
+  // Returns the string "OK" for success.
+  std::string ToString() const { return status_.ToString(); }
 
  private:
   T &get() { return data_; }

@@ -56,13 +56,17 @@ AddressesToFlatbuffer(flatbuffers::FlatBufferBuilder &fbb,
 
 namespace ray::raylet {
 
-RayletClient::RayletClient(std::shared_ptr<rpc::NodeManagerWorkerClient> grpc_client)
-    : grpc_client_(std::move(grpc_client)) {}
+RayletClient::RayletClient(const rpc::Address &address,
+                           rpc::ClientCallManager &client_call_manager)
+    : grpc_client_(std::shared_ptr<rpc::NodeManagerClient>(
+          new rpc::NodeManagerClient(address, client_call_manager))) {}
 
 RayletClient::RayletClient(std::unique_ptr<RayletConnection> raylet_conn,
-                           std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client,
+                           const rpc::Address &address,
+                           rpc::ClientCallManager &client_call_manager,
                            const WorkerID &worker_id)
-    : grpc_client_(std::move(grpc_client)),
+    : grpc_client_(std::shared_ptr<rpc::NodeManagerClient>(
+          new rpc::NodeManagerClient(address, client_call_manager))),
       worker_id_(worker_id),
       conn_(std::move(raylet_conn)) {}
 
@@ -101,8 +105,6 @@ Status RayletClient::Disconnect(
                                    &fbb);
 }
 
-// TODO(hjiang): After we merge register client and announce port, should delete this
-// function.
 Status RayletClient::AnnounceWorkerPortForWorker(int port) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message = protocol::CreateAnnounceWorkerPort(fbb, port, fbb.CreateString(""));
@@ -549,6 +551,12 @@ void RayletClient::GetSystemConfig(
     const rpc::ClientCallback<rpc::GetSystemConfigReply> &callback) {
   rpc::GetSystemConfigRequest request;
   grpc_client_->GetSystemConfig(request, callback);
+}
+
+void RayletClient::GetNodeStats(
+    const rpc::GetNodeStatsRequest &request,
+    const rpc::ClientCallback<rpc::GetNodeStatsReply> &callback) {
+  grpc_client_->GetNodeStats(request, callback);
 }
 
 }  // namespace ray::raylet

@@ -12,6 +12,7 @@ from fastapi import FastAPI
 import ray
 from ray import serve
 from ray.serve._private.constants import SERVE_HTTP_REQUEST_ID_HEADER
+from ray.serve._private.test_utils import get_application_url
 from ray.serve._private.utils import generate_request_id
 
 
@@ -25,7 +26,7 @@ def test_request_id_header_by_default(serve_instance):
             return request_id
 
     serve.run(Model.bind())
-    resp = httpx.get("http://localhost:8000")
+    resp = httpx.get(f"{get_application_url()}")
     assert resp.status_code == 200
     assert resp.text == resp.headers[SERVE_HTTP_REQUEST_ID_HEADER]
 
@@ -42,7 +43,9 @@ def test_request_id_header_by_default(serve_instance):
 class TestUserProvidedRequestIDHeader:
     def verify_result(self):
         for header_attr in ["X-Request-ID"]:
-            resp = httpx.get("http://localhost:8000", headers={header_attr: "123-234"})
+            resp = httpx.get(
+                f"{get_application_url()}", headers={header_attr: "123-234"}
+            )
             assert resp.status_code == 200
             assert resp.json() == 1
             assert resp.headers[header_attr] == "123-234"
@@ -98,7 +101,7 @@ def test_set_request_id_headers_with_two_attributes(serve_instance):
 
     serve.run(Model.bind())
     resp = httpx.get(
-        "http://localhost:8000",
+        get_application_url(),
         headers={
             "X-Request-ID": "234",
         },

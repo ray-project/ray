@@ -4,6 +4,7 @@ import ipaddress
 import logging
 import os
 import pathlib
+import posixpath
 import sys
 import time
 from math import floor
@@ -17,7 +18,7 @@ import ray.dashboard.timezone_utils as timezone_utils
 import ray.dashboard.utils as dashboard_utils
 from ray import ray_constants
 from ray._common.utils import get_or_create_event_loop
-from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
+from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.dashboard.dashboard_metrics import DashboardPrometheusMetrics
 from ray.dashboard.head import DashboardHeadModule
 
@@ -134,7 +135,7 @@ class HttpServerDashboardHead:
                 os.path.dirname(os.path.abspath(__file__)), "client/build/index.html"
             )
         )
-        resp.headers["Cache-Control"] = "no-cache"
+        resp.headers["Cache-Control"] = "no-store"
         return resp
 
     @routes.get("/favicon.ico")
@@ -170,9 +171,7 @@ class HttpServerDashboardHead:
 
             # If the destination is not relative to the expected directory,
             # then the user is attempting path traversal, so deny the request.
-            request_path = pathlib.PurePosixPath(
-                pathlib.posixpath.realpath(request.path)
-            )
+            request_path = pathlib.PurePosixPath(posixpath.realpath(request.path))
             if request_path != parent and parent not in request_path.parents:
                 logger.info(
                     f"Rejecting {request_path=} because it is not relative to {parent=}"

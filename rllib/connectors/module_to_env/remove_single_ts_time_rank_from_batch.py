@@ -51,8 +51,8 @@ class RemoveSingleTsTimeRankFromBatch(ConnectorV2):
             return batch
 
         def _remove_single_ts(item, eps_id, aid, mid):
-            # Only remove time-rank for modules that are statefule (only for those has
-            # a timerank been added).
+            # Only remove time-rank for modules that are statefule (only for those, a
+            # timerank has been added).
             if mid is None or rl_module[mid].is_stateful():
                 return tree.map_structure(lambda s: np.squeeze(s, axis=0), item)
             return item

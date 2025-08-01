@@ -8,7 +8,6 @@ import gymnasium as gym
 
 from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
-from ray.rllib.core.models.specs.typing import SpecType
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.models.distributions import Distribution
 from ray.rllib.utils.annotations import (
@@ -474,6 +473,9 @@ class RLModule(Checkpointable, abc.ABC):
             if "'NoneType' object has no attribute " in e.args[0]:
                 raise (self._catalog_ctor_error or e)
         self._is_setup = True
+        # Cache value for returning from `is_stateful` so we don't have to call
+        # the module's `get_initial_state()` method all the time (might be expensive).
+        self._is_stateful = None
 
     @OverrideToImplementCustomLogic
     def setup(self):
@@ -581,8 +583,7 @@ class RLModule(Checkpointable, abc.ABC):
 
         By default, this calls the generic `self._forward()` method.
         """
-        with torch.no_grad():
-            return self._forward(batch, **kwargs)
+        return self._forward(batch, **kwargs)
 
     def forward_exploration(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
         """DO NOT OVERRIDE! Forward-pass during exploration, called from the sampler.
@@ -611,8 +612,7 @@ class RLModule(Checkpointable, abc.ABC):
 
         By default, this calls the generic `self._forward()` method.
         """
-        with torch.no_grad():
-            return self._forward(batch, **kwargs)
+        return self._forward(batch, **kwargs)
 
     def forward_train(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
         """DO NOT OVERRIDE! Forward-pass during training called from the learner.
@@ -667,12 +667,14 @@ class RLModule(Checkpointable, abc.ABC):
         state is an empty dict and recurrent otherwise.
         This behavior can be customized by overriding this method.
         """
-        initial_state = self.get_initial_state()
-        assert isinstance(initial_state, dict), (
-            "The initial state of an RLModule must be a dict, but is "
-            f"{type(initial_state)} instead."
-        )
-        return bool(initial_state)
+        if self._is_stateful is None:
+            initial_state = self.get_initial_state()
+            assert isinstance(initial_state, dict), (
+                "The initial state of an RLModule must be a dict, but is "
+                f"{type(initial_state)} instead."
+            )
+            self._is_stateful = bool(initial_state)
+        return self._is_stateful
 
     @OverrideToImplementCustomLogic
     @override(Checkpointable)
@@ -739,29 +741,29 @@ class RLModule(Checkpointable, abc.ABC):
         """
         return self
 
-    def output_specs_inference(self) -> SpecType:
+    def output_specs_inference(self):
         return [Columns.ACTION_DIST_INPUTS]
 
-    def output_specs_exploration(self) -> SpecType:
+    def output_specs_exploration(self):
         return [Columns.ACTION_DIST_INPUTS]
 
-    def output_specs_train(self) -> SpecType:
+    def output_specs_train(self):
         """Returns the output specs of the forward_train method."""
         return {}
 
-    def input_specs_inference(self) -> SpecType:
+    def input_specs_inference(self):
         """Returns the input specs of the forward_inference method."""
         return self._default_input_specs()
 
-    def input_specs_exploration(self) -> SpecType:
+    def input_specs_exploration(self):
         """Returns the input specs of the forward_exploration method."""
         return self._default_input_specs()
 
-    def input_specs_train(self) -> SpecType:
+    def input_specs_train(self):
         """Returns the input specs of the forward_train method."""
         return self._default_input_specs()
 
-    def _default_input_specs(self) -> SpecType:
+    def _default_input_specs(self):
         """Returns the default input specs."""
         return [Columns.OBS]
 

@@ -2291,7 +2291,7 @@ cdef void free_actor_object_callback(const CObjectID &c_object_id) nogil:
     with gil:
         object_id = c_object_id.Hex().decode()
         gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
-        gpu_object_manager.gpu_object_store.remove_gpu_object(object_id)
+        gpu_object_manager.gpu_object_store.pop_object(object_id)
 
 cdef shared_ptr[LocalMemoryBuffer] ray_error_to_memory_buf(ray_error):
     cdef bytes py_bytes = ray_error.to_bytes()
@@ -2380,11 +2380,7 @@ cdef CRayStatus task_execution_handler(
                     traceback_str = str(e)
                     logger.error("Exception raised "
                                  f"in creation task: {traceback_str}")
-                    # Cython's bug that doesn't allow reference assignment,
-                    # this is a workaroud.
-                    # See https://github.com/cython/cython/issues/1863
-                    (&creation_task_exception_pb_bytes)[0] = (
-                        ray_error_to_memory_buf(e))
+                    creation_task_exception_pb_bytes = ray_error_to_memory_buf(e)
                     sys_exit.is_creation_task_error = True
                     sys_exit.init_error_message = (
                         "Exception raised from an actor init method. "
@@ -3357,11 +3353,10 @@ cdef class CoreWorker:
             c_remote_reader_nodes.push_back(CNodeID.FromHex(node_id))
 
         with nogil:
-            check_status(CCoreWorkerProcess.GetCoreWorker()
-                         .ExperimentalRegisterMutableObjectWriter(
-                            c_writer_ref,
-                            c_remote_reader_nodes,
-                        ))
+            CCoreWorkerProcess.GetCoreWorker().ExperimentalRegisterMutableObjectWriter(
+                    c_writer_ref,
+                    c_remote_reader_nodes,
+            )
             check_status(
                     CCoreWorkerProcess.GetCoreWorker()
                     .ExperimentalRegisterMutableObjectReaderRemote(
@@ -4411,18 +4406,27 @@ cdef class CoreWorker:
                 serialized_object.contained_object_refs)
 
             if not self.store_task_output(
-                    serialized_object, return_id,
+                    serialized_object,
+                    return_id,
                     c_ref_generator_id,
-                    data_size, metadata, contained_id, caller_address,
-                    &task_output_inlined_bytes, return_ptr):
+                    data_size,
+                    metadata,
+                    contained_id,
+                    caller_address,
+                    &task_output_inlined_bytes,
+                    return_ptr):
                 # If the object already exists, but we fail to pin the copy, it
                 # means the existing copy might've gotten evicted. Try to
                 # create another copy.
                 self.store_task_output(
-                        serialized_object, return_id,
+                        serialized_object,
+                        return_id,
                         c_ref_generator_id,
-                        data_size, metadata,
-                        contained_id, caller_address, &task_output_inlined_bytes,
+                        data_size,
+                        metadata,
+                        contained_id,
+                        caller_address,
+                        &task_output_inlined_bytes,
                         return_ptr)
             num_outputs_stored += 1
 

@@ -19,6 +19,7 @@
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "gmock/gmock.h"
 #include "mock/ray/raylet_client/raylet_client.h"
@@ -43,18 +44,19 @@ class MockCoreWorkerClient : public CoreWorkerClientInterface {
   std::function<void()> unavailable_timeout_callback_;
 };
 
-class CoreWorkerClientPoolTest : public ::testing::Test {
- public:
-  static rpc::Address CreateRandomAddress(const std::string &addr) {
-    rpc::Address address;
-    address.set_ip_address(addr);
-    address.set_raylet_id(NodeID::FromRandom().Binary());
-    address.set_worker_id(WorkerID::FromRandom().Binary());
-    return address;
-  }
-};
+namespace {
 
-TEST_F(CoreWorkerClientPoolTest, TestGC) {
+rpc::Address CreateRandomAddress(const std::string &addr) {
+  rpc::Address address;
+  address.set_ip_address(addr);
+  address.set_raylet_id(NodeID::FromRandom().Binary());
+  address.set_worker_id(WorkerID::FromRandom().Binary());
+  return address;
+}
+
+}  // namespace
+
+TEST(CoreWorkerClientPoolTest, TestGC) {
   // Test to make sure idle clients are removed eventually.
 
   CoreWorkerClientPool client_pool(
@@ -80,20 +82,30 @@ TEST_F(CoreWorkerClientPoolTest, TestGC) {
 
 class MockGcsClientNodeAccessor : public gcs::NodeInfoAccessor {
  public:
-  MockGcsClientNodeAccessor() : gcs::NodeInfoAccessor(nullptr) {}
+  explicit MockGcsClientNodeAccessor(bool is_subscribed_to_node_change)
+      : gcs::NodeInfoAccessor(nullptr),
+        is_subscribed_to_node_change_(is_subscribed_to_node_change) {}
 
-  bool IsSubscribedToNodeChange() const override { return true; }
+  bool IsSubscribedToNodeChange() const override { return is_subscribed_to_node_change_; }
 
-  MOCK_METHOD(const rpc::GcsNodeInfo *,
-              Get,
-              (const NodeID &node_id, bool filter_dead_nodes),
-              (const, override));
+  MOCK_METHOD(const rpc::GcsNodeInfo *, Get, (const NodeID &, bool), (const, override));
+
+  MOCK_METHOD(void,
+              AsyncGetAll,
+              (const gcs::MultiItemCallback<rpc::GcsNodeInfo> &,
+               int64_t,
+               std::optional<NodeID>),
+              (override));
+
+ private:
+  bool is_subscribed_to_node_change_;
 };
 
 class MockGcsClient : public gcs::GcsClient {
  public:
-  MockGcsClient() {
-    this->node_accessor_ = std::make_unique<MockGcsClientNodeAccessor>();
+  explicit MockGcsClient(bool is_subscribed_to_node_change) {
+    this->node_accessor_ =
+        std::make_unique<MockGcsClientNodeAccessor>(is_subscribed_to_node_change);
   }
 
   MockGcsClientNodeAccessor &MockNodeAccessor() {
@@ -101,33 +113,96 @@ class MockGcsClient : public gcs::GcsClient {
   }
 };
 
-TEST_F(CoreWorkerClientPoolTest, TestGetDefaultUnavailableTimeoutCallbackNodeDead) {
-  auto gcs_client = std::make_unique<MockGcsClient>();
-  auto raylet_client = std::make_shared<MockRayletClientInterface>();
-  auto node_info = std::make_unique<rpc::GcsNodeInfo>();
+class DefaultUnavailableTimeoutCallbackTest : public ::testing::TestWithParam<bool> {
+ public:
+  DefaultUnavailableTimeoutCallbackTest()
+      : is_subscribed_to_node_change_(GetParam()),
+        gcs_client_(is_subscribed_to_node_change_),
+        raylet_client_pool_(std::make_shared<RayletClientPool>([](const rpc::Address &) {
+          return std::make_shared<MockRayletClientInterface>();
+        })),
+        client_pool_(
+            std::make_unique<CoreWorkerClientPool>([this](const rpc::Address &addr) {
+              return std::make_shared<MockCoreWorkerClient>(
+                  CoreWorkerClientPool::GetDefaultUnavailableTimeoutCallback(
+                      &this->gcs_client_,
+                      this->client_pool_.get(),
+                      this->raylet_client_pool_.get(),
+                      addr));
+            })) {}
 
-  std::unique_ptr<CoreWorkerClientPool> client_pool;
-  client_pool = std::make_unique<CoreWorkerClientPool>([&](const rpc::Address &addr) {
-    return std::make_shared<MockCoreWorkerClient>(
-        CoreWorkerClientPool::GetDefaultUnavailableTimeoutCallback(
-            gcs_client.get(),
-            client_pool.get(),
-            [&raylet_client](const std::string &, int32_t) { return raylet_client; },
-            addr));
-  });
+  bool is_subscribed_to_node_change_;
+  MockGcsClient gcs_client_;
+  std::shared_ptr<RayletClientPool> raylet_client_pool_;
+  std::unique_ptr<CoreWorkerClientPool> client_pool_;
+};
 
-  auto core_worker_client = client_pool->GetOrConnect(CreateRandomAddress("1"));
-  ASSERT_EQ(client_pool->Size(), 1);
+TEST_P(DefaultUnavailableTimeoutCallbackTest, NodeDeath) {
+  // Add 2 worker clients to the pool.
+  // worker_client_1 unavailable calls:
+  // 1. Node info hasn't been cached yet, but GCS knows it's alive.
+  // 2. Node is alive and worker is alive.
+  // 3. Node is dead according to cache + GCS, should disconnect.
+  // worker_client_2 unavailable calls:
+  // 1. Subscriber cache and GCS don't know about node. Means the node is dead and the GCS
+  //    had to discard to keep its cache size in check, should disconnect.
 
-  // Alive node first time.
-  // Dead node second time.
-  EXPECT_CALL(gcs_client->MockNodeAccessor(), Get(_, true))
-      .WillOnce(Return(node_info.get()))
-      .WillOnce(Return(nullptr));
+  auto &mock_node_accessor = gcs_client_.MockNodeAccessor();
+  auto invoke_with_node_info_vector = [](std::vector<rpc::GcsNodeInfo> node_info_vector) {
+    return Invoke(
+        [node_info_vector](const gcs::MultiItemCallback<rpc::GcsNodeInfo> &callback,
+                           int64_t,
+                           std::optional<NodeID>) {
+          callback(Status::OK(), node_info_vector);
+        });
+  };
 
-  // Alive worker first time.
+  auto worker_1_address = CreateRandomAddress("1");
+  auto worker_2_address = CreateRandomAddress("2");
+  auto worker_1_client = dynamic_cast<MockCoreWorkerClient *>(
+      client_pool_->GetOrConnect(worker_1_address).get());
+  ASSERT_EQ(client_pool_->Size(), 1);
+  auto worker_2_client = dynamic_cast<MockCoreWorkerClient *>(
+      client_pool_->GetOrConnect(worker_2_address).get());
+  ASSERT_EQ(client_pool_->Size(), 2);
+
+  auto worker_1_node_id = NodeID::FromBinary(worker_1_address.raylet_id());
+  auto worker_2_node_id = NodeID::FromBinary(worker_2_address.raylet_id());
+
+  rpc::GcsNodeInfo node_info_alive;
+  node_info_alive.set_state(rpc::GcsNodeInfo::ALIVE);
+  rpc::GcsNodeInfo node_info_dead;
+  node_info_dead.set_state(rpc::GcsNodeInfo::DEAD);
+  if (is_subscribed_to_node_change_) {
+    EXPECT_CALL(mock_node_accessor, Get(worker_1_node_id, /*filter_dead_nodes=*/false))
+        .WillOnce(Return(nullptr))
+        .WillOnce(Return(&node_info_alive))
+        .WillOnce(Return(&node_info_dead));
+    EXPECT_CALL(mock_node_accessor,
+                AsyncGetAll(_, _, std::make_optional(worker_1_node_id)))
+        .WillOnce(invoke_with_node_info_vector({node_info_alive}));
+    EXPECT_CALL(mock_node_accessor, Get(worker_2_node_id, /*filter_dead_nodes=*/false))
+        .WillOnce(Return(nullptr));
+    EXPECT_CALL(mock_node_accessor,
+                AsyncGetAll(_, _, std::make_optional(worker_2_node_id)))
+        .WillOnce(invoke_with_node_info_vector({}));
+  } else {
+    EXPECT_CALL(mock_node_accessor,
+                AsyncGetAll(_, _, std::make_optional(worker_1_node_id)))
+        .WillOnce(invoke_with_node_info_vector({node_info_alive}))
+        .WillOnce(invoke_with_node_info_vector({node_info_alive}))
+        .WillOnce(invoke_with_node_info_vector({node_info_dead}));
+    EXPECT_CALL(mock_node_accessor,
+                AsyncGetAll(_, _, std::make_optional(worker_2_node_id)))
+        .WillOnce(invoke_with_node_info_vector({}));
+  }
+
+  auto raylet_client = std::dynamic_pointer_cast<MockRayletClientInterface>(
+      raylet_client_pool_->GetOrConnectByAddress(worker_1_address));
+  // Worker is alive when node is alive.
   EXPECT_CALL(*raylet_client, IsLocalWorkerDead(_, _))
-      .WillOnce(
+      .Times(2)
+      .WillRepeatedly(
           Invoke([](const WorkerID &,
                     const rpc::ClientCallback<rpc::IsLocalWorkerDeadReply> &callback) {
             rpc::IsLocalWorkerDeadReply reply;
@@ -135,40 +210,43 @@ TEST_F(CoreWorkerClientPoolTest, TestGetDefaultUnavailableTimeoutCallbackNodeDea
             callback(Status::OK(), std::move(reply));
           }));
 
-  // Stays connected first time.
-  dynamic_cast<MockCoreWorkerClient *>(core_worker_client.get())
-      ->unavailable_timeout_callback_();
-  ASSERT_EQ(client_pool->Size(), 1);
-
-  // Disconnected second time.
-  dynamic_cast<MockCoreWorkerClient *>(core_worker_client.get())
-      ->unavailable_timeout_callback_();
-  ASSERT_EQ(client_pool->Size(), 0);
+  worker_1_client->unavailable_timeout_callback_();
+  ASSERT_EQ(client_pool_->Size(), 2);
+  worker_1_client->unavailable_timeout_callback_();
+  ASSERT_EQ(client_pool_->Size(), 2);
+  worker_1_client->unavailable_timeout_callback_();
+  ASSERT_EQ(client_pool_->Size(), 1);
+  worker_2_client->unavailable_timeout_callback_();
+  ASSERT_EQ(client_pool_->Size(), 0);
 }
 
-TEST_F(CoreWorkerClientPoolTest, TestGetDefaultUnavailableTimeoutCallbackWorkerDead) {
-  auto gcs_client = std::make_unique<MockGcsClient>();
-  auto raylet_client = std::make_shared<MockRayletClientInterface>();
-  auto node_info = std::make_unique<rpc::GcsNodeInfo>();
+TEST_P(DefaultUnavailableTimeoutCallbackTest, WorkerDeath) {
+  // Add the client to the pool.
+  // 1st call - Node is alive and worker is alive.
+  // 2nd call - Node is alive and worker is dead, client should be disconnected.
 
-  std::unique_ptr<CoreWorkerClientPool> client_pool;
-  client_pool = std::make_unique<CoreWorkerClientPool>([&](const rpc::Address &addr) {
-    return std::make_shared<MockCoreWorkerClient>(
-        CoreWorkerClientPool::GetDefaultUnavailableTimeoutCallback(
-            gcs_client.get(),
-            client_pool.get(),
-            [&raylet_client](const std::string &, int32_t) { return raylet_client; },
-            addr));
-  });
-  auto core_worker_client = client_pool->GetOrConnect(CreateRandomAddress("1"));
-  ASSERT_EQ(client_pool->Size(), 1);
+  auto worker_address = CreateRandomAddress("1");
+  auto core_worker_client = dynamic_cast<MockCoreWorkerClient *>(
+      client_pool_->GetOrConnect(worker_address).get());
+  ASSERT_EQ(client_pool_->Size(), 1);
 
-  // Gives alive node both times.
-  EXPECT_CALL(gcs_client->MockNodeAccessor(), Get(_, true))
-      .WillOnce(Return(node_info.get()))
-      .WillOnce(Return(node_info.get()));
-  // Gives alive worker first time.
-  // Gives dead worker second time.
+  rpc::GcsNodeInfo node_info_alive;
+  node_info_alive.set_state(rpc::GcsNodeInfo::ALIVE);
+  if (is_subscribed_to_node_change_) {
+    EXPECT_CALL(gcs_client_.MockNodeAccessor(), Get(_, /*filter_dead_nodes=*/false))
+        .Times(2)
+        .WillRepeatedly(Return(&node_info_alive));
+  } else {
+    EXPECT_CALL(gcs_client_.MockNodeAccessor(), AsyncGetAll(_, _, _))
+        .Times(2)
+        .WillRepeatedly(Invoke(
+            [&](const gcs::MultiItemCallback<rpc::GcsNodeInfo> &callback,
+                int64_t,
+                std::optional<NodeID>) { callback(Status::OK(), {node_info_alive}); }));
+  }
+
+  auto raylet_client = std::dynamic_pointer_cast<MockRayletClientInterface>(
+      raylet_client_pool_->GetOrConnectByAddress(worker_address));
   EXPECT_CALL(*raylet_client, IsLocalWorkerDead(_, _))
       .WillOnce(
           Invoke([](const WorkerID &,
@@ -185,16 +263,16 @@ TEST_F(CoreWorkerClientPoolTest, TestGetDefaultUnavailableTimeoutCallbackWorkerD
             callback(Status::OK(), std::move(reply));
           }));
 
-  // First time client should still be connected.
-  dynamic_cast<MockCoreWorkerClient *>(core_worker_client.get())
-      ->unavailable_timeout_callback_();
-  ASSERT_EQ(client_pool->Size(), 1);
-
-  // Second time client should be disconnected.
-  dynamic_cast<MockCoreWorkerClient *>(core_worker_client.get())
-      ->unavailable_timeout_callback_();
-  ASSERT_EQ(client_pool->Size(), 0);
+  // Disconnects the second time.
+  core_worker_client->unavailable_timeout_callback_();
+  ASSERT_EQ(client_pool_->Size(), 1);
+  core_worker_client->unavailable_timeout_callback_();
+  ASSERT_EQ(client_pool_->Size(), 0);
 }
+
+INSTANTIATE_TEST_SUITE_P(IsSubscribedToNodeChange,
+                         DefaultUnavailableTimeoutCallbackTest,
+                         ::testing::Values(true, false));
 
 }  // namespace rpc
 }  // namespace ray

@@ -75,10 +75,10 @@ def test_two_returns_one_reader(ray_start_regular, single_fetch):
     a = Actor.remote(0)
     b = Actor.remote(0)
     with InputNode() as i:
-        o1, o2 = a.return_two.bind(i)
-        o3 = b.echo.bind(o1)
-        o4 = b.echo.bind(o2)
-        dag = MultiOutputNode([o3, o4])
+        out_1, out_2 = a.return_two.bind(i)
+        out_3 = b.echo.bind(out_1)
+        out_4 = b.echo.bind(out_2)
+        dag = MultiOutputNode([out_3, out_4])
 
     compiled_dag = dag.experimental_compile()
     for _ in range(3):
