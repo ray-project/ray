@@ -187,8 +187,6 @@ if __name__ == "__main__":
         for package in args.extras:
             do_link(package, force=args.yes, skip_list=args.skip, allow_list=args.allow)
 
-    shutil.copy2()
-
     print(
         "Created links.\n\nIf you run into issues initializing Ray, please "
         "ensure that your local repo and the installed Ray are in sync "
