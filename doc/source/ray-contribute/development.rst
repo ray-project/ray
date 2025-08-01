@@ -88,14 +88,16 @@ RLlib, Tune, Autoscaler, and most Python files do not require you to build and c
 
 2. Make sure you activate the Python (virtual) environment as described above.
 
-3. Pip install the **latest Ray wheels.** See :ref:`install-nightlies` for instructions.
+3. Install the development dependencies: ``pip install -r python/requirements/test-requirements.txt``.
+
+4. Pip install the **latest Ray wheels.** See :ref:`install-nightlies` for instructions.
 
 .. code-block:: shell
 
     # For example, for Python 3.9:
     pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl
 
-4. Replace Python files in the installed package with your local editable copy. We provide a simple script to help you do this: ``python python/ray/setup-dev.py``. Running the script will remove the  ``ray/tune``, ``ray/rllib``, ``ray/autoscaler`` dir (among other directories) bundled with the ``ray`` pip package, and replace them with links to your local code. This way, changing files in your git clone will directly affect the behavior of your installed Ray.
+5. Replace Python files in the installed package with your local editable copy. We provide a simple script to help you do this: ``python python/ray/setup-dev.py``. Running the script will remove the  ``ray/tune``, ``ray/rllib``, ``ray/autoscaler`` dir (among other directories) bundled with the ``ray`` pip package, and replace them with links to your local code. This way, changing files in your git clone will directly affect the behavior of your installed Ray.
 
 .. code-block:: shell
 

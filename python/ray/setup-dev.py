@@ -15,6 +15,7 @@ if this_dir in sys.path:
     sys.path.remove(this_dir)
     sys.path.append(this_dir)
 
+import tempfile
 import argparse
 import click
 import shutil
@@ -43,7 +44,7 @@ def do_link(package, force=False, skip_list=None, allow_list=None, local_path=No
     assert os.path.exists(local_home), local_home
     # Confirm with user.
     if not force and not click.confirm(
-        f"This will replace:\n  {package_home}\nwith " f"a symlink to:\n  {local_home}",
+        f"This will replace:\n  {package_home}\nwith a symlink to:\n  {local_home}",
         default=True,
     ):
         return
@@ -73,36 +74,40 @@ def do_link(package, force=False, skip_list=None, allow_list=None, local_path=No
     else:
         sudo = []
         if not os.access(os.path.dirname(package_home), os.W_OK):
-            print("You don't have write permission " f"to {package_home}, using sudo:")
+            print(f"You don't have write permission to {package_home}, using sudo:")
             sudo = ["sudo"]
         print(f"Creating symbolic link from \n {local_home} to \n {package_home}")
 
         # Preserve ray/serve/generated
-        serve_temp_dir = "/tmp/ray/_serve/"
         if package == "serve":
-            # Copy generated folder to a temp dir
-            generated_folder = os.path.join(package_home, "generated")
-            if not os.path.exists(serve_temp_dir):
-                os.makedirs(serve_temp_dir)
-            subprocess.check_call(["mv", generated_folder, serve_temp_dir])
+            with tempfile.TemporaryDirectory() as serve_temp_dir:
+                # Copy generated folder to a temp dir
+                generated_folder = os.path.join(package_home, "generated")
+                os.makedirs(serve_temp_dir, exist_ok=True)
+                subprocess.check_call(["mv", generated_folder, serve_temp_dir])
 
-        # Create backup of the old directory if it exists
-        if os.path.exists(package_home):
-            backup_dir = f"{package_home}.bak"
-            print(f"Creating backup of {package_home} to {backup_dir}")
-            subprocess.check_call(sudo + ["cp", "-r", package_home, backup_dir])
+                backup_and_link(local_home, package_home, sudo)
 
-        subprocess.check_call(sudo + ["rm", "-rf", package_home])
-        subprocess.check_call(sudo + ["ln", "-s", local_home, package_home])
+                # Move generated folder to local_home
+                tmp_generated_folder = os.path.join(serve_temp_dir, "generated")
+                package_generated_folder = os.path.join(package_home, "generated")
+                if not os.path.exists(package_generated_folder):
+                    subprocess.check_call(
+                        ["mv", tmp_generated_folder, package_generated_folder]
+                    )
+        else:
+            backup_and_link(local_home, package_home, sudo)
 
-        # Move generated folder to local_home
-        if package == "serve":
-            tmp_generated_folder = os.path.join(serve_temp_dir, "generated")
-            package_generated_folder = os.path.join(package_home, "generated")
-            if not os.path.exists(package_generated_folder):
-                subprocess.check_call(
-                    ["mv", tmp_generated_folder, package_generated_folder]
-                )
+
+def backup_and_link(local_home: str, package_home: str, sudo: list[str]) -> None:
+    # Create backup of the old directory if it exists
+    if os.path.exists(package_home):
+        backup_dir = f"{package_home}.bak"
+        print(f"Creating backup of {package_home} to {backup_dir}")
+        subprocess.check_call(sudo + ["cp", "-r", package_home, backup_dir])
+
+    subprocess.check_call(sudo + ["rm", "-rf", package_home])
+    subprocess.check_call(sudo + ["ln", "-s", local_home, package_home])
 
 
 if __name__ == "__main__":
@@ -181,6 +186,8 @@ if __name__ == "__main__":
     if args.extras is not None:
         for package in args.extras:
             do_link(package, force=args.yes, skip_list=args.skip, allow_list=args.allow)
+
+    shutil.copy2()
 
     print(
         "Created links.\n\nIf you run into issues initializing Ray, please "
