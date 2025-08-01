@@ -3568,106 +3568,111 @@ def remote(
         See :ref:`more info here <ray-pass-large-arg-by-value>`.
 
     Args:
-        num_returns: This is only for *remote functions*. It specifies
-            the number of object refs returned by the remote function
-            invocation. The default value is 1.
-            Pass "dynamic" to allow the task to decide how many
-            return values to return during execution, and the caller will
-            receive an ObjectRef[DynamicObjectRefGenerator].
-            See :ref:`dynamic generators <dynamic-generators>` for more details.
-        num_cpus: The quantity of CPU resources to reserve
-            for this task or for the lifetime of the actor.
-            By default, tasks use 1 CPU resource and actors use 1 CPU
-            for scheduling and 0 CPU for running
-            (This means, by default, actors cannot get scheduled on a zero-cpu node,
-            but an infinite number of them can run on any non-zero cpu node.
-            The default value for actors was chosen for historical reasons.
-            It's recommended to always explicitly set num_cpus for actors
-            to avoid any surprises.
-            If resources are specified explicitly,
-            they are required for both scheduling and running.)
-            See :ref:`specifying resource requirements <resource-requirements>`
-            for more details.
-        num_gpus: The quantity of GPU resources to reserve
-            for this task or for the lifetime of the actor.
-            The default value is 0.
-            See :ref:`Ray GPU support <gpu-support>` for more details.
-        resources (Dict[str, float]): The quantity of various
-            :ref:`custom resources <custom-resources>`
-            to reserve for this task or for the lifetime of the actor.
-            This is a dictionary mapping strings (resource names) to floats.
-            By default it is empty.
-        label_selector (Dict[str, str]): [Experimental] If specified, the labels required for the node on
-                which this actor can be scheduled on. The label selector consist of key-value pairs,
-                where the keys are label names and the value are expressions consisting of an operator
-                with label values or just a value to indicate equality.
-        accelerator_type: If specified, requires that the task or actor run
-            on a node with the specified type of accelerator.
-            See :ref:`accelerator types <accelerator_types>`.
-        memory: The heap memory request in bytes for this task/actor,
-            rounded down to the nearest integer.
-        max_calls: Only for *remote functions*. This specifies the
-            maximum number of times that a given worker can execute
-            the given remote function before it must exit
-            (this can be used to address :ref:`memory leaks <gpu-leak>` in third-party
-            libraries or to reclaim resources that cannot easily be
-            released, e.g., GPU memory that was acquired by TensorFlow).
-            By default this is infinite for CPU tasks and 1 for GPU tasks
-            (to force GPU tasks to release resources after finishing).
-        max_restarts: Only for *actors*. This specifies the maximum
-            number of times that the actor should be restarted when it dies
-            unexpectedly. The minimum valid value is 0 (default),
-            which indicates that the actor doesn't need to be restarted.
-            A value of -1 indicates that an actor should be restarted
-            indefinitely.
-            See :ref:`actor fault tolerance <fault-tolerance-actors>` for more details.
-        max_task_retries: Only for *actors*. How many times to
-            retry an actor task if the task fails due to a system error,
-            e.g., the actor has died. If set to -1, the system will
-            retry the failed task until the task succeeds, or the actor
-            has reached its max_restarts limit. If set to `n > 0`, the
-            system will retry the failed task up to n times, after which the
-            task will throw a `RayActorError` exception upon :obj:`ray.get`.
-            Note that Python exceptions are not considered system errors
-            and will not trigger retries.
-            The default value is 0.
-            See :ref:`actor fault tolerance <fault-tolerance-actors>` for more details.
-        max_retries: Only for *remote functions*. This specifies
-            the maximum number of times that the remote function
-            should be rerun when the worker process executing it
-            crashes unexpectedly. The minimum valid value is 0,
-            the default value is 3, and a value of -1 indicates
-            infinite retries.
-            See :ref:`task fault tolerance <fault-tolerance-tasks>` for more details.
-        execute_out_of_order: Only for *actors*. Whether Ray executes actor tasks
-            out of order. If you're using multi-threaded (``max_concurrency > 1``)
-            or async actors, you can't set this to False. Defaults to True if you're
-            using multi-threaded or async actors, and False otherwise.
-        runtime_env (Dict[str, Any]): Specifies the runtime environment for
-            this actor or task and its children. See
-            :ref:`runtime-environments` for detailed documentation.
-        retry_exceptions: Only for *remote functions*. This specifies whether
-            application-level errors should be retried up to max_retries times.
-            This can be a boolean or a list of exceptions that should be retried.
-            See :ref:`task fault tolerance <fault-tolerance-tasks>` for more details.
-        scheduling_strategy: Strategy about how to
-            schedule a remote function or actor. Possible values are
-            None: ray will figure out the scheduling strategy to use, it
-            will either be the PlacementGroupSchedulingStrategy using parent's
-            placement group if parent has one and has
-            placement_group_capture_child_tasks set to true,
-            or "DEFAULT";
-            "DEFAULT": default hybrid scheduling;
-            "SPREAD": best effort spread scheduling;
-            `PlacementGroupSchedulingStrategy`:
-            placement group based scheduling;
-            `NodeAffinitySchedulingStrategy`:
-            node id based affinity scheduling.
-            See :ref:`Ray scheduling strategies <ray-scheduling-strategies>`
-            for more details.
-        _metadata: Extended options for Ray libraries. For example,
-            _metadata={"workflows.io/options": <workflow options>} for Ray workflows.
-        _labels: The key-value labels of a task or actor.
+        *args: Positional arguments. When used as a decorator without parentheses,
+            the first argument will be the function or class being decorated.
+        **kwargs: Keyword arguments for configuring the remote function or actor.
+            Supported options include:
+
+            - num_returns: This is only for *remote functions*. It specifies
+              the number of object refs returned by the remote function
+              invocation. The default value is 1.
+              Pass "dynamic" to allow the task to decide how many
+              return values to return during execution, and the caller will
+              receive an ObjectRef[DynamicObjectRefGenerator].
+              See :ref:`dynamic generators <dynamic-generators>` for more details.
+            - num_cpus: The quantity of CPU resources to reserve
+              for this task or for the lifetime of the actor.
+              By default, tasks use 1 CPU resource and actors use 1 CPU
+              for scheduling and 0 CPU for running
+              (This means, by default, actors cannot get scheduled on a zero-cpu node,
+              but an infinite number of them can run on any non-zero cpu node.
+              The default value for actors was chosen for historical reasons.
+              It's recommended to always explicitly set num_cpus for actors
+              to avoid any surprises.
+              If resources are specified explicitly,
+              they are required for both scheduling and running.)
+              See :ref:`specifying resource requirements <resource-requirements>`
+              for more details.
+            - num_gpus: The quantity of GPU resources to reserve
+              for this task or for the lifetime of the actor.
+              The default value is 0.
+              See :ref:`Ray GPU support <gpu-support>` for more details.
+            - resources (Dict[str, float]): The quantity of various
+              :ref:`custom resources <custom-resources>`
+              to reserve for this task or for the lifetime of the actor.
+              This is a dictionary mapping strings (resource names) to floats.
+              By default it is empty.
+            - label_selector (Dict[str, str]): [Experimental] If specified, the labels required for the node on
+              which this actor can be scheduled on. The label selector consist of key-value pairs,
+              where the keys are label names and the value are expressions consisting of an operator
+              with label values or just a value to indicate equality.
+            - accelerator_type: If specified, requires that the task or actor run
+              on a node with the specified type of accelerator.
+              See :ref:`accelerator types <accelerator_types>`.
+            - memory: The heap memory request in bytes for this task/actor,
+              rounded down to the nearest integer.
+            - max_calls: Only for *remote functions*. This specifies the
+              maximum number of times that a given worker can execute
+              the given remote function before it must exit
+              (this can be used to address :ref:`memory leaks <gpu-leak>` in third-party
+              libraries or to reclaim resources that cannot easily be
+              released, e.g., GPU memory that was acquired by TensorFlow).
+              By default this is infinite for CPU tasks and 1 for GPU tasks
+              (to force GPU tasks to release resources after finishing).
+            - max_restarts: Only for *actors*. This specifies the maximum
+              number of times that the actor should be restarted when it dies
+              unexpectedly. The minimum valid value is 0 (default),
+              which indicates that the actor doesn't need to be restarted.
+              A value of -1 indicates that an actor should be restarted
+              indefinitely.
+              See :ref:`actor fault tolerance <fault-tolerance-actors>` for more details.
+            - max_task_retries: Only for *actors*. How many times to
+              retry an actor task if the task fails due to a system error,
+              e.g., the actor has died. If set to -1, the system will
+              retry the failed task until the task succeeds, or the actor
+              has reached its max_restarts limit. If set to `n > 0`, the
+              system will retry the failed task up to n times, after which the
+              task will throw a `RayActorError` exception upon :obj:`ray.get`.
+              Note that Python exceptions are not considered system errors
+              and will not trigger retries.
+              The default value is 0.
+              See :ref:`actor fault tolerance <fault-tolerance-actors>` for more details.
+            - max_retries: Only for *remote functions*. This specifies
+              the maximum number of times that the remote function
+              should be rerun when the worker process executing it
+              crashes unexpectedly. The minimum valid value is 0,
+              the default value is 3, and a value of -1 indicates
+              infinite retries.
+              See :ref:`task fault tolerance <fault-tolerance-tasks>` for more details.
+            - execute_out_of_order: Only for *actors*. Whether Ray executes actor tasks
+              out of order. If you're using multi-threaded (``max_concurrency > 1``)
+              or async actors, you can't set this to False. Defaults to True if you're
+              using multi-threaded or async actors, and False otherwise.
+            - runtime_env (Dict[str, Any]): Specifies the runtime environment for
+              this actor or task and its children. See
+              :ref:`runtime-environments` for detailed documentation.
+            - retry_exceptions: Only for *remote functions*. This specifies whether
+              application-level errors should be retried up to max_retries times.
+              This can be a boolean or a list of exceptions that should be retried.
+              See :ref:`task fault tolerance <fault-tolerance-tasks>` for more details.
+            - scheduling_strategy: Strategy about how to
+              schedule a remote function or actor. Possible values are
+              None: ray will figure out the scheduling strategy to use, it
+              will either be the PlacementGroupSchedulingStrategy using parent's
+              placement group if parent has one and has
+              placement_group_capture_child_tasks set to true,
+              or "DEFAULT";
+              "DEFAULT": default hybrid scheduling;
+              "SPREAD": best effort spread scheduling;
+              `PlacementGroupSchedulingStrategy`:
+              placement group based scheduling;
+              `NodeAffinitySchedulingStrategy`:
+              node id based affinity scheduling.
+              See :ref:`Ray scheduling strategies <ray-scheduling-strategies>`
+              for more details.
+            - _metadata: Extended options for Ray libraries. For example,
+              _metadata={"workflows.io/options": <workflow options>} for Ray workflows.
+            - _labels: The key-value labels of a task or actor.
     """
     # "callable" returns true for both function and class.
     if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
