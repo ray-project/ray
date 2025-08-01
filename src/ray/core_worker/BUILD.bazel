@@ -207,7 +207,6 @@ ray_cc_library(
     srcs = ["task_event_buffer.cc"],
     hdrs = ["task_event_buffer.h"],
     deps = [
-        "//src/ray/rpc:event_aggregator_client",
         "//src/ray/common:asio",
         "//src/ray/common:id",
         "//src/ray/common:task_common",
@@ -215,6 +214,7 @@ ray_cc_library(
         "//src/ray/gcs/gcs_client:gcs_client_lib",
         "//src/ray/protobuf:export_task_event_cc_proto",
         "//src/ray/protobuf:gcs_cc_proto",
+        "//src/ray/rpc:event_aggregator_client",
         "//src/ray/util:counter_map",
         "//src/ray/util:event",
         "@boost//:circular_buffer",
