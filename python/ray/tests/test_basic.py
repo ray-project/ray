@@ -232,6 +232,7 @@ def test_default_worker_import_dependency(shutdown_only):
 
     ray.get(f.remote())
 
+
 # This test will fail if the number of threads spawned by a worker process
 # increases. If you find that a patch is now causing this test to fail,
 # consider if this thread count change is expected and adjust the test
@@ -254,6 +255,7 @@ def test_worker_thread_count(monkeypatch, shutdown_only):
         # for a worker should be static. Lowering this number should be
         # celebrated, increasing this number should be scrutinized
         assert ray.get(Actor.remote().get_thread_count.remote()) == 27
+
 
 # https://github.com/ray-project/ray/issues/7287
 def test_omp_threads_set(ray_start_cluster, monkeypatch):
