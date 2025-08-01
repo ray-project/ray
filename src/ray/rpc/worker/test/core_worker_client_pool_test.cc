@@ -118,22 +118,22 @@ class DefaultUnavailableTimeoutCallbackTest : public ::testing::TestWithParam<bo
   DefaultUnavailableTimeoutCallbackTest()
       : is_subscribed_to_node_change_(GetParam()),
         gcs_client_(is_subscribed_to_node_change_),
-        raylet_client_(std::make_shared<MockRayletClientInterface>()),
+        raylet_client_pool_(std::make_shared<RayletClientPool>([](const rpc::Address &) {
+          return std::make_shared<MockRayletClientInterface>();
+        })),
         client_pool_(
             std::make_unique<CoreWorkerClientPool>([this](const rpc::Address &addr) {
               return std::make_shared<MockCoreWorkerClient>(
                   CoreWorkerClientPool::GetDefaultUnavailableTimeoutCallback(
                       &this->gcs_client_,
                       this->client_pool_.get(),
-                      [this](const std::string &, int32_t) {
-                        return this->raylet_client_;
-                      },
+                      this->raylet_client_pool_.get(),
                       addr));
             })) {}
 
   bool is_subscribed_to_node_change_;
   MockGcsClient gcs_client_;
-  std::shared_ptr<MockRayletClientInterface> raylet_client_;
+  std::shared_ptr<RayletClientPool> raylet_client_pool_;
   std::unique_ptr<CoreWorkerClientPool> client_pool_;
 };
 
@@ -197,8 +197,10 @@ TEST_P(DefaultUnavailableTimeoutCallbackTest, NodeDeath) {
         .WillOnce(invoke_with_node_info_vector({}));
   }
 
+  auto raylet_client = std::dynamic_pointer_cast<MockRayletClientInterface>(
+      raylet_client_pool_->GetOrConnectByAddress(worker_1_address));
   // Worker is alive when node is alive.
-  EXPECT_CALL(*raylet_client_, IsLocalWorkerDead(_, _))
+  EXPECT_CALL(*raylet_client, IsLocalWorkerDead(_, _))
       .Times(2)
       .WillRepeatedly(
           Invoke([](const WorkerID &,
@@ -223,8 +225,9 @@ TEST_P(DefaultUnavailableTimeoutCallbackTest, WorkerDeath) {
   // 1st call - Node is alive and worker is alive.
   // 2nd call - Node is alive and worker is dead, client should be disconnected.
 
+  auto worker_address = CreateRandomAddress("1");
   auto core_worker_client = dynamic_cast<MockCoreWorkerClient *>(
-      client_pool_->GetOrConnect(CreateRandomAddress("1")).get());
+      client_pool_->GetOrConnect(worker_address).get());
   ASSERT_EQ(client_pool_->Size(), 1);
 
   rpc::GcsNodeInfo node_info_alive;
@@ -242,7 +245,9 @@ TEST_P(DefaultUnavailableTimeoutCallbackTest, WorkerDeath) {
                 std::optional<NodeID>) { callback(Status::OK(), {node_info_alive}); }));
   }
 
-  EXPECT_CALL(*raylet_client_, IsLocalWorkerDead(_, _))
+  auto raylet_client = std::dynamic_pointer_cast<MockRayletClientInterface>(
+      raylet_client_pool_->GetOrConnectByAddress(worker_address));
+  EXPECT_CALL(*raylet_client, IsLocalWorkerDead(_, _))
       .WillOnce(
           Invoke([](const WorkerID &,
                     const rpc::ClientCallback<rpc::IsLocalWorkerDeadReply> &callback) {

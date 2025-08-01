@@ -152,6 +152,13 @@ class LoraModelLoader:
             raise ValueError(f"max_tries must be >=1, got {max_tries}")
         self.max_tries = max_tries
 
+    async def load_model_from_config(
+        self, lora_model_id: str, llm_config
+    ) -> DiskMultiplexConfig:
+        """Load a LoRA model by first fetching its mirror config from S3."""
+        lora_mirror_config = await get_lora_mirror_config(lora_model_id, llm_config)
+        return await self.load_model(lora_model_id, lora_mirror_config)
+
     async def load_model(
         self, lora_model_id: str, lora_mirror_config: LoraMirrorConfig
     ) -> DiskMultiplexConfig:

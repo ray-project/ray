@@ -22,6 +22,7 @@ aws_requests_auth
 tzdata
 requests >= 2.31.0
 tqdm
+networkx
 -r requirements-doc.txt
 
 # Upgrades
