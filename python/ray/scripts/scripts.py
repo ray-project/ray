@@ -2646,6 +2646,17 @@ def cpp(show_library_path, generate_bazel_project_template_to):
             )
         )
 
+@cli.command(hidden=True)
+def sanity_check():
+    """Run a sanity check to check that the Ray installation works."""
+    @ray.remote
+    def get_version() -> str:
+        return ray.__version__
+
+    v = ray.get(get_version.remote())
+    assert v == ray.__version__
+    print("Ray version:", v)
+
 
 @click.group(name="metrics")
 def metrics_group():
@@ -2704,6 +2715,7 @@ cli.add_command(enable_usage_stats)
 cli.add_command(metrics_group)
 cli.add_command(drain_node)
 cli.add_command(check_open_ports)
+cli.add_command(sanity_check)
 
 try:
     from ray.util.state.state_cli import (
