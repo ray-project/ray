@@ -588,7 +588,7 @@ def batch(
     _func: Optional[Callable] = None,
     /,
     max_batch_size: int = 10,
-    batch_wait_timeout_s: float = 0.0,
+    batch_wait_timeout_s: float = 0.01,
     max_concurrent_batches: int = 1,
 ) -> Callable:
     """Converts a function to asynchronously handle batches.
