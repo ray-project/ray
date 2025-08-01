@@ -25,6 +25,10 @@ logger = logging.getLogger(__name__)
 
 UNKNOWN = "unknown"
 
+# Number of characters to truncate to when
+# exporting dataset operator arguments
+DEFAULT_TRUNCATION_LENGTH = 100
+
 # NOTE: These dataclasses need to be updated in sync with the protobuf definitions in
 # src/ray/protobuf/export_api/export_dataset_metadata.proto
 @dataclass
@@ -138,17 +142,19 @@ class DatasetMetadata:
     data_context: DataContext
 
 
-def sanitize_for_struct(obj):
+def sanitize_for_struct(obj, truncate_length=DEFAULT_TRUNCATION_LENGTH):
     if isinstance(obj, Mapping):
         return {k: sanitize_for_struct(v) for k, v in obj.items()}
-    elif isinstance(obj, (str, int, float, bool)) or obj is None:
+    elif isinstance(obj, (int, float, bool)) or obj is None:
         return obj
+    elif isinstance(obj, str):
+        return obj[:truncate_length]
     elif isinstance(obj, Sequence):
         return [sanitize_for_struct(v) for v in obj]
     else:
         # Convert unhandled types to string
         try:
-            return json.dumps(obj)
+            return json.dumps(obj)[:truncate_length]
         except (TypeError, OverflowError):
             try:
                 return str(obj)
