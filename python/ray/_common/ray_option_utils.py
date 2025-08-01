@@ -225,12 +225,10 @@ _actor_only_options = {
     "enable_tensor_transport": Option(bool, default_value=False),
     "lifetime": Option(
         (str, type(None)),
-        lambda x: (
-            None
-            if x in (None, "detached", "non_detached")
-            else "actor `lifetime` argument must be one of 'detached', "
-            "'non_detached' and 'None'."
-        ),
+        lambda x: None
+        if x in (None, "detached", "non_detached")
+        else "actor `lifetime` argument must be one of 'detached', "
+        "'non_detached' and 'None'.",
     ),
     "max_concurrency": _counting_option("max_concurrency", False),
     "max_restarts": _counting_option("max_restarts", default_value=0),

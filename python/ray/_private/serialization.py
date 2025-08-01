@@ -685,5 +685,6 @@ class SerializationContext:
             serialized_val = self._serialize_to_msgpack(value)
         finally:
             ctx.set_use_external_transport(prev_use_external_transport)
+
         tensors, _ = ctx.reset_out_of_band_tensors([])
         return serialized_val, tensors
