@@ -25,6 +25,7 @@
 #include "ray/object_manager/memory_object_reader.h"
 #include "ray/object_manager/spilled_object_reader.h"
 #include "ray/util/filesystem.h"
+#include "ray/util/path_utils.h"
 
 namespace ray {
 
