@@ -29,9 +29,6 @@ from ray.data._internal.execution.operators.base_physical_operator import (
     AllToAllOperator,
     InternalQueueOperatorMixin,
 )
-from ray.data._internal.execution.operators.hash_shuffle import (
-    HashShuffleProgressBarMixin,
-)
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.resource_manager import ResourceManager
 from ray.data._internal.progress_bar import ProgressBar
@@ -220,16 +217,13 @@ class OpState:
         For AllToAllOperator, zero or more sub progress bar would be created.
         Return the number of enabled progress bars created for this operator.
         """
-        contains_sub_progress_bars = isinstance(
-            self.op, AllToAllOperator
-        ) or isinstance(self.op, HashShuffleProgressBarMixin)
+        is_all_to_all = isinstance(self.op, AllToAllOperator)
         # Only show 1:1 ops when in verbose progress mode.
-
         ctx = DataContext.get_current()
         progress_bar_enabled = (
             ctx.enable_progress_bars
             and ctx.enable_operator_progress_bars
-            and (contains_sub_progress_bars or verbose_progress)
+            and (is_all_to_all or verbose_progress)
         )
         self.progress_bar = ProgressBar(
             "- " + self.op.name,
@@ -239,7 +233,7 @@ class OpState:
             enabled=progress_bar_enabled,
         )
         num_progress_bars = 1
-        if contains_sub_progress_bars:
+        if is_all_to_all:
             # Initialize must be called for sub progress bars, even the
             # bars are not enabled via the DataContext.
             num_progress_bars += self.op.initialize_sub_progress_bars(index + 1)
@@ -249,11 +243,7 @@ class OpState:
         """Close all progress bars for this operator."""
         if self.progress_bar:
             self.progress_bar.close()
-            contains_sub_progress_bars = isinstance(
-                self.op, AllToAllOperator
-            ) or isinstance(self.op, HashShuffleProgressBarMixin)
-            if contains_sub_progress_bars:
-                # Close all sub progress bars.
+            if isinstance(self.op, AllToAllOperator):
                 self.op.close_sub_progress_bars()
 
     def total_enqueued_input_bundles(self) -> int:
@@ -470,18 +460,14 @@ def process_completed_tasks(
 
     max_bytes_to_read_per_op: Dict[OpState, int] = {}
     for op, state in topology.items():
-        # Check all backpressure policies for max_task_output_bytes_to_read
-        # Use the minimum limit from all policies (most restrictive)
-        max_bytes_to_read = None
-        for policy in backpressure_policies:
-            policy_limit = policy.max_task_output_bytes_to_read(op)
-            if policy_limit is not None:
-                if max_bytes_to_read is None:
-                    max_bytes_to_read = policy_limit
-                else:
-                    max_bytes_to_read = min(max_bytes_to_read, policy_limit)
-
-        # If no policy provides a limit, there's no limit
+        max_bytes_to_read = min(
+            (
+                limit
+                for policy in backpressure_policies
+                if (limit := policy.max_task_output_bytes_to_read(op)) is not None
+            ),
+            default=None,
+        )
         op.notify_in_task_output_backpressure(max_bytes_to_read == 0)
         if max_bytes_to_read is not None:
             max_bytes_to_read_per_op[state] = max_bytes_to_read
