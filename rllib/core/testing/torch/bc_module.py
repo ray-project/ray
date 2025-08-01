@@ -2,7 +2,7 @@ from typing import Any, Dict
 
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.rl_module import RLModule
-from ray.rllib.models.torch.torch_distributions import TorchCategorical
+from ray.rllib.core.distribution.torch.torch_distribution import TorchCategorical
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModule
 from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
 from ray.rllib.utils.annotations import override

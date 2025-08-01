@@ -8,7 +8,7 @@ import gymnasium as gym
 
 from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
-from ray.rllib.models.distributions import Distribution
+from ray.rllib.core.distribution.distribution import Distribution
 from ray.rllib.utils.annotations import (
     override,
     OverrideToImplementCustomLogic,
@@ -371,9 +371,9 @@ class RLModule(Checkpointable, abc.ABC):
         model_config: A config dict to specify features of this RLModule.
 
     Attributes:
-        action_dist_cls: An optional ray.rllib.models.distribution.Distribution subclass
-            to use for sampling actions, given parameters from a batch
-            (`Columns.ACTION_DIST_INPUTS`).
+        action_dist_cls: An optional ray.rllib.core.distribution.distribution.
+            Distribution subclass to use for sampling actions, given parameters from
+            a batch (`Columns.ACTION_DIST_INPUTS`).
 
     Abstract Methods:
         ``~_forward_train``: Forward pass during training.
@@ -498,7 +498,8 @@ class RLModule(Checkpointable, abc.ABC):
         Note that RLlib's distribution classes all implement the `Distribution`
         interface. This requires two special methods: `Distribution.from_logits()` and
         `Distribution.to_deterministic()`. See the documentation of the
-        :py:class:`~ray.rllib.models.distributions.Distribution` class for more details.
+        :py:class:`~ray.rllib.core.distribution.distribution.Distribution` class for
+        more details.
         """
         raise NotImplementedError
 
@@ -513,7 +514,8 @@ class RLModule(Checkpointable, abc.ABC):
         Note that RLlib's distribution classes all implement the `Distribution`
         interface. This requires two special methods: `Distribution.from_logits()` and
         `Distribution.to_deterministic()`. See the documentation of the
-        :py:class:`~ray.rllib.models.distributions.Distribution` class for more details.
+        :py:class:`~ray.rllib.core.distribution.distribution.Distribution` class for
+        more details.
         """
         raise NotImplementedError
 
@@ -528,7 +530,8 @@ class RLModule(Checkpointable, abc.ABC):
         Note that RLlib's distribution classes all implement the `Distribution`
         interface. This requires two special methods: `Distribution.from_logits()` and
         `Distribution.to_deterministic()`. See the documentation of the
-        :py:class:`~ray.rllib.models.distributions.Distribution` class for more details.
+        :py:class:`~ray.rllib.core.distribution.distribution.Distribution` class for
+        more details.
         """
         raise NotImplementedError
 
