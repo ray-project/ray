@@ -381,7 +381,7 @@ def test_aggregator_agent_receive_profile_events(
     seconds, nanos = (test_time // 10**9, test_time % 10**9)
     timestamp = Timestamp(seconds=seconds, nanos=nanos)
 
-    request = AddEventRequest(
+    request = AddEventsRequest(
         events_data=RayEventsData(
             events=[
                 RayEvent(
