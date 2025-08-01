@@ -207,6 +207,7 @@ ray_cc_library(
     srcs = ["task_event_buffer.cc"],
     hdrs = ["task_event_buffer.h"],
     deps = [
+        "//:event_aggregator_client",
         "//src/ray/common:asio",
         "//src/ray/common:id",
         "//src/ray/common:task_common",
