@@ -8,7 +8,17 @@ produce .whl files owned by root.
 
 Inside the root directory (i.e., one level above this python directory), run
 
-```
+```bash
+# Build dashboard in a container
+docker run --rm \
+    -e HOST_UID=$(id -u) \
+    -e HOST_GID=$(id -g) \
+    -v "$PWD":/ray \
+    -w /ray \
+    -e HOME=/tmp quay.io/pypa/manylinux2014_x86_64 \
+    bash ci/build/build-dashboard.sh
+
+# Then build wheel with dashboard tar.gz mounted
 docker run -ti --rm \
     -e HOST_UID=$(id -u) \
     -e HOST_GID=$(id -g) \
