@@ -109,5 +109,46 @@ TEST_F(GcsRayEventConverterTest, TestConvertWithDroppedTaskAttempts) {
   EXPECT_EQ(converted_dropped.attempt_number(), 2);
 }
 
+TEST_F(GcsRayEventConverterTest, TestConvertTaskExecutionEvent) {
+  GcsRayEventConverter converter;
+  rpc::events::TaskExecutionEvent exec_event;
+  rpc::TaskEvents task_event;
+
+  // Set basic fields
+  exec_event.set_task_id("test_task_id");
+  exec_event.set_task_attempt(3);
+  exec_event.set_job_id("test_job_id");
+  exec_event.set_node_id("test_node_id");
+  exec_event.set_worker_id("test_worker_id");
+  exec_event.set_worker_pid(1234);
+
+  // Set a RayErrorInfo
+  exec_event.mutable_ray_error_info()->set_error_message("error");
+
+  // Set a task state: TaskStatus = 5 (SUBMITTED_TO_WORKER), timestamp = 42s 123456789ns
+  google::protobuf::Timestamp ts;
+  ts.set_seconds(42);
+  ts.set_nanos(123456789);
+  (*exec_event.mutable_task_state())[5] = ts;
+
+  // Call the converter
+  converter.ConvertToTaskEvents(std::move(exec_event), task_event);
+
+  // Check basic fields
+  EXPECT_EQ(task_event.attempt_number(), 3);
+  EXPECT_EQ(task_event.job_id(), "test_job_id");
+  EXPECT_TRUE(task_event.has_state_updates());
+  const auto &state_updates = task_event.state_updates();
+  EXPECT_EQ(state_updates.node_id(), "test_node_id");
+  EXPECT_EQ(state_updates.worker_id(), "test_worker_id");
+  EXPECT_EQ(state_updates.worker_pid(), 1234);
+  EXPECT_EQ(state_updates.error_info().error_message(), "error");
+
+  // Check state_ts_ns
+  ASSERT_EQ(state_updates.state_ts_ns().size(), 1);
+  int64_t expected_ns = 42 * 1000000000LL + 123456789;
+  EXPECT_EQ(state_updates.state_ts_ns().at(5), expected_ns);
+}
+
 }  // namespace gcs
 }  // namespace ray
