@@ -1,4 +1,4 @@
-import time
+import asyncio
 from typing import Dict, Set
 
 import ray
@@ -79,6 +79,7 @@ class LocalRunningDataProvider:
             worker_handles=None,
             worker_node_ids=None,
         )
+        self.lock = asyncio.Lock()
 
     def get_dataset_shard(self, local_rank: int) -> Dict[str, DataIterator]:
         """Register datasets (if not already done) and retrieve the shard for a specific worker.
@@ -102,7 +103,7 @@ class LocalRunningDataProvider:
         """
         return self.dataset_shards[local_rank]
 
-    def mark_worker_finished(self, local_rank: int) -> bool:
+    async def mark_worker_finished(self, local_rank: int) -> bool:
         """Mark a specific worker as finished.
 
         Args:
@@ -112,19 +113,22 @@ class LocalRunningDataProvider:
             local_rank < self.world_size
         ), f"local_rank {local_rank} must be < world_size {self.world_size}"
 
-        self.finished_workers.add(local_rank)
-        return self.owner_rank == local_rank
+        async with self.lock:
+            self.finished_workers.add(local_rank)
 
-    def is_all_workers_finished(self) -> bool:
-        """Check if all workers have finished."""
-        return len(self.finished_workers) == self.world_size
+        if local_rank == self.owner_rank:
+            while True:
+                async with self.lock:
+                    if len(self.finished_workers) == self.world_size:
+                        break
+                await asyncio.sleep(0.1)
 
 
 LOCAL_RUNNING_DATA_PROVIDER_ACTOR_NAME = "local_running_data_provider"
 LOCAL_RUNNING_DATA_PROVIDER_NAMESPACE = "local_running_data_provider_namespace"
 
 
-def maybe_start_local_running_data_provider(
+async def maybe_start_local_running_data_provider(
     world_size: int, dataset: Dict[str, Dataset], local_rank: int
 ) -> ActorHandle:
     """Create or get the LocalRunningDataProvider actor.
@@ -137,24 +141,19 @@ def maybe_start_local_running_data_provider(
         namespace=LOCAL_RUNNING_DATA_PROVIDER_NAMESPACE,
         get_if_exists=True,
     ).remote(world_size, local_rank, dataset)
-    ray.get(actor.__ray_ready__.remote())
+    await actor.__ray_ready__.remote()
 
     return actor
 
 
-def get_dataset_shard(
+async def get_dataset_shard(
     provider_actor: ActorHandle, local_rank: int
 ) -> Dict[str, DataIterator]:
     """Get the dataset shard for a specific worker, registering datasets if needed."""
-    return ray.get(provider_actor.get_dataset_shard.remote(local_rank))
+    return await provider_actor.get_dataset_shard.remote(local_rank)
 
 
-def mark_worker_finished(provider_actor: ActorHandle, local_rank: int) -> bool:
-    """Mark a worker as finished."""
-    return ray.get(provider_actor.mark_worker_finished.remote(local_rank))
-
-
-def finish_worker_and_wait(provider_actor: ActorHandle, local_rank: int) -> bool:
+async def finish_worker_and_wait(provider_actor: ActorHandle, local_rank: int) -> None:
     """Mark a worker as finished and wait for all workers if this is the owner.
 
     This is a convenience function that combines mark_worker_finished and
@@ -168,9 +167,4 @@ def finish_worker_and_wait(provider_actor: ActorHandle, local_rank: int) -> bool
         bool: True if this worker was the owner and waited for all workers,
               False if this was not the owner.
     """
-    is_owner = mark_worker_finished(provider_actor, local_rank)
-    if is_owner:
-        while not ray.get(provider_actor.is_all_workers_finished.remote()):
-            time.sleep(0.1)
-        # wait for 1 second to ensure all workers have finished
-        time.sleep(1)
+    await provider_actor.mark_worker_finished.remote(local_rank)
