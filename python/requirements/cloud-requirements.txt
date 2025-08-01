@@ -2,11 +2,13 @@ jupyterlab==3.6.1
 ipywidgets
 google-cloud-storage
 grpcio>=1.66.1
-grpcio-tools
+grpcio-tools>=1.62.3
 pyyaml
 pyopenssl
 certifi
 pycurl
+azure-identity
+smart_open[s3,gcs,azure,http]
 
 # Anyscale CLI requirements
 boto3>=1.26.76

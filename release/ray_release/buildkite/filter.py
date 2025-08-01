@@ -6,6 +6,7 @@ from typing import List, Optional, Tuple, Dict, Any
 from ray_release.buildkite.settings import Frequency, get_frequency
 from ray_release.test import Test
 from ray_release.test_automation.state_machine import TestStateMachine
+from ray_release.configs.global_config import get_global_config
 
 
 def _unflattened_lookup(lookup: Dict, flat_key: str, delimiter: str = "/") -> Any:
@@ -31,6 +32,10 @@ def filter_tests(
 
     tests_to_run = []
     for test in test_collection:
+        # Skip kuberay tests for now.
+        # TODO: (khluu) Remove this once we start running KubeRay release tests.
+        if test.is_kuberay() and get_global_config()["kuberay_disabled"]:
+            continue
         # First, filter by string attributes
         attr_mismatch = False
         for attr, regex in test_attr_regex_filters.items():

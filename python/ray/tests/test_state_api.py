@@ -3,27 +3,26 @@ import time
 import json
 import sys
 import signal
-import yaml
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from typing import List
 from unittest.mock import MagicMock, AsyncMock, patch
+import yaml
 
 from click.testing import CliRunner
 import pytest
 import pytest_asyncio
-
-import ray
 from ray._private.state_api_test_utils import (
     get_state_api_manager,
     create_api_options,
     verify_schema,
 )
-from ray.dashboard.modules.job.pydantic_models import JobDetails
 from ray.util.state import get_job
+from ray.dashboard.modules.job.pydantic_models import JobDetails
 from ray.util.state.common import Humanify
+
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
-from ray.cluster_utils import Cluster
+import ray
 import ray.dashboard.consts as dashboard_consts
 import ray._private.state as global_state
 import ray._private.ray_constants as ray_constants
@@ -112,6 +111,7 @@ from ray.util.state.common import (
     WorkerState,
     StateSchema,
     state_column,
+    GetApiOptions,
 )
 from ray.dashboard.utils import ray_address_to_api_server_url
 from ray.util.state.exception import DataSourceUnavailable, RayStateApiException
@@ -2198,7 +2198,7 @@ def test_list_get_nodes(ray_start_cluster):
         nodes = list_nodes(detail=True)
         for node in nodes:
             assert is_hex(node["node_id"])
-            assert node["labels"] == {"ray.io/node_id": node["node_id"]}
+            assert node["labels"] == {"ray.io/node-id": node["node_id"]}
             if node["node_name"] == "head_node":
                 assert node["is_head_node"]
                 assert node["state"] == "ALIVE"
@@ -2965,11 +2965,11 @@ def test_network_failure(shutdown_only):
     a = [f.remote() for _ in range(4)]  # noqa
     wait_for_condition(lambda: len(list_tasks()) == 4)
 
-    # Kill raylet so that list_objects will have a network error on querying raylets.
+    # Kill raylet so that list_tasks will have network error on querying raylets.
     ray._private.worker._global_node.kill_raylet()
 
-    with pytest.raises(RayStateApiException, match="unexpected network issue"):
-        list_objects()
+    with pytest.raises(ConnectionError):
+        list_tasks(_explain=True)
 
 
 def test_network_partial_failures(monkeypatch, ray_start_cluster):
@@ -3713,7 +3713,7 @@ def test_get_id_not_found(shutdown_only):
 
 
 def test_core_state_api_usage_tags(shutdown_only):
-    from ray._private.usage.usage_lib import TagKey, get_extra_usage_tags_to_report
+    from ray._common.usage.usage_lib import TagKey, get_extra_usage_tags_to_report
 
     ctx = ray.init()
     gcs_client = GcsClient(address=ctx.address_info["gcs_address"])
@@ -3801,33 +3801,39 @@ def test_hang_driver_has_no_is_running_task(monkeypatch, ray_start_cluster):
     assert not all_job_info[my_job_id].HasField("is_running_tasks")
 
 
-def test_address_defaults_to_connected_ray_instance(shutdown_only):
+def test_get_actor_timeout_multiplier(shutdown_only):
+    """Test that GetApiOptions applies the same timeout multiplier as ListApiOptions.
+
+    This test reproduces the issue where get_actor with timeout=1 fails even though
+    the actual operation takes less than 1 second, because GetApiOptions doesn't
+    apply the 0.8 server timeout multiplier that ListApiOptions uses.
+
+    Related issue: https://github.com/ray-project/ray/issues/54153
     """
-    If there are multiple local instances and a state API is invoked from within a
-    connected worker, the address should default to the connected instance.
-    """
-    cluster_1 = Cluster()
-    cluster_1_dashboard_port = find_free_port()
-    cluster_1.add_node(dashboard_port=cluster_1_dashboard_port)
 
-    cluster_2 = Cluster()
-    cluster_2_dashboard_port = find_free_port()
-    cluster_2.add_node(dashboard_port=cluster_2_dashboard_port)
+    @ray.remote
+    class TestActor:
+        def ready(self):
+            pass
 
-    # Connect the driver to cluster_1.
-    ray.init(cluster_1.address)
+    actor = TestActor.remote()
+    ray.get(actor.ready.remote())
 
-    # Call list_jobs() with no address and "auto", both should connect to cluster_1.
-    [job] = list_jobs()
-    assert job.job_id == ray.get_runtime_context().get_job_id()
-    [job] = list_jobs(address="auto")
-    assert job.job_id == ray.get_runtime_context().get_job_id()
+    # Test that both options classes apply the same timeout multiplier
+    test_timeout = 1
+    get_options = GetApiOptions(timeout=test_timeout)
+    list_options = ListApiOptions(timeout=test_timeout)
 
-    # Sanity checks: call list_jobs() with cluster_1 and cluster_2 addresses specified.
-    cluster_1_jobs = list_jobs(address=f"http://localhost:{cluster_1_dashboard_port}")
-    assert cluster_1_jobs == [job]
-    cluster_2_jobs = list_jobs(address=f"http://localhost:{cluster_2_dashboard_port}")
-    assert len(cluster_2_jobs) == 0
+    # After __post_init__, both should have the same effective timeout
+    assert get_options.timeout == list_options.timeout
+
+    # Test that get_actor works with a 1-second timeout
+    actors = list_actors()
+    actor_id = actors[0]["actor_id"]
+
+    # This should work without timeout issues
+    result = get_actor(actor_id, timeout=1)
+    assert result["actor_id"] == actor_id
 
 
 if __name__ == "__main__":

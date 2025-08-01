@@ -141,6 +141,7 @@ class Metric {
 
  protected:
   virtual void RegisterView() = 0;
+  virtual void RegisterOpenTelemetryMetric() = 0;
 
  protected:
   std::string name_;
@@ -166,6 +167,7 @@ class Gauge : public Metric {
 
  private:
   void RegisterView() override;
+  void RegisterOpenTelemetryMetric() override;
 
 };  // class Gauge
 
@@ -180,6 +182,7 @@ class Histogram : public Metric {
 
  private:
   void RegisterView() override;
+  void RegisterOpenTelemetryMetric() override;
 
  private:
   std::vector<double> boundaries_;
@@ -196,6 +199,7 @@ class Count : public Metric {
 
  private:
   void RegisterView() override;
+  void RegisterOpenTelemetryMetric() override;
 
 };  // class Count
 
@@ -209,6 +213,7 @@ class Sum : public Metric {
 
  private:
   void RegisterView() override;
+  void RegisterOpenTelemetryMetric() override;
 
 };  // class Sum
 
@@ -260,25 +265,28 @@ void RegisterView(const std::string &name,
                   const std::string &description,
                   const std::vector<opencensus::tags::TagKey> &tag_keys,
                   const std::vector<double> &buckets) {
-  using I = StatsTypeMap<T>;
-  auto view_descriptor = opencensus::stats::ViewDescriptor()
-                             .set_name(name + I::val)
-                             .set_description(description)
-                             .set_measure(name)
-                             .set_aggregation(I::Aggregation(buckets));
-
-  if (::RayConfig::instance().experimental_enable_open_telemetry_on_core()) {
-    if (T == GAUGE) {
-      OpenTelemetryMetricRecorder::GetInstance().RegisterGaugeMetric(name, description);
-    } else if (T == COUNT) {
-      OpenTelemetryMetricRecorder::GetInstance().RegisterCounterMetric(name, description);
-    } else if (T == SUM) {
-      OpenTelemetryMetricRecorder::GetInstance().RegisterSumMetric(name, description);
-    } else {
-      internal::RegisterAsView(view_descriptor, tag_keys);
-    }
-  } else {
+  if (!::RayConfig::instance().experimental_enable_open_telemetry_on_core()) {
+    // OpenTelemetry is not enabled, register the view as an OpenCensus view.
+    using I = StatsTypeMap<T>;
+    auto view_descriptor = opencensus::stats::ViewDescriptor()
+                               .set_name(name + I::val)
+                               .set_description(description)
+                               .set_measure(name)
+                               .set_aggregation(I::Aggregation(buckets));
     internal::RegisterAsView(view_descriptor, tag_keys);
+    return;
+  }
+  if (T == GAUGE) {
+    OpenTelemetryMetricRecorder::GetInstance().RegisterGaugeMetric(name, description);
+  } else if (T == COUNT) {
+    OpenTelemetryMetricRecorder::GetInstance().RegisterCounterMetric(name, description);
+  } else if (T == SUM) {
+    OpenTelemetryMetricRecorder::GetInstance().RegisterSumMetric(name, description);
+  } else if (T == HISTOGRAM) {
+    OpenTelemetryMetricRecorder::GetInstance().RegisterHistogramMetric(
+        name, description, buckets);
+  } else {
+    RAY_CHECK(false) << "Unknown stats type: " << static_cast<int>(T);
   }
 }
 
@@ -309,6 +317,16 @@ inline std::vector<opencensus::tags::TagKey> convert_tags(
   return ret;
 }
 
+inline std::unordered_set<std::string> build_tag_key_set(
+    const std::vector<std::string> &tag_keys) {
+  std::unordered_set<std::string> tag_keys_set;
+  tag_keys_set.reserve(tag_keys.size());
+  for (const auto &tag_key : tag_keys) {
+    tag_keys_set.insert(tag_key);
+  }
+  return tag_keys_set;
+}
+
 /*
   This is a helper class to define a metrics. With this class
   we'll be able to define a multi-view-single-measure metric for
@@ -331,7 +349,9 @@ class Stats {
                            const std::string,
                            const std::vector<opencensus::tags::TagKey>,
                            const std::vector<double> &buckets)> register_func)
-      : name_(measure), tag_keys_(convert_tags(tag_keys)) {
+      : name_(measure),
+        tag_keys_(convert_tags(tag_keys)),
+        tag_keys_set_(build_tag_key_set(tag_keys)) {
     auto stats_init = [register_func, measure, description, buckets, this]() {
       measure_ = std::make_unique<Measure>(Measure::Register(measure, description, ""));
       register_func(measure, description, tag_keys_, buckets);
@@ -350,14 +370,28 @@ class Stats {
                        &open_census_tags) {
     if (!OpenTelemetryMetricRecorder::GetInstance().IsMetricRegistered(name_)) {
       // Use OpenCensus to record the metric if OpenTelemetry is not registered.
-      opencensus::stats::Record({{*measure_, val}}, std::move(open_census_tags));
+      // Insert global tags before recording.
+      auto combined_tags = open_census_tags;
+      for (const auto &tag : StatsConfig::instance().GetGlobalTags()) {
+        combined_tags.emplace_back(TagKeyType::Register(tag.first.name()), tag.second);
+      }
+      opencensus::stats::Record({{*measure_, val}}, std::move(combined_tags));
       return;
     }
 
     absl::flat_hash_map<std::string, std::string> open_telemetry_tags;
-    for (auto &[tag_key, tag_val] : open_census_tags) {
-      open_telemetry_tags[tag_key.name()] = tag_val;
+    // Insert metric-specific tags that match the expected keys.
+    for (const auto &tag : open_census_tags) {
+      const std::string &key = tag.first.name();
+      if (tag_keys_set_.count(key) != 0) {
+        open_telemetry_tags[key] = tag.second;
+      }
     }
+    // Add global tags, overwriting any existing tag keys.
+    for (const auto &tag : StatsConfig::instance().GetGlobalTags()) {
+      open_telemetry_tags[tag.first.name()] = tag.second;
+    }
+
     OpenTelemetryMetricRecorder::GetInstance().SetMetricValue(
         name_, std::move(open_telemetry_tags), val);
   }
@@ -377,7 +411,7 @@ class Stats {
     if (StatsConfig::instance().IsStatsDisabled() || !measure_) {
       return;
     }
-    TagsType combined_tags = StatsConfig::instance().GetGlobalTags();
+    TagsType combined_tags;
     CheckPrintableChar(tag_val);
     combined_tags.emplace_back(tag_keys_[0], std::move(tag_val));
     RecordValue(val, combined_tags);
@@ -390,7 +424,7 @@ class Stats {
     if (StatsConfig::instance().IsStatsDisabled() || !measure_) {
       return;
     }
-    TagsType combined_tags = StatsConfig::instance().GetGlobalTags();
+    TagsType combined_tags;
     for (auto &[tag_key, tag_val] : tags) {
       CheckPrintableChar(tag_val);
       combined_tags.emplace_back(TagKeyType::Register(tag_key), std::move(tag_val));
@@ -406,7 +440,7 @@ class Stats {
     if (StatsConfig::instance().IsStatsDisabled() || !measure_) {
       return;
     }
-    TagsType combined_tags = StatsConfig::instance().GetGlobalTags();
+    TagsType combined_tags;
     for (auto const &[tag_key, tag_val] : tags) {
       CheckPrintableChar(tag_val);
     }
@@ -426,7 +460,9 @@ class Stats {
   }
 
   const std::string name_;
+  // TODO: Depricate `tag_keys_` once we have fully migrated away from opencensus
   const std::vector<opencensus::tags::TagKey> tag_keys_;
+  const std::unordered_set<std::string> tag_keys_set_;
   std::unique_ptr<opencensus::stats::Measure<double>> measure_;
 };
 

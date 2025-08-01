@@ -29,7 +29,7 @@ import ray.experimental.internal_kv as internal_kv
 from ray._common.utils import get_or_create_event_loop
 from ray._private.gcs_utils import GcsChannel
 from ray._private.utils import (
-    check_dashboard_dependencies_installed,
+    get_dashboard_dependency_error,
     split_address,
 )
 from ray._raylet import GcsClient
@@ -304,7 +304,7 @@ def get_all_modules(module_type):
     logger.info(f"Get all modules by type: {module_type.__name__}")
     import ray.dashboard.modules
 
-    should_only_load_minimal_modules = not check_dashboard_dependencies_installed()
+    should_only_load_minimal_modules = get_dashboard_dependency_error() is not None
 
     for module_loader, name, ispkg in pkgutil.walk_packages(
         ray.dashboard.modules.__path__, ray.dashboard.modules.__name__ + "."
@@ -668,15 +668,8 @@ def ray_address_to_api_server_url(address: Optional[str]) -> str:
     Returns:
         API server HTTP URL.
     """
-    # Prefer to connect to the same Ray instance that this worker is connected to
-    # by default.
-    if address is None or address == "auto":
-        worker = ray._private.worker.global_worker
-        if worker.connected:
-            address = worker.node.address_info["address"]
 
     address = services.canonicalize_bootstrap_address_or_die(address)
-
     gcs_client = GcsClient(address=address)
 
     ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
