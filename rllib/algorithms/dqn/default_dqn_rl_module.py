@@ -1,8 +1,6 @@
 import abc
 from typing import Any, Dict, List, Tuple, Union
 
-from ray.rllib.algorithms.sac.sac_learner import QF_PREDS
-from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.utils import make_target_network
 from ray.rllib.core.models.base import Encoder, Model
 from ray.rllib.core.rl_module.apis import QNetAPI, InferenceOnlyAPI, TargetNetworkAPI
