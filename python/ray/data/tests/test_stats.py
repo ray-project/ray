@@ -95,6 +95,8 @@ def gen_expected_metrics(
             "'bytes_outputs_taken': N",
             "'num_outputs_of_finished_tasks': N",
             "'bytes_outputs_of_finished_tasks': N",
+            "'num_output_queue_blocks': N",
+            "'num_output_queue_bytes': N",
             "'num_tasks_submitted': N",
             "'num_tasks_running': Z",
             "'num_tasks_have_outputs': N",
