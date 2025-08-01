@@ -868,7 +868,7 @@ void ReferenceCounter::UpdateObjectPinnedAtRaylet(const ObjectID &object_id,
     // Only the owner tracks the location.
     RAY_CHECK(it->second.owned_by_us);
     if (!it->second.OutOfScope(lineage_pinning_enabled_)) {
-      if (check_node_alive_(raylet_id)) {
+      if (!is_node_dead_(raylet_id)) {
         it->second.pinned_at_raylet_id = raylet_id;
       } else {
         UnsetObjectPrimaryCopy(it);
@@ -1426,7 +1426,7 @@ bool ReferenceCounter::HandleObjectSpilled(const ObjectID &object_id,
   it->second.spilled = true;
   it->second.did_spill = true;
   bool spilled_location_alive =
-      spilled_node_id.IsNil() || check_node_alive_(spilled_node_id);
+      spilled_node_id.IsNil() || !is_node_dead_(spilled_node_id);
   if (spilled_location_alive) {
     if (!spilled_url.empty()) {
       it->second.spilled_url = spilled_url;
