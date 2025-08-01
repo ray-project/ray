@@ -10,7 +10,6 @@ from fastapi.encoders import jsonable_encoder
 import ray
 from ray import serve
 from ray._common.constants import HEAD_NODE_RESOURCE_NAME
-from ray._common.test_utils import wait_for_condition
 from ray.serve._private.utils import (
     calculate_remaining_timeout,
     get_all_live_placement_group_names,
