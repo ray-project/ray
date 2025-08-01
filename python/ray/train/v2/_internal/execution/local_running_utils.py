@@ -16,59 +16,81 @@ class LocalRunningDataProvider:
     the ray train instance.
 
     Example:
-        Basic usage with multiple workers:
+        Basic usage with multiple processes:
 
         ```python
+        import argparse
         import asyncio
         import ray
         from ray.train.v2._internal.execution.local_running_utils import (
-            get_dataset_shard_with_provider,
+            maybe_start_local_running_data_provider,
+            get_dataset_shard,
             finish_worker_and_wait
         )
 
-        async def worker_process(local_rank: int, world_size: int):
+        async def main():
+            ray.init(address="auto")
+            # Parse command line arguments
+            parser = argparse.ArgumentParser(description="Ray Data Worker")
+            parser.add_argument("--local-rank", type=int, required=True,
+                              help="Local rank of this worker")
+            parser.add_argument("--world-size", type=int, required=True,
+                              help="Total number of workers")
+            args = parser.parse_args()
+
+            local_rank = args.local_rank
+            world_size = args.world_size
+
             # Create your datasets
             datasets = {
                 "train": ray.data.range(1000),
                 "val": ray.data.range(200)
             }
 
-            # Get this worker's data shard (automatically handles actor creation and registration)
-            shard = await get_dataset_shard_with_provider(world_size, datasets, local_rank)
+            # Create or get the data provider actor
+            provider_actor = await maybe_start_local_running_data_provider(
+                world_size, datasets, local_rank
+            )
+
+            # Get this worker's data shard
+            shard = await get_dataset_shard(provider_actor, local_rank)
 
             # Use the data iterators for training
             for batch in shard["train"].iter_batches():
                 # Your training logic here
                 pass
 
-            # Note: For finish_worker_and_wait, you'll need the provider actor
-            # Alternative approach for more control:
-            # provider_actor = await maybe_start_local_running_data_provider_and_register_dataset(
-            #     world_size, datasets, local_rank
-            # )
-            # shard = await get_dataset_shard(provider_actor, datasets, local_rank)
-            # await finish_worker_and_wait(provider_actor, local_rank)
+            # Mark worker as finished and wait for all workers if this is the owner
+            await finish_worker_and_wait(provider_actor, local_rank)
 
-        # Launch multiple worker processes
-        async def main():
-            world_size = 4
-            tasks = []
-            for rank in range(world_size):
-                task = asyncio.create_task(worker_process(rank, world_size))
-                tasks.append(task)
-            await asyncio.gather(*tasks)
+        if __name__ == "__main__":
+            asyncio.run(main())
+        ```
 
-        asyncio.run(main())
+        Run multiple workers with:
+        ```bash
+        python worker.py --local-rank 0 --world-size 4 &
+        python worker.py --local-rank 1 --world-size 4 &
+        python worker.py --local-rank 2 --world-size 4 &
+        python worker.py --local-rank 3 --world-size 4 &
+        wait
         ```
     """
 
-    def __init__(self, world_size: int, owner_rank: int, dataset: Dict[str, Dataset]):
+    def __init__(self, world_size: int, local_rank: int, dataset: Dict[str, Dataset]):
+        """Initialize the LocalRunningDataProvider.
+
+        Args:
+            world_size: Total number of workers that will request data shards.
+            local_rank: The rank of the worker that owns this actor and will wait for all workers to finish at the end.
+            dataset: Dictionary mapping dataset names to Dataset objects to be shared.
+        """
         self.world_size = world_size
         # Will hold the registered datasets after register_dataset() is called
         self.dataset = None
         # Track which workers have finished (by local_rank)
         self.finished_workers: Set[int] = set()
-        self.owner_rank = owner_rank
+        self.owner_rank = local_rank
         # Lock to prevent concurrent dataset registration
         self.fetched_dataset_shards = set()
         self.dataset = dataset
@@ -82,15 +104,9 @@ class LocalRunningDataProvider:
         self.lock = asyncio.Lock()
 
     def get_dataset_shard(self, local_rank: int) -> Dict[str, DataIterator]:
-        """Register datasets (if not already done) and retrieve the shard for a specific worker.
-
-        This method combines dataset registration and shard retrieval into a single operation.
-        The first worker to call this method will register the datasets, and subsequent calls
-        will reuse the existing registration.
+        """Retrieve the dataset shard for a specific worker.
 
         Args:
-            dataset: Dictionary mapping dataset names to Dataset objects to register.
-                    This parameter is ignored if datasets are already registered.
             local_rank: The rank/ID of the requesting training worker.
                        Must be in range [0, world_size).
 
@@ -103,11 +119,14 @@ class LocalRunningDataProvider:
         """
         return self.dataset_shards[local_rank]
 
-    async def mark_worker_finished(self, local_rank: int) -> bool:
-        """Mark a specific worker as finished.
+    async def mark_worker_finished(self, local_rank: int) -> None:
+        """Mark a specific worker as finished. If this worker is the owner, this method will block until all workers finish.
 
         Args:
             local_rank: The rank/ID of the worker that finished.
+
+        Returns:
+            None. If this worker is the owner, this method will block until all workers finish.
         """
         assert (
             local_rank < self.world_size
@@ -122,6 +141,8 @@ class LocalRunningDataProvider:
                     if len(self.finished_workers) == self.world_size:
                         break
                 await asyncio.sleep(0.1)
+            # wait for 1 second to ensure all workers have finished
+            await asyncio.sleep(1)
 
 
 LOCAL_RUNNING_DATA_PROVIDER_ACTOR_NAME = "local_running_data_provider"
@@ -131,11 +152,7 @@ LOCAL_RUNNING_DATA_PROVIDER_NAMESPACE = "local_running_data_provider_namespace"
 async def maybe_start_local_running_data_provider(
     world_size: int, dataset: Dict[str, Dataset], local_rank: int
 ) -> ActorHandle:
-    """Create or get the LocalRunningDataProvider actor.
-
-    Note: Dataset registration is now handled automatically by get_dataset_shard().
-    This function only creates/gets the actor for backward compatibility.
-    """
+    """Create or get the LocalRunningDataProvider actor. This named actor is created only once."""
     actor = LocalRunningDataProvider.options(
         name=LOCAL_RUNNING_DATA_PROVIDER_ACTOR_NAME,
         namespace=LOCAL_RUNNING_DATA_PROVIDER_NAMESPACE,
@@ -149,22 +166,14 @@ async def maybe_start_local_running_data_provider(
 async def get_dataset_shard(
     provider_actor: ActorHandle, local_rank: int
 ) -> Dict[str, DataIterator]:
-    """Get the dataset shard for a specific worker, registering datasets if needed."""
     return await provider_actor.get_dataset_shard.remote(local_rank)
 
 
 async def finish_worker_and_wait(provider_actor: ActorHandle, local_rank: int) -> None:
     """Mark a worker as finished and wait for all workers if this is the owner.
 
-    This is a convenience function that combines mark_worker_finished and
-    wait_for_all_workers_to_finish functionality.
-
     Args:
         provider_actor: The LocalRunningDataProvider actor handle.
         local_rank: The rank/ID of the worker that finished.
-
-    Returns:
-        bool: True if this worker was the owner and waited for all workers,
-              False if this was not the owner.
     """
     await provider_actor.mark_worker_finished.remote(local_rank)

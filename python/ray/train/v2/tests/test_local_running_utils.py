@@ -12,8 +12,6 @@ from ray.train.v2._internal.execution.local_running_utils import (
 
 
 class TestLocalRunningDataProvider:
-    """Test suite for LocalRunningDataProvider actor with multiple processes/workers."""
-
     @pytest.fixture(autouse=True)
     def setup_ray(self):
         ray.init(num_cpus=4)
@@ -27,25 +25,20 @@ class TestLocalRunningDataProvider:
             world_size = 1
             local_rank = 0
 
-            # Create test datasets
             datasets = {
-                "train": ray.data.range(30),  # 30 items total
-                "val": ray.data.range(15),  # 15 items total
+                "train": ray.data.range(30),
+                "val": ray.data.range(15),
             }
 
-            # Register datasets
             provider_actor = await maybe_start_local_running_data_provider(
                 world_size, datasets, local_rank
             )
 
-            # Test getting shard for the single worker
             shard = await get_dataset_shard(provider_actor, local_rank)
 
-            # Verify we get the expected datasets
             assert "train" in shard
             assert "val" in shard
 
-            # Verify shard sizes (single worker gets all data)
             train_count = len(list(shard["train"].iter_rows()))
             val_count = len(list(shard["val"].iter_rows()))
 
@@ -78,9 +71,8 @@ async def run_test():
     world_size = 4
     local_rank = {rank}
 
-    # Create datasets with known data
-    train_data = list(range(100))  # 0-99
-    val_data = list(range(100, 120))  # 100-119
+    train_data = list(range(100))
+    val_data = list(range(100, 120))
 
     datasets = {{
         "train": ray.data.from_items(
@@ -89,7 +81,6 @@ async def run_test():
         "val": ray.data.from_items([{{"id": i, "value": i * 3}} for i in val_data]),
     }}
 
-    # Register datasets (only first worker succeeds, others get existing actor)
     provider_actor = await maybe_start_local_running_data_provider(
         world_size, datasets, local_rank
     )
@@ -110,7 +101,6 @@ async def run_test():
     print("WORKER_{rank}_TRAIN_COUNT:" + str(len(train_ids)))
     print("WORKER_{rank}_VAL_COUNT:" + str(len(val_ids)))
 
-    # Mark worker as finished and wait for all workers (if owner)
     await finish_worker_and_wait(provider_actor, local_rank)
 
     ray.shutdown()
@@ -165,7 +155,6 @@ asyncio.run(run_test())
                 val_ids_set
             ), f"Val data overlap for worker {rank}"
 
-            # Add this worker's data to the global sets
             all_train_ids.update(train_ids_set)
             all_val_ids.update(val_ids_set)
 
@@ -176,9 +165,8 @@ asyncio.run(run_test())
                 "val_ids": val_ids,
             }
 
-        # Verify all data is accounted for across all workers
-        expected_train_data = set(range(100))  # 0-99
-        expected_val_data = set(range(100, 120))  # 100-119
+        expected_train_data = set(range(100))
+        expected_val_data = set(range(100, 120))
 
         assert all_train_ids == expected_train_data, "Missing or extra train data"
         assert all_val_ids == expected_val_data, "Missing or extra val data"
