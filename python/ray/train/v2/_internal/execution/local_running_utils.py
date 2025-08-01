@@ -102,8 +102,8 @@ class GlobalLocalTrainerRayDataset:
         assert self.owner_rank == local_rank, "This method is only called by the owner of the actor"
         while len(self.finished_workers) < self.world_size:
             await asyncio.sleep(0.1)
-        # wait for 0.5 seconds to ensure all workers have finished
-        await asyncio.sleep(0.5)
+        # wait for 1 second to ensure all workers have finished
+        await asyncio.sleep(1)
 
 
 LOCAL_RUNNING_DATA_PROVIDER_ACTOR_NAME = "local_running_data_provider"
@@ -114,10 +114,11 @@ async def maybe_start_local_running_data_provider_and_register_dataset(
     world_size: int, dataset: Dict[str, Dataset], local_rank: int
 ) -> ActorHandle:
     actor = GlobalLocalTrainerRayDataset.options(
-        name=LOCAL_RUNNING_DATA_PROVIDER_ACTOR_NAME,
-        namespace=LOCAL_RUNNING_DATA_PROVIDER_NAMESPACE,
-        get_if_exists=True,
-    ).remote(world_size, local_rank)
+            name=LOCAL_RUNNING_DATA_PROVIDER_ACTOR_NAME,
+            namespace=LOCAL_RUNNING_DATA_PROVIDER_NAMESPACE,
+            get_if_exists=True,
+        ).remote(world_size, local_rank)
+    
     await actor.register_dataset.remote(dataset)
     return actor
 
