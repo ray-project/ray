@@ -359,33 +359,7 @@ CoreWorker::CoreWorker(
 
   RegisterToGcs(options_.worker_launch_time_ms, options_.worker_launched_time_ms);
 
-  // Register a callback to monitor add/removed nodes.
-  // Note we capture a shared ownership of reference_counter_ and rate_limiter
-  // here to avoid destruction order fiasco between gcs_client and reference_counter_.
-  auto on_node_change = [temp_reference_counter = reference_counter_,
-                         temp_rate_limiter = lease_request_rate_limiter_](
-                            const NodeID &node_id, const rpc::GcsNodeInfo &data) {
-    if (data.state() == rpc::GcsNodeInfo::DEAD) {
-      RAY_LOG(INFO).WithField(node_id)
-          << "Node failure. All objects pinned on that node will be lost if object "
-             "reconstruction is not enabled.";
-      temp_reference_counter->ResetObjectsOnRemovedNode(node_id);
-    }
-    auto cluster_size_based_rate_limiter =
-        dynamic_cast<ClusterSizeBasedLeaseRequestRateLimiter *>(temp_rate_limiter.get());
-    if (cluster_size_based_rate_limiter != nullptr) {
-      cluster_size_based_rate_limiter->OnNodeChanges(data);
-    }
-  };
-
-  gcs_client_->Nodes().AsyncSubscribeToNodeChange(
-      std::move(on_node_change), [this](const Status &) {
-        {
-          std::scoped_lock<std::mutex> lock(gcs_client_node_cache_populated_mutex_);
-          gcs_client_node_cache_populated_ = true;
-        }
-        gcs_client_node_cache_populated_cv_.notify_all();
-      });
+  SubscribeToNodeChanges();
 
   // Create an entry for the driver task in the task table. This task is
   // added immediately with status RUNNING. This allows us to push errors
@@ -830,6 +804,38 @@ void CoreWorker::RegisterToGcs(int64_t worker_launch_time_ms,
   gcs_client_->Workers().AsyncAdd(worker_data, nullptr);
 }
 
+void CoreWorker::SubscribeToNodeChanges() {
+  std::call_once(subscribe_to_node_changes_flag_, [this]() {
+    // Register a callback to monitor add/removed nodes.
+    // Note we capture a shared ownership of reference_counter and rate_limiter
+    // here to avoid destruction order fiasco between gcs_client and reference_counter_.
+    auto on_node_change = [reference_counter = reference_counter_,
+                           rate_limiter = lease_request_rate_limiter_](
+                              const NodeID &node_id, const rpc::GcsNodeInfo &data) {
+      if (data.state() == rpc::GcsNodeInfo::DEAD) {
+        RAY_LOG(INFO).WithField(node_id)
+            << "Node failure. All objects pinned on that node will be lost if object "
+               "reconstruction is not enabled.";
+        reference_counter->ResetObjectsOnRemovedNode(node_id);
+      }
+      auto cluster_size_based_rate_limiter =
+          dynamic_cast<ClusterSizeBasedLeaseRequestRateLimiter *>(rate_limiter.get());
+      if (cluster_size_based_rate_limiter != nullptr) {
+        cluster_size_based_rate_limiter->OnNodeChanges(data);
+      }
+    };
+
+    gcs_client_->Nodes().AsyncSubscribeToNodeChange(
+        std::move(on_node_change), [this](const Status &) {
+          {
+            std::scoped_lock<std::mutex> lock(gcs_client_node_cache_populated_mutex_);
+            gcs_client_node_cache_populated_ = true;
+          }
+          gcs_client_node_cache_populated_cv_.notify_all();
+        });
+  });
+}
+
 void CoreWorker::ExitIfParentRayletDies() {
   RAY_CHECK(!RayConfig::instance().RAYLET_PID().empty());
   static auto raylet_pid =
@@ -1022,6 +1028,7 @@ void CoreWorker::RegisterOwnershipInfoAndResolveFuture(
 Status CoreWorker::Put(const RayObject &object,
                        const std::vector<ObjectID> &contained_object_ids,
                        ObjectID *object_id) {
+  SubscribeToNodeChanges();
   *object_id = ObjectID::FromIndex(worker_context_->GetCurrentInternalTaskId(),
                                    worker_context_->GetNextPutIndex());
   reference_counter_->AddOwnedObject(*object_id,
@@ -1107,6 +1114,7 @@ Status CoreWorker::CreateOwnedAndIncrementLocalRef(
       owner_address != nullptr ? *owner_address : rpc_address_;
   bool owned_by_us = real_owner_address.worker_id() == rpc_address_.worker_id();
   if (owned_by_us) {
+    SubscribeToNodeChanges();
     reference_counter_->AddOwnedObject(*object_id,
                                        contained_object_ids,
                                        rpc_address_,
@@ -1276,6 +1284,7 @@ Status CoreWorker::SealExisting(const ObjectID &object_id,
 
 void CoreWorker::ExperimentalRegisterMutableObjectWriter(
     const ObjectID &writer_object_id, const std::vector<NodeID> &remote_reader_node_ids) {
+  SubscribeToNodeChanges();
   {
     std::unique_lock<std::mutex> lock(gcs_client_node_cache_populated_mutex_);
     if (!gcs_client_node_cache_populated_) {
@@ -2014,6 +2023,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
     const std::string &serialized_retry_exception_allowlist,
     const std::string &call_site,
     const TaskID current_task_id) {
+  SubscribeToNodeChanges();
   RAY_CHECK(scheduling_strategy.scheduling_strategy_case() !=
             rpc::SchedulingStrategy::SchedulingStrategyCase::SCHEDULING_STRATEGY_NOT_SET);
 
@@ -2091,6 +2101,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                                const std::string &extension_data,
                                const std::string &call_site,
                                ActorID *return_actor_id) {
+  SubscribeToNodeChanges();
   RAY_CHECK(actor_creation_options.scheduling_strategy.scheduling_strategy_case() !=
             rpc::SchedulingStrategy::SchedulingStrategyCase::SCHEDULING_STRATEGY_NOT_SET);
 
@@ -2363,6 +2374,7 @@ Status CoreWorker::SubmitActorTask(
     const std::string &call_site,
     std::vector<rpc::ObjectReference> &task_returns,
     const TaskID current_task_id) {
+  SubscribeToNodeChanges();
   absl::ReleasableMutexLock lock(&actor_task_mutex_);
   task_returns.clear();
   if (!actor_task_submitter_->CheckActorExists(actor_id)) {
@@ -4314,6 +4326,7 @@ void CoreWorker::HandleExit(rpc::ExitRequest request,
 void CoreWorker::HandleAssignObjectOwner(rpc::AssignObjectOwnerRequest request,
                                          rpc::AssignObjectOwnerReply *reply,
                                          rpc::SendReplyCallback send_reply_callback) {
+  SubscribeToNodeChanges();
   ObjectID object_id = ObjectID::FromBinary(request.object_id());
   const auto &borrower_address = request.borrower_address();
   const std::string &call_site = request.call_site();

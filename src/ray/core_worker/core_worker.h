@@ -1370,6 +1370,9 @@ class CoreWorker {
   FRIEND_TEST(TestOverrideRuntimeEnv, TestCondaInherit);
   FRIEND_TEST(TestOverrideRuntimeEnv, TestCondaOverride);
 
+  /// Used to lazily subscribe to node_changes only if the worker takes any owner actions.
+  void SubscribeToNodeChanges();
+
   std::shared_ptr<rpc::RuntimeEnvInfo> OverrideTaskOrActorRuntimeEnvInfo(
       const std::string &serialized_runtime_env_info) const;
 
@@ -1926,6 +1929,9 @@ class CoreWorker {
   /// Maps serialized runtime env info to **immutable** deserialized protobuf.
   mutable utils::container::ThreadSafeSharedLruCache<std::string, rpc::RuntimeEnvInfo>
       runtime_env_json_serialization_cache_;
+
+  /// Used to ensure we only subscribe to node changes once.
+  std::once_flag subscribe_to_node_changes_flag_;
 
   /// Used to block in certain spots if the GCS node cache is needed.
   std::mutex gcs_client_node_cache_populated_mutex_;
