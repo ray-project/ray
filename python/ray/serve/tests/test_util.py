@@ -11,6 +11,7 @@ import ray
 from ray import serve
 from ray._common.constants import HEAD_NODE_RESOURCE_NAME
 from ray.serve._private.utils import (
+    Semaphore,
     calculate_remaining_timeout,
     get_all_live_placement_group_names,
     get_current_actor_id,
@@ -22,7 +23,6 @@ from ray.serve._private.utils import (
     override_runtime_envs_except_env_vars,
     serve_encoders,
     snake_to_camel_case,
-    Semaphore,
 )
 from ray.serve.tests.common.remote_uris import (
     TEST_DAG_PINNED_URI,
