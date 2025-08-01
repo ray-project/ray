@@ -1,42 +1,64 @@
-import argparse
-import traceback
-
 import ray
+import time
+import asyncio
+import argparse
 from ray.train.v2._internal.execution.local_running_utils import (
+    maybe_start_local_running_data_provider_and_register_dataset, 
     get_dataset_shard,
-    maybe_start_local_running_data_provider_and_register_dataset,
+    mark_worker_finished,
+    wait_for_all_workers_to_finish
 )
 
+ray.init(address="auto")
 # Parse command line arguments
-parser = argparse.ArgumentParser(description="Test worker process")
-parser.add_argument("--rank", type=int, required=True, help="Worker rank")
-parser.add_argument("--world-size", type=int, default=3, help="Total number of workers")
+parser = argparse.ArgumentParser(description='Test script for local running data provider')
+parser.add_argument('rank', type=int, help='Rank of the worker')
 args = parser.parse_args()
 
-rank = args.rank
-world_size = args.world_size
 
-try:
-    # Initialize Ray
-    ray.init(address="auto")
-    print(f"WORKER_{rank}: Connected to Ray cluster")
+world_size = 3
+local_rank = args.rank
 
-    # Create or get the shared actor (first process creates it, others get it)
-    actor_name = "shared_data_actor"
+# Create datasets with known data
+train_data = list(range(100))  # 0-99
+val_data = list(range(100, 120))  # 100-119
 
-    # All workers try to register datasets (only first one succeeds)
-    datasets = {"train": ray.data.range(30), "val": ray.data.range(15)}
-    maybe_start_local_running_data_provider_and_register_dataset(world_size, datasets)
+datasets = {
+    "train": ray.data.from_items(
+        [{"id": i, "value": i * 2} for i in train_data]
+    ),
+    "val": ray.data.from_items([{"id": i, "value": i * 3} for i in val_data]),
+}
 
-    # Get data shard
-    local_rank = rank
-    shard = get_dataset_shard(local_rank)
+async def main():
+    # Register datasets (only first worker succeeds, others get existing actor)
+    provider_actor = await maybe_start_local_running_data_provider_and_register_dataset(
+        world_size, datasets, local_rank
+    )
 
-    train_count = len(list(shard["train"].iter_rows()))
-    val_count = len(list(shard["val"].iter_rows()))
+    # Get shard for this worker
+    shard = await get_dataset_shard(provider_actor, local_rank)
 
-    print(f"WORKER_{rank}_RESULT:" + str(train_count) + "," + str(val_count))
+    # Collect data from this worker's shard
+    train_rows = list(shard["train"].iter_rows())
+    val_rows = list(shard["val"].iter_rows())
 
-except Exception as e:
-    print(f"WORKER_{rank}_ERROR:" + str(e))
-    traceback.print_exc()
+    train_ids = [row["id"] for row in train_rows]
+    val_ids = [row["id"] for row in val_rows]
+
+    # Print results for parent process to collect
+    print(f"WORKER_{local_rank}_TRAIN_IDS:" + ",".join(map(str, train_ids)))
+    print(f"WORKER_{local_rank}_VAL_IDS:" + ",".join(map(str, val_ids)))
+    print(f"WORKER_{local_rank}_TRAIN_COUNT:" + str(len(train_ids)))
+    print(f"WORKER_{local_rank}_VAL_COUNT:" + str(len(val_ids)))
+
+    # Mark this worker as finished
+    is_owner = await mark_worker_finished(provider_actor, local_rank)
+    if is_owner:
+        # Wait for all workers to finish before shutting down
+        await wait_for_all_workers_to_finish(provider_actor, local_rank)
+
+# Run the async main function
+asyncio.run(main())
+
+ray.shutdown()
