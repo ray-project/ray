@@ -1,11 +1,9 @@
 import copy
 from typing import Optional
 
-from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.typing import EnvConfigDict
 
 
-@OldAPIStack
 class EnvContext(dict):
     """Wraps env configurations to include extra rllib metadata.
 
