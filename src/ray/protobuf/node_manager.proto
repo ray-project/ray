@@ -490,6 +490,7 @@ service NodeManagerService {
       returns (RegisterMutableObjectReply);
   // Failure: TODO: Handle network failure for cgraphs.
   rpc PushMutableObject(PushMutableObjectRequest) returns (PushMutableObjectReply);
-  // Failure: Uses retryable grpc client for retries.
+  // Failure: Is currently only used when grpc channel is unavailable for retryable core
+  // worker clients. The unavailable callback will eventually be retried so if this fails.
   rpc IsLocalWorkerDead(IsLocalWorkerDeadRequest) returns (IsLocalWorkerDeadReply);
 }

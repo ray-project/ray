@@ -1914,6 +1914,17 @@ py_test(
 )
 
 py_test(
+    name = "test_algorithm_save_load_checkpoint_connectors",
+    size = "medium",
+    srcs = ["algorithms/tests/test_algorithm_save_load_checkpoint_connectors.py"],
+    tags = [
+        "algorithms_dir",
+        "algorithms_dir_generic",
+        "team:rllib",
+    ],
+)
+
+py_test(
     name = "test_algorithm_rl_module_restore",
     size = "large",
     srcs = ["algorithms/tests/test_algorithm_rl_module_restore.py"],
@@ -2459,16 +2470,6 @@ py_test(
 #    srcs = ["core/rl_module/torch/tests/test_torch_rl_module.py"],
 #    args = ["TestRLModuleGPU"],
 # )
-
-py_test(
-    name = "test_tf_rl_module",
-    size = "medium",
-    srcs = ["core/rl_module/tf/tests/test_tf_rl_module.py"],
-    tags = [
-        "core",
-        "team:rllib",
-    ],
-)
 
 py_test(
     name = "test_multi_rl_module",
