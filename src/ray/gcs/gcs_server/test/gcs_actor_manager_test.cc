@@ -110,7 +110,9 @@ class GcsActorManagerTest : public ::testing::Test {
     RayConfig::instance().initialize(
         R"(
 {
-  "maximum_gcs_destroyed_actor_cached_count": 10
+  "maximum_gcs_destroyed_actor_cached_count": 10,
+  "publish_batch_size": 100,
+  "subscriber_timeout_ms": 30000
 }
   )");
     worker_client_ = std::make_shared<MockWorkerClient>(io_service_);
@@ -122,9 +124,9 @@ class GcsActorManagerTest : public ::testing::Test {
             rpc::ChannelType::GCS_ACTOR_CHANNEL,
         },
         /*periodical_runner=*/*periodical_runner_,
-        /*get_time_ms=*/[]() -> double { return absl::ToUnixMicros(absl::Now()); },
-        /*subscriber_timeout_ms=*/absl::ToInt64Microseconds(absl::Seconds(30)),
-        /*batch_size=*/100);
+        NodeID::FromRandom());
+    publisher->SetTimeFunction(
+        []() -> double { return absl::ToUnixMicros(absl::Now()); });
 
     gcs_publisher_ = std::make_unique<gcs::GcsPublisher>(std::move(publisher));
     store_client_ = std::make_shared<gcs::InMemoryStoreClient>();
