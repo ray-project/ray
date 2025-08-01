@@ -1207,7 +1207,7 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
 @PublicAPI(stability="alpha")
 class CeleryConfig(BaseModel):
     """
-    Celery task processor config. You can use it to configure the Celery task processor for your Serve application.
+    Celery config. You can use it to configure the Celery task processor for your Serve application.
     """
 
     broker_url: str = Field(..., description="The URL of the broker to use for Celery.")
