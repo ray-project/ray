@@ -227,71 +227,92 @@ void GcsNodeManager::HandleGetAllNodeInfo(rpc::GetAllNodeInfoRequest request,
                                           rpc::SendReplyCallback send_reply_callback) {
   int64_t limit =
       (request.limit() > 0) ? request.limit() : std::numeric_limits<int64_t>::max();
-  std::optional<NodeID> filter_node_id =
-      request.filters().has_node_id()
-          ? std::make_optional(NodeID::FromBinary(request.filters().node_id()))
-          : std::nullopt;
-  std::optional<std::string> filter_node_name =
-      request.filters().has_node_name()
-          ? std::make_optional(request.filters().node_name())
-          : std::nullopt;
-  std::optional<std::string> filter_node_ip_address =
-      request.filters().has_node_ip_address()
-          ? std::make_optional(request.filters().node_ip_address())
-          : std::nullopt;
-  auto filter_fn = [&filter_node_id, &filter_node_name, &filter_node_ip_address](
-                       const rpc::GcsNodeInfo &node) {
-    if (filter_node_id.has_value() &&
-        *filter_node_id != NodeID::FromBinary(node.node_id())) {
-      return false;
+  absl::flat_hash_set<NodeID> node_ids;
+  absl::flat_hash_set<std::string> node_names;
+  absl::flat_hash_set<std::string> node_ip_addresses;
+  bool only_node_id_filters = true;
+  for (auto &selector : *request.mutable_node_selectors()) {
+    switch (selector.node_selector_case()) {
+    case rpc::GetAllNodeInfoRequest_NodeSelector::kNodeId:
+      node_ids.insert(NodeID::FromBinary(selector.node_id()));
+      break;
+    case rpc::GetAllNodeInfoRequest_NodeSelector::kNodeName:
+      node_names.insert(std::move(*selector.mutable_node_name()));
+      only_node_id_filters = false;
+      break;
+    case rpc::GetAllNodeInfoRequest_NodeSelector::kNodeIpAddress:
+      node_ip_addresses.insert(std::move(*selector.mutable_node_ip_address()));
+      only_node_id_filters = false;
+      break;
+    case rpc::GetAllNodeInfoRequest_NodeSelector::NODE_SELECTOR_NOT_SET:
+      continue;
     }
-    if (filter_node_name.has_value() && *filter_node_name != node.node_name()) {
-      return false;
+  }
+  const size_t total_num_nodes = alive_nodes_.size() + dead_nodes_.size();
+  size_t num_added = 0;
+
+  if (request.node_selectors_size() > 0 && only_node_id_filters) {
+    // optimized path if request only wants specific node ids
+    for (const auto &node_id : node_ids) {
+      if (!request.has_state_filter() ||
+          request.state_filter() == rpc::GcsNodeInfo::ALIVE) {
+        auto iter = alive_nodes_.find(node_id);
+        if (iter != alive_nodes_.end()) {
+          *reply->add_node_info_list() = *iter->second;
+          ++num_added;
+        }
+      }
+      if (!request.has_state_filter() ||
+          request.state_filter() == rpc::GcsNodeInfo::DEAD) {
+        auto iter = dead_nodes_.find(node_id);
+        if (iter != dead_nodes_.end()) {
+          *reply->add_node_info_list() = *iter->second;
+          ++num_added;
+        }
+      }
     }
-    if (filter_node_ip_address.has_value() &&
-        *filter_node_ip_address != node.node_manager_address()) {
-      return false;
-    }
-    return true;
-  };
-  int64_t num_added = 0;
-  int64_t num_filtered = 0;
+    reply->set_total(total_num_nodes);
+    reply->set_num_filtered(total_num_nodes - num_added);
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+    ++counts_[CountType::GET_ALL_NODE_INFO_REQUEST];
+    return;
+  }
+
+  const bool has_node_selectors = request.node_selectors_size() > 0;
   auto add_to_response =
-      [limit, reply, filter_fn, &num_added, &num_filtered](
-          const absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>> &nodes) {
+      [&](const absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>> &nodes) {
         for (const auto &[node_id, node_info_ptr] : nodes) {
           if (num_added >= limit) {
             break;
           }
-          if (filter_fn(*node_info_ptr)) {
+          if (!has_node_selectors || node_ids.contains(node_id) ||
+              node_names.contains(node_info_ptr->node_name()) ||
+              node_ip_addresses.contains(node_info_ptr->node_manager_address())) {
             *reply->add_node_info_list() = *node_info_ptr;
             num_added += 1;
-          } else {
-            num_filtered += 1;
           }
         }
       };
-  std::optional<rpc::GcsNodeInfo::GcsNodeState> filter_state =
-      request.filters().has_state() ? std::make_optional(request.filters().state())
-                                    : std::nullopt;
-  if (filter_state == std::nullopt) {
-    add_to_response(alive_nodes_);
-    add_to_response(dead_nodes_);
-  } else if (filter_state == rpc::GcsNodeInfo::ALIVE) {
-    add_to_response(alive_nodes_);
-    num_filtered += dead_nodes_.size();
-  } else if (filter_state == rpc::GcsNodeInfo::DEAD) {
-    add_to_response(dead_nodes_);
-    num_filtered += alive_nodes_.size();
+
+  if (request.has_state_filter()) {
+    switch (request.state_filter()) {
+    case rpc::GcsNodeInfo::ALIVE:
+      add_to_response(alive_nodes_);
+      break;
+    case rpc::GcsNodeInfo::DEAD:
+      add_to_response(dead_nodes_);
+      break;
+    default:
+      RAY_LOG(ERROR) << "Unexpected state filter: " << request.state_filter();
+      break;
+    }
   } else {
-    Status s = Status::InvalidArgument(
-        absl::StrCat("Unexpected filter: state = ", *filter_state));
-    GCS_RPC_SEND_REPLY(send_reply_callback, reply, s);
-    ++counts_[CountType::GET_ALL_NODE_INFO_REQUEST];
-    return;
+    add_to_response(alive_nodes_);
+    add_to_response(dead_nodes_);
   }
-  reply->set_total(alive_nodes_.size() + dead_nodes_.size());
-  reply->set_num_filtered(num_filtered);
+
+  reply->set_total(total_num_nodes);
+  reply->set_num_filtered(total_num_nodes - reply->node_info_list_size());
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   ++counts_[CountType::GET_ALL_NODE_INFO_REQUEST];
 }
@@ -398,14 +419,14 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
       // TODO(rkn): Define this constant somewhere else.
       std::string type = "node_removed";
       std::ostringstream error_message;
-      error_message
-          << "The node with node id: " << node_id
-          << " and address: " << removed_node->node_manager_address()
-          << " and node name: " << removed_node->node_name()
-          << " has been marked dead because the detector"
-          << " has missed too many heartbeats from it. This can happen when a "
-             "\t(1) raylet crashes unexpectedly (OOM, etc.) \n"
-          << "\t(2) raylet has lagging heartbeats due to slow network or busy workload.";
+      error_message << "The node with node id: " << node_id
+                    << " and address: " << removed_node->node_manager_address()
+                    << " and node name: " << removed_node->node_name()
+                    << " has been marked dead because the detector"
+                    << " has missed too many heartbeats from it. This can happen when a "
+                       "\t(1) raylet crashes unexpectedly (OOM, etc.) \n"
+                    << "\t(2) raylet has lagging heartbeats due to slow network or busy "
+                       "workload.";
       RAY_EVENT(ERROR, "RAY_NODE_REMOVED")
               .WithField("node_id", node_id.Hex())
               .WithField("ip", removed_node->node_manager_address())
@@ -464,9 +485,9 @@ void GcsNodeManager::Initialize(const GcsInitData &gcs_init_data) {
       // The protocol is correct because when a new node joined, Raylet will do:
       //    - RegisterNode (write node to the node table)
       //    - Setup subscription
-      // With this, it means we only need to ask the node registered to do resubscription.
-      // And for the node failed to register, they will crash on the client side due to
-      // registeration failure.
+      // With this, it means we only need to ask the node registered to do
+      // resubscription. And for the node failed to register, they will crash on the
+      // client side due to registeration failure.
       rpc::Address remote_address;
       remote_address.set_raylet_id(node_info.node_id());
       remote_address.set_ip_address(node_info.node_manager_address());
