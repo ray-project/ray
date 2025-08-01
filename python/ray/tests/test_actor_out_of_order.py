@@ -51,7 +51,7 @@ def test_async_actor_execute_out_of_order(shutdown_only):
     assert ray.get(out_ref_2, timeout=5) == 2
 
 
-class TestExecuteOutOfOrderValidation:
+class TestAllowOutOfOrderExecutionValidation:
     @pytest.fixture(scope="class", autouse=True)
     def start_ray_cluster(self):
         ray.init()
@@ -65,7 +65,7 @@ class TestExecuteOutOfOrderValidation:
                 pass
 
         with pytest.raises(ValueError):
-            Actor.options(execute_out_of_order=False).remote()
+            Actor.options(allow_out_of_order_execution=False).remote()
 
     def test_remote_with_in_order_concurrent_actor_raises_error(self):
         class Actor:
@@ -73,7 +73,7 @@ class TestExecuteOutOfOrderValidation:
                 pass
 
         with pytest.raises(ValueError):
-            ray.remote(execute_out_of_order=False)(Actor).remote()
+            ray.remote(allow_out_of_order_execution=False)(Actor).remote()
 
     def test_options_with_in_order_multi_threaded_actor_raises_error(self):
         @ray.remote(max_concurrency=2)
@@ -81,14 +81,16 @@ class TestExecuteOutOfOrderValidation:
             pass
 
         with pytest.raises(ValueError):
-            Actor.options(execute_out_of_order=False).remote()
+            Actor.options(allow_out_of_order_execution=False).remote()
 
     def test_remote_with_in_order_multi_threaded_actor_raises_error(self):
         class Actor:
             pass
 
         with pytest.raises(ValueError):
-            ray.remote(max_concurrency=2, execute_out_of_order=False)(Actor).remote()
+            ray.remote(max_concurrency=2, allow_out_of_order_execution=False)(
+                Actor
+            ).remote()
 
 
 if __name__ == "__main__":
