@@ -15,6 +15,10 @@
 #include "ray/object_manager/common.h"
 
 #include <string>
+#include <thread>
+#if defined(__APPLE__) || defined(__linux__)
+#include <unistd.h>  // for sched_yield
+#endif
 
 #include "absl/strings/str_cat.h"
 #include "ray/common/ray_config.h"
@@ -196,21 +200,35 @@ Status PlasmaObjectHeader::ReadAcquire(
   const auto check_signal_interval = std::chrono::milliseconds(
       RayConfig::instance().get_check_signal_interval_milliseconds());
   auto last_signal_check_time = std::chrono::steady_clock::now();
+  int wait_count = 0;  // Track iterations for adaptive waiting
+
   while (version < version_to_read || !is_sealed) {
     if (check_signals && std::chrono::steady_clock::now() - last_signal_check_time >
                              check_signal_interval) {
       RAY_RETURN_NOT_OK(check_signals());
       last_signal_check_time = std::chrono::steady_clock::now();
     }
+
     RAY_CHECK_EQ(sem_post(sem.header_sem), 0);
-    sched_yield();
-    // We need to get the desired version before timeout
+
+    // Hybrid approach: yield first for low latency, then sleep to avoid
+    // busy spinning. This gives the best of both worlds for different
+    // waiting patterns.
+    if (wait_count < 3) {
+      // First few iterations: yield for minimal latency
+      sched_yield();
+    } else {
+      // After several yields: sleep to avoid excessive CPU usage
+      std::this_thread::sleep_for(std::chrono::microseconds(100));
+    }
+    wait_count++;
+
+    // Check timeout before attempting to re-acquire
     if (timeout_point && std::chrono::steady_clock::now() >= *timeout_point) {
       return Status::ChannelTimeoutError(absl::StrCat(
           "Timed out waiting for object available to read. ObjectID: ", object_id.Hex()));
     }
-    // Unlike other header, this is used for busy waiting, so we need to apply
-    // timeout_point and check signals.
+
     RAY_RETURN_NOT_OK(
         TryToAcquireSemaphore(sem.header_sem, timeout_point, check_signals));
   }
