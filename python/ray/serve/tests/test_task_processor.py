@@ -11,7 +11,7 @@ from starlette.responses import JSONResponse
 import ray
 from ray import serve
 from ray._common.test_utils import wait_for_condition
-from ray.serve.schema import CeleryTaskProcessorConfig, TaskProcessorConfig
+from ray.serve.schema import CeleryConfig, TaskProcessorConfig
 from ray.serve.task_consumer import (
     get_task_adapter,
     task_consumer,
@@ -79,7 +79,7 @@ class TestTaskConsumerWithRayServe:
 
         config_params = {
             "queue_name": cls.DEFAULT_QUEUE_NAME,
-            "adapter_config": CeleryTaskProcessorConfig(
+            "adapter_config": CeleryConfig(
                 broker_url=cls.DEFAULT_BROKER_URL,
                 backend_url=f"file://{results_path}",
                 broker_transport_options=transport_options,
@@ -205,7 +205,7 @@ class TestTaskConsumerWithRayServe:
         # Test that async task handlers raise NotImplementedError during decoration
         with pytest.raises(
             NotImplementedError,
-            match="Async task handlers are not supported yet in celery `threads` worker pool",
+            match="Async task handlers are not supported yet",
         ):
 
             @serve.deployment

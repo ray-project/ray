@@ -8,7 +8,7 @@ from celery import Celery
 
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve.schema import (
-    CeleryTaskProcessorConfig,
+    CeleryConfig,
     TaskProcessorConfig,
     TaskResult,
 )
@@ -66,9 +66,9 @@ class CeleryTaskProcessorAdapter(TaskProcessorAdapter):
     _worker_thread: Optional[threading.Thread] = None
 
     def __init__(self, config: TaskProcessorConfig):
-        if not isinstance(config.adapter_config, CeleryTaskProcessorConfig):
+        if not isinstance(config.adapter_config, CeleryConfig):
             raise TypeError(
-                "TaskProcessorConfig.adapter_config must be an instance of CeleryTaskProcessorConfig"
+                "TaskProcessorConfig.adapter_config must be an instance of CeleryConfig"
             )
 
         self._config = config
@@ -202,7 +202,7 @@ def get_task_adapter(config: TaskProcessorConfig) -> TaskProcessorAdapter:
         ValueError: If the adapter_config type is not recognized.
     """
 
-    if isinstance(config.adapter_config, CeleryTaskProcessorConfig):
+    if isinstance(config.adapter_config, CeleryConfig):
         adapter = CeleryTaskProcessorAdapter(config=config)
         adapter.initialize(config=config)
 

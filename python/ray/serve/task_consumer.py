@@ -129,9 +129,7 @@ def task_handler(
             return wrapper
 
         else:
-            raise NotImplementedError(
-                "Async task handlers are not supported yet in celery `threads` worker pool"
-            )
+            raise NotImplementedError("Async task handlers are not supported yet")
 
     if _func is not None:
         # Used without arguments: @task_handler

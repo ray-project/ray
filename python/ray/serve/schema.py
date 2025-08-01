@@ -1205,7 +1205,7 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
 
 
 @PublicAPI(stability="alpha")
-class CeleryTaskProcessorConfig(BaseModel):
+class CeleryConfig(BaseModel):
     """
     Celery task processor config. You can use it to configure the Celery task processor for your Serve application.
     """
@@ -1232,7 +1232,7 @@ class TaskProcessorConfig(BaseModel):
     queue_name: str = Field(
         ..., description="The name of the queue to use for task processing."
     )
-    adapter_config: Union[CeleryTaskProcessorConfig] = Field(
+    adapter_config: Union[CeleryConfig] = Field(
         ..., description="The adapter config. Currently only Celery is supported."
     )
     max_retry: Optional[int] = Field(

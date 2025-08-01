@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, call, patch
 
 import pytest
 
-from ray.serve.schema import CeleryTaskProcessorConfig, TaskProcessorConfig, TaskResult
+from ray.serve.schema import CeleryConfig, TaskProcessorConfig, TaskResult
 from ray.serve.task_consumer import task_consumer, task_handler
 from ray.serve.task_processor import TaskProcessorAdapter
 
@@ -60,7 +60,7 @@ def config():
     queue_name = f"test_queue_{uuid.uuid4().hex}"
     return TaskProcessorConfig(
         queue_name=queue_name,
-        adapter_config=CeleryTaskProcessorConfig(
+        adapter_config=CeleryConfig(
             broker_url="fake://",
             backend_url="fake://",
         ),
