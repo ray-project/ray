@@ -509,11 +509,11 @@ class TaskManager : public TaskManagerInterface {
           is_canceled_(false) {
       reconstructable_return_ids_.reserve(num_returns);
       for (size_t i = 0; i < num_returns; i++) {
-        reconstructable_return_ids_.insert(spec.ReturnId(i));
+        reconstructable_return_ids_.insert(spec_.ReturnId(i));
       }
       status_ =
           std::make_tuple(spec.GetName(), rpc::TaskStatus::PENDING_ARGS_AVAIL, false);
-      counter.Increment(status_);
+      counter_->Increment(status_);
     }
 
     void SetStatus(rpc::TaskStatus new_status) {
