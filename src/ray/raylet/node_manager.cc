@@ -1547,7 +1547,7 @@ void NodeManager::ProcessWaitRequestMessage(
       object_ids,
       message->timeout(),
       num_required_objects,
-      [this, client](std::vector<ObjectID> ready, std::vector<ObjectID> remaining) {
+      [this, client, all_objects_local](std::vector<ObjectID> ready, std::vector<ObjectID> remaining) {
         // Write the data.
         flatbuffers::FlatBufferBuilder fbb;
         flatbuffers::Offset<protocol::WaitReply> wait_reply = protocol::CreateWaitReply(
