@@ -318,7 +318,7 @@ html_theme = "pydata_sphinx_theme"
 # documentation.
 html_theme_options = {
     "use_edit_page_button": True,
-    "announcement": """Join Us at Ray Summit 2025 — <a target="_blank" href="https://www.anyscale.com/ray-summit/2025?utm_source=ray_docs&utm_medium=docs&utm_campaign=banner">Register Early and Save!</a><button type="button" id="close-banner" aria-label="Close banner">&times;</button>""",
+    "announcement": """Join us at Ray Summit 2025 — <a target="_blank" href="https://www.anyscale.com/ray-summit/2025?utm_source=ray_docs&utm_medium=docs&utm_campaign=banner">Register early and save.</a><button type="button" id="close-banner" aria-label="Close banner">&times;</button>""",
     "logo": {
         "svg": render_svg_logo("_static/img/ray_logo.svg"),
     },
