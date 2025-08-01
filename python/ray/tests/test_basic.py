@@ -247,7 +247,7 @@ def test_worker_thread_count(monkeypatch, shutdown_only):
                 return None
 
     with monkeypatch.context() as m:
-        # Set the environemnt variable used by the raylet
+        # Set the environment variable used by the raylet
         m.setenv("RAY_worker_num_grpc_internal_threads", "1")
         ray.init()
         # We're using == instead of <= on the notion that the thread count
