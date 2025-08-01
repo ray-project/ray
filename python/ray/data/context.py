@@ -573,7 +573,9 @@ class DataContext:
             )
 
         elif name == "target_shuffle_max_block_size":
-            warnings.warn("`target_shuffle_max_block_size` is deprecated! Configure `target_max_block_size` instead.`")
+            warnings.warn(
+                "`target_shuffle_max_block_size` is deprecated! Configure `target_max_block_size` instead.`"
+            )
 
             self.target_max_block_size = value
 
