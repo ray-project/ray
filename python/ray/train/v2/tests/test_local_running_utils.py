@@ -1,21 +1,16 @@
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Dict
-import asyncio
-
 import pytest
 
 import ray
 from ray._private.test_utils import run_string_as_driver_nonblocking
 from ray.train.v2._internal.execution.local_running_utils import (
+    finish_worker_and_wait,
     get_dataset_shard,
-    maybe_start_local_running_data_provider_and_register_dataset,
-    mark_worker_finished,
-    wait_for_all_workers_to_finish,
+    maybe_start_local_running_data_provider,
 )
 
 
-class TestGlobalLocalTrainerRayDataset:
-    """Test suite for GlobalLocalTrainerRayDataset actor with multiple processes/workers."""
+class TestLocalRunningDataProvider:
+    """Test suite for LocalRunningDataProvider actor with multiple processes/workers."""
 
     @pytest.fixture(autouse=True)
     def setup_ray(self):
@@ -25,44 +20,38 @@ class TestGlobalLocalTrainerRayDataset:
 
     def test_single_process_basic_functionality(self):
         """Test basic functionality in single process."""
-        
-        async def run_test():
-            world_size = 1
-            local_rank = 0
 
-            # Create test datasets
-            datasets = {
-                "train": ray.data.range(30),  # 30 items total
-                "val": ray.data.range(15),  # 15 items total
-            }
+        world_size = 1
+        local_rank = 0
 
-            # Register datasets
-            provider_actor = await maybe_start_local_running_data_provider_and_register_dataset(
-                world_size, datasets, local_rank
-            )
+        # Create test datasets
+        datasets = {
+            "train": ray.data.range(30),  # 30 items total
+            "val": ray.data.range(15),  # 15 items total
+        }
 
-            # Test getting shard for the single worker
-            shard = await get_dataset_shard(provider_actor, local_rank)
+        # Register datasets
+        provider_actor = maybe_start_local_running_data_provider(
+            world_size, datasets, local_rank
+        )
 
-            # Verify we get the expected datasets
-            assert "train" in shard
-            assert "val" in shard
+        # Test getting shard for the single worker
+        shard = get_dataset_shard(provider_actor, local_rank)
 
-            # Verify shard sizes (single worker gets all data)
-            train_count = len(list(shard["train"].iter_rows()))
-            val_count = len(list(shard["val"].iter_rows()))
+        # Verify we get the expected datasets
+        assert "train" in shard
+        assert "val" in shard
 
-            # Single worker should get all data
-            assert train_count == 30
-            assert val_count == 15
+        # Verify shard sizes (single worker gets all data)
+        train_count = len(list(shard["train"].iter_rows()))
+        val_count = len(list(shard["val"].iter_rows()))
 
-            # Mark worker as finished and wait (as owner)
-            is_owner = await mark_worker_finished(provider_actor, local_rank)
-            assert is_owner  # Single worker should be the owner
-            await wait_for_all_workers_to_finish(provider_actor, local_rank)
+        # Single worker should get all data
+        assert train_count == 30
+        assert val_count == 15
 
-        asyncio.run(run_test())
-
+        # Mark worker as finished and wait for all workers (as owner)
+        finish_worker_and_wait(provider_actor, local_rank)
 
     def test_data_consistency_across_workers(self):
         """Test that data is consistently distributed across workers using multi-processes."""
@@ -73,59 +62,52 @@ class TestGlobalLocalTrainerRayDataset:
 import ray
 import asyncio
 from ray.train.v2._internal.execution.local_running_utils import (
-    maybe_start_local_running_data_provider_and_register_dataset,
+    maybe_start_local_running_data_provider,
     get_dataset_shard,
-    mark_worker_finished,
-    wait_for_all_workers_to_finish
+    finish_worker_and_wait
 )
 
-async def main():
-    ray.init(address="auto")
+ray.init(address="auto")
 
-    world_size = 4
-    local_rank = {rank}
+world_size = 4
+local_rank = {rank}
 
-    # Create datasets with known data
-    train_data = list(range(100))  # 0-99
-    val_data = list(range(100, 120))  # 100-119
+# Create datasets with known data
+train_data = list(range(100))  # 0-99
+val_data = list(range(100, 120))  # 100-119
 
-    datasets = {{
-        "train": ray.data.from_items(
-            [{{"id": i, "value": i * 2}} for i in train_data]
-        ),
-        "val": ray.data.from_items([{{"id": i, "value": i * 3}} for i in val_data]),
-    }}
+datasets = {{
+    "train": ray.data.from_items(
+        [{{"id": i, "value": i * 2}} for i in train_data]
+    ),
+    "val": ray.data.from_items([{{"id": i, "value": i * 3}} for i in val_data]),
+}}
 
-    # Register datasets (only first worker succeeds, others get existing actor)
-    provider_actor = await maybe_start_local_running_data_provider_and_register_dataset(
-        world_size, datasets, local_rank
-    )
+# Register datasets (only first worker succeeds, others get existing actor)
+provider_actor = maybe_start_local_running_data_provider(
+    world_size, datasets, local_rank
+)
 
-    # Get shard for this worker
-    shard = await get_dataset_shard(provider_actor, local_rank)
+# Get shard for this worker
+shard = get_dataset_shard(provider_actor, local_rank)
 
-    # Collect data from this worker's shard
-    train_rows = list(shard["train"].iter_rows())
-    val_rows = list(shard["val"].iter_rows())
+# Collect data from this worker's shard
+train_rows = list(shard["train"].iter_rows())
+val_rows = list(shard["val"].iter_rows())
 
-    train_ids = [row["id"] for row in train_rows]
-    val_ids = [row["id"] for row in val_rows]
+train_ids = [row["id"] for row in train_rows]
+val_ids = [row["id"] for row in val_rows]
 
-    # Print results for parent process to collect
-    print("WORKER_{rank}_TRAIN_IDS:" + ",".join(map(str, train_ids)))
-    print("WORKER_{rank}_VAL_IDS:" + ",".join(map(str, val_ids)))
-    print("WORKER_{rank}_TRAIN_COUNT:" + str(len(train_ids)))
-    print("WORKER_{rank}_VAL_COUNT:" + str(len(val_ids)))
+# Print results for parent process to collect
+print("WORKER_{rank}_TRAIN_IDS:" + ",".join(map(str, train_ids)))
+print("WORKER_{rank}_VAL_IDS:" + ",".join(map(str, val_ids)))
+print("WORKER_{rank}_TRAIN_COUNT:" + str(len(train_ids)))
+print("WORKER_{rank}_VAL_COUNT:" + str(len(val_ids)))
 
-    # Mark worker as finished
-    is_owner = await mark_worker_finished(provider_actor, local_rank)
-    if is_owner:
-        # Only owner waits for all workers to finish
-        await wait_for_all_workers_to_finish(provider_actor, local_rank)
+# Mark worker as finished and wait for all workers (if owner)
+finish_worker_and_wait(provider_actor, local_rank)
 
-    ray.shutdown()
-
-asyncio.run(main())
+ray.shutdown()
 """
 
         # Launch all worker processes simultaneously
@@ -183,7 +165,7 @@ asyncio.run(main())
                 "train_count": train_count,
                 "val_count": val_count,
                 "train_ids": train_ids,
-                "val_ids": val_ids
+                "val_ids": val_ids,
             }
 
         # Verify all data is accounted for across all workers
@@ -195,8 +177,12 @@ asyncio.run(main())
 
         # Verify each worker got roughly equal amounts (25 train, 5 val each)
         for rank in range(world_size):
-            assert worker_results[rank]["train_count"] == 25, f"Worker {rank} got {worker_results[rank]['train_count']} train items, expected 25"
-            assert worker_results[rank]["val_count"] == 5, f"Worker {rank} got {worker_results[rank]['val_count']} val items, expected 5"
+            assert (
+                worker_results[rank]["train_count"] == 25
+            ), f"Worker {rank} got {worker_results[rank]['train_count']} train items, expected 25"
+            assert (
+                worker_results[rank]["val_count"] == 5
+            ), f"Worker {rank} got {worker_results[rank]['val_count']} val items, expected 5"
 
 
 if __name__ == "__main__":
