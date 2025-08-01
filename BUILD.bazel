@@ -16,7 +16,7 @@ load("@rules_cc//cc:defs.bzl", "cc_proto_library")
 load("@rules_pkg//pkg:mappings.bzl", "pkg_attributes", "pkg_files")
 load("@rules_pkg//pkg:zip.bzl", "pkg_zip")
 load("@rules_proto//proto:defs.bzl", "proto_library")
-load("@rules_python//python:defs.bzl", "py_library", "py_runtime", "py_runtime_pair")
+load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_runtime", "py_runtime_pair")
 load("//bazel:ray.bzl", "COPTS", "FLATC_ARGS", "PYX_COPTS", "PYX_SRCS", "ray_cc_binary", "ray_cc_library", "ray_cc_test")
 
 package(
@@ -1223,4 +1223,17 @@ genrule(
         echo "$${PWD}" > $@
     """,
     local = 1,
+)
+
+py_binary(
+    name = "gen_ray_pkg",
+    srcs = ["gen_ray_pkg.py"],
+    data = [
+        ":ray_pkg_zip",
+        ":ray_py_proto_zip",
+    ],
+    visibility = ["//visibility:private"],
+    deps = [
+        "//bazel:gen_extract",
+    ],
 )
