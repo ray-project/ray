@@ -352,6 +352,15 @@ class Stats {
       : name_(measure),
         tag_keys_(convert_tags(tag_keys)),
         tag_keys_set_(build_tag_key_set(tag_keys)) {
+    if (RayConfig::instance().experimental_enable_open_telemetry_on_core()) {
+      // If using OpenTelemetry, we can lazily register and record metric without
+      // waiting for stats to be initialized.  We also don't need to construct the
+      // measure.
+      register_func(measure, description, tag_keys_, buckets);
+      return;
+    }
+
+    // If using OpenCensus, we need to wait for stats to be initialized.
     auto stats_init = [register_func, measure, description, buckets, this]() {
       measure_ = std::make_unique<Measure>(Measure::Register(measure, description, ""));
       register_func(measure, description, tag_keys_, buckets);
@@ -368,8 +377,8 @@ class Stats {
   void RecordValue(double val,
                    const std::vector<std::pair<opencensus::tags::TagKey, std::string>>
                        &open_census_tags) {
-    if (!OpenTelemetryMetricRecorder::GetInstance().IsMetricRegistered(name_)) {
-      // Use OpenCensus to record the metric if OpenTelemetry is not registered.
+    if (!RayConfig::instance().experimental_enable_open_telemetry_on_core()) {
+      // Use OpenCensus to record the metric if OpenTelemetry is not enabled.
       // Insert global tags before recording.
       auto combined_tags = open_census_tags;
       for (const auto &tag : StatsConfig::instance().GetGlobalTags()) {
@@ -408,7 +417,7 @@ class Stats {
   /// this metric.
   void Record(double val, std::string tag_val) {
     RAY_CHECK(tag_keys_.size() == 1);
-    if (StatsConfig::instance().IsStatsDisabled() || !measure_) {
+    if (!IsRecordable()) {
       return;
     }
     TagsType combined_tags;
@@ -421,7 +430,7 @@ class Stats {
   /// \param val The value to record
   /// \param tags The tags for this value
   void Record(double val, std::unordered_map<std::string_view, std::string> tags) {
-    if (StatsConfig::instance().IsStatsDisabled() || !measure_) {
+    if (!IsRecordable()) {
       return;
     }
     TagsType combined_tags;
@@ -437,7 +446,7 @@ class Stats {
   /// \param tags Registered tags and corresponding tag values for this value
   void Record(double val,
               const std::vector<std::pair<opencensus::tags::TagKey, std::string>> &tags) {
-    if (StatsConfig::instance().IsStatsDisabled() || !measure_) {
+    if (!IsRecordable()) {
       return;
     }
     TagsType combined_tags;
@@ -457,6 +466,18 @@ class Stats {
                             << " in " << val;
     }
 #endif  // NDEBUG
+  }
+
+  bool IsRecordable() {
+    if (StatsConfig::instance().IsStatsDisabled()) {
+      return false;
+    }
+    if (!RayConfig::instance().experimental_enable_open_telemetry_on_core() &&
+        !measure_) {
+      // If using OpenCensus, we need to have a measure defined.
+      return false;
+    }
+    return true;
   }
 
   const std::string name_;
