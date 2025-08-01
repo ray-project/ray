@@ -40,14 +40,14 @@ void ActorTaskSubmitter::NotifyGCSWhenActorOutOfScope(
         }
       }
     }
-    RAY_CHECK_OK(actor_creator_.AsyncReportActorOutOfScope(
+    actor_creator_.AsyncReportActorOutOfScope(
         actor_id, num_restarts_due_to_lineage_reconstruction, [actor_id](Status status) {
           if (!status.ok()) {
             RAY_LOG(ERROR).WithField(actor_id)
                 << "Failed to report actor out of scope: " << status
                 << ". The actor will not be killed";
           }
-        }));
+        });
   };
 
   if (!reference_counter_->AddObjectOutOfScopeOrFreedCallback(
@@ -116,7 +116,7 @@ Status ActorTaskSubmitter::SubmitActorCreationTask(TaskSpecification task_spec) 
     // more details please see the protocol of actor management based on gcs.
     // https://docs.google.com/document/d/1EAWide-jy05akJp6OMtDn58XOK7bUyruWMia4E-fV28/edit?usp=sharing
     RAY_LOG(DEBUG).WithField(actor_id).WithField(task_id) << "Creating actor via GCS";
-    RAY_CHECK_OK(actor_creator_.AsyncCreateActor(
+    actor_creator_.AsyncCreateActor(
         task_spec,
         [this, actor_id, task_id](Status status, const rpc::CreateActorReply &reply) {
           if (status.ok() || status.IsCreationTaskError()) {
@@ -144,7 +144,7 @@ Status ActorTaskSubmitter::SubmitActorCreationTask(TaskSpecification task_spec) 
             if (status.IsSchedulingCancelled()) {
               RAY_LOG(DEBUG).WithField(actor_id).WithField(task_id)
                   << "Actor creation cancelled";
-              task_manager_.MarkTaskCanceled(task_id);
+              task_manager_.MarkTaskNoRetry(task_id);
               if (reply.has_death_cause()) {
                 ray_error_info.mutable_actor_died_error()->CopyFrom(reply.death_cause());
               }
@@ -161,7 +161,7 @@ Status ActorTaskSubmitter::SubmitActorCreationTask(TaskSpecification task_spec) 
                 &status,
                 ray_error_info.has_actor_died_error() ? &ray_error_info : nullptr));
           }
-        }));
+        });
   });
 
   return Status::OK();
@@ -189,7 +189,7 @@ Status ActorTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
       // backpressure. The receiving actor will execute the tasks according to
       // this sequence number.
       send_pos = task_spec.SequenceNumber();
-      RAY_CHECK(queue->second.actor_submit_queue->Emplace(send_pos, task_spec));
+      queue->second.actor_submit_queue->Emplace(send_pos, task_spec);
       queue->second.cur_pending_calls++;
       task_queued = true;
     }
@@ -205,7 +205,7 @@ Status ActorTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
           resolver_.ResolveDependencies(
               task_spec, [this, send_pos, actor_id, task_id](Status status) {
                 task_manager_.MarkDependenciesResolved(task_id);
-                auto fail_or_retry_task = TaskID::Nil();
+                bool fail_or_retry_task = false;
                 {
                   absl::MutexLock lock(&mu_);
                   auto queue = client_queues_.find(actor_id);
@@ -218,14 +218,13 @@ Status ActorTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
                       actor_submit_queue->MarkDependencyResolved(send_pos);
                       SendPendingTasks(actor_id);
                     } else {
-                      fail_or_retry_task =
-                          actor_submit_queue->Get(send_pos).first.TaskId();
+                      fail_or_retry_task = true;
                       actor_submit_queue->MarkDependencyFailed(send_pos);
                     }
                   }
                 }
 
-                if (!fail_or_retry_task.IsNil()) {
+                if (fail_or_retry_task) {
                   GetTaskManagerWithoutMu().FailOrRetryPendingTask(
                       task_id, rpc::ErrorType::DEPENDENCY_RESOLUTION_FAILED, &status);
                 }
@@ -234,7 +233,7 @@ Status ActorTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
         "ActorTaskSubmitter::SubmitTask");
   } else {
     // Do not hold the lock while calling into task_manager_.
-    task_manager_.MarkTaskCanceled(task_id);
+    task_manager_.MarkTaskNoRetry(task_id);
     rpc::ErrorType error_type;
     rpc::RayErrorInfo error_info;
     {
@@ -346,7 +345,7 @@ void ActorTaskSubmitter::RestartActorForLineageReconstruction(const ActorID &act
   RAY_CHECK(queue->second.is_restartable) << "This actor is no longer restartable";
   queue->second.state = rpc::ActorTableData::RESTARTING;
   queue->second.num_restarts_due_to_lineage_reconstructions += 1;
-  RAY_CHECK_OK(actor_creator_.AsyncRestartActorForLineageReconstruction(
+  actor_creator_.AsyncRestartActorForLineageReconstruction(
       actor_id,
       queue->second.num_restarts_due_to_lineage_reconstructions,
       [this,
@@ -361,7 +360,7 @@ void ActorTaskSubmitter::RestartActorForLineageReconstruction(const ActorID &act
           NotifyGCSWhenActorOutOfScope(actor_id,
                                        num_restarts_due_to_lineage_reconstructions);
         }
-      }));
+      });
 }
 
 void ActorTaskSubmitter::DisconnectActor(const ActorID &actor_id,
@@ -442,7 +441,7 @@ void ActorTaskSubmitter::DisconnectActor(const ActorID &actor_id,
     for (auto &task_id : task_ids_to_fail) {
       // No need to increment the number of completed tasks since the actor is
       // dead.
-      task_manager_.MarkTaskCanceled(task_id);
+      task_manager_.MarkTaskNoRetry(task_id);
       // This task may have been waiting for dependency resolution, so cancel
       // this first.
       resolver_.CancelDependencyResolution(task_id);
@@ -563,7 +562,7 @@ void ActorTaskSubmitter::SendPendingTasks(const ActorID &actor_id) {
       break;
     }
     RAY_CHECK(!client_queue.worker_id.empty());
-    PushActorTask(client_queue, task.value().first, task.value().second);
+    PushActorTask(client_queue, /*task_spec=*/task->first, /*skip_queue=*/task->second);
   }
 }
 
@@ -896,7 +895,8 @@ Status ActorTaskSubmitter::CancelTask(TaskSpecification task_spec, bool recursiv
 
     task_queued = queue->second.actor_submit_queue->Contains(send_pos);
     if (task_queued) {
-      auto dep_resolved = queue->second.actor_submit_queue->Get(send_pos).second;
+      auto dep_resolved =
+          queue->second.actor_submit_queue->DependenciesResolved(send_pos);
       if (!dep_resolved) {
         RAY_LOG(DEBUG).WithField(task_id)
             << "Task has been resolving dependencies. Cancel to resolve dependencies";

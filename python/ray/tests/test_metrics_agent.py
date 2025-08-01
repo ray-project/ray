@@ -22,7 +22,7 @@ from ray.dashboard.modules.aggregator.tests.test_aggregator_agent import (
 from ray.core.generated.common_pb2 import TaskAttempt
 from ray.core.generated.events_base_event_pb2 import RayEvent
 from ray.core.generated.events_event_aggregator_service_pb2 import (
-    AddEventRequest,
+    AddEventsRequest,
     RayEventsData,
     TaskEventsMetadata,
 )
@@ -36,6 +36,7 @@ from ray._private.test_utils import (
     fetch_prometheus_metrics,
     get_log_batch,
     raw_metrics,
+    find_free_port,
 )
 from ray.autoscaler._private.constants import AUTOSCALER_METRIC_PORT
 from ray.dashboard.consts import DASHBOARD_METRIC_PORT
@@ -190,7 +191,6 @@ def _setup_cluster_for_test(request, ray_start_cluster):
     # Add a head node.
     cluster.add_node(
         _system_config={
-            "metrics_report_interval_ms": 1000,
             "event_stats_print_interval_ms": 500,
             "event_stats": True,
             "enable_metrics_collection": enable_metrics_collection,
@@ -242,6 +242,7 @@ def _setup_cluster_for_test(request, ray_start_cluster):
             )
             histogram = ray.get(ray.put(histogram))  # Test serialization.
             histogram.observe(1.5, tags=extra_tags)
+            histogram.observe(0.0, tags=extra_tags)
             ray.get(worker_should_exit.wait.remote())
 
     a = A.remote()
@@ -306,16 +307,26 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
         assert any(
             "core_worker" in components for components in components_dict.values()
         )
+        # The list of custom or user defined metrics. Open Telemetry backend does not
+        # support exporting Counter as Gauge, so we skip some metrics in that case.
+        custom_metrics = (
+            [
+                "test_counter",
+                "test_counter_total",
+                "test_driver_counter",
+                "test_driver_counter_total",
+                "test_gauge",
+            ]
+            if os.environ.get("RAY_experimental_enable_open_telemetry_on_core") != "1"
+            else [
+                "test_counter_total",
+                "test_driver_counter_total",
+                "test_gauge",
+            ]
+        )
 
         # Make sure our user defined metrics exist and have the correct types
-        for metric_name in [
-            "test_counter",
-            "test_counter_total",
-            "test_histogram_bucket",
-            "test_driver_counter",
-            "test_driver_counter_total",
-            "test_gauge",
-        ]:
+        for metric_name in custom_metrics:
             metric_name = f"ray_{metric_name}"
             assert metric_name in metric_names
             if metric_name.endswith("_total"):
@@ -346,23 +357,6 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
             m for m in metric_samples if "test_driver_counter" in m.name
         ][0]
         assert test_driver_counter_sample.value == 1.0
-
-        test_histogram_samples = [
-            m for m in metric_samples if "test_histogram" in m.name
-        ]
-        buckets = {
-            m.labels["le"]: m.value
-            for m in test_histogram_samples
-            if "_bucket" in m.name
-        }
-        # We recorded value 1.5 for the histogram. In Prometheus data model
-        # the histogram is cumulative. So we expect the count to appear in
-        # <1.1 and <+Inf buckets.
-        assert buckets == {"0.1": 0.0, "1.6": 1.0, "+Inf": 1.0}
-        hist_count = [m for m in test_histogram_samples if "_count" in m.name][0].value
-        hist_sum = [m for m in test_histogram_samples if "_sum" in m.name][0].value
-        assert hist_count == 1
-        assert hist_sum == 1.5
 
         # Make sure the gRPC stats are not reported from workers. We disabled
         # it there because it has too high cardinality.
@@ -469,9 +463,12 @@ def test_metrics_export_node_metrics(shutdown_only):
     wait_for_condition(verify_dashboard_metrics)
 
 
-@pytest.fixture(scope="session")
+_EVENT_AGGREGATOR_AGENT_TARGET_PORT = find_free_port()
+
+
+@pytest.fixture(scope="module")
 def httpserver_listen_address():
-    return ("127.0.0.1", 12345)
+    return ("127.0.0.1", _EVENT_AGGREGATOR_AGENT_TARGET_PORT)
 
 
 @pytest.mark.parametrize(
@@ -480,6 +477,7 @@ def httpserver_listen_address():
         {
             "env_vars": {
                 "RAY_DASHBOARD_AGGREGATOR_AGENT_MAX_EVENT_BUFFER_SIZE": 1,
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_SEND_PORT": _EVENT_AGGREGATOR_AGENT_TARGET_PORT,
             },
         },
     ],
@@ -530,7 +528,7 @@ def test_metrics_export_event_aggregator_agent(
     now = time.time_ns()
     seconds, nanos = divmod(now, 10**9)
     timestamp = Timestamp(seconds=seconds, nanos=nanos)
-    request = AddEventRequest(
+    request = AddEventsRequest(
         events_data=RayEventsData(
             events=[
                 RayEvent(
@@ -562,8 +560,8 @@ def test_metrics_export_event_aggregator_agent(
     )
 
     reply = stub.AddEvents(request)
-    assert reply.status.status_code == 5
-    assert reply.status.status_message == "event 1 dropped because event buffer full"
+    assert reply.status.code == 5
+    assert reply.status.message == "event 1 dropped because event buffer full"
     wait_for_condition(lambda: len(httpserver.log) == 1)
 
     wait_for_condition(test_case_value_correct, timeout=30, retry_interval_ms=1000)
@@ -701,8 +699,64 @@ def test_operation_stats(monkeypatch, shutdown_only):
         wait_for_condition(verify, timeout=60)
 
 
+@pytest.mark.skipif(prometheus_client is None, reason="Prometheus not installed")
+@pytest.mark.parametrize("_setup_cluster_for_test", [True], indirect=True)
+def test_histogram(_setup_cluster_for_test):
+    TEST_TIMEOUT_S = 30
+    (
+        prom_addresses,
+        autoscaler_export_addr,
+        dashboard_export_addr,
+    ) = _setup_cluster_for_test
+
+    def test_cases():
+        components_dict, metric_descriptors, metric_samples = fetch_prometheus(
+            prom_addresses
+        )
+        metric_names = metric_descriptors.keys()
+        custom_histogram_metric_name = "ray_test_histogram_bucket"
+        assert custom_histogram_metric_name in metric_names
+        assert metric_descriptors[custom_histogram_metric_name].type == "histogram"
+
+        test_histogram_samples = [
+            m for m in metric_samples if "test_histogram" in m.name
+        ]
+        buckets = {
+            m.labels["le"]: m.value
+            for m in test_histogram_samples
+            if "_bucket" in m.name
+        }
+        # In Prometheus data model
+        # the histogram is cumulative. So we expect the count to appear in
+        # <1.1 and <+Inf buckets.
+        assert buckets == {"0.1": 1.0, "1.6": 2.0, "+Inf": 2.0}
+        hist_count = [m for m in test_histogram_samples if "_count" in m.name][0].value
+        assert hist_count == 2
+
+    def wrap_test_case_for_retry():
+        try:
+            test_cases()
+            return True
+        except AssertionError:
+            return False
+
+    try:
+        wait_for_condition(
+            wrap_test_case_for_retry,
+            timeout=TEST_TIMEOUT_S,
+            retry_interval_ms=1000,  # Yield resource for other processes
+        )
+    except RuntimeError:
+        print(f"The components are {pformat(fetch_prometheus(prom_addresses))}")
+        test_cases()  # Should fail assert
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="Not working in Windows.")
-def test_counter(shutdown_only):
+@pytest.mark.skipif(
+    os.environ.get("RAY_experimental_enable_open_telemetry_on_core") == "1",
+    reason="OpenTelemetry backend does not support Counter exported as gauge.",
+)
+def test_counter_exported_as_gauge(shutdown_only):
     # Test to make sure Counter emits the right Prometheus metrics
     context = ray.init()
 
@@ -753,7 +807,7 @@ def test_counter(shutdown_only):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Not working in Windows.")
-def test_counter_without_export_counter_as_gauge(monkeypatch, shutdown_only):
+def test_counter(monkeypatch, shutdown_only):
     # Test to make sure we don't export counter as gauge
     # if RAY_EXPORT_COUNTER_AS_GAUGE is 0
     monkeypatch.setenv("RAY_EXPORT_COUNTER_AS_GAUGE", "0")

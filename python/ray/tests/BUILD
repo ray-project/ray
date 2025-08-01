@@ -5,6 +5,7 @@ py_library(
     name = "conftest",
     srcs = glob(["**/conftest.py"]),
     visibility = [
+        "//python/ray/_common/tests:__subpackages__",
         "//python/ray/autoscaler/v2:__pkg__",
         "//python/ray/dashboard:__pkg__",
         "//python/ray/data:__pkg__",
@@ -211,7 +212,6 @@ py_test_module_list(
         "test_list_actors_3.py",
         "test_list_actors_4.py",
         "test_multiprocessing.py",
-        "test_object_assign_owner.py",
         "test_placement_group.py",
         "test_placement_group_2.py",
         "test_placement_group_3.py",
@@ -477,7 +477,6 @@ py_test_module_list(
     size = "large",
     files = [
         "test_output.py",
-        "test_usage_stats.py",
     ],
     tags = [
         "exclusive",
@@ -1226,6 +1225,7 @@ py_test(
         "exclusive",
         "medium_size_python_tests_k_to_z",
         "no_windows",
+        "serve_tracing",
         "team:serve",
     ],
     deps = [

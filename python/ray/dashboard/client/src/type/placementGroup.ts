@@ -12,6 +12,9 @@ export type Bundle = {
   unit_resources: {
     [key: string]: number;
   };
+  label_selector?: {
+    [key: string]: string;
+  } | null;
 };
 
 export type PlacementGroup = {

@@ -3,14 +3,14 @@
 
 python-snappy
 tensorflow-datasets==4.9.3
-datasets
+datasets>=3.0.2
 pytest-repeat
 soundfile
 fastavro
 google-cloud-bigquery
-google-cloud-core==2.4.1
-google-cloud-bigquery-storage==2.24.0
-google-api-core==1.34.0
+google-cloud-core
+google-cloud-bigquery-storage
+google-api-core
 webdataset
 raydp==1.7.0b20250423.dev0
 pylance==0.22
@@ -21,4 +21,5 @@ decord
 snowflake-connector-python>=3.15.0
 pyiceberg[sql-sqlite]==0.9.0
 clickhouse-connect
-hudi==0.2.0
+pybase64
+hudi==0.4.0

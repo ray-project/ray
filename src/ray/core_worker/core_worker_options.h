@@ -15,7 +15,6 @@
 #pragma once
 
 #include <memory>
-#include <optional>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -87,6 +86,7 @@ struct CoreWorkerOptions {
         raylet_ip_address(""),
         driver_name(""),
         task_execution_callback(nullptr),
+        free_actor_object_callback(nullptr),
         check_signals(nullptr),
         initialize_thread_callback(nullptr),
         gc_collect(nullptr),
@@ -107,13 +107,8 @@ struct CoreWorkerOptions {
         entrypoint(""),
         worker_launch_time_ms(-1),
         worker_launched_time_ms(-1),
-        assigned_worker_port(std::nullopt),
-        assigned_raylet_id(std::nullopt),
         debug_source(""),
-        enable_resource_isolation(false) {
-    // TODO(hjiang): Add invariant check: for worker, both should be assigned; for driver,
-    // neither should be assigned.
-  }
+        enable_resource_isolation(false) {}
 
   /// Type of this worker (i.e., DRIVER or WORKER).
   WorkerType worker_type;
@@ -146,6 +141,8 @@ struct CoreWorkerOptions {
   std::string driver_name;
   /// Application-language worker callback to execute tasks.
   TaskExecutionCallback task_execution_callback;
+  /// Callback to free GPU object from the in-actor object store.
+  std::function<void(const ObjectID &)> free_actor_object_callback;
   /// Application-language callback to check for signals that have been received
   /// since calling into C++. This will be called periodically (at least every
   /// 1s) during long-running operations. If the function returns anything but StatusOK,
@@ -211,18 +208,6 @@ struct CoreWorkerOptions {
   std::string entrypoint;
   int64_t worker_launch_time_ms;
   int64_t worker_launched_time_ms;
-  /// Available port number for the worker.
-  ///
-  /// TODO(hjiang): Figure out how to assign available port at core worker start, also
-  /// need to add an end-to-end integration test.
-  ///
-  /// On the next end-to-end integrartion PR, we should check
-  /// - non-empty for worker
-  /// - and empty for driver
-  std::optional<int> assigned_worker_port;
-  /// Same as [assigned_worker_port], will be assigned for worker, and left empty for
-  /// driver.
-  std::optional<NodeID> assigned_raylet_id;
 
   // Source information for `CoreWorker`, used for debugging and informational purpose,
   // rather than functional purpose.

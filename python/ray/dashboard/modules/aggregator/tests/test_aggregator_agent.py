@@ -15,23 +15,44 @@ from ray._raylet import GcsClient
 import ray.dashboard.consts as dashboard_consts
 from ray._private.test_utils import (
     wait_until_server_available,
+    find_free_port,
 )
 
 from ray.core.generated.events_event_aggregator_service_pb2_grpc import (
     EventAggregatorServiceStub,
 )
 from ray.core.generated.events_event_aggregator_service_pb2 import (
-    AddEventRequest,
+    AddEventsRequest,
     RayEventsData,
     TaskEventsMetadata,
 )
 from ray.core.generated.events_base_event_pb2 import RayEvent
+from ray.core.generated.profile_events_pb2 import ProfileEvents, ProfileEventEntry
+from ray.core.generated.events_task_profile_events_pb2 import TaskProfileEvents
 from ray.core.generated.common_pb2 import TaskAttempt
 
 
-@pytest.fixture(scope="session")
+_EVENT_AGGREGATOR_AGENT_TARGET_PORT = find_free_port()
+
+
+@pytest.fixture(scope="module")
 def httpserver_listen_address():
-    return ("127.0.0.1", 12345)
+    return ("127.0.0.1", _EVENT_AGGREGATOR_AGENT_TARGET_PORT)
+
+
+_with_aggregator_port = pytest.mark.parametrize(
+    "ray_start_cluster_head_with_env_vars",
+    [
+        {
+            "env_vars": {
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_SEND_PORT": str(
+                    _EVENT_AGGREGATOR_AGENT_TARGET_PORT
+                ),
+            },
+        },
+    ],
+    indirect=True,
+)
 
 
 def get_event_aggregator_grpc_stub(webui_url, gcs_address, head_node_id):
@@ -56,10 +77,11 @@ def get_event_aggregator_grpc_stub(webui_url, gcs_address, head_node_id):
     return EventAggregatorServiceStub(channel)
 
 
+@_with_aggregator_port
 def test_aggregator_agent_receive_publish_events_normally(
-    ray_start_cluster_head, httpserver
+    ray_start_cluster_head_with_env_vars, httpserver
 ):
-    cluster = ray_start_cluster_head
+    cluster = ray_start_cluster_head_with_env_vars
     stub = get_event_aggregator_grpc_stub(
         cluster.webui_url, cluster.gcs_address, cluster.head_node.node_id
     )
@@ -70,7 +92,7 @@ def test_aggregator_agent_receive_publish_events_normally(
     seconds, nanos = divmod(test_time, 10**9)
     timestamp = Timestamp(seconds=seconds, nanos=nanos)
 
-    request = AddEventRequest(
+    request = AddEventsRequest(
         events_data=RayEventsData(
             events=[
                 RayEvent(
@@ -89,8 +111,8 @@ def test_aggregator_agent_receive_publish_events_normally(
     )
 
     reply = stub.AddEvents(request)
-    assert reply.status.status_code == 0
-    assert reply.status.status_message == "all events received"
+    assert reply.status.code == 0
+    assert reply.status.message == "all events received"
 
     wait_for_condition(lambda: len(httpserver.log) == 1)
 
@@ -112,6 +134,7 @@ def test_aggregator_agent_receive_publish_events_normally(
         {
             "env_vars": {
                 "RAY_DASHBOARD_AGGREGATOR_AGENT_MAX_EVENT_BUFFER_SIZE": 1,
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_SEND_PORT": _EVENT_AGGREGATOR_AGENT_TARGET_PORT,
             },
         },
     ],
@@ -131,7 +154,7 @@ def test_aggregator_agent_receive_event_full(
     seconds, nanos = divmod(now, 10**9)
     timestamp = Timestamp(seconds=seconds, nanos=nanos)
 
-    request = AddEventRequest(
+    request = AddEventsRequest(
         events_data=RayEventsData(
             events=[
                 RayEvent(
@@ -150,18 +173,19 @@ def test_aggregator_agent_receive_event_full(
     )
 
     reply = stub.AddEvents(request)
-    assert reply.status.status_code == 0
-    assert reply.status.status_message == "all events received"
+    assert reply.status.code == 0
+    assert reply.status.message == "all events received"
 
     reply = stub.AddEvents(request)
-    assert reply.status.status_code == 5
-    assert reply.status.status_message == "event 1 dropped because event buffer full"
+    assert reply.status.code == 5
+    assert reply.status.message == "event 1 dropped because event buffer full"
 
 
+@_with_aggregator_port
 def test_aggregator_agent_receive_dropped_at_core_worker(
-    ray_start_cluster_head, httpserver
+    ray_start_cluster_head_with_env_vars, httpserver
 ):
-    cluster = ray_start_cluster_head
+    cluster = ray_start_cluster_head_with_env_vars
     stub = get_event_aggregator_grpc_stub(
         cluster.webui_url, cluster.gcs_address, cluster.head_node.node_id
     )
@@ -172,7 +196,7 @@ def test_aggregator_agent_receive_dropped_at_core_worker(
     seconds, nanos = divmod(now, 10**9)
     timestamp = Timestamp(seconds=seconds, nanos=nanos)
 
-    request = AddEventRequest(
+    request = AddEventsRequest(
         events_data=RayEventsData(
             events=[
                 RayEvent(
@@ -200,8 +224,8 @@ def test_aggregator_agent_receive_dropped_at_core_worker(
     )
 
     reply = stub.AddEvents(request)
-    assert reply.status.status_code == 0
-    assert reply.status.status_message == "all events received"
+    assert reply.status.code == 0
+    assert reply.status.message == "all events received"
 
     wait_for_condition(lambda: len(httpserver.log) == 1)
 
@@ -210,16 +234,20 @@ def test_aggregator_agent_receive_dropped_at_core_worker(
     assert req_json[0]["message"] == "core worker event"
 
 
-def test_aggregator_agent_receive_multiple_events(ray_start_cluster_head, httpserver):
-    cluster = ray_start_cluster_head
+@_with_aggregator_port
+def test_aggregator_agent_receive_multiple_events(
+    ray_start_cluster_head_with_env_vars, httpserver
+):
+    cluster = ray_start_cluster_head_with_env_vars
     stub = get_event_aggregator_grpc_stub(
         cluster.webui_url, cluster.gcs_address, cluster.head_node.node_id
     )
+
     httpserver.expect_request("/", method="POST").respond_with_data("", status=200)
     now = time.time_ns()
     seconds, nanos = divmod(now, 10**9)
     timestamp = Timestamp(seconds=seconds, nanos=nanos)
-    request = AddEventRequest(
+    request = AddEventsRequest(
         events_data=RayEventsData(
             events=[
                 RayEvent(
@@ -245,8 +273,8 @@ def test_aggregator_agent_receive_multiple_events(ray_start_cluster_head, httpse
         )
     )
     reply = stub.AddEvents(request)
-    assert reply.status.status_code == 0
-    assert reply.status.status_message == "all events received"
+    assert reply.status.code == 0
+    assert reply.status.message == "all events received"
     wait_for_condition(lambda: len(httpserver.log) == 1)
     req, _ = httpserver.log[0]
     req_json = json.loads(req.data)
@@ -261,6 +289,7 @@ def test_aggregator_agent_receive_multiple_events(ray_start_cluster_head, httpse
         {
             "env_vars": {
                 "RAY_DASHBOARD_AGGREGATOR_AGENT_MAX_EVENT_BUFFER_SIZE": 1,
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_SEND_PORT": _EVENT_AGGREGATOR_AGENT_TARGET_PORT,
             },
         },
     ],
@@ -277,7 +306,7 @@ def test_aggregator_agent_receive_multiple_events_failures(
     now = time.time_ns()
     seconds, nanos = divmod(now, 10**9)
     timestamp = Timestamp(seconds=seconds, nanos=nanos)
-    request = AddEventRequest(
+    request = AddEventsRequest(
         events_data=RayEventsData(
             events=[
                 RayEvent(
@@ -308,20 +337,23 @@ def test_aggregator_agent_receive_multiple_events_failures(
         )
     )
     reply = stub.AddEvents(request)
-    assert reply.status.status_code == 5
+    assert reply.status.code == 5
     assert (
-        reply.status.status_message
+        reply.status.message
         == "event 1 dropped because event buffer full, event 2 dropped because event buffer full"
     )
 
 
-def test_aggregator_agent_receive_empty_events(ray_start_cluster_head, httpserver):
-    cluster = ray_start_cluster_head
+@_with_aggregator_port
+def test_aggregator_agent_receive_empty_events(
+    ray_start_cluster_head_with_env_vars, httpserver
+):
+    cluster = ray_start_cluster_head_with_env_vars
     stub = get_event_aggregator_grpc_stub(
         cluster.webui_url, cluster.gcs_address, cluster.head_node.node_id
     )
     httpserver.expect_request("/", method="POST").respond_with_data("", status=200)
-    request = AddEventRequest(
+    request = AddEventsRequest(
         events_data=RayEventsData(
             events=[],
             task_events_metadata=TaskEventsMetadata(
@@ -330,8 +362,97 @@ def test_aggregator_agent_receive_empty_events(ray_start_cluster_head, httpserve
         )
     )
     reply = stub.AddEvents(request)
-    assert reply.status.status_code == 0
-    assert reply.status.status_message == "all events received"
+    assert reply.status.code == 0
+    assert reply.status.message == "all events received"
+
+
+@_with_aggregator_port
+def test_aggregator_agent_receive_profile_events(
+    ray_start_cluster_head_with_env_vars, httpserver
+):
+    cluster = ray_start_cluster_head_with_env_vars
+    stub = get_event_aggregator_grpc_stub(
+        cluster.webui_url, cluster.gcs_address, cluster.head_node.node_id
+    )
+
+    httpserver.expect_request("/", method="POST").respond_with_data("", status=200)
+
+    test_time = 1751302230130457542
+    seconds, nanos = (test_time // 10**9, test_time % 10**9)
+    timestamp = Timestamp(seconds=seconds, nanos=nanos)
+
+    request = AddEventRequest(
+        events_data=RayEventsData(
+            events=[
+                RayEvent(
+                    event_id=b"1",
+                    source_type=RayEvent.SourceType.CORE_WORKER,
+                    event_type=RayEvent.EventType.TASK_PROFILE_EVENT,
+                    timestamp=timestamp,
+                    severity=RayEvent.Severity.INFO,
+                    message="profile event test",
+                    task_profile_events=TaskProfileEvents(
+                        task_id=b"100",
+                        attempt_number=3,
+                        job_id=b"200",
+                        profile_events=ProfileEvents(
+                            component_type="worker",
+                            component_id=b"worker_123",
+                            node_ip_address="127.0.0.1",
+                            events=[
+                                ProfileEventEntry(
+                                    start_time=1751302230130000000,
+                                    end_time=1751302230131000000,
+                                    event_name="task_execution",
+                                    extra_data='{"cpu_usage": 0.8}',
+                                )
+                            ],
+                        ),
+                    ),
+                ),
+            ],
+            task_events_metadata=TaskEventsMetadata(
+                dropped_task_attempts=[],
+            ),
+        )
+    )
+
+    reply = stub.AddEvents(request)
+    assert reply.status.code == 0
+    assert reply.status.message == "all events received"
+
+    wait_for_condition(lambda: len(httpserver.log) == 1)
+
+    req, _ = httpserver.log[0]
+    req_json = json.loads(req.data)
+
+    assert len(req_json) == 1
+    assert req_json[0]["eventId"] == base64.b64encode(b"1").decode()
+    assert req_json[0]["sourceType"] == "CORE_WORKER"
+    assert req_json[0]["eventType"] == "TASK_PROFILE_EVENT"
+    assert req_json[0]["severity"] == "INFO"
+    assert req_json[0]["message"] == "profile event test"
+    assert req_json[0]["timestamp"] == "2025-06-30T16:50:30.130457542Z"
+
+    # Verify task profile event specific fields
+    assert "taskProfileEvents" in req_json[0]
+    task_profile_events = req_json[0]["taskProfileEvents"]
+    assert task_profile_events["taskId"] == base64.b64encode(b"100").decode()
+    assert task_profile_events["attemptNumber"] == 3
+    assert task_profile_events["jobId"] == base64.b64encode(b"200").decode()
+
+    # Verify profile event specific fields
+    profile_event = task_profile_events["profileEvents"]
+    assert profile_event["componentType"] == "worker"
+    assert profile_event["componentId"] == base64.b64encode(b"worker_123").decode()
+    assert profile_event["nodeIpAddress"] == "127.0.0.1"
+    assert len(profile_event["events"]) == 1
+
+    event_entry = profile_event["events"][0]
+    assert event_entry["eventName"] == "task_execution"
+    assert event_entry["startTime"] == "1751302230130000000"
+    assert event_entry["endTime"] == "1751302230131000000"
+    assert event_entry["extraData"] == '{"cpu_usage": 0.8}'
 
 
 if __name__ == "__main__":
