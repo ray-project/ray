@@ -264,10 +264,6 @@ class ConsolePopen(subprocess.Popen):
             super(ConsolePopen, self).__init__(*args, **kwargs)
 
 
-def address(ip_address, port):
-    return ip_address + ":" + str(port)
-
-
 def _find_address_from_flag(flag: str):
     """
     Attempts to find all valid Ray addresses on this node, specified by the

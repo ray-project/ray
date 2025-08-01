@@ -22,6 +22,7 @@
 #include "absl/flags/parse.h"
 #include "absl/strings/str_split.h"
 #include "nlohmann/json.hpp"
+#include "ray/common/network_util.h"
 
 ABSL_FLAG(std::string, ray_address, "", "The address of the Ray cluster to connect to.");
 
@@ -249,11 +250,12 @@ void ConfigInternal::Init(RayConfig &config, int argc, char **argv) {
 };
 
 void ConfigInternal::SetBootstrapAddress(std::string_view address) {
-  auto pos = address.find(':');
-  RAY_CHECK(pos != std::string::npos);
-  bootstrap_ip = address.substr(0, pos);
+  auto address = ParseAddress(std::string(address));
+  RAY_CHECK(address.size() == 2)
+
+  bootstrap_ip = address[0];
   auto ret = std::from_chars(
-      address.data() + pos + 1, address.data() + address.size(), bootstrap_port);
+      address[1].data(), address[1].data() + address[1].size(), bootstrap_port);
   RAY_CHECK(ret.ec == std::errc());
 }
 

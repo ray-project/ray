@@ -111,13 +111,16 @@ ParseUrlEndpoint(const std::string &endpoint, int default_port) {
     RAY_LOG(FATAL) << "UNIX-domain socket endpoints are not supported: " << endpoint;
 #endif
   } else if (scheme == "tcp://") {
-    std::string::const_iterator i = address.begin();
-    std::string host = ::ray::ScanToken(i, "[%*[^][/]]");
-    host =
-        host.empty() ? ::ray::ScanToken(i, "%*[^/:]") : host.substr(1, host.size() - 2);
-    std::string port_str = ::ray::ScanToken(i, ":%*d");
-    int port = port_str.empty() ? default_port : std::stoi(port_str.substr(1));
-    result = boost::asio::ip::tcp::endpoint(boost::asio::ip::make_address(host), port);
+    auto parts = ParseAddress(address);
+    if (parts.size() == 2) {
+      std::string host = parts[0];
+      int port = std::stoi(parts[1]);
+      result = boost::asio::ip::tcp::endpoint(boost::asio::ip::make_address(host), port);
+    } else if (parts.size() == 1) {
+      std::string host = parts[0];
+      result = boost::asio::ip::tcp::endpoint(boost::asio::ip::make_address(host),
+                                              default_port);
+    }
   } else {
     RAY_LOG(FATAL) << "Unable to parse socket endpoint: " << endpoint;
   }

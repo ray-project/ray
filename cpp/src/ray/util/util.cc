@@ -18,14 +18,14 @@
 #include <boost/asio.hpp>
 
 #include "ray/common/constants.h"
+#include "ray/common/network_util.h"
 #include "ray/util/logging.h"
 
 namespace ray {
 namespace internal {
 
 std::string GetNodeIpAddress(const std::string &address) {
-  std::vector<std::string> parts;
-  boost::split(parts, address, boost::is_any_of(":"));
+  auto parts = ParseAddress(address);
   RAY_CHECK(parts.size() == 2);
   try {
     boost::asio::io_service netService;

@@ -14,6 +14,14 @@
 
 #pragma once
 
+#include <string>
+#include <vector>
+
 // Check whether the given [port] is available, via attempt to bind a socket to the port.
 // Notice, the check could be non-authentic if there're concurrent port assignments.
 bool CheckPortFree(int port);
+
+std::string BuildAddress(const std::string &host, int port);
+std::string BuildAddress(const std::string &host, const std::string &port);
+
+std::vector<std::string> ParseAddress(const std::string &address);

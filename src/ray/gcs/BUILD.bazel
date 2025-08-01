@@ -15,6 +15,7 @@ ray_cc_library(
     deps = [
         "//:hiredis",
         "//src/ray/common:asio",
+        "//src/ray/common:network",
         "//src/ray/common:ray_config",
         "//src/ray/common:status",
         "//src/ray/stats:stats_lib",
