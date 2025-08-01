@@ -154,8 +154,8 @@ def test_shuffle(shutdown_only, restore_data_context, shuffle_op):
 
     shuffle_fn, kwargs, fusion_supported = shuffle_op
 
-    ctx.target_shuffle_max_block_size = 10_000 * 8
-    num_blocks_expected = mem_size // ctx.target_shuffle_max_block_size
+    ctx.target_max_block_size = 10_000 * 8
+    num_blocks_expected = mem_size // ctx.target_max_block_size
     last_snapshot = get_initial_core_execution_metrics_snapshot()
 
     ds = shuffle_fn(ray.data.range(N), **kwargs).materialize()
@@ -201,9 +201,9 @@ def test_shuffle(shutdown_only, restore_data_context, shuffle_op):
         num_intermediate_blocks,
     )
 
-    ctx.target_shuffle_max_block_size //= 2
-    num_blocks_expected = mem_size // ctx.target_shuffle_max_block_size
-    block_size_expected = ctx.target_shuffle_max_block_size
+    ctx.target_max_block_size //= 2
+    num_blocks_expected = mem_size // ctx.target_max_block_size
+    block_size_expected = ctx.target_max_block_size
 
     ds = shuffle_fn(ray.data.range(N), **kwargs).materialize()
     assert (
@@ -238,7 +238,7 @@ def test_shuffle(shutdown_only, restore_data_context, shuffle_op):
 
     # Setting target max block size does not affect map ops when there is a
     # shuffle downstream.
-    ctx.target_max_block_size = ctx.target_shuffle_max_block_size * 2
+    ctx.target_max_block_size = ctx.target_max_block_size * 2
     ds = shuffle_fn(ray.data.range(N).map(lambda x: x), **kwargs).materialize()
     assert (
         num_blocks_expected
