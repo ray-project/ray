@@ -3639,7 +3639,7 @@ def remote(
             the default value is 3, and a value of -1 indicates
             infinite retries.
             See :ref:`task fault tolerance <fault-tolerance-tasks>` for more details.
-        execute_out_of_order: Only for *actors*. Whether Ray executes actor tasks
+        allow_out_of_order_execution: Only for *actors*. Whether Ray executes actor tasks
             out of order. If you're using multi-threaded (``max_concurrency > 1``)
             or async actors, you can't set this to False. Defaults to True if you're
             using multi-threaded or async actors, and False otherwise.

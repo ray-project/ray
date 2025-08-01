@@ -1347,10 +1347,11 @@ class ActorClass(Generic[T]):
                 concurrency defaults to 1 for threaded execution, and 1000 for
                 asyncio execution. Note that the execution order is not
                 guaranteed when max_concurrency > 1.
-            execute_out_of_order: Only for *actors*. Whether Ray executes actor tasks
-                out of order. If you're using multi-threaded (``max_concurrency > 1``)
-                or async actors, you can't set this to False. Defaults to True if you're
-                using multi-threaded or async actors, and False otherwise.
+            allow_out_of_order_execution: Only for *actors*. Whether Ray executes actor
+                tasks out of order. If you're using multi-threaded
+                (``max_concurrency > 1``) or async actors, you can't set this to False.
+                Defaults to True if you're using multi-threaded or async actors, and
+                False otherwise.
             name: The globally unique name for the actor, which can be used
                 to retrieve the actor via ray.get_actor(name) as long as the
                 actor is still alive.
@@ -1707,7 +1708,7 @@ class ActorClass(Generic[T]):
                 )
             )
 
-        execute_out_of_order = actor_options.get("execute_out_of_order")
+        execute_out_of_order = actor_options.get("allow_out_of_order_execution")
 
         # If the actor is async or multi-threaded, default to out-of-order execution.
         if execute_out_of_order is None:

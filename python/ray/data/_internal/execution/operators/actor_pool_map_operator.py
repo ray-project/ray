@@ -465,8 +465,8 @@ class ActorPoolMapOperator(MapOperator):
         # from idling when the first actor task is blocked.
         #
         # `MapOperator` should still respect `preserve_order` in this case.
-        if "execute_out_of_order" not in ray_remote_args:
-            ray_remote_args["execute_out_of_order"] = True
+        if "allow_out_of_order_execution" not in ray_remote_args:
+            ray_remote_args["allow_out_of_order_execution"] = True
 
         return ray_remote_args
 
