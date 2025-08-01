@@ -35,6 +35,7 @@
 #include "ray/gcs/store_client/redis_store_client.h"
 #include "ray/gcs/store_client/store_client.h"
 #include "ray/pubsub/publisher.h"
+#include "ray/stats/stats.h"
 #include "ray/util/network_util.h"
 #include "ray/util/util.h"
 
@@ -156,6 +157,11 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
       /*publisher_id=*/NodeID::FromRandom());
 
   gcs_publisher_ = std::make_unique<GcsPublisher>(std::move(inner_publisher));
+  metrics_agent_client_ = std::make_unique<rpc::MetricsAgentClientImpl>(
+      "127.0.0.1",
+      config_.metrics_agent_port,
+      io_context_provider_.GetDefaultIOContext(),
+      client_call_manager_);
 }
 
 GcsServer::~GcsServer() { Stop(); }
@@ -268,6 +274,11 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
 
   // Init usage stats client.
   InitUsageStatsClient();
+
+  // Init OpenTelemetry exporter.
+  metrics_agent_client_->WaitForServerReady([this](const Status &server_status) {
+    stats::InitOpenTelemetryExporter(config_.metrics_agent_port, server_status);
+  });
 
   // Start RPC server when all tables have finished loading initial
   // data.

@@ -41,6 +41,7 @@ ray_cc_library(
         "//src/ray/raylet_client:raylet_client_lib",
         "//src/ray/rpc:core_worker_client",
         "//src/ray/rpc:core_worker_server",
+        "//src/ray/rpc:metrics_agent_client",
         "//src/ray/stats:stats_lib",
         "//src/ray/util",
         "//src/ray/util:container_util",

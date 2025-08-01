@@ -281,6 +281,7 @@ ray_cc_binary(
         "//src/ray/gcs/gcs_client:gcs_client_lib",
         "//src/ray/object_manager:ownership_object_directory",
         "//src/ray/raylet/scheduling:cluster_task_manager",
+        "//src/ray/rpc:metrics_agent_client",
         "//src/ray/stats:stats_lib",
         "//src/ray/util:cmd_line_utils",
         "//src/ray/util:event",
