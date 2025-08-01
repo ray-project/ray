@@ -7,7 +7,6 @@ from typing import Any, Collection, Dict, Optional, Type, TYPE_CHECKING, Union
 import gymnasium as gym
 
 from ray.rllib.core import DEFAULT_MODULE_ID
-from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.models.distributions import Distribution
 from ray.rllib.utils.annotations import (
