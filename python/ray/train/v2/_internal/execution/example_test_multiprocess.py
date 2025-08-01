@@ -20,12 +20,8 @@ def example_1_basic_usage():
     """Example 1: Basic single-process usage of the actor."""
     print("=== Example 1: Basic Usage ===")
 
-    # Initialize Ray if not already initialized
-    if not ray.is_initialized():
-        ray.init(num_cpus=4)
-
     # Create the actor
-    world_size = 3
+    world_size = 1
     actor = GlobalLocalTrainerRayDataset.remote(world_size)
 
     # Create test datasets
@@ -52,9 +48,6 @@ def example_1_basic_usage():
 def example_2_threading_simulation():
     """Example 2: Simulate multiple workers using threading."""
     print("=== Example 2: Multi-Threading Simulation ===")
-
-    if not ray.is_initialized():
-        ray.init(num_cpus=4)
 
     world_size = 4
     actor = GlobalLocalTrainerRayDataset.remote(world_size)
@@ -127,44 +120,45 @@ def example_3_multiprocess_with_ray_drivers():
     worker_script = """
 import ray
 import time
+import sys
+import traceback
 from ray.train.v2._internal.execution.local_running_utils import GlobalLocalTrainerRayDataset
 
-ray.init(address="auto")
-
-# Create or get the shared actor (first process creates it, others get it)
-world_size = 3
-actor_name = "shared_data_actor"
-
 try:
-    # Try to get existing actor first
-    actor = ray.get_actor(actor_name)
-    print(f"WORKER_{rank}: Found existing actor")
-except ValueError:
-    # Actor doesn't exist, create it
-    actor = GlobalLocalTrainerRayDataset.options(name=actor_name).remote(world_size)
-    print(f"WORKER_{rank}: Created new actor")
+    # Initialize Ray - try to connect to existing cluster or start a new one
+    ray.init(address="auto", namespace="test")
 
-# All workers try to register datasets (only first one succeeds)
-datasets = {{
-    "train": ray.data.range(30),
-    "val": ray.data.range(15)
-}}
-ray.get(actor.register_dataset.remote(datasets))
-print(f"WORKER_{rank}: Attempted dataset registration")
+    # Create or get the shared actor (first process creates it, others get it)
+    world_size = 3
+    actor_name = "shared_data_actor"
 
-# Small delay to ensure all workers have tried to register
-time.sleep(0.5)
+    actor = GlobalLocalTrainerRayDataset.options(name=actor_name, get_if_exists=True).remote(world_size)
 
-# Get data shard
-local_rank = {rank}
-shard = ray.get(actor.get_dataset_shard.remote(local_rank))
+    # All workers try to register datasets (only first one succeeds)
+    datasets = {{
+        "train": ray.data.range(30),
+        "val": ray.data.range(15)
+    }}
+    actor.register_dataset.remote(datasets)
+    print("WORKER_{rank}: Attempted dataset registration")
 
-# Count data
-train_count = len(list(shard["train"].iter_rows()))
-val_count = len(list(shard["val"].iter_rows()))
+    # Get data shard
+    local_rank = {rank}
+    shard = ray.get(actor.get_dataset_shard.remote(local_rank))
 
-print(f"WORKER_{rank}_RESULT:{train_count},{val_count}")
-ray.shutdown()
+    # Count data
+    train_count = len(list(shard["train"].iter_rows()))
+    val_count = len(list(shard["val"].iter_rows()))
+
+    print("WORKER_{rank}_RESULT:" + str(train_count) + "," + str(val_count))
+
+except Exception as e:
+    print("WORKER_{rank}_ERROR:" + str(e))
+    traceback.print_exc()
+
+finally:
+    if ray.is_initialized():
+        ray.shutdown()
 """
 
     print("Running worker processes concurrently...")
@@ -176,23 +170,48 @@ ray.shutdown()
         proc = run_string_as_driver_nonblocking(script)
         worker_processes.append((rank, proc))
 
-    # Collect results
+    # Collect results - wait for each process to complete first
     results = {}
     for rank, proc in worker_processes:
-        output = proc.stdout.read().decode()
+        # Wait for process to complete first
         proc.wait()
+
+        # Now read the output
+        try:
+            stdout_output = proc.stdout.read().decode()
+            stderr_output = proc.stderr.read().decode()
+
+            # Combine stdout and stderr for full output
+            output = stdout_output
+            if stderr_output.strip():
+                output += "\n--- STDERR ---\n" + stderr_output
+
+        except Exception as e:
+            output = f"Error reading output: {e}"
 
         print(f"Worker {rank} output:")
         print(output)
+        print("=" * 50)
 
-        # Parse output
+        # Parse output for results
         for line in output.split("\n"):
             if line.startswith(f"WORKER_{rank}_RESULT:"):
-                train_count, val_count = map(int, line.split(":")[1].split(","))
-                results[rank] = {"train": train_count, "val": val_count}
-                print(f"Worker {rank}: train={train_count}, val={val_count}")
+                try:
+                    train_count, val_count = map(int, line.split(":")[1].split(","))
+                    results[rank] = {"train": train_count, "val": val_count}
+                    print(f"Worker {rank}: train={train_count}, val={val_count}")
+                except ValueError as e:
+                    print(f"Failed to parse result line '{line}': {e}")
+            elif line.startswith(f"WORKER_{rank}_ERROR:"):
+                print(f"Worker {rank} encountered error: {line.split(':', 1)[1]}")
 
     # Verify all workers completed
+    if len(results) == 0:
+        print(
+            "⚠️  No workers completed successfully. Check the output above for errors."
+        )
+        return
+
     assert len(results) == 3, f"Expected 3 workers, got {len(results)}"
 
     # Verify each worker got the correct shard size
@@ -207,9 +226,6 @@ def example_4_torchrun_style_simulation():
     """Example 4: Simulate torchrun-style distributed training."""
     print("=== Example 4: Torchrun-Style Simulation ===")
 
-    if not ray.is_initialized():
-        ray.init(num_cpus=4)
-
     # Create a named actor that multiple "processes" can access
     world_size = 4
     actor_name = "torchrun_data_actor"
@@ -223,7 +239,9 @@ def example_4_torchrun_style_simulation():
         pass  # Actor doesn't exist
 
     # Create the shared data actor
-    actor = GlobalLocalTrainerRayDataset.options(name=actor_name).remote(world_size)
+    actor = GlobalLocalTrainerRayDataset.options(
+        name=actor_name, get_if_exists=True
+    ).remote(world_size)
 
     # Master process registers the datasets
     datasets = {

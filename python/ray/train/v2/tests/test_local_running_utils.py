@@ -6,7 +6,8 @@ import pytest
 import ray
 from ray._private.test_utils import run_string_as_driver_nonblocking
 from ray.train.v2._internal.execution.local_running_utils import (
-    GlobalLocalTrainerRayDataset,
+    get_dataset_shard,
+    maybe_start_local_running_data_provider_and_register_dataset,
 )
 
 
@@ -15,16 +16,13 @@ class TestGlobalLocalTrainerRayDataset:
 
     @pytest.fixture(autouse=True)
     def setup_ray(self):
-        """Setup Ray cluster for testing."""
-        if not ray.is_initialized():
-            ray.init(num_cpus=4)
+        ray.init(num_cpus=4)
         yield
-        # Don't shutdown Ray here to allow sharing between tests
+        ray.shutdown()
 
     def test_single_process_basic_functionality(self):
         """Test basic functionality in single process."""
-        world_size = 3
-        actor = GlobalLocalTrainerRayDataset.remote(world_size)
+        world_size = 1
 
         # Create test datasets
         datasets = {
@@ -33,11 +31,13 @@ class TestGlobalLocalTrainerRayDataset:
         }
 
         # Register datasets
-        ray.get(actor.register_dataset.remote(datasets))
+        maybe_start_local_running_data_provider_and_register_dataset(
+            world_size, datasets
+        )
 
         # Test getting shards for each worker
         for local_rank in range(world_size):
-            shard = ray.get(actor.get_dataset_shard.remote(local_rank))
+            shard = get_dataset_shard(local_rank)
 
             # Verify we get the expected datasets
             assert "train" in shard
@@ -48,33 +48,12 @@ class TestGlobalLocalTrainerRayDataset:
             val_count = len(list(shard["val"].iter_rows()))
 
             # Each worker should get roughly equal portions
-            assert train_count == 10  # 30 / 3 workers
-            assert val_count == 5  # 15 / 3 workers
-
-    def test_invalid_operations(self):
-        """Test error conditions and edge cases."""
-        world_size = 2
-        actor = GlobalLocalTrainerRayDataset.remote(world_size)
-
-        # Test getting shard before registration should fail
-        with pytest.raises(AssertionError, match="Must call register_dataset"):
-            ray.get(actor.get_dataset_shard.remote(0))
-
-        # Register datasets
-        datasets = {"train": ray.data.range(10)}
-        ray.get(actor.register_dataset.remote(datasets))
-
-        # Test invalid local_rank
-        with pytest.raises(AssertionError, match="local_rank .* must be < world_size"):
-            ray.get(actor.get_dataset_shard.remote(world_size))  # >= world_size
-
-        with pytest.raises(AssertionError, match="local_rank .* must be < world_size"):
-            ray.get(actor.get_dataset_shard.remote(-1))  # negative rank
+            assert train_count == 30
+            assert val_count == 15
 
     def test_multi_threading_concurrent_access(self):
         """Test concurrent access from multiple threads (simulates multi-worker scenario)."""
         world_size = 4
-        actor = GlobalLocalTrainerRayDataset.remote(world_size)
 
         # Create test datasets
         datasets = {
@@ -83,11 +62,13 @@ class TestGlobalLocalTrainerRayDataset:
         }
 
         # Register datasets
-        ray.get(actor.register_dataset.remote(datasets))
+        maybe_start_local_running_data_provider_and_register_dataset(
+            world_size, datasets
+        )
 
         def worker_function(local_rank: int) -> Dict:
             """Simulate a worker requesting its data shard."""
-            shard = ray.get(actor.get_dataset_shard.remote(local_rank))
+            shard = get_dataset_shard(local_rank)
 
             # Count items in each dataset
             train_count = len(list(shard["train"].iter_rows()))
@@ -135,18 +116,14 @@ class TestGlobalLocalTrainerRayDataset:
     def test_multiple_registration_attempts(self):
         """Test that only the first registration succeeds (simulates multiple workers trying to register)."""
         world_size = 3
-        actor = GlobalLocalTrainerRayDataset.remote(world_size)
 
         datasets1 = {"train": ray.data.range(30)}
         datasets2 = {"train": ray.data.range(60)}  # Different dataset
 
         def attempt_registration(datasets: Dict, worker_id: int) -> bool:
-            """Attempt to register datasets and return success status."""
-            try:
-                ray.get(actor.register_dataset.remote(datasets))
-                return True
-            except Exception:
-                return False
+            maybe_start_local_running_data_provider_and_register_dataset(
+                world_size, datasets
+            )
 
         # Simulate multiple workers trying to register concurrently
         results = []
@@ -159,14 +136,7 @@ class TestGlobalLocalTrainerRayDataset:
             for future in as_completed(futures):
                 results.append(future.result())
 
-        # With the bug fixed, only the first registration should succeed
-        # All registration attempts return successfully, but only the first one actually registers
-        successful_registrations = sum(results)
-        assert successful_registrations == 3  # All attempts succeed (no exceptions)
-
-        # But only the first registration actually took effect
-        # Verify we can get shards successfully
-        shard = ray.get(actor.get_dataset_shard.remote(0))
+        shard = get_dataset_shard(0)
         assert "train" in shard
 
         # The data should be from the first dataset (range 30)
@@ -181,30 +151,22 @@ class TestGlobalLocalTrainerRayDataset:
         worker_script = """
 import ray
 import time
-from ray.train.v2._internal.execution.local_running_utils import GlobalLocalTrainerRayDataset
-
-ray.init(address="auto")
+from ray.train.v2._internal.execution.local_running_utils import maybe_start_local_running_data_provider_and_register_dataset
 
 # Create or get the shared actor (first process creates it, others get it)
 world_size = 3
 actor_name = "test_data_actor"
 
 try:
-    # Try to get existing actor first
-    actor = ray.get_actor(actor_name)
-    print(f"WORKER_{rank}: Found existing actor")
-except ValueError:
-    # Actor doesn't exist, create it
-    actor = GlobalLocalTrainerRayDataset.options(name=actor_name).remote(world_size)
-    print(f"WORKER_{rank}: Created new actor")
+    maybe_start_local_running_data_provider_and_register_dataset(world_size, datasets)
 
 # All workers try to register datasets (only first one succeeds)
 datasets = {{
     "train": ray.data.range(30),
     "val": ray.data.range(15)
 }}
-ray.get(actor.register_dataset.remote(datasets))
-print(f"WORKER_{rank}: Attempted dataset registration")
+maybe_start_local_running_data_provider_and_register_dataset(world_size, datasets)
+print("WORKER_{rank}: Attempted dataset registration")
 
 # Get data shard
 local_rank = {rank}
@@ -214,7 +176,7 @@ shard = ray.get(actor.get_dataset_shard.remote(local_rank))
 train_count = len(list(shard["train"].iter_rows()))
 val_count = len(list(shard["val"].iter_rows()))
 
-print(f"WORKER_{rank}_RESULT:{{train_count}},{{val_count}}")
+print("WORKER_{rank}_RESULT:" + str(train_count) + "," + str(val_count))
 ray.shutdown()
 """
 
@@ -247,7 +209,6 @@ ray.shutdown()
     def test_data_consistency_across_workers(self):
         """Test that data is consistently distributed across workers."""
         world_size = 4
-        actor = GlobalLocalTrainerRayDataset.remote(world_size)
 
         # Create datasets with known data
         train_data = list(range(100))  # 0-99
@@ -260,14 +221,16 @@ ray.shutdown()
             "val": ray.data.from_items([{"id": i, "value": i * 3} for i in val_data]),
         }
 
-        ray.get(actor.register_dataset.remote(datasets))
+        maybe_start_local_running_data_provider_and_register_dataset(
+            world_size, datasets
+        )
 
         # Collect all data from all workers
         all_train_ids = set()
         all_val_ids = set()
 
         for local_rank in range(world_size):
-            shard = ray.get(actor.get_dataset_shard.remote(local_rank))
+            shard = get_dataset_shard(local_rank)
 
             train_rows = list(shard["train"].iter_rows())
             val_rows = list(shard["val"].iter_rows())

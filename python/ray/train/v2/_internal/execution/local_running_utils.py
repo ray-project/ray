@@ -1,3 +1,4 @@
+import threading
 from typing import Dict
 
 import ray
@@ -40,6 +41,8 @@ class GlobalLocalTrainerRayDataset:
         self.dataset_shards = self.data_config.configure(
             datasets=self.dataset,
             world_size=self.world_size,
+            worker_handles=None,
+            worker_node_ids=None,
         )
 
     def get_dataset_shard(self, local_rank: int) -> Dict[str, DataIterator]:
@@ -67,3 +70,38 @@ class GlobalLocalTrainerRayDataset:
         ), f"local_rank {local_rank} must be < world_size {self.world_size}"
 
         return self.dataset_shards[local_rank]
+
+
+LOCAL_RUNNING_DATA_PROVIDER_ACTOR_NAME = "local_running_data_provider"
+LOCAL_RUNNING_DATA_PROVIDER_NAMESPACE = "local_running_data_provider_namespace"
+
+_global_local_trainer_ray_dataset_actor = None
+_global_local_trainer_ray_dataset_actor_lock = threading.Lock()
+
+
+def maybe_start_local_running_data_provider_and_register_dataset(
+    world_size: int, dataset: Dict[str, Dataset]
+) -> None:
+    actor = None
+    global _global_local_trainer_ray_dataset_actor
+    with _global_local_trainer_ray_dataset_actor_lock:
+        if _global_local_trainer_ray_dataset_actor is None:
+            _global_local_trainer_ray_dataset_actor = (
+                GlobalLocalTrainerRayDataset.options(
+                    name=LOCAL_RUNNING_DATA_PROVIDER_ACTOR_NAME,
+                    namespace=LOCAL_RUNNING_DATA_PROVIDER_NAMESPACE,
+                    get_if_exists=True,
+                ).remote(world_size)
+            )
+        actor = _global_local_trainer_ray_dataset_actor
+
+    actor.register_dataset.remote(dataset)
+
+
+def get_dataset_shard(local_rank: int) -> Dict[str, DataIterator]:
+    assert (
+        _global_local_trainer_ray_dataset_actor is not None
+    ), "Local running data provider actor not found"
+    return ray.get(
+        _global_local_trainer_ray_dataset_actor.get_dataset_shard.remote(local_rank)
+    )
