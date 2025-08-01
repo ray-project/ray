@@ -2,6 +2,9 @@ import importlib
 import os
 from typing import TYPE_CHECKING, List
 
+from ray.data._internal.execution.callbacks.insert_issue_detectors import (
+    IssueDetectionExecutionCallback,
+)
 from ray.data.context import DataContext
 
 if TYPE_CHECKING:
@@ -65,7 +68,9 @@ def get_execution_callbacks(context: DataContext) -> List[ExecutionCallback]:
 
 def add_execution_callback(callback: ExecutionCallback, context: DataContext):
     """Add an ExecutionCallback to the DataContext."""
-    execution_callbacks = context.get_config(EXECUTION_CALLBACKS_CONFIG_KEY, [])
+    execution_callbacks = context.get_config(
+        EXECUTION_CALLBACKS_CONFIG_KEY, [IssueDetectionExecutionCallback()]
+    )
     execution_callbacks.append(callback)
     context.set_config(EXECUTION_CALLBACKS_CONFIG_KEY, execution_callbacks)
 
