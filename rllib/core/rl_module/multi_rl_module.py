@@ -496,6 +496,22 @@ class MultiRLModule(RLModule):
                 f"Available modules: {set(self.keys())}"
             )
 
+    @Deprecated(error=False)
+    def output_specs_train(self):
+        pass
+
+    @Deprecated(error=False)
+    def output_specs_inference(self):
+        pass
+
+    @Deprecated(error=False)
+    def output_specs_exploration(self):
+        pass
+
+    @Deprecated(error=False)
+    def _default_input_specs(self):
+        pass
+
 
 @PublicAPI(stability="alpha")
 @dataclasses.dataclass
