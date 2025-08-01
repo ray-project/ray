@@ -111,7 +111,7 @@ DATA_GRAFANA_PANELS = [
         stack=False,
     ),
     Panel(
-        id=53,
+        id=55,
         title="Max Bytes to Read",
         description="Maximum bytes to read from streaming generator buffer.",
         unit="bytes",
@@ -688,7 +688,7 @@ DATA_GRAFANA_PANELS = [
         stack=False,
     ),
     Panel(
-        id=49,
+        id=51,
         title="Budget (CPU)",
         description=("Budget (CPU) for the operator."),
         unit="cpu",
@@ -702,7 +702,7 @@ DATA_GRAFANA_PANELS = [
         stack=False,
     ),
     Panel(
-        id=50,
+        id=52,
         title="Budget (GPU)",
         description=("Budget (GPU) for the operator."),
         unit="gpu",
@@ -716,7 +716,7 @@ DATA_GRAFANA_PANELS = [
         stack=False,
     ),
     Panel(
-        id=51,
+        id=53,
         title="Budget (Memory)",
         description=("Budget (Memory) for the operator."),
         unit="bytes",
@@ -730,7 +730,7 @@ DATA_GRAFANA_PANELS = [
         stack=False,
     ),
     Panel(
-        id=52,
+        id=54,
         title="Budget (Object Store Memory)",
         description=("Budget (Object Store Memory) for the operator."),
         unit="bytes",

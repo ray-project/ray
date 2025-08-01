@@ -33,7 +33,9 @@ from ray.data._internal.execution.operators.hash_shuffle import (
     HashShuffleProgressBarMixin,
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
-from ray.data._internal.execution.resource_manager import ResourceManager
+from ray.data._internal.execution.resource_manager import (
+    ResourceManager,
+)
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.util import (
     unify_schemas_with_validation,
@@ -445,21 +447,6 @@ def build_streaming_topology(
     return (topology, i)
 
 
-def get_max_bytes_to_read(
-    op: PhysicalOperator, backpressure_policies: List[BackpressurePolicy]
-) -> Optional[int]:
-    max_bytes_to_read = None
-    for policy in backpressure_policies:
-        policy_limit = policy.max_task_output_bytes_to_read(op)
-        if policy_limit is not None:
-            if max_bytes_to_read is None:
-                max_bytes_to_read = policy_limit
-            else:
-                max_bytes_to_read = min(max_bytes_to_read, policy_limit)
-
-    return max_bytes_to_read
-
-
 def process_completed_tasks(
     topology: Topology,
     backpressure_policies: List[BackpressurePolicy],
@@ -487,7 +474,15 @@ def process_completed_tasks(
     for op, state in topology.items():
         # Check all backpressure policies for max_task_output_bytes_to_read
         # Use the minimum limit from all policies (most restrictive)
-        max_bytes_to_read = get_max_bytes_to_read(op, backpressure_policies)
+        max_bytes_to_read = None
+        for policy in backpressure_policies:
+            policy_limit = policy.max_task_output_bytes_to_read(op)
+            if policy_limit is not None:
+                if max_bytes_to_read is None:
+                    max_bytes_to_read = policy_limit
+                else:
+                    max_bytes_to_read = min(max_bytes_to_read, policy_limit)
+
         # If no policy provides a limit, there's no limit
         op.notify_in_task_output_backpressure(max_bytes_to_read == 0)
         if max_bytes_to_read is not None:

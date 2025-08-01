@@ -18,12 +18,14 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
-from ray.data._internal.execution.resource_manager import ResourceManager
+from ray.data._internal.execution.resource_manager import (
+    ReservationOpResourceAllocator,
+    ResourceManager,
+)
 from ray.data._internal.execution.streaming_executor_state import (
     OpState,
     Topology,
     build_streaming_topology,
-    get_max_bytes_to_read,
     process_completed_tasks,
     select_operator_to_run,
     update_operator_states,
@@ -323,6 +325,10 @@ class StreamingExecutor(Executor, threading.Thread):
                 sched_loop_duration = time.perf_counter() - t_start
 
                 self.update_metrics(sched_loop_duration)
+                if self._initial_stats:
+                    self._initial_stats.streaming_exec_schedule_s.add(
+                        sched_loop_duration
+                    )
 
                 for callback in get_execution_callbacks(self._data_context):
                     callback.on_execution_step(self)
@@ -340,8 +346,6 @@ class StreamingExecutor(Executor, threading.Thread):
         self._sched_loop_duration_s.set(
             sched_loop_duration, tags={"dataset": self._dataset_id}
         )
-        if self._initial_stats:
-            self._initial_stats.streaming_exec_schedule_s.add(sched_loop_duration)
         for i, op in enumerate(self._topology):
             tags = {
                 "dataset": self._dataset_id,
@@ -370,11 +374,15 @@ class StreamingExecutor(Executor, threading.Thread):
     def _update_max_bytes_to_read_metric(
         self, op: PhysicalOperator, tags: Dict[str, str]
     ):
-        max_bytes_to_read = get_max_bytes_to_read(
-            op, backpressure_policies=self._backpressure_policies
-        )
-        max_bytes_to_read = -1 if max_bytes_to_read is None else max_bytes_to_read
-        self._max_bytes_to_read_gauge.set(max_bytes_to_read, tags)
+        if self._resource_manager.op_resource_allocator_enabled():
+            ora = self._resource_manager.op_resource_allocator
+            assert isinstance(ora, ReservationOpResourceAllocator)
+            if op in ora._output_budgets:
+                max_bytes_to_read = ora._output_budgets[op]
+                if math.isinf(max_bytes_to_read):
+                    # Convert inf to -1 to represent unlimited bytes to read
+                    max_bytes_to_read = -1
+                self._max_bytes_to_read_gauge.set(max_bytes_to_read, tags)
 
     def get_stats(self):
         """Return the stats object for the streaming execution.
