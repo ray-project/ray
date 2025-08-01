@@ -1303,89 +1303,85 @@ class ActorClass(Generic[T]):
         to :obj:`ray.remote`.
 
         Args:
-            **actor_options: Keyword arguments for configuring the actor options.
-                The arguments are the same as those that can be passed
-                to :obj:`ray.remote`. Supported options include:
-
-                - num_cpus: The quantity of CPU cores to reserve
-                  for this task or for the lifetime of the actor.
-                - num_gpus: The quantity of GPUs to reserve
-                  for this task or for the lifetime of the actor.
-                - resources (Dict[str, float]): The quantity of various custom resources
-                  to reserve for this task or for the lifetime of the actor.
-                  This is a dictionary mapping strings (resource names) to floats.
-                - label_selector (Dict[str, str]): If specified, requires that the actor run
-                  on a node which meets the specified label conditions (equals, in, not in, etc.).
-                - accelerator_type: If specified, requires that the task or actor run
-                  on a node with the specified type of accelerator.
-                  See :ref:`accelerator types <accelerator_types>`.
-                - memory: The heap memory request in bytes for this task/actor,
-                  rounded down to the nearest integer.
-                - object_store_memory: The object store memory request for actors only.
-                - max_restarts: This specifies the maximum
-                  number of times that the actor should be restarted when it dies
-                  unexpectedly. The minimum valid value is 0 (default),
-                  which indicates that the actor doesn't need to be restarted.
-                  A value of -1 indicates that an actor should be restarted
-                  indefinitely.
-                - max_task_retries: How many times to retry an actor task if the task
-                  fails due to a runtime error, e.g., the actor has died. The
-                  default value is 0. If set to -1, the system will retry the
-                  failed task until the task succeeds, or the actor has reached
-                  its max_restarts limit. If set to `n > 0`, the system will retry
-                  the failed task up to n times, after which the task will throw a
-                  `RayActorError` exception upon :obj:`ray.get`.  Note that Python
-                  exceptions may trigger retries
-                  *only if* `retry_exceptions` is set for the method, in that case
-                  when `max_task_retries` runs out the task will rethrow the
-                  exception from the task. You can override this number with the
-                  method's `max_task_retries` option in `@ray.method` decorator or
-                  in `.option()`.
-                - max_pending_calls: Set the max number of pending calls
-                  allowed on the actor handle. When this value is exceeded,
-                  PendingCallsLimitExceeded will be raised for further tasks.
-                  Note that this limit is counted per handle. -1 means that the
-                  number of pending calls is unlimited.
-                - max_concurrency: The max number of concurrent calls to allow for
-                  this actor. This only works with direct actor calls. The max
-                  concurrency defaults to 1 for threaded execution, and 1000 for
-                  asyncio execution. Note that the execution order is not
-                  guaranteed when max_concurrency > 1.
-                - execute_out_of_order: Only for *actors*. Whether Ray executes actor tasks
-                  out of order. If you're using multi-threaded (``max_concurrency > 1``)
-                  or async actors, you can't set this to False. Defaults to True if you're
-                  using multi-threaded or async actors, and False otherwise.
-                - name: The globally unique name for the actor, which can be used
-                  to retrieve the actor via ray.get_actor(name) as long as the
-                  actor is still alive.
-                - namespace: Override the namespace to use for the actor. By default,
-                  actors are created in an anonymous namespace. The actor can
-                  be retrieved via ray.get_actor(name=name, namespace=namespace).
-                - lifetime: Either `None`, which defaults to the actor will fate
-                  share with its creator and will be deleted once its refcount
-                  drops to zero, or "detached", which means the actor will live
-                  as a global object independent of the creator.
-                - runtime_env (Dict[str, Any]): Specifies the runtime environment for
-                  this actor or task and its children. See
-                  :ref:`runtime-environments` for detailed documentation.
-                - scheduling_strategy: Strategy about how to
-                  schedule a remote function or actor. Possible values are
-                  None: ray will figure out the scheduling strategy to use, it
-                  will either be the PlacementGroupSchedulingStrategy using parent's
-                  placement group if parent has one and has
-                  placement_group_capture_child_tasks set to true,
-                  or "DEFAULT";
-                  "DEFAULT": default hybrid scheduling;
-                  "SPREAD": best effort spread scheduling;
-                  `PlacementGroupSchedulingStrategy`:
-                  placement group based scheduling;
-                  `NodeAffinitySchedulingStrategy`:
-                  node id based affinity scheduling.
-                - _metadata: Extended options for Ray libraries. For example,
-                  _metadata={"workflows.io/options": <workflow options>} for
-                  Ray workflows.
-                - enable_task_events: True if tracing is enabled, i.e., task events from
-                  the actor should be reported. Defaults to True.
+            num_cpus: The quantity of CPU cores to reserve
+                for this task or for the lifetime of the actor.
+            num_gpus: The quantity of GPUs to reserve
+                for this task or for the lifetime of the actor.
+            resources (Dict[str, float]): The quantity of various custom resources
+                to reserve for this task or for the lifetime of the actor.
+                This is a dictionary mapping strings (resource names) to floats.
+            label_selector (Dict[str, str]): If specified, requires that the actor run
+                on a node which meets the specified label conditions (equals, in, not in, etc.).
+            accelerator_type: If specified, requires that the task or actor run
+                on a node with the specified type of accelerator.
+                See :ref:`accelerator types <accelerator_types>`.
+            memory: The heap memory request in bytes for this task/actor,
+                rounded down to the nearest integer.
+            object_store_memory: The object store memory request for actors only.
+            max_restarts: This specifies the maximum
+                number of times that the actor should be restarted when it dies
+                unexpectedly. The minimum valid value is 0 (default),
+                which indicates that the actor doesn't need to be restarted.
+                A value of -1 indicates that an actor should be restarted
+                indefinitely.
+            max_task_retries: How many times to retry an actor task if the task
+                fails due to a runtime error, e.g., the actor has died. The
+                default value is 0. If set to -1, the system will retry the
+                failed task until the task succeeds, or the actor has reached
+                its max_restarts limit. If set to `n > 0`, the system will retry
+                the failed task up to n times, after which the task will throw a
+                `RayActorError` exception upon :obj:`ray.get`.  Note that Python
+                exceptions may trigger retries
+                *only if* `retry_exceptions` is set for the method, in that case
+                when `max_task_retries` runs out the task will rethrow the
+                exception from the task. You can override this number with the
+                method's `max_task_retries` option in `@ray.method` decorator or
+                in `.option()`.
+            max_pending_calls: Set the max number of pending calls
+                allowed on the actor handle. When this value is exceeded,
+                PendingCallsLimitExceeded will be raised for further tasks.
+                Note that this limit is counted per handle. -1 means that the
+                number of pending calls is unlimited.
+            max_concurrency: The max number of concurrent calls to allow for
+                this actor. This only works with direct actor calls. The max
+                concurrency defaults to 1 for threaded execution, and 1000 for
+                asyncio execution. Note that the execution order is not
+                guaranteed when max_concurrency > 1.
+            execute_out_of_order: Only for *actors*. Whether Ray executes actor tasks
+                out of order. If you're using multi-threaded (``max_concurrency > 1``)
+                or async actors, you can't set this to False. Defaults to True if you're
+                using multi-threaded or async actors, and False otherwise.
+            name: The globally unique name for the actor, which can be used
+                to retrieve the actor via ray.get_actor(name) as long as the
+                actor is still alive.
+            namespace: Override the namespace to use for the actor. By default,
+                actors are created in an anonymous namespace. The actor can
+                be retrieved via ray.get_actor(name=name, namespace=namespace).
+            lifetime: Either `None`, which defaults to the actor will fate
+                share with its creator and will be deleted once its refcount
+                drops to zero, or "detached", which means the actor will live
+                as a global object independent of the creator.
+            runtime_env (Dict[str, Any]): Specifies the runtime environment for
+                this actor or task and its children. See
+                :ref:`runtime-environments` for detailed documentation.
+            scheduling_strategy: Strategy about how to
+                schedule a remote function or actor. Possible values are
+                None: ray will figure out the scheduling strategy to use, it
+                will either be the PlacementGroupSchedulingStrategy using parent's
+                placement group if parent has one and has
+                placement_group_capture_child_tasks set to true,
+                or "DEFAULT";
+                "DEFAULT": default hybrid scheduling;
+                "SPREAD": best effort spread scheduling;
+                `PlacementGroupSchedulingStrategy`:
+                placement group based scheduling;
+                `NodeAffinitySchedulingStrategy`:
+                node id based affinity scheduling.
+            _metadata: Extended options for Ray libraries. For example,
+                _metadata={"workflows.io/options": <workflow options>} for
+                Ray workflows.
+            enable_task_events: True if tracing is enabled, i.e., task events from
+                the actor should be reported. Defaults to True.
 
         Examples:
 
@@ -1452,55 +1448,7 @@ class ActorClass(Generic[T]):
             args: The arguments to forward to the actor constructor.
             kwargs: The keyword arguments to forward to the actor constructor.
             **actor_options: Keyword arguments for configuring the actor options.
-                - num_cpus: The number of CPUs required by the actor creation task.
-                - num_gpus: The number of GPUs required by the actor creation task.
-                - memory: Restrict the heap memory usage of this actor.
-                - resources: The custom resources required by the actor creation
-                    task.
-                - max_concurrency: The max number of concurrent calls to allow for
-                    this actor. This only works with direct actor calls. The max
-                    concurrency defaults to 1 for threaded execution, and 1000 for
-                    asyncio execution. Note that the execution order is not
-                    guaranteed when max_concurrency > 1.
-                - name: The globally unique name for the actor, which can be used
-                    to retrieve the actor via ray.get_actor(name) as long as the
-                    actor is still alive.
-                - namespace: Override the namespace to use for the actor. By default,
-                    actors are created in an anonymous namespace. The actor can
-                    be retrieved via ray.get_actor(name=name, namespace=namespace).
-                - lifetime: Either `None`, which defaults to the actor will fate
-                    share with its creator and will be deleted once its refcount
-                    drops to zero, or "detached", which means the actor will live
-                    as a global object independent of the creator.
-                - placement_group: (This has been deprecated, please use
-                    `PlacementGroupSchedulingStrategy` scheduling_strategy)
-                    the placement group this actor belongs to,
-                    or None if it doesn't belong to any group. Setting to "default"
-                    autodetects the placement group based on the current setting of
-                    placement_group_capture_child_tasks.
-                - placement_group_bundle_index: (This has been deprecated, please use
-                    `PlacementGroupSchedulingStrategy` scheduling_strategy)
-                    the index of the bundle
-                    if the actor belongs to a placement group, which may be -1 to
-                    specify any available bundle.
-                - placement_group_capture_child_tasks: (This has been deprecated,
-                    please use `PlacementGroupSchedulingStrategy`
-                    scheduling_strategy)
-                    Whether or not children tasks
-                    of this actor should implicitly use the same placement group
-                    as its parent. It is False by default.
-                - runtime_env (Dict[str, Any]): Specifies the runtime environment for
-                    this actor or task and its children (see
-                    :ref:`runtime-environments` for details).
-                - max_pending_calls: Set the max number of pending calls
-                    allowed on the actor handle. When this value is exceeded,
-                    PendingCallsLimitExceeded will be raised for further tasks.
-                    Note that this limit is counted per handle. -1 means that the
-                    number of pending calls is unlimited.
-                - scheduling_strategy: Strategy about how to schedule this actor.
-                    enable_task_events: True if tracing is enabled, i.e., task events from
-                    the actor should be reported. Defaults to True.
-                - _labels: The key-value labels of the actor.
+                See ``ActorClass.options`` for more details.
 
         Returns:
             A handle to the newly created actor.
