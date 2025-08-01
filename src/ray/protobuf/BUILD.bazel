@@ -1,7 +1,7 @@
+load("@com_github_grpc_grpc//bazel:cc_grpc_library.bzl", "cc_grpc_library")
 load("@rules_cc//cc:defs.bzl", "cc_proto_library")
 load("@rules_proto//proto:defs.bzl", "proto_library")
 load("@rules_proto_grpc//python:defs.bzl", "python_grpc_compile")
-load("@com_github_grpc_grpc//bazel:cc_grpc_library.bzl", "cc_grpc_library")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -113,8 +113,8 @@ cc_proto_library(
 cc_grpc_library(
     name = "node_manager_cc_grpc",
     srcs = [":node_manager_proto"],
-    deps = [":node_manager_cc_proto"],
     grpc_only = True,
+    deps = [":node_manager_cc_proto"],
 )
 
 proto_library(
@@ -134,8 +134,8 @@ cc_proto_library(
 cc_grpc_library(
     name = "reporter_cc_grpc",
     srcs = ["//src/ray/protobuf:reporter_proto"],
-    deps = ["//src/ray/protobuf:reporter_cc_proto"],
     grpc_only = True,
+    deps = ["//src/ray/protobuf:reporter_cc_proto"],
 )
 
 proto_library(
@@ -157,8 +157,8 @@ cc_proto_library(
 cc_grpc_library(
     name = "gcs_service_cc_grpc",
     srcs = [":gcs_service_proto"],
-    deps = [":gcs_service_cc_proto"],
     grpc_only = True,
+    deps = [":gcs_service_cc_proto"],
 )
 
 proto_library(
@@ -178,8 +178,8 @@ cc_proto_library(
 cc_grpc_library(
     name = "test_service_cc_grpc",
     srcs = [":test_service_proto"],
-    deps = [":test_service_cc_proto"],
     grpc_only = True,
+    deps = [":test_service_cc_proto"],
 )
 
 proto_library(
@@ -196,8 +196,8 @@ cc_proto_library(
 cc_grpc_library(
     name = "object_manager_cc_grpc",
     srcs = [":object_manager_proto"],
-    deps = [":object_manager_cc_proto"],
     grpc_only = True,
+    deps = [":object_manager_cc_proto"],
 )
 
 proto_library(
@@ -218,8 +218,8 @@ cc_proto_library(
 cc_grpc_library(
     name = "core_worker_cc_grpc",
     srcs = [":core_worker_proto"],
-    deps = [":core_worker_cc_proto"],
     grpc_only = True,
+    deps = [":core_worker_cc_proto"],
 )
 
 proto_library(
