@@ -1468,7 +1468,7 @@ class EC2InstanceTerminatorWithGracePeriod(NodeKillerBase):
             # directly. To work around this, we force-stop Ray on the node. Anyscale
             # should then terminate it shortly after without updating the drain
             # deadline.
-            _force_stop_ray(node_to_kill_ip)
+            _execute_command_on_node("ray stop --force", node_to_kill_ip)
 
         logger.info(f"Starting killing thread {node_id=}, {node_to_kill_ip=}")
         thread = threading.Thread(
@@ -1987,12 +1987,6 @@ def _terminate_ec2_instance(node_ip: str) -> None:
         'region=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/placement/region);'  # noqa: E501
         "aws ec2 terminate-instances --region $region --instance-ids $instanceId"  # noqa: E501
     )
-    _execute_command_on_node(command, node_ip)
-
-
-def _force_stop_ray(node_ip: str) -> None:
-    logging.info(f"Force stopping instance {node_ip}")
-    command = "ray stop --force"
     _execute_command_on_node(command, node_ip)
 
 
