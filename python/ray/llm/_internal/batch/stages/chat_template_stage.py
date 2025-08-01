@@ -1,6 +1,6 @@
 """Apply chat template stage"""
 
-from typing import Any, AsyncIterator, Dict, List, Optional, Type
+from typing import Any, AsyncIterator, Dict, List, Optional, Type, TYPE_CHECKING
 
 from ray.llm._internal.batch.stages.base import (
     StatefulStage,
@@ -45,7 +45,11 @@ class ChatTemplateUDF(StatefulStageUDF):
             download_model=NodeModelDownloadable.TOKENIZER_ONLY,
             download_extra_files=False,
         )
-        self.processor = AutoProcessor.from_pretrained(
+        if TYPE_CHECKING:
+            from transformers.tokenization_utils_base import PreTrainedTokenizerBase
+            from transformers.processing_utils import ProcessorMixin
+
+        self.processor: "PreTrainedTokenizerBase | ProcessorMixin" = AutoProcessor.from_pretrained(
             model_path, trust_remote_code=True
         )
         self.chat_template = chat_template
