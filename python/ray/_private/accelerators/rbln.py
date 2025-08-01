@@ -62,9 +62,9 @@ class RBLNAcceleratorManager(AcceleratorManager):
 
     @staticmethod
     def set_current_process_visible_accelerator_ids(
-        visible_npu_devices: List[str],
+        visible_rbln_devices: List[str],
     ) -> None:
         if not os.getenv(NOSET_RBLN_RT_VISIBLE_DEVICES_ENV_VAR):
             os.environ[
                 RBLNAcceleratorManager.get_visible_accelerator_ids_env_var()
-            ] = ",".join(map(str, visible_npu_devices))
+            ] = ",".join(map(str, visible_rbln_devices))
