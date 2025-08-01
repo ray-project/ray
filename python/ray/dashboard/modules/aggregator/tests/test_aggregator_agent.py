@@ -385,7 +385,7 @@ def test_aggregator_agent_profile_events_not_exposed(
     now = time.time_ns()
     seconds, nanos = divmod(now, 10**9)
     timestamp = Timestamp(seconds=seconds, nanos=nanos)
-    request = AddEventRequest(
+    request = AddEventsRequest(
         events_data=RayEventsData(
             events=[
                 _create_profile_event_request(),
@@ -444,7 +444,7 @@ def test_aggregator_agent_receive_profile_events(
 
     httpserver.expect_request("/", method="POST").respond_with_data("", status=200)
 
-    request = AddEventRequest(
+    request = AddEventsRequest(
         events_data=RayEventsData(
             events=[_create_profile_event_request()],
             task_events_metadata=TaskEventsMetadata(
