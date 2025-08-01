@@ -58,22 +58,10 @@ void GcsRayEventConverter::ConvertToTaskEvents(rpc::events::TaskDefinitionEvent 
 
   rpc::TaskInfoEntry *task_info = task_event.mutable_task_info();
   task_info->set_name(event.task_name());
-  *task_info->mutable_runtime_env_info() = std::move(event.runtime_env_info());
-  auto function_descriptor = event.task_func();
-  if (function_descriptor.has_cpp_function_descriptor()) {
-    task_info->set_language(rpc::Language::CPP);
-    task_info->set_func_or_class_name(
-        function_descriptor.cpp_function_descriptor().function_name());
-  } else if (function_descriptor.has_python_function_descriptor()) {
-    task_info->set_language(rpc::Language::PYTHON);
-    task_info->set_func_or_class_name(
-        function_descriptor.python_function_descriptor().function_name());
-  } else if (function_descriptor.has_java_function_descriptor()) {
-    task_info->set_language(rpc::Language::JAVA);
-    task_info->set_func_or_class_name(
-        function_descriptor.java_function_descriptor().function_name());
-  }
-  *task_info->mutable_required_resources() = std::move(event.required_resources());
+  GenerateTaskInfoEntry(std::move(*event.mutable_runtime_env_info()),
+                        std::move(*event.mutable_task_func()),
+                        std::move(*event.mutable_required_resources()),
+                        task_info);
 }
 
 void GcsRayEventConverter::ConvertToTaskEvents(rpc::events::TaskExecutionEvent &&event,
@@ -92,6 +80,59 @@ void GcsRayEventConverter::ConvertToTaskEvents(rpc::events::TaskExecutionEvent &
     int64_t ns = timestamp.seconds() * 1000000000LL + timestamp.nanos();
     (*task_state_update->mutable_state_ts_ns())[state] = ns;
   }
+}
+
+void GcsRayEventConverter::ConvertToTaskEvents(
+    rpc::events::ActorTaskDefinitionEvent &&event, rpc::TaskEvents &task_event) {
+  task_event.set_task_id(event.task_id());
+  task_event.set_attempt_number(event.task_attempt());
+  task_event.set_job_id(event.job_id());
+
+  rpc::TaskInfoEntry *task_info = task_event.mutable_task_info();
+  GenerateTaskInfoEntry(std::move(*event.mutable_runtime_env_info()),
+                        std::move(*event.mutable_actor_func()),
+                        std::move(*event.mutable_required_resources()),
+                        task_info);
+}
+
+void GcsRayEventConverter::ConvertToTaskEvents(
+    rpc::events::ActorTaskExecutionEvent &&event, rpc::TaskEvents &task_event) {
+  task_event.set_task_id(event.task_id());
+  task_event.set_attempt_number(event.task_attempt());
+  task_event.set_job_id(event.job_id());
+
+  rpc::TaskStateUpdate *task_state_update = task_event.mutable_state_updates();
+  task_state_update->set_node_id(event.node_id());
+  task_state_update->set_worker_id(event.worker_id());
+  *task_state_update->mutable_error_info() = std::move(event.ray_error_info());
+  task_state_update->set_worker_pid(event.worker_pid());
+
+  for (const auto &[state, timestamp] : event.task_state()) {
+    int64_t ns = timestamp.seconds() * 1000000000LL + timestamp.nanos();
+    (*task_state_update->mutable_state_ts_ns())[state] = ns;
+  }
+}
+
+void GcsRayEventConverter::GenerateTaskInfoEntry(
+    rpc::RuntimeEnvInfo &&runtime_env_info,
+    rpc::FunctionDescriptor &&function_descriptor,
+    ::google::protobuf::Map<std::string, double> &&required_resources,
+    rpc::TaskInfoEntry *task_info) {
+  *task_info->mutable_runtime_env_info() = std::move(runtime_env_info);
+  if (function_descriptor.has_cpp_function_descriptor()) {
+    task_info->set_language(rpc::Language::CPP);
+    task_info->set_func_or_class_name(
+        function_descriptor.cpp_function_descriptor().function_name());
+  } else if (function_descriptor.has_python_function_descriptor()) {
+    task_info->set_language(rpc::Language::PYTHON);
+    task_info->set_func_or_class_name(
+        function_descriptor.python_function_descriptor().function_name());
+  } else if (function_descriptor.has_java_function_descriptor()) {
+    task_info->set_language(rpc::Language::JAVA);
+    task_info->set_func_or_class_name(
+        function_descriptor.java_function_descriptor().function_name());
+  }
+  *task_info->mutable_required_resources() = std::move(required_resources);
 }
 
 }  // namespace gcs

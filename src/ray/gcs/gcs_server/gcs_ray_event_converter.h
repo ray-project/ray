@@ -49,7 +49,37 @@ class GcsRayEventConverter {
   void ConvertToTaskEvents(rpc::events::TaskExecutionEvent &&event,
                            rpc::TaskEvents &task_event);
 
+  /// Convert an ActorTaskDefinitionEvent to a TaskEvents.
+  ///
+  /// \param event The ActorTaskDefinitionEvent to convert.
+  /// \param task_event The output TaskEvents to populate.
+  void ConvertToTaskEvents(rpc::events::ActorTaskDefinitionEvent &&event,
+                           rpc::TaskEvents &task_event);
+
+  /// Convert an ActorTaskExecutionEvent to a TaskEvents.
+  ///
+  /// \param event The ActorTaskExecutionEvent to convert.
+  /// \param task_event The output TaskEvents to populate.
+  void ConvertToTaskEvents(rpc::events::ActorTaskExecutionEvent &&event,
+                           rpc::TaskEvents &task_event);
+
+  /// Generate a TaskInfoEntry from the given runtime env info, function descriptor,
+  /// and required resources. This function is commonly used to convert the task
+  /// and actor task definition events to TaskEvents.
+  ///
+  /// \param runtime_env_info The runtime env info.
+  /// \param function_descriptor The function descriptor.
+  /// \param required_resources The required resources.
+  /// \param task_info The output TaskInfoEntry to populate.
+  void GenerateTaskInfoEntry(
+      rpc::RuntimeEnvInfo &&runtime_env_info,
+      rpc::FunctionDescriptor &&function_descriptor,
+      ::google::protobuf::Map<std::string, double> &&required_resources,
+      rpc::TaskInfoEntry *task_info);
+
   FRIEND_TEST(GcsRayEventConverterTest, TestConvertTaskExecutionEvent);
+  FRIEND_TEST(GcsRayEventConverterTest, TestConvertActorTaskDefinitionEvent);
+  FRIEND_TEST(GcsRayEventConverterTest, TestConvertActorTaskExecutionEvent);
 };
 
 }  // namespace gcs

@@ -150,5 +150,104 @@ TEST_F(GcsRayEventConverterTest, TestConvertTaskExecutionEvent) {
   EXPECT_EQ(state_updates.state_ts_ns().at(5), expected_ns);
 }
 
+TEST_F(GcsRayEventConverterTest, TestConvertActorTaskDefinitionEvent) {
+  GcsRayEventConverter converter;
+  rpc::events::ActorTaskDefinitionEvent actor_def_event;
+  rpc::TaskEvents task_event;
+
+  // Set basic fields
+  actor_def_event.set_task_id("test_actor_task_id");
+  actor_def_event.set_task_attempt(2);
+  actor_def_event.set_job_id("test_job_id");
+
+  // Set runtime env info
+  auto *runtime_env = actor_def_event.mutable_runtime_env_info();
+  runtime_env->set_serialized_runtime_env("test_actor_env");
+
+  // Set actor function descriptor (Python)
+  auto *func_desc = actor_def_event.mutable_actor_func();
+  auto *python_func = func_desc->mutable_python_function_descriptor();
+  python_func->set_function_name("test_actor_function");
+  python_func->set_class_name("TestActorClass");
+
+  // Add required resources
+  (*actor_def_event.mutable_required_resources())["CPU"] = 2.0;
+  (*actor_def_event.mutable_required_resources())["GPU"] = 1.0;
+
+  // Call the converter
+  converter.ConvertToTaskEvents(std::move(actor_def_event), task_event);
+
+  // Check basic fields
+  EXPECT_EQ(task_event.task_id(), "test_actor_task_id");
+  EXPECT_EQ(task_event.attempt_number(), 2);
+  EXPECT_EQ(task_event.job_id(), "test_job_id");
+
+  // Check task info
+  EXPECT_TRUE(task_event.has_task_info());
+  const auto &task_info = task_event.task_info();
+  EXPECT_EQ(task_info.language(), rpc::Language::PYTHON);
+  EXPECT_EQ(task_info.func_or_class_name(), "test_actor_function");
+  EXPECT_EQ(task_info.runtime_env_info().serialized_runtime_env(), "test_actor_env");
+
+  // Check required resources
+  EXPECT_EQ(task_info.required_resources().at("CPU"), 2.0);
+  EXPECT_EQ(task_info.required_resources().at("GPU"), 1.0);
+}
+
+TEST_F(GcsRayEventConverterTest, TestConvertActorTaskExecutionEvent) {
+  GcsRayEventConverter converter;
+  rpc::events::ActorTaskExecutionEvent actor_exec_event;
+  rpc::TaskEvents task_event;
+
+  // Set basic fields
+  actor_exec_event.set_task_id("test_actor_task_id");
+  actor_exec_event.set_task_attempt(4);
+  actor_exec_event.set_job_id("test_job_id");
+  actor_exec_event.set_node_id("test_node_id");
+  actor_exec_event.set_worker_id("test_worker_id");
+  actor_exec_event.set_worker_pid(5678);
+
+  // Set a RayErrorInfo
+  actor_exec_event.mutable_ray_error_info()->set_error_message("actor error");
+
+  // Set multiple task states with different timestamps
+  // TaskStatus = 5 (SUBMITTED_TO_WORKER), timestamp = 100s 500000000ns
+  google::protobuf::Timestamp ts1;
+  ts1.set_seconds(100);
+  ts1.set_nanos(500000000);
+  (*actor_exec_event.mutable_task_state())[5] = ts1;
+
+  // TaskStatus = 6 (RUNNING), timestamp = 101s 750000000ns
+  google::protobuf::Timestamp ts2;
+  ts2.set_seconds(101);
+  ts2.set_nanos(750000000);
+  (*actor_exec_event.mutable_task_state())[6] = ts2;
+
+  // Call the converter
+  converter.ConvertToTaskEvents(std::move(actor_exec_event), task_event);
+
+  // Check basic fields
+  EXPECT_EQ(task_event.task_id(), "test_actor_task_id");
+  EXPECT_EQ(task_event.attempt_number(), 4);
+  EXPECT_EQ(task_event.job_id(), "test_job_id");
+  EXPECT_TRUE(task_event.has_state_updates());
+  const auto &state_updates = task_event.state_updates();
+  EXPECT_EQ(state_updates.node_id(), "test_node_id");
+  EXPECT_EQ(state_updates.worker_id(), "test_worker_id");
+  EXPECT_EQ(state_updates.worker_pid(), 5678);
+  EXPECT_EQ(state_updates.error_info().error_message(), "actor error");
+
+  // Check state_ts_ns - should have 2 entries
+  ASSERT_EQ(state_updates.state_ts_ns().size(), 2);
+
+  // Check first state (SUBMITTED_TO_WORKER)
+  int64_t expected_ns1 = 100 * 1000000000LL + 500000000;
+  EXPECT_EQ(state_updates.state_ts_ns().at(5), expected_ns1);
+
+  // Check second state (RUNNING)
+  int64_t expected_ns2 = 101 * 1000000000LL + 750000000;
+  EXPECT_EQ(state_updates.state_ts_ns().at(6), expected_ns2);
+}
+
 }  // namespace gcs
 }  // namespace ray
