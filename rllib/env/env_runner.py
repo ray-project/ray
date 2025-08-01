@@ -25,6 +25,19 @@ tf1, tf, _ = try_import_tf()
 
 ENV_RESET_FAILURE = "env_reset_failure"
 ENV_STEP_FAILURE = "env_step_failure"
+NUM_ENV_STEP_FAILURES = "num_env_step_failures"
+
+
+class StepFailedRecreateEnv(Exception):
+    """An exception that signifies that the environment step failed and the environment needs to be reset.
+
+    This exception may be raised by the environment's `step` method.
+    It is then caught by the `EnvRunner` and the environment is reset.
+    This can be useful if your environment is unstable and gives you the ability to not log errors stemming from this.
+    Use this with caution, as it may lead to infinite loops of resetting the environment.
+    """
+
+    pass
 
 
 # TODO (sven): As soon as RolloutWorker is no longer supported, make this base class
@@ -232,11 +245,14 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
                 results = self.env.step(actions)
             return results
         except Exception as e:
+            self.metrics.log_value(NUM_ENV_STEP_FAILURES, 1, reduce="sum")
+
             if self.config.restart_failed_sub_environments:
-                logger.exception(
-                    "Stepping the env resulted in an error! The original error "
-                    f"is: {e.args[0]}"
-                )
+                if not isinstance(e, StepFailedRecreateEnv):
+                    logger.exception(
+                        "Stepping the env resulted in an error! The original error "
+                        f"is: {e}"
+                    )
                 # Recreate the env.
                 self.make_env()
                 # And return that the stepping failed. The caller will then handle
@@ -244,6 +260,10 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
                 # data and repeating the step attempt).
                 return ENV_STEP_FAILURE
             else:
+                if isinstance(e, StepFailedRecreateEnv):
+                    raise ValueError(
+                        "Environment raised StepFailedRecreateEnv but config.restart_failed_sub_environments is False."
+                    ) from e
                 raise e
 
     def _convert_to_tensor(self, struct) -> TensorType:
