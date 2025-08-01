@@ -1,5 +1,6 @@
 import asyncio
 import math
+import sys
 from collections.abc import Callable
 from concurrent.futures.thread import ThreadPoolExecutor
 from functools import partial
@@ -310,6 +311,4 @@ async def wait_for_n_waiters(
 
 
 if __name__ == "__main__":
-    import sys
-
     sys.exit(pytest.main(["-v", "-s", __file__]))
