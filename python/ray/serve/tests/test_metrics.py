@@ -156,7 +156,7 @@ def get_metric_dictionaries(name: str, timeout: float = 20) -> List[Dict]:
 
     wait_for_condition(metric_available, retry_interval_ms=1000, timeout=timeout)
 
-    metrics = httpx.get("http://127.0.0.1:9999", timeout=10).text
+    metrics = httpx.get("http://127.0.0.1:9999").text
     serve_metrics = [line for line in metrics.splitlines() if "ray_serve_" in line]
     print("metrics", "\n".join(serve_metrics))
 
