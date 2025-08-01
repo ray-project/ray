@@ -564,15 +564,13 @@
           cluster_type: fixed_size
           args: --inference-concurrency 40 40 --chaos
 
-  run:
-    timeout: 3600
-
   cluster:
     cluster_compute: batch_inference_hetero/{{cluster_type}}_cluster_compute.yaml
     byod:
       post_build_script: byod_install_pybase64.sh
 
   run:
+    timeout: 3600
     script: python batch_inference_hetero/main.py {{args}}
 
 
