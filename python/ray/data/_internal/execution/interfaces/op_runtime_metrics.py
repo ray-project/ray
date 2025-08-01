@@ -5,7 +5,6 @@ from dataclasses import Field, dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
-import ray
 from ray.data._internal.execution.bundle_queue import create_bundle_queue
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
 from ray.data._internal.memory_tracing import trace_allocation
@@ -126,9 +125,10 @@ def metric_property(
 @dataclass
 class RunningTaskInfo:
     inputs: RefBundle
-    num_outputs: int
-    bytes_outputs: int
     start_time: float
+    num_outputs: int = field(default=0)
+    outputs_bytes: int = field(default=0)
+    outputs_bytes_spilled: int = field(default=0)
 
 
 @dataclass
@@ -708,9 +708,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         self.num_tasks_running += 1
         self.bytes_inputs_of_submitted_tasks += inputs.size_bytes()
         self._pending_task_inputs.add(inputs)
-        self._running_tasks[task_index] = RunningTaskInfo(
-            inputs, 0, 0, time.perf_counter()
-        )
+        self._running_tasks[task_index] = RunningTaskInfo(inputs, time.perf_counter())
 
     def on_task_output_generated(self, task_index: int, output: RefBundle):
         """Callback when a new task generates an output."""
@@ -721,10 +719,13 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         self.bytes_task_outputs_generated += output_bytes
 
         task_info = self._running_tasks[task_index]
+
         if task_info.num_outputs == 0:
             self.num_tasks_have_outputs += 1
+
         task_info.num_outputs += num_outputs
-        task_info.bytes_outputs += output_bytes
+        task_info.outputs_bytes += output_bytes
+        task_info.outputs_bytes_spilled += output.get_bytes_spilled()
 
         for block_ref, meta in output.blocks:
             assert (
@@ -758,7 +759,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
 
         task_info = self._running_tasks[task_index]
         self.num_outputs_of_finished_tasks += task_info.num_outputs
-        self.bytes_outputs_of_finished_tasks += task_info.bytes_outputs
+        self.bytes_outputs_of_finished_tasks += task_info.outputs_bytes
         task_time_delta = time.perf_counter() - task_info.start_time
         self._op_task_duration_stats.add_duration(task_time_delta)
         self.task_completion_time = task_time_delta
@@ -774,14 +775,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
             input_size,
         )
 
-        ctx = self._op.data_context
-        if ctx.enable_get_object_locations_for_metrics:
-            locations = ray.experimental.get_object_locations(inputs.block_refs)
-            for block, meta in inputs.blocks:
-                if locations[block].get("did_spill", False):
-                    assert meta.size_bytes is not None
-                    self.obj_store_mem_spilled += meta.size_bytes
-
+        self.obj_store_mem_spilled += task_info.outputs_bytes_spilled
         self.obj_store_mem_freed += total_input_size
 
         # Update per node metrics
