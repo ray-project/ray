@@ -923,7 +923,7 @@ TEST_F(TaskEventBufferTest, TestGracefulDestruction) {
 }
 
 TEST_F(TaskEventBufferTest, TestTaskProfileEventToRpcRayEvents) {
-  auto task_id =  RandomTaskId();
+  auto task_id = RandomTaskId();
   auto job_id = JobID::FromInt(123);
   int32_t attempt_number = 1;
   std::string component_type = "core_worker";
@@ -932,10 +932,15 @@ TEST_F(TaskEventBufferTest, TestTaskProfileEventToRpcRayEvents) {
   std::string event_name = "test_profile_event";
   int64_t start_time = 1000;
 
-  auto profile_event = std::make_unique<TaskProfileEvent>(
-      task_id, job_id, attempt_number, component_type, component_id, 
-      node_ip, event_name, start_time);
-  
+  auto profile_event = std::make_unique<TaskProfileEvent>(task_id,
+                                                          job_id,
+                                                          attempt_number,
+                                                          component_type,
+                                                          component_id,
+                                                          node_ip,
+                                                          event_name,
+                                                          start_time);
+
   // Set end time and extra data to test full population
   profile_event->SetEndTime(2000);
   profile_event->SetExtraData("test_extra_data");
@@ -946,11 +951,11 @@ TEST_F(TaskEventBufferTest, TestTaskProfileEventToRpcRayEvents) {
   auto &[first_event, second_event] = ray_events_pair;
 
   // Verify that the second event is nullopt (empty)
-  EXPECT_FALSE(second_event.has_value()) 
+  EXPECT_FALSE(second_event.has_value())
       << "TaskProfileEvent should set second element of RayEventsPair to nullopt";
 
   // Verify that the first event contains the profile event
-  ASSERT_TRUE(first_event.has_value()) 
+  ASSERT_TRUE(first_event.has_value())
       << "TaskProfileEvent should populate first element of RayEventsPair";
 
   const auto &ray_event = first_event.value();
@@ -990,20 +995,25 @@ TEST_F(TaskEventBufferTest, TestTaskProfileEventToRpcRayEvents) {
 TEST_F(TaskEventBufferTest, TestCreateRayEventsDataWithProfileEvents) {
   // Test that CreateRayEventsDataToSend correctly handles profile events
   // by only including the first element of RayEventsPair
-  
-  auto task_id =  RandomTaskId();
+
+  auto task_id = RandomTaskId();
   auto job_id = JobID::FromInt(456);
   int32_t attempt_number = 2;
 
   // Create a profile event
-  auto profile_event = std::make_unique<TaskProfileEvent>(
-      task_id, job_id, attempt_number, "core_worker", "worker_456", 
-      "192.168.1.2", "profile_test", 5000);
+  auto profile_event = std::make_unique<TaskProfileEvent>(task_id,
+                                                          job_id,
+                                                          attempt_number,
+                                                          "core_worker",
+                                                          "worker_456",
+                                                          "192.168.1.2",
+                                                          "profile_test",
+                                                          5000);
   profile_event->SetEndTime(6000);
 
   absl::flat_hash_map<TaskAttempt, RayEventsPair> agg_ray_events;
   TaskAttempt task_attempt = std::make_pair(task_id, attempt_number);
-  
+
   // Populate the ray events pair
   RayEventsPair ray_events_pair;
   profile_event->ToRpcRayEvents(ray_events_pair);
@@ -1014,7 +1024,8 @@ TEST_F(TaskEventBufferTest, TestCreateRayEventsDataWithProfileEvents) {
   auto ray_events_data = task_event_buffer_->CreateRayEventsDataToSend(
       std::move(agg_ray_events), dropped_task_attempts);
 
-  // Verify that exactly one event was added (only the profile event, not the nullopt second)
+  // Verify that exactly one event was added (only the profile event, not the nullopt
+  // second)
   ASSERT_EQ(ray_events_data->events_size(), 1);
 
   const auto &event = ray_events_data->events(0);
@@ -1029,21 +1040,26 @@ TEST_F(TaskEventBufferTest, TestCreateRayEventsDataWithProfileEvents) {
 
 TEST_F(TaskEventBufferTest, TestMixedStatusAndProfileEventsToRayEvents) {
   // Test that a mix of status events and profile events are correctly handled
-  auto task_id1 =  RandomTaskId();
-  auto task_id2 =  RandomTaskId();
+  auto task_id1 = RandomTaskId();
+  auto task_id2 = RandomTaskId();
   auto job_id = JobID::FromInt(789);
 
   // Create a status event (should populate both elements of RayEventsPair)
   auto status_event = GenStatusTaskEvent(task_id1, 1, 1000);
 
   // Create a profile event (should populate only first element)
-  auto profile_event = std::make_unique<TaskProfileEvent>(
-      task_id2, job_id, 1, "core_worker", "worker_789", 
-      "192.168.1.3", "mixed_test", 7000);
+  auto profile_event = std::make_unique<TaskProfileEvent>(task_id2,
+                                                          job_id,
+                                                          1,
+                                                          "core_worker",
+                                                          "worker_789",
+                                                          "192.168.1.3",
+                                                          "mixed_test",
+                                                          7000);
 
   // Create aggregated events
   absl::flat_hash_map<TaskAttempt, RayEventsPair> agg_ray_events;
-  
+
   // Add status event
   RayEventsPair status_ray_events_pair;
   status_event->ToRpcRayEvents(status_ray_events_pair);
@@ -1059,33 +1075,37 @@ TEST_F(TaskEventBufferTest, TestMixedStatusAndProfileEventsToRayEvents) {
   auto ray_events_data = task_event_buffer_->CreateRayEventsDataToSend(
       std::move(agg_ray_events), dropped_task_attempts);
 
-  // Should have 2 events: 1 from status event (execution only since no task_spec) + 1 from profile event
+  // Should have 2 events: 1 from status event (execution only since no task_spec) + 1
+  // from profile event
   ASSERT_EQ(ray_events_data->events_size(), 2);
 
   // Count event types
   int task_definition_events = 0;
-  int task_execution_events = 0; 
+  int task_execution_events = 0;
   int task_profile_events = 0;
 
   for (const auto &event : ray_events_data->events()) {
     switch (event.event_type()) {
-      case rpc::events::RayEvent::TASK_DEFINITION_EVENT:
-        task_definition_events++;
-        break;
-      case rpc::events::RayEvent::TASK_EXECUTION_EVENT:
-        task_execution_events++;
-        break;
-      case rpc::events::RayEvent::TASK_PROFILE_EVENT:
-        task_profile_events++;
-        break;
-      default:
-        FAIL() << "Unexpected event type: " << event.event_type();
+    case rpc::events::RayEvent::TASK_DEFINITION_EVENT:
+      task_definition_events++;
+      break;
+    case rpc::events::RayEvent::TASK_EXECUTION_EVENT:
+      task_execution_events++;
+      break;
+    case rpc::events::RayEvent::TASK_PROFILE_EVENT:
+      task_profile_events++;
+      break;
+    default:
+      FAIL() << "Unexpected event type: " << event.event_type();
     }
   }
 
-  EXPECT_EQ(task_definition_events, 0) << "Should have 0 task definition events since GenStatusTaskEvent has no task_spec";
-  EXPECT_EQ(task_execution_events, 1) << "Should have 1 task execution event from status event";
-  EXPECT_EQ(task_profile_events, 1) << "Should have 1 task profile event from profile event";
+  EXPECT_EQ(task_definition_events, 0)
+      << "Should have 0 task definition events since GenStatusTaskEvent has no task_spec";
+  EXPECT_EQ(task_execution_events, 1)
+      << "Should have 1 task execution event from status event";
+  EXPECT_EQ(task_profile_events, 1)
+      << "Should have 1 task profile event from profile event";
 }
 
 INSTANTIATE_TEST_SUITE_P(TaskEventBufferTest,

@@ -347,8 +347,7 @@ void TaskProfileEvent::ToRpcTaskExportEvents(
 }
 
 void TaskProfileEvent::PopulateRpcRayEventBaseFields(
-    rpc::events::RayEvent &ray_event,
-    google::protobuf::Timestamp timestamp) {
+    rpc::events::RayEvent &ray_event, google::protobuf::Timestamp timestamp) {
   ray_event.set_event_id(UniqueID::FromRandom().Binary());
   ray_event.set_source_type(rpc::events::RayEvent::CORE_WORKER);
   ray_event.mutable_timestamp()->CopyFrom(timestamp);

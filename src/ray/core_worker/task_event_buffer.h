@@ -44,8 +44,8 @@ using TaskAttempt = std::pair<TaskID, int32_t>;
 /// A pair of rpc::events::RayEvent.
 /// When converting the TaskStatusEvent, the pair will be populated with the
 /// rpc::events::TaskDefinitionEvent and rpc::events::TaskExecutionEvent respectively.
-/// When converting the TaskProfileEvent, only the first element of the pair will be populated
-/// with rpc::events::TaskProfileEvents
+/// When converting the TaskProfileEvent, only the first element of the pair will be
+/// populated with rpc::events::TaskProfileEvents
 using RayEventsPair =
     std::pair<std::optional<rpc::events::RayEvent>, std::optional<rpc::events::RayEvent>>;
 
