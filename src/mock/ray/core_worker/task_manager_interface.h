@@ -57,7 +57,8 @@ class MockTaskManagerInterface : public TaskManagerInterface {
               (override));
   MOCK_METHOD(void,
               OnTaskDependenciesInlined,
-              (const std::vector<ObjectID> &inlined_dependency_ids,
+              (const TaskID &task_id,
+               const std::vector<ObjectID> &inlined_dependency_ids,
                const std::vector<ObjectID> &contained_ids),
               (override));
   MOCK_METHOD(void, MarkTaskCanceled, (const TaskID &task_id), (override));

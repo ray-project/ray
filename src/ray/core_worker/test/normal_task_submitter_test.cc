@@ -187,7 +187,8 @@ class MockTaskManager : public MockTaskManagerInterface {
     return true;
   }
 
-  void OnTaskDependenciesInlined(const std::vector<ObjectID> &inlined_dependency_ids,
+  void OnTaskDependenciesInlined(const TaskID &task_id,
+                                 const std::vector<ObjectID> &inlined_dependency_ids,
                                  const std::vector<ObjectID> &contained_ids) override {
     num_inlined_dependencies += inlined_dependency_ids.size();
     num_contained_ids += contained_ids.size();

@@ -427,7 +427,8 @@ class TaskManager : public TaskManagerInterface {
       const rpc::RayErrorInfo *ray_error_info,
       const absl::flat_hash_set<ObjectID> &store_in_plasma_ids) ABSL_LOCKS_EXCLUDED(mu_);
 
-  void OnTaskDependenciesInlined(const std::vector<ObjectID> &inlined_dependency_ids,
+  void OnTaskDependenciesInlined(const TaskID &task_id,
+                                 const std::vector<ObjectID> &inlined_dependency_ids,
                                  const std::vector<ObjectID> &contained_ids) override;
 
   void MarkTaskNoRetry(const TaskID &task_id) override;

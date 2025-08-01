@@ -1279,8 +1279,12 @@ void TaskManager::ShutdownIfNeeded() {
 }
 
 void TaskManager::OnTaskDependenciesInlined(
+    const TaskID &task_id,
     const std::vector<ObjectID> &inlined_dependency_ids,
     const std::vector<ObjectID> &contained_ids) {
+  absl::MutexLock lock(&mu_);
+  auto it = submissible_tasks_.find(task_id);
+  if (it == submissible_tasks_.end() || !it->second.IsPending()) return;
   std::vector<ObjectID> deleted;
   reference_counter_.UpdateSubmittedTaskReferences(
       /*return_ids=*/{},

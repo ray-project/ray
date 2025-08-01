@@ -202,6 +202,7 @@ Status ActorTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
           // the callback may get called in the same call stack.
           auto actor_id = task_spec.ActorId();
           auto task_id = task_spec.TaskId();
+          std::this_thread::sleep_for(std::chrono::milliseconds(10000));
           resolver_.ResolveDependencies(
               task_spec, [this, send_pos, actor_id, task_id](Status status) {
                 task_manager_.MarkDependenciesResolved(task_id);
