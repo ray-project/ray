@@ -32,7 +32,7 @@ class AutoscalerEventLogger:
     def log_cluster_scheduling_update(
         self,
         node_type_configs: Dict[NodeType, NodeTypeConfig],
-        cluster_shape: Dict[NodeType, int],
+        cluster_resources: Dict[str, int],
         launch_requests: Optional[List[LaunchRequest]] = None,
         terminate_requests: Optional[List[TerminationRequest]] = None,
         infeasible_requests: Optional[List[ResourceRequest]] = None,
@@ -78,23 +78,16 @@ class AutoscalerEventLogger:
 
         # Cluster shape changes.
         if launch_requests or terminate_requests:
-            total_resources = defaultdict(float)
-
-            for node_type, count in cluster_shape.items():
-                node_config = node_type_configs[node_type]
-                for resource_name, resource_quantity in node_config.resources.items():
-                    total_resources[resource_name] += resource_quantity * count
-
-            num_cpus = total_resources.get("CPU", 0)
+            num_cpus = cluster_resources.get("CPU", 0)
             log_str = f"Resized to {int(num_cpus)} CPUs"
 
-            if "GPU" in total_resources:
-                log_str += f", {int(total_resources['GPU'])} GPUs"
-            if "TPU" in total_resources:
-                log_str += f", {int(total_resources['TPU'])} TPUs"
+            if "GPU" in cluster_resources:
+                log_str += f", {int(cluster_resources['GPU'])} GPUs"
+            if "TPU" in cluster_resources:
+                log_str += f", {int(cluster_resources['TPU'])} TPUs"
 
             self._logger.info(f"{log_str}.")
-            self._logger.debug(f"Current cluster shape: {dict(cluster_shape)}.")
+            self._logger.debug(f"Current cluster resources: {dict(cluster_resources)}.")
 
         # Log any infeasible requests.
         if infeasible_requests:
