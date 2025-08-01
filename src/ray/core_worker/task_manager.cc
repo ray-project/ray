@@ -1087,9 +1087,22 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
         RAY_CHECK(num_oom_retries_left == 0);
       }
     } else {
-      if (num_retries_left > 0) {
+      auto is_preempted = false;
+      if (error_info.error_type() == rpc::ErrorType::NODE_DIED) {
+        const auto node_info = gcs_client_->Nodes().Get(task_entry.GetNodeId(),
+                                                        /*filter_dead_nodes=*/false);
+        is_preempted = node_info != nullptr && node_info->has_death_info() &&
+                       node_info->death_info().reason() ==
+                           rpc::NodeDeathInfo::AUTOSCALER_DRAIN_PREEMPTED;
+      }
+      if (num_retries_left > 0 || (is_preempted && task_entry.spec.IsRetriable())) {
         will_retry = true;
-        task_entry.num_retries_left--;
+        if (is_preempted) {
+          RAY_LOG(INFO) << "Task " << task_id << " failed due to node preemption on node "
+                        << task_entry.GetNodeId() << ", not counting against retries";
+        } else {
+          task_entry.num_retries_left--;
+        }
       } else if (num_retries_left == -1) {
         will_retry = true;
       } else {
