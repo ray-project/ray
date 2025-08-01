@@ -14,6 +14,7 @@ from ray.rllib.utils.typing import NetworkType, TensorType
 from ray.util.annotations import DeveloperAPI
 
 
+QF_PREDS = "qf_preds"
 ATOMS = "atoms"
 QF_LOGITS = "qf_logits"
 QF_NEXT_PREDS = "qf_next_preds"
