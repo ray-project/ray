@@ -158,7 +158,7 @@ def serve_instance(_shared_serve_instance):
     # Clear all state for 2.x applications and deployments.
     _shared_serve_instance.delete_all_apps()
     # Clear the ServeHandle cache between tests to avoid them piling up.
-    _shared_serve_instance.shutdown_cached_handles()
+    _shared_serve_instance.shutdown_cached_handles(_skip_asyncio_check=True)
 
 
 @pytest.fixture

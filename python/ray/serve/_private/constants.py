@@ -471,6 +471,13 @@ RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD = (
     os.environ.get("RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD", "1") == "1"
 )
 
+# By default, we run the router in a separate event loop.
+# This flag can be set to 0 to run the router in the same event loop as the
+# replica's main event loop.
+RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP = (
+    os.environ.get("RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP", "1") == "1"
+)
+
 # The default buffer size for request path logs. Setting to 1 will ensure
 # logs are flushed to file handler immediately, otherwise it will be buffered
 # and flushed to file handler when the buffer is full or when there is a log
