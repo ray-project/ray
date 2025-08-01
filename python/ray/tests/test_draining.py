@@ -3,9 +3,10 @@ import pytest
 
 import ray
 import time
+from collections import Counter
 from ray._raylet import GcsClient
 from ray.core.generated import autoscaler_pb2, common_pb2
-from ray._common.test_utils import wait_for_condition
+from ray._common.test_utils import wait_for_condition, SignalActor
 from ray.util.scheduling_strategies import (
     NodeAffinitySchedulingStrategy,
     PlacementGroupSchedulingStrategy,
@@ -498,6 +499,75 @@ def test_drain_node_actor_restart(ray_start_cluster):
     # The actor should not be restarted, thus an exception should be raised.
     with pytest.raises(RuntimeError):
         wait_for_condition(actor_started, timeout=5)
+
+
+def test_drain_node_task_retry(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=1, resources={"head": 100})
+    ray.init(address=cluster.address)
+
+    cur_worker = cluster.add_node(num_cpus=1, resources={"worker": 1})
+    cluster.wait_for_nodes()
+    node_ids = Counter()
+
+    gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
+
+    @ray.remote(resources={"head": 1})
+    class NodeTracker:
+        def __init__(self):
+            self._node_ids = Counter()
+
+        def add_node(self, node_id):
+            self._node_ids.update([node_id])
+
+        def nodes(self):
+            return self._node_ids
+
+    @ray.remote(max_retries=1, resources={"worker": 1})
+    def func(signal, nodes):
+        node_id = ray.get_runtime_context().get_node_id()
+        ray.get(nodes.add_node.remote(node_id))
+        ray.get(signal.wait.remote())
+        return node_id
+
+    signal = SignalActor.options(resources={"head": 1}).remote()
+    node_tracker = NodeTracker.remote()
+    r1 = func.remote(signal, node_tracker)
+
+    # Verify the first node is added to the counter by the func.remote task.
+    node_ids.update([cur_worker.node_id])
+    wait_for_condition(lambda: ray.get(node_tracker.nodes.remote()) == node_ids)
+
+    # Remove the current worker node and add a new one to trigger a retry.
+    cluster.remove_node(cur_worker, True)
+    cur_worker = cluster.add_node(num_cpus=1, resources={"worker": 1})
+
+    # Verify the second node is added to the counter by the task after a retry.
+    node_ids.update([cur_worker.node_id])
+    wait_for_condition(lambda: ray.get(node_tracker.nodes.remote()) == node_ids)
+
+    # Preempt the second node and add a new one to trigger a retry.
+    is_accepted, _ = gcs_client.drain_node(
+        cur_worker.node_id,
+        autoscaler_pb2.DrainNodeReason.Value("DRAIN_NODE_REASON_PREEMPTION"),
+        "preemption",
+        1,
+    )
+    assert is_accepted
+    cluster.remove_node(cur_worker, True)
+    cur_worker = cluster.add_node(num_cpus=1, resources={"worker": 1})
+
+    # Verify the third node is added to the counter after a preemption retry.
+    node_ids.update([cur_worker.node_id])
+    wait_for_condition(lambda: ray.get(node_tracker.nodes.remote()) == node_ids)
+
+    # Remove the third node and add a new one, but the task should not retry.
+    cluster.remove_node(cur_worker, True)
+    cur_worker = cluster.add_node(num_cpus=1, resources={"worker": 1})
+
+    # max_retries is reached, the task should fail.
+    with pytest.raises(ray.exceptions.NodeDiedError):
+        ray.get(r1)
 
 
 if __name__ == "__main__":
