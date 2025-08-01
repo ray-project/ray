@@ -1,3 +1,4 @@
+import asyncio
 from typing import Callable, Optional, Tuple
 
 import ray
@@ -19,6 +20,7 @@ from ray.serve._private.constants import (
     CONTROLLER_MAX_CONCURRENCY,
     RAY_SERVE_ENABLE_TASK_EVENTS,
     RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING,
+    RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP,
     SERVE_CONTROLLER_NAME,
     SERVE_NAMESPACE,
 )
@@ -28,7 +30,7 @@ from ray.serve._private.deployment_scheduler import (
 )
 from ray.serve._private.grpc_util import gRPCGenericServer
 from ray.serve._private.handle_options import DynamicHandleOptions, InitHandleOptions
-from ray.serve._private.router import Router, SingletonThreadRouter
+from ray.serve._private.router import CurrentLoopRouter, Router, SingletonThreadRouter
 from ray.serve._private.utils import (
     generate_request_id,
     get_current_actor_id,
@@ -158,7 +160,21 @@ def create_router(
     controller_handle = _get_global_client()._controller
     is_inside_ray_client_context = inside_ray_client_context()
 
-    return SingletonThreadRouter(
+    if handle_options._run_router_in_separate_loop:
+        router_wrapper_cls = SingletonThreadRouter
+    else:
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            raise RuntimeError(
+                "No event loop running. You cannot use a handle initialized with "
+                "`_run_router_in_separate_loop=False` when not inside an asyncio event "
+                "loop."
+            )
+
+        router_wrapper_cls = CurrentLoopRouter
+
+    return router_wrapper_cls(
         controller_handle=controller_handle,
         deployment_id=deployment_id,
         handle_id=handle_id,
@@ -197,6 +213,7 @@ def get_proxy_handle(endpoint: DeploymentID, info: EndpointInfo):
         handle._init(
             _prefer_local_routing=RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING,
             _source=DeploymentHandleSource.PROXY,
+            _run_router_in_separate_loop=RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP,
         )
 
     return handle.options(stream=not info.app_is_cross_language)
