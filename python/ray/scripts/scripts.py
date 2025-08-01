@@ -2649,7 +2649,10 @@ def cpp(show_library_path, generate_bazel_project_template_to):
 
 @cli.command(hidden=True)
 def sanity_check():
-    """Run a sanity check to check that the Ray installation works."""
+    """Run a sanity check to check that the Ray installation works.
+
+    This is not a public API and is intended to be used by Ray developers only.
+    """
 
     @ray.remote
     def get_version() -> str:
