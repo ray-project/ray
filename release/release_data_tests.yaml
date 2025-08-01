@@ -547,9 +547,9 @@
 
   matrix:
     setup:
-      case:
-      cluster_type:
-      args:
+      case: []
+      cluster_type: []
+      args: []
     adjustments:
       - with:
           case: fixed_size
@@ -560,7 +560,7 @@
           cluster_type: autoscaling
           args: --inference-concurrency 1 40
       - with:
-          case: chaos
+          case: fixed_size_chaos
           cluster_type: fixed_size
           args: --inference-concurrency 40 40 --chaos
 
