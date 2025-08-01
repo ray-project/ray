@@ -131,7 +131,7 @@
             "tagsQuery": "",
             "type": "query",
             "useTags": false
-          },
+          }
       ]
     },
     "rayMeta": ["excludesSystemRoutes"],
