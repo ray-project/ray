@@ -12,7 +12,7 @@ ray_cc_library(
         ":object_manager_common",
         ":pull_manager",
         ":push_manager",
-        "//:object_manager_rpc",
+        "//src/ray/rpc:object_manager_rpc",
         "//src/ray/common:asio",
         "//src/ray/common:id",
         "//src/ray/common:ray_config",
@@ -42,7 +42,7 @@ ray_cc_library(
     deps = [
         ":object_manager_common",
         ":ownership_object_directory",
-        "//:object_manager_rpc",
+        "//src/ray/rpc:object_manager_rpc",
         "//src/ray/common:id",
         "//src/ray/common:ray_config",
         "//src/ray/common:ray_object",
@@ -64,7 +64,7 @@ ray_cc_library(
     hdrs = ["ownership_object_directory.h"],
     deps = [
         ":object_directory",
-        "//:worker_rpc",
+        "//src/ray/rpc:core_worker_rpc",
         "//src/ray/common:asio",
         "//src/ray/common:id",
         "//src/ray/gcs/gcs_client:gcs_client_lib",
@@ -117,8 +117,8 @@ ray_cc_library(
     name = "object_manager_grpc_client_manager",
     hdrs = ["grpc_client_manager.h"],
     deps = [
-        "//:grpc_client",
-        "//:rpc_client_call",
+        "//src/ray/rpc:grpc_client",
+        "//src/ray/rpc:client_call",
         "//src/ray/common:ray_config",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/synchronization",

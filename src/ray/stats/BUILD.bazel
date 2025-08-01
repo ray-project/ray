@@ -1,4 +1,5 @@
 load("//bazel:ray.bzl", "ray_cc_library", "ray_cc_test")
+load("@com_github_grpc_grpc//bazel:cc_grpc_library.bzl", "cc_grpc_library")
 
 ray_cc_library(
     name = "stats_metric",
@@ -49,7 +50,7 @@ ray_cc_library(
     }),
     deps = [
         ":stats_metric",
-        "//:reporter_rpc",
+        "//src/ray/rpc:metrics_agent_client",
         "//src/ray/util:size_literals",
         "@com_github_grpc_grpc//:grpc_opencensus_plugin",
     ],
