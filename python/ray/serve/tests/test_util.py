@@ -531,7 +531,7 @@ async def test_semaphore_waiters_and_single_release():
         await sema.acquire()
         waiters_completed.append(waiter_id)
 
-    # Start 3 waiters that will all block
+    # Start 2 waiters that will all block
     waiter_tasks = [
         asyncio.create_task(waiter(1)),
         asyncio.create_task(waiter(2)),
