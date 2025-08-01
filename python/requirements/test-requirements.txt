@@ -106,7 +106,7 @@ backoff==1.10
 
 # For test_basic.py::test_omp_threads_set
 threadpoolctl==3.1.0
-numexpr==2.11.0
+numexpr>=2.8.4
 
 # For test_gpu_objects_gloo.py
 tensordict==0.8.3 ; sys_platform != "darwin"

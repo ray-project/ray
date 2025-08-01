@@ -1187,7 +1187,7 @@ numba==0.59.1
     # via
     #   -r python/requirements/test-requirements.txt
     #   statsforecast
-numexpr==2.11.0
+numexpr==2.8.4
     # via
     #   -r python/requirements/test-requirements.txt
     #   pymars
