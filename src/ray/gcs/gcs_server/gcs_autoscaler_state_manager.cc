@@ -24,6 +24,7 @@
 #include "ray/gcs/gcs_server/gcs_placement_group_mgr.h"
 #include "ray/gcs/gcs_server/state_util.h"
 #include "ray/gcs/pb_util.h"
+#include "ray/util/string_utils.h"
 
 namespace ray {
 namespace gcs {
@@ -219,6 +220,10 @@ void GcsAutoscalerStateManager::GetPendingGangResourceRequests(
     // Add the strategy as detail info for the gang resource request.
     gang_resource_req->set_details(FormatPlacementGroupDetails(pg_data));
 
+    // Create a BundleSelector. Only one BundleSelector will be created for now.
+    // Multiple will be added when we implement the fallback mechanism.
+    auto *bundle_selector = gang_resource_req->add_bundle_selectors();
+
     // Copy the PG's bundles to the request.
     for (auto &&bundle : std::move(*pg_data.mutable_bundles())) {
       if (!NodeID::FromBinary(bundle.node_id()).IsNil()) {
@@ -237,9 +242,6 @@ void GcsAutoscalerStateManager::GetPendingGangResourceRequests(
       // use the BundleSelector for GangResourceRequests.
       auto legacy_resource_req = gang_resource_req->add_requests();
       *legacy_resource_req->mutable_resources_bundle() = unit_resources;
-
-      // Create a new BundleSelector
-      auto *bundle_selector = gang_resource_req->add_bundle_selectors();
 
       // Add ResourceRequest for this bundle.
       auto *bundle_resource_req = bundle_selector->add_resource_requests();
@@ -477,12 +479,10 @@ void GcsAutoscalerStateManager::HandleDrainNode(
   gcs_actor_manager_.SetPreemptedAndPublish(node_id);
 
   auto node = std::move(maybe_node.value());
-  rpc::Address raylet_address;
-  raylet_address.set_raylet_id(node->node_id());
-  raylet_address.set_ip_address(node->node_manager_address());
-  raylet_address.set_port(node->node_manager_port());
-
-  const auto raylet_client = raylet_client_pool_.GetOrConnectByAddress(raylet_address);
+  auto raylet_address = rpc::RayletClientPool::GenerateRayletAddress(
+      node_id, node->node_manager_address(), node->node_manager_port());
+  const auto raylet_client =
+      raylet_client_pool_.GetOrConnectByAddress(std::move(raylet_address));
   raylet_client->DrainRaylet(
       request.reason(),
       request.reason_message(),
