@@ -2660,7 +2660,7 @@ def sanity_check():
 
     v = ray.get(get_version.remote())
     assert v == ray.__version__
-    print("Ray version:", v)
+    cli_logger.success(f"Success! Ray version: {v}")
 
 
 @click.group(name="metrics")
