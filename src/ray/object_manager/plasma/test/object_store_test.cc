@@ -42,22 +42,22 @@ T Random(T max = std::numeric_limits<T>::max()) {
 Allocation CreateAllocation(Allocation alloc,
                             int64_t size,
                             bool fallback_allocated = false) {
-  alloc.size = size;
+  alloc.size_ = size;
   alloc.offset = Random<ptrdiff_t>();
-  alloc.mmap_size = Random<int64_t>();
-  alloc.fallback_allocated = fallback_allocated;
+  alloc.mmap_size_ = Random<int64_t>();
+  alloc.fallback_allocated_ = fallback_allocated;
   return alloc;
 }
 
 const std::string Serialize(const Allocation &allocation) {
   return absl::StrFormat("%p/%d/%d/%d/%d/%d/%d",
-                         allocation.address,
-                         allocation.size,
-                         allocation.fd.first,
-                         allocation.fd.second,
-                         allocation.offset,
-                         allocation.device_num,
-                         allocation.mmap_size);
+                         allocation.address_,
+                         allocation.size_,
+                         allocation.fd_.first,
+                         allocation.fd_.second,
+                         allocation.offset_,
+                         allocation.device_num_,
+                         allocation.mmap_size_);
 }
 
 ObjectInfo CreateObjectInfo(ObjectID object_id, int64_t object_size) {
@@ -106,8 +106,8 @@ TEST(ObjectStoreTest, PassThroughTest) {
     }));
     auto entry = store.CreateObject(info, {}, /*fallback_allocate*/ false);
     EXPECT_NE(entry, nullptr);
-    EXPECT_EQ(entry->ref_count, 0);
-    EXPECT_EQ(entry->state, ObjectState::PLASMA_CREATED);
+    EXPECT_EQ(entry->ref_count_, 0);
+    EXPECT_EQ(entry->state_, ObjectState::PLASMA_CREATED);
     EXPECT_EQ(alloc_str, Serialize(entry->allocation));
     EXPECT_EQ(info, entry->object_info);
     EXPECT_FALSE(entry->allocation.fallback_allocated);
@@ -168,8 +168,8 @@ TEST(ObjectStoreTest, PassThroughTest) {
 
     auto entry = store.CreateObject(info, {}, /*fallback_allocate*/ true);
     EXPECT_NE(entry, nullptr);
-    EXPECT_EQ(entry->ref_count, 0);
-    EXPECT_EQ(entry->state, ObjectState::PLASMA_CREATED);
+    EXPECT_EQ(entry->ref_count_, 0);
+    EXPECT_EQ(entry->state_, ObjectState::PLASMA_CREATED);
     EXPECT_EQ(alloc_str, Serialize(entry->allocation));
     EXPECT_EQ(info, entry->object_info);
     EXPECT_TRUE(entry->allocation.fallback_allocated);

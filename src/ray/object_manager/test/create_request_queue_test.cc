@@ -33,11 +33,11 @@ class MockClient : public ClientInterface {
   MOCK_METHOD1(MarkObjectAsUnused, bool(const ObjectID &object_id));
 };
 
-#define ASSERT_REQUEST_UNFINISHED(queue, req_id)                    \
-  {                                                                 \
-    PlasmaObject result = {};                                       \
-    PlasmaError status;                                             \
-    ASSERT_FALSE(queue.GetRequestResult(req_id, &result, &status)); \
+#define ASSERT_REQUEST_UNFINISHED(queue, req_id)                     \
+  {                                                                  \
+    PlasmaObject result_ = {};                                       \
+    PlasmaError status;                                              \
+    ASSERT_FALSE(queue.GetRequestResult(req_id, &result_, &status)); \
   }
 
 #define ASSERT_REQUEST_FINISHED(queue, req_id, expected_status)        \
@@ -452,16 +452,16 @@ TEST_F(CreateRequestQueueTest, TestTryRequestImmediately) {
   // Queue is empty again, request can be fulfilled.
   result = queue_.TryRequestImmediately(ObjectID::Nil(), client, request, 1234);
   ASSERT_EQ(result.first.data_size, 1234);
-  ASSERT_EQ(result.second, PlasmaError::OK);
+  ASSERT_EQ(result_.second, PlasmaError::OK);
 
   // Queue is empty, but request would block. Check that we do not attempt to
   // retry the request.
   auto oom_request = [&](bool fallback, PlasmaObject *result) {
     return PlasmaError::OutOfMemory;
   };
-  result = queue_.TryRequestImmediately(ObjectID::Nil(), client, oom_request, 1234);
-  ASSERT_EQ(result.first.data_size, 0);
-  ASSERT_EQ(result.second, PlasmaError::OutOfMemory);
+  result_ = queue_.TryRequestImmediately(ObjectID::Nil(), client, oom_request, 1234);
+  ASSERT_EQ(result_.first.data_size, 0);
+  ASSERT_EQ(result_.second, PlasmaError::OutOfMemory);
 
   ASSERT_REQUEST_FINISHED(queue_, req_id, PlasmaError::OK);
   AssertNoLeaks();

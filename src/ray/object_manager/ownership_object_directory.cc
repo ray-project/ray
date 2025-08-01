@@ -345,25 +345,25 @@ ray::Status OwnershipBasedObjectDirectory::SubscribeObjectLocations(
 
     auto failure_callback = [this, owner_address](const std::string &object_id_binary,
                                                   const Status &status) {
-      const auto object_id = ObjectID::FromBinary(object_id_binary);
+      const auto obj_id = ObjectID::FromBinary(object_id_binary);
       rpc::WorkerObjectLocationsPubMessage location_info;
       if (!status.ok()) {
-        RAY_LOG(INFO).WithField(object_id)
+        RAY_LOG(INFO).WithField(obj_id)
             << "Failed to get the location: " << status.ToString();
-        mark_as_failed_(object_id, rpc::ErrorType::OWNER_DIED);
+        mark_as_failed_(obj_id, rpc::ErrorType::OWNER_DIED);
       } else {
         // Owner is still alive but published a failure because the ref was
         // deleted.
-        RAY_LOG(INFO).WithField(object_id)
+        RAY_LOG(INFO).WithField(obj_id)
             << "Failed to get the location for object, already released by distributed "
                "reference counting protocol";
-        mark_as_failed_(object_id, rpc::ErrorType::OBJECT_DELETED);
+        mark_as_failed_(obj_id, rpc::ErrorType::OBJECT_DELETED);
       }
       // Location lookup can fail if the owner is reachable but no longer has a
       // record of this ObjectRef, most likely due to an issue with the
       // distributed reference counting protocol.
       ObjectLocationSubscriptionCallback(location_info,
-                                         object_id,
+                                         obj_id,
                                          /*location_lookup_failed*/ true);
     };
 

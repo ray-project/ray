@@ -38,20 +38,20 @@ struct GetRequest {
              bool is_from_worker,
              int64_t num_unique_objects_to_wait_for);
   /// The client that called get.
-  std::shared_ptr<ClientInterface> client;
+  std::shared_ptr<ClientInterface> client_;
   /// The object IDs involved in this request. This is used in the reply.
-  std::vector<ObjectID> object_ids;
+  std::vector<ObjectID> object_ids_;
   /// The object information for the objects in this request. This is used in
   /// the reply.
-  absl::flat_hash_map<ObjectID, PlasmaObject> objects;
+  absl::flat_hash_map<ObjectID, PlasmaObject> objects_;
   /// The minimum number of objects to wait for in this request.
-  const int64_t num_unique_objects_to_wait_for;
+  const int64_t num_unique_objects_to_wait_for_;
   /// The number of object requests in this wait request that are already
   /// satisfied.
-  int64_t num_unique_objects_satisfied;
+  int64_t num_unique_objects_satisfied_;
   /// Whether or not the request comes from the core worker. It is used to track the size
   /// of total objects that are consumed by core worker.
-  const bool is_from_worker;
+  const bool is_from_worker_;
 
   void AsyncWait(int64_t timeout_ms,
                  std::function<void(const boost::system::error_code &)> on_timeout);
