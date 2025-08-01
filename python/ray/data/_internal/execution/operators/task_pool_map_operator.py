@@ -88,8 +88,6 @@ class TaskPoolMapOperator(MapOperator):
             target_max_block_size=self.actual_target_max_block_size,
         )
 
-        print(f">>> TPMO._add_bundled_input: {self.actual_target_max_block_size=}")
-
         dynamic_ray_remote_args = self._get_runtime_ray_remote_args(input_bundle=bundle)
         dynamic_ray_remote_args["name"] = self.name
 
