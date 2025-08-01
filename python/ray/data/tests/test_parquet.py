@@ -2185,6 +2185,56 @@ def test_read_parquet_with_zero_row_groups(shutdown_only, tmp_path):
     assert dataset.count() == 0
 
 
+def test_parquet_write_parallel_overwrite_no_partitioning(
+    ray_start_regular_shared, tmp_path
+):
+    """Test parallel Parquet write with overwrite mode, no partitioning."""
+    import pandas as pd
+
+    # Create dataset with 1000 rows
+    df = pd.DataFrame({"id": range(1000), "value": [f"value_{i}" for i in range(1000)]})
+    ds = ray.data.from_pandas(df)
+
+    # Repartition to ensure multiple write tasks
+    ds = ds.repartition(10)
+
+    # Write with overwrite mode
+    path = os.path.join(tmp_path, "test_output")
+    ds.write_parquet(path, mode="overwrite")
+
+    # Read back and verify
+    result = ray.data.read_parquet(path)
+    assert result.count() == 1000
+
+
+def test_parquet_write_parallel_overwrite_with_partitioning(
+    ray_start_regular_shared, tmp_path
+):
+    """Test parallel Parquet write with overwrite mode and partitioning."""
+    import pandas as pd
+
+    # Create dataset with 1000 rows and a partition column
+    df = pd.DataFrame(
+        {
+            "id": range(1000),
+            "value": [f"value_{i}" for i in range(1000)],
+            "id_mod": [i % 10 for i in range(1000)],  # 10 partitions
+        }
+    )
+    ds = ray.data.from_pandas(df)
+
+    # Repartition to ensure multiple write tasks
+    ds = ds.repartition(10)
+
+    # Write with overwrite mode and partitioning
+    path = os.path.join(tmp_path, "test_output_partitioned")
+    ds.write_parquet(path, mode="overwrite", partition_cols=["id_mod"])
+
+    # Read back and verify
+    result = ray.data.read_parquet(path)
+    assert result.count() == 1000
+
+
 if __name__ == "__main__":
     import sys
 
