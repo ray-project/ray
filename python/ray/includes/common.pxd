@@ -434,12 +434,12 @@ cdef extern from "ray/gcs/gcs_client/accessor.h" nogil:
 
     cdef cppclass CNodeInfoAccessor "ray::gcs::NodeInfoAccessor":
         CRayStatus CheckAlive(
-            const c_vector[c_string] &raylet_addresses,
+            const c_vector[CNodeID] &node_ids,
             int64_t timeout_ms,
             c_vector[c_bool] &result)
 
         void AsyncCheckAlive(
-            const c_vector[c_string] &raylet_addresses,
+            const c_vector[CNodeID] &node_ids,
             int64_t timeout_ms,
             const MultiItemPyCallback[c_bool] &callback)
 
@@ -774,3 +774,12 @@ cdef extern from "ray/common/constants.h" nogil:
     cdef const char[] kGcsAutoscalerV2EnabledKey
     cdef const char[] kGcsAutoscalerClusterConfigKey
     cdef const char[] kGcsPidKey
+    cdef const char[] kNodeTypeNameEnv
+    cdef const char[] kNodeMarketTypeEnv
+    cdef const char[] kNodeRegionEnv
+    cdef const char[] kNodeZoneEnv
+    cdef const char[] kLabelKeyNodeAcceleratorType
+    cdef const char[] kLabelKeyNodeMarketType
+    cdef const char[] kLabelKeyNodeRegion
+    cdef const char[] kLabelKeyNodeZone
+    cdef const char[] kLabelKeyNodeGroup

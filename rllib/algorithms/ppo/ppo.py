@@ -444,7 +444,7 @@ class PPO(Algorithm):
             # But we also return a total_loss key at the same level as the ModuleID
             # keys. So we need to subtract that to get the correct set of ModuleIDs to
             # update.
-            # TODO (sven): We should also not be using `learner_results` as a messenger
+            # TODO (sven): We should not be using `learner_results` as a messenger
             #  to infer which modules to update. `policies_to_train` might also NOT work
             #  as it might be a very large set (100s of Modules) vs a smaller Modules
             #  set that's present in the current train batch.
