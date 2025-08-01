@@ -443,3 +443,23 @@ py_test_module_list(
         "//python/ray/serve:serve_lib",
     ],
 )
+
+py_test_module_list(
+    size = "medium",
+    env = {"RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP": "0"},
+    files = [
+        "test_handle_same_loop.py",
+        "test_proxy.py",
+    ],
+    name_suffix = "_with_router_in_same_loop",
+    tags = [
+        "exclusive",
+        "no_windows",
+        "team:serve",
+    ],
+    deps = [
+        ":common",
+        ":conftest",
+        "//python/ray/serve:serve_lib",
+    ],
+)
