@@ -541,8 +541,8 @@ cc_proto_library(
 cc_grpc_library(
     name = "events_event_aggregator_service_cc_grpc",
     srcs = [":events_event_aggregator_service_proto"],
-    deps = [":events_event_aggregator_service_cc_proto"],
     grpc_only = True,
+    deps = [":events_event_aggregator_service_cc_proto"],
 )
 
 # All core python protos are compiled in this single rule.
