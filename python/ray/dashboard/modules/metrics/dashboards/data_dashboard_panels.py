@@ -2,10 +2,8 @@
 
 from ray.dashboard.modules.metrics.dashboards.common import (
     DashboardConfig,
-    ExpressionType,
     Panel,
     QueryTarget,
-    ExpressionTarget,
 )
 
 # When adding a new panels for an OpRuntimeMetric, follow this format:
@@ -417,30 +415,6 @@ DATA_GRAFANA_PANELS = [
         ],
         fill=0,
         stack=True,
-    ),
-    Panel(
-        id=38,
-        title="(p$pXX) Task Completion Time",
-        description="Time spent running tasks to completion w/ and w/o backpressure.",
-        unit="seconds",
-        targets=[
-            QueryTarget(
-                expr="histogram_quantile($pXX, sum by (dataset, operator, le) (rate(ray_data_task_completion_time_bucket{{{global_filters}}}[5m])))",
-                legend="($pXX) Completion Time: {{dataset}}, {{operator}}",
-            ),
-            QueryTarget(
-                expr="ray_data_task_output_backpressure_time{{{global_filters}}} OR on() vector(0)",
-                legend="Output Backpressure Time: {{dataset}}, {{operator}}",
-                hide=True,
-            ),
-            ExpressionTarget(
-                type=ExpressionType.MATH,
-                expression="$A - $B",
-                legend="($pXX) Completion Time - Backpressure Time: {{dataset}}, {{operator}}",
-            ),
-        ],
-        fill=0,
-        stack=False,
     ),
     # Ray Data Metrics (Object Store Memory)
     Panel(
