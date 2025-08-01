@@ -346,9 +346,41 @@ void TaskProfileEvent::ToRpcTaskExportEvents(
   event_entry->set_extra_data(std::move(extra_data_));
 }
 
+void TaskProfileEvent::PopulateRpcRayEventBaseFields(
+    rpc::events::RayEvent &ray_event,
+    google::protobuf::Timestamp timestamp) {
+  ray_event.set_event_id(UniqueID::FromRandom().Binary());
+  ray_event.set_source_type(rpc::events::RayEvent::CORE_WORKER);
+  ray_event.mutable_timestamp()->CopyFrom(timestamp);
+  ray_event.set_severity(rpc::events::RayEvent::INFO);
+  ray_event.set_event_type(rpc::events::RayEvent::TASK_PROFILE_EVENT);
+}
+
 void TaskProfileEvent::ToRpcRayEvents(RayEventsPair &ray_events_pair) {
-  // TODO(myan): #54515 need to further figure out how to migrate the task profile event
-  // to the new ray event format.
+  // For TaskProfileEvent: first element = profile event, second element = nullopt
+  auto &[first_event, second_event] = ray_events_pair;
+  second_event = std::nullopt;
+
+  // Using profile start time as the event generation timestamp
+  google::protobuf::Timestamp timestamp = AbslTimeNanosToProtoTimestamp(start_time_);
+
+  // Populate Ray event base fields
+  PopulateRpcRayEventBaseFields(first_event.emplace(), timestamp);
+
+  // Populate the task profile event
+  auto task_profile_events = first_event.value().mutable_task_profile_events();
+  task_profile_events->set_task_id(task_id_.Binary());
+  task_profile_events->set_job_id(job_id_.Binary());
+  task_profile_events->set_attempt_number(attempt_number_);
+  auto profile_events = task_profile_events->mutable_profile_events();
+  profile_events->set_component_type(component_type_);
+  profile_events->set_component_id(component_id_);
+  profile_events->set_node_ip_address(node_ip_address_);
+  auto event_entry = profile_events->add_events();
+  event_entry->set_event_name(event_name_);
+  event_entry->set_start_time(start_time_);
+  event_entry->set_end_time(end_time_);
+  event_entry->set_extra_data(std::move(extra_data_));
 }
 
 bool TaskEventBuffer::RecordTaskStatusEventIfNeeded(
@@ -586,14 +618,16 @@ TaskEventBufferImpl::CreateRayEventsDataToSend(
   auto data = std::make_unique<rpc::events::RayEventsData>();
   // Move the ray events.
   for (auto &[task_attempt, ray_events_pair] : agg_task_events) {
-    auto &[task_definition_event_rpc, task_execution_event_rpc] = ray_events_pair;
-    if (task_definition_event_rpc) {
+    // For TaskStatusEvent: first = task definition event, second = task execution event
+    // For TaskProfileEvent: first = task profile event, second = nullopt (empty)
+    auto &[first_event, second_event] = ray_events_pair;
+    if (first_event) {
       auto events = data->add_events();
-      *events = std::move(task_definition_event_rpc.value());
+      *events = std::move(first_event.value());
     }
-    if (task_execution_event_rpc) {
+    if (second_event) {
       auto events = data->add_events();
-      *events = std::move(task_execution_event_rpc.value());
+      *events = std::move(second_event.value());
     }
   }
 
