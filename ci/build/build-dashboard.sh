@@ -23,6 +23,14 @@ if [ "$EUID" -eq 0 ]; then
 
 fi
 
+# Install ray dashboard dependencies.
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.34.0/install.sh | bash
+source "$HOME"/.nvm/nvm.sh
+
+NODE_VERSION="14"
+nvm install "$NODE_VERSION"
+nvm use "$NODE_VERSION"
+
 # Build the dashboard using Node
 cd "$(dirname "$0")/../../python/ray/dashboard/client"
 
@@ -35,4 +43,4 @@ npm run build
 
 # Archive the output to be used in the wheel build
 tar -czf dashboard_build.tar.gz -C build .
-mv dashboard_build.tar.gz ../../../../../dashboard_build.tar.gz
+mv dashboard_build.tar.gz /ray/dashboard_build.tar.gz
