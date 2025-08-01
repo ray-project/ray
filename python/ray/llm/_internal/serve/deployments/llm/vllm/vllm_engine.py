@@ -57,7 +57,9 @@ def _get_vllm_engine_config(
     async_engine_args = vllm.engine.arg_utils.AsyncEngineArgs(
         **engine_config.get_initialization_kwargs()
     )
-    vllm_engine_config = async_engine_args.create_engine_config()
+    vllm_engine_config = async_engine_args.create_engine_config(
+        usage_context=vllm.engine.arg_utils.UsageContext.OPENAI_API_SERVER
+    )
     return async_engine_args, vllm_engine_config
 
 
@@ -274,7 +276,7 @@ class VLLMEngine(LLMEngine):
             ref = (
                 ray.remote(
                     num_cpus=0,
-                    num_gpus=1,
+                    num_gpus=0.001,
                     accelerator_type=self.llm_config.accelerator_type,
                 )(_get_vllm_engine_config)
                 .options(
@@ -417,9 +419,15 @@ class VLLMEngine(LLMEngine):
         # so that the create_chat_completion API can assign the request_id properly.
         raw_request = self._create_raw_request(request, "/chat/completions")
 
+        # TTFT Tracing: Before calling vLLM create_chat_completion
+        log_ttft_event("engine", "vllm_start", request_id, "VLLMEngine.chat")
+
         chat_response = await self._oai_serving_chat.create_chat_completion(  # type: ignore[attr-defined]
             request, raw_request=raw_request
         )
+
+        # TTFT Tracing: After vLLM create_chat_completion returns
+        log_ttft_event("engine", "vllm_response", request_id, "VLLMEngine.chat")
 
         if isinstance(chat_response, AsyncGenerator):
             first_chunk = True
@@ -456,10 +464,16 @@ class VLLMEngine(LLMEngine):
         # so that the create_completion API can assign the request_id properly.
         raw_request = self._create_raw_request(request, "/completions")
 
+        # TTFT Tracing: Before calling vLLM create_completion
+        log_ttft_event("engine", "vllm_start", request_id, "VLLMEngine.completions")
+
         completion_response = await self._oai_serving_completion.create_completion(  # type: ignore[attr-defined]
             request,
             raw_request=raw_request,
         )
+
+        # TTFT Tracing: After vLLM create_completion returns
+        log_ttft_event("engine", "vllm_response", request_id, "VLLMEngine.completions")
 
         if isinstance(completion_response, AsyncGenerator):
             first_chunk = True

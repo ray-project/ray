@@ -659,12 +659,35 @@ class AsyncioRouter:
         # Wait for the router to be initialized before sending the request.
         await self._request_router_initialized.wait()
 
+        # TTFT Tracing: Before replica selection
+        log_ttft_event(
+            f"{self.deployment_id.name}_route_and_send_request",
+            "choosing_replica",
+            pr.metadata.request_id,
+            "AsyncioRouter.route_and_send_request",
+        )
+
         r = await self.request_router._choose_replica_for_request(pr)
+
+        # TTFT Tracing: After replica selection
+        log_ttft_event(
+            f"{self.deployment_id.name}_route_and_send_request",
+            "replica_chosen",
+            pr.metadata.request_id,
+            "AsyncioRouter.route_and_send_request",
+        )
 
         # If the queue len cache is disabled or we're sending a request to Java,
         # then directly send the query and hand the response back. The replica will
         # never reject requests in this code path.
         if not self._enable_strict_max_ongoing_requests or r.is_cross_language:
+            # TTFT Tracing: Before sending to replica (no rejection path)
+            log_ttft_event(
+                f"{self.deployment_id.name}_route_and_send_request",
+                "sending_to_replica",
+                pr.metadata.request_id,
+                "AsyncioRouter.route_and_send_request",
+            )
             result, _ = await r.send_request(pr, with_rejection=False)
             # TTFT Tracing: End route_and_send_request (no rejection path)
             log_ttft_event(
@@ -678,6 +701,13 @@ class AsyncioRouter:
         while True:
             result = None
             try:
+                # TTFT Tracing: Before sending to replica (with rejection)
+                log_ttft_event(
+                    f"{self.deployment_id.name}_route_and_send_request",
+                    "sending_to_replica_with_rejection",
+                    pr.metadata.request_id,
+                    "AsyncioRouter.route_and_send_request",
+                )
                 result, queue_info = await r.send_request(pr, with_rejection=True)
                 self.request_router.on_new_queue_len_info(r.replica_id, queue_info)
                 self.request_router.on_request_routed(pr, r.replica_id, result)
@@ -720,6 +750,13 @@ class AsyncioRouter:
             # request will be placed on the front of the queue to avoid tail latencies.
             # TODO(edoakes): this retry procedure is not perfect because it'll reset the
             # process of choosing candidates replicas (i.e., for locality-awareness).
+            # TTFT Tracing: Request rejected, retrying routing
+            log_ttft_event(
+                f"{self.deployment_id.name}_route_and_send_request",
+                "retrying_routing",
+                pr.metadata.request_id,
+                "AsyncioRouter.route_and_send_request",
+            )
             r = await self.request_router._choose_replica_for_request(pr, is_retry=True)
 
     async def assign_request(
@@ -994,3 +1031,40 @@ class SharedRouterLongPollClient:
             for deployment_id in self.routers.keys()
         }
         self.long_poll_client.add_key_listeners(key_listeners)
+
+
+class CurrentLoopRouter(Router):
+    """Wrapper class that runs an AsyncioRouter on the current asyncio loop.
+    Note that this class is NOT THREAD-SAFE, and all methods are expected to be
+    invoked from a single asyncio event loop.
+    """
+
+    def __init__(self, **passthrough_kwargs):
+        assert (
+            "event_loop" not in passthrough_kwargs
+        ), "CurrentLoopRouter uses the current event loop."
+
+        self._asyncio_loop = asyncio.get_running_loop()
+        self._asyncio_router = AsyncioRouter(
+            event_loop=self._asyncio_loop,
+            _request_router_initialized_event=asyncio.Event(),
+            **passthrough_kwargs,
+        )
+
+    def running_replicas_populated(self) -> bool:
+        return self._asyncio_router.running_replicas_populated()
+
+    def assign_request(
+        self,
+        request_meta: RequestMetadata,
+        *request_args,
+        **request_kwargs,
+    ) -> asyncio.Future[ReplicaResult]:
+        return self._asyncio_loop.create_task(
+            self._asyncio_router.assign_request(
+                request_meta, *request_args, **request_kwargs
+            ),
+        )
+
+    def shutdown(self) -> asyncio.Future:
+        return self._asyncio_loop.create_task(self._asyncio_router.shutdown())

@@ -609,7 +609,27 @@ class ReplicaBase(ABC):
         )
         with self._wrap_request(request_metadata):
             async with self._start_request(request_metadata):
-                # TTFT Tracing: Replica sending request to engine
+                # TTFT Tracing: Before calling user method
+                log_ttft_event(
+                    self._deployment_id.name,
+                    "calling_user_method",
+                    request_metadata.request_id,
+                    "ReplicaBase.handle_request",
+                )
+
+                result = await self._user_callable_wrapper.call_user_method(
+                    request_metadata, request_args, request_kwargs
+                )
+
+                # TTFT Tracing: After user method returns
+                log_ttft_event(
+                    self._deployment_id.name,
+                    "user_method_returned",
+                    request_metadata.request_id,
+                    "ReplicaBase.handle_request",
+                )
+
+                # TTFT Tracing: Deployment sending result
                 log_ttft_event(
                     self._deployment_id.name,
                     "tx",
@@ -617,19 +637,33 @@ class ReplicaBase(ABC):
                     "ReplicaBase.handle_request",
                 )
 
-                return await self._user_callable_wrapper.call_user_method(
-                    request_metadata, request_args, request_kwargs
-                )
+                return result
 
     async def handle_request_streaming(
         self, request_metadata: RequestMetadata, *request_args, **request_kwargs
     ) -> AsyncGenerator[Any, None]:
         """Generator that is the entrypoint for all `stream=True` handle calls."""
+        # TTFT Tracing: Replica received streaming request
+        log_ttft_event(
+            self._deployment_id.name,
+            "rx_streaming",
+            request_metadata.request_id,
+            "ReplicaBase.handle_request_streaming",
+        )
+
         request_args, request_kwargs = self._unpack_proxy_args(
             request_metadata, request_args, request_kwargs
         )
         with self._wrap_request(request_metadata) as status_code_callback:
             async with self._start_request(request_metadata):
+                # TTFT Tracing: Before calling streaming user method
+                log_ttft_event(
+                    self._deployment_id.name,
+                    "calling_user_method_streaming",
+                    request_metadata.request_id,
+                    "ReplicaBase.handle_request_streaming",
+                )
+
                 if request_metadata.is_http_request:
                     scope, receive = request_args
                     async for msgs in self._user_callable_wrapper.call_http_entrypoint(
@@ -650,6 +684,14 @@ class ReplicaBase(ABC):
     async def handle_request_with_rejection(
         self, request_metadata: RequestMetadata, *request_args, **request_kwargs
     ):
+        # TTFT Tracing: Replica received request
+        log_ttft_event(
+            self._deployment_id.name,
+            "rx",
+            request_metadata.request_id,
+            "ReplicaBase.handle_request_with_rejection",
+        )
+
         # Check if the replica has capacity for the request.
         if not self._can_accept_request(request_metadata):
             limit = self.max_ongoing_requests
@@ -657,6 +699,13 @@ class ReplicaBase(ABC):
                 f"Replica at capacity of max_ongoing_requests={limit}, "
                 f"rejecting request {request_metadata.request_id}.",
                 extra={"log_to_stderr": False},
+            )
+            # TTFT Tracing: Request rejected due to capacity
+            log_ttft_event(
+                self._deployment_id.name,
+                "rejected_capacity",
+                request_metadata.request_id,
+                "ReplicaBase.handle_request_with_rejection",
             )
             yield ReplicaQueueLengthInfo(False, self.get_num_ongoing_requests())
             return
@@ -666,6 +715,14 @@ class ReplicaBase(ABC):
         )
         with self._wrap_request(request_metadata) as status_code_callback:
             async with self._start_request(request_metadata):
+                # TTFT Tracing: Request accepted, starting processing
+                log_ttft_event(
+                    self._deployment_id.name,
+                    "accepted",
+                    request_metadata.request_id,
+                    "ReplicaBase.handle_request_with_rejection",
+                )
+
                 yield ReplicaQueueLengthInfo(
                     accepted=True,
                     # NOTE(edoakes): `_wrap_request` will increment the number
@@ -690,6 +747,13 @@ class ReplicaBase(ABC):
                     ):
                         yield result
                 else:
+                    # TTFT Tracing: Deployment sending result
+                    log_ttft_event(
+                        self._deployment_id.name,
+                        "tx",
+                        request_metadata.request_id,
+                        "ReplicaBase.handle_request_with_rejection",
+                    )
                     yield await self._user_callable_wrapper.call_user_method(
                         request_metadata, request_args, request_kwargs
                     )
@@ -1835,12 +1899,28 @@ class UserCallableWrapper:
             extra={"log_to_stderr": False, "serve_access_log": True},
         )
 
+        # TTFT Tracing: User callable wrapper starting
+        log_ttft_event(
+            "user_callable",
+            "start",
+            request_metadata.request_id,
+            f"UserCallableWrapper.{request_metadata.call_method}",
+        )
+
         user_method_info = self.get_user_method_info(request_metadata.call_method)
         result, _ = await self._call_func_or_gen(
             user_method_info.callable,
             args=request_args,
             kwargs=request_kwargs,
             is_streaming=False,
+        )
+
+        # TTFT Tracing: User callable wrapper completed
+        log_ttft_event(
+            "user_callable",
+            "end",
+            request_metadata.request_id,
+            f"UserCallableWrapper.{request_metadata.call_method}",
         )
         if inspect.isgenerator(result) or inspect.isasyncgen(result):
             raise TypeError(
