@@ -1845,7 +1845,7 @@ class ActorHandle(Generic[T]):
         _ray_is_cross_language: Whether this actor is cross language.
         _ray_actor_creation_function_descriptor: The function descriptor
             of the actor creation task.
-        _ray_execute_out_of_order: Whether the actor supports out-of-order execution.
+        _ray_execute_out_of_order: Whether the actor can execute tasks out of order.
     """
 
     def __init__(
@@ -1891,7 +1891,7 @@ class ActorHandle(Generic[T]):
             cluster_and_job: The cluster and job information.
             original_handle: Whether this is the original actor handle.
             weak_ref: Whether this is a weak reference to the actor.
-            execute_out_of_order: Whether the actor supports out-of-order execution.
+            execute_out_of_order: Whether the actor can execute tasks out of order.
         """
         self._ray_actor_language = language
         self._ray_actor_id = actor_id
