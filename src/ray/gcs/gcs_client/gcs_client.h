@@ -27,6 +27,7 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/common/id.h"
+#include "ray/common/network_util.h"
 #include "ray/common/status.h"
 #include "ray/gcs/gcs_client/accessor.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
@@ -65,7 +66,7 @@ class GcsClientOptions {
       : cluster_id_(cluster_id),
         should_fetch_cluster_id_(ShouldFetchClusterId(
             cluster_id, allow_cluster_id_nil, fetch_cluster_id_if_nil)) {
-    std::vector<std::string> address = absl::StrSplit(gcs_address, ':');
+    std::vector<std::string> address = ParseAddress(gcs_address);
     RAY_LOG(DEBUG) << "Connect to gcs server via address: " << gcs_address;
     RAY_CHECK(address.size() == 2);
     gcs_address_ = address[0];
