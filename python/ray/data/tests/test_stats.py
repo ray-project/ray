@@ -95,6 +95,8 @@ def gen_expected_metrics(
             "'bytes_outputs_taken': N",
             "'num_outputs_of_finished_tasks': N",
             "'bytes_outputs_of_finished_tasks': N",
+            "'num_output_queue_blocks': N",
+            "'num_output_queue_bytes': N",
             "'num_tasks_submitted': N",
             "'num_tasks_running': Z",
             "'num_tasks_have_outputs': N",
@@ -132,6 +134,8 @@ def gen_expected_metrics(
             "'block_outputs_taken': N",
             "'num_outputs_taken': N",
             "'bytes_outputs_taken': N",
+            "'num_output_queue_blocks': N",
+            "'num_output_queue_bytes': N",
             (
                 "'task_submission_backpressure_time': "
                 f"{'N' if task_backpressure else 'Z'}"
@@ -629,6 +633,8 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      bytes_outputs_taken: N,\n"
         "      num_outputs_of_finished_tasks: N,\n"
         "      bytes_outputs_of_finished_tasks: N,\n"
+        "      num_output_queue_blocks: N,\n"
+        "      num_output_queue_bytes: N,\n"
         "      num_tasks_submitted: N,\n"
         "      num_tasks_running: Z,\n"
         "      num_tasks_have_outputs: N,\n"
@@ -752,6 +758,8 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      bytes_outputs_taken: N,\n"
         "      num_outputs_of_finished_tasks: N,\n"
         "      bytes_outputs_of_finished_tasks: N,\n"
+        "      num_output_queue_blocks: N,\n"
+        "      num_output_queue_bytes: N,\n"
         "      num_tasks_submitted: N,\n"
         "      num_tasks_running: Z,\n"
         "      num_tasks_have_outputs: N,\n"
@@ -830,6 +838,8 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "            bytes_outputs_taken: N,\n"
         "            num_outputs_of_finished_tasks: N,\n"
         "            bytes_outputs_of_finished_tasks: N,\n"
+        "            num_output_queue_blocks: N,\n"
+        "            num_output_queue_bytes: N,\n"
         "            num_tasks_submitted: N,\n"
         "            num_tasks_running: Z,\n"
         "            num_tasks_have_outputs: N,\n"
@@ -1791,6 +1801,8 @@ def test_op_metrics_logging():
         ) + STANDARD_EXTRA_METRICS_TASK_BACKPRESSURE
 
         # Check that these strings are logged exactly once.
+        for log in logs:
+            print(f"log is {log}")
         assert sum([log == input_str for log in logs]) == 1, (logs, input_str)
         assert sum([log == map_str for log in logs]) == 1, (logs, map_str)
 
