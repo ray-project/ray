@@ -220,7 +220,6 @@ struct PlacementGroupCreationOptions {
       PlacementStrategy strategy,
       std::vector<std::unordered_map<std::string, double>> bundles,
       bool is_detached_p,
-      double max_cpu_fraction_per_node,
       NodeID soft_target_node_id = NodeID::Nil(),
       std::vector<std::unordered_map<std::string, std::string>> bundle_label_selector =
           {})
@@ -228,7 +227,6 @@ struct PlacementGroupCreationOptions {
         strategy(strategy),
         bundles(std::move(bundles)),
         is_detached(is_detached_p),
-        max_cpu_fraction_per_node(max_cpu_fraction_per_node),
         soft_target_node_id(soft_target_node_id),
         bundle_label_selector(std::move(bundle_label_selector)) {
     RAY_CHECK(soft_target_node_id.IsNil() || strategy == PlacementStrategy::STRICT_PACK)
@@ -243,8 +241,6 @@ struct PlacementGroupCreationOptions {
   const std::vector<std::unordered_map<std::string, double>> bundles;
   /// Whether to keep the placement group persistent after its creator dead.
   const bool is_detached = false;
-  /// The maximum fraction of CPU cores this placement group can take up on each node.
-  const double max_cpu_fraction_per_node;
   /// ID of the target node where bundles should be placed
   /// iff the target node has enough available resources and alive.
   /// Otherwise, the bundles can be placed elsewhere.
