@@ -1902,14 +1902,22 @@ def test_stats_manager_stale_actor_handle(ray_start_cluster):
     # First driver run
     ray.init(ignore_reinit_error=True)
 
-    ray.data.range(1000).map_batches(F, concurrency=(1, 4), num_cpus=1,).take_all()
+    ray.data.range(1000).map_batches(
+        F,
+        concurrency=(1, 4),
+        num_cpus=1,
+    ).take_all()
 
     ray.shutdown()
 
     # Second driver run
     ray.init(ignore_reinit_error=True)
 
-    ray.data.range(1000).map_batches(F, concurrency=(1, 4), num_cpus=1,).take_all()
+    ray.data.range(1000).map_batches(
+        F,
+        concurrency=(1, 4),
+        num_cpus=1,
+    ).take_all()
 
     ray.shutdown()
 

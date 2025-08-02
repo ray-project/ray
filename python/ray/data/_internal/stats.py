@@ -635,7 +635,9 @@ class _StatsManager:
 
     def _get_stats_actor(self, skip_cache: bool = False) -> Optional[ActorHandle]:
         if ray._private.worker._global_node is None:
-            raise RuntimeError("Global node is not initialized. Driver might be not connected to Ray.")
+            raise RuntimeError(
+                "Global node is not initialized. Driver might be not connected to Ray."
+            )
 
         current_cluster_id = ray._private.worker._global_node.cluster_id
 
@@ -656,7 +658,9 @@ class _StatsManager:
 
     def _get_or_create_stats_actor(self) -> Optional[ActorHandle]:
         if ray._private.worker._global_node is None:
-            raise RuntimeError("Global node is not initialized. Driver might be not connected to Ray.")
+            raise RuntimeError(
+                "Global node is not initialized. Driver might be not connected to Ray."
+            )
 
         # NOTE: In some cases (for ex, when registering dataset) actor might be gone
         #       (for ex, when prior driver disconnects) and therefore to avoid using
