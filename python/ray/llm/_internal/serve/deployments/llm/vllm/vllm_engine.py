@@ -34,6 +34,7 @@ from ray.llm._internal.serve.deployments.utils.node_initialization_utils import 
     initialize_node,
 )
 from ray.llm._internal.serve.observability.logging import get_logger
+from ray.serve._private.ttft_tracer import log_ttft_event
 from ray.util.placement_group import PlacementGroup
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
@@ -56,7 +57,9 @@ def _get_vllm_engine_config(
     async_engine_args = vllm.engine.arg_utils.AsyncEngineArgs(
         **engine_config.get_initialization_kwargs()
     )
-    vllm_engine_config = async_engine_args.create_engine_config()
+    vllm_engine_config = async_engine_args.create_engine_config(
+        usage_context=vllm.engine.arg_utils.UsageContext.OPENAI_API_SERVER
+    )
     return async_engine_args, vllm_engine_config
 
 
@@ -406,24 +409,41 @@ class VLLMEngine(LLMEngine):
     ) -> AsyncGenerator[Union[str, ChatCompletionResponse, ErrorResponse], None]:
         self._validate_openai_serving_chat()
 
+        # TTFT Tracing: Engine received request
+        request_id = getattr(request, "request_id", None) or str(uuid.uuid4())
+        log_ttft_event("engine", "rx", request_id, "VLLMEngine.chat")
+
         # TODO (Kourosh): Remove when we upstream request_id attribute to vLLM.
         # PR: https://github.com/vllm-project/vllm/pull/21009
         # Create a fake starlette.Request object with the x-request-id header
         # so that the create_chat_completion API can assign the request_id properly.
         raw_request = self._create_raw_request(request, "/chat/completions")
 
+        # TTFT Tracing: Before calling vLLM create_chat_completion
+        log_ttft_event("engine", "vllm_start", request_id, "VLLMEngine.chat")
+
         chat_response = await self._oai_serving_chat.create_chat_completion(  # type: ignore[attr-defined]
             request, raw_request=raw_request
         )
 
+        # TTFT Tracing: After vLLM create_chat_completion returns
+        log_ttft_event("engine", "vllm_response", request_id, "VLLMEngine.chat")
+
         if isinstance(chat_response, AsyncGenerator):
+            first_chunk = True
             async for response in chat_response:
                 if not isinstance(response, str):
                     raise ValueError(
                         f"Expected create_chat_completion to return a stream of strings, got and item with type {type(response)}"
                     )
+                # TTFT Tracing: Engine generated first token/chunk
+                if first_chunk:
+                    log_ttft_event("engine", "tx", request_id, "VLLMEngine.chat")
+                    first_chunk = False
                 yield response
         else:
+            # TTFT Tracing: Engine generated response (non-streaming)
+            log_ttft_event("engine", "tx", request_id, "VLLMEngine.chat")
             if isinstance(chat_response, VLLMErrorResponse):
                 yield ErrorResponse(**chat_response.model_dump())
             else:
@@ -434,25 +454,42 @@ class VLLMEngine(LLMEngine):
     ) -> AsyncGenerator[Union[str, CompletionResponse, ErrorResponse], None]:
         self._validate_openai_serving_completion()
 
+        # TTFT Tracing: Engine received request
+        request_id = getattr(request, "request_id", None) or str(uuid.uuid4())
+        log_ttft_event("engine", "rx", request_id, "VLLMEngine.completions")
+
         # TODO (Kourosh): Remove when we upstream request_id attribute to vLLM.
         # PR: https://github.com/vllm-project/vllm/pull/21009
         # Create a fake starlette.Request object with the x-request-id header
         # so that the create_completion API can assign the request_id properly.
         raw_request = self._create_raw_request(request, "/completions")
 
+        # TTFT Tracing: Before calling vLLM create_completion
+        log_ttft_event("engine", "vllm_start", request_id, "VLLMEngine.completions")
+
         completion_response = await self._oai_serving_completion.create_completion(  # type: ignore[attr-defined]
             request,
             raw_request=raw_request,
         )
 
+        # TTFT Tracing: After vLLM create_completion returns
+        log_ttft_event("engine", "vllm_response", request_id, "VLLMEngine.completions")
+
         if isinstance(completion_response, AsyncGenerator):
+            first_chunk = True
             async for response in completion_response:
                 if not isinstance(response, str):
                     raise ValueError(
                         f"Expected create_completion to return a stream of strings, got and item with type {type(response)}"
                     )
+                # TTFT Tracing: Engine generated first token/chunk
+                if first_chunk:
+                    log_ttft_event("engine", "tx", request_id, "VLLMEngine.completions")
+                    first_chunk = False
                 yield response
         else:
+            # TTFT Tracing: Engine generated response (non-streaming)
+            log_ttft_event("engine", "tx", request_id, "VLLMEngine.completions")
             if isinstance(completion_response, VLLMErrorResponse):
                 yield ErrorResponse(**completion_response.model_dump())
             else:

@@ -65,6 +65,7 @@ from ray.llm._internal.serve.observability.metrics.fast_api_metrics import (
 from ray.llm._internal.serve.utils.lora_serve_utils import (
     get_lora_model_metadata,
 )
+from ray.serve._private.ttft_tracer import log_ttft_event
 from ray.serve.config import AutoscalingConfig
 from ray.serve.handle import DeploymentHandle
 
@@ -302,6 +303,12 @@ class LLMRouter:
 
         model_handle = self._get_configured_serve_handle(model)
 
+        # TTFT Tracing: LLMRouter sending request to deployment
+        request_context = serve.context._get_serve_request_context()
+        log_ttft_event(
+            "LLMRouter", "tx", request_context.request_id, "LLMRouter._get_response"
+        )
+
         async for response in getattr(model_handle, call_method).remote(body):
             yield response
 
@@ -372,6 +379,15 @@ class LLMRouter:
     async def _process_llm_request(
         self, body: Union[CompletionRequest, ChatCompletionRequest], is_chat: bool
     ) -> Response:
+        # TTFT Tracing: LLMRouter received request
+        request_context = serve.context._get_serve_request_context()
+        log_ttft_event(
+            "LLMRouter",
+            "rx",
+            request_context.request_id,
+            "LLMRouter._process_llm_request",
+        )
+
         NoneStreamingResponseType = (
             ChatCompletionResponse if is_chat else CompletionResponse
         )
@@ -435,6 +451,12 @@ class LLMRouter:
         Returns:
             A response object with embeddings.
         """
+        # TTFT Tracing: LLMRouter received embeddings request
+        request_context = serve.context._get_serve_request_context()
+        log_ttft_event(
+            "LLMRouter", "rx", request_context.request_id, "LLMRouter.embeddings"
+        )
+
         async with timeout(DEFAULT_LLM_ROUTER_HTTP_TIMEOUT):
             results = self._get_response(body=body, call_method="embeddings")
             result = await results.__anext__()

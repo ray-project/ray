@@ -49,6 +49,7 @@ from ray.serve._private.request_router.pow_2_router import (
     PowerOfTwoChoicesRequestRouter,
 )
 from ray.serve._private.request_router.replica_wrapper import RunningReplica
+from ray.serve._private.ttft_tracer import log_ttft_event
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     generate_request_id,
@@ -647,25 +648,77 @@ class AsyncioRouter:
         This will block indefinitely if no replicas are available to handle the
         request, so it's up to the caller to time out or cancel the request.
         """
+        # TTFT Tracing: Start route_and_send_request
+        log_ttft_event(
+            f"{self.deployment_id.name}_route_and_send_request",
+            "start",
+            pr.metadata.request_id,
+            "AsyncioRouter.route_and_send_request",
+        )
+
         # Wait for the router to be initialized before sending the request.
         await self._request_router_initialized.wait()
 
+        # TTFT Tracing: Before replica selection
+        log_ttft_event(
+            f"{self.deployment_id.name}_route_and_send_request",
+            "choosing_replica",
+            pr.metadata.request_id,
+            "AsyncioRouter.route_and_send_request",
+        )
+
         r = await self.request_router._choose_replica_for_request(pr)
+
+        # TTFT Tracing: After replica selection
+        log_ttft_event(
+            f"{self.deployment_id.name}_route_and_send_request",
+            "replica_chosen",
+            pr.metadata.request_id,
+            "AsyncioRouter.route_and_send_request",
+        )
 
         # If the queue len cache is disabled or we're sending a request to Java,
         # then directly send the query and hand the response back. The replica will
         # never reject requests in this code path.
         if not self._enable_strict_max_ongoing_requests or r.is_cross_language:
+            # TTFT Tracing: Before sending to replica (no rejection path)
+            log_ttft_event(
+                f"{self.deployment_id.name}_route_and_send_request",
+                "sending_to_replica",
+                pr.metadata.request_id,
+                "AsyncioRouter.route_and_send_request",
+            )
             result, _ = await r.send_request(pr, with_rejection=False)
+            # TTFT Tracing: End route_and_send_request (no rejection path)
+            log_ttft_event(
+                f"{self.deployment_id.name}_route_and_send_request",
+                "end",
+                pr.metadata.request_id,
+                "AsyncioRouter.route_and_send_request",
+            )
             return result, r.replica_id
 
         while True:
             result = None
             try:
+                # TTFT Tracing: Before sending to replica (with rejection)
+                log_ttft_event(
+                    f"{self.deployment_id.name}_route_and_send_request",
+                    "sending_to_replica_with_rejection",
+                    pr.metadata.request_id,
+                    "AsyncioRouter.route_and_send_request",
+                )
                 result, queue_info = await r.send_request(pr, with_rejection=True)
                 self.request_router.on_new_queue_len_info(r.replica_id, queue_info)
                 self.request_router.on_request_routed(pr, r.replica_id, result)
                 if queue_info.accepted:
+                    # TTFT Tracing: End route_and_send_request (accepted)
+                    log_ttft_event(
+                        f"{self.deployment_id.name}_route_and_send_request",
+                        "end",
+                        pr.metadata.request_id,
+                        "AsyncioRouter.route_and_send_request",
+                    )
                     return result, r.replica_id
             except asyncio.CancelledError:
                 # NOTE(edoakes): this is not strictly necessary because there are
@@ -697,6 +750,13 @@ class AsyncioRouter:
             # request will be placed on the front of the queue to avoid tail latencies.
             # TODO(edoakes): this retry procedure is not perfect because it'll reset the
             # process of choosing candidates replicas (i.e., for locality-awareness).
+            # TTFT Tracing: Request rejected, retrying routing
+            log_ttft_event(
+                f"{self.deployment_id.name}_route_and_send_request",
+                "retrying_routing",
+                pr.metadata.request_id,
+                "AsyncioRouter.route_and_send_request",
+            )
             r = await self.request_router._choose_replica_for_request(pr, is_retry=True)
 
     async def assign_request(
@@ -706,6 +766,14 @@ class AsyncioRouter:
         **request_kwargs,
     ) -> ReplicaResult:
         """Assign a request to a replica and return the resulting object_ref."""
+
+        # TTFT Tracing: Router received request
+        log_ttft_event(
+            self.deployment_id.name,
+            "rx",
+            request_meta.request_id,
+            "AsyncioRouter.assign_request",
+        )
 
         if not self._deployment_available:
             raise DeploymentUnavailableError(self.deployment_id)
@@ -737,6 +805,15 @@ class AsyncioRouter:
                 request_args, request_kwargs = await self._resolve_request_arguments(
                     request_meta, request_args, request_kwargs
                 )
+
+                # TTFT Tracing: Router sending to replica
+                log_ttft_event(
+                    self.deployment_id.name,
+                    "tx",
+                    request_meta.request_id,
+                    "AsyncioRouter.assign_request",
+                )
+
                 replica_result, replica_id = await self.route_and_send_request(
                     PendingRequest(
                         args=list(request_args),
