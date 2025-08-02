@@ -783,3 +783,7 @@ cdef extern from "ray/common/constants.h" nogil:
     cdef const char[] kLabelKeyNodeRegion
     cdef const char[] kLabelKeyNodeZone
     cdef const char[] kLabelKeyNodeGroup
+    cdef const char[] kLabelKeyTpuTopology
+    cdef const char[] kLabelKeyTpuSliceName
+    cdef const char[] kLabelKeyTpuWorkerId
+    cdef const char[] kLabelKeyTpuPodType

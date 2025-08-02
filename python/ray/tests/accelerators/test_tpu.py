@@ -99,7 +99,7 @@ def test_get_current_node_tpu_worker_id(mock_os, mock_request, test_case):
         mock_os.return_value = None
     else:
         mock_os.return_value = worker_id
-    assert TPUAcceleratorManager._get_current_node_tpu_worker_id() == expected_value
+    assert TPUAcceleratorManager.get_current_node_tpu_worker_id() == expected_value
 
 
 @pytest.mark.parametrize(
@@ -246,12 +246,12 @@ def test_tpu_pod_detect_and_configure_worker(test_config):
     ):
         with patch(
             "ray._private.accelerators.tpu.TPUAcceleratorManager."
-            "_get_current_node_tpu_pod_type",
+            "get_current_node_tpu_pod_type",
             return_value="v4-16",
         ):
             with patch(
                 "ray._private.accelerators.tpu.TPUAcceleratorManager"
-                "._get_current_node_tpu_worker_id",
+                ".get_current_node_tpu_worker_id",
                 return_value=worker_id,
             ):
                 final_resources = (
@@ -307,7 +307,7 @@ def test_worker_count(mock_glob, test_case):
 
     with patch(
         "ray._private.accelerators.tpu.TPUAcceleratorManager."
-        "_get_current_node_tpu_pod_type",
+        "get_current_node_tpu_pod_type",
         return_value=accelerator_type,
     ):
         worker_count = ray.util.accelerators.tpu.get_current_pod_worker_count()
@@ -326,6 +326,31 @@ def test_num_tpu_chips(mock_glob):
     TPUAcceleratorManager.get_current_node_num_accelerators.cache_clear()
     num_tpu_chips = ray.util.accelerators.tpu.get_num_tpu_chips_on_node()
     assert num_tpu_chips == 4
+
+
+def test_get_current_node_labels_env_only(monkeypatch):
+    # Simulate GKE TPU environment variables
+    monkeypatch.setenv("TPU_NAME", "tpu-worker-group-2")
+    monkeypatch.setenv("TPU_WORKER_ID", "0")
+    monkeypatch.setenv("TPU_ACCELERATOR_TYPE", "v6e-16")
+    monkeypatch.setenv("TPU_TOPOLOGY", "4x4")
+
+    tpu_labels = TPUAcceleratorManager.get_current_node_accelerator_labels()
+
+    assert tpu_labels["ray.io/tpu-slice-name"] == "tpu-worker-group-2"
+    assert tpu_labels["ray.io/tpu-worker-id"] == "0"
+    assert tpu_labels["ray.io/tpu-topology"] == "4x4"
+    assert tpu_labels["ray.io/tpu-pod-type"] == "v6e-16"
+
+
+def test_get_current_node_tpu_topology_from_metadata():
+    tpu_env_string = "TPU_ACCELERATOR:v6e.\nTOPOLOGY: '2x2x4'\nTPU_HOST_BOUNDS:0,1,1,2"
+
+    with patch(
+        "ray._private.accelerators.tpu._get_tpu_metadata", return_value=tpu_env_string
+    ):
+        topology = TPUAcceleratorManager.get_current_node_tpu_topology()
+        assert topology == "2x2x4"
 
 
 if __name__ == "__main__":
