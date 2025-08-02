@@ -136,12 +136,14 @@ class TaskManagerInterface {
   /// the ref count for the dependency IDs. If the dependencies contained other
   /// ObjectIDs, then the ref count for these object IDs will be incremented.
   ///
+  /// \param[in] task_id The task id of the pending task spec.
   /// \param[in] inlined_dependency_ids The args that were originally passed by
   /// reference into the task, but have now been inlined.
   /// \param[in] contained_ids Any ObjectIDs that were newly inlined in the
   /// task spec, because a serialized copy of the ID was contained in one of
   /// the inlined dependencies.
   virtual void OnTaskDependenciesInlined(
+      const TaskID &task_id,
       const std::vector<ObjectID> &inlined_dependency_ids,
       const std::vector<ObjectID> &contained_ids) = 0;
 
