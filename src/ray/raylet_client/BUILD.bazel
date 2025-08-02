@@ -21,12 +21,12 @@ ray_cc_library(
     hdrs = ["raylet_client.h"],
     deps = [
         ":raylet_client_connection_lib",
-        "//:node_manager_rpc",
         "//src/ray/common:id",
         "//src/ray/common:ray_object",
         "//src/ray/common:status",
         "//src/ray/common:task_common",
         "//src/ray/protobuf:common_cc_proto",
+        "//src/ray/rpc:node_manager_rpc",
         "//src/ray/util:logging",
     ],
 )
