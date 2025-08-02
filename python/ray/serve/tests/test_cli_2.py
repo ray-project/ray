@@ -31,7 +31,7 @@ from ray.util.state import list_actors
 CONNECTION_ERROR_MSG = "connection error"
 
 
-def ping_endpoint(app_name: str, params: str = ""):
+def ping_endpoint(app_name: str = SERVE_DEFAULT_APP_NAME, params: str = ""):
     try:
         url = get_application_url("HTTP", app_name=app_name)
         return httpx.get(f"{url}/{params}").text
@@ -233,7 +233,7 @@ def test_build_multi_app(ray_start_stop):
         def check_no_apps():
             for url in app_urls:
                 with pytest.raises(httpx.HTTPError):
-                    _ = httpx.get(f"{url}").text
+                    _ = httpx.get(url).text
             return True
 
         wait_for_condition(check_no_apps, timeout=15)
@@ -429,7 +429,7 @@ class TestRayReinitialization:
         cause error.
         """
         p = subprocess.Popen(["serve", "run", import_file_name])
-        wait_for_condition(lambda: ping_endpoint("") == "foobar", timeout=10)
+        wait_for_condition(lambda: ping_endpoint() == "foobar", timeout=10)
         p.send_signal(signal.SIGINT)
         p.wait()
 
@@ -444,7 +444,7 @@ class TestRayReinitialization:
         p = subprocess.Popen(
             ["serve", "run", "--address=127.0.0.1:6379", import_file_name]
         )
-        wait_for_condition(lambda: ping_endpoint("") == "foobar", timeout=10)
+        wait_for_condition(lambda: ping_endpoint() == "foobar", timeout=10)
         p.send_signal(signal.SIGINT)
         p.wait()
 
@@ -463,7 +463,7 @@ class TestRayReinitialization:
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
         )
-        wait_for_condition(lambda: ping_endpoint("") == "foobar", timeout=10)
+        wait_for_condition(lambda: ping_endpoint() == "foobar", timeout=10)
         p.send_signal(signal.SIGINT)
         p.wait()
         process_output, _ = p.communicate()
@@ -491,7 +491,7 @@ class TestRayReinitialization:
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
         )
-        wait_for_condition(lambda: ping_endpoint("") == "foobar", timeout=10)
+        wait_for_condition(lambda: ping_endpoint() == "foobar", timeout=10)
         p.send_signal(signal.SIGINT)
         p.wait()
         process_output, _ = p.communicate()
