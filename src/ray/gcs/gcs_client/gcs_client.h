@@ -269,6 +269,9 @@ std::unordered_map<std::string, double> PythonGetResourcesTotal(
 std::unordered_map<std::string, std::string> PythonGetNodeLabels(
     const rpc::GcsNodeInfo &node_info);
 
+std::unordered_map<std::string, double> PythonGetResourcesAvailable(
+    const rpc::GcsNodeInfo &node_info);
+
 }  // namespace gcs
 
 }  // namespace ray
