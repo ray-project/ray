@@ -1,0 +1,29 @@
+# config.yaml
+applications:
+- args:
+    llm_configs:
+        - model_loading_config:
+            model_id: qwen-0.5b
+            model_source: Qwen/Qwen2.5-0.5B-Instruct
+          accelerator_type: A10G
+          deployment_config:
+            autoscaling_config:
+                min_replicas: 1
+                max_replicas: 2
+          runtime_env:
+            env_vars:
+                VLLM_USE_V1: "1"
+        - model_loading_config:
+            model_id: qwen-1.5b
+            model_source: Qwen/Qwen2.5-1.5B-Instruct
+          accelerator_type: A10G
+          deployment_config:
+            autoscaling_config:
+                min_replicas: 1
+                max_replicas: 2
+          runtime_env:
+            env_vars:
+                VLLM_USE_V1: "1"
+  import_path: ray.serve.llm:build_openai_app
+  name: llm_app
+  route_prefix: "/" 
