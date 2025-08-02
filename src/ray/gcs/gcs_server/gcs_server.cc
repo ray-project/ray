@@ -132,27 +132,7 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
   }
 
   // Init GCS publisher instance.
-  std::unique_ptr<pubsub::Publisher> inner_publisher;
-  // Init grpc based pubsub on GCS.
-  // TODO(yic): Move this into GcsPublisher.
-  inner_publisher = std::make_unique<pubsub::Publisher>(
-      /*channels=*/
-      std::vector<rpc::ChannelType>{
-          rpc::ChannelType::GCS_ACTOR_CHANNEL,
-          rpc::ChannelType::GCS_JOB_CHANNEL,
-          rpc::ChannelType::GCS_NODE_INFO_CHANNEL,
-          rpc::ChannelType::GCS_WORKER_DELTA_CHANNEL,
-          rpc::ChannelType::RAY_ERROR_INFO_CHANNEL,
-          rpc::ChannelType::RAY_LOG_CHANNEL,
-          rpc::ChannelType::RAY_NODE_RESOURCE_USAGE_CHANNEL,
-      },
-      /*periodical_runner=*/*pubsub_periodical_runner_,
-      /*get_time_ms=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; },
-      /*subscriber_timeout_ms=*/RayConfig::instance().subscriber_timeout_ms(),
-      /*publish_batch_size_=*/RayConfig::instance().publish_batch_size(),
-      /*publisher_id=*/NodeID::FromRandom());
-
-  gcs_publisher_ = std::make_unique<GcsPublisher>(std::move(inner_publisher));
+  gcs_publisher_ = std::make_unique<GcsPublisher>(pubsub_periodical_runner_);
 }
 
 GcsServer::~GcsServer() { Stop(); }

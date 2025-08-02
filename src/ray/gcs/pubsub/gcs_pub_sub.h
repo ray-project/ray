@@ -48,6 +48,8 @@ class GcsPublisher {
     RAY_CHECK(publisher_);
   }
 
+  explicit GcsPublisher(std::shared_ptr<PeriodicalRunner> periodical_runner);
+
   virtual ~GcsPublisher() = default;
 
   /// Returns the underlying pubsub::Publisher. Caller does not take ownership.
