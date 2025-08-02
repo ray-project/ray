@@ -251,7 +251,7 @@ void ConfigInternal::Init(RayConfig &config, int argc, char **argv) {
 
 void ConfigInternal::SetBootstrapAddress(std::string_view address) {
   auto address = ParseAddress(std::string(address));
-  RAY_CHECK(address.size() == 2)
+  RAY_CHECK(address.size() == 2);
 
   bootstrap_ip = address[0];
   auto ret = std::from_chars(
