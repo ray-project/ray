@@ -246,7 +246,7 @@ void GcsNodeManager::HandleGetAllNodeInfo(rpc::GetAllNodeInfoRequest request,
     }
   }
   const size_t total_num_nodes = alive_nodes_.size() + dead_nodes_.size();
-  size_t num_added = 0;
+  int64_t num_added = 0;
 
   if (request.node_selectors_size() > 0 && only_node_id_filters) {
     // optimized path if request only wants specific node ids
