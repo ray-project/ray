@@ -193,7 +193,7 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   /// \return The inferred death info of the node.
   rpc::NodeDeathInfo InferDeathInfo(const NodeID &node_id);
 
-  void WriteNodeExportEvent(rpc::GcsNodeInfo node_info) const;
+  void WriteNodeExportEvent(const rpc::GcsNodeInfo &node_info) const;
 
   // Verify if export events should be written for EXPORT_NODE source types
   bool IsExportAPIEnabledNode() const {

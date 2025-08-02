@@ -594,11 +594,11 @@ Status NodeInfoAccessor::DrainNodes(const std::vector<NodeID> &node_ids,
 
 void NodeInfoAccessor::AsyncGetAll(const MultiItemCallback<rpc::GcsNodeInfo> &callback,
                                    int64_t timeout_ms,
-                                   std::optional<NodeID> node_id) {
+                                   const std::vector<NodeID> &node_ids) {
   RAY_LOG(DEBUG) << "Getting information of all nodes.";
   rpc::GetAllNodeInfoRequest request;
-  if (node_id) {
-    request.mutable_filters()->set_node_id(node_id->Binary());
+  for (const auto &node_id : node_ids) {
+    request.add_node_selectors()->set_node_id(node_id.Binary());
   }
   client_impl_->GetGcsRpcClient().GetAllNodeInfo(
       request,
@@ -683,9 +683,12 @@ Status NodeInfoAccessor::GetAllNoCache(int64_t timeout_ms,
 }
 
 StatusOr<std::vector<rpc::GcsNodeInfo>> NodeInfoAccessor::GetAllNoCacheWithFilters(
-    int64_t timeout_ms, rpc::GetAllNodeInfoRequest_Filters filters) {
+    int64_t timeout_ms,
+    rpc::GcsNodeInfo::GcsNodeState state_filter,
+    rpc::GetAllNodeInfoRequest::NodeSelector node_selector) {
   rpc::GetAllNodeInfoRequest request;
-  *request.mutable_filters() = std::move(filters);
+  *request.add_node_selectors() = std::move(node_selector);
+  request.set_state_filter(state_filter);
   rpc::GetAllNodeInfoReply reply;
   RAY_RETURN_NOT_OK(
       client_impl_->GetGcsRpcClient().SyncGetAllNodeInfo(request, &reply, timeout_ms));

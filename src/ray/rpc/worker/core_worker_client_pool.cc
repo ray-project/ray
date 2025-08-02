@@ -86,7 +86,7 @@ std::function<void()> CoreWorkerClientPool::GetDefaultUnavailableTimeoutCallback
                 check_worker_alive(nodes[0]);
               },
               -1,
-              node_id);
+              {node_id});
         };
 
     if (gcs_client->Nodes().IsSubscribedToNodeChange()) {
