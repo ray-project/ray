@@ -393,6 +393,9 @@ class ReplicaBase(ABC):
         # `ASGIAppReplicaWrapper` (i.e., they are using the FastAPI integration).
         self._user_callable_asgi_app: Optional[ASGIApp] = None
 
+        self._rank: Optional[int] = None
+        self._world_size: Optional[int] = None
+
         # Set metadata for logs and metrics.
         # servable_object will be populated in `initialize_and_get_metadata`.
         self._set_internal_replica_context(servable_object=None)
@@ -428,6 +431,8 @@ class ReplicaBase(ABC):
             replica_id=self._replica_id,
             servable_object=servable_object,
             _deployment_config=self._deployment_config,
+            rank=self._rank,
+            world_size=self._world_size,
         )
 
     def _configure_logger_and_profilers(
@@ -712,6 +717,26 @@ class ReplicaBase(ABC):
             await self.check_health()
         except Exception:
             raise RuntimeError(traceback.format_exc()) from None
+
+    async def update_replica_rank(self, rank: int, world_size: int) -> bool:
+        """Update replica rank with the provided rank value.
+
+        This is called by the deployment state to notify replicas of their
+        current rank after autoscaling operations.
+
+        Args:
+            rank: The current rank of this replica.
+            world_size: The current number of running replicas in the deployment.
+
+        Returns:
+            True if rank update was successful, False otherwise.
+        """
+        self._rank = rank
+        self._world_size = world_size
+        self._set_internal_replica_context(
+            servable_object=self._user_callable_wrapper._callable,
+        )
+        return True
 
     async def reconfigure(self, deployment_config: DeploymentConfig):
         try:
@@ -1002,6 +1027,21 @@ class ReplicaActor:
 
     async def record_routing_stats(self) -> Dict[str, Any]:
         return await self._replica_impl.record_routing_stats()
+
+    async def update_replica_rank(self, rank: int, world_size: int) -> bool:
+        """Update replica rank with the provided rank value.
+
+        This can be called remotely to refresh the replica's rank after
+        autoscaling operations.
+
+        Args:
+            rank: The current rank of this replica.
+            world_size: The current number of running replicas in the deployment.
+
+        Returns:
+            bool: True if rank update was successful, False otherwise.
+        """
+        return await self._replica_impl.update_replica_rank(rank, world_size)
 
     async def reconfigure(self, deployment_config) -> ReplicaMetadata:
         await self._replica_impl.reconfigure(deployment_config)
