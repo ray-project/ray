@@ -12,6 +12,7 @@ from ray.data._internal.stats import Timer
 import torch
 from logger_utils import ContextLoggerAdapter
 
+from constants import DatasetKey
 from benchmark_factory import BenchmarkFactory
 
 logger = ContextLoggerAdapter(logging.getLogger(__name__))
@@ -286,7 +287,11 @@ class TrainLoopRunner:
 
         self._cleanup()
 
-    def get_metrics(self, dataset_creation_time: float = 0.0) -> Dict[str, float]:
+    def get_metrics(
+        self, dataset_creation_times: Optional[Dict[str, float]] = None
+    ) -> Dict[str, float]:
+        if dataset_creation_times is None:
+            dataset_creation_times = {"train": 0.0, "val": 0.0}
         # TODO: These metrics should be aggregated across training workers.
         metrics = {}
         for key, metric in self._metrics.items():
@@ -299,8 +304,12 @@ class TrainLoopRunner:
                 }
             )
 
-        metrics["train/dataset_creation_time"] = dataset_creation_time
-        metrics["validation/dataset_creation_time"] = dataset_creation_time
+        metrics["train/dataset_creation_time"] = dataset_creation_times[
+            DatasetKey.TRAIN
+        ]
+        metrics["validation/dataset_creation_time"] = dataset_creation_times[
+            DatasetKey.VALID
+        ]
 
         # Throughput
         # TODO: Ray Data can provide these throughput metrics automatically.

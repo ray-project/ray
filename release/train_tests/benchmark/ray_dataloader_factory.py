@@ -36,8 +36,12 @@ class RayDataLoaderFactory(BaseDataLoaderFactory):
         data_context.execution_options.preserve_order = dataloader_config.preserve_order
 
     @abstractmethod
-    def get_ray_datasets(self) -> Dict[str, Dataset]:
-        """Get Ray datasets."""
+    def get_ray_datasets(self, dataset_key: DatasetKey) -> Dataset:
+        """Get Ray datasets.
+
+        Returns:
+            Ray dataset
+        """
         raise NotImplementedError
 
     def _get_collate_fn(self) -> Optional[CollateFn]:
