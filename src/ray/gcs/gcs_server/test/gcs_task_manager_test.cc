@@ -146,6 +146,32 @@ class GcsTaskManagerTest : public ::testing::Test {
     return reply;
   }
 
+  rpc::events::AddEventsReply SyncAddEvents(
+      const rpc::events::RayEventsData &events_data) {
+    rpc::events::AddEventsRequest request;
+    rpc::events::AddEventsReply reply;
+    std::promise<bool> promise;
+
+    request.mutable_events_data()->CopyFrom(events_data);
+    // Dispatch so that it runs in GcsTaskManager's io service.
+    io_context_->GetIoService().dispatch(
+        [this, &promise, &request, &reply]() {
+          task_manager->HandleAddEvents(
+              request,
+              &reply,
+              [&promise](Status, std::function<void()>, std::function<void()>) {
+                promise.set_value(true);
+              });
+        },
+        "SyncAddEvent");
+
+    promise.get_future().get();
+
+    // Assert on RPC reply.
+    EXPECT_EQ(StatusCode(reply.status().code()), StatusCode::OK);
+    return reply;
+  }
+
   rpc::GetTaskEventsReply SyncGetTaskEvents(
       const std::vector<TaskID> task_ids,
       const std::vector<rpc::FilterPredicate> task_id_predicates,
@@ -400,6 +426,21 @@ class GcsTaskManagerDroppedTaskAttemptsLimit : public GcsTaskManagerTest {
   )");
   }
 };
+
+TEST_F(GcsTaskManagerTest, TestHandleAddEventBasic) {
+  size_t num_task_events = 100;
+  auto task_ids = GenTaskIDs(num_task_events);
+  auto events = GenTaskEvents(task_ids, 0);
+  auto events_data = Mocker::GenRayEventsData(events, {});
+  auto reply = SyncAddEvents(events_data);
+
+  // Assert on RPC reply.
+  EXPECT_EQ(StatusCode(reply.status().code()), StatusCode::OK);
+
+  // Assert on actual data.
+  EXPECT_EQ(task_manager->task_event_storage_->GetTaskEvents().size(), num_task_events);
+  EXPECT_EQ(task_manager->GetTotalNumTaskEventsReported(), num_task_events);
+}
 
 TEST_F(GcsTaskManagerTest, TestHandleAddTaskEventBasic) {
   size_t num_task_events = 100;
