@@ -103,6 +103,9 @@ if __name__ == "__main__":
         return "main" if hash(episode.id_) % 2 == agent_id else "random"
 
     def policy_mapping_fn(agent_id, episode, worker, **kwargs):
+        # e.g. episode ID = 10234
+        # -> agent `0` -> main (b/c epsID % 2 == 0)
+        # -> agent `1` -> random (b/c epsID % 2 == 1)
         return "main" if episode.episode_id % 2 == agent_id else "random"
 
     config = (

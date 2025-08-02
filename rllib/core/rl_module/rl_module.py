@@ -7,9 +7,8 @@ from typing import Any, Collection, Dict, Optional, Type, TYPE_CHECKING, Union
 import gymnasium as gym
 
 from ray.rllib.core import DEFAULT_MODULE_ID
-from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
-from ray.rllib.models.distributions import Distribution
+from ray.rllib.core.distribution.distribution import Distribution
 from ray.rllib.utils.annotations import (
     override,
     OverrideToImplementCustomLogic,
@@ -372,9 +371,9 @@ class RLModule(Checkpointable, abc.ABC):
         model_config: A config dict to specify features of this RLModule.
 
     Attributes:
-        action_dist_cls: An optional ray.rllib.models.distribution.Distribution subclass
-            to use for sampling actions, given parameters from a batch
-            (`Columns.ACTION_DIST_INPUTS`).
+        action_dist_cls: An optional ray.rllib.core.distribution.distribution.
+            Distribution subclass to use for sampling actions, given parameters from
+            a batch (`Columns.ACTION_DIST_INPUTS`).
 
     Abstract Methods:
         ``~_forward_train``: Forward pass during training.
@@ -499,7 +498,8 @@ class RLModule(Checkpointable, abc.ABC):
         Note that RLlib's distribution classes all implement the `Distribution`
         interface. This requires two special methods: `Distribution.from_logits()` and
         `Distribution.to_deterministic()`. See the documentation of the
-        :py:class:`~ray.rllib.models.distributions.Distribution` class for more details.
+        :py:class:`~ray.rllib.core.distribution.distribution.Distribution` class for
+        more details.
         """
         raise NotImplementedError
 
@@ -514,7 +514,8 @@ class RLModule(Checkpointable, abc.ABC):
         Note that RLlib's distribution classes all implement the `Distribution`
         interface. This requires two special methods: `Distribution.from_logits()` and
         `Distribution.to_deterministic()`. See the documentation of the
-        :py:class:`~ray.rllib.models.distributions.Distribution` class for more details.
+        :py:class:`~ray.rllib.core.distribution.distribution.Distribution` class for
+        more details.
         """
         raise NotImplementedError
 
@@ -529,7 +530,8 @@ class RLModule(Checkpointable, abc.ABC):
         Note that RLlib's distribution classes all implement the `Distribution`
         interface. This requires two special methods: `Distribution.from_logits()` and
         `Distribution.to_deterministic()`. See the documentation of the
-        :py:class:`~ray.rllib.models.distributions.Distribution` class for more details.
+        :py:class:`~ray.rllib.core.distribution.distribution.Distribution` class for
+        more details.
         """
         raise NotImplementedError
 
@@ -563,8 +565,7 @@ class RLModule(Checkpointable, abc.ABC):
         method instead.
 
         Args:
-            batch: The input batch. This input batch should comply with
-                input_specs_inference().
+            batch: The input batch.
             **kwargs: Additional keyword arguments.
 
         Returns:
@@ -592,13 +593,11 @@ class RLModule(Checkpointable, abc.ABC):
         method instead.
 
         Args:
-            batch: The input batch. This input batch should comply with
-                input_specs_exploration().
+            batch: The input batch.
             **kwargs: Additional keyword arguments.
 
         Returns:
-            The output of the forward pass. This output should comply with the
-            output_specs_exploration().
+            The output of the forward pass.
         """
         return self._forward_exploration(batch, **kwargs)
 
@@ -621,13 +620,11 @@ class RLModule(Checkpointable, abc.ABC):
         method instead.
 
         Args:
-            batch: The input batch. This input batch should comply with
-                input_specs_train().
+            batch: The input batch.
             **kwargs: Additional keyword arguments.
 
         Returns:
-            The output of the forward pass. This output should comply with the
-            output_specs_train().
+            The output of the forward pass.
         """
         if self.inference_only:
             raise RuntimeError(
@@ -741,31 +738,33 @@ class RLModule(Checkpointable, abc.ABC):
         """
         return self
 
-    def output_specs_inference(self):
-        return [Columns.ACTION_DIST_INPUTS]
-
-    def output_specs_exploration(self):
-        return [Columns.ACTION_DIST_INPUTS]
-
+    @Deprecated(error=False)
     def output_specs_train(self):
-        """Returns the output specs of the forward_train method."""
-        return {}
+        pass
 
+    @Deprecated(error=False)
+    def output_specs_inference(self):
+        pass
+
+    @Deprecated(error=False)
+    def output_specs_exploration(self):
+        pass
+
+    @Deprecated(error=False)
     def input_specs_inference(self):
-        """Returns the input specs of the forward_inference method."""
-        return self._default_input_specs()
+        pass
 
+    @Deprecated(error=False)
     def input_specs_exploration(self):
-        """Returns the input specs of the forward_exploration method."""
-        return self._default_input_specs()
+        pass
 
+    @Deprecated(error=False)
     def input_specs_train(self):
-        """Returns the input specs of the forward_train method."""
-        return self._default_input_specs()
+        pass
 
+    @Deprecated(error=False)
     def _default_input_specs(self):
-        """Returns the default input specs."""
-        return [Columns.OBS]
+        pass
 
 
 @Deprecated(

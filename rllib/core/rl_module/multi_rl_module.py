@@ -465,26 +465,6 @@ class MultiRLModule(RLModule):
         return list(self._rl_modules.items())
 
     @override(RLModule)
-    def output_specs_train(self):
-        return []
-
-    @override(RLModule)
-    def output_specs_inference(self):
-        return []
-
-    @override(RLModule)
-    def output_specs_exploration(self):
-        return []
-
-    @override(RLModule)
-    def _default_input_specs(self):
-        """MultiRLModule should not check the input specs.
-
-        The underlying single-agent RLModules will check the input specs.
-        """
-        return []
-
-    @override(RLModule)
     def as_multi_rl_module(self) -> "MultiRLModule":
         """Returns self in order to match `RLModule.as_multi_rl_module()` behavior.
 
@@ -515,6 +495,22 @@ class MultiRLModule(RLModule):
                 f"Module with module_id {module_id} not found. "
                 f"Available modules: {set(self.keys())}"
             )
+
+    @Deprecated(error=False)
+    def output_specs_train(self):
+        pass
+
+    @Deprecated(error=False)
+    def output_specs_inference(self):
+        pass
+
+    @Deprecated(error=False)
+    def output_specs_exploration(self):
+        pass
+
+    @Deprecated(error=False)
+    def _default_input_specs(self):
+        pass
 
 
 @PublicAPI(stability="alpha")
