@@ -1,27 +1,26 @@
 import click
 from pathlib import Path
-from ci.raydepsets.workspace import Workspace, Depset
+from ci.raydepsets.workspace import Workspace, Depset, ConfigArgs
 from typing import List
 import subprocess
 import platform
 import runfiles
+from typing import Optional
 from networkx import DiGraph, topological_sort
 
-DEFAULT_UV_FLAGS = [
-    "--generate-hashes",
-    "--strip-extras",
-    "--python-version=3.11",
-    "--no-strip-markers",
-    "--emit-index-url",
-    "--emit-find-links",
-    "--unsafe-package ray",
-    "--unsafe-package grpcio-tools",
-    "--unsafe-package setuptools",
-    "--index-url https://pypi.org/simple",
-    "--extra-index-url https://download.pytorch.org/whl/cpu",
-    "--index-strategy unsafe-best-match",
-    "--quiet",
-]
+DEFAULT_UV_FLAGS = """
+    --generate-hashes
+    --strip-extras
+    --unsafe-package ray
+    --unsafe-package grpcio-tools
+    --unsafe-package setuptools
+    --index-url https://pypi.org/simple
+    --extra-index-url https://download.pytorch.org/whl/cpu
+    --index-strategy unsafe-best-match
+    --no-strip-markers
+    --emit-index-url
+    --emit-find-links
+""".split()
 
 
 @click.group(name="raydepsets")
@@ -30,14 +29,21 @@ def cli():
 
 
 @cli.command()
-@click.argument("config_path", default="ci/raydepsets/depset.config.yaml")
+@click.argument("config_path", default="ci/raydepsets/ray.depsets.yaml")
 @click.option("--workspace-dir", default=None)
 @click.option("--name", default=None)
-def load(config_path: str, workspace_dir: str, name: str):
+@click.option("--config-args", default=None)
+def load(config_path: str, workspace_dir: str, name: str, config_args: str):
     """Load a dependency sets from a config file."""
     manager = DependencySetManager(config_path=config_path, workspace_dir=workspace_dir)
+    config = None
     if name:
-        manager.execute_single(manager.get_depset(name))
+        if config_args:
+            for config_arg in manager.config.config_args:
+                if config_arg.name == config_args:
+                    config = config_arg
+                    break
+        manager.execute_single(manager.get_depset(name, config))
     else:
         manager.execute()
 
@@ -45,7 +51,7 @@ def load(config_path: str, workspace_dir: str, name: str):
 class DependencySetManager:
     def __init__(
         self,
-        config_path: Path = Path(__file__).parent / "depset.config.yaml",
+        config_path: Path = Path(__file__).parent / "ray.depsets.yaml",
         workspace_dir: str = None,
     ):
         self.workspace = Workspace(workspace_dir)
@@ -78,16 +84,22 @@ class DependencySetManager:
             depset = self.build_graph.nodes[node]["depset"]
             self.execute_single(depset)
 
-    def get_depset(self, name: str) -> Depset:
+    def get_depset(self, name: str, config_args: ConfigArgs) -> Depset:
+        print(f"# of depsets: {len(self.config.depsets)}")
         for depset in self.config.depsets:
-            if depset.name == name:
+            print(f"depset name: {depset.name}")
+            if depset.name == name and (
+                config_args is None or depset.config_args.name == config_args.name
+            ):
                 return depset
-        raise KeyError(f"Dependency set {name} not found")
+        raise KeyError(
+            f"Dependency set {name} not found with config args: {config_args.name if config_args else 'None'}"
+        )
 
     def exec_uv_cmd(self, cmd: str, args: List[str]) -> str:
-        cmd = f"{uv_binary()} pip {cmd} {' '.join(args)}"
+        cmd = [uv_binary(), "pip", cmd, *args]
         click.echo(f"Executing command: {cmd}")
-        status = subprocess.run(cmd, shell=True)
+        status = subprocess.run(cmd, cwd=self.workspace.dir)
         if status.returncode != 0:
             raise RuntimeError(f"Failed to execute command: {cmd}")
         return status.stdout
@@ -97,7 +109,8 @@ class DependencySetManager:
             self.compile(
                 constraints=depset.constraints,
                 requirements=depset.requirements,
-                args=DEFAULT_UV_FLAGS.copy(),
+                append_flags=depset.append_flags,
+                override_flags=depset.override_flags,
                 name=depset.name,
                 output=depset.output,
             )
@@ -105,18 +118,22 @@ class DependencySetManager:
             self.subset(
                 source_depset=depset.source_depset,
                 requirements=depset.requirements,
-                args=DEFAULT_UV_FLAGS.copy(),
+                append_flags=depset.append_flags,
+                override_flags=depset.override_flags,
                 name=depset.name,
                 output=depset.output,
+                config_args=depset.config_args,
             )
         elif depset.operation == "expand":
             self.expand(
                 depsets=depset.depsets,
                 requirements=depset.requirements,
                 constraints=depset.constraints,
-                args=DEFAULT_UV_FLAGS.copy(),
+                append_flags=depset.append_flags,
+                override_flags=depset.override_flags,
                 name=depset.name,
                 output=depset.output,
+                config_args=depset.config_args,
             )
         click.echo(f"Dependency set {depset.name} compiled successfully")
 
@@ -124,11 +141,17 @@ class DependencySetManager:
         self,
         constraints: List[str],
         requirements: List[str],
-        args: List[str],
         name: str,
         output: str,
+        append_flags: Optional[List[str]] = None,
+        override_flags: Optional[List[str]] = None,
     ):
         """Compile a dependency set."""
+        args = DEFAULT_UV_FLAGS.copy()
+        if override_flags:
+            args = _override_uv_flags(override_flags, args)
+        if append_flags:
+            args = _append_uv_flags(append_flags, args)
         if constraints:
             for constraint in constraints:
                 args.extend(["-c", self.get_path(constraint)])
@@ -143,19 +166,22 @@ class DependencySetManager:
         self,
         source_depset: str,
         requirements: List[str],
-        args: List[str],
         name: str,
+        config_args: ConfigArgs = None,
         output: str = None,
+        append_flags: Optional[List[str]] = None,
+        override_flags: Optional[List[str]] = None,
     ):
         """Subset a dependency set."""
-        source_depset = self.get_depset(source_depset)
+        source_depset = self.get_depset(source_depset, config_args)
         self.check_subset_exists(source_depset, requirements)
         self.compile(
             constraints=[source_depset.output],
             requirements=requirements,
-            args=args,
             name=name,
             output=output,
+            append_flags=append_flags,
+            override_flags=override_flags,
         )
 
     def expand(
@@ -163,24 +189,27 @@ class DependencySetManager:
         depsets: List[str],
         requirements: List[str],
         constraints: List[str],
-        args: List[str],
         name: str,
+        config_args: ConfigArgs = None,
         output: str = None,
+        append_flags: Optional[List[str]] = None,
+        override_flags: Optional[List[str]] = None,
     ):
         """Expand a dependency set."""
         # handle both depsets and requirements
         depset_req_list = []
         for depset_name in depsets:
-            depset = self.get_depset(depset_name)
+            depset = self.get_depset(depset_name, config_args)
             depset_req_list.extend(depset.requirements)
         if requirements:
             depset_req_list.extend(requirements)
         self.compile(
             constraints=constraints,
             requirements=depset_req_list,
-            args=args,
             name=name,
             output=output,
+            append_flags=append_flags,
+            override_flags=override_flags,
         )
 
     def get_path(self, path: str) -> str:
@@ -192,6 +221,39 @@ class DependencySetManager:
                 raise RuntimeError(
                     f"Requirement {req} is not a subset of {source_depset.name}"
                 )
+
+
+def _flatten_flags(flags: List[str]) -> List[str]:
+    """
+    Flatten a list of flags into a list of strings.
+    For example, ["--find-links https://pypi.org/simple"] will be flattened to
+    ["--find-links", "https://pypi.org/simple"].
+    """
+    flattened_flags = []
+    for flag in flags:
+        flattened_flags.extend(flag.split())
+    return flattened_flags
+
+
+def _override_uv_flags(flags: List[str], args: List[str]) -> List[str]:
+    flag_names = {f.split()[0] for f in flags if f.startswith("--")}
+    new_args = []
+    skip_next = False
+    for arg in args:
+        if skip_next:
+            skip_next = False
+            continue
+        if arg in flag_names:
+            skip_next = True
+            continue
+        new_args.append(arg)
+
+    return new_args + _flatten_flags(flags)
+
+
+def _append_uv_flags(flags: List[str], args: List[str]) -> List[str]:
+    args.extend(flags)
+    return args
 
 
 def uv_binary():
