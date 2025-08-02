@@ -2,8 +2,10 @@ import copy
 from typing import Optional
 
 from ray.rllib.utils.typing import EnvConfigDict
+from ray.util.annotations import PublicAPI
 
 
+@PublicAPI
 class EnvContext(dict):
     """Wraps env configurations to include extra rllib metadata.
 
