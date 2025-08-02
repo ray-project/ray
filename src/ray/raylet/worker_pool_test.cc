@@ -170,14 +170,17 @@ class WorkerPoolMock : public WorkerPool {
   using WorkerPool::PopWorkerCallbackInternal;
 
   // Mock `PopWorkerCallbackAsync` to synchronized function.
-  void PopWorkerCallbackAsync(PopWorkerCallback callback,
-                              std::shared_ptr<WorkerInterface> worker,
-                              PopWorkerStatus status = PopWorkerStatus::OK) override {
-    PopWorkerCallbackInternal(callback, worker, status);
+  void PopWorkerCallbackAsync(
+      PopWorkerCallback callback,
+      std::shared_ptr<WorkerInterface> worker,
+      PopWorkerStatus status,
+      const std::string &runtime_env_setup_error_message = "") override {
+    PopWorkerCallbackInternal(callback, worker, status, runtime_env_setup_error_message);
   }
 
   Process StartProcess(const std::vector<std::string> &worker_command_args,
-                       const ProcessEnvironment &env) override {
+                       const ProcessEnvironment &env,
+                       std::error_code &ec) override {
     // Use a bogus process ID that won't conflict with those in the system
     auto pid = static_cast<pid_t>(PID_MAX_LIMIT + 1 + worker_commands_by_proc_.size());
     last_worker_process_ = Process::FromPid(pid);
