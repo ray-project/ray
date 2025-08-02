@@ -6,7 +6,13 @@ from dataclasses import asdict
 from typing import List, Tuple
 
 import ray
-from ray.dashboard.modules.metrics.dashboards.common import DashboardConfig, Panel
+from ray.dashboard.modules.metrics.dashboards.common import (
+    DashboardConfig,
+    ExpressionTarget,
+    Panel,
+    QueryTarget,
+    Target,
+)
 from ray.dashboard.modules.metrics.dashboards.data_dashboard_panels import (
     data_dashboard_config,
 )
@@ -340,15 +346,36 @@ def _generate_targets(panel: Panel, panel_global_filters: List[str]) -> List[dic
     for target, ref_id in zip(
         panel.targets, gen_incrementing_alphabets(len(panel.targets))
     ):
-        template = copy.deepcopy(target.template.value)
-        template.update(
-            {
-                "expr": target.expr.format(
-                    global_filters=",".join(panel_global_filters)
-                ),
+        assert isinstance(target, Target)
+
+        if isinstance(target, QueryTarget):
+            template = copy.deepcopy(target.template.value)
+            template.update(
+                {
+                    "expr": target.expr.format(
+                        global_filters=",".join(panel_global_filters)
+                    ),
+                    "hide": target.hide,
+                    "legendFormat": target.legend,
+                    "refId": ref_id,
+                }
+            )
+            targets.append(template)
+        elif isinstance(target, ExpressionTarget):
+            # ExpressionTarget doesn't use a template, create a basic structure
+            template = {
+                "datasource": {
+                    "name": "Expression",
+                    "type": "__expr__",
+                    "uid": "__expr__",
+                },
+                "expression": target.expression,
+                "hide": target.hide,
                 "legendFormat": target.legend,
                 "refId": ref_id,
+                "type": target.type.value,
             }
-        )
-        targets.append(template)
+            targets.append(template)
+        else:
+            raise ValueError(f"Unsupported target type: {type(target)}")
     return targets

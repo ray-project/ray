@@ -4,7 +4,7 @@ from ray.dashboard.modules.metrics.dashboards.common import (
     DashboardConfig,
     GridPos,
     Panel,
-    Target,
+    QueryTarget,
 )
 
 SERVE_DEPLOYMENT_GRAFANA_PANELS = [
@@ -14,7 +14,7 @@ SERVE_DEPLOYMENT_GRAFANA_PANELS = [
         description='Number of replicas per deployment. Ignores "Route" variable.',
         unit="replicas",
         targets=[
-            Target(
+            QueryTarget(
                 expr="sum(ray_serve_deployment_replica_healthy{{{global_filters}}}) by (application, deployment)",
                 legend="{{application}}#{{deployment}}#{{replica}}",
             ),
@@ -27,7 +27,7 @@ SERVE_DEPLOYMENT_GRAFANA_PANELS = [
         description="QPS for each replica.",
         unit="qps",
         targets=[
-            Target(
+            QueryTarget(
                 expr='sum(rate(ray_serve_deployment_request_counter_total{{route=~"$Route",route!~"/-/.*",{global_filters}}}[5m])) by (application, deployment, replica)',
                 legend="{{application}}#{{deployment}}#{{replica}}",
             ),
@@ -40,7 +40,7 @@ SERVE_DEPLOYMENT_GRAFANA_PANELS = [
         description="Error QPS for each replica.",
         unit="qps",
         targets=[
-            Target(
+            QueryTarget(
                 expr='sum(rate(ray_serve_deployment_error_counter_total{{route=~"$Route",route!~"/-/.*",{global_filters}}}[5m])) by (application, deployment, replica)',
                 legend="{{application}}#{{deployment}}#{{replica}}",
             ),
@@ -53,11 +53,11 @@ SERVE_DEPLOYMENT_GRAFANA_PANELS = [
         description="P50 latency per replica.",
         unit="ms",
         targets=[
-            Target(
+            QueryTarget(
                 expr='histogram_quantile(0.5, sum(rate(ray_serve_deployment_processing_latency_ms_bucket{{route=~"$Route",route!~"/-/.*",{global_filters}}}[5m])) by (application, deployment, replica, le))',
                 legend="{{application}}#{{deployment}}#{{replica}}",
             ),
-            Target(
+            QueryTarget(
                 expr='histogram_quantile(0.5, sum(rate(ray_serve_deployment_processing_latency_ms_bucket{{route=~"$Route",route!~"/-/.*",{global_filters}}}[5m])) by (le))',
                 legend="Total",
             ),
@@ -72,11 +72,11 @@ SERVE_DEPLOYMENT_GRAFANA_PANELS = [
         description="P90 latency per replica.",
         unit="ms",
         targets=[
-            Target(
+            QueryTarget(
                 expr='histogram_quantile(0.9, sum(rate(ray_serve_deployment_processing_latency_ms_bucket{{route=~"$Route",route!~"/-/.*",{global_filters}}}[5m])) by (application, deployment, replica, le))',
                 legend="{{application}}#{{deployment}}#{{replica}}",
             ),
-            Target(
+            QueryTarget(
                 expr='histogram_quantile(0.9, sum(rate(ray_serve_deployment_processing_latency_ms_bucket{{route=~"$Route",route!~"/-/.*",{global_filters}}}[5m])) by (le))',
                 legend="Total",
             ),
@@ -91,11 +91,11 @@ SERVE_DEPLOYMENT_GRAFANA_PANELS = [
         description="P99 latency per replica.",
         unit="ms",
         targets=[
-            Target(
+            QueryTarget(
                 expr='histogram_quantile(0.99, sum(rate(ray_serve_deployment_processing_latency_ms_bucket{{route=~"$Route",route!~"/-/.*",{global_filters}}}[5m])) by (application, deployment, replica, le))',
                 legend="{{application}}#{{deployment}}#{{replica}}",
             ),
-            Target(
+            QueryTarget(
                 expr='histogram_quantile(0.99, sum(rate(ray_serve_deployment_processing_latency_ms_bucket{{route=~"$Route",{global_filters}}}[5m])) by (le))',
                 legend="Total",
             ),
@@ -110,7 +110,7 @@ SERVE_DEPLOYMENT_GRAFANA_PANELS = [
         description='Number of requests queued per deployment. Ignores "Replica" and "Route" variable.',
         unit="requests",
         targets=[
-            Target(
+            QueryTarget(
                 expr="sum(ray_serve_deployment_queued_queries{{{global_filters}}}) by (application, deployment)",
                 legend="{{application}}#{{deployment}}#{{replica}}",
             ),
@@ -125,7 +125,7 @@ SERVE_DEPLOYMENT_GRAFANA_PANELS = [
         description="Current running requests for each replica.",
         unit="requests",
         targets=[
-            Target(
+            QueryTarget(
                 expr="sum(ray_serve_replica_processing_queries{{{global_filters}}}) by (application, deployment, replica)",
                 legend="{{application}}#{{deployment}}#{{replica}}",
             ),
@@ -140,7 +140,7 @@ SERVE_DEPLOYMENT_GRAFANA_PANELS = [
         description="The number of multiplexed models for each replica.",
         unit="models",
         targets=[
-            Target(
+            QueryTarget(
                 expr="sum(ray_serve_num_multiplexed_models{{{global_filters}}}) by (application, deployment, replica)",
                 legend="{{application}}#{{deployment}}#{{replica}}",
             ),
@@ -155,7 +155,7 @@ SERVE_DEPLOYMENT_GRAFANA_PANELS = [
         description="The number of times of multiplexed models loaded for each replica.",
         unit="times",
         targets=[
-            Target(
+            QueryTarget(
                 expr="sum(ray_serve_multiplexed_models_load_counter_total{{{global_filters}}}) by (application, deployment, replica)",
                 legend="{{application}}#{{deployment}}#{{replica}}",
             ),
@@ -170,7 +170,7 @@ SERVE_DEPLOYMENT_GRAFANA_PANELS = [
         description="The number of times of multiplexed models unloaded for each replica.",
         unit="times",
         targets=[
-            Target(
+            QueryTarget(
                 expr="sum(ray_serve_multiplexed_models_unload_counter_total{{{global_filters}}}) by (application, deployment, replica)",
                 legend="{{application}}#{{deployment}}#{{replica}}",
             ),
@@ -185,7 +185,7 @@ SERVE_DEPLOYMENT_GRAFANA_PANELS = [
         description="P99 latency of multiplexed model load per replica.",
         unit="ms",
         targets=[
-            Target(
+            QueryTarget(
                 expr="histogram_quantile(0.99, sum(rate(ray_serve_multiplexed_model_load_latency_ms_bucket{{{global_filters}}}[5m])) by (application, deployment, replica, le))",
                 legend="{{application}}#{{deployment}}#{{replica}}",
             ),
@@ -200,7 +200,7 @@ SERVE_DEPLOYMENT_GRAFANA_PANELS = [
         description="P99 latency of multiplexed model unload per replica.",
         unit="ms",
         targets=[
-            Target(
+            QueryTarget(
                 expr="histogram_quantile(0.99, sum(rate(ray_serve_multiplexed_model_unload_latency_ms_bucket{{{global_filters}}}[5m])) by (application, deployment, replica, le))",
                 legend="{{application}}#{{deployment}}#{{replica}}",
             ),
@@ -215,7 +215,7 @@ SERVE_DEPLOYMENT_GRAFANA_PANELS = [
         description="The ids of multiplexed models for each replica.",
         unit="model",
         targets=[
-            Target(
+            QueryTarget(
                 expr="ray_serve_registered_multiplexed_model_id{{{global_filters}}}",
                 legend="{{replica}}:{{model_id}}",
             ),
@@ -229,7 +229,7 @@ SERVE_DEPLOYMENT_GRAFANA_PANELS = [
         description="The cache hit rate of multiplexed models for the deployment.",
         unit="%",
         targets=[
-            Target(
+            QueryTarget(
                 expr="(1 - sum(rate(ray_serve_multiplexed_models_load_counter_total{{{global_filters}}}[5m]))/sum(rate(ray_serve_multiplexed_get_model_requests_counter_total{{{global_filters}}}[5m])))",
                 legend="{{application}}#{{deployment}}#{{replica}}",
             ),

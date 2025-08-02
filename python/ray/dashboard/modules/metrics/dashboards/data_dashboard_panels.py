@@ -3,7 +3,7 @@
 from ray.dashboard.modules.metrics.dashboards.common import (
     DashboardConfig,
     Panel,
-    Target,
+    QueryTarget,
 )
 
 # When adding a new panels for an OpRuntimeMetric, follow this format:
@@ -32,7 +32,7 @@ DATA_GRAFANA_PANELS = [
         description="Amount spilled by dataset operators. DataContext.enable_get_object_locations_for_metrics must be set to True to report this metric",
         unit="bytes",
         targets=[
-            Target(
+            QueryTarget(
                 expr="sum(ray_data_spilled_bytes{{{global_filters}}}) by (dataset, operator)",
                 legend="Bytes Spilled: {{dataset}}, {{operator}}",
             )
@@ -46,7 +46,7 @@ DATA_GRAFANA_PANELS = [
         description="Amount freed by dataset operators.",
         unit="bytes",
         targets=[
-            Target(
+            QueryTarget(
                 expr="sum(ray_data_freed_bytes{{{global_filters}}}) by (dataset, operator)",
                 legend="Bytes Freed: {{dataset}}, {{operator}}",
             )
@@ -60,7 +60,7 @@ DATA_GRAFANA_PANELS = [
         description="Amount of memory store used by dataset operators.",
         unit="bytes",
         targets=[
-            Target(
+            QueryTarget(
                 expr="sum(ray_data_current_bytes{{{global_filters}}}) by (dataset, operator)",
                 legend="Current Usage: {{dataset}}, {{operator}}",
             )
@@ -74,7 +74,7 @@ DATA_GRAFANA_PANELS = [
         description="Logical CPUs allocated to dataset operators.",
         unit="cores",
         targets=[
-            Target(
+            QueryTarget(
                 expr="sum(ray_data_cpu_usage_cores{{{global_filters}}}) by (dataset, operator)",
                 legend="CPU Usage: {{dataset}}, {{operator}}",
             )
@@ -88,7 +88,7 @@ DATA_GRAFANA_PANELS = [
         description="Logical GPUs allocated to dataset operators.",
         unit="cores",
         targets=[
-            Target(
+            QueryTarget(
                 expr="sum(ray_data_gpu_usage_cores{{{global_filters}}}) by (dataset, operator)",
                 legend="GPU Usage: {{dataset}}, {{operator}}",
             )
@@ -102,7 +102,7 @@ DATA_GRAFANA_PANELS = [
         description="Bytes output per second by dataset operators.",
         unit="Bps",
         targets=[
-            Target(
+            QueryTarget(
                 expr="sum(rate(ray_data_output_bytes{{{global_filters}}}[1m])) by (dataset, operator)",
                 legend="Bytes Output / Second: {{dataset}}, {{operator}}",
             )
@@ -130,7 +130,7 @@ DATA_GRAFANA_PANELS = [
         description="Total rows output per second by dataset operators.",
         unit="rows/sec",
         targets=[
-            Target(
+            QueryTarget(
                 expr="sum(rate(ray_data_output_rows{{{global_filters}}}[1m])) by (dataset, operator)",
                 legend="Rows Output / Second: {{dataset}}, {{operator}}",
             )
@@ -145,7 +145,7 @@ DATA_GRAFANA_PANELS = [
         description="Number of input blocks received by operator per second.",
         unit="blocks/sec",
         targets=[
-            Target(
+            QueryTarget(
                 expr="sum(rate(ray_data_num_inputs_received{{{global_filters}}}[1m])) by (dataset, operator)",
                 legend="Blocks Received / Second: {{dataset}}, {{operator}}",
             )
@@ -159,7 +159,7 @@ DATA_GRAFANA_PANELS = [
         description="Byte size of input blocks received by operator per second.",
         unit="Bps",
         targets=[
-            Target(
+            QueryTarget(
                 expr="sum(rate(ray_data_bytes_inputs_received{{{global_filters}}}[1m])) by (dataset, operator)",
                 legend="Bytes Received / Second: {{dataset}}, {{operator}}",
             )
@@ -175,7 +175,7 @@ DATA_GRAFANA_PANELS = [
         ),
         unit="blocks/sec",
         targets=[
-            Target(
+            QueryTarget(
                 expr="sum(rate(ray_data_num_task_inputs_processed{{{global_filters}}}[1m])) by (dataset, operator)",
                 legend="Blocks Processed / Second: {{dataset}}, {{operator}}",
             )
@@ -191,7 +191,7 @@ DATA_GRAFANA_PANELS = [
         ),
         unit="Bps",
         targets=[
-            Target(
+            QueryTarget(
                 expr="sum(rate(ray_data_bytes_task_inputs_processed{{{global_filters}}}[1m])) by (dataset, operator)",
                 legend="Bytes Processed / Second: {{dataset}}, {{operator}}",
             )
@@ -205,7 +205,7 @@ DATA_GRAFANA_PANELS = [
         description="Byte size of input blocks passed to submitted tasks per second.",
         unit="Bps",
         targets=[
-            Target(
+            QueryTarget(
                 expr="sum(rate(ray_data_bytes_inputs_of_submitted_tasks{{{global_filters}}}[1m])) by (dataset, operator)",
                 legend="Bytes Submitted / Second: {{dataset}}, {{operator}}",
             )
@@ -219,7 +219,7 @@ DATA_GRAFANA_PANELS = [
         description="Number of output blocks generated by tasks per second.",
         unit="blocks/sec",
         targets=[
-            Target(
+            QueryTarget(
                 expr="sum(rate(ray_data_num_task_outputs_generated{{{global_filters}}}[1m])) by (dataset, operator)",
                 legend="Blocks Generated / Second: {{dataset}}, {{operator}}",
             )
@@ -233,7 +233,7 @@ DATA_GRAFANA_PANELS = [
         description="Byte size of output blocks generated by tasks per second.",
         unit="Bps",
         targets=[
-            Target(
+            QueryTarget(
                 expr="sum(rate(ray_data_bytes_task_outputs_generated{{{global_filters}}}[1m])) by (dataset, operator)",
                 legend="Bytes Generated / Second: {{dataset}}, {{operator}}",
             )
@@ -275,7 +275,7 @@ DATA_GRAFANA_PANELS = [
         description="Number of rows in generated output blocks from finished tasks per second.",
         unit="rows/sec",
         targets=[
-            Target(
+            QueryTarget(
                 expr="sum(rate(ray_data_rows_task_outputs_generated{{{global_filters}}}[1m])) by (dataset, operator)",
                 legend="Rows Generated / Second: {{dataset}}, {{operator}}",
             )
@@ -289,7 +289,7 @@ DATA_GRAFANA_PANELS = [
         description="Number of output blocks taken by downstream operators per second.",
         unit="blocks/sec",
         targets=[
-            Target(
+            QueryTarget(
                 expr="sum(rate(ray_data_num_outputs_taken{{{global_filters}}}[1m])) by (dataset, operator)",
                 legend="Blocks Taken / Second: {{dataset}}, {{operator}}",
             )
@@ -305,7 +305,7 @@ DATA_GRAFANA_PANELS = [
         ),
         unit="Bps",
         targets=[
-            Target(
+            QueryTarget(
                 expr="sum(rate(ray_data_bytes_outputs_taken{{{global_filters}}}[1m])) by (dataset, operator)",
                 legend="Bytes Taken / Second: {{dataset}}, {{operator}}",
             )
@@ -321,7 +321,7 @@ DATA_GRAFANA_PANELS = [
         ),
         unit="Bps",
         targets=[
-            Target(
+            QueryTarget(
                 expr="sum(rate(ray_data_bytes_outputs_of_finished_tasks_per_node{{{global_filters}}}[1m])) by (dataset, node_ip)",
                 legend="Bytes output / Second: {{dataset}}, {{node_ip}}",
             )
@@ -337,7 +337,7 @@ DATA_GRAFANA_PANELS = [
         ),
         unit="blocks/s",
         targets=[
-            Target(
+            QueryTarget(
                 expr="sum(rate(ray_data_blocks_outputs_of_finished_tasks_per_node{{{global_filters}}}[1m])) by (dataset, node_ip)",
                 legend="Blocks output / Second: {{dataset}}, {{node_ip}}",
             )
@@ -352,7 +352,7 @@ DATA_GRAFANA_PANELS = [
         description="Number of submitted tasks.",
         unit="tasks",
         targets=[
-            Target(
+            QueryTarget(
                 expr="sum(ray_data_num_tasks_submitted{{{global_filters}}}) by (dataset, operator)",
                 legend="Submitted Tasks: {{dataset}}, {{operator}}",
             )
@@ -366,7 +366,7 @@ DATA_GRAFANA_PANELS = [
         description="Number of running tasks.",
         unit="tasks",
         targets=[
-            Target(
+            QueryTarget(
                 expr="sum(ray_data_num_tasks_running{{{global_filters}}}) by (dataset, operator)",
                 legend="Running Tasks: {{dataset}}, {{operator}}",
             )
@@ -380,7 +380,7 @@ DATA_GRAFANA_PANELS = [
         description="Number of tasks that already have output.",
         unit="tasks",
         targets=[
-            Target(
+            QueryTarget(
                 expr="sum(ray_data_num_tasks_have_outputs{{{global_filters}}}) by (dataset, operator)",
                 legend="Tasks with output blocks: {{dataset}}, {{operator}}",
             )
@@ -394,7 +394,7 @@ DATA_GRAFANA_PANELS = [
         description="Number of finished tasks.",
         unit="tasks",
         targets=[
-            Target(
+            QueryTarget(
                 expr="sum(ray_data_num_tasks_finished{{{global_filters}}}) by (dataset, operator)",
                 legend="Finished Tasks: {{dataset}}, {{operator}}",
             )
@@ -408,7 +408,7 @@ DATA_GRAFANA_PANELS = [
         description="Number of finished tasks per second, grouped by node.",
         unit="tasks/s",
         targets=[
-            Target(
+            QueryTarget(
                 expr="sum(rate(ray_data_num_tasks_finished_per_node{{{global_filters}}}[1m])) by (dataset, node_ip)",
                 legend="Finished Tasks: {{dataset}}, {{node_ip}}",
             )
@@ -422,7 +422,7 @@ DATA_GRAFANA_PANELS = [
         description="Number of failed tasks.",
         unit="tasks",
         targets=[
-            Target(
+            QueryTarget(
                 expr="sum(ray_data_num_tasks_failed{{{global_filters}}}) by (dataset, operator)",
                 legend="Failed Tasks: {{dataset}}, {{operator}}",
             )
@@ -436,7 +436,7 @@ DATA_GRAFANA_PANELS = [
         description="Time spent generating blocks in tasks.",
         unit="seconds",
         targets=[
-            Target(
+            QueryTarget(
                 expr="sum(ray_data_block_generation_time{{{global_filters}}}) by (dataset, operator)",
                 legend="Block Generation Time: {{dataset}}, {{operator}}",
             )
@@ -450,111 +450,13 @@ DATA_GRAFANA_PANELS = [
         description="Time spent in task submission backpressure.",
         unit="seconds",
         targets=[
-            Target(
+            QueryTarget(
                 expr="sum(ray_data_task_submission_backpressure_time{{{global_filters}}}) by (dataset, operator)",
                 legend="Backpressure Time: {{dataset}}, {{operator}}",
             )
         ],
         fill=0,
         stack=True,
-    ),
-    Panel(
-        id=38,
-        title="(p00) Task Completion Time",
-        description="Time spent running tasks to completion.",
-        unit="seconds",
-        targets=[
-            Target(
-                expr="histogram_quantile(0, sum by (dataset, operator, le) (rate(ray_data_task_completion_time_bucket{{{global_filters}}}[5m])))",
-                legend="(p00) Completion Time: {{dataset}}, {{operator}}",
-            ),
-        ],
-        fill=0,
-        stack=False,
-    ),
-    Panel(
-        id=39,
-        title="(p05) Task Completion Time",
-        description="Time spent running tasks to completion.",
-        unit="seconds",
-        targets=[
-            Target(
-                expr="histogram_quantile(0.05, sum by (dataset, operator, le) (rate(ray_data_task_completion_time_bucket{{{global_filters}}}[5m])))",
-                legend="(p05) Completion Time: {{dataset}}, {{operator}}",
-            ),
-        ],
-        fill=0,
-        stack=False,
-    ),
-    Panel(
-        id=40,
-        title="(p50) Task Completion Time",
-        description="Time spent running tasks to completion.",
-        unit="seconds",
-        targets=[
-            Target(
-                expr="histogram_quantile(0.50, sum by (dataset, operator, le) (rate(ray_data_task_completion_time_bucket{{{global_filters}}}[5m])))",
-                legend="(p50) Completion Time: {{dataset}}, {{operator}}",
-            ),
-        ],
-        fill=0,
-        stack=False,
-    ),
-    Panel(
-        id=41,
-        title="(p75) Task Completion Time",
-        description="Time spent running tasks to completion.",
-        unit="seconds",
-        targets=[
-            Target(
-                expr="histogram_quantile(0.75, sum by (dataset, operator, le) (rate(ray_data_task_completion_time_bucket{{{global_filters}}}[5m])))",
-                legend="(p75) Completion Time: {{dataset}}, {{operator}}",
-            ),
-        ],
-        fill=0,
-        stack=False,
-    ),
-    Panel(
-        id=42,
-        title="(p90) Task Completion Time",
-        description="Time spent running tasks to completion.",
-        unit="seconds",
-        targets=[
-            Target(
-                expr="histogram_quantile(0.9, sum by (dataset, operator, le) (rate(ray_data_task_completion_time_bucket{{{global_filters}}}[5m])))",
-                legend="(p90) Completion Time: {{dataset}}, {{operator}}",
-            ),
-        ],
-        fill=0,
-        stack=False,
-    ),
-    Panel(
-        id=44,
-        title="p(99) Task Completion Time",
-        description="Time spent running tasks to completion.",
-        unit="seconds",
-        targets=[
-            Target(
-                expr="histogram_quantile(0.99, sum by (dataset, operator, le) (rate(ray_data_task_completion_time_bucket{{{global_filters}}}[5m])))",
-                legend="(p99) Completion Time: {{dataset}}, {{operator}}",
-            ),
-        ],
-        fill=0,
-        stack=False,
-    ),
-    Panel(
-        id=45,
-        title="p(100) Task Completion Time",
-        description="Time spent running tasks to completion.",
-        unit="seconds",
-        targets=[
-            Target(
-                expr="histogram_quantile(1, sum by (dataset, operator, le) (rate(ray_data_task_completion_time_bucket{{{global_filters}}}[5m])))",
-                legend="(p100) Completion Time: {{dataset}}, {{operator}}",
-            ),
-        ],
-        fill=0,
-        stack=False,
     ),
     # Ray Data Metrics (Object Store Memory)
     Panel(
@@ -563,7 +465,7 @@ DATA_GRAFANA_PANELS = [
         description="Number of blocks in operator's internal input queue",
         unit="blocks",
         targets=[
-            Target(
+            QueryTarget(
                 expr="sum(ray_data_obj_store_mem_internal_inqueue_blocks{{{global_filters}}}) by (dataset, operator)",
                 legend="Number of Blocks: {{dataset}}, {{operator}}",
             )
@@ -577,7 +479,7 @@ DATA_GRAFANA_PANELS = [
         description="Byte size of input blocks in the operator's internal input queue.",
         unit="bytes",
         targets=[
-            Target(
+            QueryTarget(
                 expr="sum(ray_data_obj_store_mem_internal_inqueue{{{global_filters}}}) by (dataset, operator)",
                 legend="Bytes Size: {{dataset}}, {{operator}}",
             )
@@ -591,7 +493,7 @@ DATA_GRAFANA_PANELS = [
         description="Number of blocks in operator's internal output queue",
         unit="blocks",
         targets=[
-            Target(
+            QueryTarget(
                 expr="sum(ray_data_obj_store_mem_internal_outqueue_blocks{{{global_filters}}}) by (dataset, operator)",
                 legend="Number of Blocks: {{dataset}}, {{operator}}",
             )
@@ -607,7 +509,7 @@ DATA_GRAFANA_PANELS = [
         ),
         unit="bytes",
         targets=[
-            Target(
+            QueryTarget(
                 expr="sum(ray_data_obj_store_mem_internal_outqueue{{{global_filters}}}) by (dataset, operator)",
                 legend="Bytes Size: {{dataset}}, {{operator}}",
             )
@@ -621,7 +523,7 @@ DATA_GRAFANA_PANELS = [
         description="Byte size of input blocks used by pending tasks.",
         unit="bytes",
         targets=[
-            Target(
+            QueryTarget(
                 expr="sum(ray_data_obj_store_mem_pending_task_inputs{{{global_filters}}}) by (dataset, operator)",
                 legend="Bytes Size: {{dataset}}, {{operator}}",
             )
@@ -635,7 +537,7 @@ DATA_GRAFANA_PANELS = [
         description="Byte size of freed memory in object store.",
         unit="bytes",
         targets=[
-            Target(
+            QueryTarget(
                 expr="sum(ray_data_obj_store_mem_freed{{{global_filters}}}) by (dataset, operator)",
                 legend="Bytes Size: {{dataset}}, {{operator}}",
             )
@@ -649,7 +551,7 @@ DATA_GRAFANA_PANELS = [
         description="Byte size of spilled memory in object store.",
         unit="bytes",
         targets=[
-            Target(
+            QueryTarget(
                 expr="sum(ray_data_obj_store_mem_spilled{{{global_filters}}}) by (dataset, operator)",
                 legend="Bytes Size: {{dataset}}, {{operator}}",
             )
@@ -664,7 +566,7 @@ DATA_GRAFANA_PANELS = [
         description="Seconds spent in iterator initialization code",
         unit="seconds",
         targets=[
-            Target(
+            QueryTarget(
                 expr="sum(ray_data_iter_initialize_seconds{{{global_filters}}}) by (dataset)",
                 legend="Seconds: {{dataset}}, {{operator}}",
             )
@@ -678,7 +580,7 @@ DATA_GRAFANA_PANELS = [
         description="Seconds user thread is blocked by iter_batches()",
         unit="seconds",
         targets=[
-            Target(
+            QueryTarget(
                 expr="sum(ray_data_iter_total_blocked_seconds{{{global_filters}}}) by (dataset)",
                 legend="Seconds: {{dataset}}",
             )
@@ -692,7 +594,7 @@ DATA_GRAFANA_PANELS = [
         description="Seconds spent in user code",
         unit="seconds",
         targets=[
-            Target(
+            QueryTarget(
                 expr="sum(ray_data_iter_user_seconds{{{global_filters}}}) by (dataset)",
                 legend="Seconds: {{dataset}}",
             )
@@ -707,7 +609,7 @@ DATA_GRAFANA_PANELS = [
         description=("Duration of the scheduling loop in seconds."),
         unit="seconds",
         targets=[
-            Target(
+            QueryTarget(
                 expr="sum(ray_data_sched_loop_duration_s{{{global_filters}}}) by (dataset)",
                 legend="Scheduling Loop Duration: {{dataset}}",
             )
