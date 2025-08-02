@@ -498,6 +498,7 @@ int main(int argc, char *argv[]) {
         {ray::stats::NodeAddressKey, node_ip_address},
         {ray::stats::SessionNameKey, session_name}};
     ray::stats::Init(global_tags, metrics_agent_port, WorkerID::Nil());
+    ray::stats::InitOpenTelemetryMetricAgent(metrics_agent_port);
 
     RAY_LOG(INFO).WithField(raylet_node_id) << "Setting node ID";
 
