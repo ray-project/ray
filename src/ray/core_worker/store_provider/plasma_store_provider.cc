@@ -179,13 +179,10 @@ Status CoreWorkerPlasmaStoreProvider::FetchAndGetFromPlasmaStore(
     absl::flat_hash_set<ObjectID> &remaining,
     const std::vector<ObjectID> &batch_ids,
     int64_t timeout_ms,
-    bool fetch_only,
-    const TaskID &task_id,
     absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
     bool *got_exception) {
   const auto owner_addresses = reference_counter_.GetOwnerAddresses(batch_ids);
-  RAY_RETURN_NOT_OK(raylet_client_->FetchOrReconstruct(
-      batch_ids, owner_addresses, fetch_only, task_id));
+  RAY_RETURN_NOT_OK(raylet_client_->AsyncGet(batch_ids, owner_addresses));
 
   std::vector<plasma::ObjectBuffer> plasma_results;
   RAY_RETURN_NOT_OK(store_client_->Get(batch_ids,
@@ -273,7 +270,7 @@ Status UnblockIfNeeded(const std::shared_ptr<raylet::RayletClient> &client,
       return Status::OK();  // We don't need to release resources.
     }
   } else {
-    return client->NotifyUnblocked(ctx.GetCurrentTaskID());
+    return client->CancelGetRequest();
   }
 }
 
@@ -295,15 +292,11 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     for (int64_t i = start; i < batch_size && i < total_size; i++) {
       batch_ids.push_back(id_vector[start + i]);
     }
-    RAY_RETURN_NOT_OK(
-        FetchAndGetFromPlasmaStore(remaining,
-                                   batch_ids,
-                                   /*timeout_ms=*/0,
-                                   // Mutable objects must be local before ray.get.
-                                   /*fetch_only=*/true,
-                                   ctx.GetCurrentTaskID(),
-                                   results,
-                                   got_exception));
+    RAY_RETURN_NOT_OK(FetchAndGetFromPlasmaStore(remaining,
+                                                 batch_ids,
+                                                 /*timeout_ms=*/0,
+                                                 results,
+                                                 got_exception));
   }
 
   // If all objects were fetched already, return. Note that we always need to
@@ -312,7 +305,7 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     return UnblockIfNeeded(raylet_client_, ctx);
   }
 
-  // If not all objects were successfully fetched, repeatedly call FetchOrReconstruct
+  // If not all objects were successfully fetched, repeatedly call AsyncGet
   // and Get from the local object store in batches. This loop will run indefinitely
   // until the objects are all fetched if timeout is -1.
   bool should_break = false;
@@ -341,8 +334,6 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     RAY_RETURN_NOT_OK(FetchAndGetFromPlasmaStore(remaining,
                                                  batch_ids,
                                                  batch_timeout,
-                                                 /*fetch_only=*/false,
-                                                 ctx.GetCurrentTaskID(),
                                                  results,
                                                  got_exception));
     should_break = timed_out || *got_exception;
@@ -373,8 +364,6 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     return Status::TimedOut("Get timed out: some object(s) not ready.");
   }
 
-  // Notify unblocked because we blocked when calling FetchOrReconstruct with
-  // fetch_only=false.
   return UnblockIfNeeded(raylet_client_, ctx);
 }
 
@@ -403,12 +392,9 @@ Status CoreWorkerPlasmaStoreProvider::Wait(
     }
 
     const auto owner_addresses = reference_counter_.GetOwnerAddresses(id_vector);
-    RAY_ASSIGN_OR_RETURN(ready_in_plasma,
-                         raylet_client_->Wait(id_vector,
-                                              owner_addresses,
-                                              num_objects,
-                                              call_timeout,
-                                              ctx.GetCurrentTaskID()));
+    RAY_ASSIGN_OR_RETURN(
+        ready_in_plasma,
+        raylet_client_->Wait(id_vector, owner_addresses, num_objects, call_timeout));
 
     if (ready_in_plasma.size() >= static_cast<size_t>(num_objects)) {
       should_break = true;

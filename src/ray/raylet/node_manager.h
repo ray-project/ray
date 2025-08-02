@@ -372,32 +372,15 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   void FinishAssignedActorCreationTask(const std::shared_ptr<WorkerInterface> &worker,
                                        const RayTask &task);
 
-  /// Handle blocking gets of objects. This could be a task assigned to a worker,
-  /// an out-of-band task (e.g., a thread created by the application), or a
-  /// driver task. This can be triggered when a client starts a get call or a
-  /// wait call.
+  /// Start a get or wait request for the requested objects.
   ///
-  /// \param client The client that is executing the blocked task.
-  /// \param required_object_refs The objects that the client is blocked waiting for.
-  /// \param current_task_id The task that is blocked.
-  /// \param ray_get Whether the task is blocked in a `ray.get` call.
+  /// \param client The client that is requesting the objects.
+  /// \param object_refs The objects that are requested.
+  /// \param is_get_request If this is a get request, else it's a wait request.
   /// \return Void.
-  void AsyncResolveObjects(const std::shared_ptr<ClientConnection> &client,
-                           const std::vector<rpc::ObjectReference> &required_object_refs,
-                           const TaskID &current_task_id,
-                           bool ray_get);
-
-  /// Handle end of a blocking object get. This could be a task assigned to a
-  /// worker, an out-of-band task (e.g., a thread created by the application),
-  /// or a driver task. This can be triggered when a client finishes a get call
-  /// or a wait call. The given task must be blocked, via a previous call to
-  /// AsyncResolveObjects.
-  ///
-  /// \param client The client that is executing the unblocked task.
-  /// \param current_task_id The task that is unblocked.
-  /// \return Void.
-  void AsyncResolveObjectsFinish(const std::shared_ptr<ClientConnection> &client,
-                                 const TaskID &current_task_id);
+  void AsyncGetOrWait(const std::shared_ptr<ClientConnection> &client,
+                      const std::vector<rpc::ObjectReference> &object_refs,
+                      bool is_get_request);
 
   /// Handle a task that is blocked. Note that this callback may
   /// arrive after the worker lease has been returned to the node manager.
@@ -502,13 +485,13 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   void ProcessDisconnectClientMessage(const std::shared_ptr<ClientConnection> &client,
                                       const uint8_t *message_data);
 
-  /// Process client message of FetchOrReconstruct
+  /// Process client message of AsyncGetRequest.
   ///
   /// \param client The client that sent the message.
   /// \param message_data A pointer to the message data.
   /// \return Void.
-  void ProcessFetchOrReconstructMessage(const std::shared_ptr<ClientConnection> &client,
-                                        const uint8_t *message_data);
+  void ProcessAsyncGetRequest(const std::shared_ptr<ClientConnection> &client,
+                              const uint8_t *message_data);
 
   /// Process client message of WaitRequest
   ///

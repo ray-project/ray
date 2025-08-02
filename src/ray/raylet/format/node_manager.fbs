@@ -46,12 +46,10 @@ enum MessageType:int {
   // Tell a worker to execute a task. This is sent from a raylet to a
   // worker.
   ExecuteTask,
-  // Reconstruct or fetch possibly lost objects. This is sent from a worker to
-  // a raylet.
-  FetchOrReconstruct,
-  // For a worker that was blocked on some object(s), tell the raylet
-  // that the worker is now unblocked. This is sent from a worker to a raylet.
-  NotifyUnblocked,
+  // Ask the Raylet to pull the requested objects to the local node. The operation can be canceled via `CancelGetRequest`.
+  AsyncGetRequest,
+  // Cancel outstanding get requests from the worker.
+  CancelGetRequest,
   // Notify the current worker is blocked. This is only used by direct task calls;
   // otherwise the block command is piggybacked on other messages.
   NotifyDirectCallTaskBlocked,
@@ -169,20 +167,14 @@ table Address {
   worker_id: string;
 }
 
-table FetchOrReconstruct {
+table AsyncGetRequest {
   // List of object IDs of the objects that we want to reconstruct or fetch.
   object_ids: [string];
   // The RPC addresses of the workers that own the objects in object_ids.
   owner_addresses: [Address];
-  // Do we only want to fetch the objects or also reconstruct them?
-  fetch_only: bool;
-  // The current task ID.
-  task_id: string;
 }
 
-table NotifyUnblocked {
-  // The current task ID. This task is no longer blocked.
-  task_id: string;
+table CancelGetRequest {
 }
 
 table NotifyDirectCallTaskBlocked {
@@ -201,8 +193,6 @@ table WaitRequest {
   num_required_objects: int;
   // timeout
   timeout: long;
-  // The current task ID.
-  task_id: string;
 }
 
 table WaitReply {
