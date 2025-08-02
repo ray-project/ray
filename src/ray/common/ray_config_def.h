@@ -921,6 +921,17 @@ RAY_CONFIG(bool, enable_export_api_write, false)
 // Example config: `export RAY_enable_export_api_write_config='EXPORT_ACTOR,EXPORT_TASK'`
 RAY_CONFIG(std::vector<std::string>, enable_export_api_write_config, {})
 
+// Whether the task events from the core worker are sent to GCS directly.
+// TODO(myan): #54515 Remove this flag after the task events to GCS path is fully
+// migrated to the event aggregator.
+RAY_CONFIG(bool, enable_core_worker_task_event_to_gcs, true)
+
+// Whether to enable the ray event to send to the event aggregator.
+// Currently, only task events are supported.
+// TODO(myan): #54515 Remove this flag after the task events are fully migrated to the
+// event aggregator.
+RAY_CONFIG(bool, enable_core_worker_ray_event_to_aggregator, false)
+
 // Configuration for pipe logger buffer size.
 RAY_CONFIG(uint64_t, pipe_logger_read_buf_size, 1024)
 

@@ -37,11 +37,13 @@ def multiplexed_serve_handle(mock_llm_config, stream_batching_interval_ms=0):
     mock_llm_config.experimental_configs = {
         "stream_batching_interval_ms": stream_batching_interval_ms,
     }
+    # Set minimal lora_config to enable multiplexing but avoid telemetry S3 calls
     mock_llm_config.lora_config = LoraConfig(
-        dynamic_lora_loading_path="s3://my/s3/path_here",
+        dynamic_lora_loading_path=None,  # No S3 path = no telemetry S3 calls
         download_timeout_s=60,
         max_download_tries=3,
     )
+
     app = serve.deployment(LLMServer).bind(
         mock_llm_config,
         engine_cls=MockVLLMEngine,

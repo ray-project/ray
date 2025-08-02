@@ -472,17 +472,6 @@
       python gpu_batch_inference.py
       --data-directory 300G-image-data-synthetic-raw-parquet --data-format parquet
 
-- name: batch_inference_from_metadata
-  # This benchmark errors because of the issues described in PLAN-383.
-  frequency: manual
-
-  cluster:
-    cluster_compute: autoscaling_hetero_compute.yaml
-
-  run:
-    timeout: 1800
-    script: python batch_inference_benchmark.py
-
 - name: batch_inference_chaos
   stable: False
   # Don't use 'nightly_tests/dataset' as the working directory because we need to run
@@ -512,20 +501,6 @@
     script: >
       python dataset/gpu_batch_inference.py
       --data-directory 300G-image-data-synthetic-raw-parquet --data-format parquet --chaos-test
-
-# 10 TB image classification parquet data with autoscaling heterogenous cluster
-# 10 g4dn.12xlarge, 10 m5.16xlarge
-- name: batch_inference_hetero
-  frequency: weekly
-
-  cluster:
-    cluster_compute: autoscaling_hetero_compute.yaml
-
-  run:
-    timeout: 7200
-    script: >
-      python gpu_batch_inference.py
-      --data-directory 10T-image-data-synthetic-raw-parquet --data-format parquet
 
 - name: batch_inference_mock_image_pipeline
   frequency: manual
@@ -566,6 +541,30 @@
         prepare: >
           python setup_chaos.py --chaos TerminateEC2InstanceWithGracePeriod
           --batch-size-to-kill 10 --max-to-kill 100 --kill-delay 120
+
+- name: batch_inference_hetero
+  frequency: manual
+
+  run:
+    timeout: 3600
+
+  variations:
+    - __suffix__: fixed_size
+      cluster:
+        cluster_compute: batch_inference_hetero/fixed_size_cluster_compute.yaml
+        byod:
+          post_build_script: byod_install_pybase64.sh
+      run:
+        script: python batch_inference_hetero/main.py --inference-concurrency 40 40
+
+    - __suffix__: autoscaling
+      cluster:
+        cluster_compute: batch_inference_hetero/autoscaling_cluster_compute.yaml
+        byod:
+          post_build_script: byod_install_pybase64.sh
+      run:
+        script: python batch_inference_hetero/main.py --inference-concurrency 1 40
+
 
 ##############
 # TPCH Queries

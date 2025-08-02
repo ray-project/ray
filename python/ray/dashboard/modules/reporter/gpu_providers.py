@@ -8,7 +8,10 @@ import abc
 import enum
 import logging
 import subprocess
-from typing import List, Optional, Union, TypedDict
+from typing import Dict, List, Optional, Union, TypedDict
+from collections import defaultdict
+
+from ray._private.ray_constants import RAY_METRIC_ENABLE_GPU_NVSMI
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +36,7 @@ class ProcessGPUInfo(TypedDict):
 
     pid: int
     gpu_memory_usage: Megabytes
+    gpu_utilization: Optional[Percentage]
 
 
 class GpuUtilizationInfo(TypedDict):
@@ -44,7 +48,7 @@ class GpuUtilizationInfo(TypedDict):
     utilization_gpu: Optional[Percentage]
     memory_used: Megabytes
     memory_total: Megabytes
-    processes_pids: Optional[List[ProcessGPUInfo]]
+    processes_pids: Optional[Dict[int, ProcessGPUInfo]]
 
 
 # tpu utilization for google tpu
@@ -105,6 +109,7 @@ class NvidiaGpuProvider(GpuProvider):
     def __init__(self):
         super().__init__()
         self._pynvml = None
+        self._using_nvidia_smi = RAY_METRIC_ENABLE_GPU_NVSMI
 
     def get_provider_name(self) -> GpuProviderType:
         return GpuProviderType.NVIDIA
@@ -149,6 +154,131 @@ class NvidiaGpuProvider(GpuProvider):
 
     def get_gpu_utilization(self) -> List[GpuUtilizationInfo]:
         """Get GPU utilization information for all NVIDIA GPUs and MIG devices."""
+
+        return (
+            self._get_nvsmi_gpu_usage()
+            if self._using_nvidia_smi
+            else self._get_pynvml_gpu_usage()
+        )
+
+    def _get_nvsmi_gpu_usage(self) -> List[GpuUtilizationInfo]:
+        try:
+            gpu_info = subprocess.run(
+                [
+                    "nvidia-smi",
+                    "--query-gpu=index,name,uuid,utilization.gpu,memory.used,memory.total",
+                    "--format=csv,noheader,nounits",
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            """Sample output:
+            0, GPU-0, GPU-36e1567d-37ed-051e-f8ff-df807517b396, 0, 73348, 81559
+            1, GPU-1, GPU-4a2c89ef-1b3d-492c-a8d5-e9c614f82d73, 0, 73444, 81559
+            2, GPU-2, GPU-7f15d234-9c6a-4e8b-b3f2-c982a5d91b48, 0, 73444, 81559
+            3, GPU-3, GPU-2b8d6f91-5e4c-47a3-96d7-8b31c4f9ae52, 0, 73332, 81559
+            4, GPU-4, GPU-9d3a7c82-6b5f-4d1e-ae94-3f5c8d2e9b14, 0, 73344, 81559
+            5, GPU-5, GPU-c4e6b853-2a9d-48f6-b1c7-d4f982e6a795, 0, 73440, 81559
+            6, GPU-6, GPU-1f9b4c75-8e3a-4d2b-95c8-6a7d3b8f4e21, 0, 73440, 81559
+            7, GPU-7, GPU-5d2e9f36-4c7b-483a-b9e1-2f8ac4d5b963, 0, 73328, 81559
+            """
+            gpus = []
+            for line in sorted(gpu_info.stdout.strip().split("\n")):  # Sort by index
+                index, name, uuid, util, mem_used, mem_total = line.split(", ")
+                gpus.append(
+                    GpuUtilizationInfo(
+                        index=int(index),
+                        name=name,
+                        uuid=uuid,
+                        utilization_gpu=int(util),
+                        memory_used=int(mem_used),
+                        memory_total=int(mem_total),
+                        processes_pids={},
+                    )
+                )
+
+            processes_info = subprocess.run(
+                ["nvidia-smi", "pmon", "-c", "1"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=True,
+                text=True,
+            )
+            processes_info = self._parse_nvsmi_pmon_output(processes_info.stdout, gpus)
+            for gpu in gpus:
+                gpu_id = gpu["index"]
+                if gpu_id in processes_info:
+                    gpu["processes_pids"] = processes_info[gpu_id]
+            return gpus
+        except (subprocess.CalledProcessError, ValueError) as e:
+            logger.warning(f"nvidia-smi failed to call: {e}. Falling back to pynvml.")
+            self._using_nvidia_smi = False
+            return self._get_pynvml_gpu_usage()
+
+    @staticmethod
+    def _parse_nvsmi_pmon_output(
+        nvsmi_stdout: str,
+        gpus: List[GpuUtilizationInfo],
+    ) -> Dict[int, List[ProcessGPUInfo]]:
+        """Parse the output of nvidia-smi pmon -c 1.
+
+        Sample output of 'nvidia-smi pmon -c 1':
+        # gpu         pid   type     sm    mem    enc    dec    jpg    ofa    command
+        # Idx           #    C/G      %      %      %      %      %      %    name
+            0       7175     C     84     26      -      -      -      -    ray::TorchGPUWo
+            1       7175     C     86     26      -      -      -      -    ray::TorchGPUWo
+            2          -     -      -      -      -      -      -      -    -
+
+        Returns a dict mapping GPU index to list of ProcessGPUInfo.
+        """
+        process_utilizations = defaultdict(list)
+        lines = nvsmi_stdout.splitlines()
+        # Get the first line that is started with #
+        table_header = None
+        for line in lines:
+            if line.startswith("#"):
+                table_header = line
+                break
+        if not table_header:
+            raise ValueError(
+                "nvidia-smi pmon output is not supported. Please upgrade to a newer version of nvidia-smi."
+            )
+        table_header = table_header.lower().split()[1:]
+        # Base on different versions, the header may be different.
+        # ValueError will be raised if the header is not found by the index function.
+        gpu_id_index = table_header.index("gpu")
+        pid_index = table_header.index("pid")
+        sm_index = table_header.index("sm")
+        mem_index = table_header.index("mem")
+
+        for line in lines:
+            if line.startswith("#") or not line.strip():
+                continue
+
+            columns = line.split()
+            if len(columns) < max(gpu_id_index, pid_index, sm_index, mem_index) + 1:
+                continue
+
+            gpu_id, pid, sm, mem = (
+                int(columns[gpu_id_index]),
+                0 if columns[pid_index] == "-" else int(columns[pid_index]),
+                0 if columns[sm_index] == "-" else int(columns[sm_index]),
+                0 if columns[mem_index] == "-" else int(columns[mem_index]),
+            )
+            if pid == 0:  # no process on this GPU
+                continue
+            process_info = ProcessGPUInfo(
+                pid=pid,
+                gpu_memory_usage=int(
+                    gpus[gpu_id]["memory_total"] * mem / 100
+                ),  # Convert percentage to MB
+                gpu_utilization=sm,
+            )
+            process_utilizations[gpu_id].append(process_info)
+        return process_utilizations
+
+    def _get_pynvml_gpu_usage(self) -> List[GpuUtilizationInfo]:
         if not self._initialized:
             if not self._initialize():
                 return []
@@ -232,7 +362,7 @@ class NvidiaGpuProvider(GpuProvider):
                 logger.debug(f"Failed to retrieve MIG device utilization: {e}")
 
             # Get running processes on MIG device
-            processes_pids = []
+            processes_pids = {}
             try:
                 nv_comp_processes = self._pynvml.nvmlDeviceGetComputeRunningProcesses(
                     mig_handle
@@ -241,17 +371,16 @@ class NvidiaGpuProvider(GpuProvider):
                     self._pynvml.nvmlDeviceGetGraphicsRunningProcesses(mig_handle)
                 )
 
-                processes_pids = [
-                    ProcessGPUInfo(
+                for nv_process in nv_comp_processes + nv_graphics_processes:
+                    processes_pids[int(nv_process.pid)] = ProcessGPUInfo(
                         pid=int(nv_process.pid),
                         gpu_memory_usage=(
                             int(nv_process.usedGpuMemory) // MB
                             if nv_process.usedGpuMemory
                             else 0
                         ),
+                        gpu_utilization=None,  # Not available in pynvml
                     )
-                    for nv_process in (nv_comp_processes + nv_graphics_processes)
-                ]
             except self._pynvml.NVMLError as e:
                 logger.debug(f"Failed to retrieve MIG device processes: {e}")
 
@@ -303,7 +432,7 @@ class NvidiaGpuProvider(GpuProvider):
                 logger.debug(f"Failed to retrieve GPU utilization: {e}")
 
             # Get running processes
-            processes_pids = []
+            processes_pids = {}
             try:
                 nv_comp_processes = self._pynvml.nvmlDeviceGetComputeRunningProcesses(
                     gpu_handle
@@ -312,17 +441,16 @@ class NvidiaGpuProvider(GpuProvider):
                     self._pynvml.nvmlDeviceGetGraphicsRunningProcesses(gpu_handle)
                 )
 
-                processes_pids = [
-                    ProcessGPUInfo(
+                for nv_process in nv_comp_processes + nv_graphics_processes:
+                    processes_pids[int(nv_process.pid)] = ProcessGPUInfo(
                         pid=int(nv_process.pid),
                         gpu_memory_usage=(
                             int(nv_process.usedGpuMemory) // MB
                             if nv_process.usedGpuMemory
                             else 0
                         ),
+                        gpu_utilization=None,  # Not available in pynvml
                     )
-                    for nv_process in (nv_comp_processes + nv_graphics_processes)
-                ]
             except self._pynvml.NVMLError as e:
                 logger.debug(f"Failed to retrieve GPU processes: {e}")
 
@@ -407,16 +535,15 @@ class AmdGpuProvider(GpuProvider):
                     utilization = -1
 
                 # Get running processes
-                processes_pids = []
+                processes_pids = {}
                 for process in self._pyamdsmi.smi_get_compute_process_info_by_device(
                     i, processes
                 ):
                     if process.vram_usage:
-                        processes_pids.append(
-                            ProcessGPUInfo(
-                                pid=int(process.process_id),
-                                gpu_memory_usage=int(process.vram_usage) // MB,
-                            )
+                        processes_pids[int(process.process_id)] = ProcessGPUInfo(
+                            pid=int(process.process_id),
+                            gpu_memory_usage=int(process.vram_usage) // MB,
+                            gpu_utilization=None,
                         )
 
                 info = GpuUtilizationInfo(
