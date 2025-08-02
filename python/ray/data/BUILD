@@ -84,6 +84,20 @@ py_test(
 )
 
 py_test(
+    name = "test_issue_detection_manager",
+    size = "small",
+    srcs = ["tests/test_issue_detection_manager.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_numpy_support",
     size = "small",
     srcs = ["tests/test_numpy_support.py"],
