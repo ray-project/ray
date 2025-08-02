@@ -111,6 +111,20 @@ DATA_GRAFANA_PANELS = [
         stack=False,
     ),
     Panel(
+        id=55,
+        title="Max Bytes to Read",
+        description="Maximum bytes to read from streaming generator buffer.",
+        unit="bytes",
+        targets=[
+            Target(
+                expr="sum(ray_data_max_bytes_to_read{{{global_filters}}}) by (dataset, operator)",
+                legend="Max Bytes to Read: {{dataset}}, {{operator}}",
+            )
+        ],
+        fill=0,
+        stack=False,
+    ),
+    Panel(
         id=11,
         title="Rows Output / Second",
         description="Total rows output per second by dataset operators.",
@@ -696,6 +710,62 @@ DATA_GRAFANA_PANELS = [
             Target(
                 expr="sum(ray_data_sched_loop_duration_s{{{global_filters}}}) by (dataset)",
                 legend="Scheduling Loop Duration: {{dataset}}",
+            )
+        ],
+        fill=0,
+        stack=False,
+    ),
+    Panel(
+        id=51,
+        title="Budget (CPU)",
+        description=("Budget (CPU) for the operator."),
+        unit="cpu",
+        targets=[
+            Target(
+                expr="sum(ray_data_cpu_budget{{{global_filters}}}) by (dataset, operator)",
+                legend="Budget (CPU): {{dataset}}, {{operator}}",
+            )
+        ],
+        fill=0,
+        stack=False,
+    ),
+    Panel(
+        id=52,
+        title="Budget (GPU)",
+        description=("Budget (GPU) for the operator."),
+        unit="gpu",
+        targets=[
+            Target(
+                expr="sum(ray_data_gpu_budget{{{global_filters}}}) by (dataset, operator)",
+                legend="Budget (GPU): {{dataset}}, {{operator}}",
+            )
+        ],
+        fill=0,
+        stack=False,
+    ),
+    Panel(
+        id=53,
+        title="Budget (Memory)",
+        description=("Budget (Memory) for the operator."),
+        unit="bytes",
+        targets=[
+            Target(
+                expr="sum(ray_data_memory_budget{{{global_filters}}}) by (dataset, operator)",
+                legend="Budget (Memory): {{dataset}}, {{operator}}",
+            )
+        ],
+        fill=0,
+        stack=False,
+    ),
+    Panel(
+        id=54,
+        title="Budget (Object Store Memory)",
+        description=("Budget (Object Store Memory) for the operator."),
+        unit="bytes",
+        targets=[
+            Target(
+                expr="sum(ray_data_object_store_memory_budget{{{global_filters}}}) by (dataset, operator)",
+                legend="Budget (Object Store Memory): {{dataset}}, {{operator}}",
             )
         ],
         fill=0,
