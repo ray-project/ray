@@ -212,6 +212,7 @@ ray_cc_library(
         ":grpc_common_base",
         ":rpc_server_call",
         "//src/ray/common:asio",
+        "//src/ray/common:network",
         "//src/ray/common:ray_config",
         "//src/ray/common:status",
         "//src/ray/util:thread_utils",
