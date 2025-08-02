@@ -68,15 +68,12 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
         return std::make_shared<ray::raylet::RayletClient>(
             addr,
             this->client_call_manager_,
-            /*core_worker_unavailable_timeout_callback*/ [this, addr]() {
+            /*raylet_unavailable_timeout_callback=*/[this, addr]() {
               const NodeID node_id = NodeID::FromBinary(addr.raylet_id());
               auto alive_node = this->gcs_node_manager_->GetAliveNode(node_id);
               if (!alive_node.has_value()) {
                 this->raylet_client_pool_.Disconnect(node_id);
-                return;
               }
-              auto raylet_client = this->raylet_client_pool_.GetOrConnectByID(node_id);
-              RAY_CHECK(raylet_client.has_value());
             });
       }),
       worker_client_pool_([this](const rpc::Address &addr) {
@@ -91,8 +88,8 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
                 this->worker_client_pool_.Disconnect(worker_id);
                 return;
               }
-              auto raylet_client = this->raylet_client_pool_.GetOrConnectByID(node_id);
-              RAY_CHECK(raylet_client.has_value());
+              auto raylet_client = this->raylet_client_pool_.GetByID(node_id);
+              RAY_CHECK(raylet_client);
               // Worker could still be dead even if node is alive.
               (*raylet_client)
                   ->IsLocalWorkerDead(
@@ -395,7 +392,7 @@ void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
           std::shared_ptr<ray::RayletClientInterface> raylet_client;
           // GetOrConnectionByID will not connect to the raylet is it hasn't been
           // connected.
-          if (auto conn_opt = raylet_client_pool_.GetOrConnectByID(alive_node.first)) {
+          if (auto conn_opt = raylet_client_pool_.GetByID(alive_node.first)) {
             raylet_client = *conn_opt;
           } else {
             // When not connect, use GetOrConnectByAddress

@@ -41,10 +41,9 @@ class RayletClientPool {
       rpc::RayletClientPool *raylet_client_pool,
       const rpc::Address &addr);
 
-  /// Return an existing RayletClient if exists or connect to one if it does
-  /// not. The returned pointer is borrowed, and expected to be used briefly.
-  std::optional<std::shared_ptr<ray::RayletClientInterface>> GetOrConnectByID(
-      ray::NodeID id);
+  /// Return an existing RayletClient if exists or nullptr if it does not.
+  /// The returned pointer is borrowed, and expected to be used briefly.
+  std::shared_ptr<ray::RayletClientInterface> GetByID(ray::NodeID id);
 
   /// Return an existing RayletClient if exists or connect to one if it does
   /// not. The returned pointer is borrowed, and expected to be used briefly.
@@ -63,6 +62,8 @@ class RayletClientPool {
   static rpc::Address GenerateRayletAddress(const NodeID &node_id,
                                             const std::string &ip_address,
                                             int port);
+
+  size_t Size() const { return client_map_.size(); }
 
  private:
   absl::Mutex mu_;

@@ -606,9 +606,9 @@ void GcsAutoscalerStateManager::CancelInfeasibleRequests() const {
   for (const auto &node_infeasible_request_pair : per_node_infeasible_requests) {
     const auto &node_id = node_infeasible_request_pair.first;
     const auto &infeasible_shapes = node_infeasible_request_pair.second;
-    const auto raylet_client = raylet_client_pool_.GetOrConnectByID(node_id);
+    const auto raylet_client = raylet_client_pool_.GetByID(node_id);
 
-    if (raylet_client.has_value()) {
+    if (raylet_client) {
       std::string resource_shapes_str =
           ray::VectorToString(infeasible_shapes, ray::DebugString<std::string, double>);
 

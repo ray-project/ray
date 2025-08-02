@@ -96,8 +96,7 @@ std::shared_ptr<ray::RayletClientInterface> RayletClientPool::GetOrConnectByAddr
   return connection;
 }
 
-std::optional<std::shared_ptr<ray::RayletClientInterface>>
-RayletClientPool::GetOrConnectByID(ray::NodeID id) {
+std::shared_ptr<ray::RayletClientInterface> RayletClientPool::GetByID(ray::NodeID id) {
   absl::MutexLock lock(&mu_);
   auto it = client_map_.find(id);
   if (it == client_map_.end()) {
