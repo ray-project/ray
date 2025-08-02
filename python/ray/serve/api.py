@@ -463,6 +463,7 @@ def deployment(
         logging_config=logging_config,
         request_router_config=request_router_config,
     )
+    print(deployment_config)
     deployment_config.user_configured_option_names = set(user_configured_option_names)
 
     def decorator(_func_or_class):

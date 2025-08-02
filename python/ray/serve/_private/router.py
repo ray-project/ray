@@ -35,9 +35,9 @@ from ray.serve._private.common import (
 )
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
-    HANDLE_METRIC_PUSH_INTERVAL_S,
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
-    RAY_SERVE_HANDLE_AUTOSCALING_METRIC_RECORD_PERIOD_S,
+    RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S,
+    RAY_SERVE_HANDLE_AUTOSCALING_METRIC_RECORD_INTERVAL_S,
     RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
     SERVE_LOGGER_NAME,
 )
@@ -239,7 +239,7 @@ class RouterMetricsManager:
                     self.RECORD_METRICS_TASK_NAME,
                     self._add_autoscaling_metrics_point,
                     min(
-                        RAY_SERVE_HANDLE_AUTOSCALING_METRIC_RECORD_PERIOD_S,
+                        RAY_SERVE_HANDLE_AUTOSCALING_METRIC_RECORD_INTERVAL_S,
                         autoscaling_config.metrics_interval_s,
                     ),
                 )
@@ -253,7 +253,7 @@ class RouterMetricsManager:
                 self.metrics_pusher.register_or_update_task(
                     self.PUSH_METRICS_TO_CONTROLLER_TASK_NAME,
                     self.push_autoscaling_metrics_to_controller,
-                    HANDLE_METRIC_PUSH_INTERVAL_S,
+                    RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S,
                 )
 
         else:
