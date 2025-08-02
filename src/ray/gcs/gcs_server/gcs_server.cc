@@ -91,22 +91,20 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
               auto raylet_client = this->raylet_client_pool_.GetByID(node_id);
               RAY_CHECK(raylet_client);
               // Worker could still be dead even if node is alive.
-              (*raylet_client)
-                  ->IsLocalWorkerDead(
-                      worker_id,
-                      [this, worker_id, node_id](const Status &status,
-                                                 const auto &reply) {
-                        if (!status.ok()) {
-                          RAY_LOG(INFO).WithField(worker_id).WithField(node_id)
-                              << "Failed to check if worker is dead on request to raylet";
-                          return;
-                        }
-                        if (reply.is_dead()) {
-                          RAY_LOG(INFO).WithField(worker_id)
-                              << "Disconnect core worker client since it is dead";
-                          this->worker_client_pool_.Disconnect(worker_id);
-                        }
-                      });
+              raylet_client->IsLocalWorkerDead(
+                  worker_id,
+                  [this, worker_id, node_id](const Status &status, const auto &reply) {
+                    if (!status.ok()) {
+                      RAY_LOG(INFO).WithField(worker_id).WithField(node_id)
+                          << "Failed to check if worker is dead on request to raylet";
+                      return;
+                    }
+                    if (reply.is_dead()) {
+                      RAY_LOG(INFO).WithField(worker_id)
+                          << "Disconnect core worker client since it is dead";
+                      this->worker_client_pool_.Disconnect(worker_id);
+                    }
+                  });
             });
       }),
       pubsub_periodical_runner_(
@@ -393,7 +391,7 @@ void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
           // GetOrConnectionByID will not connect to the raylet is it hasn't been
           // connected.
           if (auto conn_opt = raylet_client_pool_.GetByID(alive_node.first)) {
-            raylet_client = *conn_opt;
+            raylet_client = conn_opt;
           } else {
             // When not connect, use GetOrConnectByAddress
             auto remote_address = rpc::RayletClientPool::GenerateRayletAddress(

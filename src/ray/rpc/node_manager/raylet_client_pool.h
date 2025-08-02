@@ -63,7 +63,10 @@ class RayletClientPool {
                                             const std::string &ip_address,
                                             int port);
 
-  size_t Size() const { return client_map_.size(); }
+  size_t Size() {
+    absl::MutexLock lock(&mu_);
+    return client_map_.size();
+  }
 
  private:
   absl::Mutex mu_;
