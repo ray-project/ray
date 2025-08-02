@@ -34,6 +34,13 @@ from ray.serve.schema import EncodingType, LoggingConfig
 buildin_print = builtins.print
 
 
+class ServeCoreContextFilter(CoreContextFilter):
+    def filter(self, record):
+        if hasattr(record, "skip_context_filter") and record.skip_context_filter:
+            return True
+        return super().filter(record)
+
+
 class ServeComponentFilter(logging.Filter):
     """Serve component filter.
 
@@ -56,6 +63,8 @@ class ServeComponentFilter(logging.Filter):
         Note: the filter doesn't do any filtering, it only adds the component
         attributes.
         """
+        if hasattr(record, "skip_context_filter") and record.skip_context_filter:
+            return True
         if self.component_type and self.component_type == ServeComponentType.REPLICA:
             setattr(record, SERVE_LOG_DEPLOYMENT, self.component_name)
             setattr(record, SERVE_LOG_REPLICA, self.component_id)
@@ -77,6 +86,8 @@ class ServeContextFilter(logging.Filter):
     """
 
     def filter(self, record):
+        if hasattr(record, "skip_context_filter") and record.skip_context_filter:
+            return True
         request_context = ray.serve.context._get_serve_request_context()
         if request_context.route:
             setattr(record, SERVE_LOG_ROUTE, request_context.route)
@@ -359,7 +370,7 @@ def configure_component_logger(
             "'LoggingConfig' to enable json format."
         )
     if RAY_SERVE_ENABLE_JSON_LOGGING or logging_config.encoding == EncodingType.JSON:
-        file_handler.addFilter(CoreContextFilter())
+        file_handler.addFilter(ServeCoreContextFilter())
         file_handler.addFilter(ServeContextFilter())
         file_handler.addFilter(
             ServeComponentFilter(component_name, component_id, component_type)

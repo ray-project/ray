@@ -34,6 +34,7 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 import ray
 from ray import cloudpickle
 from ray._common.utils import get_or_create_event_loop
+from ray._private.ray_logging.filters import CoreContextFilter
 from ray.actor import ActorClass, ActorHandle
 from ray.remote_function import RemoteFunction
 from ray.serve import metrics
@@ -61,6 +62,12 @@ from ray.serve._private.constants import (
     REQUEST_LATENCY_BUCKETS_MS,
     REQUEST_ROUTING_STATS_METHOD,
     SERVE_CONTROLLER_NAME,
+    SERVE_LOG_APPLICATION,
+    SERVE_LOG_COMPONENT,
+    SERVE_LOG_DEPLOYMENT,
+    SERVE_LOG_REPLICA,
+    SERVE_LOG_REQUEST_ID,
+    SERVE_LOG_ROUTE,
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
 )
@@ -97,7 +104,7 @@ from ray.serve.exceptions import (
     DeploymentUnavailableError,
     RayServeException,
 )
-from ray.serve.schema import LoggingConfig
+from ray.serve.schema import EncodingType, LoggingConfig
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -452,6 +459,28 @@ class ReplicaBase(ABC):
             component_id=self._component_id,
         )
 
+        if logging_config.encoding == EncodingType.JSON:
+            # we are creating this context to be used in the access log
+            # logging_utils has inherent functionality to add ray core logging context
+            # and serve access log context, but we are doing it here as a optimization
+            # because evaluating context is expensive.
+            ray_core_logging_context = CoreContextFilter.get_ray_core_logging_context()
+            # remove task level log keys from ray core logging context
+            for key in CoreContextFilter.TASK_LEVEL_LOG_KEYS:
+                ray_core_logging_context.pop(key, None)
+            self._access_log_context = {
+                SERVE_LOG_DEPLOYMENT: self._component_name,
+                SERVE_LOG_REPLICA: self._component_id,
+                SERVE_LOG_COMPONENT: ServeComponentType.REPLICA,
+                SERVE_LOG_APPLICATION: self._deployment_id.app_name,
+                "skip_context_filter": True,
+                **ray_core_logging_context,
+            }
+        else:
+            self._access_log_context = {
+                "skip_context_filter": True,
+            }
+
     def _can_accept_request(self, request_metadata: RequestMetadata) -> bool:
         # This replica gates concurrent request handling with an asyncio.Semaphore.
         # Each in-flight request acquires the semaphore. When the number of ongoing
@@ -537,7 +566,11 @@ class ReplicaBase(ABC):
         else:
             status_str = "ERROR"
 
-        # Set in _wrap_request.
+        # mutating self._access_log_context is not thread safe, but since this
+        # is only called from the same thread, it is safe. Mutating the same object
+        # because creating a new dict is expensive.
+        self._access_log_context[SERVE_LOG_ROUTE] = http_route
+        self._access_log_context[SERVE_LOG_REQUEST_ID] = request_metadata.request_id
         logger.info(
             access_log_msg(
                 method=http_method or "CALL",
@@ -546,7 +579,7 @@ class ReplicaBase(ABC):
                 status=status_code or status_str,
                 latency_ms=latency_ms,
             ),
-            extra={"serve_access_log": True},
+            extra=self._access_log_context,
         )
         self._metrics_manager.record_request_metrics(
             route=http_route,
@@ -1621,11 +1654,6 @@ class UserCallableWrapper:
         """
         self._raise_if_not_initialized("_call_http_entrypoint")
 
-        logger.info(
-            f"Started executing request to method '{user_method_info.name}'.",
-            extra={"log_to_stderr": False, "serve_access_log": True},
-        )
-
         if user_method_info.is_asgi_app:
             request_args = (scope, receive, send)
         elif not user_method_info.takes_any_args:
@@ -1754,11 +1782,6 @@ class UserCallableWrapper:
             or inspect.isasyncgenfunction(callable)
         )
 
-        logger.info(
-            f"Started executing request to method '{user_method_info.name}'.",
-            extra={"log_to_stderr": False, "serve_access_log": True},
-        )
-
         async def _call_generator_async() -> AsyncGenerator[Any, None]:
             gen = callable(*request_args, **request_kwargs)
             if inspect.iscoroutine(gen):
@@ -1812,11 +1835,6 @@ class UserCallableWrapper:
         `RayTaskError`.
         """
         self._raise_if_not_initialized("call_user_method")
-
-        logger.info(
-            f"Started executing request to method '{request_metadata.call_method}'.",
-            extra={"log_to_stderr": False, "serve_access_log": True},
-        )
 
         user_method_info = self.get_user_method_info(request_metadata.call_method)
         result, _ = await self._call_func_or_gen(
