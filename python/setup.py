@@ -629,7 +629,8 @@ def build(build_python, build_java, build_cpp):
         #
         # And we put it here so that does not change behavior of
         # conda-forge build.
-        bazel_flags.append("--incompatible_strict_action_env")
+        if sys.platform != "darwin":  # TODO(aslonnie): does not work on macOS..
+            bazel_flags.append("--incompatible_strict_action_env")
 
     bazel_targets = []
     bazel_targets += ["//:gen_ray_pkg"] if build_python else []
