@@ -6,7 +6,7 @@ import pytest
 
 import ray
 from ray.runtime_context import get_runtime_context
-from ray.train.v2._internal.logging.logging import LoggingManager
+from ray.train.v2._internal.logging import LoggingManager
 from ray.train.v2._internal.logging.patch_print import patch_print_function
 from ray.train.v2.tests.util import create_dummy_run_context, create_dummy_train_context
 
