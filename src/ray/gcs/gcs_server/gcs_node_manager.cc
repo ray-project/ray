@@ -23,7 +23,6 @@
 
 #include "ray/common/ray_config.h"
 #include "ray/gcs/pb_util.h"
-#include "ray/stats/stats.h"
 #include "ray/util/event.h"
 #include "ray/util/logging.h"
 #include "src/ray/protobuf/gcs.pb.h"
@@ -41,13 +40,11 @@ GcsNodeManager::GcsNodeManager(GcsPublisher *gcs_publisher,
       gcs_table_storage_(gcs_table_storage),
       io_context_(io_context),
       raylet_client_pool_(raylet_client_pool),
-      cluster_id_(cluster_id) {
-  export_event_write_enabled_ = IsExportAPIEnabledNode();
-}
+      cluster_id_(cluster_id),
+      export_event_write_enabled_(IsExportAPIEnabledNode()) {}
 
-void GcsNodeManager::WriteNodeExportEvent(rpc::GcsNodeInfo node_info) const {
-  /// Write node_info as a export node event if
-  /// enable_export_api_write() is enabled.
+void GcsNodeManager::WriteNodeExportEvent(const rpc::GcsNodeInfo &node_info) const {
+  /// Write node_info as a export node event if enable_export_api_write() is enabled.
   if (!export_event_write_enabled_) {
     return;
   }
@@ -170,7 +167,7 @@ void GcsNodeManager::HandleUnregisterNode(rpc::UnregisterNodeRequest request,
   node_info_delta->set_state(node->state());
   node_info_delta->set_end_time_ms(node->end_time_ms());
 
-  auto on_put_done = [=](const Status &status) {
+  auto on_put_done = [this, node_id, node_info_delta, node](const Status &status) {
     RAY_CHECK_OK(gcs_publisher_->PublishNodeInfo(node_id, *node_info_delta, nullptr));
     WriteNodeExportEvent(*node);
   };
@@ -356,8 +353,6 @@ void GcsNodeManager::AddNode(std::shared_ptr<rpc::GcsNodeInfo> node) {
   auto node_id = NodeID::FromBinary(node->node_id());
   auto iter = alive_nodes_.find(node_id);
   if (iter == alive_nodes_.end()) {
-    auto node_addr =
-        node->node_manager_address() + ":" + std::to_string(node->node_manager_port());
     alive_nodes_.emplace(node_id, node);
     // Notify all listeners.
     for (auto &listener : node_added_listeners_) {
@@ -487,8 +482,7 @@ void GcsNodeManager::Initialize(const GcsInitData &gcs_init_data) {
       // registeration failure.
       auto remote_address = rpc::RayletClientPool::GenerateRayletAddress(
           node_id, node_info.node_manager_address(), node_info.node_manager_port());
-      auto raylet_client =
-          raylet_client_pool_->GetOrConnectByAddress(std::move(remote_address));
+      auto raylet_client = raylet_client_pool_->GetOrConnectByAddress(remote_address);
       raylet_client->NotifyGCSRestart(nullptr);
     } else if (node_info.state() == rpc::GcsNodeInfo::DEAD) {
       dead_nodes_.emplace(node_id, std::make_shared<rpc::GcsNodeInfo>(node_info));
@@ -504,8 +498,8 @@ void GcsNodeManager::Initialize(const GcsInitData &gcs_init_data) {
 void GcsNodeManager::AddDeadNodeToCache(std::shared_ptr<rpc::GcsNodeInfo> node) {
   if (dead_nodes_.size() >= RayConfig::instance().maximum_gcs_dead_node_cached_count()) {
     const auto &node_id = sorted_dead_node_list_.front().first;
-    RAY_CHECK_OK(
-        gcs_table_storage_->NodeTable().Delete(node_id, {[](auto) {}, io_context_}));
+    RAY_CHECK_OK(gcs_table_storage_->NodeTable().Delete(
+        node_id, {[](const auto &) {}, io_context_}));
     dead_nodes_.erase(sorted_dead_node_list_.front().first);
     sorted_dead_node_list_.pop_front();
   }
