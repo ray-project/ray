@@ -119,6 +119,11 @@ TEST_F(GcsNodeManagerTest, TestUpdateAliveNode) {
   auto node = Mocker::GenNodeInfo();
   auto node_id = NodeID::FromBinary(node->node_id());
 
+  // Add initial resources to the node
+  auto resources = node->mutable_resources_total();
+  (*resources)["CPU"] = 4.0;
+  (*resources)["memory"] = 8000.0;
+
   // Add the node to the manager
   node_manager.AddNode(node);
 
@@ -126,6 +131,11 @@ TEST_F(GcsNodeManagerTest, TestUpdateAliveNode) {
   {
     rpc::syncer::ResourceViewSyncMessage sync_message;
     sync_message.set_idle_duration_ms(5000);
+    (*sync_message.mutable_resources_total())["CPU"] = 4.0;
+    (*sync_message.mutable_resources_total())["memory"] = 8000.0;
+    auto &mock_pub_ref =
+        dynamic_cast<ray::pubsub::MockPublisher &>(gcs_publisher_->GetPublisher());
+    EXPECT_CALL(mock_pub_ref, Publish).Times(0);
 
     node_manager.UpdateAliveNode(node_id, sync_message);
 
@@ -140,6 +150,11 @@ TEST_F(GcsNodeManagerTest, TestUpdateAliveNode) {
     rpc::syncer::ResourceViewSyncMessage sync_message;
     sync_message.set_idle_duration_ms(0);
     sync_message.add_node_activity("Busy workers on node.");
+    (*sync_message.mutable_resources_total())["CPU"] = 4.0;
+    (*sync_message.mutable_resources_total())["memory"] = 8000.0;
+    auto &mock_pub_ref =
+        dynamic_cast<ray::pubsub::MockPublisher &>(gcs_publisher_->GetPublisher());
+    EXPECT_CALL(mock_pub_ref, Publish).Times(0);
 
     node_manager.UpdateAliveNode(node_id, sync_message);
 
@@ -156,6 +171,11 @@ TEST_F(GcsNodeManagerTest, TestUpdateAliveNode) {
     rpc::syncer::ResourceViewSyncMessage sync_message;
     sync_message.set_idle_duration_ms(0);
     sync_message.set_is_draining(true);
+    (*sync_message.mutable_resources_total())["CPU"] = 4.0;
+    (*sync_message.mutable_resources_total())["memory"] = 8000.0;
+    auto &mock_pub_ref =
+        dynamic_cast<ray::pubsub::MockPublisher &>(gcs_publisher_->GetPublisher());
+    EXPECT_CALL(mock_pub_ref, Publish).Times(0);
 
     node_manager.UpdateAliveNode(node_id, sync_message);
 
@@ -163,6 +183,27 @@ TEST_F(GcsNodeManagerTest, TestUpdateAliveNode) {
     EXPECT_TRUE(updated_node.has_value());
     EXPECT_EQ(updated_node.value()->state_snapshot().state(),
               rpc::NodeSnapshot::DRAINING);
+  }
+
+  // Test 4: Update node with changed resources (should trigger publish)
+  {
+    rpc::syncer::ResourceViewSyncMessage sync_message;
+    sync_message.set_idle_duration_ms(0);
+    (*sync_message.mutable_resources_total())["CPU"] = 8.0;         // Changed from 4.0
+    (*sync_message.mutable_resources_total())["memory"] = 16000.0;  // Changed from 8000.0
+    auto &mock_pub_ref =
+        dynamic_cast<ray::pubsub::MockPublisher &>(gcs_publisher_->GetPublisher());
+    EXPECT_CALL(mock_pub_ref, Publish).Times(1);
+
+    node_manager.UpdateAliveNode(node_id, sync_message);
+
+    auto updated_node = node_manager.GetAliveNode(node_id);
+    EXPECT_TRUE(updated_node.has_value());
+
+    // Verify resources were updated
+    const auto &updated_resources = updated_node.value()->resources_total();
+    EXPECT_EQ(updated_resources.at("CPU"), 8.0);
+    EXPECT_EQ(updated_resources.at("memory"), 16000.0);
   }
 }
 
