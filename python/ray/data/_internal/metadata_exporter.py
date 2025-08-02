@@ -157,7 +157,7 @@ def sanitize_for_struct(obj, truncate_length=DEFAULT_TRUNCATION_LENGTH):
             return json.dumps(obj)[:truncate_length]
         except (TypeError, OverflowError):
             try:
-                return str(obj)
+                return str(obj)[:truncate_length]
             except Exception:
                 return UNKNOWN
 
