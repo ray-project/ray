@@ -333,6 +333,7 @@ CoreWorker::CoreWorker(
       max_direct_call_object_size_(RayConfig::instance().max_direct_call_object_size()),
       task_event_buffer_(std::move(task_event_buffer)),
       pid_(pid),
+      actor_shutdown_callback_(std::move(options_.actor_shutdown_callback)),
       runtime_env_json_serialization_cache_(kDefaultSerializationCacheCap) {
   // Initialize task receivers.
   if (options_.worker_type == WorkerType::WORKER || options_.is_local_mode) {
@@ -488,6 +489,23 @@ CoreWorker::CoreWorker(
 CoreWorker::~CoreWorker() { RAY_LOG(INFO) << "Core worker is destructed"; }
 
 void CoreWorker::Shutdown() {
+  // For actors, perform cleanup before shutdown starts.
+  // This ensures cleanup happens even if shutdown is called multiple times.
+  {
+    absl::MutexLock lock(&mutex_);
+    if (options_.worker_type == WorkerType::WORKER && !actor_id_.IsNil() &&
+        actor_shutdown_callback_) {
+      try {
+        RAY_LOG(INFO) << "Calling actor cleanup callback before shutdown";
+        actor_shutdown_callback_();
+        // Clear callback to prevent multiple calls
+        actor_shutdown_callback_ = nullptr;
+      } catch (const std::exception &e) {
+        RAY_LOG(ERROR) << "Actor cleanup callback failed: " << e.what();
+      }
+    }
+  }
+
   // Ensure that the shutdown logic runs at most once.
   bool expected = false;
   if (!is_shutdown_.compare_exchange_strong(expected, /*desired=*/true)) {
