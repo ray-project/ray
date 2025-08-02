@@ -24,6 +24,7 @@
 #include "ray/gcs/gcs_server/gcs_placement_group_mgr.h"
 #include "ray/gcs/gcs_server/state_util.h"
 #include "ray/gcs/pb_util.h"
+#include "ray/util/string_utils.h"
 
 namespace ray {
 namespace gcs {
@@ -219,6 +220,10 @@ void GcsAutoscalerStateManager::GetPendingGangResourceRequests(
     // Add the strategy as detail info for the gang resource request.
     gang_resource_req->set_details(FormatPlacementGroupDetails(pg_data));
 
+    // Create a BundleSelector. Only one BundleSelector will be created for now.
+    // Multiple will be added when we implement the fallback mechanism.
+    auto *bundle_selector = gang_resource_req->add_bundle_selectors();
+
     // Copy the PG's bundles to the request.
     for (auto &&bundle : std::move(*pg_data.mutable_bundles())) {
       if (!NodeID::FromBinary(bundle.node_id()).IsNil()) {
@@ -237,9 +242,6 @@ void GcsAutoscalerStateManager::GetPendingGangResourceRequests(
       // use the BundleSelector for GangResourceRequests.
       auto legacy_resource_req = gang_resource_req->add_requests();
       *legacy_resource_req->mutable_resources_bundle() = unit_resources;
-
-      // Create a new BundleSelector
-      auto *bundle_selector = gang_resource_req->add_bundle_selectors();
 
       // Add ResourceRequest for this bundle.
       auto *bundle_resource_req = bundle_selector->add_resource_requests();
