@@ -1871,6 +1871,7 @@ class Dataset:
         )
         logical_plan = LogicalPlan(op, self.context)
         split_dataset = Dataset(plan, logical_plan)
+        split_dataset._set_uuid(self._uuid)
 
         return StreamSplitDataIterator.create(split_dataset, n, locality_hints)
 
