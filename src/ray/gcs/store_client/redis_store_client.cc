@@ -67,8 +67,14 @@ std::vector<RedisCommand> GenCommandsBatched(const std::string &command,
 }  // namespace
 
 std::string RedisKey::ToString() const {
-  // Something like RAY864b004c-6305-42e3-ac46-adfa8eb6f752@NODE
-  return absl::StrCat("RAY", external_storage_namespace, kClusterSeparator, table_name);
+  const RedisHashTag redis_hash_tag{};
+  if (redis_hash_tag.enabled()) {
+    // Something like {864b004c-6305-42e3-ac46-adfa8eb6f752}.RAY@NODE
+    return absl::StrCat(redis_hash_tag.ToString("RAY"), kClusterSeparator, table_name);
+  } else {
+    // Something like RAY864b004c-6305-42e3-ac46-adfa8eb6f752@NODE
+    return absl::StrCat("RAY", external_storage_namespace, kClusterSeparator, table_name);
+  }
 }
 
 RedisMatchPattern RedisMatchPattern::Prefix(const std::string &prefix) {
