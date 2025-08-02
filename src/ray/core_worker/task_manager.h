@@ -25,6 +25,7 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/id.h"
+#include "ray/common/status_or.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/task_event_buffer.h"
 #include "ray/core_worker/task_manager_interface.h"
@@ -451,7 +452,7 @@ class TaskManager : public TaskManagerInterface {
 
   bool IsTaskPending(const TaskID &task_id) const override;
 
-  /// Return whether the task is scheduled adn waiting for execution.
+  /// Return whether the task is scheduled and waiting for execution.
   ///
   /// \param[in] task_id ID of the task to query.
   /// \return Whether the task is waiting for execution.
@@ -585,6 +586,11 @@ class TaskManager : public TaskManagerInterface {
     //    pending tasks and tasks that finished execution but that may be
     //    retried in the future.
     absl::flat_hash_set<ObjectID> reconstructable_return_ids;
+    // NOTE: used only for streaming generators.
+    // Tracks ObjectIDs return from a streaming generator before its first successful
+    // execution. Used to propagate errors to the user if lineage reconstruction
+    // happens after the first successful execution and fails.
+    absl::flat_hash_set<ObjectID> recon_ret_ids_before_first_successful_exec;
     // The size of this (serialized) task spec in bytes, if the task spec is
     // not pending, i.e. it is being pinned because it's in another object's
     // lineage. We cache this because the task spec protobuf can mutate
