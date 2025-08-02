@@ -47,7 +47,7 @@ def test_execution_resources(ray_start_10_cpus_shared):
     )
     assert (
         repr(r2)
-        == "ExecutionResources(cpu=1.0, gpu=0.0, object_store_memory=0.0B, memory=0.0B)"
+        == "ExecutionResources(cpu=1, gpu=0.0, object_store_memory=0.0B, memory=0.0B)"
     )
     assert (
         repr(r3)
