@@ -11,7 +11,7 @@ from ray._private.test_utils import (
     fetch_prometheus_metrics,
     wait_for_assertion,
 )
-from ray._private.metrics_agent import WORKER_ID_TAG_KEY
+from ray._private.telemetry.metric_cardinality import WORKER_ID_TAG_KEY
 
 
 try:
@@ -20,7 +20,8 @@ except ImportError:
     prometheus_client = None
 
 
-_TO_TEST_METRICS = ["ray_tasks", "ray_actors"]
+_TO_TEST_METRICS = ["ray_tasks", "ray_actors", "ray_running_jobs"]
+_COMPONENT_TAG_KEY = "Component"
 
 
 @pytest.fixture
@@ -30,9 +31,16 @@ def _setup_cluster_for_test(request, ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(
         _system_config={
-            "metrics_report_interval_ms": 1000,
             "enable_metrics_collection": True,
             "metric_cardinality_level": core_metric_cardinality_level,
+            "experimental_enable_open_telemetry_on_agent": os.getenv(
+                "RAY_experimental_enable_open_telemetry_on_agent"
+            )
+            == "1",
+            "experimental_enable_open_telemetry_on_core": os.getenv(
+                "RAY_experimental_enable_open_telemetry_on_core"
+            )
+            == "1",
         }
     )
     cluster.wait_for_nodes()
@@ -99,6 +107,11 @@ def test_cardinality_levels(_setup_cluster_for_test, cardinality_level):
                     ), f"Sample {sample} does not contain WorkerId tag"
                 else:
                     raise ValueError(f"Unknown cardinality level: {cardinality_level}")
+
+                # The Component tag should be present on all cardinality levels
+                assert (
+                    sample.labels.get(_COMPONENT_TAG_KEY) is not None
+                ), f"Sample {sample} does not contain Component tag"
 
     wait_for_assertion(
         _validate,
