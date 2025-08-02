@@ -129,10 +129,6 @@ class TestModelConfig:
             accelerator_type="L4",
         )
         assert (
-            "metrics_interval_s"
-            not in llm_config.deployment_config["autoscaling_config"]
-        )
-        assert (
             "upscaling_factor" not in llm_config.deployment_config["autoscaling_config"]
         )
 

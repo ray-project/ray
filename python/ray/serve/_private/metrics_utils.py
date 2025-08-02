@@ -152,7 +152,7 @@ class InMemoryMetricsStore:
 
     def _get_datapoints(
         self, key: Hashable, window_start_timestamp_s: float
-    ) -> List[float]:
+    ) -> List[TimeStampedValue]:
         """Get all data points given key after window_start_timestamp_s"""
 
         datapoints = self.data[key]
@@ -187,9 +187,10 @@ class InMemoryMetricsStore:
         if do_compact:
             self.data[key] = points_after_idx
 
-        if len(points_after_idx) == 0:
-            return
-        return sum(point.value for point in points_after_idx) / len(points_after_idx)
+        num_points_after_idx = len(points_after_idx)
+        if num_points_after_idx == 0:
+            return None
+        return sum(point.value for point in points_after_idx) / num_points_after_idx
 
     def max(
         self, key: Hashable, window_start_timestamp_s: float, do_compact: bool = True
