@@ -1,5 +1,6 @@
 import asyncio
 import math
+import sys
 from collections.abc import Callable
 from concurrent.futures.thread import ThreadPoolExecutor
 from functools import partial
@@ -287,8 +288,13 @@ async def send_k_requests(
     """Send k requests and wait until at least min_num_batches are waiting."""
     await signal_actor.send.remote(True)  # type: ignore[attr-defined]
     async with httpx.AsyncClient() as client:
+        url = get_application_url()
+
+        if sys.platform == "win32":
+            url = url.replace("localhost", "127.0.0.1")
+
         for _ in range(k):
-            asyncio.create_task(client.get(f"{get_application_url()}/"))
+            asyncio.create_task(client.get(f"{url}/"))
         await wait_for_n_waiters(
             signal_actor, lambda num_waiters: num_waiters >= min_num_batches
         )
@@ -305,6 +311,4 @@ async def wait_for_n_waiters(
 
 
 if __name__ == "__main__":
-    import sys
-
     sys.exit(pytest.main(["-v", "-s", __file__]))

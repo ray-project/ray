@@ -379,7 +379,8 @@ def test_proxy_metrics_internal_error(metrics_start_shutdown):
 
     def verify_metrics(_expected_metrics, do_assert=False):
         try:
-            resp = httpx.get("http://127.0.0.1:9999", timeout=None).text
+            ip = "0.0.0.0" if sys.platform == "win32" else "127.0.0.1"
+            resp = httpx.get(f"http://{ip}:9999", timeout=None).text
         # Requests will fail if we are crashing the controller
         except httpx.HTTPError:
             return False
@@ -462,6 +463,9 @@ def test_proxy_metrics_fields_not_found(metrics_start_shutdown):
 
     # Should generate 404 responses
     broken_url = f"{get_application_url()}/fake_route"
+    if sys.platform == "win32":
+        broken_url = broken_url.replace("localhost", "127.0.0.1")
+
     _ = httpx.get(broken_url).text
     print("Sent requests to broken URL.")
 
