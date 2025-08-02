@@ -1022,34 +1022,33 @@ def init_grpc_channel(
     return channel
 
 
-def check_dashboard_dependencies_installed() -> bool:
-    """Returns True if Ray Dashboard dependencies are installed.
+def get_dashboard_dependency_error() -> Optional[ImportError]:
+    """Returns the exception error if Ray Dashboard dependencies are not installed.
+    None if they are installed.
 
     Checks to see if we should start the dashboard agent or not based on the
     Ray installation version the user has installed (ray vs. ray[default]).
     Unfortunately there doesn't seem to be a cleaner way to detect this other
     than just blindly importing the relevant packages.
-
     """
     try:
         import ray.dashboard.optional_deps  # noqa: F401
 
-        return True
-    except ImportError:
-        return False
+        return None
+    except ImportError as e:
+        return e
 
 
-def check_ray_client_dependencies_installed() -> bool:
-    """Returns True if Ray Client dependencies are installed.
-
-    See documents for check_dashboard_dependencies_installed.
+def get_ray_client_dependency_error() -> Optional[ImportError]:
+    """Returns the exception error if Ray Client dependencies are not installed.
+    None if they are installed.
     """
     try:
         import grpc  # noqa: F401
 
-        return True
-    except ImportError:
-        return False
+        return None
+    except ImportError as e:
+        return e
 
 
 connect_error = (

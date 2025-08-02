@@ -115,6 +115,7 @@ NodeManager::NodeManager(
     gcs::GcsClient &gcs_client,
     rpc::ClientCallManager &client_call_manager,
     rpc::CoreWorkerClientPool &worker_rpc_pool,
+    rpc::RayletClientPool &raylet_client_pool,
     pubsub::SubscriberInterface &core_worker_subscriber,
     ClusterResourceScheduler &cluster_resource_scheduler,
     ILocalTaskManager &local_task_manager,
@@ -137,6 +138,7 @@ NodeManager::NodeManager(
       worker_pool_(worker_pool),
       client_call_manager_(client_call_manager),
       worker_rpc_pool_(worker_rpc_pool),
+      raylet_client_pool_(raylet_client_pool),
       core_worker_subscriber_(core_worker_subscriber),
       object_directory_(object_directory),
       object_manager_(object_manager),
@@ -227,7 +229,7 @@ NodeManager::NodeManager(
                                         "NodeManager.GCTaskFailureReason");
 }
 
-ray::Status NodeManager::RegisterGcs() {
+void NodeManager::RegisterGcs() {
   auto on_node_change = [this](const NodeID &node_id, const GcsNodeInfo &data) {
     if (data.state() == GcsNodeInfo::ALIVE) {
       NodeAdded(data);
@@ -273,8 +275,8 @@ ray::Status NodeManager::RegisterGcs() {
         "NodeManager.CheckGC");
   };
   // Register a callback to monitor new nodes and a callback to monitor removed nodes.
-  RAY_RETURN_NOT_OK(gcs_client_.Nodes().AsyncSubscribeToNodeChange(
-      on_node_change, on_node_change_subscribe_done));
+  gcs_client_.Nodes().AsyncSubscribeToNodeChange(
+      std::move(on_node_change), std::move(on_node_change_subscribe_done));
 
   // Subscribe to all unexpected failure notifications from the local and
   // remote raylets. Note that this does not include workers that failed due to
@@ -303,7 +305,7 @@ ray::Status NodeManager::RegisterGcs() {
       HandleJobFinished(job_id, job_data);
     }
   };
-  RAY_RETURN_NOT_OK(gcs_client_.Jobs().AsyncSubscribeAll(job_subscribe_handler, nullptr));
+  RAY_CHECK_OK(gcs_client_.Jobs().AsyncSubscribeAll(job_subscribe_handler, nullptr));
 
   periodical_runner_->RunFnPeriodically(
       [this] {
@@ -379,7 +381,6 @@ ray::Status NodeManager::RegisterGcs() {
       },
       RayConfig::instance().raylet_liveness_self_check_interval_ms(),
       "NodeManager.GcsCheckAlive");
-  return ray::Status::OK();
 }
 
 void NodeManager::DestroyWorker(std::shared_ptr<WorkerInterface> worker,
@@ -2638,8 +2639,9 @@ void NodeManager::HandleFormatGlobalMemoryInfo(
 
   // Fetch from remote nodes.
   for (const auto &[node_id, address] : remote_node_manager_addresses_) {
-    auto client = std::make_shared<RayletClient>(
-        /*address=*/address.first, /*port=*/address.second, client_call_manager_);
+    auto addr = rpc::RayletClientPool::GenerateRayletAddress(
+        node_id, address.first, address.second);
+    auto client = raylet_client_pool_.GetOrConnectByAddress(std::move(addr));
     client->GetNodeStats(
         stats_req,
         [replies, store_reply](const ray::Status &status, rpc::GetNodeStatsReply &&r) {
