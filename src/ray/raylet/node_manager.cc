@@ -2398,35 +2398,25 @@ void NodeManager::HandlePinObjectIDs(rpc::PinObjectIDsRequest request,
       reply->add_successes(false);
     }
   } else {
-    RAY_CHECK_EQ(object_ids.size(), results.size());
-    auto object_id_it = object_ids.begin();
-    auto result_it = results.begin();
-    while (object_id_it != object_ids.end()) {
-      // Note: It is safe to call ObjectPendingDeletion here because the asynchronous
-      // deletion can only happen on the same thread as the call to HandlePinObjectIDs.
-      // Therefore, a new object cannot be marked for deletion while this function is
-      // executing.
-      if (*result_it == nullptr ||
-          local_object_manager_.ObjectPendingDeletion(*object_id_it)) {
-        RAY_LOG(DEBUG).WithField(*object_id_it)
-            << "Failed to get object in the object store. This should only happen when "
-               "the owner tries to pin an object and it's already been deleted or is "
-               "marked for deletion.";
-        object_id_it = object_ids.erase(object_id_it);
-        result_it = results.erase(result_it);
-        reply->add_successes(false);
-      } else {
-        ++object_id_it;
-        ++result_it;
-        reply->add_successes(true);
-      }
-    }
     // Wait for the object to be freed by the owner, which keeps the ref count.
     ObjectID generator_id = request.has_generator_id()
                                 ? ObjectID::FromBinary(request.generator_id())
                                 : ObjectID::Nil();
-    local_object_manager_.PinObjectsAndWaitForFree(
-        object_ids, std::move(results), request.owner_address(), generator_id);
+    RAY_CHECK_EQ(object_ids.size(), results.size());
+    auto object_id_it = object_ids.begin();
+    auto result_it = results.begin();
+    while (object_id_it != object_ids.end()) {
+      Status s = local_object_manager_.PinObjectAndWaitForFree(
+          *object_id_it, std::move(*result_it), request.owner_address(), generator_id);
+      if (!s.ok()) {
+        RAY_LOG(INFO).WithField(*object_id_it) << s.message();
+        reply->add_successes(false);
+      } else {
+        reply->add_successes(true);
+      }
+      ++object_id_it;
+      ++result_it;
+    }
   }
   RAY_CHECK_EQ(request.object_ids_size(), reply->successes_size());
   send_reply_callback(Status::OK(), nullptr, nullptr);

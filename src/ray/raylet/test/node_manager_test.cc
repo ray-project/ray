@@ -50,13 +50,16 @@ class FakeLocalObjectManager : public LocalObjectManagerInterface {
       std::shared_ptr<absl::flat_hash_set<ObjectID>> objects_pending_deletion)
       : objects_pending_deletion_(objects_pending_deletion) {}
 
-  void PinObjectsAndWaitForFree(const std::vector<ObjectID> &object_ids,
-                                std::vector<std::unique_ptr<RayObject>> &&objects,
-                                const rpc::Address &owner_address,
-                                const ObjectID &generator_id = ObjectID::Nil()) override {
+  Status PinObjectAndWaitForFree(const ObjectID &object_id,
+                                 std::unique_ptr<RayObject> object,
+                                 const rpc::Address &owner_address,
+                                 const ObjectID &generator_id) override {
+    if (objects_pending_deletion_->find(object_id) != objects_pending_deletion_->end()) {
+      return Status::Invalid("");
+    }
+    return Status::OK();
   }
 
-  // NOOP
   void SpillObjectUptoMaxThroughput() override {}
 
   void SpillObjects(const std::vector<ObjectID> &objects_ids,
@@ -69,10 +72,6 @@ class FakeLocalObjectManager : public LocalObjectManagerInterface {
       std::function<void(const ray::Status &)> callback) override {}
 
   void FlushFreeObjects() override{};
-
-  bool ObjectPendingDeletion(const ObjectID &object_id) override {
-    return objects_pending_deletion_->find(object_id) != objects_pending_deletion_->end();
-  }
 
   void ProcessSpilledObjectsDeleteQueue(uint32_t max_batch_size) override {}
 
