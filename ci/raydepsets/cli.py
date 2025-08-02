@@ -1,6 +1,6 @@
 import click
 from pathlib import Path
-from ci.raydepsets.workspace import Workspace, Depset
+from ci.raydepsets.workspace import Workspace, Depset, ConfigArgs
 from typing import List
 import subprocess
 import platform
@@ -30,14 +30,21 @@ def cli():
 
 
 @cli.command()
-@click.argument("config_path", default="ci/raydepsets/depset.config.yaml")
+@click.argument("config_path", default="ci/raydepsets/ray.depsets.yaml")
 @click.option("--workspace-dir", default=None)
 @click.option("--name", default=None)
-def load(config_path: str, workspace_dir: str, name: str):
+@click.option("--config-args", default=None)
+def load(config_path: str, workspace_dir: str, name: str, config_args: str):
     """Load a dependency sets from a config file."""
     manager = DependencySetManager(config_path=config_path, workspace_dir=workspace_dir)
+    config = None
     if name:
-        manager.execute_single(manager.get_depset(name))
+        if config_args:
+            for config_arg in manager.config.config_args:
+                if config_arg.name == config_args:
+                    config = config_arg
+                    break
+        manager.execute_single(manager.get_depset(name, config))
     else:
         manager.execute()
 
@@ -45,7 +52,7 @@ def load(config_path: str, workspace_dir: str, name: str):
 class DependencySetManager:
     def __init__(
         self,
-        config_path: Path = Path(__file__).parent / "depset.config.yaml",
+        config_path: Path = Path(__file__).parent / "ray.depsets.yaml",
         workspace_dir: str = None,
     ):
         self.workspace = Workspace(workspace_dir)
@@ -78,11 +85,17 @@ class DependencySetManager:
             depset = self.build_graph.nodes[node]["depset"]
             self.execute_single(depset)
 
-    def get_depset(self, name: str) -> Depset:
+    def get_depset(self, name: str, config_args: ConfigArgs) -> Depset:
+        print(f"# of depsets: {len(self.config.depsets)}")
         for depset in self.config.depsets:
-            if depset.name == name:
+            print(f"depset name: {depset.name}")
+            if depset.name == name and (
+                config_args is None or depset.config_args.name == config_args.name
+            ):
                 return depset
-        raise KeyError(f"Dependency set {name} not found")
+        raise KeyError(
+            f"Dependency set {name} not found with config args: {config_args.name if config_args else 'None'}"
+        )
 
     def exec_uv_cmd(self, cmd: str, args: List[str]) -> str:
         cmd = f"{uv_binary()} pip {cmd} {' '.join(args)}"
@@ -108,6 +121,7 @@ class DependencySetManager:
                 args=DEFAULT_UV_FLAGS.copy(),
                 name=depset.name,
                 output=depset.output,
+                config_args=depset.config_args,
             )
         elif depset.operation == "expand":
             self.expand(
@@ -117,6 +131,7 @@ class DependencySetManager:
                 args=DEFAULT_UV_FLAGS.copy(),
                 name=depset.name,
                 output=depset.output,
+                config_args=depset.config_args,
             )
         click.echo(f"Dependency set {depset.name} compiled successfully")
 
@@ -145,10 +160,11 @@ class DependencySetManager:
         requirements: List[str],
         args: List[str],
         name: str,
+        config_args: ConfigArgs = None,
         output: str = None,
     ):
         """Subset a dependency set."""
-        source_depset = self.get_depset(source_depset)
+        source_depset = self.get_depset(source_depset, config_args)
         self.check_subset_exists(source_depset, requirements)
         self.compile(
             constraints=[source_depset.output],
@@ -165,13 +181,14 @@ class DependencySetManager:
         constraints: List[str],
         args: List[str],
         name: str,
+        config_args: ConfigArgs = None,
         output: str = None,
     ):
         """Expand a dependency set."""
         # handle both depsets and requirements
         depset_req_list = []
         for depset_name in depsets:
-            depset = self.get_depset(depset_name)
+            depset = self.get_depset(depset_name, config_args)
             depset_req_list.extend(depset.requirements)
         if requirements:
             depset_req_list.extend(requirements)
