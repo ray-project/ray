@@ -2,6 +2,7 @@ import logging
 import sys
 import threading
 import uuid
+from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from queue import Queue
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
@@ -86,8 +87,58 @@ class ExecutionContext:
     train_context_callbacks: List["TrainContextCallback"]
 
 
+class TrainContext(ABC):
+    @abstractmethod
+    def get_experiment_name(self) -> str:
+        pass
+
+    @abstractmethod
+    def get_world_size(self) -> int:
+        pass
+
+    @abstractmethod
+    def get_world_rank(self) -> int:
+        pass
+
+    @abstractmethod
+    def get_local_rank(self) -> int:
+        pass
+
+    @abstractmethod
+    def get_local_world_size(self) -> int:
+        pass
+
+    @abstractmethod
+    def get_node_rank(self) -> int:
+        pass
+
+    @abstractmethod
+    def get_storage(self):
+        pass
+
+    @abstractmethod
+    def get_dataset_shard(self, dataset_name: str) -> DataIterator:
+        pass
+
+    @abstractmethod
+    def report(
+        self,
+        metrics: Dict[str, Any],
+        checkpoint: Optional[Checkpoint] = None,
+        checkpoint_dir_name: Optional[str] = None,
+    ):
+        pass
+
+    @abstractmethod
+    def is_running_locally(self) -> bool:
+        """Returns True if the training run is running locally without the Ray instance, False otherwise."""
+        pass
+
+
 @dataclass
-class TrainContext:
+class DistributedTrainContext(TrainContext):
+    """The TrainContext for the training run with Ray Train."""
+
     train_run_context: TrainRunContext
     distributed_context: DistributedContext
     execution_context: ExecutionContext
@@ -195,6 +246,11 @@ class TrainContext:
     ) -> _TrainingResult:
         """Save the checkpoint to remote storage.
 
+        Args:
+            checkpoint_dir_name: The directory name for saving the checkpoint.
+            metrics: The training metrics to include in the result.
+            checkpoint: The checkpoint object to persist. If None, no checkpoint is saved.
+
         Returns:
             The training result object containing the persisted checkpoint.
         """
@@ -267,6 +323,60 @@ class TrainContext:
             # TODO (hpguo): Add a metrics to track the blocking time waiting for the
             # training result to be consumed by the controller.
             self.get_result_queue().put(training_result)
+
+    def is_running_locally(self) -> bool:
+        return False
+
+
+@dataclass
+class LocalTrainContext(TrainContext):
+    """The TrainContext for the training run for local testing (python running locally, torchrun, etc.)"""
+
+    local_world_size: int
+    local_rank: int
+    experiment_name: str
+    dataset_shards: Dict[str, DataIterator]
+    storage_context: StorageContext
+
+    def get_experiment_name(self) -> str:
+        return self.experiment_name
+
+    def get_world_size(self) -> int:
+        """The number of nodes for the local training is always 1, so the world size is always equal to the local world size."""
+        return self.local_world_size
+
+    def get_world_rank(self) -> int:
+        """The number of nodes for the local training is always 1, so the world rank is always equal to the local rank."""
+        return self.local_rank
+
+    def get_local_rank(self) -> int:
+        return self.local_rank
+
+    def get_local_world_size(self) -> int:
+        return self.local_world_size
+
+    def get_node_rank(self) -> int:
+        """The number of nodes for the local training is always 1."""
+        return 0
+
+    def get_storage(self):
+        return self.storage_context
+
+    def get_dataset_shard(self, dataset_name: str) -> DataIterator:
+        return self.dataset_shards[dataset_name]
+
+    def report(
+        self,
+        metrics: Dict[str, Any],
+        checkpoint: Optional[Checkpoint] = None,
+        checkpoint_dir_name: Optional[str] = None,
+    ):
+        logger.info(
+            f"Report metrics: {metrics}, checkpoint: {checkpoint}, checkpoint_dir_name: {checkpoint_dir_name}"
+        )
+
+    def is_running_locally(self) -> bool:
+        return True
 
 
 # The global variable holding the current TrainContext
