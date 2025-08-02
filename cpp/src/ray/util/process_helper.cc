@@ -17,6 +17,7 @@
 #include <boost/algorithm/string.hpp>
 #include <string>
 
+#include "ray/common/network_util.h"
 #include "ray/common/ray_config.h"
 #include "ray/util/cmd_line_utils.h"
 #include "ray/util/process.h"
@@ -91,7 +92,7 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
                  ConfigInternal::Instance().head_args);
   }
 
-  std::string bootstrap_address = bootstrap_ip + ":" + std::to_string(bootstrap_port);
+  std::string bootstrap_address = BuildAddress(bootstrap_ip, bootstrap_port);
   std::string node_ip = ConfigInternal::Instance().node_ip_address;
   if (node_ip.empty()) {
     if (!bootstrap_ip.empty()) {

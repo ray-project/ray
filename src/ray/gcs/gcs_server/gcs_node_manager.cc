@@ -21,6 +21,7 @@
 #include <utility>
 #include <vector>
 
+#include "ray/common/network_util.h"
 #include "ray/common/ray_config.h"
 #include "ray/gcs/pb_util.h"
 #include "ray/stats/stats.h"
@@ -337,7 +338,7 @@ void GcsNodeManager::AddNode(std::shared_ptr<rpc::GcsNodeInfo> node) {
   auto iter = alive_nodes_.find(node_id);
   if (iter == alive_nodes_.end()) {
     auto node_addr =
-        node->node_manager_address() + ":" + std::to_string(node->node_manager_port());
+        BuildAddress(node->node_manager_address(), node->node_manager_port());
     alive_nodes_.emplace(node_id, node);
     // Notify all listeners.
     for (auto &listener : node_added_listeners_) {

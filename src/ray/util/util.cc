@@ -34,6 +34,7 @@
 #include <boost/asio/ip/tcp.hpp>
 
 #include "absl/strings/match.h"
+#include "ray/common/network_util.h"
 #include "ray/util/filesystem.h"
 #include "ray/util/logging.h"
 #include "ray/util/process.h"

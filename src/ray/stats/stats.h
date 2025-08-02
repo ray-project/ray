@@ -27,6 +27,7 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/asio/io_service_pool.h"
 #include "ray/common/id.h"
+#include "ray/common/network_util.h"
 #include "ray/common/ray_config.h"
 #include "ray/stats/metric.h"
 #include "ray/stats/metric_exporter.h"
@@ -85,7 +86,7 @@ static inline void Init(
   // Register the metric recorder.
   if (RayConfig::instance().experimental_enable_open_telemetry_on_core()) {
     OpenTelemetryMetricRecorder::GetInstance().RegisterGrpcExporter(
-        std::string("127.0.0.1:") + std::to_string(metrics_agent_port),
+        BuildAddress("127.0.0.1", metrics_agent_port),
         std::chrono::milliseconds(
             absl::ToInt64Milliseconds(StatsConfig::instance().GetReportInterval())),
         std::chrono::milliseconds(

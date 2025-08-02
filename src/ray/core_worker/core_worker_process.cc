@@ -27,6 +27,7 @@
 #include "ray/common/cgroup/cgroup_context.h"
 #include "ray/common/cgroup/cgroup_manager.h"
 #include "ray/common/cgroup/constants.h"
+#include "ray/common/network_util.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/runtime_env_common.h"
 #include "ray/common/task/task_util.h"
@@ -262,8 +263,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
   rpc_address.set_raylet_id(local_raylet_id.Binary());
   rpc_address.set_worker_id(worker_context->GetWorkerID().Binary());
   RAY_LOG(INFO).WithField(worker_context->GetWorkerID()).WithField(local_raylet_id)
-      << "Initializing worker at address: " << rpc_address.ip_address() << ":"
-      << rpc_address.port();
+      << "Initializing worker at address: " << BuildAddress(rpc_address.ip_address(), rpc_address.port());
 
   auto gcs_client = std::make_shared<gcs::GcsClient>(options.gcs_options,
                                                      worker_context->GetWorkerID());
