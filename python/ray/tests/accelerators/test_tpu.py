@@ -343,5 +343,15 @@ def test_get_current_node_labels_env_only(monkeypatch):
     assert tpu_labels["ray.io/tpu-pod-type"] == "v6e-16"
 
 
+def test_get_current_node_tpu_topology_from_metadata():
+    tpu_env_string = "TPU_ACCELERATOR:v6e.\nTOPOLOGY: '2x2x4'\nTPU_HOST_BOUNDS:0,1,1,2"
+
+    with patch(
+        "ray._private.accelerators.tpu._get_tpu_metadata", return_value=tpu_env_string
+    ):
+        topology = TPUAcceleratorManager.get_current_node_tpu_topology()
+        assert topology == "2x2x4"
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
