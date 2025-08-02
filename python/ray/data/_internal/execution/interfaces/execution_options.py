@@ -27,10 +27,6 @@ class ExecutionResources:
             gpu: Amount of logical GPU slots.
             object_store_memory: Amount of object store memory.
             memory: Amount of logical memory in bytes.
-            default_to_inf: When the object represents resource usage, this flag
-                should be set to False. And missing values will default to 0.
-                When the object represents resource limits, this flag should be
-                set to True. And missing values will default to infinity.
         """
 
         # NOTE: Ray Core allocates fractional resources in up to 5th decimal
