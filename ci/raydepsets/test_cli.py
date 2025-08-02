@@ -9,6 +9,9 @@ from ci.raydepsets.cli import (
     load,
     DependencySetManager,
     uv_binary,
+    _override_uv_flags,
+    _append_uv_flags,
+    _flatten_flags,
     Depset,
     DEFAULT_UV_FLAGS,
 )
@@ -102,7 +105,7 @@ class TestCli(unittest.TestCase):
             manager.compile(
                 constraints=["requirement_constraints_test.txt"],
                 requirements=["requirements_test.txt"],
-                args=["--no-annotate", "--no-header"] + DEFAULT_UV_FLAGS.copy(),
+                append_flags=["--no-annotate", "--no-header"],
                 name="ray_base_test_depset",
                 output="requirements_compiled.txt",
             )
@@ -130,7 +133,7 @@ class TestCli(unittest.TestCase):
             manager.compile(
                 constraints=["requirement_constraints_test.txt"],
                 requirements=["requirements_test.txt"],
-                args=["--no-annotate", "--no-header"] + DEFAULT_UV_FLAGS.copy(),
+                append_flags=["--no-annotate", "--no-header"],
                 name="ray_base_test_depset",
                 output="requirements_compiled.txt",
             )
@@ -179,7 +182,7 @@ class TestCli(unittest.TestCase):
             manager.compile(
                 constraints=["requirement_constraints_test.txt"],
                 requirements=["requirements_test.txt", "requirements_test_subset.txt"],
-                args=["--no-annotate", "--no-header"] + DEFAULT_UV_FLAGS.copy(),
+                append_flags=["--no-annotate", "--no-header"],
                 name="general_depset",
                 output="requirements_compiled_general.txt",
             )
@@ -187,7 +190,7 @@ class TestCli(unittest.TestCase):
             manager.subset(
                 source_depset="general_depset",
                 requirements=["requirements_test.txt"],
-                args=["--no-annotate", "--no-header"] + DEFAULT_UV_FLAGS.copy(),
+                append_flags=["--no-annotate", "--no-header"],
                 name="subset_general_depset",
                 output="requirements_compiled_subset_general.txt",
             )
@@ -213,7 +216,7 @@ class TestCli(unittest.TestCase):
             manager.compile(
                 constraints=["requirement_constraints_test.txt"],
                 requirements=["requirements_test.txt", "requirements_test_subset.txt"],
-                args=["--no-annotate", "--no-header"] + DEFAULT_UV_FLAGS.copy(),
+                append_flags=["--no-annotate", "--no-header"],
                 name="general_depset",
                 output="requirements_compiled_general.txt",
             )
@@ -222,7 +225,7 @@ class TestCli(unittest.TestCase):
                 manager.subset(
                     source_depset="general_depset",
                     requirements=["requirements_compiled_test.txt"],
-                    args=["--no-annotate", "--no-header"] + DEFAULT_UV_FLAGS.copy(),
+                    append_flags=["--no-annotate", "--no-header"],
                     name="subset_general_depset",
                     output="requirements_compiled_subset_general.txt",
                 )
@@ -240,6 +243,8 @@ class TestCli(unittest.TestCase):
                 requirements=["requirements_1.txt", "requirements_2.txt"],
                 constraints=["requirement_constraints_1.txt"],
                 output="requirements_compiled_general.txt",
+                append_flags=[],
+                override_flags=[],
             )
             with self.assertRaises(RuntimeError):
                 manager.check_subset_exists(
@@ -258,7 +263,6 @@ class TestCli(unittest.TestCase):
                 manager.compile(
                     constraints=[],
                     requirements=["requirements_test_bad.txt"],
-                    args=[],
                     name="general_depset",
                     output="requirements_compiled_general.txt",
                 )
@@ -274,6 +278,61 @@ class TestCli(unittest.TestCase):
                 manager.get_path("requirements_test.txt")
                 == f"{tmpdir}/requirements_test.txt"
             )
+
+    def test_append_uv_flags(self):
+        assert _append_uv_flags(
+            ["--no-annotate", "--no-header"], DEFAULT_UV_FLAGS.copy()
+        ) == DEFAULT_UV_FLAGS.copy() + ["--no-annotate", "--no-header"]
+
+    def test_override_uv_flag_single_flag(self):
+        expected_flags = DEFAULT_UV_FLAGS.copy()
+        expected_flags.remove("--extra-index-url")
+        expected_flags.remove("https://download.pytorch.org/whl/cpu")
+        expected_flags.extend(
+            ["--extra-index-url", "https://download.pytorch.org/whl/cu128"]
+        )
+        assert (
+            _override_uv_flags(
+                ["--extra-index-url https://download.pytorch.org/whl/cu128"],
+                DEFAULT_UV_FLAGS.copy(),
+            )
+            == expected_flags
+        )
+
+    def test_override_uv_flag_multiple_flags(self):
+        expected_flags = DEFAULT_UV_FLAGS.copy()
+        expected_flags.remove("--unsafe-package")
+        expected_flags.remove("ray")
+        expected_flags.remove("--unsafe-package")
+        expected_flags.remove("grpcio-tools")
+        expected_flags.remove("--unsafe-package")
+        expected_flags.remove("setuptools")
+        expected_flags.extend(["--unsafe-package", "dummy"])
+        assert (
+            _override_uv_flags(
+                ["--unsafe-package dummy"],
+                DEFAULT_UV_FLAGS.copy(),
+            )
+            == expected_flags
+        )
+
+    def test_flatten_flags(self):
+        assert _flatten_flags(["--no-annotate", "--no-header"]) == [
+            "--no-annotate",
+            "--no-header",
+        ]
+        assert _flatten_flags(
+            [
+                "--no-annotate",
+                "--no-header",
+                "--extra-index-url https://download.pytorch.org/whl/cu128",
+            ]
+        ) == [
+            "--no-annotate",
+            "--no-header",
+            "--extra-index-url",
+            "https://download.pytorch.org/whl/cu128",
+        ]
 
     def test_build_graph(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -346,21 +405,21 @@ depsets:
             manager.compile(
                 constraints=["requirement_constraints_test.txt"],
                 requirements=["requirements_test.txt"],
-                args=["--no-annotate", "--no-header"] + DEFAULT_UV_FLAGS.copy(),
+                append_flags=["--no-annotate", "--no-header"],
                 name="general_depset",
                 output="requirements_compiled_general.txt",
             )
             manager.compile(
                 constraints=[],
                 requirements=["requirements_expanded.txt"],
-                args=["--no-annotate", "--no-header"] + DEFAULT_UV_FLAGS.copy(),
+                append_flags=["--no-annotate", "--no-header"],
                 name="expanded_depset",
                 output="requirements_compiled_expanded.txt",
             )
             manager.expand(
                 depsets=["general_depset", "expanded_depset"],
                 constraints=["requirement_constraints_expand.txt"],
-                args=["--no-annotate", "--no-header"] + DEFAULT_UV_FLAGS.copy(),
+                append_flags=["--no-annotate", "--no-header"],
                 requirements=[],
                 name="expand_general_depset",
                 output="requirements_compiled_expand_general.txt",
@@ -393,7 +452,7 @@ depsets:
             manager.compile(
                 constraints=["requirement_constraints_test.txt"],
                 requirements=["requirements_test.txt"],
-                args=["--no-annotate", "--no-header"] + DEFAULT_UV_FLAGS.copy(),
+                append_flags=["--no-annotate", "--no-header"],
                 name="general_depset",
                 output="requirements_compiled_general.txt",
             )
@@ -401,7 +460,7 @@ depsets:
                 depsets=["general_depset"],
                 requirements=["requirements_expanded.txt"],
                 constraints=["requirement_constraints_expand.txt"],
-                args=["--no-annotate", "--no-header"] + DEFAULT_UV_FLAGS.copy(),
+                append_flags=["--no-annotate", "--no-header"],
                 name="expand_general_depset",
                 output="requirements_compiled_expand_general.txt",
             )
