@@ -2456,6 +2456,7 @@ class Dataset:
         left_suffix: Optional[str] = None,
         right_suffix: Optional[str] = None,
         *,
+        broadcast: bool = False,
         partition_size_hint: Optional[int] = None,
         aggregator_ray_remote_args: Optional[Dict[str, Any]] = None,
         validate_schemas: bool = False,
@@ -2482,6 +2483,10 @@ class Dataset:
                 operand.
             right_suffix: (Optional) Suffix to be appended for columns of the right
                 operand.
+            broadcast: (Optional) Whether to use broadcast join instead of hash shuffle
+                join. In broadcast join, the right dataset is loaded into memory and
+                broadcasted to all workers using map_batches with PyArrow joins.
+                This is efficient when the right dataset is small. Defaults to False.
             partition_size_hint: (Optional) Hint to joining operator about the estimated
                 avg expected size of the individual partition (in bytes).
                 This is used in estimating the total dataset size and allow to tune
@@ -2554,18 +2559,62 @@ class Dataset:
             Join._validate_schemas(left_op_schema, right_op_schema, on, right_on)
 
         plan = self._plan.copy()
-        op = Join(
-            left_input_op=self._logical_plan.dag,
-            right_input_op=ds._logical_plan.dag,
-            left_key_columns=on,
-            right_key_columns=right_on,
-            join_type=join_type,
-            num_partitions=num_partitions,
-            left_columns_suffix=left_suffix,
-            right_columns_suffix=right_suffix,
-            partition_size_hint=partition_size_hint,
-            aggregator_ray_remote_args=aggregator_ray_remote_args,
-        )
+
+        if broadcast:
+            # Use map_batches approach for broadcast join like the reference implementation
+            # First materialize and repartition the right dataset to a single partition
+            right_ds = ds.repartition(1).materialize()
+
+            # Get PyArrow table reference from the right dataset
+            right_arrow_refs = right_ds.to_arrow_refs()
+            if len(right_arrow_refs) != 1:
+                # Combine multiple references into one
+                import pyarrow as pa
+
+                right_tables = [ray.get(ref) for ref in right_arrow_refs]
+                if right_tables:
+                    combined_table = pa.concat_tables(right_tables)
+                else:
+                    combined_table = pa.table({})
+                broadcast_table_ref = ray.put(combined_table)
+            else:
+                broadcast_table_ref = right_arrow_refs[0]
+
+            # Create the broadcast join callable class
+            from ray.data._internal.logical.operators.broadcast_join import (
+                BroadcastJoinFunction,
+            )
+            from ray.data._internal.logical.operators.join_operator import JoinType
+
+            join_type_enum = JoinType(join_type)
+            join_fn = BroadcastJoinFunction(
+                broadcast_table_ref=broadcast_table_ref,
+                join_type=join_type_enum,
+                left_key_columns=on,
+                right_key_columns=right_on,
+                left_columns_suffix=left_suffix,
+                right_columns_suffix=right_suffix,
+            )
+
+            # Use map_batches to apply the broadcast join
+            return self.map_batches(
+                join_fn,
+                batch_format="pyarrow",
+                concurrency=num_partitions,
+            )
+        else:
+            op = Join(
+                left_input_op=self._logical_plan.dag,
+                right_input_op=ds._logical_plan.dag,
+                left_key_columns=on,
+                right_key_columns=right_on,
+                join_type=join_type,
+                num_partitions=num_partitions,
+                left_columns_suffix=left_suffix,
+                right_columns_suffix=right_suffix,
+                partition_size_hint=partition_size_hint,
+                aggregator_ray_remote_args=aggregator_ray_remote_args,
+            )
 
         return Dataset(plan, LogicalPlan(op, self.context))
 
