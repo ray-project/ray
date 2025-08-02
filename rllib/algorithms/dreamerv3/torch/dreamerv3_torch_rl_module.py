@@ -43,7 +43,7 @@ class DreamerV3TorchRLModule(TorchRLModule, DreamerV3RLModule):
 
     @override(TorchRLModule)
     def _forward_exploration(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
-        # Call the Dreamer-Model's forward_inference method and return a dict.
+        # Call the Dreamer-Model's forward_exploration method and return a dict.
         with torch.no_grad():
             actions, next_state = self.dreamer_model.forward_exploration(
                 observations=batch[Columns.OBS],
