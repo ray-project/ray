@@ -1,13 +1,19 @@
 """Symmetric Run for Ray.
 
-This script is used to run a command on all nodes in a Ray cluster. Most useful for HPC settings.
+This script will:
+
+ - Start a Ray cluster across all nodes.
+ - Run a command on the head node.
+ - Stop the Ray cluster.
+
+Currently, it also fails when there is another detected Ray instance running on the same node.
+This is because Ray currently does not support the ability to kill a specific Ray instance.
 
 Example:
 
     python -m ray.scripts.symmetric_run --address 127.0.0.1:6379 -- python my_script.py
 
-    xpanes -c 4 "python -m ray.scripts.symmetric_run --address 127.0.0.1:6379 --nnodes 4 -- python my_script.py"
-
+    xpanes -c 4 "python -m ray.scripts.symmetric_run --address 127.0.0.1:6379 --wait-for-nnodes 4 -- python my_script.py"
 
 """
 
@@ -24,7 +30,18 @@ from urllib.parse import urlparse
 
 import psutil
 
-CLUSTER_WAIT_TIMEOUT = os.environ.get("RAY_SYMMETRIC_RUN_CLUSTER_WAIT_TIMEOUT", 30)
+CLUSTER_WAIT_TIMEOUT = int(os.environ.get("RAY_SYMMETRIC_RUN_CLUSTER_WAIT_TIMEOUT", 30))
+
+
+def check_ray_already_started(address="auto"):
+    try:
+        import ray._private.services as services
+
+        # Try auto-detecting the Ray instance.
+        services.canonicalize_bootstrap_address_or_die(address)
+    except Exception:
+        return False
+    return True
 
 
 def check_cluster_ready(nnodes, timeout=CLUSTER_WAIT_TIMEOUT):
@@ -76,19 +93,25 @@ def check_head_node_ready(head_ip, head_port, timeout=CLUSTER_WAIT_TIMEOUT):
     "--address", required=True, type=str, help="The address of the Ray cluster."
 )
 @click.option(
-    "--nnodes", required=True, type=int, help="The number of nodes in the cluster."
+    "--wait-for-nnodes",
+    type=int,
+    help="If provided, wait for this number of nodes to start.",
 )
 @click.argument("execute-on-head", nargs=-1, type=str)
-def symmetric_run(address: str, nnodes: int, execute_on_head: List[str]):
+def symmetric_run(address: str, wait_for_nnodes: int, execute_on_head: List[str]):
     """Start a Ray cluster and run a script only on the head node.
 
     This command should be executed symmetrically on all nodes in the cluster.
 
     Arguments:
         address: The address of the Ray cluster.
-        nnodes: The number of nodes in the cluster.
+        wait_for_nnodes: The number of nodes in the cluster.
         execute_on_head: The command to run on the head node.
     """
+    min_nodes = 1 if wait_for_nnodes is None else wait_for_nnodes
+
+    if check_ray_already_started():
+        raise click.ClickException("Ray is already started on this node.")
 
     # 1. Parse address and check if we are on the head node.
     try:
@@ -123,8 +146,9 @@ def symmetric_run(address: str, nnodes: int, execute_on_head: List[str]):
                 my_ips.append(addr.address)
 
     # Add localhost ips if we are running on a single node.
-    if nnodes == 1:
-        my_ips.extend(["127.0.0.1", "::1"])
+    if min_nodes > 1:
+        # Ban localhost ips if we are running on a single node.
+        my_ips = [ip for ip in my_ips if ip != "127.0.0.1" and ip != "::1"]
 
     is_head = resolved_head_ip in my_ips
 
@@ -148,7 +172,7 @@ def symmetric_run(address: str, nnodes: int, execute_on_head: List[str]):
             )
             click.echo("Head node started.")
             click.echo("=======================")
-            if nnodes > 1 and not check_cluster_ready(nnodes):
+            if min_nodes > 1 and not check_cluster_ready(min_nodes):
                 raise click.ClickException(
                     "Timed out waiting for other nodes to start."
                 )
