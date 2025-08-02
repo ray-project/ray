@@ -759,7 +759,7 @@ class _StatsManager:
         per_node_metrics = self._aggregate_per_node_metrics(op_metrics)
         args = (dataset_tag, op_metrics_dicts, operator_tags, state, per_node_metrics)
         if force_update:
-            self._get_stats_actor().update_execution_metrics.remote(*args)
+            self._get_or_create_stats_actor().update_execution_metrics.remote(*args)
         else:
             with self._stats_lock:
                 self._last_execution_stats[dataset_tag] = args
