@@ -142,7 +142,6 @@ class ObjectRecoveryManagerTestBase : public ::testing::Test {
         manager_(
             rpc::Address(),
             raylet_client_pool_,
-            raylet_client_,
             [&](const ObjectID &object_id, const ObjectLookupCallback &callback) {
               object_directory_->AsyncGetLocations(object_id, callback);
             },

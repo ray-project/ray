@@ -225,43 +225,42 @@ void GcsNodeManager::HandleGetAllNodeInfo(rpc::GetAllNodeInfoRequest request,
                                           rpc::SendReplyCallback send_reply_callback) {
   int64_t limit =
       (request.limit() > 0) ? request.limit() : std::numeric_limits<int64_t>::max();
-  std::optional<NodeID> filter_node_id =
-      request.filters().has_node_id()
-          ? std::make_optional(NodeID::FromBinary(request.filters().node_id()))
-          : std::nullopt;
-  std::optional<std::string> filter_node_name =
-      request.filters().has_node_name()
-          ? std::make_optional(request.filters().node_name())
-          : std::nullopt;
-  std::optional<std::string> filter_node_ip_address =
-      request.filters().has_node_ip_address()
-          ? std::make_optional(request.filters().node_ip_address())
-          : std::nullopt;
-  auto filter_fn = [&filter_node_id, &filter_node_name, &filter_node_ip_address](
-                       const rpc::GcsNodeInfo &node) {
-    if (filter_node_id.has_value() &&
-        *filter_node_id != NodeID::FromBinary(node.node_id())) {
-      return false;
+  absl::flat_hash_set<NodeID> node_ids;
+  absl::flat_hash_set<std::string> node_names;
+  absl::flat_hash_set<std::string> node_ip_addresses;
+  bool only_node_id_filters = true;
+  for (auto &selector : *request.mutable_node_selector()) {
+    switch (selector.node_selector_case()) {
+    case rpc::GetAllNodeInfoRequest_NodeSelector::kNodeId:
+      node_ids.insert(NodeID::FromBinary(selector.node_id()));
+      break;
+    case rpc::GetAllNodeInfoRequest_NodeSelector::kNodeName:
+      node_names.insert(std::move(*selector.mutable_node_name()));
+      only_node_id_filters = false;
+      break;
+    case rpc::GetAllNodeInfoRequest_NodeSelector::kNodeIpAddress:
+      node_ip_addresses.insert(std::move(*selector.mutable_node_ip_address()));
+      only_node_id_filters = false;
+      break;
+    default:
+      continue;
     }
-    if (filter_node_name.has_value() && *filter_node_name != node.node_name()) {
-      return false;
-    }
-    if (filter_node_ip_address.has_value() &&
-        *filter_node_ip_address != node.node_manager_address()) {
-      return false;
-    }
-    return true;
-  };
+  }
+  if (request.node_selector_size() > 0 && only_node_id_filters) {
+    // optimized path
+    return;
+  }
   int64_t num_added = 0;
   int64_t num_filtered = 0;
   auto add_to_response =
-      [limit, reply, filter_fn, &num_added, &num_filtered](
-          const absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>> &nodes) {
+      [&](const absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>> &nodes) {
         for (const auto &[node_id, node_info_ptr] : nodes) {
           if (num_added >= limit) {
             break;
           }
-          if (filter_fn(*node_info_ptr)) {
+          if (node_ids.contains(node_id) ||
+              node_names.contains(node_info_ptr->node_name()) ||
+              node_ip_addresses.contains(node_info_ptr->node_manager_address())) {
             *reply->add_node_info_list() = *node_info_ptr;
             num_added += 1;
           } else {
