@@ -1728,6 +1728,104 @@ TEST_F(GcsActorManagerTest, TestRestartPreemptedActor) {
   ASSERT_FALSE(actor->GetActorTableData().preempted());
 }
 
+TEST_F(GcsActorManagerTest, TestGetActorAfterSameNameActorDead) {
+  auto job_id = JobID::FromInt(1);
+  auto registered_actor = RegisterActor(job_id,
+                                        /*max_restarts=*/1,
+                                        /*detached=*/false,
+                                        /*name=*/"test",
+                                        /*ray_namespace=*/"test");
+  rpc::CreateActorRequest create_actor_request;
+  create_actor_request.mutable_task_spec()->CopyFrom(
+      registered_actor->GetCreationTaskSpecification().GetMessage());
+
+  std::vector<std::shared_ptr<gcs::GcsActor>> finished_actors;
+  Status status = gcs_actor_manager_->CreateActor(
+      create_actor_request,
+      [&finished_actors](std::shared_ptr<gcs::GcsActor> actor,
+                         const rpc::PushTaskReply &reply,
+                         const Status &status) { finished_actors.emplace_back(actor); });
+  RAY_CHECK_OK(status);
+
+  ASSERT_EQ(finished_actors.size(), 0);
+  ASSERT_EQ(mock_actor_scheduler_->actors.size(), 1);
+  auto actor = mock_actor_scheduler_->actors.back();
+  mock_actor_scheduler_->actors.pop_back();
+
+  // Check that the actor is in state `ALIVE`.
+  auto address = RandomAddress();
+  auto node_id = NodeID::FromBinary(address.raylet_id());
+  actor->UpdateAddress(address);
+  gcs_actor_manager_->OnActorCreationSuccess(actor, rpc::PushTaskReply());
+  io_service_.run_one();
+  ASSERT_EQ(finished_actors.size(), 1);
+
+  // Remove worker and then check that the actor is being restarted.
+  EXPECT_CALL(*mock_actor_scheduler_, CancelOnNode(node_id));
+  OnNodeDead(node_id);
+  ASSERT_EQ(actor->GetState(), rpc::ActorTableData::RESTARTING);
+
+  // Add node and check that the actor is restarted.
+  ASSERT_EQ(mock_actor_scheduler_->actors.size(), 1);
+  mock_actor_scheduler_->actors.clear();
+  ASSERT_EQ(finished_actors.size(), 1);
+  auto node_id2 = NodeID::FromRandom();
+  address.set_raylet_id(node_id2.Binary());
+  actor->UpdateAddress(address);
+  gcs_actor_manager_->OnActorCreationSuccess(actor, rpc::PushTaskReply());
+  io_service_.run_one();
+  io_service_.run_one();
+  ASSERT_EQ(finished_actors.size(), 1);
+  ASSERT_EQ(actor->GetState(), rpc::ActorTableData::ALIVE);
+  ASSERT_EQ(actor->GetNodeID(), node_id2);
+
+  // Kill the actor once again; this time, the restart
+  // attempts are exhausted, and the actor's status changes to dead.
+  EXPECT_CALL(*mock_actor_scheduler_, CancelOnNode(node_id2));
+  OnNodeDead(node_id2);
+  ASSERT_EQ(actor->GetState(), rpc::ActorTableData::DEAD);
+
+  // Create other actor with same name
+  auto registered_same_name_actor = RegisterActor(job_id,
+                                                  /*max_restarts=*/-1,
+                                                  /*detached=*/false,
+                                                  /*name=*/"test",
+                                                  /*ray_namespace=*/"test");
+
+  rpc::CreateActorRequest create_same_name_actor_request;
+  create_same_name_actor_request.mutable_task_spec()->CopyFrom(
+      registered_same_name_actor->GetCreationTaskSpecification().GetMessage());
+
+  status = gcs_actor_manager_->CreateActor(
+      create_same_name_actor_request,
+      [&finished_actors](std::shared_ptr<gcs::GcsActor> actor,
+                         const rpc::PushTaskReply &reply,
+                         const Status &status) { finished_actors.emplace_back(actor); });
+  RAY_CHECK_OK(status);
+
+  ASSERT_EQ(finished_actors.size(), 1);
+  ASSERT_EQ(mock_actor_scheduler_->actors.size(), 1);
+  auto same_name_actor = mock_actor_scheduler_->actors.back();
+  mock_actor_scheduler_->actors.pop_back();
+
+  // Check that the same name actor is in state `ALIVE`.
+  auto new_address = RandomAddress();
+  same_name_actor->UpdateAddress(new_address);
+  gcs_actor_manager_->OnActorCreationSuccess(same_name_actor, rpc::PushTaskReply());
+  io_service_.run_one();
+  // actor and registered_same_name_actor
+  ASSERT_EQ(finished_actors.size(), 2);
+  ASSERT_EQ(same_name_actor->GetState(), rpc::ActorTableData::ALIVE);
+
+  // Trigger the callback for the first actor's reference count dropping to zero.
+  worker_client_->Reply();
+
+  // Check get actor by name.
+  ASSERT_FALSE(
+      gcs_actor_manager_->GetActorIDByName(/*name=*/"test", /*ray_namespace=*/"test")
+          .IsNil());
+}
+
 }  // namespace gcs
 
 }  // namespace ray
