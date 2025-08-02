@@ -339,7 +339,7 @@ void GcsServer::InitGcsNodeManager(const GcsInitData &gcs_init_data) {
       std::make_unique<GcsNodeManager>(gcs_publisher_.get(),
                                        gcs_table_storage_.get(),
                                        io_context_provider_.GetDefaultIOContext(),
-                                       raylet_client_pool_,
+                                       &raylet_client_pool_,
                                        rpc_server_.GetClusterId());
   // Initialize by gcs tables data.
   gcs_node_manager_->Initialize(gcs_init_data);

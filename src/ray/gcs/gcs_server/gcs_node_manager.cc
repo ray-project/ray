@@ -35,7 +35,7 @@ namespace gcs {
 GcsNodeManager::GcsNodeManager(GcsPublisher *gcs_publisher,
                                gcs::GcsTableStorage *gcs_table_storage,
                                instrumented_io_context &io_context,
-                               rpc::RayletClientPool &raylet_client_pool,
+                               rpc::RayletClientPool *raylet_client_pool,
                                const ClusterID &cluster_id)
     : gcs_publisher_(gcs_publisher),
       gcs_table_storage_(gcs_table_storage),
@@ -208,7 +208,7 @@ void GcsNodeManager::DrainNode(const NodeID &node_id) {
   auto remote_address = rpc::RayletClientPool::GenerateRayletAddress(
       node_id, node->node_manager_address(), node->node_manager_port());
   auto raylet_client =
-      raylet_client_pool_.GetOrConnectByAddress(std::move(remote_address));
+      raylet_client_pool_->GetOrConnectByAddress(std::move(remote_address));
   RAY_CHECK(raylet_client);
   // NOTE(sang): Drain API is not supposed to kill the raylet, but we are doing
   // this until the proper "drain" behavior is implemented.
@@ -468,7 +468,7 @@ void GcsNodeManager::Initialize(const GcsInitData &gcs_init_data) {
       auto remote_address = rpc::RayletClientPool::GenerateRayletAddress(
           node_id, node_info.node_manager_address(), node_info.node_manager_port());
       auto raylet_client =
-          raylet_client_pool_.GetOrConnectByAddress(std::move(remote_address));
+          raylet_client_pool_->GetOrConnectByAddress(std::move(remote_address));
       raylet_client->NotifyGCSRestart(nullptr);
     } else if (node_info.state() == rpc::GcsNodeInfo::DEAD) {
       dead_nodes_.emplace(node_id, std::make_shared<rpc::GcsNodeInfo>(node_info));
