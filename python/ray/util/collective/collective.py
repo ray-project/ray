@@ -43,6 +43,12 @@ def nccl_available():
     return _NCCL_AVAILABLE
 
 
+def gloo_available():
+    # Since we use torch_gloo as the backend for Gloo,
+    # we can just return the availability of torch.distributed.
+    return _TORCH_DISTRIBUTED_AVAILABLE
+
+
 def torch_distributed_available():
     return _TORCH_DISTRIBUTED_AVAILABLE
 
@@ -71,6 +77,7 @@ class GroupManager(object):
         if backend == types.Backend.MPI:
             raise RuntimeError("Ray does not support MPI.")
         elif backend == types.Backend.GLOO or backend == types.Backend.TORCH_GLOO:
+            # Now we have deprecated pygloo, and use torch_gloo in all cases.
             logger.debug(
                 "Creating torch.distributed GLOO group: '{}'...".format(group_name)
             )
@@ -753,6 +760,7 @@ def _check_single_tensor_input(tensor):
 def _check_backend_availability(backend: types.Backend):
     """Check whether the backend is available."""
     if backend == types.Backend.GLOO or backend == types.Backend.TORCH_GLOO:
+        # Now we have deprecated pygloo, and use torch_gloo in all cases.
         if not torch_distributed_available():
             raise RuntimeError("torch.distributed is not available.")
     elif backend == types.Backend.NCCL:
