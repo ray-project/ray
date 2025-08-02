@@ -41,11 +41,7 @@ py_test_module_list(
     env = {
         "VLLM_FLASH_ATTN_VERSION": "2",
     },
-    files = glob(
-        ["batch/gpu/**/test_*.py"],
-        # TODO(ray-llm): fix this test: https://github.com/ray-project/ray/issues/52074
-        exclude = ["batch/gpu/processor/test_vllm_engine_proc.py"],
-    ),
+    files = glob(["batch/gpu/**/test_*.py"]),
     tags = [
         "exclusive",
         "gpu",
