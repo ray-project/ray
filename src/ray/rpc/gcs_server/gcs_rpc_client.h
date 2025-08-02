@@ -152,8 +152,8 @@ class GcsRpcClient {
         std::chrono::system_clock::now() +
         std::chrono::seconds(::RayConfig::instance().gcs_rpc_server_connect_timeout_s());
     if (!channel_->WaitForConnected(deadline)) {
-      RAY_LOG(WARNING) << "Failed to connect to GCS at address " << BuildAddress(address, port)
-                       << " within "
+      RAY_LOG(WARNING) << "Failed to connect to GCS at address "
+                       << BuildAddress(address, port) << " within "
                        << ::RayConfig::instance().gcs_rpc_server_connect_timeout_s()
                        << " seconds.";
     }

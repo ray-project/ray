@@ -371,7 +371,8 @@ std::pair<Status, std::unique_ptr<RedisContextType, RedisContextDeleter>>
 ConnectWithRetries(const std::string &address,
                    int port,
                    const RedisConnectFunctionType &connect_function) {
-  RAY_LOG(INFO) << "Attempting to connect to address " << BuildAddress(address, port) << ".";
+  RAY_LOG(INFO) << "Attempting to connect to address " << BuildAddress(address, port)
+                << ".";
   int connection_attempts = 0;
   auto resp = ConnectWithoutRetries<RedisContextType>(address, port, connect_function);
   auto status = resp.first;
@@ -557,7 +558,8 @@ Status ConnectRedisSentinel(RedisContext &context,
     return Status::RedisError(
         "Failed to get the ip and port of the primary node from Redis sentinel");
   } else {
-    RAY_LOG(INFO) << "Connecting to the Redis primary node behind sentinel: " << BuildAddress(actual_ip, actual_port);
+    RAY_LOG(INFO) << "Connecting to the Redis primary node behind sentinel: "
+                  << BuildAddress(actual_ip, actual_port);
     context.Disconnect();
     return context.Connect(
         actual_ip, std::stoi(actual_port), username, password, enable_ssl);
