@@ -16,8 +16,10 @@ from typing import (
 )
 
 import numpy as np
+from packaging.version import parse as parse_version
 
 import ray
+from ray._private.arrow_utils import get_pyarrow_version
 from ray._private.auto_init_hook import wrap_auto_init
 from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
 from ray.data._internal.datasource.audio_datasource import AudioDatasource
@@ -2653,6 +2655,9 @@ def read_databricks_tables(
 def read_hudi(
     table_uri: str,
     *,
+    query_type: str = "snapshot",
+    filters: Optional[List[Tuple[str, str, str]]] = None,
+    hudi_options: Optional[Dict[str, str]] = None,
     storage_options: Optional[Dict[str, str]] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
     concurrency: Optional[int] = None,
@@ -2666,11 +2671,28 @@ def read_hudi(
         >>> import ray
         >>> ds = ray.data.read_hudi( # doctest: +SKIP
         ...     table_uri="/hudi/trips",
+        ...     query_type="snapshot",
+        ...     filters=[("city", "=", "san_francisco")],
+        ... )
+
+        >>> ds = ray.data.read_hudi( # doctest: +SKIP
+        ...     table_uri="/hudi/trips",
+        ...     query_type="incremental",
+        ...     hudi_options={
+        ...         "hoodie.read.file_group.start_timestamp": "20230101123456789",
+        ...         "hoodie.read.file_group.end_timestamp": "20230201123456789",
+        ...     },
         ... )
 
     Args:
-        table_uri: The URI of the Hudi table to read from. Local file paths, S3, and GCS
-            are supported.
+        table_uri: The URI of the Hudi table to read from. Local file paths, S3, and GCS are supported.
+        query_type: The Hudi query type to use. Supported values are ``snapshot`` and ``incremental``.
+        filters: Optional list of filters to apply to the Hudi table when the
+            ``query_type`` is ``snapshot``. Each filter is a tuple of the form
+            ``(column_name, operator, value)``. The operator can be
+            one of ``"="``, ``"!="``, ``"<"``, ``"<="``, ``">"``, ``">="``.
+            Currently, only filters on partition columns will be effective.
+        hudi_options: A dictionary of Hudi options to pass to the Hudi reader.
         storage_options: Extra options that make sense for a particular storage
             connection. This is used to store connection parameters like credentials,
             endpoint, etc. See more explanation
@@ -2690,6 +2712,9 @@ def read_hudi(
     """  # noqa: E501
     datasource = HudiDatasource(
         table_uri=table_uri,
+        query_type=query_type,
+        filters=filters,
+        hudi_options=hudi_options,
         storage_options=storage_options,
     )
 
@@ -2716,6 +2741,14 @@ def from_daft(df: "daft.DataFrame") -> Dataset:
     Returns:
         A :class:`~ray.data.Dataset` holding rows read from the DataFrame.
     """
+    pyarrow_version = get_pyarrow_version()
+    assert pyarrow_version is not None
+    if pyarrow_version >= parse_version("14.0.0"):
+        raise RuntimeError(
+            "`from_daft` only works with PyArrow 13 or lower. For more details, see "
+            "https://github.com/ray-project/ray/issues/53278."
+        )
+
     # NOTE: Today this returns a MaterializedDataset. We should also integrate Daft such
     # that we can stream object references into a Ray dataset. Unfortunately this is
     # very tricky today because of the way Ray Datasources are implemented with a fully-

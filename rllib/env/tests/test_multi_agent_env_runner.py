@@ -91,18 +91,39 @@ class TestMultiAgentEnvRunner(unittest.TestCase):
         for eps in episodes:
             check(eps.env_t_started, 0)
 
-    def _build_config(self):
+    def test_counting_by_agent_steps(self):
+        """Tests whether counting by agent_steps works."""
+        # Build a multi agent config.
+        config = self._build_config(num_agents=4, num_policies=1)
+        config.multi_agent(count_steps_by="agent_steps")
+        config.env_runners(
+            rollout_fragment_length=20,
+            num_envs_per_env_runner=4,
+        )
+
+        # Create a `MultiAgentEnvRunner` instance.
+        env_runner = MultiAgentEnvRunner(config=config)
+        episodes = env_runner.sample()
+        assert len(episodes) == 4
+        assert all(e.agent_steps() == 20 for e in episodes)
+
+    def _build_config(self, num_agents=2, num_policies=2):
         # Build the configuration and use `PPO`.
+        assert num_policies == 1 or num_agents == num_policies
+
         config = (
-            PPOConfig().environment(
+            PPOConfig()
+            .environment(
                 MultiAgentCartPole,
-                env_config={"num_agents": 2},
+                env_config={"num_agents": num_agents},
             )
-            # TODO (sven, simon): Setup is still for `Policy`, change as soon
-            #  as we have switched fully to the new stack.
             .multi_agent(
-                policies={"p0", "p1"},
-                policy_mapping_fn=lambda aid, *args, **kwargs: f"p{aid}",
+                policies={f"p{i}" for i in range(num_policies)},
+                policy_mapping_fn=(
+                    lambda aid, *args, **kwargs: (
+                        f"p{aid}" if num_agents == num_policies else "p0"
+                    )
+                ),
             )
         )
 
