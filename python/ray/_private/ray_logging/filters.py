@@ -1,4 +1,5 @@
 import logging
+import os
 
 import ray
 from ray._private.ray_logging.constants import LogKey
@@ -6,6 +7,9 @@ from ray._private.ray_logging.constants import LogKey
 
 class CoreContextFilter(logging.Filter):
     def filter(self, record):
+        # PID is always available regardless of ray initialization
+        setattr(record, LogKey.PID.value, os.getpid())
+
         if not ray.is_initialized():
             # There is no additional context if ray is not initialized
             return True

@@ -13,13 +13,18 @@ from ray._private.test_utils import run_string_as_driver
 
 class TestCoreContextFilter:
     def test_driver_process(self, shutdown_only):
+        import os
+
         log_context = ["job_id", "worker_id", "node_id"]
         filter = CoreContextFilter()
         record = logging.makeLogRecord({})
         assert filter.filter(record)
-        # Ray is not initialized so no context
+        # Ray is not initialized so no context except PID which should be available
         for attr in log_context:
             assert not hasattr(record, attr)
+        # PID should be available even when Ray is not initialized
+        assert hasattr(record, "pid")
+        assert record.pid == os.getpid()
         assert hasattr(record, "_ray_timestamp_ns")
 
         ray.init()
@@ -30,8 +35,9 @@ class TestCoreContextFilter:
             "job_id": runtime_context.get_job_id(),
             "worker_id": runtime_context.get_worker_id(),
             "node_id": runtime_context.get_node_id(),
+            "pid": os.getpid(),
         }
-        for attr in log_context:
+        for attr in ["job_id", "worker_id", "node_id", "pid"]:
             assert hasattr(record, attr)
             assert getattr(record, attr) == expected_values[attr]
         # This is not a worker process, so actor_id and task_id should not exist.
@@ -42,10 +48,12 @@ class TestCoreContextFilter:
     def test_task_process(self, shutdown_only):
         @ray.remote
         def f():
+            import os
+
             filter = CoreContextFilter()
             record = logging.makeLogRecord({})
             assert filter.filter(record)
-            should_exist = ["job_id", "worker_id", "node_id", "task_id"]
+            should_exist = ["job_id", "worker_id", "node_id", "task_id", "pid"]
             runtime_context = ray.get_runtime_context()
             expected_values = {
                 "job_id": runtime_context.get_job_id(),
@@ -54,6 +62,7 @@ class TestCoreContextFilter:
                 "task_id": runtime_context.get_task_id(),
                 "task_name": runtime_context.get_task_name(),
                 "task_func_name": runtime_context.get_task_function_name(),
+                "pid": os.getpid(),
             }
             for attr in should_exist:
                 assert hasattr(record, attr)
@@ -69,10 +78,19 @@ class TestCoreContextFilter:
         @ray.remote
         class A:
             def f(self):
+                import os
+
                 filter = CoreContextFilter()
                 record = logging.makeLogRecord({})
                 assert filter.filter(record)
-                should_exist = ["job_id", "worker_id", "node_id", "actor_id", "task_id"]
+                should_exist = [
+                    "job_id",
+                    "worker_id",
+                    "node_id",
+                    "actor_id",
+                    "task_id",
+                    "pid",
+                ]
                 runtime_context = ray.get_runtime_context()
                 expected_values = {
                     "job_id": runtime_context.get_job_id(),
@@ -83,6 +101,7 @@ class TestCoreContextFilter:
                     "task_id": runtime_context.get_task_id(),
                     "task_name": runtime_context.get_task_name(),
                     "task_func_name": runtime_context.get_task_function_name(),
+                    "pid": os.getpid(),
                 }
                 for attr in should_exist:
                     assert hasattr(record, attr)
