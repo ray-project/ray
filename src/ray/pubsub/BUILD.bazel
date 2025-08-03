@@ -1,12 +1,19 @@
 load("//bazel:ray.bzl", "ray_cc_library", "ray_cc_test")
 
-# Ray native pubsub module.
+ray_cc_library(
+    name = "pubsub_rpc",
+    deps = [
+        "//src/ray/protobuf:pubsub_cc_grpc",
+        "//src/ray/rpc:grpc_common_lib",
+    ],
+)
+
 ray_cc_library(
     name = "publisher_lib",
     srcs = ["publisher.cc"],
     hdrs = ["publisher.h"],
     deps = [
-        "//:pubsub_rpc",
+        ":pubsub_rpc",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/synchronization",
@@ -19,7 +26,7 @@ ray_cc_library(
     srcs = ["subscriber.cc"],
     hdrs = ["subscriber.h"],
     deps = [
-        "//:pubsub_rpc",
+        ":pubsub_rpc",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/synchronization",
@@ -42,7 +49,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         ":pubsub_lib",
-        "//:pubsub_cc_grpc",
+        "//src/ray/protobuf:pubsub_cc_grpc",
         "//src/ray/protobuf:pubsub_cc_proto",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
