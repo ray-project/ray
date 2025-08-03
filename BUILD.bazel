@@ -96,7 +96,7 @@ refresh_compile_commands(
     # Specify the targets of interest.
     # For example, specify a dict of targets and any flags required to build.
     targets = {
-        "//:ray_pkg": "",
+        "//:ray_pkg_zip": "",
     },
     # No need to add flags already in .bazelrc. They're automatically picked up.
 )
@@ -105,7 +105,7 @@ refresh_compile_commands(
 refresh_compile_commands(
     name = "refresh_compile_commands_external_sources",
     targets = {
-        "//:ray_pkg": "",
+        "//:ray_pkg_zip": "",
     },
 )
 
