@@ -1095,7 +1095,7 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
                        node_info->death_info().reason() ==
                            rpc::NodeDeathInfo::AUTOSCALER_DRAIN_PREEMPTED;
       }
-      if (num_retries_left > 0 || (is_preempted && task_entry.spec.IsRetriable())) {
+      if (num_retries_left > 0 || (is_preempted && task_entry.spec_.IsRetriable())) {
         will_retry = true;
         if (is_preempted) {
           RAY_LOG(INFO) << "Task " << task_id << " failed due to node preemption on node "
