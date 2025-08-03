@@ -236,8 +236,9 @@ TEST_F(ObjectRecoveryLineageDisabledTest, TestPinNewCopy) {
                                0,
                                true,
                                /*add_local_ref=*/true);
-  std::vector<rpc::Address> addresses({rpc::Address()});
-  object_directory_->SetLocations(object_id, addresses);
+  rpc::Address address;
+  address.set_raylet_id(NodeID::FromRandom().Binary());
+  object_directory_->SetLocations(object_id, {address});
 
   ASSERT_TRUE(manager_.RecoverObject(object_id));
   ASSERT_EQ(object_directory_->Flush(), 1);
@@ -255,8 +256,11 @@ TEST_F(ObjectRecoveryManagerTest, TestPinNewCopy) {
                                0,
                                true,
                                /*add_local_ref=*/true);
-  std::vector<rpc::Address> addresses({rpc::Address(), rpc::Address()});
-  object_directory_->SetLocations(object_id, addresses);
+  rpc::Address address1;
+  address1.set_raylet_id(NodeID::FromRandom().Binary());
+  rpc::Address address2;
+  address2.set_raylet_id(NodeID::FromRandom().Binary());
+  object_directory_->SetLocations(object_id, {address1, address2});
 
   ASSERT_TRUE(manager_.RecoverObject(object_id));
   ASSERT_EQ(object_directory_->Flush(), 1);
