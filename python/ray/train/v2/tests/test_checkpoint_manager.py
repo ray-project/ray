@@ -225,9 +225,9 @@ def test_before_init_train_context_from_actor(tmp_path):
     }
     assert train_context_args["controller_actor"] == [checkpoint_manager] * 4
     assert train_context_args["num_reported_checkpoints"] == [1] * 4
-    assert [str(checkpoint) for checkpoint in train_context_args["checkpoint"]] == [
-        str(latest_checkpoint_result.checkpoint)
-    ] * 4
+    assert len(train_context_args["checkpoint"]) == 4
+    for checkpoint in train_context_args["checkpoint"]:
+        assert checkpoint.path == latest_checkpoint_result.checkpoint.path
 
 
 if __name__ == "__main__":
