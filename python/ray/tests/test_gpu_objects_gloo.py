@@ -183,7 +183,7 @@ def test_gc_pass_ref_to_same_and_different_actors(ray_start_regular):
 def test_p2p(ray_start_regular):
     world_size = 2
     actors = [GPUTestActor.remote() for _ in range(world_size)]
-    create_collective_group(actors, backend="gloo")
+    create_collective_group(actors, backend="torch_gloo")
 
     small_tensor = torch.randn((1,))
     sender = actors[0]
