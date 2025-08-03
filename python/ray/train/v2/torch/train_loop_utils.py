@@ -1,7 +1,7 @@
 import logging
 import os
 import random
-from typing import Any, Callable, Dict, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
 import torch
@@ -17,7 +17,13 @@ from torch.utils.data import (
 
 import ray.train.torch
 from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
-from ray.train.torch.train_loop_utils import _WrappedDataLoader
+from ray.train.torch.train_loop_utils import (
+    _WrappedDataLoader,
+    get_devices as get_devices_v1,
+)
+from ray.train.v2._internal.execution.local_running_utils import (
+    local_running_get_devices,
+)
 from ray.util.annotations import Deprecated, PublicAPI
 
 logger = logging.getLogger(__name__)
@@ -32,6 +38,17 @@ _TORCH_AMP_DEPRECATION_MESSAGE = (
     "See this issue for more context: "
     "https://github.com/ray-project/ray/issues/49454"
 )
+
+
+def get_device() -> torch.device:
+    return get_devices()[0]
+
+
+def get_devices() -> List[torch.device]:
+    if ray.train.get_context().is_running_locally():
+        return local_running_get_devices()
+    else:
+        return get_devices_v1()
 
 
 def prepare_model(

@@ -1,12 +1,21 @@
+import asyncio
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Union
 
 import torch
 
+from ray.data import DataIterator
 from ray.train import Checkpoint, DataConfig, Result
 from ray.train.trainer import GenDataset
-from ray.train.v2._internal.execution.local_running_utils import (
-    launched_by_torchrun,
+from ray.train.v2._internal.execution.context import (
+    LocalTrainContext,
+    set_train_context,
 )
+from ray.train.v2._internal.execution.local_running_utils import (
+    get_dataset_shard,
+    launched_by_torchrun,
+    maybe_start_local_running_data_provider,
+)
+from ray.train.v2._internal.execution.storage import StorageContext
 from ray.train.v2.api.config import RunConfig, ScalingConfig
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
 from ray.util import PublicAPI
@@ -233,6 +242,17 @@ class TorchTrainer(DataParallelTrainer):
         train_fn()
         return Result(metrics={}, checkpoint=None, error=None)
 
+    async def _set_local_running_train_context_and_data_shard(
+        self, world_size: int, world_rank: int
+    ) -> Dict[str, DataIterator]:
+        if self.datasets is None or len(self.datasets) == 0:
+            return
+        datasets = {k: v() if callable(v) else v for k, v in self.datasets.items()}
+        self.data_provider_actor = await maybe_start_local_running_data_provider(
+            world_size=world_size, dataset=datasets, local_rank=world_rank
+        )
+        return await get_dataset_shard(self.data_provider_actor, world_rank)
+
     def _set_local_running_train_context(self) -> None:
         import torch.distributed as torch_dist
 
@@ -242,8 +262,25 @@ class TorchTrainer(DataParallelTrainer):
             )
             world_size = torch_dist.get_world_size()
             world_rank = torch_dist.get_rank()
+        else:
+            world_size = 1
+            world_rank = 0
 
-        torch_dist.barrier()
+        dataset_shards = asyncio.run(
+            self._set_local_running_train_context_and_data_shard(
+                world_size=world_size, world_rank=world_rank
+            )
+        )
 
-        self.train_run_context.set_local_rank(torch_dist.get_rank())
-        self.train_run_context.set_world_size(torch_dist.get_world_size())
+        set_train_context(
+            LocalTrainContext(
+                local_world_size=world_size,
+                local_rank=world_rank,
+                experiment_name="mocked_experiment",
+                dataset_shards=dataset_shards,
+                storage_context=StorageContext(
+                    storage_path="mock://netloc/bucket/path?param=1",
+                    experiment_dir_name="exp_name",
+                ),
+            )
+        )
