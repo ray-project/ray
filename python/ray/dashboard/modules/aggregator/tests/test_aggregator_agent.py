@@ -25,7 +25,6 @@ from ray.core.generated.events_event_aggregator_service_pb2 import (
     RayEventsData,
     TaskEventsMetadata,
 )
-from ray.core.generated.common_pb2 import Address
 from ray.core.generated.events_base_event_pb2 import RayEvent
 from ray.core.generated.profile_events_pb2 import ProfileEvents, ProfileEventEntry
 from ray.core.generated.events_task_profile_events_pb2 import TaskProfileEvents

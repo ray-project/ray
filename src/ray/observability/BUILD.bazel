@@ -62,7 +62,7 @@ ray_cc_library(
     hdrs = [
         "ray_driver_job_execution_event.h",
     ],
-    deps =  [
+    deps = [
         ":ray_event",
         "//src/ray/protobuf:events_driver_job_execution_event_cc_proto",
     ],
@@ -74,7 +74,7 @@ ray_cc_library(
         "ray_event_recorder_interface.h",
     ],
     deps = [
-       ":ray_event",
+        ":ray_event",
     ],
 )
 

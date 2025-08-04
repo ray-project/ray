@@ -529,6 +529,10 @@ RAY_CONFIG(std::string, metric_cardinality_level, "legacy")
 /// using OpenCensus.
 RAY_CONFIG(bool, enable_open_telemetry, false)
 
+/// Whether to enable Ray Event as the event collection backend. The default is
+/// using the Export API.
+RAY_CONFIG(bool, enable_ray_event, false)
+
 /// Comma separated list of components we enable grpc metrics collection for.
 /// Only effective if `enable_metrics_collection` is also true. Will have some performance
 /// degredations.

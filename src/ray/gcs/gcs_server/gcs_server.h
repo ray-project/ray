@@ -36,9 +36,11 @@
 #include "ray/gcs/gcs_server/usage_stats_client.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/gcs/redis_client.h"
+#include "ray/observability/ray_event_recorder.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/scheduling/cluster_task_manager.h"
 #include "ray/rpc/client_call.h"
+#include "ray/rpc/event_aggregator_client.h"
 #include "ray/rpc/gcs/gcs_rpc_server.h"
 #include "ray/rpc/node_manager/raylet_client_pool.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
@@ -54,6 +56,7 @@ struct GcsServerConfig {
   std::string grpc_server_name = "GcsServer";
   uint16_t grpc_server_port = 0;
   uint16_t grpc_server_thread_num = 1;
+  uint16_t metrics_agent_port = 0;
   std::string redis_username;
   std::string redis_password;
   std::string redis_address;
@@ -270,6 +273,12 @@ class GcsServer {
   std::unique_ptr<GcsInternalKVManager> kv_manager_;
   /// Job info handler.
   std::unique_ptr<GcsJobManager> gcs_job_manager_;
+  // The Ray event aggregator client that is used to export events to the event
+  // aggregator. This is shared by various GCS managers (job, actor, node, etc.)
+  // This is a unique_ptr because the GcsServer outlives all of the GCS managers.
+  std::unique_ptr<rpc::EventAggregatorClient> event_aggregator_client_;
+  /// The Ray job event recorder that is used to record job events.
+  std::unique_ptr<observability::RayEventRecorder> ray_event_recorder_;
 
   /// Ray Syncer related fields.
   std::unique_ptr<syncer::RaySyncer> ray_syncer_;
