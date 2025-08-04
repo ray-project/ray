@@ -29,9 +29,6 @@ class CoreContextFilter(logging.Filter):
                 LogKey.ACTOR_ID.value
             ] = runtime_context.get_actor_id()
             ray_core_logging_context[
-                LogKey.ACTOR_NAME.value
-            ] = runtime_context.get_actor_name()
-            ray_core_logging_context[
                 LogKey.TASK_ID.value
             ] = runtime_context.get_task_id()
             ray_core_logging_context[
@@ -40,6 +37,9 @@ class CoreContextFilter(logging.Filter):
             ray_core_logging_context[
                 LogKey.TASK_FUNCTION_NAME.value
             ] = runtime_context.get_task_function_name()
+            ray_core_logging_context[
+                LogKey.ACTOR_NAME.value
+            ] = runtime_context.get_actor_name()
         return ray_core_logging_context
 
     def filter(self, record):
