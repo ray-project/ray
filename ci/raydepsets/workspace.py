@@ -59,7 +59,9 @@ class Config:
                     )
                     if build_arg_set is None:
                         raise KeyError(f"Build arg set {build_arg_set_name} not found")
-                    substituted_depset = Template(str(depset)).substitute(
+
+                    depset_str = yaml.dump(depset)
+                    substituted_depset = Template(depset_str).substitute(
                         build_arg_set.build_args
                     )
                     depset_yaml = yaml.safe_load(substituted_depset)
