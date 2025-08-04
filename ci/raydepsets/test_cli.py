@@ -64,7 +64,7 @@ class TestCli(unittest.TestCase):
                 workspace_dir=tmpdir,
             )
             with self.assertRaises(KeyError):
-                manager.get_depset("fake_depset", manager.config.config_args[0])
+                manager.get_depset("fake_depset", manager.config.build_args_sets[0])
 
     def test_uv_binary_exists(self):
         assert uv_binary() is not None
@@ -298,7 +298,7 @@ class TestCli(unittest.TestCase):
             # assert that the compile depsets are first
             assert "ray_base_test_depset" in sorted_nodes[:3]
             assert "general_depset" in sorted_nodes[:3]
-            assert "config_args_test_depset" in sorted_nodes[:3]
+            assert "build_args_test_depset" in sorted_nodes[:3]
 
     def test_build_graph_bad_operation(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -421,7 +421,7 @@ depsets:
             assert (
                 "requirements_compiled_general_py311_cpu.txt"
                 == manager.get_depset(
-                    "config_args_test_depset", manager.config.config_args[0]
+                    "build_args_test_depset", manager.config.build_args_sets[0]
                 ).output
             )
 
