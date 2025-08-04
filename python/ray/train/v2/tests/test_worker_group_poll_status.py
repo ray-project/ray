@@ -10,16 +10,18 @@ def test_get_error_string_basic():
     and one without an error.
     """
 
-    error1 = ValueError("Test error 1")
-    error2 = RuntimeError("Test error 2")
     statuses = {
-        0: WorkerStatus(running=False, error=error1),
+        0: WorkerStatus(running=False, error=ValueError("Test error 1")),
         1: WorkerStatus(running=False, error=None),
-        2: WorkerStatus(running=False, error=error2),
-        3: WorkerStatus(running=False, error=error1),  # Same error as rank 0
+        2: WorkerStatus(running=False, error=RuntimeError("Test error 2")),
+        3: WorkerStatus(running=False, error=ValueError("Test error 1")),
     }
     poll_status = WorkerGroupPollStatus(worker_statuses=statuses)
     error_str = poll_status.get_error_string()
+
+    import pdb
+
+    pdb.set_trace()
 
     expected_error_str = "[Rank 0, 3]: \nTest error 1\n[Rank 2]: \nTest error 2"
     assert error_str == expected_error_str
