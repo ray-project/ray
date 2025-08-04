@@ -559,8 +559,6 @@ void NormalTaskSubmitter::PushNormalTask(
                  << NodeID::FromBinary(addr.raylet_id());
   auto task_id = task_spec.TaskId();
   auto request = std::make_unique<rpc::PushTaskRequest>();
-  bool is_actor_creation = task_spec.IsActorCreationTask();
-
   // NOTE(swang): CopyFrom is needed because if we use Swap here and the task
   // fails, then the task data will be gone when the TaskManager attempts to
   // access the task.
@@ -575,7 +573,6 @@ void NormalTaskSubmitter::PushNormalTask(
       [this,
        task_spec = std::move(task_spec),
        task_id,
-       is_actor_creation,
        scheduling_key,
        addr,
        assigned_resources](Status status, const rpc::PushTaskReply &reply) {
@@ -630,15 +627,13 @@ void NormalTaskSubmitter::PushNormalTask(
                                                               callback);
           }
 
-          if (!status.ok() || !is_actor_creation || reply.worker_exiting()) {
-            bool was_error = !status.ok();
-            bool is_worker_exiting = reply.worker_exiting();
+          if (!status.ok() || reply.worker_exiting()) {
             // Successful actor creation leases the worker indefinitely from the raylet.
             OnWorkerIdle(addr,
                          scheduling_key,
-                         /*was_error=*/was_error,
+                         /*was_error=*/!status.ok(),
                          /*error_detail*/ status.message(),
-                         /*worker_exiting=*/is_worker_exiting,
+                         /*worker_exiting=*/reply.worker_exiting(),
                          assigned_resources);
           }
         }
