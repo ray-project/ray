@@ -225,10 +225,13 @@ class StateApiClient(SubmissionClient):
         try:
             # Process the response.
             response = response.json()
-        except Exception as e:
+        except requests.exceptions.JSONDecodeError as e:
+            text = response.text
+            if len(text) > 500:
+                text = f"{text[:500]}..."
             raise RayStateApiException(
                 f"Failed to parse Response(url={response.url}, "
-                f"status={response.status_code}, text='{response.text}')"
+                f"status={response.status_code}, text='{text}')"
             ) from e
         if response["result"] is False:
             raise RayStateApiException(
