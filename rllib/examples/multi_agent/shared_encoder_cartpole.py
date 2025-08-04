@@ -17,26 +17,40 @@ For logging to your WandB account, use:
 --wandb-run-name=[optional: WandB run name (within the defined project)]`
 
 
-Results to expect (TODO (MCW): REPLACE WITH RESULTS OF EXPERIMENT)
+Results to expect
 -----------------
-The above options can reach a combined reward of roughly ~0.0 after about 500k-1M env
-timesteps. Keep in mind, though, that in this setup, the agents do not have the
-opportunity to benefit from or even out other agents' mistakes (and behavior in general)
-as everyone is using the same policy. Hence, this example learns a more generic policy,
-which might be less specialized to certain "niche exploitation opportunities" inside
-the env:
+Under the shared encoder architecture, the target reward of 700 will 
+typically be reached well before 100,000 iterations. A trial concludes 
+as below:
 
-+---------------------+----------+-----------------+--------+-----------------+
-| Trial name          | status   | loc             |   iter |  total time (s) |
-|---------------------+----------+-----------------+--------+-----------------+
-| PPO_env_91f49_00000 | RUNNING  | 127.0.0.1:63676 |    200 |         605.176 |
-+---------------------+----------+-----------------+--------+-----------------+
++---------------------+------------+---------------------+--------+------------------+
+| Trial name          | status     | loc                 |   iter |   total time (s) |
+|---------------------+------------+---------------------+--------+------------------+
+| VPG_env_658a2_00000 | TERMINATED | 172.29.87.208:18266 |     31 |          17.8074 |
++---------------------+------------+---------------------+--------+------------------+
 
-+--------+-------------------+-------------+
-|     ts |   combined reward |   reward p0 |
-+--------+-------------------+-------------|
-| 800000 |          0.323752 |    0.161876 |
-+--------+-------------------+-------------+
++-------+-------------------+-------------+-------------+
+|    ts |   combined return |   return p0 |   return p1 |
++-------+-------------------+-------------+-------------|
+| 34796 |             716.3 |         500 |       216.3 |
++-------+-------------------+-------------+-------------+
+
+Without a shared encoder, a much lower reward is typically achieved 
+after training for the full 100,000 timesteps:
+
++---------------------+------------+---------------------+--------+------------------+--------+-------------------+-------------+-------------+
+| Trial name          | status     | loc                 |   iter |   total time (s) |     ts |   combined return |   return p0 |   return p1 |
+|---------------------+------------+---------------------+--------+------------------+--------+-------------------+-------------+-------------|
+| VPG_env_5fbd8_00000 | TERMINATED | 172.29.87.208:20165 |     54 |          37.2488 | 101105 |             476.1 |        13.1 |         463 |
++---------------------+------------+---------------------+--------+------------------+--------+-------------------+-------------+-------------+
+
++--------+-------------------+-------------+-------------+
+|     ts |   combined return |   return p0 |   return p1 |
++--------+-------------------+-------------+-------------|
+| 101105 |             476.1 |        13.1 |         463 |
++--------+-------------------+-------------+-------------+
+
+
 """
 
 import gymnasium as gym
@@ -71,8 +85,6 @@ parser.set_defaults(
     algo="VPG",
     num_agents=2,
 )
-# TODO (sven): This arg is currently ignored (hard-set to 2), as in multi_agent_cartpole.py.
-parser.add_argument("--num-policies", type=int, default=2)
 parser.add_argument("--encoder-emb-dim", type=int, default=64)
 parser.add_argument("--no-shared-encoder", action='store_true')
 

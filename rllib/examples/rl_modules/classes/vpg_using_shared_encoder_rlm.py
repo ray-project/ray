@@ -212,7 +212,7 @@ class VPGIndividualEncoder(torch.nn.Module):
             torch.nn.Linear(input_dim, embedding_dim),
         )
 
-    def _forward(self, batch, **kwargs):
+    def forward(self, batch, **kwargs):
         # Pass observations through the net and return outputs.
         return {ENCODER_OUT: self._net(batch[Columns.OBS])}
 
