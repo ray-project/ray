@@ -28,6 +28,7 @@ ENV_STEP_FAILURE = "env_step_failure"
 NUM_ENV_STEP_FAILURES = "num_env_step_failures"
 
 
+@PublicAPI(stability="alpha")
 class StepFailedRecreateEnv(Exception):
     """An exception that signifies that the environment step failed and the environment needs to be reset.
 
