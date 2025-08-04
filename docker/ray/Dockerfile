@@ -4,6 +4,8 @@ ARG BASE_IMAGE
 ARG FULL_BASE_IMAGE=rayproject/ray-deps:nightly"$BASE_IMAGE"
 FROM $FULL_BASE_IMAGE
 
+ENV RAY_worker_num_grpc_internal_threads=1
+
 ARG WHEEL_PATH
 ARG FIND_LINKS_PATH=".whl"
 ARG CONSTRAINTS_FILE="requirements_compiled.txt"
