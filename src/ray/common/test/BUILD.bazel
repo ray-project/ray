@@ -176,8 +176,8 @@ ray_cc_test(
     deps = [
         "//src/ray/common:grpc_util",
         "//src/ray/common:status",
-        "@com_google_googletest//:gtest_main",
         "@com_github_grpc_grpc//:grpc++",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

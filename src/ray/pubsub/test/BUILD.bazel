@@ -1,8 +1,8 @@
 load("//bazel:ray.bzl", "ray_cc_test")
 
 ray_cc_test(
-    size = "small",
     name = "publisher_test",
+    size = "small",
     srcs = ["publisher_test.cc"],
     tags = ["team:core"],
     deps = [
@@ -12,8 +12,8 @@ ray_cc_test(
 )
 
 ray_cc_test(
-    size = "small",
     name = "subscriber_test",
+    size = "small",
     srcs = [
         "subscriber_test.cc",
     ],
@@ -25,14 +25,14 @@ ray_cc_test(
 )
 
 ray_cc_test(
-    size = "small",
     name = "pubsub_integration_test",
+    size = "small",
     srcs = ["integration_test.cc"],
     tags = ["team:core"],
     deps = [
+        "//src/ray/protobuf:pubsub_cc_grpc",
         "//src/ray/pubsub:publisher",
         "//src/ray/pubsub:subscriber",
-        "//src/ray/protobuf:pubsub_cc_grpc",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
