@@ -66,6 +66,7 @@ from ray.train.v2.api.exceptions import (
     TrainingFailedError,
 )
 from ray.train.v2.api.result import Result
+from ray.train.v2.api.training_result import TrainingResult
 
 logger = logging.getLogger(__name__)
 
@@ -467,7 +468,7 @@ class TrainController:
         self._shutdown()
 
         # Call after_controller_finish with the final result
-        result = self._build_result()
+        result = await self._build_result()
         for callback in self._controller_callbacks:
             callback.after_controller_finish(result)
 
@@ -483,7 +484,9 @@ class TrainController:
         self._set_state(AbortedState())
         ray.actor.exit_actor()
 
-    def _build_result(self) -> Result:
+    async def _build_result(self) -> Result:
+        await self._checkpoint_manager.wait_for_pending_checkpoint_registrations()
+
         storage = self._checkpoint_manager._storage_context
 
         latest_checkpoint_result = self._checkpoint_manager.latest_checkpoint_result
@@ -513,7 +516,7 @@ class TrainController:
             _storage_filesystem=storage.storage_filesystem,
         )
 
-    def get_result(self) -> Result:
+    async def get_result(self) -> Result:
         """Get the final training result from the TrainController."""
 
         controller_state = self.get_state()
@@ -521,8 +524,7 @@ class TrainController:
             raise ValueError(
                 f"Cannot get result when controller is in state {controller_state}"
             )
-
-        return self._build_result()
+        return await self._build_result()
 
     def get_training_failed_error(self) -> Optional[TrainingFailedError]:
         """Get the training failed error from the controller state.
@@ -537,3 +539,10 @@ class TrainController:
             return controller_state.training_failed_error
 
         return None
+
+    async def get_all_training_results(
+        self, expected_num_checkpoints: int
+    ) -> List[TrainingResult]:
+        return await self._checkpoint_manager.get_all_training_results(
+            expected_num_checkpoints
+        )

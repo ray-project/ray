@@ -1,8 +1,9 @@
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from ray.train import Checkpoint
 from ray.train.v2._internal.execution.context import get_train_context
 from ray.train.v2.api.context import TrainContext
+from ray.train.v2.api.training_result import TrainingResult
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
@@ -149,6 +150,15 @@ def get_checkpoint() -> Optional[Checkpoint]:
             Otherwise, return None.
     """
     return get_train_context().get_checkpoint()
+
+
+@PublicAPI(stability="alpha")
+def get_all_training_results() -> List[TrainingResult]:
+    """Get all the TrainingResults reported so far.
+
+    modoru: docstring
+    """
+    return get_train_context().get_all_training_results()
 
 
 @PublicAPI(stability="stable")

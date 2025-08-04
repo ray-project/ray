@@ -36,14 +36,17 @@ if is_v2_enabled():
     )
     from ray.train.v2.api.result import Result  # noqa: F811
     from ray.train.v2.api.train_fn_utils import (  # noqa: F811
+        get_all_training_results,
         get_checkpoint,
         get_context,
         get_dataset_shard,
         report,
     )
+    from ray.train.v2.api.training_result import TrainingResult  # noqa: F811
 
 
 __all__ = [
+    "get_all_training_results",
     "get_checkpoint",
     "get_context",
     "get_dataset_shard",
@@ -57,10 +60,12 @@ __all__ = [
     "RunConfig",
     "ScalingConfig",
     "SyncConfig",
+    "TrainingResult",
     "TrainingIterator",
     "TRAIN_DATASET_KEY",
 ]
 
+get_all_training_results.__module__ = "ray.train"
 get_checkpoint.__module__ = "ray.train"
 get_context.__module__ = "ray.train"
 get_dataset_shard.__module__ = "ray.train"
@@ -75,6 +80,7 @@ RunConfig.__module__ = "ray.train"
 ScalingConfig.__module__ = "ray.train"
 SyncConfig.__module__ = "ray.train"
 TrainingIterator.__module__ = "ray.train"
+TrainingResult.__module__ = "ray.train"
 
 if is_v2_enabled():
     __all__.append("UserCallback")
