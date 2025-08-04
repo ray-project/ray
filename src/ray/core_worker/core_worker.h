@@ -1022,14 +1022,6 @@ class CoreWorker {
   /// Create a profile event and push it the TaskEventBuffer when the event is destructed.
   std::unique_ptr<worker::ProfileEvent> CreateProfileEvent(const std::string &event_name);
 
-  int64_t GetNumTasksSubmitted() const {
-    return normal_task_submitter_->GetNumTasksSubmitted();
-  }
-
-  int64_t GetNumLeasesRequested() const {
-    return normal_task_submitter_->GetNumLeasesRequested();
-  }
-
  public:
   friend class CoreWorkerProcessImpl;
 

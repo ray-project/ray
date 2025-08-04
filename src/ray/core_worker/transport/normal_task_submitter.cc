@@ -28,7 +28,6 @@ namespace core {
 Status NormalTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
   RAY_CHECK(task_spec.IsNormalTask());
   RAY_LOG(DEBUG) << "Submit task " << task_spec.TaskId();
-  num_tasks_submitted_.fetch_add(1, std::memory_order_relaxed);
 
   resolver_.ResolveDependencies(task_spec, [this, task_spec](Status status) mutable {
     // NOTE: task_spec here is capture copied (from a stack variable) and also
@@ -331,7 +330,6 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
     return;
   }
 
-  num_leases_requested_++;
   // Create a TaskSpecification with an overwritten TaskID to make sure we don't reuse the
   // same TaskID to request a worker
   auto resource_spec_msg = scheduling_key_entry.resource_spec.GetMutableMessage();
