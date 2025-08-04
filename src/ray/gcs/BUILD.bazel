@@ -51,7 +51,7 @@ ray_cc_library(
         ":gcs_callback",
         ":gcs_pb_util",
         ":gcs_redis_client",
-        "//src/ray/raylet:node_manager_fbs",
+        "//src/ray/flatbuffers:node_manager_fbs",
         "//src/ray/rpc:node_manager_rpc",
     ],
 )

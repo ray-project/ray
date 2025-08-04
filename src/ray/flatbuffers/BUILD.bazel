@@ -1,0 +1,9 @@
+load("//bazel:ray.bzl", "FLATC_ARGS")
+load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
+
+flatbuffer_cc_library(
+    name = "node_manager_fbs",
+    srcs = ["node_manager.fbs"],
+    flatc_args = FLATC_ARGS,
+    visibility = ["//visibility:public"],
+)
