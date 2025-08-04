@@ -43,7 +43,7 @@ Allocation CreateAllocation(Allocation alloc,
                             int64_t size,
                             bool fallback_allocated = false) {
   alloc.size_ = size;
-  alloc.offset = Random<ptrdiff_t>();
+  alloc.offset_ = Random<ptrdiff_t>();
   alloc.mmap_size_ = Random<int64_t>();
   alloc.fallback_allocated_ = fallback_allocated;
   return alloc;
@@ -108,9 +108,9 @@ TEST(ObjectStoreTest, PassThroughTest) {
     EXPECT_NE(entry, nullptr);
     EXPECT_EQ(entry->ref_count_, 0);
     EXPECT_EQ(entry->state_, ObjectState::PLASMA_CREATED);
-    EXPECT_EQ(alloc_str, Serialize(entry->allocation));
-    EXPECT_EQ(info, entry->object_info);
-    EXPECT_FALSE(entry->allocation.fallback_allocated);
+    EXPECT_EQ(alloc_str, Serialize(entry->allocation_));
+    EXPECT_EQ(info, entry->object_info_);
+    EXPECT_FALSE(entry->allocation_.fallback_allocated_);
 
     // verify get
     auto entry1 = store.GetObject(kId1);
@@ -123,7 +123,7 @@ TEST(ObjectStoreTest, PassThroughTest) {
     // seal object
     auto entry3 = store.SealObject(kId1);
     EXPECT_EQ(entry3, entry);
-    EXPECT_EQ(entry3->state, ObjectState::PLASMA_SEALED);
+    EXPECT_EQ(entry3->state_, ObjectState::PLASMA_SEALED);
 
     // seal non existing
     EXPECT_EQ(nullptr, store.SealObject(kId2));
@@ -170,9 +170,9 @@ TEST(ObjectStoreTest, PassThroughTest) {
     EXPECT_NE(entry, nullptr);
     EXPECT_EQ(entry->ref_count_, 0);
     EXPECT_EQ(entry->state_, ObjectState::PLASMA_CREATED);
-    EXPECT_EQ(alloc_str, Serialize(entry->allocation));
-    EXPECT_EQ(info, entry->object_info);
-    EXPECT_TRUE(entry->allocation.fallback_allocated);
+    EXPECT_EQ(alloc_str, Serialize(entry->allocation_));
+    EXPECT_EQ(info, entry->object_info_);
+    EXPECT_TRUE(entry->allocation_.fallback_allocated_);
 
     // delete unsealed
     EXPECT_CALL(allocator, Free(_)).Times(1).WillOnce(Invoke([&](auto &&allocation) {
