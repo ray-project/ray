@@ -141,6 +141,55 @@ def test_report_checkpoint_multirank(tmp_path):
         assert tmp_path.joinpath("validate", str(rank)).exists()
 
 
+def run_process_for_get_all_training_results(tmp_path):
+    # Lives outside test_get_all_training_results because cannot pickle nested functions.
+
+    # Needed to reuse current ray cluster.
+    ray.init(address="auto")
+
+    def train_fn():
+        if ray.train.get_context().get_world_rank() == 0:
+            with create_dict_checkpoint({}) as checkpoint:
+                ray.train.report(metrics={}, checkpoint=checkpoint)
+            assert len(ray.train.get_all_training_results()) == 1
+        else:
+            signal_actor = ray.get_actor(
+                "signal_actor", namespace="test_report_get_all_training_results"
+            )
+            ray.get(signal_actor.wait.remote())
+            ray.train.report(metrics={}, checkpoint=None)
+
+    trainer = DataParallelTrainer(
+        train_fn,
+        scaling_config=ScalingConfig(num_workers=2),
+        run_config=RunConfig(storage_path=str(tmp_path)),
+    )
+    trainer.fit()
+
+
+def test_report_get_all_training_results(tmp_path):
+    """Check that get_all_training_results waits until all workers have reported."""
+    SignalActor = create_remote_signal_actor(ray)
+    signal_actor = SignalActor.options(
+        name="signal_actor", namespace="test_report_get_all_training_results"
+    ).remote()
+
+    # Use spawn because of
+    # https://docs.ray.io/en/latest/ray-core/patterns/fork-new-processes.html
+    multiprocessing.set_start_method("spawn", force=True)
+    process = multiprocessing.Process(
+        target=run_process_for_get_all_training_results, args=(tmp_path,)
+    )
+    process.start()
+
+    # Assert rank 0 worker blocks because rank 1 has yet to report.
+    assert process.is_alive()
+
+    # Tell rank 1 worker to report and verify that fit() completes.
+    ray.get(signal_actor.send.remote())
+    process.join()
+
+
 def test_error(tmp_path):
     def _error_func_rank_0():
         """An example train_fun that raises an error on rank 0."""
