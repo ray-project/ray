@@ -41,16 +41,11 @@ async def initialize_worker_nodes(
     node_set = set(pg_table["bundles_to_node_id"].values())
     download_tasks = []
     for node_id in node_set:
-        node_affinity_strategy = (
-            ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy(
-                node_id=node_id,
-                soft=False,
-            )
-        )
+        label_selector = {"ray.io/node-id": node_id}
         download_tasks.append(
             ray.remote(download_model_files).options(
                 num_cpus=1,
-                scheduling_strategy=node_affinity_strategy,
+                label_selector=label_selector,
                 runtime_env=runtime_env,
             )
         )
