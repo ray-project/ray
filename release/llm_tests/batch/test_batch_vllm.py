@@ -1,5 +1,4 @@
 import sys
-import os
 import logging
 
 import pytest
@@ -168,13 +167,8 @@ def test_vllm_llama_lora():
 
 @pytest.fixture
 def vllm_disable_compile_cache_env(monkeypatch):
-    old_val = os.environ.get("VLLM_DISABLE_COMPILE_CACHE")
     monkeypatch.setenv("VLLM_DISABLE_COMPILE_CACHE", "1")
-    yield
-    if old_val is not None:
-        monkeypatch.setenv("VLLM_DISABLE_COMPILE_CACHE", old_val)
-    else:
-        monkeypatch.delenv("VLLM_DISABLE_COMPILE_CACHE", raising=False)
+    yield True
 
 
 @pytest.mark.parametrize(
