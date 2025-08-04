@@ -789,8 +789,9 @@ void CoreWorkerProcessImpl::InitializeSystemConfig() {
     rpc::ClientCallManager client_call_manager(io_service, /*record_stats=*/false);
     rpc::Address raylet_address = rpc::RayletClientPool::GenerateRayletAddress(
         NodeID::Nil(), options_.node_ip_address, options_.node_manager_port);
-    // The local raylet client is excluded from the raylet client pool as rpcs are
-    // assumed to not fail, hence the callback is empty.
+    // TODO(joshlee): This local raylet client has a custom retry policy below since its
+    // likely the driver can start up before the raylet is ready. We want to move away
+    // from this and will be fixed in https://github.com/ray-project/ray/issues/55200
     raylet::RayletClient local_raylet_client(raylet_address, client_call_manager, [] {});
 
     std::function<void(int64_t)> get_once = [this,

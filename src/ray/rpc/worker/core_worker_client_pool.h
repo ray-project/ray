@@ -48,7 +48,7 @@ class CoreWorkerClientPool {
       const rpc::Address &addr);
 
   /// Returns an open CoreWorkerClientInterface if one exists, and connect to one
-  /// if it does not. The returned pointer is borrowed, and expected to be used
+  /// if it does not. The returned pointer is expected to be used
   /// briefly.
   std::shared_ptr<CoreWorkerClientInterface> GetOrConnect(const Address &addr_proto);
 
