@@ -40,11 +40,11 @@ class Config:
 
     @staticmethod
     def from_dict(data: dict) -> "Config":
-        build_arg_sets = Config.parse_build_arg_sets(data.get("build_args_sets", []))
+        build_arg_sets = Config.parse_build_arg_sets(data.get("build_arg_sets", []))
         depsets = []
         raw_depsets = data.get("depsets", [])
         for depset in raw_depsets:
-            build_arg_set_matrix = depset.get("build_args_sets", [])
+            build_arg_set_matrix = depset.get("build_arg_sets", [])
             if build_arg_set_matrix:
                 for build_arg_set_name in build_arg_set_matrix:
                     build_arg_set = next(
@@ -68,7 +68,7 @@ class Config:
                             output=depset_yaml.get("output"),
                             source_depset=depset_yaml.get("source_depset"),
                             depsets=depset_yaml.get("depsets", []),
-                            build_args=build_arg_set,
+                            build_arg_set=build_arg_set,
                         )
                     )
             else:
@@ -81,11 +81,11 @@ class Config:
                         output=depset.get("output"),
                         source_depset=depset.get("source_depset"),
                         depsets=depset.get("depsets", []),
-                        build_args=None,
+                        build_arg_set=None,
                     )
                 )
 
-        return Config(depsets=depsets, build_args_sets=build_arg_sets)
+        return Config(depsets=depsets, build_arg_sets=build_arg_sets)
 
 
 class Workspace:

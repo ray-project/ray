@@ -1,4 +1,4 @@
-build_args_sets:
+build_arg_sets:
   - name: py311_cpu
     build_args:
       CUDA_VERSION: cpu
@@ -22,7 +22,7 @@ depsets:
     requirements:
       - requirements_test.txt
     output: requirements_compiled_general_${PYTHON_VERSION}_${CUDA_VERSION}.txt
-    build_args_sets:
+    build_arg_sets:
       - py311_cpu
   - name: subset_general_depset
     operation: subset
