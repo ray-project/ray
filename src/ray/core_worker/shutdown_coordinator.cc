@@ -33,11 +33,13 @@ ShutdownCoordinator::ShutdownCoordinator(
                           std::memory_order_relaxed);
 }
 
-bool ShutdownCoordinator::RequestShutdown(bool force_shutdown,
-                                          ShutdownReason reason,
-                                          std::string_view detail,
-                                          std::chrono::milliseconds timeout_ms,
-                                          bool force_on_timeout) {
+bool ShutdownCoordinator::RequestShutdown(
+    bool force_shutdown,
+    ShutdownReason reason,
+    std::string_view detail,
+    std::chrono::milliseconds timeout_ms,
+    bool force_on_timeout,
+    const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes) {
   uint16_t expected = state_and_reason_.load(std::memory_order_acquire);
 
   while (true) {
@@ -57,7 +59,11 @@ bool ShutdownCoordinator::RequestShutdown(bool force_shutdown,
     if (state_and_reason_.compare_exchange_strong(
             expected, desired, std::memory_order_acq_rel, std::memory_order_acquire)) {
       shutdown_detail_ = detail;
-      ExecuteShutdownSequence(force_shutdown, detail, timeout_ms, force_on_timeout);
+      ExecuteShutdownSequence(force_shutdown,
+                              detail,
+                              timeout_ms,
+                              force_on_timeout,
+                              creation_task_exception_pb_bytes);
       return true;
     }
   }
@@ -65,7 +71,8 @@ bool ShutdownCoordinator::RequestShutdown(bool force_shutdown,
 
 bool ShutdownCoordinator::TryInitiateShutdown(ShutdownReason reason) {
   // Legacy compatibility - delegate to graceful shutdown by default
-  return RequestShutdown(false, reason, "");
+  return RequestShutdown(
+      false, reason, "", std::chrono::milliseconds{-1}, false, nullptr);
 }
 
 bool ShutdownCoordinator::TryTransitionToDisconnecting() {
@@ -144,10 +151,12 @@ std::string ShutdownCoordinator::GetStateString() const {
 
 // Shutdown execution methods
 
-void ShutdownCoordinator::ExecuteShutdownSequence(bool force_shutdown,
-                                                  std::string_view detail,
-                                                  std::chrono::milliseconds timeout_ms,
-                                                  bool force_on_timeout) {
+void ShutdownCoordinator::ExecuteShutdownSequence(
+    bool force_shutdown,
+    std::string_view detail,
+    std::chrono::milliseconds timeout_ms,
+    bool force_on_timeout,
+    const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes) {
   switch (worker_type_) {
   case WorkerType::DRIVER:
     ExecuteDriverShutdown(force_shutdown, detail, timeout_ms, force_on_timeout);
@@ -155,7 +164,11 @@ void ShutdownCoordinator::ExecuteShutdownSequence(bool force_shutdown,
   case WorkerType::WORKER:
   case WorkerType::SPILL_WORKER:
   case WorkerType::RESTORE_WORKER:
-    ExecuteWorkerShutdown(force_shutdown, detail, timeout_ms, force_on_timeout);
+    ExecuteWorkerShutdown(force_shutdown,
+                          detail,
+                          timeout_ms,
+                          force_on_timeout,
+                          creation_task_exception_pb_bytes);
     break;
   default:
     RAY_LOG(FATAL) << "Unknown worker type: " << static_cast<int>(worker_type_);
@@ -200,10 +213,12 @@ void ShutdownCoordinator::ExecuteDriverShutdown(bool force_shutdown,
   }
 }
 
-void ShutdownCoordinator::ExecuteWorkerShutdown(bool force_shutdown,
-                                                std::string_view detail,
-                                                std::chrono::milliseconds timeout_ms,
-                                                bool force_on_timeout) {
+void ShutdownCoordinator::ExecuteWorkerShutdown(
+    bool force_shutdown,
+    std::string_view detail,
+    std::chrono::milliseconds timeout_ms,
+    bool force_on_timeout,
+    const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes) {
   if (force_shutdown) {
     ExecuteForceShutdown(detail);
     return;
@@ -211,12 +226,16 @@ void ShutdownCoordinator::ExecuteWorkerShutdown(bool force_shutdown,
 
   ShutdownReason reason = GetReason();
 
-  if (reason == ShutdownReason::kUserError || reason == ShutdownReason::kGracefulExit ||
-      reason == ShutdownReason::kIntentionalShutdown ||
-      reason == ShutdownReason::kUnexpectedError ||
-      reason == ShutdownReason::kOutOfMemory ||
-      reason == ShutdownReason::kActorCreationFailed ||
-      reason == ShutdownReason::kActorKilled) {
+  if (reason == ShutdownReason::kActorCreationFailed) {
+    TryTransitionToDisconnecting();
+    executor_->ExecuteExit(
+        GetExitTypeString(), detail, timeout_ms, creation_task_exception_pb_bytes);
+  } else if (reason == ShutdownReason::kUserError ||
+             reason == ShutdownReason::kGracefulExit ||
+             reason == ShutdownReason::kIntentionalShutdown ||
+             reason == ShutdownReason::kUnexpectedError ||
+             reason == ShutdownReason::kOutOfMemory ||
+             reason == ShutdownReason::kActorKilled) {
     TryTransitionToDisconnecting();
     executor_->ExecuteWorkerExit(GetExitTypeString(), detail, timeout_ms);
   } else if (reason == ShutdownReason::kIdleTimeout ||

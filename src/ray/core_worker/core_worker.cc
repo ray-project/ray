@@ -660,7 +660,10 @@ void CoreWorker::Exit(
 
   shutdown_coordinator_->RequestShutdown(false,  // graceful shutdown
                                          reason,
-                                         detail);
+                                         detail,
+                                         std::chrono::milliseconds{-1},
+                                         false,
+                                         creation_task_exception_pb_bytes);
 }
 
 void CoreWorker::ForceExit(const rpc::WorkerExitType exit_type,
@@ -674,9 +677,8 @@ void CoreWorker::ForceExit(const rpc::WorkerExitType exit_type,
                       "force=true, reason="
                    << static_cast<int>(reason);
 
-  shutdown_coordinator_->RequestShutdown(true,  // force shutdown
-                                         reason,
-                                         detail);
+  shutdown_coordinator_->RequestShutdown(
+      true, reason, detail, std::chrono::milliseconds{0}, true, nullptr);
 
   RAY_LOG(WARNING) << "ForceExit: RequestShutdown completed";
 }

@@ -86,7 +86,7 @@ void CoreWorkerShutdownExecutor::ExecuteForceShutdown(std::string_view exit_type
   RAY_LOG(WARNING) << "Force shutdown: About to kill child processes";
   KillChildProcessesImmediately();
   RAY_LOG(WARNING) << "Force shutdown: About to disconnect from services";
-  DisconnectServices(exit_type, detail);
+  DisconnectServices(exit_type, detail, nullptr);
   RAY_LOG(WARNING) << "Force shutdown: About to call QuickExit()";
   QuickExit();
   RAY_LOG(WARNING)
@@ -96,6 +96,14 @@ void CoreWorkerShutdownExecutor::ExecuteForceShutdown(std::string_view exit_type
 void CoreWorkerShutdownExecutor::ExecuteWorkerExit(std::string_view exit_type,
                                                    std::string_view detail,
                                                    std::chrono::milliseconds timeout_ms) {
+  ExecuteExit(exit_type, detail, timeout_ms, nullptr);
+}
+
+void CoreWorkerShutdownExecutor::ExecuteExit(
+    std::string_view exit_type,
+    std::string_view detail,
+    std::chrono::milliseconds timeout_ms,
+    const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes) {
   RAY_LOG(INFO) << "Executing worker exit: " << exit_type << " - " << detail
                 << " (timeout: " << timeout_ms.count() << "ms)";
 
@@ -107,16 +115,17 @@ void CoreWorkerShutdownExecutor::ExecuteWorkerExit(std::string_view exit_type,
 
   auto shutdown_callback = [this,
                             exit_type = std::string(exit_type),
-                            detail = std::string(detail)]() {
+                            detail = std::string(detail),
+                            creation_task_exception_pb_bytes]() {
     // To avoid problems, make sure shutdown is always called from the same
     // event loop each time.
     core_worker_->task_execution_service_.post(
-        [this, exit_type, detail]() {
+        [this, exit_type, detail, creation_task_exception_pb_bytes]() {
           rpc::DrainServerCallExecutor();
           KillChildProcessesImmediately();
           // Disconnect should be put close to Shutdown
           // https://github.com/ray-project/ray/pull/34883
-          DisconnectServices(exit_type, detail);
+          DisconnectServices(exit_type, detail, creation_task_exception_pb_bytes);
           ExecuteGracefulShutdown(
               exit_type, "Post-exit graceful shutdown", std::chrono::milliseconds{30000});
         },
@@ -242,8 +251,10 @@ bool CoreWorkerShutdownExecutor::ShouldWorkerIdleExit() const {
   return core_worker_->ShouldWorkerExit();
 }
 
-void CoreWorkerShutdownExecutor::DisconnectServices(std::string_view exit_type,
-                                                    std::string_view detail) {
+void CoreWorkerShutdownExecutor::DisconnectServices(
+    std::string_view exit_type,
+    std::string_view detail,
+    const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes) {
   core_worker_->RecordMetrics();
 
   if (core_worker_->options_.worker_type == WorkerType::DRIVER &&
@@ -275,7 +286,7 @@ void CoreWorkerShutdownExecutor::DisconnectServices(std::string_view exit_type,
       }
 
       Status status = core_worker_->local_raylet_client_->Disconnect(
-          worker_exit_type, std::string(detail), nullptr);
+          worker_exit_type, std::string(detail), creation_task_exception_pb_bytes);
       if (status.ok()) {
         RAY_LOG(INFO) << "Disconnected from the local raylet.";
       } else {

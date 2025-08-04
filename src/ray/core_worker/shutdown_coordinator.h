@@ -48,6 +48,12 @@ class ShutdownExecutorInterface {
                                  std::string_view detail,
                                  std::chrono::milliseconds timeout_ms) = 0;
 
+  virtual void ExecuteExit(
+      std::string_view exit_type,
+      std::string_view detail,
+      std::chrono::milliseconds timeout_ms,
+      const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes) = 0;
+
   /// Execute handle exit sequence with idle checking
   virtual void ExecuteHandleExit(std::string_view exit_type,
                                  std::string_view detail,
@@ -152,7 +158,9 @@ class ShutdownCoordinator {
       ShutdownReason reason,
       std::string_view detail = "",
       std::chrono::milliseconds timeout_ms = std::chrono::milliseconds{-1},
-      bool force_on_timeout = false);
+      bool force_on_timeout = false,
+      const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes =
+          nullptr);
 
   /// Legacy method for compatibility - delegates to RequestShutdown
   /// \param reason The reason for shutdown initiation
@@ -233,10 +241,12 @@ class ShutdownCoordinator {
 
  private:
   /// Execute shutdown sequence based on worker type and mode
-  void ExecuteShutdownSequence(bool force_shutdown,
-                               std::string_view detail,
-                               std::chrono::milliseconds timeout_ms,
-                               bool force_on_timeout);
+  void ExecuteShutdownSequence(
+      bool force_shutdown,
+      std::string_view detail,
+      std::chrono::milliseconds timeout_ms,
+      bool force_on_timeout,
+      const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes);
 
   /// Execute graceful shutdown with timeout
   void ExecuteGracefulShutdown(std::string_view detail,
@@ -250,10 +260,12 @@ class ShutdownCoordinator {
                              std::string_view detail,
                              std::chrono::milliseconds timeout_ms,
                              bool force_on_timeout);
-  void ExecuteWorkerShutdown(bool force_shutdown,
-                             std::string_view detail,
-                             std::chrono::milliseconds timeout_ms,
-                             bool force_on_timeout);
+  void ExecuteWorkerShutdown(
+      bool force_shutdown,
+      std::string_view detail,
+      std::chrono::milliseconds timeout_ms,
+      bool force_on_timeout,
+      const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes);
 
   /// Pack state and reason into a single 16-bit value for atomic operations.
   uint16_t PackStateReason(ShutdownState state, ShutdownReason reason);

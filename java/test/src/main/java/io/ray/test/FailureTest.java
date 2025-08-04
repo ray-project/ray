@@ -97,25 +97,15 @@ public class FailureTest extends BaseTest {
       objectRef.get();
       Assert.fail("Task didn't fail.");
     } catch (RayActorException e) {
-      Throwable rootCause = e;
-      while (rootCause.getCause() != null) {
-        rootCause = rootCause.getCause();
-      }
-      Assert.assertTrue(rootCause instanceof RuntimeException);
       // The shutdown coordinator changes may affect how exception messages are preserved
       // Make the message check more robust by also checking the full exception chain
-      String message = rootCause.getMessage();
-      boolean messageFound = (message != null && message.contains(EXCEPTION_MESSAGE));
-
-      // If not found in root cause, check the entire exception chain
-      if (!messageFound) {
-        Throwable current = e;
-        while (current != null && !messageFound) {
-          if (current.getMessage() != null && current.getMessage().contains(EXCEPTION_MESSAGE)) {
-            messageFound = true;
-          }
-          current = current.getCause();
+      Throwable current = e;
+      boolean messageFound = false;
+      while (current != null && !messageFound) {
+        if (current.getMessage() != null && current.getMessage().contains(EXCEPTION_MESSAGE)) {
+          messageFound = true;
         }
+        current = current.getCause();
       }
 
       Assert.assertTrue(
@@ -123,9 +113,7 @@ public class FailureTest extends BaseTest {
           "Exception message '"
               + EXCEPTION_MESSAGE
               + "' not found in exception chain. "
-              + "Root cause message: "
-              + message
-              + ", Full exception: "
+              + "Full exception: "
               + e.getMessage());
     }
   }

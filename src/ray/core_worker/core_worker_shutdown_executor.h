@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <memory>
 #include <string>
 #include <string_view>
 
@@ -48,6 +49,12 @@ class CoreWorkerShutdownExecutor : public ShutdownExecutorInterface {
                          std::string_view detail,
                          std::chrono::milliseconds timeout_ms) override;
 
+  void ExecuteExit(std::string_view exit_type,
+                   std::string_view detail,
+                   std::chrono::milliseconds timeout_ms,
+                   const std::shared_ptr<LocalMemoryBuffer>
+                       &creation_task_exception_pb_bytes) override;
+
   /// Execute handle exit sequence with idle checking
   void ExecuteHandleExit(std::string_view exit_type,
                          std::string_view detail,
@@ -61,7 +68,10 @@ class CoreWorkerShutdownExecutor : public ShutdownExecutorInterface {
   /// Reference to CoreWorker for accessing shutdown operations
   CoreWorker *core_worker_;
 
-  void DisconnectServices(std::string_view exit_type, std::string_view detail);
+  void DisconnectServices(
+      std::string_view exit_type,
+      std::string_view detail,
+      const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes);
   void QuickExit();
 };
 }  // namespace core
