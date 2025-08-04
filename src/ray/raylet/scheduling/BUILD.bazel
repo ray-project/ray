@@ -358,8 +358,8 @@ ray_cc_test(
         "//src/ray/common:id",
         "//src/ray/common:task_common",
         "//src/ray/common:test_util",
-        "//src/ray/raylet/test:util",
         "//src/ray/raylet:local_task_manager",
+        "//src/ray/raylet/test:util",
         "@com_google_googletest//:gtest_main",
     ],
 )
