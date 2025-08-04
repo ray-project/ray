@@ -213,9 +213,9 @@ std::unordered_map<std::string, double> PythonGetResourcesTotal(
 }
 
 std::unordered_map<std::string, double> PythonGetResourcesAvailable(
-  const rpc::GcsNodeInfo &node_info) {
-return std::unordered_map<std::string, double>(node_info.resources_available().begin(),
-                                              node_info.resources_available().end());
+    const rpc::GcsNodeInfo &node_info) {
+  return std::unordered_map<std::string, double>(node_info.resources_available().begin(),
+                                                 node_info.resources_available().end());
 }
 
 std::unordered_map<std::string, std::string> PythonGetNodeLabels(
