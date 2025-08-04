@@ -264,18 +264,14 @@ void TaskStatusEvent::PopulateRpcRayEventBaseFields(
   ray_event.set_severity(rpc::events::RayEvent::INFO);
   ray_event.set_session_name(session_name_);
 
-  if (is_actor_task_event_) {
-    if (is_definition_event) {
+  if (is_definition_event) {
+    if (is_actor_task_event_) {
       ray_event.set_event_type(rpc::events::RayEvent::ACTOR_TASK_DEFINITION_EVENT);
     } else {
-      ray_event.set_event_type(rpc::events::RayEvent::TASK_EXECUTION_EVENT);
+      ray_event.set_event_type(rpc::events::RayEvent::TASK_DEFINITION_EVENT);
     }
   } else {
-    if (is_definition_event) {
-      ray_event.set_event_type(rpc::events::RayEvent::TASK_DEFINITION_EVENT);
-    } else {
-      ray_event.set_event_type(rpc::events::RayEvent::TASK_EXECUTION_EVENT);
-    }
+    ray_event.set_event_type(rpc::events::RayEvent::TASK_EXECUTION_EVENT);
   }
 }
 
@@ -403,7 +399,7 @@ bool TaskEventBufferImpl::RecordTaskStatusEventIfNeeded(
 }
 
 TaskEventBufferImpl::TaskEventBufferImpl(
-    std::shared_ptr<gcs::GcsClient> gcs_client,
+    std::unique_ptr<gcs::GcsClient> gcs_client,
     std::unique_ptr<rpc::EventAggregatorClientImpl> event_aggregator_client,
     std::string session_name)
     : work_guard_(boost::asio::make_work_guard(io_service_)),
@@ -526,8 +522,8 @@ void TaskEventBufferImpl::GetTaskStatusEventsToSend(
   if (status_events_.empty() && dropped_task_attempts_unreported_.empty()) {
     return;
 
-  // Get data loss info.
-  size_t num_dropped_task_attempts_to_send = 0;
+    // Get data loss info.
+    size_t num_dropped_task_attempts_to_send = 0;
     // reached the batch size limit, we take the first one.
     auto itr = dropped_task_attempts_unreported_.begin();
     dropped_task_attempts_to_send->insert(*itr);

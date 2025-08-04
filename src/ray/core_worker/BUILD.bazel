@@ -220,17 +220,6 @@ ray_cc_library(
 )
 
 ray_cc_library(
-    name = "event_aggregator_exporter",
-    srcs = ["event_aggregator_exporter.cc"],
-    hdrs = ["event_aggregator_exporter.h"],
-    deps = [
-        "//:event_aggregator_client",
-        "//:event_aggregator_rpc",
-        "//src/ray/common:status",
-    ]
-)
-
-ray_cc_library(
     name = "out_of_order_actor_submit_queue",
     srcs = ["transport/out_of_order_actor_submit_queue.cc"],
     hdrs = ["transport/out_of_order_actor_submit_queue.h"],
