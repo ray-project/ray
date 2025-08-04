@@ -211,11 +211,11 @@ _bazel_build_before_install() {
   # NOTE: Do not add build flags here. Use .bazelrc and --config instead.
 
   if [[ -z "${RAY_DEBUG_BUILD:-}" ]]; then
-    bazel build //:ray_pkg
+    bazel run //:gen_ray_pkg
   elif [[ "${RAY_DEBUG_BUILD}" == "asan" ]]; then
     echo "No need to build anything before install"
   elif [[ "${RAY_DEBUG_BUILD}" == "debug" ]]; then
-    bazel build --config debug //:ray_pkg
+    bazel run --config debug //:gen_ray_pkg
   else
     echo "Invalid config given"
     exit 1
