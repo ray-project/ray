@@ -26,7 +26,7 @@ ray_cc_library(
     deps = [
         "//src/ray/common:id",
         "//src/ray/common:task_common",
-        "//src/ray/object_manager",
+        "//src/ray/object_manager:object_manager",
         "//src/ray/util:counter_map",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -195,14 +195,12 @@ ray_cc_library(
 )
 
 ray_cc_library(
-    name = "raylet_lib",
+    name = "node_manager",
     srcs = [
         "node_manager.cc",
-        "raylet.cc",
     ],
     hdrs = [
         "node_manager.h",
-        "raylet.h",
     ],
     linkopts = select({
         "@platforms//os:windows": [
@@ -211,11 +209,9 @@ ray_cc_library(
             "-lpthread",
         ],
     }),
-    visibility = ["//visibility:private"],
     deps = [
         ":agent_manager",
         ":dependency_manager",
-        ":local_object_manager",
         ":local_object_manager_interface",
         ":local_task_manager",
         ":placement_group_resource_manager",
@@ -232,8 +228,6 @@ ray_cc_library(
         "//src/ray/object_manager",
         "//src/ray/object_manager:ownership_object_directory",
         "//src/ray/object_manager/plasma:plasma_client",
-        "//src/ray/protobuf:common_cc_proto",
-        "//src/ray/protobuf:runtime_env_agent_cc_proto",
         "//src/ray/pubsub:pubsub_lib",
         "//src/ray/raylet/scheduling:scheduler",
         "//src/ray/rpc:core_worker_rpc",
@@ -242,19 +236,29 @@ ray_cc_library(
         "//src/ray/util:cmd_line_utils",
         "//src/ray/util:container_util",
         "//src/ray/util:throttler",
-        "@boost//:asio",
         "@boost//:system",
-        "@com_github_jupp0r_prometheus_cpp//pull",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_prod",
-        "@io_opencensus_cpp//opencensus/exporters/stats/prometheus:prometheus_exporter",
-        "@io_opencensus_cpp//opencensus/stats",
-        "@io_opencensus_cpp//opencensus/tags",
     ],
+    visibility = ["//visibility:private"],
+)
+
+ray_cc_library(
+    name = "raylet_lib",
+    srcs = ["raylet.cc"],
+    hdrs = ["raylet.h"],
+    deps = [
+        ":node_manager",
+        "//src/ray/common:asio",
+        "//src/ray/object_manager:object_manager",
+        "@boost//:asio",
+    ],
+    visibility = ["//visibility:private"],
 )
 
 ray_cc_binary(
