@@ -90,6 +90,7 @@ doctest(
             "algorithms/r2d2/r2d2.py",
             "algorithms/sac/rnnsac.py",
             "algorithms/simple_q/simple_q.py",
+            "core/distribution/torch/torch_distribution.py",
             "core/models/base.py",
             "core/models/specs/specs_base.py",
             "core/models/specs/specs_dict.py",
@@ -104,9 +105,7 @@ doctest(
             "models/catalog.py",
             "models/preprocessors.py",
             "models/repeated_values.py",
-            "models/tf/tf_distributions.py",
             "models/torch/model.py",
-            "models/torch/torch_distributions.py",
             "policy/rnn_sequencing.py",
             "utils/actor_manager.py",
             "utils/filter.py",
@@ -4684,7 +4683,7 @@ py_test(
 
 py_test(
     name = "examples/metrics/custom_metrics_in_algorithm_training_step",
-    size = "small",
+    size = "medium",
     srcs = ["examples/metrics/custom_metrics_in_algorithm_training_step.py"],
     main = "examples/metrics/custom_metrics_in_algorithm_training_step.py",
     tags = [
