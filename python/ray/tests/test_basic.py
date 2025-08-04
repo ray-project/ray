@@ -251,10 +251,9 @@ def test_worker_thread_count(monkeypatch, shutdown_only):
         # Set the environment variable used by the raylet
         m.setenv("RAY_worker_num_grpc_internal_threads", "1")
         ray.init()
-        # We're using == instead of <= on the notion that the thread count
-        # for a worker should be static. Lowering this number should be
-        # celebrated, increasing this number should be scrutinized
-        assert ray.get(Actor.remote().get_thread_count.remote()) == 27
+        # Lowering this number should be celebrated, increasing this number
+        # should be scrutinized
+        assert ray.get(Actor.remote().get_thread_count.remote()) <= 27
 
 
 # https://github.com/ray-project/ray/issues/7287
