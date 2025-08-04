@@ -64,7 +64,7 @@ class TestCli(unittest.TestCase):
                 workspace_dir=tmpdir,
             )
             with self.assertRaises(KeyError):
-                manager.get_depset("fake_depset", manager.config.build_args_sets[0])
+                manager.get_depset("fake_depset", manager.config.build_arg_sets[0])
 
     def test_uv_binary_exists(self):
         assert uv_binary() is not None
@@ -421,7 +421,7 @@ depsets:
             assert (
                 "requirements_compiled_general_py311_cpu.txt"
                 == manager.get_depset(
-                    "build_args_test_depset", manager.config.build_args_sets[0]
+                    "build_args_test_depset", manager.config.build_arg_sets[0]
                 ).output
             )
 
