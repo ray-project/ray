@@ -39,7 +39,7 @@ def check_ray_already_started(address="auto"):
 
         # Try auto-detecting the Ray instance.
         services.canonicalize_bootstrap_address_or_die(address)
-    except Exception:
+    except ConnectionError:
         return False
     return True
 
@@ -60,7 +60,8 @@ def check_cluster_ready(nnodes, timeout=CLUSTER_WAIT_TIMEOUT):
             return True
         else:
             click.echo(
-                f"Waiting for nodes to start... {current_nodes}/{nnodes} nodes started"
+                f"Waiting for nodes to start... {current_nodes}/{nnodes} nodes started",
+                err=True,
             )
     return False
 
@@ -80,11 +81,14 @@ def check_head_node_ready(head_ip, head_port, timeout=CLUSTER_WAIT_TIMEOUT):
     start_time = time.time()
     while time.time() - start_time < timeout:
         if is_port_open(head_ip, head_port):
-            print("Ray cluster is ready!")
+            click.echo("Ray cluster is ready!", err=True)
             return True
         time.sleep(5)
 
-    print(f"Timeout: Ray cluster at {head_ip}:{head_port} not ready after {timeout}s")
+    click.echo(
+        f"Timeout: Ray cluster at {head_ip}:{head_port} not ready after {timeout}s",
+        err=True,
+    )
     return False
 
 
@@ -157,7 +161,7 @@ def symmetric_run(address: str, wait_for_nnodes: int, execute_on_head: List[str]
     try:
         if is_head:
             # On the head node, start Ray, run the command, then stop Ray.
-            click.echo("On head node. Starting Ray cluster head...")
+            click.echo("On head node. Starting Ray cluster head...", err=True)
             # Start Ray head. This runs in the background and hides output.
             subprocess.run(
                 [
@@ -170,8 +174,8 @@ def symmetric_run(address: str, wait_for_nnodes: int, execute_on_head: List[str]
                 check=True,
                 capture_output=True,
             )
-            click.echo("Head node started.")
-            click.echo("=======================")
+            click.echo("Head node started.", err=True)
+            click.echo("=======================", err=True)
             if min_nodes > 1 and not check_cluster_ready(min_nodes):
                 raise click.ClickException(
                     "Timed out waiting for other nodes to start."
@@ -179,17 +183,18 @@ def symmetric_run(address: str, wait_for_nnodes: int, execute_on_head: List[str]
 
             # Run the user command if provided.
             if execute_on_head:
-                click.echo(f"Running command on head node: {' '.join(execute_on_head)}")
-                click.echo("=======================")
+                click.echo(
+                    f"Running command on head node: {' '.join(execute_on_head)}",
+                    err=True,
+                )
+                click.echo("=======================", err=True)
                 result = subprocess.run(execute_on_head)
-                click.echo("=======================")
-                if result.returncode != 0:
-                    raise click.ClickException(
-                        f"Command failed with return code {result.returncode}"
-                    )
+                click.echo("=======================", err=True)
         else:
             # On a worker node, start Ray and connect to the head.
-            click.echo(f"On worker node. Connecting to Ray cluster at {address}...")
+            click.echo(
+                f"On worker node. Connecting to Ray cluster at {address}...", err=True
+            )
 
             if not check_head_node_ready(head_ip, head_port):
                 raise click.ClickException("Timed out waiting for head node to start.")
@@ -207,14 +212,14 @@ def symmetric_run(address: str, wait_for_nnodes: int, execute_on_head: List[str]
             click.echo(f"stderr:\n{e.stderr.decode()}", err=True)
     except KeyboardInterrupt:
         # This can be triggered by ctrl-c on the user's side.
-        click.echo("Interrupted by user.")
+        click.echo("Interrupted by user.", err=True)
     finally:
         # Stop Ray cluster.
-        subprocess.run(["ray", "stop"], check=True)
+        subprocess.run(["ray", "stop"])
 
         # Propagate the exit code of the user script.
         if result is not None and result.returncode != 0:
-            click.echo(f"Command failed with return code {result.returncode}")
+            click.echo(f"Command failed with return code {result.returncode}", err=True)
             sys.exit(result.returncode)
 
 
