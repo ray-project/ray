@@ -379,7 +379,7 @@ def test_proxy_metrics_internal_error(metrics_start_shutdown):
 
     def verify_metrics(_expected_metrics, do_assert=False):
         try:
-            ip = "0.0.0.0" if sys.platform == "win32" else "127.0.0.1"
+            ip = "127.0.0.1" if sys.platform == "win32" else "0.0.0.0"
             resp = httpx.get(f"http://{ip}:9999", timeout=None).text
         # Requests will fail if we are crashing the controller
         except httpx.HTTPError:
