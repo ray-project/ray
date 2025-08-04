@@ -65,7 +65,7 @@ class VPGMultiRLModuleWithSharedEncoder(MultiRLModule):
             from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 
             from ray.rllib.examples.algorithms.classes.vpg import VPGConfig
-            from ray.rllib.examples.learners.classes.vpg_torch_learner_shared_encoder import VPGTorchLearnerSharedEncoder
+            from ray.rllib.examples.learners.classes.vpg_torch_learner_shared_optimizer import VPGTorchLearnerSharedOptimizer
             from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
             from ray.rllib.examples.rl_modules.classes.vpg_using_shared_encoder_rlm import (
                 SHARED_ENCODER_ID,
@@ -82,7 +82,7 @@ class VPGMultiRLModuleWithSharedEncoder(MultiRLModule):
                 VPGConfig()
                 .environment(MultiAgentCartPole, env_config={"num_agents": 2})
                 .training(
-                    learner_class=VPGTorchLearnerSharedEncoder,
+                    learner_class=VPGTorchLearnerSharedOptimizer,
                 )
                 .multi_agent(
                     # Declare the two policies trained.
@@ -194,3 +194,62 @@ class SharedEncoder(TorchRLModule):
 
 
 # __sphinx_doc_encoder_end__
+
+
+# __sphinx_doc_ns_encoder_begin__
+class VPGIndividualEncoder(torch.nn.Module):
+    def __init__(self, observation_space, embedding_dim):
+        """
+        An individual version of SharedEncoder, supporting direct comparison between
+        the two architectures.
+        """
+        super().__init__()
+        
+        input_dim = observation_space.shape[0]
+        
+        # A very simple encoder network.
+        self._net = torch.nn.Sequential(
+            torch.nn.Linear(input_dim, embedding_dim),
+        )
+
+    def _forward(self, batch, **kwargs):
+        # Pass observations through the net and return outputs.
+        return {ENCODER_OUT: self._net(batch[Columns.OBS])}
+
+
+# __sphinx_doc_ns_encoder_end__
+
+        
+# __sphinx_doc_ns_policy_begin__
+class VPGPolicyNoSharedEncoder(TorchRLModule):
+    """
+    A VPG (vanilla pol. gradient)-style RLModule that doesn't use a shared encoder.
+    Facilitates experiments comparing shared and individual encoder architectures.
+    """
+
+    def setup(self):
+        super().setup()
+
+        # Incoming feature dim from the encoder.
+        embedding_dim = self.model_config["embedding_dim"]
+        hidden_dim = self.model_config["hidden_dim"]
+
+        self._pi_head = torch.nn.Sequential(
+            torch.nn.Linear(embedding_dim, hidden_dim),
+            torch.nn.ReLU(),
+            torch.nn.Linear(hidden_dim, self.action_space.n),
+        )
+        self.encoder = VPGIndividualEncoder(
+            self.observation_space,
+            embedding_dim
+        )
+
+    def _forward(self, batch, **kwargs):
+        if (ENCODER_OUT not in batch):
+            batch = self.encoder(batch)
+        embeddings = batch[ENCODER_OUT]
+        logits = self._pi_head(embeddings)
+        return {Columns.ACTION_DIST_INPUTS: logits}
+
+
+# __sphinx_doc_ns_policy_end__
