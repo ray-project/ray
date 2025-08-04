@@ -10,6 +10,7 @@ from ray._common.constants import HEAD_NODE_RESOURCE_NAME, NODE_ID_PREFIX
 from ray._common.utils import RESOURCE_CONSTRAINT_PREFIX
 from ray._private import accelerators
 from ray._private.accelerators import AcceleratorManager
+from ray._private.accelerators.tpu import TPUAcceleratorManager
 
 logger = logging.getLogger(__name__)
 
@@ -290,6 +291,11 @@ class ResourceAndLabelSpec:
                 default_labels[
                     ray._raylet.RAY_NODE_ACCELERATOR_TYPE_KEY
                 ] = accelerator_type
+
+            # Set TPU specific default labels to enable SPMD scheduling.
+            if isinstance(accelerator_manager, TPUAcceleratorManager):
+                tpu_labels = accelerator_manager.get_current_node_accelerator_labels()
+                default_labels.update(tpu_labels)
 
         return default_labels
 
