@@ -240,7 +240,7 @@ class TorchTrainer(DataParallelTrainer):
         self._set_local_running_train_context()
         train_fn = self._get_train_func()
         train_fn()
-        return Result(metrics={}, checkpoint=None, error=None)
+        return Result(metrics={}, checkpoint=None, error=None, path=None)
 
     async def _set_local_running_train_context_and_data_shard(
         self, world_size: int, world_rank: int
