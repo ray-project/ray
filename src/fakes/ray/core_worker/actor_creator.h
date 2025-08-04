@@ -26,9 +26,7 @@ class FakeActorCreator : public ActorCreatorInterface {
   }
 
   void AsyncRegisterActor(const TaskSpecification &task_spec,
-                          gcs::StatusCallback callback) override {
-    callback(Status::OK());
-  }
+                          gcs::StatusCallback callback) override {}
 
   void AsyncCreateActor(
       const TaskSpecification &task_spec,
@@ -36,20 +34,14 @@ class FakeActorCreator : public ActorCreatorInterface {
 
   void AsyncRestartActorForLineageReconstruction(const ActorID &actor_id,
                                                  uint64_t num_restarts,
-                                                 gcs::StatusCallback callback) override {
-    callback(Status::OK());
-  }
+                                                 gcs::StatusCallback callback) override {}
 
   void AsyncReportActorOutOfScope(const ActorID &actor_id,
                                   uint64_t num_restarts_due_to_lineage_reconstruction,
-                                  gcs::StatusCallback callback) override {
-    callback(Status::OK());
-  }
+                                  gcs::StatusCallback callback) override {}
 
   void AsyncWaitForActorRegisterFinish(const ActorID &actor_id,
-                                       gcs::StatusCallback callback) override {
-    callback(Status::OK());
-  }
+                                       gcs::StatusCallback callback) override {}
 
   bool IsActorInRegistering(const ActorID &actor_id) const override { return false; }
 };

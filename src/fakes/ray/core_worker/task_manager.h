@@ -83,11 +83,7 @@ class FakeTaskManager : public TaskManagerInterface {
 
   void MarkGeneratorFailedAndResubmit(const TaskID &task_id) override {}
 
-  void DrainAndShutdown(std::function<void()> shutdown) override {
-    if (shutdown) {
-      shutdown();
-    }
-  }
+  void DrainAndShutdown(std::function<void()> shutdown) override {}
 
   void RecordMetrics() override {}
 
@@ -100,9 +96,6 @@ class FakeTaskManager : public TaskManagerInterface {
 
   Status TryReadObjectRefStream(const ObjectID &generator_id,
                                 ObjectID *object_id_out) override {
-    if (object_id_out) {
-      *object_id_out = ObjectID::Nil();
-    }
     return Status::OK();
   }
 
@@ -117,9 +110,6 @@ class FakeTaskManager : public TaskManagerInterface {
   bool HandleReportGeneratorItemReturns(
       const rpc::ReportGeneratorItemReturnsRequest &request,
       const std::function<void(Status, int64_t)> &execution_signal_callback) override {
-    if (execution_signal_callback) {
-      execution_signal_callback(Status::OK(), 0);
-    }
     return false;
   }
 
