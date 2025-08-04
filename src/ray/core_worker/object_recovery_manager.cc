@@ -123,8 +123,6 @@ void ObjectRecoveryManager::PinExistingObjectCopy(
           [this, object_id, other_locations = std::move(other_locations), node_id](
               const Status &status, const rpc::PinObjectIDsReply &reply) mutable {
             if (status.ok() && reply.successes(0)) {
-              // TODO(swang): Make sure that the node is still alive when
-              // marking the object as pinned.
               RAY_CHECK(in_memory_store_.Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
                                              object_id));
               reference_counter_.UpdateObjectPinnedAtRaylet(object_id, node_id);
