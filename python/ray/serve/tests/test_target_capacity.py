@@ -445,7 +445,6 @@ def create_autoscaling_controlled_app(
             initial_replicas=initial_replicas,
             max_replicas=max_replicas,
             target_ongoing_requests=1,
-            metrics_interval_s=0.1,
             look_back_period_s=0.2,
             upscale_delay_s=0.1,
             downscale_delay_s=0.1,
