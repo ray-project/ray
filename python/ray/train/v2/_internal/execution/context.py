@@ -7,6 +7,7 @@ from queue import Queue
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 import ray
+from ray.actor import ActorHandle
 from ray.data import DataIterator, Dataset
 from ray.train import BackendConfig, Checkpoint, DataConfig
 from ray.train._internal import session
@@ -92,7 +93,7 @@ class TrainContext:
     distributed_context: DistributedContext
     execution_context: ExecutionContext
     storage_context: StorageContext
-    dataset_shards: Dict[str, DataIterator]
+    dataset_manager: Optional[ActorHandle] = None
     checkpoint: Optional[Checkpoint] = None
 
     @_copy_doc(session.get_experiment_name)

@@ -1,18 +1,120 @@
+import asyncio
 import copy
+from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Union
 
 import ray.train
-from ray.data import Dataset
+from ray.data import DataIterator, Dataset, NodeIdStr
 from ray.data.context import DataContext
 from ray.train.v2._internal.execution.callback import WorkerGroupCallback
 from ray.train.v2._internal.execution.worker_group.worker_group import (
     Worker,
     WorkerGroup,
 )
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 # A type representing either a ray.data.Dataset or a function that returns a
 # ray.data.Dataset and accepts no arguments.
 GenDataset = Union[Dataset, Callable[[], Dataset]]
+
+
+@dataclass
+class DatasetShardMetadata:
+    """Metadata about a dataset shard used for lookup and configuration."""
+
+    dataset_name: str
+    world_rank: int
+    world_size: int
+    worker_node_ids: List[NodeIdStr]
+
+
+class DatasetManager:
+    """Manages the dataset shards for datasets configured in the Trainer.
+
+    NOTE: The Ray Data executor does not live on this process.
+    """
+
+    def __init__(
+        self,
+        datasets: Dict[str, GenDataset],
+        data_config: ray.train.DataConfig,
+        data_context: DataContext,
+    ):
+        self._datasets = {k: v() if callable(v) else v for k, v in datasets.items()}
+        self._data_config = data_config
+
+        # Maps dataset name to a list of `DataIterator`s corresponding to Train worker ranks.
+        self._dataset_iterators: Dict[str, List[DataIterator]] = {}
+
+        # A condition variable to synchronize the calls to the async `get_dataset_shard` method.
+        self._condition = asyncio.Condition()
+
+        # TODO: Is this needed?
+        DataContext._set_current(data_context)
+
+    async def _get_base_dataset(self, dataset_info: DatasetShardMetadata) -> Dataset:
+        return self._datasets[dataset_info.dataset_name]
+
+    async def get_dataset_shard(
+        self,
+        dataset_info: DatasetShardMetadata,
+    ) -> DataIterator:
+        """Create and return the dataset shard iterator for a Ray Train worker's
+        call to `ray.train.get_dataset_shard`.
+
+        This method is a barrier that should be called by all Ray Train workers at once.
+        If the dataset iterators have already been created, return the existing ones.
+        Otherwise, create the dataset iterators and cache them.
+
+        Here's an example of how this method is used with 4 workers:
+
+        Rank 2 calls get_dataset_shard, waits on the condition variable.
+        Rank 1 calls get_dataset_shard, waits on the condition variable.
+        Rank 0 calls get_dataset_shard, creates the dataset iterators, caches them,
+        and notifies all workers hanging on the condition variable.
+        Rank 3 calls get_dataset_shard, returns the cached iterator.
+        """
+
+        dataset_name = dataset_info.dataset_name
+        world_rank = dataset_info.world_rank
+        world_size = dataset_info.world_size
+        worker_node_ids = dataset_info.worker_node_ids
+
+        async with self._condition:
+            if dataset_name in self._dataset_iterators:
+                # If the dataset iterators have already been created, return the
+                # existing one.
+                shard = self._dataset_iterators[dataset_name][world_rank]
+            elif world_rank == 0:
+                # In this case, the dataset iterators have not been created yet.
+                # The dataset only needs to be configured once globally for all workers.
+                # Do it only when the rank 0 worker calls this method.
+                base_dataset = await self._get_base_dataset(dataset_info)
+
+                iterators_per_rank = self._data_config.configure(
+                    datasets={dataset_name: base_dataset},
+                    world_size=world_size,
+                    worker_handles=None,
+                    worker_node_ids=worker_node_ids,
+                )
+                assert len(iterators_per_rank) == world_size
+                # Convert the List[Dict[str, DataIterator]] to a List[DataIterator],
+                # since we only configured one dataset.
+                shards = [
+                    iterators_per_rank[i][dataset_name] for i in range(world_size)
+                ]
+                shard = shards[world_rank]
+
+                # Cache the dataset iterators for future use.
+                self._dataset_iterators[dataset_name] = shards
+                self._condition.notify_all()
+            else:
+                # Wait for the dataset iterators to be created by the rank 0 worker.
+                await self._condition.wait()
+                assert dataset_name in self._dataset_iterators
+                shard = self._dataset_iterators[dataset_name][world_rank]
+
+        return shard
 
 
 class DatasetsSetupCallback(WorkerGroupCallback):
@@ -31,7 +133,7 @@ class DatasetsSetupCallback(WorkerGroupCallback):
         # Capture the current DataContext to propagate it to
         # the Train workers later.
         # The propagation works in the following way:
-        # 1. This callback is created when user create the Trainer.
+        # 1. This callback is created when user creates the Trainer.
         # 2. Then this callback will be passed to the Controller actor.
         # 3. Lastly, when the worker group is initialized, the Controller
         #    will call the `after_worker_group_start` callback to propagate
@@ -46,25 +148,24 @@ class DatasetsSetupCallback(WorkerGroupCallback):
         return scaling_config.total_resources
 
     def before_init_train_context(self, workers: List[Worker]) -> Dict[str, List[Any]]:
-        # Configure dataset shards
-        datasets = {k: v() if callable(v) else v for k, v in self._datasets.items()}
-        node_ids = [worker.metadata.node_id for worker in workers]
+        if not self._datasets:
+            return {"dataset_manager": [None] * len(workers)}
 
-        # Notify the DataConfig about the total resources reserved for training.
-        total_train_resources = self.get_train_total_resources(self._scaling_config)
-        self._data_config.set_train_total_resources(
-            total_train_resources.get("CPU", 0), total_train_resources.get("GPU", 0)
+        dataset_manager = (
+            ray.remote(DatasetManager)
+            .options(
+                num_cpus=0,
+                scheduling_strategy=NodeAffinitySchedulingStrategy(
+                    ray.get_runtime_context().get_node_id(), soft=False
+                ),
+            )
+            .remote(
+                datasets=self._datasets,
+                data_config=self._data_config,
+                data_context=self._data_context,
+            )
         )
-
-        dataset_shards = self._data_config.configure(
-            datasets,
-            world_size=len(workers),
-            worker_handles=None,
-            worker_node_ids=node_ids,
-        )
-        assert len(dataset_shards) == len(workers)
-
-        return {"dataset_shards": dataset_shards}
+        return {"dataset_manager": [dataset_manager] * len(workers)}
 
     def after_worker_group_start(self, worker_group: WorkerGroup):
         # Propagate DataContext
