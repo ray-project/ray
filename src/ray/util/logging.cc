@@ -16,6 +16,8 @@
 
 #include <string.h>
 
+#include <filesystem>
+
 #ifdef _WIN32
 #include <process.h>
 #else
@@ -44,7 +46,6 @@
 #include "absl/debugging/symbolize.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_format.h"
-#include "ray/util/string_utils.h"
 #include "ray/util/thread_utils.h"
 #include "spdlog/sinks/basic_file_sink.h"
 #include "spdlog/sinks/rotating_file_sink.h"
@@ -342,34 +343,6 @@ void RayLog::InitLogFormat() {
   }
 #endif
   return 1;
-}
-
-/*static*/ std::string RayLog::GetLogFilepathFromDirectory(const std::string &log_dir,
-                                                           const std::string &app_name) {
-  if (log_dir.empty()) {
-    return "";
-  }
-
-#ifdef _WIN32
-  int pid = _getpid();
-#else
-  pid_t pid = getpid();
-#endif
-  return JoinPaths(log_dir, absl::StrFormat("%s_%d.log", app_name, pid));
-}
-
-/*static*/ std::string RayLog::GetErrLogFilepathFromDirectory(
-    const std::string &log_dir, const std::string &app_name) {
-  if (log_dir.empty()) {
-    return "";
-  }
-
-#ifdef _WIN32
-  int pid = _getpid();
-#else
-  pid_t pid = getpid();
-#endif
-  return JoinPaths(log_dir, absl::StrFormat("%s_%d.err", app_name, pid));
 }
 
 /*static*/ void RayLog::StartRayLog(const std::string &app_name,
