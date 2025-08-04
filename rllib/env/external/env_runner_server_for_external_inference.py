@@ -24,7 +24,7 @@ from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.env.external.external_env_protocol import RLlink as rllink
-from ray.rllib.utils.annotations import ExperimentalAPI, override
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.checkpoints import Checkpointable
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics import (
@@ -40,11 +40,12 @@ from ray.rllib.utils.metrics import (
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.numpy import softmax
 from ray.rllib.utils.typing import EpisodeID, StateDict
+from ray.util.annotations import DeveloperAPI
 
 torch, _ = try_import_torch()
 
 
-@ExperimentalAPI
+@DeveloperAPI
 class EnvRunnerServerForExternalInference(EnvRunner, Checkpointable):
     """An EnvRunner communicating with an external env through a TCP socket.
 

@@ -1,9 +1,9 @@
 from enum import Enum
 
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import DeveloperAPI
 
 
-@PublicAPI(stability="alpha")
+@DeveloperAPI
 class RLlink(Enum):
     # Requests: Client (external env) -> Server (RLlib).
     # ----
