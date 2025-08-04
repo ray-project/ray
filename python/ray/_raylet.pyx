@@ -2278,8 +2278,8 @@ cdef execute_task_with_cancellation_handler(
             # Reset the OMP_NUM_THREADS environ if it was set.
             os.environ.pop("OMP_NUM_THREADS", None)
 
-        if visible_accelerator_env_vars_overriden:
-            # Reset the visible accelerator env vars.
+        if <int>task_type == <int>TASK_TYPE_NORMAL_TASK and visible_accelerator_env_vars_overriden:
+            # Reset the visible accelerator env vars for normal tasks, since they may be reused.
             ray._private.utils.reset_visible_accelerator_env_vars(visible_accelerator_env_vars_overriden)
 
 
