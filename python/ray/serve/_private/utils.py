@@ -715,7 +715,7 @@ class Semaphore:
                 self._wake_up_next()
             raise
 
-        if self._value > 0:
+        if self._value < self.get_max_value():
             self._wake_up_next()
         return True
 
