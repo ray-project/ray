@@ -115,7 +115,7 @@ def job_cli_group():
     required=False,
     help=(
         "Address of the Ray cluster to connect to. Can also be specified "
-        "using the RAY_ADDRESS environment variable."
+        "using the RAY_API_SERVER_ADDRESS environment variable (falls back to RAY_ADDRESS)."
     ),
 )
 @click.option(
@@ -333,9 +333,10 @@ def submit(
     required=False,
     help=(
         "Address of the Ray cluster to connect to. Can also be specified "
-        "using the `RAY_ADDRESS` environment variable."
+        "using the RAY_API_SERVER_ADDRESS environment variable (falls back to RAY_ADDRESS)."
     ),
 )
+
 @click.argument("job-id", type=str)
 @add_common_job_options
 @add_click_logging_options
@@ -363,7 +364,7 @@ def status(
     required=False,
     help=(
         "Address of the Ray cluster to connect to. Can also be specified "
-        "using the `RAY_ADDRESS` environment variable."
+        "using the RAY_API_SERVER_ADDRESS environment variable (falls back to RAY_ADDRESS)."
     ),
 )
 @click.option(
@@ -418,7 +419,7 @@ def stop(
     required=False,
     help=(
         "Address of the Ray cluster to connect to. Can also be specified "
-        "using the RAY_ADDRESS environment variable."
+        "using the RAY_API_SERVER_ADDRESS environment variable (falls back to RAY_ADDRESS)."
     ),
 )
 @click.argument("job-id", type=str)
@@ -455,7 +456,7 @@ def delete(
     required=False,
     help=(
         "Address of the Ray cluster to connect to. Can also be specified "
-        "using the RAY_ADDRESS environment variable."
+        "using the RAY_API_SERVER_ADDRESS environment variable (falls back to RAY_ADDRESS)."
     ),
 )
 @click.argument("job-id", type=str)
@@ -508,7 +509,7 @@ def logs(
     required=False,
     help=(
         "Address of the Ray cluster to connect to. Can also be specified "
-        "using the RAY_ADDRESS environment variable."
+        "using the RAY_API_SERVER_ADDRESS environment variable (falls back to RAY_ADDRESS)."
     ),
 )
 @add_common_job_options
