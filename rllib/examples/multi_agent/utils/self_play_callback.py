@@ -38,6 +38,7 @@ class SelfPlayCallback(RLlibCallback):
             metrics_logger.log_value(
                 "win_rate",
                 main_won,
+                reduce="mean",
                 window=100,
             )
 
