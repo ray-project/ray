@@ -342,10 +342,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
 
         CJobConfig GetJobConfig()
 
-        int64_t GetNumTasksSubmitted() const
-
-        int64_t GetNumLeasesRequested() const
-
         int64_t GetLocalMemoryStoreBytesUsed() const
 
         void RecordTaskLogStart(

@@ -138,15 +138,6 @@ class NormalTaskSubmitter {
     return scheduling_key_entries_.empty();
   }
 
-  int64_t GetNumTasksSubmitted() const {
-    return num_tasks_submitted_.load(std::memory_order_relaxed);
-  }
-
-  int64_t GetNumLeasesRequested() {
-    absl::MutexLock lock(&mu_);
-    return num_leases_requested_;
-  }
-
   /// Report worker backlog information to the local raylet.
   /// Since each worker only reports to its local rayet
   /// we avoid double counting backlogs in autoscaler.
@@ -374,9 +365,6 @@ class NormalTaskSubmitter {
 
   // Retries cancelation requests if they were not successful.
   boost::asio::steady_timer cancel_retry_timer_ ABSL_GUARDED_BY(mu_);
-
-  std::atomic<int64_t> num_tasks_submitted_ = 0;
-  int64_t num_leases_requested_ ABSL_GUARDED_BY(mu_) = 0;
 };
 
 }  // namespace core
