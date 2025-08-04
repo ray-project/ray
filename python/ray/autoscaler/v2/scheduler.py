@@ -1475,6 +1475,7 @@ class ResourceDemandScheduler(IResourceScheduler):
 
         existing_nodes = ctx.get_nodes()
         node_type_available = ctx.get_node_type_available()
+        ippr_capacities = ctx.get_ippr_capacities()
 
         # A list of nodes that are either:
         #   1. existing nodes in the cluster. or
@@ -1511,6 +1512,25 @@ class ResourceDemandScheduler(IResourceScheduler):
                         {
                             "CPU": node.ippr_status.desired_cpu,
                             "memory": node.ippr_status.desired_memory,
+                        }
+                    )
+            else:
+                capacity = ippr_capacities.get(node.node_type)
+                if capacity is not None:
+                    node.update_total_resources(
+                        {
+                            "CPU": float(
+                                max(
+                                    capacity["CPU"],
+                                    node.total_resources["CPU"],
+                                )
+                            ),
+                            "memory": float(
+                                max(
+                                    capacity["memory"],
+                                    node.total_resources["memory"],
+                                )
+                            ),
                         }
                     )
 
@@ -1583,7 +1603,6 @@ class ResourceDemandScheduler(IResourceScheduler):
             for node_type, num_available in node_type_available.items()
             if num_available > 0
         ]
-        ippr_capacities = ctx.get_ippr_capacities()
         for node in node_pools:
             capacity = ippr_capacities.get(node.node_type)
             if capacity is not None:
