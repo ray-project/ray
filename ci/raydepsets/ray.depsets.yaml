@@ -1,4 +1,4 @@
-configs:
+build_arg_sets:
   - name: cpu
     build_args:
       CUDA_CODE: cpu
@@ -21,7 +21,7 @@ depsets:
     operation: compile
     override_flags:
       - --extra-index-url https://download.pytorch.org/whl/${CUDA_CODE}
-    configs:
+    build_arg_sets:
       - cpu
       - cu121
       - cu128
@@ -39,7 +39,7 @@ depsets:
     output: python/requirements_compiled_rayllm_test_py311_${CUDA_CODE}.txt
     override_flags:
       - --extra-index-url https://download.pytorch.org/whl/${CUDA_CODE}
-    configs:
+    build_arg_sets:
       - cpu
       - cu121
       - cu128
@@ -52,7 +52,7 @@ depsets:
     output: python/requirements_compiled_ray_py311_${CUDA_CODE}.txt
     override_flags:
       - --extra-index-url https://download.pytorch.org/whl/${CUDA_CODE}
-    configs:
+    build_arg_sets:
       - cpu
       - cu121
       - cu128
@@ -66,7 +66,7 @@ depsets:
     output: python/requirements_compiled_rayllm_py311_${CUDA_CODE}.txt
     override_flags:
       - --extra-index-url https://download.pytorch.org/whl/${CUDA_CODE}
-    configs:
+    build_arg_sets:
       - cpu
       - cu121
       - cu128

@@ -6,7 +6,7 @@ from string import Template
 
 
 @dataclass
-class ConfigArgs:
+class BuildArgSet:
     name: str
     build_args: List[str]
 
@@ -21,44 +21,44 @@ class Depset:
     override_flags: List[str] = field(default_factory=list)
     append_flags: List[str] = field(default_factory=list)
     source_depset: Optional[str] = None
-    config_args: ConfigArgs = None
+    build_arg_set: BuildArgSet = None
     depsets: Optional[List[str]] = None
 
 
 @dataclass
 class Config:
     depsets: List[Depset] = field(default_factory=list)
-    config_args: List[ConfigArgs] = field(default_factory=list)
+    build_arg_sets: List[BuildArgSet] = field(default_factory=list)
 
     @staticmethod
-    def parse_configs(configs: List[dict]) -> List["ConfigArgs"]:
+    def parse_build_arg_sets(build_arg_sets: List[dict]) -> List["BuildArgSet"]:
         return [
-            ConfigArgs(
-                name=config.get("name", None),
-                build_args=config.get("build_args", []),
+            BuildArgSet(
+                name=build_arg_set.get("name", None),
+                build_args=build_arg_set.get("build_args", []),
             )
-            for config in configs
+            for build_arg_set in build_arg_sets
         ]
 
     @staticmethod
     def from_dict(data: dict) -> "Config":
-        config_args = Config.parse_configs(data.get("configs", []))
+        build_arg_sets = Config.parse_build_arg_sets(data.get("build_arg_sets", []))
         depsets = []
         raw_depsets = data.get("depsets", [])
         for depset in raw_depsets:
-            config_matrix = depset.get("configs", [])
-            if config_matrix:
-                for config_name in config_matrix:
-                    config_arg = next(
+            build_arg_set_matrix = depset.get("build_arg_sets", [])
+            if build_arg_set_matrix:
+                for build_arg_set_name in build_arg_set_matrix:
+                    build_arg_set = next(
                         (
-                            config_arg
-                            for config_arg in config_args
-                            if config_arg.name == config_name
+                            build_arg_set
+                            for build_arg_set in build_arg_sets
+                            if build_arg_set.name == build_arg_set_name
                         ),
                         None,
                     )
                     substituted_depset = Template(str(depset)).substitute(
-                        config_arg.build_args
+                        build_arg_set.build_args
                     )
                     depset_yaml = yaml.safe_load(substituted_depset)
                     depsets.append(
@@ -70,9 +70,9 @@ class Config:
                             output=depset_yaml.get("output"),
                             source_depset=depset_yaml.get("source_depset"),
                             depsets=depset_yaml.get("depsets", []),
-                            config_args=config_arg,
                             override_flags=depset_yaml.get("override_flags", []),
                             append_flags=depset_yaml.get("append_flags", []),
+                            build_arg_set=build_arg_set,
                         )
                     )
             else:
@@ -85,11 +85,11 @@ class Config:
                         output=depset.get("output"),
                         source_depset=depset.get("source_depset"),
                         depsets=depset.get("depsets", []),
-                        config_args=None,
+                        build_arg_set=None,
                     )
                 )
 
-        return Config(depsets=depsets, config_args=config_args)
+        return Config(depsets=depsets, build_arg_sets=build_arg_sets)
 
 
 class Workspace:

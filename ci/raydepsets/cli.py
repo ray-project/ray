@@ -1,6 +1,6 @@
 import click
 from pathlib import Path
-from ci.raydepsets.workspace import Workspace, Depset, ConfigArgs
+from ci.raydepsets.workspace import Workspace, Depset, BuildArgSet
 from typing import List
 import subprocess
 import platform
@@ -32,18 +32,18 @@ def cli():
 @click.argument("config_path", default="ci/raydepsets/ray.depsets.yaml")
 @click.option("--workspace-dir", default=None)
 @click.option("--name", default=None)
-@click.option("--config-args", default=None)
-def load(config_path: str, workspace_dir: str, name: str, config_args: str):
+@click.option("--build-arg-set", default=None)
+def load(config_path: str, workspace_dir: str, name: str, build_arg_set: str):
     """Load a dependency sets from a config file."""
     manager = DependencySetManager(config_path=config_path, workspace_dir=workspace_dir)
-    config = None
+    build_arg_set_obj = None
     if name:
-        if config_args:
-            for config_arg in manager.config.config_args:
-                if config_arg.name == config_args:
-                    config = config_arg
+        if build_arg_set:
+            for build_arg_set in manager.config.build_arg_sets:
+                if build_arg_set.name == build_arg_set:
+                    build_arg_set_obj = build_arg_set
                     break
-        manager.execute_single(manager.get_depset(name, config))
+        manager.execute_single(manager.get_depset(name, build_arg_set_obj))
     else:
         manager.execute()
 
@@ -84,14 +84,14 @@ class DependencySetManager:
             depset = self.build_graph.nodes[node]["depset"]
             self.execute_single(depset)
 
-    def get_depset(self, name: str, config_args: ConfigArgs) -> Depset:
+    def get_depset(self, name: str, build_arg_set: BuildArgSet) -> Depset:
         for depset in self.config.depsets:
             if depset.name == name and (
-                config_args is None or depset.config_args.name == config_args.name
+                build_arg_set is None or depset.build_arg_set.name == build_arg_set.name
             ):
                 return depset
         raise KeyError(
-            f"Dependency set {name} not found with config args: {config_args.name if config_args else 'None'}"
+            f"Dependency set {name} not found with build args: {build_arg_set.name if build_arg_set else 'None'}"
         )
 
     def exec_uv_cmd(self, cmd: str, args: List[str]) -> str:
@@ -120,7 +120,7 @@ class DependencySetManager:
                 override_flags=depset.override_flags,
                 name=depset.name,
                 output=depset.output,
-                config_args=depset.config_args,
+                build_arg_set=depset.build_arg_set,
             )
         elif depset.operation == "expand":
             self.expand(
@@ -131,7 +131,7 @@ class DependencySetManager:
                 override_flags=depset.override_flags,
                 name=depset.name,
                 output=depset.output,
-                config_args=depset.config_args,
+                build_arg_set=depset.build_arg_set,
             )
         click.echo(f"Dependency set {depset.name} compiled successfully")
 
@@ -165,13 +165,13 @@ class DependencySetManager:
         source_depset: str,
         requirements: List[str],
         name: str,
-        config_args: ConfigArgs = None,
+        build_arg_set: BuildArgSet = None,
         output: str = None,
         append_flags: Optional[List[str]] = None,
         override_flags: Optional[List[str]] = None,
     ):
         """Subset a dependency set."""
-        source_depset = self.get_depset(source_depset, config_args)
+        source_depset = self.get_depset(source_depset, build_arg_set)
         self.check_subset_exists(source_depset, requirements)
         self.compile(
             constraints=[source_depset.output],
@@ -188,7 +188,7 @@ class DependencySetManager:
         requirements: List[str],
         constraints: List[str],
         name: str,
-        config_args: ConfigArgs = None,
+        build_arg_set: BuildArgSet = None,
         output: str = None,
         append_flags: Optional[List[str]] = None,
         override_flags: Optional[List[str]] = None,
@@ -197,7 +197,7 @@ class DependencySetManager:
         # handle both depsets and requirements
         depset_req_list = []
         for depset_name in depsets:
-            depset = self.get_depset(depset_name, config_args)
+            depset = self.get_depset(depset_name, build_arg_set)
             depset_req_list.extend(depset.requirements)
         if requirements:
             depset_req_list.extend(requirements)
