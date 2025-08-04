@@ -20,6 +20,57 @@ namespace ray {
 
 class FakeRayletClient : public RayletClientInterface {
  public:
+  ray::Status Disconnect(const rpc::WorkerExitType &exit_type,
+                         const std::string &exit_detail,
+                         const std::shared_ptr<LocalMemoryBuffer>
+                             &creation_task_exception_pb_bytes) override {
+    return Status::OK();
+  }
+
+  Status AnnounceWorkerPortForWorker(int port) override { return Status::OK(); }
+
+  Status AnnounceWorkerPortForDriver(int port, const std::string &entrypoint) override {
+    return Status::OK();
+  }
+
+  ray::Status ActorCreationTaskDone() override { return Status::OK(); }
+
+  ray::Status FetchOrReconstruct(const std::vector<ObjectID> &object_ids,
+                                 const std::vector<rpc::Address> &owner_addresses,
+                                 bool fetch_only,
+                                 const TaskID &current_task_id) override {
+    return Status::OK();
+  }
+
+  ray::Status NotifyUnblocked(const TaskID &current_task_id) override {
+    return Status::OK();
+  }
+
+  ray::Status NotifyDirectCallTaskBlocked() override { return Status::OK(); }
+
+  ray::Status NotifyDirectCallTaskUnblocked() override { return Status::OK(); }
+
+  ray::StatusOr<absl::flat_hash_set<ObjectID>> Wait(
+      const std::vector<ObjectID> &object_ids,
+      const std::vector<rpc::Address> &owner_addresses,
+      int num_returns,
+      int64_t timeout_milliseconds,
+      const TaskID &current_task_id) override {
+    return absl::flat_hash_set<ObjectID>{};
+  }
+
+  ray::Status PushError(const ray::JobID &job_id,
+                        const std::string &type,
+                        const std::string &error_message,
+                        double timestamp) override {
+    return Status::OK();
+  }
+
+  ray::Status FreeObjects(const std::vector<ray::ObjectID> &object_ids,
+                          bool local_only) override {
+    return Status::OK();
+  }
+
   void PinObjectIDs(
       const rpc::Address &caller_address,
       const std::vector<ObjectID> &object_ids,
@@ -133,6 +184,13 @@ class FakeRayletClient : public RayletClientInterface {
   void GetNodeStats(
       const rpc::GetNodeStatsRequest &request,
       const rpc::ClientCallback<rpc::GetNodeStatsReply> &callback) override {}
+
+  void GlobalGC(const rpc::ClientCallback<rpc::GlobalGCReply> &callback) override {}
+
+  void SubscribeToPlasma(const ObjectID &object_id,
+                         const rpc::Address &owner_address) override {}
+
+  int64_t GetPinsInFlight() const override { return 0; }
 };
 
 }  // namespace ray

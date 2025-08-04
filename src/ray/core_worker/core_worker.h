@@ -175,11 +175,11 @@ class CoreWorker {
              std::unique_ptr<rpc::ClientCallManager> client_call_manager,
              std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool,
              std::shared_ptr<rpc::RayletClientPool> raylet_client_pool,
-             std::shared_ptr<PeriodicalRunner> periodical_runner,
+             std::shared_ptr<PeriodicalRunnerInterface> periodical_runner,
              std::unique_ptr<rpc::GrpcServer> core_worker_server,
              rpc::Address rpc_address,
              std::shared_ptr<gcs::GcsClient> gcs_client,
-             std::shared_ptr<raylet::RayletClient> local_raylet_client,
+             std::shared_ptr<RayletClientInterface> local_raylet_client,
              boost::thread &io_thread,
              std::shared_ptr<ReferenceCounter> reference_counter,
              std::shared_ptr<CoreWorkerMemoryStore> memory_store,
@@ -190,8 +190,8 @@ class CoreWorker {
              std::shared_ptr<TaskManager> task_manager,
              std::shared_ptr<ActorCreatorInterface> actor_creator,
              std::unique_ptr<ActorTaskSubmitter> actor_task_submitter,
-             std::unique_ptr<pubsub::Publisher> object_info_publisher,
-             std::unique_ptr<pubsub::Subscriber> object_info_subscriber,
+             std::unique_ptr<pubsub::PublisherInterface> object_info_publisher,
+             std::unique_ptr<pubsub::SubscriberInterface> object_info_subscriber,
              std::shared_ptr<LeaseRequestRateLimiter> lease_request_rate_limiter,
              std::unique_ptr<NormalTaskSubmitter> normal_task_submitter,
              std::unique_ptr<ObjectRecoveryManager> object_recovery_manager,
@@ -1735,7 +1735,7 @@ class CoreWorker {
   std::shared_ptr<rpc::RayletClientPool> raylet_client_pool_;
 
   /// The runner to run function periodically.
-  std::shared_ptr<PeriodicalRunner> periodical_runner_;
+  std::shared_ptr<PeriodicalRunnerInterface> periodical_runner_;
 
   /// RPC server used to receive tasks to execute.
   std::unique_ptr<rpc::GrpcServer> core_worker_server_;
@@ -1753,7 +1753,7 @@ class CoreWorker {
   // shared_ptr for direct calls because we can lease multiple workers through
   // one client, and we need to keep the connection alive until we return all
   // of the workers.
-  std::shared_ptr<raylet::RayletClient> local_raylet_client_;
+  std::shared_ptr<RayletClientInterface> local_raylet_client_;
 
   // Thread that runs a boost::asio service to process IO events.
   boost::thread &io_thread_;
@@ -1791,10 +1791,10 @@ class CoreWorker {
   std::unique_ptr<ActorTaskSubmitter> actor_task_submitter_;
 
   // A class to publish object status from other raylets/workers.
-  std::unique_ptr<pubsub::Publisher> object_info_publisher_;
+  std::unique_ptr<pubsub::PublisherInterface> object_info_publisher_;
 
   // A class to subscribe object status from other raylets/workers.
-  std::unique_ptr<pubsub::Subscriber> object_info_subscriber_;
+  std::unique_ptr<pubsub::SubscriberInterface> object_info_subscriber_;
 
   // Rate limit the concurrent pending lease requests for submitting
   // tasks.

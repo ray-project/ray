@@ -246,6 +246,15 @@ class PublisherInterface {
  public:
   virtual ~PublisherInterface() = default;
 
+  /// Handle a long poll request from `subscriber_id`.
+  ///
+  /// TODO(sang): Currently, we need to pass the callback for connection because we are
+  /// using long polling internally. This should be changed once the bidirectional grpc
+  /// streaming is supported.
+  virtual void ConnectToSubscriber(const rpc::PubsubLongPollingRequest &request,
+                                   rpc::PubsubLongPollingReply *reply,
+                                   rpc::SendReplyCallback send_reply_callback) = 0;
+
   /// Register the subscription.
   ///
   /// \param channel_type The type of the channel.
@@ -339,7 +348,7 @@ class Publisher : public PublisherInterface {
   /// streaming is supported.
   void ConnectToSubscriber(const rpc::PubsubLongPollingRequest &request,
                            rpc::PubsubLongPollingReply *reply,
-                           rpc::SendReplyCallback send_reply_callback);
+                           rpc::SendReplyCallback send_reply_callback) override;
 
   /// Register the subscription.
   ///

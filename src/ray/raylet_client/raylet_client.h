@@ -51,6 +51,87 @@ namespace ray {
 
 class RayletClientInterface {
  public:
+  /// Notify the raylet that this client is disconnecting gracefully. This
+  /// is used by actors to exit gracefully so that the raylet doesn't
+  /// propagate an error message to the driver.
+  ///
+  /// It's a blocking call.
+  ///
+  /// \param disconnect_type The reason why this worker process is disconnected.
+  /// \param disconnect_detail The detailed reason for a given exit.
+  /// \return ray::Status.
+  virtual ray::Status Disconnect(
+      const rpc::WorkerExitType &exit_type,
+      const std::string &exit_detail,
+      const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes) = 0;
+
+  /// Tell the raylet which port this worker's gRPC server is listening on.
+  ///
+  /// \param port The port.
+  /// \return ray::Status.
+  virtual Status AnnounceWorkerPortForWorker(int port) = 0;
+
+  /// Tell the raylet this driver and its job is ready to run, with port and entrypoint.
+  ///
+  /// \param port The port.
+  /// \param entrypoint The entrypoint of the driver's job.
+  /// \return ray::Status.
+  virtual Status AnnounceWorkerPortForDriver(int port, const std::string &entrypoint) = 0;
+
+  /// Tell the raylet that the client has finished executing a task.
+  ///
+  /// \return ray::Status.
+  virtual ray::Status ActorCreationTaskDone() = 0;
+
+  /// Tell the raylet to reconstruct or fetch objects.
+  ///
+  /// \param object_ids The IDs of the objects to fetch.
+  /// \param owner_addresses The addresses of the workers that own the objects.
+  /// \param fetch_only Only fetch objects, do not reconstruct them.
+  /// \param current_task_id The task that needs the objects.
+  /// \return int 0 means correct, other numbers mean error.
+  virtual ray::Status FetchOrReconstruct(const std::vector<ObjectID> &object_ids,
+                                         const std::vector<rpc::Address> &owner_addresses,
+                                         bool fetch_only,
+                                         const TaskID &current_task_id) = 0;
+
+  /// Notify the raylet that this client (worker) is no longer blocked.
+  ///
+  /// \param current_task_id The task that is no longer blocked.
+  /// \return ray::Status.
+  virtual ray::Status NotifyUnblocked(const TaskID &current_task_id) = 0;
+
+  /// Notify the raylet that this client is blocked. This is only used for direct task
+  /// calls. Note that ordering of this with respect to Unblock calls is important.
+  ///
+  /// \return ray::Status.
+  virtual ray::Status NotifyDirectCallTaskBlocked() = 0;
+
+  /// Notify the raylet that this client is unblocked. This is only used for direct task
+  /// calls. Note that ordering of this with respect to Block calls is important.
+  ///
+  /// \return ray::Status.
+  virtual ray::Status NotifyDirectCallTaskUnblocked() = 0;
+
+  /// Wait for the given objects until timeout expires or num_return objects are
+  /// found.
+  ///
+  /// \param object_ids The objects to wait for.
+  /// \param owner_addresses The addresses of the workers that own the objects.
+  /// \param num_returns The number of objects to wait for.
+  /// \param timeout_milliseconds Duration, in milliseconds, to wait before returning.
+  /// \param current_task_id The task that called wait.
+  /// \param result A pair with the first element containing the object ids that were
+  /// found, and the second element the objects that were not found.
+  /// \return ray::StatusOr containing error status or the set of object ids that were
+  /// found.
+  virtual ray::StatusOr<absl::flat_hash_set<ObjectID>> Wait(
+      const std::vector<ObjectID> &object_ids,
+      const std::vector<rpc::Address> &owner_addresses,
+      int num_returns,
+      int64_t timeout_milliseconds,
+      const TaskID &current_task_id) = 0;
+
   /// Request to a raylet to pin a plasma object. The callback will be sent via gRPC.
   virtual void PinObjectIDs(
       const rpc::Address &caller_address,
@@ -150,6 +231,27 @@ class RayletClientInterface {
   virtual ray::Status WaitForActorCallArgs(
       const std::vector<rpc::ObjectReference> &references, int64_t tag) = 0;
 
+  /// Push an error to the relevant driver.
+  ///
+  /// \param The ID of the job_id that the error is for.
+  /// \param The type of the error.
+  /// \param The error message.
+  /// \param The timestamp of the error.
+  /// \return ray::Status.
+  virtual ray::Status PushError(const ray::JobID &job_id,
+                                const std::string &type,
+                                const std::string &error_message,
+                                double timestamp) = 0;
+
+  /// Free a list of objects from object stores.
+  ///
+  /// \param object_ids A list of ObjectsIDs to be deleted.
+  /// \param local_only Whether keep this request with local object store
+  /// or send it to all the object stores.
+  /// \return ray::Status.
+  virtual ray::Status FreeObjects(const std::vector<ray::ObjectID> &object_ids,
+                                  bool local_only) = 0;
+
   virtual void GetResourceLoad(
       const rpc::ClientCallback<rpc::GetResourceLoadReply> &callback) = 0;
   /// Registers a mutable object on this node so that it can be read. Writes are performed
@@ -197,8 +299,13 @@ class RayletClientInterface {
   virtual void GetSystemConfig(
       const rpc::ClientCallback<rpc::GetSystemConfigReply> &callback) = 0;
 
+  virtual void GlobalGC(const rpc::ClientCallback<rpc::GlobalGCReply> &callback) = 0;
+
   virtual void NotifyGCSRestart(
       const rpc::ClientCallback<rpc::NotifyGCSRestartReply> &callback) = 0;
+
+  virtual void SubscribeToPlasma(const ObjectID &object_id,
+                                 const rpc::Address &owner_address) = 0;
 
   virtual void ShutdownRaylet(
       const NodeID &node_id,
@@ -224,6 +331,8 @@ class RayletClientInterface {
   virtual void GetNodeStats(
       const rpc::GetNodeStatsRequest &request,
       const rpc::ClientCallback<rpc::GetNodeStatsReply> &callback) = 0;
+
+  virtual int64_t GetPinsInFlight() const = 0;
 
   virtual ~RayletClientInterface() = default;
 };
@@ -356,7 +465,7 @@ class RayletClient : public RayletClientInterface {
   ray::Status PushError(const ray::JobID &job_id,
                         const std::string &type,
                         const std::string &error_message,
-                        double timestamp);
+                        double timestamp) override;
 
   /// Free a list of objects from object stores.
   ///
@@ -364,7 +473,8 @@ class RayletClient : public RayletClientInterface {
   /// \param local_only Whether keep this request with local object store
   /// or send it to all the object stores.
   /// \return ray::Status.
-  ray::Status FreeObjects(const std::vector<ray::ObjectID> &object_ids, bool local_only);
+  ray::Status FreeObjects(const std::vector<ray::ObjectID> &object_ids,
+                          bool local_only) override;
 
   std::shared_ptr<grpc::Channel> GetChannel() const override;
 
@@ -464,7 +574,7 @@ class RayletClient : public RayletClientInterface {
   void GetSystemConfig(
       const rpc::ClientCallback<rpc::GetSystemConfigReply> &callback) override;
 
-  void GlobalGC(const rpc::ClientCallback<rpc::GlobalGCReply> &callback);
+  void GlobalGC(const rpc::ClientCallback<rpc::GlobalGCReply> &callback) override;
 
   void GetResourceLoad(
       const rpc::ClientCallback<rpc::GetResourceLoadReply> &callback) override;
@@ -472,13 +582,14 @@ class RayletClient : public RayletClientInterface {
   void NotifyGCSRestart(
       const rpc::ClientCallback<rpc::NotifyGCSRestartReply> &callback) override;
 
-  void SubscribeToPlasma(const ObjectID &object_id, const rpc::Address &owner_address);
+  void SubscribeToPlasma(const ObjectID &object_id,
+                         const rpc::Address &owner_address) override;
 
   WorkerID GetWorkerID() const { return worker_id_; }
 
   const ResourceMappingType &GetResourceIDs() const { return resource_ids_; }
 
-  int64_t GetPinsInFlight() const { return pins_in_flight_.load(); }
+  int64_t GetPinsInFlight() const override { return pins_in_flight_.load(); }
 
   void GetNodeStats(const rpc::GetNodeStatsRequest &request,
                     const rpc::ClientCallback<rpc::GetNodeStatsReply> &callback) override;

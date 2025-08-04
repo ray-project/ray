@@ -16,9 +16,51 @@ namespace ray {
 
 class MockRayletClientInterface : public RayletClientInterface {
  public:
+  MOCK_METHOD(
+      ray::Status,
+      Disconnect,
+      (const rpc::WorkerExitType &exit_type,
+       const std::string &exit_detail,
+       const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes),
+      (override));
+  MOCK_METHOD(Status, AnnounceWorkerPortForWorker, (int port), (override));
+  MOCK_METHOD(Status,
+              AnnounceWorkerPortForDriver,
+              (int port, const std::string &entrypoint),
+              (override));
+  MOCK_METHOD(ray::Status, ActorCreationTaskDone, (), (override));
+  MOCK_METHOD(ray::Status,
+              FetchOrReconstruct,
+              (const std::vector<ObjectID> &object_ids,
+               const std::vector<rpc::Address> &owner_addresses,
+               bool fetch_only,
+               const TaskID &current_task_id),
+              (override));
+  MOCK_METHOD(ray::Status, NotifyUnblocked, (const TaskID &current_task_id), (override));
+  MOCK_METHOD(ray::Status, NotifyDirectCallTaskBlocked, (), (override));
+  MOCK_METHOD(ray::Status, NotifyDirectCallTaskUnblocked, (), (override));
+  MOCK_METHOD(ray::StatusOr<absl::flat_hash_set<ObjectID>>,
+              Wait,
+              (const std::vector<ObjectID> &object_ids,
+               const std::vector<rpc::Address> &owner_addresses,
+               int num_returns,
+               int64_t timeout_milliseconds,
+               const TaskID &current_task_id),
+              (override));
   MOCK_METHOD(ray::Status,
               WaitForActorCallArgs,
               (const std::vector<rpc::ObjectReference> &references, int64_t tag),
+              (override));
+  MOCK_METHOD(ray::Status,
+              PushError,
+              (const ray::JobID &job_id,
+               const std::string &type,
+               const std::string &error_message,
+               double timestamp),
+              (override));
+  MOCK_METHOD(ray::Status,
+              FreeObjects,
+              (const std::vector<ray::ObjectID> &object_ids, bool local_only),
               (override));
   MOCK_METHOD(std::shared_ptr<grpc::Channel>, GetChannel, (), (const));
   MOCK_METHOD(void,
@@ -150,6 +192,15 @@ class MockRayletClientInterface : public RayletClientInterface {
               (const rpc::GetNodeStatsRequest &request,
                const rpc::ClientCallback<rpc::GetNodeStatsReply> &callback),
               (override));
+  MOCK_METHOD(void,
+              GlobalGC,
+              (const rpc::ClientCallback<rpc::GlobalGCReply> &callback),
+              (override));
+  MOCK_METHOD(void,
+              SubscribeToPlasma,
+              (const ObjectID &object_id, const rpc::Address &owner_address),
+              (override));
+  MOCK_METHOD(int64_t, GetPinsInFlight, (), (const, override));
 };
 
 }  // namespace ray
