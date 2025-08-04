@@ -15,18 +15,42 @@ if [ "$EUID" -eq 0 ]; then
   useradd -m -u "$HOST_UID" -g "$HOST_GID" -d /ray builduser
 
   # Give sudo access
-  echo "builduser ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+  echo "builduser ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/builduser
+  chmod 0440 /etc/sudoers.d/builduser
 
-  exec sudo -E -u builduser HOME="$HOME" bash "$0" "$@"
-
-  exit 0
+  exec sudo -E -u builduser HOME="$HOME" bash "$0" "$@" || {
+    echo "Failed to exec as builduser." >&2
+    exit 1
+  }
 
 fi
 
-# Install ray dashboard dependencies.
-curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.34.0/install.sh | bash
-source "$HOME"/.nvm/nvm.sh
+# -----------------------------
+# Secure nvm installation
+# -----------------------------
+NVM_VERSION="v0.39.7"
+NVM_INSTALL_SH="install.sh"
+NVM_INSTALL_URL="https://raw.githubusercontent.com/nvm-sh/nvm/${NVM_VERSION}/${NVM_INSTALL_SH}"
+NVM_SHA256="e4217e0ed169b94f3f3e73e5ddf1e99b7cf60ff6a97ef030d55d99f85977a8e4"  # Precomputed hash (valid as of Aug 2025)
 
+# Download nvm installer
+curl -fsSL -o "$NVM_INSTALL_SH" "$NVM_INSTALL_URL"
+
+# Verify checksum
+echo "${NVM_SHA256}  ${NVM_INSTALL_SH}" | sha256sum -c -
+
+# Run installer
+bash "$NVM_INSTALL_SH"
+rm "$NVM_INSTALL_SH"
+
+# Load nvm into shell
+export NVM_DIR="$HOME/.nvm"
+# shellcheck source=/dev/null
+source "$NVM_DIR/nvm.sh"
+
+# -----------------------------
+# Setup Node.js and build dashboard
+# -----------------------------
 NODE_VERSION="14"
 nvm install "$NODE_VERSION"
 nvm use "$NODE_VERSION"

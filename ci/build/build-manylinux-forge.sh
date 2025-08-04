@@ -25,7 +25,7 @@ if [[ "${RAY_INSTALL_JAVA}" == "1" ]]; then
 fi
 
 # Install bazel
-curl -L -o bazelisk https://github.com/bazelbuild/bazelisk/releases/latest/download/bazelisk-linux-amd64
+curl -L -o bazelisk https://github.com/bazelbuild/bazelisk/releases/v1.19.0/download/bazelisk-linux-amd64
 chmod +x bazelisk
 mkdir -p "$HOME"/bin
 sudo cp bazelisk /usr/local/bin/bazel
