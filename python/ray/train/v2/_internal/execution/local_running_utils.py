@@ -152,7 +152,9 @@ LOCAL_RUNNING_DATA_PROVIDER_NAMESPACE = "local_running_data_provider_namespace"
 async def maybe_start_local_running_data_provider(
     world_size: int, dataset: Dict[str, Dataset], local_rank: int
 ) -> ActorHandle:
-    """Create or get the LocalRunningDataProvider actor. This named actor is created only once."""
+    """Create or get the LocalRunningDataProvider actor. This named actor is created only once across processes.
+    The returned ActorHandle should be stored when the ray data is needed to avoid unexpected garbage collection.
+    """
     actor = LocalRunningDataProvider.options(
         name=LOCAL_RUNNING_DATA_PROVIDER_ACTOR_NAME,
         namespace=LOCAL_RUNNING_DATA_PROVIDER_NAMESPACE,
@@ -170,7 +172,7 @@ async def get_dataset_shard(
 
 
 async def finish_worker_and_wait(provider_actor: ActorHandle, local_rank: int) -> None:
-    """Mark a worker as finished and wait for all workers if this is the owner.
+    """Mark a worker as finished. And wait for all workers to finish if this is the owner.
 
     Args:
         provider_actor: The LocalRunningDataProvider actor handle.

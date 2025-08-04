@@ -121,7 +121,7 @@ asyncio.run(run_test())
         worker_results = {}
 
         for rank, proc in worker_processes:
-            out = proc.stdout.read().decode("ascii")
+            out = proc.stdout.read().decode("utf-8")
             proc.wait()
 
             # Parse results from this worker
