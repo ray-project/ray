@@ -234,7 +234,6 @@ pyx_library(
     ),
     deps = [
         "//:exported_internal",
-        "//:raylet_lib",
         "//:src/ray/ray_exported_symbols.lds",
         "//:src/ray/ray_version_script.lds",
         "//src/ray/core_worker:core_worker_lib",
