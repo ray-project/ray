@@ -124,7 +124,6 @@ def is_default_app_running():
 
 
 @pytest.mark.parametrize("model_name", ["deepseek-ai/DeepSeek-V2-Lite"])
-@pytest.mark.asyncio(scope="function")
 def test_deepseek_model(model_name):
     """
     Test that the deepseek model can be loaded successfully.
@@ -169,6 +168,7 @@ def remote_model_app(request):
 
     base_config = {
         "model_loading_config": dict(
+            model_id="hmellor/Ilama-3.2-1B",
             model_source="hmellor/Ilama-3.2-1B",
         ),
         "runtime_env": dict(env_vars={"VLLM_USE_V1": "1"}),
