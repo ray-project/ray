@@ -1,12 +1,12 @@
-load("//bazel:ray.bzl", "ray_cc_binary", "ray_cc_library", "FLATC_ARGS")
 load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
+load("//bazel:ray.bzl", "FLATC_ARGS", "ray_cc_binary", "ray_cc_library")
 
 flatbuffer_cc_library(
     name = "node_manager_fbs",
     srcs = ["format/node_manager.fbs"],
     flatc_args = FLATC_ARGS,
     # XXX: format/ ?
-    # out_prefix = "ray/raylet/format/",
+    out_prefix = "format/",
     visibility = ["//visibility:public"],
 )
 
@@ -14,6 +14,7 @@ ray_cc_library(
     name = "agent_manager",
     srcs = ["agent_manager.cc"],
     hdrs = ["agent_manager.h"],
+    visibility = ["//visibility:private"],
     deps = [
         "//src/ray/common:id",
         "//src/ray/common:ray_config",
@@ -25,22 +26,21 @@ ray_cc_library(
         "//src/ray/util:thread_utils",
         "@boost//:asio",
     ],
-    visibility = ["//visibility:private"],
 )
 
 ray_cc_library(
     name = "dependency_manager",
     srcs = ["dependency_manager.cc"],
     hdrs = ["dependency_manager.h"],
+    visibility = [":__subpackages__"],
     deps = [
         "//src/ray/common:id",
         "//src/ray/common:task_common",
-        "//src/ray/object_manager:object_manager",
+        "//src/ray/object_manager",
         "//src/ray/util:counter_map",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
     ],
-    visibility = [":__subpackages__"],
 )
 
 # TODO(edoakes): looks like this belongs under scheduling/...
@@ -48,52 +48,53 @@ ray_cc_library(
     name = "local_task_manager",
     srcs = ["local_task_manager.cc"],
     hdrs = ["local_task_manager.h"],
+    visibility = [":__subpackages__"],
     deps = [
         ":dependency_manager",
         ":worker",
         ":worker_pool",
         "//src/ray/common:ray_object",
         "//src/ray/common:task_common",
-        "//src/ray/raylet/scheduling:scheduler_internal",
+        "//src/ray/object_manager:object_manager_common",
         "//src/ray/raylet/scheduling:cluster_resource_scheduler",
         "//src/ray/raylet/scheduling:local_task_manager_interface",
-        "//src/ray/object_manager:object_manager_common",
+        "//src/ray/raylet/scheduling:scheduler_internal",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
     ],
-    visibility = [":__subpackages__"],
 )
 
 ray_cc_library(
     name = "placement_group_resource_manager",
     srcs = ["placement_group_resource_manager.cc"],
     hdrs = ["placement_group_resource_manager.h"],
+    visibility = [":__subpackages__"],
     deps = [
         "//src/ray/common:id",
-        "//src/ray/util:util",
         "//src/ray/common:task_common",
         "//src/ray/raylet/scheduling:cluster_resource_scheduler",
+        "//src/ray/util",
         "//src/ray/util:container_util",
         "@com_google_absl//absl/container:flat_hash_map",
     ],
-    visibility = [":__subpackages__"],
 )
 
 ray_cc_library(
     name = "wait_manager",
     srcs = ["wait_manager.cc"],
     hdrs = ["wait_manager.h"],
+    visibility = [":__subpackages__"],
     deps = [
         "//src/ray/common:id",
         "//src/ray/util:container_util",
     ],
-    visibility = [":__subpackages__"],
 )
 
 ray_cc_library(
     name = "worker",
     srcs = ["worker.cc"],
     hdrs = ["worker.h"],
+    visibility = [":__subpackages__"],
     deps = [
         ":node_manager_fbs",
         "//src/ray/common:id",
@@ -106,13 +107,13 @@ ray_cc_library(
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_prod",
     ],
-    visibility = [":__subpackages__"],
 )
 
 ray_cc_library(
     name = "worker_pool",
     srcs = ["worker_pool.cc"],
     hdrs = ["worker_pool.h"],
+    visibility = [":__subpackages__"],
     deps = [
         ":runtime_env_agent_client",
         ":worker",
@@ -127,13 +128,13 @@ ray_cc_library(
         "@boost//:system",
         "@com_google_absl//absl/strings",
     ],
-    visibility = [":__subpackages__"],
 )
 
 ray_cc_library(
     name = "runtime_env_agent_client",
     srcs = ["runtime_env_agent_client.cc"],
     hdrs = ["runtime_env_agent_client.h"],
+    visibility = [":__subpackages__"],
     deps = [
         "//src/ray/common:asio",
         "//src/ray/common:id",
@@ -146,24 +147,24 @@ ray_cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings:str_format",
     ],
-    visibility = [":__subpackages__"],
 )
 
 ray_cc_library(
     name = "local_object_manager_interface",
     hdrs = ["local_object_manager_interface.h"],
+    visibility = [":__subpackages__"],
     deps = [
         "//src/ray/common:id",
         "//src/ray/common:ray_object",
         "//src/ray/protobuf:node_manager_cc_proto",
     ],
-    visibility = [":__subpackages__"],
 )
 
 ray_cc_library(
     name = "local_object_manager",
     srcs = ["local_object_manager.cc"],
     hdrs = ["local_object_manager.h"],
+    visibility = [":__subpackages__"],
     deps = [
         ":local_object_manager_interface",
         ":worker_pool",
@@ -176,7 +177,6 @@ ray_cc_library(
         "//src/ray/pubsub:subscriber_lib",
         "//src/ray/rpc:core_worker_rpc",
     ],
-    visibility = [":__subpackages__"],
 )
 
 ray_cc_library(
@@ -191,6 +191,7 @@ ray_cc_library(
         "worker_killing_policy_group_by_owner.h",
         "worker_killing_policy_retriable_fifo.h",
     ],
+    visibility = [":__subpackages__"],
     deps = [
         ":worker",
         ":worker_pool",
@@ -201,7 +202,6 @@ ray_cc_library(
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_prod",
     ],
-    visibility = [":__subpackages__"],
 )
 
 ray_cc_library(
@@ -221,19 +221,20 @@ ray_cc_library(
             "-lpthread",
         ],
     }),
+    visibility = [":__subpackages__"],
     deps = [
+        ":agent_manager",
+        ":dependency_manager",
         ":local_object_manager",
         ":local_object_manager_interface",
-        ":node_manager_fbs",
-        ":agent_manager",
-        ":placement_group_resource_manager",
-        ":dependency_manager",
         ":local_task_manager",
+        ":node_manager_fbs",
+        ":placement_group_resource_manager",
         ":runtime_env_agent_client",
         ":wait_manager",
         ":worker",
-        ":worker_pool",
         ":worker_killing_policy",
+        ":worker_pool",
         "//src/ray/common:memory_monitor",
         "//src/ray/core_worker:experimental_mutable_object_provider",
         "//src/ray/gcs",
@@ -264,12 +265,12 @@ ray_cc_library(
         "@io_opencensus_cpp//opencensus/stats",
         "@io_opencensus_cpp//opencensus/tags",
     ],
-    visibility = [":__subpackages__"],
 )
 
 ray_cc_binary(
     name = "raylet",
     srcs = ["main.cc"],
+    visibility = ["//visibility:public"],
     deps = [
         ":local_object_manager",
         ":local_object_manager_interface",
@@ -279,10 +280,10 @@ ray_cc_binary(
         "//src/ray/common:status",
         "//src/ray/common:task_common",
         "//src/ray/common/cgroup:cgroup_manager",
+        "//src/ray/gcs/gcs_client:gcs_client_lib",
         "//src/ray/object_manager:ownership_object_directory",
         "//src/ray/raylet/scheduling:cluster_task_manager",
         "//src/ray/stats:stats_lib",
-        "//src/ray/gcs/gcs_client:gcs_client_lib",
         "//src/ray/util:cmd_line_utils",
         "//src/ray/util:event",
         "//src/ray/util:process",
@@ -291,5 +292,4 @@ ray_cc_binary(
         "@com_github_gflags_gflags//:gflags",
         "@nlohmann_json",
     ],
-    visibility = ["//visibility:public"],
 )
