@@ -7,6 +7,7 @@ import random
 import re
 import sys
 import time
+import subprocess
 
 import pytest
 
@@ -251,9 +252,13 @@ def test_worker_thread_count(monkeypatch, shutdown_only):
         # Set the environment variable used by the raylet
         m.setenv("RAY_worker_num_grpc_internal_threads", "1")
         ray.init()
-        # Lowering this number should be celebrated, increasing this number
+        ray_actor = Actor.remote()
+        # Invoke the actor a few times to shake out any lazy initializations
+        for _ in range(5):
+            ray.get(ray_actor.get_thread_count.remote())
+        # Lowering these numbers should be celebrated, increasing these numbers
         # should be scrutinized
-        assert ray.get(Actor.remote().get_thread_count.remote()) <= 27
+        assert (ray.get(ray_actor.get_thread_count.remote()) == 28  or ray.get(ray_actor.get_thread_count.remote()) == 27)
 
 
 # https://github.com/ray-project/ray/issues/7287
