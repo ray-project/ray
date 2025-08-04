@@ -94,7 +94,7 @@ class MockGcsClientNodeAccessor : public gcs::NodeInfoAccessor {
               AsyncGetAll,
               (const gcs::MultiItemCallback<rpc::GcsNodeInfo> &,
                int64_t,
-               std::optional<NodeID>),
+               const std::vector<NodeID> &),
               (override));
 
  private:
@@ -152,7 +152,7 @@ TEST_P(DefaultUnavailableTimeoutCallbackTest, NodeDeath) {
     return Invoke(
         [node_info_vector](const gcs::MultiItemCallback<rpc::GcsNodeInfo> &callback,
                            int64_t,
-                           std::optional<NodeID>) {
+                           const std::vector<NodeID> &) {
           callback(Status::OK(), node_info_vector);
         });
   };
@@ -179,21 +179,21 @@ TEST_P(DefaultUnavailableTimeoutCallbackTest, NodeDeath) {
         .WillOnce(Return(&node_info_alive))
         .WillOnce(Return(&node_info_dead));
     EXPECT_CALL(mock_node_accessor,
-                AsyncGetAll(_, _, std::make_optional(worker_1_node_id)))
+                AsyncGetAll(_, _, std::vector<NodeID>{worker_1_node_id}))
         .WillOnce(invoke_with_node_info_vector({node_info_alive}));
     EXPECT_CALL(mock_node_accessor, Get(worker_2_node_id, /*filter_dead_nodes=*/false))
         .WillOnce(Return(nullptr));
     EXPECT_CALL(mock_node_accessor,
-                AsyncGetAll(_, _, std::make_optional(worker_2_node_id)))
+                AsyncGetAll(_, _, std::vector<NodeID>{worker_2_node_id}))
         .WillOnce(invoke_with_node_info_vector({}));
   } else {
     EXPECT_CALL(mock_node_accessor,
-                AsyncGetAll(_, _, std::make_optional(worker_1_node_id)))
+                AsyncGetAll(_, _, std::vector<NodeID>{worker_1_node_id}))
         .WillOnce(invoke_with_node_info_vector({node_info_alive}))
         .WillOnce(invoke_with_node_info_vector({node_info_alive}))
         .WillOnce(invoke_with_node_info_vector({node_info_dead}));
     EXPECT_CALL(mock_node_accessor,
-                AsyncGetAll(_, _, std::make_optional(worker_2_node_id)))
+                AsyncGetAll(_, _, std::vector<NodeID>{worker_2_node_id}))
         .WillOnce(invoke_with_node_info_vector({}));
   }
 
@@ -239,10 +239,12 @@ TEST_P(DefaultUnavailableTimeoutCallbackTest, WorkerDeath) {
   } else {
     EXPECT_CALL(gcs_client_.MockNodeAccessor(), AsyncGetAll(_, _, _))
         .Times(2)
-        .WillRepeatedly(Invoke(
-            [&](const gcs::MultiItemCallback<rpc::GcsNodeInfo> &callback,
-                int64_t,
-                std::optional<NodeID>) { callback(Status::OK(), {node_info_alive}); }));
+        .WillRepeatedly(
+            Invoke([&](const gcs::MultiItemCallback<rpc::GcsNodeInfo> &callback,
+                       int64_t,
+                       const std::vector<NodeID> &) {
+              callback(Status::OK(), {node_info_alive});
+            }));
   }
 
   auto raylet_client = std::dynamic_pointer_cast<MockRayletClientInterface>(

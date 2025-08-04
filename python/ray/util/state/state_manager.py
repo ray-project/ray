@@ -312,7 +312,8 @@ class StateDataSourceClient:
         if filters is None:
             filters = []
 
-        req_filters = GetAllNodeInfoRequest.Filters()
+        node_selectors = []
+        state_filter = None
         for filter in filters:
             key, predicate, value = filter
             if predicate != "=":
@@ -320,18 +321,24 @@ class StateDataSourceClient:
                 continue
 
             if key == "node_id":
-                req_filters.node_id = NodeID(hex_to_binary(value)).binary()
+                node_selector = GetAllNodeInfoRequest.NodeSelector()
+                node_selector.node_id = NodeID(hex_to_binary(value)).binary()
+                node_selectors.append(node_selector)
             elif key == "state":
                 value = value.upper()
                 if value not in GcsNodeInfo.GcsNodeState.keys():
                     raise ValueError(f"Invalid node state for filtering: {value}")
-                req_filters.state = GcsNodeInfo.GcsNodeState.Value(value)
+                state_filter = GcsNodeInfo.GcsNodeState.Value(value)
             elif key == "node_name":
-                req_filters.node_name = value
+                node_selector = GetAllNodeInfoRequest.NodeSelector()
+                node_selector.node_name = value
+                node_selectors.append(node_selector)
             else:
                 continue
 
-        request = GetAllNodeInfoRequest(limit=limit, filters=req_filters)
+        request = GetAllNodeInfoRequest(
+            limit=limit, node_selectors=node_selectors, state_filter=state_filter
+        )
         reply = await self._gcs_node_info_stub.GetAllNodeInfo(request, timeout=timeout)
         return reply
 
