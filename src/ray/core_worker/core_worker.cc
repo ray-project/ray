@@ -336,7 +336,6 @@ CoreWorker::CoreWorker(
       task_event_buffer_(std::move(task_event_buffer)),
       pid_(pid),
       runtime_env_json_serialization_cache_(kDefaultSerializationCacheCap) {
-
   // Initialize task receivers.
   if (options_.worker_type == WorkerType::WORKER || options_.is_local_mode) {
     RAY_CHECK(options_.task_execution_callback != nullptr);
@@ -2064,10 +2063,14 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
                       task_options.serialized_runtime_env_info,
                       call_site,
 <<<<<<< HEAD
+<<<<<<< HEAD
                       worker_context_->GetMainThreadOrActorCreationTaskID(),
 =======
                       worker_context_.GetMainThreadOrActorCreationTaskID(),
 >>>>>>> af5c220b7f (fix comment)
+=======
+                      worker_context_->GetMainThreadOrActorCreationTaskID(),
+>>>>>>> afaa8accf6 (update)
                       /*concurrency_group_name=*/"",
                       /*include_job_config=*/true,
                       /*generator_backpressure_num_objects=*/

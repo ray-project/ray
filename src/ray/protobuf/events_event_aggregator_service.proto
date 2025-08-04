@@ -49,9 +49,6 @@ message AddEventsStatus {
 message AddEventsReply {
   // Status of the add event request result.
   AddEventsStatus status = 1;
-  // Number of events that failed to be added to the event aggregator due to unexpected
-  // errors.
-  int64 num_events_failed_to_report_to_aggregator = 2;
 }
 
 // Service for adding events to the event aggregator.

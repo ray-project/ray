@@ -42,7 +42,6 @@ using ::testing::DoAll;
 using ::testing::Invoke;
 using ::testing::MakeAction;
 using ::testing::Return;
-using ::testing::SaveArg;
 
 namespace ray {
 
@@ -459,7 +458,6 @@ TEST_P(TaskEventBufferTestDifferentDestination, TestFlushEvents) {
   }
 
   // If ray events to aggregator is enabled, expect to call AddEvents grpc.
-
   auto event_aggregator_client = static_cast<MockEventAggregatorClient *>(
       task_event_buffer_->event_aggregator_client_.get());
   rpc::events::AddEventsRequest add_events_request;
@@ -478,18 +476,10 @@ TEST_P(TaskEventBufferTestDifferentDestination, TestFlushEvents) {
     EXPECT_CALL(*event_aggregator_client, AddEvents(_, _)).Times(0);
   }
 
-  // Action
   task_event_buffer_->FlushEvents(false);
 
-  // Verify
   // Expect no more events.
   ASSERT_EQ(task_event_buffer_->GetNumTaskEventsStored(), 0);
-
-  // Make sure the events sent to the aggregator are expected if ray events to
-  // aggregator is enabled.
-  if (to_aggregator) {
-    CompareRayEventsData(add_events_request.events_data(), expected_ray_event_data);
-  }
 }
 
 TEST_P(TaskEventBufferTestDifferentDestination, TestFailedFlush) {
@@ -793,14 +783,18 @@ TEST_P(TaskEventBufferTestLimitBufferDifferentDestination,
   if (to_aggregator) {
     rpc::events::AddEventsReply reply;
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
     reply.mutable_status()->set_code(/*OK*/ 0);
     reply.mutable_status()->set_message("All events received");
 >>>>>>> 60c9e0c4ea (uncomment tests)
+=======
+>>>>>>> afaa8accf6 (update)
     Status status = Status::OK();
     EXPECT_CALL(*event_aggregator_client, AddEvents(_, _))
         .WillOnce(DoAll(
             Invoke([&](const rpc::events::AddEventsRequest &request,
+<<<<<<< HEAD
 <<<<<<< HEAD
                        const rpc::ClientCallback<rpc::events::AddEventsReply> &callback) {
               CompareRayEventsData(request.events_data(), expected_ray_events_data);
@@ -816,6 +810,13 @@ TEST_P(TaskEventBufferTestLimitBufferDifferentDestination,
                 new MockEventAggregatorAddEvents(std::move(status),
                 std::move(reply)))));
 >>>>>>> 60c9e0c4ea (uncomment tests)
+=======
+                       const rpc::ClientCallback<rpc::events::AddEventsReply> &callback) {
+              CompareRayEventsData(request.events_data(), expected_ray_events_data);
+            }),
+            MakeAction(
+                new MockEventAggregatorAddEvents(std::move(status), std::move(reply)))));
+>>>>>>> afaa8accf6 (update)
   } else {
     EXPECT_CALL(*event_aggregator_client, AddEvents(_, _)).Times(0);
   }
