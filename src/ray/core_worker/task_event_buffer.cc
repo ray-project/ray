@@ -745,16 +745,16 @@ void TaskEventBufferImpl::SendTaskEventsToGCS(std::unique_ptr<rpc::TaskEventData
 void TaskEventBufferImpl::SendRayEventsToAggregator(
     std::unique_ptr<rpc::events::RayEventsData> data) {
   event_aggregator_grpc_in_progress_ = true;
-  auto num_task_attempts_to_send = data->events_size();
+  auto num_task_events_to_send = data->events_size();
   auto num_dropped_task_attempts_to_send =
       data->task_events_metadata().dropped_task_attempts_size();
 
   rpc::ClientCallback<rpc::events::AddEventsReply> on_complete =
-      [this, num_task_attempts_to_send, num_dropped_task_attempts_to_send](
+      [this, num_task_events_to_send, num_dropped_task_attempts_to_send](
           const Status &status, const rpc::events::AddEventsReply &reply) {
         if (!status.ok()) {
           RAY_LOG(WARNING) << "GRPC Error: Failed to send task events of "
-                           << num_task_attempts_to_send << " tasks attempts, and report "
+                           << num_task_events_to_send << " tasks attempts, and report "
                            << num_dropped_task_attempts_to_send
                            << " task attempts lost on worker to the event aggregator."
                            << "[status=" << status << "]";
@@ -762,11 +762,11 @@ void TaskEventBufferImpl::SendRayEventsToAggregator(
               TaskEventBufferCounter::kTotalNumFailedRequestsToAggregator);
           this->stats_counter_.Increment(
               TaskEventBufferCounter::kTotalNumTaskEventsFailedToReportToAggregator,
-              num_task_attempts_to_send);
+              num_task_events_to_send);
         } else {
           this->stats_counter_.Increment(
               TaskEventBufferCounter::kTotalNumTaskEventsReportedToAggregator,
-              num_task_attempts_to_send);
+              num_task_events_to_send);
           this->stats_counter_.Increment(
               TaskEventBufferCounter::kTotalNumLostTaskAttemptsReportedToAggregator,
               num_dropped_task_attempts_to_send);
