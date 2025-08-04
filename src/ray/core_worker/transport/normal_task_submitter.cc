@@ -734,14 +734,12 @@ Status NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
       return Status::OK();
     }
 
-    // Finished or Failed already.
     task_manager_.MarkTaskCanceled(task_id);
     if (!task_manager_.IsTaskPending(task_id)) {
       // The task is finished or failed so marking the task as cancelled is sufficient.
       return Status::OK();
     }
 
-    // For tasks that we've fired off RequestWorkerLease for
     auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
     auto &scheduling_tasks = scheduling_key_entry.task_queue;
     // This cancels tasks that have completed dependencies and are awaiting
@@ -757,8 +755,8 @@ Status NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
       }
     }
 
-    // This will get removed either when the RPC call to cancel is returned
-    // or when all dependencies are resolved.
+    // This will get removed either when the RPC call to cancel is returned, when all
+    // dependencies are resolved, or when dependency resolution is successfully cancelled.
     RAY_CHECK(cancelled_tasks_.emplace(task_id).second);
     auto rpc_client = executing_tasks_.find(task_id);
 

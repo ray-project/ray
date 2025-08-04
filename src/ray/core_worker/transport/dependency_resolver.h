@@ -61,6 +61,7 @@ class LocalDependencyResolver {
 
   /// Cancel resolution of the given task's dependencies.
   /// If cancellation succeeds, the registered callback will not be called.
+  /// \return true if dependency resolution was successfully cancelled
   bool CancelDependencyResolution(const TaskID &task_id);
 
   /// Return the number of tasks pending dependency resolution.
