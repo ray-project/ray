@@ -222,8 +222,14 @@ class StateApiClient(SubmissionClient):
                 err_str += f"Response(url={response.url},status={response.status_code})"
                 raise RayStateApiException(err_str) from e
 
-        # Process the response.
-        response = response.json()
+        try:
+            # Process the response.
+            response = response.json()
+        except Exception as e:
+            raise RayStateApiException(
+                f"Failed to parse Response(url={response.url}, "
+                f"status={response.status_code}, text='{response.text}')"
+            ) from e
         if response["result"] is False:
             raise RayStateApiException(
                 "API server internal error. See dashboard.log file for more details. "
