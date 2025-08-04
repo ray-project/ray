@@ -88,9 +88,10 @@ def test_map(shutdown_only, restore_data_context):
         block_size_expected=ctx.target_max_block_size // 2,
     )
 
-    # Setting the shuffle block size doesn't do anything for
-    # map-only Datasets.
+    # Setting the shuffle block size prints a warning and actually resets
+    # target_max_block_size
     ctx.target_shuffle_max_block_size = ctx.target_max_block_size / 2
+    num_blocks_expected *= 2
 
     # Test read.
     ds = ray.data.range(100_000, override_num_blocks=1).materialize()
@@ -109,11 +110,14 @@ def test_map(shutdown_only, restore_data_context):
         .map(lambda row: row)
         .materialize()
     )
+
+    # NOTE: `initial_num_blocks` is based on estimate, hence we bake in 50% margin
     assert (
         num_blocks_expected * 2
         <= ds._plan.initial_num_blocks()
-        <= num_blocks_expected * 2 + 1
+        <= num_blocks_expected * 3
     )
+
     last_snapshot = assert_blocks_expected_in_plasma(
         last_snapshot,
         num_blocks_expected * 2,
