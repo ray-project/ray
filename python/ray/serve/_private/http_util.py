@@ -377,16 +377,7 @@ class ASGIReceiveProxy:
                 pickled_messages = await self._receive_asgi_messages(
                     self._request_metadata
                 )
-                if isinstance(pickled_messages, bytes):
-                    messages = pickle.loads(pickled_messages)
-                else:
-                    messages = (
-                        pickled_messages
-                        if isinstance(pickled_messages, list)
-                        else [pickled_messages]
-                    )
-
-                for message in messages:
+                for message in pickle.loads(pickled_messages):
                     self.queue.put_nowait(message)
 
                     if message["type"] in {"http.disconnect", "websocket.disconnect"}:

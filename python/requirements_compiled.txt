@@ -52,7 +52,6 @@ aiohttp==3.11.16
     #   -r python/requirements/test-requirements.txt
     #   aiobotocore
     #   aiohttp-cors
-    #   datasets
     #   delta-sharing
     #   fsspec
     #   google-auth
@@ -156,13 +155,18 @@ azure-common==1.1.28
     #   azure-mgmt-compute
     #   azure-mgmt-network
     #   azure-mgmt-resource
+    #   smart-open
 azure-core==1.29.5
     # via
     #   azure-identity
     #   azure-mgmt-core
+    #   azure-storage-blob
     #   msrest
+    #   smart-open
 azure-identity==1.17.1
-    # via -r python/requirements/test-requirements.txt
+    # via
+    #   -r python/requirements/cloud-requirements.txt
+    #   -r python/requirements/test-requirements.txt
 azure-mgmt-compute==31.0.0
     # via -r python/requirements/test-requirements.txt
 azure-mgmt-core==1.4.0
@@ -175,6 +179,8 @@ azure-mgmt-network==25.4.0
     # via -r python/requirements/test-requirements.txt
 azure-mgmt-resource==23.1.1
     # via -r python/requirements/test-requirements.txt
+azure-storage-blob==12.22.0
+    # via smart-open
 babel==2.13.1
     # via
     #   jupyterlab-server
@@ -356,6 +362,7 @@ cryptography==44.0.3 ; sys_platform != "darwin"
     #   aim
     #   azure-cli-core
     #   azure-identity
+    #   azure-storage-blob
     #   moto
     #   msal
     #   paramiko
@@ -381,7 +388,7 @@ dask==2023.6.1 ; python_version < "3.12"
     #   distributed
 databricks-sdk==0.52.0
     # via mlflow-skinny
-datasets==2.19.1
+datasets==3.6.0
     # via
     #   -r python/requirements/ml/data-test-requirements.txt
     #   -r python/requirements/ml/train-requirements.txt
@@ -574,7 +581,7 @@ getdaft==0.4.3
     # via -r python/requirements/ml/data-requirements.txt
 gitdb==4.0.11
     # via gitpython
-gitpython==3.1.40
+gitpython==3.1.44
     # via
     #   -r python/requirements/cloud-requirements.txt
     #   mlflow-skinny
@@ -628,6 +635,7 @@ google-cloud-storage==2.14.0
     # via
     #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements/test-requirements.txt
+    #   smart-open
 google-crc32c==1.5.0
     # via
     #   google-cloud-storage
@@ -730,7 +738,7 @@ httpx==0.27.2
     #   -r python/requirements/test-requirements.txt
     #   gradio
     #   gradio-client
-hudi==0.2.0
+hudi==0.4.0
     # via -r python/requirements/ml/data-test-requirements.txt
 huggingface-hub==0.27.0
     # via
@@ -816,6 +824,7 @@ isodate==0.6.1
     #   azure-mgmt-compute
     #   azure-mgmt-network
     #   azure-mgmt-resource
+    #   azure-storage-blob
     #   msrest
 isoduration==20.11.0
     # via jsonschema
@@ -1237,7 +1246,6 @@ numpy==1.26.4
     #   patsy
     #   pettingzoo
     #   prophet
-    #   pyarrow
     #   pylance
     #   pymars
     #   pyro-ppl
@@ -1458,7 +1466,7 @@ plotly==5.23.0
     # via ax-platform
 pluggy==1.3.0
     # via pytest
-polars==0.14.21
+polars==1.30.0
     # via -r python/requirements/test-requirements.txt
 portalocker==2.8.2
     # via
@@ -1546,7 +1554,7 @@ py-spy==0.4.0 ; python_version < "3.12"
     # via -r python/requirements.txt
 py4j==0.10.9.7
     # via pyspark
-pyarrow==14.0.2
+pyarrow==19.0.1
     # via
     #   -r python/requirements.txt
     #   dask
@@ -1561,9 +1569,7 @@ pyarrow==14.0.2
     #   raydp
     #   triad
 pyarrow-hotfix==0.7
-    # via
-    #   datasets
-    #   hudi
+    # via hudi
 pyasn1==0.5.1
     # via
     #   oauth2client
@@ -1574,6 +1580,8 @@ pyasn1-modules==0.3.0
     # via
     #   google-auth
     #   oauth2client
+pybase64==1.4.2
+    # via -r python/requirements/ml/data-test-requirements.txt
 pycparser==2.21
     # via cffi
 pycurl==7.45.3
@@ -1811,7 +1819,7 @@ qpd==0.4.4
     # via fugue
 raydp==1.7.0b20250423.dev0
     # via -r python/requirements/ml/data-test-requirements.txt
-redis==4.4.2
+redis==4.5.4
     # via -r python/requirements/test-requirements.txt
 referencing==0.36.2
     # via
@@ -1860,6 +1868,7 @@ requests==2.32.3
     #   responses
     #   segment-analytics-python
     #   semgrep
+    #   smart-open
     #   snowflake-connector-python
     #   sphinx
     #   tensorboard
@@ -2270,7 +2279,7 @@ tornado==6.1 ; python_version < "3.12"
     #   notebook
     #   pymars
     #   terminado
-tqdm==4.64.1
+tqdm==4.67.1
     # via
     #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements/test-requirements.txt
@@ -2343,6 +2352,7 @@ typing-extensions==4.12.2
     #   aws-sam-translator
     #   azure-core
     #   azure-identity
+    #   azure-storage-blob
     #   bokeh
     #   configspace
     #   etils

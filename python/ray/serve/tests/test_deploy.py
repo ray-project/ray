@@ -388,10 +388,12 @@ def test_reconfigure_does_not_run_while_there_are_active_queries(serve_instance)
     handle = serve.run(A.options(version="1", user_config={"a": 1}).bind())
     responses = [handle.remote() for _ in range(10)]
 
+    def check():
+        assert ray.get(signal.cur_num_waiters.remote()) == len(responses)
+        return True
+
     # Give the queries time to get to the replicas before the reconfigure.
-    wait_for_condition(
-        lambda: ray.get(signal.cur_num_waiters.remote()) == len(responses)
-    )
+    wait_for_condition(check)
 
     @ray.remote(num_cpus=0)
     def reconfigure():
