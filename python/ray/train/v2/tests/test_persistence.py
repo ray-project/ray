@@ -211,9 +211,6 @@ def train_fn(config):
         # which will cause the test assertions to fail.
         # This should be fixed by forcing a queue flush on all workers before
         # executing the failure decisions.
-        # Note: this `get_train_context` is not a public API.
-        # TODO (hpguo): Think about expose `get_synchronization_actor` as a
-        # public API, which will be a useful collection of communication utils.
         train_context = ray.train.get_context()
         sync_actor = train_context.get_synchronization_actor()
         ray.get(

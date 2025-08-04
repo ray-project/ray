@@ -213,6 +213,7 @@ class TrainContext:
         """
         return get_internal_train_context().get_storage()
 
+    @DeveloperAPI
     def report(
         self,
         metrics: Dict[str, Any],
@@ -236,6 +237,7 @@ class TrainContext:
             metrics, checkpoint, checkpoint_dir_name
         )
 
+    @DeveloperAPI
     def get_synchronization_actor(self):
         """Get the synchronization actor for collective operations among training workers.
 
@@ -248,6 +250,7 @@ class TrainContext:
         """
         return get_internal_train_context().get_synchronization_actor()
 
+    @DeveloperAPI
     def get_checkpoint(self):
         """Get the latest checkpoint to resume training from.
 
@@ -259,6 +262,7 @@ class TrainContext:
         """
         return get_internal_train_context().get_checkpoint()
 
+    @DeveloperAPI
     def get_dataset_shard(self, dataset_name: str) -> DataIterator:
         """Get the dataset shard for this worker.
 
