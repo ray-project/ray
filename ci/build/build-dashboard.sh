@@ -31,7 +31,7 @@ fi
 NVM_VERSION="v0.39.7"
 NVM_INSTALL_SH="install.sh"
 NVM_INSTALL_URL="https://raw.githubusercontent.com/nvm-sh/nvm/${NVM_VERSION}/${NVM_INSTALL_SH}"
-NVM_SHA256="e4217e0ed169b94f3f3e73e5ddf1e99b7cf60ff6a97ef030d55d99f85977a8e4"  # Precomputed hash (valid as of Aug 2025)
+NVM_SHA256="8e45fa547f428e9196a5613efad3bfa4d4608b74ca870f930090598f5af5f643"  # Precomputed hash (valid as of Aug 2025)
 
 # Download nvm installer
 curl -fsSL -o "$NVM_INSTALL_SH" "$NVM_INSTALL_URL"
