@@ -53,12 +53,36 @@ class FootsiesGame:
 
         return constants.ACTION_TO_BITS[action]
 
-    def _initialize_stub(self) -> footsies_pb2_grpc.FootsiesGameServiceStub:
+    def get_encoded_state(self) -> footsies_pb2.EncodedGameState:
+        """Gets the current encoded game state by calling the GetEncodedState RPC."""
         try:
-            channel = grpc.insecure_channel(f"{self.host}:{self.port}")
-            return footsies_pb2_grpc.FootsiesGameServiceStub(channel)
-        except grpc.RpcError as e:
-            logger.error(f"Error connecting to gRPC stub with exception: {e}")
+            return self.stub.GetEncodedState(footsies_pb2.Empty())
+        except Exception as e:
+            logger.error(f"Error calling GetEncodedState with exception: {e}")
+            raise e
+
+    def get_state(self) -> footsies_pb2.GameState:
+        """Gets the current game state by calling the GetState RPC."""
+        try:
+            return self.stub.GetState(footsies_pb2.Empty())
+        except Exception as e:
+            logger.error(f"Error calling GetState with exception: {e}")
+            raise e
+
+    def is_ready(self) -> bool:
+        """Checks if the game is ready by calling the IsReady RPC."""
+        try:
+            return self.stub.IsReady(footsies_pb2.Empty()).value
+        except Exception as e:
+            logger.error(f"Error calling IsReady with exception: {e}")
+            raise e
+
+    def reset_game(self) -> None:
+        """Resets the game by calling the ResetGame RPC."""
+        try:
+            self.stub.ResetGame(footsies_pb2.Empty())
+        except Exception as e:
+            logger.error(f"Error calling ResetGame with exception: {e}")
             raise e
 
     def start_game(self) -> None:
@@ -75,30 +99,6 @@ class FootsiesGame:
             logger.error(f"Error calling StartGame with exception: {e}")
             raise e
 
-    def is_ready(self) -> bool:
-        """Checks if the game is ready by calling the IsReady RPC."""
-        try:
-            return self.stub.IsReady(footsies_pb2.Empty()).value
-        except Exception as e:
-            logger.error(f"Error calling IsReady with exception: {e}")
-            raise e
-
-    def get_state(self) -> footsies_pb2.GameState:
-        """Gets the current game state by calling the GetState RPC."""
-        try:
-            return self.stub.GetState(footsies_pb2.Empty())
-        except Exception as e:
-            logger.error(f"Error calling GetState with exception: {e}")
-            raise e
-
-    def get_encoded_state(self) -> footsies_pb2.EncodedGameState:
-        """Gets the current encoded game state by calling the GetEncodedState RPC."""
-        try:
-            return self.stub.GetEncodedState(footsies_pb2.Empty())
-        except Exception as e:
-            logger.error(f"Error calling GetEncodedState with exception: {e}")
-            raise e
-
     def step_n_frames(
         self, p1_action: int, p2_action: int, n_frames: int
     ) -> footsies_pb2.GameState:
@@ -112,10 +112,10 @@ class FootsiesGame:
             logger.error(f"Error calling StepNFrames with exception: {e}")
             raise e
 
-    def reset_game(self) -> None:
-        """Resets the game by calling the ResetGame RPC."""
+    def _initialize_stub(self) -> footsies_pb2_grpc.FootsiesGameServiceStub:
         try:
-            self.stub.ResetGame(footsies_pb2.Empty())
-        except Exception as e:
-            logger.error(f"Error calling ResetGame with exception: {e}")
+            channel = grpc.insecure_channel(f"{self.host}:{self.port}")
+            return footsies_pb2_grpc.FootsiesGameServiceStub(channel)
+        except grpc.RpcError as e:
+            logger.error(f"Error connecting to gRPC stub with exception: {e}")
             raise e

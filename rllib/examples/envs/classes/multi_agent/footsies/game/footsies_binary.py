@@ -75,48 +75,6 @@ class FootsiesBinary:
     def _add_executable_permission(binary_path: Path) -> None:
         binary_path.chmod(binary_path.stat().st_mode | stat.S_IXUSR)
 
-    def _download_game_binary(self):
-        chunk_size = 1024 * 1024  # 1MB
-
-        if Path(self.full_download_path).exists():
-            logger.info(
-                f"Game binary already exists at {self.full_download_path}, skipping download."
-            )
-
-        else:
-            try:
-                with requests.get(self.url, stream=True) as response:
-                    response.raise_for_status()
-                    self.full_download_dir.mkdir(parents=True, exist_ok=True)
-                    with open(self.full_download_path, "wb") as f:
-                        for chunk in response.iter_content(chunk_size=chunk_size):
-                            if chunk:
-                                f.write(chunk)
-                logger.info(
-                    f"Downloaded game binary to {self.full_download_path}\n"
-                    f"Binary size: {self.full_download_path.stat().st_size / 1024 / 1024:.1f} MB\n"
-                )
-            except requests.exceptions.RequestException as e:
-                logger.error(f"Failed to download binary from {self.url}: {e}")
-
-    def _unzip_game_binary(self):
-        self.renamed_path = self.full_extract_dir / "footsies_binaries"
-
-        if Path(self.renamed_path).exists():
-            logger.info(
-                f"Game binary already extracted at {self.renamed_path}, skipping extraction."
-            )
-        else:
-            self.full_extract_dir.mkdir(parents=True, exist_ok=True)
-            with zipfile.ZipFile(self.full_download_path, mode="r") as zip_ref:
-                zip_ref.extractall(self.full_extract_dir)
-
-            if self.target_binary == "mac_windowed":
-                self.full_download_path.with_suffix(".app").rename(self.renamed_path)
-            else:
-                self.full_download_path.with_suffix("").rename(self.renamed_path)
-            logger.info(f"Extracted game binary to {self.renamed_path}")
-
     def start_game_server(self, port: int) -> None:
         self._download_game_binary()
         self._unzip_game_binary()
@@ -175,3 +133,45 @@ class FootsiesBinary:
             logger.info("Game ready!")
         finally:
             channel.close()
+
+    def _download_game_binary(self):
+        chunk_size = 1024 * 1024  # 1MB
+
+        if Path(self.full_download_path).exists():
+            logger.info(
+                f"Game binary already exists at {self.full_download_path}, skipping download."
+            )
+
+        else:
+            try:
+                with requests.get(self.url, stream=True) as response:
+                    response.raise_for_status()
+                    self.full_download_dir.mkdir(parents=True, exist_ok=True)
+                    with open(self.full_download_path, "wb") as f:
+                        for chunk in response.iter_content(chunk_size=chunk_size):
+                            if chunk:
+                                f.write(chunk)
+                logger.info(
+                    f"Downloaded game binary to {self.full_download_path}\n"
+                    f"Binary size: {self.full_download_path.stat().st_size / 1024 / 1024:.1f} MB\n"
+                )
+            except requests.exceptions.RequestException as e:
+                logger.error(f"Failed to download binary from {self.url}: {e}")
+
+    def _unzip_game_binary(self):
+        self.renamed_path = self.full_extract_dir / "footsies_binaries"
+
+        if Path(self.renamed_path).exists():
+            logger.info(
+                f"Game binary already extracted at {self.renamed_path}, skipping extraction."
+            )
+        else:
+            self.full_extract_dir.mkdir(parents=True, exist_ok=True)
+            with zipfile.ZipFile(self.full_download_path, mode="r") as zip_ref:
+                zip_ref.extractall(self.full_extract_dir)
+
+            if self.target_binary == "mac_windowed":
+                self.full_download_path.with_suffix(".app").rename(self.renamed_path)
+            else:
+                self.full_download_path.with_suffix("").rename(self.renamed_path)
+            logger.info(f"Extracted game binary to {self.renamed_path}")
