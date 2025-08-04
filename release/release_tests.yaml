@@ -3152,7 +3152,6 @@
       runtime_env:
         - RAY_experimental_enable_open_telemetry_on_agent=1
         - RAY_experimental_enable_open_telemetry_on_core=1
-        - RAY_worker_num_grpc_internal_threads=1
     cluster_compute: stress_tests/stress_tests_compute.yaml
 
   run:
