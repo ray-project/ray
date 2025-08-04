@@ -85,9 +85,7 @@ class DependencySetManager:
             self.execute_single(depset)
 
     def get_depset(self, name: str, config_args: ConfigArgs) -> Depset:
-        print(f"# of depsets: {len(self.config.depsets)}")
         for depset in self.config.depsets:
-            print(f"depset name: {depset.name}")
             if depset.name == name and (
                 config_args is None or depset.config_args.name == config_args.name
             ):
