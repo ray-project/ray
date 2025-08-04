@@ -560,7 +560,6 @@ std::unique_ptr<rpc::TaskEventData> TaskEventBufferImpl::CreateTaskEventDataToSe
     absl::flat_hash_map<TaskAttempt, rpc::TaskEvents> &&agg_task_events,
     const absl::flat_hash_set<TaskAttempt> &dropped_task_attempts_to_send) {
   auto data = std::make_unique<rpc::TaskEventData>();
-  
   for (auto &[_task_attempt, task_event] : agg_task_events) {
     auto events_by_task = data->add_events_by_task();
     *events_by_task = std::move(task_event);
@@ -764,31 +763,14 @@ void TaskEventBufferImpl::SendRayEventsToAggregator(
           this->stats_counter_.Increment(
               TaskEventBufferCounter::kTotalNumTaskEventsFailedToReportToAggregator,
               num_task_attempts_to_send);
-          return;
-        }
-
-        auto num_events_failed_to_report_to_aggregator =
-            reply.num_events_failed_to_report_to_aggregator();
-        if (num_events_failed_to_report_to_aggregator > 0) {
-          RAY_LOG(WARNING) << "Failed to report "
-                           << num_events_failed_to_report_to_aggregator
-                           << " events to event aggregator due to unknown error on the"
-                           << " event aggregator side. Check the dashboard_agent.log for"
-                           << " more details.";
-          this->stats_counter_.Increment(
-              TaskEventBufferCounter::kTotalNumTaskEventsFailedToReportToAggregator,
-              num_events_failed_to_report_to_aggregator);
-          this->stats_counter_.Increment(
-              TaskEventBufferCounter::kTotalNumTaskEventsReportedToAggregator,
-              num_task_attempts_to_send - num_events_failed_to_report_to_aggregator);
         } else {
           this->stats_counter_.Increment(
               TaskEventBufferCounter::kTotalNumTaskEventsReportedToAggregator,
               num_task_attempts_to_send);
+          this->stats_counter_.Increment(
+              TaskEventBufferCounter::kTotalNumLostTaskAttemptsReportedToAggregator,
+              num_dropped_task_attempts_to_send);
         }
-        this->stats_counter_.Increment(
-            TaskEventBufferCounter::kTotalNumLostTaskAttemptsReportedToAggregator,
-            num_dropped_task_attempts_to_send);
         event_aggregator_grpc_in_progress_ = false;
       };
 

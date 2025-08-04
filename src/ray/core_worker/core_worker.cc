@@ -334,7 +334,6 @@ CoreWorker::CoreWorker(
       task_event_buffer_(std::move(task_event_buffer)),
       pid_(pid),
       runtime_env_json_serialization_cache_(kDefaultSerializationCacheCap) {
-
   // Initialize task receivers.
   if (options_.worker_type == WorkerType::WORKER || options_.is_local_mode) {
     RAY_CHECK(options_.task_execution_callback != nullptr);
@@ -2061,7 +2060,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
                       depth,
                       task_options.serialized_runtime_env_info,
                       call_site,
-                      worker_context_.GetMainThreadOrActorCreationTaskID(),
+                      worker_context_->GetMainThreadOrActorCreationTaskID(),
                       /*concurrency_group_name=*/"",
                       /*include_job_config=*/true,
                       /*generator_backpressure_num_objects=*/
@@ -2158,7 +2157,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                       depth,
                       actor_creation_options.serialized_runtime_env_info,
                       call_site,
-                      worker_context_.GetMainThreadOrActorCreationTaskID(),
+                      worker_context_->GetMainThreadOrActorCreationTaskID(),
                       /*concurrency_group_name=*/"",
                       /*include_job_config=*/true,
                       /*generator_backpressure_num_objects=*/-1,

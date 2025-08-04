@@ -81,23 +81,23 @@ if prometheus_client:
     metrics_prefix = "event_aggregator_agent"
     events_received = Counter(
         f"{metrics_prefix}_events_received",
-        "Total number of events received. This metric only counts the number of events "
-        "being successfully added to the aggregator agent's buffer.",
+        "Total number of events received from the upstream components from the "
+        "AddEvents gRPC call.",
+        tuple(dashboard_consts.COMPONENT_METRICS_TAG_KEYS),
+        namespace="ray",
+    )
+    events_failed_to_add_to_aggregator = Counter(
+        f"{metrics_prefix}_events_failed_to_add_to_aggregator",
+        "Total number of events failed to add to the event aggregator. The metric "
+        "counts the events received by the aggregator agent from the AddEvents gRPC "
+        "call but failed to add to the buffer due to unexpected errors.",
         tuple(dashboard_consts.COMPONENT_METRICS_TAG_KEYS),
         namespace="ray",
     )
     events_dropped_at_event_aggregator = Counter(
         f"{metrics_prefix}_events_dropped_at_event_aggregator",
-        "Total number of events dropped at the event aggregator. This metric counts the "
-        "events that are dropped due to the aggregator agent's buffer being full.",
-        tuple(dashboard_consts.COMPONENT_METRICS_TAG_KEYS),
-        namespace="ray",
-    )
-    events_failed_to_add_to_aggregator = Counter(
-        f"{metrics_prefix}_events_failed_to_add_to_event_aggregator",
-        "Total number of events failed to add to the event aggregator. The metric "
-        "counts the events seen by the aggregator agent but failed to add to the "
-        "buffer due to unexpected errors.",
+        "Total number of events dropped at the event aggregator due to the buffer "
+        "being full.",
         tuple(dashboard_consts.COMPONENT_METRICS_TAG_KEYS),
         namespace="ray",
     )
@@ -144,8 +144,8 @@ class AggregatorAgent(
         self._stop_event = threading.Event()
         self._publisher_threads = []
         self._events_received_since_last_metrics_update = 0
+        self._events_failed_to_add_to_aggregator_since_last_metrics_update = 0
         self._events_dropped_at_event_aggregator_since_last_metrics_update = 0
-        self.events_failed_to_add_to_aggregator_since_last_metrics_update = 0
         self._events_published_since_last_metrics_update = 0
 
         self._orig_sigterm_handler = signal.signal(
@@ -173,17 +173,15 @@ class AggregatorAgent(
         # metadata (e.g. dropped task attempts) to help with event processing at the
         # downstream
         events_data = request.events_data
-        num_events_failed_to_report_to_aggregator = 0
         for event in events_data.events:
+            with self._lock:
+                self._events_received_since_last_metrics_update += 1
             try:
                 self._event_buffer.put_nowait(event)
-                with self._lock:
-                    self._events_received_since_last_metrics_update += 1
             except queue.Full:
                 self._event_buffer.get_nowait()
                 self._event_buffer.put_nowait(event)
                 with self._lock:
-                    self._events_received_since_last_metrics_update += 1
                     self._events_dropped_at_event_aggregator_since_last_metrics_update += (
                         1
                     )
@@ -194,14 +192,11 @@ class AggregatorAgent(
                     e,
                 )
                 with self._lock:
-                    self.events_failed_to_add_to_aggregator_since_last_metrics_update += (
+                    self._events_failed_to_add_to_aggregator_since_last_metrics_update += (
                         1
                     )
-                    num_events_failed_to_report_to_aggregator += 1
 
-        return events_event_aggregator_service_pb2.AddEventsReply(
-            num_events_failed_to_report_to_aggregator=num_events_failed_to_report_to_aggregator,
-        )
+        return events_event_aggregator_service_pb2.AddEventsReply()
 
     def _send_events_to_external_service(self, event_batch):
         """
@@ -255,18 +250,17 @@ class AggregatorAgent(
 
         with self._lock:
             _events_received = self._events_received_since_last_metrics_update
-            _events_dropped_at_event_aggregator = (
-                self._events_dropped_at_event_aggregator_since_last_metrics_update
-            )
             _events_failed_to_add_to_aggregator = (
                 self._events_failed_to_add_to_aggregator_since_last_metrics_update
+            )
+            _events_dropped_at_event_aggregator = (
+                self._events_dropped_at_event_aggregator_since_last_metrics_update
             )
             _events_published = self._events_published_since_last_metrics_update
 
             self._events_received_since_last_metrics_update = 0
-            self._events_dropped_at_core_worker_since_last_metrics_update = 0
-            self._events_dropped_at_event_aggregator_since_last_metrics_update = 0
             self._events_failed_to_add_to_aggregator_since_last_metrics_update = 0
+            self._events_dropped_at_event_aggregator_since_last_metrics_update = 0
             self._events_published_since_last_metrics_update = 0
 
         labels = {
@@ -277,11 +271,11 @@ class AggregatorAgent(
             "SessionName": self.session_name,
         }
         events_received.labels(**labels).inc(_events_received)
-        events_dropped_at_event_aggregator.labels(**labels).inc(
-            _events_dropped_at_event_aggregator
-        )
         events_failed_to_add_to_aggregator.labels(**labels).inc(
             _events_failed_to_add_to_aggregator
+        )
+        events_dropped_at_event_aggregator.labels(**labels).inc(
+            _events_dropped_at_event_aggregator
         )
         events_published.labels(**labels).inc(_events_published)
 
