@@ -2,11 +2,13 @@ from typing import Any, Dict, Tuple
 from unittest.mock import MagicMock, patch
 
 import pytest
+from vllm.config import VllmConfig
 from vllm.entrypoints.openai.api_server import build_async_engine_client
 from vllm.platforms.interface import DeviceCapability
 
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_engine import VLLMEngine
 from ray.serve.llm import LLMConfig, ModelLoadingConfig
+from ray.util import remove_placement_group
 
 
 @pytest.mark.asyncio
@@ -75,8 +77,8 @@ class TestVllmConfigCongruence:
         """Get VllmConfig by hooking into Ray Serve LLM's AsyncLLM instantiation."""
         captured_configs = []
 
-        def mock_async_llm_class(vllm_config=None, **kwargs):
-            captured_configs.append(("AsyncLLM", vllm_config))
+        def mock_async_llm_class(vllm_config: VllmConfig = None, **kwargs):
+            captured_configs.append(vllm_config)
             mock_obj = MagicMock()
             mock_obj._dummy_engine = True
             return mock_obj
@@ -119,15 +121,14 @@ class TestVllmConfigCongruence:
         if not captured_configs:
             raise RuntimeError("Failed to capture VllmConfig from Ray Serve LLM path")
 
-        engine_type, vllm_config = captured_configs[-1]
-        return vllm_config, engine_type
+        return captured_configs[-1]
 
     async def _get_vllm_standalone_config(self) -> Tuple[Any, str]:
         """Get VllmConfig by hooking into vllm serve CLI's AsyncLLM instantiation."""
         captured_configs = []
 
         def mock_from_vllm_config(vllm_config=None, **kwargs):
-            captured_configs.append(("AsyncLLM.from_vllm_config", vllm_config))
+            captured_configs.append(vllm_config)
             mock_engine = MagicMock()
 
             async def dummy_reset():
@@ -170,11 +171,10 @@ class TestVllmConfigCongruence:
                 # Expected since we're mocking the constructor
                 pass
 
-        for engine_type, config in captured_configs:
-            if engine_type == "AsyncLLM.from_vllm_config":
-                return config, engine_type
+        if not captured_configs:
+            raise RuntimeError("No valid VllmConfig found in captured configurations")
 
-        raise RuntimeError("No valid VllmConfig found in captured configurations")
+        return captured_configs[-1]
 
     @pytest.mark.parametrize("gpu_type,capability", GPU_CONFIGS)
     @pytest.mark.asyncio
@@ -197,8 +197,8 @@ class TestVllmConfigCongruence:
             "vllm.platforms.cuda.NvmlCudaPlatform.get_device_capability",
             return_value=capability,
         ):
-            ray_vllm_config, _ = await self._get_ray_serve_llm_vllm_config()
-            cli_vllm_config, _ = await self._get_vllm_standalone_config()
+            ray_vllm_config = await self._get_ray_serve_llm_vllm_config()
+            cli_vllm_config = await self._get_vllm_standalone_config()
 
             ray_config_dict = {
                 k: v
@@ -211,8 +211,8 @@ class TestVllmConfigCongruence:
                 if k not in self.EXPECTED_DIFF_FIELDS
             }
 
-            self._normalize_parallel_config(ray_config_dict)
-            self._normalize_parallel_config(cli_config_dict)
+            await self._normalize_parallel_config(ray_config_dict)
+            await self._normalize_parallel_config(cli_config_dict)
 
             if not deep_compare(ray_config_dict, cli_config_dict):
                 differences = self._get_config_differences(
@@ -224,11 +224,11 @@ class TestVllmConfigCongruence:
                     f"(compute capability {capability.major}.{capability.minor}):\n{diff_msg}"
                 )
 
-    def _normalize_parallel_config(self, config_dict: Dict[str, Any]) -> None:
+    async def _normalize_parallel_config(self, config_dict: Dict[str, Any]) -> None:
         """Placement groups may differ, that's okay."""
         if "parallel_config" in config_dict:
             pc_dict = vars(config_dict["parallel_config"]).copy()
-            pc_dict.pop("placement_group", None)
+            await remove_placement_group(pc_dict.pop("placement_group"))
             config_dict["parallel_config"] = pc_dict
 
     def _get_config_differences(
