@@ -1,14 +1,19 @@
 import threading
 import requests
 
-URL = "http://localhost:8081/"  # Change if your deployment uses a different port
-NUM_THREADS = 100
+URL = "http://127.0.0.1:8787/v1/completions"  # Change if your deployment uses a different port
+NUM_THREADS = 20
 REQUESTS_PER_THREAD = 10  # Number of requests each thread will send
 
 def send_requests(thread_id):
     for i in range(REQUESTS_PER_THREAD):
         try:
-            response = requests.get(URL)
+            response = requests.post(URL, json={
+                # "model": "/models/my-model",
+                "prompt": "The sky is blue because",
+                "max_tokens": 30,
+                "temperature": 0.5
+            })
             print(f"Thread {thread_id}, Request {i}: {response.text}")
         except Exception as e:
             print(f"Thread {thread_id}, Request {i}: Error: {e}")

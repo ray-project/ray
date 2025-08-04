@@ -31,23 +31,26 @@ def start_vllm_container(
     name = f"vllm_{replica_id}"
     image = "vllm/vllm-openai:latest"
 
-    # Tell Docker “bind container port 8000 → random free host port”
-    container = docker.from_env().containers.run(
-        image=image,
-        command=[
-            "--model",
-            "/models/my-model",
-            "--gpu-memory-utilization",
-            "0.9",
-            "--max-model-len=2048",
-        ],
-        name=name,
-        runtime="nvidia",
-        device_requests=[DeviceRequest(driver="nvidia", device_ids=[gpu_device_id], capabilities=[["gpu"]])],
-        volumes={model_path: {"bind": "/models/my-model", "mode": "ro"}},
-        ports={"8000/tcp": None},  # None → Docker chooses free host port
-        detach=True,
-    )
+    try:
+        # Tell Docker “bind container port 8000 → random free host port”
+        container = docker.from_env().containers.run(
+            image=image,
+            command=[
+                "--model",
+                "/models/my-model",
+                "--gpu-memory-utilization",
+                "0.9",
+                "--max-model-len=2048",
+            ],
+            name=name,
+            runtime="nvidia",
+            device_requests=[DeviceRequest(driver="nvidia", device_ids=[gpu_device_id], capabilities=[["gpu"]])],
+            volumes={model_path: {"bind": "/models/my-model", "mode": "ro"}},
+            ports={"8000/tcp": None},  # None → Docker chooses free host port
+            detach=True,
+        )
+    except Exception as ex:
+        logger.error(f"Error from docker:{str(ex)}")
 
     # reload so Docker assigns host port
     container.reload()
@@ -121,16 +124,19 @@ class VLLMService1:
         logger.error(f"[CALL: calling vllm with {body} on {url}]")
 
         # 3) Dispatch the request
-        async with httpx.AsyncClient() as client:
-            resp = await client.request(
-                method=request["method"],
-                url=url,
-                headers=headers,
-                content=body,
-                timeout=None,
-            )
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.request(
+                    method=request["method"],
+                    url=url,
+                    headers=headers,
+                    content=body,
+                    timeout=None,
+                )
 
-        logger.error(f"[Reponse for {self.replica_id} : {resp.content}]")
+            logger.error(f"[Reponse for {self.replica_id} : {resp.content}]")
+        except Exception as ex:
+            print(str(ex))
 
         # 4) Return raw response
         return Response(
@@ -222,10 +228,10 @@ class VLLMService2:
 
 
 if __name__ == "__main__":
-    ray.init(address=os.environ.get("RAY_ADDRESS", "10.10.100.43:6980"), _temp_dir="/home/arthur/ray")
+    ray.init(address=os.environ.get("RAY_ADDRESS", "10.10.100.8:6980"), _temp_dir="/home/arthur/ray")
     serve.start(detached=True, http_options={"host": "0.0.0.0", "port": 8787})
 
-    model_path = os.environ.get("VLLM_MODEL_PATH", "/home/model_registry_storage/Qwen2.5-Coder-3B")
+    model_path = os.environ.get("VLLM_MODEL_PATH", "/home/original_models/Qwen3-8B")
 
     vllm1 = VLLMService1.bind(model_path=model_path)
 
