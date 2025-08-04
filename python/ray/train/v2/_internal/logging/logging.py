@@ -127,7 +127,9 @@ class LoggingManager:
     """
 
     @staticmethod
-    def _get_base_logger_config_dict(context: Union[TrainRunContext, TrainContext]) -> dict:
+    def _get_base_logger_config_dict(
+        context: Union[TrainRunContext, TrainContext]
+    ) -> dict:
         """Return the base logging configuration dictionary."""
         # Using Ray worker ID as the file identifier where logs are written to.
         file_identifier = ray.get_runtime_context().get_worker_id()
@@ -276,6 +278,7 @@ def get_train_application_controller_log_path() -> Optional[str]:
         ):
             return handler.get_log_file_path()
     return None
+
 
 def get_train_application_worker_log_path() -> Optional[str]:
     """

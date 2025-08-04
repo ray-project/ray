@@ -58,7 +58,7 @@ from ray.train.v2._internal.execution.worker_group import (
 from ray.train.v2._internal.execution.worker_group.worker_group import (
     WorkerGroupContext,
 )
-from ray.train.v2._internal.logging.logging import LoggingManager 
+from ray.train.v2._internal.logging import LoggingManager
 from ray.train.v2._internal.util import ObjectRefWrapper, time_monotonic
 from ray.train.v2.api.callback import RayTrainCallback
 from ray.train.v2.api.exceptions import (
