@@ -202,7 +202,7 @@ ray_cc_library(
         "//src/ray/common:network",
         "//src/ray/common:task_common",
         "//src/ray/raylet/scheduling:cluster_resource_scheduler",
-        "//src/ray/rpc:core_worker_rpc",
+        "//src/ray/rpc:core_worker_client",
         "//src/ray/util:process",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/time",
@@ -282,7 +282,7 @@ ray_cc_library(
         "//src/ray/object_manager:object_manager_common",
         "//src/ray/protobuf:node_manager_cc_proto",
         "//src/ray/pubsub:subscriber",
-        "//src/ray/rpc:core_worker_rpc",
+        "//src/ray/rpc:core_worker_client",
     ],
 )
 
@@ -336,7 +336,7 @@ ray_cc_library(
         "//src/ray/protobuf:runtime_env_agent_cc_proto",
         "//src/ray/pubsub:subscriber",
         "//src/ray/raylet/scheduling:scheduler",
-        "//src/ray/rpc:core_worker_rpc",
+        "//src/ray/rpc:core_worker_client",
         "//src/ray/rpc:node_manager_client",
         "//src/ray/rpc:node_manager_server",
         "//src/ray/stats:stats_lib",
