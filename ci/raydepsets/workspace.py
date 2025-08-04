@@ -55,6 +55,8 @@ class Config:
                         ),
                         None,
                     )
+                    if build_arg_set is None:
+                        raise KeyError(f"Build arg set {build_arg_set_name} not found")
                     substituted_depset = Template(str(depset)).substitute(
                         build_arg_set.build_args
                     )
@@ -98,5 +100,5 @@ class Workspace:
 
     def load_config(self, path: str) -> Config:
         with open(os.path.join(self.dir, path), "r") as f:
-            data = yaml.safe_load(f.read())
+            data = yaml.safe_load(f)
             return Config.from_dict(data)
