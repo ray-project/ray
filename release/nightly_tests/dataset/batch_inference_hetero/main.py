@@ -45,7 +45,10 @@ def parse_args():
     parser.add_argument(
         "--chaos",
         action="store_true",
-        help="Whether to enable chaos.",
+        help=(
+            "Whether to enable chaos. If set, this script terminates one worker node "
+            "every minute with a grace period."
+        ),
     )
     return parser.parse_args()
 
