@@ -19,39 +19,39 @@ class Depset:
     constraints: List[str]
     output: str
     source_depset: Optional[str] = None
-    build_args: BuildArgSet = None
+    build_arg_set: BuildArgSet = None
     depsets: Optional[List[str]] = None
 
 
 @dataclass
 class Config:
     depsets: List[Depset] = field(default_factory=list)
-    build_args: List[BuildArgSet] = field(default_factory=list)
+    build_arg_sets: List[BuildArgSet] = field(default_factory=list)
 
     @staticmethod
-    def parse_configs(configs: List[dict]) -> List["BuildArgSet"]:
+    def parse_build_arg_sets(build_arg_sets: List[dict]) -> List["BuildArgSet"]:
         return [
             BuildArgSet(
-                name=config.get("name", None),
-                build_args=config.get("build_args", []),
+                name=build_arg_set.get("name", None),
+                build_args=build_arg_set.get("build_args", []),
             )
-            for config in configs
+            for build_arg_set in build_arg_sets
         ]
 
     @staticmethod
     def from_dict(data: dict) -> "Config":
-        build_arg_sets = Config.parse_configs(data.get("configs", []))
+        build_arg_sets = Config.parse_build_arg_sets(data.get("build_args_sets", []))
         depsets = []
         raw_depsets = data.get("depsets", [])
         for depset in raw_depsets:
-            config_matrix = depset.get("configs", [])
-            if config_matrix:
-                for config_name in config_matrix:
+            build_arg_set_matrix = depset.get("build_args_sets", [])
+            if build_arg_set_matrix:
+                for build_arg_set_name in build_arg_set_matrix:
                     build_arg_set = next(
                         (
                             build_arg_set
                             for build_arg_set in build_arg_sets
-                            if build_arg_set.name == config_name
+                            if build_arg_set.name == build_arg_set_name
                         ),
                         None,
                     )
