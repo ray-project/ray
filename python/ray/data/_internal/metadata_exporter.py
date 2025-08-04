@@ -142,22 +142,28 @@ class DatasetMetadata:
     data_context: DataContext
 
 
+def _add_ellipsis(s, truncate_length):
+    if len(s) > truncate_length:
+        return s[:truncate_length] + "..."
+    return s
+
+
 def sanitize_for_struct(obj, truncate_length=DEFAULT_TRUNCATION_LENGTH):
     if isinstance(obj, Mapping):
-        return {k: sanitize_for_struct(v) for k, v in obj.items()}
+        return {k: sanitize_for_struct(v, truncate_length) for k, v in obj.items()}
     elif isinstance(obj, (int, float, bool)) or obj is None:
         return obj
     elif isinstance(obj, str):
-        return obj[:truncate_length]
+        return _add_ellipsis(obj, truncate_length)
     elif isinstance(obj, Sequence):
-        return [sanitize_for_struct(v) for v in obj]
+        return [sanitize_for_struct(v, truncate_length) for v in obj]
     else:
         # Convert unhandled types to string
         try:
-            return json.dumps(obj)[:truncate_length]
+            return _add_ellipsis(json.dumps(obj), truncate_length)
         except (TypeError, OverflowError):
             try:
-                return str(obj)[:truncate_length]
+                return _add_ellipsis(str(obj), truncate_length)
             except Exception:
                 return UNKNOWN
 
