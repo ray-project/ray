@@ -156,54 +156,10 @@ class RLlibGateway:
         self._prev_action = None
         self._prev_extra_model_outputs = None
 
-        def _connec_to_server_thread_func():
-            # Try connecting to server.
-            while True:
-                try:
-                    logger.info(f"Trying to connect to {address}:{port} ...")
-                    self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                    # self._sock.settimeout(120.0)
-                    self._sock.connect((address, port))
-                    break
-                except ConnectionRefusedError:
-                    time.sleep(5)
-
-            logger.info(f"Connected to server at {address}:{port} ...")
-
-            # Send ping-pong.
-            send_rllink_message(self._sock, {"type": RLlink.PING.name})
-            msg_type, msg_body = get_rllink_message(self._sock)
-            assert msg_type == RLlink.PONG
-
-            logger.info("\tPING/PONG ok ...")
-
-            # Request config.
-            send_rllink_message(self._sock, {"type": RLlink.GET_CONFIG.name})
-            msg_type, msg_body = get_rllink_message(self._sock)
-            assert msg_type == RLlink.SET_CONFIG
-            # TODO (sven): Make AlgorithmConfig msgpack'able by making it a
-            #  Checkpointable with a pickle-independent state.
-            self._config = pickle.loads(msg_body["config"])
-            # Create the RLModule and connector pipelines.
-            self._env_to_module = self._config.build_env_to_module_connector()
-            rl_module_spec = self._config.get_rl_module_spec()
-            self._rl_module = rl_module_spec.build()
-            self._module_to_env = self._config.build_module_to_env_connector()
-
-            logger.info("\tGET_CONFIG ok (built connectors and module) ...")
-
-            # Request EnvRunner state (incl. model weights).
-            send_rllink_message(self._sock, {"type": RLlink.GET_STATE.name})
-            msg_type, msg_body = get_rllink_message(self._sock)
-            assert msg_type == RLlink.SET_STATE
-            self._set_state(msg_body["state"])
-
-            logger.info("\tSET_STATE ok ...")
-
-        self._connec_to_server_thread = threading.Thread(
-            target=_connec_to_server_thread_func
-        )
-        self._connec_to_server_thread.start()
+        threading.Thread(
+            target=self._connect_to_server_thread_func,
+            args=(address, port),
+        ).start()
 
     def get_action(self, prev_reward, next_observation, terminated, truncated):
         """Computes and returns a new action, given an observation.
@@ -329,3 +285,48 @@ class RLlibGateway:
         # self._module_to_env.set_state(msg_body[COMPONENT_MODULE_TO_ENV_CONNECTOR])
         self._rl_module.set_state(msg_body[COMPONENT_RL_MODULE])
         self._weights_seq_no = msg_body[WEIGHTS_SEQ_NO]
+
+    def _connect_to_server_thread_func(self, address, port):
+        # Try connecting to server.
+        while True:
+            try:
+                logger.info(f"Trying to connect to {address}:{port} ...")
+                self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                # self._sock.settimeout(120.0)
+                self._sock.connect((address, port))
+                break
+            except ConnectionRefusedError:
+                time.sleep(5)
+
+        logger.info(f"Connected to server at {address}:{port} ...")
+
+        # Send ping-pong.
+        send_rllink_message(self._sock, {"type": RLlink.PING.name})
+        msg_type, msg_body = get_rllink_message(self._sock)
+        assert msg_type == RLlink.PONG
+
+        logger.info("\tPING/PONG ok ...")
+
+        # Request config.
+        send_rllink_message(self._sock, {"type": RLlink.GET_CONFIG.name})
+        msg_type, msg_body = get_rllink_message(self._sock)
+        assert msg_type == RLlink.SET_CONFIG
+        # TODO (sven): Make AlgorithmConfig msgpack'able by making it a
+        #  Checkpointable with a pickle-independent state.
+        self._config = pickle.loads(msg_body["config"])
+        # Create the RLModule and connector pipelines.
+        self._env_to_module = self._config.build_env_to_module_connector()
+        rl_module_spec = self._config.get_rl_module_spec()
+        self._rl_module = rl_module_spec.build()
+        self._module_to_env = self._config.build_module_to_env_connector()
+
+        logger.info("\tGET_CONFIG ok (built connectors and module) ...")
+
+        # Request EnvRunner state (incl. model weights).
+        send_rllink_message(self._sock, {"type": RLlink.GET_STATE.name})
+        msg_type, msg_body = get_rllink_message(self._sock)
+        assert msg_type == RLlink.SET_STATE
+        self._set_state(msg_body["state"])
+
+        logger.info("\tSET_STATE ok ...")
+
