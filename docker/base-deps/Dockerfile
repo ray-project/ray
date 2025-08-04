@@ -92,6 +92,7 @@ PIP_PKGS=(
     cython
     numpy  # Necessary for Dataset to work properly.
     psutil
+    smart_open[s3]
 )
 if [[ "$AUTOSCALER" == "autoscaler" ]]; then
     PIP_PKGS+=(
