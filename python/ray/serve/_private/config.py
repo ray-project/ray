@@ -376,7 +376,6 @@ class DeploymentConfig(BaseModel):
         kwargs = {key: val for key, val in kwargs.items() if val != DEFAULT.VALUE}
 
         for key, val in kwargs.items():
-            print(key, val)
             config.__setattr__(key, val)
 
         return config
