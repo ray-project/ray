@@ -23,7 +23,11 @@ from ray.rllib.env import INPUT_ENV_SPACES
 from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
-from ray.rllib.env.external.rllink import RLlink
+from ray.rllib.env.external.rllink import (
+    get_rllink_message,
+    send_rllink_message,
+    RLlink,
+)
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.checkpoints import Checkpointable
 from ray.rllib.utils.framework import try_import_torch
@@ -253,7 +257,7 @@ class EnvRunnerServerForExternalInference(EnvRunner, Checkpointable):
 
             try:
                 # Blocking call to get next message.
-                msg_type, msg_body = _get_message(self.client_socket)
+                msg_type, msg_body = get_rllink_message(self.client_socket)
 
                 # Process the message received based on its type.
                 # Initial handshake.
@@ -305,7 +309,7 @@ class EnvRunnerServerForExternalInference(EnvRunner, Checkpointable):
             self.server_socket.close()
 
     def _send_pong_message(self):
-        _send_message(self.client_socket, {"type": RLlink.PONG.name})
+        send_rllink_message(self.client_socket, {"type": RLlink.PONG.name})
 
     def _process_episodes_message(self, msg_type, msg_body):
         # On-policy training -> we have to block until we get a new `set_state` call
@@ -357,7 +361,7 @@ class EnvRunnerServerForExternalInference(EnvRunner, Checkpointable):
             with open(onnx_file, "rb") as f:
                 compressed = gzip.compress(f.read())
                 onnx_binary = base64.b64encode(compressed).decode("utf-8")
-        _send_message(
+        send_rllink_message(
             self.client_socket,
             {
                 "type": RLlink.SET_STATE.name,
@@ -367,7 +371,7 @@ class EnvRunnerServerForExternalInference(EnvRunner, Checkpointable):
         )
 
     def _send_set_config_message(self):
-        _send_message(
+        send_rllink_message(
             self.client_socket,
             {
                 "type": RLlink.SET_CONFIG.name,
@@ -402,53 +406,6 @@ class EnvRunnerServerForExternalInference(EnvRunner, Checkpointable):
         self.metrics.log_value(EPISODE_RETURN_MAX, ret, reduce="max", window=win)
 
 
-def _send_message(sock_, message: dict):
-    """Sends a message to the client with a length header."""
-    body = json.dumps(message).encode("utf-8")
-    header = str(len(body)).zfill(8).encode("utf-8")
-    try:
-        sock_.sendall(header + body)
-    except Exception as e:
-        raise ConnectionError(
-            f"Error sending message {message} to server on socket {sock_}! "
-            f"Original error was: {e}"
-        )
-
-
-def _get_message(sock_):
-    """Receives a message from the client following the length-header protocol."""
-    try:
-        # Read the length header (8 bytes)
-        header = _get_num_bytes(sock_, 8)
-        msg_length = int(header.decode("utf-8"))
-        # Read the message body
-        body = _get_num_bytes(sock_, msg_length)
-        # Decode JSON.
-        message = json.loads(body.decode("utf-8"))
-        # Check for proper protocol.
-        if "type" not in message:
-            raise ConnectionError(
-                "Protocol Error! Message from peer does not contain `type` field."
-            )
-        return RLlink(message.pop("type")), message
-    except Exception as e:
-        raise ConnectionError(
-            f"Error receiving message from peer on socket {sock_}! "
-            f"Original error was: {e}"
-        )
-
-
-def _get_num_bytes(sock_, num_bytes):
-    """Helper function to receive a specific number of bytes."""
-    data = b""
-    while len(data) < num_bytes:
-        packet = sock_.recv(num_bytes - len(data))
-        if not packet:
-            raise ConnectionError(f"No data received from socket {sock_}!")
-        data += packet
-    return data
-
-
 def _dummy_client(port: int = 5556):
     """A dummy client that runs CartPole and acts as a testing external env."""
 
@@ -475,20 +432,20 @@ def _dummy_client(port: int = 5556):
             time.sleep(5)
 
     # Send ping-pong.
-    _send_message(sock_, {"type": RLlink.PING.name})
-    msg_type, msg_body = _get_message(sock_)
+    send_rllink_message(sock_, {"type": RLlink.PING.name})
+    msg_type, msg_body = get_rllink_message(sock_)
     assert msg_type == RLlink.PONG
 
     # Request config.
-    _send_message(sock_, {"type": RLlink.GET_CONFIG.name})
-    msg_type, msg_body = _get_message(sock_)
+    send_rllink_message(sock_, {"type": RLlink.GET_CONFIG.name})
+    msg_type, msg_body = get_rllink_message(sock_)
     assert msg_type == RLlink.SET_CONFIG
     env_steps_per_sample = msg_body["env_steps_per_sample"]
     force_on_policy = msg_body["force_on_policy"]
 
     # Request ONNX weights.
-    _send_message(sock_, {"type": RLlink.GET_STATE.name})
-    msg_type, msg_body = _get_message(sock_)
+    send_rllink_message(sock_, {"type": RLlink.GET_STATE.name})
+    msg_type, msg_body = get_rllink_message(sock_)
     assert msg_type == RLlink.SET_STATE
     onnx_session, output_names = _set_state(msg_body)
 
@@ -554,7 +511,7 @@ def _dummy_client(port: int = 5556):
 
                 # Send the data to the server.
                 if force_on_policy:
-                    _send_message(
+                    send_rllink_message(
                         sock_,
                         {
                             "type": RLlink.EPISODES_AND_GET_STATE.name,
@@ -564,7 +521,7 @@ def _dummy_client(port: int = 5556):
                     )
                     # We are forced to sample on-policy. Have to wait for a response
                     # with the state (weights) in it.
-                    msg_type, msg_body = _get_message(sock_)
+                    msg_type, msg_body = get_rllink_message(sock_)
                     assert msg_type == RLlink.SET_STATE
                     onnx_session, output_names = _set_state(msg_body)
 
