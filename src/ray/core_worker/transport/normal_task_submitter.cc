@@ -28,7 +28,6 @@ namespace core {
 Status NormalTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
   RAY_CHECK(task_spec.IsNormalTask());
   RAY_LOG(DEBUG) << "Submit task " << task_spec.TaskId();
-  num_tasks_submitted_.fetch_add(1, std::memory_order_relaxed);
 
   resolver_.ResolveDependencies(task_spec, [this, task_spec](Status status) mutable {
     task_manager_.MarkDependenciesResolved(task_spec.TaskId());
@@ -59,11 +58,9 @@ Status NormalTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
         current_sys_time_ms());
     // Note that the dependencies in the task spec are mutated to only contain
     // plasma dependencies after ResolveDependencies finishes.
-    const SchedulingKey scheduling_key(
-        task_spec.GetSchedulingClass(),
-        task_spec.GetDependencyIds(),
-        task_spec.IsActorCreationTask() ? task_spec.ActorCreationId() : ActorID::Nil(),
-        task_spec.GetRuntimeEnvHash());
+    const SchedulingKey scheduling_key(task_spec.GetSchedulingClass(),
+                                       task_spec.GetDependencyIds(),
+                                       task_spec.GetRuntimeEnvHash());
     auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
     scheduling_key_entry.task_queue.push_back(task_spec);
     scheduling_key_entry.resource_spec = std::move(task_spec);
@@ -328,7 +325,6 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
     return;
   }
 
-  num_leases_requested_++;
   // Create a TaskSpecification with an overwritten TaskID to make sure we don't reuse the
   // same TaskID to request a worker
   auto resource_spec_msg = scheduling_key_entry.resource_spec.GetMutableMessage();
@@ -517,16 +513,8 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
         error_info.set_error_type(error_type);
         while (!tasks_to_fail.empty()) {
           auto &task_spec = tasks_to_fail.front();
-          if (task_spec.IsActorCreationTask() &&
-              error_type == rpc::ErrorType::TASK_PLACEMENT_GROUP_REMOVED) {
-            task_manager_.FailPendingTask(task_spec.TaskId(),
-                                          rpc::ErrorType::ACTOR_PLACEMENT_GROUP_REMOVED,
-                                          &error_status,
-                                          &error_info);
-          } else {
-            task_manager_.FailPendingTask(
-                task_spec.TaskId(), error_type, &error_status, &error_info);
-          }
+          task_manager_.FailPendingTask(
+              task_spec.TaskId(), error_type, &error_status, &error_info);
           tasks_to_fail.pop_front();
         }
       },
@@ -556,8 +544,6 @@ void NormalTaskSubmitter::PushNormalTask(
                  << NodeID::FromBinary(addr.raylet_id());
   auto task_id = task_spec.TaskId();
   auto request = std::make_unique<rpc::PushTaskRequest>();
-  bool is_actor_creation = task_spec.IsActorCreationTask();
-
   // NOTE(swang): CopyFrom is needed because if we use Swap here and the task
   // fails, then the task data will be gone when the TaskManager attempts to
   // access the task.
@@ -572,7 +558,6 @@ void NormalTaskSubmitter::PushNormalTask(
       [this,
        task_spec = std::move(task_spec),
        task_id,
-       is_actor_creation,
        scheduling_key,
        addr,
        assigned_resources](Status status, const rpc::PushTaskReply &reply) {
@@ -626,18 +611,12 @@ void NormalTaskSubmitter::PushNormalTask(
             cur_lease_entry.lease_client->GetTaskFailureCause(cur_lease_entry.task_id,
                                                               callback);
           }
-
-          if (!status.ok() || !is_actor_creation || reply.worker_exiting()) {
-            bool was_error = !status.ok();
-            bool is_worker_exiting = reply.worker_exiting();
-            // Successful actor creation leases the worker indefinitely from the raylet.
-            OnWorkerIdle(addr,
-                         scheduling_key,
-                         /*was_error=*/was_error,
-                         /*error_detail*/ status.message(),
-                         /*worker_exiting=*/is_worker_exiting,
-                         assigned_resources);
-          }
+          OnWorkerIdle(addr,
+                       scheduling_key,
+                       /*was_error=*/!status.ok(),
+                       /*error_detail*/ status.message(),
+                       /*worker_exiting=*/reply.worker_exiting(),
+                       assigned_resources);
         }
         if (status.ok()) {
           if (reply.was_cancelled_before_running()) {
@@ -718,11 +697,9 @@ Status NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
   const auto task_id = task_spec.TaskId();
   RAY_LOG(INFO) << "Cancelling a task: " << task_id << " force_kill: " << force_kill
                 << " recursive: " << recursive;
-  SchedulingKey scheduling_key(
-      task_spec.GetSchedulingClass(),
-      task_spec.GetDependencyIds(),
-      task_spec.IsActorCreationTask() ? task_spec.ActorCreationId() : ActorID::Nil(),
-      task_spec.GetRuntimeEnvHash());
+  SchedulingKey scheduling_key(task_spec.GetSchedulingClass(),
+                               task_spec.GetDependencyIds(),
+                               task_spec.GetRuntimeEnvHash());
   std::shared_ptr<rpc::CoreWorkerClientInterface> client = nullptr;
   {
     absl::MutexLock lock(&mu_);
