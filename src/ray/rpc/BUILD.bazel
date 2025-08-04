@@ -179,7 +179,7 @@ ray_cc_library(
 )
 
 ray_cc_library(
-    name = "gcs_service_client",
+    name = "gcs_client",
     hdrs = [
         "gcs_server/gcs_rpc_client.h",
     ],
@@ -195,7 +195,7 @@ ray_cc_library(
 )
 
 ray_cc_library(
-    name = "gcs_service_server",
+    name = "gcs_server",
     hdrs = [
         "gcs_server/gcs_rpc_server.h",
     ],
