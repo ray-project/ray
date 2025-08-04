@@ -10,6 +10,8 @@ from transformers import ViTImageProcessor, ViTForImageClassification
 from PIL import Image
 from pybase64 import b64decode
 
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+from ray._private.test_utils import EC2InstanceTerminatorWithGracePeriod
 from benchmark import Benchmark
 
 
@@ -40,11 +42,22 @@ def parse_args():
         required=True,
         help="The minimum and maximum concurrency for the inference operator.",
     )
+    parser.add_argument(
+        "--chaos",
+        action="store_true",
+        help=(
+            "Whether to enable chaos. If set, this script terminates one worker node "
+            "every minute with a grace period."
+        ),
+    )
     return parser.parse_args()
 
 
 def main(args: argparse.Namespace):
     benchmark = Benchmark()
+
+    if args.chaos:
+        start_chaos()
 
     def benchmark_fn():
         (
@@ -62,6 +75,22 @@ def main(args: argparse.Namespace):
 
     benchmark.run_fn("main", benchmark_fn)
     benchmark.write_result()
+
+
+def start_chaos():
+    assert ray.is_initialized()
+
+    head_node_id = ray.get_runtime_context().get_node_id()
+    scheduling_strategy = NodeAffinitySchedulingStrategy(
+        node_id=head_node_id, soft=False
+    )
+    resource_killer = EC2InstanceTerminatorWithGracePeriod.options(
+        scheduling_strategy=scheduling_strategy
+    ).remote(head_node_id, max_to_kill=None)
+
+    ray.get(resource_killer.ready.remote())
+
+    resource_killer.run.remote()
 
 
 def decode(row: Dict[str, Any]) -> List[Dict[str, Any]]:
