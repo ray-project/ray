@@ -1470,7 +1470,9 @@ def test_per_node_metrics_basic(ray_start_regular_shared, restore_data_context):
                 sum_metrics[metric] += value
         return sum_metrics
 
-    with patch("ray.data._internal.stats.StatsManager._stats_actor") as mock_get_actor:
+    with patch(
+        "ray.data._internal.stats.StatsManager._get_or_create_stats_actor"
+    ) as mock_get_actor:
         mock_actor_handle = MagicMock()
         mock_get_actor.return_value = mock_actor_handle
 
@@ -1516,7 +1518,9 @@ def test_per_node_metrics_toggle(
     ctx = DataContext.get_current()
     ctx.enable_per_node_metrics = enable_metrics
 
-    with patch("ray.data._internal.stats.StatsManager._stats_actor") as mock_get_actor:
+    with patch(
+        "ray.data._internal.stats.StatsManager._get_stats_actor"
+    ) as mock_get_actor:
         mock_actor_handle = MagicMock()
         mock_get_actor.return_value = mock_actor_handle
 
