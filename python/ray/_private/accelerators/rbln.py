@@ -58,7 +58,15 @@ class RBLNAcceleratorManager(AcceleratorManager):
     def validate_resource_request_quantity(
         quantity: float,
     ) -> Tuple[bool, Optional[str]]:
-        return True, None
+        if isinstance(quantity, float) and not quantity.is_integer():
+            return (
+                False,
+                f"{RBLNAcceleratorManager.get_resource_name()} resource quantity"
+                " must be whole numbers. "
+                f"The specified quantity {quantity} is invalid.",
+            )
+        else:
+            return (True, None)
 
     @staticmethod
     def set_current_process_visible_accelerator_ids(
