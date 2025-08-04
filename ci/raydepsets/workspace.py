@@ -104,5 +104,5 @@ class Workspace:
 
     def load_config(self, path: str) -> Config:
         with open(os.path.join(self.dir, path), "r") as f:
-            data = yaml.safe_load(f.read())
+            data = yaml.safe_load(f)
             return Config.from_dict(data)
