@@ -133,7 +133,7 @@ def test_autoscaler_set_node_labels(autoscaler_v2, shutdown_only):
     try:
         cluster.start()
         ray.init()
-        wait_for_condition(lambda: len(ray.nodes()) == 2)
+        wait_for_condition(lambda: len(ray.nodes()) == 2, timeout=20)
 
         for node in ray.nodes():
             if node["Resources"].get("CPU", 0) == 1:
