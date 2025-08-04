@@ -211,7 +211,7 @@ ray_cc_library(
             "-lpthread",
         ],
     }),
-    visibility = [":__subpackages__"],
+    visibility = ["//visibility:private"],
     deps = [
         ":agent_manager",
         ":dependency_manager",
