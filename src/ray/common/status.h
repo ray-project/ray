@@ -59,6 +59,76 @@ class error_code;
 
 namespace ray {
 
+// Just some magic for visiting a variant
+// See https://en.cppreference.com/w/cpp/utility/variant/visit2.html
+template <class... Ts>
+struct overloaded : Ts... {
+  using Ts::operator()...;
+};
+// explicit deduction guide (not needed as of C++20)
+template <class... Ts>
+overloaded(Ts...) -> overloaded<Ts...>;
+
+namespace Status {
+
+class OK {};
+class OutOfMemory {};
+class KeyError {};
+class IOError {};
+
+};  // namespace Status
+
+// This is just a pretty wrapper on top of std::optional<std::variant<ErrorTypes...>> so
+// that we have nicer names like has_error instead of has_value for the error case and we
+// can return ok instead of std::nullopt
+template <typename... ErrorTypes>
+class StatusReturn {
+ public:
+  static_assert((!std::is_same_v<ErrorTypes, Status::OK> && ...),
+                "Ok cannot be an error type");
+
+  StatusReturn(Status::OK) : error_(std::nullopt) {}
+
+  template <typename Error>
+  StatusReturn(Error error) : error_(error) {}
+
+  bool has_error() { return error_.has_value(); }
+
+  const std::variant<ErrorTypes...> &error() { return error_.value(); }
+
+ private:
+  // We could scrap the optional and have OK be native error type too, but imo it makes
+  // sense to handle ok differently, today ok is the absense of a value.
+  std::optional<std::variant<ErrorTypes...>> error_;
+};
+
+// Function that only returns IOError or OutOfMemory
+inline StatusReturn<Status::IOError, Status::OutOfMemory> DoThing() {
+  if (std::rand() % 2 == 0) {
+    return Status::OK();
+  }
+  return Status::IOError();
+}
+
+inline void UseDoThing() {
+  auto result = DoThing();
+  // Means result has error, if we really want, we can have a pretty wrapper on top so
+  // it's has_error instead of has_value for the error case
+  if (result.has_error()) {
+    // Handle our different types of errors
+    std::visit(overloaded{[](const Status::IOError &) {
+                            // Handle IOError
+                          },
+                          [](const Status::OutOfMemory &) {
+                            // Handle OutOfMemory
+                          }},
+               result.error());
+    return;
+  }
+  // Happy path
+  std::cout << "Happy thoughts";
+}
+
 // If you add to this list, please also update kCodeToStr in status.cc.
 enum class StatusCode : char {
   OK = 0,
