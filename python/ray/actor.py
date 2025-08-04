@@ -1351,7 +1351,7 @@ class ActorClass(Generic[T]):
                 tasks out of order. If you're using multi-threaded
                 (``max_concurrency > 1``) or async actors, you can't set this to False.
                 Defaults to True if you're using multi-threaded or async actors, and
-                False otherwise.
+                False otherwise. Actor task retries are always executed out of order.
             name: The globally unique name for the actor, which can be used
                 to retrieve the actor via ray.get_actor(name) as long as the
                 actor is still alive.
@@ -1717,14 +1717,15 @@ class ActorClass(Generic[T]):
         if is_asyncio and not execute_out_of_order:
             raise ValueError(
                 "If you're using async actors, Ray can't execute actor tasks in order. "
-                "Set `execute_out_of_order=True` to allow out-of-order execution."
+                "Set `allow_out_of_order_execution=True` to allow out-of-order "
+                "execution."
             )
 
         elif max_concurrency > 1 and not execute_out_of_order:
             raise ValueError(
                 "If you're using multi-threaded actors, Ray can't execute actor tasks "
-                "in order. Set `execute_out_of_order=True` to allow out-of-order "
-                "execution."
+                "in order. Set `allow_out_of_order_execution=True` to allow "
+                "out-of-order execution."
             )
 
         actor_id = worker.core_worker.create_actor(
