@@ -29,11 +29,11 @@ CoreWorkerClient::CoreWorkerClient(
   grpc_client_ = std::make_shared<GrpcClient<CoreWorkerService>>(
       addr_.ip_address(), addr_.port(), client_call_manager);
 
-  retryable_grpc_client_ = RetryableGrpcClient::Create(
+  retryable_grpc_client_ = std::make_shared<RetryableGrpcClient>(
       grpc_client_->Channel(),
       client_call_manager.GetMainService(),
       /*max_pending_requests_bytes=*/
-      std::numeric_limits<uint64_t>::max(),
+      ::RayConfig::instance().grpc_max_request_queued_max_bytes(),
       /*check_channel_status_interval_milliseconds=*/
       ::RayConfig::instance().grpc_client_check_connection_status_interval_milliseconds(),
       /*server_unavailable_timeout_seconds=*/
