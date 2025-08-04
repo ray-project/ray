@@ -31,8 +31,17 @@ class WorkerGroupPollStatus:
         )
 
     def get_error_string(self) -> str:
+        error_to_rank = {}
+        for world_rank, error in self.errors.items():
+            if error not in error_to_rank:
+                error_to_rank[error] = []
+            error_to_rank[error].append(str(world_rank))
+
+        for error, ranks in error_to_rank.items():
+            error_to_rank[error] = ", ".join(ranks)
+
         return "\n".join(
-            f"[Rank {world_rank}]\n{error}" for world_rank, error in self.errors.items()
+            f"[Rank {ranks}]: \n{error}" for error, ranks in error_to_rank.items()
         )
 
 
