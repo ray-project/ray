@@ -18,7 +18,9 @@ class Distribution(abc.ABC):
 
         import torch
         from ray.rllib.core.models.configs import MLPHeadConfig
-        from ray.rllib.models.torch.torch_distributions import TorchCategorical
+        from ray.rllib.core.distribution.torch.torch_distribution import (
+            TorchCategorical
+        )
 
         model = MLPHeadConfig(input_dims=[1]).build(framework="torch")
 
@@ -147,7 +149,7 @@ class Distribution(abc.ABC):
         .. testcode::
 
             import numpy as np
-            from ray.rllib.models.distributions import Distribution
+            from ray.rllib.core.distribution.distribution import Distribution
 
             class Uniform(Distribution):
                 def __init__(self, lower, upper):
