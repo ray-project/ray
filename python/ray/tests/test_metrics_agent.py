@@ -144,6 +144,7 @@ _EVENT_AGGREGATOR_METRICS = [
     "ray_event_aggregator_agent_events_failed_to_add_to_aggregator_total",
     "ray_event_aggregator_agent_events_dropped_at_event_aggregator_total",
     "ray_event_aggregator_agent_events_failed_to_add_to_aggregator_total",
+    "ray_event_aggregator_agent_events_dropped_at_event_aggregator_total",
     "ray_event_aggregator_agent_events_published_total",
     "ray_event_aggregator_agent_events_filtered_out_total",
 ]
@@ -506,6 +507,7 @@ def test_metrics_export_event_aggregator_agent(
             "ray_event_aggregator_agent_events_failed_to_add_to_aggregator_total",
             "ray_event_aggregator_agent_events_dropped_at_event_aggregator_total",
             "ray_event_aggregator_agent_events_failed_to_add_to_aggregator_total",
+            "ray_event_aggregator_agent_events_dropped_at_event_aggregator_total",
             "ray_event_aggregator_agent_events_published_total",
             "ray_event_aggregator_agent_events_filtered_out_total",
         ]
@@ -518,6 +520,7 @@ def test_metrics_export_event_aggregator_agent(
             "ray_event_aggregator_agent_events_failed_to_add_to_aggregator_total": 0.0,
             "ray_event_aggregator_agent_events_dropped_at_event_aggregator_total": 1.0,
             "ray_event_aggregator_agent_events_failed_to_add_to_aggregator_total": 0.0,
+            "ray_event_aggregator_agent_events_dropped_at_event_aggregator_total": 1.0,
             "ray_event_aggregator_agent_events_published_total": 1.0,
             "ray_event_aggregator_agent_events_filtered_out_total": 1.0,
         }

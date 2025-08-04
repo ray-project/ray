@@ -608,11 +608,7 @@ class RayEventExportGrpcService : public GrpcService {
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
       const ClusterID &cluster_id) override {
-<<<<<<< HEAD
     RAY_EVENT_EXPORT_SERVICE_RPC_HANDLER(AddEvents);
-=======
-    EVENT_EXPORT_SERVICE_RPC_HANDLER(AddEvents);
->>>>>>> 25a74fa4e4 (fix review comment)
   }
 
  private:

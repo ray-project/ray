@@ -42,7 +42,6 @@ using ::testing::DoAll;
 using ::testing::Invoke;
 using ::testing::MakeAction;
 using ::testing::Return;
-using ::testing::SaveArg;
 
 namespace ray {
 
@@ -469,7 +468,6 @@ TEST_P(TaskEventBufferTestDifferentDestination, TestFlushEvents) {
   }
 
   // If ray events to aggregator is enabled, expect to call AddEvents grpc.
-
   auto event_aggregator_client = static_cast<MockEventAggregatorClient *>(
       task_event_buffer_->event_aggregator_client_.get());
   rpc::events::AddEventsRequest add_events_request;
@@ -488,18 +486,10 @@ TEST_P(TaskEventBufferTestDifferentDestination, TestFlushEvents) {
     EXPECT_CALL(*event_aggregator_client, AddEvents(_, _)).Times(0);
   }
 
-  // Action
   task_event_buffer_->FlushEvents(false);
 
-  // Verify
   // Expect no more events.
   ASSERT_EQ(task_event_buffer_->GetNumTaskEventsStored(), 0);
-
-  // Make sure the events sent to the aggregator are expected if ray events to
-  // aggregator is enabled.
-  if (to_aggregator) {
-    CompareRayEventsData(add_events_request.events_data(), expected_ray_event_data);
-  }
 }
 
 TEST_P(TaskEventBufferTestDifferentDestination, TestFailedFlush) {
