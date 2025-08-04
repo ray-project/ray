@@ -19,10 +19,10 @@ from ci.raydepsets.workspace import Workspace
 from click.testing import CliRunner
 from pathlib import Path
 from networkx import topological_sort
+import platform
 
 _REPO_NAME = "com_github_ray_project_ray"
 _runfiles = runfiles.Create()
-
 
 class TestCli(unittest.TestCase):
     def test_workspace_init(self):
@@ -541,6 +541,33 @@ def _save_file_as(input_file, output_file):
 def _append_to_file(filepath, new):
     with open(filepath, "a") as f:
         f.write(new + "\n")
+
+def _copy_data_to_tmpdir(tmpdir):
+    shutil.copytree(
+        _runfiles.Rlocation(f"{_REPO_NAME}/ci/raydepsets/test_data"),
+        tmpdir,
+        dirs_exist_ok=True,
+    )
+
+
+def _replace_in_file(filepath, old, new):
+    with open(filepath, "r") as f:
+        contents = f.read()
+
+    contents = contents.replace(old, new)
+
+    with open(filepath, "w") as f:
+        f.write(contents)
+
+
+def _replace_in_file(filepath, old, new):
+    with open(filepath, "r") as f:
+        contents = f.read()
+
+    contents = contents.replace(old, new)
+
+    with open(filepath, "w") as f:
+        f.write(contents)
 
 
 def _replace_in_file(filepath, old, new):

@@ -40,13 +40,13 @@ def load(config_path: str, workspace_dir: str, name: str, build_arg_set: str):
     build_arg_set_obj = None
     if name:
         if build_arg_set:
-            for arg_set in manager.config.build_arg_sets:
-                if arg_set.name == build_arg_set:
-                    build_arg_set_obj = arg_set
+            for build_arg_set in manager.config.build_arg_sets:
+                if build_arg_set.name == build_arg_set:
+                    build_arg_set_obj = build_arg_set
                     break
         manager.execute_single(manager.get_depset(name, build_arg_set_obj))
     else:
-        manager.execute()
+        manager.execute_all()
 
 
 class DependencySetManager:
