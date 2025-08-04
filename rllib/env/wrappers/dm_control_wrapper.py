@@ -40,7 +40,7 @@ except (ImportError, OSError):
     suite = None
 import numpy as np
 
-from ray.rllib.utils.annotations import PublicAPI
+from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
 
 
 def _spec_to_box(spec):
@@ -220,6 +220,7 @@ class DMCEnv(gym.Env):
         return self._env.physics.render(height=height, width=width, camera_id=camera_id)
 
 
+@DeveloperAPI
 class ActionClip(gym.ActionWrapper):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
