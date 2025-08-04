@@ -33,12 +33,12 @@ message RayEventsData {
   TaskEventsMetadata task_events_metadata = 2;
 }
 
-message AddEventRequest {
+message AddEventsRequest {
   // Event data to be added to the event aggregator.
   RayEventsData events_data = 1;
 }
 
-message AddEventStatus {
+message AddEventsStatus {
   // Status code of the add event request result. The codes follow the codes in
   // `src/ray/common/status.h`
   int32 code = 1;
@@ -46,13 +46,17 @@ message AddEventStatus {
   string message = 2;
 }
 
-message AddEventReply {
+message AddEventsReply {
   // Status of the add event request result.
-  AddEventStatus status = 1;
+  AddEventsStatus status = 1;
 }
 
 // Service for adding events to the event aggregator.
 service EventAggregatorService {
-  // Add events to the event aggregator.
-  rpc AddEvents(AddEventRequest) returns (AddEventReply);
+  // Add events to the local event aggregator.
+  // Failure:
+  // Infinite timeout because the communication to the event aggregator will
+  // always be on the same node.
+  // No retry because event sending to the aggregator is best effort.
+  rpc AddEvents(AddEventsRequest) returns (AddEventsReply);
 }

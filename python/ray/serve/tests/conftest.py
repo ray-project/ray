@@ -11,8 +11,8 @@ import pytest
 import ray
 from ray import serve
 from ray._common.test_utils import SignalActor, wait_for_condition
+from ray._common.usage import usage_lib
 from ray._common.utils import reset_ray_address
-from ray._private.usage import usage_lib
 from ray.cluster_utils import AutoscalingCluster, Cluster
 from ray.serve._private.test_utils import (
     TELEMETRY_ROUTE_PREFIX,
@@ -158,7 +158,7 @@ def serve_instance(_shared_serve_instance):
     # Clear all state for 2.x applications and deployments.
     _shared_serve_instance.delete_all_apps()
     # Clear the ServeHandle cache between tests to avoid them piling up.
-    _shared_serve_instance.shutdown_cached_handles()
+    _shared_serve_instance.shutdown_cached_handles(_skip_asyncio_check=True)
 
 
 @pytest.fixture

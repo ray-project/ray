@@ -4,6 +4,7 @@ import ray.dashboard.optional_utils as optional_utils
 import ray.dashboard.utils as dashboard_utils
 import ray.exceptions
 from ray.dashboard.modules.reporter.utils import HealthChecker
+from ray._raylet import NodeID
 
 routes = optional_utils.DashboardAgentRouteTable
 
@@ -17,9 +18,14 @@ class HealthzAgent(dashboard_utils.DashboardAgentModule):
 
     def __init__(self, dashboard_agent):
         super().__init__(dashboard_agent)
+        node_id = (
+            NodeID.from_hex(dashboard_agent.node_id)
+            if dashboard_agent.node_id
+            else None
+        )
         self._health_checker = HealthChecker(
             dashboard_agent.gcs_client,
-            f"{dashboard_agent.ip}:{dashboard_agent.node_manager_port}",
+            node_id,
         )
 
     @routes.get("/api/local_raylet_healthz")
