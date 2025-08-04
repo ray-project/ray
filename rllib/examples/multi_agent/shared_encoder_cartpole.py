@@ -19,8 +19,8 @@ For logging to your WandB account, use:
 
 Results to expect
 -----------------
-Under the shared encoder architecture, the target reward of 700 will 
-typically be reached well before 100,000 iterations. A trial concludes 
+Under the shared encoder architecture, the target reward of 700 will
+typically be reached well before 100,000 iterations. A trial concludes
 as below:
 
 +---------------------+------------+---------------------+--------+------------------+
@@ -35,14 +35,14 @@ as below:
 | 34796 |             716.3 |         500 |       216.3 |
 +-------+-------------------+-------------+-------------+
 
-Without a shared encoder, a much lower reward is typically achieved 
+Without a shared encoder, a much lower reward is typically achieved
 after training for the full 100,000 timesteps:
 
-+---------------------+------------+---------------------+--------+------------------+--------+-------------------+-------------+-------------+
-| Trial name          | status     | loc                 |   iter |   total time (s) |     ts |   combined return |   return p0 |   return p1 |
-|---------------------+------------+---------------------+--------+------------------+--------+-------------------+-------------+-------------|
-| VPG_env_5fbd8_00000 | TERMINATED | 172.29.87.208:20165 |     54 |          37.2488 | 101105 |             476.1 |        13.1 |         463 |
-+---------------------+------------+---------------------+--------+------------------+--------+-------------------+-------------+-------------+
++---------------------+------------+---------------------+--------+------------------+
+| Trial name          | status     | loc                 |   iter |   total time (s) |
+|---------------------+------------+---------------------+--------+------------------+
+| VPG_env_5fbd8_00000 | TERMINATED | 172.29.87.208:20165 |     54 |          37.2488 |
++---------------------+------------+---------------------+--------+------------------+
 
 +--------+-------------------+-------------+-------------+
 |     ts |   combined return |   return p0 |   return p1 |
@@ -67,7 +67,6 @@ from ray.rllib.examples.rl_modules.classes.vpg_using_shared_encoder_rlm import (
     SharedEncoder,
     VPGPolicyAfterSharedEncoder,
     VPGMultiRLModuleWithSharedEncoder,
-    VPGIndividualEncoder,
     VPGPolicyNoSharedEncoder,
 )
 from ray.rllib.utils.test_utils import (
@@ -86,21 +85,21 @@ parser.set_defaults(
     num_agents=2,
 )
 parser.add_argument("--encoder-emb-dim", type=int, default=64)
-parser.add_argument("--no-shared-encoder", action='store_true')
+parser.add_argument("--no-shared-encoder", action="store_true")
 
 if __name__ == "__main__":
     args = parser.parse_args()
     assert args.algo == "VPG", "The shared encoder example is meant for VPG agents."
     assert args.num_agents == 2, "This example makes use of two agents."
-    
+
     single_agent_env = gym.make(
         "CartPole-v1"
     )  # To allow instantiation of shared encoder
-    
+
     # TODO (MCW): delete this line
-    print(f'args.no_shared_encoder = {args.no_shared_encoder}')
+    print(f"args.no_shared_encoder = {args.no_shared_encoder}")
     EMBEDDING_DIM = args.encoder_emb_dim  # encoder output dim
-    if (args.no_shared_encoder):
+    if args.no_shared_encoder:
         print("Running experiment without shared encoder")
         specs = MultiRLModuleSpec(
             rl_module_specs={

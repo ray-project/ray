@@ -204,9 +204,9 @@ class VPGIndividualEncoder(torch.nn.Module):
         the two architectures.
         """
         super().__init__()
-        
+
         input_dim = observation_space.shape[0]
-        
+
         # A very simple encoder network.
         self._net = torch.nn.Sequential(
             torch.nn.Linear(input_dim, embedding_dim),
@@ -219,7 +219,7 @@ class VPGIndividualEncoder(torch.nn.Module):
 
 # __sphinx_doc_ns_encoder_end__
 
-        
+
 # __sphinx_doc_ns_policy_begin__
 class VPGPolicyNoSharedEncoder(TorchRLModule):
     """
@@ -239,13 +239,10 @@ class VPGPolicyNoSharedEncoder(TorchRLModule):
             torch.nn.ReLU(),
             torch.nn.Linear(hidden_dim, self.action_space.n),
         )
-        self.encoder = VPGIndividualEncoder(
-            self.observation_space,
-            embedding_dim
-        )
+        self.encoder = VPGIndividualEncoder(self.observation_space, embedding_dim)
 
     def _forward(self, batch, **kwargs):
-        if (ENCODER_OUT not in batch):
+        if ENCODER_OUT not in batch:
             batch = self.encoder(batch)
         embeddings = batch[ENCODER_OUT]
         logits = self._pi_head(embeddings)
