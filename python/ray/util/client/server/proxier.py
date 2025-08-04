@@ -825,7 +825,8 @@ class LogstreamServicerProxy(ray_client_pb2_grpc.RayletLogStreamerServicer):
 
 
 def serve_proxier(
-    connection_str: str,
+    host: str,
+    port: int,
     address: Optional[str],
     *,
     redis_username: Optional[str] = None,
@@ -858,10 +859,9 @@ def serve_proxier(
     ray_client_pb2_grpc.add_RayletDriverServicer_to_server(task_servicer, server)
     ray_client_pb2_grpc.add_RayletDataStreamerServicer_to_server(data_servicer, server)
     ray_client_pb2_grpc.add_RayletLogStreamerServicer_to_server(logs_servicer, server)
-    host, port = connection_str.rsplit(":", 1)
     if host != "127.0.0.1":
         add_port_to_grpc_server(server, f"127.0.0.1:{port}")
-    add_port_to_grpc_server(server, connection_str)
+    add_port_to_grpc_server(server, f"{host}:{port}")
     server.start()
     return ClientServerHandle(
         task_servicer=task_servicer,
