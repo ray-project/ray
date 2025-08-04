@@ -129,8 +129,8 @@ class LocalRunningDataProvider:
             None. If this worker is the owner, this method will block until all workers finish.
         """
         assert (
-            local_rank < self.world_size
-        ), f"local_rank {local_rank} must be < world_size {self.world_size}"
+            0 <= local_rank < self.world_size
+        ), f"local_rank {local_rank} must be in range [0, {self.world_size})"
 
         async with self.lock:
             self.finished_workers.add(local_rank)
