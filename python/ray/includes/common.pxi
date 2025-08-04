@@ -23,6 +23,10 @@ from ray.includes.common cimport (
     kLabelKeyNodeRegion,
     kLabelKeyNodeZone,
     kLabelKeyNodeGroup,
+    kLabelKeyTpuTopology,
+    kLabelKeyTpuSliceName,
+    kLabelKeyTpuWorkerId,
+    kLabelKeyTpuPodType,
 )
 
 from ray.exceptions import (
@@ -138,7 +142,7 @@ GCS_AUTOSCALER_V2_ENABLED_KEY = kGcsAutoscalerV2EnabledKey.decode()
 GCS_AUTOSCALER_CLUSTER_CONFIG_KEY = kGcsAutoscalerClusterConfigKey.decode()
 GCS_PID_KEY = kGcsPidKey.decode()
 
-# Ray node label related constants form src/ray/common/constants.h
+# Ray node label related constants from src/ray/common/constants.h
 NODE_TYPE_NAME_ENV = kNodeTypeNameEnv.decode()
 NODE_MARKET_TYPE_ENV = kNodeMarketTypeEnv.decode()
 NODE_REGION_ENV = kNodeRegionEnv.decode()
@@ -149,3 +153,9 @@ RAY_NODE_MARKET_TYPE_KEY = kLabelKeyNodeMarketType.decode()
 RAY_NODE_REGION_KEY = kLabelKeyNodeRegion.decode()
 RAY_NODE_ZONE_KEY = kLabelKeyNodeZone.decode()
 RAY_NODE_GROUP_KEY = kLabelKeyNodeGroup.decode()
+
+# TPU specifc Ray node label related constants
+RAY_NODE_TPU_TOPOLOGY_KEY = kLabelKeyTpuTopology.decode()
+RAY_NODE_TPU_SLICE_NAME_KEY = kLabelKeyTpuSliceName.decode()
+RAY_NODE_TPU_WORKER_ID_KEY = kLabelKeyTpuWorkerId.decode()
+RAY_NODE_TPU_POD_TYPE_KEY = kLabelKeyTpuPodType.decode()
