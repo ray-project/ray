@@ -216,7 +216,7 @@ class TrainContext:
         metrics: Dict[str, Any],
         checkpoint: Optional[Checkpoint] = None,
         checkpoint_dir_name: Optional[str] = None,
-    ):
+    ) -> None:
         """
         Upload checkpoint to remote storage and put a training
         result on the result queue of this worker process.

@@ -1,7 +1,7 @@
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
+import ray
 from ray.train import Checkpoint
-from ray.train.v2._internal.execution.context import get_train_context
 from ray.train.v2.api.context import TrainContext
 from ray.util.annotations import PublicAPI
 
@@ -88,7 +88,7 @@ def report(
             index in the name.
     """
 
-    get_train_context().report(
+    ray.train.get_context().report(
         metrics=metrics, checkpoint=checkpoint, checkpoint_dir_name=checkpoint_dir_name
     )
 
@@ -148,7 +148,7 @@ def get_checkpoint() -> Optional[Checkpoint]:
         Checkpoint object if the session is currently being resumed.
             Otherwise, return None.
     """
-    return get_train_context().get_checkpoint()
+    return ray.train.get_context().get_checkpoint()
 
 
 @PublicAPI(stability="stable")
@@ -195,4 +195,4 @@ def get_dataset_shard(dataset_name: Optional[str] = None) -> Optional["DataItera
         The ``DataIterator`` shard to use for this worker.
         If no dataset is passed into Trainer, then return None.
     """
-    return get_train_context().get_dataset_shard(dataset_name)
+    return ray.train.get_context().get_dataset_shard(dataset_name)

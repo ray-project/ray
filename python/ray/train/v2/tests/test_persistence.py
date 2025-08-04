@@ -24,7 +24,6 @@ from ray.train import (
     ScalingConfig,
 )
 from ray.train.v2._internal.constants import HEALTH_CHECK_INTERVAL_S_ENV_VAR
-from ray.train.v2._internal.execution.context import get_train_context
 from ray.train.v2._internal.execution.storage import _download_from_fs_path
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
 
@@ -215,7 +214,7 @@ def train_fn(config):
         # Note: this `get_train_context` is not a public API.
         # TODO (hpguo): Think about expose `get_synchronization_actor` as a
         # public API, which will be a useful collection of communication utils.
-        train_context = get_train_context()
+        train_context = ray.train.get_context()
         sync_actor = train_context.get_synchronization_actor()
         ray.get(
             sync_actor.broadcast_from_rank_zero.remote(
