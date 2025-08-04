@@ -27,7 +27,6 @@
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/common/id.h"
 #include "ray/common/task/task_spec.h"
-#include "ray/core_worker/event_aggregator_exporter.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/gcs/pb_util.h"
 #include "ray/rpc/event_aggregator_client.h"
@@ -231,6 +230,7 @@ class TaskProfileEvent : public TaskEvent {
   /// The below fields mirror rpc::ProfileEvent
   std::string component_type_;
   std::string node_ip_address_;
+};
 
 /// @brief An enum class defining counters to be used in TaskEventBufferImpl.
 enum TaskEventBufferCounter {
@@ -527,9 +527,6 @@ class TaskEventBufferImpl : public TaskEventBuffer {
 
   /// Client to the event aggregator used to push ray events to it.
   std::unique_ptr<rpc::EventAggregatorClient> event_aggregator_client_;
-
-  /// Client to the event aggregator used to push ray events to it.
-  std::unique_ptr<EventAggregatorExporter> event_aggregator_exporter_;
 
   /// True if the TaskEventBuffer is enabled.
   std::atomic<bool> enabled_ = false;
