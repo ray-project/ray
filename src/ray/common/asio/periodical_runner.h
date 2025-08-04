@@ -72,8 +72,6 @@ class PeriodicalRunner : public PeriodicalRunnerInterface,
                          uint64_t period_ms,
                          std::string name) override ABSL_LOCKS_EXCLUDED(mutex_);
 
-  void Stop();
-
  private:
   explicit PeriodicalRunner(instrumented_io_context &io_service);
 
