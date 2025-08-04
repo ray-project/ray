@@ -16,7 +16,7 @@ from ray.rllib.core.models.configs import (
 )
 from ray.rllib.core.models.configs import ModelConfig
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
-from ray.rllib.models.distributions import Distribution
+from ray.rllib.core.distribution.distribution import Distribution
 from ray.rllib.models.preprocessors import get_preprocessor, Preprocessor
 from ray.rllib.models.utils import get_filter_config
 from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
@@ -441,7 +441,7 @@ class Catalog:
             MultiCategorical = "MultiCategorical"
 
         if framework == "torch":
-            from ray.rllib.models.torch.torch_distributions import (
+            from ray.rllib.core.distribution.torch.torch_distribution import (
                 TorchCategorical,
                 TorchDeterministic,
                 TorchDiagGaussian,
@@ -451,18 +451,6 @@ class Catalog:
                 DistEnum.Deterministic: TorchDeterministic,
                 DistEnum.DiagGaussian: TorchDiagGaussian,
                 DistEnum.Categorical: TorchCategorical,
-            }
-        elif framework == "tf2":
-            from ray.rllib.models.tf.tf_distributions import (
-                TfCategorical,
-                TfDeterministic,
-                TfDiagGaussian,
-            )
-
-            distribution_dicts = {
-                DistEnum.Deterministic: TfDeterministic,
-                DistEnum.DiagGaussian: TfDiagGaussian,
-                DistEnum.Categorical: TfCategorical,
             }
         else:
             raise ValueError(
@@ -613,15 +601,11 @@ def _multi_action_dist_partial_helper(
     ]
 
     if framework == "torch":
-        from ray.rllib.models.torch.torch_distributions import (
+        from ray.rllib.core.distribution.torch.torch_distribution import (
             TorchMultiDistribution,
         )
 
         multi_action_dist_cls = TorchMultiDistribution
-    elif framework == "tf2":
-        from ray.rllib.models.tf.tf_distributions import TfMultiDistribution
-
-        multi_action_dist_cls = TfMultiDistribution
     else:
         raise ValueError(f"Unsupported framework: {framework}")
 
@@ -650,13 +634,11 @@ def _multi_categorical_dist_partial_helper(
     """
 
     if framework == "torch":
-        from ray.rllib.models.torch.torch_distributions import TorchMultiCategorical
+        from ray.rllib.core.distribution.torch.torch_distribution import (
+            TorchMultiCategorical,
+        )
 
         multi_categorical_dist_cls = TorchMultiCategorical
-    elif framework == "tf2":
-        from ray.rllib.models.tf.tf_distributions import TfMultiCategorical
-
-        multi_categorical_dist_cls = TfMultiCategorical
     else:
         raise ValueError(f"Unsupported framework: {framework}")
 

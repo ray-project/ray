@@ -6,7 +6,7 @@ from packaging import version
 from ray.rllib.core.rl_module.apis import InferenceOnlyAPI
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.core.rl_module.torch.torch_compile_config import TorchCompileConfig
-from ray.rllib.models.torch.torch_distributions import (
+from ray.rllib.core.distribution.torch.torch_distribution import (
     TorchCategorical,
     TorchDiagGaussian,
     TorchDistribution,
@@ -146,11 +146,12 @@ class TorchRLModule(nn.Module, RLModule):
                 f"Default action distribution for action space "
                 f"{self.action_space} not supported! Either set the "
                 f"`self.action_dist_cls` property in your RLModule's `setup()` method "
-                f"to a subclass of `ray.rllib.models.torch.torch_distributions."
-                f"TorchDistribution` or - if you need different distributions for "
-                f"inference and training - override the three methods: "
-                f"`get_inference_action_dist_cls`, `get_exploration_action_dist_cls`, "
-                f"and `get_train_action_dist_cls` in your RLModule."
+                f"to a subclass of `ray.rllib.core.distribution.torch."
+                f"torch_distribution.TorchDistribution` or - if you need different "
+                f"distributions for inference and training - override the three "
+                f"methods: `get_inference_action_dist_cls`,"
+                f"`get_exploration_action_dist_cls`, and `get_train_action_dist_cls` "
+                f"in your RLModule."
             )
 
     @OverrideToImplementCustomLogic
