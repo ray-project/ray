@@ -20,7 +20,7 @@ class RLlink(Enum):
     EPISODES = "EPISODES"
     # Request state (e.g. model weights).
     GET_STATE = "GET_STATE"
-    # Request (relevant) config.
+    # Request Algorithm config.
     GET_CONFIG = "GET_CONFIG"
     # Send episodes and request the next state update right after that.
     # Clients sending this message should wait for a SET_STATE message as an immediate
@@ -33,7 +33,7 @@ class RLlink(Enum):
     PONG = "PONG"
     # Set state (e.g. model weights).
     SET_STATE = "SET_STATE"
-    # Set (relevant) config.
+    # Set Algorithm  config.
     SET_CONFIG = "SET_CONFIG"
 
     # @OldAPIStack (to be deprecated soon).

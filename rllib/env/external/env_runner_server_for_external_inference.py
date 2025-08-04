@@ -1,8 +1,7 @@
 import base64
 from collections import defaultdict
 import gzip
-import json
-import pathlib
+import pickle
 import socket
 import tempfile
 import threading
@@ -55,15 +54,16 @@ class EnvRunnerServerForExternalInference(EnvRunner, Checkpointable):
 
     This implementation assumes:
     - Only one external client ever connects to this env runner.
-    - The external client performs inference locally through an ONNX model. Thus,
-    samples are sent in bulk once a certain number of timesteps has been executed on the
-    client's side (no individual action requests).
-    - A copy of the RLModule is kept at all times on the env runner, but never used
-    for inference, only as a data (weights) container.
+    - The external client owns the connector pipelines (env-to-module and module-to-env)
+    as well as the RLModule and thus performs inference locally. Samples are sent in
+    bulk as lists of RLlib episodes once a certain number of timesteps has been executed
+    on the client's side.
+    - A copy of the RLModule is kept at all times on this EnvRunner, but is never used
+    for inference, only as a weights container.
     TODO (sven): The above might be inefficient as we have to store basically two
      models, one in this EnvRunner, one in the env (as ONNX).
-    - There is no environment and no connectors on this env runner. The external env
-    is responsible for generating all the data to create episodes.
+    - As a consequence, there are no environment and no connectors on this env runner.
+    The external env is responsible for generating all the data to create episodes.
     """
 
     @override(EnvRunner)
@@ -211,7 +211,10 @@ class EnvRunnerServerForExternalInference(EnvRunner, Checkpointable):
         not_components: Optional[Union[str, Collection[str]]] = None,
         **kwargs,
     ) -> StateDict:
-        return {}
+        return {
+            COMPONENT_RL_MODULE: self.module.get_state(),
+            WEIGHTS_SEQ_NO: self._weights_seq_no,
+        }
 
     @override(Checkpointable)
     def set_state(self, state: StateDict) -> None:
@@ -275,7 +278,7 @@ class EnvRunnerServerForExternalInference(EnvRunner, Checkpointable):
                 elif msg_type == RLlink.GET_STATE:
                     self._send_set_state_message()
 
-                # Clients requests some (relevant) config information.
+                # Clients requests config information.
                 elif msg_type == RLlink.GET_CONFIG:
                     self._send_set_config_message()
 
@@ -313,29 +316,14 @@ class EnvRunnerServerForExternalInference(EnvRunner, Checkpointable):
 
     def _process_episodes_message(self, msg_type, msg_body):
         # On-policy training -> we have to block until we get a new `set_state` call
-        # (b/c the learning step is done and we can sent new weights back to all
+        # (b/c the learning step is done and we can send new weights back to all
         # clients).
         if msg_type == RLlink.EPISODES_AND_GET_STATE:
             self._blocked_on_state = True
 
         episodes = []
-        for episode_data in msg_body["episodes"]:
-            episode = SingleAgentEpisode(
-                observation_space=self.config.observation_space,
-                observations=[np.array(o) for o in episode_data[Columns.OBS]],
-                action_space=self.config.action_space,
-                actions=episode_data[Columns.ACTIONS],
-                rewards=episode_data[Columns.REWARDS],
-                extra_model_outputs={
-                    Columns.ACTION_DIST_INPUTS: [
-                        np.array(a) for a in episode_data[Columns.ACTION_DIST_INPUTS]
-                    ],
-                    Columns.ACTION_LOGP: episode_data[Columns.ACTION_LOGP],
-                },
-                terminated=episode_data["is_terminated"],
-                truncated=episode_data["is_truncated"],
-                len_lookback_buffer=0,
-            )
+        for episode_state in msg_body["episodes"]:
+            episode = SingleAgentEpisode.from_state(episode_state)
             episodes.append(episode.to_numpy())
 
         # Push episodes into the to-be-returned list (for `sample()` requests).
@@ -346,27 +334,11 @@ class EnvRunnerServerForExternalInference(EnvRunner, Checkpointable):
                 self._episode_chunks_to_return = episodes
 
     def _send_set_state_message(self):
-        with tempfile.TemporaryDirectory() as dir:
-            onnx_file = pathlib.Path(dir) / "_temp_model.onnx"
-            torch.onnx.export(
-                self.module,
-                {
-                    "batch": {
-                        "obs": torch.randn(1, *self.config.observation_space.shape)
-                    }
-                },
-                onnx_file,
-                export_params=True,
-            )
-            with open(onnx_file, "rb") as f:
-                compressed = gzip.compress(f.read())
-                onnx_binary = base64.b64encode(compressed).decode("utf-8")
         send_rllink_message(
             self.client_socket,
             {
                 "type": RLlink.SET_STATE.name,
-                "onnx_file": onnx_binary,
-                WEIGHTS_SEQ_NO: self._weights_seq_no,
+                "state": self.get_state(inference_only=True),
             },
         )
 
@@ -375,10 +347,9 @@ class EnvRunnerServerForExternalInference(EnvRunner, Checkpointable):
             self.client_socket,
             {
                 "type": RLlink.SET_CONFIG.name,
-                "env_steps_per_sample": self.config.get_rollout_fragment_length(
-                    worker_index=self.worker_index
-                ),
-                "force_on_policy": True,
+                # TODO (sven): We need AlgorithmConfig to be a `Checkpointable` with a
+                #  msgpack'able state.
+                "config": pickle.dumps(self.config),
             },
         )
 

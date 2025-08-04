@@ -292,7 +292,7 @@ class RLlibGateway:
             try:
                 logger.info(f"Trying to connect to {address}:{port} ...")
                 self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                # self._sock.settimeout(120.0)
+                self._sock.settimeout(120.0)
                 self._sock.connect((address, port))
                 break
             except ConnectionRefusedError:
@@ -329,4 +329,3 @@ class RLlibGateway:
         self._set_state(msg_body["state"])
 
         logger.info("\tSET_STATE ok ...")
-
