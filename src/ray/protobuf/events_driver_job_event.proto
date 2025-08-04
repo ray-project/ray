@@ -23,8 +23,8 @@ package ray.rpc.events;
 
 // Message containing the definition information of a driver job.
 // The message is expected to be emitted once per job creation.
-// Note: This is used in RayEvent which is a public interface so any modifications must 
-// be backward compatible. This means that you can add new fields but do NOT edit 
+// Note: This is used in RayEvent which is a public interface so any modifications must
+// be backward compatible. This means that you can add new fields but do NOT edit
 // existing fields.
 message DriverJobEvent {
   message JobConfig {
