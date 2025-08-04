@@ -22,7 +22,7 @@ WRITE_FILE_RETRY_MAX_BACKOFF_SECONDS = 32
 # Docs: https://arrow.apache.org/docs/python/generated/pyarrow.dataset.write_dataset.html
 EXISTING_DATA_BEHAVIOR_MAP = {
     SaveMode.APPEND: "overwrite_or_ignore",
-    SaveMode.OVERWRITE: "delete_matching",
+    SaveMode.OVERWRITE: "overwrite_or_ignore",  # delete_matching is not a suitable choice for parallel writes.
     SaveMode.IGNORE: "overwrite_or_ignore",
     SaveMode.ERROR: "error",
 }
