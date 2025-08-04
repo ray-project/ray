@@ -12,6 +12,7 @@ py_test_run_all_subdirectory(
     include = ["*.py"],
     exclude = [],
     extra_srcs = [],
+    data = ["llm_config_example.yaml"],
     tags = [
         "exclusive",
         "gpu",
