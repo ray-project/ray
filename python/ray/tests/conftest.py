@@ -797,7 +797,7 @@ def call_ray_start_context(request):
         print(f"Command: {' '.join(e.cmd)}")
         print(f"Exit code: {e.returncode}")
         if e.output:
-            print(f"Output:\n{e.output}")
+            print(f"Output:\n{e.output.decode()}")
         raise
     except Exception as e:
         print(type(e), e)
