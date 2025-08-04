@@ -1,21 +1,5 @@
 load("//bazel:ray.bzl", "ray_cc_library")
 
-# TODO(eoakes): break up this dependency.
-ray_cc_library(
-    name = "grpc_common_lib",
-    visibility = ["//visibility:public"],
-    deps = [
-        ":common",
-        ":event_aggregator_client",
-        ":grpc_client",
-        ":grpc_server",
-        ":metrics_agent_client",
-        ":retryable_grpc_client",
-        ":rpc_chaos",
-        ":server_call",
-    ],
-)
-
 ray_cc_library(
     name = "common",
     srcs = ["common.cc"],

@@ -22,7 +22,8 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/protobuf:test_service_cc_grpc",
-        "//src/ray/rpc:grpc_common_lib",
+        "//src/ray/rpc:grpc_client",
+        "//src/ray/rpc:grpc_server",
         "@com_google_googletest//:gtest_main",
     ],
 )
