@@ -9,9 +9,11 @@ head_node_type:
       limits:
         cpu: "48"
         memory: "192Gi"
+        nvidia.com/gpu: "4"
       requests:
         cpu: "48"
         memory: "192Gi"
+        nvidia.com/gpu: "4"
 
 worker_node_types:
     - name: worker_node
@@ -19,9 +21,11 @@ worker_node_types:
         limits:
           cpu: "48"
           memory: "192Gi"
+          nvidia.com/gpu: "4"
         requests:
           cpu: "48"
           memory: "192Gi"
+          nvidia.com/gpu: "4"
       min_workers: 3
       max_workers: 3
       use_spot: false
