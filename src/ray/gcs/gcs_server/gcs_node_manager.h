@@ -36,7 +36,7 @@
 #include "ray/rpc/client_call.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
-#include "ray/rpc/node_manager/node_manager_client_pool.h"
+#include "ray/rpc/node_manager/raylet_client_pool.h"
 #include "ray/util/event.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
@@ -56,7 +56,7 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   GcsNodeManager(GcsPublisher *gcs_publisher,
                  gcs::GcsTableStorage *gcs_table_storage,
                  instrumented_io_context &io_context,
-                 rpc::NodeManagerClientPool *raylet_client_pool,
+                 rpc::RayletClientPool *raylet_client_pool,
                  const ClusterID &cluster_id);
 
   /// Handle register rpc request come from raylet.
@@ -270,7 +270,7 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   gcs::GcsTableStorage *gcs_table_storage_;
   instrumented_io_context &io_context_;
   /// Raylet client pool.
-  rpc::NodeManagerClientPool *raylet_client_pool_ = nullptr;
+  rpc::RayletClientPool *raylet_client_pool_ = nullptr;
   /// Cluster ID to be shared with clients when connecting.
   const ClusterID cluster_id_;
 
