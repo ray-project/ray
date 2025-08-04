@@ -10,4 +10,4 @@ pip3 install --no-cache-dir \
     huggingface-hub[hf_xet]==0.32.6 \
     pydantic==2.9.2 \
     transformers==4.52.4 \
-    xgrammar==0.1.19
+    xgrammar==0.1.21
