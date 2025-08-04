@@ -789,14 +789,16 @@ void CoreWorkerProcessImpl::InitializeSystemConfig() {
     rpc::ClientCallManager client_call_manager(io_service, /*record_stats=*/false);
     rpc::Address raylet_address = rpc::RayletClientPool::GenerateRayletAddress(
         NodeID::Nil(), options_.node_ip_address, options_.node_manager_port);
-    raylet::RayletClient raylet_client(raylet_address, client_call_manager, [] {});
+    // The local raylet client is excluded from the raylet client pool as rpcs are
+    // assumed to not fail, hence the callback is empty.
+    raylet::RayletClient local_raylet_client(raylet_address, client_call_manager, [] {});
 
     std::function<void(int64_t)> get_once = [this,
                                              &get_once,
-                                             &raylet_client,
+                                             &local_raylet_client,
                                              &promise,
                                              &io_service](int64_t num_attempts) {
-      raylet_client.GetSystemConfig(
+      local_raylet_client.GetSystemConfig(
           [this, num_attempts, &get_once, &promise, &io_service](
               const Status &status, const rpc::GetSystemConfigReply &reply) {
             RAY_LOG(DEBUG) << "Getting system config from raylet, remaining retries = "
