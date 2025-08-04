@@ -245,7 +245,7 @@ ray_cc_library(
         "//src/ray/gcs/store_client:gcs_observable_store_client",
         "//src/ray/protobuf:autoscaler_cc_grpc",
         "//src/ray/protobuf:gcs_service_cc_grpc",
-        "//src/ray/pubsub:pubsub_lib",
+        "//src/ray/pubsub:publisher",
         "//src/ray/raylet/scheduling:scheduler",
         "//src/ray/raylet_client:raylet_client_lib",
         "//src/ray/rpc:core_worker_rpc",
