@@ -224,7 +224,6 @@ std::unordered_map<std::string, std::string> PythonGetNodeLabels(
                                                       node_info.labels().end());
 }
 
-
 Status ConnectOnSingletonIoContext(GcsClient &gcs_client, int64_t timeout_ms) {
   static InstrumentedIOContextWithThread io_context("gcs_client_io_service");
   instrumented_io_context &io_service = io_context.GetIoService();
