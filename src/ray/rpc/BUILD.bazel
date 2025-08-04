@@ -119,8 +119,6 @@ ray_cc_library(
     ],
 )
 
-# TODO(edoakes): split client and server targets for each of the below.
-
 ray_cc_library(
     name = "node_manager_client",
     srcs = ["node_manager/raylet_client_pool.cc"],
